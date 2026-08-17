@@ -12,6 +12,7 @@ import v.depgraph
 struct GlobalConstDef {
 	mod            string   // module name
 	def            string   // definition
+	extern_def     string   // declaration shared by parallel C translation units
 	init           string   // init later (in _vinit)
 	dep_names      []string // the names of all the consts, that this const depends on
 	order          int      // -1 for simple defines, string literals, anonymous function names, extern declarations etc
@@ -610,8 +611,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			linkage := '${extern}${field_visibility_kw}'
 			g.write_prealloc_tls_global(mut def_builder, linkage, styp, final_c_name)
 			g.global_const_defs[name] = GlobalConstDef{
-				mod: node.mod
-				def: def_builder.str()
+				mod:        node.mod
+				def:        def_builder.str()
+				extern_def: g.prealloc_tls_global_extern(styp, final_c_name)
 			}
 			continue
 		}
@@ -699,13 +701,14 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 // are emitted because the same generated C can be compiled by TCC or the system compiler.
 fn (mut g Gen) write_prealloc_tls_global(mut def_builder strings.Builder, linkage string, styp string,
 	cname string) {
+	slot_linkage := if g.pref.parallel_cc { '' } else { 'static inline ' }
 	def_builder.writeln('#if defined(__TINYC__) && defined(__APPLE__)')
 	def_builder.writeln('#include <pthread.h>')
 	def_builder.writeln('static pthread_key_t v_prealloc_tls_key;')
 	def_builder.writeln('static pthread_once_t v_prealloc_tls_once = PTHREAD_ONCE_INIT;')
 	def_builder.writeln('static void v_prealloc_tls_slot_free(void *slot) { free(slot); }')
 	def_builder.writeln('static void v_prealloc_tls_key_init(void) { pthread_key_create(&v_prealloc_tls_key, v_prealloc_tls_slot_free); }')
-	def_builder.writeln('static inline void **v_prealloc_tls_slot(void) {')
+	def_builder.writeln('${slot_linkage}void **v_prealloc_tls_slot(void) {')
 	def_builder.writeln('\tpthread_once(&v_prealloc_tls_once, v_prealloc_tls_key_init);')
 	def_builder.writeln('\tvoid **slot = (void **)pthread_getspecific(v_prealloc_tls_key);')
 	def_builder.writeln('\tif (slot == ((void *)0)) {')
@@ -718,6 +721,10 @@ fn (mut g Gen) write_prealloc_tls_global(mut def_builder strings.Builder, linkag
 	def_builder.writeln('#else')
 	def_builder.writeln('${linkage}_Thread_local ${styp} ${cname}; // global 6')
 	def_builder.writeln('#endif')
+}
+
+fn (g &Gen) prealloc_tls_global_extern(styp string, cname string) string {
+	return '#if defined(__TINYC__) && defined(__APPLE__)\nvoid **v_prealloc_tls_slot(void);\n#define ${cname} (*(${styp} *)v_prealloc_tls_slot())\n#else\nextern _Thread_local ${styp} ${cname};\n#endif'
 }
 
 fn (mut g Gen) sort_globals_consts() {

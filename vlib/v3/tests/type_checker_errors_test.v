@@ -411,6 +411,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_sum_is_variant',
 		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tif a is Bird {}\n}\n',
 		'`Bird` is not a variant of sum type `Animal`')
+	run_bad(v3_bin, 'bad_stale_bool_smartcast_after_mutation',
+		'struct Cat {\n\tage int\n}\nstruct Dog {}\ntype Animal = Cat | Dog\nfn main() {\n\tmut animal := Animal(Cat{\n\t\tage: 2\n\t})\n\tis_cat := animal is Cat\n\tanimal = Animal(Dog{})\n\tif is_cat {\n\t\tprintln(animal.age)\n\t}\n}\n',
+		'unknown field `age` on `Animal`')
 	run_bad(v3_bin, 'bad_sum_match_variant',
 		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tmatch a {\n\t\tBird {}\n\t\telse {}\n\t}\n}\n',
 		'`Animal` has no variant `Bird`')
@@ -2297,4 +2300,31 @@ fn test_option_or_error_literal_in_result_match_branch() {
 	output := run_good(v3_bin, 'good_option_or_error_in_result_match',
 		"fn maybe_number(text string) ?f64 {\n\treturn text.f64()\n}\n\nfn convert(text string) !f64 {\n\treturn match text {\n\t\t'' { 0.0 }\n\t\telse { maybe_number(text) or { error('bad number') } }\n\t}\n}\n\nfn main() {\n\tprintln(convert('2.5') or { 0.0 })\n}\n")
 	assert output == '2.5'
+}
+
+fn test_for_loop_smartcast_is_dropped_after_write() {
+	v3_bin := build_v3()
+	// A write to the loop-narrowed value inside the body drops the narrowing for the
+	// rest of that iteration; the lexical loop fallback must not reconstruct it.
+	bad := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{})\n\tfor x is Foo {\n\t\tx = Bar{}\n\t\tprintln(x.foo)\n\t}\n}\n'
+	run_bad(v3_bin, 'bad_for_loop_smartcast_after_write', bad, 'unknown field `foo`')
+
+	// Uses that precede the write stay narrowed, so the fallback must still apply there.
+	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{\n\t\tfoo: 7\n\t})\n\tfor x is Foo {\n\t\tprintln(x.foo)\n\t\tx = Bar{}\n\t\tbreak\n\t}\n}\n'
+	output := run_good(v3_bin, 'good_for_loop_smartcast_before_write', good)
+	assert output == '7'
+}
+
+fn test_bool_condition_alias_rejects_pointer_pointee_writes() {
+	v3_bin := build_v3()
+	// A recorded `p.value is Foo` reads the sum through an immutable pointer; the pointee
+	// can be reassigned through another alias before the guard, so the smartcast must not
+	// be reused for `p.value` in the then-branch.
+	bad := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nstruct Holder {\nmut:\n\tvalue FB\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: Foo{}\n\t}\n\tp := &holder\n\twas_foo := p.value is Foo\n\tholder.value = Bar{}\n\tif was_foo {\n\t\tprintln(p.value.foo)\n\t}\n}\n'
+	run_bad(v3_bin, 'bad_bool_condition_alias_pointer_pointee', bad, 'unknown field `foo`')
+
+	// An immutable local value cannot change, so its condition alias stays valid.
+	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tx := FB(Foo{\n\t\tfoo: 7\n\t})\n\twas_foo := x is Foo\n\tif was_foo {\n\t\tprintln(x.foo)\n\t}\n}\n'
+	output := run_good(v3_bin, 'good_bool_condition_alias_immutable_local', good)
+	assert output == '7'
 }

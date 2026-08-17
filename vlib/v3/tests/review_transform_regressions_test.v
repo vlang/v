@@ -414,6 +414,41 @@ fn main() {
 }'
 }
 
+fn test_recursive_interface_auto_str_uses_helper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'recursive_interface_auto_str', "interface Entry {
+	name() string
+}
+
+struct Leaf {
+	value int
+}
+
+fn (Leaf) name() string {
+	return 'leaf'
+}
+
+struct Branch {
+	child Entry
+}
+
+fn (Branch) name() string {
+	return 'branch'
+}
+
+fn main() {
+	value := Entry(Branch{
+		child: Entry(Leaf{
+			value: 42
+		})
+	})
+	println(value)
+}
+")
+	assert out.contains('child: Entry(Leaf{'), out
+	assert out.contains('value: 42'), out
+}
+
 fn test_auto_str_preserves_distinct_sum_beyond_inline_depth() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'auto_str_distinct_sum_depth', 'struct Leaf {
@@ -3429,6 +3464,100 @@ fn test_generic_interface_method_body_marks_log_debug_dispatch() {
 	assert out == 'ok'
 }
 
+fn test_generic_interface_mut_pointer_parameter_uses_erased_dispatch_abi() {
+	v3_bin := build_v3_review_transform_ownership()
+	out := run_good_with_flags(v3_bin, 'generic_interface_mut_pointer_dispatch', '-ownership', 'interface Writer[T] {
+	write(mut value T) !bool
+}
+
+struct Text {
+mut:
+	value string
+}
+
+struct Count {
+	padding [7]u8
+mut:
+	value int
+}
+
+struct TextWriter {}
+struct CountWriter {}
+
+fn (_ TextWriter) write(mut value Text) !bool {
+	value.value = "done"
+	return true
+}
+
+fn (_ CountWriter) write(mut value Count) !bool {
+	value.value = 42
+	return true
+}
+
+fn apply[T](writer &Writer[T], mut value T) !bool {
+	return writer.write(mut value)
+}
+
+fn main() {
+	mut text := Text{
+		value: "before"
+	}
+	mut count := Count{
+		value: 1
+	}
+	assert apply(TextWriter{}, mut text)!
+	assert apply(CountWriter{}, mut count)!
+	println(text.value + ":" + int_str(count.value))
+}
+')
+	assert out == 'done:42'
+}
+
+fn test_generic_interface_implementer_result_uses_dispatch_abi() {
+	v3_bin := build_v3_review_transform_ownership()
+	out := run_good_with_flags(v3_bin, 'generic_interface_implementer_result_dispatch',
+		'-ownership', 'interface Writer {
+mut:
+	write(buf []u8) !int
+}
+
+struct Buffer {}
+
+fn (mut b Buffer) write(buf []u8) !int {
+	_ = b
+	return buf.len
+}
+
+struct CounterWriter[W] {
+mut:
+	inner W
+}
+
+fn (mut w CounterWriter[W]) write(buf []u8) !int {
+	$if W is Writer {
+		return w.inner.write(buf)
+	} $else {
+		return error("not a writer")
+	}
+}
+
+fn write_len(mut writer Writer) !int {
+	return writer.write([u8(1), 2, 3])
+}
+
+fn main() {
+	mut plain := Buffer{}
+	assert write_len(mut plain)! == 3
+	mut counter := CounterWriter[Buffer]{
+		inner: Buffer{}
+	}
+	assert write_len(mut counter)! == 3
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
 fn test_materialized_generic_interface_implementer_has_runtime_type_name() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_body_materialized_interface_implementer', 'interface Any {
@@ -3795,6 +3924,22 @@ fn test_parallel_monomorphization_grows_uneven_worker_regions() {
 	src := '${declarations.join('\n')}\n\nfn inner[T](value T) int {\n\t_ = value\n\treturn 1\n}\n\nfn outer[T](value T) int {\n\treturn inner(value)\n}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n'
 	out :=
 		run_good_with_env(v3_bin, 'parallel_monomorph_grow', 'VJOBS=4 V3_TEST_MONOMORPH_GROW=1', src)
+	assert out == '40'
+}
+
+fn test_parallel_monomorphization_expands_single_seed() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut declarations := []string{cap: 40}
+	mut calls := []string{cap: 40}
+	for i in 0 .. 40 {
+		declarations << 'struct MonoSeed${i} {}'
+		calls << '\ttotal += inner(MonoSeed${i}{})'
+	}
+	src := '${declarations.join('\n')}\n\nfn inner[T](value T) int {\n\t_ = value\n\treturn 1\n}\n\nfn seed[T]() int {\n\t_ = T{}\n\tmut total := 0\n${calls.join('\n')}\n\treturn total\n}\n\nfn main() {\n\tprintln(seed[MonoSeed0]())\n}\n'
+	out := run_good_with_env(v3_bin, 'parallel_monomorph_single_seed', 'VJOBS=4', src)
 	assert out == '40'
 }
 
@@ -4731,6 +4876,17 @@ fn test_parallel_json2_specializations_emit_registered_bodies() {
 	assert out == '42'
 }
 
+fn test_parallel_json2_exact_callee_does_not_rebind_main_type_to_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_project(v3_bin, 'parallel_json2_exact_callee_homonym', {
+		'v.mod':             "Module { name: 'parallel_json2_exact_callee_homonym' }\n"
+		'discord/discord.v': 'module discord\n\npub struct Discord {\npub:\n\tname string\n}\n'
+		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Discord {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tvalue := json2.decode[Discord](r\'{"value":42}\')!\n\tprintln(value.value)\n}\n'
+	}, 'main.v')
+	assert c_source.contains('decode_struct_key_T_Discord(')
+	assert !c_source.contains('decode_struct_key_T_discord__Discord(')
+}
+
 fn test_module_local_const_array_struct_types_do_not_use_previous_module() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'module_local_const_array_struct_types', 'import encoding.utf8
@@ -4773,6 +4929,23 @@ fn test_array_filter_and_map_reuse_capturing_callback_state() {
 }
 ')
 	assert out == '[2, 3]\n[11, 22, 33]'
+}
+
+fn test_capturing_callback_variable_keeps_declared_parameters() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'capturing_callback_variable_parameters', 'fn report(callback fn (int, string)) {
+	callback(42, "ready")
+}
+
+fn main() {
+	prefix := "progress"
+	callback := fn [prefix] (percent int, stage string) {
+		println("\${prefix}:\${percent}:\${stage}")
+	}
+	report(callback)
+}
+')
+	assert out == 'progress:42:ready'
 }
 
 fn test_array_filter_and_map_hoist_bound_method_callbacks() {
@@ -5106,6 +5279,92 @@ fn main() {
 }
 ')
 	assert out == '[2, 3]'
+}
+
+fn test_for_in_sum_array_smartcast_indexes_variant_payload() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'for_in_sum_array_smartcast', 'type Size = []f64 | f64
+
+fn values(size Size) []f32 {
+	mut result := []f32{}
+	match size {
+		[]f64 {
+			for _, value in size {
+				result << f32(value)
+			}
+		}
+		f64 {
+			result << f32(size)
+		}
+	}
+	return result
+}
+
+fn main() {
+	println(values(Size([1.5, 2.5])))
+}
+')
+	assert out == '[1.5, 2.5]'
+}
+
+fn test_autofree_array_map_preserves_v1_sum_value_copy_compatibility() {
+	v3_bin := build_v3_review_transform_ownership()
+	out := run_good_with_flags(v3_bin, 'autofree_collection_copy_compatibility', '-autofree', 'struct Box {
+	value string
+}
+
+type Node = Box | int
+
+struct Pos {
+	index int
+}
+
+fn (mut _ Pos) free() {}
+
+struct Comment {
+	text string
+	pos  Pos
+}
+
+struct RecursiveField {
+	name string
+	decl RecursiveDecl
+}
+
+struct RecursiveDecl {
+	fields []RecursiveField
+}
+
+fn values() []int {
+	return [1, 2]
+}
+
+fn has_two() bool {
+	if true && values().any(it == 2) {
+		return true
+	}
+	return false
+}
+
+fn main() {
+	values := [Box{
+		value: "ok"
+	}]
+	nodes := values.map(Node(it))
+	println(nodes.len)
+	println((nodes[0] as Box).value)
+	println(has_two())
+	comments := [Comment{
+		text: "kept"
+	}]
+	println(comments.filter(it.text == "kept").len)
+	fields := [RecursiveField{
+		name: "field"
+	}]
+	println(fields.filter(it.name == "field").len)
+}
+')
+	assert out == '1\nok\ntrue\n1\n1'
 }
 
 fn test_smartcast_sum_value_in_direct_array_literal_is_reboxed() {
@@ -5454,4 +5713,70 @@ fn main() {
 }
 ')
 	assert out == '2\n1'
+}
+
+fn test_last_lvalue_stabilizes_side_effecting_receiver() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'last_lvalue_side_effecting_receiver', '__global calls int
+
+fn next() int {
+	index := calls
+	calls++
+	return index
+}
+
+fn main() {
+	mut arrays := [[[1, 2]], [[3, 4]]]
+	arrays[next()].last() << 9
+	println(int_str(calls))
+	println(arrays[0])
+	println(arrays[1])
+}
+')
+	assert out == '1\n[[1, 2, 9]]\n[[3, 4]]'
+}
+
+fn test_shadowed_allocation_helper_fn_values_preserve_address_escapes() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'shadowed_allocation_helper_fn_value_escape', 'fn pass(p &int) &int {
+	return p
+}
+
+fn make_memdup() &int {
+	local := 41
+	memdup := pass
+	return memdup(&local)
+}
+
+fn make_memdup_noscan() &int {
+	local := 42
+	memdup_noscan := pass
+	return memdup_noscan(&local)
+}
+
+fn make_aligned_memdup() &int {
+	local := 43
+	v3_aligned_memdup := pass
+	return v3_aligned_memdup(&local)
+}
+
+fn make_builtin_memdup() &int {
+	local := 44
+	return unsafe { &int(memdup(&local, sizeof(int))) }
+}
+
+fn main() {
+	println(unsafe { *make_memdup() })
+	println(unsafe { *make_memdup_noscan() })
+	println(unsafe { *make_aligned_memdup() })
+	println(unsafe { *make_builtin_memdup() })
+}
+')
+	for fn_name in ['make_memdup', 'make_memdup_noscan', 'make_aligned_memdup'] {
+		body := c_fn_body(c_source, 'int* ${fn_name}(void) {')
+		assert body.contains('int* local ='), body
+	}
+	builtin_body := c_fn_body(c_source, 'int* make_builtin_memdup(void) {')
+	assert builtin_body.contains('int local = 44;'), builtin_body
+	assert builtin_body.contains('memdup(&local, sizeof(int))'), builtin_body
 }

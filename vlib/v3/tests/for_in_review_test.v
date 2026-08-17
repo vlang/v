@@ -85,3 +85,10 @@ fn test_optional_map_for_in_is_rejected_before_codegen() {
 		'fn maybe_values() ?map[string]int {\n\treturn none\n}\n\nfn main() {\n\tfor key, value in maybe_values() {\n\t\tprintln(key + int_str(value))\n\t}\n}\n',
 		'for in: cannot index `?map[string]int`')
 }
+
+fn test_values_copied_from_temporary_map_remain_valid() {
+	v3_bin := build_v3_for_in_review()
+	out := for_in_review_run_good(v3_bin, 'temporary_map_for_in_value_lifetime',
+		"fn entries(lang string) map[string]string {\n\treturn {'message': lang.repeat(64)}\n}\n\nfn main() {\n\tmut translations := map[string]map[string]string{}\n\tfor lang in ['en', 'fr', 'de', 'es'] {\n\t\tfor key, value in entries(lang) {\n\t\t\ttranslations[lang][key] = value\n\t\t}\n\t}\n\tprintln(translations['en']['message'] == 'en'.repeat(64))\n}\n")
+	assert out == 'true'
+}

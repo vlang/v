@@ -126,6 +126,10 @@ fn (mut g FlatGen) optional_type_name_for_context(t types.Type, concrete_optiona
 	return g.optional_type_name(t)
 }
 
+fn (mut g FlatGen) current_fn_optional_type_name(t types.Type) string {
+	return g.optional_type_name_for_context(t, g.cur_fn_is_specialized)
+}
+
 fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if shared_alias_ptr := g.shared_alias_pointer_type(t) {
 		return g.tc.c_type(shared_alias_ptr)
@@ -384,6 +388,9 @@ fn (mut g FlatGen) optional_typedefs() {
 }
 
 fn (mut g FlatGen) collect_optional_typedefs() {
+	if g.optional_types_ready {
+		return
+	}
 	g.collect_declaration_signature_types()
 	// Calls without a resolved expression type are the only optional-type source
 	// not covered by the shared declaration-signature scan.
@@ -403,6 +410,7 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 			g.collect_optional_typedef_type(g.parse_node_type(&node))
 		}
 	}
+	g.optional_types_ready = true
 }
 
 fn cgen_type_text_is_complete(text string) bool {
@@ -437,6 +445,31 @@ fn cgen_type_text_is_complete(text string) bool {
 fn (mut g FlatGen) collect_declaration_signature_types() {
 	if g.decl_types_ready {
 		return
+	}
+	// Parallel monomorph workers can append concrete declarations before their
+	// checker signature maps are merged. Read declaration nodes directly too, so
+	// an option/result used only by a worker specialization still gets a typedef.
+	for idx, node in g.a.nodes {
+		if node.kind != .fn_decl {
+			continue
+		}
+		concrete_optional := g.a.specialized_fn_nodes[idx]
+			|| g.name_uses_specialized_generic_abi(node.value)
+		if !concrete_optional {
+			continue
+		}
+		if node.typ.len > 0 {
+			g.collect_declaration_signature_type_for_context(g.tc.parse_type(node.typ),
+				concrete_optional)
+		}
+		for i in 0 .. node.children_count {
+			param := g.a.child_node(&node, i)
+			if param.kind != .param {
+				break
+			}
+			g.collect_declaration_signature_type_for_context(g.tc.parse_type(param.typ),
+				concrete_optional)
+		}
 	}
 	for name, ret in g.tc.fn_ret_types {
 		// Generic template signatures keep unspecialized placeholder types
@@ -483,6 +516,10 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 }
 
 fn (mut g FlatGen) collect_declaration_signature_type(t types.Type) {
+	g.collect_declaration_signature_type_for_context(t, false)
+}
+
+fn (mut g FlatGen) collect_declaration_signature_type_for_context(t types.Type, concrete_optional bool) {
 	// Erased-template signatures keep their placeholder spellings in the
 	// checker tables even when the program itself uses no generics
 	// (skip_generics); force the placeholder check so an unused template's
@@ -494,7 +531,7 @@ fn (mut g FlatGen) collect_declaration_signature_type(t types.Type) {
 	if skip {
 		return
 	}
-	g.collect_concrete_optional_typedef_type(t)
+	g.collect_concrete_optional_typedef_type_for_context(t, concrete_optional)
 	g.collect_known_concrete_multi_return_type(t)
 }
 
@@ -506,43 +543,55 @@ fn (mut g FlatGen) collect_optional_typedef_type(t types.Type) {
 }
 
 fn (mut g FlatGen) collect_concrete_optional_typedef_type(t types.Type) {
+	g.collect_concrete_optional_typedef_type_for_context(t, false)
+}
+
+fn (mut g FlatGen) collect_concrete_optional_typedef_type_for_context(t types.Type, concrete_optional bool) {
 	match t {
 		types.OptionType {
-			g.optional_type_name(t)
-			g.collect_concrete_optional_typedef_type(t.base_type)
+			if concrete_optional {
+				g.concrete_optional_type_name(t)
+			} else {
+				g.optional_type_name(t)
+			}
+			g.collect_concrete_optional_typedef_type_for_context(t.base_type, concrete_optional)
 		}
 		types.ResultType {
-			g.optional_type_name(t)
-			g.collect_concrete_optional_typedef_type(t.base_type)
+			if concrete_optional {
+				g.concrete_optional_type_name(t)
+			} else {
+				g.optional_type_name(t)
+			}
+			g.collect_concrete_optional_typedef_type_for_context(t.base_type, concrete_optional)
 		}
 		types.Array {
-			g.collect_concrete_optional_typedef_type(t.elem_type)
+			g.collect_concrete_optional_typedef_type_for_context(t.elem_type, concrete_optional)
 		}
 		types.ArrayFixed {
-			g.collect_concrete_optional_typedef_type(t.elem_type)
+			g.collect_concrete_optional_typedef_type_for_context(t.elem_type, concrete_optional)
 		}
 		types.Channel {
-			g.collect_concrete_optional_typedef_type(t.elem_type)
+			g.collect_concrete_optional_typedef_type_for_context(t.elem_type, concrete_optional)
 		}
 		types.Map {
-			g.collect_concrete_optional_typedef_type(t.key_type)
-			g.collect_concrete_optional_typedef_type(t.value_type)
+			g.collect_concrete_optional_typedef_type_for_context(t.key_type, concrete_optional)
+			g.collect_concrete_optional_typedef_type_for_context(t.value_type, concrete_optional)
 		}
 		types.Pointer {
-			g.collect_concrete_optional_typedef_type(t.base_type)
+			g.collect_concrete_optional_typedef_type_for_context(t.base_type, concrete_optional)
 		}
 		types.FnType {
 			for param in t.params {
-				g.collect_concrete_optional_typedef_type(param)
+				g.collect_concrete_optional_typedef_type_for_context(param, concrete_optional)
 			}
-			g.collect_concrete_optional_typedef_type(t.return_type)
+			g.collect_concrete_optional_typedef_type_for_context(t.return_type, concrete_optional)
 		}
 		types.Alias {
-			g.collect_concrete_optional_typedef_type(t.base_type)
+			g.collect_concrete_optional_typedef_type_for_context(t.base_type, concrete_optional)
 		}
 		types.MultiReturn {
 			for typ in t.types {
-				g.collect_concrete_optional_typedef_type(typ)
+				g.collect_concrete_optional_typedef_type_for_context(typ, concrete_optional)
 			}
 		}
 		else {}

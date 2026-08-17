@@ -688,6 +688,24 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		}
 		field_ids << child_id
 	}
+	mut has_missing_default := false
+	for field in info.fields {
+		if field.name !in provided && int(field.default_expr) >= 0 {
+			has_missing_default = true
+			break
+		}
+	}
+	if !has_missing_default {
+		for stmt in prelude {
+			t.pending_stmts << stmt
+		}
+		// The node passes through untouched, but downstream consumers (e.g.
+		// the sum-wrap decision for `return SNull{}`) need its type text.
+		if node.typ.len == 0 && node.value.len > 0 {
+			t.set_node_typ(int(id), node.value)
+		}
+		return id
+	}
 	old_module := t.cur_module
 	// Imported defaults must retain their declaration module while resolving consts, globals,
 	// and function names. Leave them absent here; cgen's struct-default path emits them with the

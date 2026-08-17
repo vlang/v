@@ -6,6 +6,7 @@ import time
 
 const default_memory_limit_kb = i64(9) * 256 * 1024
 const self_host_memory_limit_kb = i64(4) * 1024 * 1024
+const compiler_tree_memory_limit_kb = i64(6) * 1024 * 1024
 const memory_monitor_interval = 100 * time.millisecond
 
 // Step represents step data used by bench.
@@ -73,6 +74,12 @@ pub fn (mut b Bench) disable_memory_limit() {
 // use_self_host_memory_limit raises the safety limit for compiler self-host builds.
 pub fn (mut b Bench) use_self_host_memory_limit() {
 	b.memory_limit_kb = self_host_memory_limit_kb
+}
+
+// use_compiler_tree_memory_limit raises the safety limit for tests that compile
+// the complete V3 compiler module without disabling the OOM guard.
+pub fn (mut b Bench) use_compiler_tree_memory_limit() {
+	b.memory_limit_kb = compiler_tree_memory_limit_kb
 }
 
 // set_quiet suppresses benchmark output while retaining timing and memory checks.

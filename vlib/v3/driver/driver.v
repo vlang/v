@@ -37,6 +37,7 @@ $if !skip_wasm ? {
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
+const macos_v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
 const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
@@ -1651,6 +1652,22 @@ fn input_loads_cmd_v_module(input_file string) bool {
 	return normalized_dir.ends_with('/cmd/v')
 }
 
+fn input_is_v3_compiler_tree(input_file string) bool {
+	real_input := os.real_path(input_file).replace('\\', '/').trim_right('/')
+	return real_input.ends_with('/vlib/v3') || real_input.contains('/vlib/v3/')
+}
+
+fn input_owns_builtin_bundle_module(input_file string, vroot string) bool {
+	real_input := os.real_path(input_file)
+	input_dir := if os.is_dir(real_input) { real_input } else { os.dir(real_input) }
+	for relative_dir in ['builtin', 'strconv', 'strings', 'hash', os.join_path('math', 'bits')] {
+		if input_dir == os.real_path(os.join_path(vroot, 'vlib', relative_dir)) {
+			return true
+		}
+	}
+	return false
+}
+
 fn input_is_legacy_diagnostic_fixture(input_file string) bool {
 	if os.getenv('VTEST_RUNNER') != 'normal' || !input_file.ends_with('.vv') {
 		return false
@@ -1777,6 +1794,16 @@ fn v3_c_source_mode_flags(objective_c bool) []string {
 
 fn v3_tcc_backtrace_enabled(target_os string, target_arch string, is_shared bool) bool {
 	return !is_shared && !(target_os == 'macos' && target_arch == 'arm64')
+}
+
+fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target_arch string, is_shared bool, explicit_tcc bool) {
+	if explicit_tcc && !v3_tcc_backtrace_enabled(target_os, target_arch, is_shared)
+		&& 'no_backtrace' !in user_defines {
+		// The builtin backtrace implementation must match the native TCC flag plan.
+		// Shared libraries cannot link TCC's runtime symbols, while its initializer
+		// crashes in dyld on macOS arm64 due to unaligned access.
+		user_defines << 'no_backtrace'
+	}
 }
 
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
@@ -2172,6 +2199,9 @@ fn cli_usage() string {
 		'  -v                           verbose stage profiling\n' +
 		'  -silent                      suppress benchmark output\n' +
 		'  -showcc                      print C compiler commands\n' +
+		'  -profile [file]              write V1-compatible function profile data\n' +
+		'  -profile-fns <names>         profile only named functions and their callees\n' +
+		'  -profile-no-inline           omit @[inline] functions from the profile\n' +
 		'  -no-memory-limit             disable the 2.25 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
@@ -2369,6 +2399,13 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 	}
 }
 
+fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_dir string) bool {
+	// Test sessions compile thousands of unique programs. Their shared module
+	// objects are reusable, but retaining every whole-program snapshot only grows
+	// the temporary session until the complete suite exits.
+	return cache_enabled && !test_input && !os.base(vtmp_dir).starts_with('tsession_')
+}
+
 fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAst, prefs &pref.Preferences, user_files []string, user_c_flags []string) bool {
 	mut cache_input_modules := map[string]bool{}
 	for module_name in state.module_sources.keys() {
@@ -2376,7 +2413,8 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	}
 	cache_input_modules['main'] = true
 	external_inputs, native_source_roots, unscoped_inputs, resolution_dirs, missing_resolution_paths, has_untracked_c_include := cgen.cache_external_input_files_with_resolved_flags(a,
-		prefs.vroot, cache_input_modules, user_c_flags, prefs.target)
+		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
+		module_cache_source_path_set(user_files))
 	state.module_external_inputs = external_inputs.clone()
 	state.module_native_roots = native_source_roots.clone()
 	state.external_input_signatures = map[string]string{}
@@ -5025,7 +5063,7 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()
 }
 
-fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string]bool) {
+fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string]bool, _scope voidptr) {
 	// Set difference instead of the former sort-and-merge: only a handful of
 	// signatures are added during transform, while sorting every fn name twice
 	// cost several ms per build.
@@ -5053,15 +5091,18 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 		tc.specialized_generic_fns.delete(name)
 		owned_name := name.clone()
 		tc.fn_ret_types[owned_name] = ret
-		tc.fn_param_types[owned_name] = params
+		tc.register_generated_fn_param_types(owned_name, params)
 		tc.fn_variadic[owned_name] = variadic
 		if specialized {
 			tc.specialized_generic_fns[owned_name] = true
 		}
 	}
-	if added_names.len > scoped_transform_signature_headroom {
-		tc.rebuild_scoped_transform_signature_maps()
-	}
+	// A reserved map can keep its dense arrays in the parent arena while cloned
+	// string-key text or nested type metadata is allocated in the disposable
+	// stage arena. Rebuild all signature ownership before releasing that arena.
+	tc.rebuild_scoped_transform_signature_maps()
+	// Re-own suffix keys/values after the scoped signatures above are promoted.
+	tc.rebuild_fn_param_suffix_index()
 }
 
 // default_cc_identity returns a precise identity for the resolved default `cc`.
@@ -5442,8 +5483,13 @@ fn clear_macos_v3_compiler_error_fallback(fallback_file string) {
 	}
 }
 
+fn macos_v3_fallback_suppresses_diagnostics(fallback_file string) bool {
+	return fallback_file != '' && os.getenv(macos_v3_no_fallback_env) != '1'
+}
+
 fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {
-	if fallback_file == '' || !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
+	if fallback_file == '' || os.getenv(macos_v3_no_fallback_env) == '1'
+		|| !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
 		return false
 	}
 	os.write_file(fallback_file, macos_v3_inline_asm_fallback) or { return false }
@@ -5794,7 +5840,7 @@ fn v3_driver_option_requires_value(option string) bool {
 	return option in ['-o', '-output', '-b', '-backend', '-os', '-arch', '-compile-backend',
 		'--compile-backend', '-d', '-define', '-gc', '-cc', '-thread-stack-size', '-path', '-cov',
 		'-coverage', '-file-list', '-message-limit', '-printfn', '-generate-c-project',
-		'-test-runner', '-run-only']
+		'-test-runner', '-run-only', '-profile-fns']
 }
 
 fn v3_driver_option_consumes_value(option string) bool {
@@ -5807,6 +5853,41 @@ fn apply_v3_diagnostic_color_option(option string) {
 
 fn apply_v3_default_diagnostic_color() {
 	ansi.set_colors_enabled(ansi.stderr_supports_escape_sequences())
+}
+
+fn v3_has_following_positional_arg(args []string, start int) bool {
+	for idx := start; idx < args.len; idx++ {
+		if !args[idx].starts_with('-') {
+			return true
+		}
+	}
+	return false
+}
+
+// Keep the optional `-profile [file]` argument compatible with V1: a lone
+// source path remains the compiler input, while an earlier non-source path is
+// consumed as the profile output when another positional argument follows it.
+fn v3_profile_optional_arg_value(args []string, idx int, command_seen bool) (string, bool) {
+	next := args[idx + 1] or { return '-', false }
+	if next == '-' {
+		return next, true
+	}
+	if next.starts_with('-') {
+		return '-', false
+	}
+	if !command_seen && (next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
+		|| next.ends_with('.vsh') || os.is_dir(next)
+		|| !v3_has_following_positional_arg(args, idx + 2)) {
+		return '-', false
+	}
+	return next, true
+}
+
+fn add_v3_profile_used_fns(mut used_fns map[string]bool) {
+	for name in ['time.vpc_now', 'time.vpc_now_darwin', 'v.profile.state', 'v.profile.on',
+		'profile.state', 'profile.on'] {
+		used_fns[name] = true
+	}
 }
 
 // run executes the V3 compiler driver with `args`.
@@ -5930,6 +6011,11 @@ pub fn run(args []string) {
 	mut run_args := []string{}
 	mut run_only := v3_environment_run_only()
 	mut print_fn_names := []string{}
+	mut is_prof := false
+	mut profile_file := ''
+	mut profile_no_inline := false
+	mut profile_fns := []string{}
+	mut command_seen := false
 	environment_c_flags := parse_v3_environment_flags('CFLAGS')
 	environment_ld_flags := parse_v3_environment_flags('LDFLAGS')
 	if environment_c_flags.len > 0 || environment_ld_flags.len > 0 {
@@ -5961,12 +6047,15 @@ pub fn run(args []string) {
 		}
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
 			should_run = true
+			command_seen = true
 			i++
 		} else if args[i] == 'build' && input_file.len == 0 && !should_run {
 			skip_running = true
+			command_seen = true
 			i++
 		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
 			is_test_command = true
+			command_seen = true
 			i++
 		} else if args[i] in ['-o', '-output'] && i + 1 < args.len {
 			output_file = args[i + 1]
@@ -6113,6 +6202,26 @@ pub fn run(args []string) {
 			print_fn_names << args[i + 1].split(',')
 			no_cache = true
 			i += 2
+		} else if args[i] in ['-prof', '-profile'] {
+			parsed_profile_file, profile_file_consumed := v3_profile_optional_arg_value(args, i,
+				command_seen)
+			profile_file = parsed_profile_file
+			is_prof = true
+			no_cache = true
+			if 'profile' !in user_defines {
+				user_defines << 'profile'
+			}
+			i += if profile_file_consumed { 2 } else { 1 }
+		} else if args[i] == '-profile-fns' && i + 1 < args.len {
+			for fn_name in args[i + 1].split(',') {
+				if fn_name.len > 0 {
+					profile_fns << fn_name
+				}
+			}
+			i += 2
+		} else if args[i] == '-profile-no-inline' {
+			profile_no_inline = true
+			i++
 		} else if args[i] == '-path' && i + 1 < args.len {
 			module_search_path_spec = args[i + 1]
 			i += 2
@@ -6301,6 +6410,10 @@ pub fn run(args []string) {
 		// `-no-bounds-checking`, matching the established parser contract.
 		user_defines = user_defines.filter(it.all_before('=').trim_space() != 'no_bounds_checking')
 	}
+	if is_prof && backend != 'c' {
+		eprintln('option `-profile` is only supported by the C backend')
+		exit(1)
+	}
 	should_run = should_run && !skip_running
 	if is_o && (backend != 'c' || !explicit_output || (!output_file.ends_with('.c')
 		&& !output_file.ends_with('.o'))) {
@@ -6315,6 +6428,12 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	mut current_no_parallel := no_parallel
+	if is_prof {
+		// Profile counters are assigned in function emission order and accumulated
+		// in one generator, just as they are in V1.
+		current_no_parallel = true
+		no_cache = true
+	}
 	if coverage_dir.len > 0 {
 		current_no_parallel = true
 		no_cache = true
@@ -6456,6 +6575,7 @@ pub fn run(args []string) {
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
+	v3_compiler_tree_input := input_is_v3_compiler_tree(input_file)
 	// Neither compiler entry point uses generics. Keep self-builds off the generic
 	// reachability and monomorphization paths without requiring an explicit flag.
 	// -building-v can force the same mode for another known non-generic input.
@@ -6587,10 +6707,13 @@ pub fn run(args []string) {
 	}
 	if no_memory_limit {
 		b.disable_memory_limit()
+	} else if v3_compiler_tree_input {
+		// A compiler-module test retains test-runner state in addition to the full
+		// compiler AST. Its measured peak is above the self-host-only limit.
+		b.use_compiler_tree_memory_limit()
 	} else if building_v || cmd_v_module_input {
 		// Self-host transformation temporarily retains both the source and rewritten
-		// compiler ASTs. A direct cmd/v module test loads the same compiler sources,
-		// so keep those builds under the same safety guard too.
+		// compiler ASTs. Direct cmd/v module tests load the same compiler sources.
 		b.use_self_host_memory_limit()
 	}
 	b.start_memory_monitor()
@@ -6614,6 +6737,7 @@ pub fn run(args []string) {
 		effective_c_compiler_name(c_compiler, target)
 	}
 	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
+	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, explicit_tcc)
 	prefs.ccompiler = effective_c_compiler
 	prefs.c99 = c99
 	prefs.force_bounds_checking = force_bounds_checking
@@ -6655,8 +6779,8 @@ pub fn run(args []string) {
 		eprintln('v.pref.lookup_path: ${os.join_path(prefs.vroot, 'vlib')}')
 	}
 	prefs.supports_inline_asm = is_checker_fixture
-	minimal_literal_output := input_uses_minimal_literal_output_builtin(input_file, prefs,
-		is_test_command, is_checker_fixture)
+	minimal_literal_output := !is_prof
+		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
 	host_target := pref.host_target()
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
 	// The module cache splits imported implementations into separate objects, so its main source
@@ -6665,6 +6789,7 @@ pub fn run(args []string) {
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
 		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
 		&& target.os == host_target.os && target.arch == host_target.arch
+		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
 	effective_warns_are_errors := v3_effective_warns_are_errors(warns_are_errors, is_prod)
@@ -6702,6 +6827,8 @@ pub fn run(args []string) {
 	version_pseudo_values := [prefs.vhash, prefs.vcurrent_hash].join('\n')
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled,
 		build_pseudo_values, version_pseudo_values)
+	program_cache_enabled := persistent_program_cache_enabled(cache_enabled, is_test_command
+		|| is_v3_test_file(input_file, backend, target), os.vtmp_dir())
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	// Cache markers and scoped output are stable across ordered worker chunks, so cached
 	// and preallocated builds use the same parallel function-body generator.
@@ -6827,6 +6954,9 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
+	if is_prof {
+		user_files << os.join_path(prefs.vroot, 'vlib', 'v', 'preludes', 'profiled_program.v')
+	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
 	if target.os == 'linux' && os.getenv('DISPLAY') == '' && os.getenv('WAYLAND_DISPLAY') != ''
@@ -6891,7 +7021,7 @@ pub fn run(args []string) {
 			&& request_macos_v3_compatibility_fallback(p.diagnostics, macos_v3_fallback_file) {
 			exit(1)
 		}
-		if parser_has_errors && macos_v3_fallback_file != '' {
+		if parser_has_errors && macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
 		if !silent || !only_check_syntax {
@@ -7044,8 +7174,8 @@ pub fn run(args []string) {
 		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target,
 			prefs.compile_values)
 	}
-	use_macos_dev_program_cache := backend == 'c' && cache_state.manager.enabled && !is_prod
-		&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
+	use_macos_dev_program_cache := backend == 'c' && program_cache_enabled && !is_prod && !is_shared
+		&& !is_selfhost && prefs.normalized_target_os() == 'macos'
 	incremental_cache_enabled := use_macos_dev_program_cache
 		&& os.getenv('V3_CACHE_DISABLE_INCREMENTAL') != '1'
 	mut generic_cache_inputs_ready := false
@@ -7059,7 +7189,7 @@ pub fn run(args []string) {
 	mut incremental_cached_body := ''
 	mut incremental_prefix_path := ''
 	mut incremental_tcc_declarations_path := ''
-	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
+	if backend == 'c' && program_cache_enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
 		mut external_inputs_ready := restore_v3_cache_external_inputs(mut cache_state, user_files,
 			cache_c_flags, prefs.ccompiler, prefs.target, '')
@@ -7251,6 +7381,7 @@ pub fn run(args []string) {
 	pre_tc.enable_globals = enable_globals_compat
 	pre_tc.checker_fixture_mode = is_checker_fixture
 	pre_tc.autofree_mode = 'autofree' in prefs.user_defines
+	pre_tc.no_main = 'no_main' in prefs.user_defines
 	pre_tc.warns_are_errors = effective_warns_are_errors
 	pre_tc.notes_are_errors = notes_are_errors
 	pre_tc.is_prod = prefs.is_prod
@@ -7291,7 +7422,7 @@ pub fn run(args []string) {
 			cvsw.restart()
 		}
 		if pre_tc.check_interface_embedding_limits() {
-			if macos_v3_fallback_file == '' {
+			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 			}
 			exit(1)
@@ -7395,7 +7526,7 @@ pub fn run(args []string) {
 						fixture_used_fns, false)
 				}
 			}
-			if macos_v3_fallback_file == '' {
+			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 			}
 			pre_tc.notices.clear()
@@ -7480,13 +7611,17 @@ pub fn run(args []string) {
 		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
 		// parent index once here so markused type queries do not fall back to a full
 		// arena scan for every generated selector base.
-		pre_tc.refresh_direct_parent_index(a)
+		if !building_v || !pre_tc.reuse_direct_parent_index_for_unchanged_ast(a) {
+			pre_tc.refresh_direct_parent_index(a)
+		}
 		mut markused_scope := unsafe { nil }
 		mut markused_tc := &pre_tc
 		if scope_prealloc_markused && !generic_cache_hit {
 			markused_scope = prealloc_scope_begin_for_v3()
 			markused_tc = pre_tc.fork_for_parallel_transform(a)
+			markused_tc.share_direct_dependencies_from(&pre_tc)
 			markused_tc.enable_scoped_parallel_workers()
+			markused_tc.verbose = prefs.verbose
 		}
 		if no_skip_unused {
 			used_fns, uses_generics = markused.mark_all_used_with_generic_usage(a, markused_tc,
@@ -7510,15 +7645,18 @@ pub fn run(args []string) {
 		} else if is_checker_fixture {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a,
 				markused_tc)
-		} else if building_v {
+		} else if building_v && current_parallel_transform {
 			used_fns = markused.mark_used_without_generic_detection(a, markused_tc)
 			uses_generics = false
 		} else {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
 		}
+		if is_prof {
+			add_v3_profile_used_fns(mut used_fns)
+		}
 		program_used_fns = clone_string_bool_map(used_fns)
 		if cache_state.manager.enabled && !generic_cache_hit {
-			if building_v {
+			if building_v && current_parallel_transform {
 				used_fns = markused.mark_used_for_cache_without_generic_detection(a, markused_tc,
 					test_files, cache_state.source_body_modules)
 			} else {
@@ -7652,9 +7790,9 @@ pub fn run(args []string) {
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			mut post_sw := time.new_stopwatch()
 			prealloc_scope_leave_for_v3(transform_scope)
-			retain_transform_scope := building_v && backend == 'c' && !cache_state.manager.enabled
-				&& retained_transform_regions.len == 0
-				&& os.getenv('V3_RETAIN_TRANSFORM_SCOPE') == '1'
+			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
+				&& !cache_state.manager.enabled && retained_transform_regions.len == 0
+				&& os.getenv('V3_NO_RETAIN_TRANSFORM_SCOPE') == ''
 			if retain_transform_scope {
 				// Cgen is the only remaining semantic consumer in this no-cache self-host
 				// path. Keep the typed transform arena alive through it instead of cloning
@@ -7781,7 +7919,7 @@ pub fn run(args []string) {
 					eprintln('  [ttime]   pc node caches   ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
 				}
-				promote_scoped_signatures(mut pre_tc, original_signature_names)
+				promote_scoped_signatures(mut pre_tc, original_signature_names, transform_scope)
 				if verbose {
 					eprintln('  [ttime]   pc signatures    ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
@@ -7887,6 +8025,9 @@ pub fn run(args []string) {
 				incremental_changed_names[name] = true
 			}
 		}
+		if is_prof {
+			add_v3_profile_used_fns(mut used_fns)
+		}
 		if !building_v && !uses_generics && transformed_used_fns_need_monomorphize(used_fns) {
 			uses_generics = true
 			skip_transform_generics = false
@@ -7896,7 +8037,7 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('transform', transform_was_parallel)
 		}
-		pre_tc.invalidate_direct_parent_index()
+		pre_tc.refresh_rewritten_parent_index(a)
 		if transform_errors.len > 0 {
 			eprintln('type checker found ${transform_errors.len} error(s):')
 			for message in transform_errors {
@@ -7971,7 +8112,7 @@ pub fn run(args []string) {
 		pre_tc.notices.clear()
 	}
 	if pre_tc.errors.len > 0 {
-		if macos_v3_fallback_file != '' {
+		if macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 			exit(1)
 		}
 		print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
@@ -8011,8 +8152,8 @@ pub fn run(args []string) {
 			base_specialized_fns := a.specialized_fn_nodes.len
 			monomorph_scope := prealloc_scope_begin_for_v3()
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
-				&pre_tc, monomorph_input_used, should_parallel_monomorphize()
-				&& cache_state.parsed_from_source.len == 0, monomorph_scope, cached_monomorph_specs)
+				&pre_tc, monomorph_input_used, should_parallel_monomorphize(), monomorph_scope,
+				cached_monomorph_specs)
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			prealloc_scope_leave_for_v3(monomorph_scope)
 			// Specialization can rewrite payload text on pre-existing nodes as
@@ -8040,6 +8181,7 @@ pub fn run(args []string) {
 			}
 			promote_scoped_checker_node_caches(mut pre_tc, a, monomorph_scope, base_monomorph_nodes)
 			pre_tc.rebuild_scoped_transform_signature_maps()
+			pre_tc.rebuild_fn_param_suffix_index()
 			pre_tc.promote_scoped_transform_interners(0, 0, monomorph_scope)
 			promote_scoped_type_metadata(mut pre_tc)
 			pre_tc.errors = clone_type_errors(pre_tc.errors)
@@ -8052,8 +8194,11 @@ pub fn run(args []string) {
 		} else {
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
 				&pre_tc, monomorph_input_used, should_parallel_monomorphize()
-				&& cache_state.parsed_from_source.len == 0, unsafe { nil }, cached_monomorph_specs)
+				&& !incremental_cache_hit, unsafe { nil }, cached_monomorph_specs)
 		}
+		// Monomorphization publishes every synthesized or rewritten AST string
+		// after its final worker merge, including the serial/no-worker path.
+		transform_texts_canonical = true
 		if incremental_cache_hit {
 			incremental_stage_used_fns = monomorph_used_fns.move()
 			for idx in incremental_monomorph_node_start .. a.nodes.len {
@@ -8069,7 +8214,8 @@ pub fn run(args []string) {
 		}
 		if pre_tc.notices.len > 0 || pre_tc.errors.len > 0 {
 			cached_checker_diagnostics << cache_v3_type_diagnostics(a, pre_tc.notices)
-			if pre_tc.errors.len == 0 || macos_v3_fallback_file == '' {
+			if pre_tc.errors.len == 0
+				|| !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
 				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
 			}
 			for notice in pre_tc.notices {
@@ -8091,6 +8237,9 @@ pub fn run(args []string) {
 			}
 			exit(1)
 		}
+	}
+	if is_prof {
+		add_v3_profile_used_fns(mut used_fns)
 	}
 	pre_tc.clear_c_type_cache()
 	mut mono_tail_sw := time.new_stopwatch()
@@ -8269,8 +8418,10 @@ pub fn run(args []string) {
 			g.set_show_test_summary(is_test_command)
 			g.set_test_run_only(run_only)
 			g.set_print_fn_names(print_fn_names)
+			g.set_profile(profile_file, profile_no_inline, profile_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
@@ -8318,8 +8469,10 @@ pub fn run(args []string) {
 			g.set_show_test_summary(is_test_command)
 			g.set_test_run_only(run_only)
 			g.set_print_fn_names(print_fn_names)
+			g.set_profile(profile_file, profile_no_inline, profile_fns)
 			g.set_shared(prefs.is_shared)
 			g.set_object_file_mode(is_o)
+			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
 			g.set_cache_split(cache_state.manager.enabled)
@@ -8679,7 +8832,7 @@ pub fn run(args []string) {
 					prefix_source_identity = v3_program_prefix_source_identity(prepared_cache.program_prefix_source,
 						prepared_cache.objects)
 				}
-				if !cgen_cache_hit {
+				if !cgen_cache_hit && program_cache_enabled {
 					published_cgen_cache_input := v3_cgen_cache_input(cache_state, user_files,
 						cache_c_flags)
 					prepared_plan_entry = cache_state.manager.write_cgen(published_cgen_cache_input.source_files,
@@ -9536,6 +9689,11 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	split := modulecache.split_generated_c(generated_source)!
 	mut parsed_modules := state.parsed_from_source.keys()
 	parsed_modules.sort()
+	mut parsed_short_module_counts := map[string]int{}
+	for module_name in parsed_modules {
+		short_name := module_name.all_after_last('.')
+		parsed_short_module_counts[short_name]++
+	}
 	mut newly_cached_modules := map[string]bool{}
 	mut needs_declarations := !state.bundle_valid
 	if !needs_declarations {
@@ -9627,7 +9785,15 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		source_files := state.module_sources[module_name] or { continue }
 		entry := state.manager.object_entry(module_name, source_files, compile_signature)
 		body := split.modules[module_name] or {
-			split.modules[module_name.all_after_last('.')] or { '' }
+			short_name := module_name.all_after_last('.')
+			// A short split marker is a compatibility fallback for an unqualified
+			// module identity. Never reuse it for two dotted modules with the same
+			// leaf name, or both cache objects receive the same function definitions.
+			if parsed_short_module_counts[short_name] == 1 {
+				split.modules[short_name] or { '' }
+			} else {
+				''
+			}
 		}
 		module_declarations := prune_cached_native_function_prototypes(raw_declarations, state, [
 			module_name,
@@ -12740,7 +12906,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			if mod_dir_exists {
 				mod_files := pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines,
 					prefs.target)
-				if !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
+				// -building-v compiles the trusted compiler tree and already skips other
+				// validity-only diagnostics. Avoid reading every imported source once here
+				// just before the parser reads the same files.
+				if !prefs.building_v
+					&& !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
 					expected_module := mod_name.all_after_last('.')
 					for imported_file in mod_files {
 						declared := declared_module_in_file(imported_file)

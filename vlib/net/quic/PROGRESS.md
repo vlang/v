@@ -864,17 +864,129 @@ The largest, highest-risk phase. Sub-phases, in build order:
       one-sided and both-sided paths and confirms a large-but-finite,
       strictly positive `Duration` comes back.
 
-## Phases 9-14 (NOT STARTED)
+## Phase 9 — QuicConn top-level struct and event loop
+
+No prior phase composes any two of the pieces built so far — every phase
+built independently unit-tested state and deferred wiring to "a future
+QuicConn." `vlib/net/quic/conn.v` is that wiring. Sub-phased like Phase 2,
+landing as one PR:
+
+- [x] **9a — Connection establishment** (`conn.v`): `dial()` picks
+      `scid`/`original_dcid`, derives Initial secrets, builds ClientHello.
+      `poll()`/`process_timeouts()` handle Retry/VN detection (RFC 9000
+      §17.2.5.2's at-most-one-Retry + VN/Retry anti-spoof state, both
+      explicitly documented in `retry.v`/`version_negotiation.v` as this
+      phase's job), Initial/Handshake packet demux→unprotect→frame-parse,
+      driving `Tls13ClientHandshake` through to `process_finished`, key
+      derivation/promotion per level, CRYPTO-frame reassembly via
+      `CryptoStreamReassembler`, ACK generation/processing for
+      Initial/Handshake tied into `loss_detection.v`, idle timeout, and key
+      discard on handshake confirmation (RFC 9001 §4.9).
+- [x] **9b — Steady state**: 1-RTT packet processing (STREAM/ACK/
+      CONNECTION_CLOSE dispatch into `QuicStreamSet` + flow control both
+      directions), `open_stream`/`write_stream`/`read_stream`, full
+      loss-detection↔congestion-control wiring for 1-RTT sends,
+      MAX_STREAMS enforcement on locally-opened streams against the peer's
+      current limit, stateless-reset detection on decrypt failure, ECN
+      count recording, graceful/immediate close, 1-RTT key update rotation
+      (`app_read_keys`/`app_write_keys`).
+- [x] Tests: `conn_test.v`, hand-built ServerHello→Finished fixtures
+      (reusing Phase 2's RFC 8448/quiche vectors, no live server) driving
+      `dial()`+`poll()` to `handshake_confirmed`; STREAM data round-trip
+      through `poll()`; CONNECTION_CLOSE handling; key update.
+- [x] `/vreview` found and fixed two real bugs, both reproduced with a
+      failing test before the fix landed (Phase R): (1) `write_stream`/
+      `read_stream` never called `ensure_stream_windows` for a stream that
+      only exists because RFC 9000 §2.1 auto-created it as a lower-numbered
+      sibling of a peer-referenced higher stream ID — such a stream had no
+      flow-control window, so a local write to it queued forever with no
+      error, never reaching the wire; (2) `handle_peer_connection_close`
+      and the stateless-reset branch of `note_one_rtt_processing_failed`
+      transitioned to `.draining` without setting `closing_deadline` (RFC
+      9000 §10.2.2 requires the draining period to be bounded, same as
+      closing) — a peer-initiated close, the most common real-world close
+      path, left the connection draining forever instead of eventually
+      reaching `.closed`. Fixed with a shared `enter_draining(now)` helper
+      mirroring `close_with_error`'s existing deadline formula.
+
+Connection ID rotation/migration is explicitly OUT of scope (not deferred
+to a later phase — `stateless_reset.v`/`pmtu.v` both say so independently):
+`QuicConn` holds exactly one local `scid` and tracks the peer's current
+`dcid`, no active CID set, no NEW_CONNECTION_ID/RETIRE_CONNECTION_ID.
+
+## Phase 10: HTTP/3 framing (RFC 9114) — CODE COMPLETE, not yet wired to conn.v
+
+Full section-by-section requirements matrix built BEFORE writing any code
+(`.claude/skills/code-review/quic_conformance_matrix.md`, "HTTP/3 framing
+layer" section) — the direct structural response to Phase 9's own
+postmortem ("build the RFC checklist before/during implementation, not
+reactively"). See that section for the complete requirement-by-requirement
+breakdown; summary here.
+
+New files, all in `vlib/net/quic/`:
+
+- [x] `h3_reserved.v` — the single 0x1f*N+0x21 grease-codepoint formula
+      shared identically across frame types (§7.2.8), stream types
+      (§6.2.3), SETTINGS identifiers (§7.2.4.1), and error codes (§8.1) —
+      confirmed byte-for-byte identical wording in all 4 RFC citations
+      before writing one shared helper instead of four copies.
+- [x] `h3_error.v` — `H3ErrorCode` enum, all 17 values (§8.1/Table 4).
+- [x] `h3_stream_type.v` — unidirectional Stream Type header (§6.2/6.2.1/
+      6.2.2/6.2.3): control (0x00), push (0x01 + push ID), reserved,
+      unknown. Incremental (returns `none`, not an error, on a short
+      buffer — RFC places no requirement on how header bytes are split
+      across QUIC STREAM frames).
+- [x] `h3_frame.v` — frame Type/Length envelope (§7.1) + all 7 defined
+      frame types' payloads (DATA/HEADERS/CANCEL_PUSH/SETTINGS/
+      PUSH_PROMISE/GOAWAY/MAX_PUSH_ID, §7.2.1-7.2.7) + the 4 H2-carryover
+      reserved frame types (§7.2.8/Table 2) rejected outright as
+      H3_FRAME_UNEXPECTED, distinct from grease/genuinely-unknown types
+      (§9), which are preserved as `H3RawFrame` and never rejected.
+      `H3FrameDecoder` is the incremental/resumable reader this phase's
+      whole scope centers on — buffers partial bytes across `push()`
+      calls, only ever returns a frame once its FULL declared Length is
+      available. SETTINGS payload parsing rejects duplicate identifiers
+      (a MAY in §7.2.4, chosen to enforce — documented as a choice, not
+      claimed as a literal MUST) and the 5 reserved HTTP/2-carryover
+      setting identifiers (§7.2.4.1/Table 3), while correctly NOT
+      rejecting QPACK's own 0x01/0x07 (RFC 9204, not reserved by 9114
+      itself) so Phase 11 can add them as recognized without touching
+      this reserved set.
+- [x] `h3_message_state.v` — the one piece of §4's message-framing rules
+      that needs only a stream's ROLE, not request/response context:
+      Table 1's per-role frame-type legality (`is_h3_frame_valid_on_stream`)
+      and the control-stream SETTINGS-must-be-first-and-only-once
+      discipline (`H3ControlStreamState`).
+- [x] Tests: one `_test.v` per file, covering round-trips, every reserved/
+      grease/unknown-type boundary, incremental byte-by-byte feeding,
+      truncated/trailing-byte rejection, and a self-caught integer-overflow
+      hardening case (`int(length)` on an attacker-controlled u64 up to
+      2^62-1 could truncate/wrap before ever reaching a real bounds check
+      — fixed and regression-tested before the first real compile, not
+      found by an external round).
+
+**Explicitly deferred to Phase 12** (needs request/response objects, a
+real connection stream registry, or cross-frame state this framing-only
+phase doesn't have — every instance is a matrix row marked `⏳ Phase 12`,
+not a silent gap): §4.1's HEADERS→DATA*→trailer-HEADERS message-content
+sequencing within one request/response; single-request-per-stream
+enforcement; CONNECT's distinct framing; PUSH_PROMISE/CANCEL_PUSH/
+MAX_PUSH_ID cross-frame state (max advertised push ID, push IDs already
+seen); control-stream uniqueness/closure enforcement; unidirectional
+unknown-stream-type abort/discard action; remapping an unrecognized
+received error code to H3_NO_ERROR. **N/A for this v1 client role**
+(confirmed by re-reading which endpoint the requirement binds, not
+assumed): MAX_PUSH_ID's must-not-decrease check (binds a server receiving
+it from a client); a server receiving a client-initiated push stream.
+
+## Phases 11-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-9. `QuicConn` — top-level struct, `poll()`/`process_timeouts()` event-loop
-   contract.
-10. HTTP/3 framing (RFC 9114) — incremental/resumable parsing (structurally
-    different from HTTP/2's single-shot framing).
 11. QPACK (RFC 9204) — absolute indexing, encoder/decoder streams, blocked-
     stream handling. Not HPACK — don't reuse `h2_hpack_static.v`.
-12. HTTP/3 client wiring into `Request`/`Response`/`Transport`.
+12. HTTP/3 client wiring into `Request`/`Response`/`Transport` — also where
+    Phase 10's deferred-state items above actually get wired up.
 13. Server support — explicitly out of committed scope, but Phases 1-9 are
     designed to need no rework for it (`role` field already present).
 14. 0-RTT — explicitly out of committed scope.

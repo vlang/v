@@ -11,6 +11,10 @@ fn scan_top_level_kind_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8, _ bool
 	return false
 }
 
+fn (mut _ Transformer) prepare_parallel_monomorph_scan(_ int, _ int) bool {
+	return false
+}
+
 // collect_interface_boxed_types_parallel keeps the interface scan serial when
 // v3 is built with the internal `v3_no_parallel` define.
 fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {
@@ -39,6 +43,10 @@ pub fn promote_scoped_checker_node_caches_parallel(mut _ types.TypeChecker, _ &f
 }
 
 pub fn scan_scoped_text_flags_parallel(_ &flat.FlatAst, _ voidptr, mut _ []u8) bool {
+	return false
+}
+
+fn free_worker_scopes_parallel(_ &flat.FlatAst, _ []voidptr) bool {
 	return false
 }
 

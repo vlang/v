@@ -48,7 +48,7 @@ fn write_c_output_mapped(path string, prefix []u8, segments []string, tail strin
 	mapped := unsafe {
 		C.mmap(nil, usize(total), C.PROT_READ | C.PROT_WRITE, C.MAP_SHARED, file.fd, 0)
 	}
-	if mapped == C.MAP_FAILED {
+	if mapped == voidptr(-1) {
 		write_c_output_sequential(mut file, prefix, segments, tail) or {
 			file.close()
 			return err

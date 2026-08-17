@@ -49,11 +49,18 @@ pub fn effective_idle_timeout(local_max_idle_timeout_ms u64, peer_max_idle_timeo
 }
 
 // IdleTimeoutState tracks when the idle timer last restarted -- RFC 9000
-// §10.1's deliberately ASYMMETRIC reset rule, not "any packet either
-// direction": an ack-eliciting packet RECEIVED restarts it, but a
-// non-ack-eliciting receive (e.g. an ACK-only packet) does NOT; any
-// packet SENT restarts it regardless of whether that packet itself was
-// ack-eliciting.
+// §10.1: "An endpoint restarts its idle timer when a packet from its peer
+// is received and processed successfully" (RECEIVE side: unconditional,
+// any packet) "[An endpoint] also restarts its idle timer when sending an
+// ack-eliciting packet if no other ack-eliciting packets have been sent
+// since last receiving and processing a packet" (SEND side: only
+// ack-eliciting matters there, though restarting on every send, as this
+// type does, is a superset -- more lenient, never less, so it still
+// satisfies the MUST). The ack-eliciting condition in the RFC text is
+// SEND-only; an earlier version of this type had it backwards, gating the
+// RECEIVE side on ack-eliciting instead and never restarting on a
+// non-ack-eliciting receive (e.g. a lone ACK frame) -- found via a
+// maintainer "Local AI Review" on PR #28083.
 pub struct IdleTimeoutState {
 pub mut:
 	last_reset ?u64 // time.sys_mono_now()-sourced instant
@@ -69,14 +76,12 @@ pub fn (mut s IdleTimeoutState) note_packet_sent(now u64) {
 	s.last_reset = now
 }
 
-// note_packet_received restarts the idle timer ONLY for an ack-eliciting
-// packet -- a non-ack-eliciting receive (e.g. a lone ACK frame) must NOT
-// restart it, otherwise two idle peers exchanging nothing but ACKs of
-// each other's ACKs could keep the connection alive forever.
-pub fn (mut s IdleTimeoutState) note_packet_received(is_ack_eliciting bool, now u64) {
-	if is_ack_eliciting {
-		s.last_reset = now
-	}
+// note_packet_received restarts the idle timer -- ANY successfully
+// processed received packet qualifies, per RFC 9000 §10.1 (see this
+// type's own doc comment); there is no ack-eliciting condition on the
+// receive side.
+pub fn (mut s IdleTimeoutState) note_packet_received(now u64) {
+	s.last_reset = now
 }
 
 // is_idle reports whether `timeout` has elapsed since the timer was last

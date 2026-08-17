@@ -529,17 +529,28 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr types.Array) {
 	base_id := g.a.child(fn_node, 0)
 	mut elem_type := arr.elem_type
-	receiver_type := types.unwrap_pointer(g.usable_expr_type(base_id))
+	base_expr_type := g.usable_expr_type(base_id)
+	receiver_type0 := if g.a.nodes[int(base_id)].kind == .call {
+		declared := g.declared_call_return_type(base_id)
+		if declared !is types.Unknown && declared !is types.Void {
+			declared
+		} else {
+			base_expr_type
+		}
+	} else {
+		base_expr_type
+	}
+	receiver_type := types.unwrap_pointer(receiver_type0)
 	if receiver_arr := array_like_type(receiver_type) {
 		elem_type = receiver_arr.elem_type
 	}
 	c_elem := g.value_c_type(elem_type)
 	base_node := g.a.nodes[int(base_id)]
-	is_ptr := if base_node.kind == .ident {
-		g.usable_expr_type(base_id) is types.Pointer
-	} else {
-		false
-	}
+	// A receiver already yields a pointer (e.g. `arc.Arc[[]T].get()` returns
+	// `&[]T`) for any expression kind, not just idents. Detect it uniformly so
+	// `clone` does not take the address of a pointer rvalue (`array__clone(&p)`)
+	// and element accessors dereference correctly.
+	is_ptr := g.usable_expr_type(base_id) is types.Pointer
 	dot := if is_ptr { '->' } else { '.' }
 	match fn_node.value {
 		'clone' {
@@ -1743,6 +1754,9 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		if base_type is types.Pointer {
 			ptr_type := base_type
 			mut expected_type := ptr_type.base_type
+			base_node := g.a.node(base_id)
+			explicit_mut_pointer_param := base_node.kind == .ident
+				&& g.current_param_is_mut_pointer(base_node.value)
 			if fixed := array_fixed_type(ptr_type.base_type) {
 				g.write('(*')
 				g.gen_expr(base_id)
@@ -1751,6 +1765,10 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			} else if ptr_type.base_type is types.Void {
 				g.write('((u8*)')
 				g.gen_expr(base_id)
+				g.write(')')
+			} else if explicit_mut_pointer_param {
+				g.write('(*')
+				g.gen_mut_pointer_slot_expr(base_id)
 				g.write(')')
 			} else {
 				g.write('(')

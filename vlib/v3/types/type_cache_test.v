@@ -118,6 +118,19 @@ fn test_c_type_cache_uses_existing_named_type_identity() {
 	assert tc.type_cache.c_entries.len == 1
 }
 
+fn test_c_type_recent_cache_distinguishes_reassigned_sum_payloads() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	mut typ := Type(Struct{
+		name: 'mcp.Request'
+	})
+	assert tc.c_type(typ) == 'mcp__Request'
+	typ = Type(Struct{
+		name: 'http.Request'
+	})
+	assert tc.c_type(typ) == 'http__Request'
+}
+
 fn test_semantic_type_interner_uses_structural_identity() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)

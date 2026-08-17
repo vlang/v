@@ -3,6 +3,16 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_generic_unresolved_type_detects_multi_return_placeholders() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.generic_arg_is_unresolved('(T, T)')
+	assert t.generic_arg_is_unresolved('([]T, map[string]T)')
+	assert !t.generic_arg_is_unresolved('(f64, f64)')
+}
+
 fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
 	mut a := flat.FlatAst.new()
 	base_id := a.add_node(flat.Node{
@@ -105,6 +115,32 @@ fn test_flattened_generic_struct_types_materialize_from_recorded_args() {
 	mut specs := map[string]string{}
 	t.collect_generic_struct_spec_from_type('arc.Arc_ResourceSum', 'main', '', decls, mut specs)
 	assert specs['arc.Arc[ResourceSum]'] == 'arc.Arc'
+}
+
+fn test_flattened_generic_struct_arg_canonicalizes_to_source_application() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['StructType'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.record_generic_specialization_args_in_module('StructType', 'main', ['int'])
+
+	assert t.tc.struct_generic_params['StructType'] == ['T']
+	assert t.recorded_generic_specialization_args('StructType_int') or { []string{} } == [
+		'int',
+	]
+	assert generic_specialized_type_matches_flat_name('StructType_int', 'StructType', [
+		'int',
+	])
+	assert t.generic_specialized_source_type_name('StructType_int') or { '' } == 'StructType[int]'
+	assert t.canonical_generic_specialization_arg('StructType_int') == 'StructType[int]'
+
+	t.record_generic_specialization_args_in_module('StructType', 'main', ['time.Time'])
+	assert c_name('StructType[time.Time]') == 'StructType_time__Time'
+	assert t.recorded_generic_specialization_args('StructType_time.Time') or { []string{} } == [
+		'time.Time',
+	]
+	assert t.generic_specialized_source_type_name('StructType_time.Time') or { '' } == 'StructType[time.Time]'
+	assert t.canonical_generic_specialization_arg('StructType_time.Time') == 'StructType[time.Time]'
 }
 
 fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base() {
@@ -275,4 +311,42 @@ fn test_generic_method_decl_matches_embedded_receiver() {
 	}
 	mut seen := map[string]bool{}
 	assert t.generic_decl_matches_embedded_receiver('Outer', decl, 'main', mut seen)
+}
+
+fn test_specialized_plain_generic_call_args_decode_top_level_array_suffix() {
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'json2__decode_T_Array_net__jsonrpc__Response'
+	})
+	children_start := a.children.len
+	a.children << callee_id
+	call := flat.Node{
+		kind:           .call
+		children_start: children_start
+		children_count: 1
+	}
+	mut fn_decl := flat.Node{
+		kind:  .fn_decl
+		value: 'decode'
+	}
+	fn_decl.set_generic_params(['T'])
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	args := t.specialized_plain_generic_call_args(call, GenericFnDecl{
+		node:   fn_decl
+		module: 'json2'
+		key:    'json2.decode'
+	}, 'net.jsonrpc') or {
+		assert false, 'failed to decode specialized generic call arguments'
+		return
+	}
+	assert args == ['[]net.jsonrpc.Response']
+}
+
+fn test_free_generic_map_suffix_preserves_qualified_value_type() {
+	suffix := generic_type_full_suffixes(['map[string]binary.St'])
+	assert suffix == 'Map_string_binary__St'
+	decoded := generic_type_arg_from_suffix_with_containers(suffix)
+	assert decoded == 'map[string]binary.St'
 }

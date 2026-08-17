@@ -78,10 +78,5 @@ fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string 
 		&& macos_v3_internal_quiet_flag !in forwarded_args {
 		forwarded_args.insert(0, macos_v3_internal_quiet_flag)
 	}
-	// The compatibility fallback must not select a different compiler merely
-	// because a valid V3 build crosses the standalone driver's safety cap.
-	if '-no-memory-limit' !in forwarded_args && '--no-memory-limit' !in forwarded_args {
-		forwarded_args.insert(0, '-no-memory-limit')
-	}
 	return forwarded_args
 }

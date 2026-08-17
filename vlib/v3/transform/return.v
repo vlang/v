@@ -6,6 +6,7 @@ import v3.types
 const direct_optional_forward_return_value = '__direct_optional_forward'
 const optional_success_return_value = '__optional_success_return'
 const transformed_return_value_prefix = '__transformed_return:'
+const transformed_direct_optional_forward_value_prefix = '__transformed_direct_optional_forward:'
 
 // transform_return_with_sumtype_wrap checks if a return statement returns a
 // variant value where the function's return type is a sum type. In that case,
@@ -98,14 +99,35 @@ fn transformed_return_value(id flat.NodeId) string {
 }
 
 fn transformed_return_source_id(value string) ?flat.NodeId {
-	if !value.starts_with(transformed_return_value_prefix) {
+	prefix := if value.starts_with(transformed_return_value_prefix) {
+		transformed_return_value_prefix
+	} else if value.starts_with(transformed_direct_optional_forward_value_prefix) {
+		transformed_direct_optional_forward_value_prefix
+	} else {
 		return none
 	}
-	text := value[transformed_return_value_prefix.len..]
+	text := value[prefix.len..]
 	if text.len == 0 {
 		return none
 	}
 	return flat.NodeId(text.int())
+}
+
+fn (mut t Transformer) transformed_direct_optional_forward_return(value_id flat.NodeId, ret_typ string, source_return_id flat.NodeId) ?flat.NodeId {
+	if !t.is_optional_type_name(ret_typ) || !t.return_expr_is_optional_result(value_id) {
+		return none
+	}
+	expr_type := t.qualify_optional_type(t.optional_result_expr_type_name(value_id))
+	qualified_ret := t.qualify_optional_type(ret_typ)
+	if !t.optional_types_match(qualified_ret, expr_type) {
+		return none
+	}
+	value := t.transform_expr(value_id)
+	t.set_node_typ(int(value), qualified_ret)
+	ret := t.make_return(value, qualified_ret)
+	t.set_node_value(int(ret),
+		'${transformed_direct_optional_forward_value_prefix}${int(source_return_id)}')
+	return ret
 }
 
 fn (t &Transformer) return_drop_source_id(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -233,6 +255,7 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 		return none
 	}
 	new_expr := t.transform_expr(child_id)
+	t.set_node_typ(int(new_expr), ret_type)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	result << t.make_direct_optional_forward_return(new_expr, ret_type)
@@ -334,9 +357,23 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .call && !isnil(t.tc) {
+		// The checker annotation reflects the sum receiver before a match-branch
+		// smartcast. The call transformer resolves the concrete variant method, so
+		// use that same return type before deciding this is a direct Option/Result
+		// forward. Otherwise a scalar variant method with the same name as an
+		// optional sum method is emitted as a bare scalar return.
+		if smartcast_ret := t.smartcast_receiver_call_return_type(node) {
+			return t.is_optional_type_name(smartcast_ret)
+		}
 		if typ := t.tc.expr_type(id) {
 			if typ !is types.Unknown && typ !is types.Void {
-				return typ is types.OptionType || typ is types.ResultType
+				// A propagated `call()!` is annotated with its successful payload
+				// type. In a compatible `return` position it can still forward the
+				// callee's complete Result directly, so a non-wrapper expression
+				// annotation must not hide the declared call return below.
+				if typ is types.OptionType || typ is types.ResultType {
+					return true
+				}
 			}
 		}
 		if name := t.tc.resolved_call_name(id) {
@@ -360,6 +397,21 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 		return t.is_optional_type_name(t.node_type(id))
 	}
 	return t.is_optional_type_name(node.typ)
+}
+
+fn (t &Transformer) smartcast_receiver_call_return_type(node flat.Node) ?string {
+	if node.children_count == 0 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(callee, 0)
+	method_name := t.resolve_smartcast_target_receiver_method(base_id, callee.value) or {
+		return none
+	}
+	return t.receiver_method_return_type(method_name, node.typ)
 }
 
 fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
@@ -732,6 +784,15 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 	if branch.kind != .block {
 		// single expression branch: just `return <expr>`
 		mut all := []flat.NodeId{}
+		if extra_return_vals.len == 0 {
+			if ret := t.transformed_direct_optional_forward_return(branch_id, ret_typ,
+				source_return_id)
+			{
+				t.drain_pending(mut all)
+				all << ret
+				return t.make_block(all)
+			}
+		}
 		ret_vals := t.return_values_with_extra(branch_id, extra_return_vals)
 		t.drain_pending(mut all)
 		all << t.make_transformed_return_values(ret_vals, ret_typ, source_return_id)
@@ -775,6 +836,13 @@ fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ s
 			all << stmt
 		}
 		return t.make_block(all)
+	}
+	if extra_return_vals.len == 0 {
+		if ret := t.transformed_direct_optional_forward_return(tail_expr, ret_typ, source_return_id) {
+			t.drain_pending(mut all)
+			all << ret
+			return t.make_block(all)
+		}
 	}
 	ret_vals := t.return_values_with_extra(tail_expr, extra_return_vals)
 	t.drain_pending(mut all)
@@ -848,7 +916,8 @@ fn (mut t Transformer) try_expand_return_if(source_return_id flat.NodeId, node f
 	for i in 1 .. node.children_count {
 		extra_return_vals << t.a.child(&node, i)
 	}
-	return arr1(t.build_return_if_chain(val_id, node.typ, extra_return_vals, source_return_id))
+	ret_typ := if t.cur_fn_ret_type.len > 0 { t.cur_fn_ret_type } else { node.typ }
+	return arr1(t.build_return_if_chain(val_id, ret_typ, extra_return_vals, source_return_id))
 }
 
 fn (t &Transformer) match_branch_tuple_parts(branch flat.Node, body_start_idx int, count int) ?TupleBlockParts {
@@ -945,6 +1014,11 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 		t.transform_enum_shorthand(tail_expr, tail_expr_node, expected_ret)
 	} else {
 		tail_expr
+	}
+	if ret := t.transformed_direct_optional_forward_return(actual_tail, ret_typ, source_return_id) {
+		t.drain_pending(mut all)
+		all << ret
+		return t.make_block(all)
 	}
 	mut ret_val := t.transform_return_child(actual_tail, 0, 1)
 	direct_fn_value := tail_expr_node.kind == .ident && t.is_optional_type_name(ret_typ)

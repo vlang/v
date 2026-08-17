@@ -14,6 +14,7 @@ const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
 const macos_v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 const macos_v3_retry_env = 'V_MACOS_V3_RETRY'
+const macos_v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
 const macos_v3_inline_asm_fallback = 'inline_asm'
 const macos_v3_compiler_error_fallback = 'compiler_error'
 const macos_v3_c_error_fallback = 'c_compilation_error'
@@ -155,6 +156,18 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 	if fallback_reason !in [macos_v3_inline_asm_fallback, macos_v3_compiler_error_fallback,
 		macos_v3_c_error_fallback] {
 		os.rmdir_all(c_error_dir) or {}
+		return
+	}
+	if os.getenv(macos_v3_no_fallback_env) == '1' {
+		if fallback_reason == macos_v3_c_error_fallback {
+			if report := read_macos_v3_c_error_report(c_error_dir) {
+				if report.c_output != '' {
+					eprintln(report.c_output.trim_right('\r\n'))
+				}
+			}
+		}
+		os.rmdir_all(c_error_dir) or {}
+		eprintln('V3 compatibility fallback disabled; requested reason: ${fallback_reason}')
 		return
 	}
 	replace_macos_v3_process_environment(caller_environment)

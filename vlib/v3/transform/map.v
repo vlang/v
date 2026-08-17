@@ -1211,7 +1211,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	rhs_name := t.new_temp('map_field_value')
 	result << t.make_decl_assign_typed(rhs_name, rhs, field_type)
 	t.append_owned_lvalue_drop_before_assign_if(field, field_type, current_existed, mut result)
-	result << t.make_assign(field, t.make_ident(rhs_name))
+	result << t.make_assign_after_owned_drop(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
 	return result
@@ -1548,8 +1548,8 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 }
 
 fn (mut t Transformer) transform_map_entry_expr_for_type(id flat.NodeId, typ string) flat.NodeId {
-	prefix := t.pending_stmts.clone()
-	t.pending_stmts.clear()
+	prefix := t.pending_stmts
+	t.pending_stmts = []flat.NodeId{}
 	value := if typ.starts_with('&') && t.is_sum_type_name(typ[1..]) {
 		t.transform_expr_for_type(id, typ)
 	} else if typ in t.sum_types || t.resolve_sum_name(typ) in t.sum_types {
@@ -1557,7 +1557,7 @@ fn (mut t Transformer) transform_map_entry_expr_for_type(id flat.NodeId, typ str
 	} else {
 		t.transform_expr_for_type(id, typ)
 	}
-	entry_pending := t.pending_stmts.clone()
+	entry_pending := t.pending_stmts
 	t.pending_stmts = prefix
 	for stmt in entry_pending {
 		t.pending_stmts << stmt

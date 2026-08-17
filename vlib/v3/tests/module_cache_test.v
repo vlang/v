@@ -73,6 +73,42 @@ fn run_module_cache_binary(path string) string {
 	return result.output.trim_space()
 }
 
+fn test_program_module_owns_synthetic_helpers_and_native_sources() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_program_module_inputs_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'native.c', 'int native_value(void) {
+	return 7;
+}
+')
+	test_file := os.join_path(root, 'sample_test.v')
+	write_module_cache_file(root, 'sample_test.v', 'module sample
+
+#include "@DIR/native.c"
+
+fn C.native_value() int
+
+type Key = int | string
+
+fn keys_equal(left Key, right Key) bool {
+	return left == right
+}
+
+fn test_program_support() {
+	assert C.native_value() == 7
+	assert keys_equal(Key("ok"), Key("ok"))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'sample_test')
+	compile_module_cache_project(v3_bin, cache_dir, test_file, output)
+	assert run_module_cache_binary(output) == ''
+}
+
 fn test_print_v_files_includes_warm_cached_module_sources() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_print_cached_v_files_${os.getpid()}')
@@ -178,6 +214,111 @@ fn main() {
 	assert second.output.contains('C module plan (cached)'), second.output
 	assert second.output.contains('cgen (cached)'), second.output
 	assert run_module_cache_binary(second_output) == 'V3_CACHE_SYNC_OK'
+}
+
+fn test_cached_program_preserves_selective_import_call_target() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_selective_import_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'calc/calc.v', 'module calc
+
+pub fn log(value int) int {
+	return value + 1
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import calc { log }
+
+fn main() {
+	println(log(41))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
+fn test_cached_generic_operator_through_alias_retains_body() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_generic_alias_op_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'numdef/numdef.v', 'module numdef
+
+pub struct Number[T] {
+pub:
+	value T
+}
+
+pub fn (a Number[T]) + (b Number[T]) Number[T] {
+	return Number[T]{
+		value: a.value + b.value
+	}
+}
+
+pub type IntNumber = Number[int]
+
+pub fn make(v int) IntNumber {
+	return IntNumber(Number[int]{
+		value: v
+	})
+}
+')
+	// `calc` performs the generic `+` operator through the imported alias
+	// `numdef.IntNumber`. The operand resolves to the alias name (no `[`), so the
+	// cache must unwrap it to keep this body; a declaration-only header cannot
+	// recreate the `Number[int]` operator specialization on a warm build.
+	write_module_cache_file(root, 'calc/calc.v', 'module calc
+
+import numdef
+
+pub fn total(a numdef.IntNumber, b numdef.IntNumber) int {
+	c := a + b
+	return c.value
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import numdef
+import calc
+
+fn main() {
+	println(calc.total(numdef.make(20), numdef.make(22)))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+
+	calc_headers := os.walk_ext(cache_dir, '.vh').filter(os.file_name(it).starts_with('calc_'))
+	assert calc_headers.len > 0, 'no calc module header was cached'
+	mut retained_body := false
+	for header_path in calc_headers {
+		if (os.read_file(header_path) or { '' }).contains('a + b') {
+			retained_body = true
+		}
+	}
+	assert retained_body, 'calc header dropped the aliased generic operator body: ${calc_headers.str()}'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
 }
 
 fn test_cached_header_preserves_mutable_pointer_parameters() {
@@ -3236,6 +3377,54 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '45'
 }
 
+fn test_cached_module_body_recreates_generic_operator_specializations() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_generic_operator_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'numbers/numbers.v', 'module numbers
+
+pub struct Number[T] {
+pub:
+	value T
+}
+
+pub fn (left Number[T]) + (right Number[T]) Number[T] {
+	return Number[T]{
+		value: left.value + right.value
+	}
+}
+
+pub fn answer() int {
+	return (Number[int]{41} + Number[int]{1}).value
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import numbers
+
+fn main() {
+	println(numbers.answer())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	header_path := module_cache_artifact(cache_dir, 'numbers_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('pub fn answer() int {'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_module_body_recreates_captured_callback_symbols() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_captured_callback_${os.getpid()}')
@@ -3706,6 +3895,69 @@ fn main() {
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
+fn test_cached_header_preserves_mutable_interface_method_and_parameter() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_interface_mut_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'contract/contract.v', 'module contract
+
+pub interface Writer {
+mut:
+	write(mut bytes []u8) !int
+	write_byte(mut byte &u8) !int
+}
+
+pub fn fill(mut writer Writer, mut bytes []u8) !int {
+	writer.write(mut bytes)!
+	mut byte := unsafe { &bytes[0] }
+	return writer.write_byte(mut byte)!
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import contract
+
+struct Device {}
+
+fn (mut device Device) write(mut bytes []u8) !int {
+	_ = device
+	bytes[0] = 7
+	return 1
+}
+
+fn (mut device Device) write_byte(mut byte &u8) !int {
+	_ = device
+	_ = byte
+	return 1
+}
+
+fn main() {
+	mut writer := contract.Writer(Device{})
+	mut bytes := [u8(0)]
+	contract.fill(mut writer, mut bytes) or { panic(err) }
+	println(bytes[0])
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '7'
+	header_path := module_cache_artifact(cache_dir, 'contract_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('mut:\n\twrite(mut arg0 []u8) !int'), header
+	assert header.contains('\twrite_byte(mut arg0 &u8) !int'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '7'
+}
+
 fn test_cached_interface_implementer_with_embedded_body_has_forward_declaration() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_interface_embedded_body_${os.getpid()}')
@@ -3862,7 +4114,7 @@ fn main() {
 	header := os.read_file(header_path) or { panic(err) }
 	assert header.count('pub struct Config {') == 1, header
 	assert header.contains('@[params]\npub struct Config {'), header
-	assert header.contains('values = [41, 42].clone()'), header
+	assert header.contains('values = []int([41, 42]).clone()'), header
 	first_hashes := module_cache_object_hashes(cache_dir)
 
 	second_output := os.join_path(root, 'second')
@@ -4006,7 +4258,7 @@ fn main() {
 		header: header_path
 	})
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains('pub const values = [41, 42].clone()'), header
+	assert header.contains('pub const values = []int([41, 42]).clone()'), header
 	assert header.contains('pub const first = values[0]'), header
 
 	second_output := os.join_path(root, 'second')
@@ -4064,11 +4316,85 @@ fn main() {
 	header_path := module_cache_artifact(cache_dir, 'validators_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains('entries = [Entry{`a`, is_a}, Entry{`b`, is_b}].clone()'), header
+	assert header.contains('entries = []Entry([Entry{`a`, is_a}, Entry{`b`, is_b}]).clone()'), header
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == 'ok'
+}
+
+fn test_cached_string_array_const_keeps_inferred_element_type_across_programs() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_string_const_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'words/words.v', "module words
+
+pub const values = ['alpha', 'beta']
+
+pub struct Word {
+pub:
+	next Level2
+}
+
+pub struct Level2 {
+pub:
+	next Level3
+}
+
+pub struct Level3 {
+pub:
+	next Leaf
+}
+
+pub struct Leaf {
+pub:
+	text string
+}
+
+pub fn describe() string {
+	return '\${Word{Level2{Level3{Leaf{values[0]}}}}}'
+}
+")
+	first_main := os.join_path(root, 'first_main.v')
+	write_module_cache_file(root, 'first_main.v', 'module main
+
+import words
+
+fn main() {
+	println(words.values[0])
+	println(words.describe())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, first_main, first_output)
+	first_result := run_module_cache_binary(first_output)
+	assert first_result.starts_with('alpha\n'), first_result
+	assert first_result.contains('alpha'), first_result
+	header_path := module_cache_artifact(cache_dir, 'words_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains("pub const values = []string(['alpha', 'beta']).clone()"), header
+
+	second_main := os.join_path(root, 'second_main.v')
+	write_module_cache_file(root, 'second_main.v', 'module main
+
+import words
+
+fn main() {
+	println(words.values[1])
+	println(words.describe())
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, second_main, second_output)
+	second_result := run_module_cache_binary(second_output)
+	assert second_result.starts_with('beta\n'), second_result
+	assert second_result.contains('alpha'), second_result
 }
 
 fn test_cached_module_keeps_generic_specializations() {
@@ -4117,6 +4443,47 @@ fn main() {
 	assert second.exit_code == 0, second.output
 	assert second.output.contains('monomorphize (dependency cache)'), second.output
 	assert run_module_cache_binary(second_output) == 'ok'
+}
+
+fn test_cached_zero_arg_static_generic_call_materializes_body() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_zero_arg_static_generic_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'factory/factory.v', 'module factory
+
+pub struct Box[T] {
+pub:
+	values []T
+}
+
+pub fn Box.new[T]() Box[T] {
+	return Box[T]{}
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import factory
+
+struct Item {}
+
+fn main() {
+	box := factory.Box.new[Item]()
+	println(box.values.len)
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '0'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '0'
 }
 
 fn test_cached_global_with_unsupported_initializer_is_embedded() {

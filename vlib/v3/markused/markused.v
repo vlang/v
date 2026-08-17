@@ -194,6 +194,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut const_decls := map[string]ConstDeclInfo{}
 	mut fn_name_suffixes := map[string]bool{}
 	mut const_name_suffixes := map[string]bool{}
+	// The checker already knows the declaration cardinalities. Reserve once here
+	// instead of repeatedly growing the alias-heavy reachability indexes.
+	fn_decls.reserve(u32(tc.fn_ret_types.len))
+	fn_decl_lists.reserve(u32(tc.fn_ret_types.len))
+	struct_decls.reserve(u32(tc.structs.len * 2))
+	const_decls.reserve(u32(tc.const_types.len))
+	fn_name_suffixes.reserve(u32(tc.fn_ret_types.len))
+	const_name_suffixes.reserve(u32(tc.const_types.len))
 	mut generic_type_bases := map[string]bool{}
 	if detect_reachable_generics {
 		for node in a.nodes {
@@ -205,12 +213,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 
 	// Reverse index: short name (after last '.') -> list of full qualified names
 	mut suffix_map := map[string][]string{}
+	suffix_map.reserve(u32(tc.fn_ret_types.len / 2))
 
 	// Every fn_decl/c_fn_decl node (and its module), in AST order: the worklist
 	// for the parallel body-call precollection below.
 	mut body_ids := []int{cap: 8192}
 	mut body_modules := []string{cap: 8192}
 	mut body_import_contexts := []int{cap: 8192}
+	collect_body_metadata := detect_reachable_generics || all_functions
 	mut cache_roots := []string{}
 	mut c_interface_roots := []string{}
 	mut marked_roots := []string{}
@@ -287,9 +297,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			fn_decl_import_context := import_context_by_file[fn_decl_file] or {
 				decl_import_context
 			}
-			body_ids << node_idx
-			body_modules << fn_decl_module
-			body_import_contexts << fn_decl_import_context
+			if collect_body_metadata {
+				body_ids << node_idx
+				body_modules << fn_decl_module
+				body_import_contexts << fn_decl_import_context
+			}
 			has_dot := node.value.index_u8(`.`) >= 0
 			can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 			if trace_markused {
@@ -373,12 +385,22 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 
 	// BFS from main
 	mut used := map[string]bool{}
-	mut queue := []string{}
+	used.reserve(u32(fn_decls.len))
+	mut queue := []string{cap: fn_decls.len}
 	reachable_modules := markused_reachable_modules(a, tc)
 	queue << 'main'
 	used['main'] = true
+	$if ownership ? {
+		// Ownership cleanup and clone lowering emits direct C references to these
+		// process-wide IError sentinels. They have no source-AST reference for the
+		// ordinary markused traversal to discover, so root their const declarations.
+		for seed in ['builtin.none__', 'builtin.error_sentinel'] {
+			enqueue(seed, mut used, mut queue)
+		}
+	}
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
 	enqueue_auto_roots(a, fn_decls, reachable_modules, mut used, mut queue)
+	enqueue_implicit_global_container_roots(a, tc, fn_decls, mut used, mut queue)
 	for root in marked_roots {
 		enqueue(root, mut used, mut queue)
 	}
@@ -407,8 +429,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		for seed in ['c.FlatGen.gen_fn_items_scoped_batches',
 			'markused.CallCollector.collect_bodies_scoped_batches',
 			'parser.Parser.precollect_parallel_comptime_consts',
-			'types.TypeChecker.check_scoped_batches', 'sync.Semaphore.timed_wait',
-			'sync.Semaphore.destroy'] {
+			'types.TypeChecker.check_scoped_batches', 'driver.compare_print_notices',
+			'pref.detect_vroot', 'pref.detect_vexe', 'types.compare_type_errors',
+			'types.compare_type_notices', 'types.TypeChecker.result_return_uses_multi_tail',
+			'sync.Semaphore.timed_wait', 'sync.Semaphore.destroy'] {
 			queue << seed
 			used[seed] = true
 		}
@@ -443,13 +467,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 		queue << 'array.delete_last'
 		used['array.delete_last'] = true
-		ownership_drop_value_types := tc.ownership_drop_value_type_names()
-		if ownership_drop_value_types.len > 0 {
-			// Ownership cleanup is synthesized after markused. Its recursive array/map
-			// destructors therefore have no AST call sites for the collector to follow.
-			for helper in ['array.free', 'array__free', 'map.free', 'map__free'] {
-				enqueue(helper, mut used, mut queue)
-			}
+		// Ownership cleanup is synthesized after markused. Its array/map destructors
+		// therefore have no AST call sites for the collector to follow. This also
+		// applies to drop-before-reassignment, which is not part of the exit snapshots.
+		for helper in ['array.free', 'array__free', 'map.free', 'map__free'] {
+			enqueue(helper, mut used, mut queue)
 		}
 		for type_name in tc.ownership_drop_type_names() {
 			method := if tc.autofree_mode { '${type_name}.free' } else { '${type_name}.drop' }
@@ -542,7 +564,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	mut body_index := map[int]int{}
 	mut body_results := []BodyCalls{}
-	if body_ids.len >= min_eager_markused_bodies {
+	if detect_reachable_generics && body_ids.len >= min_eager_markused_bodies {
 		for i, id in body_ids {
 			body_index[id] = i
 		}
@@ -564,7 +586,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	} else if !trivial_literal_output {
 		enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
 	}
-	if !trivial_literal_output && markused_program_needs_closure_runtime(a) {
+	if !trivial_literal_output && markused_program_needs_closure_runtime(a, tc) {
 		enqueue('closure.closure_create_with_data', mut used, mut queue)
 		enqueue('closure.closure_try_destroy', mut used, mut queue)
 	}
@@ -671,20 +693,22 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			for dependency in tc.direct_dependency_ids(node_key) {
 				calls << tc.symbol_name(dependency)
 			}
-			if body_i := body_index[node_key] {
-				body := body_results[body_i]
-				calls << body.calls
-				initializer_refs << body.refs
-				uses_generics = uses_generics || body.uses_generics
-			} else {
-				// Not part of the precollected decl set (should not happen; the BFS
-				// resolves names through the same decl scan) — collect inline.
-				node := a.node(fn_info.node_id)
-				body := collector.collect_body(node, fn_info.module,
-					collector.imports(fn_info.import_context))
-				calls << body.calls
-				initializer_refs << body.refs
-				uses_generics = uses_generics || body.uses_generics
+			if detect_reachable_generics {
+				if body_i := body_index[node_key] {
+					body := body_results[body_i]
+					calls << body.calls
+					initializer_refs << body.refs
+					uses_generics = uses_generics || body.uses_generics
+				} else {
+					// Not part of the precollected decl set (should not happen; the BFS
+					// resolves names through the same decl scan) — collect inline.
+					node := a.node(fn_info.node_id)
+					body := collector.collect_body(node, fn_info.module,
+						collector.imports(fn_info.import_context))
+					calls << body.calls
+					initializer_refs << body.refs
+					uses_generics = uses_generics || body.uses_generics
+				}
 			}
 			call_epoch++
 			mut unique_call_count := 0
@@ -1297,6 +1321,47 @@ fn enqueue_initializer_callee(callee string, fn_decls map[string]FnDeclInfo, a &
 		add_safe_decl_alias(callee, callee_info, a, mut used, mut queue)
 	} else {
 		enqueue(callee, mut used, mut queue)
+	}
+}
+
+fn enqueue_implicit_global_container_roots(a &flat.FlatAst, tc &types.TypeChecker, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string) {
+	mut needs_array := false
+	mut needs_map := false
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
+		if node.kind != .global_decl {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.children_count > 0 {
+				continue
+			}
+			mut typ := tc.parse_type(field.typ)
+			for _ in 0 .. 32 {
+				if typ is types.Alias {
+					typ = typ.base_type
+					continue
+				}
+				break
+			}
+			if typ is types.Array {
+				needs_array = true
+			} else if typ is types.Map {
+				needs_map = true
+			}
+		}
+	}
+	if needs_array {
+		enqueue_initializer_callee('__new_array', fn_decls, a, mut used, mut queue)
+	}
+	if needs_map {
+		for helper in ['new_map', 'map_hash_string', 'map_eq_string', 'map_clone_string',
+			'map_free_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
+			'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8', 'map_clone_int_1',
+			'map_clone_int_2', 'map_clone_int_4', 'map_clone_int_8', 'map_free_nop'] {
+			enqueue_initializer_callee(helper, fn_decls, a, mut used, mut queue)
+		}
 	}
 }
 
@@ -2234,7 +2299,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	}
 }
 
-fn markused_program_needs_closure_runtime(a &flat.FlatAst) bool {
+fn markused_program_needs_closure_runtime(a &flat.FlatAst, tc &types.TypeChecker) bool {
 	mut call_callees := map[int]bool{}
 	for node in a.nodes {
 		if node.kind == .call && node.children_count > 0 {
@@ -2258,7 +2323,8 @@ fn markused_program_needs_closure_runtime(a &flat.FlatAst) bool {
 	for idx, node in a.nodes {
 		if node.kind == .selector && node.children_count > 0 && idx !in call_callees {
 			base := a.child_node(&node, 0)
-			if base.kind in [.string_literal, .int_literal, .float_literal, .char_literal] {
+			if base.kind in [.string_literal, .int_literal, .float_literal, .char_literal]
+				|| tc.expr_is_method_value(flat.NodeId(idx)) {
 				return true
 			}
 		}

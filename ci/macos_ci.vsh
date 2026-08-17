@@ -132,7 +132,9 @@ fn test_readline() {
 }
 
 fn test_inline_assembly() {
-	exec('v test vlib/v/slow_tests/assembly')
+	// V3 does not lower inline assembly yet. Select V1 explicitly so this task
+	// remains transparent and never exercises the compatibility retry path.
+	exec('v -old-compiler test vlib/v/slow_tests/assembly')
 }
 
 const all_tasks = {
@@ -160,4 +162,7 @@ const all_tasks = {
 	'test_inline_assembly':               Task{test_inline_assembly, 'Test inline assembly'}
 }
 
+// A supported V3 compilation must fail directly in CI. Never let the macOS
+// compatibility retry turn a V3 regression into a passing V1 build.
+os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 common.run(all_tasks)

@@ -577,6 +577,15 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			value_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 			binding_clones << t.make_for_in_binding_clone(value_name, value_type)
 		}
+	} else if iter_type.starts_with('[]') || t.is_fixed_array_type(iter_type) {
+		value_name := if has_index {
+			if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
+		} else {
+			if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+		}
+		elem_type := t.infer_for_in_elem_type(iter_type, node)
+		value_type := if node.op == .amp { '&${elem_type}' } else { elem_type }
+		binding_clones << t.make_for_in_binding_clone(value_name, value_type)
 	}
 
 	mut ids := []flat.NodeId{}
@@ -628,8 +637,12 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	for cid in ids {
 		t.a.children << cid
 	}
+	// Without ownership lowering, map iteration bindings are borrowed shallow copies.
+	// Destroying a temporary container here would invalidate values retained by the body.
+	map_container_needs_drop := !isnil(t.tc) && map_iter_type.starts_with('map[')
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(map_iter_type))
 	cleanup_owned_container := cleanup_owned_snapshot
-		|| (map_iter_type.starts_with('map[') && source_is_owned_temporary)
+		|| (source_is_owned_temporary && map_container_needs_drop)
 	mut cleanup_guard_name := ''
 	if cleanup_owned_container {
 		cleanup_guard_name = t.new_temp('for_map_container_live')
@@ -936,6 +949,29 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	mut container := if direct_map_index_container {
 		container_id
+	} else if t.expr_has_smartcast(container_id) {
+		// The checker-facing iterator type is already the narrowed collection, but
+		// taking the original expression as an lvalue would bypass the active sum
+		// smartcast and make cgen index the sum wrapper itself.
+		t.transform_expr(container_id)
+	} else if t.expr_can_take_address(container_id) {
+		mut lvalue := t.transform_lvalue(container_id)
+		if !t.is_stable_expr_for_reuse(lvalue) {
+			lvalue_type := if t.node_type(lvalue).len > 0 && t.node_type(lvalue) != 'unknown' {
+				t.node_type(lvalue)
+			} else if source_container_type.len > 0 && source_container_type != 'unknown' {
+				source_container_type
+			} else {
+				iter_type
+			}
+			lvalue_ptr := t.make_prefix(.amp, lvalue)
+			t.set_node_typ(int(lvalue_ptr), '&${lvalue_type}')
+			stable_ptr := t.stable_transformed_expr_for_reuse(lvalue_ptr, '&${lvalue_type}',
+				'for_container')
+			lvalue = t.make_prefix(.mul, stable_ptr)
+			t.set_node_typ(int(lvalue), lvalue_type)
+		}
+		lvalue
 	} else {
 		t.stable_expr_for_reuse(container_id)
 	}

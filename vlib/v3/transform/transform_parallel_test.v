@@ -70,6 +70,31 @@ fn test_merge_worker_shifts_private_specialization_metadata() {
 	assert master.a.specialized_fn_files[int(base_id)] == 'base.v'
 }
 
+fn test_merge_worker_signatures_updates_checker_method_suffix_index() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+
+	worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
+	mut worker_tc := tc.fork_for_parallel_transform(worker_ast)
+	worker_tc.ensure_private_transform_signatures()
+	worker_tc.fn_ret_types['widgets.Box.open'] = types.Type(types.bool_)
+	params := [types.Type(types.int_)]
+	worker_tc.register_generated_fn_param_types('widgets.Box.open', params)
+	worker := master.fork_worker(worker_ast, worker_tc)
+
+	assert 'widgets.Box.open' !in master.tc.fn_ret_types
+	assert 'widgets.Box.open' !in master.tc.fn_param_types
+	assert 'Box.open' !in master.tc.receiver_method_suffix_index
+	assert worker.tc.receiver_method_suffix_index['Box.open'] == 'widgets.Box.open'
+	master.merge_worker_signatures(worker)
+
+	assert master.tc.fn_param_types_for_name('widgets.Box.open') == params
+	assert master.tc.receiver_method_suffix_index['Box.open'] == 'widgets.Box.open'
+	assert master.tc.fn_param_types_for_name('Box.open') == params
+	assert master.tc.fn_param_types_for_name('open') == params
+}
+
 fn test_transform_ast_clone_preserves_template_metadata() {
 	mut a := flat.FlatAst.new()
 	a.template_call_sites[7] = token.new_pos(3, 11)

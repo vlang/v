@@ -588,17 +588,10 @@ fn (tc &TypeChecker) post_if_exit_smartcasts(id flat.NodeId) []LocalBinding {
 	}
 	cond_id := tc.a.child(&node, 0)
 	then_id := tc.a.child(&node, 1)
-	if binding := tc.negated_is_smartcast(cond_id) {
-		if tc.stmt_definitely_returns(then_id) {
-			return [binding]
-		}
-	}
 	if tc.stmt_definitely_returns(then_id) {
-		cond := tc.a.nodes[int(cond_id)]
-		if cond.kind == .infix && cond.op == .eq && cond.children_count >= 2 {
-			if binding := tc.option_none_cmp_binding(cond) {
-				return [binding]
-			}
+		false_branch_smartcasts := tc.extract_else_branch_smartcasts(cond_id)
+		if false_branch_smartcasts.len > 0 {
+			return false_branch_smartcasts
 		}
 	}
 	if node.children_count >= 3 {
@@ -682,13 +675,24 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 	if cond.kind == .decl_assign {
 		return tc.check_if_guard(cond_id, cond)
 	}
-	if cond.kind == .infix && cond.op == .logical_and && cond.children_count >= 2 {
+	if cond.kind == .infix && cond.op in [.logical_and, .logical_or] && cond.children_count >= 2 {
 		lhs_id := tc.a.child(&cond, 0)
 		rhs_id := tc.a.child(&cond, 1)
+		// Only `&&` guarantees both operands hold when the then-branch runs, so its
+		// guard bindings may be exported into that scope. An `||` short-circuits: the
+		// branch is taken when either side is true, so a guard operand may never have
+		// produced a payload. Its bindings must not become bindings of the whole
+		// condition, or the body would read an unwrapped value that does not exist.
+		exports_bindings := cond.op == .logical_and
 		mut bindings := tc.check_condition(lhs_id)
+		lhs_smartcasts := if cond.op == .logical_and {
+			tc.extract_smartcasts(lhs_id)
+		} else {
+			tc.extract_else_branch_smartcasts(lhs_id)
+		}
 		if tc.valid_resolution_fast {
 			saved_smartcasts := clone_smartcasts(tc.smartcasts)
-			for sc in tc.extract_smartcasts(lhs_id) {
+			for sc in lhs_smartcasts {
 				if valid_string_data(sc.name) {
 					tc.smartcasts[sc.name] = sc.typ
 				}
@@ -696,13 +700,13 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 			bindings << tc.check_condition(rhs_id)
 			tc.smartcasts = clone_smartcasts(saved_smartcasts)
 			tc.check_infix(cond_id, cond)
-			return bindings
+			return if exports_bindings { bindings } else { []LocalBinding{} }
 		}
 		unsafe_alias_skipped_rhs := tc.fn_context.unsafe_reference_alias_owners.clone()
 		pointer_alias_skipped_rhs :=
 			clone_pointer_binding_value_keys(tc.fn_context.pointer_binding_value_keys)
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
-		for sc in tc.extract_smartcasts(lhs_id) {
+		for sc in lhs_smartcasts {
 			if valid_string_data(sc.name) {
 				tc.smartcasts[sc.name] = sc.typ
 			}
@@ -726,7 +730,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 			tc.record_error(.condition_mismatch,
 				'non-bool type `${cond_name}` used as if condition', cond_id)
 		}
-		return bindings
+		return if exports_bindings { bindings } else { []LocalBinding{} }
 	}
 	tc.check_bool_condition(cond_id)
 	return []LocalBinding{}
@@ -2837,12 +2841,12 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 	for tc.valid_node_id(cur_id) {
 		node := tc.a.nodes[int(cur_id)]
 		if node.kind != .if_expr {
-			return choose_if_tail_type(result, tc.branch_tail_type(cur_id))
+			return tc.choose_if_tail_type(result, tc.branch_tail_type(cur_id))
 		}
 		if node.children_count > 1 {
 			smartcasts := tc.extract_smartcasts(tc.a.child(&node, 0))
 			then_type := tc.branch_tail_type_with_smartcasts(tc.a.child(&node, 1), smartcasts)
-			result = choose_if_tail_type(result, then_type)
+			result = tc.choose_if_tail_type(result, then_type)
 		}
 		if node.children_count <= 2 {
 			return result
@@ -2857,7 +2861,7 @@ fn (tc &TypeChecker) if_expr_tail_type(id flat.NodeId) Type {
 			continue
 		}
 		else_type := tc.branch_tail_type(else_id)
-		return choose_if_tail_type(result, else_type)
+		return tc.choose_if_tail_type(result, else_type)
 	}
 	return result
 }
@@ -2903,7 +2907,7 @@ fn (tc &TypeChecker) match_expr_tail_type(id flat.NodeId) Type {
 			|| (is_result_void_type(branch_type) && !tc.branch_tail_is_error_literal(tail)) {
 			incompatible_wrapper_void = branch_type
 		}
-		result = choose_if_tail_type(result, branch_type)
+		result = tc.choose_if_tail_type(result, branch_type)
 	}
 	if incompatible_wrapper_void !is Void {
 		return incompatible_wrapper_void
@@ -2912,7 +2916,7 @@ fn (tc &TypeChecker) match_expr_tail_type(id flat.NodeId) Type {
 }
 
 // choose_if_tail_type supports choose if tail type handling for types.
-fn choose_if_tail_type(current Type, next Type) Type {
+fn (tc &TypeChecker) choose_if_tail_type(current Type, next Type) Type {
 	if current is Void {
 		return next
 	}
@@ -2921,6 +2925,12 @@ fn choose_if_tail_type(current Type, next Type) Type {
 	}
 	if inferred := inferred_contextual_if_type(current, next) {
 		return inferred
+	}
+	if current is SumType && tc.sum_variant_type_for_pattern(current.name, next.name()) != none {
+		return current
+	}
+	if next is SumType && tc.sum_variant_type_for_pattern(next.name, current.name()) != none {
+		return next
 	}
 	if current !is Primitive {
 		return current
@@ -3083,6 +3093,15 @@ fn (tc &TypeChecker) extract_smartcasts(cond_id flat.NodeId) []LocalBinding {
 	if cond.kind == .paren && cond.children_count > 0 {
 		return tc.extract_smartcasts(tc.a.child(&cond, 0))
 	}
+	if cond.kind == .ident {
+		if key := tc.visible_binding_storage_key(cond.value) {
+			if source_id := tc.fn_context.bool_condition_exprs[key] {
+				if source_id != cond_id {
+					return tc.extract_smartcasts(source_id)
+				}
+			}
+		}
+	}
 	if cond.kind == .is_expr && cond.children_count > 0 {
 		expr_id := tc.a.child(&cond, 0)
 		key := tc.expr_key(expr_id)
@@ -3201,6 +3220,15 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 	if cond.kind == .paren && cond.children_count > 0 {
 		return tc.extract_else_branch_smartcasts(tc.a.child(&cond, 0))
 	}
+	if cond.kind == .ident {
+		if key := tc.visible_binding_storage_key(cond.value) {
+			if source_id := tc.fn_context.bool_condition_exprs[key] {
+				if source_id != cond_id {
+					return tc.extract_else_branch_smartcasts(source_id)
+				}
+			}
+		}
+	}
 	if binding := tc.negated_is_smartcast(cond_id) {
 		return [binding]
 	}
@@ -3208,6 +3236,20 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 		if binding := tc.option_none_cmp_binding(cond) {
 			return [binding]
 		}
+	}
+	if cond.kind == .infix && cond.op == .logical_or && cond.children_count >= 2 {
+		rhs_id := tc.a.child(&cond, 1)
+		mut result := []LocalBinding{}
+		for binding in tc.extract_else_branch_smartcasts(tc.a.child(&cond, 0)) {
+			// The right operand is evaluated after the left, so if it can write the
+			// binding's storage (for example `!(x is Foo) || retag_false(mut x)`), the
+			// reconstructed left-side narrowing is stale once the else branch runs.
+			if !tc.subtree_assigns_key(rhs_id, binding.name) {
+				result << binding
+			}
+		}
+		result << tc.extract_else_branch_smartcasts(rhs_id)
+		return result
 	}
 	return []LocalBinding{}
 }
@@ -3605,7 +3647,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 					&& tc.resolve_selective_import_type_symbol(init_type_text) == none {
 					owner_base := strip_generic_args_name(init_name)
 					decl_mod := tc.struct_modules[owner_base] or { '' }
-					if decl_mod.len > 0 && decl_mod != tc.cur_module
+					same_main_module := decl_mod in ['', 'main'] && tc.cur_module in ['', 'main']
+					if decl_mod.len > 0 && decl_mod != tc.cur_module && !same_main_module
 						&& !is_anonymous_struct_name(init_name) {
 						is_public := tc.visible_mutation_struct_field_is_public(init_name,
 							field.value, decl_mod) or { true }
@@ -4814,10 +4857,9 @@ fn (tc &TypeChecker) struct_init_field_deprecation_pos(field flat.Node) token.Po
 	file := tc.a.source_files[field.pos.id] or { return field.pos }
 	source := tc.source_texts_by_file[file.name] or { return field.pos }
 	offset := int_min(int_max(field.pos.offset, 0), source.len)
-	line_start := if offset > 0 {
-		if relative := source[..offset].last_index('\n') { relative + 1 } else { 0 }
-	} else {
-		0
+	mut line_start := offset
+	for line_start > 0 && source[line_start - 1] != `\n` {
+		line_start--
 	}
 	line_end := source.index_after('\n', line_start) or { source.len }
 	line := source[line_start..line_end].trim_right('\r\n')
@@ -12378,7 +12420,205 @@ fn (tc &TypeChecker) lexical_smartcast_type(id flat.NodeId, key string) ?Type {
 	if typ := tc.lexical_if_smartcast_type(id, key) {
 		return typ
 	}
+	if typ := tc.lexical_for_smartcast_type(id, key) {
+		return typ
+	}
 	return tc.lexical_match_smartcast_type_with_key(id, key)
+}
+
+fn (tc &TypeChecker) lexical_for_smartcast_type(id flat.NodeId, key string) ?Type {
+	mut current := id
+	mut parent_id := tc.direct_parent_id(current)
+	for tc.valid_node_id(parent_id) {
+		parent := tc.a.node(parent_id)
+		if parent.kind == .for_stmt && parent.children_count > 3 {
+			mut body_index := -1
+			for i in 3 .. parent.children_count {
+				if tc.a.child(parent, i) == current {
+					body_index = i
+					break
+				}
+			}
+			// The loop condition re-narrows `key` at the top of every iteration, but a
+			// write to `key` earlier in the same iteration drops that narrowing for the
+			// rest of the body (the dynamic pass deletes the smartcast on assignment).
+			// Only reconstruct the condition smartcast when no preceding body statement,
+			// nor the statement holding `id`, writes `key`.
+			if body_index >= 3 && !tc.for_body_writes_key_before(parent, body_index, current, key) {
+				for binding in tc.extract_smartcasts(tc.a.child(parent, 1)) {
+					if binding.name == key {
+						return binding.typ
+					}
+				}
+			}
+		}
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			break
+		}
+		current = parent_id
+		parent_id = tc.direct_parent_id(current)
+	}
+	return none
+}
+
+// for_body_writes_key_before reports whether any loop-body statement up to and
+// including `current` (the statement holding the checked node) assigns `key`.
+// Such a write invalidates the loop-condition narrowing for the rest of that
+// iteration, so the lexical fallback must not restore it.
+fn (tc &TypeChecker) for_body_writes_key_before(parent flat.Node, body_index int, current flat.NodeId, key string) bool {
+	for i in 3 .. body_index {
+		if tc.subtree_assigns_key(tc.a.child(parent, i), key) {
+			return true
+		}
+	}
+	return tc.subtree_assigns_key(current, key)
+}
+
+// write_key_invalidates_key reports whether assigning `write_key` invalidates the
+// narrowing tracked for `key`. Besides an exact match, reassigning an ancestor
+// (`holder` or `items[0]`) replaces the storage a narrowed descendant
+// (`holder.value`) reads, so its runtime tag no longer holds — mirroring how
+// invalidate_smartcasts_for_write_key drops descendant smartcasts.
+fn write_key_invalidates_key(write_key string, key string) bool {
+	if write_key.len == 0 {
+		return false
+	}
+	if write_key == key {
+		return true
+	}
+	return key.len > write_key.len && key.starts_with(write_key)
+		&& (key[write_key.len] == `.` || key[write_key.len] == `[`)
+}
+
+// canonical_storage_alias_key rewrites the base identifier of `key` to its scope
+// storage key, following a single pointer-binding alias (`p := &holder` records
+// `p -> holder` in pointer_binding_value_keys). A write to `holder.value` and a
+// narrowed `p.value` then resolve to the same canonical key. Returns `key`
+// unchanged when the base cannot be resolved to a storage key.
+fn (tc &TypeChecker) canonical_storage_alias_key(key string) string {
+	if key.len == 0 {
+		return key
+	}
+	mut base_len := key.len
+	for i in 0 .. key.len {
+		if key[i] == `.` || key[i] == `[` {
+			base_len = i
+			break
+		}
+	}
+	base := key[..base_len]
+	owner := tc.cur_scope.lookup_owner(base) or { return key }
+	storage := owner.storage_key()
+	if storage.len == 0 {
+		return key
+	}
+	suffix := key[base_len..]
+	if values := tc.fn_context.pointer_binding_value_keys[storage] {
+		// A single unambiguous, resolvable pointee (not an `@unknown/@parameter/@global`
+		// marker) means the base is a pure alias of that storage.
+		if values.len == 1 && values[0].len > 0 && !values[0].starts_with('@') {
+			return values[0] + suffix
+		}
+		return key
+	}
+	return storage + suffix
+}
+
+// write_invalidates_key extends write_key_invalidates_key with pointer-alias
+// provenance: a write to `holder.value` also invalidates a narrowed `p.value` when
+// `p` aliases `holder` (recorded in pointer_binding_value_keys).
+fn (tc &TypeChecker) write_invalidates_key(write_key string, key string) bool {
+	if write_key_invalidates_key(write_key, key) {
+		return true
+	}
+	if tc.fn_context.pointer_binding_value_keys.len == 0 {
+		return false
+	}
+	canon_write := tc.canonical_storage_alias_key(write_key)
+	canon_key := tc.canonical_storage_alias_key(key)
+	return (canon_write != write_key || canon_key != key)
+		&& write_key_invalidates_key(canon_write, canon_key)
+}
+
+// subtree_assigns_key reports whether `root` contains an assignment, short
+// declaration, or a call passing `key` to a `mut` parameter whose target
+// resolves to `key` (or an ancestor of it). A mutating call is treated as a write
+// because the callee can reassign the argument (for example `replace(mut x)`
+// swapping a sum's active variant), which changes the runtime tag just like a
+// direct assignment.
+fn (tc &TypeChecker) subtree_assigns_key(root flat.NodeId, key string) bool {
+	if !tc.valid_node_id(root) {
+		return false
+	}
+	node := tc.a.node(root)
+	if node.kind == .assign {
+		mut i := 0
+		for i + 1 < node.children_count {
+			if tc.write_invalidates_key(tc.expr_key(tc.a.child(node, i)), key) {
+				return true
+			}
+			i += 2
+		}
+	} else if node.kind == .decl_assign {
+		// decl_assign children are `lhs0, rhs, lhs1, lhs2, ...` for multi-return
+		// targets; a redeclaration of `key` (or an ancestor of it) also shadows the
+		// narrowed binding.
+		if node.children_count > 0
+			&& tc.write_invalidates_key(tc.expr_key(tc.a.child(node, 0)), key) {
+			return true
+		}
+		for i in 2 .. node.children_count {
+			if tc.write_invalidates_key(tc.expr_key(tc.a.child(node, i)), key) {
+				return true
+			}
+		}
+	} else if node.kind == .call {
+		// Child 0 is the callee; the arguments follow. A `mut` argument lets the callee
+		// overwrite the passed lvalue (for example `replace(mut x)` swapping a sum's
+		// active variant), which changes the runtime tag just like a direct assignment.
+		// Passing `mut holder` likewise writes a narrowed descendant `holder.value`, so
+		// use the ancestor-aware relationship, not an exact-key match.
+		for i in 1 .. node.children_count {
+			if arg_key := tc.expr_mut_arg_key(tc.a.child(node, i)) {
+				if tc.write_invalidates_key(arg_key, key) {
+					return true
+				}
+			}
+		}
+		// A `mut` receiver is stored under the selector callee rather than among the
+		// arguments. Match the receiver on its full expression key so a nested
+		// `holder.value.replace()` counts as a write to `holder.value`, and an ancestor
+		// receiver `holder.reset()` counts as a write to a narrowed `holder.value`.
+		// Resolve the receiver's declared type with scope/field lookups only — this scan
+		// must stay free of smartcast resolution, which would recurse back through here.
+		if node.children_count > 0 {
+			callee := tc.a.node(tc.a.child(node, 0))
+			if callee.kind == .selector && callee.children_count > 0 {
+				recv_id := tc.a.child(callee, 0)
+				recv_key := tc.expr_key(recv_id)
+				if tc.write_invalidates_key(recv_key, key) {
+					if declared := tc.declared_receiver_expr_type(recv_id) {
+						// An exact-key sum receiver can re-tag itself; an ancestor receiver
+						// only needs a `mut` receiver to reassign the narrowed descendant.
+						has_write := if recv_key == key {
+							tc.sum_type_has_mut_receiver_method(declared, callee.value)
+						} else {
+							tc.type_has_mut_receiver_method(declared, callee.value)
+						}
+						if has_write {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.subtree_assigns_key(tc.a.child(node, i), key) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) lexical_if_smartcast_type(id flat.NodeId, key string) ?Type {
@@ -12794,16 +13034,16 @@ pub fn (tc &TypeChecker) type_name(t Type) string {
 	}
 	mut cache := unsafe { tc.type_cache }
 	if !isnil(cache) {
-		w0, w1, slot := type_value_words(&t)
-		if cache.name_recent_set[slot] && cache.name_recent_w0[slot] == w0
-			&& cache.name_recent_w1[slot] == w1 {
+		hash, slot := type_recent_hash_slot(t)
+		if cache.name_recent_set[slot] && cache.name_recent_hashes[slot] == hash
+			&& semantic_types_equal(cache.name_recent_types[slot], t) {
 			return cache.name_recent_vals[slot]
 		}
 		id, _ := tc.intern_type(t)
 		mut interner := unsafe { tc.type_interner }
 		result := interner.name(id)
-		cache.name_recent_w0[slot] = w0
-		cache.name_recent_w1[slot] = w1
+		cache.name_recent_hashes[slot] = hash
+		cache.name_recent_types[slot] = clone_owned_type(t)
 		cache.name_recent_vals[slot] = result
 		cache.name_recent_set[slot] = true
 		return result
@@ -12813,8 +13053,16 @@ pub fn (tc &TypeChecker) type_name(t Type) string {
 	return interner.name(id)
 }
 
-// type_value_words exposes a Type value's two raw words for slot hashing:
-// identical bytes always denote the same type (same tag, same payload).
+// type_recent_hash_slot chooses a recent-cache slot from semantic identity.
+@[inline]
+fn type_recent_hash_slot(typ Type) (u64, int) {
+	hash := semantic_type_hash(typ)
+	return hash, int(hash & 2047)
+}
+
+// type_value_words exposes the transient Type representation for immediate
+// equality checks. Do not retain these words as a cache key: payload addresses
+// can be reused after the compared values leave scope.
 @[inline]
 fn type_value_words(typ &Type) (u64, u64, int) {
 	words := unsafe { &u64(voidptr(typ)) }
@@ -15632,14 +15880,18 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 fn (tc &TypeChecker) fn_literal_type(node flat.Node) Type {
 	mut params := []Type{}
 	mut params_mut := []bool{}
+	mut reached_params := false
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
 		if child.kind != .param {
-			if tc.prefix_param_scan {
+			// Captures precede parameters in a function literal's flat children, so a
+			// prefix-only scan must skip those identifiers, then stop once the body begins.
+			if tc.prefix_param_scan && (reached_params || child.kind != .ident) {
 				break
 			}
 			continue
 		}
+		reached_params = true
 		params_mut << child.is_mut
 		parsed := tc.parse_type(normalize_fn_type_param_text(child.typ))
 		if child.value.len == 0 && child.typ.len > 0 && parsed is Unknown {
@@ -15663,8 +15915,13 @@ fn (tc &TypeChecker) lambda_expr_type(node flat.Node) Type {
 	mut params_mut := []bool{}
 	if node.children_count > 0 {
 		for i in 0 .. node.children_count - 1 {
-			params << unknown_type('lambda parameter')
-			params_mut << tc.a.child_node(&node, i).is_mut
+			param := tc.a.child_node(&node, i)
+			if param.typ.len > 0 {
+				params << tc.parse_type(normalize_fn_type_param_text(param.typ))
+			} else {
+				params << unknown_type('lambda parameter')
+			}
+			params_mut << param.is_mut
 		}
 	}
 	ret_type := if node.children_count > 0 {
@@ -15816,23 +16073,22 @@ pub fn (tc &TypeChecker) c_type(t Type) string {
 		return tc.c_type_uncached(t)
 	}
 	mut cache := unsafe { tc.type_cache }
-	mut w0 := u64(0)
-	mut w1 := u64(0)
-	mut slot := 0
+	// Key on the interned semantic identity, not t.name(): distinct semantic types
+	// can share a source spelling (`[size]int` with different resolved `size`, or
+	// same-named aliases over different resolved bases) yet fold to different C
+	// representations, so a textual key would hand back the wrong layout.
+	id, canonical := tc.intern_type(t)
+	slot := int(u32(id) & 2047)
 	if tc.fast_c_type_recent {
-		w0, w1, slot = type_value_words(&t)
-		if cache.c_recent_set[slot] && cache.c_recent_w0[slot] == w0
-			&& cache.c_recent_w1[slot] == w1 {
+		if cache.c_recent_set[slot] && cache.c_recent_ids[slot] == id {
 			cache.c_hits++
 			return cache.c_recent_vals[slot]
 		}
 	}
-	key, canonical := tc.intern_type(t)
-	if cached := cache.c_entries[key] {
+	if cached := cache.c_entries[id] {
 		cache.c_hits++
 		if tc.fast_c_type_recent {
-			cache.c_recent_w0[slot] = w0
-			cache.c_recent_w1[slot] = w1
+			cache.c_recent_ids[slot] = id
 			cache.c_recent_vals[slot] = cached
 			cache.c_recent_set[slot] = true
 		}
@@ -15840,10 +16096,9 @@ pub fn (tc &TypeChecker) c_type(t Type) string {
 	}
 	cache.c_misses++
 	result := tc.c_type_uncached(canonical)
-	cache.c_entries[key] = result
+	cache.c_entries[id] = result
 	if tc.fast_c_type_recent {
-		cache.c_recent_w0[slot] = w0
-		cache.c_recent_w1[slot] = w1
+		cache.c_recent_ids[slot] = id
 		cache.c_recent_vals[slot] = result
 		cache.c_recent_set[slot] = true
 	}
@@ -15970,6 +16225,13 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return tc.c_struct_type_name(t.name)
 	}
 	if t is Interface {
+		base, _, is_generic := generic_type_application_parts(t.name)
+		if is_generic {
+			// Generic interface applications all use the base interface's runtime
+			// box. Their type arguments specialize method signatures, but do not
+			// introduce a distinct C struct.
+			return naming.c_name(base)
+		}
 		return naming.c_name(t.name)
 	}
 	if t is Enum {
@@ -16024,23 +16286,31 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 fn (tc &TypeChecker) c_struct_type_name(name string) string {
 	base, args, ok := generic_type_application_parts(name)
 	if !ok {
-		cname := naming.c_name(name)
-		if tc.autofree_mode && !name.contains('.') && name in tc.struct_modules {
+		mut qualified_name := name
+		if !name.contains('.') && name in tc.struct_modules {
 			module_name := tc.struct_modules[name]
 			if module_name in ['', 'main'] {
-				return naming.c_name('main.${name}')
+				qualified_name = 'main.${name}'
 			}
 		}
+		cname := naming.c_name(qualified_name)
 		if tc.struct_c_name_collides_with_v3_runtime(name, cname) {
 			return '_v_${cname}'
 		}
 		return cname
 	}
+	mut qualified_base := base
+	if !base.contains('.') && base in tc.struct_modules {
+		module_name := tc.struct_modules[base]
+		if module_name in ['', 'main'] {
+			qualified_base = 'main.${base}'
+		}
+	}
 	mut normalized_args := []string{cap: args.len}
 	for arg in args {
 		normalized_args << tc.c_generic_struct_arg_name(arg)
 	}
-	return naming.c_name('${base}[${normalized_args.join(', ')}]')
+	return naming.c_name('${qualified_base}[${normalized_args.join(', ')}]')
 }
 
 fn (tc &TypeChecker) struct_c_name_collides_with_v3_runtime(name string, cname string) bool {
@@ -16732,6 +17002,25 @@ fn resolve_type_name_for_method(t Type) string {
 	return ''
 }
 
+// ownership_type_has_clone_method reports whether typ declares a handwritten clone method.
+// It is kept in the always-built checker surface because ownership transform support is
+// compiled into the V executable even when the executable itself is built without ownership.
+pub fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
+	name := resolve_type_name_for_method(typ)
+	if name.len == 0 {
+		return false
+	}
+	if _ := tc.resolve_generic_struct_method(name, 'clone') {
+		return true
+	}
+	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
+		if method_name in tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
+}
+
 fn receiver_type_name_variant(t Type, fixed_array_prefix bool, shorten_modules bool) string {
 	if t is Alias {
 		return receiver_leaf_type_name(t.name, shorten_modules)
@@ -16938,6 +17227,9 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 	mut receiver_types := [unwrap_pointer(lhs)]
 	if receiver_types[0] is Alias {
 		alias_type := receiver_types[0] as Alias
+		if target := tc.alias_target_type_text(alias_type.name) {
+			receiver_types << tc.parse_type(target)
+		}
 		receiver_types << alias_type.base_type
 	}
 	for receiver_type in receiver_types {
@@ -16945,21 +17237,34 @@ fn (tc &TypeChecker) infix_operator_signature(op flat.Op, lhs Type) ?InfixOperat
 		if lhs_name.len == 0 {
 			continue
 		}
-		method_name := '${lhs_name}.${op_name}'
-		for candidate in [method_name, tc.cached_c_name(method_name)] {
-			ret := tc.fn_ret_types[candidate] or { continue }
-			params := tc.fn_param_types[candidate] or { continue }
-			if params.len == 0 || (!tc.receiver_compatible(lhs, params[0])
-				&& !tc.receiver_compatible(receiver_type, params[0])) {
-				continue
-			}
-			return InfixOperatorSignature{
-				return_type: ret
-				param_type:  if params.len > 1 { params[1] } else { Type(void_) }
-				param_count: params.len
+		_, _, is_concrete_generic := generic_type_application_parts(lhs_name)
+		if is_concrete_generic {
+			if info := tc.resolve_generic_struct_method(lhs_name, op_name) {
+				if info.params.len > 0 && (tc.receiver_compatible(lhs, info.params[0])
+					|| tc.receiver_compatible(receiver_type, info.params[0])) {
+					return InfixOperatorSignature{
+						return_type: info.return_type
+						param_type:  if info.params.len > 1 { info.params[1] } else { Type(void_) }
+						param_count: info.params.len
+					}
+				}
 			}
 		}
-		if info := tc.resolve_generic_struct_method(lhs_name, op_name) {
+		method_name := '${lhs_name}.${op_name}'
+		if ret := tc.fn_ret_types[method_name] {
+			if params := tc.fn_param_types[method_name] {
+				if params.len > 0 && (tc.receiver_compatible(lhs, params[0])
+					|| tc.receiver_compatible(receiver_type, params[0])) {
+					return InfixOperatorSignature{
+						return_type: ret
+						param_type:  if params.len > 1 { params[1] } else { Type(void_) }
+						param_count: params.len
+					}
+				}
+			}
+		}
+		if !is_concrete_generic {
+			info := tc.resolve_generic_struct_method(lhs_name, op_name) or { continue }
 			if info.params.len > 0 && (tc.receiver_compatible(lhs, info.params[0])
 				|| tc.receiver_compatible(receiver_type, info.params[0])) {
 				return InfixOperatorSignature{
@@ -16991,8 +17296,7 @@ fn (tc &TypeChecker) type_has_infix_operator_method(typ Type, op flat.Op) bool {
 		return true
 	}
 	method_name := '${type_name}.${op_name}'
-	return method_name in tc.fn_ret_types || tc.cached_c_name(method_name) in tc.fn_ret_types
-		|| tc.resolve_generic_struct_method(type_name, op_name) != none
+	return method_name in tc.fn_ret_types
 }
 
 fn (tc &TypeChecker) int_literal_promoted_infix_type(lit_id flat.NodeId, other_id flat.NodeId, other_type Type) ?Type {
