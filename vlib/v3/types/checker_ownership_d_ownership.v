@@ -3546,14 +3546,15 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 		tc.ownership_param_item_by_name[item.name] = item_idx
 	}
 	// Return inference has already walked every non-void body with the same
-	// owned-call scanner. Seed this fixed point with void bodies (which return
-	// inference skips) and non-void bodies whose parameter ownership changed;
-	// rescanning every non-void body duplicated most of the ownership prescan.
+	// owned-call scanner, except for deferred bodies. Seed this fixed point with
+	// void bodies, bodies containing defers, and non-void bodies whose parameter
+	// ownership changed; rescanning every other non-void body duplicated most of
+	// the ownership prescan.
 	mut pending := []bool{len: items.len}
 	mut initial_items := 0
 	for item_idx, item in items {
 		node := tc.a.nodes[item.idx]
-		if node.typ.len == 0 || node.typ == 'void'
+		if node.typ.len == 0 || node.typ == 'void' || tc.ownership_node_contains_defer(node)
 			|| tc.ownership_fn_has_owned_param_state(item.name, node) {
 			pending[item_idx] = true
 			initial_items++
@@ -3594,6 +3595,16 @@ fn (mut tc TypeChecker) ownership_prescan_owned_call_params(items []OwnershipFnS
 	tc.ownership_param_item_by_name = map[string]int{}
 	tc.ownership_param_changed_items = []bool{}
 	tc.timing_profile('  [ttime]   ownership params prescan ${rounds} rounds')
+}
+
+fn (tc &TypeChecker) ownership_node_contains_defer(node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .defer_stmt || tc.ownership_node_contains_defer(child) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) ownership_fn_has_owned_param_state(fn_name string, node flat.Node) bool {
