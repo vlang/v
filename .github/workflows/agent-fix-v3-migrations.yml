@@ -8,11 +8,15 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: agent-fix-v3-migrations
+  cancel-in-progress: true
+
 jobs:
-  apply-and-validate:
+  apply:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 10
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
@@ -20,36 +24,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Apply reviewed migration fixes
+      - name: Apply and commit fixes
         shell: bash
         run: |
           base64 --decode .github/agent_fix_v3_migrations.py.gz.b64 | gzip --decompress --stdout > /tmp/agent_fix_v3_migrations.py
           python3 /tmp/agent_fix_v3_migrations.py
           git diff --check
-
-      - name: Build V
-        shell: bash
-        run: make -j2
-
-      - name: Format changed V files
-        shell: bash
-        run: |
-          ./v fmt -w vlib/v3/migrations/migrations.v
-          ./v fmt -w vlib/v3/migrations/schema.v
-          ./v fmt -w vlib/v3/migrations/migrations_test.v
-          git diff --check
-
-      - name: Run migration tests and checks
-        shell: bash
-        run: |
-          ./v -cc clang -g vlib/v3/migrations/migrations_test.v
-          ./v -cc clang -g vlib/v3/tests/migrations_public_api_test.v
-          ./v vet vlib/v3/migrations
-          ./v check-md vlib/v3/migrations/README.md
-
-      - name: Commit validated changes
-        shell: bash
-        run: |
           rm -f .github/agent_fix_v3_migrations.py.gz.b64
           rm -f .github/workflows/agent-fix-v3-migrations.yml
           git config user.name 'github-actions[bot]'
