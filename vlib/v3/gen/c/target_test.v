@@ -588,7 +588,34 @@ fn test_cache_input_scan_rejects_dynamic_include_macros() {
 	assert has_untracked
 }
 
-fn test_cache_input_scan_rejects_unresolved_include_macros() {
+fn test_cache_input_scan_resolves_defined_include_macro_aliases() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_alias_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	nested_header := os.join_path(dir, 'nested.h')
+	os.write_file(outer_header, '#define V3_SELECTED_HEADER "nested.h"
+#define V3_NESTED_HEADER V3_SELECTED_HEADER
+#include V3_NESTED_HEADER
+')!
+	os.write_file(nested_header, '#define NESTED_VALUE 1\n')!
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "outer.h"\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert !has_untracked
+	assert os.real_path(nested_header) in inputs['sample']
+}
+
+fn test_cache_input_scan_tracks_source_defined_include_macros() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_unresolved_macro_cache_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
@@ -611,8 +638,100 @@ fn test_cache_input_scan_rejects_unresolved_include_macros() {
 	inputs, _, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
 	}, [], prefs.target)
-	assert has_untracked
-	assert inputs['sample'] == [os.real_path(outer_header)]
+	assert !has_untracked
+	mut expected := [os.real_path(outer_header), os.real_path(nested_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+}
+
+fn test_cache_input_scan_uses_complete_compiler_macro_environment() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_compiler_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	default_header := os.join_path(dir, 'default.h')
+	override_header := os.join_path(dir, 'override.h')
+	os.write_file(outer_header,
+		'#if defined(V3_FORCE_DEFAULT) || !defined(V3_SELECTED_HEADER)\n#define V3_SELECTED_HEADER "default.h"\n#endif\n#include V3_SELECTED_HEADER\n')!
+	os.write_file(default_header, '#define V3_DEFAULT_VALUE 1\n')!
+	os.write_file(override_header, '#define V3_OVERRIDE_VALUE 1\n')!
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "outer.h"\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	default_inputs, _, _, _, _, _, _, default_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
+		'sample': true
+	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
+	assert !default_untracked
+	assert os.real_path(default_header) in default_inputs['sample']
+	override_inputs, _, _, _, _, _, _, override_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
+		'sample': true
+	}, [], prefs.target, map[string]bool{}, {
+		'V3_SELECTED_HEADER': '"override.h"'
+	}, true)
+	assert !override_untracked
+	assert os.real_path(override_header) in override_inputs['sample']
+	assert os.real_path(default_header) !in override_inputs['sample']
+}
+
+fn test_cache_input_scan_ignores_directives_in_trailing_block_comments() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_commented_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(dir, 'api.h')
+	os.write_file(header,
+		'int declaration; /* documentation starts here\n#define V3_COMMENTED_IMPLEMENTATION\n*/\n#ifdef V3_COMMENTED_IMPLEMENTATION\nstatic int inactive_state;\n#endif\n')!
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "api.h"\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, _, _, static_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
+		'sample': true
+	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
+	assert !has_untracked
+	assert inputs['sample'] == [os.real_path(header)]
+	assert static_inputs['sample'].len == 0
+}
+
+fn test_cache_input_scan_tracks_native_header_macro_context() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_header_context_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(dir, 'implementation.h')
+	os.write_file(header, '#ifdef V3_HEADER_IMPLEMENTATION\nstatic int v3_header_state;\n#endif\n')!
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source,
+		'module sample\n#define V3_HEADER_IMPLEMENTATION\n#include "implementation.h"\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	_, native_roots, native_contexts, _, static_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
+		'sample': true
+	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
+	assert !has_untracked
+	assert native_roots['sample'] == [os.real_path(header)]
+	assert native_contexts[os.real_path(header)] == [
+		'#define V3_HEADER_IMPLEMENTATION',
+	]
+	assert static_inputs['sample'] == [os.real_path(header)]
 }
 
 fn test_cache_input_scan_bounds_repeated_header_trees() {
@@ -642,7 +761,7 @@ fn test_cache_input_scan_bounds_repeated_header_trees() {
 	inputs, _, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
 	}, [], prefs.target)
-	assert has_untracked
+	assert !has_untracked
 	mut expected := [os.real_path(left_header), os.real_path(right_header),
 		os.real_path(common_header)]
 	expected.sort()
@@ -672,26 +791,30 @@ fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, native_roots, unscoped_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+	inputs, native_roots, _, unscoped_inputs, static_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
 		'', {
 		'sample': true
-	}, [], prefs.target, map[string]bool{})
+	}, [], prefs.target, map[string]bool{}, map[string]string{}, false)
 	assert !has_untracked
 	mut expected_inputs := [os.real_path(root_source), os.real_path(nested_source),
 		os.real_path(direct_header), os.real_path(nested_header)]
 	expected_inputs.sort()
 	assert inputs['sample'] == expected_inputs
-	assert native_roots['sample'] == [os.real_path(root_source)]
+	assert native_roots['sample'] == [os.real_path(root_source),
+		os.real_path(direct_header)]
 	assert unscoped_inputs['sample'] == expected_inputs
-	program_inputs, program_roots, program_unscoped, _, _, program_has_untracked := cache_external_input_files_with_resolved_flags(a,
+	assert static_inputs['sample'] == [os.real_path(nested_source),
+		os.real_path(nested_header)]
+	program_inputs, program_roots, _, program_unscoped, _, _, _, program_has_untracked := cache_external_input_files_with_resolved_flags(a,
 		'', {
 		'sample': true
 	}, [], prefs.target, {
 		os.real_path(source): true
-	})
+	}, map[string]string{}, false)
 	assert !program_has_untracked
 	assert program_inputs['main'] == expected_inputs
-	assert program_roots['main'] == [os.real_path(root_source)]
+	assert program_roots['main'] == [os.real_path(root_source),
+		os.real_path(direct_header)]
 	assert program_unscoped['main'] == expected_inputs
 	assert 'sample' !in program_inputs
 }

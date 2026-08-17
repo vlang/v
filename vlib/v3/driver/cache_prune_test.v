@@ -40,6 +40,35 @@ fn test_c_source_references_identifiers_ignores_comments_strings_and_longer_name
 		identifiers)
 }
 
+fn test_cache_native_public_include_strips_conventional_implementation_macros() {
+	include := cache_native_public_include('/tmp/native.h', [
+		'#define FEATURE 1',
+		'#define FONTSTASH_IMPLEMENTATION',
+		'#define SOKOL_FONTSTASH_IMPL',
+	], map[string]bool{})
+	assert include.contains('#define FEATURE 1')
+	assert include.contains('#undef FONTSTASH_IMPLEMENTATION')
+	assert include.contains('#undef SOKOL_FONTSTASH_IMPL')
+	assert include.contains('#undef SOKOL_IMPL')
+	assert !include.contains('#define FONTSTASH_IMPLEMENTATION')
+	assert !include.contains('#define SOKOL_FONTSTASH_IMPL')
+}
+
+fn test_c_source_file_scope_identifiers_excludes_function_bodies_and_directives() {
+	identifiers := c_source_file_scope_identifiers('#define SYSTEM_HELPER() ignored_helper()
+#define LOCAL_FN(name) static int name(void)
+LOCAL_FN(macro_helper) {
+	return system_helper();
+}
+static int local_state;
+')
+	assert identifiers['LOCAL_FN']
+	assert identifiers['macro_helper']
+	assert identifiers['local_state']
+	assert !identifiers['ignored_helper']
+	assert !identifiers['system_helper']
+}
+
 fn test_v_c_identifiers_accepts_spaced_and_commented_selectors() {
 	assert v_c_identifiers('C /* selector */ . helper()\nC\n.\nother()\nC // line comment\n. line_helper()') == [
 		'helper',

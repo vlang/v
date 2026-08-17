@@ -11,7 +11,7 @@ import v3.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-48'
+const cache_format = 'v3-module-cache-51'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -1116,13 +1116,18 @@ pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generat
 // declaration-stable program snapshot after the main source bodies change.
 pub fn (m &Manager) cached_incremental_dependency_inputs(source_files []string, declaration_signature string, generation_signature string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
 	if !m.enabled || source_files.len == 0 || declaration_signature.len == 0 {
+		trace_dependency_restore_miss('incremental cache is unavailable')
 		return none
 	}
 	entry := m.incremental_program_entry(source_files)
 	if !os.is_file(entry.stamp) {
+		trace_dependency_restore_miss('incremental stamp is missing')
 		return none
 	}
-	stamp := os.read_file(entry.stamp) or { return none }
+	stamp := os.read_file(entry.stamp) or {
+		trace_dependency_restore_miss('incremental stamp cannot be read')
+		return none
+	}
 	expected_head := entry_stamp(m.salt, declaration_signature) +
 		'generation=${hash_text('incremental-v5\n${generation_signature}')}\n'
 	return cached_dependency_inputs_from_stamp(stamp, expected_head, fixed_dependencies,
@@ -1131,40 +1136,55 @@ pub fn (m &Manager) cached_incremental_dependency_inputs(source_files []string, 
 
 fn cached_dependency_inputs_from_stamp(stamp string, expected_head string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
 	if !stamp.starts_with(expected_head) {
+		trace_dependency_restore_miss('stamp header changed')
 		return none
 	}
 	mut restored := map[string]string{}
 	mut fixed_seen := map[string]bool{}
 	for line in stamp[expected_head.len..].split_into_lines() {
 		if !line.starts_with('dependency=') {
+			trace_dependency_restore_miss('malformed dependency line')
 			return none
 		}
 		value := line['dependency='.len..]
 		tab := value.index_u8(`\t`)
-		if tab <= 0 || tab + 1 >= value.len {
+		if tab <= 0 {
+			trace_dependency_restore_miss('malformed dependency value')
 			return none
 		}
 		key := value[..tab]
 		signature := value[tab + 1..]
 		if key in restored || fixed_seen[key] {
+			trace_dependency_restore_miss('duplicate dependency ${key}')
 			return none
 		}
 		if expected := fixed_dependencies[key] {
 			if expected != signature {
+				trace_dependency_restore_miss('fixed dependency changed: ${key}')
 				return none
 			}
 			fixed_seen[key] = true
 			continue
 		}
 		if !restored_prefixes.any(key.starts_with(it)) {
+			trace_dependency_restore_miss('unexpected dependency: ${key}')
 			return none
 		}
 		restored[key] = signature
 	}
 	if fixed_seen.len != fixed_dependencies.len {
+		mut missing := fixed_dependencies.keys().filter(it !in fixed_seen)
+		missing.sort()
+		trace_dependency_restore_miss('missing fixed dependencies: ${missing.join(', ')}')
 		return none
 	}
 	return restored
+}
+
+fn trace_dependency_restore_miss(reason string) {
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  V3 cache dependency restore miss: ${reason}')
+	}
 }
 
 // valid_generic_program reports whether cached dependency specializations match
@@ -1231,6 +1251,7 @@ pub fn (m &Manager) write_generic_program(source_files []string, semantic_signat
 // compiler configuration, dependencies, and native inputs are unchanged.
 pub fn (m &Manager) valid_incremental_program(source_files []string, declaration_signature string, generation_signature string, dependency_inputs map[string]string) ?IncrementalProgramEntry {
 	if !m.enabled || source_files.len == 0 || declaration_signature.len == 0 {
+		trace_incremental_cache_miss('cache is unavailable')
 		return none
 	}
 	entry := m.incremental_program_entry(source_files)
@@ -1238,16 +1259,21 @@ pub fn (m &Manager) valid_incremental_program(source_files []string, declaration
 		|| !os.is_file(entry.specs) || !os.is_file(entry.prefix) || !os.is_file(entry.declarations)
 		|| !os.is_file(entry.tcc_declarations) || !os.is_file(entry.objects)
 		|| !os.is_file(entry.metadata) || !os.is_file(entry.stamp) {
+		trace_incremental_cache_miss('one or more payloads are missing')
 		return none
 	}
-	objects := os.read_lines(entry.objects) or { return none }
+	objects := os.read_lines(entry.objects) or {
+		trace_incremental_cache_miss('cached object list cannot be read')
+		return none
+	}
 	if objects.len == 0 || objects.any(it.len == 0 || !os.is_file(it)) {
-		if os.getenv('V3_CACHE_TRACE') != '' {
-			eprintln('  V3 incremental cache miss: cached module object is missing')
-		}
+		trace_incremental_cache_miss('cached module object is missing')
 		return none
 	}
-	stamp := os.read_file(entry.stamp) or { return none }
+	stamp := os.read_file(entry.stamp) or {
+		trace_incremental_cache_miss('stamp cannot be read')
+		return none
+	}
 	expected := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs,
 		'incremental-v5\n${generation_signature}')
 	if stamp != expected {
@@ -1266,6 +1292,12 @@ pub fn (m &Manager) valid_incremental_program(source_files []string, declaration
 		return none
 	}
 	return entry
+}
+
+fn trace_incremental_cache_miss(reason string) {
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  V3 incremental cache miss: ${reason}')
+	}
 }
 
 // write_incremental_program atomically publishes a function-level program
@@ -2068,7 +2100,8 @@ fn c_native_localize_function_definitions(source string) string {
 				head :=
 					trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
 				if c_static_declaration_head_is_function(head)
-					&& !c_declaration_head_keeps_definition(head) {
+					&& !c_declaration_head_keeps_definition(head)
+					&& !c_declaration_head_has_api_decl_macro(head) {
 					indent_len := declaration.len - declaration.trim_left(' \t').len
 					out.write_string('${declaration[..indent_len]}static ${declaration[indent_len..]}')
 				} else {
@@ -2094,6 +2127,16 @@ fn c_native_localize_function_definitions(source string) string {
 	return out.str()
 }
 
+fn c_declaration_head_has_api_decl_macro(head string) bool {
+	for field in head.fields() {
+		name := field.trim('()*')
+		if name.ends_with('_API_DECL') {
+			return true
+		}
+	}
+	return false
+}
+
 // c_source_has_static_storage reports whether a local C input would give cached
 // translation units separate copies of static storage.
 pub fn c_source_has_static_storage(source string) bool {
@@ -2117,6 +2160,16 @@ pub fn c_source_function_identifiers(source string) map[string]bool {
 // c_source_function_identifiers_with_status returns file-scope C function names
 // and whether every function declaration could be classified.
 pub fn c_source_function_identifiers_with_status(source string) (map[string]bool, bool) {
+	return c_source_function_identifiers_mode(source, false)
+}
+
+// c_source_static_function_identifiers_with_status returns file-scope static C function
+// names and whether every potentially static function declaration could be classified.
+pub fn c_source_static_function_identifiers_with_status(source string) (map[string]bool, bool) {
+	return c_source_function_identifiers_mode(source, true)
+}
+
+fn c_source_function_identifiers_mode(source string, static_only bool) (map[string]bool, bool) {
 	mut identifiers := map[string]bool{}
 	mut parameter_macros := map[string]bool{}
 	mut complete := true
@@ -2144,11 +2197,14 @@ pub fn c_source_function_identifiers_with_status(source string) (map[string]bool
 				if identifier := c_function_declaration_identifier_with_parameter_macros(head,
 					parameter_macros)
 				{
-					identifiers[identifier] = true
-					if c_function_declaration_identifier_is_ambiguous(head, identifier) {
+					is_ambiguous := c_function_declaration_identifier_is_ambiguous(head, identifier)
+					if !static_only || c_has_static_storage_class(head) {
+						identifiers[identifier] = true
+					}
+					if is_ambiguous {
 						complete = false
 					}
-				} else {
+				} else if !static_only || c_has_static_storage_class(head) {
 					complete = false
 				}
 			}
@@ -2671,9 +2727,27 @@ pub fn c_source_static_variable_identifiers(source string) (map[string]bool, boo
 	mut item_has_brace := false
 	mut item_is_function := false
 	mut in_block_comment := false
+	mut in_preprocessor_directive := false
+	mut in_objc_declaration := false
 	for raw_line in source.split_into_lines() {
 		trimmed := raw_line.trim_space()
-		if brace_depth == 0 && pending.len == 0 && trimmed.starts_with('#') {
+		if in_preprocessor_directive || trimmed.starts_with('#') {
+			in_preprocessor_directive = raw_line.trim_right(' \t\r').ends_with('\\')
+			continue
+		}
+		if in_objc_declaration {
+			if trimmed.starts_with('@end') {
+				in_objc_declaration = false
+			}
+			continue
+		}
+		if trimmed.starts_with('@interface')
+			|| trimmed.starts_with('@implementation')
+			|| (trimmed.starts_with('@protocol') && !trimmed.ends_with(';')) {
+			in_objc_declaration = true
+			continue
+		}
+		if trimmed.starts_with('@') {
 			continue
 		}
 		if brace_depth == 0 || !item_is_function {
@@ -5601,6 +5675,12 @@ fn cached_split_flag_tokens(value string) ([]string, bool) {
 }
 
 fn cached_resolve_relative_flag_path_token(token string, base_dir string) string {
+	// Keep path-selection expressions intact. They are evaluated by the flag parser
+	// when the cached header is read; prefixing them with the original source
+	// directory changes both their meaning and the program cache key.
+	if token.contains(r'$when_first_existing') || token.contains(r'$first_existing') {
+		return token
+	}
 	for prefix in ['-I', '-L'] {
 		if token.starts_with(prefix) && token.len > prefix.len {
 			path := token[prefix.len..]

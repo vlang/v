@@ -66,10 +66,11 @@ fn collect_external_input_tree_status(root string, entry string, ambient_ambiguo
 	mut dynamic_include_macros := map[string]bool{}
 	mut resolution_dirs := map[string]bool{}
 	mut missing_resolution_paths := map[string]bool{}
+	mut active_static_storage_paths := map[string]bool{}
 	untracked := c_collect_external_input_tree(entry, '', [root], mut active_paths, mut
 		collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
-		dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, 'main',
-		ambient_ambiguous)
+		dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut
+		active_static_storage_paths, 'main', ambient_ambiguous, false)
 	return untracked, files
 }
 
@@ -390,4 +391,22 @@ fn test_builtin_abi_compat_macros_precede_late_c_source() {
 
 	assert alias_pos >= 0
 	assert source_pos > alias_pos
+}
+
+fn test_preprocessor_scan_tracks_comments_after_source_code() {
+	first, in_comment := c_preprocessor_directive_scan_line('int value; /* comment starts', false)
+	assert first == ''
+	assert in_comment
+	commented, still_in_comment := c_preprocessor_directive_scan_line('  #define HIDDEN 1',
+		in_comment)
+	assert commented == ''
+	assert still_in_comment
+	visible, comment_ended := c_preprocessor_directive_scan_line('*/ #define VISIBLE "//" // tail',
+		still_in_comment)
+	assert visible == '#define VISIBLE "//"'
+	assert !comment_ended
+	trailing, _ := c_preprocessor_directive_scan_line('#if defined(ENABLED) // explanation', false)
+	assert trailing == '#if defined(ENABLED)'
+	not_a_directive, _ := c_preprocessor_directive_scan_line('int other; #define LATE 1', false)
+	assert not_a_directive == ''
 }

@@ -76,6 +76,64 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
 }
 
+fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	mut large_fields := []FieldInfo{cap: 65}
+	for i in 0 .. 64 {
+		large_fields << FieldInfo{
+			name: 'value_${i}'
+			typ:  'int'
+		}
+	}
+	large_fields << FieldInfo{
+		name:    'root'
+		typ:     '&Root'
+		raw_typ: '&Root'
+	}
+	t.structs['Root'] = StructInfo{
+		name:   'Root'
+		fields: [
+			FieldInfo{
+				name:    'large'
+				typ:     '&Large'
+				raw_typ: '&Large'
+			},
+		]
+	}
+	t.structs['Large'] = StructInfo{
+		name:   'Large'
+		fields: large_fields
+	}
+	t.structs['Small'] = StructInfo{
+		name:   'Small'
+		fields: [
+			FieldInfo{
+				name:    'root'
+				typ:     '&SmallRoot'
+				raw_typ: '&SmallRoot'
+			},
+		]
+	}
+	t.structs['SmallRoot'] = StructInfo{
+		name:   'SmallRoot'
+		fields: [
+			FieldInfo{
+				name:    'small'
+				typ:     '&Small'
+				raw_typ: '&Small'
+			},
+		]
+	}
+	t.stringify_stack << 'Root'
+
+	assert t.ref_value_str_reaches_large_circular_graph('Large')
+	t.stringify_stack.clear()
+	t.stringify_stack << 'SmallRoot'
+	assert !t.ref_value_str_reaches_large_circular_graph('Small')
+}
+
 fn test_if_type_merge_ignores_unresolved_branch_fallbacks() {
 	t := Transformer{}
 	assert t.merge_if_expr_types('unknown', 'int') == 'int'
