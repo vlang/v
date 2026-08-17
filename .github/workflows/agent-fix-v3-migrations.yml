@@ -18,14 +18,14 @@ concurrency:
 jobs:
   apply:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
       - name: Check out source branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref || github.ref_name }}
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: true
 
       - name: Apply and commit fixes
