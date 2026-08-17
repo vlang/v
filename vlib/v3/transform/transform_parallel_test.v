@@ -4,6 +4,24 @@ import v3.flat
 import v3.token
 import v3.types
 
+fn test_monomorph_job_count_does_not_start_empty_workers() {
+	$if !v3_no_parallel ? {
+		assert monomorph_job_count(16, 1) == 1
+		assert monomorph_job_count(16, 3) == 3
+		assert monomorph_job_count(2, 8) == 2
+	}
+}
+
+fn test_generated_calls_publish_exact_resolution_except_cgen_intrinsics() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	call_id := t.make_call('main.helper', []flat.NodeId{})
+	assert tc.resolved_call_name(call_id)? == 'main.helper'
+	intrinsic_id := t.make_call('__v3_clone_owned_ierror', []flat.NodeId{})
+	assert tc.resolved_call_name(intrinsic_id) == none
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{

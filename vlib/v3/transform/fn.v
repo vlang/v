@@ -9999,6 +9999,13 @@ fn (t &Transformer) fn_literal_name_exists(name string) bool {
 }
 
 fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name string, capture_names []string, capture_types map[string]string) {
+	if t.struct_maps_shared {
+		t.structs = t.structs.clone()
+		t.struct_maps_shared = false
+	}
+	if !isnil(t.tc) {
+		t.tc.ensure_private_transform_structs()
+	}
 	t.add_generated_fn_decl_context(module_name)
 	mut field_ids := []flat.NodeId{cap: capture_names.len}
 	mut semantic_fields := []types.StructField{cap: capture_names.len}
@@ -10046,6 +10053,7 @@ fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name s
 		fields: transform_fields
 	}
 	t.structs[name] = info
+	t.generated_capture_contexts << name
 	if !isnil(t.tc) {
 		t.tc.structs[name] = semantic_fields
 		t.tc.struct_modules[name] = module_name
@@ -10055,6 +10063,7 @@ fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name s
 	if module_name.len > 0 && module_name !in ['main', 'builtin'] {
 		qualified := '${module_name}.${name}'
 		t.structs[qualified] = info
+		t.generated_capture_contexts << qualified
 		if !isnil(t.tc) {
 			t.tc.structs[qualified] = semantic_fields
 			t.tc.struct_modules[qualified] = module_name

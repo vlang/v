@@ -3693,7 +3693,13 @@ pub fn (mut t Transformer) make_call(fn_name string, args []flat.NodeId) flat.No
 // make_call_typed builds make call typed data for transform.
 pub fn (mut t Transformer) make_call_typed(fn_name string, args []flat.NodeId, typ string) flat.NodeId {
 	fn_ident := t.make_ident(fn_name)
-	return t.make_call_expr_typed(fn_ident, args, typ)
+	call_id := t.make_call_expr_typed(fn_ident, args, typ)
+	// `__v3_` calls are C-generator intrinsics, not declarations in the
+	// semantic function table. Keep them unresolved so Cgen recognizes them.
+	if !fn_name.starts_with('__v3_') {
+		t.set_generated_resolved_call(call_id, fn_name)
+	}
+	return call_id
 }
 
 fn (mut t Transformer) mark_fn_used(fn_name string) {

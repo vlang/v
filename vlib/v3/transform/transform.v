@@ -166,6 +166,8 @@ mut:
 	fn_ret_types                  map[string]string
 	fn_ret_types_log              []string
 	tc_signature_names_log        []string
+	generated_capture_contexts    []string
+	struct_maps_shared            bool
 	multi_return_fn_ret_types     map[string]types.Type
 	receiver_method_suffix_index  map[string]string
 	declared_fn_name_counts       map[string]u8
@@ -3989,11 +3991,13 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		node_context_read_only:             t.node_context_read_only
 		signature_maps_shared:              true
 		signature_maps_changed:             false
+		struct_maps_shared:                 true
 	}
 }
 
 fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	t.merge_worker_signatures(w)
+	t.merge_worker_capture_contexts(w)
 	scoped := w.worker_scope != unsafe { nil }
 	for name, used in w.used_fns {
 		if used {
@@ -4047,6 +4051,69 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	}
 }
 
+fn clone_struct_info_owned(info StructInfo) StructInfo {
+	mut fields := []FieldInfo{cap: info.fields.len}
+	for field in info.fields {
+		fields << FieldInfo{
+			name:         field.name.clone()
+			typ:          field.typ.clone()
+			raw_typ:      field.raw_typ.clone()
+			default_expr: field.default_expr
+			is_embedded:  field.is_embedded
+		}
+	}
+	return StructInfo{
+		name:       info.name.clone()
+		module:     info.module.clone()
+		is_params:  info.is_params
+		is_aligned: info.is_aligned
+		alignment:  info.alignment.clone()
+		fields:     fields
+	}
+}
+
+fn clone_struct_fields_owned(fields []types.StructField) []types.StructField {
+	mut cloned := []types.StructField{cap: fields.len}
+	for field in fields {
+		cloned << types.StructField{
+			name:        field.name.clone()
+			typ:         types.clone_owned_type(field.typ)
+			has_default: field.has_default
+			is_embed:    field.is_embed
+			is_mut:      field.is_mut
+			is_volatile: field.is_volatile
+		}
+	}
+	return cloned
+}
+
+// merge_worker_capture_contexts publishes closure context metadata created by
+// monomorph workers. Their struct maps are private because peers can lift
+// different literals concurrently.
+fn (mut t Transformer) merge_worker_capture_contexts(w &Transformer) {
+	if w.generated_capture_contexts.len == 0 {
+		return
+	}
+	for name in w.generated_capture_contexts {
+		if info := w.structs[name] {
+			t.structs[name.clone()] = clone_struct_info_owned(info)
+		}
+	}
+	if isnil(t.tc) || isnil(w.tc) {
+		return
+	}
+	mut master_tc := unsafe { &types.TypeChecker(voidptr(t.tc)) }
+	for name in w.generated_capture_contexts {
+		if fields := w.tc.structs[name] {
+			owned_name := name.clone()
+			master_tc.structs[owned_name] = clone_struct_fields_owned(fields)
+			master_tc.struct_modules[owned_name] = (w.tc.struct_modules[name] or { '' }).clone()
+			master_tc.struct_files[owned_name] = (w.tc.struct_files[name] or { '' }).clone()
+			master_tc.register_short_type_name(owned_name)
+		}
+	}
+}
+
 // merge_worker_signatures publishes declarations synthesized by a private
 // transform worker before its disposable arena is released.
 fn (mut t Transformer) merge_worker_signatures(w &Transformer) {
@@ -4076,14 +4143,18 @@ fn (mut t Transformer) merge_worker_signatures(w &Transformer) {
 	master_tc.ensure_private_transform_signatures()
 	mut tc_signature_names := w.tc_signature_names_log.clone()
 	tc_signature_names << w.fn_ret_types_log
+	tc_signature_names << w.tc.transform_signature_names_log
 	for name in tc_signature_names {
-		ret := w.tc.fn_ret_types[name] or { continue }
-		if name in master_tc.fn_ret_types {
-			continue
-		}
 		owned_name := name.clone()
-		master_tc.fn_ret_types[owned_name] = types.clone_owned_type(ret)
+		if ret := w.tc.fn_ret_types[name] {
+			if name !in master_tc.fn_ret_types {
+				master_tc.fn_ret_types[owned_name] = types.clone_owned_type(ret)
+			}
+		}
 		if params := w.tc.fn_param_types[name] {
+			if name in master_tc.fn_param_types {
+				continue
+			}
 			master_tc.register_generated_fn_param_types(owned_name, types.clone_owned_types(params))
 		}
 		master_tc.fn_variadic[owned_name] = w.tc.fn_variadic[name]
@@ -4465,6 +4536,20 @@ fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
 	}
 	t.tc.resolved_call_names[idx] = t.tc.canonical_symbol(name)
 	t.tc.resolved_call_set[idx] = true
+}
+
+// set_generated_resolved_call records the exact target of a call synthesized
+// by the transformer. Parallel workers publish the entry through their private
+// overlay, while serial transforms can update the dense checker cache directly.
+fn (mut t Transformer) set_generated_resolved_call(id flat.NodeId, name string) {
+	if isnil(t.tc) || int(id) < 0 || name.len == 0 {
+		return
+	}
+	if !isnil(t.tc.fork_overlay) {
+		t.tc.fork_overlay.resolved_call_names[int(id)] = name
+		return
+	}
+	t.set_resolved_call_entry(int(id), name)
 }
 
 fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {

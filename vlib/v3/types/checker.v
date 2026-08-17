@@ -683,6 +683,8 @@ pub mut:
 	fn_type_modules                  map[string]string
 	transform_signature_maps_shared  bool
 	transform_signature_maps_changed bool
+	transform_signature_names_log    []string
+	transform_struct_maps_shared     bool
 	fn_generic_params                map[string][]string
 	specialized_generic_fns          map[string]bool
 	fn_variadic                      map[string]bool
@@ -852,14 +854,23 @@ pub mut:
 	// `collect`; no later phase of the check step appends declarations. Phases
 	// after the check (transform) may grow the AST: top_level_idx_nodes_len
 	// records the node count the index covers.
-	top_level_idx           []int
-	top_level_idx_nodes_len int
-	expected_expr_id        int  = -1
-	expected_expr_type      Type = Type(void_)
-	cur_fn_ret_type         Type = Type(void_)
-	channel_send_or_expr_id int  = -1
-	smartcasts              map[string]Type
-	ownership               &OwnershipState = unsafe { nil }
+	top_level_idx                 []int
+	top_level_idx_nodes_len       int
+	expected_expr_id              int  = -1
+	expected_expr_type            Type = Type(void_)
+	cur_fn_ret_type               Type = Type(void_)
+	channel_send_or_expr_id       int  = -1
+	smartcasts                    map[string]Type
+	ownership                     &OwnershipState = unsafe { nil }
+	ownership_return_item_by_name map[string]int
+	ownership_return_edges        []u64
+	ownership_return_current_item int = -1
+	ownership_return_record_calls bool
+	ownership_return_item_changed bool
+	ownership_param_item_by_name  map[string]int
+	ownership_param_changed_items []bool
+	ownership_param_current_item  int = -1
+	ownership_param_track_changes bool
 	// See QualifyNameCache: nil unless armed for a phase whose allocations
 	// outlive every prealloc scope arena; forks must replace it with their own
 	// instance. A long-lived armed cache written during a scoped driver stage
@@ -1360,6 +1371,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	// cloning all maps for every scoped batch dominates self-host memory.
 	forked.transform_signature_maps_shared = true
 	forked.transform_signature_maps_changed = false
+	forked.transform_struct_maps_shared = true
 	// Visible-mutation analysis only runs during checking. Do not allocate its
 	// three private maps for the many short-lived transform forks.
 	forked.visible_mutation_cache = unsafe { nil }
@@ -1430,6 +1442,18 @@ pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
 // added signature state that its parent must merge.
 pub fn (tc &TypeChecker) transform_signatures_changed() bool {
 	return tc.transform_signature_maps_changed
+}
+
+// ensure_private_transform_structs detaches struct metadata before a transform
+// worker publishes a generated capture context into its private result.
+pub fn (mut tc TypeChecker) ensure_private_transform_structs() {
+	if !tc.transform_struct_maps_shared {
+		return
+	}
+	tc.structs = tc.structs.clone()
+	tc.struct_modules = tc.struct_modules.clone()
+	tc.struct_files = tc.struct_files.clone()
+	tc.transform_struct_maps_shared = false
 }
 
 // freeze_type_cache_for_forks freezes this checker's warm type cache as the
@@ -6160,6 +6184,9 @@ fn (mut tc TypeChecker) register_fn_ancillary_owned(name string, shared_params [
 pub fn (mut tc TypeChecker) register_generated_fn_param_types(name string, params []Type) {
 	tc.fn_param_types[name] = params
 	tc.add_receiver_method_suffix_index(name)
+	if tc.transform_signature_maps_changed {
+		tc.transform_signature_names_log << name
+	}
 }
 
 // rebuild_fn_param_suffix_index refreshes the suffix index after a batch
@@ -6361,27 +6388,89 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 			if !tc.should_annotate_fn(node, used_fns) {
 				continue
 			}
-			saved_fn_context := tc.fn_context
-			tc.fn_context = new_function_check_context()
-			tc.fn_context.generic_params = tc.infer_decl_generic_param_names(node)
-			tc.fn_context.return_type = tc.parse_type(node.typ)
-			tc.cur_scope = tc.file_scope
-			tc.push_scope()
-			for pi in 0 .. node.children_count {
-				p := tc.a.child_node(&node, pi)
-				tc.insert_fn_param_binding(p)
-			}
-			tc.insert_implicit_veb_ctx(node)
-			for i in 0 .. node.children_count {
-				child := tc.a.child_node(&node, i)
-				if child.kind != .param {
-					tc.annotate_node(tc.a.child(&node, i))
-				}
-			}
-			tc.pop_scope()
-			tc.fn_context = saved_fn_context
+			tc.annotate_fn_node(node)
 		}
 	}
+}
+
+// annotate_types_with_used_missing_calls revisits only reachable functions
+// containing calls whose checked binding was invalidated by lowering, plus
+// functions synthesized after the source AST. Unchanged calls retain the
+// binding recorded by semantic checking and copied by the transformer.
+pub fn (mut tc TypeChecker) annotate_types_with_used_missing_calls(used_fns map[string]bool, source_node_count int) {
+	tc.extend_node_caches(tc.a.nodes.len)
+	tc.cur_module = ''
+	mut pending := []flat.NodeId{cap: 1024}
+	mut candidate_fns := 0
+	mut annotated_fns := 0
+	mut generated_fns := 0
+	for idx, node in tc.a.nodes {
+		if node.kind == .file {
+			tc.enter_file(node.value)
+		} else if node.kind == .module_decl {
+			tc.enter_module(node.value)
+		} else if node.kind == .fn_decl {
+			candidate_fns++
+			if !tc.should_annotate_fn(node, used_fns)
+				|| (idx < source_node_count && !tc.fn_contains_unresolved_call(node, mut pending)) {
+				continue
+			}
+			annotated_fns++
+			if idx >= source_node_count {
+				generated_fns++
+			}
+			tc.annotate_fn_node(node)
+		}
+	}
+	tc.timing_profile('  [ttime]   annotate candidates ${candidate_fns}, selected ${annotated_fns}, generated ${generated_fns}')
+}
+
+fn (tc &TypeChecker) fn_contains_unresolved_call(root flat.Node, mut pending []flat.NodeId) bool {
+	pending.clear()
+	pending.ensure_cap(root.children_count)
+	for i in 0 .. root.children_count {
+		pending << tc.a.child(&root, i)
+	}
+	for pending.len > 0 {
+		id := pending.pop()
+		idx := int(id)
+		if idx < 0 || idx >= tc.a.nodes.len {
+			continue
+		}
+		node := tc.a.nodes[idx]
+		if node.kind == .call && tc.cached_resolved_call(id) == none {
+			return true
+		}
+		for i in 0 .. node.children_count {
+			pending << tc.a.child(&node, i)
+		}
+	}
+	return false
+}
+
+// annotate_fn_node records contextual types for one function body. The caller
+// owns the function's node range, allowing independent bodies to run in
+// parallel without sharing lexical state.
+fn (mut tc TypeChecker) annotate_fn_node(node flat.Node) {
+	saved_fn_context := tc.fn_context
+	tc.fn_context = new_function_check_context()
+	tc.fn_context.generic_params = tc.infer_decl_generic_param_names(node)
+	tc.fn_context.return_type = tc.parse_type(node.typ)
+	tc.cur_scope = tc.file_scope
+	tc.push_scope()
+	for pi in 0 .. node.children_count {
+		p := tc.a.child_node(&node, pi)
+		tc.insert_fn_param_binding(p)
+	}
+	tc.insert_implicit_veb_ctx(node)
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind != .param {
+			tc.annotate_node(tc.a.child(&node, i))
+		}
+	}
+	tc.pop_scope()
+	tc.fn_context = saved_fn_context
 }
 
 // diagnose_unused_private_declarations records notices for unreachable private

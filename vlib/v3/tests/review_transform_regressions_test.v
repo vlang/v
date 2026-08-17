@@ -5858,3 +5858,53 @@ fn main() {
 	assert builtin_body.contains('int local = 44;'), builtin_body
 	assert builtin_body.contains('memdup(&local, sizeof(int))'), builtin_body
 }
+
+fn test_parallel_monomorph_workers_use_disjoint_lifted_literal_names() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_env(v3_bin, 'parallel_monomorph_literal_names', 'VJOBS=4', 'fn apply[T](value T, callback fn (T) int) int {
+	return callback(value)
+}
+
+fn alpha[T](value T, offset int) int {
+	return apply(value, fn [offset] (_ T) int {
+		return offset
+	})
+}
+
+fn beta[T](value T, label string) int {
+	return apply(value, fn [label] (_ T) int {
+		return label.len
+	})
+}
+
+fn gamma[T](value T, enabled bool) int {
+	return apply(value, fn [enabled] (_ T) int {
+		return if enabled { 1 } else { 0 }
+	})
+}
+
+fn main() {
+	println(alpha(1, 7))
+	println(beta("x", "four"))
+	println(gamma(u64(3), true))
+}
+')
+	assert out == '7\n4\n1'
+}
+
+fn test_parallel_transform_merges_generic_call_metadata() {
+	v3_bin := build_v3_review_transform()
+	mut source := 'fn identity[T](value T) T {\n\treturn value\n}\n\n'
+	mut expected := 0
+	for i in 0 .. 300 {
+		source += 'fn value_${i}() int {\n\treturn identity(${i})\n}\n\n'
+		expected += i
+	}
+	source += 'fn main() {\n\tmut total := 0\n'
+	for i in 0 .. 300 {
+		source += '\ttotal += value_${i}()\n'
+	}
+	source += '\tprintln(total)\n}\n'
+	out := run_good_with_env(v3_bin, 'parallel_transform_generic_calls', 'VJOBS=4', source)
+	assert out == expected.str()
+}

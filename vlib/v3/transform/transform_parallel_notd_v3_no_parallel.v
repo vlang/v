@@ -951,10 +951,14 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		available_jobs := t.a.worker_pool.size() + 1
 		// Forked checkers carry substantial semantic indexes. Small programs do not have
 		// enough specialization work to repay a full machine-sized set of those clones.
-		job_limit := if t.a.nodes.len < 200_000 {
+		mut job_limit := if t.a.nodes.len < 1_000_000 {
 			int_min(available_jobs, 4)
 		} else {
 			available_jobs
+		}
+		configured_jobs := os.getenv('V3_MONOMORPH_JOBS').int()
+		if configured_jobs > 0 && configured_jobs < job_limit {
+			job_limit = configured_jobs
 		}
 		n_jobs := monomorph_job_count(job_limit, specs.len)
 		if n_jobs <= 1 {
@@ -995,6 +999,10 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			node_starts[i] = base_nodes + node_pool * i / n_jobs
 			child_starts[i] = base_children + child_pool * i / n_jobs
 		}
+		// Each monomorph worker can lift function literals while specializing its
+		// generic bodies. Give every worker a disjoint deterministic name range;
+		// private checker snapshots cannot see names created concurrently by peers.
+		t.global_temp_counter = node_starts[0]
 
 		// Monomorphization uses a fresh Transformer, so its declaration cache has
 		// not been warmed by the earlier function-body transform. Build it before
@@ -1050,6 +1058,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			wtc.fn_type_files = t.tc.fn_type_files.clone()
 			wtc.transform_signature_maps_shared = false
 			mut w := t.fork_worker(view, wtc)
+			w.global_temp_counter = node_starts[ci]
 			w.fn_ret_types = t.fn_ret_types.clone()
 			w.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
 			w.signature_maps_shared = false
@@ -1231,6 +1240,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		}
 		t.parallel_monomorph_worker = false
 		t.generic_signatures_pre_registered = false
+		t.global_temp_counter = node_starts[n_jobs]
 		t.parallel_monomorph_scan_end = t.a.nodes.len
 		t.tc.unfreeze_type_cache_after_forks()
 		t.parallel_monomorph_scan_nodes = t.parallel_monomorph_scan_nodes.clone()
@@ -1382,6 +1392,9 @@ fn monomorph_job_count(n_runtime_jobs int, n_specs int) int {
 	mut n := n_runtime_jobs
 	if n > max_parallel_monomorph_jobs {
 		n = max_parallel_monomorph_jobs
+	}
+	if n > n_specs {
+		n = n_specs
 	}
 	return n
 }
@@ -2007,14 +2020,9 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		t.transform_pure_items_serial(items)
 		return false
 	} $else {
-		// Generic body lowering can discover and register new specializations. The
-		// signature tables are compilation-wide mutable state, so cloned workers
-		// must not update them concurrently. The dedicated monomorphization stage
-		// has its own synchronized parallel queue; keep this earlier pass serial.
-		if !t.skip_generics {
-			t.transform_pure_items_serial(items)
-			return false
-		}
+		// Generic body lowering can discover signatures, so generic builds use the
+		// cloned-worker path below. Each worker owns its signature maps and the
+		// deterministic merge publishes additions after all body work has joined.
 		if isnil(t.a.worker_pool) {
 			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
