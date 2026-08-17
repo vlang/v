@@ -250,11 +250,27 @@ fn autofree_args_require_standard_compiler(args []string, command string) bool {
 }
 
 fn v3_ownership_forwarded_args(prefs &pref.Preferences, merged_args []string) []string {
-	ownership_args := merged_args.filter(it != '-ownership')
+	mut ownership_args := merged_args.filter(it != '-ownership')
+	if !v3_args_have_ownership_define(ownership_args) {
+		ownership_args.prepend('ownership')
+		ownership_args.prepend('-d')
+	}
 	$if macos {
 		return macos_v3_forwarded_args(prefs, ownership_args)
 	}
 	return ownership_args
+}
+
+fn v3_args_have_ownership_define(args []string) bool {
+	for i, arg in args {
+		if arg == '-downership' {
+			return true
+		}
+		if arg == '-d' && i + 1 < args.len && args[i + 1] == 'ownership' {
+			return true
+		}
+	}
+	return false
 }
 
 fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
