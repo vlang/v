@@ -25,9 +25,10 @@ const max_pending_write = 8 * 1024 * 1024
 pub struct Server {
 pub:
 	family                  net.AddrFamily = .ip6
-	port                    int            = 3000
-	max_request_buffer_size int            = 8192
-	timeout_in_seconds      int            = 30
+	host                    string
+	port                    int = 3000
+	max_request_buffer_size int = 8192
+	timeout_in_seconds      int = 30
 	user_data               voidptr
 mut:
 	listen_fds      []int                          = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
@@ -57,6 +58,7 @@ pub fn new_server(config ServerConfig) !&Server {
 	}
 	mut server := &Server{
 		family:                  config.family
+		host:                    config.host
 		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
 		timeout_in_seconds:      config.timeout_in_seconds
@@ -147,8 +149,15 @@ fn close_socket(fd int) bool {
 }
 
 fn create_server_socket(server &Server) int {
+	// Resolve the bind address first: the socket family must match the address
+	// family, and a configured host may resolve to a different family than
+	// server.family (e.g. an IPv4 host with the default family: .ip6).
+	addr := resolve_bind_addr(server.host, server.family, server.port) or {
+		eprintln('fasthttp: ${err}')
+		return -1
+	}
 	// Create a socket with non-blocking mode
-	server_fd := C.socket(i32(server.family), i32(net.SocketType.tcp), 0)
+	server_fd := C.socket(i32(addr.family()), i32(net.SocketType.tcp), 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Socket creation failed')
@@ -172,11 +181,6 @@ fn create_server_socket(server &Server) int {
 		return -1
 	}
 
-	addr := if server.family == .ip6 {
-		net.new_ip6(u16(server.port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
-	} else {
-		net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
-	}
 	alen := addr.len()
 	if C.bind(server_fd, voidptr(&addr), alen) < 0 {
 		eprintln(@LOCATION)
@@ -1050,7 +1054,7 @@ pub fn (mut server Server) run() ! {
 	}
 
 	server.mark_running()
-	println('listening on http://0.0.0.0:${server.port}/')
+	println('listening on http://${listen_host_display(server.host)}:${server.port}/')
 	// Main thread waits for workers; accepts are handled in worker epoll loops
 	for i in 0 .. max_thread_pool_size {
 		server.threads[i].wait()
