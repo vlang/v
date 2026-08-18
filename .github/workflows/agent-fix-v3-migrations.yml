@@ -33,6 +33,17 @@ jobs:
         run: |
           base64 --decode .github/agent_fix_v3_migrations.py.gz.b64 | gzip --decompress --stdout > /tmp/agent_fix_v3_migrations.py
           python3 /tmp/agent_fix_v3_migrations.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('vlib/v3/migrations/migrations_test.v')
+          normalized = []
+          for line in path.read_text().splitlines(keepends=True):
+              while line.startswith(r'\t'):
+                  line = '\t' + line[2:]
+              normalized.append(line)
+          path.write_text(''.join(normalized))
+          PY
 
       - name: Build V
         shell: bash
