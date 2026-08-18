@@ -115,14 +115,14 @@ fn main() {
 			if os.is_atty(0) == 0 {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 				args_and_flags << ['run', '-']
-				pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
+				pref.parse_args_for_launcher(external_tools, args_and_flags, true)
 			}
 		}
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return
 	}
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
+	prefs, command := pref.parse_args_for_launcher(external_tools, args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
 	maybe_delegate_to_ownership(command, prefs, args_and_flags)
 	macos_v3_c_error_report := maybe_delegate_to_macos_v3(command, prefs)
