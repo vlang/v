@@ -37,8 +37,12 @@ jobs:
           from pathlib import Path
 
           path = Path('vlib/v3/migrations/migrations_test.v')
+          text = path.read_text()
+          marker = 'fn test_callbacks_cannot_release_database_migration_locks()'
+          marker_index = text.index(marker)
+          text = text[:marker_index] + text[marker_index:].replace(r'\"', '"')
           normalized = []
-          for line in path.read_text().splitlines(keepends=True):
+          for line in text.splitlines(keepends=True):
               index = 0
               prefix = []
               while index < len(line):
