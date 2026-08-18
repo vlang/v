@@ -136,6 +136,33 @@ fn test_profile_flag_still_accepts_explicit_output_file() {
 	assert prefs.profile_file == 'profile.txt'
 }
 
+fn test_launcher_leaves_flags_after_a_known_external_command_for_the_tool() {
+	// Regression test for https://github.com/vlang/v/issues/28114 :
+	// `v missdoc -e main` must not treat `-e` as V's own eval-argument flag.
+	// In launcher mode, everything after a known external command belongs to that tool.
+	prefs, command := pref.parse_args_for_launcher(['missdoc'], ['missdoc', '-r', '-e', 'main',
+		'.'], false)
+	assert command == 'missdoc'
+	assert !prefs.is_eval_argument
+	assert prefs.eval_argument == ''
+}
+
+fn test_non_launcher_parse_keeps_v_flags_after_the_command() {
+	// vfmt and similar tools recognize their own command name (`fmt`), but still rely on the
+	// general V preference flags that follow it. The default parser (non-launcher mode) must
+	// keep interpreting them, so passthrough stays scoped to the `v` launcher; see the review of
+	// vlang/v#28114.
+	translated, cmd1 := pref.parse_args_and_show_errors(['fmt'],
+		['fmt', '-translated', 'generated.v'], false)
+	assert cmd1 == 'fmt'
+	assert translated.translated
+
+	crossos, cmd2 := pref.parse_args_and_show_errors(['fmt'], ['fmt', '-os', 'linux', 'source.v'],
+		false)
+	assert cmd2 == 'fmt'
+	assert crossos.os == .linux
+}
+
 fn new_wasm_preferences() pref.Preferences {
 	return pref.Preferences{
 		backend: .wasm
