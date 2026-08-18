@@ -840,7 +840,7 @@ pub fn (mut s Server) run() ! {
 	}
 
 	s.mark_running()
-	println('listening on http://${listen_host_display(s.host)}:${s.port}/')
+	println('listening on http://${listen_host_display(s.host, s.family)}:${s.port}/')
 
 	for i in 0 .. bsd_thread_pool_size {
 		s.threads[i].wait()

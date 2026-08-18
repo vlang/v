@@ -823,7 +823,7 @@ pub fn (mut server Server) run() ! {
 	server.threads[max_thread_pool_size] = spawn accept_loop(server)
 
 	server.mark_running()
-	println('listening on http://${listen_host_display(server.host)}:${server.port}/')
+	println('listening on http://${listen_host_display(server.host, server.family)}:${server.port}/')
 
 	for i in 0 .. max_thread_pool_size + 1 {
 		server.threads[i].wait()

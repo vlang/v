@@ -148,20 +148,18 @@ fn close_socket(fd int) bool {
 	return true
 }
 
-fn create_server_socket(server &Server) int {
-	// Resolve the bind address first: the socket family must match the address
-	// family, and a configured host may resolve to a different family than
-	// server.family (e.g. an IPv4 host with the default family: .ip6).
-	addr := resolve_bind_addr(server.host, server.family, server.port) or {
-		eprintln('fasthttp: ${err}')
-		return -1
-	}
-	// Create a socket with non-blocking mode
+// create_server_socket binds one worker's listening socket to the already
+// resolved `addr` (see resolve_bind_addr). It returns an error rather than -1 so
+// startup failures propagate out of run() instead of being silently swallowed.
+fn create_server_socket(addr net.Addr) !int {
+	// Create a socket with non-blocking mode. The socket family must match the
+	// resolved address family, which may differ from the configured family (e.g.
+	// an IPv4 host with the default family: .ip6).
 	server_fd := C.socket(i32(addr.family()), i32(net.SocketType.tcp), 0)
 	if server_fd < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Socket creation failed')
-		return -1
+		return error('socket creation failed')
 	}
 
 	set_blocking(server_fd, false)
@@ -172,13 +170,13 @@ fn create_server_socket(server &Server) int {
 		eprintln(@LOCATION)
 		C.perror(c'setsockopt SO_REUSEADDR failed')
 		close_socket(server_fd)
-		return -1
+		return error('setsockopt SO_REUSEADDR failed')
 	}
 	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEPORT, &opt, sizeof(opt)) < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'setsockopt SO_REUSEPORT failed')
 		close_socket(server_fd)
-		return -1
+		return error('setsockopt SO_REUSEPORT failed')
 	}
 
 	alen := addr.len()
@@ -186,13 +184,13 @@ fn create_server_socket(server &Server) int {
 		eprintln(@LOCATION)
 		C.perror(c'Bind failed')
 		close_socket(server_fd)
-		return -1
+		return error('socket bind failed')
 	}
 	if C.listen(server_fd, max_connection_size) < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'Listen failed')
 		close_socket(server_fd)
-		return -1
+		return error('socket listen failed')
 	}
 	return server_fd
 }
@@ -1030,31 +1028,33 @@ pub fn (mut server Server) run() ! {
 		eprintln('Windows is not supported yet')
 		return
 	}
+	// Resolve the bind address once, up front: each worker binds its own
+	// SO_REUSEPORT socket, so resolving per-worker could round-robin a hostname
+	// onto different addresses. Doing it here also lets an invalid/unresolvable
+	// host fail run() instead of silently leaving the server with no listener.
+	addr := resolve_bind_addr(server.host, server.family, server.port)!
 	for i := 0; i < max_thread_pool_size; i++ {
-		server.listen_fds[i] = create_server_socket(server)
-		if server.listen_fds[i] < 0 {
-			return
-		}
+		server.listen_fds[i] = create_server_socket(addr)!
 
 		server.epoll_fds[i] = C.epoll_create1(0)
 		if server.epoll_fds[i] < 0 {
 			C.perror(c'epoll_create1 failed')
 			close_socket(server.listen_fds[i])
-			return
+			return error('epoll_create1 failed')
 		}
 
 		// Register the listening socket with each worker epoll for distributed accepts (edge-triggered)
 		if add_fd_to_epoll(server.epoll_fds[i], server.listen_fds[i], u32(C.EPOLLIN | C.EPOLLET)) == -1 {
 			close_socket(server.listen_fds[i])
 			close_socket(server.epoll_fds[i])
-			return
+			return error('failed to register listener with epoll')
 		}
 
 		server.threads[i] = spawn process_events(server, server.epoll_fds[i], server.listen_fds[i])
 	}
 
 	server.mark_running()
-	println('listening on http://${listen_host_display(server.host)}:${server.port}/')
+	println('listening on http://${listen_host_display(server.host, server.family)}:${server.port}/')
 	// Main thread waits for workers; accepts are handled in worker epoll loops
 	for i in 0 .. max_thread_pool_size {
 		server.threads[i].wait()

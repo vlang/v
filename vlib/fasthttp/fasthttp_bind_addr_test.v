@@ -56,3 +56,42 @@ fn test_unresolvable_host_errors() {
 		assert false, 'expected an error for an unresolvable host'
 	}
 }
+
+// The startup "listening on ..." host must be a valid URL host component: the
+// wildcard reflects the family that is actually bound, and IPv6 literals are
+// bracketed.
+fn test_listen_host_display() {
+	assert listen_host_display('', .ip) == '0.0.0.0'
+	assert listen_host_display('', .ip6) == '[::]'
+	assert listen_host_display('127.0.0.1', .ip) == '127.0.0.1'
+	assert listen_host_display('localhost', .ip6) == 'localhost'
+	assert listen_host_display('::1', .ip6) == '[::1]'
+	assert listen_host_display('[::1]', .ip6) == '[::1]'
+}
+
+fn unresolvable_host_handler(_ HttpRequest) !HttpResponse {
+	return HttpResponse{
+		content: 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'.bytes()
+	}
+}
+
+// run() must surface a bind-address resolution failure as an error instead of
+// returning successfully with no listener (regression guard for the Linux path,
+// which previously converted the failure to a bare success return).
+fn test_run_errors_on_unresolvable_host() {
+	mut server := new_server(ServerConfig{
+		family:  .ip
+		host:    'definitely.not.a.real.host.invalid'
+		port:    0
+		handler: unresolvable_host_handler
+	}) or {
+		assert false, 'new_server failed: ${err}'
+		return
+	}
+	server.run() or {
+		// Expected: resolution fails before any listener/worker is created.
+		assert err.msg().len > 0
+		return
+	}
+	assert false, 'run() should have returned an error for an unresolvable host'
+}

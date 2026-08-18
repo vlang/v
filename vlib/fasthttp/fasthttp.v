@@ -205,9 +205,20 @@ fn resolve_bind_addr(host string, family net.AddrFamily, port int) !net.Addr {
 }
 
 // listen_host_display renders the configured host for the "listening on ..."
-// startup line; an empty host is shown as the wildcard 0.0.0.0.
-fn listen_host_display(host string) string {
-	return if host == '' { '0.0.0.0' } else { host }
+// startup line as a URL host component. An empty host shows the wildcard the
+// socket actually binds (:: for .ip6, 0.0.0.0 for .ip), and any IPv6 literal is
+// bracketed so the resulting URL is valid (e.g. `http://[::1]:3000/`).
+fn listen_host_display(host string, family net.AddrFamily) string {
+	display_host := if host == '' {
+		if family == .ip6 { '::' } else { '0.0.0.0' }
+	} else {
+		host
+	}
+	return if display_host.contains(':') && !display_host.starts_with('[') {
+		'[${display_host}]'
+	} else {
+		display_host
+	}
 }
 
 // ServerConfig bundles the parameters needed to start a fasthttp server.
