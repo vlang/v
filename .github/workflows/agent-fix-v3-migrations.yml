@@ -39,9 +39,18 @@ jobs:
           path = Path('vlib/v3/migrations/migrations_test.v')
           normalized = []
           for line in path.read_text().splitlines(keepends=True):
-              while line.startswith(r'\t'):
-                  line = '\t' + line[2:]
-              normalized.append(line)
+              index = 0
+              prefix = []
+              while index < len(line):
+                  if line.startswith(r'\t', index):
+                      prefix.append('\t')
+                      index += 2
+                  elif line[index] in ' \t':
+                      prefix.append(line[index])
+                      index += 1
+                  else:
+                      break
+              normalized.append(''.join(prefix) + line[index:])
           path.write_text(''.join(normalized))
           PY
 
