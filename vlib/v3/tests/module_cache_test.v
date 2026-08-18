@@ -1607,6 +1607,53 @@ fn main() {
 	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
 }
 
+fn test_unconditional_native_definition_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(),
+		'v3_module_cache_unconditional_native_definition_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/native.h', 'typedef struct { int value; } V3LibType;
+int v3_unconditional_value(void) { return 42; }
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#insert "@DIR/native.h"
+
+fn C.v3_unconditional_value() int
+
+pub fn value() int {
+	return C.v3_unconditional_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import owner
+
+fn main() {
+	println(owner.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	// The warm rebuild links the cached objects. If the header were split, its
+	// public replay in the program unit and the full include in the owner object
+	// would both define v3_unconditional_value, failing the link with a duplicate
+	// symbol. Failing closed keeps the build monolithic and correct.
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+	// The header defines an external symbol with no implementation switch to gate
+	// it, so the cache falls back to a monolithic build instead of splitting it.
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
+}
+
 fn test_static_helper_exposed_by_owner_macro_disables_module_cache_split() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_owner_macro_static_helper_${os.getpid()}')
@@ -7761,3 +7808,4 @@ fn main() {
 	assert reordered.exit_code == 0, reordered.output
 	assert run_module_cache_binary(reordered_output) == '1'
 }
+

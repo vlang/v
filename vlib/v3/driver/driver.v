@@ -2478,7 +2478,7 @@ fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target p
 	}
 	os.write_file(path, '') or { return map[string]string{}, false }
 	mut args := c_compiler_target_args(target, false) or { return map[string]string{}, false }
-	args << c_object_compile_flags(flags)
+	args << c_object_compile_flags(cache_c_flags_without_forced_inputs(flags))
 	args << ['-dM', '-E', '-x', if native_inputs_need_objective_c || c_flags_need_objective_c(flags) {
 		'objective-c'
 	} else {
@@ -2510,6 +2510,28 @@ fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target p
 		macros[name] = rest[end..].trim_space()
 	}
 	return macros, true
+}
+
+// cache_c_flags_without_forced_inputs drops `-include`/`-imacros` and their file
+// operands. The predefined-macro probe compiles an empty translation unit to
+// capture only the compiler/target/`-D` baseline, but forced-input files execute
+// before that empty input, so leaving them in would report their macros as
+// predefined. The dependency scanner would then start with those macros already
+// defined and skip includes guarded by `#if !defined(X)`, dropping the nested
+// files from the cache dependency set and serving stale output after they change.
+fn cache_c_flags_without_forced_inputs(flags []string) []string {
+	mut out := []string{cap: flags.len}
+	mut i := 0
+	for i < flags.len {
+		if flags[i].trim_space() in ['-include', '-imacros'] {
+			// Skip the option together with its file operand.
+			i += 2
+			continue
+		}
+		out << flags[i]
+		i++
+	}
+	return out
 }
 
 fn cached_native_sources_require_monolithic_cgen(state &V3ModuleCacheState, a &flat.FlatAst, user_files []string) bool {
@@ -2673,6 +2695,19 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 					context := state.native_root_contexts[real_root] or { []string{} }
 					implementation_macros := cache_native_implementation_context_macros(real_root,
 						context, allowed_paths, c_flags, ccompiler, target)
+					// The public replay only strips implementation code that its
+					// undefined macros gate. If a file-scope external definition would
+					// survive, the owner object (full include) and the program unit's
+					// public replay both define the symbol, so the warm cached link
+					// fails with a duplicate symbol. Fail closed instead of splitting.
+					if cache_native_public_include_replays_external_definition(real_root,
+						context, implementation_macros, c_flags, ccompiler, target)
+					{
+						if os.getenv('V3_CACHE_TRACE') != '' {
+							eprintln('  V3 module cache ungated native definition: module=${module_name} path=${real_root}')
+						}
+						return false
+					}
 					state.native_type_declarations[real_root] = cache_native_public_include(real_root,
 						context, implementation_macros)
 				} else {
@@ -2780,6 +2815,7 @@ fn cache_native_public_include(path string, context []string, implementation_mac
 	// prior owning include may leave it defined even when this header's own
 	// context is declaration-only.
 	out.writeln('#undef SOKOL_IMPL')
+	mut restored := []string{}
 	for line in context {
 		directive, arg := cache_local_c_directive(line)
 		if directive == 'undef' {
@@ -2792,17 +2828,68 @@ fn cache_native_public_include(path string, context []string, implementation_mac
 		name := cache_local_c_define_name(arg)
 		if implementation_macros[name] || cache_native_implementation_macro(name) {
 			out.writeln('#undef ${name}')
+			restored << line
 		} else {
 			out.writeln(line)
 		}
 	}
 	out.writeln('#include "${c_include_path(path)}"')
+	// The implementation switches are only suppressed while the header expands, so
+	// its definitions stay in the owner object. Restore each define afterwards so a
+	// later native directive in the same translation unit (for example a
+	// declaration-only header guarded by the same macro) observes the macro state
+	// the uncached unit left behind instead of the temporary undefined state.
+	for line in restored {
+		out.writeln(line)
+	}
 	return out.str()
 }
 
 fn cache_native_implementation_macro(name string) bool {
 	return name.ends_with('_IMPLEMENTATION')
 		|| (name.starts_with('SOKOL') && name.ends_with('_IMPL'))
+}
+
+// cache_native_public_include_replays_external_definition reports whether the
+// declaration-only replay produced by cache_native_public_include would still
+// compile a file-scope external-linkage function definition. Such a symbol would
+// be emitted both in the owner module object (full include) and in every
+// non-owner public replay, so the caller must fail closed rather than split the
+// root. The header is preprocessed with the same macro state the replay
+// establishes (every implementation switch and the Sokol umbrella undefined, all
+// other context defines kept) so storage-class macros such as a `static inline`
+// hidden behind a macro are expanded before linkage is classified; a textual scan
+// cannot see through them and would misread internal-linkage helpers as external.
+// Results are limited to identifiers the header itself declares so definitions
+// pulled in from system headers are ignored. Any failure to verify is unsafe.
+fn cache_native_public_include_replays_external_definition(path string, context []string, implementation_macros map[string]bool, c_flags []string, ccompiler string, target pref.Target) bool {
+	mut replay_context := ['#undef SOKOL_IMPL']
+	for line in context {
+		directive, arg := cache_local_c_directive(line)
+		if directive == 'define' {
+			name := cache_local_c_define_name(arg)
+			if implementation_macros[name] || cache_native_implementation_macro(name) {
+				replay_context << '#undef ${name}'
+				continue
+			}
+		}
+		replay_context << line
+	}
+	preprocessed := cache_preprocessed_native_input(path, replay_context, c_flags, ccompiler,
+		target) or { return true }
+	source := os.read_file(os.real_path(path)) or { return true }
+	file_scope := c_source_file_scope_identifiers(source)
+	all_functions, functions_complete := modulecache.c_source_function_identifiers_with_status(preprocessed)
+	static_functions, static_complete := modulecache.c_source_static_function_identifiers_with_status(preprocessed)
+	if !functions_complete || !static_complete {
+		return true
+	}
+	for name, present in all_functions {
+		if present && !static_functions[name] && file_scope[name] {
+			return true
+		}
+	}
+	return false
 }
 
 fn cache_native_implementation_context_macros(path string, context []string, allowed_paths map[string]bool, c_flags []string, ccompiler string, target pref.Target) map[string]bool {
