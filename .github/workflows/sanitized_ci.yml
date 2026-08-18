@@ -87,13 +87,69 @@ env:
   SANITIZER_CLANG_PACKAGES: clang
 
 jobs:
-  sanitize-undefined-clang:
+  sanitize-linux:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: undefined-clang
+            cc: clang
+            sanitizer: undefined
+            gc: default
+            timeout: 120
+            vflags: -cc clang -cflags -fno-omit-frame-pointer
+            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+          - name: undefined-gcc
+            cc: gcc
+            sanitizer: undefined
+            gc: default
+            timeout: 150
+            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            ubsan_options: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+          - name: address-clang
+            cc: clang
+            sanitizer: address
+            gc: default
+            timeout: 300
+            vflags: -cc clang -cflags -fno-omit-frame-pointer
+            asan_options: detect_leaks=1
+            lsan_options: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
+          - name: address-gcc
+            cc: gcc
+            sanitizer: address
+            gc: default
+            timeout: 300
+            vflags: -cc gcc -cflags -fno-omit-frame-pointer
+            asan_options: detect_leaks=1
+            lsan_options: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
+          - name: memory-clang
+            cc: clang
+            sanitizer: memory
+            gc: none
+            timeout: 300
+            vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
+          - name: memory-clang-compiler
+            cc: clang
+            sanitizer: memory
+            gc: none
+            timeout: 300
+            vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
+          - name: address-clang-without-gc
+            cc: clang
+            sanitizer: address
+            gc: none
+            timeout: 300
+            vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
+            lsan_options: detect_leaks=0
+    name: sanitize-${{ matrix.name }}
     env:
-      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
+      VFLAGS: ${{ matrix.vflags }}
       VJOBS: 1
-      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
+      UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
+      ASAN_OPTIONS: ${{ matrix.asan_options }}
+      LSAN_OPTIONS: ${{ matrix.lsan_options }}
       VNATIVE_SKIP_LIBC_VV: 1
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
@@ -104,8 +160,10 @@ jobs:
       - name: Build V
         run: make -j4 && ./v symlink
       - name: V doctor
+        if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: ./v doctor
       - name: Ensure code is well formatted
+        if: ${{ matrix.name != 'memory-clang-compiler' }}
         run: ./v -silent test-cleancode
       - name: Install dependencies
         run: |
@@ -115,87 +173,54 @@ jobs:
           ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
           ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
-        run: ./v -cg -cstrict -o v cmd/v
+        run: |
+          if [ "${{ matrix.sanitizer }}" = "memory" ]; then
+            ./v -cc clang -cg -cstrict -o v cmd/v
+          else
+            ./v -cg -cstrict -o v cmd/v
+          fi
       - name: Self tests (-fsanitize=undefined)
+        if: ${{ matrix.sanitizer == 'undefined' }}
         run: |
           ./v -cflags -fsanitize=undefined -o v2 cmd/v
           ./v2 -cflags -fsanitize=undefined -silent test-self vlib
       - name: Build examples (V compiled with -fsanitize=undefined)
+        if: ${{ matrix.sanitizer == 'undefined' }}
         run: ./v2 -silent build-examples
-
-  sanitize-undefined-gcc:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 150
-    env:
-      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
-      VJOBS: 1
-      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
-      VNATIVE_SKIP_LIBC_VV: 1
-      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
-      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
-      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/cache-apt-packages-action
-      - name: Build V
-        run: make -j4 && ./v symlink
-      - name: V doctor
-        run: ./v doctor
-      - name: Ensure code is well formatted
-        run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
-      - name: Recompile V with -cstrict
-        run: ./v -cg -cstrict -o v cmd/v
-      - name: Self tests (-fsanitize=undefined)
-        run: |
-          ./v  -cflags -fsanitize=undefined -o v2 cmd/v
-          ./v2 -cflags -fsanitize=undefined -silent test-self vlib
-      - name: Build examples (V compiled with -fsanitize=undefined)
-        run: ./v2 -silent build-examples
-
-  sanitize-address-clang:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 300
-    env:
-      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
-      VJOBS: 1
-      ASAN_OPTIONS: detect_leaks=1
-      LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
-      VNATIVE_SKIP_LIBC_VV: 1
-      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
-      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
-      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/cache-apt-packages-action
-      - name: Build V
-        run: make -j4 && ./v symlink
-      - name: V doctor
-        run: ./v doctor
-      - name: Ensure code is well formatted
-        run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
-          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
-      - name: Recompile V with -cstrict
-        run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
-        run: ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -silent test-self vlib
-      - name: Test vlib/v/tests/ (V compiled with -fsanitize=address)
+        if: ${{ matrix.sanitizer == 'address' && matrix.name != 'memory-clang-compiler' && matrix.name != 'memory-clang' }}
         run: |
-          ./v -cflags -fsanitize=address -o v cmd/v
-          ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
+          if [ "${{ matrix.cc }}" = "clang" ] && [ "${{ matrix.name }}" = "address-clang" ]; then
+            ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -silent test-self vlib
+          elif [ "${{ matrix.cc }}" = "gcc" ] && [ "${{ matrix.name }}" = "address-gcc" ]; then
+            ./v -cflags -fsanitize=address -silent test-self vlib
+          else
+            ./v -cflags -fsanitize=address -silent test-self vlib
+          fi
+      - name: Test vlib/v/tests/ (V compiled with -fsanitize=address)
+        if: ${{ matrix.sanitizer == 'address' && (matrix.name == 'address-clang' || matrix.name == 'address-gcc') }}
+        run: |
+          if [ "${{ matrix.name }}" = "address-clang" ]; then
+            ./v -cflags -fsanitize=address -o v cmd/v
+            ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
+          else
+            ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
+            ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
+          fi
       - name: Build examples (V compiled with -fsanitize=address)
+        if: ${{ matrix.sanitizer == 'address' }}
         run: ./v -silent build-examples
+      - name: Self tests (-fsanitize=memory)
+        if: ${{ matrix.name == 'memory-clang' }}
+        run: ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
+      - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
+        if: ${{ matrix.name == 'memory-clang-compiler' }}
+        run: |
+          GITHUB_JOB=sanitize-memory-clang ./v -cflags -fsanitize=memory -o v cmd/v
+          GITHUB_JOB=sanitize-memory-clang ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
+      - name: Build examples (V compiled with -fsanitize=memory)
+        if: ${{ matrix.name == 'memory-clang-compiler' }}
+        run: GITHUB_JOB=sanitize-memory-clang ./v -silent build-examples
 
   sanitize-address-msvc:
     runs-on: windows-2025
@@ -225,137 +250,3 @@ jobs:
         #     .\.github\workflows\windows-install-sqlite.bat
         # - name: Self tests (/fsanitize=address) # TODO:
         #   run: .\v.exe -cflags "/fsanitize=address" -silent test-self vlib
-
-  sanitize-address-gcc:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 300
-    env:
-      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
-      VJOBS: 1
-      ASAN_OPTIONS: detect_leaks=1
-      LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
-      VNATIVE_SKIP_LIBC_VV: 1
-      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
-      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
-      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/cache-apt-packages-action
-      - name: Build V
-        run: make -j4 && ./v symlink
-      - name: V doctor
-        run: ./v doctor
-      - name: Ensure code is well formatted
-        run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
-          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
-      - name: Recompile V with -cstrict
-        run: ./v -cg -cstrict -o v cmd/v
-      - name: Self tests (-fsanitize=address)
-        run: ./v -cflags -fsanitize=address -silent test-self vlib
-      - name: Test vlib/v/tests/ (V compiled with -fsanitize=address)
-        run: |
-          ./v -cflags -fsanitize=address,pointer-compare,pointer-subtract -o v cmd/v
-          ./v -cc tcc -silent test-self -asan-compiler vlib/v/tests/
-      - name: Build examples (V compiled with -fsanitize=address)
-        run: ./v -silent build-examples
-
-  sanitize-memory-clang:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 300
-    env:
-      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
-      VJOBS: 1
-      VNATIVE_SKIP_LIBC_VV: 1
-      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
-      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
-      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/cache-apt-packages-action
-      - name: Build V
-        run: make -j4 && ./v symlink
-      - name: V doctor
-        run: ./v doctor
-      - name: Ensure code is well formatted
-        run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
-          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
-      - name: Recompile V with clang and -cstrict
-        run: ./v -cc clang -cg -cstrict -o v cmd/v
-      - name: Self tests (-fsanitize=memory)
-        run: ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
-
-  sanitize-memory-clang-compiler:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 300
-    env:
-      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
-      VJOBS: 1
-      VNATIVE_SKIP_LIBC_VV: 1
-      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
-      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
-      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/cache-apt-packages-action
-      - name: Build V
-        run: make -j4 && ./v symlink
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
-          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
-      - name: Recompile V with clang and -cstrict
-        run: ./v -cc clang -cg -cstrict -o v cmd/v
-      - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
-        run: |
-          # Preserve existing `// vtest build: !sanitize-memory-clang` exclusions.
-          GITHUB_JOB=sanitize-memory-clang ./v -cflags -fsanitize=memory -o v cmd/v
-          GITHUB_JOB=sanitize-memory-clang ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
-      - name: Build examples (V compiled with -fsanitize=memory)
-        run: GITHUB_JOB=sanitize-memory-clang ./v -silent build-examples
-
-  sanitize-address-clang-without-gc:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 300
-    env:
-      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
-      VJOBS: 1
-      LSAN_OPTIONS: detect_leaks=0
-      VNATIVE_SKIP_LIBC_VV: 1
-      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
-      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
-      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/cache-apt-packages-action
-      - name: Build V
-        run: make -j4 && ./v symlink
-      - name: V doctor
-        run: ./v doctor
-      - name: Ensure code is well formatted
-        run: ./v -silent test-cleancode
-      - name: Install dependencies
-        run: |
-          .github/workflows/disable_azure_mirror.sh
-          ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
-          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
-          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
-      - name: Recompile V with -cstrict
-        run: ./v -cg -cstrict -o v cmd/v
-      - name: Self tests (-fsanitize=address)
-        run: ./v -cflags -fsanitize=address -silent test-self vlib
