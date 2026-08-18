@@ -56,6 +56,9 @@ jobs:
                       break
               normalized.append(''.join(prefix) + line[index:])
           path.write_text(''.join(normalized))
+
+          readme = Path('vlib/v3/migrations/README.md')
+          readme.write_text(readme.read_text().rstrip() + '\n')
           PY
 
       - name: Build V
