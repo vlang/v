@@ -131,19 +131,8 @@ pub fn new_scanner_file(file_path string, file_idx i16, comments_mode CommentsMo
 		return error('${file_path} is not a .v file')
 	}
 	raw_text := util.read_file(file_path) or { return err }
-	mut s := &Scanner{
-		pref:                        pref_
-		text:                        raw_text
-		all_tokens:                  []token.Token{cap: raw_text.len / 3}
-		is_print_line_on_error:      true
-		is_print_colored_error:      true
-		is_print_rel_paths_on_error: true
-		is_fmt:                      pref_.is_fmt
-		comments_mode:               comments_mode
-		file_path:                   file_path
-		file_base:                   os.base(file_path)
-		file_idx:                    file_idx
-	}
+	mut s := new_plain_scanner(raw_text, comments_mode, pref_, file_path, os.base(file_path))
+	s.file_idx = file_idx
 	s.scan_all_tokens_in_buffer()
 	return s
 }
@@ -152,12 +141,13 @@ const internally_generated_v_code = 'internally_generated_v_code'
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
-	mut s := new_plain_scanner(text, comments_mode, pref_)
+	mut s := new_plain_scanner(text, comments_mode, pref_, internally_generated_v_code,
+		internally_generated_v_code)
 	s.scan_all_tokens_in_buffer()
 	return s
 }
 
-fn new_plain_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences) &Scanner {
+fn new_plain_scanner(text string, comments_mode CommentsMode, pref_ &pref.Preferences, file_path string, file_base string) &Scanner {
 	return &Scanner{
 		pref:                        pref_
 		text:                        text
@@ -167,8 +157,8 @@ fn new_plain_scanner(text string, comments_mode CommentsMode, pref_ &pref.Prefer
 		is_print_rel_paths_on_error: true
 		is_fmt:                      pref_.is_fmt
 		comments_mode:               comments_mode
-		file_path:                   internally_generated_v_code
-		file_base:                   internally_generated_v_code
+		file_path:                   file_path
+		file_base:                   file_base
 	}
 }
 
