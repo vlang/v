@@ -6836,15 +6836,7 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 		}
 		g.inlined_c_structs[tag] = true
 	}
-	for alias in c_typedef_struct_aliases(text) {
-		g.inlined_c_structs[alias] = true
-		g.inlined_c_typedef_names[alias] = true
-	}
-	for alias in c_typedef_union_aliases(text) {
-		g.inlined_c_structs[alias] = true
-		g.inlined_c_typedef_names[alias] = true
-	}
-	for alias in c_typedef_enum_aliases(text) {
+	for alias in c_typedef_all_aggregate_aliases(text) {
 		g.inlined_c_structs[alias] = true
 		g.inlined_c_typedef_names[alias] = true
 	}
@@ -7248,6 +7240,10 @@ fn c_cache_implementation_macro(name string) bool {
 fn c_strip_comments(text string) string {
 	mut sb := strings.new_builder(text.len)
 	mut i := 0
+	// Copy non-comment content in runs rather than one byte at a time: header
+	// bodies are large and mostly comment-free, so a per-byte write_u8 dominated
+	// the inlined-declaration scan.
+	mut run_start := 0
 	mut in_block := false
 	for i < text.len {
 		c := text[i]
@@ -7255,6 +7251,7 @@ fn c_strip_comments(text string) string {
 			if c == `*` && i + 1 < text.len && text[i + 1] == `/` {
 				in_block = false
 				i += 2
+				run_start = i
 				continue
 			}
 			if c == `\n` {
@@ -7265,19 +7262,28 @@ fn c_strip_comments(text string) string {
 		}
 		if c == `/` && i + 1 < text.len {
 			if text[i + 1] == `*` {
+				if i > run_start {
+					sb.write_string(text[run_start..i])
+				}
 				in_block = true
 				i += 2
 				continue
 			}
 			if text[i + 1] == `/` {
+				if i > run_start {
+					sb.write_string(text[run_start..i])
+				}
 				for i < text.len && text[i] != `\n` {
 					i++
 				}
+				run_start = i
 				continue
 			}
 		}
-		sb.write_u8(c)
 		i++
+	}
+	if i > run_start {
+		sb.write_string(text[run_start..i])
 	}
 	return sb.str()
 }
@@ -7489,6 +7495,93 @@ fn c_typedef_plain_aliases(text string) []string {
 				aliases << alias
 			}
 		}
+	}
+	return aliases
+}
+
+// c_text_matches_at reports whether `word` appears at `pos` in `text` without
+// allocating a substring.
+@[inline]
+fn c_text_matches_at(text string, pos int, word string) bool {
+	if pos < 0 || pos + word.len > text.len {
+		return false
+	}
+	for j in 0 .. word.len {
+		if text[pos + j] != word[j] {
+			return false
+		}
+	}
+	return true
+}
+
+// c_typedef_all_aggregate_aliases collects `typedef struct|union|enum` alias
+// names in a single scan. It replaces three separate full-text passes (one per
+// kind); every kind shares the identical tail logic below, and the result is a
+// set, so finding all three in text order yields the same names.
+fn c_typedef_all_aggregate_aliases(text string) []string {
+	mut aliases := []string{}
+	mut start := 0
+	for start < text.len {
+		idx := text.index_after('typedef ', start) or { break }
+		kw := idx + 'typedef '.len
+		mut prefix_len := 0
+		if c_text_matches_at(text, kw, 'struct') {
+			prefix_len = 'typedef struct'.len
+		} else if c_text_matches_at(text, kw, 'union') {
+			prefix_len = 'typedef union'.len
+		} else if c_text_matches_at(text, kw, 'enum') {
+			prefix_len = 'typedef enum'.len
+		} else {
+			start = kw
+			continue
+		}
+		mut pos := idx + prefix_len
+		if pos < text.len && c_ident_char(text[pos]) {
+			start = pos + 1
+			continue
+		}
+		for pos < text.len && text[pos].is_space() {
+			pos++
+		}
+		mut had_tag := false
+		if pos < text.len && text[pos] != `{` {
+			tag := c_header_struct_tag_at(text, pos)
+			if tag.len == 0 {
+				start = pos + 1
+				continue
+			}
+			had_tag = true
+			pos += tag.len
+			for pos < text.len && text[pos].is_space() {
+				pos++
+			}
+		}
+		if pos >= text.len || text[pos] != `{` {
+			if had_tag {
+				semi_idx := c_index_u8_after(text, `;`, pos)
+				if semi_idx >= 0 {
+					for alias in c_typedef_declarator_aliases(text[pos..semi_idx]) {
+						aliases << alias
+					}
+					start = semi_idx + 1
+					continue
+				}
+			}
+			start = pos + 1
+			continue
+		}
+		close_idx := c_matching_brace_end(text, pos)
+		if close_idx < 0 {
+			break
+		}
+		semi_idx := c_index_u8_after(text, `;`, close_idx + 1)
+		if semi_idx < 0 {
+			break
+		}
+		for alias in c_typedef_declarator_aliases(text[close_idx + 1..semi_idx]) {
+			aliases << alias
+		}
+		start = semi_idx + 1
 	}
 	return aliases
 }
