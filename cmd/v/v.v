@@ -67,6 +67,7 @@ const external_tools = [
 ]
 
 struct MacosV3CErrorReport {
+	kind       string // '' = generated-C compilation error; 'compiler_error' = V3 internal compiler error
 	ccompiler  string
 	c_output   string
 	c_file     string
@@ -402,6 +403,7 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 			}
 			if failed := macos_v3_c_error_report {
 				builder.compile_with_external_c_error_report('build', prefs, cbuilder.compile_c, builder.ExternalCErrorBugReport{
+					kind:        failed.kind
 					ccompiler:   failed.ccompiler
 					c_output:    failed.c_output
 					c_file:      failed.c_file

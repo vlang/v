@@ -1500,6 +1500,104 @@ fn main() {}
 	}
 }
 
+// stage_macos_v3_compiler_error_report / read_macos_v3_c_error_report round-trip:
+// the compiler-error report carries the input V source and a `kind` marker so the
+// V1 retry can file the right bug. This is pure staging logic, so it runs wherever
+// the dispatcher is embedded (macOS and Linux) without triggering a real V3 failure.
+fn test_macos_v3_compiler_error_report_round_trip() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_ce_roundtrip_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'prog.v')
+		os.write_file(source, 'fn main() {\n\tprintln(41 + 1)\n}\n')!
+		report_dir := os.join_path(root, 'report')
+		assert stage_macos_v3_compiler_error_report(report_dir, source)
+		report := read_macos_v3_c_error_report(report_dir) or {
+			assert false, 'staged compiler-error report could not be read'
+			return
+		}
+		assert report.kind == macos_v3_compiler_error_fallback
+		assert report.ccompiler == 'v3'
+		assert report.c_output.contains('internal compiler error')
+		assert os.base(report.c_file) == 'prog.v'
+		assert os.read_file(report.c_file)!.contains('println(41 + 1)')
+		// A directory or a non-V / missing input must not stage a report.
+		assert !stage_macos_v3_compiler_error_report(report_dir, root)
+		assert !stage_macos_v3_compiler_error_report(report_dir, os.join_path(root, 'missing.v'))
+		notc := os.join_path(root, 'note.txt')
+		os.write_file(notc, 'hi')!
+		assert !stage_macos_v3_compiler_error_report(report_dir, notc)
+	}
+}
+
+// End-to-end: a construct V3 cannot build yet (a generic method on a generic
+// struct) must fall back to the stable compiler, print the user-facing notice, and
+// still produce a working program. The bug endpoint is pointed at an unroutable
+// address so the report path runs without ever touching the network.
+fn test_macos_v3_compiler_error_falls_back_and_notifies() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_compiler_error_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'generic_method.v')
+		output := os.join_path(root, 'generic_method')
+		os.write_file(source, 'struct Opt[T] {
+	val  T
+	some bool
+}
+
+fn some[T](val T) Opt[T] {
+	return Opt[T]{
+		val:  val
+		some: true
+	}
+}
+
+fn (f Opt[T]) map[U](op fn (T) U) Opt[U] {
+	if f.some {
+		return some[U](op(f.val))
+	}
+	return Opt[U]{}
+}
+
+fn main() {
+	result := some("hello").map(|s| s.len)
+	assert result.some && result.val == 5
+	println("generic ok")
+}
+')!
+		mut environment := os.environ()
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
+		// Unroutable endpoint: the submission attempt fails fast, so the test never
+		// contacts the real bug server while still exercising the report path.
+		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-gc', 'none', '-o', output, source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0, run.output
+		assert run.output.contains('generic ok'), run.output
+	}
+}
+
 fn test_macos_v3_test_command_uses_v3() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_test_command_${os.getpid()}')

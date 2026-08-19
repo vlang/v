@@ -50,10 +50,19 @@ pub:
 	v_source       string // a small chunk of V source around the failing line (bounded), never the whole file
 }
 
-// ExternalCErrorBugReport describes a generated-C failure produced by another compiler
+// external_v3_compiler_error_kind marks an ExternalCErrorBugReport that describes a
+// V3 internal compiler error (parser/checker/codegen) rather than a generated-C
+// compilation error. It matches `macos_v3_compiler_error_fallback` in cmd/v.
+const external_v3_compiler_error_kind = 'compiler_error'
+
+// ExternalCErrorBugReport describes a failure produced by another compiler
 // implementation and confirmed by a successful build with the established compiler.
+// `kind` is empty for a generated-C compilation error (the default) or
+// `external_v3_compiler_error_kind` when V3 failed internally; in the latter case
+// `c_file` is the input V source and `c_output` is a short description.
 pub struct ExternalCErrorBugReport {
 pub:
+	kind        string
 	ccompiler   string
 	c_output    string
 	c_file      string
@@ -103,7 +112,14 @@ fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) 
 }
 
 fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output string, tag string, retry_with_vlines bool) {
+	// A non-empty tag marks an external report: another compiler (V3) produced C
+	// that failed to build, and the stable compiler has since confirmed the program
+	// is buildable. That is exactly the V3->V1 fallback the user should be told about.
+	is_v3_fallback := tag != ''
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
+		if is_v3_fallback {
+			print_v3_fallback_notice('', false)
+		}
 		return
 	}
 	// Snapshot the user's real flags now: the vlines fallback below temporarily flips
@@ -126,9 +142,15 @@ fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
 	tool_output := send_c_error_bug_report(report, report_url) or {
 		eprintln('C compiler bug report was not sent to ${report_url}: ${err}')
+		if is_v3_fallback {
+			print_v3_fallback_notice('', false)
+		}
 		return
 	}
 	println('================== C compiler bug report ==============')
+	if is_v3_fallback {
+		print_v3_fallback_notice(report_url, true)
+	}
 	if tool_output != '' {
 		println(tool_output)
 	}
@@ -152,8 +174,70 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 	defer {
 		cleanup_external_c_error_report(report.cleanup_dir)
 	}
+	if report.kind == external_v3_compiler_error_kind {
+		submit_external_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
+			report.c_file, report.tag)
+		return
+	}
 	submit_external_c_error_bug_report(prefs, report.ccompiler, report.c_output, report.c_file,
 		report.tag)
+}
+
+// submit_external_v3_compiler_error_bug_report reports a V3 internal compiler error
+// after the stable compiler has confirmed the program is buildable. `v_file` is the
+// user's input V source and `v3_output` a short description of the failure.
+pub fn submit_external_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_stage string, v3_output string, v_file string, tag string) {
+	mut b := new_builder(prefs)
+	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, v_file, tag)
+}
+
+fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_output string, v_file string, tag string) {
+	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
+		print_v3_fallback_notice('', false)
+		return
+	}
+	build_options := c_error_report_build_options(v.pref, tag)
+	// Upload a bounded chunk of the input source (never the whole file, which could
+	// hold proprietary code or secrets), mirroring the C-error report path.
+	source := os.read_file(v_file) or { '' }
+	v_source := bounded_v_source(source, c_error_bug_report_max_v_source_bytes, 0)
+	raw_report := CErrorBugReport{
+		kind:           'v3-compiler-error'
+		v_version:      version.full_v_version(true)
+		target_os:      v.pref.os.str()
+		target_backend: v.pref.backend.str()
+		arch:           v.pref.arch.str()
+		ccompiler:      v3_stage
+		build_options:  build_options
+		c_error:        v3_output
+		v_file:         v_file
+		v_source:       v_source
+	}
+	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
+	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
+	tool_output := send_c_error_bug_report(report, report_url) or {
+		eprintln('V3 compiler bug report was not sent to ${report_url}: ${err}')
+		print_v3_fallback_notice('', false)
+		return
+	}
+	println('================== V3 compiler bug report ==============')
+	print_v3_fallback_notice(report_url, true)
+	if tool_output != '' {
+		println(tool_output)
+	}
+	println('V ${report.v_version}, ${report.target_os}/${report.arch}, build options: ${report.build_options}')
+	println('='.repeat('================== V3 compiler bug report =============='.len))
+}
+
+// print_v3_fallback_notice explains, in plain language, that V3 could not build the
+// program so the stable compiler was used instead. `submitted` selects whether a bug
+// report was actually filed; `report_url` is where it went (empty when not filed).
+fn print_v3_fallback_notice(report_url string, submitted bool) {
+	eprintln('note: the experimental V3 compiler could not build this program, so V used the stable compiler instead.')
+	if submitted {
+		eprintln('A bug report with the failing V source was submitted to ${report_url} so this can be fixed.')
+		eprintln('Set ${c_error_bug_report_disabled_env}=1 to opt out of these automatic reports.')
+	}
 }
 
 fn c_error_report_build_options(prefs &pref.Preferences, tag string) string {
