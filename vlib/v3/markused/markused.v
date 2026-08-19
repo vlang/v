@@ -241,7 +241,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut body_ids := []int{cap: 8192}
 	mut body_modules := []string{cap: 8192}
 	mut body_import_contexts := []int{cap: 8192}
-	collect_body_metadata := detect_reachable_generics || all_functions
+	// Body-call metadata feeds the reachability BFS's discovery of lowering-introduced
+	// implicit helpers, which is required on every path (not just generics detection).
+	collect_body_metadata := true
 	mut cache_roots := []string{}
 	mut c_interface_roots := []string{}
 	mut marked_roots := []string{}
@@ -614,7 +616,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	mut body_index := map[int]int{}
 	mut body_results := []BodyCalls{}
-	if detect_reachable_generics && body_ids.len >= min_eager_markused_bodies {
+	if body_ids.len >= min_eager_markused_bodies {
 		for i, id in body_ids {
 			body_index[id] = i
 		}
@@ -760,20 +762,26 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			for dependency in tc.direct_dependency_ids(node_key) {
 				calls << tc.frozen_symbol_name(dependency)
 			}
-			if detect_reachable_generics {
-				if body_i := body_index[node_key] {
-					body := body_results[body_i]
-					calls << body.calls
-					initializer_refs << body.refs
+			// The checker's dependency edges only cover source-level calls. Implicit
+			// helpers introduced by lowering (array bounds checks, `array__get`,
+			// `v_ni_index`, ...) are discovered solely by the body collector, so it must
+			// run for correctness regardless of generics detection; only the generics
+			// bookkeeping below is gated.
+			if body_i := body_index[node_key] {
+				body := body_results[body_i]
+				calls << body.calls
+				initializer_refs << body.refs
+				if detect_reachable_generics {
 					uses_generics = uses_generics || body.uses_generics
-				} else {
-					// Not part of the precollected decl set (should not happen; the BFS
-					// resolves names through the same decl scan) — collect inline.
-					node := a.node(fn_info.node_id)
-					body := collector.collect_body(node, fn_info.module,
-						collector.imports(fn_info.import_context))
-					calls << body.calls
-					initializer_refs << body.refs
+				}
+			} else {
+				// Not precollected (no eager pass, or not part of that decl set) —
+				// collect inline.
+				node := a.node(fn_info.node_id)
+				body := collector.collect_body(node, fn_info.module, collector.imports(fn_info.import_context))
+				calls << body.calls
+				initializer_refs << body.refs
+				if detect_reachable_generics {
 					uses_generics = uses_generics || body.uses_generics
 				}
 			}
