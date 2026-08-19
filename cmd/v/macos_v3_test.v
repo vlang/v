@@ -1603,7 +1603,9 @@ fn test_macos_v3_force_requested_forces_v3_for_compile_targets() {
 fn test_macos_v3_force_requested_respects_hard_limits() {
 	$if macos {
 		// not requested without the flag
-		assert !macos_v3_force_requested('build', &pref.Preferences{ path: 'main.v' })
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			path: 'main.v'
+		})
 		// `-old-compiler` always wins
 		assert !macos_v3_force_requested('build', &pref.Preferences{
 			new_compiler: true
@@ -1617,8 +1619,8 @@ fn test_macos_v3_force_requested_respects_hard_limits() {
 		})
 		// V3 is never forced onto options it cannot honor yet
 		assert !macos_v3_force_requested('build', &pref.Preferences{
-			new_compiler: true
-			path:         'main.v'
+			new_compiler:   true
+			path:           'main.v'
 			use_coroutines: true
 		})
 	}

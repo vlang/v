@@ -1166,8 +1166,8 @@ fn (mut g Gen) match_cond(id flat.NodeId) {
 // select_branch_header renders a select branch's guard: a receive binding
 // (`x := <-ch` / `x = <-ch`) or a plain send/expression condition.
 fn (mut g Gen) select_branch_header(value string, conds []flat.NodeId) {
-	if conds.len == 2 && (value == 'recv' || value == 'recv_assign'
-		|| value.starts_with('recv_compound:')) {
+	if conds.len == 2
+		&& (value == 'recv' || value == 'recv_assign' || value.starts_with('recv_compound:')) {
 		g.expr(conds[0])
 		if value == 'recv' {
 			g.write(' := ')
@@ -1656,12 +1656,24 @@ fn escape_string(s string, quote u8) string {
 	mut b := strings.new_builder(s.len + 8)
 	for c in s {
 		match c {
-			`\\` { b.write_string('\\\\') }
-			`$` { b.write_string('\\\$') }
-			`\n` { b.write_string('\\n') }
-			`\r` { b.write_string('\\r') }
-			`\t` { b.write_string('\\t') }
-			0 { b.write_string('\\0') }
+			`\\` {
+				b.write_string('\\\\')
+			}
+			`$` {
+				b.write_string('\\\$')
+			}
+			`\n` {
+				b.write_string('\\n')
+			}
+			`\r` {
+				b.write_string('\\r')
+			}
+			`\t` {
+				b.write_string('\\t')
+			}
+			0 {
+				b.write_string('\\0')
+			}
 			else {
 				if c == quote {
 					b.write_u8(`\\`)

@@ -7857,4 +7857,3 @@ fn main() {
 	assert reordered.exit_code == 0, reordered.output
 	assert run_module_cache_binary(reordered_output) == '1'
 }
-

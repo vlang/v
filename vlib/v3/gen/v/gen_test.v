@@ -40,7 +40,8 @@ fn reparse_diagnostics(name string, src string) int {
 }
 
 fn test_fn_and_method() {
-	out := vfmt('method', 'module m\npub fn (mut p Point) inc(dx int) int {\n\tp.n += dx\n\treturn p.n\n}\n')
+	out := vfmt('method',
+		'module m\npub fn (mut p Point) inc(dx int) int {\n\tp.n += dx\n\treturn p.n\n}\n')
 	assert out == 'module m
 
 pub fn (mut p Point) inc(dx int) int {
@@ -67,7 +68,8 @@ fn test_attributes_and_pub() {
 }
 
 fn test_enum_and_types() {
-	out := vfmt('enum', 'pub enum Color as u8 {\n\tred = 1\n\tgreen\n}\n\ntype MyInt = int\ntype Sum = Foo | Bar\n')
+	out := vfmt('enum',
+		'pub enum Color as u8 {\n\tred = 1\n\tgreen\n}\n\ntype MyInt = int\ntype Sum = Foo | Bar\n')
 	assert out.contains('enum Color as u8 {')
 	assert out.contains('red = 1')
 	assert out.contains('type MyInt = int')
@@ -95,7 +97,8 @@ fn test_control_flow() {
 }
 
 fn test_match() {
-	out := vfmt('match', 'fn f(x int) string {\n\treturn match x {\n\t\t1, 2 { "a" }\n\t\telse { "b" }\n\t}\n}\n')
+	out := vfmt('match',
+		'fn f(x int) string {\n\treturn match x {\n\t\t1, 2 { "a" }\n\t\telse { "b" }\n\t}\n}\n')
 	assert out.contains('match x {')
 	assert out.contains('1, 2 {')
 	assert out.contains('else {')
@@ -154,7 +157,8 @@ fn test_select_receive_forms() {
 }
 
 fn test_generics_and_interface() {
-	out := vfmt('gen', 'pub struct Stack[T] {\nmut:\n\tdata []T\n}\n\ninterface Reader {\n\tread(mut buf []u8) !int\nmut:\n\tpos int\n}\n')
+	out := vfmt('gen',
+		'pub struct Stack[T] {\nmut:\n\tdata []T\n}\n\ninterface Reader {\n\tread(mut buf []u8) !int\nmut:\n\tpos int\n}\n')
 	assert out.contains('struct Stack[T] {')
 	assert out.contains('interface Reader {')
 	assert out.contains('read(mut buf []u8) !int')

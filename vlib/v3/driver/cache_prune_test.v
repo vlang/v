@@ -88,8 +88,9 @@ int v3_lib_value(void) { return 42; }
 	// The implementation switch is restored after the header expands.
 	assert (include.last_index('#define LIB_IMPL') or { -1 }) > include_pos
 	// A gated external definition is stripped, so splitting the root is safe.
-	assert !cache_native_public_include_replays_external_definition(real_header, ['#define LIB_IMPL'],
-		implementation_macros, []string{}, 'cc', pref.host_target())
+	assert !cache_native_public_include_replays_external_definition(real_header, [
+		'#define LIB_IMPL',
+	], implementation_macros, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_native_public_include_replays_unconditional_external_definition() {
@@ -249,8 +250,8 @@ fn test_cache_compiler_macro_probe_uses_implicit_objective_c_language() {
 		assert '__OBJC__' in macros
 		// An Objective-C++ input defines both __OBJC__ and __cplusplus; the probe must
 		// carry __cplusplus so branches guarded by it are not discarded.
-		objc_cpp_macros, objc_cpp_complete := cache_c_compiler_predefined_macros([]string{},
-			'cc', pref.host_target(), 'objective-c++')
+		objc_cpp_macros, objc_cpp_complete := cache_c_compiler_predefined_macros([]string{}, 'cc',
+			pref.host_target(), 'objective-c++')
 		assert objc_cpp_complete
 		assert '__OBJC__' in objc_cpp_macros
 		assert '__cplusplus' in objc_cpp_macros
@@ -388,4 +389,3 @@ fn test_prune_cached_native_function_prototypes_resolves_cache_guards() {
 	assert pruned.contains('int library_api(void);')
 	assert !pruned.contains('V3CACHE_PROGRAM_UNIT')
 }
-

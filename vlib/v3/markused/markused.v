@@ -778,7 +778,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				// Not precollected (no eager pass, or not part of that decl set) —
 				// collect inline.
 				node := a.node(fn_info.node_id)
-				body := collector.collect_body(node, fn_info.module, collector.imports(fn_info.import_context))
+				body := collector.collect_body(node, fn_info.module,
+					collector.imports(fn_info.import_context))
 				calls << body.calls
 				initializer_refs << body.refs
 				if detect_reachable_generics {
