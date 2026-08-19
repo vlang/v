@@ -1,6 +1,7 @@
 module picoev
 
 import net
+import os
 import pico_http_parser
 import time
 
@@ -307,6 +308,15 @@ fn default_error_callback(_data voidptr, _req pico_http_parser.Request, mut res 
 
 // new creates a `Picoev` struct and initializes the main loop.
 pub fn new(config Config) !&Picoev {
+	// A server must not die on a peer RST: any write to a connection the client
+	// already reset delivers SIGPIPE, whose default action terminates the process
+	// SILENTLY (no panic, no crash report). Long-held fds (SSE) make this routine
+	// rather than rare — a subscriber that disconnects between pushes turns the
+	// next push into a process kill. Ignore it process-wide once a server event
+	// loop exists; write()/send() then report EPIPE and the caller drops the fd.
+	$if !windows {
+		os.signal_ignore(.pipe)
+	}
 	listening_socket_fd := listen(config) or {
 		elog('Error during listen: ${err}')
 		return err
