@@ -1075,13 +1075,43 @@ fixed the normal way, by running the suite and reading the failure.
 Full `net.quic` suite green throughout, 52/52 files, zero regressions in
 Phases 0-10.
 
-## Phases 12-14 (NOT STARTED)
+## Phase 12: HTTP/3 client wiring — IN PROGRESS
 
-See the tracking issue for full detail on each. In order:
+Sub-scoped into 4 sequential sub-phases within one PR (mirroring Phase 2's
+2a/2b/2c and Phase 9's 9a/9b precedent), each a hard dependency of the
+next:
 
-12. HTTP/3 client wiring into `Request`/`Response`/`Transport` — also where
-    Phase 10's and Phase 11's deferred-state items above actually get
-    wired up.
+- **12a** — surgical additions to already-merged Phase 9 code
+  (`conn.v`/`tls13_handshake.v`): a negotiated-ALPN accessor (computed
+  during the handshake but previously discarded), a `peer_stream_opened`
+  event for peer-initiated stream discovery (careful to avoid a silent
+  false-negative under UDP reordering caused by `get_or_create`'s
+  RFC 9000 §2.1 sibling-auto-creation behavior), and a
+  `stream_recv_status` query. No new files.
+- **12b** — HTTP/3 + QPACK connection wiring, pure `module quic`: `H3Conn`
+  wraps `QuicConn` with control-stream/QPACK-stream driving, the request-
+  stream message-framing state machine (RFC 9114 §4.1), and the
+  previously-entirely-missing blocked-HEADERS retry/re-queue mechanism.
+  Fixture-testable with no socket, same style as Phase 9's `conn_test.v`.
+- **12c** — UDP transport + `H3MuxConn` threading, `module http`: first UDP
+  socket code and first background-thread-drives-a-non-thread-safe-
+  `poll()`-state-machine code in the repo. Highest-risk sub-phase.
+- **12d** — `Transport`/`Request`/`Response` integration: `req.enable_http3`
+  opt-in (default `false`, no automatic h2/h1 fallback), a 3rd pool
+  alongside `h1_idle`/`h2_conns`.
+
+Two scope decisions made without a response after being flagged for
+sign-off, proceeding with the lower-risk default in each case (revisitable
+during review): server push is permanently disabled for v1 (never sending
+MAX_PUSH_ID means no push is ever authorized per RFC 9114 §7.2.7, so any
+received PUSH_PROMISE/CANCEL_PUSH is unconditionally rejected
+`H3_ID_ERROR` — avoids building real max-push-id/seen-push-id cross-frame
+state for a feature v1 never uses); `enable_http3` has no automatic
+h2/h1 fallback if the h3 attempt fails (UDP has no fast-fail signal the
+way a closed TCP port does, so auto-racing every `https://` request
+against h3 would regress the common case; real happy-eyeballs-style
+fallback is deferred as a separate follow-up feature).
+
 13. Server support — explicitly out of committed scope, but Phases 1-9 are
     designed to need no rework for it (`role` field already present).
 14. 0-RTT — explicitly out of committed scope.
