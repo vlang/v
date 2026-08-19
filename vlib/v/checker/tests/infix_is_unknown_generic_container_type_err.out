@@ -1,0 +1,7 @@
+vlib/v/checker/tests/infix_is_unknown_generic_container_type_err.vv:9:16: error: is: type `Box[[]Missing]` does not exist
+    7 | fn main() {
+    8 |     v := Value(Box[int]{})
+    9 |     if v is Box[[]Missing] {
+      |                   ~~~~~~~
+   10 |         println('yes')
+   11 |     }

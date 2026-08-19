@@ -981,8 +981,16 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('${node.left} is an Optional, it needs to be unwrapped first',
 						node.left.pos())
 				}
-				if typ_sym.kind == .placeholder {
-					c.error('${op}: type `${typ_sym.name}` does not exist', right_expr.pos())
+				unresolved_name := c.find_unresolved_placeholder_name(typ_sym)
+				if name := unresolved_name {
+					mut err_pos := right_expr.pos()
+					if typ_sym.name.contains('[') {
+						// `typ_sym` is a generic instantiation (e.g. `Missing[int]`,
+						// `Box[Missing]`), not a plain unresolved identifier; point at
+						// the actual unresolved part instead of the whole expression.
+						err_pos = c.unresolved_type_error_pos(name, err_pos)
+					}
+					c.error('${op}: type `${typ_sym.name}` does not exist', err_pos)
 				}
 				mut left_sumtype_check_type := left_type
 				if mut left_sym.info is ast.Aggregate {
@@ -990,44 +998,58 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_sumtype_check_type = parent_left_type
 					left_sym = c.table.sym(parent_left_type)
 				}
-				if c.inside_sql {
-					if typ != ast.none_type_idx {
-						c.error('`${op}` can only be used to test for none in sql', node.pos)
-					}
-				} else if left_final_sym.kind !in [.interface, .sum_type]
-					&& !c.comptime.is_comptime(node.left) && !c.is_orig_sumtype(node.left) {
-					c.error('`${op}` can only be used with interfaces and sum types', node.pos) // can be used in sql too, but keep err simple
-				} else if mut left_sym.info is ast.SumType {
-					variant_typ := if left_type.nr_muls() > 0
-						&& typ.nr_muls() <= left_type.nr_muls() {
-						typ.set_nr_muls(0)
-					} else {
-						typ
-					}
-					unwrapped_variant_typ := c.unwrap_generic(variant_typ)
-					if !c.table.sumtype_has_variant_recursive(left_sumtype_check_type, variant_typ, true)
-						&& !c.table.sumtype_has_variant_recursive(left_sumtype_check_type, unwrapped_variant_typ, true) {
-						c.error('`${left_sym.name}` has no variant `${typ_sym.name}`', right_pos)
-					}
-				} else if c.is_orig_sumtype(node.left) {
-					// Variable is smartcast but original type is a sum type;
-					// allow the `is` check using the original type's variants.
-					if node.left is ast.Ident && node.left.obj is ast.Var {
-						orig_t := (node.left.obj as ast.Var).orig_type
-						orig_sym := c.table.sym(orig_t)
-						if orig_sym.info is ast.SumType {
-							unwrapped_typ := c.unwrap_generic(typ)
-							if !c.table.sumtype_has_variant_recursive(orig_t, typ, true)
-								&& !c.table.sumtype_has_variant_recursive(orig_t, unwrapped_typ, true) {
-								c.error('`${orig_sym.name}` has no variant `${typ_sym.name}`',
-									right_pos)
+				// An unresolved generic instantiation (e.g. `Box[Missing]`, where the
+				// outer symbol is a partially-resolved container rather than a bare
+				// placeholder) was already reported above as an unknown type.
+				// Skip the sum type/interface checks below so it does not also produce
+				// a misleading "has no variant" or "doesn't implement interface"
+				// diagnostic for the same expression.
+				is_unresolved_generic_inst := typ_sym.name.contains('[') && unresolved_name != none
+				if !is_unresolved_generic_inst {
+					if c.inside_sql {
+						if typ != ast.none_type_idx {
+							c.error('`${op}` can only be used to test for none in sql', node.pos)
+						}
+					} else if left_final_sym.kind !in [.interface, .sum_type]
+						&& !c.comptime.is_comptime(node.left) && !c.is_orig_sumtype(node.left) {
+						c.error('`${op}` can only be used with interfaces and sum types', node.pos) // can be used in sql too, but keep err simple
+					} else if mut left_sym.info is ast.SumType {
+						variant_typ := if left_type.nr_muls() > 0
+							&& typ.nr_muls() <= left_type.nr_muls() {
+							typ.set_nr_muls(0)
+						} else {
+							typ
+						}
+						unwrapped_variant_typ := c.unwrap_generic(variant_typ)
+						if !c.table.sumtype_has_variant_recursive(left_sumtype_check_type, variant_typ, true)
+							&& !c.table.sumtype_has_variant_recursive(left_sumtype_check_type, unwrapped_variant_typ, true) {
+							c.error('`${left_sym.name}` has no variant `${typ_sym.name}`',
+								right_pos)
+						}
+					} else if c.is_orig_sumtype(node.left) {
+						// Variable is smartcast but original type is a sum type;
+						// allow the `is` check using the original type's variants.
+						if node.left is ast.Ident && node.left.obj is ast.Var {
+							orig_t := (node.left.obj as ast.Var).orig_type
+							orig_sym := c.table.sym(orig_t)
+							if orig_sym.info is ast.SumType {
+								unwrapped_typ := c.unwrap_generic(typ)
+								if !c.table.sumtype_has_variant_recursive(orig_t, typ, true)
+									&& !c.table.sumtype_has_variant_recursive(orig_t, unwrapped_typ, true) {
+									c.error('`${orig_sym.name}` has no variant `${typ_sym.name}`',
+										right_pos)
+								}
 							}
 						}
-					}
-				} else if left_sym.info is ast.Interface {
-					if typ_sym.kind != .interface && !c.type_implements(typ, left_type, right_pos) {
-						c.error("`${typ_sym.name}` doesn't implement interface `${left_sym.name}`",
-							right_pos)
+					} else if left_sym.info is ast.Interface {
+						// An unresolved type (bare placeholder or generic instantiation) never
+						// implements anything; the "unknown type" diagnostic above already
+						// covers it.
+						if unresolved_name == none && typ_sym.kind != .interface
+							&& !c.type_implements(typ, left_type, right_pos) {
+							c.error("`${typ_sym.name}` doesn't implement interface `${left_sym.name}`",
+								right_pos)
+						}
 					}
 				}
 			}
