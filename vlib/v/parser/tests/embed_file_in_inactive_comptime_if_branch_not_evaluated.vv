@@ -1,0 +1,11 @@
+fn inactive_branch_embed_is_not_evaluated() {
+	_ := 0 == ($if missing ? {
+		$embed_file(@FILE).len
+	} $else {
+		0
+	})
+}
+
+fn main() {
+	assert missing_symbol == 0
+}

@@ -1,0 +1,10 @@
+fn main() {
+	'' == fn () string {
+		select {
+			else {
+				return $embed_file(@FILE).path
+			}
+		}
+		return ''
+	}()
+}

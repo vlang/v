@@ -1,0 +1,7 @@
+import v.embed_file
+
+type Value = embed_file.EmbedFileData | string
+
+fn main() {
+	(Value($embed_file(@FILE)) as embed_file.EmbedFileData)
+}

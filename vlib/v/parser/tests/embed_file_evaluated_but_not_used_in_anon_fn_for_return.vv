@@ -1,0 +1,8 @@
+fn main() {
+	'' == fn () string {
+		for _ in 0 .. 1 {
+			return $embed_file(@FILE).path
+		}
+		return ''
+	}()
+}

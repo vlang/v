@@ -1,0 +1,9 @@
+fn main() {
+	n := 1
+	match n {
+		1 {
+			$embed_file(@FILE)
+		}
+		else {}
+	}
+}

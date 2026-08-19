@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_lock_selector.vv:13:3: error: expression evaluated but not used
+   11 | 
+   12 |     (rlock s {
+   13 |         $embed_file(@FILE)
+      |         ~~~~~~~~~~~~~~~~~~
+   14 |     }).path
+   15 | }

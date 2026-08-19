@@ -1,0 +1,10 @@
+vlib/v/checker/tests/dbg_outside_fn_err.vv:2:1: notice: script mode started here
+    1 | module main
+    2 | $dbg;
+      | ^
+    3 | fn main() {}
+vlib/v/checker/tests/dbg_outside_fn_err.vv:3:4: error: all definitions must occur before code in script mode
+    1 | module main
+    2 | $dbg;
+    3 | fn main() {}
+      |    ~~~~

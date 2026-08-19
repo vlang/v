@@ -1,0 +1,11 @@
+fn main() {
+	cond := true
+	_ := if cond {
+		{
+			$embed_file(@FILE)
+		}
+		0
+	} else {
+		1
+	}
+}

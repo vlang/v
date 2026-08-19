@@ -1,0 +1,8 @@
+fn main() {
+	'' == fn () string {
+		for $embed_file(@FILE).len > 0 {
+			return 'x'
+		}
+		return ''
+	}()
+}

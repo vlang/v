@@ -1,0 +1,5 @@
+fn main() {
+	({
+		name == $embed_file(@FILE).path
+	})
+}

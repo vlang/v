@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_non_result_nested_if.vv:6:4: error: expression evaluated but not used
+    4 |     _ := if ok {
+    5 |         if other {
+    6 |             $embed_file(@FILE)
+      |             ~~~~~~~~~~~~~~~~~~
+    7 |         } else {
+    8 |             $embed_file(@FILE)
