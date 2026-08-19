@@ -90,6 +90,11 @@ pub fn new_builder(pref_ &pref.Preferences) Builder {
 		util.emanager.set_support_color(false)
 	}
 	table.pointer_size = if pref_.m64 && pref_.backend != .wasm { 8 } else { 4 }
+	table.generic_fn_inst_limit = pref_.generic_fn_inst_limit
+	table.generic_inst_name_len_limit = pref_.generic_inst_name_len_limit
+	table.generic_inst_depth_limit = pref_.generic_inst_depth_limit
+	table.alias_unwrap_depth_limit = pref_.alias_unwrap_depth_limit
+	table.max_postprocess_iterations = pref_.max_postprocess_iterations
 	mut msvc := MsvcResult{}
 	if pref_.ccompiler_type == .msvc || pref.cc_from_string(pref_.ccompiler) == .msvc {
 		$if windows {
