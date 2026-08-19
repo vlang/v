@@ -6,6 +6,19 @@ import v.pref
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
 const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
 
+// macos_v3_non_compilation_command lists the builtin commands that carry a path
+// (or a directory) but are NOT compilation commands the V3 driver understands —
+// it only knows `run`/`build`/`test`. An unrecognized command token such as
+// `crun` or `build-module` would otherwise become V3's first input path and then
+// collide with the real target. Both dispatch gates exclude these; keep the list
+// in one place so they cannot drift. `test` is handled separately by each gate.
+@[markused]
+fn macos_v3_non_compilation_command(command string) bool {
+	return command in ['build-module', 'crun', 'help', 'version', 'new', 'init', 'install', 'link',
+		'list', 'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs',
+		'interpret', 'get', 'translate']
+}
+
 // macos_v3_force_requested reports whether `-new-compiler` should hand this
 // invocation to the embedded V3 compiler. It gates on `-old-compiler`
 // precedence, options/modes V3 cannot honor yet, and whether the command is an
@@ -24,7 +37,8 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 	if prefs.autofree && prefs.is_run {
 		return false
 	}
-	if prefs.path == '' || command == 'test' || command in external_tools {
+	if prefs.path == '' || command == 'test' || macos_v3_non_compilation_command(command)
+		|| command in external_tools {
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')

@@ -1654,6 +1654,26 @@ fn test_macos_v3_new_compiler_routing_and_precedence() {
 		new_compiler: true
 		path:         'main_test.v'
 	})
+	// V3 recognizes only run/build/test. Other builtin commands whose token the
+	// launcher turns into a path (crun -> `.v`, build-module -> directory,
+	// interpret/translate -> `.v`) must not be handed to V3, or the command token
+	// becomes its first input path and collides with the real target.
+	assert !macos_v3_force_requested('crun', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('build-module', &pref.Preferences{
+		new_compiler: true
+		path:         os.temp_dir()
+	})
+	assert !macos_v3_force_requested('interpret', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('translate', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
 	// `-old-compiler` takes precedence over `-new-compiler`.
 	assert !macos_v3_force_requested('run', &pref.Preferences{
 		new_compiler: true

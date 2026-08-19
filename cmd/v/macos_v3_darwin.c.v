@@ -102,9 +102,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if command in external_tools {
 		return false
 	}
-	if command in ['build-module', 'help', 'version', 'new', 'init', 'install', 'link', 'list',
-		'outdated', 'remove', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs',
-		'interpret', 'get', 'translate', 'crun'] {
+	if macos_v3_non_compilation_command(command) {
 		return false
 	}
 	return command in ['run', 'build', 'test'] || prefs.is_script || os.is_dir(prefs.path)
