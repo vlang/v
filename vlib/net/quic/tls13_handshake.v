@@ -153,7 +153,14 @@ mut:
 	// Mirrors ClientHandshakeParams.alpn_protocols -- retained so
 	// process_encrypted_extensions can check the server's ALPN selection
 	// (RFC 7301 §3.2) is actually one this client offered.
-	alpn_protocols      []string
+	alpn_protocols []string
+	// The protocol process_encrypted_extensions actually selected -- empty
+	// until then. ALPN protocol names are never empty per RFC 7301's
+	// opaque ProtocolName<1..2^8-1>, so empty-string-as-"not yet known" is
+	// safe. Phase 12 needs this to confirm which protocol (e.g. "h3") was
+	// actually negotiated, not just that the server picked something from
+	// the offered list.
+	negotiated_alpn     string
 	handshake_secrets   HandshakeSecrets
 	application_secrets ApplicationSecrets
 	verified_chain      &VerifiedCertificateChain = unsafe { nil }
@@ -179,6 +186,17 @@ pub mut:
 // to receive.
 pub fn (h &Tls13ClientHandshake) state() ClientHandshakeState {
 	return h.state
+}
+
+// negotiated_alpn returns the ALPN protocol the server selected, or none
+// if EncryptedExtensions hasn't been processed yet. Once set, it is one of
+// the values this client offered in ClientHandshakeParams.alpn_protocols
+// (process_encrypted_extensions already validated that before storing it).
+pub fn (h &Tls13ClientHandshake) negotiated_alpn() ?string {
+	if h.negotiated_alpn == '' {
+		return none
+	}
+	return h.negotiated_alpn
 }
 
 // application_secrets returns the derived 1-RTT traffic secrets. Only
@@ -434,6 +452,7 @@ pub fn (mut h Tls13ClientHandshake) process_encrypted_extensions(msg HandshakeMe
 		return handshake_error(.no_application_protocol,
 			'quic: server selected ALPN protocol "${selected_protocol}" which this client did not offer')
 	}
+	h.negotiated_alpn = selected_protocol
 
 	tp_ext := find_extension(extensions, ext_quic_transport_parameters) or {
 		// RFC 9001 §8.2 mandates the specific missing_extension alert

@@ -67,16 +67,18 @@ pub:
 pub enum QuicEventKind {
 	handshake_confirmed
 	connection_closed
+	peer_stream_opened
 }
 
 // QuicEvent reports one thing that happened during a poll()/
 // process_timeouts() call. `error_code`/`reason` are set only for
-// connection_closed.
+// connection_closed; `stream_id` is set only for peer_stream_opened.
 pub struct QuicEvent {
 pub:
 	kind       QuicEventKind
 	error_code ?u64
 	reason     string
+	stream_id  ?u64
 }
 
 // PollResult reports everything one poll()/process_timeouts() call
@@ -187,6 +189,16 @@ mut:
 	pending_stream_write map[u64]PendingStreamWrite
 	pending_stream_reset map[u64]u64 // stream_id -> error_code, queued RESET_STREAM frames
 	conn_bytes_read      u64
+	// Every peer-initiated stream ID a peer_stream_opened event has already
+	// been reported for. Keyed on the specific ID handle_stream_frame/
+	// handle_reset_stream_frame were actually called with, NEVER derived
+	// from c.streams' own existence map -- get_or_create silently
+	// auto-creates every lower-numbered same-category sibling as an empty
+	// filler (RFC 9000 §2.1), so an out-of-order arrival (ordinary over
+	// UDP) would otherwise cause a real stream's own later STREAM/
+	// RESET_STREAM frame to hit the fast already-exists path and never be
+	// announced. See note_peer_stream_discovered.
+	announced_peer_streams map[u64]bool
 
 	conn_send_window FlowControlWindow
 	conn_recv_window ReceiveWindow
@@ -245,6 +257,15 @@ pub fn (c &QuicConn) state() ConnectionState {
 // .client (see stream.v's QuicRole doc comment).
 pub fn (c &QuicConn) role() QuicRole {
 	return c.role
+}
+
+// negotiated_alpn reports the ALPN protocol the server selected, or none
+// before EncryptedExtensions has been processed (i.e. before
+// handshake_confirmed can even fire -- ALPN is settled well before the
+// handshake completes, so a caller checking this after handshake_confirmed
+// always gets a value, never none).
+pub fn (c &QuicConn) negotiated_alpn() ?string {
+	return c.handshake.negotiated_alpn()
 }
 
 // -------------------------------------------------------------------------
@@ -969,10 +990,10 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 			// handler for it. Legal on the wire, silently not acted upon.
 		}
 		StreamFrame {
-			c.handle_stream_frame(frame)!
+			c.handle_stream_frame(frame, mut result)!
 		}
 		ResetStreamFrame {
-			c.handle_reset_stream_frame(frame)!
+			c.handle_reset_stream_frame(frame, mut result)!
 		}
 		StopSendingFrame {
 			c.handle_stop_sending_frame(frame)
@@ -1004,7 +1025,98 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 	}
 }
 
-fn (mut c QuicConn) handle_stream_frame(frame StreamFrame) ! {
+// note_peer_stream_discovered queues a peer_stream_opened event the first
+// time this connection ever observes `stream_id` NAMED DIRECTLY by an
+// incoming frame -- but only when `stream_id` is genuinely in a
+// peer-initiated ID category (StreamId.is_locally_initiated == false).
+// This distinction is load-bearing, not defensive: get_or_create's fast
+// path (`if existing := s.streams[raw_id] { return existing }`) returns
+// early for ANY already-known ID without re-checking who initiated it, so
+// a peer's reply on a stream THIS endpoint opened via open_stream() -- an
+// entirely ordinary bidi-stream exchange -- reaches this function too;
+// without the category check it would be wrongly reported as a
+// peer-opened stream every time a first reply arrives on our own stream.
+//
+// Deliberately NOT keyed on "was `stream_id` newly inserted into
+// c.streams" either: get_or_create's RFC 9000 §2.1 sibling-auto-creation
+// would otherwise let an out-of-order arrival (ordinary over UDP) silently
+// pre-create a lower-numbered peer stream's entry as an empty filler, and
+// that stream's own later, explicitly-addressed frame would then hit the
+// fast already-exists path and never be announced at all.
+//
+// Idempotent past the first call for a given ID (a stream can be named by
+// many frames over its lifetime).
+fn (mut c QuicConn) note_peer_stream_discovered(stream_id u64, mut result PollResult) {
+	id := StreamId{
+		value: stream_id
+	}
+	if id.is_locally_initiated(c.role) {
+		return
+	}
+	if stream_id !in c.announced_peer_streams {
+		c.announced_peer_streams[stream_id] = true
+		result.events << QuicEvent{
+			kind:      .peer_stream_opened
+			stream_id: stream_id
+		}
+	}
+}
+
+// StreamRecvTerminalState is a simplified view of RecvStreamState (stream.v)
+// for callers that only care whether a stream's receive side has reached a
+// terminal condition, not the full 6-state machine -- collapses recv into
+// open, and both size_known/data_recvd (a FIN has been observed, whether or
+// not every byte has actually arrived yet) into fin_received, since for a
+// caller checking "did this critical stream close" (RFC 9114 §4.2/§6.2.1),
+// the FIN itself is what matters, not full byte-level completion.
+pub enum StreamRecvTerminalState {
+	open
+	fin_received
+	reset_received
+}
+
+// StreamRecvStatus is stream_recv_status's return shape.
+pub struct StreamRecvStatus {
+pub:
+	state       StreamRecvTerminalState
+	reset_error ?u64 // set only when state == .reset_received
+}
+
+// stream_recv_status reports `stream_id`'s current receive-side terminal
+// status, or none if the ID is unknown to this connection (never seen in
+// any frame, and never locally opened) or has no receive side at all (a
+// locally-initiated unidirectional stream). reset_recvd/reset_read always
+// win over size_known/data_recvd if both have occurred (RFC 9000 §3.2
+// permits a RESET_STREAM after all data was already received, and
+// mark_reset_recvd applies unconditionally in that case -- see its own doc
+// comment), so checking reset first below matches the underlying state
+// machine's own precedence, not just this function's own guess at it.
+pub fn (c &QuicConn) stream_recv_status(stream_id u64) ?StreamRecvStatus {
+	stream := c.streams.get(stream_id) or { return none }
+	if !stream.has_recv() {
+		return none
+	}
+	match stream.recv.state {
+		.reset_recvd, .reset_read {
+			return StreamRecvStatus{
+				state:       .reset_received
+				reset_error: stream.recv.error_code
+			}
+		}
+		.size_known, .data_recvd, .data_read {
+			return StreamRecvStatus{
+				state: .fin_received
+			}
+		}
+		.recv {
+			return StreamRecvStatus{
+				state: .open
+			}
+		}
+	}
+}
+
+fn (mut c QuicConn) handle_stream_frame(frame StreamFrame, mut result PollResult) ! {
 	id := StreamId{
 		value: frame.stream_id
 	}
@@ -1014,6 +1126,7 @@ fn (mut c QuicConn) handle_stream_frame(frame StreamFrame) ! {
 		c.local_max_streams_bidi
 	}
 	mut stream := c.streams.get_or_create(frame.stream_id, max_streams)!
+	c.note_peer_stream_discovered(frame.stream_id, mut result)
 	if !stream.has_recv() {
 		return error('quic: STREAM_STATE_ERROR: received STREAM frame for send-only stream ${frame.stream_id}')
 	}
@@ -1036,7 +1149,7 @@ fn (mut c QuicConn) handle_stream_frame(frame StreamFrame) ! {
 	}
 }
 
-fn (mut c QuicConn) handle_reset_stream_frame(frame ResetStreamFrame) ! {
+fn (mut c QuicConn) handle_reset_stream_frame(frame ResetStreamFrame, mut result PollResult) ! {
 	id := StreamId{
 		value: frame.stream_id
 	}
@@ -1046,6 +1159,7 @@ fn (mut c QuicConn) handle_reset_stream_frame(frame ResetStreamFrame) ! {
 		c.local_max_streams_bidi
 	}
 	mut stream := c.streams.get_or_create(frame.stream_id, max_streams)!
+	c.note_peer_stream_discovered(frame.stream_id, mut result)
 	if !stream.has_recv() {
 		return error('quic: STREAM_STATE_ERROR: received RESET_STREAM for send-only stream ${frame.stream_id}')
 	}
