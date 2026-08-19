@@ -1567,6 +1567,89 @@ pub fn cache_native_input_path_needs_objective_c(path string, c_flags []string, 
 	return c_header_text_needs_objective_c_for_target(text, c_flags, c99_mode, target)
 }
 
+// cache_native_input_language reports the exact preprocessor language cgen
+// selects for a native input. The dependency probe and privacy preprocessing must
+// use it so they observe the same predefined macros as the real build; an `.mm`
+// source, for example, is Objective-C++ and defines both `__OBJC__` and
+// `__cplusplus`, so probing it as plain C or Objective-C omits `__cplusplus` and
+// wrongly discards branches guarded by it.
+pub fn cache_native_input_language(path string, c_flags []string, c99_mode bool, target pref.Target) string {
+	if path.ends_with('.mm') {
+		return 'objective-c++'
+	}
+	if path.ends_with('.m') {
+		return 'objective-c'
+	}
+	if path.ends_with('.cc') || path.ends_with('.cpp') {
+		return 'c++'
+	}
+	if cache_native_input_path_needs_objective_c(path, c_flags, c99_mode, target) {
+		return 'objective-c'
+	}
+	return 'c'
+}
+
+// cache_native_inputs_language reports the richest preprocessor language any
+// native input requires. The shared compiler-macro probe uses it so it never omits
+// a language macro (`__OBJC__`, `__cplusplus`) that an input's active branches
+// depend on.
+pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, target pref.Target) string {
+	include_dirs := c_flag_include_dirs(c_flags)
+	mut need_objc := false
+	mut need_cpp := false
+	mut cur_file := ''
+	for node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value !in ['include', 'insert'] || node.typ.len == 0 {
+			continue
+		}
+		include_arg := c_include_arg_for_target(node.typ, vroot, cur_file, target)
+		if include_arg.len == 0 || c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
+			continue
+		}
+		if c_include_arg_is_source_file(include_arg) {
+			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
+				match cache_native_input_language(path, c_flags, c99_mode, target) {
+					'objective-c++' {
+						need_objc = true
+						need_cpp = true
+					}
+					'objective-c' {
+						need_objc = true
+					}
+					'c++' {
+						need_cpp = true
+					}
+					else {}
+				}
+			}
+			continue
+		}
+		if header := c_inline_header_text(include_arg, vroot, cur_file, include_dirs, false) {
+			if c_header_text_needs_objective_c_for_target(header.text, c_flags, c99_mode, target) {
+				need_objc = true
+			}
+		}
+	}
+	return c_native_language_from_features(need_objc, need_cpp)
+}
+
+fn c_native_language_from_features(need_objc bool, need_cpp bool) string {
+	if need_objc && need_cpp {
+		return 'objective-c++'
+	}
+	if need_cpp {
+		return 'c++'
+	}
+	if need_objc {
+		return 'objective-c'
+	}
+	return 'c'
+}
+
 // cache_c_flag_input_files returns forced include/macro files whose contents
 // affect every cached object compiled with the supplied C flags.
 pub fn cache_c_flag_input_files(flags []string) []string {
@@ -1767,7 +1850,12 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		mut include_args := [c_include_arg(c_directive_arg(clean), vroot, real_path)]
 		if !c_include_arg_is_literal(include_args[0]) {
 			macro_name := include_args[0].trim_space()
-			if dynamic_include_macros[macro_name] {
+			// A `true` value marks a nonliteral dynamic definition; a `false` value
+			// marks an ambiguous mutation. Both make the include target unknowable, so
+			// membership alone is untracked. Falling through on a `false` entry would let
+			// literal recovery adopt a stale textual literal that the real preprocessor
+			// never selects.
+			if macro_name in dynamic_include_macros {
 				if os.getenv('V3_CACHE_TRACE') != '' {
 					eprintln('  V3 module cache dynamic nested include: file=${real_path} include=${macro_name}')
 				}

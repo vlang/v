@@ -1654,6 +1654,55 @@ fn main() {
 	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
 }
 
+fn test_flag_defined_native_implementation_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(),
+		'v3_module_cache_flag_defined_native_implementation_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/native.h', 'typedef struct { int value; } LibType;
+#ifdef LIB_IMPL
+int lib_value(void) { return 42; }
+#endif
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#flag -DLIB_IMPL
+#insert "@DIR/native.h"
+
+fn C.lib_value() int
+
+pub fn value() int {
+	return C.lib_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import owner
+
+fn main() {
+	println(owner.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	// LIB_IMPL is supplied on the command line, so the implementation is active but
+	// no context define gates it and the name is not a conventional switch. The
+	// public replay cannot disable it, so splitting would define lib_value in both
+	// the owner object and the program unit's replay. The warm rebuild links the
+	// cached objects, so a duplicate would only surface there.
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
+}
+
 fn test_static_helper_exposed_by_owner_macro_disables_module_cache_split() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_owner_macro_static_helper_${os.getpid()}')

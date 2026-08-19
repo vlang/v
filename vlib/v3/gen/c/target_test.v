@@ -857,6 +857,71 @@ fn test_cache_native_input_language_detects_implicit_objective_c() {
 	}
 }
 
+fn test_cache_native_input_language_reports_source_language() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_language_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	objc_cpp_source := os.join_path(dir, 'impl.mm')
+	objc_source := os.join_path(dir, 'impl.m')
+	cpp_source := os.join_path(dir, 'impl.cpp')
+	objc_header := os.join_path(dir, 'objc.h')
+	plain_header := os.join_path(dir, 'plain.h')
+	os.write_file(objc_cpp_source, 'int impl(void) { return 1; }\n')!
+	os.write_file(objc_source, 'int impl(void) { return 1; }\n')!
+	os.write_file(cpp_source, 'int impl(void) { return 1; }\n')!
+	os.write_file(objc_header, '@interface V3CacheLang\n@end\n')!
+	os.write_file(plain_header, 'int plain(void);\n')!
+	assert cache_native_input_language(objc_cpp_source, []string{}, false, prefs.target) == 'objective-c++'
+	assert cache_native_input_language(objc_source, []string{}, false, prefs.target) == 'objective-c'
+	assert cache_native_input_language(cpp_source, []string{}, false, prefs.target) == 'c++'
+	assert cache_native_input_language(objc_header, []string{}, false, prefs.target) == 'objective-c'
+	assert cache_native_input_language(plain_header, []string{}, false, prefs.target) == 'c'
+	// An .mm source is Objective-C++, so the shared probe language must carry both
+	// __OBJC__ and __cplusplus rather than a plain Objective-C choice.
+	mm_program := os.join_path(dir, 'mm_program.v')
+	os.write_file(mm_program, 'module sample\n#include "impl.mm"\n')!
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(mm_program)
+	assert cache_native_inputs_language(a, '', []string{}, false, prefs.target) == 'objective-c++'
+}
+
+fn test_cache_input_scan_rejects_ambiguous_include_macro_literal() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_ambiguous_include_macro_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	os.write_file(outer_header, '#define SELECTED_HEADER "default.h"
+#if FOO == 1
+#undef SELECTED_HEADER
+#define SELECTED_HEADER OVERRIDE_HEADER
+#endif
+#include SELECTED_HEADER
+')!
+	os.write_file(os.join_path(dir, 'default.h'), '#define DEFAULT_VALUE 1\n')!
+	os.write_file(os.join_path(dir, 'override.h'), '#define OVERRIDE_VALUE 1\n')!
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "outer.h"\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	// `FOO == 1` is not evaluable, so the SELECTED_HEADER mutation is ambiguous. The
+	// real preprocessor selects override.h; the scanner must not adopt the stale
+	// "default.h" literal and call the plan cacheable.
+	_, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, ['-DFOO=1', '-DOVERRIDE_HEADER="override.h"'], prefs.target)
+	assert has_untracked
+}
+
 fn test_cache_input_scan_bounds_repeated_header_trees() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_repeated_header_cache_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}

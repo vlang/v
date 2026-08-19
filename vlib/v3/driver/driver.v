@@ -2421,10 +2421,10 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		cache_input_modules[module_name] = true
 	}
 	cache_input_modules['main'] = true
-	native_inputs_need_objective_c := cgen.cache_native_inputs_need_objective_c(a, prefs.vroot,
-		user_c_flags, prefs.c99, prefs.target)
+	native_inputs_language := cgen.cache_native_inputs_language(a, prefs.vroot, user_c_flags,
+		prefs.c99, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags,
-		prefs.ccompiler, prefs.target, native_inputs_need_objective_c)
+		prefs.ccompiler, prefs.target, native_inputs_language)
 	external_inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, has_untracked_c_include := cgen.cache_external_input_files_with_resolved_flags(a,
 		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
 		module_cache_source_path_set(user_files), compiler_macros,
@@ -2471,7 +2471,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	return !has_untracked_c_include && can_scope_static_inputs && can_extract_native_types
 }
 
-fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target, native_inputs_need_objective_c bool) (map[string]string, bool) {
+fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target, native_inputs_language string) (map[string]string, bool) {
 	path := os.join_path(os.vtmp_dir(), 'v3_compiler_macros_${tempname.unique_token()}.c')
 	defer {
 		os.rm(path) or {}
@@ -2479,11 +2479,7 @@ fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target p
 	os.write_file(path, '') or { return map[string]string{}, false }
 	mut args := c_compiler_target_args(target, false) or { return map[string]string{}, false }
 	args << c_object_compile_flags(cache_c_flags_without_forced_inputs(flags))
-	args << ['-dM', '-E', '-x', if native_inputs_need_objective_c || c_flags_need_objective_c(flags) {
-		'objective-c'
-	} else {
-		'c'
-	}, path]
+	args << ['-dM', '-E', '-x', cache_probe_language(native_inputs_language, flags), path]
 	result := cmdexec.run(ccompiler, args)
 	if result.exit_code != 0 {
 		if os.getenv('V3_CACHE_TRACE') != '' {
@@ -2532,6 +2528,27 @@ fn cache_c_flags_without_forced_inputs(flags []string) []string {
 		i++
 	}
 	return out
+}
+
+// cache_probe_language combines the richest language the native inputs require
+// with any Objective-C request from the command-line flags, so the `-dM` probe
+// captures every language macro the real build defines.
+fn cache_probe_language(native_inputs_language string, flags []string) string {
+	mut need_objc := native_inputs_language in ['objective-c', 'objective-c++']
+	need_cpp := native_inputs_language in ['c++', 'objective-c++']
+	if c_flags_need_objective_c(flags) {
+		need_objc = true
+	}
+	if need_objc && need_cpp {
+		return 'objective-c++'
+	}
+	if need_cpp {
+		return 'c++'
+	}
+	if need_objc {
+		return 'objective-c'
+	}
+	return 'c'
 }
 
 fn cached_native_sources_require_monolithic_cgen(state &V3ModuleCacheState, a &flat.FlatAst, user_files []string) bool {
@@ -11115,12 +11132,11 @@ fn cache_preprocessed_native_input(path string, context []string, c_flags []stri
 	unsafe { source.free() }
 	mut args := c_compiler_target_args(target, false) or { return none }
 	args << c_object_compile_flags(c_flags)
-	args << ['-E', '-P', '-x', if c_flags_need_objective_c(c_flags)
-		|| cgen.cache_native_input_path_needs_objective_c(path, c_flags, false, target) {
-		'objective-c'
-	} else {
-		'c'
-	}, wrapper]
+	mut language := cgen.cache_native_input_language(path, c_flags, false, target)
+	if c_flags_need_objective_c(c_flags) && language !in ['objective-c', 'objective-c++'] {
+		language = if language == 'c++' { 'objective-c++' } else { 'objective-c' }
+	}
+	args << ['-E', '-P', '-x', language, wrapper]
 	result := cmdexec.run(ccompiler, args)
 	if result.exit_code != 0 {
 		if os.getenv('V3_CACHE_TRACE') != '' {

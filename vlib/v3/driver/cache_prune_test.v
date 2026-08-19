@@ -157,6 +157,16 @@ fn test_cache_c_flags_without_forced_inputs_drops_forced_files() {
 	assert filtered == ['-DFEATURE=1', '-I/tmp/inc', '-DOTHER']
 }
 
+fn test_cache_probe_language_unions_input_and_flag_languages() {
+	assert cache_probe_language('c', []string{}) == 'c'
+	assert cache_probe_language('objective-c', []string{}) == 'objective-c'
+	assert cache_probe_language('c++', []string{}) == 'c++'
+	assert cache_probe_language('objective-c++', []string{}) == 'objective-c++'
+	// A C++ input plus a command-line Objective-C request needs both macros.
+	assert cache_probe_language('c++', ['-fobjc-arc']) == 'objective-c++'
+	assert cache_probe_language('c', ['-x', 'objective-c']) == 'objective-c'
+}
+
 fn test_c_source_file_scope_identifiers_excludes_function_bodies_and_directives() {
 	identifiers := c_source_file_scope_identifiers('#define SYSTEM_HELPER() ignored_helper()
 #define LOCAL_FN(name) static int name(void)
@@ -234,9 +244,35 @@ fn test_cache_c_source_definitely_active_code_uses_target_predefined_macros() {
 fn test_cache_compiler_macro_probe_uses_implicit_objective_c_language() {
 	$if macos {
 		macros, complete := cache_c_compiler_predefined_macros([]string{}, 'cc',
-			pref.host_target(), true)
+			pref.host_target(), 'objective-c')
 		assert complete
 		assert '__OBJC__' in macros
+		// An Objective-C++ input defines both __OBJC__ and __cplusplus; the probe must
+		// carry __cplusplus so branches guarded by it are not discarded.
+		objc_cpp_macros, objc_cpp_complete := cache_c_compiler_predefined_macros([]string{},
+			'cc', pref.host_target(), 'objective-c++')
+		assert objc_cpp_complete
+		assert '__OBJC__' in objc_cpp_macros
+		assert '__cplusplus' in objc_cpp_macros
+	}
+}
+
+fn test_cache_compiler_macro_probe_excludes_forced_headers() {
+	$if macos {
+		dir := os.join_path(os.vtmp_dir(), 'v3_probe_forced_header_${os.getpid()}')
+		os.rmdir_all(dir) or {}
+		os.mkdir_all(dir) or { panic(err) }
+		defer {
+			os.rmdir_all(dir) or {}
+		}
+		forced := os.join_path(dir, 'forced.h')
+		os.write_file(forced, '#define V3_FORCED_PROBE_MACRO 1\n') or { panic(err) }
+		macros, complete := cache_c_compiler_predefined_macros(['-include', forced], 'cc',
+			pref.host_target(), 'c')
+		assert complete
+		// The forced header runs before the empty probe input, so its macros must not
+		// be reported as part of the predefined baseline the input scanner starts from.
+		assert 'V3_FORCED_PROBE_MACRO' !in macros
 	}
 }
 
