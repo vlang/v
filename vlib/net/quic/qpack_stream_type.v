@@ -36,6 +36,21 @@ pub fn classify_qpack_stream_type(raw_type u64) ?QpackStreamKind {
 	return none
 }
 
+// encode_qpack_encoder_stream_header returns the single-varint header this
+// endpoint's own QPACK encoder stream must send as its first bytes (RFC
+// 9204 §4.2) -- mirrors h3_stream_type.v's encode_h3_control_stream_header,
+// which this file never got its own copy of until Phase 12 needed one.
+pub fn encode_qpack_encoder_stream_header() ![]u8 {
+	return encode_varint(qpack_encoder_stream_type)
+}
+
+// encode_qpack_decoder_stream_header returns the single-varint header this
+// endpoint's own QPACK decoder stream must send as its first bytes (RFC
+// 9204 §4.2).
+pub fn encode_qpack_decoder_stream_header() ![]u8 {
+	return encode_varint(qpack_decoder_stream_type)
+}
+
 // QpackStreamRegistry tracks whether a peer has already opened its (at
 // most one) QPACK encoder stream and (at most one) QPACK decoder stream.
 // Mirrors `h3_message_state.v`'s `H3ControlStreamState` shape exactly (a
