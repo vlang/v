@@ -41,6 +41,19 @@ jobs:
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: make -j4 && ./v symlink
+      - name: Assert V3 is the default compiler (fail if V1 is silently used)
+        run: |
+          set -uo pipefail
+          # A monumental default-compiler change should be provable, not assumed:
+          # this canary fails loudly if V3 is NOT actually dispatched on Linux
+          # (i.e. the build silently used V1), or if V3 silently fell back to V1.
+          printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
+          V_MACOS_V3_NO_FALLBACK=1 ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/v3_canary.out" 2>&1 || true
+          cat "$RUNNER_TEMP/v3_canary.out"
+          grep -q 'V3 compiler in process' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::V3 was NOT dispatched on Linux — the program was compiled by V1, so the default-compiler change is a no-op'; exit 1; }
+          grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V3-compiled canary did not build/run correctly'; exit 1; }
+          if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::V3 silently fell back to V1'; exit 1; fi
+          echo 'OK: V3 compiled and ran this program in-process on Linux, with the fallback disabled'
       - name: Pkg-config regression (TCC dynamic isolation)
         run: ./v -cc tcc -no-retry-compilation test vlib/v/checker/pkgconfig_static_mode_test.v
       - name: Build v with -prealloc
@@ -102,6 +115,16 @@ jobs:
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: Assert V3 is the default compiler (fail if V1 is silently used)
+        run: |
+          set -uo pipefail
+          printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
+          V_MACOS_V3_NO_FALLBACK=1 ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/v3_canary.out" 2>&1 || true
+          cat "$RUNNER_TEMP/v3_canary.out"
+          grep -q 'V3 compiler in process' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::V3 was NOT dispatched on Linux — the program was compiled by V1, so the default-compiler change is a no-op'; exit 1; }
+          grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V3-compiled canary did not build/run correctly'; exit 1; }
+          if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::V3 silently fell back to V1'; exit 1; fi
+          echo 'OK: V3 compiled and ran this program in-process on Linux, with the fallback disabled'
       - name: Pkg-config regressions (GCC)
         run: |
           set -euo pipefail
@@ -628,6 +651,16 @@ jobs:
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: Assert V3 is the default compiler (fail if V1 is silently used)
+        run: |
+          set -uo pipefail
+          printf 'fn main() { println(6 * 7) }\n' > "$RUNNER_TEMP/v3_canary.v"
+          V_MACOS_V3_NO_FALLBACK=1 ./v -v run "$RUNNER_TEMP/v3_canary.v" > "$RUNNER_TEMP/v3_canary.out" 2>&1 || true
+          cat "$RUNNER_TEMP/v3_canary.out"
+          grep -q 'V3 compiler in process' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::V3 was NOT dispatched on Linux — the program was compiled by V1, so the default-compiler change is a no-op'; exit 1; }
+          grep -qx '42' "$RUNNER_TEMP/v3_canary.out" || { echo '::error::the V3-compiled canary did not build/run correctly'; exit 1; }
+          if grep -qiE 'retrying with .-old-compiler|compatibility fallback|used the stable compiler' "$RUNNER_TEMP/v3_canary.out"; then echo '::error::V3 silently fell back to V1'; exit 1; fi
+          echo 'OK: V3 compiled and ran this program in-process on Linux, with the fallback disabled'
       - name: Pkg-config regressions (Clang)
         run: |
           set -euo pipefail
