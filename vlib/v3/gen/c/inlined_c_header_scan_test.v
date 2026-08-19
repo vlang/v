@@ -47,6 +47,23 @@ fn test_typedef_all_aggregate_aliases_matches_separate_scans() {
 	}
 }
 
+// test_typedef_all_aggregate_aliases_survives_unbalanced_brace_in_comment is a
+// regression test: the scanner sees raw, comment-containing source, so a `{`
+// inside a comment must not make c_matching_brace_end fail and terminate the
+// whole fused pass, suppressing the following (valid) union alias.
+fn test_typedef_all_aggregate_aliases_survives_unbalanced_brace_in_comment() {
+	text := '/* example: typedef struct Broken { */\ntypedef union U { int x; } U;\n'
+	got := c_typedef_all_aggregate_aliases(text)
+	assert 'U' in got, 'union alias after a comment brace was dropped: ${got}'
+	// Still exactly the union of the three independent scans (struct scan finds
+	// nothing here, union scan finds U, enum scan finds nothing).
+	mut separate := []string{}
+	separate << c_typedef_struct_aliases(text)
+	separate << c_typedef_union_aliases(text)
+	separate << c_typedef_enum_aliases(text)
+	assert sorted_unique(got) == sorted_unique(separate)
+}
+
 fn test_typedef_all_aggregate_aliases_collects_expected_names() {
 	text := 'typedef struct S1 { int a; } A1;\ntypedef union U1 { int a; } A2;\ntypedef enum E1 { X } A3;\n'
 	got := sorted_unique(c_typedef_all_aggregate_aliases(text))
@@ -70,6 +87,15 @@ fn test_c_strip_comments_removes_comments_and_keeps_content() {
 	assert c_strip_comments('struct S { int a; };\n') == 'struct S { int a; };\n'
 	// A lone slash is not a comment.
 	assert c_strip_comments('int a = b / c;\n') == 'int a = b / c;\n'
+}
+
+// test_c_strip_comments_drops_unterminated_block_comment is a regression test:
+// a block comment that runs to EOF must be discarded, not flushed back into the
+// output (the final run flush must not run while still inside a comment).
+fn test_c_strip_comments_drops_unterminated_block_comment() {
+	assert c_strip_comments('int x; /* unfinished') == 'int x; '
+	// Block-internal newlines are still preserved for line-count stability.
+	assert c_strip_comments('a; /* open\nstill open') == 'a; \n'
 }
 
 fn test_c_strip_comments_preserves_block_comment_newlines() {

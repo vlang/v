@@ -7282,7 +7282,11 @@ fn c_strip_comments(text string) string {
 		}
 		i++
 	}
-	if i > run_start {
+	// An unterminated block comment runs to EOF: its text must be dropped, not
+	// flushed. run_start still points before the opening `/*` in that case
+	// (it only advances past a closing `*/`), so guarding on !in_block avoids
+	// re-appending the whole unfinished comment.
+	if !in_block && i > run_start {
 		sb.write_string(text[run_start..i])
 	}
 	return sb.str()
@@ -7572,11 +7576,18 @@ fn c_typedef_all_aggregate_aliases(text string) []string {
 		}
 		close_idx := c_matching_brace_end(text, pos)
 		if close_idx < 0 {
-			break
+			// Unbalanced brace — e.g. a `{` inside a comment in the raw header
+			// text. Skip this candidate and keep scanning for the other
+			// aggregates instead of terminating the whole fused pass: the three
+			// separate scans this replaces were independent, so a malformed
+			// struct candidate must not suppress later union/enum aliases.
+			start = pos + 1
+			continue
 		}
 		semi_idx := c_index_u8_after(text, `;`, close_idx + 1)
 		if semi_idx < 0 {
-			break
+			start = close_idx + 1
+			continue
 		}
 		for alias in c_typedef_declarator_aliases(text[close_idx + 1..semi_idx]) {
 			aliases << alias
