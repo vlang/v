@@ -56,33 +56,6 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 	return launch_macos_v3_compiler(prefs, forwarded_args)
 }
 
-// macos_v3_force_requested reports whether `-new-compiler` should force the V3
-// compiler for this invocation even when the default heuristic would defer to
-// V1. It never forces V3 onto options or modes V3 cannot handle yet, and it
-// leaves the `test` command to vtest, whose per-file builds already use V3.
-fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
-	if !prefs.new_compiler || prefs.old_compiler {
-		return false
-	}
-	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
-		return false
-	}
-	if prefs.autofree && prefs.is_run {
-		return false
-	}
-	if prefs.path == '' || command == 'test' || command in external_tools {
-		return false
-	}
-	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
-	if normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
-		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
-		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v') {
-		return false
-	}
-	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
-		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
-}
-
 fn trace_macos_v3_skip(reason string) {
 	if os.getenv('V3_CACHE_TRACE') != '' {
 		eprintln('  macOS V3 dispatch skipped: ${reason}')

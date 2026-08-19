@@ -1167,12 +1167,15 @@ fn (mut g Gen) match_cond(id flat.NodeId) {
 // (`x := <-ch` / `x = <-ch`) or a plain send/expression condition.
 fn (mut g Gen) select_branch_header(value string, conds []flat.NodeId) {
 	if conds.len == 2 && (value == 'recv' || value == 'recv_assign'
-		|| value.starts_with('recv_compound')) {
+		|| value.starts_with('recv_compound:')) {
 		g.expr(conds[0])
 		if value == 'recv' {
 			g.write(' := ')
-		} else {
+		} else if value == 'recv_assign' {
 			g.write(' = ')
+		} else {
+			// `recv_compound:<op>` preserves a compound receive such as `x += <-ch`.
+			g.write(' ${value.all_after('recv_compound:')} ')
 		}
 		g.expr(conds[1])
 		return

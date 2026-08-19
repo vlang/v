@@ -1623,3 +1623,45 @@ fn test_macos_v3_force_requested_respects_hard_limits() {
 		})
 	}
 }
+
+// This gate is shared by the Darwin and non-macOS dispatchers, so keep it
+// unguarded: it protects command routing on every platform where `-new-compiler`
+// is accepted.
+fn test_macos_v3_new_compiler_routing_and_precedence() {
+	// Compilation commands are taken over by V3.
+	assert macos_v3_force_requested('run', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert macos_v3_force_requested('build', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	// Non-compilation commands are never handed to V3 as compiler inputs.
+	assert !macos_v3_force_requested('fmt', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('doc', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('version', &pref.Preferences{
+		new_compiler: true
+	})
+	// The test command stays with the vtest dispatcher.
+	assert !macos_v3_force_requested('test', &pref.Preferences{
+		new_compiler: true
+		path:         'main_test.v'
+	})
+	// `-old-compiler` takes precedence over `-new-compiler`.
+	assert !macos_v3_force_requested('run', &pref.Preferences{
+		new_compiler: true
+		old_compiler: true
+		path:         'main.v'
+	})
+	// Without the flag, V3 is not forced at all.
+	assert !macos_v3_force_requested('run', &pref.Preferences{
+		path: 'main.v'
+	})
+}

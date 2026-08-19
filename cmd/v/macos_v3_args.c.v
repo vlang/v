@@ -1,9 +1,41 @@
 module main
 
+import os
 import v.pref
 
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
 const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
+
+// macos_v3_force_requested reports whether `-new-compiler` should hand this
+// invocation to the embedded V3 compiler. It gates on `-old-compiler`
+// precedence, options/modes V3 cannot honor yet, and whether the command is an
+// actual compilation command (never `test`, external tools, or the `cmd/v` /
+// `vlib/v3/v3.v` bootstrap). Both the Darwin dispatcher (where it overrides the
+// default heuristic) and the non-macOS dispatcher (where it is the sole gate)
+// rely on it, so it must stay platform neutral.
+@[markused]
+fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
+	if !prefs.new_compiler || prefs.old_compiler {
+		return false
+	}
+	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
+		return false
+	}
+	if prefs.autofree && prefs.is_run {
+		return false
+	}
+	if prefs.path == '' || command == 'test' || command in external_tools {
+		return false
+	}
+	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
+	if normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
+		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
+		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v') {
+		return false
+	}
+	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
+		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
+}
 
 // These helpers are shared by the native Darwin dispatcher and the default
 // implementation selected while generating cross-platform VC sources, so this

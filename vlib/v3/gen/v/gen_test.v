@@ -120,6 +120,39 @@ fn test_comptime_selector() {
 	assert out.contains('owned.\$(field.name)')
 }
 
+fn test_select_compound_receive_preserves_operator() {
+	// A compound receive (`x += <-ch`) must keep its operator; emitting `=` would
+	// silently change program semantics.
+	out := vfmt('selcompound', 'fn f(ch chan int) {
+	mut x := 0
+	select {
+		x += <-ch {
+			println(x)
+		}
+	}
+}
+')
+	assert out.contains('x += <-ch'), out
+	assert !out.contains('x = <-ch'), out
+}
+
+fn test_select_receive_forms() {
+	out := vfmt('selforms', 'fn f(ch chan int) {
+	mut x := 0
+	select {
+		y := <-ch {
+			println(y)
+		}
+		x = <-ch {
+			println(x)
+		}
+	}
+}
+')
+	assert out.contains('y := <-ch'), out
+	assert out.contains('x = <-ch'), out
+}
+
 fn test_generics_and_interface() {
 	out := vfmt('gen', 'pub struct Stack[T] {\nmut:\n\tdata []T\n}\n\ninterface Reader {\n\tread(mut buf []u8) !int\nmut:\n\tpos int\n}\n')
 	assert out.contains('struct Stack[T] {')
