@@ -6610,6 +6610,11 @@ pub fn run(args []string) {
 		} else if args[i] in ['-strict', '-cstrict'] {
 			is_strict = true
 			i++
+		} else if args[i] == '-new-compiler' {
+			// Accepted for symmetry with cmd/v's `-new-compiler`: V3 is already the
+			// compiler at this point, so selecting it again is a no-op. cmd/v strips
+			// this before forwarding; it is tolerated here for direct V3 invocations.
+			i++
 		} else if args[i] == '-ownership' || args[i] == '--ownership' {
 			// The ownership checker itself is compiled into v3 via `-d ownership`.
 			// The main V launcher pairs this flag with a target `-d ownership`, which

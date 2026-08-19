@@ -1575,3 +1575,51 @@ fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {
 		assert !is_macos_v3_default_executable('/tmp/vp')
 	}
 }
+
+fn test_macos_v3_forwarded_args_strip_new_compiler_flag() {
+	$if macos {
+		prefs := &pref.Preferences{}
+		forwarded := macos_v3_forwarded_args(prefs, ['-new-compiler', 'main.v'])
+		assert '-new-compiler' !in forwarded
+		assert 'main.v' in forwarded
+	}
+}
+
+fn test_macos_v3_force_requested_forces_v3_for_compile_targets() {
+	$if macos {
+		build := &pref.Preferences{
+			new_compiler: true
+			path:         'main.v'
+		}
+		assert macos_v3_force_requested('build', build)
+		run := &pref.Preferences{
+			new_compiler: true
+			path:         'main.v'
+		}
+		assert macos_v3_force_requested('run', run)
+	}
+}
+
+fn test_macos_v3_force_requested_respects_hard_limits() {
+	$if macos {
+		// not requested without the flag
+		assert !macos_v3_force_requested('build', &pref.Preferences{ path: 'main.v' })
+		// `-old-compiler` always wins
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			new_compiler: true
+			old_compiler: true
+			path:         'main.v'
+		})
+		// the `test` command stays with vtest
+		assert !macos_v3_force_requested('test', &pref.Preferences{
+			new_compiler: true
+			path:         'main_test.v'
+		})
+		// V3 is never forced onto options it cannot honor yet
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			new_compiler: true
+			path:         'main.v'
+			use_coroutines: true
+		})
+	}
+}

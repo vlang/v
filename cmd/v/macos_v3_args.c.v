@@ -51,7 +51,9 @@ fn macos_v3_leading_option_consumes_value(option string) bool {
 
 @[markused]
 fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
-	mut forwarded_args := raw_args.clone()
+	// `-new-compiler` is consumed by cmd/v to select V3; it must not reach the V3
+	// driver, which is already running and would reject it as an unknown option.
+	mut forwarded_args := raw_args.filter(it != '-new-compiler')
 	if prefs.enable_globals {
 		for i, arg in forwarded_args {
 			if arg == '--enable-globals' {

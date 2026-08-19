@@ -31,6 +31,10 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 		return take_macos_v3_c_error_report()
 	}
 	if !macos_v3_driver_is_available() {
+		if prefs.new_compiler {
+			eprintln('`-new-compiler` requires a build that embeds the V3 compiler, which this one does not.')
+			exit(1)
+		}
 		return take_macos_v3_c_error_report()
 	}
 	all_args := util.join_env_vflags_and_os_args()
@@ -40,12 +44,43 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 		return none
 	}
 	if macos_v3_has_v1_only_leading_option(forwarded_args, command) {
+		if prefs.new_compiler {
+			eprintln('`-new-compiler` cannot be combined with a V1-only option; remove it or drop `-new-compiler`.')
+			exit(1)
+		}
 		return none
 	}
-	if !is_macos_v3_relevant_command(command, prefs) {
+	if !is_macos_v3_relevant_command(command, prefs) && !macos_v3_force_requested(command, prefs) {
 		return none
 	}
 	return launch_macos_v3_compiler(prefs, forwarded_args)
+}
+
+// macos_v3_force_requested reports whether `-new-compiler` should force the V3
+// compiler for this invocation even when the default heuristic would defer to
+// V1. It never forces V3 onto options or modes V3 cannot handle yet, and it
+// leaves the `test` command to vtest, whose per-file builds already use V3.
+fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
+	if !prefs.new_compiler || prefs.old_compiler {
+		return false
+	}
+	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
+		return false
+	}
+	if prefs.autofree && prefs.is_run {
+		return false
+	}
+	if prefs.path == '' || command == 'test' || command in external_tools {
+		return false
+	}
+	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
+	if normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
+		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
+		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v') {
+		return false
+	}
+	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
+		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
 }
 
 fn trace_macos_v3_skip(reason string) {
@@ -121,7 +156,12 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	os.rm(fallback_file) or {}
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)
 	os.rmdir_all(c_error_dir) or {}
-	environment := macos_v3_child_environment(vexe, fallback_file, caller_environment)
+	mut environment := macos_v3_child_environment(vexe, fallback_file, caller_environment)
+	if prefs.new_compiler {
+		// The user explicitly asked for V3, so a V3 failure must be reported
+		// instead of silently retrying the build with the V1 compiler.
+		environment[macos_v3_no_fallback_env] = '1'
+	}
 	replace_macos_v3_process_environment(environment)
 	is_verbose := prefs.is_verbose
 	retry_args := os.args[1..].clone()
