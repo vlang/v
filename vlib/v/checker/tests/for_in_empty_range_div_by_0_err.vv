@@ -1,0 +1,17 @@
+fn main() {
+	for i in 4 .. 2 / 0 {
+		println(i)
+	}
+
+	for i in 4 .. u8(2 / 0) {
+		println(i)
+	}
+
+	for i in 4 .. int(2.0) / 0 {
+		println(i)
+	}
+
+	for i in 4 .. i8(2) / int(0.0) {
+		println(i)
+	}
+}
