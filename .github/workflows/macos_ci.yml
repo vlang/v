@@ -5,7 +5,8 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
+      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # macOS, so changes to it must run this suite (with the fallback disabled).
       - '**.md'
       - '**.yml'
       - '!**/macos_ci.yml'
@@ -13,7 +14,8 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v3/**'
+      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # macOS, so changes to it must run this suite (with the fallback disabled).
       - '**.md'
       - '**.yml'
       - '!**/macos_ci.yml'
@@ -28,7 +30,9 @@ jobs:
   clang-macos:
     strategy:
       matrix:
-        os: [macos-14]
+        # V3 (vlib/v3, `-new-compiler`) is the default compiler on macOS, so
+        # exercise it on every arm64 (Apple-silicon) runner image, not just one.
+        os: [macos-14, macos-15, macos-26]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 151

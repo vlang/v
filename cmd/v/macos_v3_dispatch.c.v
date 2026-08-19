@@ -1,5 +1,16 @@
 module main
 
+// This is the default-compiler dispatcher for the platforms where the V3
+// compiler (vlib/v3) is embedded and runs in-process: macOS and Linux. On those
+// targets `v` hands ordinary compile commands to V3 by default, and silently
+// falls back to the stable V1 compiler when V3 cannot build a program yet. The
+// file carries no `_darwin`/`_linux` suffix so a single implementation compiles
+// everywhere; the actual dispatch is gated at runtime by
+// `macos_v3_driver_is_available()`, which is only true on macOS and Linux (see
+// macos_v3_driver_notd_cross.v). On Windows/BSD the driver is absent, so this
+// dispatcher only rejects an explicit `-new-compiler` and otherwise stays out of
+// the way. The `macos_v3_` name is kept for continuity with the original macOS
+// rollout even though the behavior now also covers Linux.
 import os
 import v.pref
 import v.util
@@ -21,6 +32,10 @@ const macos_v3_c_error_fallback = 'c_compilation_error'
 const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
 const macos_v3_c_error_source_name_file = 'source_name'
+// optional marker file inside a staged report dir; when it holds
+// `macos_v3_compiler_error_fallback` the report describes a V3 internal compiler
+// error (V source only) instead of a generated-C compilation error.
+const macos_v3_c_error_kind_file = 'kind'
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3CErrorReport {
 	if os.getenv(macos_v3_retry_env) == '1' {
@@ -135,10 +150,13 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	}
 	replace_macos_v3_process_environment(environment)
 	is_verbose := prefs.is_verbose
+	// The input path is captured before V3 runs so the compatibility fallback can
+	// stage it for a bug report if V3 fails with an internal compiler error.
+	input_path := prefs.path
 	retry_args := os.args[1..].clone()
-	at_exit(fn [caller_environment, fallback_file, c_error_dir, retry_args, is_verbose] () {
+	at_exit(fn [caller_environment, fallback_file, c_error_dir, retry_args, is_verbose, input_path] () {
 		retry_macos_v3_with_old_compiler(caller_environment, fallback_file, c_error_dir,
-			retry_args, is_verbose)
+			retry_args, is_verbose, input_path)
 	}) or {
 		eprintln('cannot register the V3 compatibility fallback: ${err}')
 		exit(1)
@@ -161,7 +179,7 @@ fn replace_macos_v3_process_environment(environment map[string]string) {
 	}
 }
 
-fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallback_file string, c_error_dir string, retry_args []string, is_verbose bool) {
+fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallback_file string, c_error_dir string, retry_args []string, is_verbose bool, input_path string) {
 	fallback_reason := os.read_file(fallback_file) or { return }
 	os.rm(fallback_file) or {}
 	if fallback_reason !in [macos_v3_inline_asm_fallback, macos_v3_compiler_error_fallback,
@@ -184,28 +202,36 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 	replace_macos_v3_process_environment(caller_environment)
 	should_report := is_verbose || os.getenv('V3_CACHE_TRACE') != ''
 	if fallback_reason == macos_v3_c_error_fallback {
-		report := read_macos_v3_c_error_report(c_error_dir) or {
+		read_macos_v3_c_error_report(c_error_dir) or {
 			os.rmdir_all(c_error_dir) or {}
 			eprintln('V3 requested a C-error fallback, but its diagnostics could not be read')
 			return
 		}
+		// The C-error report was staged by the V3 driver (generated C + C compiler
+		// output). Hand it to the V1 retry, which files a bug once its build
+		// succeeds (see cmd/v rebuild -> compile_with_external_c_error_report).
 		os.setenv(macos_v3_c_error_dir_env, c_error_dir, true)
 		if should_report {
 			eprintln('V3 C compilation failed; retrying with `-old-compiler`.')
-			if report.c_output != '' {
-				eprintln(report.c_output.trim_right('\r\n'))
-			}
+		}
+	} else if fallback_reason == macos_v3_compiler_error_fallback {
+		// V3 hit an internal compiler error (parser/checker/codegen) that V1 may
+		// still handle. Stage the input V source so the V1 retry can file a bug
+		// with it once V1 confirms the program is actually buildable.
+		if stage_macos_v3_compiler_error_report(c_error_dir, input_path) {
+			os.setenv(macos_v3_c_error_dir_env, c_error_dir, true)
+		} else {
+			os.rmdir_all(c_error_dir) or {}
+		}
+		if should_report {
+			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
 		}
 	} else {
+		// Inline assembly is a known, expected V3 limitation, not a bug: fall back
+		// quietly without filing a report.
 		os.rmdir_all(c_error_dir) or {}
-		if fallback_reason == macos_v3_inline_asm_fallback {
-			if should_report {
-				println('V3 requested the compatibility compiler for inline assembly')
-			}
-		} else {
-			if should_report {
-				eprintln('V3 compilation failed; retrying with `-old-compiler`.')
-			}
+		if should_report {
+			println('V3 requested the compatibility compiler for inline assembly')
 		}
 	}
 	os.setenv(macos_v3_retry_env, '1', true)
@@ -214,6 +240,40 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		os.rmdir_all(c_error_dir) or {}
 		eprintln('failed to launch the compatibility compiler `${executable}`: ${err}')
 	}
+}
+
+// stage_macos_v3_compiler_error_report writes a report directory describing a V3
+// internal compiler error, mirroring the layout the V3 driver uses for C errors
+// (see request_macos_v3_c_error_fallback). Only the user's input V source is
+// available here, so the report carries that file plus a `kind` marker; the V1
+// retry turns it into a bug report once its own build succeeds.
+fn stage_macos_v3_compiler_error_report(report_dir string, input_path string) bool {
+	if report_dir == '' || input_path == '' || !os.is_file(input_path) {
+		return false
+	}
+	if !(input_path.ends_with('.v') || input_path.ends_with('.vsh') || input_path.ends_with('.vv')) {
+		return false
+	}
+	os.rmdir_all(report_dir) or {}
+	os.mkdir_all(report_dir) or { return false }
+	source_name := os.base(input_path)
+	os.cp(input_path, os.join_path(report_dir, source_name)) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	staged := {
+		macos_v3_c_error_source_name_file: source_name
+		macos_v3_c_error_compiler_file:    'v3'
+		macos_v3_c_error_output_file:      'the experimental V3 compiler failed with an internal compiler error while building this program; the stable V compiler built it successfully'
+		macos_v3_c_error_kind_file:        macos_v3_compiler_error_fallback
+	}
+	for name, value in staged {
+		os.write_file(os.join_path(report_dir, name), value) or {
+			os.rmdir_all(report_dir) or {}
+			return false
+		}
+	}
+	return true
 }
 
 fn take_macos_v3_c_error_report() ?MacosV3CErrorReport {
@@ -247,7 +307,12 @@ fn read_macos_v3_c_error_report(report_dir string) ?MacosV3CErrorReport {
 	if !os.is_file(c_file) {
 		return none
 	}
+	// The `kind` marker is absent for C-error reports staged by the V3 driver
+	// (empty string -> generated-C compilation error) and set for compiler-error
+	// reports staged by stage_macos_v3_compiler_error_report.
+	kind := os.read_file(os.join_path(report_dir, macos_v3_c_error_kind_file)) or { '' }
 	return MacosV3CErrorReport{
+		kind:       kind.trim_space()
 		ccompiler:  ccompiler.trim_space()
 		c_output:   c_output
 		c_file:     c_file

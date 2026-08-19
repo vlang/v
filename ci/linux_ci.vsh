@@ -400,7 +400,10 @@ fn build_modules_clang() {
 }
 
 fn test_inline_assembly() {
-	exec('v test vlib/v/slow_tests/assembly')
+	// V3 does not lower inline assembly yet. Select V1 explicitly so this task
+	// remains transparent and never exercises the compatibility retry path (which
+	// is disabled below via V_MACOS_V3_NO_FALLBACK).
+	exec('v -old-compiler test vlib/v/slow_tests/assembly')
 }
 
 // Collect all tasks
@@ -468,4 +471,8 @@ const all_tasks = {
 	'test_inline_assembly':                              Task{test_inline_assembly, 'Test inline assembly'}
 }
 
+// V3 is the default compiler on Linux as well as macOS. A supported V3
+// compilation must fail directly in CI: never let the compatibility retry turn a
+// V3 regression into a passing V1 build.
+os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 common.run(all_tasks)

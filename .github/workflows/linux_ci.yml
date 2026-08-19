@@ -6,7 +6,8 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
+      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # Linux, so changes to it must run this suite (with the fallback disabled).
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
@@ -14,7 +15,8 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
-      - 'vlib/v3/**'
+      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # Linux, so changes to it must run this suite (with the fallback disabled).
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
