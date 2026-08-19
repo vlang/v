@@ -528,6 +528,14 @@ fn main() {
 ```
 
 ## Function Call API
+
+> [!WARNING]
+> This section documents the deprecated Function Call API (`orm_fn`;
+> `orm.new_query[T]` / `QueryBuilder`). It is deprecated and will be
+> removed from the standard library after **2027-08-17**, to be maintained
+> in a separate repository. Prefer the built-in `sql` ORM syntax for new
+> code. See https://github.com/vlang/v/issues/27001 for details.
+
 You can utilize the `Function Call API` to work with `ORM`. It provides the
 capability to dynamically construct SQL statements. The Function Call API
 supports common operations such as `Create Table`/`Drop Table`/`Insert`/`Delete`/`Update`/`Select`,
