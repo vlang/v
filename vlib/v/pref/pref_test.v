@@ -544,6 +544,15 @@ fn test_old_compiler_flag_is_accepted() {
 	assert '-old-compiler' !in prefs.build_options
 }
 
+fn test_new_compiler_flag_is_accepted() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-new-compiler', target], false)
+	assert command == target
+	assert prefs.new_compiler
+	assert !prefs.old_compiler
+	assert '-new-compiler' !in prefs.build_options
+}
+
 fn test_v3_checker_fixture_flag_is_accepted() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	for flag in ['-checker-fixture', '-macos-v3-compat-c99'] {

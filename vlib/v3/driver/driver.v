@@ -2717,8 +2717,8 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 					// survive, the owner object (full include) and the program unit's
 					// public replay both define the symbol, so the warm cached link
 					// fails with a duplicate symbol. Fail closed instead of splitting.
-					if cache_native_public_include_replays_external_definition(real_root,
-						context, implementation_macros, c_flags, ccompiler, target)
+					if cache_native_public_include_replays_external_definition(real_root, context,
+						implementation_macros, c_flags, ccompiler, target)
 					{
 						if os.getenv('V3_CACHE_TRACE') != '' {
 							eprintln('  V3 module cache ungated native definition: module=${module_name} path=${real_root}')
@@ -2896,8 +2896,10 @@ fn cache_native_public_include_replays_external_definition(path string, context 
 		target) or { return true }
 	source := os.read_file(os.real_path(path)) or { return true }
 	file_scope := c_source_file_scope_identifiers(source)
-	all_functions, functions_complete := modulecache.c_source_function_identifiers_with_status(preprocessed)
-	static_functions, static_complete := modulecache.c_source_static_function_identifiers_with_status(preprocessed)
+	all_functions, functions_complete :=
+		modulecache.c_source_function_identifiers_with_status(preprocessed)
+	static_functions, static_complete :=
+		modulecache.c_source_static_function_identifiers_with_status(preprocessed)
 	if !functions_complete || !static_complete {
 		return true
 	}
@@ -6609,6 +6611,11 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] in ['-strict', '-cstrict'] {
 			is_strict = true
+			i++
+		} else if args[i] == '-new-compiler' {
+			// Accepted for symmetry with cmd/v's `-new-compiler`: V3 is already the
+			// compiler at this point, so selecting it again is a no-op. cmd/v strips
+			// this before forwarding; it is tolerated here for direct V3 invocations.
 			i++
 		} else if args[i] == '-ownership' || args[i] == '--ownership' {
 			// The ownership checker itself is compiled into v3 via `-d ownership`.
