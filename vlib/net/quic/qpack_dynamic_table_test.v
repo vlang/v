@@ -176,3 +176,38 @@ fn test_dynamic_table_find_exact_only_considers_entries_before_bound() {
 		assert false, 'before=0 should see no entries at all'
 	}
 }
+
+fn test_dynamic_table_can_set_capacity_forbids_evicting_unacknowledged_entry() {
+	mut t := QpackDynamicTable{}
+	t.set_capacity(100)
+	abs := t.insert('x', '1') or { panic('${err}') }
+	t.add_ref(abs) or { panic('${err}') }
+	// known_received_count=0 means abs 0 isn't acknowledged yet -- even with
+	// no outstanding ref_count, it would still be non-evictable; ref_count=1
+	// here makes it doubly so. Shrinking to 10 can't fit the 34-byte entry.
+	assert !t.can_set_capacity(10, 0)
+	assert t.can_set_capacity(100, 0) // no shrink needed -- always safe
+	assert t.can_set_capacity(1000, 0) // growth -- always safe
+}
+
+fn test_dynamic_table_can_set_capacity_allows_evicting_acknowledged_unreferenced_entry() {
+	mut t := QpackDynamicTable{}
+	t.set_capacity(100)
+	t.insert('x', '1') or { panic('${err}') }
+	// known_received_count=1 acknowledges abs 0, and it was never add_ref'd.
+	assert t.can_set_capacity(10, 1)
+}
+
+fn test_dynamic_table_can_set_capacity_rejects_negative_capacity_even_when_table_empty() {
+	// Fresh-eyes /vreview finding on can_set_capacity itself (2026-08-19): the
+	// eviction-simulation loop's tail case (ran out of entries before `freed`
+	// reached what's needed) must return false, mirroring can_insert's own
+	// `return freed >= needed` -- not an unconditional `return true`. An empty
+	// table proves this without even needing entries: over = 0 - (-5) = 5,
+	// nothing to evict (loop body never runs since entries.len == 0), so
+	// freed(0) >= over(5) is false. Unreachable via the only current caller
+	// (QpackEncoder.set_capacity, which never passes a negative value), but
+	// this is a `pub` function and its correctness shouldn't depend on that.
+	t := QpackDynamicTable{}
+	assert !t.can_set_capacity(-5, 0)
+}

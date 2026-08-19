@@ -43,7 +43,7 @@ fn test_decoder_decode_field_section_blocked_when_ric_exceeds_insert_count() {
 	mut d := new_qpack_decoder(1000)
 	// Encode a field section that claims Required Insert Count = 1 (an
 	// indexed dynamic reference), but no entries have been inserted yet.
-	prefix := encode_field_section_prefix(1, 1, 1000)
+	prefix := encode_field_section_prefix(1, 1, 1000) or { panic('${err}') }
 	repr := encode_indexed_dynamic_relative(0)
 	mut buf := []u8{}
 	buf << prefix
@@ -76,7 +76,7 @@ fn test_decoder_decode_field_section_rejects_reference_beyond_declared_ric() {
 	// Declare RIC=1 (only entry 0 "promised") but reference entry at abs 1
 	// via post-base indexing with base=1: post-base 0 -> abs 1, which is
 	// >= the declared RIC of 1.
-	prefix := encode_field_section_prefix(1, 1, 1000)
+	prefix := encode_field_section_prefix(1, 1, 1000) or { panic('${err}') }
 	repr := encode_indexed_dynamic_post_base(0)
 	mut buf := []u8{}
 	buf << prefix
@@ -101,7 +101,7 @@ fn test_decoder_decode_field_section_rejects_reference_to_evicted_entry() {
 		panic('${err}')
 	} // abs 1, evicts abs 0
 	// base=2 (both entries "before" base); relative 1 -> abs 0, already evicted.
-	prefix := encode_field_section_prefix(2, 2, one_entry_capacity)
+	prefix := encode_field_section_prefix(2, 2, one_entry_capacity) or { panic('${err}') }
 	repr := encode_indexed_dynamic_relative(1)
 	mut buf := []u8{}
 	buf << prefix
@@ -125,7 +125,7 @@ fn test_decoder_decode_field_section_rejects_declared_ric_larger_than_actual_ref
 	// Declares RIC=2 (implying a reference up to abs 1) but the only
 	// representation is a static reference -- no dynamic table reference at
 	// all. This project enforces the "larger than expected" MAY-error case.
-	prefix := encode_field_section_prefix(2, 2, 1000)
+	prefix := encode_field_section_prefix(2, 2, 1000) or { panic('${err}') }
 	repr := encode_indexed_static(17) // :method GET, purely static
 	mut buf := []u8{}
 	buf << prefix
@@ -145,7 +145,7 @@ fn test_decoder_decode_field_section_emits_section_ack_only_when_ric_nonzero() {
 	d.apply_encoder_instruction(encode_qpack_insert_with_literal_name('a', '1')) or {
 		panic('${err}')
 	} // abs 0
-	prefix := encode_field_section_prefix(1, 1, 1000)
+	prefix := encode_field_section_prefix(1, 1, 1000) or { panic('${err}') }
 	repr := encode_indexed_dynamic_relative(0)
 	mut buf := []u8{}
 	buf << prefix

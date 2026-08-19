@@ -23,7 +23,7 @@ fn test_encoder_never_index_line_matching_static_entry_uses_literal_with_name_re
 			value:       'GET'
 			never_index: true
 		},
-	])
+	]) or { panic('${err}') }
 	mut expected := [u8(0x00), 0x00] // RIC=0, Base=0 -- no dynamic table reference at all
 	expected << encode_literal_with_name_ref(true, true, 15, 'GET') // static name index 15 = :method
 	assert result.field_section == expected
@@ -46,7 +46,7 @@ fn test_encoder_never_index_line_is_not_inserted_into_dynamic_table() {
 			value:       'Bearer secret-token'
 			never_index: true
 		},
-	])
+	]) or { panic('${err}') }
 	assert e.dynamic_table.insert_count() == 0
 	assert result.encoder_instructions.len == 0
 }
@@ -64,7 +64,7 @@ fn test_encoder_sensitive_field_never_inserted_even_without_caller_flag() {
 			value: 'session=super-secret-value'
 			// never_index deliberately left false here.
 		},
-	])
+	]) or { panic('${err}') }
 	assert e.dynamic_table.insert_count() == 0
 	assert result.encoder_instructions.len == 0
 
@@ -83,7 +83,7 @@ fn test_encoder_exact_static_match_never_touches_dynamic_table() {
 			name:  ':method'
 			value: 'GET'
 		},
-	])
+	]) or { panic('${err}') }
 	assert e.dynamic_table.insert_count() == 0
 	assert result.field_section.len > 0
 	// Decode it back to confirm it round-trips through a fresh decoder.
@@ -101,7 +101,7 @@ fn test_encoder_zero_capacity_never_inserts_or_emits_instructions() {
 			name:  'x-custom'
 			value: 'value'
 		},
-	])
+	]) or { panic('${err}') }
 	assert e.dynamic_table.insert_count() == 0
 	assert result.encoder_instructions.len == 0
 }
@@ -137,7 +137,7 @@ fn test_encoder_full_round_trip_through_decoder_with_insertion() {
 			value: 'custom-value'
 		},
 	]
-	result := e.encode_field_section(5, lines)
+	result := e.encode_field_section(5, lines) or { panic('${err}') }
 	assert result.encoder_instructions.len > 0 // new name+value -> should insert
 
 	applied := dec.apply_encoder_instruction(result.encoder_instructions) or { panic('${err}') }
@@ -158,7 +158,7 @@ fn test_encoder_note_section_acknowledged_releases_references_and_advances_known
 			name:  'x-a'
 			value: '1'
 		},
-	])
+	]) or { panic('${err}') }
 	assert result.encoder_instructions.len > 0
 	assert e.unacked.len == 1
 	e.note_section_acknowledged(1) or { panic('${err}') }
@@ -183,7 +183,7 @@ fn test_encoder_note_stream_cancelled_releases_without_advancing_known_received_
 			name:  'x-b'
 			value: '2'
 		},
-	])
+	]) or { panic('${err}') }
 	before := e.known_received_count
 	e.note_stream_cancelled(2)
 	assert e.known_received_count == before
@@ -220,7 +220,7 @@ fn test_phase_r_dynamic_name_reference_without_insertion_tracks_required_insert_
 			name:  'x-custom'
 			value: 'original'
 		},
-	])
+	]) or { panic('${err}') }
 	assert first.encoder_instructions.len > 0 // confirms it actually got inserted
 	e.note_section_acknowledged(1) or { panic('${err}') }
 
@@ -236,7 +236,7 @@ fn test_phase_r_dynamic_name_reference_without_insertion_tracks_required_insert_
 			name:  'x-custom'
 			value: long_value
 		},
-	])
+	]) or { panic('${err}') }
 
 	dec.apply_encoder_instruction(first.encoder_instructions) or { panic('${err}') }
 	result := dec.decode_field_section(2, second.field_section) or {
@@ -244,4 +244,36 @@ fn test_phase_r_dynamic_name_reference_without_insertion_tracks_required_insert_
 	}
 	assert !result.blocked
 	assert result.lines[0].value == long_value
+}
+
+fn test_phase_r_set_capacity_rejects_reducing_below_a_referenced_entry() {
+	// Luna P1: QpackEncoder.set_capacity can evict entries with outstanding
+	// references. It calls dynamic_table.set_capacity() unconditionally,
+	// which evicts oldest-first purely on cur_size > capacity -- unlike
+	// insert(), which goes through can_insert() first specifically to
+	// simulate eviction safety (RFC 9204 SS2.1.1: an entry with any
+	// outstanding reference, or not yet acknowledged, must not be evicted)
+	// before committing to it.
+	mut e := new_qpack_encoder()
+	e.set_capacity(100, 100) or { panic('${err}') }
+	e.encode_field_section(1, [
+		QpackFieldLine{
+			name:  'x'
+			value: '1'
+		},
+	]) or { panic('${err}') }
+	assert e.dynamic_table.insert_count() == 1
+
+	// abs 0 now has ref_count 1 (added by encode_field_section) and is
+	// unacknowledged (known_received_count is still 0) -- RFC 9204 SS2.1.1
+	// forbids evicting it. Capacity 10 can't hold the 34-byte entry, so
+	// this reduction must be rejected outright, not silently applied by
+	// evicting the still-referenced entry.
+	e.set_capacity(10, 100) or {}
+	got := e.dynamic_table.get(0) or {
+		panic('BUG REPRODUCED: entry evicted by set_capacity while still referenced and unacknowledged: ${err}')
+	}
+	assert got.name == 'x'
+	assert got.value == '1'
+	assert e.dynamic_table.capacity() == 100 // the resize itself must not have taken effect
 }

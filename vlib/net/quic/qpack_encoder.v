@@ -68,13 +68,20 @@ pub fn new_qpack_encoder() QpackEncoder {
 // SETTINGS_QPACK_MAX_TABLE_CAPACITY, RFC 9204 §3.2.3) for future inserts
 // to respect too. Returns the encoder-stream bytes to send. Errors if
 // `new_capacity` exceeds either the peer's configured maximum or this
-// implementation's own limit.
+// implementation's own limit, or if reducing to it would require evicting
+// an entry with an outstanding reference or unacknowledged status (RFC
+// 9204 §2.1.1) -- self-found via Luna review: this call used to evict
+// unconditionally, silently corrupting the encoder's own view of the table
+// relative to what it had already told the peer.
 pub fn (mut e QpackEncoder) set_capacity(new_capacity u64, peer_max_table_capacity u64) ![]u8 {
 	if new_capacity > peer_max_table_capacity {
 		return error('qpack: capacity ${new_capacity} exceeds peer max ${peer_max_table_capacity}')
 	}
 	if new_capacity > u64(qpack_max_dynamic_table_capacity_bytes) {
 		return error('qpack: capacity ${new_capacity} exceeds implementation limit')
+	}
+	if !e.dynamic_table.can_set_capacity(int(new_capacity), e.known_received_count) {
+		return error('qpack: reducing capacity to ${new_capacity} would evict a referenced or unacknowledged entry')
 	}
 	e.peer_max_table_capacity = peer_max_table_capacity
 	e.dynamic_table.set_capacity(int(new_capacity))
@@ -162,8 +169,12 @@ pub fn (mut e QpackEncoder) note_insert_count_increment(increment u64) ! {
 // acknowledged-dynamic -- available regardless of `never_index`, since
 // only a fully indexed representation is withheld) when available, and a
 // new dynamic-table entry is inserted for future reuse whenever
-// `can_insert` allows it (never for a `never_index` line).
-pub fn (mut e QpackEncoder) encode_field_section(stream_id u64, lines []QpackFieldLine) QpackEncodedFieldSection {
+// `can_insert` allows it (never for a `never_index` line). Errors only if
+// the encoded prefix's Required Insert Count cannot be represented (RFC
+// 9204 §4.5.1.1) -- unreachable via this policy's own `can_insert` gate in
+// practice, but `encode_ric` is `pub` and this propagates its contract
+// rather than assuming its one caller can never hit it.
+pub fn (mut e QpackEncoder) encode_field_section(stream_id u64, lines []QpackFieldLine) !QpackEncodedFieldSection {
 	mut instructions := []u8{}
 	mut stream_buf := []u8{}
 	mut referenced := []int{}
@@ -300,7 +311,7 @@ pub fn (mut e QpackEncoder) encode_field_section(stream_id u64, lines []QpackFie
 	}
 
 	prefix := encode_field_section_prefix(required_insert_count, u64(base),
-		e.peer_max_table_capacity)
+		e.peer_max_table_capacity)!
 	mut field_section := []u8{}
 	field_section << prefix
 	field_section << stream_buf

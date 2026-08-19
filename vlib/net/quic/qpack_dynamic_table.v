@@ -122,11 +122,35 @@ pub fn (mut t QpackDynamicTable) duplicate(rel_index u64) !int {
 	return t.insert(e.name, e.value)
 }
 
+// can_set_capacity reports whether reducing capacity to `new_capacity`
+// right now would require evicting a non-evictable entry (RFC 9204 §2.1.1:
+// an entry with absolute index >= `known_received_count`, or with any
+// outstanding reference, cannot be evicted) -- the same evictability rule
+// `can_insert` simulates before an insertion, applied here to a capacity
+// reduction instead. An encoder MUST check this before calling
+// `set_capacity` with a smaller value; mirroring `insert`/`can_insert`,
+// `set_capacity` itself does not check, so the caller controls whether a
+// failed check means "reject" or some other recovery.
+pub fn (t &QpackDynamicTable) can_set_capacity(new_capacity int, known_received_count int) bool {
+	over := t.cur_size - new_capacity
+	mut freed := 0
+	for i := 0; i < t.entries.len && freed < over; i++ {
+		e := t.entries[i]
+		if t.dropped + i >= known_received_count || e.ref_count > 0 {
+			return false
+		}
+		freed += qpack_entry_size(e.name, e.value)
+	}
+	return freed >= over
+}
+
 // set_capacity applies a new dynamic table capacity (RFC 9204 §4.3.1/
 // §3.2.2), evicting entries from the oldest end until size fits, which can
 // clear the table entirely at capacity 0. Whether `new_capacity` itself is
 // within the peer's configured maximum (§3.2.3) is the caller's check --
-// this table has no notion of that external limit.
+// this table has no notion of that external limit. Callers reducing
+// capacity MUST check `can_set_capacity` first (see its doc comment) --
+// this evicts unconditionally, exactly like `insert`.
 pub fn (mut t QpackDynamicTable) set_capacity(new_capacity int) {
 	t.capacity = new_capacity
 	for t.cur_size > t.capacity && t.entries.len > 0 {

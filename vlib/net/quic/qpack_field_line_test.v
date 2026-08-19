@@ -17,7 +17,7 @@ fn test_encode_decode_ric_roundtrip() {
 			candidates << total_inserts - 1
 		}
 		for v in candidates {
-			enc := encode_ric(v, max_table_capacity)
+			enc := encode_ric(v, max_table_capacity) or { panic('v=${v}: ${err}') }
 			dec := decode_ric(enc, total_inserts, max_table_capacity) or {
 				panic('v=${v} total_inserts=${total_inserts}: ${err}')
 			}
@@ -42,6 +42,24 @@ fn test_decode_ric_rejects_zero_max_table_capacity_with_nonzero_encoded_value() 
 	if _ := decode_ric(1, 0, 0) {
 		assert false, 'max_table_capacity=0 means dynamic table is unusable; any nonzero RIC is invalid'
 	}
+}
+
+fn test_phase_r_encode_ric_rejects_capacity_too_small_instead_of_dividing_by_zero() {
+	// Luna P2: encode_ric used to divide by zero when qpack_max_entries(max_
+	// table_capacity) == 0, i.e. max_table_capacity < 32 (not <64 as
+	// originally cited -- qpack_max_entries divides by 32, so full_range=
+	// 2*max_entries only reaches 0 below 32). decode_ric's own sibling
+	// guard, exercised by
+	// test_decode_ric_rejects_zero_max_table_capacity_with_nonzero_encoded_value
+	// just above, already covered this exact case for the decode direction;
+	// encode_ric never got the equivalent guard, crashing the whole process
+	// on `% full_range` instead of returning a graceful error.
+	if _ := encode_ric(1, 10) {
+		assert false, 'max_table_capacity=10 cannot hold any entry (< 32 bytes); a nonzero RIC must be rejected, not silently miscomputed'
+	}
+	// req_insert_count=0 is unaffected -- it short-circuits before full_range
+	// is ever computed, same as decode_ric's own zero fast path.
+	assert encode_ric(0, 10)! == 0
 }
 
 fn test_decode_base_sign_zero() {
@@ -182,7 +200,9 @@ fn test_encode_decode_field_section_prefix_roundtrip() {
 	total_inserts := u64(4)
 	req_insert_count := u64(4)
 	base := u64(4)
-	encoded := encode_field_section_prefix(req_insert_count, base, max_table_capacity)
+	encoded := encode_field_section_prefix(req_insert_count, base, max_table_capacity) or {
+		panic('${err}')
+	}
 	prefix, consumed := decode_field_section_prefix(encoded, total_inserts, max_table_capacity) or {
 		panic('${err}')
 	}

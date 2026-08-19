@@ -35,11 +35,18 @@ pub fn qpack_max_entries(max_table_capacity u64) u64 {
 
 // encode_ric transforms a Required Insert Count into its wire encoding
 // (RFC 9204 §4.5.1.1), transcribed directly from the RFC's own pseudocode.
-pub fn encode_ric(req_insert_count u64, max_table_capacity u64) u64 {
+// Errors if `max_table_capacity` is too small to ever hold an entry (< 32
+// bytes, RFC 9204's own per-entry overhead) -- mirrors `decode_ric`'s own
+// `full_range == 0` guard just below, which this function used to lack,
+// dividing by zero instead (self-found via Luna review).
+pub fn encode_ric(req_insert_count u64, max_table_capacity u64) !u64 {
 	if req_insert_count == 0 {
 		return 0
 	}
 	full_range := 2 * qpack_max_entries(max_table_capacity)
+	if full_range == 0 {
+		return error('qpack: cannot encode a nonzero Required Insert Count with max table capacity ${max_table_capacity} too small to hold any entry')
+	}
 	return (req_insert_count % full_range) + 1
 }
 
@@ -131,10 +138,12 @@ pub fn decode_field_section_prefix(buf []u8, total_inserts u64, max_table_capaci
 }
 
 // encode_field_section_prefix encodes the Required Insert Count + Base
-// prefix for an encoded field section (RFC 9204 §4.5.1).
-pub fn encode_field_section_prefix(req_insert_count u64, base u64, max_table_capacity u64) []u8 {
+// prefix for an encoded field section (RFC 9204 §4.5.1). Errors if
+// `req_insert_count` is nonzero and `max_table_capacity` is too small to
+// represent it (see `encode_ric`).
+pub fn encode_field_section_prefix(req_insert_count u64, base u64, max_table_capacity u64) ![]u8 {
 	mut out := []u8{}
-	enc_ric := encode_ric(req_insert_count, max_table_capacity)
+	enc_ric := encode_ric(req_insert_count, max_table_capacity)!
 	encode_prefixed_int(mut out, enc_ric, 8, 0)
 	sign, delta_base := encode_base(base, req_insert_count)
 	high := if sign { u8(0x80) } else { u8(0) }
