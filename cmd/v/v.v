@@ -435,11 +435,14 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 		}
 		.wasm {
 			if failed := macos_v3_c_error_report {
-				// The wasm builder runs as an external tool via os.execvp, which
-				// replaces this process, so this process cannot submit the staged
-				// V3->V1 fallback report or clean it up after the retry. Hand the report
-				// to the builder through the environment; it submits, prints the notice,
-				// and cleans up relative to its own build outcome (only on success).
+				// The wasm builder runs as an external tool via os.execvp, which replaces
+				// this process, so this process cannot submit the staged V3->V1 fallback
+				// report or print the notice after the retry. Hand the report to the
+				// builder as self-contained content through the environment; export bounds
+				// the source here (in this trusted parent) and removes the staged
+				// directory, and the builder submits/notifies on its own build success
+				// without ever reading a path or deleting a directory named by the
+				// (inheritable, forgeable) environment.
 				builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
 					kind:        failed.kind
 					ccompiler:   failed.ccompiler
