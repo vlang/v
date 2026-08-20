@@ -2006,8 +2006,8 @@ fn test_macos_v3_force_requested_respects_hard_limits() {
 // Autofree builds must never reach the ordinary embedded V3, which lacks
 // `ownership` support and would exit with "ownership support is not compiled into
 // this v3 executable". On macOS a direct autofree build is delegated to the
-// ownership compiler earlier; on Linux it is not, so both the default dispatch and
-// `-new-compiler` must keep autofree (build and run) on V1. Unguarded: these gates
+// ownership compiler earlier; on Linux it is not, so implicit dispatch stays on
+// V1 while an explicit `-new-compiler` request is rejected. Unguarded: these gates
 // are shared by every platform's dispatcher (PR #28131 review).
 fn test_macos_v3_keeps_autofree_builds_off_non_ownership_v3() {
 	assert !is_macos_v3_relevant_command('build', &pref.Preferences{
@@ -2029,6 +2029,21 @@ fn test_macos_v3_keeps_autofree_builds_off_non_ownership_v3() {
 		autofree:     true
 		path:         'main.v'
 	})
+	assert macos_v3_explicit_autofree_is_unsupported(&pref.Preferences{
+		new_compiler: true
+		autofree:     true
+		path:         'main.v'
+	})
+	assert !macos_v3_explicit_autofree_is_unsupported(&pref.Preferences{
+		autofree: true
+		path:     'main.v'
+	})
+	assert !macos_v3_explicit_autofree_is_unsupported(&pref.Preferences{
+		new_compiler: true
+		old_compiler: true
+		autofree:     true
+		path:         'main.v'
+	})
 	// A plain build (no autofree) is still taken over by V3.
 	assert is_macos_v3_relevant_command('build', &pref.Preferences{
 		path: 'main.v'
@@ -2037,6 +2052,33 @@ fn test_macos_v3_keeps_autofree_builds_off_non_ownership_v3() {
 		new_compiler: true
 		path:         'main.v'
 	})
+}
+
+fn test_linux_explicit_v3_autofree_build_is_rejected() {
+	$if linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_explicit_autofree_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, 'fn main() {}\n')!
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-new-compiler', '-autofree', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 1, output
+		assert output.contains('`-new-compiler` cannot be combined with `-autofree`'), output
+	}
 }
 
 // The executable-name gate is for implicit default dispatch only; an explicit
