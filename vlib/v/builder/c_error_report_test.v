@@ -340,6 +340,57 @@ fn test_external_v3_report_env_round_trip() {
 	}
 }
 
+fn test_export_external_v3_report_bounds_c_output_for_exec() {
+	// A huge C diagnostic must be truncated before it goes into a single environment
+	// variable, or the retry's os.execvp fails with E2BIG on Linux (a single exec env
+	// string is capped near 128 KiB). v_source is already bounded (PR #28131 review).
+	clear_v3_report_env()
+	huge := 'error: ' + 'x'.repeat(4 * c_error_bug_report_max_env_c_output_bytes)
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:          '' // generated-C compilation error
+		ccompiler:     'clang'
+		c_output:      huge
+		v_file:        'main.v'
+		v_source:      'fn main() {}'
+		source_inline: true
+		tag:           'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	// The forwarded diagnostic now fits within the per-string exec limit.
+	assert got.c_output.len <= c_error_bug_report_max_env_c_output_bytes
+	assert got.c_output.len < huge.len
+	assert got.c_output.contains(c_error_bug_report_truncation_notice)
+}
+
+fn test_build_inline_c_error_report_classifies_and_filters() {
+	prefs := pref.Preferences{
+		gc_mode: .no_gc
+	}
+	// An ordinary generated-C diagnostic is classified as a generated-C
+	// (`v-c-compiler-error`) report carrying the bounded content — not misreported as an
+	// internal V3 error (which would emit `v3-compiler-error`) (PR #28131 review).
+	report := build_inline_c_error_report(&prefs, 'clang',
+		'main.tmp.c:3:9: error: use of undeclared identifier x', 'main.v', 'fn main() {}', 'V3') or {
+		assert false, 'an ordinary generated-C diagnostic must be reportable'
+		return
+	}
+	assert report.kind == 'v-c-compiler-error'
+	assert report.c_error.contains('undeclared identifier')
+	assert report.v_file == 'main.v'
+	assert report.v_source == 'fn main() {}'
+	assert report.build_options.split(' ').first() == 'V3'
+	// An expected missing-library diagnostic is filtered out (not uploaded), exactly as
+	// the in-process generated-C path already does.
+	if _ := build_inline_c_error_report(&prefs, 'clang', "ld: library 'macos_v3_absent' not found",
+		'main.v', 'fn main() {}', 'V3')
+	{
+		assert false, 'a missing-library diagnostic must not be reported'
+	}
+}
+
 fn test_v_context_covers_whole_file_detects_full_coverage() {
 	// A short mapped file: the radius window around a middle line spans every line,
 	// so v_context would leak the whole file and must be cleared (PR #28131 review).
