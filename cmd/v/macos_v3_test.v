@@ -1481,6 +1481,9 @@ fn test_macos_v3_compiler_error_report_round_trip() {
 		assert report.kind == macos_v3_compiler_error_fallback
 		assert report.ccompiler == 'v3'
 		assert report.c_output.contains('internal compiler error')
+		// The message starts with `error:` so the receiver's c_error_string parser
+		// stores a nonempty, groupable diagnostic (PR #28131 review).
+		assert report.c_output.starts_with('error:')
 		assert os.base(report.c_file) == 'prog.v'
 		assert os.read_file(report.c_file)!.contains('println(41 + 1)')
 		// A directory build (`v .`), or a non-V / missing input, cannot stage a

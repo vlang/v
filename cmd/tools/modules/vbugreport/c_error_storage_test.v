@@ -44,3 +44,10 @@ fn test_c_error_string_preserves_fatal_error_diagnostics() {
 fn test_c_error_string_returns_empty_without_error_line() {
 	assert c_error_string('warning: unused command line argument\nnote: build stopped') == ''
 }
+
+fn test_c_error_string_preserves_v3_internal_error_message() {
+	// v3-compiler-error reports stage an `error:`-prefixed message so it survives
+	// c_error_string as a nonempty, stable, groupable diagnostic (PR #28131 review).
+	msg := 'error: the experimental V3 compiler hit an internal compiler error building this program (the stable V compiler built it successfully)'
+	assert c_error_string(msg) == msg
+}
