@@ -5967,9 +5967,12 @@ fn record_user_define(mut defines []string, mut values map[string]string, define
 	values[name] = value
 }
 
-fn stage_macos_v3_compiler_error_fallback(fallback_file string) {
+fn stage_macos_v3_compiler_error_fallback(fallback_file string, stage string) {
 	if fallback_file != '' {
-		os.write_file(fallback_file, macos_v3_compiler_error_fallback) or {}
+		// The first line remains the machine-readable fallback reason. The second
+		// carries only a controlled stage name, so a successful compatibility build
+		// can report where V3 failed even when no source excerpt is available.
+		os.write_file(fallback_file, '${macos_v3_compiler_error_fallback}\n${stage}') or {}
 	}
 }
 
@@ -6430,7 +6433,7 @@ pub fn run(args []string) {
 	// produced its output. Specialized failures overwrite it below. Successful
 	// run/test programs clear it before launch, so their exit status is never
 	// mistaken for a compiler failure by the macOS driver.
-	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'command-line processing')
 
 	mut input_file := ''
 	mut output_file := ''
@@ -7334,6 +7337,7 @@ pub fn run(args []string) {
 	// Cache markers and scoped output are stable across ordered worker chunks, so cached
 	// and preallocated builds use the same parallel function-body generator.
 	mut cache_no_parallel_cgen := current_no_parallel
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
@@ -7876,6 +7880,7 @@ pub fn run(args []string) {
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'semantic checking')
 	mut pre_tc := types.TypeChecker.new(a)
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
@@ -8258,6 +8263,7 @@ pub fn run(args []string) {
 		// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
 		// by default for compatible builds, and `-no-parallel` disables both threaded transform
 		// and cgen.
+		stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'AST transformation')
 		mut transform_was_parallel := false
 		mut transform_errors := []string{}
 		mut incremental_synthesized_helpers := []string{}
@@ -8671,6 +8677,7 @@ pub fn run(args []string) {
 	// Monomorphization only adds specialized generic instantiations to `used_fns`.
 	// Markused and Cgen already exclude unreachable generic templates, so builds
 	// with no reachable generic use need no generic cleanup pass at all.
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'type specialization')
 	if cgen_cache_hit {
 		// The cached C plan and metadata are the only consumers of the specialized
 		// AST and checker state on this path.
@@ -8828,6 +8835,7 @@ pub fn run(args []string) {
 	} else {
 		b.step('finalize')
 	}
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'backend code generation')
 	if backend == 'wasm' {
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)

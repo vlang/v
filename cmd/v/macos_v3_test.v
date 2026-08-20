@@ -1488,10 +1488,12 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		}
 		whole := lines.join('\n')
 		os.write_file(source, whole)!
+		compiler_error := macos_v3_compiler_error_message('source parsing')
 		v_file, v_source := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
-			macos_v3_compiler_error_message, macos_v3_compiler_error_input_source(source))
+			compiler_error, macos_v3_compiler_error_input_source(source))
 		assert v_file == 'prog.v'
 		assert v_source != ''
+		assert compiler_error.contains('during source parsing')
 		// A bounded strict subset — never the whole file.
 		assert v_source.len < whole.len
 		// A directory build, a non-V file, or a missing input yields no source, so the
@@ -1501,10 +1503,16 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		for empty in [root, note, os.join_path(root, 'missing.v'), ''] {
 			resolved := macos_v3_compiler_error_input_source(empty)
 			ef, es := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
-				macos_v3_compiler_error_message, resolved)
+				compiler_error, resolved)
 			assert ef == '', empty
 			assert es == '', empty
 		}
+		legacy_reason, legacy_stage := macos_v3_fallback_reason_and_stage('compiler_error')
+		assert legacy_reason == macos_v3_compiler_error_fallback
+		assert legacy_stage == ''
+		reason, stage := macos_v3_fallback_reason_and_stage('compiler_error\nsemantic checking')
+		assert reason == macos_v3_compiler_error_fallback
+		assert stage == 'semantic checking'
 	}
 }
 
@@ -1741,15 +1749,15 @@ fn test_take_macos_v3_report_content_carries_no_path() {
 		}
 		os.unsetenv(macos_v3_c_error_dir_env)
 		// A forwarded content report round-trips as content only.
-		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3',
-			macos_v3_compiler_error_message, '')
+		compiler_error := macos_v3_compiler_error_message('type specialization')
+		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3', compiler_error, '')
 		report := take_macos_v3_report_content() or {
 			assert false, 'the forwarded content report must be returned'
 			return
 		}
 		assert report.kind == macos_v3_compiler_error_fallback
 		assert report.ccompiler == 'v3'
-		assert report.c_output == macos_v3_compiler_error_message
+		assert report.c_output == compiler_error
 		// The variables are cleared, so a second take finds nothing.
 		if _ := take_macos_v3_report_content() {
 			assert false, 'the content variables must be cleared after a take'

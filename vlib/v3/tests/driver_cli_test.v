@@ -1003,7 +1003,9 @@ fn main() {
 	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
 		'-no-memory-limit', source], environment)
 	assert result.exit_code != 0
-	assert os.read_file(fallback_file)! == 'compiler_error'
+	fallback_payload := os.read_file(fallback_file)!
+	assert fallback_payload.starts_with('compiler_error\n')
+	assert fallback_payload.all_after_first('\n').trim_space() != ''
 
 	compat_output := os.join_path(root, 'compat')
 	compat := cmdexec.run(@VEXE, ['-old-compiler', '-o', compat_output, source])

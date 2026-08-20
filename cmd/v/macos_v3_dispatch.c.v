@@ -37,9 +37,21 @@ const macos_v3_c_error_source_name_file = 'source_name'
 // `macos_v3_compiler_error_fallback` the report describes a V3 internal compiler
 // error (V source only) instead of a generated-C compilation error.
 const macos_v3_c_error_kind_file = 'kind'
-// the diagnostic uploaded for a V3 internal compiler error (starts with `error:` so the
-// receiver's c_error_string parser stores a nonempty, groupable diagnostic).
-const macos_v3_compiler_error_message = 'error: the experimental V3 compiler hit an internal compiler error building this program (the stable V compiler built it successfully)'
+// the base diagnostic uploaded for a V3 internal compiler error (starts with `error:` so
+// the receiver's c_error_string parser stores a nonempty, groupable diagnostic).
+const macos_v3_compiler_error_message_base = 'error: the experimental V3 compiler hit an internal compiler error building this program'
+
+fn macos_v3_compiler_error_message(stage string) string {
+	stage_suffix := if stage == '' { '' } else { ' during ${stage}' }
+	return '${macos_v3_compiler_error_message_base}${stage_suffix} (the stable V compiler built it successfully)'
+}
+
+fn macos_v3_fallback_reason_and_stage(payload string) (string, string) {
+	if !payload.contains('\n') {
+		return payload, ''
+	}
+	return payload.all_before('\n'), payload.all_after_first('\n').trim_space()
+}
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3CErrorReport {
 	if os.getenv(macos_v3_retry_env) == '1' {
@@ -195,7 +207,8 @@ fn replace_macos_v3_process_environment(environment map[string]string) {
 }
 
 fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallback_file string, c_error_dir string, retry_args []string, is_verbose bool, input_path string) {
-	fallback_reason := os.read_file(fallback_file) or { return }
+	fallback_payload := os.read_file(fallback_file) or { return }
+	fallback_reason, fallback_stage := macos_v3_fallback_reason_and_stage(fallback_payload)
 	os.rm(fallback_file) or {}
 	if fallback_reason !in [macos_v3_inline_asm_fallback, macos_v3_compiler_error_fallback,
 		macos_v3_c_error_fallback] {
@@ -242,7 +255,8 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		// or non-V input yields no source, so the report stays metadata-only but the
 		// fallback is never silent.
 		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3',
-			macos_v3_compiler_error_message, macos_v3_compiler_error_input_source(input_path))
+			macos_v3_compiler_error_message(fallback_stage),
+			macos_v3_compiler_error_input_source(input_path))
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
