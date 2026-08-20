@@ -8208,7 +8208,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							g.write('I_${field_sym.cname}_as_I_${cast_sym.cname}(${ptr}')
 							g.expr(node.expr)
 							dot := if lhs_expr_type.is_ptr() { '->' } else { '.' }
-							g.write('${dot}${node.field_name}))')
+							g.write('${dot}${field_name}))')
 							return
 						} else if !is_option_unwrap {
 							if i != 0 {
@@ -10524,14 +10524,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 						if obj_sym.kind == .interface && cast_sym.kind == .interface {
 							if cast_sym.cname != obj_sym.cname {
 								ptr := '*'.repeat(resolved_var.typ.nr_muls())
-								g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.name})')
+								g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${name})')
 							} else {
 								ptr := if is_option {
 									''
 								} else {
 									'*'.repeat(resolved_var.typ.nr_muls())
 								}
-								g.write('${ptr}${node.name}')
+								g.write('${ptr}${name}')
 							}
 						} else {
 							if sumtype_fn_value_smartcast {
