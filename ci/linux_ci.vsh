@@ -473,6 +473,9 @@ const all_tasks = {
 
 // V3 is the default compiler on Linux as well as macOS. A supported V3
 // compilation must fail directly in CI: never let the compatibility retry turn a
-// V3 regression into a passing V1 build.
+// V3 regression into a passing V1 build. The workflow job also exports this in its
+// `env:`, so it already covers this runner script's own compilation (`v run
+// ci/linux_ci.vsh ...`); setting it here as well applies it when the tasks are run
+// outside that job (e.g. locally).
 os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 common.run(all_tasks)
