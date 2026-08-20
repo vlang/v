@@ -1265,7 +1265,7 @@ fn test_autofree_delegation_detects_and_forwards_vflags() {
 }
 
 fn test_macos_v3_child_environment_forwards_compiler_hashes() {
-	$if macos {
+	$if macos || linux {
 		caller_environment := {
 			'PATH':                     '/usr/bin'
 			'CFLAGS':                   '-I/caller/include -DCALLER_FLAG=1'
@@ -1299,6 +1299,97 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 		assert unset_environment[macos_v3_caller_vexe_env] == ''
 		assert unset_environment[macos_v3_caller_vchild_present_env] == '0'
 		assert unset_environment[macos_v3_caller_vchild_env] == ''
+	}
+}
+
+fn test_macos_v3_redispatch_preserves_original_caller_environment() {
+	dispatch_environment := {
+		'PATH':                             '/usr/bin'
+		'VEXE':                             '/internal/v'
+		'VCHILD':                           'true'
+		'V_MACOS_V3_FALLBACK_FILE':         '/tmp/old-fallback'
+		'V_MACOS_V3_C_ERROR_DIR':           '/tmp/old-c-error'
+		'V_MACOS_V3_VHASH':                 'internal-hash'
+		'V_MACOS_V3_VCURRENT_HASH':         'internal-current-hash'
+		'V_MACOS_V3_EMBEDDED':              '1'
+		'V3_CRUN_BUILD_IDENTITY':           'restart-identity'
+		'V3_INTERNAL_RESTART':              '1'
+		macos_v3_caller_vexe_env:           'caller-vexe'
+		macos_v3_caller_vexe_present_env:   '1'
+		macos_v3_caller_vchild_env:         'caller-vchild'
+		macos_v3_caller_vchild_present_env: '1'
+	}
+	caller_environment := macos_v3_original_caller_environment(dispatch_environment)
+	assert caller_environment['PATH'] == '/usr/bin'
+	assert caller_environment['VEXE'] == 'caller-vexe'
+	assert caller_environment['VCHILD'] == 'caller-vchild'
+	assert macos_v3_fallback_file_env !in caller_environment
+	assert macos_v3_c_error_dir_env !in caller_environment
+	assert macos_v3_vhash_env !in caller_environment
+	assert macos_v3_vcurrent_hash_env !in caller_environment
+	assert macos_v3_embedded_env !in caller_environment
+	assert 'V3_CRUN_BUILD_IDENTITY' !in caller_environment
+	assert 'V3_INTERNAL_RESTART' !in caller_environment
+	assert macos_v3_caller_vexe_env !in caller_environment
+	assert macos_v3_caller_vchild_env !in caller_environment
+
+	child_environment := macos_v3_child_environment(@VEXE, '/tmp/new-fallback',
+		dispatch_environment)
+	assert child_environment['VEXE'] == os.real_path(@VEXE)
+	assert child_environment['VCHILD'] == 'true'
+	assert child_environment[macos_v3_caller_vexe_env] == 'caller-vexe'
+	assert child_environment[macos_v3_caller_vexe_present_env] == '1'
+	assert child_environment[macos_v3_caller_vchild_env] == 'caller-vchild'
+	assert child_environment[macos_v3_caller_vchild_present_env] == '1'
+	// Internal restart state remains available to the next V3 pass.
+	assert child_environment['V3_CRUN_BUILD_IDENTITY'] == 'restart-identity'
+	assert child_environment['V3_INTERNAL_RESTART'] == '1'
+
+	mut unset_dispatch_environment := dispatch_environment.clone()
+	unset_dispatch_environment[macos_v3_caller_vexe_env] = ''
+	unset_dispatch_environment[macos_v3_caller_vexe_present_env] = '0'
+	unset_dispatch_environment[macos_v3_caller_vchild_env] = ''
+	unset_dispatch_environment[macos_v3_caller_vchild_present_env] = '0'
+	unset_caller_environment := macos_v3_original_caller_environment(unset_dispatch_environment)
+	assert 'VEXE' !in unset_caller_environment
+	assert 'VCHILD' !in unset_caller_environment
+}
+
+fn test_macos_v3_redispatch_run_observes_original_caller_environment() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_redispatch_env_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source,
+			"module main\n\nimport os\n\nconst compile_vexe = \$env('VEXE')\nconst compile_vchild = \$env('VCHILD')\n\nfn main() {\n\truntime_vexe := os.getenv('VEXE')\n\truntime_vchild := os.getenv('VCHILD')\n\tprintln('\${compile_vexe}|\${compile_vchild}|\${runtime_vexe}|\${runtime_vchild}')\n}\n")!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['VEXE'] = os.real_path(@VEXE)
+		environment['VCHILD'] = 'true'
+		environment[macos_v3_caller_vexe_env] = 'caller-vexe'
+		environment[macos_v3_caller_vexe_present_env] = '1'
+		environment[macos_v3_caller_vchild_env] = 'caller-vchild'
+		environment[macos_v3_caller_vchild_present_env] = '1'
+		environment[macos_v3_embedded_env] = '1'
+		environment['V3_INTERNAL_RESTART'] = '1'
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-new-compiler', '-gc', 'none', 'run', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, output
+		assert output.contains('caller-vexe|caller-vchild|caller-vexe|caller-vchild'), output
 	}
 }
 

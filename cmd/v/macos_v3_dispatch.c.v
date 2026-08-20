@@ -165,7 +165,8 @@ fn is_macos_v3_internal_tool_bootstrap(normalized_path string, is_vchild bool) b
 }
 
 fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3CErrorReport {
-	caller_environment := os.environ()
+	dispatch_environment := os.environ()
+	caller_environment := macos_v3_original_caller_environment(dispatch_environment)
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
@@ -177,7 +178,7 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	os.rm(fallback_file) or {}
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)
 	os.rmdir_all(c_error_dir) or {}
-	mut environment := macos_v3_child_environment(vexe, fallback_file, caller_environment)
+	mut environment := macos_v3_child_environment(vexe, fallback_file, dispatch_environment)
 	if prefs.new_compiler {
 		// The user explicitly asked for V3, so a V3 failure must be reported
 		// instead of silently retrying the build with the V1 compiler.
@@ -414,11 +415,49 @@ fn macos_v3_child_environment(vexe string, fallback_file string, caller_environm
 }
 
 fn preserve_macos_v3_caller_environment_value(mut environment map[string]string, caller_environment map[string]string, name string, value_name string, present_name string) {
+	if present := caller_environment[present_name] {
+		if present in ['0', '1'] {
+			// A V3 restart re-enters the dispatcher with the internal VEXE/VCHILD
+			// values active. Keep the caller values saved by the first dispatch instead
+			// of replacing them with that delegated environment.
+			environment[value_name] = caller_environment[value_name] or { '' }
+			environment[present_name] = present
+			return
+		}
+	}
 	if value := caller_environment[name] {
 		environment[value_name] = value
 		environment[present_name] = '1'
 	} else {
 		environment[value_name] = ''
 		environment[present_name] = '0'
+	}
+}
+
+fn macos_v3_original_caller_environment(dispatch_environment map[string]string) map[string]string {
+	mut caller_environment := dispatch_environment.clone()
+	vexe_present := dispatch_environment[macos_v3_caller_vexe_present_env] or { '' }
+	vchild_present := dispatch_environment[macos_v3_caller_vchild_present_env] or { '' }
+	if vexe_present in ['0', '1'] && vchild_present in ['0', '1'] {
+		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment,
+			'VEXE', macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
+		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment,
+			'VCHILD', macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+	}
+	for private_name in [macos_v3_fallback_file_env, macos_v3_c_error_dir_env, macos_v3_vhash_env,
+		macos_v3_vcurrent_hash_env, macos_v3_embedded_env, macos_v3_retry_env,
+		'V3_CRUN_BUILD_IDENTITY', 'V3_INTERNAL_RESTART', macos_v3_caller_vexe_env,
+		macos_v3_caller_vexe_present_env, macos_v3_caller_vchild_env,
+		macos_v3_caller_vchild_present_env] {
+		caller_environment.delete(private_name)
+	}
+	return caller_environment
+}
+
+fn restore_macos_v3_caller_environment_value(mut caller_environment map[string]string, dispatch_environment map[string]string, name string, value_name string, present_name string) {
+	if dispatch_environment[present_name] or { '' } == '1' {
+		caller_environment[name] = dispatch_environment[value_name] or { '' }
+	} else {
+		caller_environment.delete(name)
 	}
 }
