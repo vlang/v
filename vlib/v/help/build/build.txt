@@ -21,10 +21,13 @@ The default compiler:
   back to the established compiler in vlib/v, so builds keep working. Unless the
   environment variable V_C_ERROR_BUG_REPORT_DISABLED=1 is set, a fallback also
   reports the V version, target, and build options to https://bugs.vlang.io, plus
-  a bounded snippet of the failing V source when one is available. Short programs
-  and directory builds such as `v .` submit metadata only, and the whole file is
-  never uploaded. Pass `-old-compiler` (see `v help build-c`) to always use the
-  established compiler and skip both the V3 attempt and the reporting.
+  a bounded snippet of the failing V source when one is available. Any snippet is
+  a strict subset and the whole file is never uploaded. An internal V3 compiler
+  error on a short program or a directory build such as `v .` submits metadata
+  only, while a generated-C error maps to a V file and can still upload a
+  strict-subset excerpt of it, even for a short file. Pass `-old-compiler` (see
+  `v help build-c`) to always use the established compiler and skip both the V3
+  attempt and the reporting.
 
 Use `v build script.vsh` to compile a `.vsh` script without running it.
 `v -skip-running script.vsh` works too.
