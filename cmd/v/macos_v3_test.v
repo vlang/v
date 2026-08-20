@@ -1471,6 +1471,10 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
 		assert !compiler_output.contains('Launching macOS V3 compiler:'), compiler_output
 		assert compiler_output.contains('compatibility compiler for inline assembly'), compiler_output
+		// An inline-assembly fallback is a known limitation, not a bug (so no report is
+		// filed), but the standard fallback notice must still be printed once the stable
+		// build succeeds, matching doc/docs.md (PR #28131 review).
+		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0
