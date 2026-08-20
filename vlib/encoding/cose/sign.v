@@ -22,6 +22,10 @@ pub mut:
 	protected   Headers
 	unprotected Headers
 	signature   []u8
+mut:
+	// raw_protected holds this signer's protected bstr exactly as it was
+	// read by `decode`; see `protected_bytes_or`.
+	raw_protected ?[]u8
 }
 
 // SignMessage is the V representation of a COSE_Sign message.
@@ -31,6 +35,10 @@ pub mut:
 	unprotected Headers
 	payload     ?[]u8
 	signatures  []Signature
+mut:
+	// raw_protected holds the body protected bstr exactly as it was read
+	// by `decode`; see `protected_bytes_or`.
+	raw_protected ?[]u8
 }
 
 // Signer bundles a signing key with the per-signer headers that go
@@ -126,16 +134,36 @@ pub fn (m SignMessage) verify(signer_index int, key Key, opts VerifySignOptions)
 			}
 		}
 	}
-	body_protected := m.protected.encode_protected()!
-	sign_protected := entry.protected.encode_protected()!
+	body_protected := m.protected_bytes()!
+	sign_protected := entry.protected_bytes()!
 	tbs := sig_structure_sign(body_protected, sign_protected, opts.external_aad, pl)
 	verify_with_key(alg, key, tbs, entry.signature)!
 }
 
+// protected_bytes returns the body protected bucket to feed into the
+// Sig_structure: the bytes received on the wire for a decoded message,
+// a canonical encoding of `protected` for one built in memory.
+fn (m SignMessage) protected_bytes() ![]u8 {
+	return protected_bytes_or(m.raw_protected, m.protected)!
+}
+
+// protected_bytes returns this signer's protected bucket, following the
+// same rule as `SignMessage.protected_bytes`.
+fn (s Signature) protected_bytes() ![]u8 {
+	return protected_bytes_or(s.raw_protected, s.protected)!
+}
+
 // encode serialises the SignMessage. When `tagged` is true the output
 // is wrapped in CBOR tag 98.
+//
+// For a message that came from `decode`, the protected bucket is
+// written back exactly as it was received rather than re-serialised, so
+// the bytes under the signature survive a decode/encode cycle. Every
+// other part of the message is re-encoded canonically. A consequence is
+// that mutating `protected` on a decoded message has no effect on the
+// output until the message is produced again through `sign()`.
 pub fn (m SignMessage) encode(tagged bool) ![]u8 {
-	body_protected := m.protected.encode_protected()!
+	body_protected := m.protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
 	if tagged {
@@ -151,7 +179,7 @@ pub fn (m SignMessage) encode(tagged bool) ![]u8 {
 	}
 	p.pack_array_header(u64(m.signatures.len))
 	for entry in m.signatures {
-		sp := entry.protected.encode_protected()!
+		sp := entry.protected_bytes()!
 		p.pack_array_header(3)
 		p.pack_bytes(sp)
 		p.pack_value(entry.unprotected.to_value())!
@@ -178,7 +206,8 @@ pub fn SignMessage.decode(data []u8) !SignMessage {
 		}
 	}
 
-	protected := parse_protected(u.unpack_bytes()!)!
+	raw_protected := u.unpack_bytes()!
+	protected := parse_protected(raw_protected)!
 	unprotected := parse_headers_value(u.unpack_value()!)!
 	mut payload := ?[]u8(none)
 	if u.peek_kind()! == .null_val {
@@ -208,13 +237,15 @@ pub fn SignMessage.decode(data []u8) !SignMessage {
 		// Bind the three fields to locals so the read order from the
 		// unpacker stays explicit (struct-literal evaluation order is
 		// source order in V today, but we don't want to rely on that).
-		s_protected := parse_protected(u.unpack_bytes()!)!
+		s_raw_protected := u.unpack_bytes()!
+		s_protected := parse_protected(s_raw_protected)!
 		s_unprotected := parse_headers_value(u.unpack_value()!)!
 		sig := u.unpack_bytes()!
 		signatures << Signature{
-			protected:   s_protected
-			unprotected: s_unprotected
-			signature:   sig
+			protected:     s_protected
+			unprotected:   s_unprotected
+			signature:     sig
+			raw_protected: s_raw_protected
 		}
 	}
 	if !u.done() {
@@ -223,9 +254,10 @@ pub fn SignMessage.decode(data []u8) !SignMessage {
 		}
 	}
 	return SignMessage{
-		protected:   protected
-		unprotected: unprotected
-		payload:     payload
-		signatures:  signatures
+		protected:     protected
+		unprotected:   unprotected
+		payload:       payload
+		signatures:    signatures
+		raw_protected: raw_protected
 	}
 }

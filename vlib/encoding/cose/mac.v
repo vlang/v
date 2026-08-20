@@ -29,6 +29,10 @@ pub mut:
 	protected     Headers
 	unprotected   Headers
 	encrypted_key []u8
+mut:
+	// raw_protected holds this recipient's protected bstr exactly as it
+	// was read by `decode`; see `protected_bytes_or`.
+	raw_protected ?[]u8
 }
 
 // MacMessage is the V representation of a COSE_Mac message.
@@ -39,6 +43,10 @@ pub mut:
 	payload     ?[]u8
 	tag         []u8
 	recipients  []Recipient
+mut:
+	// raw_protected holds the body protected bstr exactly as it was read
+	// by `decode`; see `protected_bytes_or`.
+	raw_protected ?[]u8
 }
 
 // MacOptions bundles inputs to `cose.mac`.
@@ -142,16 +150,36 @@ pub fn verify_mac(message []u8, key Key, opts VerifyMacOptions) ![]u8 {
 		}
 	}
 
-	body_protected := msg.protected.encode_protected()!
+	body_protected := msg.protected_bytes()!
 	tbm := mac_structure_mac(body_protected, opts.external_aad, pl)
 	mac_verify(alg, key, tbm, msg.tag)!
 	return pl
 }
 
+// protected_bytes returns the body protected bucket to feed into the
+// MAC_structure: the bytes received on the wire for a decoded message,
+// a canonical encoding of `protected` for one built in memory.
+fn (m MacMessage) protected_bytes() ![]u8 {
+	return protected_bytes_or(m.raw_protected, m.protected)!
+}
+
+// protected_bytes returns this recipient's protected bucket, following
+// the same rule as `MacMessage.protected_bytes`.
+fn (r Recipient) protected_bytes() ![]u8 {
+	return protected_bytes_or(r.raw_protected, r.protected)!
+}
+
 // encode serialises the MacMessage. When `tagged` is true the output
 // is wrapped in CBOR tag 97.
+//
+// For a message that came from `decode`, the protected bucket is
+// written back exactly as it was received rather than re-serialised, so
+// the bytes under the MAC tag survive a decode/encode cycle. Every
+// other part of the message is re-encoded canonically. A consequence is
+// that mutating `protected` on a decoded message has no effect on the
+// output until the message is produced again through `mac()`.
 pub fn (m MacMessage) encode(tagged bool) ![]u8 {
-	body_protected := m.protected.encode_protected()!
+	body_protected := m.protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
 	if tagged {
@@ -168,7 +196,7 @@ pub fn (m MacMessage) encode(tagged bool) ![]u8 {
 	p.pack_bytes(m.tag)
 	p.pack_array_header(u64(m.recipients.len))
 	for r in m.recipients {
-		rp := r.protected.encode_protected()!
+		rp := r.protected_bytes()!
 		p.pack_array_header(3)
 		p.pack_bytes(rp)
 		p.pack_value(r.unprotected.to_value())!
@@ -195,7 +223,8 @@ pub fn MacMessage.decode(data []u8) !MacMessage {
 		}
 	}
 
-	protected := parse_protected(u.unpack_bytes()!)!
+	raw_protected := u.unpack_bytes()!
+	protected := parse_protected(raw_protected)!
 	unprotected := parse_headers_value(u.unpack_value()!)!
 	mut payload := ?[]u8(none)
 	if u.peek_kind()! == .null_val {
@@ -223,13 +252,15 @@ pub fn MacMessage.decode(data []u8) !MacMessage {
 				reason: 'COSE_recipient array must have 3 elements'
 			}
 		}
-		r_protected := parse_protected(u.unpack_bytes()!)!
+		r_raw_protected := u.unpack_bytes()!
+		r_protected := parse_protected(r_raw_protected)!
 		r_unprotected := parse_headers_value(u.unpack_value()!)!
 		ek := u.unpack_bytes()!
 		recipients << Recipient{
 			protected:     r_protected
 			unprotected:   r_unprotected
 			encrypted_key: ek
+			raw_protected: r_raw_protected
 		}
 	}
 	if !u.done() {
@@ -238,10 +269,11 @@ pub fn MacMessage.decode(data []u8) !MacMessage {
 		}
 	}
 	return MacMessage{
-		protected:   protected
-		unprotected: unprotected
-		payload:     payload
-		tag:         tag
-		recipients:  recipients
+		protected:     protected
+		unprotected:   unprotected
+		payload:       payload
+		tag:           tag
+		recipients:    recipients
+		raw_protected: raw_protected
 	}
 }

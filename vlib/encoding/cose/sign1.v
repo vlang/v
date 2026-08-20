@@ -22,6 +22,12 @@ pub mut:
 	// verifying.
 	payload   ?[]u8
 	signature []u8
+mut:
+	// raw_protected holds the protected bstr exactly as it was read by
+	// `decode`. It is module-private so callers cannot make it disagree
+	// with `protected`, which is simply its parsed view. See
+	// `protected_bytes_or` for why the original bytes matter.
+	raw_protected ?[]u8
 }
 
 // Sign1Options bundles the parameters that drive `cose.sign1`. Only the
@@ -98,6 +104,9 @@ pub fn (mut m Sign1Message) sign(key Key, payload []u8, external_aad []u8) ! {
 		return error('cose: Sign1Message.sign requires protected.algorithm to be set')
 	}
 
+	// Signing always commits to the canonical encoding of the current
+	// headers, so any bytes kept from a previous `decode` are stale.
+	m.raw_protected = none
 	body_protected := m.protected.encode_protected()!
 	tbs := sig_structure_sign1(body_protected, external_aad, payload)
 	m.signature = sign_with_key(alg, key, tbs)!
@@ -116,15 +125,29 @@ pub fn (m Sign1Message) verify(key Key, payload []u8, external_aad []u8) ! {
 		}
 	}
 
-	body_protected := m.protected.encode_protected()!
+	body_protected := m.protected_bytes()!
 	tbs := sig_structure_sign1(body_protected, external_aad, payload)
 	verify_with_key(alg, key, tbs, m.signature)!
 }
 
+// protected_bytes returns the bytes to feed into the Sig_structure:
+// the ones received on the wire for a decoded message, a canonical
+// encoding of `protected` for one built in memory.
+fn (m Sign1Message) protected_bytes() ![]u8 {
+	return protected_bytes_or(m.raw_protected, m.protected)!
+}
+
 // encode serialises the message. When `tagged` is true the output is
 // wrapped in CBOR tag 18 (RFC 9052 §2).
+//
+// For a message that came from `decode`, the protected bucket is
+// written back exactly as it was received rather than re-serialised, so
+// the bytes under the signature survive a decode/encode cycle. Every
+// other part of the message is re-encoded canonically. A consequence is
+// that mutating `protected` on a decoded message has no effect on the
+// output until `sign()` is called on it again.
 pub fn (m Sign1Message) encode(tagged bool) ![]u8 {
-	body_protected := m.protected.encode_protected()!
+	body_protected := m.protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
 	if tagged {
@@ -161,7 +184,8 @@ pub fn Sign1Message.decode(data []u8) !Sign1Message {
 		}
 	}
 
-	protected := parse_protected(u.unpack_bytes()!)!
+	raw_protected := u.unpack_bytes()!
+	protected := parse_protected(raw_protected)!
 	unprotected := parse_headers_value(u.unpack_value()!)!
 	mut payload := ?[]u8(none)
 	if u.peek_kind()! == .null_val {
@@ -176,9 +200,10 @@ pub fn Sign1Message.decode(data []u8) !Sign1Message {
 		}
 	}
 	return Sign1Message{
-		protected:   protected
-		unprotected: unprotected
-		payload:     payload
-		signature:   signature
+		protected:     protected
+		unprotected:   unprotected
+		payload:       payload
+		signature:     signature
+		raw_protected: raw_protected
 	}
 }

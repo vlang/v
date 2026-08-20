@@ -171,7 +171,13 @@ cose.verify1(sig_only, pub_key, detached_payload: large_blob)!
   `Key.decode()`.
 - `cose.Headers` — typed protected/unprotected header bag. Well-known
   parameters as fields, others via `extra_int_labels` /
-  `extra_text_labels`. Always serialised in canonical CBOR order.
+  `extra_text_labels`. Serialised in canonical CBOR order, except for
+  the protected bucket of a decoded message: RFC 9052 §4.4 and §6.3
+  build the `Sig_structure` / `MAC_structure` from the protected bytes
+  as they were received, so those are kept verbatim and re-emitted
+  as-is by `encode()`. Messages whose protected header uses a legal but
+  non-canonical encoding therefore verify, and mutating `protected` on
+  a decoded message only takes effect once it is signed again.
 - `cose.sign1` / `cose.verify1` — single-signer convenience helpers.
 - `cose.sign` / `cose.SignMessage` — multi-signer.
 - `cose.mac0` / `cose.verify_mac0` — single-recipient MAC.

@@ -183,6 +183,30 @@ pub fn (h Headers) encode_protected() ![]u8 {
 	return h.encode_map()!
 }
 
+// protected_bytes_or returns the protected bucket exactly as it appeared
+// on the wire when `raw` carries the bytes captured at decode time, and
+// falls back to a canonical encoding of `h` otherwise (messages built in
+// memory rather than parsed).
+//
+// RFC 9052 §4.4 (Sig_structure) and §6.3 (MAC_structure) feed the
+// protected bucket into the structure being signed or MACed as the
+// serialised bytes of the *received* message. A sender may legally use
+// any valid CBOR encoding for that map — a non-canonical key order, a
+// non-minimal length prefix — so re-serialising it canonically at
+// verification time would change the bytes under the signature and
+// reject an otherwise valid message. The received bytes are therefore
+// kept verbatim, including the `h'a0'` spelling of an empty map that
+// RFC 9052 §3 discourages but that decoders must still accept.
+//
+// What is preserved is the *content* of the protected bstr, which is
+// what the structures carry; the bstr framing around it is re-emitted
+// in definite-length form, so a bucket that arrived inside an
+// indefinite-length bstr still verifies but is not re-encoded with the
+// original framing.
+fn protected_bytes_or(raw ?[]u8, h Headers) ![]u8 {
+	return raw or { h.encode_protected()! }
+}
+
 // parse_headers_map decodes a CBOR map (already extracted from the
 // surrounding message) into a Headers value. Unknown labels go into
 // `extra_int_labels` / `extra_text_labels` instead of being dropped, so
