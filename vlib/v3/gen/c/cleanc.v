@@ -171,6 +171,18 @@ mut:
 	values     []types.Type
 }
 
+@[heap]
+struct SumVariantActualCache {
+mut:
+	by_sum map[string]&SumVariantActualEntries
+}
+
+@[heap]
+struct SumVariantActualEntries {
+mut:
+	values map[string]string
+}
+
 fn (mut g FlatGen) begin_usable_expr_type_memo() {
 	if !g.memo_usable_expr_types {
 		return
@@ -300,12 +312,14 @@ mut:
 	local_pointer_storage_by_owner map[string]bool   // exact scope binding owner -> C storage is already a pointer
 	local_c_type_by_owner          map[string]string // exact scope binding owner -> emitted C declaration type
 	local_mutable_by_owner         map[string]bool
-	local_pointer_alias_by_owner   map[string]string   // exact scope binding owner -> stack local whose address is stored
-	local_pointer_alias_mut_param  map[string]bool     // exact scope binding owner -> alias source is a mut parameter
-	local_raw_type_by_owner        map[string]string   // exact scope binding owner -> source-level raw type text
-	local_shared_storage_by_owner  map[string]bool     // exact scope binding owner -> C storage is a shared wrapper pointer
-	local_fn_value_c_name_by_owner map[string]string   // exact scope binding owner -> lifted fn-literal C name
-	sum_name_lookup                map[string]string   // full/short sum type name -> canonical sum type name
+	local_pointer_alias_by_owner   map[string]string            // exact scope binding owner -> stack local whose address is stored
+	local_pointer_alias_mut_param  map[string]bool              // exact scope binding owner -> alias source is a mut parameter
+	local_raw_type_by_owner        map[string]string            // exact scope binding owner -> source-level raw type text
+	local_shared_storage_by_owner  map[string]bool              // exact scope binding owner -> C storage is a shared wrapper pointer
+	local_fn_value_c_name_by_owner map[string]string            // exact scope binding owner -> lifted fn-literal C name
+	sum_name_lookup                map[string]string            // full/short sum type name -> canonical sum type name
+	sum_variant_lookup             map[string]map[string]string // sum name -> exact/short variant -> canonical variant
+	sum_variant_actual_cache       &SumVariantActualCache = &SumVariantActualCache{} // sum name + semantic actual type -> canonical variant (empty means miss)
 	module_init_fns                []string            // C names of module-level `init()` fns, in source order
 	module_init_fn_modules         map[string]string   // C init fn name -> V module name
 	module_cleanup_fns             []string            // C names of module-level `cleanup()` fns, in source order
@@ -395,6 +409,7 @@ mut:
 	output_path                  string
 	output_error                 string
 	c99_mode                     bool
+	trace_calls                  bool
 	inside_trace_call            bool
 	skip_generics                bool
 	skip_enum_autostr            bool
@@ -410,6 +425,7 @@ mut:
 	cur_param_names              []string
 	cur_param_type_values        []types.Type
 	cur_param_types              map[string]types.Type
+	cur_param_name_bits          u64
 	cur_concrete_optional_params map[string]bool
 	cur_mut_params               map[string]bool
 	cur_mut_pointer_params       map[string]bool
@@ -990,6 +1006,8 @@ pub fn FlatGen.new() FlatGen {
 		local_fn_value_c_name_by_owner:  map[string]string{}
 		shadowed_global_locals:          map[string]bool{}
 		sum_name_lookup:                 map[string]string{}
+		sum_variant_lookup:              map[string]map[string]string{}
+		sum_variant_actual_cache:        &SumVariantActualCache{}
 		module_init_fns:                 []string{}
 		module_init_fn_modules:          map[string]string{}
 		module_cleanup_fns:              []string{}
@@ -1196,6 +1214,7 @@ pub fn (mut g FlatGen) set_suppress_main(enabled bool) {
 // directives resolves configured values over fallbacks.
 pub fn (mut g FlatGen) set_compile_values(values map[string]string) {
 	g.compile_values = values.clone()
+	g.trace_calls = 'trace' in g.compile_values
 }
 
 // set_cache_split enables stable cache markers and string symbols in generated C.
@@ -2542,6 +2561,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.local_fn_value_c_name_by_owner.clear()
 	g.shadowed_global_locals.clear()
 	g.sum_name_lookup.clear()
+	g.sum_variant_lookup.clear()
+	g.sum_variant_actual_cache.by_sum.clear()
 	g.module_init_fns = []string{}
 	g.module_init_fn_modules.clear()
 	g.module_cleanup_fns = []string{}
@@ -2604,6 +2625,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types.clear()
+	g.cur_param_name_bits = 0
 	g.cur_concrete_optional_params.clear()
 	g.cur_mut_params.clear()
 	g.cur_mut_pointer_params.clear()
@@ -3572,6 +3594,7 @@ fn (mut g FlatGen) collect_gen_info() {
 		&& g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	top_level_nodes := g.top_level_nodes()
 	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes)
+	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
 	for top_level_pos, node_idx in top_level_nodes {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
@@ -3599,8 +3622,13 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 		if kind_id == 61 {
 			ci_t0 := if profile { time.sys_mono_now() } else { u64(0) }
-			full_name := qualify_name_in_module(cur_module, node.value)
-			if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, cur_module) {
+			mut prep := CollectGenFnPrep{}
+			if has_parallel_fn_preps {
+				prep = fn_preps[top_level_pos]
+			}
+			if (has_parallel_fn_preps && !prep.prepared)
+				|| (!has_parallel_fn_preps && g.has_used_fn_filter()
+				&& !g.used_fn_contains_in_module(node.value, cur_module)) {
 				if g.incremental_fn_names.len == 0 {
 					g.preseed_unused_fn_ptr_param_types(node, cur_module, cur_file)
 				}
@@ -3609,12 +3637,11 @@ fn (mut g FlatGen) collect_gen_info() {
 				}
 				continue
 			}
+			full_name := qualify_name_in_module(cur_module, node.value)
 			g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
 			ci_p0 := if profile { time.sys_mono_now() } else { u64(0) }
-			prep := if top_level_pos < fn_preps.len && fn_preps[top_level_pos].prepared {
-				fn_preps[top_level_pos]
-			} else {
-				g.compute_collect_gen_fn_prep(node, cur_module, cur_file)
+			if !has_parallel_fn_preps {
+				prep = g.compute_collect_gen_fn_prep(node, cur_module, cur_file)
 			}
 			ptypes := prep.ptypes
 			shared_params := prep.shared_params
@@ -11326,8 +11353,38 @@ fn (g &FlatGen) sum_type_for_expected_value(expected types.Type) ?types.SumType 
 
 fn (g &FlatGen) sum_variant_for_actual(sum_name0 string, actual types.Type) ?string {
 	sum_name := g.resolve_sum_name(sum_name0)
+	actual_name := actual.name()
+	if sum_cache := g.sum_variant_actual_cache.by_sum[sum_name] {
+		if cached := sum_cache.values[actual_name] {
+			if cached.len > 0 {
+				return cached
+			}
+			return none
+		}
+	}
+	result := g.sum_variant_for_actual_uncached(sum_name, actual, actual_name) or {
+		mut cache := g.sum_variant_actual_cache
+		mut sum_cache := cache.by_sum[sum_name] or {
+			created := &SumVariantActualEntries{}
+			cache.by_sum[sum_name] = created
+			created
+		}
+		sum_cache.values[actual_name] = ''
+		return none
+	}
+	mut cache := g.sum_variant_actual_cache
+	mut sum_cache := cache.by_sum[sum_name] or {
+		created := &SumVariantActualEntries{}
+		cache.by_sum[sum_name] = created
+		created
+	}
+	sum_cache.values[actual_name] = result
+	return result
+}
+
+fn (g &FlatGen) sum_variant_for_actual_uncached(sum_name string, actual types.Type, actual_name string) ?string {
 	variants := g.tc.sum_types[sum_name] or { return none }
-	mut variant := g.resolve_variant(sum_name, actual.name())
+	mut variant := g.resolve_variant(sum_name, actual_name)
 	if variant in variants {
 		return variant
 	}
@@ -13618,9 +13675,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		g.write('0')
 		return
 	}
-	if replacement := g.assert_expr_overrides[int(id)] {
-		g.write(replacement)
-		return
+	if g.assert_expr_overrides.len > 0 {
+		if replacement := g.assert_expr_overrides[int(id)] {
+			g.write(replacement)
+			return
+		}
 	}
 	node := unsafe { &g.a.nodes[int(id)] }
 	match node.kind {
@@ -13738,8 +13797,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			is_current_param := node.value in g.cur_param_names
-				|| g.current_param_type(node.value) != none
+			is_current_param := g.current_param_type(node.value) != none
 			is_local := if is_current_param {
 				true
 			} else if owner := g.tc.cur_scope.lookup_owner(node.value) {
@@ -13747,8 +13805,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				false
 			}
-			current_global_name := qualify_name_in_module(g.tc.cur_module, node.value)
-			is_current_module_global := current_global_name in g.global_types
+			current_global_name := if is_local {
+				''
+			} else {
+				qualify_name_in_module(g.tc.cur_module, node.value)
+			}
+			is_current_module_global := !is_local && current_global_name in g.global_types
 			const_name := if !is_local && !is_current_module_global {
 				g.const_ref_name(node.value)
 			} else {
@@ -18994,8 +19056,9 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		g.tc.cur_module = cur_module
 		// Struct-init node types use scratch text while fields are transformed; the
 		// declared struct metadata above is the authoritative fixed-array source.
-		if node.kind != .struct_init && fixed_array_type_text_may_need_typedef(node.typ)
-			&& fixed_array_text_first_seen(node.typ, cur_module, mut text_seen) {
+		if node.kind != .struct_init && node.typ.len > 1
+			&& fixed_array_text_first_seen(node.typ, cur_module, mut text_seen)
+			&& fixed_array_type_text_may_need_typedef(node.typ) {
 			g.collect_fixed_array_typedef_text(node.typ, cur_module, mut needed)
 		}
 		match node.kind {

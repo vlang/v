@@ -66,6 +66,17 @@ fn owner_name_view(name string) string {
 	return name
 }
 
+@[inline]
+fn same_transform_text(a string, b string) bool {
+	if a.len != b.len {
+		return false
+	}
+	if unsafe { a.str == b.str } {
+		return true
+	}
+	return a == b
+}
+
 // option_unwrap_marker tags a SmartcastContext produced by an `x != none`
 // condition: variant_name holds the option's base type and the access is
 // lowered to the option's `.value` field instead of a sum union field.
@@ -196,6 +207,7 @@ mut:
 	cur_fn_ret_type                 string
 	cur_fn_is_generic               bool
 	cur_fn_manualfree               bool
+	literal_free_fn_body            bool // work item is proven to contain no closure literals
 	cur_fn_variadic_param           string
 	skip_generics                   bool
 	building_v                      bool
@@ -391,6 +403,7 @@ mut:
 	parallel_monomorph_scan_start      int
 	parallel_monomorph_scan_end        int
 	fn_scan_costs                      []int
+	fn_escape_scan_flags               []u8
 	literal_fn_decls                   []int
 	literal_fn_decls_ready             bool
 	parallel_monomorph_struct_specs    map[string]string
@@ -429,15 +442,17 @@ mut:
 	// such writes stayed in the discarded clone) or deferred until after join
 	// (master, defer_oor_writes — matching the old path where the master's
 	// writes landed on the shared AST).
-	base_write_intercept bool
-	defer_oor_writes     bool
-	shared_base_nodes    int = -1
-	shared_base_children int = -1
-	item_range_lo        int = -1
-	item_range_hi        int = -1
-	memo_node_types      bool
-	node_type_memo       &NodeTypeMemo = unsafe { nil }
-	deferred_base_writes []DeferredBaseWrite
+	base_write_intercept    bool
+	defer_oor_writes        bool
+	shared_base_nodes       int = -1
+	shared_base_children    int = -1
+	item_range_lo           int = -1
+	item_range_hi           int = -1
+	item_escape_scan_known  bool
+	item_escape_scan_needed bool
+	memo_node_types         bool
+	node_type_memo          &NodeTypeMemo = unsafe { nil }
+	deferred_base_writes    []DeferredBaseWrite
 	// Prealloc self-host builds put helper-thread scratch allocations in
 	// disposable arenas. The worker's surviving AST strings are cloned by the
 	// master before that arena is released.
@@ -3202,12 +3217,14 @@ fn (mut t Transformer) append_transformed_top_level_stmts(mut out []flat.NodeId,
 // the file/module context active at its declaration and a rough cost estimate
 // (subtree node count) used to balance work across parallel workers.
 struct FnWorkItem {
-	fn_idx   int
-	range_lo int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
-	file     string
-	module   string
-	cost     int
-	rank     i64
+	fn_idx             int
+	range_lo           int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
+	file               string
+	module             string
+	cost               int
+	rank               i64
+	escape_scan_known  bool
+	escape_scan_needed bool
 }
 
 // DeferredBaseWrite is an in-place base-node write recorded by the master
@@ -3405,6 +3422,11 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 			} else {
 				int(node.children_count) + 1
 			}
+			escape_scan_flags := if i < t.fn_escape_scan_flags.len {
+				t.fn_escape_scan_flags[i]
+			} else {
+				u8(0)
+			}
 			if has_literal {
 				old_range_lo := t.item_range_lo
 				old_range_hi := t.item_range_hi
@@ -3440,22 +3462,26 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				}
 				if str_est > deferred_str_expansion_threshold {
 					t.deferred_str_items << FnWorkItem{
-						fn_idx:   i
-						range_lo: range_lo
-						file:     t.cur_file
-						module:   t.cur_module
-						cost:     cost
-						rank:     i64(cost) * 1_000_000_000 - i64(i)
+						fn_idx:             i
+						range_lo:           range_lo
+						file:               t.cur_file
+						module:             t.cur_module
+						cost:               cost
+						rank:               i64(cost) * 1_000_000_000 - i64(i)
+						escape_scan_known:  escape_scan_flags & 1 != 0
+						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				} else {
 					adj_cost := cost + str_est
 					pure << FnWorkItem{
-						fn_idx:   i
-						range_lo: range_lo
-						file:     t.cur_file
-						module:   t.cur_module
-						cost:     adj_cost
-						rank:     i64(adj_cost) * 1_000_000_000 - i64(i)
+						fn_idx:             i
+						range_lo:           range_lo
+						file:               t.cur_file
+						module:             t.cur_module
+						cost:               adj_cost
+						rank:               i64(adj_cost) * 1_000_000_000 - i64(i)
+						escape_scan_known:  escape_scan_flags & 1 != 0
+						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				}
 			}
@@ -3470,6 +3496,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 		}
 	}
 	t.fn_scan_costs = []int{}
+	t.fn_escape_scan_flags = []u8{}
 	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, interp est ${est_ms:.2f} ms')
 	return pure
 }
@@ -3485,13 +3512,19 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 fn (mut t Transformer) collect_literal_fn_decls(limit int) []int {
 	mut result := []int{cap: 64}
 	mut flags := []u8{len: limit}
-	if scan_literal_decl_flags_parallel(t.a, limit, mut flags) {
+	mut escape_flags := []u8{len: limit}
+	if scan_literal_decl_flags_parallel(t, limit, mut flags, mut escape_flags) {
 		mut literal_pending := false
+		mut escape_scan_needed := false
 		mut span_cost := 0
 		t.fn_scan_costs = []int{len: limit}
+		t.fn_escape_scan_flags = []u8{len: limit}
 		for i in 0 .. flags.len {
 			flag := flags[i]
 			span_cost += int(flag & 15)
+			if escape_flags[i] != 0 {
+				escape_scan_needed = true
+			}
 			if flag & 16 != 0 {
 				literal_pending = true
 			}
@@ -3501,11 +3534,13 @@ fn (mut t Transformer) collect_literal_fn_decls(limit int) []int {
 				}
 				literal_pending = false
 				t.fn_scan_costs[i] = span_cost
+				t.fn_escape_scan_flags[i] = 1 | if escape_scan_needed { u8(2) } else { u8(0) }
 			} else if flag & 64 != 0 {
 				literal_pending = false
 			}
 			if flag & 128 != 0 {
 				span_cost = 0
+				escape_scan_needed = false
 			}
 		}
 		return result
@@ -3536,11 +3571,18 @@ fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
 	// NOTE: arming the checker's BodyResolveMemo per item here was measured a
 	// wash (2026-08): transform's tc-level resolve repeats are already absorbed
 	// by trust_checked_expr_types and the transformer's own caches.
+	old_literal_free_fn_body := t.literal_free_fn_body
+	t.literal_free_fn_body = true
+	defer {
+		t.literal_free_fn_body = old_literal_free_fn_body
+	}
 	for it in items {
 		t.cur_file = it.file
 		t.cur_module = it.module
 		t.item_range_lo = it.range_lo
 		t.item_range_hi = it.fn_idx
+		t.item_escape_scan_known = it.escape_scan_known
+		t.item_escape_scan_needed = it.escape_scan_needed
 		if t.memo_node_types {
 			t.begin_node_type_memo(it.range_lo, it.fn_idx)
 		}
@@ -3558,6 +3600,8 @@ fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
 	t.end_node_type_memo()
 	t.item_range_lo = -1
 	t.item_range_hi = -1
+	t.item_escape_scan_known = false
+	t.item_escape_scan_needed = false
 }
 
 // transform_deferred_str_items lowers the functions held back from the parallel
@@ -6252,8 +6296,14 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 // from fields; the source type is checked at rewrite time when `v`'s type is known.
 fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.reset_escaping_amp_state()
-	if t.fast_escape_precheck && !t.escape_scan_may_be_needed(body_ids) {
-		return
+	if t.fast_escape_precheck {
+		if t.item_escape_scan_known {
+			if !t.item_escape_scan_needed {
+				return
+			}
+		} else if !t.escape_scan_may_be_needed(body_ids) {
+			return
+		}
 	}
 	mut amp_ptrs := map[string]bool{}
 	mut amp_sources := map[string][]string{} // pointer `p` -> possible source locals `v`
@@ -8570,8 +8620,10 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		t.pointer_value_rvalues[name] = true
 	}
 	t.mark_local_closure_cleanup_decls(body_ids)
-	for id in body_ids {
-		t.collect_mut_capture_sources(id)
+	if !t.literal_free_fn_body {
+		for id in body_ids {
+			t.collect_mut_capture_sources(id)
+		}
 	}
 	// The escape pre-pass may query expression types before local declarations
 	// have populated var_types. Do not let those provisional answers leak into
@@ -10953,7 +11005,7 @@ fn (t &Transformer) const_ref_matches_key_in_context(id flat.NodeId, module_name
 		return true
 	}
 	base := name.all_before_last('.')
-	field := name.all_after_last('.')
+	field := short_name_view(name)
 	resolved_base := t.tc.file_imports[file_import_key(file, base)] or { base }
 	if qualified_const_key_matches(key, resolved_base, field) {
 		return true
@@ -10995,7 +11047,7 @@ fn (t &Transformer) const_ref_may_match_key(id flat.NodeId, key string, key_shor
 	if node.kind == .ident && !isnil(t.tc) {
 		base := node.value.all_before_last('.')
 		if resolved_base := t.tc.file_imports[file_import_key(file, base)] {
-			return qualified_const_key_matches(key, resolved_base, node.value.all_after_last('.'))
+			return qualified_const_key_matches(key, resolved_base, short_name_view(node.value))
 		}
 	}
 	return false
@@ -20938,6 +20990,26 @@ fn (t &Transformer) variant_names_match(a string, b string) bool {
 }
 
 fn (t &Transformer) variant_names_match_uncached(a string, b string) bool {
+	a_has_bracket := a.contains('[')
+	b_has_bracket := b.contains('[')
+	if !a_has_bracket && !b_has_bracket {
+		a_has_dot := a.contains('.')
+		b_has_dot := b.contains('.')
+		if a_has_dot || b_has_dot {
+			if !a.starts_with('&') && !b.starts_with('&') {
+				if short_name_view(a) == short_name_view(b) {
+					return true
+				}
+			} else if t.variant_short_name(a) == t.variant_short_name(b) {
+				return true
+			}
+		}
+		if (a.contains('fn') || b.contains('fn'))
+			&& canonical_fn_variant_name(a) == canonical_fn_variant_name(b) {
+			return true
+		}
+		return false
+	}
 	a_is_container := a.starts_with('[]') || a.starts_with('map[') || t.is_fixed_array_type(a)
 	b_is_container := b.starts_with('[]') || b.starts_with('map[') || t.is_fixed_array_type(b)
 	if a_is_container && b_is_container && !t.generic_arg_is_unresolved(a)
@@ -20954,11 +21026,6 @@ fn (t &Transformer) variant_names_match_uncached(a string, b string) bool {
 	if (a.contains('fn') || b.contains('fn'))
 		&& canonical_fn_variant_name(a) == canonical_fn_variant_name(b) {
 		return true
-	}
-	a_has_bracket := a.contains('[')
-	b_has_bracket := b.contains('[')
-	if !a_has_bracket && !b_has_bracket {
-		return false
 	}
 	if t.is_fixed_array_type(a) && t.is_fixed_array_type(b) {
 		return t.resolved_fixed_array_canonical_type(a) == t.resolved_fixed_array_canonical_type(b)
@@ -22181,7 +22248,7 @@ fn (t &Transformer) const_type_key_in_context(name string, module_name string, f
 		return name
 	}
 	base := name.all_before_last('.')
-	field := name.all_after_last('.')
+	field := short_name_view(name)
 	resolved_base := if mod := t.tc.file_imports[file_import_key(file, base)] {
 		mod
 	} else {

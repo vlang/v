@@ -1225,7 +1225,7 @@ fn (t &Transformer) is_type_alias_name(name string) bool {
 	}
 	if !isnil(t.type_alias_name_cache) {
 		mut cache := t.type_alias_name_cache
-		if cache.module != t.cur_module {
+		if !same_transform_text(cache.module, t.cur_module) {
 			cache.module = t.cur_module
 			cache.entries.clear()
 			cache.last_name = ''

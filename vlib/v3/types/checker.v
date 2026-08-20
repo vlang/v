@@ -854,8 +854,13 @@ pub mut:
 	// `collect`; no later phase of the check step appends declarations. Phases
 	// after the check (transform) may grow the AST: top_level_idx_nodes_len
 	// records the node count the index covers.
-	top_level_idx                 []int
-	top_level_idx_nodes_len       int
+	top_level_idx           []int
+	top_level_idx_nodes_len int
+	// Anonymous and function-local struct declarations are synthesized below
+	// the file's top-level declaration tree. The direct-parent pass records their
+	// sorted node ids so collect_top_level_idx_fast can merge them without
+	// rescanning every gap between parser-recorded declarations.
+	synthetic_top_level_type_ids  []int
 	expected_expr_id              int  = -1
 	expected_expr_type            Type = Type(void_)
 	cur_fn_ret_type               Type = Type(void_)
@@ -1258,6 +1263,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		pending_ierror_errors:              []PendingIerrorError{}
 		top_level_idx:                      tc.top_level_idx
 		top_level_idx_nodes_len:            tc.top_level_idx_nodes_len
+		synthetic_top_level_type_ids:       tc.synthetic_top_level_type_ids
 		direct_parent_ids:                  tc.direct_parent_ids
 		rewritten_parent_ids:               tc.rewritten_parent_ids
 		value_used_nodes:                   tc.value_used_nodes
@@ -1657,6 +1663,7 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.translated_files = map[string]bool{}
 	tc.has_globals_files = map[string]bool{}
 	tc.strings_builder_candidates = []int{cap: 1024}
+	tc.synthetic_top_level_type_ids = []int{cap: 2048}
 	tc.has_goto_nodes = false
 }
 
@@ -1666,6 +1673,10 @@ fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 		fn_cost += 1 + int(node.children_count) * 2
 		if node.kind == .goto_stmt {
 			tc.has_goto_nodes = true
+		}
+		if node.kind == .struct_decl
+			&& (is_anonymous_struct_name(node.value) || node.value.contains('@local@')) {
+			tc.synthetic_top_level_type_ids << parent_idx
 		}
 		for child_idx in 0 .. node.children_count {
 			child := a.child(&node, child_idx)
@@ -2503,26 +2514,34 @@ fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []b
 			}
 		}
 	}
+	mut synthetic_pos := 0
 	for k := 0; k + 1 < a.file_node_ids.len; k += 2 {
 		marker := a.file_node_ids[k]
 		trailing := a.file_node_ids[k + 1]
+		for synthetic_pos < tc.synthetic_top_level_type_ids.len
+			&& tc.synthetic_top_level_type_ids[synthetic_pos] <= marker {
+			synthetic_pos++
+		}
 		idx_file := a.nodes[marker].value
 		tc.top_level_idx << marker
 		tnode := a.nodes[trailing]
 		mut idx_module := ''
-		mut synthetic_scan_start := marker + 1
 		for ci in 0 .. tnode.children_count {
 			decl_idx := int(a.child(&tnode, ci))
-			for synthetic_idx in synthetic_scan_start .. decl_idx {
-				synthetic := a.nodes[synthetic_idx]
-				if synthetic.kind == .struct_decl && (is_anonymous_struct_name(synthetic.value)
-					|| synthetic.value.contains('@local@')) {
+			for synthetic_pos < tc.synthetic_top_level_type_ids.len
+				&& tc.synthetic_top_level_type_ids[synthetic_pos] < decl_idx {
+				synthetic_idx := tc.synthetic_top_level_type_ids[synthetic_pos]
+				if synthetic_idx < trailing {
 					idx_module = tc.collect_index_child(a, synthetic_idx, idx_file, idx_module,
 						inactive)
 				}
+				synthetic_pos++
 			}
 			idx_module = tc.collect_index_child(a, decl_idx, idx_file, idx_module, inactive)
-			synthetic_scan_start = decl_idx + 1
+			if synthetic_pos < tc.synthetic_top_level_type_ids.len
+				&& tc.synthetic_top_level_type_ids[synthetic_pos] == decl_idx {
+				synthetic_pos++
+			}
 			// apply_decl_attrs emits module attributes as the node immediately
 			// following the module declaration, outside the trailing file node's
 			// declaration children.
@@ -2535,13 +2554,11 @@ fn (mut tc TypeChecker) collect_top_level_idx_fast(a &flat.FlatAst, inactive []b
 				}
 			}
 		}
-		for synthetic_idx in synthetic_scan_start .. trailing {
-			synthetic := a.nodes[synthetic_idx]
-			if synthetic.kind == .struct_decl && (is_anonymous_struct_name(synthetic.value)
-				|| synthetic.value.contains('@local@')) {
-				idx_module = tc.collect_index_child(a, synthetic_idx, idx_file, idx_module,
-					inactive)
-			}
+		for synthetic_pos < tc.synthetic_top_level_type_ids.len
+			&& tc.synthetic_top_level_type_ids[synthetic_pos] < trailing {
+			synthetic_idx := tc.synthetic_top_level_type_ids[synthetic_pos]
+			idx_module = tc.collect_index_child(a, synthetic_idx, idx_file, idx_module, inactive)
+			synthetic_pos++
 		}
 		tc.top_level_idx << trailing
 	}
@@ -2773,6 +2790,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	if file_index_usable(a) {
 		tc.collect_top_level_idx_fast(a, inactive_comptime_nodes)
 		tc.top_level_idx_nodes_len = a.nodes.len
+		tc.reserve_collect_maps()
 		tc.timing_profile('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (fast)')
 		tc.collect_after_index(a)
 		return
@@ -2830,6 +2848,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		}
 	}
 	tc.top_level_idx_nodes_len = a.nodes.len
+	tc.reserve_collect_maps()
+	tc.timing_profile('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	tc.collect_after_index(a)
+}
+
+fn (mut tc TypeChecker) reserve_collect_maps() {
 	// The collection passes below fill the signature/type tables from empty;
 	// with ~10k declarations each hot map otherwise pays a dozen doubling
 	// rehashes. Reserve once from the now-known top-level count (short-name and
@@ -2868,8 +2892,6 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			}
 		}
 	}
-	tc.timing_profile('  [ttime]     ck c idx       ${f64(ck_c_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-	tc.collect_after_index(a)
 }
 
 fn (mut tc TypeChecker) check_alias_declaration_cycles() {
