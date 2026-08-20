@@ -8587,7 +8587,14 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('transform', transform_was_parallel)
 		}
-		pre_tc.refresh_rewritten_parent_index(a)
+		// Self-host C generation consumes the transformer's explicit node types and
+		// the checker's resolved-call sidecars; it does not perform a second semantic
+		// annotation walk. Keep the checked source parent index in that fast path
+		// instead of rebuilding parents for 1M+ appended lowering nodes that no later
+		// stage queries.
+		if !building_v {
+			pre_tc.refresh_rewritten_parent_index(a)
+		}
 		if transform_errors.len > 0 {
 			eprintln('type checker found ${transform_errors.len} error(s):')
 			for message in transform_errors {

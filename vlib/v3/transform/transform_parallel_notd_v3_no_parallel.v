@@ -212,10 +212,12 @@ $if !windows {
 
 // TopLevelKindScanArgs is the payload for one top-level-kind flag-scan worker.
 struct TopLevelKindScanArgs {
-	a                 &flat.FlatAst = unsafe { nil }
+	a                 &flat.FlatAst      = unsafe { nil }
+	tc                &types.TypeChecker = unsafe { nil }
 	start             int
 	end               int
 	flags             voidptr // &u8 base of the per-node flag array (index 0 == node `base`)
+	escape_flags      voidptr // optional &u8 base for escape-precheck candidates
 	base              int
 	prefix_param_scan bool
 }
@@ -227,6 +229,7 @@ $if !windows {
 	fn literal_decl_scan_thread(arg voidptr) voidptr {
 		a := unsafe { &TopLevelKindScanArgs(arg) }
 		flags := unsafe { &u8(a.flags) }
+		escape_flags := unsafe { &u8(a.escape_flags) }
 		for i in a.start .. a.end {
 			node := unsafe { &a.a.nodes[i] }
 			mut flag := match node.kind {
@@ -267,6 +270,32 @@ $if !windows {
 			unsafe {
 				flags[i - a.base] = flag
 			}
+			mut may_escape := node.kind == .prefix && node.op == .amp
+			if !may_escape && node.kind == .call && node.children_count > 1 {
+				name := a.tc.resolved_call_name(flat.NodeId(i)) or {
+					unsafe {
+						escape_flags[i - a.base] = 1
+					}
+					continue
+				}
+				params := a.tc.fn_param_types[name] or {
+					unsafe {
+						escape_flags[i - a.base] = 1
+					}
+					continue
+				}
+				for param in params {
+					if escape_type_is_void_pointer(param) {
+						may_escape = true
+						break
+					}
+				}
+			}
+			if may_escape {
+				unsafe {
+					escape_flags[i - a.base] = 1
+				}
+			}
 		}
 		return unsafe { nil }
 	}
@@ -299,11 +328,13 @@ $if !windows {
 // scan_literal_decl_flags_parallel fills the sparse literal/declaration flags
 // used by collect_literal_fn_decls. The master can then word-scan the compact
 // byte array instead of streaming every full AST node header.
-fn scan_literal_decl_flags_parallel(a &flat.FlatAst, limit int, mut flags []u8) bool {
+fn scan_literal_decl_flags_parallel(t &Transformer, limit int, mut flags []u8, mut escape_flags []u8) bool {
 	$if windows {
 		return false
 	} $else {
-		if isnil(a.worker_pool) || limit < 65536 || limit > a.nodes.len || flags.len < limit {
+		a := t.a
+		if isnil(t.tc) || isnil(a.worker_pool) || limit < 65536 || limit > a.nodes.len
+			|| flags.len < limit || escape_flags.len < limit {
 			return false
 		}
 		n_jobs := a.worker_pool.size() + 1
@@ -319,10 +350,12 @@ fn scan_literal_decl_flags_parallel(a &flat.FlatAst, limit int, mut flags []u8) 
 				break
 			}
 			args << TopLevelKindScanArgs{
-				a:     a
-				start: start
-				end:   end
-				flags: flags.data
+				a:            a
+				tc:           t.tc
+				start:        start
+				end:          end
+				flags:        flags.data
+				escape_flags: escape_flags.data
 			}
 		}
 		mut tasks := []workers.Task{cap: args.len}

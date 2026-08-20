@@ -125,7 +125,7 @@ fn (t &Transformer) resolve_sum_name(sum_name string) string {
 		return t.resolve_sum_name_uncached(sum_name)
 	}
 	mut c := t.sum_cache
-	if c.module != t.cur_module {
+	if !same_transform_text(c.module, t.cur_module) {
 		c.module = t.cur_module
 		c.entries.clear()
 		c.clear_recent()
@@ -184,7 +184,8 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 			return resolved_base
 		}
 	}
-	if sum_name.contains('.') {
+	has_dot := sum_name.contains('.')
+	if has_dot {
 		// Import-aliased module path: `tast.Value` names `sub.tast.Value`.
 		// The full-suffix match runs before the bare short-name fallback so an
 		// unrelated short `Value` sum cannot shadow the aliased one; ambiguous
@@ -215,22 +216,21 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		if !suffix_ambiguous && suffix_match.len > 0 {
 			return suffix_match
 		}
-		short_sum := sum_name.all_after_last('.')
+		short_sum := short_name_view(sum_name)
 		if short_sum in t.sum_types {
 			return short_sum
 		}
 	}
-	if !sum_name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
+	if !has_dot && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qsum := '${t.cur_module}.${sum_name}'
 		if qsum in t.sum_types {
 			return qsum
 		}
 	}
-	if !sum_name.contains('.') {
+	if !has_dot {
 		mut found := ''
 		for key, _ in t.sum_types {
-			if key.contains('.') && key.all_after_last('.') == sum_name {
+			if key.contains('.') && short_name_view(key) == sum_name {
 				if found.len > 0 && found != key {
 					found = ''
 					break
@@ -246,23 +246,22 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		if sum_name in t.tc.sum_types {
 			return sum_name
 		}
-		if sum_name.contains('.') {
-			short_sum := sum_name.all_after_last('.')
+		if has_dot {
+			short_sum := short_name_view(sum_name)
 			if short_sum in t.tc.sum_types {
 				return short_sum
 			}
 		}
-		if !sum_name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-			&& t.cur_module != 'builtin' {
+		if !has_dot && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qsum := '${t.cur_module}.${sum_name}'
 			if qsum in t.tc.sum_types {
 				return qsum
 			}
 		}
-		if !sum_name.contains('.') {
+		if !has_dot {
 			mut found := ''
 			for key, _ in t.tc.sum_types {
-				if key.contains('.') && key.all_after_last('.') == sum_name {
+				if key.contains('.') && short_name_view(key) == sum_name {
 					if found.len > 0 && found != key {
 						found = ''
 						break

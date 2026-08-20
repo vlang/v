@@ -21,6 +21,15 @@ fn test_c_name_sanitize_escaped_keywords() {
 	assert c_name('Kind.@asm') == 'Kind___v_asm'
 }
 
+fn test_c_name_pre_sanitized_classifier() {
+	assert c_name_is_pre_sanitized('main__run')
+	assert c_name_is_pre_sanitized('foo__Bar__method')
+	assert !c_name_is_pre_sanitized('send')
+	assert !c_name_is_pre_sanitized('C.printf')
+	assert !c_name_is_pre_sanitized('foo__bar-baz')
+	assert !c_name_is_pre_sanitized('_str_1')
+}
+
 fn test_c_name_sanitizes_compound_generic_type_arguments() {
 	name :=
 		c_name('json2.StructKeyDecodeResult[fn(&mbedtls.SSLListener, string) !&mbedtls.SSLCerts]')

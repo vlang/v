@@ -3,7 +3,7 @@ module transform
 import v3.flat
 import v3.types
 
-fn scan_literal_decl_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8) bool {
+fn scan_literal_decl_flags_parallel(_ &Transformer, _ int, mut _ []u8, mut _ []u8) bool {
 	return false
 }
 

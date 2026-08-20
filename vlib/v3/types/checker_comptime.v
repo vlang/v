@@ -9391,13 +9391,18 @@ fn (tc &TypeChecker) direct_parent_kind(id flat.NodeId) flat.NodeKind {
 	return .empty
 }
 
+@[direct_array_access; inline]
 fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 	idx := int(id)
+	if tc.direct_parent_index_trusted && idx >= 0 && idx < tc.direct_parent_ids.len {
+		return tc.direct_parent_ids[idx]
+	}
+	return tc.direct_parent_id_untrusted(id, idx)
+}
+
+fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.NodeId {
 	if idx >= 0 && idx < tc.direct_parent_ids.len {
 		parent_id := tc.direct_parent_ids[idx]
-		if tc.direct_parent_index_trusted {
-			return parent_id
-		}
 		if parent_id != flat.empty_node {
 			parent := tc.a.node(parent_id)
 			for i in 0 .. parent.children_count {

@@ -220,6 +220,7 @@ $if !windows {
 			g := unsafe { &FlatGen(a.g) }
 			mut text_cache := &PrepTypTextCache{}
 			mut type_seen := &PreseedTypeSeen{}
+			mut resolved_call_cache := &ResolvedCallTypeCache{}
 			mut cur_file := ''
 			mut cur_module := ''
 			for idx in a.start .. a.end {
@@ -233,7 +234,7 @@ $if !windows {
 					}
 					cost, needs_prelude_scan := exact_flat_fn_gen_item_cost_and_prep(g,
 						items[idx].node_id, idx, mut a.refs, mut stack, mut a.cands, mut
-						text_cache, mut type_seen)
+						text_cache, mut type_seen, mut resolved_call_cache)
 					items[idx].cost = cost
 					items[idx].skip_prelude_scan = !needs_prelude_scan
 				}
@@ -1913,6 +1914,9 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node &flat.Node) ?type
 		return none
 	}
 	if g.tc.parallel_check_sparse && (idx < g.tc.check_range_lo || idx > g.tc.check_range_hi) {
+		if g.tc.sparse_expr_type_values.len == 0 && node.kind != .call {
+			return none
+		}
 		if t := g.tc.sparse_expr_type_values[idx] {
 			return t
 		}
@@ -1948,13 +1952,22 @@ struct FlatCgenPrepCandidate {
 	item_idx int
 }
 
+struct ResolvedCallTypeCache {
+mut:
+	ptrs   [4096]voidptr
+	lens   [4096]int
+	values [4096]types.Type
+	seen   [4096]bool
+	found  [4096]bool
+}
+
 // exact_flat_fn_gen_item_cost_and_prep is exact_flat_fn_gen_item_cost plus the
 // candidate collection of the former serial fused prep walk: distinct type
 // texts and distinct cached expression types, in encounter order. All FlatGen
 // and checker access is read-only (nothing writes the dense expr caches during
 // cgen; every remember_expr_type caller is a mut check-phase path).
 @[direct_array_access]
-fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_idx int, mut c_extern_refs map[string]bool, mut stack []flat.NodeId, mut cands []FlatCgenPrepCandidate, mut text_cache PrepTypTextCache, mut type_seen PreseedTypeSeen) (int, bool) {
+fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_idx int, mut c_extern_refs map[string]bool, mut stack []flat.NodeId, mut cands []FlatCgenPrepCandidate, mut text_cache PrepTypTextCache, mut type_seen PreseedTypeSeen, mut resolved_call_cache ResolvedCallTypeCache) (int, bool) {
 	a := g.a
 	mut cost := 0
 	mut needs_prelude_scan := false
@@ -1985,7 +1998,7 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 				}
 			}
 		}
-		if parallel_type_text_may_preseed(g, node.typ) {
+		if node.typ.len > 0 {
 			slot := int((u64(voidptr(node.typ.str)) >> 4) & 4095)
 			if text_cache.gens[slot] != text_cache.generation
 				|| text_cache.ptrs[slot] != voidptr(node.typ.str)
@@ -1993,13 +2006,16 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 				text_cache.ptrs[slot] = voidptr(node.typ.str)
 				text_cache.gens[slot] = text_cache.generation
 				text_cache.lens[slot] = node.typ.len
-				cands << FlatCgenPrepCandidate{
-					text:     node.typ
-					item_idx: item_idx
+				text_cache.verdicts[slot] = parallel_type_text_may_preseed(g, node.typ)
+				if text_cache.verdicts[slot] {
+					cands << FlatCgenPrepCandidate{
+						text:     node.typ
+						item_idx: item_idx
+					}
 				}
 			}
 		}
-		if expr_type := g.parallel_cached_expr_type(id, node) {
+		if expr_type := g.parallel_cached_expr_type_with_cache(id, node, mut resolved_call_cache) {
 			w0, w1, slot := preseed_type_words(expr_type)
 			if !type_seen.seen[slot] || type_seen.w0[slot] != w0 || type_seen.w1[slot] != w1 {
 				type_seen.w0[slot] = w0
@@ -2020,6 +2036,42 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 		}
 	}
 	return cost, needs_prelude_scan
+}
+
+@[direct_array_access]
+fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.Node, mut cache ResolvedCallTypeCache) ?types.Type {
+	idx := int(id)
+	if idx < 0 {
+		return none
+	}
+	if g.tc.parallel_check_sparse && (idx < g.tc.check_range_lo || idx > g.tc.check_range_hi) {
+		return g.parallel_cached_expr_type(id, node)
+	}
+	if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len && g.tc.expr_type_set[idx] {
+		return g.tc.expr_type_values[idx]
+	}
+	if node.kind != .call || idx >= g.tc.resolved_call_set.len
+		|| idx >= g.tc.resolved_call_names.len || !g.tc.resolved_call_set[idx] {
+		return none
+	}
+	name := g.tc.resolved_call_names[idx]
+	slot := int((u64(voidptr(name.str)) >> 4 ^ u64(name.len)) & 4095)
+	if cache.seen[slot] && cache.ptrs[slot] == voidptr(name.str) && cache.lens[slot] == name.len {
+		if cache.found[slot] {
+			return cache.values[slot]
+		}
+		return none
+	}
+	cache.ptrs[slot] = voidptr(name.str)
+	cache.lens[slot] = name.len
+	cache.seen[slot] = true
+	if typ := g.tc.fn_ret_types[name] {
+		cache.values[slot] = typ
+		cache.found[slot] = true
+		return typ
+	}
+	cache.found[slot] = false
+	return none
 }
 
 // parallel_type_text_may_preseed cheaply rejects builtin/container type text
@@ -2291,6 +2343,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		ierror_method_emit_names:       g.ierror_method_emit_names
 		recursive_drop_helpers:         g.recursive_drop_helpers
 		sum_name_lookup:                g.sum_name_lookup
+		sum_variant_lookup:             g.sum_variant_lookup
+		sum_variant_actual_cache:       &SumVariantActualCache{}
 		module_init_fns:                g.module_init_fns
 		module_init_fn_modules:         g.module_init_fn_modules
 		module_cleanup_fns:             g.module_cleanup_fns
@@ -2306,6 +2360,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		has_builtins:                   g.has_builtins
 		cache_split:                    g.cache_split
 		compile_values:                 g.compile_values
+		trace_calls:                    g.trace_calls
 		skip_generics:                  g.skip_generics
 		tmp_count:                      (worker_id + 1) * 100_000
 		line_start:                     true
@@ -2365,6 +2420,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		} else {
 			g.cur_param_types.clone()
 		}
+		cur_param_name_bits:            g.cur_param_name_bits
 		cur_concrete_optional_params:   if result_only {
 			g.cur_concrete_optional_params
 		} else {

@@ -4962,7 +4962,7 @@ fn (g &FlatGen) type_names_match(a types.Type, b types.Type) bool {
 	if a_name == b_name {
 		return true
 	}
-	return short_module_type_text(a_name) == short_module_type_text(b_name)
+	return short_module_type_texts_equal(a_name, b_name)
 }
 
 fn (g &FlatGen) array_abi_types_match(a types.Type, b types.Type) bool {
