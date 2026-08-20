@@ -71,7 +71,18 @@ pub fn (mut s H3RequestStreamState) note_frame_kind(frame_is_headers bool, frame
 				return error_with_code('h3: first frame on a request stream was not HEADERS',
 					int(H3ErrorCode.frame_unexpected))
 			}
-			s.phase = .in_body
+			// Phase is deliberately NOT advanced here: whether this HEADERS
+			// block is the final response or an RFC 9110 §15.2 1xx interim
+			// response (100 Continue, 103 Early Hints, ...) can only be
+			// known after QPACK-decoding its :status field, which this
+			// envelope-only state machine never sees. h3_conn.v's
+			// deliver_decoded_headers calls note_final_response_headers()
+			// once that is determined -- possibly on a LATER poll() call,
+			// if this section was blocked. Leaving phase unchanged here
+			// means a second (or third, ...) HEADERS block arriving while
+			// still awaiting the final response is processed by this exact
+			// same branch again, which is what allows any number of 1xx
+			// responses to precede the final one.
 		}
 		.in_body {
 			if frame_is_headers {
@@ -91,6 +102,21 @@ pub fn (mut s H3RequestStreamState) note_frame_kind(frame_is_headers bool, frame
 			return error_with_code('h3: received a frame on a request stream after it ended',
 				int(H3ErrorCode.frame_unexpected))
 		}
+	}
+}
+
+// note_final_response_headers transitions the stream past the response-
+// headers position once the caller (h3_conn.v) has determined -- by
+// inspecting a decoded HEADERS block's :status field, which this framing-
+// only state machine never sees -- that it is the final (non-1xx) response,
+// as opposed to an RFC 9110 §15.2 interim response that leaves the phase
+// unchanged. A no-op once already past .awaiting_response_headers: safe to
+// call at most once per stream in practice (note_frame_kind only reaches
+// the .awaiting_response_headers branch before this has ever been called),
+// but idempotent rather than assuming that ordering.
+pub fn (mut s H3RequestStreamState) note_final_response_headers() {
+	if s.phase == .awaiting_response_headers {
+		s.phase = .in_body
 	}
 }
 

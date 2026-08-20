@@ -502,6 +502,117 @@ fn test_h3_conn_qpack_glue_loop_end_to_end_with_section_ack() {
 	assert headers_ev[0].headers[0].value == 'hello'
 }
 
+// test_h3_conn_1xx_interim_response_is_discarded_not_misdelivered_as_final_or_trailers
+// is a regression test for a real bug: before this fix, the message-framing
+// state machine had no concept of RFC 9110 §15.2's 1xx informational
+// responses, so a legitimate `:status: 103` HEADERS block followed by the
+// real `:status: 200` response caused the 103 to be delivered as "the"
+// response (wrong final status) and the real 200 response to be misdelivered
+// as TRAILERS (h3_mux_conn.v dumps trailer fields into resp.headers with no
+// :status filtering at all). Uses ONLY exact QPACK static-table entries
+// (both ':status'/'103' and ':status'/'200' are static-table hits -- see
+// qpack_static_table.v) so this exercises no dynamic-table/encoder-
+// instruction machinery at all, keeping the two HEADERS blocks decodable
+// synchronously in one poll() call.
+fn test_h3_conn_1xx_interim_response_is_discarded_not_misdelivered_as_final_or_trailers() {
+	mut c, mut h, _, now := h3_test_conn()!
+	defer {
+		c.handshake.free()
+	}
+	mut peer_encoder := new_qpack_encoder()
+
+	stream_id := h.open_request_stream()!
+	h.poll(none, now)!
+
+	interim := peer_encoder.encode_field_section(stream_id, [
+		QpackFieldLine{
+			name:  ':status'
+			value: '103'
+		},
+	])!
+	assert interim.encoder_instructions.len == 0, 'a static-table-only reference must not need an encoder instruction'
+	final := peer_encoder.encode_field_section(stream_id, [
+		QpackFieldLine{
+			name:  ':status'
+			value: '200'
+		},
+	])!
+	assert final.encoder_instructions.len == 0
+
+	mut body := encode_headers_frame(interim.field_section)!
+	body << encode_headers_frame(final.field_section)!
+	req_stream_frame := encode_stream_frame(stream_id, 0, body, false, true)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, 0, req_stream_frame, read_keys(mut c), false)!
+	result := h.poll(req_datagram.bytes, now)!
+
+	trailers_ev := result.events.filter(it.kind == .response_trailers)
+	assert trailers_ev.len == 0, '103 must never be misdelivered as trailers: ${result.events.str()}'
+	headers_ev := result.events.filter(it.kind == .response_headers)
+	assert headers_ev.len == 1, 'exactly one response_headers event, for the 200, not the discarded 103: ${result.events.str()}'
+	assert headers_ev[0].headers.len == 1
+	assert headers_ev[0].headers[0].name == ':status'
+	assert headers_ev[0].headers[0].value == '200', 'the delivered response_headers must be the FINAL response, not the discarded 1xx interim one'
+}
+
+// test_h3_conn_prunes_request_stream_state_once_finalized is a regression
+// test for unbounded memory growth: request_streams/request_decoders used
+// to grow with the TOTAL number of requests ever opened on a pooled
+// connection, never shrinking as requests completed, since nothing ever
+// deleted their entries.
+fn test_h3_conn_prunes_request_stream_state_once_finalized() {
+	mut c, mut h, _, now := h3_test_conn()!
+	defer {
+		c.handshake.free()
+	}
+	mut peer_encoder := new_qpack_encoder()
+
+	stream_id := h.open_request_stream()!
+	h.poll(none, now)!
+	assert stream_id in h.request_streams
+
+	final := peer_encoder.encode_field_section(stream_id, [
+		QpackFieldLine{
+			name:  ':status'
+			value: '200'
+		},
+	])!
+	headers_frame := encode_headers_frame(final.field_section)!
+	req_stream_frame := encode_stream_frame(stream_id, 0, headers_frame, true, true)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, 0, req_stream_frame, read_keys(mut c), false)!
+	result := h.poll(req_datagram.bytes, now)!
+	assert result.events.any(it.kind == .response_ended)
+
+	// Once a request stream is fully finalized, its per-request state must
+	// not linger -- a long-lived pooled connection serving many sequential
+	// requests would otherwise accumulate one entry per request EVER
+	// opened, not per request currently in flight.
+	assert stream_id !in h.request_streams
+	assert stream_id !in h.request_decoders
+}
+
+fn test_h3_conn_prunes_request_stream_state_on_failure_too() {
+	mut c, mut h, _, now := h3_test_conn()!
+	defer {
+		c.handshake.free()
+	}
+	stream_id := h.open_request_stream()!
+	h.poll(none, now)!
+	assert stream_id in h.request_streams
+
+	// A DATA frame first, with no HEADERS at all, is a request-stream
+	// framing error (§4.1) -- fail_request_stream must prune this stream's
+	// state even on the failure path, not just on successful completion.
+	data_frame := encode_data_frame([u8(1), 2, 3])!
+	req_stream_frame := encode_stream_frame(stream_id, 0, data_frame, false, true)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, 0, req_stream_frame, read_keys(mut c), false)!
+	result := h.poll(req_datagram.bytes, now)!
+	assert result.events.any(it.kind == .request_error)
+
+	assert stream_id !in h.request_streams
+	assert stream_id !in h.request_decoders
+	assert stream_id in h.dead_request_streams
+}
+
 // test_h3_conn_blocked_headers_retry_after_delayed_encoder_instruction is
 // the standout new-integration-behavior case (no direct Phase 10/11 test
 // precedent): a HEADERS frame referencing a dynamic-table entry arrives

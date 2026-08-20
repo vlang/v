@@ -200,17 +200,38 @@ mut:
 	// h3_driver_poll_interval and notices shutdown_when_idle() +
 	// active_streams == 0 on its own within one poll interval.
 	refs int = 1
+	// on_retired, when non-nil, is called exactly once by fail_conn, after
+	// this connection has torn itself down on its OWN initiative (idle
+	// QUIC max_idle_timeout, a fatal UDP read/write/h3 error) -- not when
+	// Transport retires it via shutdown_when_idle(). Lets Transport
+	// (transport_h3.v) remove this connection from its own pool the
+	// instant it self-terminates; without it, a dead entry sits in
+	// Transport.h3_conns until some later request for the same key happens
+	// to overwrite it, and in the meantime evict_oldest_idle_locked's h3
+	// scan -- which only checks active_streams == 0, not can_take_new_
+	// request() -- can mistake it for a genuinely idle connection and
+	// "evict" it instead of an actually-idle one under a different key.
+	// Mirrors H2MuxConn's mandatory close_transport callback, but
+	// deliberately optional (nil tolerated, not a panic): H2's callback is
+	// the ONLY way to interrupt its reader's blocking transport.read(),
+	// while driver_loop's UDP read is always bounded by h3_driver_poll_
+	// interval regardless of whether this is set.
+	on_retired fn () = unsafe { nil }
 }
 
 // new_h3_mux_conn wraps an already-dialed `transport`/`h3` pair
 // (h3_udp_dial.v) and starts the background driver thread that owns them
 // from this point on. The caller must not use `transport`/`h3` directly
-// afterwards.
-pub fn new_h3_mux_conn(transport H3UdpTransport, h3 &quic.H3Conn) &H3MuxConn {
+// afterwards. `on_retired` is called once by fail_conn if this connection
+// ever tears itself down on its own initiative -- see the field's own doc
+// comment; pass `unsafe { nil }` to opt out (safe for e.g. tests that only
+// exercise driver_loop directly, never through Transport's pool).
+pub fn new_h3_mux_conn(transport H3UdpTransport, h3 &quic.H3Conn, on_retired fn ()) &H3MuxConn {
 	mut c := &H3MuxConn{
 		transport:  transport
 		h3:         h3
 		idle_since: time.now()
+		on_retired: on_retired
 	}
 	spawn c.driver_loop()
 	return c
@@ -327,18 +348,52 @@ fn (mut c H3MuxConn) wait_response(mut s H3MuxStream, req H3ClientRequest) !H3Cl
 	s.mu.lock()
 	for {
 		if !got_headers && s.headers_done {
+			mut status_seen := false
+			mut seen_regular := false
 			for f in s.resp_headers {
-				if f.name == ':status' {
-					if all_digits(f.value) {
-						resp.status = f.value.int()
+				if f.name.starts_with(':') {
+					if f.name != ':status' {
+						// RFC 9114 §4.3 defines no response pseudo-header
+						// besides :status.
+						s.mu.unlock()
+						return error('h3: response contains an invalid pseudo-header "${f.name}"')
 					}
+					if status_seen || seen_regular {
+						// RFC 9114 §4.3 permits exactly one :status
+						// pseudo-header, and mirrors RFC 9113 §8.3's
+						// pseudo-headers-must-precede-regular-fields rule.
+						// A duplicate, or one arriving after a regular
+						// field, makes the response malformed. Without
+						// this check, a duplicate silently last-wins
+						// instead of being rejected.
+						s.mu.unlock()
+						return error('h3: response contains a duplicate or out-of-order :status pseudo-header')
+					}
+					status_seen = true
+					// RFC 9114 §4.3 mirrors RFC 9113 §8.3.1: :status is
+					// exactly three digits. string.int() is lenient
+					// ('200 OK' -> 200, '20000' -> 20000), so validate the
+					// raw value before converting -- otherwise a malformed
+					// or out-of-range status is silently delivered to the
+					// caller as if it were a real response code. Mirrors
+					// h2_mux_conn.v's identical :status validation.
+					if f.value.len != 3 || !all_digits(f.value) {
+						s.mu.unlock()
+						return error('h3: response has a malformed :status pseudo-header "${f.value}"')
+					}
+					resp.status = f.value.int()
 					continue
 				}
+				seen_regular = true
 				resp.headers << f
 				if f.name == 'content-length' && all_digits(f.value) {
 					body_expected = f.value.u64()
 					has_content_length = true
 				}
+			}
+			if !status_seen {
+				s.mu.unlock()
+				return error('h3: response is missing the :status pseudo-header')
 			}
 			got_headers = true
 		}
@@ -362,14 +417,30 @@ fn (mut c H3MuxConn) wait_response(mut s H3MuxStream, req H3ClientRequest) !H3Cl
 					return h3_retryable_error(serr)
 				}
 				if serr_code != 0 {
-					// V's own error_with_code takes an int code; RFC 9114's
-					// defined error-code space (§8.1) fits comfortably within
-					// it, so this cast is lossless for every code this
-					// implementation itself ever produces -- the same
-					// int()-at-the-boundary pattern h3_conn.v/qpack_stream_
-					// type.v already use wherever an H3ErrorCode reaches a V
-					// error.
-					return error_with_code('h3: ${serr}', int(serr_code))
+					// serr_code can be a PEER-CONTROLLED value (a QUIC
+					// RESET_STREAM application error code is a full 62-bit
+					// varint, RFC 9000 §16 -- not restricted to RFC 9114
+					// §8.1's small registry), unlike every OTHER caller of
+					// int() on an H3ErrorCode in this codebase, which only
+					// ever narrows a value THIS implementation itself
+					// chose. Narrowing an untrusted u64 to `int` can
+					// produce ANY 32-bit value, including one that
+					// collides bit-for-bit with h3_err_retryable_code --
+					// h3_round_trip treats that exact value as "never
+					// reached the server, safe to blind-retry", so an
+					// unchecked collision would let a malicious or merely
+					// unregistered peer error code cause this client to
+					// silently replay a request the server explicitly
+					// rejected. Only a positive int is trusted as a real
+					// error code; anything else (zero, or negative -- which
+					// covers every internal sentinel this codebase uses,
+					// h3_err_retryable_code included) falls back to a
+					// plain, codeless error instead.
+					code_int := int(serr_code)
+					if code_int > 0 {
+						return error_with_code('h3: ${serr}', code_int)
+					}
+					return error('h3: ${serr} (raw error code ${serr_code})')
 				}
 				return error('h3: ${serr}')
 			}
@@ -520,6 +591,24 @@ fn (mut c H3MuxConn) driver_loop() {
 // failed at -- touching them here too would double-decrement once do()'s
 // wait_response wakes up on this same failure and finish_stream runs.
 fn (mut c H3MuxConn) start_request(mut p PendingH3Request) {
+	c.qmu.lock()
+	goaway := c.goaway_received
+	c.qmu.unlock()
+	if goaway {
+		// do()'s own admission check and this drain are separated by at
+		// least one driver_loop iteration (this file's own module doc
+		// comment): a request can be admitted (do() ran before GOAWAY was
+		// known) and still reach here AFTER dispatch_h3_event's .goaway
+		// case has already set c.goaway_received. Opening a brand-new
+		// stream now would land it at/above the server's already-declared
+		// processing boundary, guaranteeing it is never answered. Fail it
+		// exactly like that same .goaway handler fails every stream
+		// already open at that moment: retryable, so the caller redials
+		// immediately instead of hanging or being marked non-retryable
+		// later.
+		p.stream.fail('h3: connection is shutting down (GOAWAY)', true)
+		return
+	}
 	stream_id := c.h3.open_request_stream() or {
 		p.stream.fail('h3: ${err.msg()}', true)
 		return
@@ -583,14 +672,31 @@ fn (mut c H3MuxConn) dispatch_h3_event(ev quic.H3Event) {
 	match ev.kind {
 		.settings_received {}
 		.goaway {
-			// RFC 9114 §5.2's actual draining policy (retry every in-flight
-			// request whose stream id is at/above the GOAWAY boundary
-			// elsewhere) is Transport's job (12d) -- this only stops NEW
-			// admission, via can_take_new_request(), matching this file's
-			// own scope note in the approved Phase 12 plan.
+			// RFC 9114 §5.2: once GOAWAY(id) arrives, the server
+			// guarantees it will not process any request whose stream id
+			// is at/above `id` -- such a request is always safe to retry
+			// immediately on a fresh connection, rather than being left to
+			// hang on an unbounded cv.wait() or, once the connection
+			// eventually dies for an unrelated reason, get misclassified
+			// as non-retryable by fail_conn's `!sent_headers` heuristic
+			// (headers already having been sent proves nothing about
+			// whether the SERVER acted on them once it had already
+			// promised not to). Mirrors h2_mux_conn.v's H2GoawayFrame
+			// handler, which does the identical proactive walk-and-fail
+			// over c.streams.
+			boundary := ev.goaway_id or { 0 }
 			c.qmu.lock()
 			c.goaway_received = true
+			mut to_fail := []&H3MuxStream{}
+			for id, s in c.streams {
+				if id >= boundary {
+					to_fail << s
+				}
+			}
 			c.qmu.unlock()
+			for mut s in to_fail {
+				s.fail('request not processed (GOAWAY)', true)
+			}
 		}
 		.connection_error {
 			reason := if ev.reason != '' { ev.reason } else { 'h3 connection closed' }
@@ -656,11 +762,19 @@ fn (mut c H3MuxConn) dispatch_h3_event(ev quic.H3Event) {
 				return
 			}
 			code := ev.error_code or { u64(0) }
+			// RFC 9114 §8.1: H3_REQUEST_REJECTED means the server "has not
+			// processed" this request at all -- the client MAY retry it,
+			// exactly the same guarantee HTTP/2's REFUSED_STREAM carries.
+			// Mirrors h2_mux_conn.v's identical
+			// `frame.error_code == u32(H2ErrorCode.refused_stream)` check;
+			// every other request-stream error code is left non-retryable,
+			// since the server may have already acted on the request.
+			retryable := code == quic.H3ErrorCode.request_rejected.code()
 			s.mu.lock()
 			if !s.ended {
 				s.err = ev.reason
 				s.err_code = code
-				s.retryable = false
+				s.retryable = retryable
 				s.ended = true
 				s.cv.signal()
 			}
@@ -712,6 +826,9 @@ fn (mut c H3MuxConn) fail_conn(msg string) {
 	}
 	c.pending.clear()
 	c.qmu.unlock()
+	if c.on_retired != unsafe { nil } {
+		c.on_retired()
+	}
 	for mut s in open {
 		s.mu.lock()
 		retryable := !s.sent_headers

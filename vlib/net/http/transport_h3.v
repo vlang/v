@@ -26,6 +26,21 @@ import sync
 // h3_conns entry per key, so no larger bound is needed.
 const h3_round_trip_attempts = 2
 
+// h3_fresh_conn_request_attempts bounds how many times a request against a
+// just-(re)dialed H3MuxConn may be retried on h3_err_retryable_code before
+// giving up. This is a DIFFERENT retry than h3_round_trip_attempts: that
+// one retries against a *different* connection (the pooled one was dead,
+// so dial a fresh one); this one retries the SAME connection, because the
+// very first request admitted on a brand-new connection can race the QUIC
+// handshake itself -- start_request's open_request_stream/send_request_
+// headers calls fail (safely, retryably) until the peer's transport
+// parameters and this connection's own QPACK encoder stream are both
+// ready, which needs at least one real round trip after dial(). Each
+// retry naturally re-enters do()'s own blocking wait, which is paced by
+// driver_loop's own poll cadence (h3_driver_poll_interval), not a busy
+// loop, so no explicit sleep is needed here.
+const h3_fresh_conn_request_attempts = 20
+
 // h3_default_transport_parameters returns this client's own OFFERED QUIC
 // transport parameters for every h3 dial. Generous, fixed defaults (not
 // derived from req.read_timeout or similar): the dialed QuicConn/H3MuxConn
@@ -189,7 +204,6 @@ fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, hos
 
 	transport, _, h3 := h3_dial_udp_and_open(host, host, port, ca_pem, ['h3'],
 		h3_default_transport_parameters()) or { return t.h3_dial_failed(key, mut call, err) }
-	mut mux := new_h3_mux_conn(transport, h3)
 
 	t.mu.lock()
 	t.h3_dial_seq++
@@ -202,6 +216,24 @@ fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, hos
 	// "don't call out while holding the pool lock" discipline is kept for
 	// parity with h2_dial_and_do's identical structure.
 	mut orphan := t.h3_conns[key] or { &H3MuxConn(unsafe { nil }) }
+	// on_retired lets a self-terminated connection (idle QUIC max_idle_
+	// timeout, a fatal UDP read/write/h3 error) remove itself from the pool
+	// instead of leaving a dead, still-registered entry for evict_oldest_
+	// idle_locked's h3 scan to mistake for a real idle candidate (its own
+	// active_streams == 0 looks exactly like a healthy idle connection).
+	// dial_id-guarded exactly like h2_dial_and_do's identical close_
+	// transport closure a few lines above: without the guard, this
+	// callback firing after a NEWER dial has already superseded this key
+	// would wrongly delete the new entry instead of a stale one.
+	on_retired := fn [mut t, key, dial_id] () {
+		t.mu.lock()
+		if t.h3_dial_id[key] or { 0 } == dial_id {
+			t.h3_conns.delete(key)
+			t.h3_dial_id.delete(key)
+		}
+		t.mu.unlock()
+	}
+	mut mux := new_h3_mux_conn(transport, h3, on_retired)
 	t.h3_conns[key] = mux
 	t.h3_dial_id[key] = dial_id
 	t.h3_dialing.delete(key)
@@ -219,6 +251,15 @@ fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, hos
 	call.mu.unlock()
 	call.cv.broadcast()
 	if orphan != unsafe { nil } {
+		// shutdown_when_idle() is REQUIRED here, not just release(): unlike
+		// H2MuxConn (where release() draining refs to 0 synchronously
+		// drives teardown), H3MuxConn.release() is a documented no-op for
+		// teardown -- without shutdown_when_idle(), this orphan's driver
+		// thread never learns to retire and polls its UDP socket forever,
+		// since it has also just been overwritten out of t.h3_conns and so
+		// can never be reached by any later shutdown_when_idle() call
+		// either.
+		orphan.shutdown_when_idle()
 		orphan.release()
 	}
 	if evicted.h1 != unsafe { nil } {
@@ -233,7 +274,7 @@ fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, hos
 		evicted.h3.release()
 	}
 
-	resp := do_h3(req, mut mux, method, host, port, path, data, header)!
+	resp := h3_do_on_fresh_conn(req, mut mux, method, host, port, path, data, header)!
 	return resp
 }
 
@@ -279,7 +320,42 @@ fn (mut t Transport) h3_await_dial(mut call H3DialCall, req &Request, method Met
 		}
 		return error(msg)
 	}
-	return do_h3(req, mut conn, method, host, port, path, data, header)
+	// This request may be the very first one this singleflight dial's
+	// connection has ever seen (or close to it) -- the same "connection
+	// not ready yet" race h3_dial_and_do's own final call handles, see
+	// h3_do_on_fresh_conn's own doc comment.
+	return h3_do_on_fresh_conn(req, mut conn, method, host, port, path, data, header)
+}
+
+// h3_do_on_fresh_conn runs one request against a just-(re)dialed
+// H3MuxConn, retrying up to h3_fresh_conn_request_attempts times on
+// h3_err_retryable_code. Needed specifically for a fresh dial: the very
+// first request(s) admitted on a brand-new connection can race the QUIC
+// handshake itself (start_request's open_request_stream/send_request_
+// headers calls fail -- safely, retryably -- until the peer's transport
+// parameters and this connection's own QPACK encoder stream are both
+// ready, which needs at least one real round trip after dial()).
+// Deliberately distinct from h3_round_trip's own retry loop (which retries
+// against a DIFFERENT, freshly redialed connection because the pooled one
+// is dead): this one retries the SAME connection, because the failure here
+// means "not ready yet", not "this connection is dead".
+fn h3_do_on_fresh_conn(req &Request, mut conn H3MuxConn, method Method, host string, port int, path string, data string, header Header) !Response {
+	for _ in 0 .. h3_fresh_conn_request_attempts {
+		resp := do_h3(req, mut conn, method, host, port, path, data, header) or {
+			if err.code() == h3_err_retryable_code {
+				continue
+			}
+			return err
+		}
+		return resp
+	}
+	// This exhausted-retries outcome is exactly what h3_err_retryable_code
+	// exists for: the request provably never reached the server (every
+	// attempt failed before the connection was ever ready), so it must
+	// stay classified as safe-to-retry for any OUTER retry logic (e.g.
+	// request.v's max_retries loop) -- a bare codeless error() here would
+	// silently downgrade it to a hard, non-retryable failure.
+	return h3_retryable_error('request to a freshly dialed connection failed after ${h3_fresh_conn_request_attempts} attempts')
 }
 
 // do_h3 runs one request over an established, pooled H3MuxConn and converts

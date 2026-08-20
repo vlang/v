@@ -1148,6 +1148,77 @@ next:
   (mutual TLS) are not honorable on the h3 path in v1, both also
   documented there.
 
+**Phase A adversarial-verification pass (done)**: a multi-agent Workflow (5
+independent finder lenses — rfc/concurrency/pool-lifecycle/error-edges/
+holistic — each adversarially verified by independent skeptics) reviewed
+the combined 12a-12d diff and surfaced 7 confirmed, real bugs missed by
+each sub-phase's own `/vreview` pass (all were cross-sub-phase interaction
+gaps, invisible to any single sub-phase's own diff-scoped review). All 7
+fixed, tested, and re-reviewed:
+1. **Fresh-dial first-request race** — `driver_loop` drains `c.pending`
+   (opening the first queued request's stream) before that same iteration
+   ever reads/polls the wire, so the very first request on a brand-new
+   connection could hit QUIC's own `STREAM_LIMIT` (peer transport
+   parameters not yet learned) or "QPACK encoder stream not open yet" —
+   and neither `h3_dial_and_do`'s nor `h3_await_dial`'s final call retried
+   on `h3_err_retryable_code`, making `enable_http3` fail on essentially
+   every first request to a fresh origin. Fixed with `h3_do_on_fresh_conn`
+   (`transport_h3.v`), a bounded same-connection retry distinct from
+   `h3_round_trip`'s own different-connection retry.
+2. **RFC 9114 §5.2 GOAWAY draining never implemented** — `dispatch_h3_
+   event`'s `.goaway` case only blocked new admission; it never read
+   `ev.goaway_id` or failed any already-open stream at/above the boundary
+   (unlike `h2_mux_conn.v`'s identical `H2GoawayFrame` handler), so an
+   in-flight request above the boundary could hang indefinitely or later
+   be marked non-retryable by `fail_conn`'s `!sent_headers` heuristic.
+   Fixed: the `.goaway` handler now walks `c.streams` and fails every
+   stream `id >= boundary` retryable, mirroring H2 exactly; `start_request`
+   also gained its own `goaway_received` check to close the narrow
+   admission-race window (a request queued just before GOAWAY, drained
+   just after).
+3. **`H3_REQUEST_REJECTED` (RFC 9114 §8.1) not retryable** — `dispatch_h3_
+   event`'s `.request_error` case hardcoded `retryable = false` for every
+   error code, unlike H2's `REFUSED_STREAM` parity check. Fixed.
+4. **Orphaned pooled connection leak** — `h3_dial_and_do`'s superseded-
+   connection cleanup called only `orphan.release()`, never `orphan.
+   shutdown_when_idle()`; unlike `H2MuxConn.release()`, `H3MuxConn.
+   release()` is a documented no-op for teardown, so the orphan's driver
+   thread + UDP socket leaked for the process's remaining lifetime. Fixed.
+5. **Self-terminated connection never removed from the pool** — unlike
+   `H2MuxConn` (a mandatory `close_transport` self-removal callback),
+   `H3MuxConn` had no way to tell `Transport` it died on its own (idle
+   timeout, fatal UDP error) — the dead entry stayed in `t.h3_conns`,
+   where `evict_oldest_idle_locked`'s h3 scan (checking only `active_
+   streams == 0`, not `can_take_new_request()`) could mistake it for a
+   genuinely idle connection and evict it instead of a real one elsewhere.
+   Fixed with an optional `on_retired` callback on `H3MuxConn`, mirroring
+   H2's pattern but nil-tolerant (H3's teardown doesn't depend on it the
+   way H2's blocked reader does).
+6. **Peer-controlled error code could collide with the retryable
+   sentinel** — a QUIC RESET_STREAM error code is a full peer-controlled
+   62-bit varint; narrowing it to `int` for `error_with_code` could
+   produce `h3_err_retryable_code` itself, causing a non-idempotent
+   request the server explicitly rejected to be silently replayed. Fixed:
+   only a positive `int()` result is trusted as a real error code.
+7. **Unbounded per-connection memory growth** — `H3Conn.request_streams`/
+   `request_decoders` were never pruned once a request finished, growing
+   with the total number of requests ever served by a long-lived pooled
+   connection rather than the number in flight. Fixed: both maps are
+   pruned in `finalize_request_stream_if_done`'s success path and in
+   `fail_request_stream`'s failure path.
+
+Two additional bugs found via this project's own follow-up review of the
+same code (not the Workflow, which hit its session limit before every
+verifier finished): a genuine RFC 9110 §15.2 gap where the request-stream
+message-framing state machine had no concept of 1xx informational
+responses at all, so a `103`-then-`200` sequence delivered the 103 as the
+final status and misdelivered the real 200 response's fields as trailers
+(fixed in `h3_request_stream.v`/`h3_conn.v`: the `.awaiting_response_
+headers` → `.in_body` phase transition is now deferred until the decoded
+`:status` is known non-1xx); and a `:status` pseudo-header validation gap
+in `wait_response` (no length/duplicate/ordering/unknown-pseudo-header
+checks, unlike `h2_mux_conn.v`'s equivalent), now fixed to match.
+
 Two scope decisions made without a response after being flagged for
 sign-off, proceeding with the lower-risk default in each case (revisitable
 during review): server push is permanently disabled for v1 (never sending

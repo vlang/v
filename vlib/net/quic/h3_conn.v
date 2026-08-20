@@ -592,11 +592,31 @@ fn (mut h H3Conn) decode_or_queue_headers(stream_id u64, buf []u8, is_trailers b
 // resulting decoder-stream bytes (a Section Acknowledgment, if any -- see
 // QpackDecoder.decode_field_section's own doc comment for when one is
 // produced) and emits the matching H3Event.
+//
+// A `!is_trailers` block (a response-headers CANDIDATE -- the first HEADERS
+// this stream has seen, or another one arriving while still awaiting the
+// final response) is inspected for RFC 9110 §15.2's 1xx informational
+// range: a well-formed 1xx :status is discarded here entirely (this v1
+// client has no Expect:100-continue/early-hints support to hand it to) and
+// the stream's phase is left unchanged, so the NEXT HEADERS block -- final
+// or another interim one -- is still treated as a response-headers
+// candidate rather than trailers. Only once a non-1xx (or malformed/
+// missing, left for net.http's own :status validation to reject) status is
+// seen does this advance the phase and emit `.response_headers`. Mirrors
+// h2_mux_conn.v's identical "discard 1xx, keep waiting for the real
+// response" handling for HTTP/2.
 fn (mut h H3Conn) deliver_decoded_headers(stream_id u64, decoded QpackDecodeFieldSectionResult, is_trailers bool, mut result H3PollResult) ! {
 	if decoded.decoder_instructions.len > 0 {
 		if dec_id := h.own_qpack_decoder_stream_id {
 			h.qc.write_stream(dec_id, decoded.decoder_instructions, false)!
 		}
+	}
+	if !is_trailers && h3_status_is_informational(decoded.lines) {
+		return
+	}
+	if !is_trailers {
+		mut state := h.request_streams[stream_id] or { return }
+		state.note_final_response_headers()
 	}
 	result.events << H3Event{
 		kind:      if is_trailers {
@@ -607,6 +627,33 @@ fn (mut h H3Conn) deliver_decoded_headers(stream_id u64, decoded QpackDecodeFiel
 		stream_id: stream_id
 		headers:   decoded.lines
 	}
+}
+
+// h3_status_is_informational reports whether `lines` carries a well-formed
+// RFC 9110 §15.2 1xx informational :status (100-199). A missing or
+// malformed :status is deliberately NOT treated as informational -- it is
+// left for net.http's own :status validation (h3_mux_conn.v's wait_
+// response) to reject, matching this layer's existing division of labor
+// (it never itself rejects a malformed :status).
+fn h3_status_is_informational(lines []QpackFieldLine) bool {
+	for f in lines {
+		if f.name == ':status' {
+			return f.value.len == 3 && f.value[0] == `1` && h3_value_all_digits(f.value)
+		}
+	}
+	return false
+}
+
+fn h3_value_all_digits(s string) bool {
+	if s.len == 0 {
+		return false
+	}
+	for c in s {
+		if c < `0` || c > `9` {
+			return false
+		}
+	}
+	return true
 }
 
 // retry_blocked_sections re-attempts every currently blocked field
@@ -675,6 +722,16 @@ fn (mut h H3Conn) finalize_request_stream_if_done(stream_id u64, mut result H3Po
 				kind:      .response_ended
 				stream_id: stream_id
 			}
+			// This stream will never be dispatched to again (note_fin is
+			// terminal, and finalize_request_stream_if_done's own guards
+			// above already require the receive side to be fully drained):
+			// request_streams/request_decoders would otherwise grow with
+			// the TOTAL number of requests ever opened on a long-lived
+			// pooled connection, not the number currently in flight (see
+			// fail_request_stream's identical pruning, and its own doc
+			// comment, for the failure-path counterpart of this).
+			h.request_streams.delete(stream_id)
+			h.request_decoders.delete(stream_id)
 		}
 		.open {}
 	}
@@ -700,6 +757,18 @@ fn (mut h H3Conn) fail_request_stream(stream_id u64, error_code u64, reason stri
 		error_code: error_code
 		reason:     reason
 	}
+	// request_streams/request_decoders would otherwise grow with the total
+	// number of requests ever opened on a long-lived pooled connection, not
+	// the number currently in flight -- see the identical pruning (and this
+	// same reasoning) in finalize_request_stream_if_done's success path.
+	// dead_request_streams is deliberately left alone: it is a tiny,
+	// permanent bool marker (unlike these two, which hold buffered decoder
+	// state), and drain_known_peer_streams/retry_blocked_sections both
+	// still check membership in it as a defense-in-depth guard even though,
+	// after this deletion, `stream_id` no longer appears in request_
+	// streams.keys() for drain_known_peer_streams to iterate at all.
+	h.request_streams.delete(stream_id)
+	h.request_decoders.delete(stream_id)
 }
 
 // has_blocked_section_for reports whether any queued blocked field

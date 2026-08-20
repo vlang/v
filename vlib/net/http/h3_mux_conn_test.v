@@ -309,7 +309,7 @@ fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() {
 	transport.arm_fatal_error('simulated transport death', 300 * time.millisecond)
 
 	mut h3 := new_handshaking_h3_conn()
-	mut c := new_h3_mux_conn(H3UdpTransport(transport), h3)
+	mut c := new_h3_mux_conn(H3UdpTransport(transport), h3, unsafe { nil })
 
 	done := chan bool{cap: 1}
 	mut outcome := &H3TestDoOutcome{}
@@ -337,7 +337,7 @@ fn test_driver_fails_a_second_concurrent_pending_request_too() {
 	transport.arm_fatal_error('simulated transport death', 300 * time.millisecond)
 
 	mut h3 := new_handshaking_h3_conn()
-	mut c := new_h3_mux_conn(H3UdpTransport(transport), h3)
+	mut c := new_h3_mux_conn(H3UdpTransport(transport), h3, unsafe { nil })
 
 	done1 := chan bool{cap: 1}
 	done2 := chan bool{cap: 1}
@@ -363,4 +363,239 @@ fn test_driver_fails_a_second_concurrent_pending_request_too() {
 	}
 	assert outcome1.got_err && outcome1.err_code == h3_err_retryable_code
 	assert outcome2.got_err && outcome2.err_code == h3_err_retryable_code
+}
+
+// --- dispatch_h3_event: GOAWAY draining (RFC 9114 section 5.2) -----------
+
+fn test_dispatch_goaway_fails_streams_at_or_above_the_boundary_retryable() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut below := new_h3_mux_stream()
+	below.sent_headers = true
+	mut at := new_h3_mux_stream()
+	at.sent_headers = true
+	mut above := new_h3_mux_stream()
+	above.sent_headers = true
+	c.streams[0] = below
+	c.streams[4] = at
+	c.streams[8] = above
+
+	c.dispatch_h3_event(quic.H3Event{
+		kind:      .goaway
+		goaway_id: u64(4)
+	})
+
+	assert c.goaway_received
+	below.mu.lock()
+	below_ended := below.ended
+	below.mu.unlock()
+	assert !below_ended, 'a stream below the GOAWAY boundary must be left alone'
+
+	at.mu.lock()
+	at_ended := at.ended
+	at_retryable := at.retryable
+	at.mu.unlock()
+	assert at_ended && at_retryable, 'a stream AT the GOAWAY boundary is guaranteed unprocessed and must be failed retryable'
+
+	above.mu.lock()
+	above_ended := above.ended
+	above_retryable := above.retryable
+	above.mu.unlock()
+	assert above_ended && above_retryable, 'a stream ABOVE the GOAWAY boundary must also be failed retryable'
+}
+
+fn test_start_request_rejects_a_pending_request_once_goaway_received() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	c.goaway_received = true
+	mut s := new_h3_mux_stream()
+	mut p := PendingH3Request{
+		req:    H3ClientRequest{
+			authority: 'example.com'
+		}
+		stream: s
+	}
+	c.start_request(mut p)
+	s.mu.lock()
+	ended := s.ended
+	retryable := s.retryable
+	s.mu.unlock()
+	assert ended, 'a request admitted before GOAWAY but drained after it must not silently open a new stream above the boundary'
+	assert retryable
+}
+
+// --- dispatch_h3_event: request_error retry eligibility (RFC 9114 section 8.1) ---
+
+fn test_dispatch_request_error_h3_request_rejected_is_retryable() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	c.streams[1] = s
+	c.dispatch_h3_event(quic.H3Event{
+		kind:       .request_error
+		stream_id:  u64(1)
+		error_code: quic.H3ErrorCode.request_rejected.code()
+		reason:     'rejected'
+	})
+	s.mu.lock()
+	ended := s.ended
+	retryable := s.retryable
+	s.mu.unlock()
+	assert ended
+	assert retryable, 'H3_REQUEST_REJECTED (RFC 9114 section 8.1) means the server never processed this request, mirroring HTTP/2 REFUSED_STREAM -- it must be retryable'
+}
+
+fn test_dispatch_request_error_other_codes_are_not_retryable() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	c.streams[1] = s
+	c.dispatch_h3_event(quic.H3Event{
+		kind:       .request_error
+		stream_id:  u64(1)
+		error_code: quic.H3ErrorCode.internal_error.code()
+		reason:     'boom'
+	})
+	s.mu.lock()
+	retryable := s.retryable
+	s.mu.unlock()
+	assert !retryable
+}
+
+// --- wait_response: :status validation ------------------------------------
+
+fn test_wait_response_rejects_malformed_status() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [
+		quic.QpackFieldLine{
+			name:  ':status'
+			value: '20000'
+		},
+	]
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		assert err.msg().contains('malformed')
+		return
+	}
+	assert false, 'expected an out-of-range, non-3-digit :status to be rejected'
+}
+
+fn test_wait_response_rejects_duplicate_status() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [
+		quic.QpackFieldLine{
+			name:  ':status'
+			value: '200'
+		},
+		quic.QpackFieldLine{
+			name:  ':status'
+			value: '404'
+		},
+	]
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		assert err.msg().contains('duplicate')
+		return
+	}
+	assert false, 'expected a duplicate :status pseudo-header to be rejected'
+}
+
+fn test_wait_response_rejects_status_after_a_regular_field() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [
+		quic.QpackFieldLine{
+			name:  'content-type'
+			value: 'text/plain'
+		},
+		quic.QpackFieldLine{
+			name:  ':status'
+			value: '200'
+		},
+	]
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		assert err.msg().contains('duplicate or out-of-order')
+		return
+	}
+	assert false, 'RFC 9114 section 4.3 requires :status to precede regular fields, mirroring RFC 9113 section 8.3'
+}
+
+fn test_wait_response_rejects_unknown_pseudo_header() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [
+		quic.QpackFieldLine{
+			name:  ':status'
+			value: '200'
+		},
+		quic.QpackFieldLine{
+			name:  ':path'
+			value: '/'
+		},
+	]
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		assert err.msg().contains('invalid pseudo-header')
+		return
+	}
+	assert false, 'RFC 9114 section 4.3 defines no response pseudo-header besides :status'
+}
+
+fn test_wait_response_rejects_missing_status() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [
+		quic.QpackFieldLine{
+			name:  'content-type'
+			value: 'text/plain'
+		},
+	]
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		assert err.msg().contains('missing')
+		return
+	}
+	assert false, 'expected a response with no :status pseudo-header to be rejected'
+}
+
+fn test_wait_response_accepts_well_formed_status() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	s.headers_done = true
+	s.resp_headers = [
+		quic.QpackFieldLine{
+			name:  ':status'
+			value: '204'
+		},
+	]
+	s.ended = true
+	resp := c.wait_response(mut s, H3ClientRequest{ method: 'GET' }) or {
+		assert false, 'expected a well-formed :status to be accepted: ${err.msg()}'
+		return
+	}
+	assert resp.status == 204
+}
+
+// --- wait_response: a peer-controlled error code must never be mistaken
+// --- for the internal retryable sentinel -----------------------------------
+
+fn test_wait_response_never_propagates_a_non_positive_cast_error_code() {
+	mut c := new_test_h3_mux_conn_no_driver()
+	mut s := new_h3_mux_stream()
+	// A peer-controlled u64 whose low 32 bits are negative once narrowed to
+	// `int` -- the class of value that could otherwise collide with an
+	// internal sentinel like h3_err_retryable_code (-20014).
+	s.err = 'stream reset by peer'
+	s.err_code = u64(0xFFFFFFFF80000000)
+	s.retryable = false
+	s.ended = true
+	c.wait_response(mut s, H3ClientRequest{}) or {
+		assert err.code() == 0, 'a raw peer error code that casts to a non-positive int must never be propagated as the error code (got ${err.code()})'
+		return
+	}
+	assert false, 'expected an error'
 }
