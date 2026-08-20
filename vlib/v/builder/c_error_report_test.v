@@ -284,11 +284,10 @@ fn test_report_includes_v_source_counts_v_context() {
 }
 
 fn test_external_v3_report_env_round_trip() {
-	// The wasm build path hands the fallback report to the external builder through
-	// the environment; it must round-trip and clear the variables so the builder can
-	// submit and clean up relative to its own build outcome (PR #28131 review). The
-	// handoff only round-trips when the staged directory under V's temp dir carries the
-	// exported token, so use a real staged directory here.
+	// The wasm build path hands the fallback report to the external builder as
+	// self-contained content through the environment: export bounds the source in the
+	// trusted parent and removes the staged directory, and take returns an inline,
+	// path-free report the builder submits on its own build success (PR #28131 review).
 	clear_v3_report_env()
 	dir := os.join_path(os.vtmp_dir(), 'v3_report_env_round_trip_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -297,32 +296,42 @@ fn test_external_v3_report_env_round_trip() {
 		os.rmdir_all(dir) or {}
 	}
 	c_file := os.join_path(dir, 'main.v')
-	os.write_file(c_file, 'fn main() {}')!
-	report := ExternalCErrorBugReport{
+	// A program large enough to yield a bounded head+tail snippet (short files upload no
+	// source at all, per the no-whole-file guarantee).
+	mut lines := []string{}
+	for i in 0 .. 4 * c_error_v_source_radius {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	os.write_file(c_file, lines.join('\n'))!
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
 		kind:        external_v3_compiler_error_kind
 		ccompiler:   'v3'
 		c_output:    'error: v3 failed'
 		c_file:      c_file
 		tag:         'V3'
 		cleanup_dir: dir
-	}
-	export_external_v3_report_to_env(report)
-	// A token file is staged in the directory and the same token is exported.
-	assert os.is_file(os.join_path(dir, v3_report_handoff_token_file))
-	assert os.getenv('${v3_report_env_prefix}TOKEN') != ''
+	})
+	// The parent captured the content and removed the staged directory itself, so no
+	// directory path crosses the environment boundary for the builder to delete later.
+	assert !os.exists(dir)
 	got := take_external_v3_report_from_env() or {
 		assert false, 'no report round-tripped'
 		return
 	}
-	assert got.kind == report.kind
-	assert got.ccompiler == report.ccompiler
-	assert got.c_output == report.c_output
-	assert got.c_file == report.c_file
-	assert got.tag == report.tag
-	assert got.cleanup_dir == report.cleanup_dir
+	assert got.kind == external_v3_compiler_error_kind
+	assert got.ccompiler == 'v3'
+	assert got.c_output == 'error: v3 failed'
+	assert got.tag == 'V3'
+	// The report is inline content only: no path to read, no directory to delete.
+	assert got.source_inline
+	assert got.c_file == ''
+	assert got.cleanup_dir == ''
+	assert got.v_file == 'main.v'
+	assert got.v_source != ''
+	assert got.v_source.contains(c_error_v_source_truncation_notice)
 	// the variables are cleared, so a second take finds nothing
 	if second := take_external_v3_report_from_env() {
-		assert false, 'variables were not cleared: ${second.cleanup_dir}'
+		assert false, 'variables were not cleared: ${second.kind}'
 	}
 }
 
@@ -732,10 +741,12 @@ fn clear_v3_report_env() {
 	}
 }
 
-fn test_external_v3_report_rejects_poisoned_dir_outside_tmp() {
+fn test_external_v3_report_without_present_marker_is_ignored() {
+	// A poisoned environment that sets legacy path-style variables (a directory to
+	// delete, a file to upload) but no PRESENT marker yields no report, and take must
+	// touch nothing on disk. This is the `v -old-compiler -b wasm` poisoning case: the
+	// receiver trusts no path from the environment (PR #28131 review).
 	clear_v3_report_env()
-	// A directory the current process never staged (no token file, outside V's temp
-	// dir) must not be trusted: this is the `v -old-compiler -b wasm` poisoning case.
 	victim := os.join_path(os.vtmp_dir(), 'v3_report_victim_${os.getpid()}')
 	os.rmdir_all(victim) or {}
 	os.mkdir_all(victim) or { panic(err) }
@@ -744,57 +755,57 @@ fn test_external_v3_report_rejects_poisoned_dir_outside_tmp() {
 	}
 	secret := os.join_path(victim, 'secret.txt')
 	os.write_file(secret, 'top secret')!
+	// Variables an earlier path-based design would have honored; the current take ignores
+	// them entirely (they are not even in v3_report_env_suffixes).
 	os.setenv('${v3_report_env_prefix}DIR', victim, true)
 	os.setenv('${v3_report_env_prefix}CFILE', secret, true)
-	os.setenv('${v3_report_env_prefix}TOKEN', 'forged-token', true)
-	if _ := take_external_v3_report_from_env() {
-		assert false, 'a directory with no matching staged token must be rejected'
+	defer {
+		os.unsetenv('${v3_report_env_prefix}DIR')
+		os.unsetenv('${v3_report_env_prefix}CFILE')
 	}
-	// Rejection still clears the variables so nested builds cannot inherit them, and
-	// the untrusted directory and its file are left untouched (no consume/rmdir).
-	assert os.getenv('${v3_report_env_prefix}DIR') == ''
-	assert os.getenv('${v3_report_env_prefix}TOKEN') == ''
+	if _ := take_external_v3_report_from_env() {
+		assert false, 'no PRESENT marker was set, so no report may be returned'
+	}
+	// take reads no path and deletes no directory: the victim and its secret survive.
 	assert os.is_dir(victim)
 	assert os.is_file(secret)
 }
 
-fn test_external_v3_report_rejects_token_mismatch() {
+fn test_external_v3_report_never_carries_a_path_or_directory() {
+	// Even a fully forged handoff (PRESENT set, plus legacy DIR/CFILE pointing at a
+	// victim) yields an inline, content-only report: c_file and cleanup_dir are empty, so
+	// consume can neither read the named file nor delete the named directory. The forged
+	// content is at worst attacker-supplied text (PR #28131 review).
 	clear_v3_report_env()
-	dir := os.join_path(os.vtmp_dir(), 'v3_report_mismatch_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
+	victim := os.join_path(os.vtmp_dir(), 'v3_report_forged_${os.getpid()}')
+	os.rmdir_all(victim) or {}
+	os.mkdir_all(victim) or { panic(err) }
 	defer {
-		os.rmdir_all(dir) or {}
+		os.rmdir_all(victim) or {}
 	}
-	os.write_file(os.join_path(dir, v3_report_handoff_token_file), 'real-token')!
-	os.setenv('${v3_report_env_prefix}DIR', dir, true)
-	os.setenv('${v3_report_env_prefix}TOKEN', 'a-different-token', true)
-	if _ := take_external_v3_report_from_env() {
-		assert false, 'a token that does not match the staged file must be rejected'
-	}
-}
-
-fn test_external_v3_report_rejects_c_file_outside_dir() {
-	clear_v3_report_env()
-	dir := os.join_path(os.vtmp_dir(), 'v3_report_cfile_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
+	secret := os.join_path(victim, 'secret.txt')
+	os.write_file(secret, 'top secret')!
+	os.setenv('${v3_report_env_prefix}PRESENT', '1', true)
+	os.setenv('${v3_report_env_prefix}KIND', external_v3_compiler_error_kind, true)
+	os.setenv('${v3_report_env_prefix}CCOMPILER', 'v3', true)
+	os.setenv('${v3_report_env_prefix}COUTPUT', 'error: forged', true)
+	os.setenv('${v3_report_env_prefix}VSOURCE', 'attacker supplied text', true)
+	os.setenv('${v3_report_env_prefix}DIR', victim, true)
+	os.setenv('${v3_report_env_prefix}CFILE', secret, true)
 	defer {
-		os.rmdir_all(dir) or {}
+		os.unsetenv('${v3_report_env_prefix}DIR')
+		os.unsetenv('${v3_report_env_prefix}CFILE')
 	}
-	token := 'matching-token'
-	os.write_file(os.join_path(dir, v3_report_handoff_token_file), token)!
-	// c_file lives outside the staged directory: uploading it would disclose an
-	// arbitrary readable file, so the whole handoff must be rejected.
-	outside := os.join_path(os.vtmp_dir(), 'v3_report_outside_${os.getpid()}.v')
-	os.write_file(outside, 'fn main() {}')!
-	defer {
-		os.rm(outside) or {}
+	got := take_external_v3_report_from_env() or {
+		assert false, 'a PRESENT handoff should return its content-only report'
+		return
 	}
-	os.setenv('${v3_report_env_prefix}DIR', dir, true)
-	os.setenv('${v3_report_env_prefix}TOKEN', token, true)
-	os.setenv('${v3_report_env_prefix}CFILE', outside, true)
-	if _ := take_external_v3_report_from_env() {
-		assert false, 'a c_file outside the staged directory must be rejected'
-	}
+	// The dangerous capabilities are absent regardless of the forged DIR/CFILE.
+	assert got.source_inline
+	assert got.c_file == ''
+	assert got.cleanup_dir == ''
+	assert got.v_source == 'attacker supplied text'
+	// take never touched the victim.
+	assert os.is_dir(victim)
+	assert os.is_file(secret)
 }

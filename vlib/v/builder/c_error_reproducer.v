@@ -300,11 +300,12 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	if ordered.len == 0 {
 		return ''
 	}
-	if repro_covers_any_whole_file(decls, ordered) {
-		// The closure includes every declaration from at least one contributing file,
-		// so the reproducer would reconstruct that whole file (differing only by
-		// normalized blank lines). The doc/docs.md guarantee is that no whole file is
-		// ever auto-uploaded, so give up here and let the caller fall back to the
+	if repro_covers_any_whole_file(decls, hashes, ordered) {
+		// The closure includes every declaration from at least one contributing file
+		// (or that file is a declaration-free hash-only companion whose directives are
+		// always emitted), so the reproducer would reconstruct that whole file (differing
+		// only by normalized blank lines). The doc/docs.md guarantee is that no whole file
+		// is ever auto-uploaded, so give up here and let the caller fall back to the
 		// bounded source window — a strict subset for a large file, dropped as a
 		// whole-file match for a short one. This is tracked per file, not per module:
 		// a multi-file program can fully cover a small file while excluding an
@@ -647,20 +648,31 @@ fn repro_decl_source(lines []string, start int, end int) string {
 	return lines[start..e].join('\n')
 }
 
-// repro_covers_any_whole_file reports whether the closure `ordered` includes every
-// declaration of at least one contributing file. Coverage is tracked per file (via
-// ReproDecl.file_id), not across the whole module: a multi-file program can fully
-// cover a small file (uploading all of it) while still excluding an unrelated
-// declaration in another file, so a module-wide count would miss it. Used to keep
-// the reproducer within the doc/docs.md guarantee that no whole file is uploaded.
-fn repro_covers_any_whole_file(decls []ReproDecl, ordered []int) bool {
+// repro_covers_any_whole_file reports whether the closure `ordered`, together with the
+// module-wide hash directives, reconstructs every substantive line of at least one
+// contributing file. Coverage is tracked per file (via ReproDecl.file_id / ReproHash.
+// file_id), not across the whole module: a multi-file program can fully cover a small
+// file (uploading all of it) while still excluding an unrelated declaration in another
+// file, so a module-wide count would miss it. Used to keep the reproducer within the
+// doc/docs.md guarantee that no whole file is uploaded.
+fn repro_covers_any_whole_file(decls []ReproDecl, hashes []ReproHash, ordered []int) bool {
 	mut total_per_file := map[int]int{}
+	mut included_per_file := map[int]int{}
 	for d in decls {
 		total_per_file[d.file_id]++
 	}
-	mut included_per_file := map[int]int{}
 	for id in ordered {
 		included_per_file[decls[id].file_id]++
+	}
+	// Hash directives (`#flag`/`#include`/...) are module-wide and are emitted for every
+	// parsed file whether or not any of that file's declarations are retained (see the
+	// scoped_hashes loop), so each file's hashes always count as fully included. A
+	// declaration-free `.c.v` companion (e.g. `module main` + `#flag -DSECRET=...`) is
+	// thus reconstructed whole and must count as whole-file coverage, even though it
+	// contributes no ReproDecl.
+	for h in hashes {
+		total_per_file[h.file_id]++
+		included_per_file[h.file_id]++
 	}
 	for file_id, total in total_per_file {
 		if total > 0 && included_per_file[file_id] == total {
