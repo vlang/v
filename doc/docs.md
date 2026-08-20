@@ -77,8 +77,10 @@ project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
 On macOS and Linux, `v` compiles your program with the experimental **V3**
 compiler (a newer implementation of the V compiler, whose source lives in
-`vlib/v3`) by default. On other platforms, and for cross-compilation, the
-established compiler in `vlib/v` is used.
+`vlib/v3`) by default. On other platforms, and for C builds that select a
+target OS different from the host, the established compiler in `vlib/v` is
+used. Same-OS cross-architecture builds can still use V3 when the target is
+supported.
 
 You normally do not need to do anything: when V3 cannot yet build an eligible
 program, `v` automatically falls back to the established compiler, so your build
@@ -113,8 +115,8 @@ An internal V3 compiler error on a short program (and any directory build such a
 `v .`) submits metadata only. A generated-C error, however, maps to a specific V
 file, so it can still upload a strict-subset excerpt of that file plus a few lines
 of context around the failing line, even when the file is short. Reporting is
-skipped in GitHub CI, and you can turn it off entirely by setting the environment
-variable `V_C_ERROR_BUG_REPORT_DISABLED=1`.
+skipped for test compilations and in GitHub CI. You can turn it off entirely by
+setting the environment variable `V_C_ERROR_BUG_REPORT_DISABLED=1`.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
