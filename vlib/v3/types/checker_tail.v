@@ -11404,6 +11404,9 @@ fn (tc &TypeChecker) call_is_direct_spawn_child(id flat.NodeId) bool {
 
 fn (tc &TypeChecker) params_field_diagnostic_type(field_name string, info CallInfo, expected Type) string {
 	for param in info.params {
+		if !tc.is_params_struct_type(param) {
+			continue
+		}
 		param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
 		if expected_text, _ := tc.struct_field_diagnostic_fn_type(param_struct.name, field_name, 0) {
 			semantic_text := call_argument_type_name(expected)

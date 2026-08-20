@@ -7250,6 +7250,9 @@ fn (tc &TypeChecker) params_field_expected_type(field_name string, info CallInfo
 		return none
 	}
 	for param in info.params {
+		if !tc.is_params_struct_type(param) {
+			continue
+		}
 		param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
 		if expected := tc.struct_field_type(param_struct.name, field_name) {
 			return expected
@@ -7263,6 +7266,9 @@ fn (tc &TypeChecker) params_field_owner(field_name string, info CallInfo) ?strin
 		return none
 	}
 	for param in info.params {
+		if !tc.is_params_struct_type(param) {
+			continue
+		}
 		param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
 		if tc.struct_field_type(param_struct.name, field_name) != none {
 			return param_struct.name

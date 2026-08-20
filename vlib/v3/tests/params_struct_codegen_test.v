@@ -57,6 +57,27 @@ fn test_pool_config_params_struct_can_be_omitted() {
 	assert out == 'db|0\ndb|4'
 }
 
+fn test_params_fields_belong_to_params_struct() {
+	v3_bin := build_v3()
+	project_dir := os.join_path(os.temp_dir(), 'v3_params_field_owner_project')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(os.join_path(project_dir, 'fixture')) or { panic(err) }
+	os.write_file(os.join_path(project_dir, 'main.v'),
+		"module main\n\nimport fixture\n\nstruct CliOptions {\n\truntime_profile string\n}\n\nfn main() {\n\topts := CliOptions{runtime_profile: 'node'}\n\tctx := &fixture.Context{}\n\tprintln(fixture.compile(ctx, 'entry', runtime_profile: opts.runtime_profile, retries: 3))\n}\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(project_dir, 'fixture', 'fixture.v'),
+		"module fixture\n\npub struct Context {\npub:\n\tretries string\nmut:\n\truntime_profile string\n}\n\n@[params]\npub struct Options {\npub:\n\truntime_profile string\n\tretries         int\n}\n\npub fn compile(ctx &Context, path string, options Options) string {\n\t_ = ctx\n\treturn '\${path}:\${options.runtime_profile}:\${options.retries}'\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_params_field_owner')
+	compile := os.execute('${v3_bin} ${os.join_path(project_dir, 'main.v')} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'entry:node:3'
+}
+
 fn test_interface_field_in_params_struct_codegen() {
 	v3_bin := build_v3()
 	source := 'interface Reader {\n\tread(mut buf []u8) !int\n}\n\nstruct Conn {}\n\nfn (c Conn) read(mut buf []u8) !int {\n\treturn 0\n}\n\nstruct Config {\n\treader Reader\n\tcap int\n}\n\nfn make(cfg Config) int {\n\treturn cfg.cap\n}\n\nfn main() {\n\tprintln(make(reader: Conn{}, cap: 8))\n}\n'
