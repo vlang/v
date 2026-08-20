@@ -424,10 +424,18 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 		.wasm {
 			if failed := macos_v3_c_error_report {
 				// The wasm builder runs as an external tool via os.execvp, which
-				// replaces this process, so the staged V3->V1 fallback report cannot be
-				// submitted after it succeeds. At least tell the user about the fallback
-				// and remove the staged report directory instead of leaking it.
-				builder.notify_and_cleanup_external_v3_fallback(failed.report_dir)
+				// replaces this process, so this process cannot submit the staged
+				// V3->V1 fallback report or clean it up after the retry. Hand the report
+				// to the builder through the environment; it submits, prints the notice,
+				// and cleans up relative to its own build outcome (only on success).
+				builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
+					kind:        failed.kind
+					ccompiler:   failed.ccompiler
+					c_output:    failed.c_output
+					c_file:      failed.c_file
+					tag:         'V3'
+					cleanup_dir: failed.report_dir
+				})
 			}
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])
 		}

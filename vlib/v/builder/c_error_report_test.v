@@ -283,16 +283,33 @@ fn test_report_includes_v_source_counts_v_context() {
 	})
 }
 
-fn test_notify_and_cleanup_external_v3_fallback_removes_report_dir() {
-	// The wasm build path cannot submit the report after handing off to the external
-	// tool, but it must not leak the staged directory (PR #28131 review).
-	dir := os.join_path(os.real_path(os.vtmp_dir()), 'v3_wasm_fallback_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	os.write_file(os.join_path(dir, 'output'), 'error: v3 failed') or { panic(err) }
-	assert os.is_dir(dir)
-	notify_and_cleanup_external_v3_fallback(dir)
-	assert !os.exists(dir)
+fn test_external_v3_report_env_round_trip() {
+	// The wasm build path hands the fallback report to the external builder through
+	// the environment; it must round-trip and clear the variables so the builder can
+	// submit and clean up relative to its own build outcome (PR #28131 review).
+	report := ExternalCErrorBugReport{
+		kind:        external_v3_compiler_error_kind
+		ccompiler:   'v3'
+		c_output:    'error: v3 failed'
+		c_file:      '/tmp/report/main.v'
+		tag:         'V3'
+		cleanup_dir: '/tmp/report'
+	}
+	export_external_v3_report_to_env(report)
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	assert got.kind == report.kind
+	assert got.ccompiler == report.ccompiler
+	assert got.c_output == report.c_output
+	assert got.c_file == report.c_file
+	assert got.tag == report.tag
+	assert got.cleanup_dir == report.cleanup_dir
+	// the variables are cleared, so a second take finds nothing
+	if second := take_external_v3_report_from_env() {
+		assert false, 'variables were not cleared: ${second.cleanup_dir}'
+	}
 }
 
 fn test_v_context_covers_whole_file_detects_full_coverage() {
@@ -311,6 +328,48 @@ fn test_v_context_covers_whole_file_detects_full_coverage() {
 	assert !v_context_covers_whole_file(ctx, long)
 	// An empty context (no mapped line) is not "whole file".
 	assert !v_context_covers_whole_file([]CErrorReportLine{}, short)
+}
+
+fn test_v_source_and_context_expose_whole_file_checks_the_union() {
+	// A 12-line file: v_source (reproducer) holds `main`, and the v_context window
+	// holds the unrelated declaration. Neither covers the file alone, but together
+	// they expose every nonblank line, reconstructing it (PR #28131 review).
+	mapped := ['module main', '', 'fn main() {', '\tx := 1', '\tprintln(x)', '}', '',
+		'fn unrelated() {', '\ty := 2', '\tprintln(y)', '}', '']
+	v_source := 'fn main() {\n\tx := 1\n\tprintln(x)\n}'
+	context := [
+		CErrorReportLine{
+			line: 1
+			text: 'module main'
+		},
+		CErrorReportLine{
+			line: 8
+			text: 'fn unrelated() {'
+		},
+		CErrorReportLine{
+			line: 9
+			text: '\ty := 2'
+		},
+		CErrorReportLine{
+			line: 10
+			text: '\tprintln(y)'
+		},
+		CErrorReportLine{
+			line: 11
+			text: '}'
+		},
+	]
+	assert v_source_and_context_expose_whole_file(v_source, context, mapped)
+	// A genuine strict subset: the context no longer reaches the unrelated body.
+	partial := [
+		CErrorReportLine{
+			line: 9
+			text: '\ty := 2'
+		},
+	]
+	assert !v_source_and_context_expose_whole_file(v_source, partial, mapped)
+	// An empty union exposes nothing.
+	assert !v_source_and_context_expose_whole_file('', [], mapped)
 }
 
 fn test_v3_report_v_source_bounds_large_files() {
