@@ -2985,6 +2985,11 @@ fn (mut g FlatGen) gen_mut_sum_lvalue_arg(arg_id flat.NodeId, expected types.Typ
 	mut lvalue_id := arg_id
 	if int(arg_id) >= 0 && int(arg_id) < g.a.nodes.len {
 		arg_node := g.a.nodes[int(arg_id)]
+		// Interface values use the sum-value ABI, and some call paths reach this
+		// helper before the general argument handling below.
+		if g.gen_lowered_mut_value_storage_arg(arg_id, arg_node, expected) {
+			return true
+		}
 		if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count > 0 {
 			lvalue_id = g.a.child(&arg_node, 0)
 		}
@@ -7064,6 +7069,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				}
 				if !is_c_call && arg_idx < typed_param_count
 					&& g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
+					g.expected_enum = ''
+					continue
+				}
+				if !is_c_call && arg_idx < typed_param_count
+					&& g.gen_lowered_mut_value_storage_arg(arg_id, arg_node, param_types[arg_idx]) {
 					g.expected_enum = ''
 					continue
 				}
@@ -12933,6 +12943,10 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			continue
 		}
 		if arg_idx < typed_param_count
+			&& g.gen_lowered_mut_value_storage_arg(arg_id, arg_node, param_types[arg_idx]) {
+			continue
+		}
+		if arg_idx < typed_param_count
 			&& g.gen_mut_pointer_slot_arg(arg_id, arg_node, param_types[arg_idx]) {
 			continue
 		}
@@ -14042,6 +14056,25 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	g.write('&((${ct}[]){')
 	g.gen_expr_with_expected_type(arg_id, expected_base)
 	g.write('})[0]')
+	return true
+}
+
+fn (mut g FlatGen) gen_lowered_mut_value_storage_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
+	if arg_node.kind != .prefix || arg_node.op != .mul || arg_node.children_count != 1 {
+		return false
+	}
+	child_id := g.a.child(&arg_node, 0)
+	child := g.a.nodes[int(child_id)]
+	// Mutable array iteration stores the value as `T*` and lowers an ordinary
+	// expression to `*value`. In a source `mut value` argument the callee expects
+	// that storage pointer itself, including when T is an interface value.
+	if child.kind != .ident || !child.is_mut || !g.local_storage_is_pointer(child.value) {
+		return false
+	}
+	if g.tc.c_type(g.usable_expr_type(arg_id)) != g.tc.c_type(expected) {
+		return false
+	}
+	g.gen_expr(child_id)
 	return true
 }
 
