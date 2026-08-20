@@ -1131,7 +1131,12 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 				sbackend := cmdline.option(args[i..], arg, 'c')
 				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or {
-					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, js, js_node, js_browser, js_freestanding, wasm')
+					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, fastc, js, js_node, js_browser, js_freestanding, wasm')
+				}
+				if sbackend == 'fastc' {
+					// FastC belongs to the embedded V3 driver. Keep V1's backend enum on C
+					// solely so cmd/v can finish parsing and forward the original arguments.
+					res.new_compiler = true
 				}
 				if b == .wasm {
 					res.compile_defines << 'wasm'
@@ -1439,7 +1444,7 @@ pub fn backend_from_string(s string) !Backend {
 	// TODO: unify the "different js backend" options into a single `-b js`
 	// + a separate option, to choose the wanted JS output.
 	return match s {
-		'c' { .c }
+		'c', 'fastc' { .c }
 		'eval', 'interpret' { eprintln_exit('The eval backend has been removed.') }
 		'js', 'js_node' { .js_node }
 		'js_browser' { .js_browser }

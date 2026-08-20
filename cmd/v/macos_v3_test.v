@@ -1573,6 +1573,10 @@ fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {
 		assert !is_macos_v3_default_executable('/tmp/v2')
 		assert !is_macos_v3_default_executable('/tmp/vstrict1')
 		assert !is_macos_v3_default_executable('/tmp/vp')
+		assert !macos_v3_executable_can_dispatch('/tmp/v2', &pref.Preferences{})
+		assert macos_v3_executable_can_dispatch('/tmp/v2', &pref.Preferences{
+			build_options: ['-b fastc']
+		})
 	}
 }
 
@@ -1685,5 +1689,26 @@ fn test_macos_v3_new_compiler_routing_and_precedence() {
 	// Without the flag, V3 is not forced at all.
 	assert !macos_v3_force_requested('run', &pref.Preferences{
 		path: 'main.v'
+	})
+}
+
+fn test_macos_v3_fastc_routes_compiler_selfhost_targets() {
+	for target in ['cmd/v', 'cmd/v/v.v', 'vlib/v3/v3.v'] {
+		assert macos_v3_force_requested('build', &pref.Preferences{
+			new_compiler:  true
+			path:          target
+			build_options: ['-b fastc']
+		})
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			new_compiler:  true
+			path:          target
+			build_options: ['-b c']
+		})
+	}
+	assert macos_v3_fastc_requested(&pref.Preferences{
+		build_options: ['-backend fastc']
+	})
+	assert !macos_v3_fastc_requested(&pref.Preferences{
+		build_options: ['-b fastc', '-b c']
 	})
 }

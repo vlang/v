@@ -22,10 +22,12 @@ fn macos_v3_non_compilation_command(command string) bool {
 // macos_v3_force_requested reports whether `-new-compiler` should hand this
 // invocation to the embedded V3 compiler. It gates on `-old-compiler`
 // precedence, options/modes V3 cannot honor yet, and whether the command is an
-// actual compilation command (never `test`, external tools, or the `cmd/v` /
-// `vlib/v3/v3.v` bootstrap). Both the Darwin dispatcher (where it overrides the
-// default heuristic) and the non-macOS dispatcher (where it is the sole gate)
-// rely on it, so it must stay platform neutral.
+// actual compilation command (never `test` or external tools). Compiler bootstrap
+// targets normally stay on V1, but explicit `-b fastc` owns those targets too: its
+// direct emitter falls back to V3's checked C backend for the full compiler source.
+// Both the Darwin dispatcher (where it overrides the default heuristic) and the
+// non-macOS dispatcher (where it is the sole gate) rely on it, so it must stay
+// platform neutral.
 @[markused]
 fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 	if !prefs.new_compiler || prefs.old_compiler {
@@ -42,13 +44,25 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
-	if normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
+	compiler_bootstrap := normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
 		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
-		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v') {
+		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v')
+	if compiler_bootstrap && !macos_v3_fastc_requested(prefs) {
 		return false
 	}
 	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
+}
+
+fn macos_v3_fastc_requested(prefs &pref.Preferences) bool {
+	mut selected_backend := ''
+	for option in prefs.build_options {
+		parts := option.fields()
+		if parts.len == 2 && parts[0] in ['-b', '-backend'] {
+			selected_backend = parts[1]
+		}
+	}
+	return selected_backend == 'fastc'
 }
 
 // These helpers are shared by the native Darwin dispatcher and the default

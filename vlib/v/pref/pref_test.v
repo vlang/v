@@ -553,6 +553,16 @@ fn test_new_compiler_flag_is_accepted() {
 	assert '-new-compiler' !in prefs.build_options
 }
 
+fn test_fastc_backend_selects_v3_driver() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.backend_set_by_flag
+	assert prefs.new_compiler
+	assert prefs.build_options.contains('-b fastc')
+}
+
 fn test_v3_checker_fixture_flag_is_accepted() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	for flag in ['-checker-fixture', '-macos-v3-compat-c99'] {

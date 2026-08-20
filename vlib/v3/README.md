@@ -3,11 +3,11 @@
 Clean rewrite of the V compiler. Reuses v2's scanner, uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
-markused pass for dead-code elimination, recursive import resolution, and three
-backends: a direct flat-AST-to-C backend, a native ARM64 backend via SSA IR with
-a built-in linker, and a direct flat-AST-to-WebAssembly backend. With `-prod`,
-the ARM64 backend runs SSA optimization, MIR lowering, and instruction
-selection.
+markused pass for dead-code elimination, recursive import resolution, and
+backends: a direct flat-AST-to-C backend, a scanner-to-C fast path, a native
+ARM64 backend via SSA IR with a built-in linker, and a direct
+flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
+optimization, MIR lowering, and instruction selection.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
@@ -87,6 +87,32 @@ current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety 
 Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.
+
+## Fast C backend
+
+`-b fastc` selects the embedded V3 driver and a speculative single-file backend for the shortest
+edit-run cycle. It scans the source once and emits GNU C while consuming tokens. This path does
+not create a flat AST and does not run imports, type checking, transform, type annotation, or
+mark-used. Bundled TinyCC compiles the emitted translation unit immediately.
+
+FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
+expressions, `if`/`else`, and condition, C-style, infinite, and integer-range `for` loops. GNU
+`typeof` carries `:=` declarations into C without V type inference. Unsupported syntax silently
+selects the normal C backend. A TinyCC error is also discarded and the original V source is
+reparsed by the normal C backend, so the user receives V parser or type-checker diagnostics rather
+than a speculative C diagnostic. A successfully compiled `run` program keeps its exit status and
+is never retried.
+
+The direct path is limited to host-target, non-production, non-test, non-shared single-file builds.
+Other modes select the normal C backend before source scanning. `-o file.c` emits the standalone
+fast C translation unit without invoking TinyCC.
+
+`v self -b fastc` and direct compiler builds such as `v -b fastc -o v2 cmd/v` are routed to V3.
+The compiler source is outside the direct subset, so fastc immediately selects the checked V3 C
+backend for that build. The resulting self-hosted compiler retains fastc and can use the direct
+path for supported user programs, including when its output has a custom filename in the V checkout.
+The fastc integration test self-hosts the standalone V3 compiler through five successive generations
+and verifies that the fifth generation still compiles and runs a direct-fastc program.
 
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
 detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets
@@ -169,6 +195,9 @@ the plan and run the complete diagnostic and generation pipeline normally.
 ## Architecture
 
 ```
+source -> fastc scanner/emitter -> TinyCC
+     \-> on unsupported syntax or TinyCC error: normal pipeline below
+
 source + vlib/builtin -> scanner -> flat parser -> flat AST -> imports
   -> check -> transform -> annotate types -> markused -> gen C -> cc
                                           \-> SSA build -> ARM64 gen -> link
