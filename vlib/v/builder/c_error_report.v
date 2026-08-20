@@ -1,6 +1,7 @@
 module builder
 
 import os
+import rand
 import strings
 import v.pref
 import v.gen.c as cgen
@@ -198,41 +199,101 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 // submits the report and prints the notice only after its own build succeeds.
 const v3_report_env_prefix = 'V_MACOS_V3_REPORT_'
 
+// v3_report_env_suffixes lists every V_MACOS_V3_REPORT_* variable, so both the export
+// and the take paths agree on exactly what to set and clear.
+const v3_report_env_suffixes = ['KIND', 'CCOMPILER', 'COUTPUT', 'CFILE', 'TAG', 'DIR', 'TOKEN']
+
+// v3_report_handoff_token_file names a random token file written into the staged report
+// directory at export time. take_external_v3_report_from_env trusts a handoff only when
+// V_MACOS_V3_REPORT_TOKEN matches this file's contents, so inherited or user-supplied
+// V_MACOS_V3_REPORT_* variables (e.g. `v -old-compiler -b wasm main.v` in a poisoned
+// environment) cannot make a successful build upload an arbitrary readable file or
+// recursively delete an unrelated directory.
+const v3_report_handoff_token_file = '.v3_report_handoff_token'
+
 // export_external_v3_report_to_env stores `report` in the environment so the next
 // external builder (launched via os.execvp) can pick it up. A build path that hands
 // off to a separate tool cannot submit the report or clean up in-process, so the
 // tool does both after its build, only reporting on success.
 pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
+	// Bind this handoff to the specific staged directory with an unforgeable token: a
+	// later build that merely inherited stale/hostile V_MACOS_V3_REPORT_* variables
+	// cannot write a matching token into the directory it names, so the take side
+	// rejects it instead of trusting an attacker-chosen path.
+	mut token := ''
+	if report.cleanup_dir != '' && os.is_dir(report.cleanup_dir) {
+		token = rand.ulid()
+		os.write_file(os.join_path(report.cleanup_dir, v3_report_handoff_token_file), token) or {
+			token = ''
+		}
+	}
 	os.setenv('${v3_report_env_prefix}KIND', report.kind, true)
 	os.setenv('${v3_report_env_prefix}CCOMPILER', report.ccompiler, true)
 	os.setenv('${v3_report_env_prefix}COUTPUT', report.c_output, true)
 	os.setenv('${v3_report_env_prefix}CFILE', report.c_file, true)
 	os.setenv('${v3_report_env_prefix}TAG', report.tag, true)
 	os.setenv('${v3_report_env_prefix}DIR', report.cleanup_dir, true)
+	os.setenv('${v3_report_env_prefix}TOKEN', token, true)
 }
 
 // take_external_v3_report_from_env returns the fallback report exported by
-// export_external_v3_report_to_env, or none when there is none. It clears the
-// variables so a nested build does not inherit them. Pass the result to
-// compile_with_external_c_error_report so the notice/submission and the cleanup of
-// the staged directory happen relative to the tool's own build outcome.
+// export_external_v3_report_to_env, or none when there is none or the handoff is not
+// authentic. It clears the variables unconditionally so neither a nested build nor a
+// rejected (stale/poisoned) handoff can leak them into later work. Pass the result to
+// compile_with_external_c_error_report so the notice/submission and the cleanup of the
+// staged directory happen relative to the tool's own build outcome.
 pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 	dir := os.getenv('${v3_report_env_prefix}DIR')
-	if dir == '' {
-		return none
-	}
+	token := os.getenv('${v3_report_env_prefix}TOKEN')
+	c_file := os.getenv('${v3_report_env_prefix}CFILE')
 	report := ExternalCErrorBugReport{
 		kind:        os.getenv('${v3_report_env_prefix}KIND')
 		ccompiler:   os.getenv('${v3_report_env_prefix}CCOMPILER')
 		c_output:    os.getenv('${v3_report_env_prefix}COUTPUT')
-		c_file:      os.getenv('${v3_report_env_prefix}CFILE')
+		c_file:      c_file
 		tag:         os.getenv('${v3_report_env_prefix}TAG')
 		cleanup_dir: dir
 	}
-	for suffix in ['KIND', 'CCOMPILER', 'COUTPUT', 'CFILE', 'TAG', 'DIR'] {
+	for suffix in v3_report_env_suffixes {
 		os.unsetenv('${v3_report_env_prefix}${suffix}')
 	}
+	if !external_v3_report_handoff_is_authentic(dir, token, c_file) {
+		return none
+	}
 	return report
+}
+
+// external_v3_report_handoff_is_authentic reports whether a V_MACOS_V3_REPORT_* handoff
+// was produced by export_external_v3_report_to_env in this compiler run, rather than
+// inherited from a stale or hostile environment. A genuine handoff names a directory
+// that still exists under V's temporary directory, holds the exact random token that
+// was exported alongside it, and contains any c_file that would be uploaded. Missing
+// any of these, an environment-only attacker could disclose an arbitrary readable file
+// via c_file or make os.rmdir_all delete an unrelated directory via cleanup_dir.
+fn external_v3_report_handoff_is_authentic(dir string, token string, c_file string) bool {
+	if dir == '' || token == '' || !os.is_dir(dir) {
+		return false
+	}
+	real_dir := os.real_path(dir)
+	real_tmp := os.real_path(os.vtmp_dir())
+	if real_dir == real_tmp || !real_dir.starts_with(real_tmp + os.path_separator) {
+		return false
+	}
+	staged_token := os.read_file(os.join_path(dir, v3_report_handoff_token_file)) or {
+		return false
+	}
+	if staged_token != token {
+		return false
+	}
+	if c_file != '' {
+		if !os.is_file(c_file) {
+			return false
+		}
+		if !os.real_path(c_file).starts_with(real_dir + os.path_separator) {
+			return false
+		}
+	}
+	return true
 }
 
 // cleanup_external_v3_report removes a staged V3->V1 fallback report directory
