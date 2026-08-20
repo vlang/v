@@ -1544,13 +1544,16 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 
 	inserting_object_sym := g.table.sym(inserting_object_type)
 	for i, mut sub in subs {
+		// The relation field name is stored verbatim, so escape it like any other
+		// struct member (a field named after a reserved word is declared __v_<name>).
+		sub_field := orm_field_access_name(sub.object_var)
 		if subs_unwrapped_c_typ[i].len > 0 {
-			var := '${object_var}${member_access_type}${sub.object_var}'
+			var := '${object_var}${member_access_type}${sub_field}'
 			g.writeln('if(${var}.state == 0) {')
 			g.indent++
-			sub.object_var = '(*(${subs_unwrapped_c_typ[i]}*)${object_var}${member_access_type}${sub.object_var}.data)'
+			sub.object_var = '(*(${subs_unwrapped_c_typ[i]}*)${object_var}${member_access_type}${sub_field}.data)'
 		} else {
-			sub.object_var = '${object_var}${member_access_type}${sub.object_var}'
+			sub.object_var = '${object_var}${member_access_type}${sub_field}'
 		}
 		g.sql_stmt_line(sub, connection_var_name, or_expr)
 		g.writeln('builtin__array_push(&${last_ids_arr}, _MOV((orm__Primitive[1]){')
@@ -1666,10 +1669,14 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			idx := g.new_tmp_var()
 			ctyp := g.styp(arr.table_expr.typ)
 			is_option := opt_fields.contains(i)
+			// The array relation field name is stored verbatim, so escape it like any
+			// other struct member (a field named after a reserved word is declared
+			// __v_<name>).
+			arr_field := orm_field_access_name(arr.object_var)
 			if is_option {
-				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${object_var}${member_access_type}${arr.object_var}.state != 2 && ${idx} < (*(Array_${ctyp}*)${object_var}${member_access_type}${arr.object_var}.data).len; ${idx}++) {')
+				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${object_var}${member_access_type}${arr_field}.state != 2 && ${idx} < (*(Array_${ctyp}*)${object_var}${member_access_type}${arr_field}.data).len; ${idx}++) {')
 			} else {
-				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${object_var}${member_access_type}${arr.object_var}.len; ${idx}++) {')
+				g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} < ${object_var}${member_access_type}${arr_field}.len; ${idx}++) {')
 			}
 			g.indent++
 			last_ids := g.new_tmp_var()
@@ -1677,9 +1684,9 @@ fn (mut g Gen) write_orm_insert_with_last_ids(node ast.SqlStmtLine, connection_v
 			tmp_var := g.new_tmp_var()
 			g.writeln('Array_orm__Primitive ${last_ids} = builtin____new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
 			if is_option {
-				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(*(Array_${ctyp}*)${object_var}${member_access_type}${arr.object_var}.data, ${idx}));')
+				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(*(Array_${ctyp}*)${object_var}${member_access_type}${arr_field}.data, ${idx}));')
 			} else {
-				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(${object_var}${member_access_type}${arr.object_var}, ${idx}));')
+				g.writeln('${ctyp} ${tmp_var} = (*(${ctyp}*)builtin__array_get(${object_var}${member_access_type}${arr_field}, ${idx}));')
 			}
 			arr.object_var = tmp_var
 			mut fff := []ast.StructField{}
