@@ -2,6 +2,7 @@ module bench
 
 import os
 import runtime
+import sync
 import time
 
 const default_memory_limit_kb = i64(9) * 256 * 1024
@@ -12,12 +13,13 @@ const memory_monitor_interval = 100 * time.millisecond
 // Step represents step data used by bench.
 pub struct Step {
 pub:
-	name             string
-	time_us          i64
-	ram_kb           i64
-	peak_ram_kb      i64
-	allocation_count u64
-	allocated_bytes  u64
+	name              string
+	time_us           i64
+	ram_kb            i64
+	stage_peak_ram_kb i64
+	peak_ram_kb       i64
+	allocation_count  u64
+	allocated_bytes   u64
 }
 
 // StepPart describes one measured part of a pipeline step.
@@ -41,6 +43,13 @@ struct LimitMemory {
 	metric string
 }
 
+@[heap]
+struct StageMemoryMonitor {
+	mutex &sync.Mutex = sync.new_mutex()
+mut:
+	rss_peak_kb i64
+}
+
 // Bench represents bench data used by bench.
 pub struct Bench {
 mut:
@@ -52,17 +61,23 @@ mut:
 	last_allocated_bytes  u64
 	memory_limit_kb       i64
 	quiet                 bool
+	stage_memory          &StageMemoryMonitor = unsafe { nil }
 }
 
 // new creates a new value for bench.
 pub fn new() Bench {
 	allocations := current_allocation_stats()
+	ram_kb := current_rss_kb()
 	return Bench{
 		total_sw:              time.new_stopwatch()
 		step_sw:               time.new_stopwatch()
 		last_allocation_count: allocations.allocation_count
 		last_allocated_bytes:  allocations.allocated_bytes
 		memory_limit_kb:       default_memory_limit_kb
+		stage_memory:          &StageMemoryMonitor{
+			mutex:       sync.new_mutex()
+			rss_peak_kb: ram_kb
+		}
 	}
 }
 
@@ -89,8 +104,29 @@ pub fn (mut b Bench) set_quiet() {
 
 // start_memory_monitor starts the compiler memory safety watchdog.
 pub fn (b &Bench) start_memory_monitor() {
-	if b.memory_limit_kb > 0 {
-		spawn monitor_memory_limit(b.memory_limit_kb)
+	if b.memory_limit_kb > 0 || !b.quiet {
+		spawn monitor_stage_memory(b.stage_memory, b.memory_limit_kb)
+	}
+}
+
+fn monitor_stage_memory(state &StageMemoryMonitor, limit_kb i64) {
+	for {
+		time.sleep(memory_monitor_interval)
+		ram_kb := current_rss_kb()
+		mut monitor := unsafe { &StageMemoryMonitor(voidptr(state)) }
+		monitor.mutex.lock()
+		if ram_kb > monitor.rss_peak_kb {
+			monitor.rss_peak_kb = ram_kb
+		}
+		monitor.mutex.unlock()
+		if limit_kb > 0 {
+			memory := current_limit_memory()
+			message := memory_limit_error(memory.kb, limit_kb, 'during compilation', memory.metric)
+			if message.len > 0 {
+				eprintln(message)
+				exit(1)
+			}
+		}
 	}
 }
 
@@ -104,6 +140,22 @@ fn monitor_memory_limit(limit_kb i64) {
 			exit(1)
 		}
 	}
+}
+
+fn (mut b Bench) finish_stage_memory(current_ram_kb i64) i64 {
+	if isnil(b.stage_memory) {
+		return current_ram_kb
+	}
+	mut monitor := unsafe { &StageMemoryMonitor(voidptr(b.stage_memory)) }
+	monitor.mutex.lock()
+	stage_peak_kb := if monitor.rss_peak_kb > current_ram_kb {
+		monitor.rss_peak_kb
+	} else {
+		current_ram_kb
+	}
+	monitor.rss_peak_kb = current_ram_kb
+	monitor.mutex.unlock()
+	return stage_peak_kb
 }
 
 // step records a serial pipeline step.
@@ -174,6 +226,7 @@ pub fn (mut b Bench) step_parts(parts []StepPart) {
 fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocation_count u64, allocated_bytes u64, allocations_enabled bool) {
 	label := if parallel { '${name} (parallel)' } else { name }
 	ram_kb := current_rss_kb()
+	stage_peak_ram_kb := b.finish_stage_memory(ram_kb)
 	peak_ram_kb := peak_rss_kb()
 	memory := current_limit_memory()
 	if b.memory_limit_kb > 0 {
@@ -184,6 +237,7 @@ fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocat
 		}
 	}
 	ram_mb := f64(ram_kb) / 1024.0
+	stage_peak_ram_mb := f64(stage_peak_ram_kb) / 1024.0
 	peak_ram_mb := f64(peak_ram_kb) / 1024.0
 	footprint_suffix := physical_footprint_suffix(memory)
 	ms := f64(elapsed_us) / 1000.0
@@ -194,15 +248,16 @@ fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocat
 		''
 	}
 	if !b.quiet {
-		println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS${footprint_suffix}   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
+		println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS${footprint_suffix}   ${stage_peak_ram_mb:6.0f} MB stage peak   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
 	}
 	b.steps << Step{
-		name:             label
-		time_us:          elapsed_us
-		ram_kb:           ram_kb
-		peak_ram_kb:      peak_ram_kb
-		allocation_count: allocation_count
-		allocated_bytes:  allocated_bytes
+		name:              label
+		time_us:           elapsed_us
+		ram_kb:            ram_kb
+		stage_peak_ram_kb: stage_peak_ram_kb
+		peak_ram_kb:       peak_ram_kb
+		allocation_count:  allocation_count
+		allocated_bytes:   allocated_bytes
 	}
 }
 

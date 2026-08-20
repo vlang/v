@@ -60,6 +60,20 @@ fn test_step_parts_record_individual_timings() {
 	assert b.steps[1].time_us == 2750
 }
 
+fn test_finish_stage_memory_reports_and_resets_sampled_peak() {
+	mut b := new()
+	current := current_rss_kb()
+	mut monitor := unsafe { &StageMemoryMonitor(voidptr(b.stage_memory)) }
+	monitor.mutex.lock()
+	monitor.rss_peak_kb = current + 2048
+	monitor.mutex.unlock()
+	assert b.finish_stage_memory(current) == current + 2048
+	monitor.mutex.lock()
+	reset_peak := monitor.rss_peak_kb
+	monitor.mutex.unlock()
+	assert reset_peak == current
+}
+
 fn test_limit_memory_metric_is_available() {
 	memory := current_limit_memory()
 	assert memory.kb > 0
