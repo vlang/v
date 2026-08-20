@@ -481,7 +481,7 @@ fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primiti
 	qb.where = old_where
 	qb.valid_sql_field_names = old_valid_fields
 	if scoped_fields.len == 0 {
-		qb.where = append_query_data(qb.where, parsed, is_and)
+		qb.where = append_query_data(qb.where, qb.groupable_condition(parsed), is_and)
 		qb.config.has_where = qb.where.fields.len > 0
 		return
 	}
@@ -500,7 +500,7 @@ fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primiti
 	}
 	root_where := query_data_for_scope(parsed, '')
 	if root_where.fields.len > 0 {
-		qb.where = append_query_data(qb.where, root_where, true)
+		qb.where = append_query_data(qb.where, qb.groupable_condition(root_where), true)
 		qb.config.has_where = true
 	}
 	for scope in scopes {
@@ -510,6 +510,15 @@ fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primiti
 		filter := query_data_for_scope(parsed, scope)
 		qb.add_include_filter(scope.split('.'), filter)
 	}
+}
+
+// groupable_condition parenthesizes a condition that carries a top level `OR`, so that
+// appending it to an earlier clause cannot turn `a AND (b OR c)` into `a AND b OR c`.
+fn (qb &QueryBuilder[T]) groupable_condition(data QueryData) QueryData {
+	if qb.where.fields.len == 0 || data.fields.len < 2 || !data.is_and.any(!it) {
+		return data
+	}
+	return v_sql_query_data_parentheses(data, 0)
 }
 
 fn (qb &QueryBuilder[T]) scoped_condition_fields(condition string) ![]string {
