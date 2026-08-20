@@ -250,6 +250,26 @@ fn test_v_source_for_report_is_empty_without_mapped_line() {
 	assert v_source_for_report(['a', 'b', 'c'], 0, 40).text == ''
 }
 
+fn test_v3_report_v_source_bounds_large_files() {
+	// A program at or below the window (2 * c_error_v_source_radius lines) is kept.
+	small := 'fn main() {\n\tprintln(1)\n}\n'
+	assert v3_report_v_source(small) == small
+	// A larger program is reduced to a bounded head+tail window; the middle (which
+	// could hold unrelated proprietary code) is dropped and never uploaded.
+	mut lines := []string{}
+	for i in 0 .. 4 * c_error_v_source_radius {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	big := lines.join('\n')
+	snippet := v3_report_v_source(big)
+	assert snippet.len < big.len
+	assert snippet.contains(c_error_v_source_truncation_notice)
+	assert snippet.contains('fn f0() ') // head kept
+	assert snippet.contains('fn f${4 * c_error_v_source_radius - 1}() ') // tail kept
+	assert !snippet.contains('fn f${2 * c_error_v_source_radius}() ') // middle dropped
+	assert snippet.split_into_lines().len <= 2 * c_error_v_source_radius + 3
+}
+
 fn test_selected_v_source_only_uploads_mapped_v_source_chunk() {
 	// a mapped V file yields a small chunk around the failing line
 	lines := ['module main', 'fn a() {}', 'fn b() {}', 'fn c() {}', 'fn bad() { x }']
