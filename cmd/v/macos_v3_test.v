@@ -1575,3 +1575,115 @@ fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {
 		assert !is_macos_v3_default_executable('/tmp/vp')
 	}
 }
+
+fn test_macos_v3_forwarded_args_strip_new_compiler_flag() {
+	$if macos {
+		prefs := &pref.Preferences{}
+		forwarded := macos_v3_forwarded_args(prefs, ['-new-compiler', 'main.v'])
+		assert '-new-compiler' !in forwarded
+		assert 'main.v' in forwarded
+	}
+}
+
+fn test_macos_v3_force_requested_forces_v3_for_compile_targets() {
+	$if macos {
+		build := &pref.Preferences{
+			new_compiler: true
+			path:         'main.v'
+		}
+		assert macos_v3_force_requested('build', build)
+		run := &pref.Preferences{
+			new_compiler: true
+			path:         'main.v'
+		}
+		assert macos_v3_force_requested('run', run)
+	}
+}
+
+fn test_macos_v3_force_requested_respects_hard_limits() {
+	$if macos {
+		// not requested without the flag
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			path: 'main.v'
+		})
+		// `-old-compiler` always wins
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			new_compiler: true
+			old_compiler: true
+			path:         'main.v'
+		})
+		// the `test` command stays with vtest
+		assert !macos_v3_force_requested('test', &pref.Preferences{
+			new_compiler: true
+			path:         'main_test.v'
+		})
+		// V3 is never forced onto options it cannot honor yet
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			new_compiler:   true
+			path:           'main.v'
+			use_coroutines: true
+		})
+	}
+}
+
+// This gate is shared by the Darwin and non-macOS dispatchers, so keep it
+// unguarded: it protects command routing on every platform where `-new-compiler`
+// is accepted.
+fn test_macos_v3_new_compiler_routing_and_precedence() {
+	// Compilation commands are taken over by V3.
+	assert macos_v3_force_requested('run', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert macos_v3_force_requested('build', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	// Non-compilation commands are never handed to V3 as compiler inputs.
+	assert !macos_v3_force_requested('fmt', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('doc', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('version', &pref.Preferences{
+		new_compiler: true
+	})
+	// The test command stays with the vtest dispatcher.
+	assert !macos_v3_force_requested('test', &pref.Preferences{
+		new_compiler: true
+		path:         'main_test.v'
+	})
+	// V3 recognizes only run/build/test. Other builtin commands whose token the
+	// launcher turns into a path (crun -> `.v`, build-module -> directory,
+	// interpret/translate -> `.v`) must not be handed to V3, or the command token
+	// becomes its first input path and collides with the real target.
+	assert !macos_v3_force_requested('crun', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('build-module', &pref.Preferences{
+		new_compiler: true
+		path:         os.temp_dir()
+	})
+	assert !macos_v3_force_requested('interpret', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('translate', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	// `-old-compiler` takes precedence over `-new-compiler`.
+	assert !macos_v3_force_requested('run', &pref.Preferences{
+		new_compiler: true
+		old_compiler: true
+		path:         'main.v'
+	})
+	// Without the flag, V3 is not forced at all.
+	assert !macos_v3_force_requested('run', &pref.Preferences{
+		path: 'main.v'
+	})
+}

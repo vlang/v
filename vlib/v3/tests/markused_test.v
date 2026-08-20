@@ -134,6 +134,8 @@ println(message())
 	assert used['strconv.format_uint']
 	assert used['array.delete_last']
 	assert used['i64.str']
+	assert used['v3.pref.detect_vroot']
+	assert used['v3.pref.detect_vexe']
 }
 
 fn test_cached_trivial_output_keeps_cached_runtime_helper_seeds() {

@@ -31,6 +31,12 @@ const deferred_str_expansion_threshold = 0
 // serial deferred path in case the transform expands it inline.
 const unresolved_interp_expansion_estimate = 1000
 
+// recursive_pointer_str_expansion_threshold bounds an indirect recursive pointer
+// expansion before it is rendered as circular. Small recursive structs retain the
+// normal auto-str depth, while large object graphs avoid generating every branch
+// before the repeated type is reached.
+const recursive_pointer_str_expansion_threshold = 512
+
 // resolve_call_name resolves the function name from a .call node.
 // child[0] is the function expression: .ident for plain calls, .selector for method calls.
 fn (t &Transformer) resolve_call_name(node flat.Node) string {
@@ -5043,7 +5049,7 @@ fn (mut t Transformer) lower_ref_value_str(expr flat.NodeId, typ string, nil_tex
 	t.pending_stmts << t.make_decl_assign_typed(ptr_name, expr, typ)
 	t.set_var_type(ptr_name, typ)
 	t.pending_stmts << t.make_decl_assign_typed(res_name, t.make_string_literal(nil_text), 'string')
-	if t.ref_value_str_is_direct_circular(elem_type) {
+	if t.ref_value_str_reaches_large_circular_graph(elem_type) {
 		then_body := t.make_block(arr1(t.make_assign(t.make_ident(res_name),
 			t.make_string_literal('&<circular>'))))
 		cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
@@ -5075,12 +5081,16 @@ fn (mut t Transformer) lower_ref_value_str(expr flat.NodeId, typ string, nil_tex
 	return t.make_ident(res_name)
 }
 
-fn (t &Transformer) ref_value_str_is_direct_circular(elem_type string) bool {
+fn (mut t Transformer) ref_value_str_reaches_large_circular_graph(elem_type string) bool {
 	if t.stringify_stack.len == 0 {
 		return false
 	}
 	aggregate := t.stringify_aggregate_type_name(elem_type) or { return false }
-	if !t.stringify_types_match(aggregate, t.stringify_stack.last()) {
+	if t.stringify_expansion_estimate(aggregate) <= recursive_pointer_str_expansion_threshold {
+		return false
+	}
+	mut seen := map[string]bool{}
+	if !t.stringify_type_reaches_stack(aggregate, mut seen) {
 		return false
 	}
 	return !t.struct_autostr_allows_recurse(aggregate)
@@ -9999,6 +10009,13 @@ fn (t &Transformer) fn_literal_name_exists(name string) bool {
 }
 
 fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name string, capture_names []string, capture_types map[string]string) {
+	if t.struct_maps_shared {
+		t.structs = t.structs.clone()
+		t.struct_maps_shared = false
+	}
+	if !isnil(t.tc) {
+		t.tc.ensure_private_transform_structs()
+	}
 	t.add_generated_fn_decl_context(module_name)
 	mut field_ids := []flat.NodeId{cap: capture_names.len}
 	mut semantic_fields := []types.StructField{cap: capture_names.len}
@@ -10046,6 +10063,7 @@ fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name s
 		fields: transform_fields
 	}
 	t.structs[name] = info
+	t.generated_capture_contexts << name
 	if !isnil(t.tc) {
 		t.tc.structs[name] = semantic_fields
 		t.tc.struct_modules[name] = module_name
@@ -10055,6 +10073,7 @@ fn (mut t Transformer) add_fn_literal_capture_context(name string, module_name s
 	if module_name.len > 0 && module_name !in ['main', 'builtin'] {
 		qualified := '${module_name}.${name}'
 		t.structs[qualified] = info
+		t.generated_capture_contexts << qualified
 		if !isnil(t.tc) {
 			t.tc.structs[qualified] = semantic_fields
 			t.tc.struct_modules[qualified] = module_name

@@ -240,6 +240,10 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
 }
 
+fn test_objective_c_message_header_remains_in_generated_source() {
+	assert c_include_should_remain_in_inlined_text('<objc/message.h>')
+}
+
 fn test_resolved_preserved_header_keeps_macro_declared_functions_authoritative() {
 	mut g := FlatGen.new()
 	g.collect_preserved_header_tree('<openssl/ssl.h>', '', []string{})

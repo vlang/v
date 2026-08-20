@@ -528,7 +528,7 @@ fn test_stream_write_read_round_trip_over_fake_transport() {
 	reply_frame := encode_stream_frame(stream_id, 0, 'hello from server'.bytes(), true, true)!
 	reply_datagram := build_fake_one_rtt_packet(c.scid, 0, reply_frame, server_app_keys, false)!
 	result2 := c.poll(reply_datagram.bytes, now)!
-	assert result2.events.len == 0
+	assert result2.events.len == 0, result2.events.str()
 
 	got := c.read_stream(stream_id)!
 	assert got == 'hello from server'.bytes()

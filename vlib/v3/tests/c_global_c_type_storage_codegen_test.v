@@ -204,7 +204,7 @@ fn main() {
 	_ := identity(mut builder)
 }
 ')
-	assert c_code.contains('Builder* identity(Builder* builder)'), c_code
+	assert c_code.contains('main__Builder* identity(main__Builder* builder)'), c_code
 	assert c_code.contains('return builder;'), c_code
 	assert !c_code.contains('return *(builder);'), c_code
 }

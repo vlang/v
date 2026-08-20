@@ -979,14 +979,109 @@ received error code to H3_NO_ERROR. **N/A for this v1 client role**
 assumed): MAX_PUSH_ID's must-not-decrease check (binds a server receiving
 it from a client); a server receiving a client-initiated push stream.
 
-## Phases 11-14 (NOT STARTED)
+## Phase 11: QPACK (RFC 9204) — CODE COMPLETE, not yet wired to conn.v
+
+Started and finished 2026-08-16, same session as Phase 10's merge — user
+asked to "Start Phase 11 and be very careful on RFC compliance and edge
+details... provide confidence score." New worktree
+`S:\repo\vlang-http3-qpack`, branch `http3-quic-qpack`, cut off
+`upstream/master` (all of 0-10 merged, no stacking needed). Same
+methodology as Phase 10: fetched RFC 9204's full text
+(`rfc-texts/rfc9204.txt`), read all of §1-§8 + Appendix A (static table) +
+Appendix B (worked examples) + Appendix C (sample encoding algorithm) in
+full BEFORE writing any code, built the `quic_conformance_matrix.md`
+"QPACK" section from that reading, THEN implemented against it.
+
+**Scope boundary, mirroring Phase 10's own precedent exactly:** QPACK's
+tables, wire codecs, and the encoder/decoder state machines are all
+self-contained (like Phase 10's `H3ControlStreamState`, they only need to
+be *fed* bytes/events by whatever eventually owns a real QUIC stream) — so
+that whole layer is Phase 11 scope, including the FULL encoder/decoder
+driver state machines (dynamic table with eviction/reference-counting,
+Known Received Count, blocked-stream tracking), not just the wire codecs.
+Deferred to Phase 12: writing encoder-stream bytes onto a real QUIC
+unidirectional stream under real flow control (§2.1.3); blocking/
+unblocking a live HTTP/3 request stream's read progress (§2.2.1 — needs
+Phase 12's request/response objects); applying a peer's actual SETTINGS
+values to a real connection (Phase 11 only provides the pure extraction
+helper, `qpack_settings.v`).
+
+**12 new files**, each with a paired `_test.v` except the trivially small
+`qpack_error.v`: `qpack_primitives.v` (prefixed integer + string literal
+codec, generalized to QPACK's variable prefix widths, algorithm verified
+against the already-shipped, tested `h2_hpack.v` before being written),
+`qpack_huffman_table.v` + `qpack_huffman.v` (verbatim copies of
+`h2_hpack_huffman_table.v`/`h2_hpack_huffman.v` — RFC 9204 §4.1.2 mandates
+byte-identical reuse of RFC 7541 Appendix B's table, so copying a proven
+implementation is strictly safer than a second hand-transcription; the
+copy was verified byte-for-byte identical via a numeric diff before
+trusting it), `qpack_static_table.v` (all 99 entries transcribed from the
+fetched RFC text, indexed from 0 unlike HPACK's 61-entry table indexed
+from 1), `qpack_dynamic_table.v` (insert/evict/duplicate/capacity,
+absolute/relative-from-insert-count/relative-from-Base/post-Base indexing
+as 4 DISTINCT resolution functions — conflating the encoder-instruction
+and field-line relative-index contexts was the most likely transcription
+error here — reference counting for eviction protection),
+`qpack_error.v` (mirrors `h3_error.v`'s shape exactly), `qpack_stream_type.v`
+(0x02/0x03 recognition + a `QpackStreamRegistry` at-most-one-of-each
+tracker, a from-scratch sibling comparison against `H3ControlStreamState`
+done before writing it), `qpack_settings.v` (pure extraction of the 2
+QPACK SETTINGS from an already-decoded `[]H3Setting`),
+`qpack_encoder_instructions.v` + `qpack_decoder_instructions.v` (wire
+codecs for the 4 encoder-stream and 3 decoder-stream instruction types),
+`qpack_field_line.v` (Required Insert Count wraparound math + Base sign/
+delta math, transcribed directly from the RFC's own pseudocode, plus the 6
+field line representation types), `qpack_encoder.v` (the `QpackEncoder`
+driver — chose the RFC-offered "only reference acknowledged entries"
+policy, so it never risks blocking a stream at all; a documented scope
+decision, not an oversight), `qpack_decoder.v` (the `QpackDecoder` driver
+— blocked-field-section detection, invalid-reference rejection, emits
+Insert Count Increment after every insertion as its acknowledgment
+policy).
+
+**Verification, in order of how much confidence each step actually buys:**
+(1) hand-derived every byte of RFC 9204 Appendix B's 5 worked examples
+against my own algorithms WHILE transcribing them (not after) — this
+independently reproduced the RFC's own shown intermediate values (Set
+Dynamic Table Capacity's 3-byte encoding of 220, the running dynamic-table
+Size totals of 106/160/217/215) before a single test ran; (2) then wrote
+those exact byte sequences as `qpack_appendix_b_test.v`, an end-to-end
+test exercising the encoder-instruction codec, dynamic table, field-line
+codec, and decoder driver together against official ground truth — passed
+outright on B.1-B.4, and B.5's one failure was correctly diagnosed as a
+test-design issue (asserting my own encoder reproduce the RFC's
+illustrative, deliberately-non-optimal raw-string choice, when this
+implementation's `encode_prefixed_string` correctly picks the shorter
+Huffman encoding instead) rather than patched around; (3) three more real
+bugs were caught by writing per-file edge-case tests and RE-DERIVING the
+encoder's indexing math by hand before trusting it, not by running code
+and hoping: `encode_field_section` mixed up relative-vs-post-Base indexing
+context for a newly-inserted entry (a field-line reference to an entry
+just inserted during the same call has absolute index >= Base and MUST
+use post-Base indexing, not relative-to-Base), used post-insert
+`insert_count()` instead of pre-insert for an Insert-With-Name-Reference
+instruction's own relative index (an off-by-one, since a decoder resolves
+that index against table state as it stood BEFORE this instruction's own
+insert takes effect), and passed an absolute index directly where a
+Base-relative index was required for a literal-with-existing-dynamic-name
+reference — all three caught and fixed by re-deriving the function's
+contract from scratch before ever compiling it, the same discipline this
+project's own postmortems establish as the highest-yield check available;
+(4) three ordinary test-authoring mistakes (unrealistic RIC/total_inserts
+test combinations outside the protocol's actual usage pattern, a missing
+`u8+u8` concatenation, a test decoder that never received the Set
+Dynamic Table Capacity instruction its paired encoder sent) were found and
+fixed the normal way, by running the suite and reading the failure.
+Full `net.quic` suite green throughout, 52/52 files, zero regressions in
+Phases 0-10.
+
+## Phases 12-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-11. QPACK (RFC 9204) — absolute indexing, encoder/decoder streams, blocked-
-    stream handling. Not HPACK — don't reuse `h2_hpack_static.v`.
 12. HTTP/3 client wiring into `Request`/`Response`/`Transport` — also where
-    Phase 10's deferred-state items above actually get wired up.
+    Phase 10's and Phase 11's deferred-state items above actually get
+    wired up.
 13. Server support — explicitly out of committed scope, but Phases 1-9 are
     designed to need no rework for it (`role` field already present).
 14. 0-RTT — explicitly out of committed scope.

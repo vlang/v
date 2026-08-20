@@ -2,6 +2,30 @@ module modulecache
 
 import os
 
+fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
+	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
+	value := r"darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/include') -L$first_existing('/opt/local/lib','/opt/homebrew/lib')"
+	assert cached_resolve_relative_flag_paths(value, os.join_path(base_dir, 'source.v')) == value
+}
+
+fn test_cached_dependency_inputs_restore_empty_variable_value() {
+	expected_head := 'format=test\n'
+	stamp := expected_head + 'dependency=fixed\tvalue\n' + 'dependency=external-root-owner:c:0\t\n'
+	restored := cached_dependency_inputs_from_stamp(stamp, expected_head, {
+		'fixed': 'value'
+	}, ['external-root-owner:']) or { panic('expected cache dependency restore') }
+	assert 'external-root-owner:c:0' in restored
+	assert restored['external-root-owner:c:0'] == ''
+}
+
+fn test_native_declaration_api_macro_definition_is_not_localized() {
+	source := '#ifdef LIB_IMPL\nLIB_API_DECL void exported(void) {\n}\n#else\nLIB_API_DECL void exported(void);\n#endif\nint helper(void) {\n\treturn 1;\n}\n'
+	declarations := c_native_declaration_directives(source)
+	assert declarations.contains('LIB_API_DECL void exported(void) {')
+	assert !declarations.contains('static LIB_API_DECL void exported(void) {')
+	assert declarations.contains('static int helper(void) {')
+}
+
 fn test_cached_file_line_uses_source_file_name() {
 	source := 'return [@FILE, @FILE_LINE, @LINE]'
 	source_file := os.join_path(os.vtmp_dir(), 'nested', 'origin.v')
@@ -102,12 +126,93 @@ fn test_static_variable_identifiers_ignore_asm_labels() {
 	assert !function_identifiers['helper_alias']
 }
 
+fn test_static_storage_detects_macro_generated_declarations() {
+	assert c_source_has_static_storage('#define DECL(name) static int name;\nDECL(shared_state)\n')
+	assert c_source_has_static_storage('#define STORAGE static\n#define DECL(name) STORAGE int name;\nDECL(shared_state)\n')
+	assert c_source_has_static_storage('#define LOCAL_FN(name) static int name(void)\nLOCAL_FN(helper) { return 1; }\n')
+	assert !c_source_has_static_storage('#define DECL(name) int name;\nDECL(shared_state)\n')
+}
+
+fn test_static_variable_identifiers_classify_attributes() {
+	identifiers, complete := c_source_static_variable_identifiers('__attribute__((availability(macos,introduced=14.0))) static const unsigned long DynamicStride = 42;
+static inline __attribute__((__always_inline__)) __attribute__((__overloadable__)) int simd_any(int value);
+')
+	assert complete
+	assert identifiers.keys() == ['DynamicStride']
+}
+
+fn test_static_variable_identifiers_ignore_preprocessor_directives() {
+	identifiers, complete := c_source_static_variable_identifiers('/* declaration guard */
+#if defined(ENABLE_STATE) \\
+	&& !defined(DISABLE_STATE)
+static int state;
+#endif
+')
+	assert complete
+	assert identifiers.keys() == ['state']
+}
+
+fn test_static_variable_identifiers_ignore_objc_declarations() {
+	identifiers, complete := c_source_static_variable_identifiers('@interface CacheDelegate : NSObject
+- (void)finish:(int)value;
+@end
+@protocol ForwardDeclaration;
+static int state;
+')
+	assert complete
+	assert identifiers.keys() == ['state']
+}
+
+fn test_static_variable_identifiers_track_objc_function_braces() {
+	identifiers, complete := c_source_static_variable_identifiers('static void helper(void) {
+	@autoreleasepool {
+		static int local_state;
+		if (local_state) {
+			local_state++;
+		}
+	}
+}
+static int file_state;
+')
+	assert complete
+	assert identifiers.keys() == ['file_state']
+}
+
+fn test_static_variable_identifiers_keep_anonymous_aggregate_declarator() {
+	identifiers, complete := c_source_static_variable_identifiers('static struct {
+	const char *str;
+	int code;
+} keymap[] = {
+	{"Enter", 1},
+};
+')
+	assert complete
+	assert identifiers.keys() == ['keymap']
+}
+
+fn test_static_variable_identifiers_scan_extern_c_block() {
+	identifiers, complete := c_source_static_variable_identifiers('extern "C" {
+static int state;
+}
+')
+	assert complete
+	assert identifiers.keys() == ['state']
+}
+
 fn test_function_identifiers_keep_name_before_suffix_macro() {
 	identifiers, complete :=
 		c_source_function_identifiers_with_status('#define API_SUFFIX(tag)\nstatic int api(void) API_SUFFIX(tag) {\n\treturn 1;\n}\n')
 	assert complete
 	assert identifiers['api']
 	assert !identifiers['API_SUFFIX']
+}
+
+fn test_static_function_identifiers_exclude_exported_functions() {
+	identifiers, complete :=
+		c_source_static_function_identifiers_with_status('static int local_helper(void) { return 1; }\nint exported_helper(void) { return local_helper(); }\n')
+	assert complete
+	assert identifiers['local_helper']
+	assert !identifiers['exported_helper']
 }
 
 fn test_function_identifiers_keep_name_after_return_type_macro() {

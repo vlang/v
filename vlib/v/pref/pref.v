@@ -158,6 +158,7 @@ pub mut:
 	show_depgraph          bool // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
 	show_unused_params     bool = true // regular function params should report as unused by default.
 	old_compiler           bool   // `-old-compiler` - bypass experimental compiler dispatchers.
+	new_compiler           bool   // `-new-compiler` - force the experimental V3 compiler and disable the V1 fallback.
 	c_error_bug_report_url string // `-bug-report-url url` - override the automatic C compiler bug report endpoint.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
@@ -423,6 +424,19 @@ fn optional_arg_value(args []string, idx int, command string, known_external_com
 }
 
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
+	return parse_args_impl(known_external_commands, args, show_output, false)
+}
+
+// parse_args_for_launcher works like parse_args_and_show_errors, but once a known external command
+// (tool) is recognized, every argument after it is left for that tool, instead of being interpreted
+// as a V compiler option here. It is meant for the top level `v` launcher in cmd/v, which forwards
+// the original os.args on to the tool verbatim. Do NOT use it when you actually need the V
+// preferences that follow the command name, for example `v fmt -translated file.v`; see vlang/v#28114.
+pub fn parse_args_for_launcher(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
+	return parse_args_impl(known_external_commands, args, show_output, true)
+}
+
+fn parse_args_impl(known_external_commands []string, args []string, show_output bool, pass_external_command_args bool) (&Preferences, string) {
 	mut res := &Preferences{}
 	detect_musl(mut res)
 	$if x64 {
@@ -445,6 +459,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	mut build_vsh_source := false
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
+		if pass_external_command_args && command_idx < i && command in known_external_commands {
+			// The command is a known external tool, e.g. `missdoc` in `v missdoc -e main`.
+			// Everything after it belongs to that tool, so do not interpret flags like `-e`
+			// as V compiler options here; the launcher (cmd/v) forwards the original os.args
+			// on to the tool verbatim.
+			continue
+		}
 		if inline_icon_path := inline_icon_option_value(arg) {
 			set_icon_path(mut res, inline_icon_path, arg.all_before('='))
 			continue
@@ -539,6 +560,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-old-compiler' {
 				res.old_compiler = true
+			}
+			'-new-compiler' {
+				res.new_compiler = true
 			}
 			'-checker-fixture', '-macos-v3-compat-c99' {
 				// Passed through to the embedded V3 diagnostic fixture runner.
