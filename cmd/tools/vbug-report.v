@@ -245,10 +245,15 @@ pub fn (mut app App) create(mut ctx Context) veb.Result {
 	report := json2.decode[BugReport](ctx.req.data) or {
 		return ctx.request_error('invalid report JSON: ${err}')
 	}
-	if report.kind != 'v-c-compiler-error' {
+	if report.kind !in ['v-c-compiler-error', 'v3-compiler-error'] {
 		return ctx.request_error('unsupported report kind')
 	}
-	stored_report := vbugreport.new_stored_c_error_report(report.c_file, report.target_os,
+	// A 'v3-compiler-error' report describes an internal V3 failure that the stable
+	// compiler then built successfully. It has no generated C file, so its failing
+	// V file is carried in `v_file` (the reports are told apart by `ccompiler`,
+	// which is `v3` for these). Fall back to it so the stored file name is set.
+	source_file := if report.c_file != '' { report.c_file } else { report.v_file }
+	stored_report := vbugreport.new_stored_c_error_report(source_file, report.target_os,
 		report.ccompiler, report.v_version, report.arch, report.build_options, report.c_error,
 		report.c_context.map(it.text), report.v_context.map(it.text), report.v_source)
 	id := new_report_id()
