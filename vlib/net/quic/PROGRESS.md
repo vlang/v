@@ -1075,7 +1075,7 @@ fixed the normal way, by running the suite and reading the failure.
 Full `net.quic` suite green throughout, 52/52 files, zero regressions in
 Phases 0-10.
 
-## Phase 12: HTTP/3 client wiring — IN PROGRESS (12a/12b/12c done, 12d next)
+## Phase 12: HTTP/3 client wiring — COMPLETE (12a/12b/12c/12d all done)
 
 Sub-scoped into 4 sequential sub-phases within one PR (mirroring Phase 2's
 2a/2b/2c and Phase 9's 9a/9b precedent), each a hard dependency of the
@@ -1127,12 +1127,26 @@ next:
   recommended pre-merge check for full wire-level behavior; a shared,
   exported cross-module fixture helper in `net.quic` is a scoped,
   worthwhile follow-up, not built inline here.
-- **12d** (next) — `Transport`/`Request`/`Response` integration:
+- **12d** (done) — `Transport`/`Request`/`Response` integration:
   `req.enable_http3` opt-in (default `false`, no automatic h2/h1
   fallback), `h3_client.v` (`H3ClientRequest`/`H3ClientResponse`
   conversion -- the concrete types themselves already exist, defined in
   12c's `h3_mux_conn.v` since that is what first needed them to compile),
-  `transport_h3.v` (`h3_round_trip`, singleflight dial).
+  `transport_h3.v` (`h3_round_trip`, `H3DialCall` singleflight dial,
+  mirroring `transport_h2.v`'s own shape minus every ALPN-probe-outcome
+  branch h2 needs and h3 doesn't). `Version` gained a `v3_0` case
+  (`version.v`/`response.v`) so `resp.version()` reports something
+  meaningful for an h3 response instead of `.unknown`.
+  **Known v1 limitation, discovered and documented during `/vreview`**:
+  `net.quic`'s TLS 1.3 stack has no OS/default trust-store fallback at
+  all (unlike the h1/h2 `ssl.SSLConn` path) -- `req.verify` is therefore
+  effectively REQUIRED for HTTP/3 today; leaving it unset means every h3
+  request fails certificate verification against every real server. This
+  is documented prominently on `enable_http3`'s own doc comment
+  (`request.v`/`http.v`), not silently left as a surprise. Likewise,
+  `req.validate` (skip-verification) and `req.cert`/`req.cert_key`
+  (mutual TLS) are not honorable on the h3 path in v1, both also
+  documented there.
 
 Two scope decisions made without a response after being flagged for
 sign-off, proceeding with the lower-risk default in each case (revisitable

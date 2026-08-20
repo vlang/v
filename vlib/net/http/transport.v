@@ -197,12 +197,16 @@ mut:
 	// h3_conns holds the one pooled, multiplexed H3MuxConn per pool key,
 	// mirroring h2_conns exactly. h3_dial_id tags which dial "owns" the
 	// current h3_conns[key] entry, the same superseded-connection-can-
-	// never-evict-a-newer-one guard h2_dial_id provides -- populated once
-	// Phase 12d's own h3 dial path exists; until then this map is always
-	// empty and evict_oldest_idle_locked's h3_conns.delete/h3_dial_id.delete
-	// calls below are harmless no-ops.
-	h3_conns   map[string]&H3MuxConn
-	h3_dial_id map[string]u64
+	// never-evict-a-newer-one guard h2_dial_id provides. h3_dialing
+	// singleflights the QUIC dial itself, mirroring `dialing`'s role for
+	// h2 -- concurrent first requests to a fresh h3-enabled origin share
+	// one dial rather than each racing their own. No h3 counterpart to
+	// key_proto: h3 selection is 100% caller-declared via req.enable_http3,
+	// never auto-probed, so there is no ALPN-outcome to memoize.
+	h3_conns    map[string]&H3MuxConn
+	h3_dial_seq u64
+	h3_dial_id  map[string]u64
+	h3_dialing  map[string]&H3DialCall
 }
 
 // new_transport creates an empty Transport with default limits.
@@ -300,17 +304,27 @@ pub fn (mut t Transport) close_idle() {
 // advertised via ALPN at dial time: a forced-HTTP/1.1 connection (no ALPN)
 // must not satisfy an HTTP/2-enabled request, which would otherwise silently
 // never negotiate h2 against that origin while the pooled connection lives.
+// enable_http3 is folded in the same way, mirroring enable_http2 exactly --
+// h3-enabled and h3-disabled requests already land in structurally separate
+// pool maps (h3_conns vs h1_idle/h2_conns), so this is not load-bearing for
+// correctness today the way enable_http2's fold is, but keeps the key's own
+// contract uniform ("every protocol-selecting flag is part of the key")
+// rather than leaving h3 as a silent, undocumented exception. No key_proto-
+// style probed-outcome state exists for h3 (unlike h2's ALPN auto-probe,
+// h3 selection is 100% caller-declared, never auto-detected), so there is
+// nothing else to fold in.
 fn transport_pool_key(req &Request, scheme string, host string, port int) string {
-	// enable_http2 only affects https dials (plain http ignores it), so keep
-	// the plain-http pool unsplit.
+	// enable_http2/enable_http3 only affect https dials (plain http ignores
+	// them), so keep the plain-http pool unsplit.
 	h2 := scheme == 'https' && req.enable_http2
+	h3 := scheme == 'https' && req.enable_http3
 	// Length-prefix the free-form string fields (host and the TLS paths/PEM
 	// blobs) so a value containing the '|' separator cannot collide with a
 	// different field split — e.g. cert='a|b',cert_key='c' vs cert='a',
 	// cert_key='b|c' — which would let a request reuse a connection dialed with
 	// the wrong CA or client certificate. Bools and the int port cannot contain
 	// '|', and scheme is a fixed literal, so they need no prefixing.
-	return '${scheme}|${pk_part(host)}|${port}|${h2}|${req.validate}|${pk_part(req.verify)}|${pk_part(req.cert)}|${pk_part(req.cert_key)}|${req.in_memory_verification}'
+	return '${scheme}|${pk_part(host)}|${port}|${h2}|${h3}|${req.validate}|${pk_part(req.verify)}|${pk_part(req.cert)}|${pk_part(req.cert_key)}|${req.in_memory_verification}'
 }
 
 // pk_part length-prefixes a string (`len:value`) so concatenated pool-key
@@ -377,7 +391,7 @@ fn (mut t Transport) checkout(key string) &H1PooledConn {
 // checkin returns a healthy connection to the idle pool, or closes it when the
 // per-host pool is already at capacity. Adding it may push the total idle count
 // over max_idle_conns, in which case the least-recently-used idle connection
-// across all pools (h1 and h2) is evicted and closed.
+// across all pools (h1, h2, and h3) is evicted and closed.
 fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	conn.idle_since = time.now()
 	t.mu.lock()
@@ -389,7 +403,7 @@ fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	}
 	list << conn
 	t.h1_idle[conn.key] = list
-	mut evicted := t.evict_oldest_idle_locked('')
+	mut evicted := t.evict_oldest_idle_locked('', '')
 	t.mu.unlock()
 	if evicted.h1 != unsafe { nil } {
 		evicted.h1.close_conn()
@@ -459,12 +473,10 @@ enum EvictionSource {
 // or one already sitting in h1_idle (h1, always idle by construction) is
 // eligible — a busy h2/h3 connection is never evicted to make room, mirroring
 // how a checked-out h1 connection (not in h1_idle) can't be evicted either.
-// No `just_registered_h3_key` parameter yet: Phase 12c adds h3_conns to this
-// scan but no h3 dial path registers an entry here yet (that is Phase 12d's
-// h3_round_trip/h3_dial_and_do, not yet written) — add the parameter
-// alongside that call site, the same way just_registered_h2_key was added
-// for h2's.
-fn (mut t Transport) evict_oldest_idle_locked(just_registered_h2_key string) EvictedIdleConn {
+// `just_registered_h3_key` mirrors `just_registered_h2_key` exactly, for
+// Phase 12d's own h3_dial_and_do (transport_h3.v), which registers a new
+// h3_conns entry in the same locked section it calls this from.
+fn (mut t Transport) evict_oldest_idle_locked(just_registered_h2_key string, just_registered_h3_key string) EvictedIdleConn {
 	if t.max_idle_conns <= 0 {
 		return EvictedIdleConn{}
 	}
@@ -544,6 +556,9 @@ fn (mut t Transport) evict_oldest_idle_locked(just_registered_h2_key string) Evi
 		}
 	}
 	for k, mut c in t.h3_conns {
+		if k == just_registered_h3_key {
+			continue
+		}
 		c.qmu.lock()
 		is_idle := c.active_streams == 0
 		since := c.idle_since
@@ -604,13 +619,28 @@ fn (mut t Transport) maybe_checkin(mut conn H1PooledConn, header Header, reusabl
 // retrying once on a connection that turned out to be stale), dials otherwise,
 // and returns healthy connections to the pool afterwards.
 fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host string, port int, path string, data string, header Header) !Response {
+	key := transport_pool_key(req, scheme, host, port)
+	if scheme == 'https' && req.enable_http3 {
+		// Checked BEFORE enable_http2 and before build_request_headers_opts
+		// below: explicit h3 opt-in wins if a caller somehow sets both, and
+		// h3_round_trip never touches the HTTP/1.1-shaped `raw` string at
+		// all (it builds its own QPACK-encoded field lines), so computing
+		// it first would be pure waste on every h3 request -- and would
+		// print misleading h1-style bytes under -d trace_http_request for
+		// a connection that never actually sends them. No probe/fallback
+		// here at all (unlike h2's own ALPN-probing dial) -- enable_http3's
+		// own doc comment states this is a hard per-request commitment, not
+		// a "try h3, fall back to h2/h1 on failure" negotiation; see
+		// transport_h3.v's own module doc comment for why (UDP has no
+		// fast-fail signal).
+		return t.h3_round_trip(req, key, method, host, port, path, data, header)
+	}
 	raw := req.build_request_headers_opts(method, host, port, path, data, header, false)
 	$if trace_http_request ? {
 		eprint('> ')
 		eprint(raw)
 		eprintln('')
 	}
-	key := transport_pool_key(req, scheme, host, port)
 	if scheme == 'https' && req.enable_http2 {
 		t.mu.lock()
 		proto := t.key_proto[key] or { 0 }
