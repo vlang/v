@@ -13,6 +13,10 @@ pub mut:
 	// transmitted out of band).
 	payload ?[]u8
 	tag     []u8
+mut:
+	// raw_protected holds the protected bstr exactly as it was read by
+	// `decode`; see `protected_bytes_or`.
+	raw_protected ?[]u8
 }
 
 // Mac0Options bundles the parameters that drive `cose.mac0`.
@@ -76,6 +80,9 @@ pub fn (mut m Mac0Message) compute(key Key, payload []u8, external_aad []u8) ! {
 		return error('cose: Mac0Message.compute requires protected.algorithm to be set')
 	}
 
+	// Computing a tag commits to the canonical encoding of the current
+	// headers, so any bytes kept from a previous `decode` are stale.
+	m.raw_protected = none
 	body_protected := m.protected.encode_protected()!
 	tbm := mac_structure_mac0(body_protected, external_aad, payload)
 	m.tag = compute_mac(alg, key, tbm)!
@@ -90,15 +97,29 @@ pub fn (m Mac0Message) verify(key Key, payload []u8, external_aad []u8) ! {
 		}
 	}
 
-	body_protected := m.protected.encode_protected()!
+	body_protected := m.protected_bytes()!
 	tbm := mac_structure_mac0(body_protected, external_aad, payload)
 	mac_verify(alg, key, tbm, m.tag)!
 }
 
+// protected_bytes returns the bytes to feed into the MAC_structure:
+// the ones received on the wire for a decoded message, a canonical
+// encoding of `protected` for one built in memory.
+fn (m Mac0Message) protected_bytes() ![]u8 {
+	return protected_bytes_or(m.raw_protected, m.protected)!
+}
+
 // encode serialises the message. When `tagged` is true the output is
 // wrapped in CBOR tag 17 (RFC 9052 §2).
+//
+// For a message that came from `decode`, the protected bucket is
+// written back exactly as it was received rather than re-serialised, so
+// the bytes under the MAC tag survive a decode/encode cycle. Every
+// other part of the message is re-encoded canonically. A consequence is
+// that mutating `protected` on a decoded message has no effect on the
+// output until `compute()` is called on it again.
 pub fn (m Mac0Message) encode(tagged bool) ![]u8 {
-	body_protected := m.protected.encode_protected()!
+	body_protected := m.protected_bytes()!
 
 	mut p := cbor.new_packer(cbor.EncodeOpts{ canonical: true })
 	if tagged {
@@ -134,7 +155,8 @@ pub fn Mac0Message.decode(data []u8) !Mac0Message {
 		}
 	}
 
-	protected := parse_protected(u.unpack_bytes()!)!
+	raw_protected := u.unpack_bytes()!
+	protected := parse_protected(raw_protected)!
 	unprotected := parse_headers_value(u.unpack_value()!)!
 	mut payload := ?[]u8(none)
 	if u.peek_kind()! == .null_val {
@@ -149,9 +171,10 @@ pub fn Mac0Message.decode(data []u8) !Mac0Message {
 		}
 	}
 	return Mac0Message{
-		protected:   protected
-		unprotected: unprotected
-		payload:     payload
-		tag:         tag
+		protected:     protected
+		unprotected:   unprotected
+		payload:       payload
+		tag:           tag
+		raw_protected: raw_protected
 	}
 }
