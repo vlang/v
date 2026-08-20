@@ -173,6 +173,9 @@ fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	if so_debug_flag != '' {
 		vopts_parts << so_debug_flag
 	}
+	if g.pref.enable_globals {
+		vopts_parts << '-enable-globals'
+	}
 	if forwarded_define_vopts != '' {
 		vopts_parts << forwarded_define_vopts
 	}
