@@ -191,16 +191,48 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 		report.tag)
 }
 
-// notify_and_cleanup_external_v3_fallback handles a staged V3->V1 fallback report for
-// build paths that hand off to an external tool (e.g. the wasm builder) via os.execvp,
-// which replaces this process — so the report cannot be submitted after the retry
-// succeeds, and an at_exit cleanup would never run. It tells the user about the
-// fallback and removes the staged report directory so nothing is leaked. It does not
-// upload the version/target metadata, since the external tool takes over before its
-// build outcome is known (which would otherwise report programs that fail on V1 too).
-pub fn notify_and_cleanup_external_v3_fallback(report_dir string) {
-	print_v3_fallback_notice('', false, false)
-	cleanup_external_c_error_report(report_dir)
+// v3_report_env_prefix names the environment variables used to hand a staged V3->V1
+// fallback report to an external builder tool (e.g. the wasm builder) launched via
+// os.execvp, which replaces this process. The tool reads them back with
+// take_external_v3_report_from_env and, via compile_with_external_c_error_report,
+// submits the report and prints the notice only after its own build succeeds.
+const v3_report_env_prefix = 'V_MACOS_V3_REPORT_'
+
+// export_external_v3_report_to_env stores `report` in the environment so the next
+// external builder (launched via os.execvp) can pick it up. A build path that hands
+// off to a separate tool cannot submit the report or clean up in-process, so the
+// tool does both after its build, only reporting on success.
+pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
+	os.setenv('${v3_report_env_prefix}KIND', report.kind, true)
+	os.setenv('${v3_report_env_prefix}CCOMPILER', report.ccompiler, true)
+	os.setenv('${v3_report_env_prefix}COUTPUT', report.c_output, true)
+	os.setenv('${v3_report_env_prefix}CFILE', report.c_file, true)
+	os.setenv('${v3_report_env_prefix}TAG', report.tag, true)
+	os.setenv('${v3_report_env_prefix}DIR', report.cleanup_dir, true)
+}
+
+// take_external_v3_report_from_env returns the fallback report exported by
+// export_external_v3_report_to_env, or none when there is none. It clears the
+// variables so a nested build does not inherit them. Pass the result to
+// compile_with_external_c_error_report so the notice/submission and the cleanup of
+// the staged directory happen relative to the tool's own build outcome.
+pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
+	dir := os.getenv('${v3_report_env_prefix}DIR')
+	if dir == '' {
+		return none
+	}
+	report := ExternalCErrorBugReport{
+		kind:        os.getenv('${v3_report_env_prefix}KIND')
+		ccompiler:   os.getenv('${v3_report_env_prefix}CCOMPILER')
+		c_output:    os.getenv('${v3_report_env_prefix}COUTPUT')
+		c_file:      os.getenv('${v3_report_env_prefix}CFILE')
+		tag:         os.getenv('${v3_report_env_prefix}TAG')
+		cleanup_dir: dir
+	}
+	for suffix in ['KIND', 'CCOMPILER', 'COUTPUT', 'CFILE', 'TAG', 'DIR'] {
+		os.unsetenv('${v3_report_env_prefix}${suffix}')
+	}
+	return report
 }
 
 // submit_external_v3_compiler_error_bug_report reports a V3 internal compiler error
@@ -291,6 +323,40 @@ fn v_context_covers_whole_file(context []CErrorReportLine, mapped_lines []string
 	return mapped_lines.len > 0 && context.len == mapped_lines.len
 }
 
+// v_source_and_context_expose_whole_file reports whether the union of the uploaded
+// v_source excerpt and the v_context window exposes every nonblank line of the
+// mapped file. Each can be a strict subset on its own while together they
+// reconstruct the complete source, so coverage must be checked across the combined
+// payload. Blank lines and indentation are ignored (the reproducer normalizes them).
+// Used to keep the combined upload within the doc/docs.md no-whole-file guarantee.
+fn v_source_and_context_expose_whole_file(v_source string, context []CErrorReportLine, mapped_lines []string) bool {
+	mut exposed := map[string]bool{}
+	for line in v_source.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed != '' {
+			exposed[trimmed] = true
+		}
+	}
+	for c in context {
+		trimmed := c.text.trim_space()
+		if trimmed != '' {
+			exposed[trimmed] = true
+		}
+	}
+	mut nonblank := 0
+	for line in mapped_lines {
+		trimmed := line.trim_space()
+		if trimmed == '' {
+			continue
+		}
+		nonblank++
+		if trimmed !in exposed {
+			return false
+		}
+	}
+	return nonblank > 0
+}
+
 // report_includes_v_source reports whether the uploaded report carries any of the
 // user's V source. That is the bounded `v_source` excerpt OR the `v_context` lines
 // around the failing line, since a short mapped file can have its whole-file
@@ -373,6 +439,12 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// window can also span every line, so apply the same strict-subset rule to it.
 	mut v_context := numbered_context_lines(mapped_lines, v_line, c_error_context_radius)
 	if v_context_covers_whole_file(v_context, mapped_lines) {
+		v_context = []CErrorReportLine{}
+	}
+	if v_source_and_context_expose_whole_file(v_source, v_context, mapped_lines) {
+		// Neither field covers the file on its own, but their union exposes every
+		// nonblank source line and so reconstructs the whole file. Drop v_context (the
+		// wider window) so the remaining v_source stays a strict subset (doc/docs.md).
 		v_context = []CErrorReportLine{}
 	}
 	return CErrorBugReport{
