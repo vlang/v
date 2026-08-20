@@ -226,6 +226,8 @@ $if !windows {
 	// literal_decl_scan_thread marks the sparse node kinds needed to associate
 	// a function literal with its containing top-level declaration. The low
 	// nibble is also a cheap transform-cost weight used to balance fn workers.
+	// Genuine top-level boundaries are marked by the master after the scan: node
+	// kind alone cannot distinguish a top-level type from a local type declaration.
 	fn literal_decl_scan_thread(arg voidptr) voidptr {
 		a := unsafe { &TopLevelKindScanArgs(arg) }
 		flags := unsafe { &u8(a.flags) }
@@ -262,10 +264,6 @@ $if !windows {
 				flag |= 32
 			} else if node.kind in [.const_decl, .global_decl] {
 				flag |= 64
-			}
-			if node.kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl,
-				.enum_decl, .import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
-				flag |= 128
 			}
 			unsafe {
 				flags[i - a.base] = flag
@@ -334,7 +332,8 @@ fn scan_literal_decl_flags_parallel(t &Transformer, limit int, mut flags []u8, m
 	} $else {
 		a := t.a
 		if isnil(t.tc) || isnil(a.worker_pool) || limit < 65536 || limit > a.nodes.len
-			|| flags.len < limit || escape_flags.len < limit {
+			|| flags.len < limit || escape_flags.len < limit || t.tc.top_level_idx.len == 0
+			|| t.tc.top_level_idx_nodes_len != limit {
 			return false
 		}
 		n_jobs := a.worker_pool.size() + 1
@@ -367,6 +366,25 @@ fn scan_literal_decl_flags_parallel(t &Transformer, limit int, mut flags []u8, m
 			}
 		}
 		a.worker_pool.run(tasks)
+		// top_level_idx also contains synthesized anonymous/function-local type
+		// declarations so later passes can find them. They are not subtree
+		// boundaries: an escape candidate before one still belongs to the enclosing
+		// function. Exclude those exact ids while marking reset points.
+		mut synthetic_pos := 0
+		for idx in t.tc.top_level_idx {
+			for synthetic_pos < t.tc.synthetic_top_level_type_ids.len
+				&& t.tc.synthetic_top_level_type_ids[synthetic_pos] < idx {
+				synthetic_pos++
+			}
+			if synthetic_pos < t.tc.synthetic_top_level_type_ids.len
+				&& t.tc.synthetic_top_level_type_ids[synthetic_pos] == idx {
+				synthetic_pos++
+				continue
+			}
+			if idx >= 0 && idx < limit {
+				flags[idx] |= u8(128)
+			}
+		}
 		return true
 	}
 }

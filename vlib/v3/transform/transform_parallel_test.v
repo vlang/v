@@ -212,3 +212,48 @@ fn test_skipped_literal_decl_does_not_hide_later_closure() {
 	assert pure.len == 1
 	assert pure[0].fn_idx == helper_idx
 }
+
+fn test_parallel_escape_precheck_preserves_candidate_across_local_type_decl() {
+	$if !v3_no_parallel ? {
+		mut a := flat.FlatAst.new()
+		a.nodes = []flat.Node{len: 65536}
+		a.nodes[1] = flat.Node{
+			kind: .prefix
+			op:   .amp
+		}
+		a.nodes[2] = flat.Node{
+			kind:  .struct_decl
+			value: 'Local@local@first'
+		}
+		a.nodes[3] = flat.Node{
+			kind:  .fn_decl
+			value: 'first'
+		}
+		a.nodes[4] = flat.Node{
+			kind: .prefix
+			op:   .amp
+		}
+		a.nodes[5] = flat.Node{
+			kind:  .struct_decl
+			value: 'TopLevel'
+		}
+		a.nodes[6] = flat.Node{
+			kind:  .fn_decl
+			value: 'second'
+		}
+		a.ensure_workers(2)
+		defer {
+			a.close_workers()
+		}
+		mut tc := types.TypeChecker.new(&a)
+		tc.top_level_idx = [0, 2, 3, 5, 6]
+		tc.top_level_idx_nodes_len = a.nodes.len
+		tc.synthetic_top_level_type_ids = [2]
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+		t.collect_literal_fn_decls(t.a.nodes.len)
+
+		assert t.fn_escape_scan_flags[3] == 3
+		assert t.fn_escape_scan_flags[6] == 1
+	}
+}
