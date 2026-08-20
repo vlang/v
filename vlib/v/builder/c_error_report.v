@@ -192,6 +192,13 @@ pub fn submit_external_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_
 }
 
 fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_output string, v_file string, tag string) {
+	if v_file == '' {
+		// Notice-only report (a directory build such as `v .`, or a non-file input):
+		// no single source reproducer can be uploaded, but the user must still be
+		// told V3 fell back to the stable compiler.
+		print_v3_fallback_notice('', false)
+		return
+	}
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
 		print_v3_fallback_notice('', false)
 		return
