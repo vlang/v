@@ -485,31 +485,121 @@ fn (qb_ &QueryBuilder[T]) add_where_condition(condition string, params []Primiti
 		qb.config.has_where = qb.where.fields.len > 0
 		return
 	}
-	if !is_and {
-		return error('${@FN}(): `or_where` cannot filter an included relationship')
-	}
 	mut scopes := []string{}
+	mut field_scopes := []string{cap: parsed.fields.len}
 	for field in parsed.fields {
 		scope := qb.condition_field_scope(field)!
+		field_scopes << scope
 		if scope !in scopes {
 			scopes << scope
 		}
 	}
-	if scopes.len > 1 && (parsed.parentheses.len > 0 || parsed.is_and.any(!it)) {
-		return error('${@FN}(): root and included relationship conditions must be combined with `AND`')
-	}
-	root_where := query_data_for_scope(parsed, '')
-	if root_where.fields.len > 0 {
-		qb.where = append_query_data(qb.where, qb.groupable_condition(root_where), true)
-		qb.config.has_where = true
-	}
+	// relationship terms filter the root through a correlated subquery, and filter the
+	// hydrated rows of that relationship when it is also included
+	qb.where = append_query_data(qb.where, qb.groupable_condition(qb.exists_wrapped_conditions(parsed,
+		field_scopes)!), is_and)
+	qb.config.has_where = qb.where.fields.len > 0
 	for scope in scopes {
 		if scope.len == 0 {
 			continue
 		}
-		filter := query_data_for_scope(parsed, scope)
+		filter := query_data_for_scope(parsed, field_scopes, scope)
 		qb.add_include_filter(scope.split('.'), filter)
 	}
+}
+
+// exists_wrapped_conditions replaces every run of relationship-scoped terms with a
+// correlated `EXISTS`, keeping root terms and the boolean structure of the condition
+// in place. Terms of one run share the subquery, so they must match the same related
+// row, mirroring how a single `filter()` call behaves in Django.
+fn (qb &QueryBuilder[T]) exists_wrapped_conditions(parsed QueryData, field_scopes []string) !QueryData {
+	mut out := QueryData{}
+	mut connectors := []bool{}
+	// position of each parsed term in `out`, plus the subquery run it belongs to and
+	// the markers delimiting that run, so parentheses can be re-anchored
+	mut position := []int{len: parsed.fields.len}
+	mut run_of := []int{len: parsed.fields.len, init: -1}
+	mut run_open := []int{}
+	mut run_close := []int{}
+	mut i := 0
+	for i < parsed.fields.len {
+		if field_scopes[i].len == 0 {
+			position[i] = out.fields.len
+			out.fields << parsed.fields[i]
+			out.kinds << parsed.kinds[i]
+			connectors << query_data_connector(parsed, i)
+			i++
+			continue
+		}
+		branch := field_scopes[i].all_before('.')
+		mut last := i
+		mut deepest := field_scopes[i]
+		// terms of the same branch share one subquery only while they are `AND`ed, since
+		// requiring the same related row is meaningless across an `OR`
+		for last + 1 < parsed.fields.len && field_scopes[last + 1].len > 0
+			&& field_scopes[last + 1].all_before('.') == branch
+			&& query_data_connector(parsed, last) {
+			next := field_scopes[last + 1]
+			if next != deepest && !next.starts_with('${deepest}.')
+				&& !deepest.starts_with('${next}.') {
+				return error('${@FN}(): `${deepest}` and `${next}` are sibling relationships; `AND` between them needs separate `where` calls')
+			}
+			last++
+			if next.len > deepest.len {
+				deepest = next
+			}
+		}
+		clause := exists_clause_for_path[T](deepest.split('.'), qb.meta)!
+		clause_index := out.exists.len
+		out.exists << clause
+		run := run_open.len
+		run_open << out.fields.len
+		out.fields << exists_clause_field(clause_index)
+		out.kinds << .exists_open
+		connectors << true
+		for k in i .. last + 1 {
+			position[k] = out.fields.len
+			run_of[k] = run
+			out.fields << table_qualified_field(exists_scope_table(clause, field_scopes[k]),
+				parsed.fields[k].all_after_last('.'))
+			out.kinds << parsed.kinds[k]
+			connectors << query_data_connector(parsed, k)
+			i++
+		}
+		// a run only ever grows across `AND`, so its terms need no grouping of their own
+		run_close << out.fields.len
+		out.fields << exists_clause_field(clause_index)
+		out.kinds << .exists_close
+		connectors << query_data_connector(parsed, last)
+	}
+	for span in parsed.parentheses {
+		if span.len != 2 || span[0] < 0 || span[1] < 0 || span[0] >= parsed.fields.len
+			|| span[1] >= parsed.fields.len {
+			continue
+		}
+		// a span staying inside one subquery keeps its term positions; one that leaves a
+		// subquery has to wrap the whole `EXISTS`, or its parentheses would cross the
+		// subquery boundary and pull unrelated terms into it
+		start := if run_of[span[0]] >= 0 && run_of[span[0]] != run_of[span[1]] {
+			run_open[run_of[span[0]]]
+		} else {
+			position[span[0]]
+		}
+		end := if run_of[span[1]] >= 0 && run_of[span[1]] != run_of[span[0]] {
+			run_close[run_of[span[1]]]
+		} else {
+			position[span[1]]
+		}
+		out.parentheses << [start, end]
+	}
+	for item in parsed.data {
+		out.data << item
+	}
+	out.types << parsed.types
+	if connectors.len > 0 {
+		out.is_and << connectors[..connectors.len - 1]
+	}
+	return out
 }
 
 // groupable_condition parenthesizes a condition that carries a top level `OR`, so that
@@ -519,6 +609,19 @@ fn (qb &QueryBuilder[T]) groupable_condition(data QueryData) QueryData {
 		return data
 	}
 	return v_sql_query_data_parentheses(data, 0)
+}
+
+fn query_data_connector(data QueryData, index int) bool {
+	return if index < data.is_and.len { data.is_and[index] } else { true }
+}
+
+// exists_scope_table names the table a scoped condition refers to inside its subquery.
+fn exists_scope_table(clause ExistsClause, scope string) string {
+	depth := scope.split('.').len
+	if depth > 1 && depth - 2 < clause.joins.len {
+		return clause.joins[depth - 2].table.name
+	}
+	return clause.table
 }
 
 fn (qb &QueryBuilder[T]) scoped_condition_fields(condition string) ![]string {
@@ -546,18 +649,25 @@ fn (qb &QueryBuilder[T]) condition_field_scope(field string) !string {
 	if qb.v_sql_field_name(field) in qb.valid_sql_field_names {
 		return ''
 	}
+	// a path rooted at a `@[fkey]` relationship of this table addresses that
+	// relationship directly, whether or not it was included
+	root := field.all_before('.')
+	if meta_field := qb.get_meta_field_by_any_name(root) {
+		if !meta_field.is_arr || orm_field_fkey_attr(meta_field.attrs).len == 0 {
+			return error('${@FN}(): field `${root}` is not a `@[fkey]` relationship')
+		}
+		return field.all_before_last('.')
+	}
+	// otherwise the short form addresses the relationship last included
 	if qb.last_include_path.len == 0 {
-		return error('${@FN}(): call `include` before filtering an included relationship')
+		return error("${@FN}(): table `${qb.config.table.name}` has no field's name: `${root}`")
 	}
 	full_path := qb.last_include_path.join('.')
 	last_relationship := qb.last_include_path.last()
-	if field.starts_with('${full_path}.') {
-		return full_path
-	}
 	if field.starts_with('${last_relationship}.') {
 		return full_path
 	}
-	return error('${@FN}(): relationship field `${field}` must start with `${last_relationship}.`')
+	return error('${@FN}(): relationship field `${field}` must start with `${last_relationship}.` or a relationship of `${qb.config.table.name}`')
 }
 
 fn (qb_ &QueryBuilder[T]) add_include_filter(path []string, filter QueryData) {
@@ -575,9 +685,12 @@ fn (qb_ &QueryBuilder[T]) add_include_filter(path []string, filter QueryData) {
 	}
 }
 
-fn (qb &QueryBuilder[T]) reject_include_filters_for_write(operation string) ! {
-	if qb.include_filters.len > 0 {
-		return error('${operation}(): relationship-scoped filters cannot be used for write operations')
+// reject_relationship_filters_for_insert guards the terminals that ignore `where`
+// entirely. `update` and `delete` do not need this: their relationship predicates reach
+// the database as correlated subqueries.
+fn (qb &QueryBuilder[T]) reject_relationship_filters_for_insert(operation string) ! {
+	if qb.include_filters.len > 0 || qb.where.exists.len > 0 {
+		return error('${operation}(): relationship-scoped filters cannot be used for insert operations')
 	}
 }
 
@@ -591,7 +704,17 @@ fn append_query_data(existing QueryData, addition QueryData, is_and bool) QueryD
 	mut combined := clone_query_data(existing)
 	combined.is_and << is_and
 	offset := combined.fields.len
-	combined.fields << addition.fields
+	exists_offset := combined.exists.len
+	combined.exists << addition.exists
+	for i, field in addition.fields {
+		// both markers of a subquery carry its index into `exists`, so both are renumbered
+		if addition.kinds.len > i && addition.kinds[i].is_exists_marker() {
+			combined.fields << exists_clause_field(exists_clause_index(field) or { 0 } +
+				exists_offset)
+		} else {
+			combined.fields << field
+		}
+	}
 	for item in addition.data {
 		combined.data << item
 	}
@@ -607,17 +730,15 @@ fn append_query_data(existing QueryData, addition QueryData, is_and bool) QueryD
 	return combined
 }
 
-fn query_data_for_scope(data QueryData, scope string) QueryData {
-	short_scope := if scope.len > 0 { scope.all_after_last('.') } else { '' }
-	if scope.len > 0 && data.fields.all(it.starts_with('${scope}.')
-		|| it.starts_with('${short_scope}.')) {
+// query_data_for_scope extracts the terms belonging to exactly one relationship scope,
+// stripping the relationship prefix so they can filter that relationship while it is
+// hydrated. `field_scopes` holds the resolved scope of each term of `data`.
+fn query_data_for_scope(data QueryData, field_scopes []string, scope string) QueryData {
+	if scope.len > 0 && field_scopes.len == data.fields.len && field_scopes.all(it == scope) {
+		// the whole condition belongs to this relationship, so its grouping is kept
 		mut scoped := clone_query_data(data)
 		for i, field in scoped.fields {
-			scoped.fields[i] = if field.starts_with('${scope}.') {
-				field.all_after('${scope}.')
-			} else {
-				field.all_after('${short_scope}.')
-			}
+			scoped.fields[i] = field.all_after_last('.')
 		}
 		return scoped
 	}
@@ -625,19 +746,8 @@ fn query_data_for_scope(data QueryData, scope string) QueryData {
 	mut data_index := 0
 	for i, field in data.fields {
 		kind := data.kinds[i]
-		matches := if scope.len == 0 {
-			!field.contains('.')
-		} else {
-			field.starts_with('${scope}.') || field.starts_with('${short_scope}.')
-		}
-		if matches {
-			field_name := if scope.len == 0 {
-				field
-			} else if field.starts_with('${scope}.') {
-				field.all_after('${scope}.')
-			} else {
-				field.all_after('${short_scope}.')
-			}
+		if i < field_scopes.len && field_scopes[i] == scope {
+			field_name := if scope.len == 0 { field } else { field.all_after_last('.') }
 			filtered = v_sql_query_data_add(filtered, field_name, kind, if kind.is_unary() {
 				Primitive(Null{})
 			} else {
@@ -1687,6 +1797,114 @@ fn hydrate_array_relationships[T](mut conn Connection, mut instance T, parent_ke
 	}
 }
 
+// exists_clause_for_path builds the correlated subquery that filters root rows by a
+// relationship path. Every hop after the first becomes a join inside the subquery, so
+// the root query never multiplies rows.
+fn exists_clause_for_path[T](path []string, meta []TableField) !ExistsClause {
+	if path.len == 0 {
+		return error('${@FN}(): relationship path is empty')
+	}
+	parent_key := find_save_primary_field_name(meta) or {
+		return error('${@FN}(): filtering by a relationship requires a `@[primary]` or `id` field')
+	}
+	name := path[0]
+	relation := relation_field_name[T](name)
+	empty := T{}
+	$for field in T.fields {
+		if field.name == relation {
+			fkey := orm_field_fkey(field.attrs)
+			$if field.unaliased_typ is $array {
+				if fkey.len == 0 {
+					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
+				}
+				return exists_clause_from_array(path[1..], fkey, parent_key, empty.$(field.name))
+			} $else $if field.typ is $option {
+				if !orm_type_name_is_optional_array(typeof(field).name) || fkey.len == 0 {
+					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
+				}
+				return exists_clause_from_optional_array(path[1..], fkey, parent_key,
+					empty.$(field.name))
+			} $else {
+				return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
+			}
+		}
+	}
+	return error('${@FN}(): field `${name}` does not exist')
+}
+
+fn exists_clause_from_array[U](path []string, fkey string, parent_key string, _ []U) !ExistsClause {
+	table := table_from_struct[U](struct_meta[U]())
+	return ExistsClause{
+		table:      table.name
+		fkey:       fkey
+		parent_key: parent_key
+		joins:      exists_relation_joins[U](path, table.name)!
+	}
+}
+
+fn exists_clause_from_optional_array[U](path []string, fkey string, parent_key string, _ ?U) !ExistsClause {
+	$if U is $array {
+		return exists_clause_from_array(path, fkey, parent_key, U{})
+	}
+	return error('${@FN}(): invalid optional relationship')
+}
+
+// exists_relation_joins turns the remaining hops of a path into joins, each one
+// hanging off the table produced by the previous hop.
+fn exists_relation_joins[T](path []string, left_table string) ![]JoinConfig {
+	if path.len == 0 {
+		return []JoinConfig{}
+	}
+	left_key := find_save_primary_field_name(struct_meta[T]()) or {
+		return error('${@FN}(): table `${left_table}` needs a `@[primary]` or `id` field to filter through it')
+	}
+	name := path[0]
+	relation := relation_field_name[T](name)
+	empty := T{}
+	$for field in T.fields {
+		if field.name == relation {
+			fkey := orm_field_fkey(field.attrs)
+			$if field.unaliased_typ is $array {
+				if fkey.len == 0 {
+					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
+				}
+				return exists_join_step(path[1..], left_table, left_key, fkey, empty.$(field.name))
+			} $else $if field.typ is $option {
+				if !orm_type_name_is_optional_array(typeof(field).name) || fkey.len == 0 {
+					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
+				}
+				return exists_optional_join_step(path[1..], left_table, left_key, fkey,
+					empty.$(field.name))
+			} $else {
+				return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
+			}
+		}
+	}
+	return error('${@FN}(): field `${name}` does not exist')
+}
+
+fn exists_join_step[U](path []string, left_table string, left_key string, fkey string, _ []U) ![]JoinConfig {
+	table := table_from_struct[U](struct_meta[U]())
+	mut joins := [
+		JoinConfig{
+			kind:          .inner
+			table:         table
+			on_left_table: left_table
+			on_left_col:   left_key
+			on_right_col:  fkey
+		},
+	]
+	joins << exists_relation_joins[U](path, table.name)!
+	return joins
+}
+
+fn exists_optional_join_step[U](path []string, left_table string, left_key string, fkey string, _ ?U) ![]JoinConfig {
+	$if U is $array {
+		return exists_join_step(path, left_table, left_key, fkey, U{})
+	}
+	return error('${@FN}(): invalid optional relationship')
+}
+
 // relation_field_name resolves a relationship name to its V field name, accepting
 // both the V name and the `@[sql]` alias. An exact V field name always wins, so a
 // field is never shadowed by another field's alias.
@@ -2229,7 +2447,7 @@ pub fn (qb_ &QueryBuilder[T]) insert[T](value T) !&QueryBuilder[T] {
 	defer {
 		qb.reset()
 	}
-	qb.reject_include_filters_for_write('insert')!
+	qb.reject_relationship_filters_for_insert('insert')!
 	_ = qb.insert_value_with_fields(value, []string{})!
 	return qb
 }
@@ -2347,7 +2565,7 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	defer {
 		qb.reset()
 	}
-	qb.reject_include_filters_for_write('insert_many')!
+	qb.reject_relationship_filters_for_insert('insert_many')!
 	qb.prepare()!
 	if values.len == 0 {
 		return error('${@FN}(): `insert` need at least one record')
@@ -3208,7 +3426,6 @@ pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	defer {
 		qb.reset()
 	}
-	qb.reject_include_filters_for_write('update')!
 	qb.prepare()!
 	if qb.data.fields.len == 0 {
 		return error('${@FN}(): `update` need at least one `set` clause')
@@ -3292,7 +3509,6 @@ pub fn (qb_ &QueryBuilder[T]) delete() !&QueryBuilder[T] {
 	defer {
 		qb.reset()
 	}
-	qb.reject_include_filters_for_write('delete')!
 	qb.prepare()!
 	qb.conn.delete(qb.config.table, qb.where)!
 	return qb

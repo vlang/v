@@ -339,9 +339,70 @@ fn test_where_filters_a_direct_included_relationship() {
 	}
 	mut parents := orm.new_query[IncludeParent](db)
 
+	rows := parents.include('children')!.where('children.name = ?', 'child')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].name == 'child'
+}
+
+fn test_where_drops_the_root_when_no_related_row_matches() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
 	rows := parents.include('children')!.where('children.name = ?', 'missing')!.query()!
+	assert rows.len == 0
+}
+
+fn test_where_filters_the_root_without_returning_the_relationship() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.where('children.name = ?', 'child')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+	assert rows[0].children.len == 0
+
+	empty := parents.where('children.name = ?', 'missing')!.query()!
+	assert empty.len == 0
+}
+
+fn test_where_filters_the_root_through_a_deep_relationship_path() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.where('children.grandkids.toys.name = ?', 'toy')!.query()!
 	assert rows.len == 1
 	assert rows[0].children.len == 0
+
+	empty := parents.where('children.grandkids.toys.name = ?', 'missing')!.query()!
+	assert empty.len == 0
+}
+
+fn test_where_requires_one_related_row_to_match_every_term_of_a_call() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	// the grandkid carrying the toy is `grandkid`, so pairing it with the other name
+	// cannot be satisfied by a single related row
+	matched := parents.where('children.grandkids.name = ? && children.grandkids.toys.name = ?',
+		'grandkid', 'toy')!.query()!
+	assert matched.len == 1
+
+	crossed := parents.where('children.grandkids.name = ? && children.grandkids.toys.name = ?',
+		'excluded grandkid', 'toy')!.query()!
+	assert crossed.len == 0
 }
 
 fn test_where_accepts_the_full_path_of_the_last_included_relationship() {
@@ -395,13 +456,13 @@ fn test_where_filters_independent_included_paths() {
 
 	rows := parents.include('children')!.then_include('grandkids')!.where('grandkids.name = ?',
 		'grandkid')!.include('children')!.then_include('grandkids2')!.where('grandkids2.name = ?',
-		'missing')!.query()!
+		'grandkid2')!.query()!
 	assert rows.len == 1
 	assert rows[0].children[0].grandkids.len == 1
-	assert rows[0].children[0].grandkids2.len == 0
+	assert rows[0].children[0].grandkids2.len == 1
 }
 
-fn test_where_keeps_the_root_when_an_included_relationship_has_no_matches() {
+fn test_where_combines_a_root_and_a_relationship_predicate() {
 	mut db := new_include_database()!
 	defer {
 		db.close() or {}
@@ -409,10 +470,13 @@ fn test_where_keeps_the_root_when_an_included_relationship_has_no_matches() {
 	mut parents := orm.new_query[IncludeParent](db)
 
 	rows := parents.include('children')!.then_include('grandkids')!.where('name = ? && grandkids.name = ?',
-		'parent', 'missing')!.query()!
+		'parent', 'grandkid')!.query()!
 	assert rows.len == 1
-	assert rows[0].children.len == 1
-	assert rows[0].children[0].grandkids.len == 0
+	assert rows[0].children[0].grandkids.len == 1
+
+	empty := parents.include('children')!.then_include('grandkids')!.where('name = ? && grandkids.name = ?',
+		'parent', 'missing')!.query()!
+	assert empty.len == 0
 }
 
 fn test_where_keeps_boolean_expressions_within_an_included_relationship() {
@@ -470,39 +534,72 @@ fn test_where_filters_an_optional_array_relationship() {
 	}!
 	mut parents := orm.new_query[IncludeOptionalParent](db)
 
-	rows := parents.include('children')!.where('children.name = ?', 'missing')!.query()!
+	rows := parents.include('children')!.where('children.name = ?', 'optional child')!.query()!
 	assert rows.len == 1
-	assert rows[0].children?.len == 0
+	assert rows[0].children?.len == 1
+
+	empty := parents.include('children')!.where('children.name = ?', 'missing')!.query()!
+	assert empty.len == 0
 }
 
-fn test_where_rejects_or_between_root_and_included_relationship_conditions() {
+fn test_where_ors_a_root_condition_with_a_relationship_condition() {
 	mut db := new_include_database()!
 	defer {
 		db.close() or {}
 	}
 	mut parents := orm.new_query[IncludeParent](db)
 
-	if _ := parents.include('children')!.where('name = ? || children.name = ?', 'parent', 'child') {
-		assert false
-	} else {
-		assert err.msg().contains('must be combined with `AND`')
-	}
+	// the root branch alone keeps a parent whose relationship branch does not match
+	rows := parents.where('name = ? || children.name = ?', 'parent', 'missing')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+
+	empty := parents.where('name = ? || children.name = ?', 'missing', 'missing')!.query()!
+	assert empty.len == 0
 }
 
-fn test_or_where_rejects_an_included_relationship_condition() {
+fn test_where_ors_conditions_on_sibling_relationships() {
 	mut db := new_include_database()!
 	defer {
 		db.close() or {}
 	}
 	mut parents := orm.new_query[IncludeParent](db)
 
-	if _ := parents.where('name = ?', 'parent')!.include('children')!.or_where('children.name = ?',
-		'child')
+	rows := parents.where('children.grandkids.name = ? || children.grandkids2.name = ?', 'missing',
+		'grandkid2')!.query()!
+	assert rows.len == 1
+
+	empty := parents.where('children.grandkids.name = ? || children.grandkids2.name = ?',
+		'missing', 'missing')!.query()!
+	assert empty.len == 0
+}
+
+fn test_where_rejects_and_between_sibling_relationships_in_one_call() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	if _ := parents.where('children.grandkids.name = ? && children.grandkids2.name = ?',
+		'grandkid', 'grandkid2')
 	{
 		assert false
 	} else {
-		assert err.msg().contains('or_where')
+		assert err.msg().contains('sibling relationships')
 	}
+}
+
+fn test_or_where_accepts_a_relationship_condition() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.where('name = ?', 'missing')!.or_where('children.name = ?', 'child')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
 }
 
 fn test_or_where_keeps_working_for_root_conditions_with_includes() {
@@ -519,45 +616,66 @@ fn test_or_where_keeps_working_for_root_conditions_with_includes() {
 	assert rows[0].children.len == 1
 }
 
-fn test_update_rejects_an_included_relationship_filter_without_writing() {
+fn test_update_filters_rows_by_a_relationship() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	parents.insert(IncludeParent{
+		name: 'childless'
+	})!
+
+	parents.where('children.name = ?', 'child')!.set('name = ?', 'updated')!.update()!
+	rows := parents.order(.asc, 'id')!.query()!
+	assert rows.len == 2
+	assert rows[0].name == 'updated'
+	assert rows[1].name == 'childless'
+}
+
+fn test_update_leaves_every_row_when_no_relationship_matches() {
 	mut db := new_include_database()!
 	defer {
 		db.close() or {}
 	}
 	mut parents := orm.new_query[IncludeParent](db)
 
-	if _ := parents.include('children')!.where('name = ? && children.name = ?', 'parent', 'child')!.set('name = ?',
-		'updated')!.update()
-	{
-		assert false
-	} else {
-		assert err.msg().contains('update()')
-		assert err.msg().contains('relationship-scoped filters')
-	}
+	parents.where('children.name = ?', 'missing')!.set('name = ?', 'updated')!.update()!
 	rows := parents.query()!
 	assert rows.len == 1
 	assert rows[0].name == 'parent'
 }
 
-fn test_delete_rejects_an_included_relationship_filter_without_writing() {
+fn test_delete_filters_rows_by_a_relationship() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	parents.insert(IncludeParent{
+		name: 'childless'
+	})!
+
+	parents.where('children.name = ?', 'child')!.delete()!
+	rows := parents.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'childless'
+}
+
+fn test_delete_keeps_rows_when_no_relationship_matches() {
 	mut db := new_include_database()!
 	defer {
 		db.close() or {}
 	}
 	mut parents := orm.new_query[IncludeParent](db)
 
-	if _ := parents.include('children')!.where('children.name = ?', 'child')!.delete() {
-		assert false
-	} else {
-		assert err.msg().contains('delete()')
-		assert err.msg().contains('relationship-scoped filters')
-	}
+	parents.where('children.name = ?', 'missing')!.delete()!
 	rows := parents.query()!
 	assert rows.len == 1
 	assert rows[0].name == 'parent'
 }
 
-fn test_insert_rejects_included_relationship_filters() {
+fn test_insert_rejects_relationship_filters() {
 	mut db := new_include_database()!
 	defer {
 		db.close() or {}
@@ -786,41 +904,6 @@ fn test_include_filters_are_merged_across_relationship_spellings() {
 	assert rows[0].children[0].name == 'kept child'
 }
 
-fn test_include_prefers_the_v_field_name_over_another_fields_alias() {
-	mut db := sqlite.connect(':memory:')!
-	defer {
-		db.close() or {}
-	}
-	mut parents := orm.new_query[IncludeShadowParent](db)
-	mut alphas := orm.new_query[IncludeShadowAlpha](db)
-	mut betas := orm.new_query[IncludeShadowBeta](db)
-	parents.create()!
-	alphas.create()!
-	betas.create()!
-	parents.insert(IncludeShadowParent{
-		name: 'shadow parent'
-	})!
-	parent_id := parents.last_id()
-	alphas.insert(IncludeShadowAlpha{
-		parent_id: parent_id
-		name:      'alpha'
-	})!
-	betas.insert(IncludeShadowBeta{
-		parent_id: parent_id
-		name:      'beta'
-	})!
-
-	shadowed := parents.include('beta')!.query()!
-	assert shadowed[0].alpha.len == 0
-	assert shadowed[0].beta.len == 1
-	assert shadowed[0].beta[0].name == 'beta'
-
-	aliased := parents.include('alpha')!.query()!
-	assert aliased[0].alpha.len == 1
-	assert aliased[0].alpha[0].name == 'alpha'
-	assert aliased[0].beta.len == 0
-}
-
 fn test_include_requires_a_hydration_key_on_the_root() {
 	mut db := sqlite.connect(':memory:')!
 	defer {
@@ -876,4 +959,131 @@ fn test_then_include_requires_a_hydration_key_on_intermediate_relationships() {
 		assert err.msg().contains('orm_include_keyless_middles')
 		assert err.msg().contains('`@[primary]` or `id` field')
 	}
+}
+
+fn test_include_prefers_the_v_field_name_over_another_fields_alias() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeShadowParent](db)
+	mut alphas := orm.new_query[IncludeShadowAlpha](db)
+	mut betas := orm.new_query[IncludeShadowBeta](db)
+	parents.create()!
+	alphas.create()!
+	betas.create()!
+	parents.insert(IncludeShadowParent{
+		name: 'shadow parent'
+	})!
+	parent_id := parents.last_id()
+	alphas.insert(IncludeShadowAlpha{
+		parent_id: parent_id
+		name:      'alpha'
+	})!
+	betas.insert(IncludeShadowBeta{
+		parent_id: parent_id
+		name:      'beta'
+	})!
+
+	shadowed := parents.include('beta')!.query()!
+	assert shadowed[0].alpha.len == 0
+	assert shadowed[0].beta.len == 1
+	assert shadowed[0].beta[0].name == 'beta'
+
+	aliased := parents.include('alpha')!.query()!
+	assert aliased[0].alpha.len == 1
+	assert aliased[0].alpha[0].name == 'alpha'
+	assert aliased[0].beta.len == 0
+}
+
+fn test_where_keeps_a_root_term_outside_a_parenthesized_relationship_group() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	// the root term must stay in the outer query: inside the subquery `name` would
+	// resolve against the children table instead
+	rows := parents.where('(children.name = ? && name = ?)', 'child', 'parent')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'parent'
+
+	empty := parents.where('(children.name = ? && name = ?)', 'child', 'missing')!.query()!
+	assert empty.len == 0
+}
+
+fn test_where_keeps_parenthesized_sibling_relationship_groups_independent() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	mut grandkids2 := orm.new_query[IncludeGrandkid2](db)
+	// this parent reaches `grandkids2` but has no `grandkids` row at all, so nesting the
+	// second subquery inside the first would drop it
+	parents.insert(IncludeParent{
+		name: 'lonely parent'
+	})!
+	children.insert(IncludeChild{
+		parent_id: parents.last_id()
+		name:      'lonely child'
+	})!
+	grandkids2.insert(IncludeGrandkid2{
+		child_id: children.last_id()
+		name:     'lonely grandkid2'
+	})!
+
+	rows := parents.where('(children.grandkids.name = ? || children.grandkids2.name = ?)',
+		'missing', 'lonely grandkid2')!.query()!
+	assert rows.len == 1
+	assert rows[0].name == 'lonely parent'
+}
+
+fn test_where_groups_terms_inside_a_single_relationship_subquery() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+
+	rows := parents.where('(children.name = ? && children.parent_id = ?)', 'child', 1)!.query()!
+	assert rows.len == 1
+
+	empty := parents.where('(children.name = ? && children.parent_id = ?)', 'child', 99)!.query()!
+	assert empty.len == 0
+}
+
+fn test_count_applies_relationship_predicates() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	parents.insert(IncludeParent{
+		name: 'childless'
+	})!
+
+	assert parents.count()! == 2
+	assert parents.where('children.name = ?', 'child')!.count()! == 1
+	assert parents.where('children.name = ?', 'missing')!.count()! == 0
+}
+
+fn test_aggregates_apply_relationship_predicates_without_multiplying_rows() {
+	mut db := new_include_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeParent](db)
+	mut children := orm.new_query[IncludeChild](db)
+	// two children under the same parent would double a JOIN based aggregate
+	children.insert(IncludeChild{
+		parent_id: 1
+		name:      'second child'
+	})!
+
+	total := parents.where('children.parent_id = ?', 1)!.sum('id')!
+	assert total.has_value
+	assert total.value as int == 1
 }
