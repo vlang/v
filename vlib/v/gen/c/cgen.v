@@ -14140,7 +14140,16 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		mut is_optional_ident_var := false
 		mut wrap_in_addr := false
 		if g.inside_smartcast {
-			if node.expr.is_lvalue() {
+			if expr_type_sym.kind == .interface && sym.kind != .interface {
+				// For interface → concrete smartcast (e.g. after `assert err is MyError`),
+				// emit (T*)(expr._object) instead of &expr (which would take the address
+				// of the interface box, giving garbage field reads).
+				dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+				g.write('(${styp}*)(')
+				g.expr(node.expr)
+				g.write('${dot}_object)')
+				is_optional_ident_var = true
+			} else if node.expr.is_lvalue() {
 				g.write('&')
 			} else {
 				wrap_in_addr = true
