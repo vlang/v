@@ -653,14 +653,14 @@ fn (mut backend AppKitBackend) finish_window_teardown(id WindowId) ! {
 				return error(err_appkit_application_failed)
 			}
 		}
-		mut record := &backend.windows[index]
-		released := backend.release_window_resources(mut record, NativeOperationSeed{
+		seed := NativeOperationSeed{
 			presence_mask:     native_context_has_window | native_context_has_target_generation
 			call_site:         .shutdown_release
 			scope:             .window_target
-			window:            record.id
-			target_generation: record.render_target_generation
-		})
+			window:            backend.windows[index].id
+			target_generation: backend.windows[index].render_target_generation
+		}
+		released := backend.release_window_resources(mut backend.windows[index], seed)
 		if !released {
 			return error(err_appkit_destroy_window_failed)
 		}
@@ -960,14 +960,14 @@ fn (mut backend AppKitBackend) stop() ! {
 		}
 		mut window_index := 0
 		for window_index < backend.windows.len {
-			mut record := &backend.windows[window_index]
-			released := backend.release_window_resources(mut record, NativeOperationSeed{
+			seed := NativeOperationSeed{
 				presence_mask:     native_context_has_window | native_context_has_target_generation
 				call_site:         .shutdown_release
 				scope:             .window_target
-				window:            record.id
-				target_generation: record.render_target_generation
-			})
+				window:            backend.windows[window_index].id
+				target_generation: backend.windows[window_index].render_target_generation
+			}
+			released := backend.release_window_resources(mut backend.windows[window_index], seed)
 			if !released {
 				append_appkit_stop_error(mut errors, err_appkit_destroy_window_failed)
 				window_index++
@@ -1521,7 +1521,7 @@ fn appkit_pending_start_device_is_empty(pending AppKitPendingStartDevice) bool {
 	return pending.value == unsafe { nil } && pending.transaction.ticket_id == 0
 }
 
-fn (mut backend AppKitBackend) release_window_drawable_lifetime(mut record &AppKitWindowRecord, mode AppKitWindowDrawableReleaseMode, error_text string) bool {
+fn (mut backend AppKitBackend) release_window_drawable_lifetime(mut record AppKitWindowRecord, mode AppKitWindowDrawableReleaseMode, error_text string) bool {
 	if appkit_lifetime_pair_is_empty(record.active_drawable, record.active_drawable_ticket) {
 		if mode == .close_frame {
 			record.frame_active = false
@@ -1586,8 +1586,7 @@ fn (mut backend AppKitBackend) release_active_frames_lifetime() bool {
 	$if darwin {
 		mut all_retired := true
 		for i in 0 .. backend.windows.len {
-			mut record := &backend.windows[i]
-			if !backend.release_window_drawable_lifetime(mut record, .close_frame,
+			if !backend.release_window_drawable_lifetime(mut backend.windows[i], .close_frame,
 				err_appkit_metal_drawable_failed) {
 				all_retired = false
 			}
@@ -1648,7 +1647,7 @@ fn (mut backend AppKitBackend) release_pending_window_state_lifetime() bool {
 	return true
 }
 
-fn (mut backend AppKitBackend) prepare_window_native_destroy(mut record &AppKitWindowRecord, seed NativeOperationSeed) bool {
+fn (mut backend AppKitBackend) prepare_window_native_destroy(mut record AppKitWindowRecord, seed NativeOperationSeed) bool {
 	$if darwin {
 		if record.native_destroyed {
 			return true
@@ -1691,7 +1690,7 @@ fn (mut backend AppKitBackend) prepare_window_native_destroy(mut record &AppKitW
 	}
 }
 
-fn (mut backend AppKitBackend) release_window_resources(mut record &AppKitWindowRecord, seed NativeOperationSeed) bool {
+fn (mut backend AppKitBackend) release_window_resources(mut record AppKitWindowRecord, seed NativeOperationSeed) bool {
 	$if darwin {
 		if !backend.release_window_drawable_lifetime(mut record, .close_frame,
 			err_appkit_metal_drawable_failed) {
@@ -1848,14 +1847,14 @@ fn (mut backend AppKitBackend) release_renderer_lifetime() bool {
 			scope:     .batch
 		})
 		for i in 0 .. backend.windows.len {
-			mut record := &backend.windows[i]
-			_ = backend.release_window_resources(mut record, NativeOperationSeed{
+			seed := NativeOperationSeed{
 				presence_mask:     native_context_has_window | native_context_has_target_generation
 				call_site:         .shutdown_release
 				scope:             .window_target
-				window:            record.id
-				target_generation: record.render_target_generation
-			})
+				window:            backend.windows[i].id
+				target_generation: backend.windows[i].render_target_generation
+			}
+			_ = backend.release_window_resources(mut backend.windows[i], seed)
 		}
 		_ = backend.release_pending_window_state_lifetime()
 		_ = backend.release_anchor_state_lifetime(NativeOperationSeed{

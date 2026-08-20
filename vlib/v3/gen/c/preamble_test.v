@@ -42,3 +42,12 @@ fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
 	c_code := g.sb.str()
 	assert c_code.contains('int printf(const char* format, ...);'), c_code
 }
+
+fn test_manual_stdlib_headers_define_l_tmpnam_for_glibc() {
+	// The v3 backend embeds and reuses the v1 c_headers prelude (see manual_stdlib_c_headers).
+	// Make sure the glibc L_tmpnam define is inherited, so a module header that pulls <stdio.h>
+	// in on glibc still finds L_tmpnam; see https://github.com/vlang/v/issues/28108 .
+	headers := manual_stdlib_c_headers()
+	assert headers.contains('#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)'), headers#[-500..]
+	assert headers.contains('#ifndef L_tmpnam\n#define L_tmpnam 20\n#endif'), headers#[-500..]
+}

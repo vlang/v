@@ -97,6 +97,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	// Configure and run the fasthttp server
 	mut server := fasthttp.new_server(fasthttp.ServerConfig{
 		family:                  params.family
+		host:                    params.host
 		port:                    params.port
 		append_handler:          parallel_append_handler[A, X]
 		max_request_buffer_size: params.max_request_buffer_size

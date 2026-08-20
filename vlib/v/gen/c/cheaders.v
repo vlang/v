@@ -554,6 +554,18 @@ typedef struct _IO_FILE FILE;
 extern FILE* stdin;
 extern FILE* stdout;
 extern FILE* stderr;
+#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)
+// V declares the stdio functions manually here, instead of including <stdio.h>.
+// glibc defines L_tmpnam only while <stdio.h> is being processed (it sits behind
+// `#ifdef _STDIO_H` in <bits/stdio_lim.h>), and it is the one stdio limit macro that
+// <stdio.h> itself uses in a prototype: char *tmpnam(char[L_tmpnam]). So a <stdio.h>
+// pulled in later by a module header (sqlite3.h, gc.h, ...) can fail with L_tmpnam
+// being undeclared; see vlang/v#28108. Define it here, to the stable glibc value,
+// without adding an include. A later identical redefinition by glibc is a no-op.
+#ifndef L_tmpnam
+#define L_tmpnam 20
+#endif
+#endif
 	#endif
 typedef __builtin_va_list va_list;
 #ifndef va_start
