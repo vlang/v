@@ -7218,6 +7218,9 @@ pub fn run(args []string) {
 		b.use_self_host_memory_limit()
 	}
 	b.start_memory_monitor()
+	defer {
+		b.stop_memory_monitor()
+	}
 	mut c_object_cache_stats := CObjectCacheStats{}
 	if !silent {
 		println('=== v3 benchmark ===')

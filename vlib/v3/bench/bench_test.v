@@ -74,6 +74,14 @@ fn test_finish_stage_memory_reports_and_resets_sampled_peak() {
 	assert reset_peak == current
 }
 
+fn test_stage_memory_monitor_stops_before_state_release() {
+	mut b := new()
+	b.disable_memory_limit()
+	b.start_memory_monitor()
+	b.stop_memory_monitor()
+	assert !b.memory_monitor_started
+}
+
 fn test_limit_memory_metric_is_available() {
 	memory := current_limit_memory()
 	assert memory.kb > 0

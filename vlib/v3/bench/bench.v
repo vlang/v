@@ -48,20 +48,23 @@ struct StageMemoryMonitor {
 	mutex &sync.Mutex = sync.new_mutex()
 mut:
 	rss_peak_kb i64
+	stop        bool
 }
 
 // Bench represents bench data used by bench.
 pub struct Bench {
 mut:
-	steps                 []Step
-	metrics               []Metric
-	total_sw              time.StopWatch
-	step_sw               time.StopWatch
-	last_allocation_count u64
-	last_allocated_bytes  u64
-	memory_limit_kb       i64
-	quiet                 bool
-	stage_memory          &StageMemoryMonitor = unsafe { nil }
+	steps                  []Step
+	metrics                []Metric
+	total_sw               time.StopWatch
+	step_sw                time.StopWatch
+	last_allocation_count  u64
+	last_allocated_bytes   u64
+	memory_limit_kb        i64
+	quiet                  bool
+	stage_memory           &StageMemoryMonitor = unsafe { nil }
+	memory_monitor_thread  thread
+	memory_monitor_started bool
 }
 
 // new creates a new value for bench.
@@ -103,9 +106,10 @@ pub fn (mut b Bench) set_quiet() {
 }
 
 // start_memory_monitor starts the compiler memory safety watchdog.
-pub fn (b &Bench) start_memory_monitor() {
+pub fn (mut b Bench) start_memory_monitor() {
 	if b.memory_limit_kb > 0 || !b.quiet {
-		spawn monitor_stage_memory(b.stage_memory, b.memory_limit_kb)
+		b.memory_monitor_thread = spawn monitor_stage_memory(b.stage_memory, b.memory_limit_kb)
+		b.memory_monitor_started = true
 	}
 }
 
@@ -115,6 +119,10 @@ fn monitor_stage_memory(state &StageMemoryMonitor, limit_kb i64) {
 		ram_kb := current_rss_kb()
 		mut monitor := unsafe { &StageMemoryMonitor(voidptr(state)) }
 		monitor.mutex.lock()
+		if monitor.stop {
+			monitor.mutex.unlock()
+			return
+		}
 		if ram_kb > monitor.rss_peak_kb {
 			monitor.rss_peak_kb = ram_kb
 		}
@@ -128,6 +136,19 @@ fn monitor_stage_memory(state &StageMemoryMonitor, limit_kb i64) {
 			}
 		}
 	}
+}
+
+// stop_memory_monitor stops and joins the sampler before its benchmark state is released.
+pub fn (mut b Bench) stop_memory_monitor() {
+	if !b.memory_monitor_started {
+		return
+	}
+	mut monitor := unsafe { &StageMemoryMonitor(voidptr(b.stage_memory)) }
+	monitor.mutex.lock()
+	monitor.stop = true
+	monitor.mutex.unlock()
+	b.memory_monitor_thread.wait()
+	b.memory_monitor_started = false
 }
 
 fn monitor_memory_limit(limit_kb i64) {
