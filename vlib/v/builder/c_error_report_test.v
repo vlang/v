@@ -251,9 +251,11 @@ fn test_v_source_for_report_is_empty_without_mapped_line() {
 }
 
 fn test_v3_report_v_source_bounds_large_files() {
-	// A program at or below the window (2 * c_error_v_source_radius lines) is kept.
+	// A program at or below the window (2 * c_error_v_source_radius lines) cannot be
+	// reduced to a strict subset, so no source is uploaded for it at all — the whole
+	// file is never sent.
 	small := 'fn main() {\n\tprintln(1)\n}\n'
-	assert v3_report_v_source(small) == small
+	assert v3_report_v_source(small) == ''
 	// A larger program is reduced to a bounded head+tail window; the middle (which
 	// could hold unrelated proprietary code) is dropped and never uploaded.
 	mut lines := []string{}
@@ -262,6 +264,7 @@ fn test_v3_report_v_source_bounds_large_files() {
 	}
 	big := lines.join('\n')
 	snippet := v3_report_v_source(big)
+	assert snippet != ''
 	assert snippet.len < big.len
 	assert snippet.contains(c_error_v_source_truncation_notice)
 	assert snippet.contains('fn f0() ') // head kept

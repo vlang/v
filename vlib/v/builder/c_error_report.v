@@ -256,7 +256,12 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 fn v3_report_v_source(source string) string {
 	lines := source.split_into_lines()
 	if lines.len <= 2 * c_error_v_source_radius {
-		return bounded_v_source(source, c_error_bug_report_max_v_source_bytes, 0)
+		// A program this short cannot be reduced to a strict subset — any head+tail
+		// window would cover the whole file. The privacy guarantee in doc/docs.md is
+		// that the whole file is never auto-uploaded, so upload no source for it at
+		// all rather than disclose it in full. Larger programs still yield the
+		// bounded window below.
+		return ''
 	}
 	head := lines[..c_error_v_source_radius].join('\n')
 	tail := lines[lines.len - c_error_v_source_radius..].join('\n')

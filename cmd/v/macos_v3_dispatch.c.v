@@ -275,7 +275,7 @@ fn stage_macos_v3_compiler_error_report(report_dir string, input_path string) bo
 	staged := {
 		macos_v3_c_error_source_name_file: source_name
 		macos_v3_c_error_compiler_file:    'v3'
-		macos_v3_c_error_output_file:      'the experimental V3 compiler failed with an internal compiler error while building this program; the stable V compiler built it successfully'
+		macos_v3_c_error_output_file:      'error: the experimental V3 compiler hit an internal compiler error building this program (the stable V compiler built it successfully)'
 		macos_v3_c_error_kind_file:        macos_v3_compiler_error_fallback
 	}
 	for name, value in staged {
