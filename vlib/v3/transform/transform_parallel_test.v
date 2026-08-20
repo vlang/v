@@ -12,6 +12,16 @@ fn test_monomorph_job_count_does_not_start_empty_workers() {
 	}
 }
 
+fn test_monomorph_job_limit_caps_large_programs() {
+	$if !v3_no_parallel ? {
+		assert monomorph_job_limit(12, 499_999, 0) == 4
+		assert monomorph_job_limit(12, 500_000, 0) == 2
+		assert monomorph_job_limit(1, 500_000, 0) == 1
+		assert monomorph_job_limit(12, 500_000, 6) == 6
+		assert monomorph_job_limit(4, 500_000, 8) == 4
+	}
+}
+
 fn test_generated_calls_publish_exact_resolution_except_cgen_intrinsics() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

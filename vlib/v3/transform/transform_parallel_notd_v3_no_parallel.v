@@ -949,17 +949,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
 		available_jobs := t.a.worker_pool.size() + 1
-		// Forked checkers carry substantial semantic indexes. Small programs do not have
-		// enough specialization work to repay a full machine-sized set of those clones.
-		mut job_limit := if t.a.nodes.len < 1_000_000 {
-			int_min(available_jobs, 4)
-		} else {
-			available_jobs
-		}
 		configured_jobs := os.getenv('V3_MONOMORPH_JOBS').int()
-		if configured_jobs > 0 && configured_jobs < job_limit {
-			job_limit = configured_jobs
-		}
+		job_limit := monomorph_job_limit(available_jobs, t.a.nodes.len, configured_jobs)
 		n_jobs := monomorph_job_count(job_limit, specs.len)
 		if n_jobs <= 1 {
 			return false
@@ -1397,6 +1388,19 @@ fn monomorph_job_count(n_runtime_jobs int, n_specs int) int {
 		n = n_specs
 	}
 	return n
+}
+
+fn monomorph_job_limit(available_jobs int, node_count int, configured_jobs int) int {
+	if available_jobs <= 1 {
+		return 1
+	}
+	if configured_jobs > 0 {
+		return int_min(available_jobs, configured_jobs)
+	}
+	// Each helper retains a forked checker and its disposable specialization arena
+	// until the final publication barrier. Two workers keep large applications under
+	// the normal memory budget; smaller programs retain the lower-latency four-way path.
+	return int_min(available_jobs, if node_count >= 500_000 { 2 } else { 4 })
 }
 
 // monomorph_regions_can_merge_in_place reports whether sequential leftward
