@@ -73,6 +73,44 @@ Both `0.4.12` and `v0.4.12` are accepted. The special aliases `latest` and
 V searches for `.vvmrc` from the target path upward and stops at repository and
 project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
+## The default compiler
+
+On macOS and Linux, `v` compiles your program with the experimental **V3**
+compiler (a newer implementation of the V compiler, whose source lives in
+`vlib/v3`) by default. On other platforms, and for cross-compilation, the
+established compiler in `vlib/v` is used.
+
+You normally do not need to do anything: when V3 cannot yet build an eligible
+program, `v` automatically falls back to the established compiler, so your build
+keeps working. A fallback also prints a short notice, for example:
+
+```text
+note: the experimental V3 compiler could not build this program, so V used the stable compiler instead.
+```
+
+### Opting out with `-old-compiler`
+
+Pass `-old-compiler` to skip V3 entirely and compile with the established
+compiler:
+
+```shell
+v -old-compiler run main.v
+```
+
+This is a temporary compatibility workaround for when a build behaves differently
+under V3. On platforms where the established compiler is the default,
+`-new-compiler` opts into V3 for a single build (only where the V3 compiler is
+embedded in your `v`).
+
+### Automatic bug reports
+
+To help close the remaining gaps, a successful fallback (V3 fails to build a
+program that the established compiler then builds) submits a *bounded* snippet of
+the failing V source — never the whole file, which could contain private code — to
+`https://bugs.vlang.io`, together with the V version, target OS/arch, and build
+options. Reporting is skipped in GitHub CI, and you can turn it off entirely by
+setting the environment variable `V_C_ERROR_BUG_REPORT_DISABLED=1`.
+
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
 
