@@ -54,10 +54,6 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 	}
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
-	if !is_macos_v3_default_executable(os.executable()) {
-		trace_macos_v3_skip('non-default compiler executable `${os.executable()}`')
-		return none
-	}
 	if macos_v3_has_v1_only_leading_option(forwarded_args, command) {
 		if prefs.new_compiler {
 			eprintln('`-new-compiler` cannot be combined with a V1-only option; remove it or drop `-new-compiler`.')
@@ -65,7 +61,18 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 		}
 		return none
 	}
-	if !is_macos_v3_relevant_command(command, prefs) && !macos_v3_force_requested(command, prefs) {
+	if macos_v3_force_requested(command, prefs) {
+		// An explicit `-new-compiler` is honored regardless of the executable's name.
+		return launch_macos_v3_compiler(prefs, forwarded_args)
+	}
+	// Implicit default dispatch is limited to the canonical `v`/`vnew` executables, so
+	// a freshly built or renamed compiler (v2, vstrict1, ... during self-hosting, or a
+	// binary installed as e.g. `vlang`) stays on V1 unless `-new-compiler` is passed.
+	if !is_macos_v3_default_executable(os.executable()) {
+		trace_macos_v3_skip('non-default compiler executable `${os.executable()}`')
+		return none
+	}
+	if !is_macos_v3_relevant_command(command, prefs) {
 		return none
 	}
 	return launch_macos_v3_compiler(prefs, forwarded_args)
