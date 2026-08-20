@@ -415,9 +415,21 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 			}
 		}
 		.js_node, .js_freestanding, .js_browser {
+			// The js backends are V1-only and never receive a staged V3 report, but if
+			// one is present it cannot be consumed here (launch_tool replaces this
+			// process via os.execvp), so drop the staged directory before handing off.
+			if failed := macos_v3_c_error_report {
+				builder.cleanup_external_v3_report(failed.report_dir)
+			}
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
 		}
 		.interpret {
+			// The eval backend is gone, so the stable retry cannot build the program and
+			// there is nothing to report; drop any staged V3 report directory so the
+			// copied source is not left behind under the temporary directory.
+			if failed := macos_v3_c_error_report {
+				builder.cleanup_external_v3_report(failed.report_dir)
+			}
 			eprintln('The eval backend has been removed.')
 			exit(1)
 		}
