@@ -188,20 +188,23 @@ pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler str
 
 fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalCErrorBugReport) {
 	defer {
-		// Empty for an inline (environment-handoff) report: it names no directory to
-		// delete, so a forged handoff can never trigger os.rmdir_all on a caller path.
+		// Empty for an inline (content) report: it names no directory to delete, so a
+		// forged handoff can never trigger os.rmdir_all on a caller path.
 		cleanup_external_c_error_report(report.cleanup_dir)
 	}
+	if report.source_inline {
+		// The report carries its already-bounded source as content — for both V3 internal
+		// errors and generated-C errors — so submission never reads a filesystem path or
+		// deletes a directory named by the (inheritable, forgeable) environment. A forged
+		// handoff can therefore at worst upload attacker-supplied text.
+		submit_inline_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
+			report.v_file, report.v_source, report.tag)
+		return
+	}
+	// Trusted in-process path (the report never crossed the environment): read the files.
 	if report.kind == external_v3_compiler_error_kind {
-		if report.source_inline {
-			// The report already carries its bounded source as content; never read a
-			// filesystem path named by the (forgeable) environment.
-			submit_inline_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
-				report.v_file, report.v_source, report.tag)
-		} else {
-			submit_external_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
-				report.c_file, report.tag)
-		}
+		submit_external_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
+			report.c_file, report.tag)
 		return
 	}
 	submit_external_c_error_bug_report(prefs, report.ccompiler, report.c_output, report.c_file,
@@ -233,25 +236,69 @@ const v3_report_env_suffixes = ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG'
 // handoff can at worst make it submit attacker-supplied text (harmless), never disclose
 // a victim's file or recursively delete a victim's directory.
 pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
-	mut v_source := ''
-	mut v_file_label := ''
-	if report.kind == external_v3_compiler_error_kind && report.c_file != '' {
-		if src := os.read_file(report.c_file) {
-			v_source = v3_report_v_source(src)
-			v_file_label = os.base(report.c_file)
-		}
-	}
+	// `report` is already content-only: its v_source was bounded by the process that owns
+	// the staged directory (bounded_v3_fallback_source), and that process deletes the
+	// directory itself. This function only forwards that content, so nothing here reads a
+	// path or deletes a directory named by the (inheritable, forgeable) environment.
 	os.setenv('${v3_report_env_prefix}PRESENT', '1', true)
 	os.setenv('${v3_report_env_prefix}KIND', report.kind, true)
 	os.setenv('${v3_report_env_prefix}CCOMPILER', report.ccompiler, true)
 	os.setenv('${v3_report_env_prefix}COUTPUT', report.c_output, true)
 	os.setenv('${v3_report_env_prefix}TAG', report.tag, true)
-	os.setenv('${v3_report_env_prefix}VFILE', v_file_label, true)
-	os.setenv('${v3_report_env_prefix}VSOURCE', v_source, true)
-	// The staged directory is no longer needed once its content is captured above. Remove
-	// it here so no directory path has to cross the (forgeable) environment boundary for
-	// the builder to delete later.
-	cleanup_external_c_error_report(report.cleanup_dir)
+	os.setenv('${v3_report_env_prefix}VFILE', report.v_file, true)
+	os.setenv('${v3_report_env_prefix}VSOURCE', report.v_source, true)
+}
+
+// bounded_v3_fallback_source extracts the bounded V source snippet to upload for a V3->V1
+// fallback, reading ONLY files the caller already trusts — it must be invoked by the
+// process that staged the report, never by one that merely inherited a report path from
+// the environment. `c_file` is the user's V source for a V3 internal error, or the staged
+// generated C for a generated-C compilation error. The returned snippet is always a
+// bounded strict subset (never a whole file); ('', '') means no source is available
+// (e.g. a directory build), so the report stays metadata-only.
+pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string) (string, string) {
+	if c_file == '' || !os.is_file(c_file) {
+		return '', ''
+	}
+	if kind == external_v3_compiler_error_kind {
+		src := os.read_file(c_file) or { return '', '' }
+		return os.base(c_file), v3_report_v_source(src)
+	}
+	return bounded_v_source_for_generated_c(c_output, c_file)
+}
+
+// bounded_v_source_for_generated_c maps a generated-C compilation error back to the V
+// source line it came from (via the #line directives in the trusted staged C) and returns
+// a bounded window of that V file. Both files read here are trusted: the generated C was
+// staged by this process's own V3 run, and the V file it references is the user's real
+// source being compiled.
+fn bounded_v_source_for_generated_c(c_output string, generated_c_file string) (string, string) {
+	c_source := os.read_file(generated_c_file) or { return '', '' }
+	c_lines := c_source.split_into_lines()
+	mut v_file := ''
+	mut v_line := 0
+	if c_loc := c_error_location_for_generated_c(c_output, generated_c_file) {
+		if v_loc := v_source_location_for_c_line(c_lines, c_loc.line, generated_c_file) {
+			v_file = v_loc.file
+			v_line = v_loc.line
+		}
+	} else if source_loc := first_error_source_location(c_output) {
+		v_file = source_loc.file
+		v_line = source_loc.line
+	}
+	if v_file == '' || !os.is_file(v_file) {
+		return '', ''
+	}
+	mapped_source := os.read_file(v_file) or { return '', '' }
+	mapped_lines := mapped_source.split_into_lines()
+	chunk := selected_v_source(v_file, mapped_lines, v_line)
+	mut v_source := bounded_v_source(chunk.text, c_error_bug_report_max_v_source_bytes, chunk.focus)
+	if v_source_is_whole_file(v_source, mapped_source) {
+		// Strict-subset rule (doc/docs.md): a short mapped file makes the window cover the
+		// whole file, so drop it rather than upload it whole.
+		v_source = ''
+	}
+	return os.base(v_file), v_source
 }
 
 // take_external_v3_report_from_env returns the content-only fallback report exported by
@@ -281,14 +328,6 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 		return none
 	}
 	return report
-}
-
-// cleanup_external_v3_report removes a staged V3->V1 fallback report directory
-// without submitting it. Build backends that cannot consume the report — e.g. the
-// removed eval backend, whose retry exits immediately — call this so the copied
-// source and report directory are not left behind under the temporary directory.
-pub fn cleanup_external_v3_report(report_dir string) {
-	cleanup_external_c_error_report(report_dir)
 }
 
 // submit_external_v3_compiler_error_bug_report reports a V3 internal compiler error
