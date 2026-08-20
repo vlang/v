@@ -1525,12 +1525,23 @@ fn test_macos_v3_compiler_error_report_round_trip() {
 		assert report.c_output.contains('internal compiler error')
 		assert os.base(report.c_file) == 'prog.v'
 		assert os.read_file(report.c_file)!.contains('println(41 + 1)')
-		// A directory or a non-V / missing input must not stage a report.
-		assert !stage_macos_v3_compiler_error_report(report_dir, root)
-		assert !stage_macos_v3_compiler_error_report(report_dir, os.join_path(root, 'missing.v'))
+		// A directory build (`v .`), or a non-V / missing input, cannot stage a
+		// source reproducer, but must still produce a notice-only report (empty
+		// c_file) so the V1 retry can tell the user V3 fell back (PR #28131 review).
 		notc := os.join_path(root, 'note.txt')
 		os.write_file(notc, 'hi')!
-		assert !stage_macos_v3_compiler_error_report(report_dir, notc)
+		for notice_only in [root, os.join_path(root, 'missing.v'), notc] {
+			assert stage_macos_v3_compiler_error_report(report_dir, notice_only), notice_only
+			notice := read_macos_v3_c_error_report(report_dir) or {
+				assert false, 'notice-only report could not be read for ${notice_only}'
+				return
+			}
+			assert notice.kind == macos_v3_compiler_error_fallback, notice_only
+			assert notice.c_file == '', notice_only
+			assert notice.c_output.contains('internal compiler error'), notice_only
+		}
+		// Only a missing report directory path fails to stage.
+		assert !stage_macos_v3_compiler_error_report('', source)
 	}
 }
 
@@ -1595,6 +1606,70 @@ fn main() {
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, run.output
 		assert run.output.contains('generic ok'), run.output
+	}
+}
+
+// End-to-end (directory build): the same V3-incompatible program built as a
+// directory (`v <dir>`), so `input_path` is a directory and no source reproducer
+// can be staged. The fallback must still print the notice instead of going silent
+// (PR #28131 review feedback).
+fn test_macos_v3_compiler_error_directory_build_notifies() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_compiler_error_dir_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		app_dir := os.join_path(root, 'app')
+		os.mkdir_all(app_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(app_dir, 'main.v'), 'struct Opt[T] {
+	val  T
+	some bool
+}
+
+fn some[T](val T) Opt[T] {
+	return Opt[T]{
+		val:  val
+		some: true
+	}
+}
+
+fn (f Opt[T]) map[U](op fn (T) U) Opt[U] {
+	if f.some {
+		return some[U](op(f.val))
+	}
+	return Opt[U]{}
+}
+
+fn main() {
+	result := some("hello").map(|s| s.len)
+	assert result.some && result.val == 5
+	println("generic dir ok")
+}
+')!
+		output := os.join_path(root, 'app_bin')
+		mut environment := os.environ()
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
+		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-gc', 'none', '-o', output, app_dir])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		// The notice must appear even though no single source file could be staged.
+		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0, run.output
+		assert run.output.contains('generic dir ok'), run.output
 	}
 }
 

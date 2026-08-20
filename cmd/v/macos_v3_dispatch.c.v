@@ -216,8 +216,10 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		}
 	} else if fallback_reason == macos_v3_compiler_error_fallback {
 		// V3 hit an internal compiler error (parser/checker/codegen) that V1 may
-		// still handle. Stage the input V source so the V1 retry can file a bug
-		// with it once V1 confirms the program is actually buildable.
+		// still handle. Stage a report so the V1 retry, once its build succeeds,
+		// prints the fallback notice and (for a single-file build) files a bug with
+		// the input V source. Directory builds (`v .`) stage a notice-only report so
+		// the fallback is never silent.
 		if stage_macos_v3_compiler_error_report(c_error_dir, input_path) {
 			os.setenv(macos_v3_c_error_dir_env, c_error_dir, true)
 		} else {
@@ -244,22 +246,27 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 
 // stage_macos_v3_compiler_error_report writes a report directory describing a V3
 // internal compiler error, mirroring the layout the V3 driver uses for C errors
-// (see request_macos_v3_c_error_fallback). Only the user's input V source is
-// available here, so the report carries that file plus a `kind` marker; the V1
-// retry turns it into a bug report once its own build succeeds.
+// (see request_macos_v3_c_error_fallback). When the build targets a single V
+// source file, that file is copied in as a reproducer. For a directory build
+// (`v .`) or a non-V input no single file can be staged, so the report is
+// notice-only (empty source name): the V1 retry can still tell the user V3 fell
+// back once its own build succeeds, it just cannot upload a source snippet. It
+// returns false only when the report directory itself cannot be created.
 fn stage_macos_v3_compiler_error_report(report_dir string, input_path string) bool {
-	if report_dir == '' || input_path == '' || !os.is_file(input_path) {
-		return false
-	}
-	if !(input_path.ends_with('.v') || input_path.ends_with('.vsh') || input_path.ends_with('.vv')) {
+	if report_dir == '' {
 		return false
 	}
 	os.rmdir_all(report_dir) or {}
 	os.mkdir_all(report_dir) or { return false }
-	source_name := os.base(input_path)
-	os.cp(input_path, os.join_path(report_dir, source_name)) or {
-		os.rmdir_all(report_dir) or {}
-		return false
+	mut source_name := ''
+	if input_path != '' && os.is_file(input_path)
+		&& (input_path.ends_with('.v') || input_path.ends_with('.vsh')
+		|| input_path.ends_with('.vv')) {
+		candidate := os.base(input_path)
+		os.cp(input_path, os.join_path(report_dir, candidate)) or {}
+		if os.is_file(os.join_path(report_dir, candidate)) {
+			source_name = candidate
+		}
 	}
 	staged := {
 		macos_v3_c_error_source_name_file: source_name
@@ -290,29 +297,37 @@ fn macos_v3_c_error_report_dir(fallback_file string) string {
 }
 
 fn read_macos_v3_c_error_report(report_dir string) ?MacosV3CErrorReport {
-	source_name := os.read_file(os.join_path(report_dir, macos_v3_c_error_source_name_file)) or {
-		return none
-	}
-	clean_source_name := source_name.trim_space()
-	if clean_source_name == '' || os.base(clean_source_name) != clean_source_name {
-		return none
-	}
 	ccompiler := os.read_file(os.join_path(report_dir, macos_v3_c_error_compiler_file)) or {
 		return none
 	}
 	c_output := os.read_file(os.join_path(report_dir, macos_v3_c_error_output_file)) or {
 		return none
 	}
-	c_file := os.join_path(report_dir, clean_source_name)
-	if !os.is_file(c_file) {
-		return none
-	}
 	// The `kind` marker is absent for C-error reports staged by the V3 driver
 	// (empty string -> generated-C compilation error) and set for compiler-error
 	// reports staged by stage_macos_v3_compiler_error_report.
-	kind := os.read_file(os.join_path(report_dir, macos_v3_c_error_kind_file)) or { '' }
+	kind :=
+		(os.read_file(os.join_path(report_dir, macos_v3_c_error_kind_file)) or { '' }).trim_space()
+	clean_source_name := (os.read_file(os.join_path(report_dir, macos_v3_c_error_source_name_file)) or {
+		''
+	}).trim_space()
+	mut c_file := ''
+	if clean_source_name != '' {
+		if os.base(clean_source_name) != clean_source_name {
+			return none
+		}
+		candidate := os.join_path(report_dir, clean_source_name)
+		if !os.is_file(candidate) {
+			return none
+		}
+		c_file = candidate
+	} else if kind != macos_v3_compiler_error_fallback {
+		// A generated-C error report must always carry its source; only a
+		// compiler-error report may be notice-only (a directory / non-file build).
+		return none
+	}
 	return MacosV3CErrorReport{
-		kind:       kind.trim_space()
+		kind:       kind
 		ccompiler:  ccompiler.trim_space()
 		c_output:   c_output
 		c_file:     c_file
