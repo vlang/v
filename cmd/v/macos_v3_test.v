@@ -1883,6 +1883,41 @@ fn test_macos_v3_keeps_autofree_builds_off_non_ownership_v3() {
 	})
 }
 
+// The executable-name gate is for implicit default dispatch only; an explicit
+// `-new-compiler` must still run V3 in-process even when the binary is installed or
+// copied under a name other than v/vnew, e.g. `vlang` (PR #28131 review).
+fn test_macos_v3_new_compiler_honored_for_renamed_executable() {
+	$if macos {
+		vroot := os.dir(@VEXE) // has vlib adjacent, so the renamed copy resolves vroot
+		renamed := os.join_path(vroot, 'vlang_renamed_${os.getpid()}')
+		os.cp(@VEXE, renamed) or { panic(err) }
+		os.chmod(renamed, 0o755) or {}
+		defer {
+			os.rm(renamed) or {}
+		}
+		src := os.join_path(os.real_path(os.vtmp_dir()), 'renamed_exe_${os.getpid()}.v')
+		os.write_file(src, 'fn main() {\n\tprintln(6 * 7)\n}\n')!
+		defer {
+			os.rm(src) or {}
+		}
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(renamed)
+		process.set_args(['-v', '-new-compiler', 'run', src])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		out := process.stdout_slurp() + process.stderr_slurp()
+		code := process.code
+		process.close()
+		assert code == 0, out
+		assert out.contains('Running macOS V3 compiler in process:'), out
+		assert out.contains('42'), out
+	}
+}
+
 // This gate is shared by the Darwin and non-macOS dispatchers, so keep it
 // unguarded: it protects command routing on every platform where `-new-compiler`
 // is accepted.
