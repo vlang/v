@@ -91,9 +91,13 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		// dispatch, but it must not prevent V3 from being the default compiler.
 		return false
 	}
-	if prefs.autofree && prefs.is_run {
-		// V1 still owns the established `v -autofree run ...` orchestration.
-		// Direct autofree builds are selected earlier by the ownership dispatcher.
+	if prefs.autofree {
+		// V1 owns autofree here. On macOS a direct `v -autofree` build is delegated
+		// to the ownership-enabled compiler before this point (so only autofree
+		// `run` arrives). On Linux autofree is NOT delegated and the ordinary
+		// embedded V3 has no `ownership` support — it would exit with "ownership
+		// support is not compiled into this v3 executable" — so keep every autofree
+		// build and run on V1 rather than dispatching it to a V3 that cannot honor it.
 		return false
 	}
 	if command == 'test' {

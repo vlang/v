@@ -1841,6 +1841,42 @@ fn test_macos_v3_force_requested_respects_hard_limits() {
 	}
 }
 
+// Autofree builds must never reach the ordinary embedded V3, which lacks
+// `ownership` support and would exit with "ownership support is not compiled into
+// this v3 executable". On macOS a direct autofree build is delegated to the
+// ownership compiler earlier; on Linux it is not, so both the default dispatch and
+// `-new-compiler` must keep autofree (build and run) on V1. Unguarded: these gates
+// are shared by every platform's dispatcher (PR #28131 review).
+fn test_macos_v3_keeps_autofree_builds_off_non_ownership_v3() {
+	assert !is_macos_v3_relevant_command('build', &pref.Preferences{
+		autofree: true
+		path:     'main.v'
+	})
+	assert !is_macos_v3_relevant_command('run', &pref.Preferences{
+		autofree: true
+		is_run:   true
+		path:     'main.v'
+	})
+	assert !macos_v3_force_requested('build', &pref.Preferences{
+		new_compiler: true
+		autofree:     true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('run', &pref.Preferences{
+		new_compiler: true
+		autofree:     true
+		path:         'main.v'
+	})
+	// A plain build (no autofree) is still taken over by V3.
+	assert is_macos_v3_relevant_command('build', &pref.Preferences{
+		path: 'main.v'
+	})
+	assert macos_v3_force_requested('build', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+}
+
 // This gate is shared by the Darwin and non-macOS dispatchers, so keep it
 // unguarded: it protects command routing on every platform where `-new-compiler`
 // is accepted.

@@ -55,7 +55,10 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
 		return false
 	}
-	if prefs.autofree && prefs.is_run {
+	if prefs.autofree {
+		// The ordinary embedded V3 has no `ownership` support, so autofree builds
+		// (like autofree `run`) stay on V1; on macOS a direct autofree build is
+		// delegated to the ownership compiler before reaching this dispatcher.
 		return false
 	}
 	if prefs.path == '' || command == 'test' || macos_v3_non_compilation_command(command)
