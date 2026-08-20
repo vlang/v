@@ -286,16 +286,30 @@ fn test_report_includes_v_source_counts_v_context() {
 fn test_external_v3_report_env_round_trip() {
 	// The wasm build path hands the fallback report to the external builder through
 	// the environment; it must round-trip and clear the variables so the builder can
-	// submit and clean up relative to its own build outcome (PR #28131 review).
+	// submit and clean up relative to its own build outcome (PR #28131 review). The
+	// handoff only round-trips when the staged directory under V's temp dir carries the
+	// exported token, so use a real staged directory here.
+	clear_v3_report_env()
+	dir := os.join_path(os.vtmp_dir(), 'v3_report_env_round_trip_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	c_file := os.join_path(dir, 'main.v')
+	os.write_file(c_file, 'fn main() {}')!
 	report := ExternalCErrorBugReport{
 		kind:        external_v3_compiler_error_kind
 		ccompiler:   'v3'
 		c_output:    'error: v3 failed'
-		c_file:      '/tmp/report/main.v'
+		c_file:      c_file
 		tag:         'V3'
-		cleanup_dir: '/tmp/report'
+		cleanup_dir: dir
 	}
 	export_external_v3_report_to_env(report)
+	// A token file is staged in the directory and the same token is exported.
+	assert os.is_file(os.join_path(dir, v3_report_handoff_token_file))
+	assert os.getenv('${v3_report_env_prefix}TOKEN') != ''
 	got := take_external_v3_report_from_env() or {
 		assert false, 'no report round-tripped'
 		return
@@ -709,5 +723,78 @@ fn test_new_c_error_bug_report_with_vlines_is_skipped_without_a_recorded_command
 	}
 	if _ := b.new_c_error_bug_report_with_vlines('cc') {
 		assert false, 'expected none when no C compiler command was recorded'
+	}
+}
+
+fn clear_v3_report_env() {
+	for suffix in v3_report_env_suffixes {
+		os.unsetenv('${v3_report_env_prefix}${suffix}')
+	}
+}
+
+fn test_external_v3_report_rejects_poisoned_dir_outside_tmp() {
+	clear_v3_report_env()
+	// A directory the current process never staged (no token file, outside V's temp
+	// dir) must not be trusted: this is the `v -old-compiler -b wasm` poisoning case.
+	victim := os.join_path(os.vtmp_dir(), 'v3_report_victim_${os.getpid()}')
+	os.rmdir_all(victim) or {}
+	os.mkdir_all(victim) or { panic(err) }
+	defer {
+		os.rmdir_all(victim) or {}
+	}
+	secret := os.join_path(victim, 'secret.txt')
+	os.write_file(secret, 'top secret')!
+	os.setenv('${v3_report_env_prefix}DIR', victim, true)
+	os.setenv('${v3_report_env_prefix}CFILE', secret, true)
+	os.setenv('${v3_report_env_prefix}TOKEN', 'forged-token', true)
+	if _ := take_external_v3_report_from_env() {
+		assert false, 'a directory with no matching staged token must be rejected'
+	}
+	// Rejection still clears the variables so nested builds cannot inherit them, and
+	// the untrusted directory and its file are left untouched (no consume/rmdir).
+	assert os.getenv('${v3_report_env_prefix}DIR') == ''
+	assert os.getenv('${v3_report_env_prefix}TOKEN') == ''
+	assert os.is_dir(victim)
+	assert os.is_file(secret)
+}
+
+fn test_external_v3_report_rejects_token_mismatch() {
+	clear_v3_report_env()
+	dir := os.join_path(os.vtmp_dir(), 'v3_report_mismatch_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, v3_report_handoff_token_file), 'real-token')!
+	os.setenv('${v3_report_env_prefix}DIR', dir, true)
+	os.setenv('${v3_report_env_prefix}TOKEN', 'a-different-token', true)
+	if _ := take_external_v3_report_from_env() {
+		assert false, 'a token that does not match the staged file must be rejected'
+	}
+}
+
+fn test_external_v3_report_rejects_c_file_outside_dir() {
+	clear_v3_report_env()
+	dir := os.join_path(os.vtmp_dir(), 'v3_report_cfile_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	token := 'matching-token'
+	os.write_file(os.join_path(dir, v3_report_handoff_token_file), token)!
+	// c_file lives outside the staged directory: uploading it would disclose an
+	// arbitrary readable file, so the whole handoff must be rejected.
+	outside := os.join_path(os.vtmp_dir(), 'v3_report_outside_${os.getpid()}.v')
+	os.write_file(outside, 'fn main() {}')!
+	defer {
+		os.rm(outside) or {}
+	}
+	os.setenv('${v3_report_env_prefix}DIR', dir, true)
+	os.setenv('${v3_report_env_prefix}TOKEN', token, true)
+	os.setenv('${v3_report_env_prefix}CFILE', outside, true)
+	if _ := take_external_v3_report_from_env() {
+		assert false, 'a c_file outside the staged directory must be rejected'
 	}
 }
