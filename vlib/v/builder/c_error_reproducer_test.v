@@ -145,6 +145,58 @@ fn test_repro_closure_reaching_every_decl_signals_whole_program() {
 		return
 	}
 	assert order.len == decls.len
+	// every declaration belongs to one file (file_id 0), so that file is fully covered
+	assert repro_covers_any_whole_file(decls, order)
+}
+
+fn test_repro_covers_any_whole_file_tracks_per_file_coverage() {
+	// main.v (file 0) has a single declaration; helpers.v (file 1) has two. The
+	// closure includes main (file 0 complete) and one helper (file 1 partial), so
+	// order.len < decls.len yet file 0 is fully covered — reject the whole reproducer
+	// rather than upload all of main.v (PR #28131 review).
+	two_file := [
+		ReproDecl{
+			names:   ['main']
+			source:  'fn main() { helper() }'
+			file_id: 0
+		},
+		ReproDecl{
+			names:   ['helper']
+			source:  'fn helper() {}'
+			file_id: 1
+		},
+		ReproDecl{
+			names:   ['unrelated']
+			source:  'fn unrelated() {}'
+			file_id: 1
+		},
+	]
+	assert repro_covers_any_whole_file(two_file, [0, 1])
+	// No single file is fully covered here (one of two declarations from each file),
+	// so the reproducer is a strict subset and is kept.
+	partial := [
+		ReproDecl{
+			names:   ['main']
+			source:  'fn main() { helper() }'
+			file_id: 0
+		},
+		ReproDecl{
+			names:   ['aux']
+			source:  'fn aux() {}'
+			file_id: 0
+		},
+		ReproDecl{
+			names:   ['helper']
+			source:  'fn helper() {}'
+			file_id: 1
+		},
+		ReproDecl{
+			names:   ['unrelated']
+			source:  'fn unrelated() {}'
+			file_id: 1
+		},
+	]
+	assert !repro_covers_any_whole_file(partial, [0, 2])
 }
 
 fn test_repro_closure_seeds_from_main_for_reachability() {

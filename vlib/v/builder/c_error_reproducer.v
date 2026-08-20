@@ -300,13 +300,15 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	if ordered.len == 0 {
 		return ''
 	}
-	if ordered.len >= decls.len {
-		// Every declaration is in the closure, so the reproducer would reconstruct the
-		// whole program (differing from the file only by normalized blank lines). The
-		// doc/docs.md guarantee is that the whole file is never auto-uploaded, so give
-		// up here and let the caller fall back to the bounded source window — which is
-		// a strict subset for a large file and dropped as a whole-file match for a
-		// short one.
+	if repro_covers_any_whole_file(decls, ordered) {
+		// The closure includes every declaration from at least one contributing file,
+		// so the reproducer would reconstruct that whole file (differing only by
+		// normalized blank lines). The doc/docs.md guarantee is that no whole file is
+		// ever auto-uploaded, so give up here and let the caller fall back to the
+		// bounded source window — a strict subset for a large file, dropped as a
+		// whole-file match for a short one. This is tracked per file, not per module:
+		// a multi-file program can fully cover a small file while excluding an
+		// unrelated declaration elsewhere.
 		return ''
 	}
 	// track which files contributed a declaration, and the identifiers each such file references,
@@ -643,6 +645,29 @@ fn repro_decl_source(lines []string, start int, end int) string {
 		return ''
 	}
 	return lines[start..e].join('\n')
+}
+
+// repro_covers_any_whole_file reports whether the closure `ordered` includes every
+// declaration of at least one contributing file. Coverage is tracked per file (via
+// ReproDecl.file_id), not across the whole module: a multi-file program can fully
+// cover a small file (uploading all of it) while still excluding an unrelated
+// declaration in another file, so a module-wide count would miss it. Used to keep
+// the reproducer within the doc/docs.md guarantee that no whole file is uploaded.
+fn repro_covers_any_whole_file(decls []ReproDecl, ordered []int) bool {
+	mut total_per_file := map[int]int{}
+	for d in decls {
+		total_per_file[d.file_id]++
+	}
+	mut included_per_file := map[int]int{}
+	for id in ordered {
+		included_per_file[decls[id].file_id]++
+	}
+	for file_id, total in total_per_file {
+		if total > 0 && included_per_file[file_id] == total {
+			return true
+		}
+	}
+	return false
 }
 
 // repro_closure returns the indices of declarations reachable from `seeds` by identifier reference.
