@@ -84,7 +84,8 @@ The driver monitors compiler memory throughout the build and exits when it reach
 (4 GiB for compiler self-host builds).
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
-On macOS, each stage benchmark prints physical footprint immediately after RSS.
+Each stage benchmark reports its sampled peak RSS and the process peak. On macOS it also prints
+physical footprint immediately after RSS.
 
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
 detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets
