@@ -27,6 +27,23 @@ fn test_macos_v3_driver_source_selection_matches_cross_define() {
 	assert cross_files == ['macos_v3_driver_d_cross.v']
 }
 
+fn test_macos_v3_keeps_established_compiler_sources_on_v1() {
+	for path in ['vlib/v/checker/pkgconfig_static_mode_test.v',
+		'/workspace/v/vlib/v/builder/c_error_report_test.v', 'vlib/v/compiler_errors_test.v'] {
+		assert is_macos_v3_v1_compiler_source(path)
+		assert !is_macos_v3_relevant_command(path, &pref.Preferences{
+			path: path
+		})
+	}
+	for path in ['vlib/v/tests/array_test.v', '/workspace/v/vlib/v/slow_tests/example_test.v',
+		'vlib/v3/tests/driver_cli_test.v', 'examples/hello_world.v'] {
+		assert !is_macos_v3_v1_compiler_source(path)
+		assert is_macos_v3_relevant_command(path, &pref.Preferences{
+			path: path
+		})
+	}
+}
+
 fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 	$if macos {
 		mut prefs := &pref.Preferences{
