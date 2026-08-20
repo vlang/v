@@ -260,6 +260,24 @@ fn test_v_source_is_whole_file_detects_full_coverage() {
 	assert !v_source_is_whole_file('', full) // an already-empty excerpt is not "whole"
 }
 
+fn test_v_source_exposes_whole_file_ignores_omitted_whitespace() {
+	// An 82-line file mapped at line 41 yields an 81-line window. When the omitted
+	// final line is whitespace-only, that window still exposes every substantive
+	// source line and must be discarded (PR #28131 review).
+	mut mapped := []string{}
+	for i in 1 .. 82 {
+		mapped << 'fn f${i}() {}'
+	}
+	mapped << '   '
+	mapped_source := mapped.join('\n')
+	excerpt := v_source_for_report(mapped, 41, c_error_v_source_radius).text
+	assert excerpt.split_into_lines().len == 81
+	assert !v_source_is_whole_file(excerpt, mapped_source)
+	assert v_source_exposes_whole_file(excerpt, mapped_source, mapped)
+	strict_subset := v_source_for_report(mapped, 41, 5).text
+	assert !v_source_exposes_whole_file(strict_subset, mapped_source, mapped)
+}
+
 fn test_report_includes_v_source_counts_v_context() {
 	// A report whose whole-file v_source was dropped can still upload v_context lines,
 	// so the notice must not call it metadata-only (PR #28131 review).

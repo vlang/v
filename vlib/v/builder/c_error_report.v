@@ -335,8 +335,7 @@ fn bounded_v_source_for_generated_c(c_output string, generated_c_file string) (s
 	mapped_lines := mapped_source.split_into_lines()
 	chunk := selected_v_source(v_file, mapped_lines, v_line)
 	mut v_source := bounded_v_source(chunk.text, c_error_bug_report_max_v_source_bytes, chunk.focus)
-	if v_source_is_whole_file(v_source, mapped_source)
-		|| v_source_and_context_expose_whole_file(v_source, []CErrorReportLine{}, mapped_lines) {
+	if v_source_exposes_whole_file(v_source, mapped_source, mapped_lines) {
 		// Strict-subset rule (doc/docs.md): a short mapped file makes the window cover the
 		// whole file. Exact line-array equality misses a window that omits only
 		// whitespace-only lines yet still exposes every nonblank source line, so apply the
@@ -528,6 +527,14 @@ fn v_source_is_whole_file(selected string, full_source string) bool {
 	return selected != '' && selected.split_into_lines() == full_source.split_into_lines()
 }
 
+// v_source_exposes_whole_file reports whether v_source contains the entire mapped
+// file, including when the only omitted lines are blank and exact line-array
+// equality therefore misses the substantive whole-file coverage.
+fn v_source_exposes_whole_file(v_source string, mapped_source string, mapped_lines []string) bool {
+	return v_source_is_whole_file(v_source, mapped_source)
+		|| v_source_and_context_expose_whole_file(v_source, []CErrorReportLine{}, mapped_lines)
+}
+
 // v_context_covers_whole_file reports whether the numbered context window spans
 // every line of the mapped file. numbered_context_lines returns a contiguous
 // window, so covering the whole file means it holds as many lines as the file has.
@@ -643,9 +650,10 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		v_chunk := selected_v_source(v_file, mapped_lines, v_line)
 		bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes, v_chunk.focus)
 	}
-	if v_source_is_whole_file(v_source, mapped_source) {
-		// Strict-subset rule (doc/docs.md): a short mapped file makes the window or
-		// reproducer cover the entire file, so drop it rather than upload it whole.
+	if v_source_exposes_whole_file(v_source, mapped_source, mapped_lines) {
+		// Strict-subset rule (doc/docs.md): a short mapped file, or a window that
+		// omits only whitespace, exposes the entire substantive file. Drop the
+		// excerpt rather than upload it whole.
 		v_source = ''
 	}
 	// v_context is a separate uploaded payload; for a short mapped file its radius
