@@ -146,6 +146,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
 		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
 		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v')
+		|| is_macos_v3_v1_compiler_source(normalized_path)
 		|| is_macos_v3_internal_tool_bootstrap(normalized_path, os.getenv('VCHILD') == 'true') {
 		return false
 	}
@@ -157,6 +158,24 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	}
 	return command in ['run', 'build', 'test'] || prefs.is_script || os.is_dir(prefs.path)
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
+}
+
+fn is_macos_v3_v1_compiler_source(normalized_path string) bool {
+	is_compiler_source := normalized_path.starts_with('vlib/v/')
+		|| normalized_path.contains('/vlib/v/')
+	if !is_compiler_source {
+		return false
+	}
+	if normalized_path.starts_with('vlib/v3/') || normalized_path.contains('/vlib/v3/') {
+		return false
+	}
+	// The established compiler's implementation modules still require V1 to compile.
+	// Keep the language-level regression suites on V3: their files are ordinary user
+	// programs even though they live below the compiler tree.
+	return !normalized_path.starts_with('vlib/v/tests/')
+		&& !normalized_path.contains('/vlib/v/tests/')
+		&& !normalized_path.starts_with('vlib/v/slow_tests/')
+		&& !normalized_path.contains('/vlib/v/slow_tests/')
 }
 
 fn is_macos_v3_internal_tool_bootstrap(normalized_path string, is_vchild bool) bool {
