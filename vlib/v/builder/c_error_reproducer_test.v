@@ -112,6 +112,39 @@ fn test_repro_closure_follows_references() {
 	}
 	assert order == [0, 1, 2]
 	assert 3 !in order
+	// The unrelated decl is excluded, so the closure is a strict subset: the
+	// reproducer keeps it (order.len < decls.len).
+	assert order.len < decls.len
+}
+
+fn test_repro_closure_reaching_every_decl_signals_whole_program() {
+	// When the closure reaches every declaration, order.len == decls.len. The
+	// reproducer treats that as whole-program coverage and gives up, so a short
+	// all-referenced program is never uploaded whole (PR #28131 review).
+	decls := [
+		ReproDecl{
+			names:  ['main']
+			source: 'fn main() { helper(Thing{}) }'
+		},
+		ReproDecl{
+			names:  ['helper']
+			source: 'fn helper(t Thing) {}'
+		},
+		ReproDecl{
+			names:  ['Thing']
+			source: 'struct Thing {}'
+		},
+	]
+	name_to_decl := {
+		'main':   [0]
+		'helper': [1]
+		'Thing':  [2]
+	}
+	order := repro_closure(decls, name_to_decl, [0]) or {
+		assert false, 'closure returned none'
+		return
+	}
+	assert order.len == decls.len
 }
 
 fn test_repro_closure_seeds_from_main_for_reachability() {
