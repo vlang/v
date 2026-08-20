@@ -149,7 +149,7 @@ fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output
 	}
 	println('================== C compiler bug report ==============')
 	if is_v3_fallback {
-		print_v3_fallback_notice(report_url, true, report.v_source != '')
+		print_v3_fallback_notice(report_url, true, report_includes_v_source(report))
 	}
 	if tool_output != '' {
 		println(tool_output)
@@ -289,6 +289,16 @@ fn v_source_is_whole_file(selected string, full_source string) bool {
 // Used to keep the v_context payload within the doc/docs.md strict-subset guarantee.
 fn v_context_covers_whole_file(context []CErrorReportLine, mapped_lines []string) bool {
 	return mapped_lines.len > 0 && context.len == mapped_lines.len
+}
+
+// report_includes_v_source reports whether the uploaded report carries any of the
+// user's V source. That is the bounded `v_source` excerpt OR the `v_context` lines
+// around the failing line, since a short mapped file can have its whole-file
+// `v_source` dropped while `v_context` remains a strict subset that is still
+// uploaded. Used so the privacy notice describes what was actually sent; a
+// metadata-only report carries neither.
+fn report_includes_v_source(report CErrorBugReport) bool {
+	return report.v_source != '' || report.v_context.len > 0
 }
 
 // print_v3_fallback_notice explains, in plain language, that V3 could not build the

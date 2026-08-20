@@ -260,6 +260,29 @@ fn test_v_source_is_whole_file_detects_full_coverage() {
 	assert !v_source_is_whole_file('', full) // an already-empty excerpt is not "whole"
 }
 
+fn test_report_includes_v_source_counts_v_context() {
+	// A report whose whole-file v_source was dropped can still upload v_context lines,
+	// so the notice must not call it metadata-only (PR #28131 review).
+	assert !report_includes_v_source(CErrorBugReport{})
+	assert report_includes_v_source(CErrorBugReport{
+		v_source: 'fn main() {}'
+	})
+	assert report_includes_v_source(CErrorBugReport{
+		v_context: [CErrorReportLine{
+			line: 6
+			text: 'x := 1'
+		}]
+	})
+	// c_error and c_context (generated C) are not the user's V source.
+	assert !report_includes_v_source(CErrorBugReport{
+		c_error:   'error: something'
+		c_context: [CErrorReportLine{
+			line: 3
+			text: 'int x;'
+		}]
+	})
+}
+
 fn test_notify_and_cleanup_external_v3_fallback_removes_report_dir() {
 	// The wasm build path cannot submit the report after handing off to the external
 	// tool, but it must not leak the staged directory (PR #28131 review).
