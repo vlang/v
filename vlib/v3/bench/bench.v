@@ -123,9 +123,11 @@ fn monitor_stage_memory(state &StageMemoryMonitor, limit_kb i64, interval i64) {
 		if wake.timed_wait(interval) {
 			return
 		}
-		ram_kb := current_rss_kb()
 		mut monitor := unsafe { &StageMemoryMonitor(voidptr(state)) }
 		monitor.mutex.lock()
+		// Serialize the measurement itself with stage resets so a sample read
+		// before a boundary cannot be published into the following stage.
+		ram_kb := current_rss_kb()
 		if ram_kb > monitor.rss_peak_kb {
 			monitor.rss_peak_kb = ram_kb
 		}
