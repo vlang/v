@@ -107,16 +107,18 @@ embedded in your `v`).
 ### Automatic bug reports
 
 To help close the remaining gaps, a successful fallback (V3 fails to build a
-program that the established compiler then builds) submits the V version, target
-OS/arch, and build options to `https://bugs.vlang.io`. When a source excerpt is
-included it is always a **bounded strict subset** of the failing file — a window
-around the failure, or a head+tail window — and the whole file is never uploaded.
+program that the established compiler then builds) normally submits the V
+version, target OS/arch, and build options to `https://bugs.vlang.io`. When a
+source excerpt is included it is always a **bounded strict subset** of the failing
+file — a window around the failure, or a head+tail window — and the whole file is
+never uploaded.
 An internal V3 compiler error on a short program (and any directory build such as
 `v .`) submits metadata only. A generated-C error, however, maps to a specific V
 file, so it can still upload a strict-subset excerpt of that file plus a few lines
-of context around the failing line, even when the file is short. Reporting is
-skipped for test compilations and in GitHub CI. You can turn it off entirely by
-setting the environment variable `V_C_ERROR_BUG_REPORT_DISABLED=1`.
+of context around the failing line, even when the file is short. Inline-assembly
+fallbacks are notice-only and do not submit a report; reporting is also skipped
+for test compilations and in GitHub CI. You can turn it off entirely by setting
+the environment variable `V_C_ERROR_BUG_REPORT_DISABLED=1`.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .

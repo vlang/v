@@ -19,15 +19,16 @@ The default compiler:
   On macOS and Linux, `v` compiles with the experimental V3 compiler (vlib/v3)
   by default. When V3 cannot yet build an eligible program, V automatically falls
   back to the established compiler in vlib/v, so builds keep working. Unless the
-  environment variable V_C_ERROR_BUG_REPORT_DISABLED=1 is set, a fallback also
-  reports the V version, target, and build options to https://bugs.vlang.io, plus
-  a bounded snippet of the failing V source when one is available. Any snippet is
-  a strict subset and the whole file is never uploaded. An internal V3 compiler
-  error on a short program or a directory build such as `v .` submits metadata
-  only, while a generated-C error maps to a V file and can still upload a
-  strict-subset excerpt of it, even for a short file. Pass `-old-compiler` (see
-  `v help build-c`) to always use the established compiler and skip both the V3
-  attempt and the reporting.
+  environment variable V_C_ERROR_BUG_REPORT_DISABLED=1 is set, a reportable
+  fallback also sends the V version, target, and build options to
+  https://bugs.vlang.io, plus a bounded snippet of the failing V source when one
+  is available. Any snippet is a strict subset and the whole file is never
+  uploaded. An internal V3 compiler error on a short program or a directory build
+  such as `v .` submits metadata only, while a generated-C error maps to a V file
+  and can still upload a strict-subset excerpt of it, even for a short file.
+  Inline-assembly fallbacks are notice-only; test compilations and GitHub CI also
+  submit no report. Pass `-old-compiler` (see `v help build-c`) to always use the
+  established compiler and skip both the V3 attempt and the reporting.
 
 Use `v build script.vsh` to compile a `.vsh` script without running it.
 `v -skip-running script.vsh` works too.
