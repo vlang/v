@@ -191,6 +191,18 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 		report.tag)
 }
 
+// notify_and_cleanup_external_v3_fallback handles a staged V3->V1 fallback report for
+// build paths that hand off to an external tool (e.g. the wasm builder) via os.execvp,
+// which replaces this process — so the report cannot be submitted after the retry
+// succeeds, and an at_exit cleanup would never run. It tells the user about the
+// fallback and removes the staged report directory so nothing is leaked. It does not
+// upload the version/target metadata, since the external tool takes over before its
+// build outcome is known (which would otherwise report programs that fail on V1 too).
+pub fn notify_and_cleanup_external_v3_fallback(report_dir string) {
+	print_v3_fallback_notice('', false, false)
+	cleanup_external_c_error_report(report_dir)
+}
+
 // submit_external_v3_compiler_error_bug_report reports a V3 internal compiler error
 // after the stable compiler has confirmed the program is buildable. `v_file` is the
 // user's input V source and `v3_output` a short description of the failure.

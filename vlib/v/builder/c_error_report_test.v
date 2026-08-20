@@ -260,6 +260,18 @@ fn test_v_source_is_whole_file_detects_full_coverage() {
 	assert !v_source_is_whole_file('', full) // an already-empty excerpt is not "whole"
 }
 
+fn test_notify_and_cleanup_external_v3_fallback_removes_report_dir() {
+	// The wasm build path cannot submit the report after handing off to the external
+	// tool, but it must not leak the staged directory (PR #28131 review).
+	dir := os.join_path(os.real_path(os.vtmp_dir()), 'v3_wasm_fallback_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	os.write_file(os.join_path(dir, 'output'), 'error: v3 failed') or { panic(err) }
+	assert os.is_dir(dir)
+	notify_and_cleanup_external_v3_fallback(dir)
+	assert !os.exists(dir)
+}
+
 fn test_v_context_covers_whole_file_detects_full_coverage() {
 	// A short mapped file: the radius window around a middle line spans every line,
 	// so v_context would leak the whole file and must be cleared (PR #28131 review).
