@@ -2,6 +2,7 @@ module main
 
 import os
 import v.pref
+import v.builder
 
 fn test_macos_v3_embedded_driver_matches_cross_source_selection() {
 	$if cross ? {
@@ -1500,51 +1501,44 @@ fn main() {}
 	}
 }
 
-// stage_macos_v3_compiler_error_report / read_macos_v3_c_error_report round-trip:
-// the compiler-error report carries the input V source and a `kind` marker so the
-// V1 retry can file the right bug. This is pure staging logic, so it runs wherever
-// the dispatcher is embedded (macOS and Linux) without triggering a real V3 failure.
-fn test_macos_v3_compiler_error_report_round_trip() {
+// The compiler-error fallback bounds the input V source into content in the trusted
+// process, uploading a bounded strict subset for a single source file and nothing (a
+// metadata-only report) for a directory build or a non-V / missing input. Runs wherever
+// the dispatcher is embedded (macOS and Linux) without triggering a real V3 failure
+// (PR #28131 review).
+fn test_macos_v3_compiler_error_content_extraction() {
 	$if macos || linux {
-		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_ce_roundtrip_${os.getpid()}')
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_ce_content_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root) or { panic(err) }
 		defer {
 			os.rmdir_all(root) or {}
 		}
+		// A single V source file is uploaded as a bounded snippet.
 		source := os.join_path(root, 'prog.v')
-		os.write_file(source, 'fn main() {\n\tprintln(41 + 1)\n}\n')!
-		report_dir := os.join_path(root, 'report')
-		assert stage_macos_v3_compiler_error_report(report_dir, source)
-		report := read_macos_v3_c_error_report(report_dir) or {
-			assert false, 'staged compiler-error report could not be read'
-			return
+		mut lines := []string{}
+		for i in 0 .. 200 {
+			lines << 'fn f${i}() { println(${i}) }'
 		}
-		assert report.kind == macos_v3_compiler_error_fallback
-		assert report.ccompiler == 'v3'
-		assert report.c_output.contains('internal compiler error')
-		// The message starts with `error:` so the receiver's c_error_string parser
-		// stores a nonempty, groupable diagnostic (PR #28131 review).
-		assert report.c_output.starts_with('error:')
-		assert os.base(report.c_file) == 'prog.v'
-		assert os.read_file(report.c_file)!.contains('println(41 + 1)')
-		// A directory build (`v .`), or a non-V / missing input, cannot stage a
-		// source reproducer, but must still produce a notice-only report (empty
-		// c_file) so the V1 retry can tell the user V3 fell back (PR #28131 review).
-		notc := os.join_path(root, 'note.txt')
-		os.write_file(notc, 'hi')!
-		for notice_only in [root, os.join_path(root, 'missing.v'), notc] {
-			assert stage_macos_v3_compiler_error_report(report_dir, notice_only), notice_only
-			notice := read_macos_v3_c_error_report(report_dir) or {
-				assert false, 'notice-only report could not be read for ${notice_only}'
-				return
-			}
-			assert notice.kind == macos_v3_compiler_error_fallback, notice_only
-			assert notice.c_file == '', notice_only
-			assert notice.c_output.contains('internal compiler error'), notice_only
+		whole := lines.join('\n')
+		os.write_file(source, whole)!
+		v_file, v_source := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
+			macos_v3_compiler_error_message, macos_v3_compiler_error_input_source(source))
+		assert v_file == 'prog.v'
+		assert v_source != ''
+		// A bounded strict subset — never the whole file.
+		assert v_source.len < whole.len
+		// A directory build, a non-V file, or a missing input yields no source, so the
+		// report stays metadata-only.
+		note := os.join_path(root, 'note.txt')
+		os.write_file(note, 'not v source')!
+		for empty in [root, note, os.join_path(root, 'missing.v'), ''] {
+			resolved := macos_v3_compiler_error_input_source(empty)
+			ef, es := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
+				macos_v3_compiler_error_message, resolved)
+			assert ef == '', empty
+			assert es == '', empty
 		}
-		// Only a missing report directory path fails to stage.
-		assert !stage_macos_v3_compiler_error_report('', source)
 	}
 }
 
@@ -1679,72 +1673,50 @@ fn main() {
 	}
 }
 
-fn stage_macos_v3_c_error_files(dir string, source_name string) {
-	os.write_file(os.join_path(dir, macos_v3_c_error_compiler_file), 'v3') or { panic(err) }
-	os.write_file(os.join_path(dir, macos_v3_c_error_output_file), 'error: internal compiler error') or {
-		panic(err)
-	}
-	os.write_file(os.join_path(dir, macos_v3_c_error_kind_file), macos_v3_compiler_error_fallback) or {
-		panic(err)
-	}
-	if source_name != '' {
-		os.write_file(os.join_path(dir, macos_v3_c_error_source_name_file), source_name) or {
-			panic(err)
-		}
-		os.write_file(os.join_path(dir, source_name), 'fn main() {}\n') or { panic(err) }
+fn clear_macos_v3_report_env() {
+	for suffix in ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE'] {
+		os.unsetenv('V_MACOS_V3_REPORT_${suffix}')
 	}
 }
 
-// Unit-level provenance check (PR #28131 review): take_macos_v3_c_error_report accepts
-// only the directory this process would itself have staged (its name embeds the pid,
-// preserved across the retry's execvp), so a caller-chosen V_MACOS_V3_C_ERROR_DIR — even
-// one holding a perfectly well-formed report — is rejected before its contents are
-// uploaded and the directory is removed.
-fn test_take_macos_v3_c_error_report_requires_owned_directory() {
+// Unit-level content handoff (PR #28131 review): the retry consumes only the bounded
+// content the owning process forwarded through V_MACOS_V3_REPORT_*, and the returned
+// report carries no directory path — there is no c_file to read or report_dir to delete.
+// A caller-supplied V_MACOS_V3_C_ERROR_DIR is not read here at all, so it cannot make the
+// retry open or remove anything. Authentication is therefore unnecessary, which is what
+// makes the handoff robust against an exec wrapper that can predict the pid and control
+// VTMP (a path handoff cannot be authenticated across such an execvp).
+fn test_take_macos_v3_report_content_carries_no_path() {
 	$if macos || linux {
+		clear_macos_v3_report_env()
+		// A directory env var alone yields no report: only V_MACOS_V3_REPORT_* content is
+		// read, and it is absent here.
+		os.setenv(macos_v3_c_error_dir_env, '/some/victim/dir', true)
+		if _ := take_macos_v3_report_content() {
+			assert false, 'no V_MACOS_V3_REPORT_* content was set, so no report may be returned'
+		}
 		os.unsetenv(macos_v3_c_error_dir_env)
-		unowned := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_take_unowned_${os.getpid()}')
-		os.rmdir_all(unowned) or {}
-		os.mkdir_all(unowned) or { panic(err) }
-		defer {
-			os.rmdir_all(unowned) or {}
-		}
-		stage_macos_v3_c_error_files(unowned, 'main.v')
-		os.setenv(macos_v3_c_error_dir_env, unowned, true)
-		if _ := take_macos_v3_c_error_report() {
-			assert false, 'a caller-chosen V_MACOS_V3_C_ERROR_DIR must be rejected'
-		}
-		// The variable is cleared even when the report is rejected.
-		assert os.getenv(macos_v3_c_error_dir_env) == ''
-
-		// The dispatcher's own staging directory for this process is honored: execvp keeps
-		// the pid, so in a real retry this equals the directory that was staged.
-		owned := macos_v3_owned_c_error_report_dir()
-		os.rmdir_all(owned) or {}
-		os.mkdir_all(owned) or { panic(err) }
-		defer {
-			os.rmdir_all(owned) or {}
-		}
-		stage_macos_v3_c_error_files(owned, 'main.v')
-		os.setenv(macos_v3_c_error_dir_env, owned, true)
-		report := take_macos_v3_c_error_report() or {
-			assert false, 'the dispatcher-owned staged report must be accepted'
+		// A forwarded content report round-trips as content only.
+		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3',
+			macos_v3_compiler_error_message, '')
+		report := take_macos_v3_report_content() or {
+			assert false, 'the forwarded content report must be returned'
 			return
 		}
-		assert report.report_dir == owned
 		assert report.kind == macos_v3_compiler_error_fallback
-		assert os.base(report.c_file) == 'main.v'
+		assert report.ccompiler == 'v3'
+		assert report.c_output == macos_v3_compiler_error_message
+		// The variables are cleared, so a second take finds nothing.
+		if _ := take_macos_v3_report_content() {
+			assert false, 'the content variables must be cleared after a take'
+		}
 	}
 }
 
-// Provenance guard (PR #28131 review): a staged C-error report is uploaded and then
-// recursively removed after a successful build, so a caller-supplied
-// V_MACOS_V3_C_ERROR_DIR must never be trusted. Both entry points that consume it —
-// an explicit `-old-compiler` and an inherited `V_MACOS_V3_RETRY=1` — must ignore a
-// well-formed report placed at a caller-chosen directory, so the build neither uploads
-// a file from nor deletes that directory. Only the dispatcher's own pid-named staging
-// directory (which os.execvp preserves across the retry, but a caller cannot predict)
-// is honored.
+// End-to-end (PR #28131 review): the retry no longer reads any directory named by the
+// environment. A caller-supplied V_MACOS_V3_C_ERROR_DIR — via an explicit `-old-compiler`
+// or an inherited `V_MACOS_V3_RETRY=1`, even holding a perfectly well-formed report — is
+// ignored, so a successful build neither uploads a file from nor deletes that directory.
 fn test_macos_v3_c_error_report_rejects_unowned_directory() {
 	$if macos || linux {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_unowned_${os.getpid()}')

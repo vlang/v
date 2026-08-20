@@ -284,10 +284,11 @@ fn test_report_includes_v_source_counts_v_context() {
 }
 
 fn test_external_v3_report_env_round_trip() {
-	// The wasm build path hands the fallback report to the external builder as
-	// self-contained content through the environment: export bounds the source in the
-	// trusted parent and removes the staged directory, and take returns an inline,
-	// path-free report the builder submits on its own build success (PR #28131 review).
+	// The fallback report is handed to the external builder as self-contained content
+	// through the environment: the owning process bounds the source (reading its own
+	// trusted file) with bounded_v3_fallback_source and forwards only that content with
+	// export_external_v3_report_to_env; take returns an inline, path-free report the
+	// builder submits on its own build success (PR #28131 review).
 	clear_v3_report_env()
 	dir := os.join_path(os.vtmp_dir(), 'v3_report_env_round_trip_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -303,17 +304,22 @@ fn test_external_v3_report_env_round_trip() {
 		lines << 'fn f${i}() { println(${i}) }'
 	}
 	os.write_file(c_file, lines.join('\n'))!
+	// The owning process bounds the source into content...
+	v_file, v_source := bounded_v3_fallback_source(external_v3_compiler_error_kind,
+		'error: v3 failed', c_file)
+	assert v_file == 'main.v'
+	assert v_source != ''
+	assert v_source.contains(c_error_v_source_truncation_notice)
+	// ...then forwards only that content; export reads no path and deletes no directory.
 	export_external_v3_report_to_env(ExternalCErrorBugReport{
-		kind:        external_v3_compiler_error_kind
-		ccompiler:   'v3'
-		c_output:    'error: v3 failed'
-		c_file:      c_file
-		tag:         'V3'
-		cleanup_dir: dir
+		kind:          external_v3_compiler_error_kind
+		ccompiler:     'v3'
+		c_output:      'error: v3 failed'
+		v_file:        v_file
+		v_source:      v_source
+		source_inline: true
+		tag:           'V3'
 	})
-	// The parent captured the content and removed the staged directory itself, so no
-	// directory path crosses the environment boundary for the builder to delete later.
-	assert !os.exists(dir)
 	got := take_external_v3_report_from_env() or {
 		assert false, 'no report round-tripped'
 		return
@@ -327,8 +333,7 @@ fn test_external_v3_report_env_round_trip() {
 	assert got.c_file == ''
 	assert got.cleanup_dir == ''
 	assert got.v_file == 'main.v'
-	assert got.v_source != ''
-	assert got.v_source.contains(c_error_v_source_truncation_notice)
+	assert got.v_source == v_source
 	// the variables are cleared, so a second take finds nothing
 	if second := take_external_v3_report_from_env() {
 		assert false, 'variables were not cleared: ${second.kind}'
@@ -528,6 +533,35 @@ fn test_v_source_location_mapping_from_line_directives() {
 		return
 	}
 	assert c_line == 3
+}
+
+fn test_bounded_v3_fallback_source_maps_generated_c_error() {
+	// A generated-C compilation error is mapped back to its V source line (via the #line
+	// directives in the trusted staged C) and a bounded window of that V file is returned
+	// — a strict subset, never the whole file (PR #28131 review).
+	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_map_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	v_path := os.join_path(dir, 'source.v')
+	mut lines := []string{}
+	for i in 0 .. 200 {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	whole := lines.join('\n')
+	os.write_file(v_path, whole)!
+	generated_c := os.join_path(dir, 'program.tmp.c')
+	os.write_file(generated_c, '#line 100 "${v_path}"\nint a = 1;\nint b = missing;\n')!
+	c_output := '${generated_c}:3:9: error: use of undeclared identifier missing'
+	// kind '' selects the generated-C mapping path.
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c)
+	assert v_file == 'source.v'
+	assert v_source != ''
+	// A bounded strict subset centered on the mapped V line (~100), never the whole file.
+	assert v_source.len < whole.len
+	assert v_source.contains('fn f100()')
 }
 
 fn test_generated_c_reset_line_is_not_reported_as_v_source() {

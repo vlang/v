@@ -67,11 +67,14 @@ const external_tools = [
 ]
 
 struct MacosV3CErrorReport {
-	kind       string // '' = generated-C compilation error; 'compiler_error' = V3 internal compiler error
-	ccompiler  string
-	c_output   string
-	c_file     string
-	report_dir string
+	kind      string // '' = generated-C compilation error; 'compiler_error' = V3 internal compiler error
+	ccompiler string
+	c_output  string
+	// Content only. The process that owned the staged report already bounded the source
+	// and deleted the directory, so the retry never reads a path or deletes a directory
+	// named by the (inheritable, forgeable) environment.
+	v_file   string // informational base filename (no directory)
+	v_source string // already-bounded source snippet; never a whole file
 }
 
 @[unsafe]
@@ -403,53 +406,44 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 			}
 			if failed := macos_v3_c_error_report {
 				builder.compile_with_external_c_error_report('build', prefs, cbuilder.compile_c, builder.ExternalCErrorBugReport{
-					kind:        failed.kind
-					ccompiler:   failed.ccompiler
-					c_output:    failed.c_output
-					c_file:      failed.c_file
-					tag:         'V3'
-					cleanup_dir: failed.report_dir
+					kind:          failed.kind
+					ccompiler:     failed.ccompiler
+					c_output:      failed.c_output
+					v_file:        failed.v_file
+					v_source:      failed.v_source
+					source_inline: true
+					tag:           'V3'
 				})
 			} else {
 				builder.compile('build', prefs, cbuilder.compile_c)
 			}
 		}
 		.js_node, .js_freestanding, .js_browser {
-			// The js backends are V1-only and never receive a staged V3 report, but if
-			// one is present it cannot be consumed here (launch_tool replaces this
-			// process via os.execvp), so drop the staged directory before handing off.
-			if failed := macos_v3_c_error_report {
-				builder.cleanup_external_v3_report(failed.report_dir)
-			}
+			// The js backends are V1-only and never receive a V3 fallback report; the
+			// content-only report (if any inherited one is present) names no directory to
+			// clean, so there is nothing to do here but hand off.
 			util.launch_tool(prefs.is_verbose, 'builders/js_builder', os.args[1..])
 		}
 		.interpret {
-			// The eval backend is gone, so the stable retry cannot build the program and
-			// there is nothing to report; drop any staged V3 report directory so the
-			// copied source is not left behind under the temporary directory.
-			if failed := macos_v3_c_error_report {
-				builder.cleanup_external_v3_report(failed.report_dir)
-			}
 			eprintln('The eval backend has been removed.')
 			exit(1)
 		}
 		.wasm {
 			if failed := macos_v3_c_error_report {
 				// The wasm builder runs as an external tool via os.execvp, which replaces
-				// this process, so this process cannot submit the staged V3->V1 fallback
-				// report or print the notice after the retry. Hand the report to the
-				// builder as self-contained content through the environment; export bounds
-				// the source here (in this trusted parent) and removes the staged
-				// directory, and the builder submits/notifies on its own build success
-				// without ever reading a path or deleting a directory named by the
+				// this process, so this process cannot submit the V3->V1 fallback report or
+				// print the notice after the retry. Forward the already-bounded content
+				// through the environment; the builder submits/notifies on its own build
+				// success without ever reading a path or deleting a directory named by the
 				// (inheritable, forgeable) environment.
 				builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
-					kind:        failed.kind
-					ccompiler:   failed.ccompiler
-					c_output:    failed.c_output
-					c_file:      failed.c_file
-					tag:         'V3'
-					cleanup_dir: failed.report_dir
+					kind:          failed.kind
+					ccompiler:     failed.ccompiler
+					c_output:      failed.c_output
+					v_file:        failed.v_file
+					v_source:      failed.v_source
+					source_inline: true
+					tag:           'V3'
 				})
 			}
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])

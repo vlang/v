@@ -14,6 +14,7 @@ module main
 import os
 import v.pref
 import v.util
+import v.builder
 
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
@@ -36,21 +37,24 @@ const macos_v3_c_error_source_name_file = 'source_name'
 // `macos_v3_compiler_error_fallback` the report describes a V3 internal compiler
 // error (V source only) instead of a generated-C compilation error.
 const macos_v3_c_error_kind_file = 'kind'
+// the diagnostic uploaded for a V3 internal compiler error (starts with `error:` so the
+// receiver's c_error_string parser stores a nonempty, groupable diagnostic).
+const macos_v3_compiler_error_message = 'error: the experimental V3 compiler hit an internal compiler error building this program (the stable V compiler built it successfully)'
 
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3CErrorReport {
 	if os.getenv(macos_v3_retry_env) == '1' {
 		os.unsetenv(macos_v3_retry_env)
-		return take_macos_v3_c_error_report()
+		return take_macos_v3_report_content()
 	}
 	if prefs.old_compiler {
-		return take_macos_v3_c_error_report()
+		return take_macos_v3_report_content()
 	}
 	if !macos_v3_driver_is_available() {
 		if prefs.new_compiler {
 			eprintln('`-new-compiler` requires a build that embeds the V3 compiler, which this one does not.')
 			exit(1)
 		}
-		return take_macos_v3_c_error_report()
+		return take_macos_v3_report_content()
 	}
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
@@ -213,29 +217,33 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 	replace_macos_v3_process_environment(caller_environment)
 	should_report := is_verbose || os.getenv('V3_CACHE_TRACE') != ''
 	if fallback_reason == macos_v3_c_error_fallback {
-		read_macos_v3_c_error_report(c_error_dir) or {
+		// The C-error report was staged by this process's own V3 run (generated C + C
+		// compiler output), so it is trusted. Extract the bounded source snippet HERE,
+		// forward it to the V1 retry as content, and remove the staged directory. The
+		// retry files a bug once its build succeeds (see cmd/v rebuild ->
+		// compile_with_external_c_error_report) without reading any path or deleting any
+		// directory named by the (inheritable, forgeable) environment.
+		report := read_macos_v3_c_error_report(c_error_dir) or {
 			os.rmdir_all(c_error_dir) or {}
 			eprintln('V3 requested a C-error fallback, but its diagnostics could not be read')
 			return
 		}
-		// The C-error report was staged by the V3 driver (generated C + C compiler
-		// output). Hand it to the V1 retry, which files a bug once its build
-		// succeeds (see cmd/v rebuild -> compile_with_external_c_error_report).
-		os.setenv(macos_v3_c_error_dir_env, c_error_dir, true)
+		export_macos_v3_report_content(report.kind, report.ccompiler, report.c_output,
+			report.c_file)
+		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 C compilation failed; retrying with `-old-compiler`.')
 		}
 	} else if fallback_reason == macos_v3_compiler_error_fallback {
-		// V3 hit an internal compiler error (parser/checker/codegen) that V1 may
-		// still handle. Stage a report so the V1 retry, once its build succeeds,
-		// prints the fallback notice and (for a single-file build) files a bug with
-		// the input V source. Directory builds (`v .`) stage a notice-only report so
-		// the fallback is never silent.
-		if stage_macos_v3_compiler_error_report(c_error_dir, input_path) {
-			os.setenv(macos_v3_c_error_dir_env, c_error_dir, true)
-		} else {
-			os.rmdir_all(c_error_dir) or {}
-		}
+		// V3 hit an internal compiler error (parser/checker/codegen) that V1 may still
+		// handle. Bound the input V source HERE (trusted) and forward it to the retry as
+		// content, so once the retry's build succeeds it prints the fallback notice and
+		// (for a single-file build) files a bug with the source. A directory build (`v .`)
+		// or non-V input yields no source, so the report stays metadata-only but the
+		// fallback is never silent.
+		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3',
+			macos_v3_compiler_error_message, macos_v3_compiler_error_input_source(input_path))
+		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
 		}
@@ -255,95 +263,83 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 	}
 }
 
-// stage_macos_v3_compiler_error_report writes a report directory describing a V3
-// internal compiler error, mirroring the layout the V3 driver uses for C errors
-// (see request_macos_v3_c_error_fallback). When the build targets a single V
-// source file, that file is copied in as a reproducer. For a directory build
-// (`v .`) or a non-V input no single file can be staged, so the report is
-// notice-only (empty source name): the V1 retry can still tell the user V3 fell
-// back once its own build succeeds, it just cannot upload a source snippet. It
-// returns false only when the report directory itself cannot be created.
-fn stage_macos_v3_compiler_error_report(report_dir string, input_path string) bool {
-	if report_dir == '' {
-		return false
+// take_macos_v3_report_content reads the content-only fallback report the owning process
+// forwarded through the environment, or none when there is none. The report carries no
+// path to read and no directory to delete, so a stale, inherited, or hostile handoff can
+// at most make the retry upload attacker-supplied text — never disclose a file from, or
+// recursively delete, an arbitrary directory. That is what makes authentication
+// unnecessary here; across an execvp that an attacker can wrap (it retains the pid and
+// inherits VTMP and every env var), authenticating a path handoff is impossible anyway.
+fn take_macos_v3_report_content() ?MacosV3CErrorReport {
+	report := builder.take_external_v3_report_from_env()?
+	return MacosV3CErrorReport{
+		kind:      report.kind
+		ccompiler: report.ccompiler
+		c_output:  report.c_output
+		v_file:    report.v_file
+		v_source:  report.v_source
 	}
-	os.rmdir_all(report_dir) or {}
-	os.mkdir_all(report_dir) or { return false }
-	mut source_name := ''
+}
+
+// export_macos_v3_report_content bounds the fallback source in THIS process — which staged
+// the report and therefore trusts `c_file` — and forwards only that content to the V1
+// retry through the environment.
+fn export_macos_v3_report_content(kind string, ccompiler string, c_output string, c_file string) {
+	v_file, v_source := builder.bounded_v3_fallback_source(kind, c_output, c_file)
+	builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
+		kind:          kind
+		ccompiler:     ccompiler
+		c_output:      c_output
+		v_file:        v_file
+		v_source:      v_source
+		source_inline: true
+		tag:           'V3'
+	})
+}
+
+// macos_v3_compiler_error_input_source returns `input_path` when it is a single V source
+// file whose bounded contents can be uploaded, or '' for a directory / non-V input (which
+// keeps the internal-error report metadata-only).
+fn macos_v3_compiler_error_input_source(input_path string) string {
 	if input_path != '' && os.is_file(input_path)
 		&& (input_path.ends_with('.v') || input_path.ends_with('.vsh')
 		|| input_path.ends_with('.vv')) {
-		candidate := os.base(input_path)
-		os.cp(input_path, os.join_path(report_dir, candidate)) or {}
-		if os.is_file(os.join_path(report_dir, candidate)) {
-			source_name = candidate
-		}
+		return input_path
 	}
-	staged := {
-		macos_v3_c_error_source_name_file: source_name
-		macos_v3_c_error_compiler_file:    'v3'
-		macos_v3_c_error_output_file:      'error: the experimental V3 compiler hit an internal compiler error building this program (the stable V compiler built it successfully)'
-		macos_v3_c_error_kind_file:        macos_v3_compiler_error_fallback
-	}
-	for name, value in staged {
-		os.write_file(os.join_path(report_dir, name), value) or {
-			os.rmdir_all(report_dir) or {}
-			return false
-		}
-	}
-	return true
-}
-
-fn take_macos_v3_c_error_report() ?MacosV3CErrorReport {
-	report_dir := os.getenv(macos_v3_c_error_dir_env)
-	// Clear it unconditionally so a stale/hostile value cannot leak into a nested build.
-	os.unsetenv(macos_v3_c_error_dir_env)
-	if report_dir == '' {
-		return none
-	}
-	if report_dir != macos_v3_owned_c_error_report_dir() {
-		// A staged report is read for a bug-report upload and then recursively removed
-		// after a successful build, so it must not be a caller-chosen path. Only trust
-		// the directory this dispatcher staged for THIS process: its name embeds the pid,
-		// which os.execvp preserves across the retry but which a caller cannot know before
-		// launch. Otherwise a stale, inherited, or hostile V_MACOS_V3_C_ERROR_DIR (e.g.
-		// `v -old-compiler main.v` or an inherited V_MACOS_V3_RETRY=1) could make a
-		// successful build disclose a file from, and recursively delete, an arbitrary
-		// directory.
-		return none
-	}
-	return read_macos_v3_c_error_report(report_dir)
+	return ''
 }
 
 fn macos_v3_c_error_report_dir(fallback_file string) string {
 	return fallback_file + '.c_error'
 }
 
-// macos_v3_fallback_file_for_pid names this process's staging file under V's temp dir.
-// The dispatcher creates it before running V3, and the V1 retry — reached via os.execvp,
-// which keeps the pid — derives the same name, so a genuine staged report is bound to the
-// process that produced it.
+// macos_v3_fallback_file_for_pid names this process's scratch staging file under V's temp
+// dir. It is only a working path for this process's own V3 run and retry; it is not used
+// to authenticate anything (see take_macos_v3_report_content).
 fn macos_v3_fallback_file_for_pid() string {
 	return os.join_path(os.vtmp_dir(), 'macos_v3_fallback_${os.getpid()}')
 }
 
-// macos_v3_owned_c_error_report_dir returns the staged-report directory this dispatcher
-// would have created for the current process, used to authenticate V_MACOS_V3_C_ERROR_DIR
-// before its contents are uploaded and the directory is removed.
-fn macos_v3_owned_c_error_report_dir() string {
-	return macos_v3_c_error_report_dir(macos_v3_fallback_file_for_pid())
+// MacosV3StagedReport is the on-disk report a V3 run staged in this process's own scratch
+// directory. Only the owning process reads it (to bound its source into content); it is
+// never reconstructed from an environment-named directory.
+struct MacosV3StagedReport {
+	kind       string
+	ccompiler  string
+	c_output   string
+	c_file     string
+	report_dir string
 }
 
-fn read_macos_v3_c_error_report(report_dir string) ?MacosV3CErrorReport {
+fn read_macos_v3_c_error_report(report_dir string) ?MacosV3StagedReport {
 	ccompiler := os.read_file(os.join_path(report_dir, macos_v3_c_error_compiler_file)) or {
 		return none
 	}
 	c_output := os.read_file(os.join_path(report_dir, macos_v3_c_error_output_file)) or {
 		return none
 	}
-	// The `kind` marker is absent for C-error reports staged by the V3 driver
-	// (empty string -> generated-C compilation error) and set for compiler-error
-	// reports staged by stage_macos_v3_compiler_error_report.
+	// The `kind` marker is absent (empty string -> generated-C compilation error) for the
+	// C-error reports the V3 driver stages; only those are read from disk here.
 	kind :=
 		(os.read_file(os.join_path(report_dir, macos_v3_c_error_kind_file)) or { '' }).trim_space()
 	clean_source_name := (os.read_file(os.join_path(report_dir, macos_v3_c_error_source_name_file)) or {
@@ -364,7 +360,7 @@ fn read_macos_v3_c_error_report(report_dir string) ?MacosV3CErrorReport {
 		// compiler-error report may be notice-only (a directory / non-file build).
 		return none
 	}
-	return MacosV3CErrorReport{
+	return MacosV3StagedReport{
 		kind:       kind
 		ccompiler:  ccompiler.trim_space()
 		c_output:   c_output
