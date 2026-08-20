@@ -44,6 +44,14 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
+        # `make`'s post-bootstrap `v run` helpers (cmd/tools/detect_tcc.v and
+        # .github/problem-matchers/register_all.vsh) are not buildable by V3 yet and
+        # legitimately fall back to V1; without clearing the job-wide no-fallback guard for
+        # this bootstrap step that fallback would become a hard build failure. The canary
+        # and the self-test steps below keep the guard, so V3 is still enforced where it
+        # must build the program.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
       - name: Assert V3 is the default compiler (fail if V1 is silently used)
         run: |
@@ -122,6 +130,14 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
+        # `make`'s post-bootstrap `v run` helpers (cmd/tools/detect_tcc.v and
+        # .github/problem-matchers/register_all.vsh) are not buildable by V3 yet and
+        # legitimately fall back to V1; without clearing the job-wide no-fallback guard for
+        # this bootstrap step that fallback would become a hard build failure. The canary
+        # and the self-test steps below keep the guard, so V3 is still enforced where it
+        # must build the program.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
       - name: Assert V3 is the default compiler (fail if V1 is silently used)
         run: |
@@ -662,6 +678,14 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
+        # `make`'s post-bootstrap `v run` helpers (cmd/tools/detect_tcc.v and
+        # .github/problem-matchers/register_all.vsh) are not buildable by V3 yet and
+        # legitimately fall back to V1; without clearing the job-wide no-fallback guard for
+        # this bootstrap step that fallback would become a hard build failure. The canary
+        # and the self-test steps below keep the guard, so V3 is still enforced where it
+        # must build the program.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
       - name: Assert V3 is the default compiler (fail if V1 is silently used)
         run: |

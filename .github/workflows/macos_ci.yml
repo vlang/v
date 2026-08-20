@@ -56,6 +56,13 @@ jobs:
           restore-keys: |
             brew-${{ matrix.os }}-
       - name: Build V
+        # `make`'s post-bootstrap `v run` helpers (e.g. .github/problem-matchers/
+        # register_all.vsh) are not buildable by V3 yet and legitimately fall back to V1;
+        # without clearing the job-wide no-fallback guard for this bootstrap step that
+        # fallback would become a hard build failure. Later steps keep the guard, so V3 is
+        # still enforced where it must build the program.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
       - name: Pkg-config regressions (Clang, no static executable)
         run: |
