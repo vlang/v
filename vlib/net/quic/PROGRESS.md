@@ -1075,30 +1075,64 @@ fixed the normal way, by running the suite and reading the failure.
 Full `net.quic` suite green throughout, 52/52 files, zero regressions in
 Phases 0-10.
 
-## Phase 12: HTTP/3 client wiring — IN PROGRESS
+## Phase 12: HTTP/3 client wiring — IN PROGRESS (12a/12b/12c done, 12d next)
 
 Sub-scoped into 4 sequential sub-phases within one PR (mirroring Phase 2's
 2a/2b/2c and Phase 9's 9a/9b precedent), each a hard dependency of the
 next:
 
-- **12a** — surgical additions to already-merged Phase 9 code
+- **12a** (done) — surgical additions to already-merged Phase 9 code
   (`conn.v`/`tls13_handshake.v`): a negotiated-ALPN accessor (computed
   during the handshake but previously discarded), a `peer_stream_opened`
   event for peer-initiated stream discovery (careful to avoid a silent
   false-negative under UDP reordering caused by `get_or_create`'s
   RFC 9000 §2.1 sibling-auto-creation behavior), and a
   `stream_recv_status` query. No new files.
-- **12b** — HTTP/3 + QPACK connection wiring, pure `module quic`: `H3Conn`
-  wraps `QuicConn` with control-stream/QPACK-stream driving, the request-
-  stream message-framing state machine (RFC 9114 §4.1), and the
+- **12b** (done) — HTTP/3 + QPACK connection wiring, pure `module quic`:
+  `H3Conn` wraps `QuicConn` with control-stream/QPACK-stream driving, the
+  request-stream message-framing state machine (RFC 9114 §4.1), and the
   previously-entirely-missing blocked-HEADERS retry/re-queue mechanism.
   Fixture-testable with no socket, same style as Phase 9's `conn_test.v`.
-- **12c** — UDP transport + `H3MuxConn` threading, `module http`: first UDP
-  socket code and first background-thread-drives-a-non-thread-safe-
-  `poll()`-state-machine code in the repo. Highest-risk sub-phase.
-- **12d** — `Transport`/`Request`/`Response` integration: `req.enable_http3`
-  opt-in (default `false`, no automatic h2/h1 fallback), a 3rd pool
-  alongside `h1_idle`/`h2_conns`.
+- **12c** (done) — UDP transport + `H3MuxConn` threading, `module http`
+  (`h3_udp_dial.v`, `h3_mux_conn.v`): the repo's first UDP socket code and
+  first background-thread-drives-a-non-thread-safe-`poll()`-state-machine
+  code. This does NOT contradict the "single-threaded, caller-driven event
+  loop" scope decision below -- `net.quic`'s own `QuicConn`/`H3Conn` stay
+  exactly that; `H3MuxConn`'s driver thread is simply THE caller, on the
+  `net.http` side, the same relationship `H2MuxConn`'s own background
+  reader thread already has to the (blocking-transport-shaped) `H2Conn`
+  layer. Needs only ONE lock (`qmu`), not `H2MuxConn`'s wmu/fmu/smu split,
+  because there is exactly one thread that ever touches `h3`/the
+  transport -- request threads queue via `do()`/`PendingH3Request` and
+  block on their own condition variable, mirroring `H2MuxConn.wait_
+  response`'s shape for the response half only; the driver thread alone
+  opens streams and sends. `H3UdpTransport` (mirrors `H2Transport`)
+  decouples the driver from a concrete `net.UdpConn`, letting
+  `h3_mux_conn_test.v` drive a REAL driver thread against an in-memory
+  fake and directly regression-test this sub-phase's own top risk: a
+  request queued by `do()` between one driver loop iteration and the next
+  must not be stranded on `cv.wait()` forever if the connection dies in
+  that exact window (`fail_conn` drains `c.pending`, not just
+  `c.streams`). `Transport` (`transport.v`) gained a third pool
+  (`h3_conns`/`h3_dial_id`) folded into the existing shared idle-eviction
+  scan (`evict_oldest_idle_locked`, `close_idle`) alongside h1/h2 -- the
+  actual h3 dial-and-register call site (which would populate them) is
+  12d's job.
+  Deliberately NOT built: a genuinely reactive fake QUIC server for
+  request/response-level testing -- would mean re-deriving a second
+  QUIC/TLS 1.3 server-role implementation from scratch, since `conn_
+  test.v`'s own fixture-handshake bytes are private, test-file-only
+  helpers with no cross-module export. A manual/documented run against a
+  real `quiche`/`ngtcp2` container (non-CI-blocking) remains the
+  recommended pre-merge check for full wire-level behavior; a shared,
+  exported cross-module fixture helper in `net.quic` is a scoped,
+  worthwhile follow-up, not built inline here.
+- **12d** (next) — `Transport`/`Request`/`Response` integration:
+  `req.enable_http3` opt-in (default `false`, no automatic h2/h1
+  fallback), `h3_client.v` (`H3ClientRequest`/`H3ClientResponse`
+  conversion -- the concrete types themselves already exist, defined in
+  12c's `h3_mux_conn.v` since that is what first needed them to compile),
+  `transport_h3.v` (`h3_round_trip`, singleflight dial).
 
 Two scope decisions made without a response after being flagged for
 sign-off, proceeding with the lower-risk default in each case (revisitable

@@ -395,6 +395,10 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	if evicted.h1 != unsafe { nil } {
 		evicted.h1.close_conn()
 	}
+	if evicted.h3 != unsafe { nil } {
+		evicted.h3.shutdown_when_idle()
+		evicted.h3.release()
+	}
 	if evicted.h2 != unsafe { nil } {
 		evicted.h2.shutdown_when_idle()
 		evicted.h2.release()
