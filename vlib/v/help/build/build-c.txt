@@ -18,8 +18,11 @@ see also `v help build`.
       `-old-compiler` bypasses it and compiles with the established compiler in
       vlib/v. V already falls back to this compiler automatically when V3 cannot
       build an eligible program, and (unless V_C_ERROR_BUG_REPORT_DISABLED=1 is
-      set) reports the failing V source to https://bugs.vlang.io so the gap can
-      be fixed. See `v help build` for the full description of the default.
+      set) reports the failure to https://bugs.vlang.io so the gap can be fixed:
+      the V version, target and build options, plus a bounded snippet of the
+      failing V source when one is available. Short programs and directory builds
+      such as `v .` submit metadata only, and the whole file is never uploaded.
+      See `v help build` for the full description of the default.
 
    -cflags <flag>
       Pass the provided flag as is to the C compiler.
