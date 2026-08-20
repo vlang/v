@@ -235,6 +235,14 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 	return report
 }
 
+// cleanup_external_v3_report removes a staged V3->V1 fallback report directory
+// without submitting it. Build backends that cannot consume the report — e.g. the
+// removed eval backend, whose retry exits immediately — call this so the copied
+// source and report directory are not left behind under the temporary directory.
+pub fn cleanup_external_v3_report(report_dir string) {
+	cleanup_external_c_error_report(report_dir)
+}
+
 // submit_external_v3_compiler_error_bug_report reports a V3 internal compiler error
 // after the stable compiler has confirmed the program is buildable. `v_file` is the
 // user's input V source and `v3_output` a short description of the failure.
@@ -304,7 +312,15 @@ fn v3_report_v_source(source string) string {
 	head := lines[..c_error_v_source_radius].join('\n')
 	tail := lines[lines.len - c_error_v_source_radius..].join('\n')
 	snippet := '${head}\n${c_error_v_source_truncation_notice}\n${tail}'
-	return bounded_v_source(snippet, c_error_bug_report_max_v_source_bytes, 0)
+	bounded := bounded_v_source(snippet, c_error_bug_report_max_v_source_bytes, 0)
+	if v_source_and_context_expose_whole_file(bounded, []CErrorReportLine{}, lines) {
+		// The dropped middle lines were all blank, so head+tail together still expose
+		// every nonblank source line and reconstruct the file. Apply the same
+		// nonblank-line coverage check as the combined C-error payload and send no
+		// source rather than the whole program (doc/docs.md).
+		return ''
+	}
+	return bounded
 }
 
 // v_source_is_whole_file reports whether the selected excerpt is the entire mapped

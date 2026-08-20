@@ -393,6 +393,14 @@ fn test_v3_report_v_source_bounds_large_files() {
 	assert snippet.contains('fn f${4 * c_error_v_source_radius - 1}() ') // tail kept
 	assert !snippet.contains('fn f${2 * c_error_v_source_radius}() ') // middle dropped
 	assert snippet.split_into_lines().len <= 2 * c_error_v_source_radius + 3
+	// A program just over the window whose only dropped (middle) line is blank still
+	// exposes every nonblank line via head+tail, so no source is uploaded even though
+	// the file is over 80 lines (PR #28131 review).
+	mut blank_middle := []string{}
+	for i in 0 .. 2 * c_error_v_source_radius + 1 {
+		blank_middle << if i == c_error_v_source_radius { '' } else { 'fn g${i}() {}' }
+	}
+	assert v3_report_v_source(blank_middle.join('\n')) == ''
 }
 
 fn test_selected_v_source_only_uploads_mapped_v_source_chunk() {
