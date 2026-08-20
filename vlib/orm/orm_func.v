@@ -1934,11 +1934,13 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 }
 
 fn (qb_ &QueryBuilder[T]) ensure_primary_key_for_includes() ! {
-	if qb_.include_paths.len == 0 || qb_.config.fields.len == 0 {
+	if qb_.include_paths.len == 0 {
 		return
 	}
-	primary := find_save_primary_field_name(qb_.meta) or { return }
-	if primary in qb_.config.fields {
+	primary := find_save_primary_field_name(qb_.meta) or {
+		return error('${@FN}(): `include` requires table `${qb_.config.table.name}` to have a `@[primary]` or `id` field')
+	}
+	if qb_.config.fields.len == 0 || primary in qb_.config.fields {
 		return
 	}
 	if qb_.config.has_distinct {

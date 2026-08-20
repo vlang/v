@@ -119,6 +119,40 @@ struct IncludeShadowBeta {
 	name      string
 }
 
+@[table: 'orm_include_keyless_roots']
+struct IncludeKeylessRoot {
+	code     string
+	children []IncludeKeylessChild @[fkey: 'root_code']
+}
+
+@[table: 'orm_include_keyless_children']
+struct IncludeKeylessChild {
+	id        int @[primary; sql: serial]
+	root_code string
+	name      string
+}
+
+@[table: 'orm_include_keyed_roots']
+struct IncludeKeyedRoot {
+	id       int @[primary; sql: serial]
+	name     string
+	children []IncludeKeylessMiddle @[fkey: 'root_id']
+}
+
+@[table: 'orm_include_keyless_middles']
+struct IncludeKeylessMiddle {
+	root_id   int
+	label     string
+	grandkids []IncludeKeylessLeaf @[fkey: 'middle_label']
+}
+
+@[table: 'orm_include_keyless_leaves']
+struct IncludeKeylessLeaf {
+	id           int @[primary; sql: serial]
+	middle_label string
+	name         string
+}
+
 fn new_include_database() !sqlite.DB {
 	mut db := sqlite.connect(':memory:')!
 	mut parents := orm.new_query[IncludeParent](db)
@@ -785,4 +819,61 @@ fn test_include_prefers_the_v_field_name_over_another_fields_alias() {
 	assert aliased[0].alpha.len == 1
 	assert aliased[0].alpha[0].name == 'alpha'
 	assert aliased[0].beta.len == 0
+}
+
+fn test_include_requires_a_hydration_key_on_the_root() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	mut roots := orm.new_query[IncludeKeylessRoot](db)
+	mut children := orm.new_query[IncludeKeylessChild](db)
+	roots.create()!
+	children.create()!
+	roots.insert(IncludeKeylessRoot{
+		code: 'root'
+	})!
+	children.insert(IncludeKeylessChild{
+		root_code: 'root'
+		name:      'child'
+	})!
+
+	if _ := roots.include('children')!.query() {
+		assert false
+	} else {
+		assert err.msg().contains('orm_include_keyless_roots')
+		assert err.msg().contains('`@[primary]` or `id` field')
+	}
+}
+
+fn test_then_include_requires_a_hydration_key_on_intermediate_relationships() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	mut roots := orm.new_query[IncludeKeyedRoot](db)
+	mut middles := orm.new_query[IncludeKeylessMiddle](db)
+	mut leaves := orm.new_query[IncludeKeylessLeaf](db)
+	roots.create()!
+	middles.create()!
+	leaves.create()!
+	roots.insert(IncludeKeyedRoot{
+		name: 'root'
+	})!
+	root_id := roots.last_id()
+	middles.insert(IncludeKeylessMiddle{
+		root_id: root_id
+		label:   'middle'
+	})!
+	leaves.insert(IncludeKeylessLeaf{
+		middle_label: 'middle'
+		name:         'leaf'
+	})!
+
+	if _ := roots.include('children')!.then_include('grandkids')!.query() {
+		assert false
+	} else {
+		assert err.msg().contains('orm_include_keyless_middles')
+		assert err.msg().contains('`@[primary]` or `id` field')
+	}
 }
