@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "issue-projection.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "owner_repository",
+    "os",
+    "marker_hash",
+    "title",
+    "entries",
+    "should_be_open"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "owner_repository": {"type": "string", "enum": ["vlang/v", "vlang/tccbin"]},
+    "os": {"$ref": "common.schema.json#/$defs/os_family"},
+    "marker_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 256},
+    "entries": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "abi",
+          "target_id",
+          "architecture",
+          "component",
+          "failure_class",
+          "status",
+          "diagnostics"
+        ],
+        "properties": {
+          "abi": {"type": "string", "minLength": 1, "maxLength": 32},
+          "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+          "architecture": {"type": "string", "minLength": 1, "maxLength": 32},
+          "component": {"type": "string", "minLength": 1, "maxLength": 128},
+          "failure_class": {
+            "type": "string",
+            "enum": [
+              "patch-probe-failed",
+              "payload-review-required",
+              "manifest-invalid",
+              "native-build-failed",
+              "v-smoke-failed",
+              "required-lane-missing",
+              "ci-infrastructure-exhausted",
+              "control-plane-failed",
+              "ownership-ambiguous"
+            ]
+          },
+          "status": {"type": "string", "enum": ["active", "validating", "waiting_for_source", "resolved_bot", "waived"]},
+          "diagnostics": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 256,
+            "uniqueItems": true,
+            "items": {"$ref": "diagnostic.schema.json"}
+          }
+        }
+      }
+    },
+    "should_be_open": {"type": "boolean"}
+  }
+}

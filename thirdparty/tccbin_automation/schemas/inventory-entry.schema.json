@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "inventory-entry.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "path",
+    "kind",
+    "git_mode",
+    "sha256",
+    "provenance",
+    "role",
+    "opaque",
+    "opaque_acceptance_id",
+    "format",
+    "object_type",
+    "machine",
+    "os_abi"
+  ],
+  "properties": {
+    "path": {"$ref": "common.schema.json#/$defs/relative_path"},
+    "kind": {"type": "string", "enum": ["file", "executable", "symlink"]},
+    "git_mode": {"$ref": "common.schema.json#/$defs/git_mode"},
+    "sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+    "symlink_target": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/symlink_target"}
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "repository", "sha", "source_path", "license"],
+      "properties": {
+        "status": {"type": "string", "enum": ["complete", "incomplete"]},
+        "repository": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/repository"}
+          ]
+        },
+        "sha": {"$ref": "common.schema.json#/$defs/nullable_sha40"},
+        "source_path": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/relative_path"}
+          ]
+        },
+        "license": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1}]}
+      }
+    },
+    "role": {"type": "string", "minLength": 1, "maxLength": 128},
+    "opaque": {"type": "boolean"},
+    "opaque_acceptance_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "const": "windows-amd64-openlibm-v1"}
+      ]
+    },
+    "format": {
+      "oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 128}]
+    },
+    "object_type": {
+      "oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 64}]
+    },
+    "machine": {
+      "oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 64}]
+    },
+    "os_abi": {
+      "oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 64}]
+    }
+  }
+}

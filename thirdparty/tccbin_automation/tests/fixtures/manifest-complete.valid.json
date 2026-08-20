@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "contract_version": 1,
+  "contract_repository": "GGRei/v",
+  "contract_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "contract_mode": "fork-dry-run",
+  "v_source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "target_id": "linux-amd64",
+  "branch": "thirdparty-linux-amd64",
+  "sources": [
+    {
+      "id": "tinycc",
+      "repository": "https://repo.or.cz/tinycc.git",
+      "ref": "mob",
+      "sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "tree": "dddddddddddddddddddddddddddddddddddddddd"
+    },
+    {
+      "id": "bdwgc",
+      "repository": "https://github.com/ivmai/bdwgc.git",
+      "ref": "master",
+      "sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "tree": "ffffffffffffffffffffffffffffffffffffffff"
+    }
+  ],
+  "recipe": {
+    "path": "build.sh",
+    "version": 1,
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "toolchain": {
+    "profile_id": null,
+    "profile_sha256": null,
+    "producer_observation": null
+  },
+  "patches": [],
+  "transforms": [],
+  "header_effects": [],
+  "integrations": [],
+  "overlays": [],
+  "inventory": [
+    {
+      "path": "src/tcc.c",
+      "kind": "file",
+      "git_mode": "100644",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "symlink_target": null,
+      "provenance": {
+        "status": "complete",
+        "repository": "TinyCC/tinycc",
+        "sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "source_path": "tcc.c",
+        "license": "LGPL-2.1-or-later"
+      },
+      "role": "compiler-source",
+      "opaque": false,
+      "opaque_acceptance_id": null,
+      "format": null,
+      "object_type": null,
+      "machine": null,
+      "os_abi": null
+    }
+  ],
+  "outputs": [
+    {
+      "path": "tcc.exe",
+      "kind": "executable",
+      "git_mode": "100755",
+      "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "symlink_target": null,
+      "provenance": {
+        "status": "complete",
+        "repository": "TinyCC/tinycc",
+        "sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "source_path": "tcc.c",
+        "license": "LGPL-2.1-or-later"
+      },
+      "role": "native-compiler",
+      "opaque": false,
+      "opaque_acceptance_id": null,
+      "format": null,
+      "object_type": null,
+      "machine": null,
+      "os_abi": null
+    }
+  ],
+  "probes": [
+    {"id": "manifest-contract", "required": true, "expected_lanes": ["native"], "oracle": "strict schema and semantic validation"},
+    {"id": "source-provenance", "required": true, "expected_lanes": ["native"], "oracle": "all inputs have complete provenance"},
+    {"id": "native-build", "required": true, "expected_lanes": ["native"], "oracle": "native build succeeds"},
+    {"id": "payload-inventory", "required": true, "expected_lanes": ["native"], "oracle": "manifest and staging inventory match"},
+    {"id": "patch-probes", "required": true, "expected_lanes": [], "oracle": "empty patchset produces expected zero lanes"},
+    {"id": "tccbin-conformance", "required": true, "expected_lanes": ["native"], "oracle": "shared conformance passes"},
+    {"id": "v-no-fallback-smoke", "required": true, "expected_lanes": ["native"], "oracle": "V uses the candidate without fallback"},
+    {"id": "artifact-digests", "required": true, "expected_lanes": ["native"], "oracle": "all output digests match"},
+    {"id": "publish-preflight-dry-run", "required": true, "expected_lanes": ["native"], "oracle": "publication preflight is simulated only"}
+  ],
+  "provenance_status": "incomplete",
+  "affected_targets": ["linux-amd64"]
+}

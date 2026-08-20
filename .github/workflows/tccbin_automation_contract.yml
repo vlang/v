@@ -1,0 +1,71 @@
+name: TCC bundle automation contract
+
+on:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tccbin-automation-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-worker:
+    name: Contract worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the tested revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build the local compiler
+        run: |
+          make
+          ./v -o ./vnew cmd/v
+      - name: Validate schemas, fixtures, and pure control-plane models
+        run: |
+          ./vnew -silent test thirdparty/tccbin_automation/tests/
+          ./vnew run thirdparty/tccbin_automation/bin/cmd contract
+
+  contract:
+    name: tccbin-automation-contract
+    needs: contract-worker
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require an exact successful worker result
+        env:
+          WORKER_RESULT: ${{ needs.contract-worker.result }}
+        run: test "$WORKER_RESULT" = success
+
+  dry-run-worker:
+    name: Dry-run worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the tested revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build the local compiler
+        run: |
+          make
+          ./v -o ./vnew cmd/v
+      - name: Exercise the no-write execution path
+        run: ./vnew run thirdparty/tccbin_automation/bin/cmd dry-run
+
+  dry-run:
+    name: tccbin-automation-dry-run
+    needs: dry-run-worker
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require an exact successful worker result
+        env:
+          WORKER_RESULT: ${{ needs.dry-run-worker.result }}
+        run: test "$WORKER_RESULT" = success
