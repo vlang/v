@@ -1454,6 +1454,10 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 }
 ')!
 		mut environment := os.environ()
+		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
+		// guard that CI sets for runner compilation — otherwise V3 exits at the failure
+		// instead of retrying and the fallback never happens (PR #28131 review).
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['GITHUB_ACTIONS'] = 'true'
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
 		environment['VFLAGS'] = ''
@@ -1586,6 +1590,10 @@ fn main() {
 }
 ')!
 		mut environment := os.environ()
+		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
+		// guard that CI sets for runner compilation — otherwise V3 exits at the failure
+		// instead of retrying and the fallback never happens (PR #28131 review).
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
 		// Unroutable endpoint: the submission attempt fails fast, so the test never
 		// contacts the real bug server while still exercising the report path.
@@ -1651,6 +1659,10 @@ fn main() {
 ')!
 		output := os.join_path(root, 'app_bin')
 		mut environment := os.environ()
+		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
+		// guard that CI sets for runner compilation — otherwise V3 exits at the failure
+		// instead of retrying and the fallback never happens (PR #28131 review).
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
 		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
 		environment['VFLAGS'] = ''
