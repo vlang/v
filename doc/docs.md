@@ -107,12 +107,13 @@ embedded in your `v`).
 To help close the remaining gaps, a successful fallback (V3 fails to build a
 program that the established compiler then builds) submits the V version, target
 OS/arch, and build options to `https://bugs.vlang.io`. The report also includes a
-*bounded* excerpt of the failing V source **only when the program is large enough
-that the excerpt is a strict subset** — a head+tail window with the middle
-dropped. The whole file is never uploaded, and short programs contribute no source
-at all, since even a small file could contain unrelated private code. Reporting is
-skipped in GitHub CI, and you can turn it off entirely by setting the environment
-variable `V_C_ERROR_BUG_REPORT_DISABLED=1`.
+*bounded* excerpt of the failing V source — a window around the failure, or a
+head+tail window — **only when the program is large enough that the excerpt is a
+strict subset of the file**. The whole file is never uploaded. Short programs, and
+directory builds like `v .`, contribute no source at all (only the metadata above),
+since even a small file could contain unrelated private code. Reporting is skipped
+in GitHub CI, and you can turn it off entirely by setting the environment variable
+`V_C_ERROR_BUG_REPORT_DISABLED=1`.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
