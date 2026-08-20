@@ -271,6 +271,14 @@ fn v_source_is_whole_file(selected string, full_source string) bool {
 	return selected != '' && selected.split_into_lines() == full_source.split_into_lines()
 }
 
+// v_context_covers_whole_file reports whether the numbered context window spans
+// every line of the mapped file. numbered_context_lines returns a contiguous
+// window, so covering the whole file means it holds as many lines as the file has.
+// Used to keep the v_context payload within the doc/docs.md strict-subset guarantee.
+fn v_context_covers_whole_file(context []CErrorReportLine, mapped_lines []string) bool {
+	return mapped_lines.len > 0 && context.len == mapped_lines.len
+}
+
 // print_v3_fallback_notice explains, in plain language, that V3 could not build the
 // program so the stable compiler was used instead. `submitted` selects whether a bug
 // report was actually filed; `report_url` is where it went (empty when not filed).
@@ -323,6 +331,7 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// `v_context` shows the lines of whatever file the C error maps to (which can be an
 	// included header, not V source).
 	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
+	mapped_lines := mapped_source.split_into_lines()
 	// Prefer a self-contained reproducer (the failing declaration plus the closure of the user
 	// declarations it references). It already keeps itself within the byte budget, returning ''
 	// when it cannot, so it is uploaded verbatim; otherwise fall back to a plain source window.
@@ -330,13 +339,19 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	mut v_source := if repro != '' {
 		repro
 	} else {
-		v_chunk := selected_v_source(v_file, mapped_source.split_into_lines(), v_line)
+		v_chunk := selected_v_source(v_file, mapped_lines, v_line)
 		bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes, v_chunk.focus)
 	}
 	if v_source_is_whole_file(v_source, mapped_source) {
 		// Strict-subset rule (doc/docs.md): a short mapped file makes the window or
 		// reproducer cover the entire file, so drop it rather than upload it whole.
 		v_source = ''
+	}
+	// v_context is a separate uploaded payload; for a short mapped file its radius
+	// window can also span every line, so apply the same strict-subset rule to it.
+	mut v_context := numbered_context_lines(mapped_lines, v_line, c_error_context_radius)
+	if v_context_covers_whole_file(v_context, mapped_lines) {
+		v_context = []CErrorReportLine{}
 	}
 	return CErrorBugReport{
 		kind:           'v-c-compiler-error'
@@ -352,8 +367,7 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		c_context:      numbered_context_lines(c_lines, c_line, c_error_context_radius)
 		v_file:         v_file
 		v_line:         v_line
-		v_context:      numbered_context_lines(mapped_source.split_into_lines(), v_line,
-			c_error_context_radius)
+		v_context:      v_context
 		v_source:       v_source
 	}
 }

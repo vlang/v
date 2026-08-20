@@ -260,6 +260,24 @@ fn test_v_source_is_whole_file_detects_full_coverage() {
 	assert !v_source_is_whole_file('', full) // an already-empty excerpt is not "whole"
 }
 
+fn test_v_context_covers_whole_file_detects_full_coverage() {
+	// A short mapped file: the radius window around a middle line spans every line,
+	// so v_context would leak the whole file and must be cleared (PR #28131 review).
+	short := ['a', 'b', 'c']
+	assert v_context_covers_whole_file(numbered_context_lines(short, 2, c_error_context_radius),
+		short)
+	// A larger file: the window is a strict subset and is kept.
+	mut long := []string{}
+	for i in 1 .. 40 {
+		long << 'line_${i}'
+	}
+	ctx := numbered_context_lines(long, 20, c_error_context_radius)
+	assert ctx.len < long.len
+	assert !v_context_covers_whole_file(ctx, long)
+	// An empty context (no mapped line) is not "whole file".
+	assert !v_context_covers_whole_file([]CErrorReportLine{}, short)
+}
+
 fn test_v3_report_v_source_bounds_large_files() {
 	// A program at or below the window (2 * c_error_v_source_radius lines) cannot be
 	// reduced to a strict subset, so no source is uploaded for it at all — the whole
