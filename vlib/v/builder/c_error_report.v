@@ -163,6 +163,14 @@ fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output
 // another compiler implementation after the established compiler has confirmed the build.
 pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c_output string, c_file string, tag string) {
 	if !c_error_should_send_bug_report(c_output) {
+		// These diagnostics are not eligible for automatic submission (e.g. a
+		// missing library or missing libatomic), but V3 still fell back to the
+		// stable compiler, so the user must be told about the fallback regardless.
+		// `submit_c_error_bug_report_with_tag` would normally emit this, but the
+		// filter returns before reaching it. A non-empty tag marks the V3 fallback.
+		if tag != '' {
+			print_v3_fallback_notice('', false)
+		}
 		return
 	}
 	mut b := new_builder(prefs)
