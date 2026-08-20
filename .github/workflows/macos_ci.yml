@@ -41,6 +41,11 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+      # V3 is the default compiler on macOS; disable the V3->V1 fallback for the
+      # whole job so a V3 regression fails CI directly — including when it stops
+      # ci/macos_ci.vsh itself (compiled by `v run`) from building. The setenv at
+      # the end of that script is too late to guard its own compilation.
+      V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - name: Cache Homebrew downloads
