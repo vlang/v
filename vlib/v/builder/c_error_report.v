@@ -332,9 +332,13 @@ fn bounded_v_source_for_generated_c(c_output string, generated_c_file string) (s
 	mapped_lines := mapped_source.split_into_lines()
 	chunk := selected_v_source(v_file, mapped_lines, v_line)
 	mut v_source := bounded_v_source(chunk.text, c_error_bug_report_max_v_source_bytes, chunk.focus)
-	if v_source_is_whole_file(v_source, mapped_source) {
+	if v_source_is_whole_file(v_source, mapped_source)
+		|| v_source_and_context_expose_whole_file(v_source, []CErrorReportLine{}, mapped_lines) {
 		// Strict-subset rule (doc/docs.md): a short mapped file makes the window cover the
-		// whole file, so drop it rather than upload it whole.
+		// whole file. Exact line-array equality misses a window that omits only
+		// whitespace-only lines yet still exposes every nonblank source line, so apply the
+		// nonblank-line coverage check as well and drop the excerpt rather than upload the
+		// whole program.
 		v_source = ''
 	}
 	return os.base(v_file), v_source

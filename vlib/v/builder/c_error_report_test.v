@@ -615,6 +615,33 @@ fn test_bounded_v3_fallback_source_maps_generated_c_error() {
 	assert v_source.contains('fn f100()')
 }
 
+fn test_bounded_v3_fallback_source_rejects_nonblank_whole_file_generated_c() {
+	// A generated-C error mapping near line 40 of an 81-line file whose omitted final line
+	// is only whitespace: the window (lines 1..80) covers every nonblank line, so exact
+	// line-array equality misses it but the nonblank coverage check must still drop the
+	// excerpt rather than upload the whole program (doc/docs.md, PR #28131 review).
+	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_nonblank_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	v_path := os.join_path(dir, 'source.v')
+	mut lines := []string{}
+	for i in 0 .. 80 {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	// 80 substantive lines plus a whitespace-only final line (81 lines total).
+	os.write_file(v_path, lines.join('\n') + '\n   ')!
+	generated_c := os.join_path(dir, 'program.tmp.c')
+	os.write_file(generated_c, '#line 40 "${v_path}"\nint b = missing;\n')!
+	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c)
+	assert v_file == 'source.v'
+	// The mapped window exposes every nonblank line, so no source is uploaded.
+	assert v_source == '', v_source
+}
+
 fn test_generated_c_reset_line_is_not_reported_as_v_source() {
 	c_lines := [
 		'#line 40 "/tmp/program.tmp.c"',
