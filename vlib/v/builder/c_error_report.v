@@ -204,10 +204,12 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 		return
 	}
 	build_options := c_error_report_build_options(v.pref, tag)
-	// Upload a bounded chunk of the input source (never the whole file, which could
-	// hold proprietary code or secrets), mirroring the C-error report path.
+	// A V3 internal failure has no mapped failing line to center a window on, so
+	// only a bounded head+tail window of the source is uploaded (never the whole
+	// file, which could hold unrelated proprietary code or secrets), mirroring the
+	// C-error report path. See the privacy note in doc/docs.md.
 	source := os.read_file(v_file) or { '' }
-	v_source := bounded_v_source(source, c_error_bug_report_max_v_source_bytes, 0)
+	v_source := v3_report_v_source(source)
 	raw_report := CErrorBugReport{
 		kind:           'v3-compiler-error'
 		v_version:      version.full_v_version(true)
@@ -234,6 +236,24 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 	}
 	println('V ${report.v_version}, ${report.target_os}/${report.arch}, build options: ${report.build_options}')
 	println('='.repeat('================== V3 compiler bug report =============='.len))
+}
+
+// v3_report_v_source returns the bounded V source snippet uploaded for an internal
+// V3 failure. A C error maps to a failing line, so its window is centered there
+// (see selected_v_source); a V3 internal failure has no such line, so a bounded
+// head+tail window of whole lines is kept instead — the leading declarations plus
+// the trailing code, where the failure usually is. A program larger than the
+// window (2 * c_error_v_source_radius lines) is therefore never uploaded whole
+// (see the privacy note in doc/docs.md).
+fn v3_report_v_source(source string) string {
+	lines := source.split_into_lines()
+	if lines.len <= 2 * c_error_v_source_radius {
+		return bounded_v_source(source, c_error_bug_report_max_v_source_bytes, 0)
+	}
+	head := lines[..c_error_v_source_radius].join('\n')
+	tail := lines[lines.len - c_error_v_source_radius..].join('\n')
+	snippet := '${head}\n${c_error_v_source_truncation_notice}\n${tail}'
+	return bounded_v_source(snippet, c_error_bug_report_max_v_source_bytes, 0)
 }
 
 // print_v3_fallback_notice explains, in plain language, that V3 could not build the
