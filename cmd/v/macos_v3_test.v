@@ -1679,58 +1679,135 @@ fn main() {
 	}
 }
 
-// End-to-end (failed syntax check): a `-check-syntax` run on invalid source that
-// carries a staged V3 fallback report must not claim the stable compiler built it.
-// `-silent` keeps output_mode off `.stdout`, so the frontend does not exit early and
-// the C backend callback returns normally after the parser; the stable compiler's
-// rejection then only surfaces in exit_on_invalid_syntax. That check must run before
-// the report is consumed, so the report is neither submitted nor its success notice
-// printed, and the staged report directory is cleaned up (PR #28131 review feedback).
-fn test_macos_v3_fallback_report_skipped_when_syntax_check_fails() {
+fn stage_macos_v3_c_error_files(dir string, source_name string) {
+	os.write_file(os.join_path(dir, macos_v3_c_error_compiler_file), 'v3') or { panic(err) }
+	os.write_file(os.join_path(dir, macos_v3_c_error_output_file), 'error: internal compiler error') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(dir, macos_v3_c_error_kind_file), macos_v3_compiler_error_fallback) or {
+		panic(err)
+	}
+	if source_name != '' {
+		os.write_file(os.join_path(dir, macos_v3_c_error_source_name_file), source_name) or {
+			panic(err)
+		}
+		os.write_file(os.join_path(dir, source_name), 'fn main() {}\n') or { panic(err) }
+	}
+}
+
+// Unit-level provenance check (PR #28131 review): take_macos_v3_c_error_report accepts
+// only the directory this process would itself have staged (its name embeds the pid,
+// preserved across the retry's execvp), so a caller-chosen V_MACOS_V3_C_ERROR_DIR — even
+// one holding a perfectly well-formed report — is rejected before its contents are
+// uploaded and the directory is removed.
+fn test_take_macos_v3_c_error_report_requires_owned_directory() {
 	$if macos || linux {
-		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_check_syntax_${os.getpid()}')
+		os.unsetenv(macos_v3_c_error_dir_env)
+		unowned := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_take_unowned_${os.getpid()}')
+		os.rmdir_all(unowned) or {}
+		os.mkdir_all(unowned) or { panic(err) }
+		defer {
+			os.rmdir_all(unowned) or {}
+		}
+		stage_macos_v3_c_error_files(unowned, 'main.v')
+		os.setenv(macos_v3_c_error_dir_env, unowned, true)
+		if _ := take_macos_v3_c_error_report() {
+			assert false, 'a caller-chosen V_MACOS_V3_C_ERROR_DIR must be rejected'
+		}
+		// The variable is cleared even when the report is rejected.
+		assert os.getenv(macos_v3_c_error_dir_env) == ''
+
+		// The dispatcher's own staging directory for this process is honored: execvp keeps
+		// the pid, so in a real retry this equals the directory that was staged.
+		owned := macos_v3_owned_c_error_report_dir()
+		os.rmdir_all(owned) or {}
+		os.mkdir_all(owned) or { panic(err) }
+		defer {
+			os.rmdir_all(owned) or {}
+		}
+		stage_macos_v3_c_error_files(owned, 'main.v')
+		os.setenv(macos_v3_c_error_dir_env, owned, true)
+		report := take_macos_v3_c_error_report() or {
+			assert false, 'the dispatcher-owned staged report must be accepted'
+			return
+		}
+		assert report.report_dir == owned
+		assert report.kind == macos_v3_compiler_error_fallback
+		assert os.base(report.c_file) == 'main.v'
+	}
+}
+
+// Provenance guard (PR #28131 review): a staged C-error report is uploaded and then
+// recursively removed after a successful build, so a caller-supplied
+// V_MACOS_V3_C_ERROR_DIR must never be trusted. Both entry points that consume it —
+// an explicit `-old-compiler` and an inherited `V_MACOS_V3_RETRY=1` — must ignore a
+// well-formed report placed at a caller-chosen directory, so the build neither uploads
+// a file from nor deletes that directory. Only the dispatcher's own pid-named staging
+// directory (which os.execvp preserves across the retry, but a caller cannot predict)
+// is honored.
+fn test_macos_v3_c_error_report_rejects_unowned_directory() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_unowned_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root) or { panic(err) }
 		defer {
 			os.rmdir_all(root) or {}
 		}
-		source := os.join_path(root, 'bad.v')
-		os.write_file(source, 'fn main( {\n}\n')!
-		// Stage a compiler-error fallback report, mirroring the layout that
-		// stage_macos_v3_compiler_error_report writes for the V1 retry to consume.
-		report_dir := os.join_path(root, 'report')
-		os.mkdir_all(report_dir) or { panic(err) }
-		os.cp(source, os.join_path(report_dir, 'bad.v'))!
-		os.write_file(os.join_path(report_dir, 'compiler'), 'v3')!
-		os.write_file(os.join_path(report_dir, 'output'),
-			'error: the experimental V3 compiler hit an internal compiler error building this program (the stable V compiler built it successfully)')!
-		os.write_file(os.join_path(report_dir, 'kind'), 'compiler_error')!
-		os.write_file(os.join_path(report_dir, 'source_name'), 'bad.v')!
-		mut environment := os.environ()
-		// Force the V1 retry to pick up the staged report without re-dispatching to V3.
-		environment['V_MACOS_V3_RETRY'] = '1'
-		environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
-		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
-		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
-		environment['VFLAGS'] = ''
-		environment['VOSARGS'] = ''
-		mut process := os.new_process(@VEXE)
-		process.set_args(['-check-syntax', '-silent', source])
-		process.set_environment(environment)
-		process.set_redirect_stdio()
-		process.run()
-		process.wait()
-		output := process.stdout_slurp() + process.stderr_slurp()
-		exit_code := process.code
-		process.close()
-		// The invalid program is rejected by the stable syntax check.
-		assert exit_code == 1, output
-		// Neither compiler accepted it, so no success notice and no bug report
-		// (neither a submitted one nor a failed-to-send message) may appear.
-		assert !output.contains('could not build this program'), output
-		assert !output.contains('bug report'), output
-		// The staged report directory is removed rather than left behind.
-		assert !os.exists(report_dir), report_dir
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, 'fn main() { println(21 * 2) }\n')!
+		// A directory the dispatcher never staged, holding a well-formed compiler-error
+		// report (so only provenance, not a parse failure, can reject it) plus an
+		// unrelated file that must survive.
+		victim := os.join_path(root, 'victim')
+		os.mkdir_all(victim) or { panic(err) }
+		secret := os.join_path(victim, 'secret.txt')
+		os.write_file(secret, 'top secret')!
+		os.cp(source, os.join_path(victim, 'main.v'))!
+		os.write_file(os.join_path(victim, 'compiler'), 'v3')!
+		os.write_file(os.join_path(victim, 'output'),
+			'error: the experimental V3 compiler hit an internal compiler error building this program')!
+		os.write_file(os.join_path(victim, 'kind'), 'compiler_error')!
+		os.write_file(os.join_path(victim, 'source_name'), 'main.v')!
+		// Both consuming entry points must reject the caller-named directory.
+		entry_points := [
+			['-old-compiler', '-gc', 'none'], // the `-old-compiler` path
+			['-gc', 'none'], // reached with an inherited V_MACOS_V3_RETRY=1
+		]
+		for i, leading in entry_points {
+			output := os.join_path(root, 'main_bin_${i}')
+			os.rm(output) or {}
+			mut environment := os.environ()
+			environment['V_MACOS_V3_C_ERROR_DIR'] = victim
+			environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
+			environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+			environment['VFLAGS'] = ''
+			environment['VOSARGS'] = ''
+			if i == 1 {
+				environment['V_MACOS_V3_RETRY'] = '1'
+			} else {
+				environment.delete('V_MACOS_V3_RETRY')
+			}
+			mut args := leading.clone()
+			args << ['-o', output, source]
+			mut process := os.new_process(@VEXE)
+			process.set_args(args)
+			process.set_environment(environment)
+			process.set_redirect_stdio()
+			process.run()
+			process.wait()
+			out := process.stdout_slurp() + process.stderr_slurp()
+			exit_code := process.code
+			process.close()
+			// The build succeeds on the established compiler, but the injected report is
+			// not consumed: no fallback notice, no bug report submission attempt.
+			assert exit_code == 0, out
+			assert !out.contains('could not build this program'), out
+			assert !out.contains('bug report'), out
+			// The caller-named directory and its unrelated file are left untouched.
+			assert os.is_dir(victim), out
+			assert os.is_file(secret), out
+			assert os.is_file(os.join_path(victim, 'main.v')), out
+		}
 	}
 }
 
