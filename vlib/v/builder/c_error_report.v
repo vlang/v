@@ -18,6 +18,13 @@ const c_error_v_source_truncation_notice = '// ... v_source truncated for the bu
 const c_error_bug_report_max_body_bytes = 256 * 1024
 const c_error_bug_report_max_v_source_bytes = 64 * 1024
 const c_error_bug_report_truncation_notice = '\n... report truncated before upload ...\n'
+// The largest C diagnostic forwarded through a single V_MACOS_V3_REPORT_* environment
+// variable during the V3->V1 handoff. A single exec argument/environment string is capped
+// near 128 KiB on Linux (MAX_ARG_STRLEN), so a huge template/generated-code diagnostic
+// must be truncated here or the os.execvp retry fails with E2BIG and defeats the
+// compatibility fallback. The final upload is separately bounded by
+// c_error_bug_report_max_body_bytes.
+const c_error_bug_report_max_env_c_output_bytes = 64 * 1024
 
 struct CErrorReportLine {
 pub:
@@ -142,10 +149,17 @@ fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output
 			raw_report = vlines_report
 		}
 	}
-	raw_report = CErrorBugReport{
+	v.send_prepared_c_error_bug_report(CErrorBugReport{
 		...raw_report
 		build_options: build_options
-	}
+	}, tag)
+}
+
+// send_prepared_c_error_bug_report bounds and submits an already-built C-compiler bug
+// report, then — for a V3 fallback (non-empty tag) — prints the fallback notice relative
+// to the send outcome. Callers must have already confirmed should_submit_c_error_bug_report.
+fn (mut v Builder) send_prepared_c_error_bug_report(raw_report CErrorBugReport, tag string) {
+	is_v3_fallback := tag != ''
 	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
 	tool_output := send_c_error_bug_report(report, report_url) or {
@@ -193,12 +207,19 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 		cleanup_external_c_error_report(report.cleanup_dir)
 	}
 	if report.source_inline {
-		// The report carries its already-bounded source as content — for both V3 internal
-		// errors and generated-C errors — so submission never reads a filesystem path or
-		// deletes a directory named by the (inheritable, forgeable) environment. A forged
-		// handoff can therefore at worst upload attacker-supplied text.
-		submit_inline_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
-			report.v_file, report.v_source, report.tag)
+		// The report carries its already-bounded source as content — so submission never
+		// reads a filesystem path or deletes a directory named by the (inheritable,
+		// forgeable) environment; a forged handoff can therefore at worst upload
+		// attacker-supplied text. Dispatch on kind so a generated-C fallback keeps its
+		// `v-c-compiler-error` classification and its missing-library filter instead of
+		// being reported as an internal V3 error.
+		if report.kind == external_v3_compiler_error_kind {
+			submit_inline_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
+				report.v_file, report.v_source, report.tag)
+		} else {
+			submit_inline_c_error_bug_report(prefs, report.ccompiler, report.c_output,
+				report.v_file, report.v_source, report.tag)
+		}
 		return
 	}
 	// Trusted in-process path (the report never crossed the environment): read the files.
@@ -243,7 +264,12 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	os.setenv('${v3_report_env_prefix}PRESENT', '1', true)
 	os.setenv('${v3_report_env_prefix}KIND', report.kind, true)
 	os.setenv('${v3_report_env_prefix}CCOMPILER', report.ccompiler, true)
-	os.setenv('${v3_report_env_prefix}COUTPUT', report.c_output, true)
+	// The diagnostic is truncated so a single environment string cannot exceed the exec
+	// limit and make the retry's os.execvp fail with E2BIG (v_source is already bounded by
+	// bounded_v3_fallback_source). A missing-library/libatomic diagnostic is short and so
+	// is never truncated, keeping c_error_should_send_bug_report accurate on the far side.
+	os.setenv('${v3_report_env_prefix}COUTPUT', truncated_report_text(report.c_output,
+		c_error_bug_report_max_env_c_output_bytes), true)
 	os.setenv('${v3_report_env_prefix}TAG', report.tag, true)
 	os.setenv('${v3_report_env_prefix}VFILE', report.v_file, true)
 	os.setenv('${v3_report_env_prefix}VSOURCE', report.v_source, true)
@@ -349,6 +375,56 @@ pub fn submit_external_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_
 fn submit_inline_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_stage string, v3_output string, v_file_label string, v_source string, tag string) {
 	mut b := new_builder(prefs)
 	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, v_file_label, v_source, tag)
+}
+
+// build_inline_c_error_report constructs the generated-C fallback report to upload from
+// already-bounded content, or none when the diagnostic is not eligible for automatic
+// submission (an expected missing-library / missing-libatomic error). No generated C is
+// available inline, so there is no C context or C/V line mapping — only the bounded V
+// source snippet — but the `v-c-compiler-error` classification matches the in-process path.
+fn build_inline_c_error_report(prefs &pref.Preferences, ccompiler string, c_output string, v_file string, v_source string, tag string) ?CErrorBugReport {
+	if !c_error_should_send_bug_report(c_output) {
+		return none
+	}
+	return CErrorBugReport{
+		kind:           'v-c-compiler-error'
+		v_version:      version.full_v_version(true)
+		target_os:      prefs.os.str()
+		target_backend: prefs.backend.str()
+		arch:           prefs.arch.str()
+		ccompiler:      ccompiler
+		build_options:  c_error_report_build_options(prefs, tag)
+		c_error:        c_output
+		v_file:         v_file
+		v_source:       v_source
+	}
+}
+
+// submit_inline_c_error_bug_report reports a generated-C compilation error whose bounded V
+// source snippet is already supplied as `v_source` content. Unlike the internal-V3-error
+// submitter, it preserves the generated-C semantics of the trusted in-process path: the
+// c_error_should_send_bug_report filter (so expected missing-library / missing-libatomic
+// diagnostics are not uploaded) and the `v-c-compiler-error` classification. It reads no
+// filesystem path, so it is safe to drive from the environment handoff.
+fn submit_inline_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c_output string, v_file_label string, v_source string, tag string) {
+	is_v3_fallback := tag != ''
+	raw_report := build_inline_c_error_report(prefs, ccompiler, c_output, v_file_label, v_source,
+		tag) or {
+		// Not eligible for automatic submission (e.g. a missing library), but V3 still
+		// fell back to the stable compiler, so the user is told about the fallback.
+		if is_v3_fallback {
+			print_v3_fallback_notice('', false, false)
+		}
+		return
+	}
+	mut b := new_builder(prefs)
+	if !should_submit_c_error_bug_report(b.pref.c_error_bug_report_url) {
+		if is_v3_fallback {
+			print_v3_fallback_notice('', false, false)
+		}
+		return
+	}
+	b.send_prepared_c_error_bug_report(raw_report, tag)
 }
 
 fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_output string, v_file string, v_source string, tag string) {
