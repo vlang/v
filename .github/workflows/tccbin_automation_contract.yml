@@ -15,15 +15,27 @@ jobs:
   contract-worker:
     name: Contract worker
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout the tested revision
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Checkout the immutable VC bootstrap snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vlang/vc
+          ref: dfc458a13ba8923ebc249e262c331f8169aa728b
+          path: vc
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Configure the immutable VC bootstrap snapshot
+        run: git -C vc config --local core.autocrlf false
       - name: Build the local compiler
         run: |
-          make
+          make local=1
           ./v -o ./vnew cmd/v
       - name: Validate schemas, fixtures, and pure control-plane models
         run: |

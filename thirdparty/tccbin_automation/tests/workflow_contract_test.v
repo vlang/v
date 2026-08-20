@@ -1,6 +1,7 @@
 module tests
 
 import os
+import tccbin_automation.bin
 
 fn workflow_source(name string) string {
 	vroot := os.real_path(os.join_path(automation_root(), '..', '..'))
@@ -52,6 +53,7 @@ fn workflow_index_after(source string, needle string, offset int) int {
 
 fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	source := workflow_source('tccbin_automation_contract.yml')
+	vc_lock := bin.validate_vc_bootstrap_contract(automation_root()) or { panic(err) }
 	assert source.contains('  pull_request:')
 	assert source.contains('  merge_group:')
 	assert !source.contains('paths:')
@@ -59,7 +61,48 @@ fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	assert source.contains('name: tccbin-automation-contract')
 	assert source.contains('name: tccbin-automation-dry-run')
 	assert source.count('if: always()') == 2
-	assert source.count('persist-credentials: false') == 2
+	contract_worker_index := source.index('  contract-worker:') or {
+		panic('contract worker missing')
+	}
+	contract_check_index := workflow_index_after(source, '\n  contract:\n', contract_worker_index)
+	dry_run_worker_index := workflow_index_after(source, '\n  dry-run-worker:\n',
+		contract_check_index)
+	dry_run_check_index := workflow_index_after(source, '\n  dry-run:\n', dry_run_worker_index)
+	assert source[contract_worker_index..contract_check_index].count('timeout-minutes: 45') == 1
+	assert source[contract_check_index..dry_run_worker_index].count('timeout-minutes: 5') == 1
+	assert source[dry_run_worker_index..dry_run_check_index].count('timeout-minutes: 30') == 1
+	assert source[dry_run_check_index..].count('timeout-minutes: 5') == 1
+	assert source.count('timeout-minutes: 45') == 1
+	assert source.count('timeout-minutes: 30') == 1
+	assert source.count('timeout-minutes: 5') == 2
+	assert source.count('persist-credentials: false') == 3
+	assert source.count('uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1') == 1
+	assert source.count('repository: vlang/vc') == 1
+	assert source.count('ref: ${vc_lock.commit}') == 1
+	assert source.count('path: vc') == 1
+	assert source.count('fetch-depth: 0') == 2
+	assert source.count('filter: blob:none') == 1
+	assert source.count('git -C vc config --local core.autocrlf false') == 1
+	assert source.count('make local=1') == 1
+	tested_checkout := '      - name: Checkout the tested revision\n' +
+		'        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n' +
+		'        with:\n' + '          fetch-depth: 0\n' + '          persist-credentials: false\n'
+	assert source.count(tested_checkout) == 1
+	vc_checkout_index := source.index('      - name: Checkout the immutable VC bootstrap snapshot') or {
+		panic('immutable VC checkout missing')
+	}
+	build_index := workflow_index_after(source, '      - name: Build the local compiler',
+		vc_checkout_index)
+	assert vc_checkout_index < build_index
+	vc_checkout := source[vc_checkout_index..build_index]
+	assert vc_checkout.count('uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1') == 1
+	assert vc_checkout.count('repository: vlang/vc') == 1
+	assert vc_checkout.count('ref: ${vc_lock.commit}') == 1
+	assert vc_checkout.count('path: vc') == 1
+	assert vc_checkout.count('fetch-depth: 0') == 1
+	assert vc_checkout.count('filter: blob:none') == 1
+	assert vc_checkout.count('persist-credentials: false') == 1
+	assert vc_checkout.count('git -C vc config --local core.autocrlf false') == 1
 	assert !source.contains(r'${{ secrets.')
 	assert !source.contains('contents: write')
 }

@@ -408,12 +408,34 @@ fn test_bootstrap_compiles_the_real_local_contract_without_network_or_moving_inp
 				args:     ['-C', vc_source_root, 'rev-parse', '${vc_lock.commit}^{tree}']
 				expected: vc_lock.tree
 			},
+			BootstrapGitExpectation{
+				args:     ['-C', vc_source_root, 'rev-parse', 'HEAD']
+				expected: vc_lock.commit
+			},
+			BootstrapGitExpectation{
+				args:     ['-C', vc_source_root, 'rev-parse', 'HEAD^{tree}']
+				expected: vc_lock.tree
+			},
+			BootstrapGitExpectation{
+				args:     ['-C', vc_source_root, 'config', '--local', '--get', 'core.autocrlf']
+				expected: 'false'
+			},
 		]
 		for check in checks {
 			inspection := bootstrap_test_git(check.args)
 			assert inspection.exit_code == 0, inspection.output
 			assert inspection.output.trim_space() == check.expected
 		}
+		remote := bootstrap_test_git(['-C', vc_source_root, 'remote', 'get-url', 'origin'])
+		assert remote.exit_code == 0, remote.output
+		assert remote.output.trim_space() in [vc_lock.repository, '${vc_lock.repository}.git']
+		symbolic_head := bootstrap_test_git(['-C', vc_source_root, 'symbolic-ref', '-q', 'HEAD'])
+		assert symbolic_head.exit_code == 1, symbolic_head.output
+		assert symbolic_head.output == ''
+		status := bootstrap_test_git(['-C', vc_source_root, 'status', '--porcelain=v1',
+			'--untracked-files=all', '--ignored=matching'])
+		assert status.exit_code == 0, status.output
+		assert status.output == ''
 		base := os.join_path(os.temp_dir(), 'tccbin-bootstrap-positive-${os.getpid()}')
 		os.rmdir_all(base) or {}
 		os.mkdir_all(base) or { panic(err) }
