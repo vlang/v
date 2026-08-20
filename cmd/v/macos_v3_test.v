@@ -2081,6 +2081,57 @@ fn test_linux_explicit_v3_autofree_build_is_rejected() {
 	}
 }
 
+fn test_explicit_v3_rejects_structured_v1_only_preferences() {
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler: true
+		sanitize:     true
+		path:         'main.v'
+	})
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler:   true
+		gc_set_by_flag: true
+		gc_mode:        .boehm_full_opt
+		path:           'main.v'
+	})
+	assert !macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler: true
+		old_compiler: true
+		sanitize:     true
+		path:         'main.v'
+	})
+}
+
+fn test_embedded_v3_explicit_sanitize_build_is_rejected() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_explicit_sanitize_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, 'fn main() {}\n')!
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-new-compiler', '-sanitize', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 1, output
+		assert output.contains('options that require the established compiler'), output
+	}
+}
+
 // The executable-name gate is for implicit default dispatch only; an explicit
 // `-new-compiler` must still run V3 in-process even when the binary is installed or
 // copied under a name other than v/vnew, e.g. `vlang` (PR #28131 review).

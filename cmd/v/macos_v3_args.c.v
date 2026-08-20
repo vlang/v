@@ -59,6 +59,14 @@ fn macos_v3_explicit_autofree_is_unsupported(prefs &pref.Preferences) bool {
 	return prefs.new_compiler && !prefs.old_compiler && prefs.autofree
 }
 
+@[markused]
+fn macos_v3_explicit_v1_preferences_are_unsupported(prefs &pref.Preferences) bool {
+	if !prefs.new_compiler || prefs.old_compiler {
+		return false
+	}
+	return v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc)
+}
+
 // These helpers are shared by the native Darwin dispatcher and the default
 // implementation selected while generating cross-platform VC sources, so this
 // file has to stay platform neutral (no `_darwin.c.v` suffix). Keep them outside
