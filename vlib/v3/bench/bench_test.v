@@ -1,6 +1,7 @@
 module bench
 
 import os
+import time
 
 const memory_monitor_test_child = 'V3_MEMORY_MONITOR_TEST_CHILD'
 
@@ -56,8 +57,12 @@ fn test_step_parts_record_individual_timings() {
 	assert b.steps.len == 2
 	assert b.steps[0].name == 'parse .vh (parallel)'
 	assert b.steps[0].time_us == 1250
+	assert b.steps[0].stage_peak_ram_kb == 0
 	assert b.steps[1].name == 'parse .v'
 	assert b.steps[1].time_us == 2750
+	assert b.steps[1].stage_peak_ram_kb == 0
+	b.step_measured('ownership', 500)
+	assert b.steps[2].stage_peak_ram_kb == 0
 }
 
 fn test_finish_stage_memory_reports_and_resets_sampled_peak() {
@@ -77,9 +82,12 @@ fn test_finish_stage_memory_reports_and_resets_sampled_peak() {
 fn test_stage_memory_monitor_stops_before_state_release() {
 	mut b := new()
 	b.disable_memory_limit()
+	b.memory_monitor_interval = time.minute
 	b.start_memory_monitor()
+	stopwatch := time.new_stopwatch()
 	b.stop_memory_monitor()
 	assert !b.memory_monitor_started
+	assert stopwatch.elapsed() < time.second
 }
 
 fn test_limit_memory_metric_is_available() {
