@@ -175,16 +175,19 @@ fn (mut v Builder) send_prepared_c_error_bug_report(raw_report CErrorBugReport, 
 		}
 		return
 	}
-	println('================== C compiler bug report ==============')
+	// Report diagnostics go to stderr, never stdout: with `v -o - source.v` the generated
+	// C is already on stdout, so appending this banner there would corrupt the documented
+	// `-o -` output for exactly the programs that needed the fallback.
+	eprintln('================== C compiler bug report ==============')
 	if is_v3_fallback {
 		print_v3_fallback_notice(report_url, true, report_includes_v_source(report))
 	}
 	if tool_output != '' {
-		println(tool_output)
+		eprintln(tool_output)
 	}
-	println('V ${report.v_version}, ${report.target_os}/${report.arch}, cc: ${report.ccompiler}, build options: ${report.build_options}')
+	eprintln('V ${report.v_version}, ${report.target_os}/${report.arch}, cc: ${report.ccompiler}, build options: ${report.build_options}')
 	print_c_error_bug_report_context(report)
-	println('='.repeat('================== C compiler bug report =============='.len))
+	eprintln('='.repeat('================== C compiler bug report =============='.len))
 }
 
 // submit_external_c_error_bug_report submits C diagnostics and generated source produced by
@@ -474,13 +477,16 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 		print_v3_fallback_notice('', false, false)
 		return
 	}
-	println('================== V3 compiler bug report ==============')
+	// Report diagnostics go to stderr, never stdout: with `v -o - source.v` the generated
+	// C is already on stdout, so appending this banner there would corrupt the documented
+	// `-o -` output for exactly the programs that needed the fallback.
+	eprintln('================== V3 compiler bug report ==============')
 	print_v3_fallback_notice(report_url, true, report.v_source != '')
 	if tool_output != '' {
-		println(tool_output)
+		eprintln(tool_output)
 	}
-	println('V ${report.v_version}, ${report.target_os}/${report.arch}, build options: ${report.build_options}')
-	println('='.repeat('================== V3 compiler bug report =============='.len))
+	eprintln('V ${report.v_version}, ${report.target_os}/${report.arch}, build options: ${report.build_options}')
+	eprintln('='.repeat('================== V3 compiler bug report =============='.len))
 }
 
 // v3_report_v_source returns the bounded V source snippet uploaded for an internal
@@ -1242,25 +1248,27 @@ fn truncated_report_text(text string, max_bytes int) string {
 	return text[..head_bytes] + c_error_bug_report_truncation_notice + text[text.len - tail_bytes..]
 }
 
+// print_c_error_bug_report_context prints the uploaded C/V context to stderr — never
+// stdout — so it cannot corrupt a `v -o - source.v` generated-C stream.
 fn print_c_error_bug_report_context(report CErrorBugReport) {
-	println('Generated C lines sent from ${report.c_file}:${report.c_line}:')
+	eprintln('Generated C lines sent from ${report.c_file}:${report.c_line}:')
 	print_report_lines(report.c_context, report.c_line)
 	if report.v_file != '' {
-		println('Corresponding V lines sent from ${report.v_file}:${report.v_line}:')
+		eprintln('Corresponding V lines sent from ${report.v_file}:${report.v_line}:')
 		print_report_lines(report.v_context, report.v_line)
 	} else {
-		println('Corresponding V lines sent: no V source mapping was available.')
+		eprintln('Corresponding V lines sent: no V source mapping was available.')
 	}
 }
 
 fn print_report_lines(lines []CErrorReportLine, center int) {
 	if lines.len == 0 {
-		println('  (no source lines available)')
+		eprintln('  (no source lines available)')
 		return
 	}
 	for line in lines {
 		prefix := if line.line == center { '>' } else { ' ' }
-		println('${prefix} ${line.line:6} | ${line.text}')
+		eprintln('${prefix} ${line.line:6} | ${line.text}')
 	}
 }
 

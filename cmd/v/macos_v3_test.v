@@ -1647,6 +1647,76 @@ fn main() {
 	}
 }
 
+// End-to-end (PR #28131 review): a V3 internal-error fallback for `v -o - source.v` must
+// keep stdout as pure generated C. V1 has already written the C to stdout, so the report
+// banner, its context, and the fallback notice all go to stderr — never stdout — or the
+// documented `-o -` output would be invalid C for exactly the programs that needed the
+// fallback.
+fn test_macos_v3_fallback_report_stays_off_generated_c_stdout() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_stdout_c_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'gen.v')
+		os.write_file(source, 'struct Opt[T] {
+	val  T
+	some bool
+}
+
+fn some[T](val T) Opt[T] {
+	return Opt[T]{
+		val:  val
+		some: true
+	}
+}
+
+fn (f Opt[T]) map[U](op fn (T) U) Opt[U] {
+	if f.some {
+		return some[U](op(f.val))
+	}
+	return Opt[U]{}
+}
+
+fn main() {
+	result := some("hello").map(|s| s.len)
+	assert result.some && result.val == 5
+}
+')!
+		mut environment := os.environ()
+		// Exercise a real fallback; clear the job-level no-fallback guard CI may set.
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
+		// Unroutable endpoint: the send fails fast, exercising the report-diagnostic
+		// output (the notice and "was not sent") without contacting a real server.
+		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-gc', 'none', '-o', '-', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		stdout := process.stdout_slurp()
+		stderr := process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, stdout + stderr
+		// The fallback happened and its diagnostics went to stderr.
+		assert stderr.contains('the experimental V3 compiler could not build this program'), stderr
+		assert stderr.contains('bug report was not sent'), stderr
+		// stdout is the generated C only — valid C, with no report text of any kind.
+		assert stdout.contains('typedef') || stdout.contains('#define'), 'stdout is not generated C'
+		for leaked in ['could not build this program', 'compiler bug report',
+			'bug report was not sent', 'so this can be fixed', 'opt out of these automatic'] {
+			assert !stdout.contains(leaked), 'report text leaked onto `-o -` stdout: `${leaked}`'
+		}
+	}
+}
+
 fn clear_macos_v3_report_env() {
 	for suffix in ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE'] {
 		os.unsetenv('V_MACOS_V3_REPORT_${suffix}')
