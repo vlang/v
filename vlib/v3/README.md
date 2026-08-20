@@ -43,13 +43,13 @@ embedded, `v` uses the established compiler by default.
 
 Pass `-new-compiler` for the opposite: it runs the embedded V3 driver (`vlib/v3`) in the SAME
 process, exactly like the default macOS and Linux path — it never launches a separate `v3`
-executable. On macOS and Linux it forces V3 for a `run`/`build` target even when the default
-heuristic would defer to V1; on the other platforms it opts into V3 (which is otherwise V1 by
-default). In both cases it disables
-the automatic V1 fallback so a V3 failure is reported instead of silently retried with V1. It
-never forces V3 onto options V3 cannot honor yet (those error asking you to drop the flag), leaves
-the `test` command to the test dispatcher, and errors on builds that do not embed the V3 compiler
-(the portable cross-VC bootstrap). `-old-compiler` takes precedence when both are given.
+executable. Because only macOS and Linux embed the V3 driver, `-new-compiler` applies there: it
+forces V3 for a `run`/`build` target even when the default heuristic would defer to V1, and
+disables the automatic V1 fallback so a V3 failure is reported instead of silently retried with
+V1. It never forces V3 onto options V3 cannot honor yet (those error asking you to drop the flag),
+leaves the `test` command to the test dispatcher, and errors on builds that do not embed the V3
+compiler — Windows, the BSDs, and the portable cross-VC bootstrap — rather than opting them into
+V3. `-old-compiler` takes precedence when both are given.
 
 To make this possible the V3 driver (`vlib/v3`) is linked into `cmd/v` on macOS and Linux, so `v`
 compiles in-process there by default and `v -new-compiler` does so wherever V3 is embedded. Windows
