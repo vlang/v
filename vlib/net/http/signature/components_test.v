@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 // Tests for derived component canonicalization rules from RFC 9421 §2.2.
 module signature
 

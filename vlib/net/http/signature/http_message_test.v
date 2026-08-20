@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 // Tests for the http.Request / http.Response wrappers. The
 // roundtrip cases exercise the full sign-then-verify pipeline through
 // the public API; the negative paths cover the rejection branches
