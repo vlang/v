@@ -27,30 +27,33 @@ can compile the full builtin map.v.
 
 ## macOS V3 dispatch
 
-On macOS, V3 is the default compiler for user source and test builds. The top-level `v` command
-runs the V3 driver linked into `cmd/v`; it does not build or launch a second compiler process.
-This includes direct file and directory builds, `run`, `build`, and test-file compilation, plus
-production and shared builds and supported cross targets and backends. The `test` command itself
-continues to use the established test dispatcher, while each discovered test file is compiled by
-V3.
+On macOS and Linux, V3 is the default compiler for user source and test builds. The top-level
+`v` command runs the V3 driver linked into `cmd/v`; it does not build or launch a second compiler
+process. This includes direct file and directory builds, `run`, `build`, and test-file compilation,
+plus production and shared builds and supported cross targets and backends. The `test` command
+itself continues to use the established test dispatcher, while each discovered test file is
+compiled by V3.
 
 `cmd/v` remains the CLI and compatibility dispatcher. Its own build, its internal command-tool
 bootstrap, and the `vlib/v3/v3.v` compiler bootstrap retain the compatibility compiler. Explicit
-non-none garbage collectors, sanitizer builds, live reload, and `-autofree run` also stay on that
-path until V3 supports their runtime behavior. Pass `-old-compiler` to explicitly select the
-compatibility compiler for another user build. Other operating systems are unchanged.
+non-none garbage collectors, sanitizer builds, live reload, and autofree also stay off the default
+V3 path until V3 supports their runtime behavior. Pass `-old-compiler` to explicitly select the
+compatibility compiler for another user build. On Windows and the BSDs, where the V3 driver is not
+embedded, `v` uses the established compiler by default.
 
 Pass `-new-compiler` for the opposite: it runs the embedded V3 driver (`vlib/v3`) in the SAME
-process, exactly like the default macOS path — it never launches a separate `v3` executable. On
-macOS it forces V3 for a `run`/`build` target even when the default heuristic would defer to V1;
-on other platforms it opts into V3 (which is otherwise V1 by default). In both cases it disables
+process, exactly like the default macOS and Linux path — it never launches a separate `v3`
+executable. On macOS and Linux it forces V3 for a `run`/`build` target even when the default
+heuristic would defer to V1; on the other platforms it opts into V3 (which is otherwise V1 by
+default). In both cases it disables
 the automatic V1 fallback so a V3 failure is reported instead of silently retried with V1. It
 never forces V3 onto options V3 cannot honor yet (those error asking you to drop the flag), leaves
 the `test` command to the test dispatcher, and errors on builds that do not embed the V3 compiler
 (the portable cross-VC bootstrap). `-old-compiler` takes precedence when both are given.
 
-To make this possible the V3 driver (`vlib/v3`) is linked into `cmd/v` on every normal build, not
-only on macOS, so `v -new-compiler` compiles in-process on all platforms.
+To make this possible the V3 driver (`vlib/v3`) is linked into `cmd/v` on macOS and Linux, so `v`
+compiles in-process there by default and `v -new-compiler` does so wherever V3 is embedded. Windows
+and the BSDs get a stub instead, so `-new-compiler` there reports that the build does not embed V3.
 
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.

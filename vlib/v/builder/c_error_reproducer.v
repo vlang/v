@@ -300,6 +300,15 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	if ordered.len == 0 {
 		return ''
 	}
+	if ordered.len >= decls.len {
+		// Every declaration is in the closure, so the reproducer would reconstruct the
+		// whole program (differing from the file only by normalized blank lines). The
+		// doc/docs.md guarantee is that the whole file is never auto-uploaded, so give
+		// up here and let the caller fall back to the bounded source window — which is
+		// a strict subset for a large file and dropped as a whole-file match for a
+		// short one.
+		return ''
+	}
 	// track which files contributed a declaration, and the identifiers each such file references,
 	// so imports are judged only against declarations from their own file (a same-named local var
 	// in another file must not make an unrelated import look needed)
