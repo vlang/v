@@ -1627,6 +1627,9 @@ fn main() {
 		assert exit_code == 0, compiler_output
 		// The notice must appear even though no single source file could be staged.
 		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
+		// A metadata-only report is still submitted (not dropped): the attempt to the
+		// unroutable endpoint is what fails here, proving a report was constructed.
+		assert compiler_output.contains('V3 compiler bug report was not sent'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, run.output

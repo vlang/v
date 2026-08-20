@@ -250,6 +250,16 @@ fn test_v_source_for_report_is_empty_without_mapped_line() {
 	assert v_source_for_report(['a', 'b', 'c'], 0, 40).text == ''
 }
 
+fn test_v_source_is_whole_file_detects_full_coverage() {
+	// The strict-subset rule drops an excerpt that covers the whole mapped file, so a
+	// short C-error fallback does not auto-upload the whole file (PR #28131 review).
+	full := 'fn a() {}\nfn b() {}\nfn c() {}'
+	assert v_source_is_whole_file(full, full)
+	assert v_source_is_whole_file(full + '\n', full) // trailing newline tolerated
+	assert !v_source_is_whole_file('fn b() {}', full) // a strict subset is kept
+	assert !v_source_is_whole_file('', full) // an already-empty excerpt is not "whole"
+}
+
 fn test_v3_report_v_source_bounds_large_files() {
 	// A program at or below the window (2 * c_error_v_source_radius lines) cannot be
 	// reduced to a strict subset, so no source is uploaded for it at all — the whole

@@ -118,7 +118,7 @@ fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output
 	is_v3_fallback := tag != ''
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
 		if is_v3_fallback {
-			print_v3_fallback_notice('', false)
+			print_v3_fallback_notice('', false, false)
 		}
 		return
 	}
@@ -143,13 +143,13 @@ fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output
 	tool_output := send_c_error_bug_report(report, report_url) or {
 		eprintln('C compiler bug report was not sent to ${report_url}: ${err}')
 		if is_v3_fallback {
-			print_v3_fallback_notice('', false)
+			print_v3_fallback_notice('', false, false)
 		}
 		return
 	}
 	println('================== C compiler bug report ==============')
 	if is_v3_fallback {
-		print_v3_fallback_notice(report_url, true)
+		print_v3_fallback_notice(report_url, true, report.v_source != '')
 	}
 	if tool_output != '' {
 		println(tool_output)
@@ -169,7 +169,7 @@ pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler str
 		// `submit_c_error_bug_report_with_tag` would normally emit this, but the
 		// filter returns before reaching it. A non-empty tag marks the V3 fallback.
 		if tag != '' {
-			print_v3_fallback_notice('', false)
+			print_v3_fallback_notice('', false, false)
 		}
 		return
 	}
@@ -200,24 +200,18 @@ pub fn submit_external_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_
 }
 
 fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_output string, v_file string, tag string) {
-	if v_file == '' {
-		// Notice-only report (a directory build such as `v .`, or a non-file input):
-		// no single source reproducer can be uploaded, but the user must still be
-		// told V3 fell back to the stable compiler.
-		print_v3_fallback_notice('', false)
-		return
-	}
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
-		print_v3_fallback_notice('', false)
+		print_v3_fallback_notice('', false, false)
 		return
 	}
 	build_options := c_error_report_build_options(v.pref, tag)
 	// A V3 internal failure has no mapped failing line to center a window on, so
 	// only a bounded head+tail window of the source is uploaded (never the whole
 	// file, which could hold unrelated proprietary code or secrets), mirroring the
-	// C-error report path. See the privacy note in doc/docs.md.
-	source := os.read_file(v_file) or { '' }
-	v_source := v3_report_v_source(source)
+	// C-error report path. A directory build (`v .`) stages an empty v_file and so
+	// contributes no source at all — but the version/target/build-option metadata is
+	// still reported rather than dropped entirely. See the privacy note in doc/docs.md.
+	v_source := if v_file == '' { '' } else { v3_report_v_source(os.read_file(v_file) or { '' }) }
 	raw_report := CErrorBugReport{
 		kind:           'v3-compiler-error'
 		v_version:      version.full_v_version(true)
@@ -234,11 +228,11 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
 	tool_output := send_c_error_bug_report(report, report_url) or {
 		eprintln('V3 compiler bug report was not sent to ${report_url}: ${err}')
-		print_v3_fallback_notice('', false)
+		print_v3_fallback_notice('', false, false)
 		return
 	}
 	println('================== V3 compiler bug report ==============')
-	print_v3_fallback_notice(report_url, true)
+	print_v3_fallback_notice(report_url, true, report.v_source != '')
 	if tool_output != '' {
 		println(tool_output)
 	}
@@ -269,15 +263,28 @@ fn v3_report_v_source(source string) string {
 	return bounded_v_source(snippet, c_error_bug_report_max_v_source_bytes, 0)
 }
 
+// v_source_is_whole_file reports whether the selected excerpt is the entire mapped
+// file rather than a strict subset. A short mapped file makes the C-error window (or
+// reproducer) cover everything, so this is used to enforce the doc/docs.md guarantee
+// that automatic reports never upload a whole source file.
+fn v_source_is_whole_file(selected string, full_source string) bool {
+	return selected != '' && selected.split_into_lines() == full_source.split_into_lines()
+}
+
 // print_v3_fallback_notice explains, in plain language, that V3 could not build the
 // program so the stable compiler was used instead. `submitted` selects whether a bug
 // report was actually filed; `report_url` is where it went (empty when not filed).
-fn print_v3_fallback_notice(report_url string, submitted bool) {
+fn print_v3_fallback_notice(report_url string, submitted bool, source_uploaded bool) {
 	eprintln('note: the experimental V3 compiler could not build this program, so V used the stable compiler instead.')
-	if submitted {
-		eprintln('A bug report with the failing V source was submitted to ${report_url} so this can be fixed.')
-		eprintln('Set ${c_error_bug_report_disabled_env}=1 to opt out of these automatic reports.')
+	if !submitted {
+		return
 	}
+	if source_uploaded {
+		eprintln('A bug report with a bounded excerpt of the failing V source was submitted to ${report_url} so this can be fixed.')
+	} else {
+		eprintln('A metadata-only bug report (no source) was submitted to ${report_url} so this can be fixed.')
+	}
+	eprintln('Set ${c_error_bug_report_disabled_env}=1 to opt out of these automatic reports.')
 }
 
 fn c_error_report_build_options(prefs &pref.Preferences, tag string) string {
@@ -320,11 +327,16 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// declarations it references). It already keeps itself within the byte budget, returning ''
 	// when it cannot, so it is uploaded verbatim; otherwise fall back to a plain source window.
 	repro := v.v_source_reproducer(v_file, v_line, c_error_bug_report_max_v_source_bytes)
-	v_source := if repro != '' {
+	mut v_source := if repro != '' {
 		repro
 	} else {
 		v_chunk := selected_v_source(v_file, mapped_source.split_into_lines(), v_line)
 		bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes, v_chunk.focus)
+	}
+	if v_source_is_whole_file(v_source, mapped_source) {
+		// Strict-subset rule (doc/docs.md): a short mapped file makes the window or
+		// reproducer cover the entire file, so drop it rather than upload it whole.
+		v_source = ''
 	}
 	return CErrorBugReport{
 		kind:           'v-c-compiler-error'
