@@ -75,6 +75,50 @@ struct IncludeSingularGrandkid {
 	name     string
 }
 
+@[table: 'orm_include_alias_parents']
+struct IncludeAliasParent {
+	id       int @[primary; sql: serial]
+	name     string
+	children []IncludeAliasChild @[fkey: 'parent_id'; sql: 'offspring']
+}
+
+@[table: 'orm_include_alias_children']
+struct IncludeAliasChild {
+	id        int @[primary; sql: serial]
+	parent_id int
+	name      string
+	grandkids []IncludeAliasGrandkid @[fkey: 'child_id'; sql: 'descendants']
+}
+
+@[table: 'orm_include_alias_grandkids']
+struct IncludeAliasGrandkid {
+	id       int @[primary; sql: serial]
+	child_id int
+	name     string
+}
+
+@[table: 'orm_include_shadow_parents']
+struct IncludeShadowParent {
+	id    int @[primary; sql: serial]
+	name  string
+	alpha []IncludeShadowAlpha @[fkey: 'parent_id'; sql: 'beta']
+	beta  []IncludeShadowBeta  @[fkey: 'parent_id']
+}
+
+@[table: 'orm_include_shadow_alphas']
+struct IncludeShadowAlpha {
+	id        int @[primary; sql: serial]
+	parent_id int
+	name      string
+}
+
+@[table: 'orm_include_shadow_betas']
+struct IncludeShadowBeta {
+	id        int @[primary; sql: serial]
+	parent_id int
+	name      string
+}
+
 fn new_include_database() !sqlite.DB {
 	mut db := sqlite.connect(':memory:')!
 	mut parents := orm.new_query[IncludeParent](db)
@@ -612,4 +656,133 @@ fn test_then_include_requires_a_previous_include() {
 	} else {
 		assert err.msg().contains('include')
 	}
+}
+
+fn new_include_alias_database() !sqlite.DB {
+	mut db := sqlite.connect(':memory:')!
+	mut parents := orm.new_query[IncludeAliasParent](db)
+	mut children := orm.new_query[IncludeAliasChild](db)
+	mut grandkids := orm.new_query[IncludeAliasGrandkid](db)
+	parents.create()!
+	children.create()!
+	grandkids.create()!
+	parents.insert(IncludeAliasParent{
+		name: 'alias parent'
+	})!
+	parent_id := parents.last_id()
+	children.insert(IncludeAliasChild{
+		parent_id: parent_id
+		name:      'kept child'
+	})!
+	child_id := children.last_id()
+	children.insert(IncludeAliasChild{
+		parent_id: parent_id
+		name:      'dropped child'
+	})!
+	grandkids.insert(IncludeAliasGrandkid{
+		child_id: child_id
+		name:     'alias grandkid'
+	})!
+	return db
+}
+
+fn test_include_accepts_the_v_name_of_an_aliased_relationship() {
+	mut db := new_include_alias_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeAliasParent](db)
+
+	rows := parents.include('children')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 2
+}
+
+fn test_include_accepts_the_sql_alias_of_a_relationship() {
+	mut db := new_include_alias_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeAliasParent](db)
+
+	rows := parents.include('offspring')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 2
+}
+
+fn test_then_include_accepts_the_sql_alias_of_a_nested_relationship() {
+	mut db := new_include_alias_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeAliasParent](db)
+
+	rows := parents.include('offspring')!.then_include('descendants')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 2
+	assert rows[0].children[0].grandkids.len == 1
+	assert rows[0].children[0].grandkids[0].name == 'alias grandkid'
+	assert rows[0].children[1].grandkids.len == 0
+}
+
+fn test_include_filter_accepts_the_sql_alias_of_a_relationship() {
+	mut db := new_include_alias_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeAliasParent](db)
+
+	rows := parents.include('offspring')!.where('offspring.name = ?', 'kept child')!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].name == 'kept child'
+}
+
+fn test_include_filters_are_merged_across_relationship_spellings() {
+	mut db := new_include_alias_database()!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeAliasParent](db)
+
+	rows :=
+		parents.include('children')!.where('children.name = ?', 'kept child')!.include('offspring')!.where('offspring.id > ?', 0)!.query()!
+	assert rows.len == 1
+	assert rows[0].children.len == 1
+	assert rows[0].children[0].name == 'kept child'
+}
+
+fn test_include_prefers_the_v_field_name_over_another_fields_alias() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or {}
+	}
+	mut parents := orm.new_query[IncludeShadowParent](db)
+	mut alphas := orm.new_query[IncludeShadowAlpha](db)
+	mut betas := orm.new_query[IncludeShadowBeta](db)
+	parents.create()!
+	alphas.create()!
+	betas.create()!
+	parents.insert(IncludeShadowParent{
+		name: 'shadow parent'
+	})!
+	parent_id := parents.last_id()
+	alphas.insert(IncludeShadowAlpha{
+		parent_id: parent_id
+		name:      'alpha'
+	})!
+	betas.insert(IncludeShadowBeta{
+		parent_id: parent_id
+		name:      'beta'
+	})!
+
+	shadowed := parents.include('beta')!.query()!
+	assert shadowed[0].alpha.len == 0
+	assert shadowed[0].beta.len == 1
+	assert shadowed[0].beta[0].name == 'beta'
+
+	aliased := parents.include('alpha')!.query()!
+	assert aliased[0].alpha.len == 1
+	assert aliased[0].alpha[0].name == 'alpha'
+	assert aliased[0].beta.len == 0
 }

@@ -126,8 +126,8 @@ fn (qb_ &QueryBuilder[T]) validate_include_root(field string) ! {
 	if field.trim_space().len == 0 || field.contains('.') {
 		return error('${@FN}(): field must be a direct relationship name')
 	}
-	meta_field := qb_.get_meta_field_by_sql_name(field) or {
-		return error("${@FN}(): table `${qb_.config.table}` has no field's name: `${field}`")
+	meta_field := qb_.get_meta_field_by_any_name(field) or {
+		return error("${@FN}(): table `${qb_.config.table.name}` has no field's name: `${field}`")
 	}
 	if !meta_field.is_arr || orm_field_fkey_attr(meta_field.attrs).len == 0 {
 		return error('${@FN}(): field `${field}` is not a `@[fkey]` relationship')
@@ -1678,37 +1678,87 @@ fn hydrate_array_relationships[T](mut conn Connection, mut instance T, parent_ke
 	}
 }
 
-fn validate_include_paths[T](paths [][]string) ! {
+// relation_field_name resolves a relationship name to its V field name, accepting
+// both the V name and the `@[sql]` alias. An exact V field name always wins, so a
+// field is never shadowed by another field's alias.
+fn relation_field_name[T](name string) string {
+	$for field in T.fields {
+		if field.name == name {
+			return name
+		}
+	}
+	$for field in T.fields {
+		if orm_field_sql_name(field.attrs, field.name) == name {
+			return field.name
+		}
+	}
+	return name
+}
+
+// canonical_include_paths validates every include path and rewrites each segment
+// to its V field name, so `@[sql]` aliases and V names address the same relationship.
+fn canonical_include_paths[T](paths [][]string) ![][]string {
+	mut canonical := [][]string{cap: paths.len}
 	for path in paths {
-		validate_include_path[T](path)!
+		resolved := canonical_include_path[T](path)!
+		if resolved !in canonical {
+			canonical << resolved
+		}
 	}
+	return canonical
 }
 
-fn validate_include_filters[T](filters []IncludeFilter) ! {
+// canonical_include_filters canonicalizes filter paths and merges the filters that
+// end up addressing the same relationship, keeping each one grouped.
+fn canonical_include_filters[T](filters []IncludeFilter) ![]IncludeFilter {
+	mut canonical := []IncludeFilter{cap: filters.len}
 	for filter in filters {
-		validate_include_filter[T](filter.path, filter.where)!
+		resolved := canonical_include_filter_path[T](filter.path, filter.where)!
+		mut index := -1
+		for i in 0 .. canonical.len {
+			if canonical[i].path == resolved {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			canonical << IncludeFilter{
+				path:  resolved
+				where: filter.where
+			}
+			continue
+		}
+		canonical[index].where = append_query_data(v_sql_query_data_parentheses(canonical[index].where, 0),
+			v_sql_query_data_parentheses(filter.where, 0), true)
 	}
+	return canonical
 }
 
-fn validate_include_filter[T](path []string, where QueryData) ! {
+fn canonical_include_filter_path[T](path []string, where QueryData) ![]string {
 	if path.len == 0 {
 		return error('${@FN}(): relationship path is empty')
 	}
 	name := path[0]
+	relation := relation_field_name[T](name)
 	empty := T{}
 	$for field in T.fields {
-		if field.name == name {
+		if field.name == relation {
 			fkey := orm_field_fkey(field.attrs)
 			$if field.unaliased_typ is $array {
 				if fkey.len == 0 {
 					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
 				}
-				return validate_include_array_filter(path[1..], where, empty.$(field.name))
+				mut resolved := [field.name]
+				resolved << canonical_include_array_filter(path[1..], where, empty.$(field.name))!
+				return resolved
 			} $else $if field.typ is $option {
 				if !orm_type_name_is_optional_array(typeof(field).name) || fkey.len == 0 {
 					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
 				}
-				return validate_include_optional_array_filter(path[1..], where, empty.$(field.name))
+				mut resolved := [field.name]
+				resolved << canonical_include_optional_array_filter(path[1..], where,
+					empty.$(field.name))!
+				return resolved
 			} $else {
 				return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
 			}
@@ -1717,16 +1767,17 @@ fn validate_include_filter[T](path []string, where QueryData) ! {
 	return error('${@FN}(): field `${name}` does not exist')
 }
 
-fn validate_include_array_filter[U](path []string, where QueryData, _ []U) ! {
+fn canonical_include_array_filter[U](path []string, where QueryData, _ []U) ![]string {
 	if path.len == 0 {
-		return validate_include_filter_fields[U](where)
+		validate_include_filter_fields[U](where)!
+		return []string{}
 	}
-	return validate_include_filter[U](path, where)
+	return canonical_include_filter_path[U](path, where)
 }
 
-fn validate_include_optional_array_filter[U](path []string, where QueryData, _ ?U) ! {
+fn canonical_include_optional_array_filter[U](path []string, where QueryData, _ ?U) ![]string {
 	$if U is $array {
-		return validate_include_array_filter(path, where, U{})
+		return canonical_include_array_filter(path, where, U{})
 	}
 	return error('${@FN}(): invalid optional relationship')
 }
@@ -1741,25 +1792,30 @@ fn validate_include_filter_fields[T](where QueryData) ! {
 	}
 }
 
-fn validate_include_path[T](path []string) ! {
+fn canonical_include_path[T](path []string) ![]string {
 	if path.len == 0 {
-		return
+		return []string{}
 	}
 	name := path[0]
+	relation := relation_field_name[T](name)
 	empty := T{}
 	$for field in T.fields {
-		if field.name == name {
+		if field.name == relation {
 			fkey := orm_field_fkey(field.attrs)
 			$if field.unaliased_typ is $array {
 				if fkey.len == 0 {
 					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
 				}
-				return validate_include_array(path[1..], empty.$(field.name))
+				mut resolved := [field.name]
+				resolved << canonical_include_array(path[1..], empty.$(field.name))!
+				return resolved
 			} $else $if field.typ is $option {
 				if !orm_type_name_is_optional_array(typeof(field).name) || fkey.len == 0 {
 					return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
 				}
-				return validate_include_optional_array(path[1..], empty.$(field.name))
+				mut resolved := [field.name]
+				resolved << canonical_include_optional_array(path[1..], empty.$(field.name))!
+				return resolved
 			} $else {
 				return error('${@FN}(): field `${name}` is not a `@[fkey]` relationship')
 			}
@@ -1768,13 +1824,16 @@ fn validate_include_path[T](path []string) ! {
 	return error('${@FN}(): field `${name}` does not exist')
 }
 
-fn validate_include_array[U](path []string, _ []U) ! {
-	validate_include_path[U](path)!
+fn canonical_include_array[U](path []string, _ []U) ![]string {
+	if path.len == 0 {
+		return []string{}
+	}
+	return canonical_include_path[U](path)
 }
 
-fn validate_include_optional_array[U](path []string, _ ?U) ! {
+fn canonical_include_optional_array[U](path []string, _ ?U) ![]string {
 	$if U is $array {
-		return validate_include_array(path, U{})
+		return canonical_include_array(path, U{})
 	}
 	return error('${@FN}(): invalid optional relationship')
 }
@@ -1897,6 +1956,16 @@ fn (qb &QueryBuilder[T]) get_meta_field_by_sql_name(field string) ?TableField {
 		}
 	}
 	return none
+}
+
+// get_meta_field_by_any_name accepts both the V field name and its `@[sql]` alias.
+fn (qb &QueryBuilder[T]) get_meta_field_by_any_name(field string) ?TableField {
+	for meta_field in qb.meta {
+		if meta_field.name == field {
+			return meta_field
+		}
+	}
+	return qb.get_meta_field_by_sql_name(field)
 }
 
 fn is_numeric_type_idx(typ int) bool {
@@ -2042,8 +2111,8 @@ pub fn (qb_ &QueryBuilder[T]) query() ![]T {
 		qb.reset()
 	}
 	if qb.relation_load_mode == .explicit {
-		validate_include_paths[T](qb.include_paths)!
-		validate_include_filters[T](qb.include_filters)!
+		qb.include_paths = canonical_include_paths[T](qb.include_paths)!
+		qb.include_filters = canonical_include_filters[T](qb.include_filters)!
 	}
 	qb.prepare()!
 	rows := qb.conn.select(qb.config, qb.data, qb.where)!
@@ -2061,7 +2130,7 @@ pub fn (qb_ &QueryBuilder[T]) count() !int {
 		qb.reset()
 	}
 	if qb.relation_load_mode == .explicit {
-		validate_include_paths[T](qb.include_paths)!
+		qb.include_paths = canonical_include_paths[T](qb.include_paths)!
 	}
 	qb.prepare()!
 	count_config := qb.build_aggregate_config(.count, '')!
