@@ -62,6 +62,12 @@ pub:
 // compilation error. It matches `macos_v3_compiler_error_fallback` in cmd/v.
 const external_v3_compiler_error_kind = 'compiler_error'
 
+// external_v3_notice_only_kind marks a fallback for a known, expected V3 limitation
+// (e.g. inline assembly) rather than a defect: the standard notice is printed once the
+// stable build succeeds, but no bug report is filed. It matches
+// `macos_v3_inline_asm_fallback` in cmd/v.
+const external_v3_notice_only_kind = 'inline_asm'
+
 // ExternalCErrorBugReport describes a failure produced by another compiler
 // implementation and confirmed by a successful build with the established compiler.
 // `kind` is empty for a generated-C compilation error (the default) or
@@ -213,6 +219,13 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 		// attacker-supplied text. Dispatch on kind so a generated-C fallback keeps its
 		// `v-c-compiler-error` classification and its missing-library filter instead of
 		// being reported as an internal V3 error.
+		if report.kind == external_v3_notice_only_kind {
+			// A known, expected V3 limitation (e.g. inline assembly): the stable build
+			// has just succeeded, so tell the user V3 fell back — matching the documented
+			// notice (doc/docs.md) — but file no bug report.
+			print_v3_fallback_notice('', false, false)
+			return
+		}
 		if report.kind == external_v3_compiler_error_kind {
 			submit_inline_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
 				report.v_file, report.v_source, report.tag)
@@ -408,8 +421,7 @@ fn build_inline_c_error_report(prefs &pref.Preferences, ccompiler string, c_outp
 // filesystem path, so it is safe to drive from the environment handoff.
 fn submit_inline_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c_output string, v_file_label string, v_source string, tag string) {
 	is_v3_fallback := tag != ''
-	raw_report := build_inline_c_error_report(prefs, ccompiler, c_output, v_file_label, v_source,
-		tag) or {
+	raw_report := build_inline_c_error_report(prefs, ccompiler, c_output, v_file_label, v_source, tag) or {
 		// Not eligible for automatic submission (e.g. a missing library), but V3 still
 		// fell back to the stable compiler, so the user is told about the fallback.
 		if is_v3_fallback {

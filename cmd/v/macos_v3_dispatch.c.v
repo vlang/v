@@ -248,8 +248,11 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
 		}
 	} else {
-		// Inline assembly is a known, expected V3 limitation, not a bug: fall back
-		// quietly without filing a report.
+		// Inline assembly is a known, expected V3 limitation, not a bug: fall back without
+		// filing a report. Still forward a notice-only marker so that once the stable
+		// build succeeds the user sees the documented fallback notice (doc/docs.md) rather
+		// than a silent switch that is indistinguishable from a direct V3 success.
+		export_macos_v3_report_content(macos_v3_inline_asm_fallback, 'v3', '', '')
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			println('V3 requested the compatibility compiler for inline assembly')

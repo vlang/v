@@ -933,6 +933,10 @@ fn test_driver_requests_macos_compatibility_for_inline_assembly() {
 ')!
 		fallback_file := os.join_path(root, 'fallback')
 		mut environment := os.environ()
+		// This test exercises the fallback transport itself, so clear the job-level
+		// no-fallback guard that CI sets for runner compilation — otherwise the driver
+		// refuses the request and stages a `compiler_error` marker (PR #28131 review).
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 		result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', source],
 			environment)
@@ -992,6 +996,9 @@ fn main() {
 ')!
 	fallback_file := os.join_path(root, 'fallback')
 	mut environment := os.environ()
+	// Exercises the fallback transport, so clear the job-level no-fallback guard CI sets
+	// for runner compilation (otherwise the driver's fallback path is disabled).
+	environment.delete('V_MACOS_V3_NO_FALLBACK')
 	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
 		'-no-memory-limit', source], environment)
@@ -1034,6 +1041,9 @@ fn main() {
 	fallback_file := os.join_path(root, 'fallback')
 	report_dir := os.join_path(root, 'c_error')
 	mut environment := os.environ()
+	// Exercises the fallback transport, so clear the job-level no-fallback guard CI sets
+	// for runner compilation (otherwise the driver's fallback path is disabled).
+	environment.delete('V_MACOS_V3_NO_FALLBACK')
 	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
 	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
