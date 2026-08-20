@@ -57,12 +57,18 @@ fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backen
 	if b.should_rebuild() {
 		b.rebuild(backend_cb)
 	}
+	// Confirm the established compiler accepted the program before consuming the
+	// fallback report. With `-check-syntax`, an invalid program makes the backend
+	// callback return normally (it only stops after the parser), so exit_on_invalid_syntax
+	// is what turns that into a failure. Consuming the report earlier would submit a bug
+	// claiming the stable compiler built a program it actually rejected — both compilers
+	// failed. On exit(1) here the at_exit cleanup registered above drops the staged report.
+	b.exit_on_invalid_syntax()
 	if failed := report {
 		// Do this before run_compiled_executable_and_exit: successful builds and run
 		// commands exit there, so the caller cannot reliably submit the report later.
 		consume_external_c_error_bug_report(pref_, failed)
 	}
-	b.exit_on_invalid_syntax()
 	// running does not require the parsers anymore
 	unsafe { b.myfree() }
 	b.run_compiled_executable_and_exit()

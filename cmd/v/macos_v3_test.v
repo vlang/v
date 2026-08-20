@@ -1637,6 +1637,61 @@ fn main() {
 	}
 }
 
+// End-to-end (failed syntax check): a `-check-syntax` run on invalid source that
+// carries a staged V3 fallback report must not claim the stable compiler built it.
+// `-silent` keeps output_mode off `.stdout`, so the frontend does not exit early and
+// the C backend callback returns normally after the parser; the stable compiler's
+// rejection then only surfaces in exit_on_invalid_syntax. That check must run before
+// the report is consumed, so the report is neither submitted nor its success notice
+// printed, and the staged report directory is cleaned up (PR #28131 review feedback).
+fn test_macos_v3_fallback_report_skipped_when_syntax_check_fails() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_check_syntax_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'bad.v')
+		os.write_file(source, 'fn main( {\n}\n')!
+		// Stage a compiler-error fallback report, mirroring the layout that
+		// stage_macos_v3_compiler_error_report writes for the V1 retry to consume.
+		report_dir := os.join_path(root, 'report')
+		os.mkdir_all(report_dir) or { panic(err) }
+		os.cp(source, os.join_path(report_dir, 'bad.v'))!
+		os.write_file(os.join_path(report_dir, 'compiler'), 'v3')!
+		os.write_file(os.join_path(report_dir, 'output'),
+			'error: the experimental V3 compiler hit an internal compiler error building this program (the stable V compiler built it successfully)')!
+		os.write_file(os.join_path(report_dir, 'kind'), 'compiler_error')!
+		os.write_file(os.join_path(report_dir, 'source_name'), 'bad.v')!
+		mut environment := os.environ()
+		// Force the V1 retry to pick up the staged report without re-dispatching to V3.
+		environment['V_MACOS_V3_RETRY'] = '1'
+		environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
+		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-check-syntax', '-silent', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		// The invalid program is rejected by the stable syntax check.
+		assert exit_code == 1, output
+		// Neither compiler accepted it, so no success notice and no bug report
+		// (neither a submitted one nor a failed-to-send message) may appear.
+		assert !output.contains('could not build this program'), output
+		assert !output.contains('bug report'), output
+		// The staged report directory is removed rather than left behind.
+		assert !os.exists(report_dir), report_dir
+	}
+}
+
 fn test_macos_v3_test_command_uses_v3() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_test_command_${os.getpid()}')
