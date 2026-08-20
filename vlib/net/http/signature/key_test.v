@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 // Tests for Key.from_pem - the PEM blocks come from RFC 9421
 // Appendix B.1.3 (ECDSA P-256) and B.1.4 (Ed25519). The verification
 // roundtrip checks that the parsed key behaves identically to one

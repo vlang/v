@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 // Byte-exact test cases from RFC 9421 Appendix B. Deterministic
 // algorithms (Ed25519, HMAC) reproduce the reference signature
 // exactly; ECDSA can only verify the reference (RFC 9421 §B.2.4

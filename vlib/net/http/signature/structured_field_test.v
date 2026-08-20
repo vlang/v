@@ -1,3 +1,4 @@
+// vtest build: present_openssl? && !(openbsd && gcc) && !(sanitize-memory-clang || docker-ubuntu-musl)
 // Tests for the small RFC 8941 subset implemented in
 // `structured_field.v`. We don't test general SF parsing - only what
 // HTTP signatures actually use - and pin the output bytes that
