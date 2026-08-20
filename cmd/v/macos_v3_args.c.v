@@ -75,6 +75,11 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
 }
 
+@[markused]
+fn macos_v3_explicit_autofree_is_unsupported(prefs &pref.Preferences) bool {
+	return prefs.new_compiler && !prefs.old_compiler && prefs.autofree
+}
+
 // These helpers are shared by the native Darwin dispatcher and the default
 // implementation selected while generating cross-platform VC sources, so this
 // file has to stay platform neutral (no `_darwin.c.v` suffix). Keep them outside
