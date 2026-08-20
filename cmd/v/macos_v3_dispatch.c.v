@@ -149,7 +149,7 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	if prefs.is_verbose {
 		println('Running macOS V3 compiler in process: ${util.args_quote_paths(forwarded_args)}')
 	}
-	fallback_file := os.join_path(os.vtmp_dir(), 'macos_v3_fallback_${os.getpid()}')
+	fallback_file := macos_v3_fallback_file_for_pid()
 	os.rm(fallback_file) or {}
 	c_error_dir := macos_v3_c_error_report_dir(fallback_file)
 	os.rmdir_all(c_error_dir) or {}
@@ -296,15 +296,42 @@ fn stage_macos_v3_compiler_error_report(report_dir string, input_path string) bo
 
 fn take_macos_v3_c_error_report() ?MacosV3CErrorReport {
 	report_dir := os.getenv(macos_v3_c_error_dir_env)
+	// Clear it unconditionally so a stale/hostile value cannot leak into a nested build.
+	os.unsetenv(macos_v3_c_error_dir_env)
 	if report_dir == '' {
 		return none
 	}
-	os.unsetenv(macos_v3_c_error_dir_env)
+	if report_dir != macos_v3_owned_c_error_report_dir() {
+		// A staged report is read for a bug-report upload and then recursively removed
+		// after a successful build, so it must not be a caller-chosen path. Only trust
+		// the directory this dispatcher staged for THIS process: its name embeds the pid,
+		// which os.execvp preserves across the retry but which a caller cannot know before
+		// launch. Otherwise a stale, inherited, or hostile V_MACOS_V3_C_ERROR_DIR (e.g.
+		// `v -old-compiler main.v` or an inherited V_MACOS_V3_RETRY=1) could make a
+		// successful build disclose a file from, and recursively delete, an arbitrary
+		// directory.
+		return none
+	}
 	return read_macos_v3_c_error_report(report_dir)
 }
 
 fn macos_v3_c_error_report_dir(fallback_file string) string {
 	return fallback_file + '.c_error'
+}
+
+// macos_v3_fallback_file_for_pid names this process's staging file under V's temp dir.
+// The dispatcher creates it before running V3, and the V1 retry — reached via os.execvp,
+// which keeps the pid — derives the same name, so a genuine staged report is bound to the
+// process that produced it.
+fn macos_v3_fallback_file_for_pid() string {
+	return os.join_path(os.vtmp_dir(), 'macos_v3_fallback_${os.getpid()}')
+}
+
+// macos_v3_owned_c_error_report_dir returns the staged-report directory this dispatcher
+// would have created for the current process, used to authenticate V_MACOS_V3_C_ERROR_DIR
+// before its contents are uploaded and the directory is removed.
+fn macos_v3_owned_c_error_report_dir() string {
+	return macos_v3_c_error_report_dir(macos_v3_fallback_file_for_pid())
 }
 
 fn read_macos_v3_c_error_report(report_dir string) ?MacosV3CErrorReport {
