@@ -2954,7 +2954,7 @@ fn load_live_state_inventory(automation_root string, state_git_dir string, trust
 			}
 			authenticated_historical[target_commit] = true
 		}
-		parent_commit := live_first_parent_for_commit(state_git_dir, target_commit, history) or {
+		parent_commit := live_first_parent_for_commit(target_commit, history) or {
 			return error('history_recovery_required: ${err.msg()}')
 		}
 		parent_inventory := load_live_state_inventory_at_commit(automation_root, state_git_dir,
@@ -3146,8 +3146,7 @@ fn load_live_evidence_history(state_git_dir string, head string,
 	}
 }
 
-fn live_first_parent_for_commit(state_git_dir string, commit_sha string,
-	history LiveEvidenceHistory) !string {
+fn live_first_parent_for_commit(commit_sha string, history LiveEvidenceHistory) !string {
 	if commit_sha !in history.first_parent {
 		return error('live state terminal commit is outside the authenticated first-parent history')
 	}

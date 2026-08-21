@@ -267,7 +267,7 @@ fn (mut parser StrictJsonParser) parse_string() !string {
 					if low < 0xdc00 || low > 0xdfff {
 						return error('invalid low surrogate in string escape')
 					}
-					codepoint = 0x10000 + ((codepoint - 0xd800) << 10) + (low - 0xdc00)
+					codepoint = 0x10000 + (codepoint - 0xd800) * 0x400 + (low - 0xdc00)
 				} else if codepoint >= 0xdc00 && codepoint <= 0xdfff {
 					return error('isolated low surrogate in string escape')
 				}

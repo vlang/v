@@ -54,6 +54,7 @@ fn workflow_index_after(source string, needle string, offset int) int {
 fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	source := workflow_source('tccbin_automation_contract.yml')
 	vc_lock := bin.validate_vc_bootstrap_contract(automation_root()) or { panic(err) }
+	tcc_lock := 'ece46f06fbe6eb701d52442f11dd59c48d166cae'
 	assert source.contains('  pull_request:')
 	assert source.contains('  merge_group:')
 	assert !source.contains('paths:')
@@ -75,15 +76,20 @@ fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	assert source.count('timeout-minutes: 45') == 1
 	assert source.count('timeout-minutes: 30') == 1
 	assert source.count('timeout-minutes: 5') == 2
-	assert source.count('persist-credentials: false') == 3
-	assert source.count('uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1') == 1
+	assert source.count('persist-credentials: false') == 4
+	assert source.count('uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1') == 2
 	assert source.count('repository: vlang/vc') == 1
 	assert source.count('ref: ${vc_lock.commit}') == 1
 	assert source.count('path: vc') == 1
-	assert source.count('fetch-depth: 0') == 2
-	assert source.count('filter: blob:none') == 1
+	assert source.count('repository: vlang/tccbin') == 1
+	assert source.count('ref: ${tcc_lock}') == 1
+	assert source.count('path: thirdparty/tcc') == 1
+	assert source.count('fetch-depth: 0') == 3
+	assert source.count('filter: blob:none') == 2
 	assert source.count('git -C vc config --local core.autocrlf false') == 1
+	assert source.count('git -C thirdparty/tcc config --local core.autocrlf false') == 1
 	assert source.count('make local=1') == 1
+	assert !source.contains('make latest_tcc')
 	tested_checkout := '      - name: Checkout the tested revision\n' +
 		'        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n' +
 		'        with:\n' + '          fetch-depth: 0\n' + '          persist-credentials: false\n'
@@ -91,10 +97,16 @@ fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	vc_checkout_index := source.index('      - name: Checkout the immutable VC bootstrap snapshot') or {
 		panic('immutable VC checkout missing')
 	}
+	tcc_checkout_index := workflow_index_after(source,
+		'      - name: Checkout the immutable TCC bootstrap bundle', vc_checkout_index)
+	tcc_verify_index := workflow_index_after(source,
+		'      - name: Configure and verify the immutable TCC bootstrap bundle', tcc_checkout_index)
 	build_index := workflow_index_after(source, '      - name: Build the local compiler',
-		vc_checkout_index)
-	assert vc_checkout_index < build_index
-	vc_checkout := source[vc_checkout_index..build_index]
+		tcc_verify_index)
+	assert vc_checkout_index < tcc_checkout_index
+	assert tcc_checkout_index < tcc_verify_index
+	assert tcc_verify_index < build_index
+	vc_checkout := source[vc_checkout_index..tcc_checkout_index]
 	assert vc_checkout.count('uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1') == 1
 	assert vc_checkout.count('repository: vlang/vc') == 1
 	assert vc_checkout.count('ref: ${vc_lock.commit}') == 1
@@ -103,6 +115,28 @@ fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	assert vc_checkout.count('filter: blob:none') == 1
 	assert vc_checkout.count('persist-credentials: false') == 1
 	assert vc_checkout.count('git -C vc config --local core.autocrlf false') == 1
+	tcc_checkout := source[tcc_checkout_index..tcc_verify_index]
+	assert tcc_checkout.count('uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1') == 1
+	assert tcc_checkout.count('repository: vlang/tccbin') == 1
+	assert tcc_checkout.count('ref: ${tcc_lock}') == 1
+	assert tcc_checkout.count('path: thirdparty/tcc') == 1
+	assert tcc_checkout.count('fetch-depth: 0') == 1
+	assert tcc_checkout.count('filter: blob:none') == 1
+	assert tcc_checkout.count('persist-credentials: false') == 1
+	tcc_verify := source[tcc_verify_index..build_index]
+	assert tcc_verify.count('git -C thirdparty/tcc config --local core.autocrlf false') == 1
+	assert tcc_verify.count('test "$(git -C thirdparty/tcc rev-parse HEAD)" = "${tcc_lock}"') == 1
+	assert tcc_verify.count('tcc_symbolic_ref_rc=0') == 1
+	assert tcc_verify.count('git -C thirdparty/tcc symbolic-ref --quiet HEAD >/dev/null || tcc_symbolic_ref_rc=$?') == 1
+	assert tcc_verify.count('test "$tcc_symbolic_ref_rc" -eq 1') == 1
+	assert tcc_verify.count('tcc_status="$(git -C thirdparty/tcc status --porcelain --untracked-files=all)"') == 1
+	assert tcc_verify.count('test -z "$tcc_status"') == 1
+	assert !tcc_verify.contains('symbolic-ref --quiet HEAD || true')
+	assert !tcc_verify.contains('test -z "$(git -C thirdparty/tcc status')
+	assert tcc_verify.count('test "$(git -C thirdparty/tcc config --local --get core.autocrlf)" = "false"') == 1
+	assert tcc_verify.count('test -x thirdparty/tcc/tcc.exe') == 1
+	assert tcc_verify.count('test -f thirdparty/tcc/lib/libgc.a') == 1
+	assert tcc_verify.count('thirdparty/tcc/tcc.exe --version') == 1
 	assert !source.contains(r'${{ secrets.')
 	assert !source.contains('contents: write')
 }
