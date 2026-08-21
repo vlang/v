@@ -30,6 +30,10 @@ pub:
 	// Lowering it below `default_min_iterations` weakens the protection an
 	// intercepted exchange gets against an offline attack.
 	min_iterations int = default_min_iterations
+	// max_iterations is the largest iteration count accepted from the server.
+	// Raising it lets a hostile server spend more of this client's CPU on a
+	// single message; see `default_max_iterations`.
+	max_iterations int = default_max_iterations
 	// nonce overrides the generated client nonce. Leave it empty outside of
 	// tests: a nonce that repeats across exchanges destroys replay protection.
 	nonce string
@@ -60,6 +64,7 @@ pub struct Client {
 	authzid         string
 	channel_binding ChannelBinding
 	min_iterations  int
+	max_iterations  int
 	gs2_header      string
 	client_nonce    string
 mut:
@@ -83,6 +88,9 @@ pub fn new_client(config ClientConfig) !&Client {
 	if config.min_iterations < 1 {
 		return error('scram: min_iterations must be at least 1, got ${config.min_iterations}')
 	}
+	if config.max_iterations < config.min_iterations {
+		return error('scram: max_iterations (${config.max_iterations}) must not be below min_iterations (${config.min_iterations})')
+	}
 	nonce := if config.nonce == '' { generate_nonce()! } else { config.nonce }
 	validate_nonce(nonce)!
 	return &Client{
@@ -92,6 +100,7 @@ pub fn new_client(config ClientConfig) !&Client {
 		authzid:         config.authzid
 		channel_binding: config.channel_binding
 		min_iterations:  config.min_iterations
+		max_iterations:  config.max_iterations
 		gs2_header:      config.channel_binding.gs2_header(config.authzid)!
 		client_nonce:    nonce
 	}
@@ -134,7 +143,8 @@ pub fn (mut c Client) first() !string {
 // final consumes the server-first-message and returns the
 // client-final-message, which carries the proof that this client knows the
 // password. The server's salt and iteration count are validated here, so a
-// server cannot weaken the exchange by asking for a trivial amount of work.
+// server can neither weaken the exchange by asking for a trivial amount of
+// work, nor stall this client by asking for an absurd amount of it.
 pub fn (mut c Client) final(server_first string) !string {
 	if c.state != .awaiting_server_first {
 		return error('scram: final() must be called once, after first(), with the server-first-message')
@@ -173,6 +183,14 @@ pub fn (mut c Client) final(server_first string) !string {
 	if iterations < c.min_iterations {
 		return AuthenticationFailed{
 			reason: 'the server asked for ${iterations} iterations, below the configured minimum of ${c.min_iterations}'
+		}
+	}
+	// The ceiling is checked before `hi()` rather than after: the point is to
+	// never start the work, since a server that names an absurd count is
+	// spending this client's CPU rather than protecting its own passwords.
+	if iterations > c.max_iterations {
+		return AuthenticationFailed{
+			reason: 'the server asked for ${iterations} iterations, above the configured maximum of ${c.max_iterations}'
 		}
 	}
 

@@ -132,3 +132,53 @@ fn test_a_proof_of_the_wrong_length_is_refused_before_it_is_used() {
 	}
 	assert false, 'the server accepted a 3 byte proof'
 }
+
+fn test_an_absurd_iteration_count_is_refused_without_doing_the_work() {
+	// The grammar allows nine digits, and `hi()` would run every one of them
+	// before the server has proved anything at all.
+	mut client := new_client(username: 'user', password: 'pencil', nonce: 'clientnonce')!
+	_ := client.first()!
+	client.final('r=clientnonceserver,s=c2FsdHNhbHRzYWx0c2FsdA==,i=999999999') or {
+		assert err is AuthenticationFailed
+		assert err.msg().contains('above the configured maximum of ${default_max_iterations}')
+		return
+	}
+	assert false, 'the client accepted 999999999 iterations'
+}
+
+fn test_the_iteration_count_ceiling_is_configurable() {
+	mut strict := new_client(
+		username:       'user'
+		password:       'pencil'
+		nonce:          'clientnonce'
+		max_iterations: 8192
+	)!
+	_ := strict.first()!
+	strict.final('r=clientnonceserver,s=c2FsdHNhbHRzYWx0c2FsdA==,i=32768') or {
+		assert err is AuthenticationFailed
+		assert err.msg().contains('above the configured maximum of 8192')
+		return
+	}
+	assert false, 'the client accepted 32768 iterations against a ceiling of 8192'
+}
+
+fn test_a_ceiling_below_the_floor_is_refused_at_construction() {
+	// 1024 is below the 4096 floor, so no count could ever be accepted: a
+	// client configured that way would fail every exchange for a reason that
+	// looks like the server's fault.
+	new_client(username: 'user', password: 'pencil', max_iterations: 1024) or {
+		assert err.msg().contains('must not be below min_iterations')
+		return
+	}
+	assert false, 'accepted a ceiling below the floor'
+}
+
+fn test_a_count_between_the_floor_and_the_ceiling_is_still_accepted() {
+	credentials := derive_credentials(.sha256, 'pencil', 'saltsaltsaltsalt'.bytes(),
+		default_iterations)!
+	mut server := server_with(credentials)!
+	mut client := new_client(username: 'user', password: 'pencil')!
+	server_final := server.final(client.final(server.first(client.first()!)!)!)!
+	client.verify(server_final)!
+	assert client.done() && server.done()
+}

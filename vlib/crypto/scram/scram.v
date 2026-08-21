@@ -59,6 +59,16 @@ import encoding.base64
 // count makes an offline attack on an intercepted exchange cheap.
 pub const default_min_iterations = 4096
 
+// default_max_iterations is the largest PBKDF2 iteration count a client
+// accepts from a server unless `ClientConfig.max_iterations` says otherwise.
+// The count is a number a server picks, and deriving the salted password
+// happens before anything about that server has been authenticated, so
+// without a ceiling a hostile endpoint turns a few bytes of
+// server-first-message into unbounded work on the client: at the 999999999
+// the grammar allows, that is tens of minutes of CPU per connection. 2^20 is
+// three orders of magnitude above what deployments use in practice.
+pub const default_max_iterations = 1_048_576
+
 // default_iterations is the iteration count used by `new_credentials` when
 // the caller does not pick one. RFC 7677 §4 gives 4096 as the floor; this
 // module defaults an order of magnitude above it, which stays well under a

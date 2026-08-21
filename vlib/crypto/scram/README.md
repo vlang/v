@@ -202,6 +202,13 @@ count makes an offline attack on a recorded exchange cheap. Lower it
 with `ClientConfig.min_iterations` only for a legacy server that leaves
 no choice. `new_credentials` writes `default_iterations` (32768).
 
+A client also refuses a count above `default_max_iterations` (2^20). The
+count is chosen by the server and consumed before the server has been
+authenticated, so without a ceiling a hostile endpoint turns a short
+message into minutes of client CPU. Raise it with
+`ClientConfig.max_iterations` if you really talk to a server that asks
+for more.
+
 **User enumeration.** Returning an error from the `lookup` callback tells
 the caller — and through it, an attacker — that a user name does not
 exist. RFC 5802 §7 suggests answering unknown users with credentials
