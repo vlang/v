@@ -86,6 +86,7 @@ To get started, execute the following in your terminal/shell:
 git clone --depth=1 https://github.com/vlang/v
 cd v
 make
+sudo ./v symlink
 ```
 
 That should be it, and you should find your V executable at `[path to V repo]/v`.
