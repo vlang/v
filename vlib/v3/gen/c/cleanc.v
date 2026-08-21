@@ -16596,6 +16596,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int strcmp(const char* s1, const char* s2);')
 	g.writeln('int strncmp(const char* s1, const char* s2, size_t n);')
 	g.writeln('char* strncpy(char* dest, const char* src, size_t n);')
+	g.writeln('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));')
 	g.writeln('double floor(double x);')
 	g.writeln('double ceil(double x);')
 	g.writeln('float floorf(float x);')
@@ -16989,6 +16990,7 @@ const c_headerless_libc_declared_fns = [
 	'clock',
 	'fprintf',
 	'fflush',
+	'qsort',
 	'qsort_r',
 ]
 
@@ -17340,7 +17342,10 @@ fn (mut g FlatGen) headerless_platform_constants() {
 	g.writeln('#define LOCK_EX 2')
 	g.writeln('#define LOCK_NB 4')
 	g.writeln('#define LOCK_UN 8')
+	g.writeln('#define EPERM 1')
 	g.writeln('#define ENOENT 2')
+	g.writeln('#define ESRCH 3')
+	g.writeln('#define EACCES 13')
 	g.writeln('#define RUSAGE_SELF 0')
 	g.writeln('#ifdef __APPLE__')
 	g.headerless_darwin_constants()
@@ -17522,7 +17527,6 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.writeln('#define F_RDLCK 1')
 	g.writeln('#define F_UNLCK 2')
 	g.writeln('#define F_WRLCK 3')
-	g.writeln('#define EACCES 13')
 	g.writeln('#define EFAULT 14')
 	g.writeln('#define EINTR 4')
 	g.writeln('#define EINVAL 22')
@@ -17643,7 +17647,6 @@ fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_
 	g.writeln('#define F_RDLCK 1')
 	g.writeln('#define F_UNLCK 2')
 	g.writeln('#define F_WRLCK 3')
-	g.writeln('#define EACCES 13')
 	g.writeln('#define EFAULT 14')
 	g.writeln('#define EINTR 4')
 	g.writeln('#define EINVAL 22')

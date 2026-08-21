@@ -43,6 +43,22 @@ fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
 	assert c_code.contains('int printf(const char* format, ...);'), c_code
 }
 
+fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {
+	mut g := FlatGen.new()
+	g.headerless_libc_preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));'), c_code
+}
+
+fn test_headerless_platform_constants_include_process_errno_values() {
+	mut g := FlatGen.new()
+	g.headerless_platform_constants()
+	c_code := g.sb.str()
+	for definition in ['#define EPERM 1', '#define ESRCH 3', '#define EACCES 13'] {
+		assert c_code.contains(definition), definition
+	}
+}
+
 fn test_manual_stdlib_headers_define_l_tmpnam_for_glibc() {
 	// The v3 backend embeds and reuses the v1 c_headers prelude (see manual_stdlib_c_headers).
 	// Make sure the glibc L_tmpnam define is inherited, so a module header that pulls <stdio.h>

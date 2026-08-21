@@ -14985,6 +14985,7 @@ const c_preamble_declared_extern_symbols = {
 	'clock':                         true
 	'fprintf':                       true
 	'fflush':                        true
+	'qsort':                         true
 	'qsort_r':                       true
 	'mktime':                        true
 	'localtime':                     true

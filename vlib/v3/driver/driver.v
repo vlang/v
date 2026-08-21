@@ -1809,6 +1809,31 @@ fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target
 	}
 }
 
+struct V3TccResourceFlags {
+	install_dir string
+	base_arg    string
+	include_arg string
+	library_arg string
+}
+
+fn v3_tcc_resource_flags(vroot string) V3TccResourceFlags {
+	tcc_root_dir := os.join_path(vroot, 'thirdparty', 'tcc')
+	tcc_lib_dir := os.join_path_single(tcc_root_dir, 'lib')
+	tcc_nested_dir := os.join_path_single(tcc_lib_dir, 'tcc')
+	install_dir := if os.is_dir(tcc_nested_dir) { tcc_nested_dir } else { tcc_lib_dir }
+	mut include_dir := os.join_path_single(install_dir, 'include')
+	tcc_root_include_dir := os.join_path_single(tcc_root_dir, 'include')
+	if !os.is_dir(include_dir) && os.is_dir(tcc_root_include_dir) {
+		include_dir = tcc_root_include_dir
+	}
+	return V3TccResourceFlags{
+		install_dir: install_dir
+		base_arg:    '-B${install_dir}'
+		include_arg: '-I${include_dir}'
+		library_arg: '-L${install_dir}'
+	}
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -1822,9 +1847,9 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	mut tcc_includes := ''
 	if options.explicit_tcc {
-		tcc_lib_dir := os.join_path(options.vroot, 'thirdparty', 'tcc', 'lib')
-		tcc_includes = '-I${os.join_path_single(tcc_lib_dir, 'include')}'
-		before_inputs << [tcc_includes, '-L${tcc_lib_dir}']
+		tcc_resources := v3_tcc_resource_flags(options.vroot)
+		tcc_includes = tcc_resources.include_arg
+		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
 		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
@@ -9657,11 +9682,9 @@ pub fn run(args []string) {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
-			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
-			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
-			tcc_lib := '-L${tcc_lib_dir}'
-			mut tcc_args := [c_standard, tcc_includes, tcc_lib, '-w',
-				'-Werror=implicit-function-declaration']
+			tcc_resources := v3_tcc_resource_flags(prefs.vroot)
+			mut tcc_args := [c_standard, tcc_resources.base_arg, tcc_resources.include_arg,
+				tcc_resources.library_arg, '-w', '-Werror=implicit-function-declaration']
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
 				prefs.normalized_target_arch(), is_shared)
 			{
@@ -9672,7 +9695,7 @@ pub fn run(args []string) {
 			}
 			tcc_args << tcc_cached_main_flags(resolved_c_flags)
 			tcc_args << ['-o', 'out', os.base(tcc_main_file)]
-			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_includes)
+			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
 			if atomic_s.len > 0 {
 				tcc_args << atomic_s
 			}
@@ -9689,7 +9712,7 @@ pub fn run(args []string) {
 			}}'
 			tcc_cached_executable := v3_cached_tcc_executable_path(&cache_state.manager,
 				program_source_identity, c_object_cache_stats.link_plan_signature, tcc_path,
-				tcc_lib_dir, tcc_args)
+				tcc_resources.install_dir, tcc_args)
 			if os.is_file(tcc_cached_executable) {
 				os.cp(tcc_cached_executable, cc_out) or {}
 				tcc_cache_hit = os.is_file(cc_out)
@@ -9732,9 +9755,7 @@ pub fn run(args []string) {
 			} else {
 				bundled_tcc_path
 			}
-			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
-			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
-			tcc_lib := '-L${tcc_lib_dir}'
+			tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 			mut tcc_args := environment_c_flags.clone()
 			if link_c_standard.len > 0 {
 				tcc_args << link_c_standard
@@ -9742,7 +9763,7 @@ pub fn run(args []string) {
 			if pic_flag.len > 0 {
 				tcc_args << pic_flag
 			}
-			tcc_args << [tcc_includes, tcc_lib]
+			tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
 				prefs.normalized_target_arch(), is_shared)
 			{
@@ -9760,7 +9781,7 @@ pub fn run(args []string) {
 				'src.c'
 			}
 			tcc_args << ['-o', 'out', tcc_source]
-			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_includes)
+			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
 			if atomic_s.len > 0 {
 				tcc_args << atomic_s
 			}
