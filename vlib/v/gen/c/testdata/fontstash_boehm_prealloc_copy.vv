@@ -1,4 +1,4 @@
-// vtest vflags: -d prealloc -d gcboehm
+// vtest vflags: -d prealloc -gc boehm
 import fontstash
 
 fn main() {

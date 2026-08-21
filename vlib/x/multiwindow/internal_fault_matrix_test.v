@@ -1255,6 +1255,22 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 							event.framebuffer_height, reason)!
 					}
 				}
+				.service {
+					event := queued.service
+					assert event.window == before.window
+					assert event.kind in [.state, .metrics]
+					assert event.metrics.metrics_available
+					assert event.metrics.conversion_available
+					assert event.metrics.logical_width > 0
+					assert event.metrics.logical_height > 0
+					assert event.metrics.framebuffer_width > 0
+					assert event.metrics.framebuffer_height > 0
+					assert event.metrics.dpi_scale > 0
+					assert event.metrics.metrics_sequence == queued.delivery_token
+				}
+				.readback {
+					assert false, 'renderer stop harvest fixture must not enqueue readback events'
+				}
 			}
 		}
 		return replay
@@ -2017,7 +2033,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		}
 		assert teardown_errors.len == 0
 		assert app.sealed_window_tickets_for_stop().len == 0
-		assert app.live_window_ids_for_stop().len == 0
+		assert app.live_window_ids_for_stop()!.len == 0
 		window_capture := renderer_fault_native_proof_capture_for_test(app)
 		assert window_capture.available
 		window_proof := window_capture.snapshot
@@ -2667,7 +2683,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 		}
 		assert teardown_errors.len == 0
 		assert app.sealed_window_tickets_for_stop().len == 0
-		assert app.live_window_ids_for_stop().len == 0
+		assert app.live_window_ids_for_stop()!.len == 0
 		window_proof_capture := renderer_fault_native_proof_capture_for_test(app)
 		assert window_proof_capture.available
 		window_proof := window_proof_capture.snapshot

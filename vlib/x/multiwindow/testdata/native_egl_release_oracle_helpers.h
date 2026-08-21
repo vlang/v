@@ -4,6 +4,13 @@
 #include <EGL/egl.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <sys/types.h>
+
+#if defined(__linux__) && defined(__GLIBC__) && !defined(__USE_GNU) \
+	&& (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 30))
+extern pid_t gettid(void);
+#endif
+
 #include "native_release_oracle_common.h"
 
 #define V_MULTIWINDOW_TEST_RELEASE_ORACLE_CAPACITY 256

@@ -18,7 +18,7 @@ fn closure_alloc_platform() &u8 {
 
 @[inline]
 fn closure_memory_protect_platform(ptr voidptr, size isize, attr MemoryProtectAtrr) {
-	mut tmp := u32(0)
+	mut tmp := C.DWORD(0)
 	match attr {
 		.read_exec {
 			_ := C.VirtualProtect(ptr, size, C.PAGE_EXECUTE_READ, &tmp)

@@ -4,6 +4,38 @@ import sokol.gfx
 import sokol.sgl
 import x.multiwindow
 
+$if linux {
+	$if x_multiwindow_x11 ? || sokol_wayland ? {
+		#insert "@VMODROOT/vlib/gg/multiwindow_gl_readback_helpers.h"
+
+		fn C.v_gg_multiwindow_gl_readback_image_rgba8(image_id u32, image_height int, x int, y int, width int, height int, pixels &u8, pixels_len usize) int
+		fn C.v_gg_multiwindow_gl_readback_window_rgba8(framebuffer_height int, x int, y int, width int, height int, pixels &u8, pixels_len usize) int
+	}
+}
+
+struct MultiWindowPendingWindowCapture {
+	id                     multiwindow.ServiceReadbackId
+	window                 WindowId
+	rect                   WindowPixelRect
+	target_submitted_frame u64
+mut:
+	attempt_batch_epoch u64
+	staged_batch_epoch  u64
+	staged_pixels       []u8
+}
+
+struct MultiWindowPendingImageReadback {
+	id                     multiwindow.ServiceReadbackId
+	window                 WindowId
+	image                  WindowImageId
+	batch_epoch            u64
+	target_submitted_frame u64
+	width                  int
+	height                 int
+	stride                 int
+	pixels                 []u8
+}
+
 struct MultiWindowSglFlushState {
 mut:
 	flushed bool
@@ -102,16 +134,390 @@ fn (mut app App) set_window_clear_color_managed(id WindowId, color Color) ! {
 fn (app &App) window_readback_capabilities_managed(id WindowId) !WindowReadbackCapabilities {
 	app.ensure_initialized()!
 	app.core.render_window_snapshot(id.core)!
-	// No current backend exposes a contract-correct asynchronous copy path.
-	return WindowReadbackCapabilities{}
+	image := app.core.service_operation_capability(id.core, .image_readback)!
+	window := app.window_operation_capability(id, .window_capture)!
+	mut offscreen_image := false
+	$if linux {
+		$if x_multiwindow_x11 ? || sokol_wayland ? {
+			offscreen_image = app.capabilities().backend in [.x11, .wayland]
+				&& app.core.renderer_device_available_for_gg()
+				&& gfx.query_backend() in [.glcore33, .gles3] && image.support == .available
+		}
+	}
+	$if darwin {
+		$if darwin_sokol_glcore33 ? {
+		} $else {
+			offscreen_image = app.capabilities().backend == .appkit
+				&& app.core.renderer_device_available_for_gg()
+				&& gfx.query_backend() == .metal_macos && image.support == .available
+		}
+	}
+	return WindowReadbackCapabilities{
+		offscreen_image: offscreen_image
+		window_capture:  window.support == .available
+	}
+}
+
+fn (mut app App) stage_appkit_window_capture(readback multiwindow.ServiceReadbackId, rect WindowPixelRect, producing_frame u64) ! {
+	app.core.service_stage_window_readback_for_gg(readback, rect.x, rect.y, rect.width,
+		rect.height, producing_frame)!
+}
+
+fn (mut app App) arm_appkit_image_readbacks_for_pass(id WindowId, image_id u32, pass_serial u64, producing_frame u64) ! {
+	app.core.service_arm_image_readback_pass_for_gg(id.core, image_id, pass_serial, producing_frame)!
+}
+
+fn readback_rect_fits(rect WindowPixelRect, target_width int, target_height int) bool {
+	if target_width <= 0 || target_height <= 0 || rect.x < 0 || rect.y < 0 || rect.width <= 0
+		|| rect.height <= 0 || rect.width > target_width || rect.height > target_height {
+		return false
+	}
+	return rect.x <= target_width - rect.width && rect.y <= target_height - rect.height
+}
+
+fn capture_block_reason_prevents_future_frame(reason multiwindow.RenderBlockReason) bool {
+	return reason in [.no_workload, .not_configured, .hidden, .minimized, .occluded, .unmapped,
+		.not_viewable, .zero_sized, .backend_unavailable, .renderer_failed]
+}
+
+fn managed_window_capture_has_producer(producer MultiWindowCaptureProducer, snapshot multiwindow.RenderWindowSnapshot) bool {
+	if !snapshot.metrics.metrics_available || snapshot.metrics.framebuffer_width <= 0
+		|| snapshot.metrics.framebuffer_height <= 0 || snapshot.target.sample_count <= 0 {
+		return false
+	}
+	if producer.frame_active {
+		return true
+	}
+	if !producer.frame_fn_configured {
+		return false
+	}
+	return !capture_block_reason_prevents_future_frame(snapshot.block_reason)
+}
+
+fn unbound_managed_window_capture_is_permanently_blocked(producer MultiWindowCaptureProducer, snapshot multiwindow.RenderWindowSnapshot) bool {
+	if producer.frame_active {
+		return false
+	}
+	return !producer.frame_fn_configured
+		|| capture_block_reason_prevents_future_frame(snapshot.block_reason)
+}
+
+fn (mut app App) reconcile_unbound_managed_window_captures() ! {
+	if app.pending_window_captures.len == 0 {
+		return
+	}
+	mut index := 0
+	for index < app.pending_window_captures.len {
+		capture := app.pending_window_captures[index]
+		if capture.attempt_batch_epoch != 0 || !app.window_exists(capture.window) {
+			index++
+			continue
+		}
+		snapshot := app.core.render_window_snapshot(capture.window.core) or {
+			app.core.service_fail_window_readback(capture.id,
+				err_multiwindow_render_capture_cancelled)!
+			app.pending_window_captures.delete(index)
+			continue
+		}
+		producer := app.render_runtime.window_capture_producer(capture.window) or {
+			app.core.service_fail_window_readback(capture.id,
+				err_multiwindow_render_capture_cancelled)!
+			app.pending_window_captures.delete(index)
+			continue
+		}
+		if !unbound_managed_window_capture_is_permanently_blocked(producer, snapshot) {
+			index++
+			continue
+		}
+		app.core.service_fail_window_readback(capture.id, err_multiwindow_render_capture_cancelled)!
+		app.pending_window_captures.delete(index)
+	}
+}
+
+fn (mut app App) request_window_capture_redraw(id WindowId) ! {
+	if message := app.render_runtime.take_internal_fault(.capture_request_redraw) {
+		return error(message)
+	}
+	app.core.request_redraw(id.core)!
 }
 
 fn (mut app App) request_window_capture_managed(id WindowId, config WindowReadbackConfig) !WindowReadbackId {
 	app.ensure_initialized()!
 	app.assert_owner_thread() or { return error(err_multiwindow_render_owner_thread) }
-	app.core.render_window_snapshot(id.core)!
-	_ = config
+	snapshot := app.core.render_window_snapshot(id.core)!
+	backend := app.capabilities().backend
+	renderer_active := backend in [.x11, .wayland, .appkit]
+		&& app.core.renderer_device_available_for_gg()
+	if renderer_active {
+		if app.window_operation_capability(id, .window_capture)!.support != .available {
+			return error(err_multiwindow_render_readback_unsupported)
+		}
+		if (backend in [.x11, .wayland] && gfx.query_backend() !in [.glcore33, .gles3])
+			|| (backend == .appkit && gfx.query_backend() != .metal_macos) {
+			return error(err_multiwindow_render_readback_unsupported)
+		}
+		mut width := snapshot.metrics.framebuffer_width
+		mut height := snapshot.metrics.framebuffer_height
+		mut x := 0
+		mut y := 0
+		if rect := config.rect {
+			if !readback_rect_fits(rect, width, height) {
+				return error(err_multiwindow_render_readback_unsupported)
+			}
+			width = rect.width
+			height = rect.height
+			x = rect.x
+			y = rect.y
+		}
+		if snapshot.submitted_frame == u64(0xffffffffffffffff) {
+			return error(err_multiwindow_render_readback_unsupported)
+		}
+		producer := app.render_runtime.window_capture_producer(id)!
+		if !managed_window_capture_has_producer(producer, snapshot) {
+			return error(err_multiwindow_render_readback_unsupported)
+		}
+		readback := app.core.service_begin_window_readback_with_payload_for_gg(id.core, width,
+			height)!
+		app.request_window_capture_redraw(id) or {
+			app.core.service_rollback_window_readback_for_gg(readback)
+			return err
+		}
+		if backend == .appkit {
+			rect := WindowPixelRect{
+				x:      x
+				y:      y
+				width:  width
+				height: height
+			}
+			app.stage_appkit_window_capture(readback, rect, snapshot.submitted_frame + 1) or {
+				app.core.service_abandon_window_readback_for_gg(readback, err.msg())!
+				return window_readback_id_from_core(readback)
+			}
+			return window_readback_id_from_core(readback)
+		}
+		app.pending_window_captures << MultiWindowPendingWindowCapture{
+			id:                     readback
+			window:                 id
+			rect:                   WindowPixelRect{
+				x:      x
+				y:      y
+				width:  width
+				height: height
+			}
+			target_submitted_frame: snapshot.submitted_frame + 1
+			attempt_batch_epoch:    app.active_batch_epoch
+		}
+		return window_readback_id_from_core(readback)
+	}
+	if backend == .wayland {
+		return error(err_multiwindow_render_readback_unsupported)
+	}
+	if backend == .appkit {
+		return error(err_multiwindow_render_readback_unsupported)
+	}
+	if backend == .win32
+		&& app.window_operation_capability(id, .window_capture)!.support == .unsupported {
+		return error(err_multiwindow_render_readback_unsupported)
+	}
+	info := app.core.window_info(id.core)!
+	mut width := info.width
+	mut height := info.height
+	mut x := 0
+	mut y := 0
+	if rect := config.rect {
+		if !readback_rect_fits(rect, info.width, info.height) {
+			return error(err_multiwindow_render_readback_unsupported)
+		}
+		width = rect.width
+		height = rect.height
+		x = rect.x
+		y = rect.y
+	}
+	return window_readback_id_from_core(app.core.service_request_window_readback_region(id.core, x,
+		y, width, height, snapshot.submitted_frame)!)
+}
+
+fn (mut app App) bind_managed_window_capture_attempts(id WindowId, target_submitted_frame u64, batch_epoch u64) {
+	for index, capture in app.pending_window_captures {
+		if capture.window == id && capture.target_submitted_frame == target_submitted_frame
+			&& capture.attempt_batch_epoch == 0 {
+			app.pending_window_captures[index].attempt_batch_epoch = batch_epoch
+		}
+	}
+}
+
+fn (mut app App) stage_managed_window_captures(id WindowId, target_submitted_frame u64, framebuffer_height int) ! {
+	if app.capabilities().backend !in [.x11, .wayland] || app.pending_window_captures.len == 0 {
+		return
+	}
+	$if linux {
+		$if x_multiwindow_x11 ? || sokol_wayland ? {
+			mut index := 0
+			for index < app.pending_window_captures.len {
+				capture := app.pending_window_captures[index]
+				if capture.window != id || capture.target_submitted_frame != target_submitted_frame
+					|| capture.attempt_batch_epoch != app.active_batch_epoch
+					|| capture.staged_pixels.len > 0 {
+					index++
+					continue
+				}
+				mut pixels := []u8{len: capture.rect.width * capture.rect.height * 4}
+				status := C.v_gg_multiwindow_gl_readback_window_rgba8(framebuffer_height,
+					capture.rect.x, capture.rect.y, capture.rect.width, capture.rect.height,
+					pixels.data, usize(pixels.len))
+				if status != 0 {
+					app.core.service_fail_window_readback(capture.id,
+						err_multiwindow_render_readback_unsupported)!
+					app.pending_window_captures.delete(index)
+					continue
+				}
+				app.pending_window_captures[index].staged_batch_epoch = app.active_batch_epoch
+				app.pending_window_captures[index].staged_pixels = pixels
+				index++
+			}
+			return
+		}
+	}
+	_ = id
+	_ = target_submitted_frame
+	_ = framebuffer_height
 	return error(err_multiwindow_render_readback_unsupported)
+}
+
+fn (mut app App) fail_managed_window_captures_for_batch(batch_epoch u64, message string) ! {
+	if app.pending_window_captures.len == 0 || batch_epoch == 0 {
+		return
+	}
+	mut retained := []MultiWindowPendingWindowCapture{cap: app.pending_window_captures.len}
+	mut errors := []string{}
+	terminal_message := if message == '' {
+		err_multiwindow_render_readback_unsupported
+	} else {
+		message
+	}
+	for capture in app.pending_window_captures {
+		if capture.attempt_batch_epoch != batch_epoch {
+			retained << capture
+			continue
+		}
+		if !app.window_exists(capture.window) {
+			continue
+		}
+		app.core.service_fail_window_readback(capture.id, terminal_message) or {
+			errors << err.msg()
+		}
+	}
+	app.pending_window_captures = retained
+	if errors.len > 0 {
+		return error('${err_multiwindow_render_callback_failed}: ${errors.join('; ')}')
+	}
+}
+
+fn (mut app App) finish_managed_window_captures(outcome multiwindow.RenderBatchOutcome) ! {
+	if app.pending_window_captures.len == 0 {
+		return
+	}
+	mut retained := []MultiWindowPendingWindowCapture{cap: app.pending_window_captures.len}
+	mut errors := []string{}
+	for capture in app.pending_window_captures {
+		if capture.attempt_batch_epoch != outcome.batch_epoch {
+			retained << capture
+			continue
+		}
+		if !app.window_exists(capture.window) {
+			continue
+		}
+		snapshot := app.core.render_window_snapshot(capture.window.core) or {
+			app.core.service_fail_window_readback(capture.id, err.msg()) or { errors << err.msg() }
+			continue
+		}
+		succeeded := outcome.error == '' && outcome.committed
+			&& capture.staged_batch_epoch == outcome.batch_epoch
+			&& capture.staged_pixels.len == capture.rect.width * capture.rect.height * 4
+			&& snapshot.submitted_frame == capture.target_submitted_frame
+		if !succeeded {
+			message := if outcome.error == '' {
+				err_multiwindow_render_readback_unsupported
+			} else {
+				outcome.error
+			}
+			app.core.service_fail_window_readback(capture.id, message) or { errors << err.msg() }
+			continue
+		}
+		app.core.service_finish_window_readback(capture.id, capture.rect.width,
+			capture.rect.height, capture.rect.width * 4, capture.staged_pixels,
+			capture.target_submitted_frame) or { errors << err.msg() }
+	}
+	app.pending_window_captures = retained
+	if errors.len > 0 {
+		return error('${err_multiwindow_render_callback_failed}: ${errors.join('; ')}')
+	}
+}
+
+fn (mut app App) fail_linux_gl_image_readbacks_for_batch(batch_epoch u64, message string) ! {
+	if app.pending_image_readbacks.len == 0 {
+		return
+	}
+	mut retained := []MultiWindowPendingImageReadback{cap: app.pending_image_readbacks.len}
+	mut errors := []string{}
+	terminal_message := if message == '' {
+		err_multiwindow_render_readback_unsupported
+	} else {
+		message
+	}
+	for readback in app.pending_image_readbacks {
+		if readback.batch_epoch != batch_epoch {
+			retained << readback
+			continue
+		}
+		app.core.service_fail_window_readback(readback.id, terminal_message) or {
+			errors << err.msg()
+		}
+	}
+	app.pending_image_readbacks = retained
+	if errors.len > 0 {
+		return error('${err_multiwindow_render_callback_failed}: ${errors.join('; ')}')
+	}
+}
+
+fn (mut app App) finish_linux_gl_image_readbacks(outcome multiwindow.RenderBatchOutcome) ! {
+	if app.pending_image_readbacks.len == 0 {
+		return
+	}
+	if outcome.error != '' || !outcome.committed || outcome.finalized_submissions <= 0 {
+		app.fail_linux_gl_image_readbacks_for_batch(outcome.batch_epoch, outcome.error)!
+		return
+	}
+	mut retained := []MultiWindowPendingImageReadback{cap: app.pending_image_readbacks.len}
+	mut errors := []string{}
+	for readback in app.pending_image_readbacks {
+		if readback.batch_epoch != outcome.batch_epoch {
+			retained << readback
+			continue
+		}
+		snapshot := app.core.render_window_snapshot(readback.window.core) or {
+			app.core.service_fail_window_readback(readback.id, err.msg()) or { errors << err.msg() }
+			continue
+		}
+		if snapshot.submitted_frame != readback.target_submitted_frame {
+			app.core.service_fail_window_readback(readback.id,
+				err_multiwindow_render_readback_unsupported) or { errors << err.msg() }
+			continue
+		}
+		app.core.service_finish_window_readback(readback.id, readback.width, readback.height,
+			readback.stride, readback.pixels, readback.target_submitted_frame) or {
+			errors << err.msg()
+		}
+	}
+	app.pending_image_readbacks = retained
+	if errors.len > 0 {
+		return error('${err_multiwindow_render_callback_failed}: ${errors.join('; ')}')
+	}
+}
+
+fn (mut app App) discard_window_capture_requests(id WindowId) {
+	app.pending_window_captures = app.pending_window_captures.filter(it.window != id)
+	app.pending_image_readbacks = app.pending_image_readbacks.filter(it.window != id)
 }
 
 fn (mut context WindowInitContext) with_resources_managed(phase MultiWindowRenderPhase, f WindowResourceFn) ! {
@@ -379,9 +785,133 @@ fn (mut context WindowContext) with_sgl_pass(swapchain bool, action gfx.PassActi
 
 fn (mut context WindowContext) request_image_readback_managed(id WindowImageId, config WindowReadbackConfig) !WindowReadbackId {
 	context.validate_managed_frame()!
-	context.app.render_runtime.validate_readback_image(id, context.info.window)!
-	_ = config
-	return error(err_multiwindow_render_readback_unsupported)
+	snapshot := context.app.render_runtime.readback_image_snapshot(id, context.info.window)!
+	mut x := 0
+	mut y := 0
+	mut width := snapshot.desc.width
+	mut height := snapshot.desc.height
+	if rect := config.rect {
+		if !readback_rect_fits(rect, width, height) {
+			return error(err_multiwindow_render_readback_unsupported)
+		}
+		x = rect.x
+		y = rect.y
+		width = rect.width
+		height = rect.height
+	}
+	capability := context.app.core.service_operation_capability(context.info.window.core,
+		.image_readback)!
+	if capability.support != .available {
+		return error(err_multiwindow_render_readback_unsupported)
+	}
+	$if darwin {
+		$if darwin_sokol_glcore33 ? {
+		} $else {
+			if context.app.capabilities().backend == .appkit && gfx.query_backend() == .metal_macos {
+				if context.info.submitted_frame == u64(0xffffffffffffffff) {
+					return error(err_multiwindow_render_readback_unsupported)
+				}
+				mut app := context.app
+				readback := app.core.service_begin_window_readback_with_payload_for_gg(context.info.window.core,
+					width, height)!
+				producing_frame := context.info.submitted_frame + 1
+				app.core.service_stage_image_readback_for_gg(readback, snapshot.image.id, x, y,
+					width, height, producing_frame) or {
+					app.core.service_abandon_window_readback_for_gg(readback, err.msg())!
+					return window_readback_id_from_core(readback)
+				}
+				context.submit_appkit_image_readback_pass(snapshot.image, producing_frame) or {
+					app.core.service_abandon_window_readback_for_gg(readback, err.msg())!
+					return window_readback_id_from_core(readback)
+				}
+				return window_readback_id_from_core(readback)
+			}
+		}
+	}
+	$if linux {
+		$if x_multiwindow_x11 ? || sokol_wayland ? {
+			if gfx.query_backend() !in [.glcore33, .gles3] {
+				return error(err_multiwindow_render_readback_unsupported)
+			}
+			if context.info.submitted_frame == u64(0xffffffffffffffff) {
+				return error(err_multiwindow_render_readback_unsupported)
+			}
+			mut app := context.app
+			readback := app.core.service_begin_window_readback_with_payload_for_gg(context.info.window.core,
+				width, height)!
+			mut pixels := []u8{len: width * height * 4}
+			status := C.v_gg_multiwindow_gl_readback_image_rgba8(snapshot.image.id,
+				snapshot.desc.height, x, y, width, height, pixels.data, usize(pixels.len))
+			if status != 0 {
+				app.core.service_rollback_window_readback_for_gg(readback)
+				return error(err_multiwindow_render_readback_unsupported)
+			}
+			app.pending_image_readbacks << MultiWindowPendingImageReadback{
+				id:                     readback
+				window:                 context.info.window
+				image:                  id
+				batch_epoch:            app.active_batch_epoch
+				target_submitted_frame: context.info.submitted_frame + 1
+				width:                  width
+				height:                 height
+				stride:                 width * 4
+				pixels:                 pixels
+			}
+			return window_readback_id_from_core(readback)
+		} $else {
+			return error(err_multiwindow_render_readback_unsupported)
+		}
+	} $else {
+		return error(err_multiwindow_render_readback_unsupported)
+	}
+}
+
+fn (mut context WindowContext) submit_appkit_image_readback_pass(native_image gfx.Image, producing_frame u64) ! {
+	mut app := context.app
+	app.note_managed_gpu_work(app.active_batch_epoch)!
+	mut attachment_desc := gfx.AttachmentsDesc{}
+	attachment_desc.colors[0].image = native_image
+	attachments := gfx.make_attachments(&attachment_desc)
+	if gfx.query_attachments_state(attachments) != .valid {
+		gfx.destroy_attachments(attachments)
+		return error(err_multiwindow_render_resource_failed)
+	}
+	target_key := app.render_runtime.target_key(context.info.window, context.lease_epoch) or {
+		gfx.destroy_attachments(attachments)
+		return err
+	}
+	pass_epoch := app.render_runtime.begin_pass(context.info.window, context.lease_epoch, false,
+		false, target_key) or {
+		gfx.destroy_attachments(attachments)
+		return err
+	}
+	mut errors := []IError{}
+	app.arm_appkit_image_readbacks_for_pass(context.info.window, native_image.id, pass_epoch,
+		producing_frame) or { errors << err }
+	if errors.len == 0 {
+		gfx.begin_pass(&gfx.Pass{
+			action:      load_pass
+			attachments: attachments
+		})
+		if app.core.renderer_device_available_for_gg() {
+			gfx.end_pass()
+		} else {
+			errors << error(err_multiwindow_render_backend_unavailable)
+		}
+	}
+	app.finish_render_epilogue(MultiWindowRenderEpilogue{
+		window:      context.info.window
+		lease_epoch: context.lease_epoch
+		pass_epoch:  pass_epoch
+	}, errors) or {
+		if app.core.renderer_device_available_for_gg() {
+			gfx.destroy_attachments(attachments)
+		}
+		return err
+	}
+	if app.core.renderer_device_available_for_gg() {
+		gfx.destroy_attachments(attachments)
+	}
 }
 
 fn (mut context WindowCleanupContext) with_native_window_managed(f NativeWindowBorrowFn) ! {
@@ -394,7 +924,8 @@ fn (mut context WindowCleanupContext) with_native_window_managed(f NativeWindowB
 	context.app.assert_owner_thread() or { return error(err_multiwindow_render_owner_thread) }
 	context.app.render_runtime.validate_phase_lease(context.info.window, context.lease_epoch,
 		.cleanup)!
-	return error(err_multiwindow_render_native_service_unavailable)
+	mut app := context.app
+	app.with_native_window(context.info.window, f)!
 }
 
 fn (mut context WindowSglContext) activate_sgl_managed() !sgl.Context {

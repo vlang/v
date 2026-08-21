@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE ./v -d gg_multiwindow test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v vlib/gg/draw_rect_empty_test.v
           env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE ./v -d gg_multiwindow -d sokol_wayland test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v vlib/gg/draw_rect_empty_test.v
-          xvfb-run -a -s "-screen 0 1280x1024x24" env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true ./v -d gg_multiwindow -d x_multiwindow_x11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v vlib/gg/draw_rect_empty_test.v
+          xvfb-run -a -s "-screen 0 1280x1024x24 -noreset" env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true ./v -d gg_multiwindow -d x_multiwindow_x11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v vlib/gg/draw_rect_empty_test.v
           ./v -d gg_multiwindow -o /tmp/gg_multiwindow_default examples/gg/multiwindow.v
           ./v -d gg_multiwindow -d x_multiwindow_x11 -o /tmp/gg_multiwindow_x11 examples/gg/multiwindow.v
           ./v -d gg_multiwindow -d sokol_wayland -o /tmp/gg_multiwindow_wayland examples/gg/multiwindow.v

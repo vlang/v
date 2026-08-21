@@ -31,6 +31,7 @@ fn (backend MockBackend) capabilities() Capabilities {
 		focus_events:       true
 		drop_events:        true
 		touch_events:       true
+		readback:           true
 	}
 }
 

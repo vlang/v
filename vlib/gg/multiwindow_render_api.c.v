@@ -60,7 +60,9 @@ pub fn (mut app App) set_window_clear_color(id WindowId, color Color) ! {
 	}
 }
 
-// window_readback_capabilities reports the readback operations supported for a window.
+// window_readback_capabilities reports current path availability for one live
+// window. Requests still validate ownership, same-window image scope,
+// single-sample render-target eligibility, and rectangle bounds.
 pub fn (app &App) window_readback_capabilities(id WindowId) !WindowReadbackCapabilities {
 	$if gg_multiwindow ? {
 		return app.window_readback_capabilities_managed(id)
@@ -71,7 +73,9 @@ pub fn (app &App) window_readback_capabilities(id WindowId) !WindowReadbackCapab
 	}
 }
 
-// request_window_capture queues an asynchronous capture of a window's rendered pixels.
+// request_window_capture queues an asynchronous full-target or bounded-region
+// capture. The terminal result is delivered by RunConfig.readback_fn or the
+// canonical window queue; gg has no separate readback drain.
 pub fn (mut app App) request_window_capture(id WindowId, config WindowReadbackConfig) !WindowReadbackId {
 	$if gg_multiwindow ? {
 		return app.request_window_capture_managed(id, config)
@@ -229,7 +233,9 @@ pub fn (mut context WindowContext) with_swapchain_sgl(action gfx.PassAction, f W
 	}
 }
 
-// request_image_readback queues an asynchronous readback of a managed image.
+// request_image_readback queues an asynchronous full-image or bounded-region
+// readback of a managed single-sample 2D image created with render_target: true.
+// The result is terminal and ordered.
 pub fn (mut context WindowContext) request_image_readback(id WindowImageId, config WindowReadbackConfig) !WindowReadbackId {
 	$if gg_multiwindow ? {
 		return context.request_image_readback_managed(id, config)

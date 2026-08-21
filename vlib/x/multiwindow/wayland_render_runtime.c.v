@@ -675,12 +675,12 @@ fn (mut backend WaylandBackend) collect_render_updates() ![]BackendRenderUpdate 
 				}
 				backend.render_sequence = next_backend_render_sequence(backend.render_sequence)!
 				ready := backend.render_health == .ready && record.render_target_generation != 0
-					&& record.configured && record.frame_ready && record.width > 0
-					&& record.height > 0
+					&& record.requested_visible && record.configured && record.frame_ready
+					&& record.width > 0 && record.height > 0
 				block := if backend.render_health.blocks_graphics()
 					|| record.render_target_generation == 0 {
 					RenderBlockReason.renderer_failed
-				} else if !record.configured {
+				} else if !record.requested_visible || !record.configured {
 					RenderBlockReason.not_configured
 				} else if record.width <= 0 || record.height <= 0 {
 					RenderBlockReason.zero_sized
@@ -695,14 +695,8 @@ fn (mut backend WaylandBackend) collect_render_updates() ![]BackendRenderUpdate 
 					ready_credit: ready
 					block_reason: block
 					metrics:      RenderMetricsSnapshot{
-						logical_width:        f32(record.width)
-						logical_height:       f32(record.height)
-						framebuffer_width:    record.width
-						framebuffer_height:   record.height
-						dpi_scale:            1
-						metrics_sequence:     backend.render_sequence
-						metrics_available:    record.configured
-						conversion_available: record.configured
+						...record.service_metrics_snapshot()
+						metrics_sequence: backend.render_sequence
 					}
 					target:       RenderTargetSnapshot{
 						target_identity: record.render_target_generation

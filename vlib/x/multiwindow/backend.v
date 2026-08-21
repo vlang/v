@@ -87,6 +87,11 @@ fn new_backend(kind BackendKind, require_renderer bool) !Backend {
 	}
 }
 
+fn (mut backend Backend) configure_app(config Config) {
+	app_id := if config.app_id == '' { 'v.x.multiwindow' } else { config.app_id }
+	backend.wayland.app_id = app_id.clone()
+}
+
 fn resolve_auto_backend_kind(require_renderer bool) BackendKind {
 	$if windows {
 		return .win32
@@ -172,8 +177,20 @@ pub fn capabilities_for_backend_with_renderer(kind BackendKind, require_renderer
 // respecting Config.require_renderer for .auto backend selection.
 pub fn capabilities_for_config(config Config) !Capabilities {
 	mut backend := new_backend(config.backend, config.require_renderer)!
+	backend.configure_app(config)
 	backend.ensure_supported()!
 	return backend.capabilities_for_renderer_requirement(config.require_renderer)!
+}
+
+fn (backend &Backend) cursor_support(shape CursorShape) ServiceSupportLevel {
+	return match backend.kind {
+		.auto { .unsupported }
+		.mock { .available }
+		.x11 { backend.x11.cursor_support(shape) }
+		.wayland { backend.wayland.cursor_support(shape) }
+		.appkit { backend.appkit.cursor_support(shape) }
+		.win32 { backend.win32.cursor_support(shape) }
+	}
 }
 
 fn (backend &Backend) capabilities() Capabilities {
@@ -442,7 +459,8 @@ fn (mut backend Backend) poll_queued_events() ![]QueuedEvent {
 		}
 		return backend.pending_delivery.clone()
 	}
-	mut events := match backend.kind {
+	mut events := []QueuedEvent{}
+	events = match backend.kind {
 		.auto {
 			return error(err_backend_unsupported)
 		}

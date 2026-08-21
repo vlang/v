@@ -24,18 +24,21 @@ pub enum WindowReadbackStatus {
 	failed
 }
 
+// WindowLogicalSize is a drawable size in logical coordinates.
 pub struct WindowLogicalSize {
 pub:
 	width  f32
 	height f32
 }
 
+// WindowPixelSize is a drawable size in framebuffer pixels.
 pub struct WindowPixelSize {
 pub:
 	width  int
 	height int
 }
 
+// WindowLogicalRect is a region in logical coordinates.
 pub struct WindowLogicalRect {
 pub:
 	x      f32
@@ -44,6 +47,7 @@ pub:
 	height f32
 }
 
+// WindowPixelRect is a region in framebuffer coordinates.
 pub struct WindowPixelRect {
 pub:
 	x      int
@@ -52,12 +56,16 @@ pub:
 	height int
 }
 
+// WindowReadbackCapabilities reports current per-window path availability.
+// Each request revalidates app ownership, same-window image scope,
+// render-target/sample eligibility, and rectangle bounds.
 pub struct WindowReadbackCapabilities {
 pub:
 	offscreen_image bool
 	window_capture  bool
 }
 
+// WindowMetrics is an immutable accepted logical/framebuffer metrics snapshot.
 pub struct WindowMetrics {
 pub:
 	logical_size     WindowLogicalSize
@@ -67,6 +75,7 @@ pub:
 	submitted_frame  u64
 }
 
+// WindowRenderTargetInfo describes a managed window target without exposing it.
 pub struct WindowRenderTargetInfo {
 pub:
 	color_format gfx.PixelFormat
@@ -74,6 +83,7 @@ pub:
 	sample_count int
 }
 
+// WindowFrameInfo binds one callback to a window, frame, metrics, and target snapshot.
 pub struct WindowFrameInfo {
 pub:
 	window          WindowId
@@ -83,6 +93,7 @@ pub:
 	target          WindowRenderTargetInfo
 }
 
+// WindowBufferId is a generation-checked managed buffer identity.
 pub struct WindowBufferId {
 	app_instance u64
 	slot         int
@@ -90,6 +101,7 @@ pub struct WindowBufferId {
 	window       WindowId
 }
 
+// WindowImageId is a generation-checked managed image identity.
 pub struct WindowImageId {
 	app_instance u64
 	slot         int
@@ -97,6 +109,7 @@ pub struct WindowImageId {
 	window       WindowId
 }
 
+// WindowSamplerId is a generation-checked managed sampler identity.
 pub struct WindowSamplerId {
 	app_instance u64
 	slot         int
@@ -104,6 +117,7 @@ pub struct WindowSamplerId {
 	window       WindowId
 }
 
+// WindowShaderId is a generation-checked managed shader identity.
 pub struct WindowShaderId {
 	app_instance u64
 	slot         int
@@ -111,6 +125,7 @@ pub struct WindowShaderId {
 	window       WindowId
 }
 
+// WindowPipelineId is a generation-checked managed pipeline identity.
 pub struct WindowPipelineId {
 	app_instance u64
 	slot         int
@@ -118,6 +133,7 @@ pub struct WindowPipelineId {
 	window       WindowId
 }
 
+// WindowAttachmentsId is a generation-checked managed attachments identity.
 pub struct WindowAttachmentsId {
 	app_instance u64
 	slot         int
@@ -125,6 +141,7 @@ pub struct WindowAttachmentsId {
 	window       WindowId
 }
 
+// WindowSglPipelineId is a generation-checked managed SGL pipeline identity.
 pub struct WindowSglPipelineId {
 	app_instance u64
 	slot         int
@@ -132,13 +149,16 @@ pub struct WindowSglPipelineId {
 	window       WindowId
 }
 
+// WindowReadbackId identifies one asynchronous terminal readback request.
 pub struct WindowReadbackId {
 	app_instance u64
 	slot         int
 	generation   u32
 	window       WindowId
+	serial       u64
 }
 
+// WindowAttachmentsConfig names managed image ids used by an offscreen pass.
 pub struct WindowAttachmentsConfig {
 pub:
 	colors        []WindowImageId
@@ -146,6 +166,7 @@ pub:
 	depth_stencil ?WindowImageId
 }
 
+// WindowBufferBinding binds a managed buffer at one graphics slot.
 pub struct WindowBufferBinding {
 pub:
 	slot   int
@@ -153,18 +174,21 @@ pub:
 	offset int
 }
 
+// WindowImageBinding binds a managed image at one graphics slot.
 pub struct WindowImageBinding {
 pub:
 	slot  int
 	image WindowImageId
 }
 
+// WindowSamplerBinding binds a managed sampler at one graphics slot.
 pub struct WindowSamplerBinding {
 pub:
 	slot    int
 	sampler WindowSamplerId
 }
 
+// WindowStageBindings groups managed resource bindings for one shader stage.
 pub struct WindowStageBindings {
 pub:
 	images          []WindowImageBinding
@@ -172,6 +196,7 @@ pub:
 	storage_buffers []WindowBufferBinding
 }
 
+// WindowBindings is the managed binding set accepted by WindowPassContext.
 pub struct WindowBindings {
 pub:
 	vertex_buffers []WindowBufferBinding
@@ -180,11 +205,16 @@ pub:
 	fs             WindowStageBindings
 }
 
+// WindowReadbackConfig selects a framebuffer-pixel region. A missing rect
+// requests the full target; a present rect must be positive and fully contained.
 pub struct WindowReadbackConfig {
 pub:
 	rect ?WindowPixelRect
 }
 
+// WindowReadbackResult is admitted and enqueued once with a terminal status.
+// Dispatch can replay it until callback acknowledgment, so handlers must be
+// idempotent. Ready results own top-left RGBA8 bytes and an explicit stride.
 pub struct WindowReadbackResult {
 pub:
 	id              WindowReadbackId
@@ -287,26 +317,40 @@ pub struct NativeWindowLease {
 	app_instance u64
 	window       WindowId
 	lease_epoch  u64
+	backend      MultiWindowBackend
+	primary      voidptr
+	secondary    u64
 }
 
+// WindowInitFn initializes window-scoped managed resources.
 pub type WindowInitFn = fn (mut WindowInitContext) !
 
+// WindowFrameFn records one managed window frame.
 pub type WindowFrameFn = fn (mut WindowContext) !
 
+// WindowCleanupFn releases window-scoped resources during terminal cleanup.
 pub type WindowCleanupFn = fn (mut WindowCleanupContext) !
 
+// AppResourceInitFn initializes app-scoped managed resources.
 pub type AppResourceInitFn = fn (mut AppResourceContext) !
 
+// AppResourceFrameFn updates app-scoped managed resources during a batch.
 pub type AppResourceFrameFn = fn (mut AppResourceContext) !
 
+// AppResourceCleanupFn releases app-scoped managed resources.
 pub type AppResourceCleanupFn = fn (mut AppResourceContext) !
 
+// WindowReadbackFn receives ordered terminal readback results from App.run.
 pub type WindowReadbackFn = fn (WindowReadbackResult, mut App) !
 
+// WindowResourceFn receives callback-bounded managed resource authority.
 pub type WindowResourceFn = fn (mut WindowResourceContext) !
 
+// WindowPassFn records commands in one callback-bounded managed pass.
 pub type WindowPassFn = fn (mut WindowPassContext) !
 
+// WindowSglFn records SGL commands in one callback-bounded managed pass.
 pub type WindowSglFn = fn (mut WindowSglContext) !
 
+// NativeWindowBorrowFn receives a native lease that expires with the callback.
 pub type NativeWindowBorrowFn = fn (mut NativeWindowLease) !

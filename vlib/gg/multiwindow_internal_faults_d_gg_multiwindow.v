@@ -19,6 +19,8 @@ enum MultiWindowInternalFaultStage {
 	resource_replace_image
 	resource_rebuild_attachment
 	resource_sgl_materialization
+	capture_request_redraw
+	teardown_prepare
 }
 
 struct MultiWindowInternalFaultPlan {

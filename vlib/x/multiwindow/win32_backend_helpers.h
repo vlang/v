@@ -2,9 +2,18 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <windows.h>
 #include <shellapi.h>
+
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+#include "testdata/win32_monitor_enumeration_test_seam.h"
+#endif
 
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 #include "native_render_result.h"
@@ -30,6 +39,26 @@ typedef struct tagTOUCHINPUT {
 	DWORD cyContact;
 } TOUCHINPUT, *PTOUCHINPUT;
 #endif
+#ifndef RIM_INPUT
+#define RIM_INPUT 0
+#endif
+#ifndef RIM_TYPEMOUSE
+#define RIM_TYPEMOUSE 0
+#endif
+#ifndef MOUSE_MOVE_ABSOLUTE
+#define MOUSE_MOVE_ABSOLUTE 0x0001
+#endif
+#ifndef V_MULTIWINDOW_WIN32_MOUSE_LOCK_PROP
+#define V_MULTIWINDOW_WIN32_MOUSE_LOCK_PROP L"V_x_multiwindow_mouse_lock_active"
+#endif
+#ifndef V_MULTIWINDOW_WIN32_MOUSE_TRACKED_PROP
+#define V_MULTIWINDOW_WIN32_MOUSE_TRACKED_PROP L"V_x_multiwindow_mouse_tracked"
+#endif
+
+#define V_MULTIWINDOW_WIN32_RAW_INPUT_MAX_BYTES (64u * 1024u)
+#define V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR -1
+#define V_MULTIWINDOW_WIN32_RAW_INPUT_VALID_IGNORED 0
+#define V_MULTIWINDOW_WIN32_RAW_INPUT_DELIVERED 1
 #ifndef TOUCHEVENTF_MOVE
 #define TOUCHEVENTF_MOVE 0x0001
 #endif
@@ -54,11 +83,17 @@ extern "C" {
 V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_close_requested(void *data, uint64_t sequence);
 V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_destroyed(void *data, uint64_t sequence);
 V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_resized(void *data, uint64_t sequence, int width, int height);
+V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_service_refresh(void *data, uint64_t sequence, int reason);
 V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_input_event(void *data, uint64_t sequence, int kind, int key_code, uint32_t char_code, int key_repeat, uint32_t modifiers, int mouse_button, int mouse_x, int mouse_y, int wheel_delta_x, int wheel_delta_y);
 V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_drop_begin(void *data, uint64_t sequence, int mouse_x, int mouse_y, uint32_t modifiers);
 V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_drop_file(void *data, uint64_t sequence, char *path);
 V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_drop_end(void *data, uint64_t sequence);
 V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_touch_event(void *data, uint64_t sequence, int kind, uint32_t modifiers, int count, uint64_t *ids, int *xs, int *ys, int *changed);
+V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE int v_multiwindow_win32_window_mouse_lock_active(void *data);
+V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_focus_lost(void *data);
+V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_raw_mouse_event(void *data, uint64_t sequence, int mouse_x, int mouse_y, int mouse_dx, int mouse_dy, uint32_t modifiers);
+V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE int v_multiwindow_win32_window_suppress_legacy_mouse_tail(void *data, int mouse_x, int mouse_y);
+V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_raw_input_error(void *data);
 #undef V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE
 #ifdef __cplusplus
 }
@@ -113,11 +148,16 @@ V_MULTIWINDOW_WIN32_CALLBACK_LINKAGE void v_multiwindow_win32_window_touch_event
 #define V_MULTIWINDOW_CURSOR_SHAPE_NWSE_RESIZE 14
 #define V_MULTIWINDOW_CURSOR_SHAPE_GRAB 15
 #define V_MULTIWINDOW_CURSOR_SHAPE_GRABBING 16
+#define V_MULTIWINDOW_CURSOR_SHAPE_TEXT 17
+#define V_MULTIWINDOW_CURSOR_SHAPE_CROSSHAIR 18
+#define V_MULTIWINDOW_CURSOR_SHAPE_NOT_ALLOWED 19
+#define V_MULTIWINDOW_CURSOR_SHAPE_RESIZE_ALL 20
 
 static const wchar_t *v_multiwindow_win32_class_name = L"V_x_multiwindow_win32";
 static const wchar_t *v_multiwindow_win32_min_width_prop = L"V_x_multiwindow_min_width";
 static const wchar_t *v_multiwindow_win32_min_height_prop = L"V_x_multiwindow_min_height";
-static const wchar_t *v_multiwindow_win32_mouse_tracked_prop = L"V_x_multiwindow_mouse_tracked";
+static const wchar_t *v_multiwindow_win32_mouse_tracked_prop =
+	V_MULTIWINDOW_WIN32_MOUSE_TRACKED_PROP;
 static const wchar_t *v_multiwindow_win32_cursor_shape_prop = L"V_x_multiwindow_cursor_shape";
 
 static inline int v_multiwindow_win32_max_int(int a, int b) {
@@ -143,7 +183,14 @@ static inline LPCWSTR v_multiwindow_win32_cursor_id_for_shape(int shape) {
 	case V_MULTIWINDOW_CURSOR_SHAPE_MOVE:
 	case V_MULTIWINDOW_CURSOR_SHAPE_GRAB:
 	case V_MULTIWINDOW_CURSOR_SHAPE_GRABBING:
+	case V_MULTIWINDOW_CURSOR_SHAPE_RESIZE_ALL:
 		return IDC_SIZEALL;
+	case V_MULTIWINDOW_CURSOR_SHAPE_TEXT:
+		return IDC_IBEAM;
+	case V_MULTIWINDOW_CURSOR_SHAPE_CROSSHAIR:
+		return IDC_CROSS;
+	case V_MULTIWINDOW_CURSOR_SHAPE_NOT_ALLOWED:
+		return IDC_NO;
 	case V_MULTIWINDOW_CURSOR_SHAPE_N_RESIZE:
 	case V_MULTIWINDOW_CURSOR_SHAPE_S_RESIZE:
 	case V_MULTIWINDOW_CURSOR_SHAPE_NS_RESIZE:
@@ -622,6 +669,102 @@ static inline int v_multiwindow_win32_emit_touch_event(HWND hwnd, void *data, WP
 	return 1;
 }
 
+typedef UINT(WINAPI *v_multiwindow_win32_get_raw_input_data_proc)(
+	HRAWINPUT, UINT, LPVOID, PUINT, UINT);
+
+static inline int v_multiwindow_win32_resolve_raw_input_proc(
+	v_multiwindow_win32_get_raw_input_data_proc *out_proc) {
+	HMODULE user32;
+	FARPROC procedure;
+	if (!out_proc || sizeof(*out_proc) != sizeof(procedure)) {
+		return 0;
+	}
+	memset(out_proc, 0, sizeof(*out_proc));
+	user32 = GetModuleHandleW(L"user32.dll");
+	if (!user32) {
+		return 0;
+	}
+	procedure = GetProcAddress(user32, "GetRawInputData");
+	if (!procedure) {
+		return 0;
+	}
+	memcpy(out_proc, &procedure, sizeof(procedure));
+	return 1;
+}
+
+static inline int v_multiwindow_win32_emit_raw_mouse_event(
+	HWND hwnd, void *data, LPARAM lparam) {
+	v_multiwindow_win32_get_raw_input_data_proc get_raw_input_data;
+	UINT size = 0;
+	UINT copied;
+	UINT read;
+	unsigned char *storage;
+	RAWINPUT *raw;
+	POINT cursor;
+	LONG dx;
+	LONG dy;
+	uint64_t sequence;
+	if (!hwnd || !data || !lparam
+		|| !v_multiwindow_win32_resolve_raw_input_proc(&get_raw_input_data)) {
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+	}
+	read = get_raw_input_data((HRAWINPUT)lparam, RID_INPUT, NULL, &size,
+		sizeof(RAWINPUTHEADER));
+	if (read == (UINT)-1 || read != 0 || size < sizeof(RAWINPUTHEADER)
+		|| size > V_MULTIWINDOW_WIN32_RAW_INPUT_MAX_BYTES) {
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+	}
+	storage = (unsigned char *)malloc((size_t)size);
+	if (!storage) {
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+	}
+	copied = size;
+	read = get_raw_input_data((HRAWINPUT)lparam, RID_INPUT, storage, &copied,
+		sizeof(RAWINPUTHEADER));
+	if (read == (UINT)-1 || read != size || copied != size) {
+		free(storage);
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+	}
+	raw = (RAWINPUT *)storage;
+	if (raw->header.dwSize != size) {
+		free(storage);
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+	}
+	if (raw->header.dwType != RIM_TYPEMOUSE) {
+		free(storage);
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_VALID_IGNORED;
+	}
+	if (size < sizeof(RAWINPUT)) {
+		free(storage);
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+	}
+	if ((raw->data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) != 0) {
+		free(storage);
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_VALID_IGNORED;
+	}
+	dx = raw->data.mouse.lLastX;
+	dy = raw->data.mouse.lLastY;
+	if (dx == 0 && dy == 0) {
+		free(storage);
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_VALID_IGNORED;
+	}
+	if (!GetCursorPos(&cursor) || !ScreenToClient(hwnd, &cursor)) {
+		free(storage);
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+	}
+	free(storage);
+	if (!v_multiwindow_win32_window_mouse_lock_active(data)) {
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+	}
+	sequence = v_multiwindow_win32_next_event_sequence();
+	if (sequence == 0) {
+		return V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+	}
+	v_multiwindow_win32_window_raw_mouse_event(data, sequence, cursor.x,
+		cursor.y, dx, dy, v_multiwindow_win32_modifiers());
+	return V_MULTIWINDOW_WIN32_RAW_INPUT_DELIVERED;
+}
+
 static LRESULT CALLBACK v_multiwindow_win32_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	void *data = (void *)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
 	if (msg == WM_NCCREATE) {
@@ -640,6 +783,7 @@ static LRESULT CALLBACK v_multiwindow_win32_wnd_proc(HWND hwnd, UINT msg, WPARAM
 		break;
 	case WM_DESTROY:
 		if (data) {
+			RemovePropW(hwnd, V_MULTIWINDOW_WIN32_MOUSE_LOCK_PROP);
 			uint64_t sequence = v_multiwindow_win32_next_event_sequence();
 			v_multiwindow_win32_window_destroyed(data, sequence);
 			SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -661,6 +805,7 @@ static LRESULT CALLBACK v_multiwindow_win32_wnd_proc(HWND hwnd, UINT msg, WPARAM
 		break;
 	case WM_KILLFOCUS:
 		if (data) {
+			v_multiwindow_win32_window_focus_lost(data);
 			uint64_t sequence = v_multiwindow_win32_next_event_sequence();
 			v_multiwindow_win32_window_input_event(data, sequence, V_MULTIWINDOW_WIN32_INPUT_UNFOCUSED, 0, 0, 0, v_multiwindow_win32_modifiers(), V_MULTIWINDOW_WIN32_MOUSE_BUTTON_INVALID, 0, 0, 0, 0);
 			return 0;
@@ -710,22 +855,89 @@ static LRESULT CALLBACK v_multiwindow_win32_wnd_proc(HWND hwnd, UINT msg, WPARAM
 			}
 		}
 		break;
+	case WM_DISPLAYCHANGE:
+		if (data) {
+			uint64_t sequence = v_multiwindow_win32_next_event_sequence();
+			v_multiwindow_win32_window_service_refresh(data, sequence, 1);
+			return 0;
+		}
+		break;
+	case WM_DPICHANGED:
+		if (data && lparam) {
+			RECT *suggested = (RECT *)lparam;
+			if (SetWindowPos(hwnd, NULL, suggested->left, suggested->top,
+				suggested->right - suggested->left,
+				suggested->bottom - suggested->top,
+				SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER)) {
+				uint64_t sequence = v_multiwindow_win32_next_event_sequence();
+				v_multiwindow_win32_window_service_refresh(data, sequence, 2);
+			}
+			return 0;
+		}
+		break;
+	case WM_WINDOWPOSCHANGED:
+		if (data) {
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+			if (v_multiwindow_test_win32_windowposchanged_reason3_consume(hwnd)) {
+				v_multiwindow_win32_event_sequence = UINT64_MAX;
+				v_multiwindow_win32_event_sequence_exhausted_flag = 0;
+			}
+#endif
+			uint64_t sequence = v_multiwindow_win32_next_event_sequence();
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+			v_multiwindow_test_win32_windowposchanged_reason3_record(sequence);
+#endif
+			v_multiwindow_win32_window_service_refresh(data, sequence, 3);
+		}
+		break;
 	case WM_MOUSEMOVE:
 		if (data) {
+			if (GetPropW(hwnd, V_MULTIWINDOW_WIN32_MOUSE_LOCK_PROP)
+				== (HANDLE)data) {
+				return 0;
+			}
 			int x = v_multiwindow_win32_lparam_x(lparam);
 			int y = v_multiwindow_win32_lparam_y(lparam);
+			int suppress_legacy_tail =
+				v_multiwindow_win32_window_suppress_legacy_mouse_tail(
+					data, x, y);
 			uint32_t modifiers = v_multiwindow_win32_modifiers();
 			if (v_multiwindow_win32_begin_mouse_tracking(hwnd)) {
 				uint64_t enter_sequence = v_multiwindow_win32_next_event_sequence();
 				v_multiwindow_win32_window_input_event(data, enter_sequence, V_MULTIWINDOW_WIN32_INPUT_MOUSE_ENTER, 0, 0, 0, modifiers, V_MULTIWINDOW_WIN32_MOUSE_BUTTON_INVALID, x, y, 0, 0);
+			}
+			if (suppress_legacy_tail) {
+				return 0;
 			}
 			uint64_t sequence = v_multiwindow_win32_next_event_sequence();
 			v_multiwindow_win32_window_input_event(data, sequence, V_MULTIWINDOW_WIN32_INPUT_MOUSE_MOVE, 0, 0, 0, modifiers, V_MULTIWINDOW_WIN32_MOUSE_BUTTON_INVALID, x, y, 0, 0);
 			return 0;
 		}
 		break;
+	case WM_INPUT:
+		{
+			int raw_result = V_MULTIWINDOW_WIN32_RAW_INPUT_VALID_IGNORED;
+			if (data
+				&& GetPropW(hwnd, V_MULTIWINDOW_WIN32_MOUSE_LOCK_PROP)
+					== (HANDLE)data
+				&& (UINT)(wparam & 0xffu) == RIM_INPUT) {
+				raw_result = v_multiwindow_win32_window_mouse_lock_active(data)
+					? v_multiwindow_win32_emit_raw_mouse_event(hwnd, data,
+						lparam)
+					: V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR;
+			}
+			if (raw_result == V_MULTIWINDOW_WIN32_RAW_INPUT_ERROR) {
+				v_multiwindow_win32_window_raw_input_error(data);
+			}
+			return DefWindowProcW(hwnd, msg, wparam, lparam);
+		}
 	case WM_MOUSELEAVE:
 		if (data) {
+			if (GetPropW(hwnd, V_MULTIWINDOW_WIN32_MOUSE_LOCK_PROP)
+				== (HANDLE)data) {
+				v_multiwindow_win32_end_mouse_tracking(hwnd);
+				return 0;
+			}
 			int x = 0;
 			int y = 0;
 			v_multiwindow_win32_end_mouse_tracking(hwnd);
@@ -889,15 +1101,236 @@ static inline int v_multiwindow_win32_register_class(void) {
 #endif
 }
 
-static inline void *v_multiwindow_win32_create_window(const wchar_t *title, int width, int height, int min_width, int min_height, int resizable, int borderless, int fullscreen, int visible, void *data) {
+static inline int v_multiwindow_win32_owner_matches(void *hwnd_ptr, void *owner_ptr) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	HWND owner = (HWND)owner_ptr;
+	return hwnd && owner && IsWindow(hwnd) && IsWindow(owner)
+		&& GetWindow(hwnd, GW_OWNER) == owner;
+}
+
+static inline int v_multiwindow_win32_is_window_enabled(void *hwnd_ptr) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	return hwnd && IsWindow(hwnd) && IsWindowEnabled(hwnd);
+}
+
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+static HWND v_multiwindow_win32_test_modal_trace_owner;
+static HWND v_multiwindow_win32_test_modal_trace_window;
+static uint64_t v_multiwindow_win32_test_modal_trace_sequence;
+static uint64_t v_multiwindow_win32_test_modal_owner_disable_sequence;
+static uint64_t v_multiwindow_win32_test_modal_owner_enable_sequence;
+static uint64_t v_multiwindow_win32_test_modal_show_sequence;
+static uint64_t v_multiwindow_win32_test_modal_destroy_sequence;
+static uint64_t v_multiwindow_win32_test_modal_owner_destroy_sequence;
+static int v_multiwindow_win32_test_modal_owner_disable_count;
+static int v_multiwindow_win32_test_modal_owner_enable_count;
+static int v_multiwindow_win32_test_modal_show_count;
+static int v_multiwindow_win32_test_modal_destroy_count;
+static int v_multiwindow_win32_test_modal_owner_destroy_count;
+static int v_multiwindow_win32_test_modal_destroy_attempt_count;
+static int v_multiwindow_win32_test_modal_owner_destroy_attempt_count;
+static int v_multiwindow_win32_test_modal_fail_enable;
+static int v_multiwindow_win32_test_modal_enable_failures_remaining;
+static int v_multiwindow_win32_test_modal_show_failures_remaining;
+static int v_multiwindow_win32_test_modal_destroy_failures_remaining;
+
+static inline void v_multiwindow_win32_test_modal_trace_reset(
+	void *owner_ptr, void *window_ptr) {
+	v_multiwindow_win32_test_modal_trace_owner = (HWND)owner_ptr;
+	v_multiwindow_win32_test_modal_trace_window = (HWND)window_ptr;
+	v_multiwindow_win32_test_modal_trace_sequence = 0;
+	v_multiwindow_win32_test_modal_owner_disable_sequence = 0;
+	v_multiwindow_win32_test_modal_owner_enable_sequence = 0;
+	v_multiwindow_win32_test_modal_show_sequence = 0;
+	v_multiwindow_win32_test_modal_destroy_sequence = 0;
+	v_multiwindow_win32_test_modal_owner_destroy_sequence = 0;
+	v_multiwindow_win32_test_modal_owner_disable_count = 0;
+	v_multiwindow_win32_test_modal_owner_enable_count = 0;
+	v_multiwindow_win32_test_modal_show_count = 0;
+	v_multiwindow_win32_test_modal_destroy_count = 0;
+	v_multiwindow_win32_test_modal_owner_destroy_count = 0;
+	v_multiwindow_win32_test_modal_destroy_attempt_count = 0;
+	v_multiwindow_win32_test_modal_owner_destroy_attempt_count = 0;
+}
+
+static inline void v_multiwindow_win32_test_modal_set_enable_failure(int fail) {
+	v_multiwindow_win32_test_modal_fail_enable = fail != 0;
+}
+
+static inline void v_multiwindow_win32_test_modal_set_enable_failures(
+		int count) {
+	v_multiwindow_win32_test_modal_enable_failures_remaining =
+		count > 0 ? count : 0;
+}
+
+static inline void v_multiwindow_win32_test_modal_set_show_created_failures(
+		int count) {
+	v_multiwindow_win32_test_modal_show_failures_remaining =
+		count > 0 ? count : 0;
+}
+
+static inline void v_multiwindow_win32_test_modal_set_destroy_failures(
+		int count) {
+	v_multiwindow_win32_test_modal_destroy_failures_remaining =
+		count > 0 ? count : 0;
+}
+
+static inline void *v_multiwindow_win32_test_modal_trace_window_value(void) {
+	return (void *)v_multiwindow_win32_test_modal_trace_window;
+}
+
+static inline int v_multiwindow_win32_test_modal_owner_disable_count_value(void) {
+	return v_multiwindow_win32_test_modal_owner_disable_count;
+}
+
+static inline int v_multiwindow_win32_test_modal_owner_enable_count_value(void) {
+	return v_multiwindow_win32_test_modal_owner_enable_count;
+}
+
+static inline int v_multiwindow_win32_test_modal_show_count_value(void) {
+	return v_multiwindow_win32_test_modal_show_count;
+}
+
+static inline int v_multiwindow_win32_test_modal_destroy_count_value(void) {
+	return v_multiwindow_win32_test_modal_destroy_count;
+}
+
+static inline int v_multiwindow_win32_test_modal_owner_destroy_count_value(void) {
+	return v_multiwindow_win32_test_modal_owner_destroy_count;
+}
+
+static inline int v_multiwindow_win32_test_modal_destroy_attempt_count_value(void) {
+	return v_multiwindow_win32_test_modal_destroy_attempt_count;
+}
+
+static inline int v_multiwindow_win32_test_modal_owner_destroy_attempt_count_value(void) {
+	return v_multiwindow_win32_test_modal_owner_destroy_attempt_count;
+}
+
+static inline uint64_t v_multiwindow_win32_test_modal_owner_disable_sequence_value(void) {
+	return v_multiwindow_win32_test_modal_owner_disable_sequence;
+}
+
+static inline uint64_t v_multiwindow_win32_test_modal_owner_enable_sequence_value(void) {
+	return v_multiwindow_win32_test_modal_owner_enable_sequence;
+}
+
+static inline uint64_t v_multiwindow_win32_test_modal_show_sequence_value(void) {
+	return v_multiwindow_win32_test_modal_show_sequence;
+}
+
+static inline uint64_t v_multiwindow_win32_test_modal_destroy_sequence_value(void) {
+	return v_multiwindow_win32_test_modal_destroy_sequence;
+}
+
+static inline uint64_t v_multiwindow_win32_test_modal_owner_destroy_sequence_value(void) {
+	return v_multiwindow_win32_test_modal_owner_destroy_sequence;
+}
+
+static inline void v_multiwindow_win32_test_modal_record_enabled(
+	HWND hwnd, int before, int target) {
+	if (hwnd != v_multiwindow_win32_test_modal_trace_owner || before == target) {
+		return;
+	}
+	uint64_t sequence = ++v_multiwindow_win32_test_modal_trace_sequence;
+	if (target) {
+		v_multiwindow_win32_test_modal_owner_enable_count++;
+		v_multiwindow_win32_test_modal_owner_enable_sequence = sequence;
+	} else {
+		v_multiwindow_win32_test_modal_owner_disable_count++;
+		v_multiwindow_win32_test_modal_owner_disable_sequence = sequence;
+	}
+}
+
+static inline void v_multiwindow_win32_test_modal_record_show(HWND hwnd) {
+	if (v_multiwindow_win32_test_modal_trace_window == NULL) {
+		v_multiwindow_win32_test_modal_trace_window = hwnd;
+	}
+	if (hwnd != v_multiwindow_win32_test_modal_trace_window) {
+		return;
+	}
+	v_multiwindow_win32_test_modal_show_count++;
+	v_multiwindow_win32_test_modal_show_sequence =
+		++v_multiwindow_win32_test_modal_trace_sequence;
+}
+
+static inline void v_multiwindow_win32_test_modal_record_destroy(HWND hwnd) {
+	if (hwnd != v_multiwindow_win32_test_modal_trace_window
+			&& hwnd != v_multiwindow_win32_test_modal_trace_owner) {
+		return;
+	}
+	uint64_t sequence = ++v_multiwindow_win32_test_modal_trace_sequence;
+	if (hwnd == v_multiwindow_win32_test_modal_trace_window) {
+		v_multiwindow_win32_test_modal_destroy_count++;
+		v_multiwindow_win32_test_modal_destroy_sequence = sequence;
+	}
+	if (hwnd == v_multiwindow_win32_test_modal_trace_owner) {
+		v_multiwindow_win32_test_modal_owner_destroy_count++;
+		v_multiwindow_win32_test_modal_owner_destroy_sequence = sequence;
+	}
+}
+#endif
+
+static inline int v_multiwindow_win32_set_window_enabled(void *hwnd_ptr, int enabled) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	if (!hwnd || !IsWindow(hwnd)) {
+		return 0;
+	}
+	int target = enabled != 0;
+	int before = IsWindowEnabled(hwnd) != 0;
+	if (before != target) {
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+		if (target
+				&& v_multiwindow_win32_test_modal_enable_failures_remaining > 0) {
+			v_multiwindow_win32_test_modal_enable_failures_remaining--;
+			return 0;
+		}
+		if (target && v_multiwindow_win32_test_modal_fail_enable) {
+			return 0;
+		}
+#endif
+		(void)EnableWindow(hwnd, target ? TRUE : FALSE);
+	}
+	int matched = (IsWindowEnabled(hwnd) != 0) == target;
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	if (matched) {
+		v_multiwindow_win32_test_modal_record_enabled(hwnd, before, target);
+	}
+#endif
+	return matched;
+}
+
+typedef HANDLE (WINAPI *VMultiwindowWin32SetThreadDpiAwarenessContext)(HANDLE);
+
+static inline void *v_multiwindow_win32_create_window(const wchar_t *title, int width, int height, int min_width, int min_height, int resizable, int high_dpi, int borderless, int fullscreen, int visible, void *owner_ptr, void *data) {
 	DWORD style = v_multiwindow_win32_window_style(resizable, borderless, fullscreen);
 	DWORD ex_style = v_multiwindow_win32_window_ex_style(borderless, fullscreen);
+	HWND owner = (HWND)owner_ptr;
+	if (owner && !IsWindow(owner)) {
+		return NULL;
+	}
 	int client_width = v_multiwindow_win32_max_int(width, min_width);
 	int client_height = v_multiwindow_win32_max_int(height, min_height);
 	int frame_width = client_width;
 	int frame_height = client_height;
 	if (!v_multiwindow_win32_adjusted_size(client_width, client_height, style, ex_style, &frame_width, &frame_height)) {
 		return NULL;
+	}
+	VMultiwindowWin32SetThreadDpiAwarenessContext set_thread_dpi_context = NULL;
+	HANDLE previous_dpi_context = NULL;
+	if (high_dpi) {
+		HMODULE user32 = GetModuleHandleW(L"user32.dll");
+		set_thread_dpi_context = user32
+			? (VMultiwindowWin32SetThreadDpiAwarenessContext)GetProcAddress(
+				user32, "SetThreadDpiAwarenessContext")
+			: NULL;
+		if (!set_thread_dpi_context) {
+			return NULL;
+		}
+		previous_dpi_context = set_thread_dpi_context((HANDLE)(INT_PTR)-4);
+		if (!previous_dpi_context) {
+			return NULL;
+		}
 	}
 	HWND hwnd = CreateWindowExW(
 		ex_style,
@@ -908,16 +1341,33 @@ static inline void *v_multiwindow_win32_create_window(const wchar_t *title, int 
 		CW_USEDEFAULT,
 		frame_width,
 		frame_height,
-		NULL,
+		owner,
 		NULL,
 		GetModuleHandleW(NULL),
 		data);
+	if (previous_dpi_context
+		&& !set_thread_dpi_context(previous_dpi_context)) {
+		if (hwnd) {
+			DestroyWindow(hwnd);
+		}
+		return NULL;
+	}
 	if (hwnd) {
 		v_multiwindow_win32_set_hwnd_int_prop(hwnd, v_multiwindow_win32_min_width_prop, min_width);
 		v_multiwindow_win32_set_hwnd_int_prop(hwnd, v_multiwindow_win32_min_height_prop, min_height);
 		DragAcceptFiles(hwnd, TRUE);
 		v_multiwindow_win32_register_touch_window(hwnd);
 	}
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	if (hwnd && v_multiwindow_test_win32_windowposchanged_reason3_is_armed()) {
+		RECT test_rect = {0, 0, 0, 0};
+		int moved = GetWindowRect(hwnd, &test_rect)
+			&& MoveWindow(hwnd, test_rect.left + 1, test_rect.top,
+				test_rect.right - test_rect.left,
+				test_rect.bottom - test_rect.top, FALSE);
+		v_multiwindow_test_win32_windowposchanged_reason3_record_move_result(moved);
+	}
+#endif
 	if (hwnd && visible) {
 		ShowWindow(hwnd, fullscreen ? SW_MAXIMIZE : SW_SHOW);
 		UpdateWindow(hwnd);
@@ -925,11 +1375,56 @@ static inline void *v_multiwindow_win32_create_window(const wchar_t *title, int 
 	return (void *)hwnd;
 }
 
+static inline int v_multiwindow_win32_show_created_window(void *hwnd_ptr,
+	int fullscreen) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	if (!hwnd || !IsWindow(hwnd)) {
+		return 0;
+	}
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	if (v_multiwindow_win32_test_modal_trace_window == NULL) {
+		v_multiwindow_win32_test_modal_trace_window = hwnd;
+	}
+	if (v_multiwindow_win32_test_modal_show_failures_remaining > 0) {
+		v_multiwindow_win32_test_modal_show_failures_remaining--;
+		return 0;
+	}
+#endif
+	ShowWindow(hwnd, fullscreen ? SW_MAXIMIZE : SW_SHOW);
+	UpdateWindow(hwnd);
+	if (!IsWindowVisible(hwnd)) {
+		return 0;
+	}
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	v_multiwindow_win32_test_modal_record_show(hwnd);
+#endif
+	return 1;
+}
+
 static inline int v_multiwindow_win32_destroy_window(void *hwnd) {
 	if (!hwnd) {
 		return 1;
 	}
-	return DestroyWindow((HWND)hwnd) != 0;
+	HWND native_window = (HWND)hwnd;
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	if (native_window == v_multiwindow_win32_test_modal_trace_window) {
+		v_multiwindow_win32_test_modal_destroy_attempt_count++;
+	}
+	if (native_window == v_multiwindow_win32_test_modal_trace_owner) {
+		v_multiwindow_win32_test_modal_owner_destroy_attempt_count++;
+	}
+	if (v_multiwindow_win32_test_modal_destroy_failures_remaining > 0) {
+		v_multiwindow_win32_test_modal_destroy_failures_remaining--;
+		return 0;
+	}
+#endif
+	int destroyed = DestroyWindow(native_window) != 0;
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	if (destroyed) {
+		v_multiwindow_win32_test_modal_record_destroy(native_window);
+	}
+#endif
+	return destroyed;
 }
 
 static inline int v_multiwindow_win32_set_window_text(void *hwnd, const wchar_t *title) {
