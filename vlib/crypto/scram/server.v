@@ -13,11 +13,18 @@ pub:
 	// mechanism selects the hash. It must match the mechanism the credentials
 	// returned by `lookup` were derived with.
 	mechanism Mechanism = .sha256
-	// channel_binding describes what this server offers. Set `mode` to
-	// `.required` when the server advertises a `-PLUS` mechanism: a client
-	// that then claims the server offered none is being downgraded, and the
-	// exchange is aborted.
+	// channel_binding describes what *this exchange* uses. Set `mode` to
+	// `.required` when the client picked the `-PLUS` mechanism, and leave it
+	// at the default when it picked the base one.
 	channel_binding ChannelBinding
+	// advertises_plus says whether this server offers a `-PLUS` mechanism at
+	// all, which is a different question from what this exchange uses: a
+	// server commonly lists both `SCRAM-SHA-256` and `SCRAM-SHA-256-PLUS` and
+	// lets the client choose. Set it to true whenever the `-PLUS` name is in
+	// the advertised list, including on the exchanges where the client chose
+	// the base mechanism — that is precisely where a stripped advertisement
+	// has to be detected. `mode: .required` implies it.
+	advertises_plus bool
 	// nonce overrides the generated server nonce. Leave it empty outside of
 	// tests.
 	nonce string
@@ -50,6 +57,7 @@ enum ServerState {
 pub struct Server {
 	mechanism       Mechanism
 	channel_binding ChannelBinding
+	advertises_plus bool
 	server_nonce    string
 	lookup          fn (username string) !Credentials = unsafe { nil }
 mut:
@@ -81,6 +89,7 @@ pub fn new_server(config ServerConfig) !&Server {
 	return &Server{
 		mechanism:       config.mechanism
 		channel_binding: config.channel_binding
+		advertises_plus: config.advertises_plus || config.channel_binding.mode == .required
 		server_nonce:    nonce
 		lookup:          config.lookup
 	}
@@ -254,7 +263,9 @@ pub fn (mut s Server) final(client_final string) !string {
 // check_cbind_flag compares the GS2 `cbind-flag` the client sent with what
 // this server offers. The `y` case is the downgrade check of RFC 5802 §6: a
 // client only sends it when the server advertised no `-PLUS` mechanism, so a
-// server that did advertise one knows the list was tampered with.
+// server that did advertise one knows the list was tampered with. Which is
+// why the check reads `advertises_plus` and not the mode: on an exchange
+// that runs the base mechanism the mode says nothing about the list.
 fn (s &Server) check_cbind_flag(gs2_header string) ! {
 	flag := gs2_header.all_before(',')
 	match s.channel_binding.mode {
@@ -274,6 +285,14 @@ fn (s &Server) check_cbind_flag(gs2_header string) ! {
 			if flag != 'n' && flag != 'y' {
 				return MalformedMessage{
 					reason: 'unknown GS2 channel binding flag `${flag}`'
+				}
+			}
+			// `y` asserts something about the mechanism list this server sent,
+			// and this server knows what it sent. `n` stays valid: a client
+			// that cannot do channel binding at all is not being downgraded.
+			if flag == 'y' && s.advertises_plus {
+				return AuthenticationFailed{
+					reason: 'the client claims this server advertises no -PLUS mechanism, but it does: the advertised list was altered in transit'
 				}
 			}
 		}

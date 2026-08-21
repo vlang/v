@@ -188,6 +188,15 @@ channel binding, set `mode: .unsupported_by_server`. That sends the GS2
 advertised list was stripped in transit. Leaving the default
 `.not_supported` in that situation silently gives up the protection.
 
+The other half of that check is on the server, and it needs a fact the
+mode cannot carry. `ServerConfig.channel_binding.mode` describes the
+exchange in front of it; whether the server *advertises* `-PLUS` is a
+separate question, because a server usually lists both names and lets the
+client choose. Set `advertises_plus: true` whenever the `-PLUS` name is in
+the list, including on exchanges where the client picked the base
+mechanism — that is exactly where a `y` flag means the list was tampered
+with. Without it a stripped advertisement goes undetected.
+
 ## Security notes
 
 **Normalisation.** RFC 5802 passes the password through SASLprep

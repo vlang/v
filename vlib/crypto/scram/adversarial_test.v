@@ -182,3 +182,61 @@ fn test_a_count_between_the_floor_and_the_ceiling_is_still_accepted() {
 	client.verify(server_final)!
 	assert client.done() && server.done()
 }
+
+// plus_advertising_server offers both the base and the `-PLUS` mechanism, and
+// this exchange runs the base one — the case where a stripped advertisement
+// is invisible to the mode alone.
+fn plus_advertising_server() !&Server {
+	credentials := derive_credentials(.sha256, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096)!
+	return new_server(
+		advertises_plus: true
+		lookup:          fn [credentials] (username string) !Credentials {
+			return credentials
+		}
+	)
+}
+
+fn test_a_y_flag_is_a_downgrade_when_the_server_advertises_plus() {
+	// The client says it supports channel binding and saw no `-PLUS` in the
+	// list. This server put one there, so something rewrote the list.
+	mut server := plus_advertising_server()!
+	mut client := new_client(
+		username:        'user'
+		password:        'pencil'
+		channel_binding: ChannelBinding{
+			mode: .unsupported_by_server
+		}
+	)!
+	server.first(client.first()!) or {
+		assert err is AuthenticationFailed
+		assert err.msg().contains('altered in transit')
+		return
+	}
+	assert false, 'the server accepted a `y` flag while advertising a -PLUS mechanism'
+}
+
+fn test_an_n_flag_stays_valid_when_the_server_advertises_plus() {
+	// A client that cannot do channel binding at all is not being downgraded,
+	// so the same server must still authenticate it.
+	mut server := plus_advertising_server()!
+	mut client := new_client(username: 'user', password: 'pencil')!
+	server_final := server.final(client.final(server.first(client.first()!)!)!)!
+	client.verify(server_final)!
+	assert client.done() && server.done()
+}
+
+fn test_a_y_flag_is_legitimate_when_the_server_advertises_no_plus() {
+	// Unchanged behaviour for a server that really offers nothing better.
+	credentials := derive_credentials(.sha256, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096)!
+	mut server := server_with(credentials)!
+	mut client := new_client(
+		username:        'user'
+		password:        'pencil'
+		channel_binding: ChannelBinding{
+			mode: .unsupported_by_server
+		}
+	)!
+	server_final := server.final(client.final(server.first(client.first()!)!)!)!
+	client.verify(server_final)!
+	assert client.done() && server.done()
+}
