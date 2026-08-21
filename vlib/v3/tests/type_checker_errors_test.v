@@ -1415,6 +1415,173 @@ fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 	assert gated == '9\n42\n[8, 9]\n9\n9\n[8, 9]\n9'
 }
 
+fn test_collapsed_struct_fields_use_positional_target() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_plain_collapsed_struct_field_type', 'struct Config {
+	cap int
+}
+
+fn make(config Config) int {
+	return config.cap
+}
+
+fn main() {
+	_ := make(cap: "bad")
+}
+',
+		'cannot assign to field `cap`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_collapsed_params_field_ignores_earlier_struct', 'struct Context {
+	retries string
+}
+
+@[params]
+struct Options {
+	retries int
+}
+
+fn compile(context Context, options Options) {
+	_ = context
+	_ = options
+}
+
+fn main() {
+	compile(Context{}, retries: "bad")
+}
+',
+		'cannot assign to field `retries`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_method_collapsed_field_ignores_receiver', 'struct Builder {
+	cap string
+}
+
+struct Config {
+	cap int
+}
+
+fn (builder Builder) make(config Config) int {
+	_ = builder
+	return config.cap
+}
+
+fn main() {
+	_ := Builder{}.make(cap: "bad")
+}
+',
+		'cannot assign to field `cap`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_variadic_collapsed_struct_field_type', 'struct Point {
+	x int
+}
+
+fn total(points ...Point) int {
+	return points.len
+}
+
+fn main() {
+	_ := total(x: "bad")
+}
+',
+		'cannot assign to field `x`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_collapsed_fn_field_uses_target_diagnostic', 'struct Context {
+	callback fn (string)
+}
+
+@[params]
+struct Options {
+	callback fn (int)
+}
+
+fn run(context Context, options Options) {
+	_ = context
+	_ = options
+}
+
+fn string_callback(value string) {
+	_ = value
+}
+
+fn main() {
+	run(Context{}, callback: string_callback)
+}
+',
+		'cannot assign to field `callback`: expected `fn (int)`, not `fn (string)`')
+	run_bad(v3_bin, 'bad_alias_collapsed_struct_field_type', 'struct Config {
+	count int
+}
+
+type ConfigAlias = Config
+
+fn use(config ConfigAlias) {
+	_ = config
+}
+
+fn main() {
+	use(count: "bad")
+}
+',
+		'cannot assign to field `count`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_pointer_params_collapsed_field_type', '@[params]
+struct Config {
+	count int
+}
+
+fn use(config &Config) {
+	_ = config
+}
+
+fn main() {
+	use(count: "bad")
+}
+',
+		'cannot assign to field `count`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_generic_collapsed_field_type', 'struct Config[T] {
+	value T
+}
+
+fn use[T](config Config[T]) {
+	_ = config
+}
+
+fn main() {
+	use[int](value: "bad")
+}
+',
+		'cannot assign to field `value`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_fn_value_collapsed_field_type', 'struct Config {
+	count int
+}
+
+fn use(config Config) {
+	_ = config
+}
+
+fn call(callback fn (Config)) {
+	callback(count: "bad")
+}
+
+fn main() {
+	call(use)
+}
+',
+		'cannot assign to field `count`: expected `int`, not `string`')
+	run_bad(v3_bin, 'bad_collapsed_interface_target', 'interface Runnable {
+	run()
+}
+
+fn use(value Runnable) {
+	_ = value
+}
+
+fn main() {
+	use(count: 1)
+}
+',
+		'cannot instantiate interface `Runnable`')
+	run_bad_project(v3_bin, 'bad_collapsed_private_target_field', {
+		'v.mod':             "Module { name: 'collapsed_private_target' }\n"
+		'main.v':            'module main\n\nimport fixture\n\nfn main() {\n\tfixture.use(secret: 1)\n}\n'
+		'fixture/fixture.v': 'module fixture\n\n@[params]\npub struct Config {\n\tsecret int\npub:\n\tcount int\n}\n\npub fn use(config Config) {\n\t_ = config\n}\n'
+	}, 'main.v', 'cannot access private field `secret` on `fixture.Config`')
+}
+
 fn test_local_type_names_include_nested_block_scope() {
 	v3_bin := build_v3()
 	block_rows := run_good(v3_bin, 'good_local_struct_sibling_block_scope',

@@ -5,14 +5,18 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
+const params_struct_v3_bin = os.join_path(os.temp_dir(),
+	'v3_params_struct_codegen_test_${os.getpid()}')
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_params_struct_codegen_test')
+	if os.is_executable(params_struct_v3_bin) {
+		return params_struct_v3_bin
+	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${params_struct_v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
-	return v3_bin
+	return params_struct_v3_bin
 }
 
 // run_good supports run good handling for v3 tests.
@@ -118,6 +122,99 @@ fn main() {
 '
 	out := run_good(v3_bin, 'params_interface_array_field_input', source)
 	assert out == 'textbox,label,button'
+}
+
+fn test_collapsed_struct_call_feature_matrix() {
+	v3_bin := build_v3()
+	source := 'enum Mode {
+	fast
+	slow
+}
+
+struct Embedded {
+	embedded int
+}
+
+struct Plain {
+	Embedded
+	n int
+}
+
+type PlainAlias = Plain
+
+fn default_mode() Mode {
+	return .slow
+}
+
+@[params]
+struct Params {
+	n    int
+	mode Mode = default_mode()
+}
+
+type ParamsAlias = Params
+
+struct GenericParams[T] {
+	value T
+}
+
+struct Builder {
+	prefix string
+}
+
+fn plain(value Plain) string {
+	return "plain:\${value.n}:\${value.embedded}"
+}
+
+fn alias_plain(value PlainAlias) string {
+	return "alias:\${value.n}"
+}
+
+fn params(prefix string, value Params) string {
+	return "\${prefix}:\${value.n}:\${value.mode}"
+}
+
+fn alias_params(value ParamsAlias) string {
+	return "alias-params:\${value.n}:\${value.mode}"
+}
+
+fn pointer_params(value &Params) string {
+	return "pointer:\${value.n}:\${value.mode}"
+}
+
+fn generic_params[T](value GenericParams[T]) T {
+	return value.value
+}
+
+fn (builder Builder) make(value Plain) string {
+	return builder.prefix + int_str(value.n)
+}
+
+fn total(values ...Plain) int {
+	return values[0].n + values[0].embedded
+}
+
+fn call_with(callback fn (Plain) string) string {
+	return callback(n: 9)
+}
+
+fn main() {
+	println(plain(n: 1, embedded: 11))
+	println(alias_plain(n: 2))
+	println(params("params", n: 3, mode: .fast))
+	println(alias_params(n: 4))
+	println(alias_params())
+	println(pointer_params(n: 5, mode: .fast))
+	println(pointer_params())
+	println(int_str(generic_params[int](value: 6)))
+	println(int_str(generic_params(value: 7)))
+	println(Builder{prefix: "method:"}.make(n: 8))
+	println(int_str(total(n: 10, embedded: 20)))
+	println(call_with(plain))
+}
+'
+	out := run_good(v3_bin, 'collapsed_struct_call_feature_matrix', source)
+	assert out == 'plain:1:11\nalias:2\nparams:3:fast\nalias-params:4:slow\nalias-params:0:slow\npointer:5:fast\npointer:0:slow\n6\n7\nmethod:8\n30\nplain:9:0'
 }
 
 fn test_fixed_array_field_struct_init_codegen() {

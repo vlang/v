@@ -7186,12 +7186,13 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 	}
 	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
 	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
+	collapsed_target := tc.collapsed_call_arg_type(node, info) or { Type(void_) }
 	mut expanded_arg_offset := 0
 	for i in 1 + info.arg_offset .. node.children_count {
 		raw_arg := tc.a.child_node(&node, i)
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		if raw_arg.kind == .field_init {
-			tc.annotate_params_field_expected_expr(arg_id, raw_arg.value, info)
+			tc.annotate_collapsed_field_expected_expr(arg_id, raw_arg.value, collapsed_target)
 			continue
 		}
 		arg_shift := if ctx_omitted { ctx_count } else { 0 }
@@ -7239,45 +7240,69 @@ fn (tc &TypeChecker) call_arg_expected_type(info CallInfo, param_idx int) Type {
 	return expected
 }
 
-fn (mut tc TypeChecker) annotate_params_field_expected_expr(arg_id flat.NodeId, field_name string, info CallInfo) {
-	if expected := tc.params_field_expected_type(field_name, info) {
+fn (tc &TypeChecker) collapsed_call_arg_param_idx(node flat.Node, info CallInfo) int {
+	mut field_init_args := 0
+	mut first_field := -1
+	for i in 1 + info.arg_offset .. node.children_count {
+		if tc.a.child_node(&node, i).kind != .field_init {
+			continue
+		}
+		field_init_args++
+		if first_field < 0 {
+			first_field = i
+		}
+	}
+	if first_field < 0 {
+		return -1
+	}
+	recv_extra := if info.has_receiver { 1 } else { 0 }
+	collapsed := if field_init_args > 0 { 1 } else { 0 }
+	actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed +
+		recv_extra
+	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
+	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
+	arg_shift := if ctx_omitted { ctx_count } else { 0 }
+	return first_field - 1 - info.arg_offset + recv_extra + arg_shift
+}
+
+fn (tc &TypeChecker) collapsed_call_arg_type(node flat.Node, info CallInfo) ?Type {
+	param_idx := tc.collapsed_call_arg_param_idx(node, info)
+	if param_idx < 0 || param_idx >= info.params.len {
+		return none
+	}
+	target := info.params[param_idx]
+	if info.is_variadic && param_idx == info.params.len - 1 && target is Array {
+		return target.elem_type
+	}
+	return target
+}
+
+fn (mut tc TypeChecker) annotate_collapsed_field_expected_expr(arg_id flat.NodeId, field_name string, target Type) {
+	if expected := tc.collapsed_field_expected_type(field_name, target) {
 		tc.annotate_expected_expr(arg_id, expected)
 	}
 }
 
-fn (tc &TypeChecker) params_field_expected_type(field_name string, info CallInfo) ?Type {
+fn (tc &TypeChecker) collapsed_field_expected_type(field_name string, target Type) ?Type {
 	if field_name.len == 0 {
 		return none
 	}
-	for param in info.params {
-		if !tc.is_params_struct_type(param) {
-			continue
-		}
-		param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
-		if expected := tc.struct_field_type(param_struct.name, field_name) {
-			return expected
-		}
+	param_struct := struct_type_from_type(unwrap_pointer(target)) or { return none }
+	return tc.struct_field_type(param_struct.name, field_name)
+}
+
+fn (tc &TypeChecker) collapsed_field_owner(field_name string, target Type) ?string {
+	if field_name.len == 0 {
+		return none
+	}
+	param_struct := struct_type_from_type(unwrap_pointer(target)) or { return none }
+	if tc.struct_field_type(param_struct.name, field_name) != none {
+		return param_struct.name
 	}
 	return none
 }
 
-fn (tc &TypeChecker) params_field_owner(field_name string, info CallInfo) ?string {
-	if field_name.len == 0 {
-		return none
-	}
-	for param in info.params {
-		if !tc.is_params_struct_type(param) {
-			continue
-		}
-		param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
-		if tc.struct_field_type(param_struct.name, field_name) != none {
-			return param_struct.name
-		}
-	}
-	return none
-}
-
-fn params_field_owner_display(owner string) string {
+fn collapsed_field_owner_display(owner string) string {
 	parts := owner.split('.')
 	if parts.len > 1 {
 		return parts[parts.len - 2..].join('.')

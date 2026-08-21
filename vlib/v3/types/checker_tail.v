@@ -9932,12 +9932,13 @@ fn (mut tc TypeChecker) check_valid_call_arg_types(id flat.NodeId, node flat.Nod
 	actual_count := node.children_count - 1 - info.arg_offset + recv_extra
 	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
 	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
+	collapsed_target := tc.collapsed_call_arg_type(node, info) or { Type(void_) }
 	mut expanded_arg_offset := 0
 	for i in 1 + info.arg_offset .. node.children_count {
 		raw_arg := tc.a.child_node(&node, i)
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		if raw_arg.kind == .field_init {
-			if expected := tc.params_field_expected_type(raw_arg.value, info) {
+			if expected := tc.collapsed_field_expected_type(raw_arg.value, collapsed_target) {
 				tc.check_node_with_expected_context(arg_id, expected)
 			} else {
 				tc.check_node(arg_id)
@@ -10119,7 +10120,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	if tc.check_builtin_array_call_args(id, node, info) {
 		return
 	}
-	// `@[params]` struct args: trailing `key: value` args collapse into one struct argument.
+	// Trailing `key: value` args collapse into one ordinary or `@[params]` struct argument.
 	// field_init args only appear for this syntax, so they are a reliable signal.
 	mut field_init_args := 0
 	for i in 1 .. node.children_count {
@@ -10166,26 +10167,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		// Trailing `key: value` args collapse into one struct argument; reject
 		// them against a parameter that cannot take a struct literal (e.g. a
 		// non-variadic `[]Point`), which cgen would otherwise zero-initialize.
-		mut first_field := -1
-		for i in 1 + info.arg_offset .. node.children_count {
-			if tc.a.child_node(&node, i).kind == .field_init {
-				first_field = i
-				break
-			}
-		}
-		if first_field >= 0 {
-			arg_shift := if ctx_omitted { ctx_count } else { 0 }
-			param_idx := first_field - 1 - info.arg_offset + recv_extra + arg_shift
-			if param_idx >= 0 && param_idx < info.params.len {
-				is_variadic_slot := info.is_variadic && param_idx == info.params.len - 1
-				mut target := info.params[param_idx]
-				if is_variadic_slot {
-					if target is Array {
-						target = target.elem_type
-					}
-				}
+		param_idx := tc.collapsed_call_arg_param_idx(node, info)
+		if param_idx >= 0 && param_idx < info.params.len {
+			if target := tc.collapsed_call_arg_type(node, info) {
 				clean_target := if target is Alias { target.base_type } else { target }
 				if clean_target is Interface {
+					first_field := param_idx - recv_extra + 1 + info.arg_offset -
+						(if ctx_omitted { ctx_count } else { 0 })
 					first_field_node := tc.a.child_node(&node, first_field)
 					tc.record_error_at(.assignment_mismatch,
 						'cannot instantiate interface `${clean_target.name.all_after_last('.')}`', tc.a.child(&node,
@@ -10403,29 +10391,30 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 		}
 	}
+	collapsed_target := tc.collapsed_call_arg_type(node, info) or { Type(void_) }
 	mut expanded_arg_offset := 0
 	mut pointer_slot_call_args := []flat.NodeId{}
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
-		// field_init args are fields of the collapsed `@[params]` struct, not positional params
+		// field_init args are fields of one collapsed struct argument, not positional params.
 		raw_arg := tc.a.child_node(&node, i)
 		if raw_arg.kind == .field_init {
 			$if ownership ? {
-				if expected := tc.params_field_expected_type(raw_arg.value, info) {
+				if expected := tc.collapsed_field_expected_type(raw_arg.value, collapsed_target) {
 					tc.ownership_check_node_with_expected_context_and_aggregate_consumption_mode(arg_id,
 						expected, true)
 				} else {
 					tc.ownership_check_node_with_deferred_aggregate_consumption(arg_id)
 				}
 			} $else {
-				if expected := tc.params_field_expected_type(raw_arg.value, info) {
+				if expected := tc.collapsed_field_expected_type(raw_arg.value, collapsed_target) {
 					tc.check_node_with_expected_context(arg_id, expected)
 				} else {
 					tc.check_node(arg_id)
 				}
 			}
 			if tc.unsafe_depth == 0 {
-				if owner := tc.params_field_owner(raw_arg.value, info) {
+				if owner := tc.collapsed_field_owner(raw_arg.value, collapsed_target) {
 					if !is_anonymous_struct_name(owner) {
 						owner_base := strip_generic_args_name(owner)
 						decl_mod := tc.struct_modules[owner_base] or { '' }
@@ -10436,22 +10425,23 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 								raw_arg.value, decl_mod) or { true }
 							if !is_public {
 								tc.record_error_at(.unknown_field,
-									'cannot access private field `${raw_arg.value}` on `${params_field_owner_display(owner)}`', tc.a.child(&node,
+									'cannot access private field `${raw_arg.value}` on `${collapsed_field_owner_display(owner)}`', tc.a.child(&node,
 									i), raw_arg.pos)
 							}
 						}
 					}
 				}
 			}
-			if expected := tc.params_field_expected_type(raw_arg.value, info) {
+			if expected := tc.collapsed_field_expected_type(raw_arg.value, collapsed_target) {
 				value_node := tc.a.node(arg_id)
 				actual := if value_node.kind == .call {
 					tc.direct_call_return_type(value_node) or { tc.resolve_type(arg_id) }
 				} else {
 					tc.resolve_type(arg_id)
 				}
-				if !tc.params_field_expr_compatible(arg_id, actual, expected) {
-					expected_name := tc.params_field_diagnostic_type(raw_arg.value, info, expected)
+				if !tc.collapsed_field_expr_compatible(arg_id, actual, expected) {
+					expected_name := tc.collapsed_field_diagnostic_type(raw_arg.value,
+						collapsed_target, expected)
 					actual_name := if unalias_type(expected) is FnType
 						&& unalias_type(actual) is FnType {
 						tc.expr_diagnostic_fn_type(arg_id) or {
@@ -11383,7 +11373,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	}
 }
 
-fn (tc &TypeChecker) params_field_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
+fn (tc &TypeChecker) collapsed_field_expr_compatible(id flat.NodeId, actual Type, expected Type) bool {
 	// Compatibility is directional: the supplied value (`actual`) must be assignable to
 	// the field (`expected`). The reverse `type_compatible(expected, actual)` wrongly
 	// accepted e.g. a sum `Foo | Bar` for a concrete `Foo` field (because `Foo` converts
@@ -11402,12 +11392,8 @@ fn (tc &TypeChecker) call_is_direct_spawn_child(id flat.NodeId) bool {
 	return tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .spawn_expr
 }
 
-fn (tc &TypeChecker) params_field_diagnostic_type(field_name string, info CallInfo, expected Type) string {
-	for param in info.params {
-		if !tc.is_params_struct_type(param) {
-			continue
-		}
-		param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
+fn (tc &TypeChecker) collapsed_field_diagnostic_type(field_name string, target Type, expected Type) string {
+	if param_struct := struct_type_from_type(unwrap_pointer(target)) {
 		if expected_text, _ := tc.struct_field_diagnostic_fn_type(param_struct.name, field_name, 0) {
 			semantic_text := call_argument_type_name(expected)
 			imports := tc.current_file_import_info()
