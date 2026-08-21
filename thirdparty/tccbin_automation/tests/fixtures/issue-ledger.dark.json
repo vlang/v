@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "audience": "vlang/v:tccbin-automation-state",
+  "state_ref": "refs/heads/tccbin-automation-state",
+  "state_commit_sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "owner_repository": "vlang/tccbin",
+  "os": "windows",
+  "targets": [
+    {
+      "path": "targets/windows-amd64.json",
+      "target_id": "windows-amd64",
+      "generation": 12,
+      "owner_repository": "vlang/tccbin",
+      "input_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+      "artifact_fingerprint": "2222222222222222222222222222222222222222222222222222222222222222",
+      "incidents": [
+        {
+          "incident_id": "3333333333333333333333333333333333333333333333333333333333333333",
+          "status": "active",
+          "diagnostic": {
+            "schema_version": 1,
+            "repository": "vlang/tccbin",
+            "os": "windows",
+            "target_id": "windows-amd64",
+            "architecture": "x64",
+            "component": "payload",
+            "failure_class": "payload-review-required",
+            "test_id": "payload-link-ansi",
+            "lane": "ansi",
+            "expected": "the declared runtime payload links in the ANSI lane",
+            "observed_summary": "the ANSI payload link probe failed",
+            "subject_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "input_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+            "artifact_fingerprint": "2222222222222222222222222222222222222222222222222222222222222222",
+            "run_url": "https://github.com/vlang/tccbin/actions/runs/1",
+            "job_url": "https://github.com/vlang/tccbin/actions/runs/1/job/2",
+            "artifact_url": null,
+            "human_action": "review-change"
+          }
+        },
+        {
+          "incident_id": "4444444444444444444444444444444444444444444444444444444444444444",
+          "status": "validating",
+          "diagnostic": {
+            "schema_version": 1,
+            "repository": "vlang/tccbin",
+            "os": "windows",
+            "target_id": "windows-amd64",
+            "architecture": "x64",
+            "component": "payload",
+            "failure_class": "payload-review-required",
+            "test_id": "payload-link-unicode",
+            "lane": "unicode",
+            "expected": "the declared runtime payload links in the Unicode lane",
+            "observed_summary": "the Unicode payload link probe is being revalidated",
+            "subject_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "input_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+            "artifact_fingerprint": "2222222222222222222222222222222222222222222222222222222222222222",
+            "run_url": "https://github.com/vlang/tccbin/actions/runs/1",
+            "job_url": "https://github.com/vlang/tccbin/actions/runs/1/job/3",
+            "artifact_url": "https://github.com/vlang/tccbin/actions/runs/1/artifacts/4",
+            "human_action": "review-change"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "native-gate-subject.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "consumer_id",
+    "consumer_kind",
+    "intent_or_operation_id",
+    "target_id",
+    "subject_generation",
+    "initial_run_mode",
+    "remediation_trigger",
+    "sha",
+    "tree",
+    "original_ref",
+    "input_fingerprint",
+    "artifact_fingerprint",
+    "manifest_hash",
+    "digests"
+  ],
+  "properties": {
+    "consumer_id": {"$ref": "common.schema.json#/$defs/sha256"},
+    "consumer_kind": {
+      "type": "string",
+      "enum": [
+        "publish_candidate",
+        "rollback_candidate",
+        "adopt_current",
+        "initial_adopt_current",
+        "publish_post",
+        "rollback_post",
+        "remediation"
+      ]
+    },
+    "intent_or_operation_id": {"$ref": "common.schema.json#/$defs/sha256"},
+    "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+    "subject_generation": {"$ref": "common.schema.json#/$defs/generation"},
+    "initial_run_mode": {"type": "string", "enum": ["original_push", "no_native_push_expected"]},
+    "remediation_trigger": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/remediation_trigger"}
+      ]
+    },
+    "sha": {"$ref": "common.schema.json#/$defs/sha40"},
+    "tree": {"$ref": "common.schema.json#/$defs/sha40"},
+    "original_ref": {"$ref": "common.schema.json#/$defs/branch"},
+    "input_fingerprint": {"$ref": "common.schema.json#/$defs/sha256"},
+    "artifact_fingerprint": {"$ref": "common.schema.json#/$defs/sha256"},
+    "manifest_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "digests": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/digest_entry"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"consumer_kind": {"const": "remediation"}},
+        "required": ["consumer_kind"]
+      },
+      "then": {"properties": {"remediation_trigger": {"$ref": "common.schema.json#/$defs/remediation_trigger"}}},
+      "else": {
+        "properties": {
+          "remediation_trigger": {"type": "null"},
+          "initial_run_mode": {"const": "original_push"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "consumer_kind": {
+            "enum": ["publish_candidate", "rollback_candidate", "adopt_current", "initial_adopt_current"]
+          }
+        },
+        "required": ["consumer_kind"]
+      },
+      "then": {
+        "properties": {
+          "original_ref": {
+            "type": "string",
+            "pattern": "^tccbin-candidate/((freebsd-amd64)|(linux-amd64)|(macos-amd64)|(macos-arm64)|(openbsd-amd64)|(windows-amd64))/[0-9a-f]{64}$"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "original_ref": {
+            "type": "string",
+            "pattern": "^thirdparty-((freebsd-amd64)|(linux-amd64)|(macos-amd64)|(macos-arm64)|(openbsd-amd64)|(windows-amd64))$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"initial_run_mode": {"const": "no_native_push_expected"}},
+        "required": ["initial_run_mode"]
+      },
+      "then": {
+        "properties": {
+          "consumer_kind": {"const": "remediation"},
+          "remediation_trigger": {
+            "allOf": [
+              {"$ref": "common.schema.json#/$defs/remediation_trigger"},
+              {
+                "properties": {
+                  "repository": {"const": "vlang/v"},
+                  "ref": {"const": "master"},
+                  "owner_domain": {"const": "v"}
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "consumer_kind": {"const": "remediation"},
+          "initial_run_mode": {"const": "original_push"}
+        },
+        "required": ["consumer_kind", "initial_run_mode"]
+      },
+      "then": {
+        "properties": {
+          "remediation_trigger": {
+            "allOf": [
+              {"$ref": "common.schema.json#/$defs/remediation_trigger"},
+              {
+                "properties": {
+                  "repository": {"const": "vlang/tccbin"},
+                  "owner_domain": {"const": "tccbin"}
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

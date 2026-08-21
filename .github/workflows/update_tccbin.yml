@@ -1,5 +1,7 @@
 name: Update tccbin
 
+run-name: ${{ inputs.resume_handoff_id && format('tccbin-recovery-{0}', inputs.resume_handoff_id) || inputs.native_gate_consumer_id && format('tccbin-gate-{0}', inputs.native_gate_consumer_id) || 'Update tccbin' }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -42,6 +44,14 @@ on:
         type: boolean
         required: false
         default: false
+      native_gate_consumer_id:
+        description: 'Opaque persisted native-gate consumer identifier (dark mode)'
+        required: false
+        default: ''
+      resume_handoff_id:
+        description: 'Opaque persisted source-recovery handoff identifier (dark mode)'
+        required: false
+        default: ''
   schedule:
     - cron: '17 3 1 * *'
 
@@ -64,6 +74,8 @@ jobs:
       bsd_matrix: ${{ steps.control.outputs.bsd_matrix }}
       has_hosted: ${{ steps.control.outputs.has_hosted }}
       has_bsd: ${{ steps.control.outputs.has_bsd }}
+      phase_a_dark_mode: ${{ steps.control.outputs.phase_a_dark_mode }}
+      phase_a_receiver_id: ${{ steps.control.outputs.phase_a_receiver_id }}
     steps:
       - name: Validate request and select build matrices
         id: control
@@ -78,8 +90,45 @@ jobs:
           LIBGC_COMMIT: ${{ inputs.libgc_commit || 'master' }}
           LIBATOMIC_OPS_COMMIT: ${{ inputs.libatomic_ops_commit || 'master' }}
           SCHEDULE_PUBLISH_UNLOCKED: ${{ vars.TCCBIN_SCHEDULE_PUBLISH_UNLOCKED }}
+          NATIVE_GATE_CONSUMER_ID: ${{ inputs.native_gate_consumer_id || '' }}
+          RESUME_HANDOFF_ID: ${{ inputs.resume_handoff_id || '' }}
         run: |
           set -euo pipefail
+
+          if [ -n "$NATIVE_GATE_CONSUMER_ID" ] || [ -n "$RESUME_HANDOFF_ID" ]; then
+            [ "$EVENT_NAME" = workflow_dispatch ]
+            case "$GITHUB_REPOSITORY" in
+              vlang/v|GGRei/v) ;;
+              *) exit 1 ;;
+            esac
+            [ "$GITHUB_REF" = refs/heads/master ]
+            [ "$REQUESTED_TARGET" = none ]
+            [ "$REQUESTED_PUBLISH" = false ]
+            [ "$REQUESTED_FORCE_REBUILD" = false ]
+            [ -z "$EXPECTED_TCCBIN_HEAD" ]
+            if [ -n "$NATIVE_GATE_CONSUMER_ID" ] && [ -n "$RESUME_HANDOFF_ID" ]; then
+              echo "::error::select exactly one persisted consumer or recovery handoff"
+              exit 1
+            fi
+            opaque_id="${NATIVE_GATE_CONSUMER_ID:-$RESUME_HANDOFF_ID}"
+            if [[ ! "$opaque_id" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::dark-mode identifier must be a lowercase SHA-256"
+              exit 1
+            fi
+            {
+              echo 'target=none'
+              echo 'publish=false'
+              echo 'force_rebuild=false'
+              echo 'hosted_matrix={"include":[]}'
+              echo 'bsd_matrix={"include":[]}'
+              echo 'has_hosted=false'
+              echo 'has_bsd=false'
+              echo 'phase_a_dark_mode=true'
+              echo "phase_a_receiver_id=$opaque_id"
+            } >> "$GITHUB_OUTPUT"
+            echo 'phase_a_dark_mode=true'
+            exit 0
+          fi
 
           # Keep execution authorization here. A fork-only validation
           # commit may change the workflow_dispatch repository literal;
@@ -160,28 +209,28 @@ jobs:
 
           case "$target" in
             linux-amd64)
-              hosted_matrix='{"include":[{"id":"linux-amd64","os":"ubuntu-latest","branch":"thirdparty-linux-amd64","script":"thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh"}]}'
+              hosted_matrix='{"include":[{"id":"linux-amd64","publish_unlock_variable":"TCCBIN_LINUX_AMD64_PUBLISH_UNLOCKED","os":"ubuntu-latest","branch":"thirdparty-linux-amd64","script":"thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh"}]}'
               has_hosted=true
               ;;
             macos-amd64)
-              hosted_matrix='{"include":[{"id":"macos-amd64","os":"macos-15-intel","branch":"thirdparty-macos-amd64","script":"thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh"}]}'
+              hosted_matrix='{"include":[{"id":"macos-amd64","publish_unlock_variable":"TCCBIN_MACOS_AMD64_PUBLISH_UNLOCKED","os":"macos-15-intel","branch":"thirdparty-macos-amd64","script":"thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh"}]}'
               has_hosted=true
               ;;
             macos-arm64)
-              hosted_matrix='{"include":[{"id":"macos-arm64","os":"macos-latest","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
+              hosted_matrix='{"include":[{"id":"macos-arm64","publish_unlock_variable":"TCCBIN_MACOS_ARM64_PUBLISH_UNLOCKED","os":"macos-latest","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
               has_hosted=true
               ;;
             freebsd-amd64)
-              bsd_matrix='{"include":[{"id":"freebsd-amd64","operating_system":"freebsd","version":"15.1","branch":"thirdparty-freebsd-amd64","script":"thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh","install":"sudo pkg install -y bash git gmake rsync","cc":"cc"}]}'
+              bsd_matrix='{"include":[{"id":"freebsd-amd64","publish_unlock_variable":"TCCBIN_FREEBSD_AMD64_PUBLISH_UNLOCKED","operating_system":"freebsd","version":"15.1","branch":"thirdparty-freebsd-amd64","script":"thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh","install":"sudo pkg install -y bash git gmake rsync","cc":"cc"}]}'
               has_bsd=true
               ;;
             openbsd-amd64)
-              bsd_matrix='{"include":[{"id":"openbsd-amd64","operating_system":"openbsd","version":"7.8","branch":"thirdparty-openbsd-amd64","script":"thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh","install":"sudo pkg_add bash git gmake rsync","cc":"clang"}]}'
+              bsd_matrix='{"include":[{"id":"openbsd-amd64","publish_unlock_variable":"TCCBIN_OPENBSD_AMD64_PUBLISH_UNLOCKED","operating_system":"openbsd","version":"7.8","branch":"thirdparty-openbsd-amd64","script":"thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh","install":"sudo pkg_add bash git gmake rsync","cc":"clang"}]}'
               has_bsd=true
               ;;
             all)
-              hosted_matrix='{"include":[{"id":"linux-amd64","os":"ubuntu-latest","branch":"thirdparty-linux-amd64","script":"thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh"},{"id":"macos-amd64","os":"macos-15-intel","branch":"thirdparty-macos-amd64","script":"thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh"},{"id":"macos-arm64","os":"macos-latest","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
-              bsd_matrix='{"include":[{"id":"freebsd-amd64","operating_system":"freebsd","version":"15.1","branch":"thirdparty-freebsd-amd64","script":"thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh","install":"sudo pkg install -y bash git gmake rsync","cc":"cc"},{"id":"openbsd-amd64","operating_system":"openbsd","version":"7.8","branch":"thirdparty-openbsd-amd64","script":"thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh","install":"sudo pkg_add bash git gmake rsync","cc":"clang"}]}'
+              hosted_matrix='{"include":[{"id":"linux-amd64","publish_unlock_variable":"TCCBIN_LINUX_AMD64_PUBLISH_UNLOCKED","os":"ubuntu-latest","branch":"thirdparty-linux-amd64","script":"thirdparty/build_scripts/thirdparty-linux-amd64_tcc.sh"},{"id":"macos-amd64","publish_unlock_variable":"TCCBIN_MACOS_AMD64_PUBLISH_UNLOCKED","os":"macos-15-intel","branch":"thirdparty-macos-amd64","script":"thirdparty/build_scripts/thirdparty-macos-amd64_tcc.sh"},{"id":"macos-arm64","publish_unlock_variable":"TCCBIN_MACOS_ARM64_PUBLISH_UNLOCKED","os":"macos-latest","branch":"thirdparty-macos-arm64","script":"thirdparty/build_scripts/thirdparty-macos-arm64_tcc.sh"}]}'
+              bsd_matrix='{"include":[{"id":"freebsd-amd64","publish_unlock_variable":"TCCBIN_FREEBSD_AMD64_PUBLISH_UNLOCKED","operating_system":"freebsd","version":"15.1","branch":"thirdparty-freebsd-amd64","script":"thirdparty/build_scripts/thirdparty-freebsd-amd64_tcc.sh","install":"sudo pkg install -y bash git gmake rsync","cc":"cc"},{"id":"openbsd-amd64","publish_unlock_variable":"TCCBIN_OPENBSD_AMD64_PUBLISH_UNLOCKED","operating_system":"openbsd","version":"7.8","branch":"thirdparty-openbsd-amd64","script":"thirdparty/build_scripts/thirdparty-openbsd-amd64_tcc.sh","install":"sudo pkg_add bash git gmake rsync","cc":"clang"}]}'
               has_hosted=true
               has_bsd=true
               ;;
@@ -195,6 +244,7 @@ jobs:
             echo "bsd_matrix=$bsd_matrix"
             echo "has_hosted=$has_hosted"
             echo "has_bsd=$has_bsd"
+            echo "phase_a_dark_mode=false"
           } >> "$GITHUB_OUTPUT"
 
           echo "event=$EVENT_NAME"
@@ -209,6 +259,31 @@ jobs:
           else
             echo "expected_tccbin_head=<unset>"
           fi
+
+  phase-a-dark-mode:
+    needs: control
+    if: needs.control.outputs.phase_a_dark_mode == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the trusted workflow revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build the local compiler
+        run: |
+          make
+          ./v -o ./vnew cmd/v
+      - name: Validate the persisted-consumer receiver without any write capability
+        env:
+          RECEIVER_ID: ${{ needs.control.outputs.phase_a_receiver_id }}
+        run: |
+          ./vnew run thirdparty/tccbin_automation/bin/cmd receiver \
+            thirdparty/tccbin_automation/tests/fixtures/receiver-ledger.dark.json \
+            "$RECEIVER_ID" vlang/v 1001 .github/workflows/update_tccbin.yml \
+            master workflow_dispatch 0 0 none none \
+            aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa false
 
   resolve-sources:
     needs: control
@@ -310,9 +385,51 @@ jobs:
       ## and the actual build can never independently drift.
       MACOSX_DEPLOYMENT_TARGET: '10.13'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
+
+      - name: Checkout the immutable VC bootstrap snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vlang/vc
+          ref: dfc458a13ba8923ebc249e262c331f8169aa728b
+          path: .tccbin-bootstrap-vc
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bootstrap the contract-bound Phase A validator before staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          contract_input="$RUNNER_TEMP/tccbin-validator-contract-input"
+          validator_work="$RUNNER_TEMP/tccbin-validator-work"
+          vc_root="$GITHUB_WORKSPACE/.tccbin-bootstrap-vc"
+          test ! -e "$contract_input"
+          test ! -e "$validator_work"
+          git -c protocol.file.allow=always clone --quiet --no-checkout --no-local \
+            --no-hardlinks "$GITHUB_WORKSPACE" "$contract_input"
+          git -C "$contract_input" config --local core.autocrlf false
+          git -C "$contract_input" remote set-url origin \
+            "https://github.com/${GITHUB_REPOSITORY}"
+          git -C "$contract_input" checkout --quiet --detach --force "$GITHUB_SHA"
+          git -C "$vc_root" config --local core.autocrlf false
+          "$contract_input/thirdparty/tccbin_automation/bootstrap/bootstrap.sh" \
+            "$contract_input" "$GITHUB_REPOSITORY" "$GITHUB_SHA" \
+            "$vc_root" "$validator_work"
+          validator_cli="$validator_work/tccbin-automation"
+          validator_contract_root="$validator_work/contract-source"
+          test -x "$validator_cli"
+          test -d "$validator_contract_root"
+          binding="$("$validator_cli" contract-binding)"
+          test "$binding" = \
+            "repository=${GITHUB_REPOSITORY} sha=${GITHUB_SHA}"
+          {
+            echo "TCCBIN_VALIDATOR_CLI=$validator_cli"
+            echo "TCCBIN_VALIDATOR_CONTRACT_ROOT=$validator_contract_root"
+          } >> "$GITHUB_ENV"
 
       - name: Test tccbin workflow preservation
         if: matrix.id == 'linux-amd64'
@@ -483,8 +600,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone --branch "${{ matrix.branch }}" --depth=1 \
+          git clone --single-branch --branch "${{ matrix.branch }}" \
             "https://github.com/${TCCBIN_REPO}.git" thirdparty/tcc
+          git -C thirdparty/tcc config --local core.autocrlf false
           echo "base_commit=$(git -C thirdparty/tcc rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "workflow_tree=$(git -C thirdparty/tcc rev-parse HEAD:.github/workflows)" >> "$GITHUB_OUTPUT"
 
@@ -677,6 +795,7 @@ jobs:
           # verify exactly what's about to be pushed, not what's
           # already public.
           git clone --quiet thirdparty/tcc /tmp/tccbin-fresh-checkout
+          git -C /tmp/tccbin-fresh-checkout config --local core.autocrlf false
           if [ -n "$(git -C /tmp/tccbin-fresh-checkout status --porcelain)" ]; then
             echo "::error::fresh checkout of the new commit is not clean - something is untracked or modified that shouldn't be:"
             git -C /tmp/tccbin-fresh-checkout status
@@ -1343,13 +1462,93 @@ jobs:
 
           /tmp/tcc_boehm_gc_smoke
 
-      - name: Upload tar archive (macOS amd64, preserves symlinks and executable bits)
-        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
+      - name: Authenticate the Phase A candidate with an independent payload export
+        id: phase_a
+        if: steps.rebuild.outputs.skip != 'true'
         shell: bash
-        run: tar -czf /tmp/tccbin-macos-amd64.tar.gz -C /tmp/tccbin-fresh-checkout .
+        run: |
+          set -euo pipefail
+          candidate_root="$GITHUB_WORKSPACE/thirdparty/tcc"
+          if [ "${{ matrix.id }}" = macos-amd64 ]; then
+            candidate_root=/tmp/tccbin-fresh-checkout
+            test "$(git -C "$GITHUB_WORKSPACE/thirdparty/tcc" rev-parse HEAD)" = \
+              "$(git -C "$candidate_root" rev-parse HEAD)"
+          fi
+          test -d "$candidate_root"
+          test ! -L "$candidate_root"
+          candidate_root="$(cd "$candidate_root" && pwd -P)"
+          base_sha="${{ steps.tccbin.outputs.base_commit }}"
+          candidate_sha="$(git -C "$candidate_root" rev-parse HEAD)"
+          preflight_root="$RUNNER_TEMP/tccbin-candidate-preflight"
+          test ! -e "$preflight_root"
+          test ! -L "$preflight_root"
+          manifest_path=automation/bundle-manifest.json
+          manifest_entry="$(git -C "$candidate_root" ls-tree "$candidate_sha" -- "$manifest_path")"
+          # Legacy branches remain explicitly ineligible until their reviewed manifests and
+          # candidate-composition rollout land. A manifest-bearing direct-child candidate must
+          # use candidate-preflight, which owns the detached source clone and payload-only export.
+          if [ -z "$manifest_entry" ]; then
+            test ! -L "$candidate_root/automation"
+            if [ -e "$candidate_root/automation" ]; then
+              test -d "$candidate_root/automation"
+            fi
+            test ! -e "$candidate_root/$manifest_path"
+            test ! -L "$candidate_root/$manifest_path"
+            if [ "$PUBLISH" = true ]; then
+              echo '::error::publication requires a managed tccbin manifest'
+              exit 1
+            fi
+            result='eligible=false reason=phase_a_material_absent publish_allowed=false manifest_hash= input_fingerprint= artifact_fingerprint='
+          else
+            case "$manifest_entry" in
+              "100644 blob "*$'\t'"$manifest_path") ;;
+              *)
+                echo '::error::managed tccbin manifest must be an exact 100644 Git blob'
+                exit 1
+                ;;
+            esac
+            result="$(
+              cd "$TCCBIN_VALIDATOR_CONTRACT_ROOT"
+              "$TCCBIN_VALIDATOR_CLI" candidate-preflight \
+                "${{ matrix.id }}" monthly "$candidate_root" \
+                "$base_sha" "$candidate_sha" "$preflight_root" "$PUBLISH"
+            )"
+          fi
+          printf '%s\n' "$result"
+          case "$result" in
+            eligible=true\ *publish_allowed=true\ *|eligible=true\ *publish_allowed=false\ *)
+              payload_root="$preflight_root/payload"
+              test -d "$payload_root"
+              test ! -L "$payload_root"
+              echo 'eligible=true' >> "$GITHUB_OUTPUT"
+              echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+              echo "payload_root=$payload_root" >> "$GITHUB_OUTPUT"
+              ;;
+            eligible=false\ *publish_allowed=false\ *)
+              echo 'eligible=false' >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo '::error::staged provenance returned an unrecognized decision'
+              exit 1
+              ;;
+          esac
+          if [ "$PUBLISH" = true ] && [[ "$result" != *'publish_allowed=true'* ]]; then
+            echo '::error::publication is not allowed without authenticated staging'
+            exit 1
+          fi
+
+      - name: Upload tar archive (macOS amd64, preserves symlinks and executable bits)
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true' && steps.phase_a.outputs.eligible == 'true'
+        shell: bash
+        env:
+          PAYLOAD_ROOT: ${{ steps.phase_a.outputs.payload_root }}
+        run: |
+          set -euo pipefail
+          test -n "$PAYLOAD_ROOT"
+          tar -czf /tmp/tccbin-macos-amd64.tar.gz -C "$PAYLOAD_ROOT" .
       - name: Upload tar archive artifact (macOS amd64)
-        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
-        uses: actions/upload-artifact@v7
+        if: matrix.id == 'macos-amd64' && steps.rebuild.outputs.skip != 'true' && steps.phase_a.outputs.eligible == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: tccbin-macos-amd64-tar
           path: /tmp/tccbin-macos-amd64.tar.gz
@@ -1367,11 +1566,11 @@ jobs:
             "${{ steps.tccbin.outputs.base_commit }}" HEAD -- .github/workflows
 
       - name: Upload TCC bundle artifact
-        if: matrix.id != 'macos-amd64' && steps.rebuild.outputs.skip != 'true'
-        uses: actions/upload-artifact@v7
+        if: matrix.id != 'macos-amd64' && steps.rebuild.outputs.skip != 'true' && steps.phase_a.outputs.eligible == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: tccbin-${{ matrix.id }}
-          path: thirdparty/tcc
+          path: ${{ steps.phase_a.outputs.payload_root }}
 
       # macos-amd64 additionally requires an explicit unlock: vlang/tccbin's
       # thirdparty-macos-amd64 build-and-test.yml currently hard-fails if the
@@ -1388,7 +1587,9 @@ jobs:
         if: >-
           github.repository == 'vlang/v' &&
           steps.rebuild.outputs.skip != 'true' && env.PUBLISH == 'true' &&
+          steps.phase_a.outputs.eligible == 'true' &&
           (env.TARGET == matrix.id || env.TARGET == 'all') &&
+          (github.event_name != 'schedule' || vars[matrix.publish_unlock_variable] == 'true') &&
           (matrix.id != 'macos-amd64' || vars.MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED == 'true')
         shell: bash
         run: |
@@ -1418,12 +1619,15 @@ jobs:
         if: >-
           github.repository == 'vlang/v' &&
           steps.rebuild.outputs.skip != 'true' && env.PUBLISH == 'true' &&
+          steps.phase_a.outputs.eligible == 'true' &&
           (env.TARGET == matrix.id || env.TARGET == 'all') &&
+          (github.event_name != 'schedule' || vars[matrix.publish_unlock_variable] == 'true') &&
           (matrix.id != 'macos-amd64' || vars.MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED == 'true')
         shell: bash
         env:
           TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
           SCHEDULE_PUBLISH_UNLOCKED: ${{ vars.TCCBIN_SCHEDULE_PUBLISH_UNLOCKED }}
+          TARGET_PUBLISH_UNLOCKED: ${{ vars[matrix.publish_unlock_variable] }}
           MACOS_AMD64_PUBLISH_UNLOCKED: ${{ vars.MACOS_AMD64_LIBGC_PUBLISH_UNLOCKED }}
         run: |
           set -euo pipefail
@@ -1444,6 +1648,11 @@ jobs:
             echo "::error::scheduled publication is locked"
             exit 1
           fi
+          if [ "$GITHUB_EVENT_NAME" = 'schedule' ] \
+            && [ "$TARGET_PUBLISH_UNLOCKED" != true ]; then
+            echo "::error::scheduled publication for ${{ matrix.id }} is locked"
+            exit 1
+          fi
           if [ "${{ matrix.id }}" = 'macos-amd64' ] \
             && [ "$MACOS_AMD64_PUBLISH_UNLOCKED" != 'true' ]; then
             echo "::error::macOS amd64 publication is locked"
@@ -1453,6 +1662,8 @@ jobs:
             echo "::error::VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}"
             exit 1
           fi
+          test "$(git -C thirdparty/tcc rev-parse HEAD)" = \
+            "${{ steps.phase_a.outputs.candidate_sha }}"
           askpass="$(mktemp)"
           trap 'rm -f "$askpass"' EXIT
           cat > "$askpass" <<'EOF'
@@ -1485,12 +1696,54 @@ jobs:
       PUBLISH: ${{ needs.control.outputs.publish }}
       FORCE_REBUILD: ${{ needs.control.outputs.force_rebuild }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
 
+      - name: Checkout the immutable VC bootstrap snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vlang/vc
+          ref: dfc458a13ba8923ebc249e262c331f8169aa728b
+          path: .tccbin-bootstrap-vc
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bootstrap the contract-bound Phase A validator before BSD staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          contract_input="$RUNNER_TEMP/tccbin-validator-contract-input"
+          validator_work="$RUNNER_TEMP/tccbin-validator-work"
+          vc_root="$GITHUB_WORKSPACE/.tccbin-bootstrap-vc"
+          test ! -e "$contract_input"
+          test ! -e "$validator_work"
+          git -c protocol.file.allow=always clone --quiet --no-checkout --no-local \
+            --no-hardlinks "$GITHUB_WORKSPACE" "$contract_input"
+          git -C "$contract_input" config --local core.autocrlf false
+          git -C "$contract_input" remote set-url origin \
+            "https://github.com/${GITHUB_REPOSITORY}"
+          git -C "$contract_input" checkout --quiet --detach --force "$GITHUB_SHA"
+          git -C "$vc_root" config --local core.autocrlf false
+          "$contract_input/thirdparty/tccbin_automation/bootstrap/bootstrap.sh" \
+            "$contract_input" "$GITHUB_REPOSITORY" "$GITHUB_SHA" \
+            "$vc_root" "$validator_work"
+          validator_cli="$validator_work/tccbin-automation"
+          validator_contract_root="$validator_work/contract-source"
+          test -x "$validator_cli"
+          test -d "$validator_contract_root"
+          binding="$("$validator_cli" contract-binding)"
+          test "$binding" = \
+            "repository=${GITHUB_REPOSITORY} sha=${GITHUB_SHA}"
+          {
+            echo "TCCBIN_VALIDATOR_CLI=$validator_cli"
+            echo "TCCBIN_VALIDATOR_CONTRACT_ROOT=$validator_contract_root"
+          } >> "$GITHUB_ENV"
+
       - name: Start ${{ matrix.id }} VM
-        uses: cross-platform-actions/action@v1.4.0
+        uses: cross-platform-actions/action@24ef01df165c76df1ed2b9f9e9212e78dc2fc963
         with:
           operating_system: ${{ matrix.operating_system }}
           version: ${{ matrix.version }}
@@ -1538,8 +1791,9 @@ jobs:
           fi
           echo "TinyCC source pinned at $tinycc_hash"
 
-          git clone --branch "${{ matrix.branch }}" --depth=1 \
+          git clone --single-branch --branch "${{ matrix.branch }}" \
             "https://github.com/${TCCBIN_REPO}.git" thirdparty/tcc
+          git -C thirdparty/tcc config --local core.autocrlf false
           tccbin_base_commit="$(git -C thirdparty/tcc rev-parse HEAD)"
           tccbin_workflow_tree="$(git -C thirdparty/tcc rev-parse HEAD:.github/workflows)"
           if [ -n "$EXPECTED_TCCBIN_HEAD" ] \
@@ -1603,11 +1857,83 @@ jobs:
             echo "rebuilt=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Authenticate the BSD Phase A candidate with an independent payload export
+        id: phase_a
+        if: steps.bsd_rebuild.outputs.rebuilt == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_root="$GITHUB_WORKSPACE/thirdparty/tcc"
+          test -d "$candidate_root"
+          test ! -L "$candidate_root"
+          candidate_root="$(cd "$candidate_root" && pwd -P)"
+          base_sha="${{ steps.bsd_rebuild.outputs.base_commit }}"
+          candidate_sha="$(git -C "$candidate_root" rev-parse HEAD)"
+          preflight_root="$RUNNER_TEMP/tccbin-candidate-preflight"
+          test ! -e "$preflight_root"
+          test ! -L "$preflight_root"
+          manifest_path=automation/bundle-manifest.json
+          manifest_entry="$(git -C "$candidate_root" ls-tree "$candidate_sha" -- "$manifest_path")"
+          # Legacy branches remain explicitly ineligible until their reviewed manifests and
+          # candidate-composition rollout land. A manifest-bearing direct-child candidate must
+          # use candidate-preflight, which owns the detached source clone and payload-only export.
+          if [ -z "$manifest_entry" ]; then
+            test ! -L "$candidate_root/automation"
+            if [ -e "$candidate_root/automation" ]; then
+              test -d "$candidate_root/automation"
+            fi
+            test ! -e "$candidate_root/$manifest_path"
+            test ! -L "$candidate_root/$manifest_path"
+            if [ "$PUBLISH" = true ]; then
+              echo 'publication requires a managed tccbin manifest' >&2
+              exit 1
+            fi
+            result='eligible=false reason=phase_a_material_absent publish_allowed=false manifest_hash= input_fingerprint= artifact_fingerprint='
+          else
+            case "$manifest_entry" in
+              "100644 blob "*$'\t'"$manifest_path") ;;
+              *)
+                echo 'managed tccbin manifest must be an exact 100644 Git blob' >&2
+                exit 1
+                ;;
+            esac
+            result="$(
+              cd "$TCCBIN_VALIDATOR_CONTRACT_ROOT"
+              "$TCCBIN_VALIDATOR_CLI" candidate-preflight \
+                "${{ matrix.id }}" monthly "$candidate_root" \
+                "$base_sha" "$candidate_sha" "$preflight_root" "$PUBLISH"
+            )"
+          fi
+          printf '%s\n' "$result"
+          case "$result" in
+            eligible=true\ *publish_allowed=true\ *|eligible=true\ *publish_allowed=false\ *)
+              payload_root="$preflight_root/payload"
+              test -d "$payload_root"
+              test ! -L "$payload_root"
+              echo 'eligible=true' >> "$GITHUB_OUTPUT"
+              echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+              echo "payload_root=$payload_root" >> "$GITHUB_OUTPUT"
+              ;;
+            eligible=false\ *publish_allowed=false\ *)
+              echo 'eligible=false' >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo 'staged provenance returned an unrecognized decision' >&2
+              exit 1
+              ;;
+          esac
+          if [ "$PUBLISH" = true ] && [[ "$result" != *'publish_allowed=true'* ]]; then
+            echo 'publication is not allowed without authenticated staging' >&2
+            exit 1
+          fi
+
       - name: Recheck tccbin branch HEAD before publication
         if: >-
           github.repository == 'vlang/v' &&
           steps.bsd_rebuild.outputs.rebuilt == 'true' && env.PUBLISH == 'true' &&
-          (env.TARGET == matrix.id || env.TARGET == 'all')
+          steps.phase_a.outputs.eligible == 'true' &&
+          (env.TARGET == matrix.id || env.TARGET == 'all') &&
+          (github.event_name != 'schedule' || vars[matrix.publish_unlock_variable] == 'true')
         shell: bash
         run: |
           set -euo pipefail
@@ -1636,11 +1962,14 @@ jobs:
         if: >-
           github.repository == 'vlang/v' &&
           steps.bsd_rebuild.outputs.rebuilt == 'true' && env.PUBLISH == 'true' &&
-          (env.TARGET == matrix.id || env.TARGET == 'all')
+          steps.phase_a.outputs.eligible == 'true' &&
+          (env.TARGET == matrix.id || env.TARGET == 'all') &&
+          (github.event_name != 'schedule' || vars[matrix.publish_unlock_variable] == 'true')
         shell: sh
         env:
           TCCBIN_TOKEN: ${{ secrets.VLANG_BOT_SECRET }}
           SCHEDULE_PUBLISH_UNLOCKED: ${{ vars.TCCBIN_SCHEDULE_PUBLISH_UNLOCKED }}
+          TARGET_PUBLISH_UNLOCKED: ${{ vars[matrix.publish_unlock_variable] }}
         run: |
           set -eu
           if [ "$GITHUB_REPOSITORY" != 'vlang/v' ]; then
@@ -1660,10 +1989,17 @@ jobs:
             echo "scheduled publication is locked" >&2
             exit 1
           fi
+          if [ "$GITHUB_EVENT_NAME" = 'schedule' ] \
+            && [ "$TARGET_PUBLISH_UNLOCKED" != true ]; then
+            echo "scheduled publication for ${{ matrix.id }} is locked" >&2
+            exit 1
+          fi
           if [ -z "$TCCBIN_TOKEN" ]; then
             echo "VLANG_BOT_SECRET is required to publish to ${TCCBIN_REPO}" >&2
             exit 1
           fi
+          test "$(git -C thirdparty/tcc rev-parse HEAD)" = \
+            "${{ steps.phase_a.outputs.candidate_sha }}"
           askpass="$(mktemp)"
           trap 'rm -f "$askpass"' EXIT
           cat > "$askpass" <<'EOF'
