@@ -944,6 +944,11 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	} else {
 		iter_type
 	}
+	// `for x in &arr` requests by-reference elements via a `&` on the container
+	// expression itself, distinct from `node.op == .amp` (`for mut x in arr`). A
+	// `mut` parameter is stored as a pointer by the C ABI even without an explicit
+	// `&`, so only a genuine address-of/reference expression counts here.
+	container_is_explicit_reference := container_node.kind == .prefix && container_node.op == .amp
 	source_is_owned_temporary := !source_container_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
@@ -1026,7 +1031,8 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		elem_name = val.value
 	}
 	t.set_var_type(idx_name, 'int')
-	elem_is_mut := node.op == .amp && actual_iter_type != 'string'
+	elem_is_mut := (node.op == .amp || container_is_explicit_reference)
+		&& actual_iter_type != 'string'
 	elem_needs_ref := elem_is_mut
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)

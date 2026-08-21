@@ -13939,7 +13939,7 @@ pub fn (tc &TypeChecker) struct_module_for_type(name string) string {
 	return ''
 }
 
-fn (tc &TypeChecker) type_has_declaration_attribute(typ Type, name string) bool {
+pub fn (tc &TypeChecker) type_has_declaration_attribute(typ Type, name string) bool {
 	clean := unalias_type(unwrap_pointer(typ))
 	type_name := strip_generic_args_name(clean.name())
 	if type_name.len == 0 {

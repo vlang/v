@@ -3936,6 +3936,18 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 	if raw_alias_type.len > 0 {
 		typ = raw_alias_type
 	}
+	// `transform_expr` above already auto-dereferenced a `pointer_value_rvalues`
+	// ident (mutable for-in bindings, `@[heap]`-promoted locals, ...) to its value,
+	// but `typ` was resolved independently and still carries the storage `&T`.
+	// Strip it so `wrap_string_conversion` sees a type matching what `expr` (now a
+	// plain value read) actually evaluates to, instead of treating it as a
+	// genuine nilable pointer.
+	if int(expr_id) >= 0 && typ.starts_with('&') {
+		raw_node := t.a.nodes[int(expr_id)]
+		if raw_node.kind == .ident && t.pointer_value_rvalues[raw_node.value] {
+			typ = typ[1..]
+		}
+	}
 	return t.wrap_string_conversion(expr, typ)
 }
 
