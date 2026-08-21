@@ -240,3 +240,33 @@ fn test_a_y_flag_is_legitimate_when_the_server_advertises_no_plus() {
 	client.verify(server_final)!
 	assert client.done() && server.done()
 }
+
+fn test_a_server_nonce_that_is_not_printable_is_refused() {
+	// A valid prefix is not enough: the suffix is the server's to choose, and
+	// the client echoes the whole thing back on the wire.
+	suffixes := {
+		'a space':          'has space'
+		'a control byte':   'has\x01control'
+		'a non-ASCII byte': 'hasé'
+		'a delete byte':    'has\x7f'
+	}
+	for what, suffix in suffixes {
+		mut client := new_client(username: 'user', password: 'pencil', nonce: 'clientnonce')!
+		_ := client.first()!
+		client.final('r=clientnonce${suffix},s=c2FsdHNhbHRzYWx0c2FsdA==,i=4096') or {
+			assert err is MalformedMessage, what
+			assert err.msg().contains('not a printable string'), what
+			continue
+		}
+		assert false, 'the client accepted a server nonce with ${what}'
+	}
+}
+
+fn test_a_printable_server_nonce_is_still_accepted() {
+	// The `printable` range is 0x21-0x7E minus the comma, which is wider than
+	// the base64 alphabet a generated nonce uses.
+	mut client := new_client(username: 'user', password: 'pencil', nonce: 'clientnonce')!
+	_ := client.first()!
+	client_final := client.final('r=clientnonce~!@#\$%^&*()_+,s=c2FsdHNhbHRzYWx0c2FsdA==,i=4096')!
+	assert client_final.contains('r=clientnonce~!@#\$%^&*()_+,')
+}

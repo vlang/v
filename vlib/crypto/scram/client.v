@@ -166,6 +166,16 @@ pub fn (mut c Client) final(server_first string) !string {
 		}
 	}
 	nonce := attrs[0].value
+	// The whole received value is checked, not just the part this client
+	// contributed: it is echoed verbatim in the client-final-message and in
+	// the auth message, so it has to satisfy the same `printable` rule the
+	// server already applies to the client nonce. Extending a valid prefix
+	// with spaces or control bytes is not a valid nonce.
+	validate_nonce(nonce) or {
+		return MalformedMessage{
+			reason: 'the server nonce is not a printable string'
+		}
+	}
 	// The server nonce must extend the client one. If it does not, the reply
 	// belongs to another exchange, so it is a replay rather than a bad password.
 	if !nonce.starts_with(c.client_nonce) || nonce.len == c.client_nonce.len {
