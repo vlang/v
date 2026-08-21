@@ -230,6 +230,16 @@ fn normalize_mod_path(path string) string {
 	return path.replace('-', '_').to_lower()
 }
 
+// Derive the import path of an installed module from its location relative to
+// `vmodules`. E.g. `<vmodules>/spytheman/vtray` -> `spytheman.vtray`.
+// Normalize both sides via `real_path` so macOS's `/tmp` -> `/private/tmp`
+// resolution doesn't leave the prefix unstripped.
+fn import_path_of(install_path string) string {
+	vmodules_real := os.real_path(settings.vmodules_path)
+	rel_install_path := install_path.trim_string_left(vmodules_real).trim_left(os.path_separator)
+	return rel_install_path.replace(os.path_separator, '.')
+}
+
 fn get_all_modules_for_search() []string {
 	working_server_url := get_working_server_url()
 	verbose_println_more(@FILE_LINE, @FN, 'working_server_url: ${working_server_url}')

@@ -114,6 +114,33 @@ fn test_update_and_remove_with_capitalized_ident() {
 	assert !os.exists(publisher_dir)
 }
 
+// A module named e.g. `my-mod` is installed as `my_mod`, since `-` is not valid
+// in a V import path. Make sure the mismatch is reported with the resulting
+// import path, instead of leaving users to guess it.
+fn test_install_warns_about_normalized_module_name() {
+	vmodules_path := os.join_path(test_path, 'vmodules_normalized_name')
+	test_utils.set_test_env(vmodules_path)
+	repo_path := os.join_path(test_path, 'hyphenated_repo')
+	create_local_git_module(repo_path, 'my-mod')
+
+	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	assert res.output.contains('`my-mod` is not a valid V import path, it was installed as `my_mod`.'), res.output
+	assert res.output.contains('Use `import my_mod` to import it.'), res.output
+	assert os.exists(os.join_path(vmodules_path, 'my_mod', 'v.mod'))
+}
+
+// Counterpart of the test above: a module name that is already a valid import
+// path must not trigger the warning.
+fn test_install_does_not_warn_about_valid_module_name() {
+	vmodules_path := os.join_path(test_path, 'vmodules_valid_name')
+	test_utils.set_test_env(vmodules_path)
+	repo_path := os.join_path(test_path, 'valid_name_repo')
+	create_local_git_module(repo_path, 'my_mod')
+
+	res := cmd_ok(@LOCATION, '${vexe} install ${os.quoted_path(repo_path)}')
+	assert !res.output.contains('is not a valid V import path'), res.output
+}
+
 fn create_local_git_module(repo_path string, module_name string) {
 	os.mkdir_all(repo_path) or { panic(err) }
 	os.write_file(os.join_path(repo_path, 'v.mod'),
