@@ -256,13 +256,16 @@ blob, provenance, contract-binding, and publication decision to the existing sta
 
 ```sh
 tccbin-automation candidate-preflight \
-  <target-id> <monthly|legacy-onboard> <candidate-repo-root> \
+  <target-id> <monthly|legacy-onboard|baseline-activate> <candidate-repo-root> \
   <base-sha> <candidate-sha> <work-root> <publish-requested>
 ```
 
 The successful work root contains detached `base-source/` and `candidate-source/` clones and the
 payload-only `payload/`. A caller may continue only when the command reports both `eligible=true`
 and, for publication, `publish_allowed=true`.
+
+`baseline-activate` is validation-only: `publish-requested=true` is rejected immediately after its
+reviewed policy is loaded and before candidate input or a work root is touched.
 
 ### Candidate composition and dormant legacy onboarding
 
@@ -280,7 +283,7 @@ publication-disabled candidate preflight.
 
 ```sh
 tccbin-automation candidate-compose \
-  <target-id> <monthly|legacy-onboard> <base-repo-root> <base-sha> \
+  <target-id> <monthly|legacy-onboard|baseline-activate> <base-repo-root> <base-sha> \
   <raw-root> <manifest> <result-root>
 ```
 
@@ -299,6 +302,104 @@ ID and hash, recipe
 identity, patch and transform semantics without byte hashes, probes and effects, and the static
 partition of overlays, inventory, and outputs. Runtime contract identity, resolved source and
 toolchain observations, byte digests, and derived provenance status remain outside that policy.
+
+### Dormant managed-baseline activation
+
+`baseline-activate` is the one-time migration boundary for the six manifest-bearing Phase A
+baselines. It is distinct from `legacy-onboard`: the reviewed base already contains an automation
+manifest, so it cannot satisfy the legacy rule that the base manifest be absent. It is also
+distinct from `monthly`: every Phase A base has an all-null toolchain binding and incomplete
+provenance, while a monthly transition requires authenticated producer observations under the
+same non-null reviewed profile in both manifests.
+
+Each target's `managed_baseline_activation` registry object seals the exact integrated Phase A
+commit, tree, sole parent, manifest byte hash, and the immutable contract repository/SHA recorded
+by that manifest. The six reviewed anchors are:
+
+- `freebsd-amd64`
+  - Baseline commit: `e71cda6242e88e47312ca9bfc4548b0579636e0c`
+  - Baseline tree: `9438879ad9906e970d45bafacf6ce2cc63ae4c53`
+  - Sole parent: `fdf5cdfea6ea84612e068bc3bea433dbba263404`
+  - Manifest SHA-256: `a9c2f15451a7e94261c6dd4d9e47cc3965414a2179d04af5902dffc9471a4db3`
+- `linux-amd64`
+  - Baseline commit: `d6e7ac1b1bcc98aed734a6ecbfa8509f24606c74`
+  - Baseline tree: `22851c0f356fefcb63718ce63d50a870150a491c`
+  - Sole parent: `ece46f06fbe6eb701d52442f11dd59c48d166cae`
+  - Manifest SHA-256: `bcdce1bea1facb24175229a16dc6e8a2c4210aafc05f0526b2728dc060223ed4`
+- `macos-amd64`
+  - Baseline commit: `199fa78395ca413aac23d02ec69cc5e7b1d805a2`
+  - Baseline tree: `db67711bfeb33be63dbc8eb03ecdddc2e127cc8c`
+  - Sole parent: `da8ac5a4369accc67c485191d02535d77718a1c8`
+  - Manifest SHA-256: `09dc54928f4690cfee7fd113de93f36479a40cabd10eeb3ee416a3175b42270a`
+- `macos-arm64`
+  - Baseline commit: `1d0ad0ecf70a91a1df64cebf215e683b1d5aedb5`
+  - Baseline tree: `96af5121f065310ba9168e3e2dc61adf340e2738`
+  - Sole parent: `274abd2466a14861b75e5b91fd946ad27d114499`
+  - Manifest SHA-256: `be45aaee1e65cc1ed2ee6bd2f121d72cbc248887ffa3d57f4b6d59cb6ea73525`
+- `openbsd-amd64`
+  - Baseline commit: `8c7d96c75ea8548f007432d70f1ae33cccd81838`
+  - Baseline tree: `f75c4862711184c4c191a73e6f996eb421bd37b4`
+  - Sole parent: `45230fde96c17fff4baf37deb55e90803c043063`
+  - Manifest SHA-256: `873b62af697ba25f0abe5887ba05972a93bd48990233853b362bed6cb9137699`
+- `windows-amd64`
+  - Baseline commit: `86ae5844b8b56071b21ae3aa138b247d5eb9ddd9`
+  - Baseline tree: `818d7794ebdf41de60e5679d485e3a5d49272171`
+  - Sole parent: `f7c7199bb87fda8b80b31fefa470b2efc952326b`
+  - Manifest SHA-256: `b5728124ecf8dc01e4f16cf4188411d6f633bb57997ef36df2dc5fd182e8535a`
+
+All six anchors bind `base_contract_repository=vlang/v` and
+`base_contract_sha=7545e515b434cd399333d43659238427d72e22e7`. Their policy path/hash pairs
+are deliberately null. Consequently, `baseline-activate` stops with
+`target has no reviewed managed baseline activation policy` before it reads candidate input. A
+future reviewed policy will be canonical JSON at
+`baseline-activation/<target>.policy.json`, using onboarding-policy projection v2 and binding the
+resolved target toolchain profile. Projection v1 remains exclusive to legacy onboarding. The v2
+policy has one closed `source_commit_evidence` entry for every source and no extra entry. External
+sources seal ID, repository, ref, commit SHA, tree SHA, and canonical base64 of the bounded raw Git
+commit object. The validator reconstructs `SHA1("commit <length>\0" + raw)`, requires the first
+and only `tree` header to match, and compares the candidate's complete five-field source tuple to
+that reviewed evidence. Candidate source or provenance fields are never their own authority.
+
+The Windows `v-libgc` entry instead has only `authority=runtime-contract`, its fixed source ID,
+repository, and ref; it cannot auto-pin a SHA or tree into the policy stored by the same V commit.
+At activation time its candidate SHA must equal the embedded runtime contract SHA, and its tree
+must equal the tree resolved for that exact commit in a separate hardened V Git checkout. That
+checkout must be a complete SHA-1 repository with `core.autocrlf=false`, no redirects, alternates,
+grafts, or replacement refs, the exact `vlang/v` HTTPS origin, and a clean tracked, detached HEAD at
+the runtime SHA. The updater must supply this private checkout; a mutable Actions branch checkout
+is not activation authority. The base anchors remain audit inputs only: they are not source
+provenance, native evidence, last-known-good tuples, or permission to seed durable state.
+
+For an activated candidate, every payload entry with complete provenance binds its provenance
+repository to the SHA from reviewed commit evidence, or to the runtime SHA for `vlang/v`.
+`vlang/tccbin` provenance instead binds to the sealed baseline commit. Unknown repositories,
+sources absent from the target's closed source matrix, and SHAs borrowed from a different source
+are rejected.
+
+This foundation introduces no production profile, onboarding or baseline-activation policy,
+producer observation, source SHA/tree resolution, complete payload provenance, state writer,
+candidate ref, check producer, or publication path. It therefore cannot make a target eligible
+and cannot publish even when a caller requests publication. In particular, the current Phase A
+manifests keep every source SHA/tree and toolchain member null and classify every payload entry as
+incomplete; Windows additionally retains its separately reviewed opaque `openlibm.o` acceptance.
+
+The updater is not yet a producer for this transition. Its Unix jobs still invoke the legacy
+in-place recipes instead of setting `TCCBIN_DEFER_COMMIT=1`, producing a private RAW root, and
+calling `candidate-compose`; Windows is not present in its selectable target matrices. The current
+Linux and BSD jobs also request moving `ubuntu-latest` hosts while the reviewed profile model
+requires `ubuntu-24.04`, the macOS ARM64 updater job requests `macos-latest` while the model
+requires `macos-15`, the Windows branch requests `windows-latest` while the model requires
+`windows-2022`, and BSD cross-platform-actions runtime assets remain unauthenticated. These gaps,
+plus native producer/validator observations and external evidence transport, must be closed before
+any policy pair is populated.
+
+Patch and transform retirement is likewise not activated here. The current manifest vocabulary
+records Windows patch state and effect/probe bindings, but no workflow yet builds an otherwise
+identical unpatched counterfactual, derives a closed
+`required`/`redundant`/`broken`/`unknown` verdict, or authorizes a removal or issue write. Until a
+later reviewed lifecycle binds those facts durably, an apply failure, unexpected pass, or changed
+effect remains fail-closed and requires human review; it must never be interpreted as proof that a
+patch or transform can be silently dropped.
 
 ### Dormant toolchain identity profiles
 
@@ -711,7 +812,20 @@ fresh exact validation and the resolving commit recorded in the ledger.
 The contract and validators merge before any tccbin manifest. Fork manifests use
 `contract_mode=fork-dry-run` and cannot publish. After the V contract is merged, every managed
 tccbin manifest must point to the immutable merged V SHA in production mode and rerun all gates.
-Only after those branch changes merge can a V follow-up activate their exact upstream HEADs.
+Only after those branch changes merge can a V follow-up seal their exact upstream HEADs as dormant
+managed-baseline anchors. Sealing is not activation: the baseline policy pairs and all six
+toolchain-profile triples remain null, provenance remains incomplete, and no durable state is
+seeded.
+
+Before a real `baseline-activate` candidate can be composed, a later reviewed phase must make the
+authentication and evidence-transport infrastructure authoritative, add the six resolved profiles
+and baseline policies, authenticate the producer environments, resolve every source SHA/tree, and
+generate complete per-file provenance. Validator observations and candidate-bound native proofs
+are produced and transported only after `candidate-compose` creates the immutable candidate ref;
+they are required before that candidate may enter durable eligibility or be published.
+The updater must first use deferred RAW builds plus `candidate-compose` for all six targets,
+including a native Windows producer. Patch/transform counterfactual classification and the BSD
+runtime-asset boundary must also fail closed until their own evidence paths are authoritative.
 
 Build-only validation precedes targeted manual publication. Each target needs two consecutive,
 fully green targeted publications before a repository owner may set its monthly target unlock to

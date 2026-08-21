@@ -1,8 +1,151 @@
 module tests
 
 import crypto.sha256
+import encoding.base64
 import os
 import tccbin_automation.bin
+
+struct ManagedBaselineEvidenceFixture {
+	manifest_source string
+	evidence        bin.JsonValue
+}
+
+fn managed_baseline_string(value string) bin.JsonValue {
+	return bin.JsonValue{
+		kind:         .string_value
+		string_value: value
+	}
+}
+
+fn managed_baseline_replace_member(value bin.JsonValue, key string,
+	replacement bin.JsonValue) bin.JsonValue {
+	mut values := value.object_values.clone()
+	index := value.object_keys.index(key)
+	assert index >= 0, key
+	values[index] = replacement
+	return bin.JsonValue{
+		kind:          .object
+		object_keys:   value.object_keys.clone()
+		object_values: values
+	}
+}
+
+fn managed_baseline_resolve_manifest_source(source string, source_id string, sha string,
+	tree string) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	sources_value := root.object_value('sources') or { panic('sources missing') }
+	mut sources := sources_value.array_value.clone()
+	mut old_sha := ''
+	mut found := false
+	for index, candidate_source in sources {
+		id := candidate_source.object_value('id') or { panic('source ID missing') }
+		if id.string_value == source_id {
+			old_sha = (candidate_source.object_value('sha') or { panic('source SHA missing') }).string_value
+			sources[index] = managed_baseline_replace_member(managed_baseline_replace_member(candidate_source,
+				'sha', managed_baseline_string(sha)), 'tree', managed_baseline_string(tree))
+			found = true
+		}
+	}
+	assert found
+	mut updated := managed_baseline_replace_member(root, 'sources', bin.JsonValue{
+		kind:        .array
+		array_value: sources
+	})
+	for collection in ['overlays', 'inventory', 'outputs'] {
+		collection_value := updated.object_value(collection) or { panic('${collection} missing') }
+		mut entries := collection_value.array_value.clone()
+		for index, entry in entries {
+			provenance := entry.object_value('provenance') or { panic('provenance missing') }
+			provenance_sha := provenance.object_value('sha') or { panic('provenance SHA missing') }
+			if provenance_sha.kind == .string_value && provenance_sha.string_value == old_sha {
+				entries[index] = managed_baseline_replace_member(entry, 'provenance', managed_baseline_replace_member(provenance,
+					'sha', managed_baseline_string(sha)))
+			}
+		}
+		updated = managed_baseline_replace_member(updated, collection, bin.JsonValue{
+			kind:        .array
+			array_value: entries
+		})
+	}
+	return bin.canonical_json(updated)
+}
+
+fn managed_baseline_evidence_fixture(manifest_source string) ManagedBaselineEvidenceFixture {
+	manifest := bin.parse_strict_json(manifest_source) or { panic(err) }
+	sources := (manifest.object_value('sources') or { panic('sources missing') }).array_value
+	evidence_root := os.join_path(os.temp_dir(), 'tccbin-reviewed-source-evidence-${os.getpid()}')
+	os.rmdir_all(evidence_root) or {}
+	os.mkdir_all(evidence_root) or { panic(err) }
+	defer {
+		os.rmdir_all(evidence_root) or {}
+	}
+	mut resolved_source := bin.canonical_json(manifest)
+	mut entries := []bin.JsonValue{cap: sources.len}
+	for source in sources {
+		id := (source.object_value('id') or { panic('source ID missing') }).string_value
+		repository := source.object_value('repository') or { panic('source repository missing') }
+		reference := source.object_value('ref') or { panic('source ref missing') }
+		if id == 'v-libgc' {
+			entries << bin.JsonValue{
+				kind:          .object
+				object_keys:   ['id', 'repository', 'ref', 'authority']
+				object_values: [source.object_value('id') or { panic('source ID missing') },
+					repository, reference, bin.JsonValue{
+						kind:         .string_value
+						string_value: 'runtime-contract'
+					}]
+			}
+			continue
+		}
+		source_root := os.join_path(evidence_root, id)
+		os.mkdir_all(source_root) or { panic(err) }
+		os.write_file(os.join_path(source_root, 'reviewed-source.txt'), '${id}\n') or { panic(err) }
+		for args in [
+			['git', '-C', source_root, 'init', '-q', '--object-format=sha1'],
+			['git', '-C', source_root, 'config', 'user.email', 'source@example.invalid'],
+			['git', '-C', source_root, 'config', 'user.name', 'Reviewed Source'],
+			['git', '-C', source_root, 'add', '--all'],
+			['git', '-C', source_root, '-c', 'commit.gpgsign=false', 'commit', '-qm',
+				'reviewed ${id} source'],
+		] {
+			result := os.exec(args)
+			assert result.exit_code == 0, result.output
+		}
+		sha_result := os.exec(['git', '-C', source_root, 'rev-parse', 'HEAD'])
+		tree_result := os.exec(['git', '-C', source_root, 'rev-parse', 'HEAD^{tree}'])
+		assert sha_result.exit_code == 0, sha_result.output
+		assert tree_result.exit_code == 0, tree_result.output
+		sha := sha_result.output.trim_space()
+		tree := tree_result.output.trim_space()
+		raw_result := os.exec(['git', '-C', source_root, 'cat-file', 'commit', sha])
+		assert raw_result.exit_code == 0, raw_result.output
+		raw := raw_result.output.bytes()
+		resolved_source = managed_baseline_resolve_manifest_source(resolved_source, id, sha, tree)
+		entries << bin.JsonValue{
+			kind:          .object
+			object_keys:   ['id', 'repository', 'ref', 'authority', 'sha', 'tree',
+				'raw_commit_base64']
+			object_values: [source.object_value('id') or { panic('source ID missing') },
+				repository, reference, bin.JsonValue{
+					kind:         .string_value
+					string_value: 'source-commit-object'
+				}, bin.JsonValue{
+					kind:         .string_value
+					string_value: sha
+				}, managed_baseline_string(tree), bin.JsonValue{
+					kind:         .string_value
+					string_value: base64.encode(raw)
+				}]
+		}
+	}
+	return ManagedBaselineEvidenceFixture{
+		manifest_source: resolved_source
+		evidence:        bin.JsonValue{
+			kind:        .array
+			array_value: entries
+		}
+	}
+}
 
 struct SyntheticToolchainAuthority {
 	root            string

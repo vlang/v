@@ -36,6 +36,7 @@
           "publish_unlock_variable",
           "affected_targets",
           "legacy_onboarding",
+          "managed_baseline_activation",
           "toolchain_profile"
         ],
         "properties": {
@@ -67,6 +68,45 @@
                   {
                     "type": "string",
                     "pattern": "^onboarding/[a-z0-9][a-z0-9._\\-]+\\.policy\\.json$"
+                  }
+                ]
+              },
+              "policy_sha256": {"$ref": "common.schema.json#/$defs/nullable_sha256"}
+            },
+            "allOf": [
+              {
+                "if": {"properties": {"policy_path": {"type": "null"}}},
+                "then": {"properties": {"policy_sha256": {"type": "null"}}},
+                "else": {"properties": {"policy_sha256": {"$ref": "common.schema.json#/$defs/sha256"}}}
+              }
+            ]
+          },
+          "managed_baseline_activation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "base_sha",
+              "base_tree",
+              "parent_sha",
+              "base_manifest_sha256",
+              "base_contract_repository",
+              "base_contract_sha",
+              "policy_path",
+              "policy_sha256"
+            ],
+            "properties": {
+              "base_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+              "base_tree": {"$ref": "common.schema.json#/$defs/sha40"},
+              "parent_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+              "base_manifest_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+              "base_contract_repository": {"type": "string", "const": "vlang/v"},
+              "base_contract_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+              "policy_path": {
+                "oneOf": [
+                  {"type": "null"},
+                  {
+                    "type": "string",
+                    "pattern": "^baseline-activation/[a-z0-9][a-z0-9._\\-]+\\.policy\\.json$"
                   }
                 ]
               },

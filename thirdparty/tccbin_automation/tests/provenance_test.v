@@ -1,7 +1,9 @@
 module tests
 
+import crypto.sha1
 import os
 import crypto.sha256
+import encoding.base64
 import tccbin_automation.bin
 
 fn C.tccbin_open_directory_no_follow(path &char) int
@@ -403,6 +405,489 @@ struct LegacyCompositionFixture {
 	manifest_source string
 }
 
+struct ManagedBaselineActivationFixture {
+	base                      string
+	automation_root           string
+	contract_root             string
+	target_id                 string
+	base_repo_root            string
+	raw_root                  string
+	manifest_path             string
+	result_root               string
+	base_sha                  string
+	parent_sha                string
+	base_tree                 string
+	base_manifest_source      string
+	candidate_manifest_source string
+	policy_path               string
+	policy_sha256             string
+	producer_source           string
+	runtime                   bin.RuntimeContractBinding
+	source_commit_evidence    bin.JsonValue
+}
+
+const managed_baseline_phase_a_contract_sha = '7545e515b434cd399333d43659238427d72e22e7'
+
+fn activation_string(value string) bin.JsonValue {
+	return bin.JsonValue{
+		kind:         .string_value
+		string_value: value
+	}
+}
+
+fn activation_object_with_replacements(value bin.JsonValue,
+	replacements map[string]bin.JsonValue) bin.JsonValue {
+	assert value.kind == .object
+	mut values := value.object_values.clone()
+	for key, replacement in replacements {
+		index := value.object_keys.index(key)
+		assert index >= 0, key
+		values[index] = replacement
+	}
+	return bin.JsonValue{
+		kind:          .object
+		object_keys:   value.object_keys.clone()
+		object_values: values
+	}
+}
+
+fn activation_array(values []bin.JsonValue) bin.JsonValue {
+	return bin.JsonValue{
+		kind:        .array
+		array_value: values
+	}
+}
+
+fn activation_unresolved_provenance(value bin.JsonValue) bin.JsonValue {
+	return activation_object_with_replacements(value, {
+		'status':      activation_string('incomplete')
+		'repository':  bin.JsonValue{
+			kind: .null_value
+		}
+		'sha':         bin.JsonValue{
+			kind: .null_value
+		}
+		'source_path': bin.JsonValue{
+			kind: .null_value
+		}
+		'license':     bin.JsonValue{
+			kind: .null_value
+		}
+	})
+}
+
+fn activation_candidate_manifest(source string, runtime_sha string) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	return bin.canonical_json(activation_object_with_replacements(root, {
+		'contract_repository': activation_string('vlang/v')
+		'contract_sha':        activation_string(runtime_sha)
+		'contract_mode':       activation_string('production')
+		'v_source_sha':        activation_string(runtime_sha)
+	}))
+}
+
+fn activation_candidate_manifest_with_runtime_source(source string, runtime_sha string,
+	runtime_tree string) string {
+	root := bin.parse_strict_json(activation_candidate_manifest(source, runtime_sha)) or {
+		panic(err)
+	}
+	sources_value := root.object_value('sources') or { panic('sources missing') }
+	mut sources := sources_value.array_value.clone()
+	mut found := false
+	for index, candidate_source in sources {
+		id := candidate_source.object_value('id') or { panic('source ID missing') }
+		if id.string_value == 'v-libgc' {
+			sources[index] = activation_object_with_replacements(candidate_source, {
+				'sha':  activation_string(runtime_sha)
+				'tree': activation_string(runtime_tree)
+			})
+			found = true
+		}
+	}
+	assert found
+	return bin.canonical_json(activation_object_with_replacements(root, {
+		'sources': activation_array(sources)
+	}))
+}
+
+fn activation_manifest_with_repository_provenance_sha(source string, repository string,
+	sha string) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	mut replacements := map[string]bin.JsonValue{}
+	for collection in ['overlays', 'inventory', 'outputs'] {
+		collection_value := root.object_value(collection) or { panic('${collection} missing') }
+		mut entries := collection_value.array_value.clone()
+		for index, entry in entries {
+			provenance := entry.object_value('provenance') or { panic('provenance missing') }
+			provenance_repository := provenance.object_value('repository') or {
+				panic('provenance repository missing')
+			}
+			if provenance_repository.kind == .string_value
+				&& provenance_repository.string_value == repository {
+				entries[index] = activation_object_with_replacements(entry, {
+					'provenance': activation_object_with_replacements(provenance, {
+						'sha': activation_string(sha)
+					})
+				})
+			}
+		}
+		replacements[collection] = activation_array(entries)
+	}
+	return bin.canonical_json(activation_object_with_replacements(root, replacements))
+}
+
+fn activation_base_manifest(candidate_source string) string {
+	root := bin.parse_strict_json(candidate_source) or { panic(err) }
+	mut sources := []bin.JsonValue{}
+	source_values := root.object_value('sources') or { panic('sources missing') }
+	for source in source_values.array_value {
+		sources << activation_object_with_replacements(source, {
+			'sha':  bin.JsonValue{
+				kind: .null_value
+			}
+			'tree': bin.JsonValue{
+				kind: .null_value
+			}
+		})
+	}
+	mut replacements := {
+		'contract_sha':      activation_string(managed_baseline_phase_a_contract_sha)
+		'v_source_sha':      activation_string(managed_baseline_phase_a_contract_sha)
+		'provenance_status': activation_string('incomplete')
+		'sources':           activation_array(sources)
+		'toolchain':         bin.parse_strict_json('{"profile_id":null,"profile_sha256":null,"producer_observation":null}') or {
+			panic(err)
+		}
+	}
+	for collection in ['overlays', 'inventory', 'outputs'] {
+		mut entries := []bin.JsonValue{}
+		collection_value := root.object_value(collection) or { panic('${collection} missing') }
+		for entry in collection_value.array_value {
+			provenance := entry.object_value('provenance') or { panic('provenance missing') }
+			entries << activation_object_with_replacements(entry, {
+				'provenance': activation_unresolved_provenance(provenance)
+			})
+		}
+		replacements[collection] = activation_array(entries)
+	}
+	return bin.canonical_json(activation_object_with_replacements(root, replacements))
+}
+
+fn activation_registry_with_binding(source string, target_id string, parent_sha string,
+	base_sha string, base_tree string, base_manifest_sha256 string, policy_path string,
+	policy_sha256 string) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	managed := root.object_value('managed_ci_targets') or { panic('managed targets missing') }
+	mut targets := managed.array_value.clone()
+	mut found := false
+	for index, target in targets {
+		id := target.object_value('id') or { panic('target ID missing') }
+		if id.string_value != target_id {
+			continue
+		}
+		legacy := target.object_value('legacy_onboarding') or { panic('legacy binding missing') }
+		activation := bin.parse_strict_json('{"base_sha":"${base_sha}","base_tree":"${base_tree}","parent_sha":"${parent_sha}","base_manifest_sha256":"${base_manifest_sha256}","base_contract_repository":"vlang/v","base_contract_sha":"${managed_baseline_phase_a_contract_sha}","policy_path":"${policy_path}","policy_sha256":"${policy_sha256}"}') or {
+			panic(err)
+		}
+		targets[index] = activation_object_with_replacements(target, {
+			'legacy_onboarding':           activation_object_with_replacements(legacy, {
+				'base_sha': activation_string(parent_sha)
+			})
+			'managed_baseline_activation': activation
+		})
+		found = true
+		break
+	}
+	assert found
+	return bin.canonical_json(activation_object_with_replacements(root, {
+		'managed_ci_targets': activation_array(targets)
+	}))
+}
+
+fn prepare_managed_baseline_activation_fixture(suffix string) ManagedBaselineActivationFixture {
+	fixture := prepare_complete_candidate('managed-baseline-${suffix}', false, '')
+	runtime := bin.RuntimeContractBinding{
+		repository: 'vlang/v'
+		sha:        'a'.repeat(40)
+	}
+	unsealed_candidate_source := activation_candidate_manifest(fixture.manifest_source, runtime.sha)
+	evidence_fixture := managed_baseline_evidence_fixture(unsealed_candidate_source)
+	candidate_source := evidence_fixture.manifest_source
+	base_source := activation_base_manifest(candidate_source)
+	os.write_file(fixture.manifest_path, base_source) or { panic(err) }
+	base_sha := commit_candidate_paths(fixture.source_repo, [
+		'automation/bundle-manifest.json',
+	], 'reviewed incomplete managed baseline')
+	parent_result := os.exec(['git', '-C', fixture.source_repo, 'rev-parse', '${base_sha}^'])
+	tree_result := os.exec(['git', '-C', fixture.source_repo, 'rev-parse', '${base_sha}^{tree}'])
+	assert parent_result.exit_code == 0, parent_result.output
+	assert tree_result.exit_code == 0, tree_result.output
+	parent_sha := parent_result.output.trim_space()
+	base_tree := tree_result.output.trim_space()
+	manifest_path := os.join_path(fixture.base, 'managed-baseline-candidate.json')
+	os.write_file(manifest_path, candidate_source) or { panic(err) }
+	manifest := bin.parse_strict_json(candidate_source) or { panic(err) }
+	policy := bin.managed_baseline_activation_policy_projection(manifest, evidence_fixture.evidence) or {
+		panic(err)
+	}
+	policy_source := bin.canonical_json(policy)
+	policy_sha256 := sha256_bytes(policy_source.bytes())
+	policy_relative_path := 'baseline-activation/linux-amd64.policy.json'
+	policy_path := os.join_path(fixture.automation_root, policy_relative_path)
+	os.mkdir_all(os.dir(policy_path)) or { panic(err) }
+	os.write_file(policy_path, policy_source) or { panic(err) }
+	registry_path := os.join_path(fixture.automation_root, 'targets.json')
+	registry_source := os.read_file(registry_path) or { panic(err) }
+	os.write_file(registry_path, activation_registry_with_binding(registry_source, 'linux-amd64',
+		parent_sha, base_sha, base_tree, sha256_bytes(base_source.bytes()), policy_relative_path,
+		policy_sha256)) or { panic(err) }
+	registry_issues := bin.validate_registry(fixture.automation_root) or { panic(err) }
+	assert registry_issues.len == 0, '${registry_issues}'
+	base_issues := bin.validate_manifest(fixture.automation_root, fixture.manifest_path) or {
+		panic(err)
+	}
+	assert base_issues.len == 0, '${base_issues}'
+	return ManagedBaselineActivationFixture{
+		base:                      fixture.base
+		automation_root:           fixture.automation_root
+		contract_root:             fixture.authority.contract_root
+		target_id:                 'linux-amd64'
+		base_repo_root:            fixture.source_repo
+		raw_root:                  fixture.staging_root
+		manifest_path:             manifest_path
+		result_root:               os.join_path(fixture.base, 'managed-baseline-result')
+		base_sha:                  base_sha
+		parent_sha:                parent_sha
+		base_tree:                 base_tree
+		base_manifest_source:      base_source
+		candidate_manifest_source: candidate_source
+		policy_path:               policy_path
+		policy_sha256:             policy_sha256
+		producer_source:           fixture.authority.producer_source
+		runtime:                   runtime
+		source_commit_evidence:    evidence_fixture.evidence
+	}
+}
+
+fn initialize_managed_baseline_runtime_contract_checkout(contract_root string) (string, string) {
+	for args in [
+		['git', '-C', contract_root, 'init', '-q'],
+		['git', '-C', contract_root, 'config', 'user.email', 'ci@example.invalid'],
+		['git', '-C', contract_root, 'config', 'user.name', 'Contract Test'],
+		['git', '-C', contract_root, 'config', 'core.autocrlf', 'false'],
+		['git', '-C', contract_root, 'remote', 'add', 'origin', 'https://github.com/vlang/v.git'],
+		['git', '-C', contract_root, 'add', '--all'],
+		['git', '-C', contract_root, 'commit', '-qm', 'runtime contract authority'],
+	] {
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+	}
+	sha_result := os.exec(['git', '-C', contract_root, 'rev-parse', 'HEAD'])
+	tree_result := os.exec(['git', '-C', contract_root, 'rev-parse', 'HEAD^{tree}'])
+	assert sha_result.exit_code == 0, sha_result.output
+	assert tree_result.exit_code == 0, tree_result.output
+	sha := sha_result.output.trim_space()
+	tree := tree_result.output.trim_space()
+	detach := os.exec(['git', '-C', contract_root, 'checkout', '--detach', '-q', sha])
+	assert detach.exit_code == 0, detach.output
+	return sha, tree
+}
+
+fn prepare_managed_baseline_runtime_activation_fixture(
+	suffix string) ManagedBaselineActivationFixture {
+	fixture := prepare_t2b_windows_matrix_candidate('managed-baseline-runtime-${suffix}')
+	provisional_runtime_sha := 'a'.repeat(40)
+	provisional_runtime_tree := activation_source_tree(fixture.manifest_source, 'v-libgc')
+	provisional_candidate := activation_candidate_manifest_with_runtime_source(fixture.manifest_source,
+		provisional_runtime_sha, provisional_runtime_tree)
+	evidence_fixture := managed_baseline_evidence_fixture(provisional_candidate)
+	base_source := activation_base_manifest(evidence_fixture.manifest_source)
+	os.write_file(fixture.manifest_path, base_source) or { panic(err) }
+	base_sha := commit_candidate_paths(fixture.source_repo, [
+		'automation/bundle-manifest.json',
+	], 'reviewed incomplete Windows managed baseline')
+	parent_result := os.exec(['git', '-C', fixture.source_repo, 'rev-parse', '${base_sha}^'])
+	base_tree_result :=
+		os.exec(['git', '-C', fixture.source_repo, 'rev-parse', '${base_sha}^{tree}'])
+	assert parent_result.exit_code == 0, parent_result.output
+	assert base_tree_result.exit_code == 0, base_tree_result.output
+	parent_sha := parent_result.output.trim_space()
+	base_tree := base_tree_result.output.trim_space()
+	policy_manifest := bin.parse_strict_json(evidence_fixture.manifest_source) or { panic(err) }
+	policy := bin.managed_baseline_activation_policy_projection(policy_manifest,
+		evidence_fixture.evidence) or { panic(err) }
+	policy_source := bin.canonical_json(policy)
+	policy_sha256 := sha256_bytes(policy_source.bytes())
+	policy_relative_path := 'baseline-activation/windows-amd64.policy.json'
+	policy_path := os.join_path(fixture.automation_root, policy_relative_path)
+	os.mkdir_all(os.dir(policy_path)) or { panic(err) }
+	os.write_file(policy_path, policy_source) or { panic(err) }
+	registry_path := os.join_path(fixture.automation_root, 'targets.json')
+	registry_source := os.read_file(registry_path) or { panic(err) }
+	os.write_file(registry_path, activation_registry_with_binding(registry_source, 'windows-amd64',
+		parent_sha, base_sha, base_tree, sha256_bytes(base_source.bytes()), policy_relative_path,
+		policy_sha256)) or { panic(err) }
+	runtime_sha, runtime_tree :=
+		initialize_managed_baseline_runtime_contract_checkout(fixture.authority.contract_root)
+	mut candidate_source := activation_candidate_manifest_with_runtime_source(evidence_fixture.manifest_source,
+		runtime_sha, runtime_tree)
+	candidate_source = activation_manifest_with_repository_provenance_sha(candidate_source,
+		'vlang/tccbin', base_sha)
+	manifest_path := os.join_path(fixture.base, 'managed-baseline-runtime-candidate.json')
+	os.write_file(manifest_path, candidate_source) or { panic(err) }
+	registry_issues := bin.validate_registry(fixture.automation_root) or { panic(err) }
+	assert registry_issues.len == 0, '${registry_issues}'
+	base_issues := bin.validate_manifest(fixture.automation_root, fixture.manifest_path) or {
+		panic(err)
+	}
+	assert base_issues.len == 0, '${base_issues}'
+	candidate_issues := bin.validate_manifest(fixture.automation_root, manifest_path) or {
+		panic(err)
+	}
+	assert candidate_issues.len == 0, '${candidate_issues}'
+	return ManagedBaselineActivationFixture{
+		base:                      fixture.base
+		automation_root:           fixture.automation_root
+		contract_root:             fixture.authority.contract_root
+		target_id:                 'windows-amd64'
+		base_repo_root:            fixture.source_repo
+		raw_root:                  fixture.staging_root
+		manifest_path:             manifest_path
+		result_root:               os.join_path(fixture.base, 'managed-baseline-runtime-result')
+		base_sha:                  base_sha
+		parent_sha:                parent_sha
+		base_tree:                 base_tree
+		base_manifest_source:      base_source
+		candidate_manifest_source: candidate_source
+		policy_path:               policy_path
+		policy_sha256:             policy_sha256
+		producer_source:           fixture.authority.producer_source
+		runtime:                   bin.RuntimeContractBinding{
+			repository: 'vlang/v'
+			sha:        runtime_sha
+		}
+		source_commit_evidence:    evidence_fixture.evidence
+	}
+}
+
+fn replace_managed_baseline_activation_policy(fixture ManagedBaselineActivationFixture,
+	manifest_source string) {
+	manifest := bin.parse_strict_json(manifest_source) or { panic(err) }
+	policy := bin.managed_baseline_activation_policy_projection(manifest,
+		fixture.source_commit_evidence) or { panic(err) }
+	policy_source := bin.canonical_json(policy)
+	new_hash := sha256_bytes(policy_source.bytes())
+	registry_path := os.join_path(fixture.automation_root, 'targets.json')
+	mut registry_source := os.read_file(registry_path) or { panic(err) }
+	assert registry_source.count(fixture.policy_sha256) == 1
+	registry_source = registry_source.replace_once(fixture.policy_sha256, new_hash)
+	os.write_file(fixture.policy_path, policy_source) or { panic(err) }
+	os.write_file(registry_path, registry_source) or { panic(err) }
+}
+
+fn activation_manifest_with_unobserved_producer(source string) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	toolchain := root.object_value('toolchain') or { panic('toolchain missing') }
+	return bin.canonical_json(activation_object_with_replacements(root, {
+		'provenance_status': activation_string('incomplete')
+		'toolchain':         activation_object_with_replacements(toolchain, {
+			'producer_observation': bin.JsonValue{
+				kind: .null_value
+			}
+		})
+	}))
+}
+
+fn activation_manifest_with_first_inventory_sha(source string, sha string) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	inventory := root.object_value('inventory') or { panic('inventory missing') }
+	mut entries := inventory.array_value.clone()
+	assert entries.len > 0
+	entries[0] = activation_object_with_replacements(entries[0], {
+		'sha256': activation_string(sha)
+	})
+	return bin.canonical_json(activation_object_with_replacements(root, {
+		'inventory': activation_array(entries)
+	}))
+}
+
+fn activation_manifest_with_first_inventory_provenance(source string, repository string,
+	sha string) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	inventory := root.object_value('inventory') or { panic('inventory missing') }
+	mut entries := inventory.array_value.clone()
+	assert entries.len > 0
+	provenance := entries[0].object_value('provenance') or { panic('provenance missing') }
+	entries[0] = activation_object_with_replacements(entries[0], {
+		'provenance': activation_object_with_replacements(provenance, {
+			'repository': activation_string(repository)
+			'sha':        activation_string(sha)
+		})
+	})
+	return bin.canonical_json(activation_object_with_replacements(root, {
+		'inventory': activation_array(entries)
+	}))
+}
+
+fn activation_manifest_with_recipe_version(source string, version i64) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	recipe := root.object_value('recipe') or { panic('recipe missing') }
+	return bin.canonical_json(activation_object_with_replacements(root, {
+		'recipe': activation_object_with_replacements(recipe, {
+			'version': bin.JsonValue{
+				kind:      .integer
+				int_value: version
+			}
+		})
+	}))
+}
+
+fn activation_source_sha(source string, source_id string) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	sources := root.object_value('sources') or { panic('sources missing') }
+	for candidate_source in sources.array_value {
+		id := candidate_source.object_value('id') or { panic('source ID missing') }
+		if id.string_value == source_id {
+			return (candidate_source.object_value('sha') or { panic('source SHA missing') }).string_value
+		}
+	}
+	panic('source ${source_id} missing')
+}
+
+fn activation_source_tree(source string, source_id string) string {
+	root := bin.parse_strict_json(source) or { panic(err) }
+	sources := root.object_value('sources') or { panic('sources missing') }
+	for candidate_source in sources.array_value {
+		id := candidate_source.object_value('id') or { panic('source ID missing') }
+		if id.string_value == source_id {
+			return (candidate_source.object_value('tree') or { panic('source tree missing') }).string_value
+		}
+	}
+	panic('source ${source_id} missing')
+}
+
+fn activation_first_source_evidence_with_replacements(evidence bin.JsonValue,
+	replacements map[string]bin.JsonValue) bin.JsonValue {
+	assert evidence.kind == .array
+	mut entries := evidence.array_value.clone()
+	assert entries.len > 0
+	entries[0] = activation_object_with_replacements(entries[0], replacements)
+	return activation_array(entries)
+}
+
+fn managed_baseline_projection_error(manifest_source string, evidence bin.JsonValue) string {
+	manifest := bin.parse_strict_json(manifest_source) or { panic(err) }
+	mut message := ''
+	bin.managed_baseline_activation_policy_projection(manifest, evidence) or { message = err.msg() }
+	return message
+}
+
+fn activation_git_commit_oid(raw []u8) string {
+	mut material := 'commit ${raw.len}\x00'.bytes()
+	material << raw
+	return sha1.sum(material).hex()
+}
+
 fn runtime_contract_binding(production bool) bin.RuntimeContractBinding {
 	return bin.RuntimeContractBinding{
 		repository: if production { 'vlang/v' } else { 'GGRei/v' }
@@ -767,6 +1252,10 @@ fn prepare_legacy_composition_fixture(suffix string,
 	assert registry_source.count(registry_marker) == 1
 	registry_source = registry_source.replace_once(registry_marker,
 		'"base_sha": "${base_sha}",\n        "policy_path": "${policy_relative_path}",\n        "policy_sha256": "${policy_hash}"')
+	activation_parent_marker := '"parent_sha": "ece46f06fbe6eb701d52442f11dd59c48d166cae"'
+	assert registry_source.count(activation_parent_marker) == 1
+	registry_source = registry_source.replace_once(activation_parent_marker,
+		'"parent_sha": "${base_sha}"')
 	os.write_file(os.join_path(contract_automation_root, 'targets.json'), registry_source) or {
 		panic(err)
 	}
@@ -2635,8 +3124,8 @@ fn update_legacy_fixture_base_sha(fixture LegacyCompositionFixture, old_sha stri
 	new_sha string) {
 	registry_path := os.join_path(fixture.automation_root, 'targets.json')
 	mut registry_source := os.read_file(registry_path) or { panic(err) }
-	assert registry_source.count(old_sha) == 1
-	registry_source = registry_source.replace_once(old_sha, new_sha)
+	assert registry_source.count(old_sha) == 2
+	registry_source = registry_source.replace(old_sha, new_sha)
 	os.write_file(registry_path, registry_source) or { panic(err) }
 }
 
@@ -2724,6 +3213,841 @@ fn prepare_windows_immutable_transform_candidate(suffix string) (CompleteCandida
 		manifest_source: manifest_source
 		authority:       authority
 	}, base_sha, candidate_sha
+}
+
+fn test_managed_baseline_activation_parser_and_both_entrypoints_are_dormant_by_default() {
+	assert bin.parse_candidate_transition_kind('baseline-activate') or { panic(err) } == .baseline_activate
+	mut parse_message := ''
+	bin.parse_candidate_transition_kind('baseline_activate') or { parse_message = err.msg() }
+	assert parse_message == 'candidate transition kind must be monthly, legacy-onboard, or baseline-activate'
+
+	result_root := os.join_path(os.temp_dir(), 'tccbin-dormant-activation-result-${os.getpid()}')
+	work_root := os.join_path(os.temp_dir(), 'tccbin-dormant-activation-work-${os.getpid()}')
+	os.rmdir_all(result_root) or {}
+	os.rmdir_all(work_root) or {}
+	runtime := bin.RuntimeContractBinding{
+		repository: 'vlang/v'
+		sha:        'a'.repeat(40)
+	}
+	compose_message := candidate_composition_error(bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: '/absent/base-repository'
+		base_sha:       '0'.repeat(40)
+		raw_root:       '/absent/raw-root'
+		manifest_path:  '/absent/manifest.json'
+		result_root:    result_root
+	}, runtime)
+	assert compose_message == 'target has no reviewed managed baseline activation policy'
+	mut preflight_message := ''
+	bin.evaluate_candidate_manifest_for_execution(automation_root(), 'linux-amd64',
+		.baseline_activate, '/absent/candidate-repository', '0'.repeat(40), '1'.repeat(40),
+		work_root, runtime, false) or { preflight_message = err.msg() }
+	assert preflight_message == 'target has no reviewed managed baseline activation policy'
+	assert !os.exists(result_root)
+	assert !os.exists(work_root)
+}
+
+fn test_managed_baseline_activation_composes_only_a_complete_manifest_direct_child() {
+	fixture := prepare_managed_baseline_activation_fixture('complete')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	os.write_file(os.join_path(fixture.raw_root, 'raw-extra-must-not-enter.txt'), 'ignored\n') or {
+		panic(err)
+	}
+	result := bin.compose_candidate_for_execution(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime) or { panic(err) }
+	assert result.kind == .baseline_activate
+	assert result.base_sha == fixture.base_sha
+	assert result.decision.eligible
+	assert !result.decision.publish_allowed
+	mut exposed := os.ls(fixture.result_root) or { panic(err) }
+	exposed.sort()
+	assert exposed == ['candidate-repository']
+	repository := os.join_path(fixture.result_root, 'candidate-repository')
+	assert (os.read_file(os.join_path(repository, 'automation', 'bundle-manifest.json')) or {
+		panic(err)
+	}) == fixture.candidate_manifest_source
+	assert !os.exists(os.join_path(repository, 'raw-extra-must-not-enter.txt'))
+	diff := os.exec(['git', '--no-replace-objects', '-C', repository, 'diff-tree', '--no-commit-id',
+		'--name-status', '-r', '--no-renames', fixture.base_sha, result.candidate_sha, '--'])
+	parent := os.exec(['git', '--no-replace-objects', '-C', repository, 'rev-parse', 'HEAD^'])
+	status := os.exec(['git', '--no-replace-objects', '-C', repository, 'status', '--porcelain=v1',
+		'--untracked-files=all', '--ignored=matching'])
+	assert diff.exit_code == 0 && diff.output == 'M\tautomation/bundle-manifest.json\n'
+	assert parent.exit_code == 0 && parent.output.trim_space() == fixture.base_sha
+	assert status.exit_code == 0 && status.output == ''
+	for path in ['src/tcc.c', 'tcc.exe'] {
+		base_mode, base_oid := candidate_git_entry_for_test(repository, fixture.base_sha, path)
+		candidate_mode, candidate_oid := candidate_git_entry_for_test(repository,
+			result.candidate_sha, path)
+		assert candidate_mode == base_mode
+		assert candidate_oid == base_oid
+	}
+}
+
+fn test_managed_baseline_activation_binds_v_libgc_to_a_hardened_runtime_checkout() {
+	fixture := prepare_managed_baseline_runtime_activation_fixture('runtime-positive')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	result := bin.compose_candidate_for_execution(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      fixture.target_id
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime) or { panic(err) }
+	assert result.decision.eligible
+	assert !result.decision.publish_allowed
+	runtime_tree := os.exec(['git', '-C', fixture.contract_root, 'rev-parse',
+		'${fixture.runtime.sha}^{tree}'])
+	assert runtime_tree.exit_code == 0, runtime_tree.output
+	assert activation_source_tree(fixture.candidate_manifest_source, 'v-libgc') == runtime_tree.output.trim_space()
+}
+
+fn test_managed_baseline_activation_rejects_a_non_authoritative_runtime_origin() {
+	fixture := prepare_managed_baseline_runtime_activation_fixture('runtime-origin-negative')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	changed_origin := os.exec(['git', '-C', fixture.contract_root, 'remote', 'set-url', 'origin',
+		'https://example.invalid/untrusted/v.git'])
+	assert changed_origin.exit_code == 0, changed_origin.output
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      fixture.target_id
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'managed baseline runtime contract origin is not the vlang/v HTTPS repository'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_runtime_tree_and_head_drift() {
+	fixture := prepare_managed_baseline_runtime_activation_fixture('runtime-tree-head-negative')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	wrong_tree_source := activation_candidate_manifest_with_runtime_source(fixture.candidate_manifest_source,
+		fixture.runtime.sha, '9'.repeat(40))
+	os.write_file(fixture.manifest_path, wrong_tree_source) or { panic(err) }
+	tree_message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      fixture.target_id
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert tree_message == 'managed baseline activation source differs from reviewed commit evidence'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+	os.write_file(fixture.manifest_path, fixture.candidate_manifest_source) or { panic(err) }
+	os.write_file(os.join_path(fixture.contract_root, 'runtime-head-drift.txt'), 'drift\n') or {
+		panic(err)
+	}
+	for args in [
+		['git', '-C', fixture.contract_root, 'add', '--all'],
+		['git', '-C', fixture.contract_root, '-c', 'commit.gpgsign=false', 'commit', '-qm',
+			'runtime head drift'],
+	] {
+		result := os.exec(args)
+		assert result.exit_code == 0, result.output
+	}
+	head_message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      fixture.target_id
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert head_message == 'managed baseline runtime contract checkout is not at the runtime SHA'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_altered_raw_without_exposing_a_partial_result() {
+	fixture := prepare_managed_baseline_activation_fixture('raw-altered')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	os.write_file(os.join_path(fixture.raw_root, 'src', 'tcc.c'), 'untrusted replacement\n') or {
+		panic(err)
+	}
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'candidate RAW entry differs from its manifest declaration'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_absent_raw_without_exposing_a_partial_result() {
+	fixture := prepare_managed_baseline_activation_fixture('raw-absent')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	os.rm(os.join_path(fixture.raw_root, 'src', 'tcc.c')) or { panic(err) }
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'declared payload path is absent from staging'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_candidate_preflight_exports_an_independent_payload() {
+	fixture := prepare_managed_baseline_activation_fixture('preflight-complete')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	os.write_file(os.join_path(fixture.base_repo_root, 'automation', 'bundle-manifest.json'),
+		fixture.candidate_manifest_source) or { panic(err) }
+	candidate_sha := commit_candidate_paths(fixture.base_repo_root, [
+		'automation/bundle-manifest.json',
+	], 'activate reviewed managed baseline manifest')
+	work_root := os.join_path(fixture.base, 'managed-baseline-preflight-success')
+	decision := bin.evaluate_candidate_manifest_for_execution(fixture.automation_root,
+		'linux-amd64', .baseline_activate, fixture.base_repo_root, fixture.base_sha, candidate_sha,
+		work_root, fixture.runtime, false) or { panic(err) }
+	assert decision.eligible
+	assert !decision.publish_allowed
+	assert decision.reason == 'authenticated_staging'
+	payload_root := os.join_path(work_root, 'payload')
+	source_root := os.join_path(work_root, 'candidate-source')
+	assert os.is_dir(payload_root)
+	assert !os.exists(os.join_path(payload_root, '.git'))
+	assert !os.exists(os.join_path(payload_root, 'automation'))
+	parent := os.exec(['git', '--no-replace-objects', '-C', source_root, 'rev-parse', 'HEAD^'])
+	diff := os.exec(['git', '--no-replace-objects', '-C', source_root, 'diff-tree', '--no-commit-id',
+		'--name-status', '-r', '--no-renames', fixture.base_sha, candidate_sha, '--'])
+	assert parent.exit_code == 0 && parent.output.trim_space() == fixture.base_sha
+	assert diff.exit_code == 0 && diff.output == 'M\tautomation/bundle-manifest.json\n'
+	for path in ['src/tcc.c', 'tcc.exe'] {
+		assert os.read_bytes(os.join_path(payload_root, path)) or { panic(err) } == os.read_bytes(os.join_path(source_root,
+			path)) or { panic(err) }
+	}
+	$if !windows {
+		payload_stat := os.lstat(os.join_path(payload_root, 'tcc.exe')) or { panic(err) }
+		source_stat := os.lstat(os.join_path(source_root, 'tcc.exe')) or { panic(err) }
+		assert payload_stat.dev != source_stat.dev || payload_stat.inode != source_stat.inode
+		assert payload_stat.nlink == 1
+	}
+}
+
+fn test_managed_baseline_activation_attests_the_exact_reviewed_base_before_exposure() {
+	fixture := prepare_managed_baseline_activation_fixture('base-tree-pin')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	registry_path := os.join_path(fixture.automation_root, 'targets.json')
+	mut registry_source := os.read_file(registry_path) or { panic(err) }
+	assert registry_source.count(fixture.base_tree) == 1
+	registry_source = registry_source.replace_once(fixture.base_tree, '8'.repeat(40))
+	os.write_file(registry_path, registry_source) or { panic(err) }
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'managed baseline activation base tree differs from the reviewed pin'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_wrong_manifest_and_parent_pins() {
+	manifest_fixture := prepare_managed_baseline_activation_fixture('base-manifest-pin')
+	defer {
+		os.rmdir_all(manifest_fixture.base) or {}
+	}
+	manifest_registry_path := os.join_path(manifest_fixture.automation_root, 'targets.json')
+	mut manifest_registry := os.read_file(manifest_registry_path) or { panic(err) }
+	base_manifest_sha256 := sha256_bytes(manifest_fixture.base_manifest_source.bytes())
+	assert manifest_registry.count(base_manifest_sha256) == 1
+	manifest_registry = manifest_registry.replace_once(base_manifest_sha256, '6'.repeat(64))
+	os.write_file(manifest_registry_path, manifest_registry) or { panic(err) }
+	manifest_message := candidate_composition_error_at(manifest_fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: manifest_fixture.base_repo_root
+		base_sha:       manifest_fixture.base_sha
+		raw_root:       manifest_fixture.raw_root
+		manifest_path:  manifest_fixture.manifest_path
+		result_root:    manifest_fixture.result_root
+	}, manifest_fixture.runtime)
+	assert manifest_message == 'managed baseline activation base manifest differs from the reviewed pin'
+	assert !os.exists(manifest_fixture.result_root)
+	assert_no_candidate_composition_scratch(manifest_fixture.base)
+
+	parent_fixture := prepare_managed_baseline_activation_fixture('base-parent-pin')
+	defer {
+		os.rmdir_all(parent_fixture.base) or {}
+	}
+	parent_registry_path := os.join_path(parent_fixture.automation_root, 'targets.json')
+	mut parent_registry := os.read_file(parent_registry_path) or { panic(err) }
+	parent_marker := '"parent_sha":"${parent_fixture.parent_sha}"'
+	assert parent_registry.count(parent_marker) == 1
+	parent_registry = parent_registry.replace_once(parent_marker,
+		'"parent_sha":"${'8'.repeat(40)}"')
+	os.write_file(parent_registry_path, parent_registry) or { panic(err) }
+	parent_message := candidate_composition_error_at(parent_fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: parent_fixture.base_repo_root
+		base_sha:       parent_fixture.base_sha
+		raw_root:       parent_fixture.raw_root
+		manifest_path:  parent_fixture.manifest_path
+		result_root:    parent_fixture.result_root
+	}, parent_fixture.runtime)
+	assert parent_message == 'managed baseline activation base parent differs from the reviewed pin'
+	assert !os.exists(parent_fixture.result_root)
+	assert_no_candidate_composition_scratch(parent_fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_old_runtime_and_contract_authority_migration() {
+	old_runtime_fixture := prepare_managed_baseline_activation_fixture('old-runtime')
+	defer {
+		os.rmdir_all(old_runtime_fixture.base) or {}
+	}
+	old_runtime_root := bin.parse_strict_json(old_runtime_fixture.candidate_manifest_source) or {
+		panic(err)
+	}
+	old_runtime_source := bin.canonical_json(activation_object_with_replacements(old_runtime_root, {
+		'contract_sha': activation_string(managed_baseline_phase_a_contract_sha)
+		'v_source_sha': activation_string(managed_baseline_phase_a_contract_sha)
+	}))
+	os.write_file(old_runtime_fixture.manifest_path, old_runtime_source) or { panic(err) }
+	old_runtime := bin.RuntimeContractBinding{
+		repository: 'vlang/v'
+		sha:        managed_baseline_phase_a_contract_sha
+	}
+	old_runtime_message := candidate_composition_error_at(old_runtime_fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: old_runtime_fixture.base_repo_root
+		base_sha:       old_runtime_fixture.base_sha
+		raw_root:       old_runtime_fixture.raw_root
+		manifest_path:  old_runtime_fixture.manifest_path
+		result_root:    old_runtime_fixture.result_root
+	}, old_runtime)
+	assert old_runtime_message == 'managed baseline activation runtime contract must differ from the reviewed base'
+	assert !os.exists(old_runtime_fixture.result_root)
+	assert_no_candidate_composition_scratch(old_runtime_fixture.base)
+
+	authority_fixture := prepare_managed_baseline_activation_fixture('contract-authority')
+	defer {
+		os.rmdir_all(authority_fixture.base) or {}
+	}
+	authority_root := bin.parse_strict_json(authority_fixture.candidate_manifest_source) or {
+		panic(err)
+	}
+	authority_source := bin.canonical_json(activation_object_with_replacements(authority_root, {
+		'contract_repository': activation_string('GGRei/v')
+		'contract_mode':       activation_string('fork-dry-run')
+	}))
+	os.write_file(authority_fixture.manifest_path, authority_source) or { panic(err) }
+	fork_runtime := bin.RuntimeContractBinding{
+		repository: 'GGRei/v'
+		sha:        authority_fixture.runtime.sha
+	}
+	authority_message := candidate_composition_error_at(authority_fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: authority_fixture.base_repo_root
+		base_sha:       authority_fixture.base_sha
+		raw_root:       authority_fixture.raw_root
+		manifest_path:  authority_fixture.manifest_path
+		result_root:    authority_fixture.result_root
+	}, fork_runtime)
+	assert authority_message == 'managed baseline activation candidate must retain the production contract authority'
+	assert !os.exists(authority_fixture.result_root)
+	assert_no_candidate_composition_scratch(authority_fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_incomplete_candidates_without_exposure() {
+	fixture := prepare_managed_baseline_activation_fixture('incomplete')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	incomplete_source :=
+		activation_manifest_with_unobserved_producer(fixture.candidate_manifest_source)
+	os.write_file(fixture.manifest_path, incomplete_source) or { panic(err) }
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'managed baseline activation candidate must have complete resolved provenance'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_closes_reviewed_policy_and_payload_byte_drift() {
+	payload_fixture := prepare_managed_baseline_activation_fixture('payload-sha-drift')
+	defer {
+		os.rmdir_all(payload_fixture.base) or {}
+	}
+	payload_drift := activation_manifest_with_first_inventory_sha(payload_fixture.candidate_manifest_source,
+		'7'.repeat(64))
+	os.write_file(payload_fixture.manifest_path, payload_drift) or { panic(err) }
+	payload_message := candidate_composition_error_at(payload_fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: payload_fixture.base_repo_root
+		base_sha:       payload_fixture.base_sha
+		raw_root:       payload_fixture.raw_root
+		manifest_path:  payload_fixture.manifest_path
+		result_root:    payload_fixture.result_root
+	}, payload_fixture.runtime)
+	assert payload_message == 'managed baseline activation changed immutable payload bytes or policy'
+	assert !os.exists(payload_fixture.result_root)
+	assert_no_candidate_composition_scratch(payload_fixture.base)
+
+	policy_fixture := prepare_managed_baseline_activation_fixture('reviewed-policy-drift')
+	defer {
+		os.rmdir_all(policy_fixture.base) or {}
+	}
+	policy_drift :=
+		activation_manifest_with_recipe_version(policy_fixture.candidate_manifest_source, 2)
+	replace_managed_baseline_activation_policy(policy_fixture, policy_drift)
+	os.write_file(policy_fixture.manifest_path, policy_drift) or { panic(err) }
+	policy_message := candidate_composition_error_at(policy_fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: policy_fixture.base_repo_root
+		base_sha:       policy_fixture.base_sha
+		raw_root:       policy_fixture.raw_root
+		manifest_path:  policy_fixture.manifest_path
+		result_root:    policy_fixture.result_root
+	}, policy_fixture.runtime)
+	assert policy_message == 'managed baseline activation changed immutable manifest policy'
+	assert !os.exists(policy_fixture.result_root)
+	assert_no_candidate_composition_scratch(policy_fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_arbitrary_payload_provenance_sha_without_exposure() {
+	fixture := prepare_managed_baseline_activation_fixture('arbitrary-provenance-sha')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	malicious_source := activation_manifest_with_first_inventory_provenance(fixture.candidate_manifest_source,
+		'TinyCC/tinycc', '9'.repeat(40))
+	os.write_file(fixture.manifest_path, malicious_source) or { panic(err) }
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'managed baseline activation payload provenance SHA differs from its authenticated authority'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_coordinated_source_and_provenance_sha_drift() {
+	fixture := prepare_managed_baseline_activation_fixture('coordinated-source-provenance-sha')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	reviewed_sha := activation_source_sha(fixture.candidate_manifest_source, 'tinycc')
+	malicious_source := fixture.candidate_manifest_source.replace(reviewed_sha, '9'.repeat(40))
+	os.write_file(fixture.manifest_path, malicious_source) or { panic(err) }
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'managed baseline activation source differs from reviewed commit evidence'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_source_tree_drift() {
+	fixture := prepare_managed_baseline_activation_fixture('source-tree-drift')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	reviewed_tree := activation_source_tree(fixture.candidate_manifest_source, 'tinycc')
+	malicious_source := fixture.candidate_manifest_source.replace(reviewed_tree, '9'.repeat(40))
+	os.write_file(fixture.manifest_path, malicious_source) or { panic(err) }
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'managed baseline activation source differs from reviewed commit evidence'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_commit_evidence_is_closed_bounded_and_self_authenticating() {
+	fixture := prepare_managed_baseline_activation_fixture('commit-evidence-negative-matrix')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	first := fixture.source_commit_evidence.array_value[0]
+	raw_base64 := (first.object_value('raw_commit_base64') or {
+		panic('raw commit evidence missing')
+	}).string_value
+	raw := base64.decode(raw_base64)
+	mut tampered_raw := raw.clone()
+	tampered_raw[tampered_raw.len - 1] = if tampered_raw[tampered_raw.len - 1] == `x` {
+		`y`
+	} else {
+		`x`
+	}
+	tampered := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'raw_commit_base64': activation_string(base64.encode(tampered_raw))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, tampered) == 'managed baseline raw commit evidence SHA differs from its Git object ID'
+
+	wrong_sha := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'sha': activation_string('9'.repeat(40))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, wrong_sha) == 'managed baseline raw commit evidence SHA differs from its Git object ID'
+
+	wrong_tree := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'tree': activation_string('9'.repeat(40))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, wrong_tree) == 'managed baseline raw commit evidence tree differs from its declared tree'
+
+	malformed_raw := 'author Missing Tree <source@example.invalid> 0 +0000\n\nmalformed\n'.bytes()
+	malformed := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'sha':               activation_string(activation_git_commit_oid(malformed_raw))
+		'raw_commit_base64': activation_string(base64.encode(malformed_raw))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, malformed) == 'managed baseline raw commit evidence must start with one exact tree header'
+	reviewed_tree := (first.object_value('tree') or { panic('evidence tree missing') }).string_value
+	nonfirst_tree_raw :=
+		'author Wrong Order <source@example.invalid> 0 +0000\ntree ${reviewed_tree}\n\nmalformed\n'.bytes()
+	nonfirst_tree := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'sha':               activation_string(activation_git_commit_oid(nonfirst_tree_raw))
+		'raw_commit_base64': activation_string(base64.encode(nonfirst_tree_raw))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, nonfirst_tree) == 'managed baseline raw commit evidence must start with one exact tree header'
+	duplicate_tree_raw := 'tree ${reviewed_tree}\ntree ${reviewed_tree}\n\nmalformed\n'.bytes()
+	duplicate_tree_header := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'sha':               activation_string(activation_git_commit_oid(duplicate_tree_raw))
+		'raw_commit_base64': activation_string(base64.encode(duplicate_tree_raw))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source,
+		duplicate_tree_header) == 'managed baseline raw commit evidence must start with one exact tree header'
+	carriage_return_raw := 'tree ${reviewed_tree}\r\n\nmalformed\n'.bytes()
+	carriage_return := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'sha':               activation_string(activation_git_commit_oid(carriage_return_raw))
+		'raw_commit_base64': activation_string(base64.encode(carriage_return_raw))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, carriage_return) == 'managed baseline raw commit evidence has a malformed Git commit header'
+	nul_header_raw := 'tree ${reviewed_tree}\x00\n\nmalformed\n'.bytes()
+	nul_header := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'sha':               activation_string(activation_git_commit_oid(nul_header_raw))
+		'raw_commit_base64': activation_string(base64.encode(nul_header_raw))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, nul_header) == 'managed baseline raw commit evidence has a malformed Git commit header'
+	no_separator_raw :=
+		'tree ${reviewed_tree}\nauthor Missing Separator <source@example.invalid> 0 +0000\n'.bytes()
+	no_separator := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'sha':               activation_string(activation_git_commit_oid(no_separator_raw))
+		'raw_commit_base64': activation_string(base64.encode(no_separator_raw))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, no_separator) == 'managed baseline raw commit evidence has no complete Git commit header'
+
+	noncanonical := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'raw_commit_base64': activation_string('${raw_base64}=')
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, noncanonical) == 'managed baseline raw commit evidence is not canonical bounded base64'
+
+	duplicate := activation_array([first, first])
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, duplicate) == 'managed baseline source commit evidence contains a duplicate source ID'
+	manifest := bin.parse_strict_json(fixture.candidate_manifest_source) or { panic(err) }
+	sources_value := manifest.object_value('sources') or { panic('sources missing') }
+	mut duplicate_sources := sources_value.array_value.clone()
+	duplicate_sources[1] = activation_object_with_replacements(duplicate_sources[1], {
+		'id': activation_string('tinycc')
+	})
+	duplicate_source_manifest := bin.canonical_json(activation_object_with_replacements(manifest, {
+		'sources': activation_array(duplicate_sources)
+	}))
+	assert managed_baseline_projection_error(duplicate_source_manifest,
+		fixture.source_commit_evidence) == 'managed baseline source matrix contains a duplicate source ID'
+	mut open_entry_keys := first.object_keys.clone()
+	mut open_entry_values := first.object_values.clone()
+	open_entry_keys << 'unexpected'
+	open_entry_values << bin.JsonValue{
+		kind:       .boolean
+		bool_value: true
+	}
+	open_entry := bin.JsonValue{
+		kind:          .object
+		object_keys:   open_entry_keys
+		object_values: open_entry_values
+	}
+	open_evidence := activation_array([open_entry, fixture.source_commit_evidence.array_value[1]])
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, open_evidence) == 'closed contract object has missing, duplicate, or unknown members'
+	permuted := activation_array([fixture.source_commit_evidence.array_value[1], first])
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, permuted) == 'managed baseline source commit evidence order differs from the source matrix'
+	unsupported_id := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'id': activation_string('unreviewed')
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, unsupported_id) == 'managed baseline external commit authority has an unsupported source ID'
+	unreferenced_id := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'id': activation_string('libatomic_ops')
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, unreferenced_id) == 'managed baseline source commit evidence contains an unreferenced source ID'
+	mismatched_repository := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'repository': activation_string('https://example.invalid/tinycc.git')
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source,
+		mismatched_repository) == 'managed baseline source commit evidence changed source repository or ref'
+	mismatched_ref := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'ref': activation_string('unreviewed')
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, mismatched_ref) == 'managed baseline source commit evidence changed source repository or ref'
+	unsupported_authority := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'authority': activation_string('unreviewed')
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source,
+		unsupported_authority) == 'managed baseline source commit evidence authority is unsupported'
+	missing := activation_array([first])
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, missing) == 'managed baseline source commit evidence must be bijective with the source matrix'
+	oversize := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'raw_commit_base64': activation_string('A'.repeat(87_385))
+	})
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, oversize) == 'managed baseline raw commit evidence exceeds its encoded byte bound'
+	decoded_oversize_raw := []u8{len: 65_537, init: `x`}
+	decoded_oversize := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'raw_commit_base64': activation_string(base64.encode(decoded_oversize_raw))
+	})
+	assert base64.encode(decoded_oversize_raw).len == 87_384
+	assert managed_baseline_projection_error(fixture.candidate_manifest_source, decoded_oversize) == 'managed baseline raw commit evidence is not canonical bounded base64'
+}
+
+fn test_managed_baseline_activation_rejects_publication_before_candidate_input() {
+	fixture := prepare_managed_baseline_activation_fixture('publication-disabled')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	work_root := os.join_path(fixture.base, 'publication-work-must-remain-absent')
+	mut message := ''
+	bin.evaluate_candidate_manifest_for_execution(fixture.automation_root, 'linux-amd64',
+		.baseline_activate, '/absent/candidate-repository', fixture.base_sha, '9'.repeat(40),
+		work_root, fixture.runtime, true) or { message = err.msg() }
+	assert message == 'managed baseline activation publication is disabled pending native publication proof'
+	assert !os.exists(work_root)
+}
+
+fn test_managed_baseline_activation_rejects_valid_evidence_outside_the_registry_hash() {
+	fixture := prepare_managed_baseline_activation_fixture('evidence-registry-hash')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	first := fixture.source_commit_evidence.array_value[0]
+	tree := (first.object_value('tree') or { panic('evidence tree missing') }).string_value
+	raw :=
+		'tree ${tree}\nauthor Alternate Source <source@example.invalid> 1 +0000\ncommitter Alternate Source <source@example.invalid> 1 +0000\n\nalternate reviewed source\n'.bytes()
+	mutated_evidence := activation_first_source_evidence_with_replacements(fixture.source_commit_evidence, {
+		'sha':               activation_string(activation_git_commit_oid(raw))
+		'raw_commit_base64': activation_string(base64.encode(raw))
+	})
+	manifest := bin.parse_strict_json(fixture.candidate_manifest_source) or { panic(err) }
+	mutated_policy := bin.managed_baseline_activation_policy_projection(manifest, mutated_evidence) or {
+		panic(err)
+	}
+	os.write_file(fixture.policy_path, bin.canonical_json(mutated_policy)) or { panic(err) }
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      fixture.target_id
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'managed baseline activation policy hash differs from the registry'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_preflight_rejects_cross_source_provenance_sha_without_exposure() {
+	fixture := prepare_managed_baseline_activation_fixture('cross-source-provenance-sha')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	malicious_source := activation_manifest_with_first_inventory_provenance(fixture.candidate_manifest_source,
+		'TinyCC/tinycc', activation_source_sha(fixture.candidate_manifest_source, 'bdwgc'))
+	os.write_file(os.join_path(fixture.base_repo_root, 'automation', 'bundle-manifest.json'),
+		malicious_source) or { panic(err) }
+	candidate_sha := commit_candidate_paths(fixture.base_repo_root, [
+		'automation/bundle-manifest.json',
+	], 'attempt cross-source managed baseline provenance')
+	work_root := os.join_path(fixture.base, 'cross-source-provenance-preflight')
+	mut message := ''
+	bin.evaluate_candidate_manifest_for_execution(fixture.automation_root, 'linux-amd64',
+		.baseline_activate, fixture.base_repo_root, fixture.base_sha, candidate_sha, work_root,
+		fixture.runtime, false) or { message = err.msg() }
+	assert message == 'managed baseline activation payload provenance SHA differs from its authenticated authority'
+	assert !os.exists(work_root)
+}
+
+fn test_managed_baseline_activation_rejects_unreviewed_payload_provenance_repository() {
+	fixture := prepare_managed_baseline_activation_fixture('unreviewed-provenance-repository')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	malicious_source := activation_manifest_with_first_inventory_provenance(fixture.candidate_manifest_source,
+		'example/unreviewed', '9'.repeat(40))
+	replace_managed_baseline_activation_policy(fixture, malicious_source)
+	os.write_file(fixture.manifest_path, malicious_source) or { panic(err) }
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'managed baseline activation payload provenance repository is not an authenticated authority'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn assert_managed_baseline_activation_rejects_absent_payload_provenance_source(suffix string,
+	repository string, sha string) {
+	fixture := prepare_managed_baseline_activation_fixture(suffix)
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	malicious_source := activation_manifest_with_first_inventory_provenance(fixture.candidate_manifest_source,
+		repository, sha)
+	replace_managed_baseline_activation_policy(fixture, malicious_source)
+	os.write_file(fixture.manifest_path, malicious_source) or { panic(err) }
+	message := candidate_composition_error_at(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime)
+	assert message == 'managed baseline activation payload provenance authority is absent or ambiguous'
+	assert !os.exists(fixture.result_root)
+	assert_no_candidate_composition_scratch(fixture.base)
+}
+
+fn test_managed_baseline_activation_rejects_provenance_authority_absent_from_target_sources() {
+	assert_managed_baseline_activation_rejects_absent_payload_provenance_source('absent-libatomic-provenance',
+		'bdwgc/libatomic_ops', '1'.repeat(40))
+	assert_managed_baseline_activation_rejects_absent_payload_provenance_source('absent-v-libgc-provenance',
+		'vlang/v', 'a'.repeat(40))
+}
+
+fn assert_managed_baseline_activation_accepts_payload_provenance_authority(suffix string,
+	repository string) {
+	fixture := prepare_managed_baseline_activation_fixture(suffix)
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	sha := match repository {
+		'ivmai/bdwgc' { activation_source_sha(fixture.candidate_manifest_source, 'bdwgc') }
+		'vlang/tccbin' { fixture.base_sha }
+		else { panic('unsupported positive provenance authority') }
+	}
+	candidate_source := activation_manifest_with_first_inventory_provenance(fixture.candidate_manifest_source,
+		repository, sha)
+	replace_managed_baseline_activation_policy(fixture, candidate_source)
+	os.write_file(fixture.manifest_path, candidate_source) or { panic(err) }
+	result := bin.compose_candidate_for_execution(fixture.automation_root, bin.CandidateCompositionRequest{
+		target_id:      'linux-amd64'
+		kind:           .baseline_activate
+		base_repo_root: fixture.base_repo_root
+		base_sha:       fixture.base_sha
+		raw_root:       fixture.raw_root
+		manifest_path:  fixture.manifest_path
+		result_root:    fixture.result_root
+	}, fixture.runtime) or { panic(err) }
+	assert result.decision.eligible
+	assert !result.decision.publish_allowed
+}
+
+fn test_managed_baseline_activation_accepts_exact_source_and_baseline_provenance_shas() {
+	assert_managed_baseline_activation_accepts_payload_provenance_authority('bdwgc-provenance',
+		'ivmai/bdwgc')
+	assert_managed_baseline_activation_accepts_payload_provenance_authority('baseline-provenance',
+		'vlang/tccbin')
+}
+
+fn test_managed_baseline_activation_preflight_rejects_any_non_manifest_tree_delta() {
+	fixture := prepare_managed_baseline_activation_fixture('tree-closure')
+	defer {
+		os.rmdir_all(fixture.base) or {}
+	}
+	os.write_file(os.join_path(fixture.base_repo_root, 'automation', 'bundle-manifest.json'),
+		fixture.candidate_manifest_source) or { panic(err) }
+	os.write_file(os.join_path(fixture.base_repo_root, 'README.md'), 'unreviewed tree delta\n') or {
+		panic(err)
+	}
+	candidate_sha := commit_candidate_paths(fixture.base_repo_root, [
+		'automation/bundle-manifest.json',
+		'README.md',
+	], 'attempt non-manifest activation delta')
+	work_root := os.join_path(fixture.base, 'managed-baseline-preflight-work')
+	mut message := ''
+	bin.evaluate_candidate_manifest_for_execution(fixture.automation_root, 'linux-amd64',
+		.baseline_activate, fixture.base_repo_root, fixture.base_sha, candidate_sha, work_root,
+		fixture.runtime, false) or { message = err.msg() }
+	assert message == 'managed baseline activation transition must modify only the authoritative manifest'
+	assert !os.exists(work_root)
 }
 
 fn test_candidate_preflight_exports_an_independent_payload_and_binds_publication() {
