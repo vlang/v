@@ -4649,6 +4649,16 @@ fn (g &FlatGen) usable_expr_type_uncached(id flat.NodeId) types.Type {
 			return types.Type(types.String{})
 		}
 		if node.kind == .prefix && node.children_count > 0 {
+			// Lowering can insert a storage dereference around mutable map values.
+			// Its child keeps the source value type while the prefix annotation is
+			// the semantic type after removing only the hidden C storage layer.
+			// Prefer that exact annotation before deriving a source-level `*p` type.
+			if node.typ.len > 0 {
+				annotated := g.tc.parse_type(node.typ)
+				if annotated is types.Pointer && !decl_annotation_is_unusable(annotated, node.typ) {
+					return annotated
+				}
+			}
 			child_type := g.usable_expr_type(g.a.child(&node, 0))
 			if node.op == .amp {
 				return types.Type(types.Pointer{
@@ -4962,7 +4972,7 @@ fn (g &FlatGen) type_names_match(a types.Type, b types.Type) bool {
 	if a_name == b_name {
 		return true
 	}
-	return short_module_type_text(a_name) == short_module_type_text(b_name)
+	return short_module_type_texts_equal(a_name, b_name)
 }
 
 fn (g &FlatGen) array_abi_types_match(a types.Type, b types.Type) bool {

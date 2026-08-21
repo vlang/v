@@ -1097,9 +1097,6 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 	if typ.len == 0 || isnil(t.tc) {
 		return typ
 	}
-	if is_plain_builtin_alias_type(typ) {
-		return typ
-	}
 	if isnil(t.alias_cache) {
 		return t.normalize_type_alias_uncached(typ)
 	}
@@ -1109,7 +1106,7 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		&& unsafe { c.canonical_types[recent_slot].str == typ.str } {
 		return c.canonical_results[recent_slot]
 	}
-	if c.module != t.cur_module || c.file != t.cur_file {
+	if !same_transform_text(c.module, t.cur_module) || !same_transform_text(c.file, t.cur_file) {
 		c.module = t.cur_module
 		c.file = t.cur_file
 		c.entries.clear()
@@ -1435,11 +1432,14 @@ fn is_generic_placeholder_type_name(typ string) bool {
 
 // normalize_type_in_module transforms normalize type in module data for transform.
 fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
+	if is_plain_builtin_alias_type(typ) {
+		return typ
+	}
 	if isnil(t.module_type_cache) {
 		return t.normalize_type_in_module_uncached(typ, mod)
 	}
 	mut cache := t.module_type_cache
-	if cache.module != mod || cache.file != t.cur_file {
+	if !same_transform_text(cache.module, mod) || !same_transform_text(cache.file, t.cur_file) {
 		cache.module = mod
 		cache.file = t.cur_file
 		cache.entries.clear()
@@ -1860,7 +1860,8 @@ fn (t &Transformer) checker_type_over_struct_guess(id flat.NodeId, guessed strin
 		guessed_c_type = t.tc.c_type(guessed_type)
 	} else {
 		mut cache := t.struct_guess_cache
-		if cache.module != t.cur_module || cache.file != t.cur_file {
+		if !same_transform_text(cache.module, t.cur_module)
+			|| !same_transform_text(cache.file, t.cur_file) {
 			cache.module = t.cur_module
 			cache.file = t.cur_file
 			cache.entries.clear()

@@ -12526,7 +12526,7 @@ fn (t &Transformer) generic_arg_is_unresolved(arg string) bool {
 	// (both fixed during body transforms), memoized per (module, text).
 	if !isnil(t.generic_unresolved_cache) {
 		mut cache := t.generic_unresolved_cache
-		if cache.module != t.cur_module {
+		if !same_transform_text(cache.module, t.cur_module) {
 			cache.module = t.cur_module
 			cache.entries.clear()
 			cache.last_name = ''

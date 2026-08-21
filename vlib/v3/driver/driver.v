@@ -7218,6 +7218,9 @@ pub fn run(args []string) {
 		b.use_self_host_memory_limit()
 	}
 	b.start_memory_monitor()
+	defer {
+		b.stop_memory_monitor()
+	}
 	mut c_object_cache_stats := CObjectCacheStats{}
 	if !silent {
 		println('=== v3 benchmark ===')
@@ -8587,7 +8590,14 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('transform', transform_was_parallel)
 		}
-		pre_tc.refresh_rewritten_parent_index(a)
+		// Self-host C generation consumes the transformer's explicit node types and
+		// the checker's resolved-call sidecars; it does not perform a second semantic
+		// annotation walk. Keep the checked source parent index in that fast path
+		// instead of rebuilding parents for 1M+ appended lowering nodes that no later
+		// stage queries.
+		if !building_v {
+			pre_tc.refresh_rewritten_parent_index(a)
+		}
 		if transform_errors.len > 0 {
 			eprintln('type checker found ${transform_errors.len} error(s):')
 			for message in transform_errors {
@@ -8612,11 +8622,11 @@ pub fn run(args []string) {
 		if !building_v {
 			if uses_generics && (!incremental_cache_hit || incremental_needs_monomorphize) {
 				if scope_prealloc_stages {
-					// Volt's reachable specialization set settles just below 4x the
-					// transformed node count. Reserving that bounded final size avoids
-					// growing 3x caches to 6x inside the disposable monomorph arena and
-					// then copying those oversized arrays back into the parent.
-					pre_tc.materialize_sparse_transform_node_caches(a.nodes.len, a.nodes.len * 4)
+					// Volt's reachable specialization set settles near 2.3x the
+					// transformed node count. A 3x reservation keeps the dense semantic
+					// caches stable through monomorphization without retaining a fourth
+					// mostly-empty copy of every node-indexed slab.
+					pre_tc.materialize_sparse_transform_node_caches(a.nodes.len, a.nodes.len * 3)
 				}
 				// Generic lowering rewrites and clones call nodes in disposable arenas.
 				// Resolve their final names from the owned transformed AST instead of
@@ -8692,10 +8702,10 @@ pub fn run(args []string) {
 				eprintln('mono AST before reserve: ${a.nodes.len}/${a.nodes.cap} nodes, ${a.children.len}/${a.children.cap} children')
 			}
 			base_monomorph_nodes := a.nodes.len
-			// Volt's current generic closure retains about 5x the transformed node
-			// and child counts. Reserve that measured final size directly so one
-			// slightly-larger closure does not double both multi-million-item slabs.
-			reserve_flat_ast_exact(mut a, a.nodes.len * 5 + 65536, a.children.len * 5 + 65536)
+			// Volt's current generic closure retains about 2.3x the transformed node
+			// and child counts. Four times the input leaves each parallel append region
+			// enough headroom while avoiding a fifth mostly-empty AST slab.
+			reserve_flat_ast_exact(mut a, a.nodes.len * 4 + 65536, a.children.len * 4 + 65536)
 			monomorph_nodes_cap := a.nodes.cap
 			monomorph_children_cap := a.children.cap
 			base_specialized_fns := a.specialized_fn_nodes.len
