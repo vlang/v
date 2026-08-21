@@ -7519,23 +7519,42 @@ fn c_text_matches_at(text string, pos int, word string) bool {
 }
 
 // c_typedef_all_aggregate_aliases collects `typedef struct|union|enum` alias
-// names in a single scan. It replaces three separate full-text passes (one per
-// kind); every kind shares the identical tail logic below, and the result is a
-// set, so finding all three in text order yields the same names.
+// names in a single scan, replacing three separate full-text passes (one per
+// kind). The result is a set, so finding all three in text order yields the same
+// names as the three passes.
+//
+// It reproduces those passes exactly, including their failure behavior: each
+// per-kind scan `break`ed at its own first malformed candidate (an unbalanced
+// brace or missing `;`, e.g. from a `{` inside a comment in the raw header
+// text). So each kind here stops independently at its first malformed candidate
+// and is skipped thereafter. This keeps one kind's failure from suppressing the
+// others, and — crucially — never resumes *inside* a malformed candidate to pick
+// up a later same-kind typedef (such as a complete one inside the same comment)
+// that the original scan would already have stopped before.
 fn c_typedef_all_aggregate_aliases(text string) []string {
 	mut aliases := []string{}
 	mut start := 0
+	// kind codes: 0 = struct, 1 = union, 2 = enum.
+	mut stopped := [false, false, false]
 	for start < text.len {
 		idx := text.index_after('typedef ', start) or { break }
 		kw := idx + 'typedef '.len
 		mut prefix_len := 0
+		mut kind := 0
 		if c_text_matches_at(text, kw, 'struct') {
 			prefix_len = 'typedef struct'.len
+			kind = 0
 		} else if c_text_matches_at(text, kw, 'union') {
 			prefix_len = 'typedef union'.len
+			kind = 1
 		} else if c_text_matches_at(text, kw, 'enum') {
 			prefix_len = 'typedef enum'.len
+			kind = 2
 		} else {
+			start = kw
+			continue
+		}
+		if stopped[kind] {
 			start = kw
 			continue
 		}
@@ -7576,17 +7595,18 @@ fn c_typedef_all_aggregate_aliases(text string) []string {
 		}
 		close_idx := c_matching_brace_end(text, pos)
 		if close_idx < 0 {
-			// Unbalanced brace — e.g. a `{` inside a comment in the raw header
-			// text. Skip this candidate and keep scanning for the other
-			// aggregates instead of terminating the whole fused pass: the three
-			// separate scans this replaces were independent, so a malformed
-			// struct candidate must not suppress later union/enum aliases.
-			start = pos + 1
+			// Unbalanced brace (e.g. a `{` inside a comment): this kind's scan
+			// `break`ed here. Stop this kind so later same-kind candidates inside
+			// the malformed region are ignored, and advance only past the current
+			// `typedef ` keyword so the other kinds keep scanning.
+			stopped[kind] = true
+			start = kw
 			continue
 		}
 		semi_idx := c_index_u8_after(text, `;`, close_idx + 1)
 		if semi_idx < 0 {
-			start = close_idx + 1
+			stopped[kind] = true
+			start = kw
 			continue
 		}
 		for alias in c_typedef_declarator_aliases(text[close_idx + 1..semi_idx]) {

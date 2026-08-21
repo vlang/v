@@ -64,6 +64,26 @@ fn test_typedef_all_aggregate_aliases_survives_unbalanced_brace_in_comment() {
 	assert sorted_unique(got) == sorted_unique(separate)
 }
 
+// test_typedef_all_aggregate_aliases_does_not_resume_inside_malformed_candidate
+// is a regression test: after an unbalanced aggregate brace (here inside a
+// comment), the scan must not resume within the malformed candidate and pick up
+// a complete same-kind typedef that is also commented out. The independent
+// struct scan stopped at the outer unmatched brace and never reached `Hidden`;
+// collecting it would suppress the C.Hidden fallback declaration for a type the
+// header never actually defines.
+fn test_typedef_all_aggregate_aliases_does_not_resume_inside_malformed_candidate() {
+	text := '/* typedef struct Broken { typedef struct Hidden { int x; } Hidden; */\n'
+	got := c_typedef_all_aggregate_aliases(text)
+	assert 'Hidden' !in got, 'commented-out struct after an unbalanced brace was collected: ${got}'
+	// Exactly the union of the three independent scans (all empty here: the
+	// struct scan breaks at the unmatched brace, there are no unions or enums).
+	mut separate := []string{}
+	separate << c_typedef_struct_aliases(text)
+	separate << c_typedef_union_aliases(text)
+	separate << c_typedef_enum_aliases(text)
+	assert sorted_unique(got) == sorted_unique(separate)
+}
+
 fn test_typedef_all_aggregate_aliases_collects_expected_names() {
 	text := 'typedef struct S1 { int a; } A1;\ntypedef union U1 { int a; } A2;\ntypedef enum E1 { X } A3;\n'
 	got := sorted_unique(c_typedef_all_aggregate_aliases(text))
