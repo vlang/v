@@ -40,7 +40,8 @@ pub:
 	// when `mode` is `.required`, ignored otherwise.
 	name string
 	// data is the binding data from the TLS layer. Required when `mode` is
-	// `.required`, ignored otherwise.
+	// `.required` — an empty value is refused rather than producing a `-PLUS`
+	// exchange that binds nothing — and ignored otherwise.
 	data []u8
 }
 
@@ -59,6 +60,13 @@ fn (cb ChannelBinding) gs2_flag() !string {
 			}
 			if cb.name.contains(',') || cb.name.contains('=') {
 				return error('scram: the channel binding name must not contain a comma or an equals sign')
+			}
+			// Without data there is nothing to bind to, yet the exchange would
+			// still announce a `-PLUS` mechanism and succeed against a peer that
+			// forgot it too: the only failure mode of this module that would
+			// leave a caller believing in a protection it does not have.
+			if cb.data.len == 0 {
+				return error('scram: channel binding data is required when mode is .required, otherwise the exchange announces a -PLUS mechanism that binds nothing')
 			}
 			return 'p=${cb.name}'
 		}
@@ -190,16 +198,6 @@ fn parse_attributes(message string) ![]Attribute {
 		}
 	}
 	return out
-}
-
-// find returns the value of the first attribute named `key`.
-fn (attrs []Attribute) find(key u8) ?string {
-	for attr in attrs {
-		if attr.key == key {
-			return attr.value
-		}
-	}
-	return none
 }
 
 // decode_base64 decodes a base64 attribute value, rejecting anything that is

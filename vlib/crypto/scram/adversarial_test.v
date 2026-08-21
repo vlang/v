@@ -1,0 +1,134 @@
+// What a hostile or misconfigured peer gets to choose. The conformance
+// vectors check that two honest peers agree; these check that a peer which
+// does not play along cannot obtain a protection it has not earned, and
+// cannot make a configuration mistake look like a wrong password.
+module scram
+
+// bound_binding is a complete channel binding, as a caller with access to its
+// TLS layer would build one.
+fn bound_binding() ChannelBinding {
+	return ChannelBinding{
+		mode: .required
+		name: 'tls-server-end-point'
+		data: 'a hash of the server certificate'.bytes()
+	}
+}
+
+// server_with builds a server that answers every user with `credentials`.
+fn server_with(credentials Credentials) !&Server {
+	return new_server(
+		lookup: fn [credentials] (username string) !Credentials {
+			return credentials
+		}
+	)
+}
+
+fn test_channel_binding_without_data_is_refused_rather_than_binding_nothing() {
+	// `p=` announces a -PLUS mechanism, so an exchange that reaches the wire
+	// without binding data leaves both peers believing the connection is tied
+	// to their TLS channel when nothing ties it.
+	starved := ChannelBinding{
+		mode: .required
+		name: 'tls-exporter'
+	}
+	new_client(username: 'user', password: 'pencil', channel_binding: starved) or {
+		assert err.msg().contains('channel binding data is required')
+		new_server(
+			channel_binding: starved
+			lookup:          fn (username string) !Credentials {
+				return new_credentials(.sha256, 'pencil')!
+			}
+		) or {
+			assert err.msg().contains('channel binding data is required')
+			return
+		}
+		assert false, 'the server accepted a .required binding with no data'
+	}
+	assert false, 'the client accepted a .required binding with no data'
+}
+
+fn test_a_complete_channel_binding_still_works() {
+	// The check above must not have made channel binding unusable.
+	mut client :=
+		new_client(username: 'user', password: 'pencil', channel_binding: bound_binding())!
+	assert client.mechanism_name() == 'SCRAM-SHA-256-PLUS'
+	assert client.first()!.starts_with('p=tls-server-end-point,,')
+}
+
+fn test_credentials_of_the_wrong_length_are_a_configuration_error() {
+	// Truncated keys fail the proof check on their own, but as an
+	// `AuthenticationFailed`, which reads as a user typing the wrong password.
+	truncated := Credentials{
+		mechanism:  .sha256
+		salt:       'saltsaltsaltsalt'.bytes()
+		iterations: 4096
+		stored_key: [u8(1), 2, 3]
+		server_key: [u8(4), 5, 6]
+	}
+	mut server := server_with(truncated)!
+	mut client := new_client(username: 'user', password: 'pencil')!
+	server.first(client.first()!) or {
+		assert err !is AuthenticationFailed
+		assert err.msg().contains('3 and 3 byte keys')
+		assert err.msg().contains('needs 32')
+		return
+	}
+	assert false, 'the server accepted credentials with 3 byte keys'
+}
+
+fn test_an_empty_authzid_in_the_gs2_header_is_malformed() {
+	// `a=` with nothing after it is not an absent authzid: RFC 5802 §7 spells
+	// authzid as `a=` saslname, and saslname is `1*`.
+	mut server := server_with(new_credentials(.sha256, 'pencil')!)!
+	server.first('n,a=,n=user,r=clientnonce') or {
+		assert err is MalformedMessage
+		assert err.msg().contains('authorization identity')
+		return
+	}
+	assert false, 'the server accepted an empty `a=` authorization identity'
+}
+
+fn test_an_attribute_injected_into_the_client_first_message_breaks_the_proof() {
+	// Nothing rejects a duplicate `r=` outright, because the whole message
+	// goes into the auth message on both sides. That is what has to hold: an
+	// injected attribute must make the exchange fail, not pass unnoticed.
+	credentials := derive_credentials(.sha256, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096)!
+	mut server := server_with(credentials)!
+	mut client := new_client(username: 'user', password: 'pencil')!
+	client_first := client.first()!
+	server_first := server.first('${client_first},r=injected')!
+	server.final(client.final(server_first)!) or {
+		assert err is AuthenticationFailed
+		return
+	}
+	assert false, 'an attribute injected into the client-first-message went unnoticed'
+}
+
+fn test_an_extension_injected_into_the_server_first_message_breaks_the_proof() {
+	// Unknown extensions are ignored, as RFC 5802 §7 requires, but they are
+	// still covered by the auth message, so rewriting one is detected.
+	credentials := derive_credentials(.sha256, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096)!
+	mut server := server_with(credentials)!
+	mut client := new_client(username: 'user', password: 'pencil')!
+	server_first := server.first(client.first()!)!
+	server.final(client.final('${server_first},x=injected')!) or {
+		assert err is AuthenticationFailed
+		return
+	}
+	assert false, 'an extension injected into the server-first-message went unnoticed'
+}
+
+fn test_a_proof_of_the_wrong_length_is_refused_before_it_is_used() {
+	credentials := derive_credentials(.sha256, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096)!
+	mut server := server_with(credentials)!
+	mut client := new_client(username: 'user', password: 'pencil')!
+	server_first := server.first(client.first()!)!
+	client_final := client.final(server_first)!
+	without_proof := client_final.all_before(',p=')
+	server.final('${without_proof},p=AAAA') or {
+		assert err is AuthenticationFailed
+		assert err.msg().contains('3 bytes, expected 32')
+		return
+	}
+	assert false, 'the server accepted a 3 byte proof'
+}

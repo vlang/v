@@ -76,13 +76,6 @@ fn test_parse_attributes_refuses_malformed_input() {
 	}
 }
 
-fn test_find_returns_the_first_matching_attribute() {
-	attrs := parse_attributes('r=one,s=two,r=three')!
-	assert attrs.find(`r`)? == 'one'
-	assert attrs.find(`s`)? == 'two'
-	assert attrs.find(`z`) == none
-}
-
 fn test_parse_positive_int_follows_the_posit_number_rule() {
 	assert parse_positive_int('1', 'n')! == 1
 	assert parse_positive_int('4096', 'n')! == 4096

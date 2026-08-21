@@ -178,6 +178,10 @@ fn certificate_hash() []u8 {
 }
 ```
 
+`data` is mandatory when `mode` is `.required`: a binding with a name but
+no data is refused at construction, because it would otherwise announce a
+`-PLUS` mechanism and complete an exchange that binds nothing.
+
 If the server advertised no `-PLUS` mechanism but your client supports
 channel binding, set `mode: .unsupported_by_server`. That sends the GS2
 `y` flag, which lets a server that *does* offer `-PLUS` detect that its

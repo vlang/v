@@ -173,6 +173,13 @@ pub fn (mut s Server) first(client_first string) !string {
 	if credentials.salt.len == 0 || credentials.iterations < 1 {
 		return error('scram: the stored credentials for `${username}` are incomplete')
 	}
+	// Keys of the wrong length would fail the proof check further down, which
+	// reports a wrong password: a misconfigured store must not be diagnosed as
+	// a user typing the wrong thing.
+	if credentials.stored_key.len != s.mechanism.size()
+		|| credentials.server_key.len != s.mechanism.size() {
+		return error('scram: the stored credentials for `${username}` hold ${credentials.stored_key.len} and ${credentials.server_key.len} byte keys, but ${s.mechanism.name()} needs ${s.mechanism.size()}')
+	}
 
 	s.username = username
 	s.authzid = authzid
@@ -298,6 +305,13 @@ fn split_gs2_header(client_first string) !(string, string, string) {
 			}
 		}
 		authzid = unescape_saslname(authzid_part[2..])!
+		// RFC 5802 §7 spells authzid as `a=` saslname, and saslname is `1*`:
+		// an `a=` that carries nothing is malformed, not an absent authzid.
+		if authzid == '' {
+			return MalformedMessage{
+				reason: 'the `a=` authorization identity of the GS2 header is empty'
+			}
+		}
 	}
 	return header, authzid, rest[authzid_end + 1..]
 }
