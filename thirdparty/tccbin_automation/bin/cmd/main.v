@@ -62,7 +62,7 @@ fn main() {
 		}
 		'candidate-preflight' {
 			if os.args.len != 9 || os.args[8] !in ['true', 'false'] {
-				eprintln('usage: tccbin-automation candidate-preflight <target-id> <monthly|legacy-onboard> <candidate-repo-root> <base-sha> <candidate-sha> <work-root> <publish-requested>')
+				eprintln('usage: tccbin-automation candidate-preflight <target-id> <monthly|legacy-onboard|baseline-activate> <candidate-repo-root> <base-sha> <candidate-sha> <work-root> <publish-requested>')
 				exit(2)
 			}
 			kind := bin.parse_candidate_transition_kind(os.args[3]) or {
@@ -81,7 +81,7 @@ fn main() {
 		}
 		'candidate-compose' {
 			if os.args.len != 9 {
-				eprintln('usage: tccbin-automation candidate-compose <target-id> <monthly|legacy-onboard> <base-repo-root> <base-sha> <raw-root> <manifest> <result-root>')
+				eprintln('usage: tccbin-automation candidate-compose <target-id> <monthly|legacy-onboard|baseline-activate> <base-repo-root> <base-sha> <raw-root> <manifest> <result-root>')
 				exit(2)
 			}
 			kind := bin.parse_candidate_transition_kind(os.args[3]) or {

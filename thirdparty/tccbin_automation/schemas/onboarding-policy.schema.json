@@ -21,7 +21,7 @@
     "payload_policy"
   ],
   "properties": {
-    "projection_version": {"type": "integer", "const": 1},
+    "projection_version": {"type": "integer", "enum": [1, 2]},
     "schema_version": {"type": "integer", "const": 1},
     "contract_version": {"$ref": "common.schema.json#/$defs/contract_version"},
     "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
@@ -39,6 +39,18 @@
           "repository": {"type": "string", "minLength": 3, "maxLength": 256},
           "ref": {"type": "string", "minLength": 1, "maxLength": 256}
         }
+      }
+    },
+    "source_commit_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/source_commit_object_evidence"},
+          {"$ref": "#/$defs/runtime_contract_evidence"}
+        ]
       }
     },
     "recipe": {
@@ -119,7 +131,59 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"projection_version": {"const": 1}},
+        "required": ["projection_version"]
+      },
+      "then": {"not": {"required": ["source_commit_evidence"]}}
+    },
+    {
+      "if": {
+        "properties": {"projection_version": {"const": 2}},
+        "required": ["projection_version"]
+      },
+      "then": {"required": ["source_commit_evidence"]}
+    }
+  ],
   "$defs": {
+    "source_commit_object_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "repository",
+        "ref",
+        "authority",
+        "sha",
+        "tree",
+        "raw_commit_base64"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["tinycc", "bdwgc", "libatomic_ops"]
+        },
+        "repository": {"type": "string", "minLength": 3, "maxLength": 256},
+        "ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "authority": {"type": "string", "const": "source-commit-object"},
+        "sha": {"$ref": "common.schema.json#/$defs/sha40"},
+        "tree": {"$ref": "common.schema.json#/$defs/sha40"},
+        "raw_commit_base64": {"type": "string", "minLength": 4, "maxLength": 87384}
+      }
+    },
+    "runtime_contract_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "repository", "ref", "authority"],
+      "properties": {
+        "id": {"type": "string", "const": "v-libgc"},
+        "repository": {"type": "string", "const": "https://github.com/vlang/v.git"},
+        "ref": {"type": "string", "const": "master"},
+        "authority": {"type": "string", "const": "runtime-contract"}
+      }
+    },
     "static_patch": {
       "type": "object",
       "additionalProperties": false,

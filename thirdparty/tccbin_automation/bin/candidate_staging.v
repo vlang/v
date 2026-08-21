@@ -8,13 +8,23 @@ const candidate_transition_max_status_bytes = u64(1024 * 1024)
 pub enum CandidateTransitionKind {
 	monthly
 	legacy_onboard
+	baseline_activate
 }
 
 pub fn parse_candidate_transition_kind(source string) !CandidateTransitionKind {
 	return match source {
-		'monthly' { .monthly }
-		'legacy-onboard' { .legacy_onboard }
-		else { return error('candidate transition kind must be monthly or legacy-onboard') }
+		'monthly' {
+			.monthly
+		}
+		'legacy-onboard' {
+			.legacy_onboard
+		}
+		'baseline-activate' {
+			.baseline_activate
+		}
+		else {
+			return error('candidate transition kind must be monthly, legacy-onboard, or baseline-activate')
+		}
 	}
 }
 
@@ -117,9 +127,17 @@ pub fn evaluate_candidate_manifest_for_execution(automation_root string, target_
 		return error('candidate transition target is not managed')
 	}
 	mut onboarding_policy := JsonValue{}
+	mut activation_binding := ManagedBaselineActivationBinding{}
+	mut activation_policy := JsonValue{}
 	if kind == .legacy_onboard {
 		_, onboarding_policy = reviewed_legacy_onboarding_binding(automation_root, target_id,
 			base_sha)!
+	} else if kind == .baseline_activate {
+		activation_binding, activation_policy = reviewed_managed_baseline_activation_binding(automation_root,
+			target_id, base_sha)!
+	}
+	if kind == .baseline_activate && publish_requested {
+		return error('managed baseline activation publication is disabled pending native publication proof')
 	}
 	if !is_lower_hex_40(base_sha) || !is_lower_hex_40(candidate_sha) || base_sha == candidate_sha {
 		return error('candidate base and candidate must be distinct full lowercase commit SHAs')
@@ -155,7 +173,7 @@ pub fn evaluate_candidate_manifest_for_execution(automation_root string, target_
 	manifest_path := os.join_path(source_root, candidate_manifest_path)
 	base_manifest_path := os.join_path(base_root, candidate_manifest_path)
 	attest_candidate_manifest_present(source_root, candidate_sha)!
-	if kind == .monthly {
+	if kind != .legacy_onboard {
 		attest_candidate_manifest_present(base_root, base_sha)!
 	} else {
 		attest_legacy_candidate_manifest_absent(base_root, base_sha)!
@@ -180,11 +198,17 @@ pub fn evaluate_candidate_manifest_for_execution(automation_root string, target_
 		base_manifest := parse_strict_json(os.read_file(base_manifest_path)!)!
 		validate_candidate_base_controls(base_root, base_sha, base_manifest_path, base_manifest)!
 		validate_candidate_transition(base_root, base_sha, candidate_sha, base_manifest, manifest)!
-	} else {
+	} else if kind == .legacy_onboard {
 		validate_manifest_legacy_onboarding_policy(manifest, onboarding_policy)!
 		validate_legacy_onboarding_base_controls(automation_root, base_root, base_sha, manifest)!
 		validate_legacy_onboarding_transition(automation_root, base_root, base_sha, candidate_sha,
 			manifest)!
+	} else {
+		base_manifest := attest_managed_baseline_activation_base(automation_root, target_id,
+			base_root, base_sha, base_manifest_path, activation_binding)!
+		validate_managed_baseline_activation_candidate(base_manifest, manifest, runtime,
+			activation_binding, activation_policy, contract_root)!
+		validate_managed_baseline_activation_transition(base_root, base_sha, candidate_sha)!
 	}
 	export_candidate_payload(source_root, payload_root, manifest)!
 	validate_independent_candidate_checkout(base_root, base_sha)!
@@ -196,8 +220,244 @@ pub fn evaluate_candidate_manifest_for_execution(automation_root string, target_
 		source_git_root: source_root
 		source_git_ref:  candidate_sha
 	}, runtime, publish_requested)!
+	if kind == .baseline_activate && !decision.eligible {
+		return error('managed baseline activation preflight did not authenticate the candidate')
+	}
 	keep_work_root = true
 	return decision
+}
+
+fn attest_managed_baseline_activation_base(automation_root string, target_id string,
+	base_root string, base_sha string, manifest_path string,
+	binding ManagedBaselineActivationBinding) !JsonValue {
+	if base_sha != binding.base_sha {
+		return error('managed baseline activation base differs from the reviewed target pin')
+	}
+	tree := successful_candidate_git(base_root, ['rev-parse', '${base_sha}^{tree}'],
+		'managed baseline activation base tree cannot be resolved')!.trim_space()
+	if tree != binding.base_tree {
+		return error('managed baseline activation base tree differs from the reviewed pin')
+	}
+	raw_commit := successful_candidate_git(base_root, ['cat-file', 'commit', base_sha],
+		'managed baseline activation base commit cannot be inspected')!
+	if !raw_commit_has_exact_parent(raw_commit, binding.parent_sha) {
+		return error('managed baseline activation base parent differs from the reviewed pin')
+	}
+	manifest_observation := attest_candidate_manifest_present(base_root, base_sha)!
+	if manifest_observation.sha256 != binding.base_manifest_sha256
+		|| manifest_observation.sha256 != sha256_file(manifest_path)! {
+		return error('managed baseline activation base manifest differs from the reviewed pin')
+	}
+	base_issues := validate_manifest(automation_root, manifest_path)!
+	if base_issues.len > 0 {
+		return error('managed baseline activation base manifest failed with ${base_issues.len} issue(s)')
+	}
+	manifest := parse_strict_json(os.read_file(manifest_path)!)!
+	if require_string_member(manifest, 'target_id')! != target_id {
+		return error('managed baseline activation base target differs from the request')
+	}
+	if require_string_member(manifest, 'contract_repository')! != binding.base_contract_repository
+		|| require_string_member(manifest, 'contract_sha')! != binding.base_contract_sha {
+		return error('managed baseline activation base contract differs from the reviewed pin')
+	}
+	if require_string_member(manifest, 'contract_mode')! != 'production'
+		|| require_string_member(manifest, 'provenance_status')! != 'incomplete' {
+		return error('managed baseline activation base must be the reviewed incomplete production manifest')
+	}
+	profile_id, profile_sha256, producer := manifest_toolchain_members(manifest)!
+	if profile_id != '' || profile_sha256 != '' || producer.kind != .null_value {
+		return error('managed baseline activation base toolchain must remain entirely unresolved')
+	}
+	for source in require_array_member(manifest, 'sources')! {
+		if require_member(source, 'sha')!.kind != .null_value
+			|| require_member(source, 'tree')!.kind != .null_value {
+			return error('managed baseline activation base sources must remain entirely unresolved')
+		}
+	}
+	for collection in ['overlays', 'inventory', 'outputs'] {
+		for entry in require_array_member(manifest, collection)! {
+			provenance := require_object_member(entry, 'provenance')!
+			if require_string_member(provenance, 'status')! != 'incomplete'
+				|| require_member(provenance, 'repository')!.kind != .null_value
+				|| require_member(provenance, 'sha')!.kind != .null_value
+				|| require_member(provenance, 'source_path')!.kind != .null_value
+				|| require_member(provenance, 'license')!.kind != .null_value {
+				return error('managed baseline activation base payload provenance must remain entirely unresolved')
+			}
+		}
+	}
+	validate_candidate_base_controls(base_root, base_sha, manifest_path, manifest)!
+	return manifest
+}
+
+fn validate_managed_baseline_activation_candidate(base_manifest JsonValue, manifest JsonValue,
+	runtime RuntimeContractBinding, binding ManagedBaselineActivationBinding, policy JsonValue,
+	contract_root string) ! {
+	validate_manifest_managed_baseline_activation_policy(manifest, policy)!
+	evidence := managed_baseline_source_commit_evidence(policy)!
+	if runtime.repository != binding.base_contract_repository
+		|| require_string_member(manifest, 'contract_repository')! != binding.base_contract_repository
+		|| require_string_member(manifest, 'contract_mode')! != require_string_member(base_manifest, 'contract_mode')!
+		|| require_string_member(manifest, 'contract_mode')! != 'production' {
+		return error('managed baseline activation candidate must retain the production contract authority')
+	}
+	if runtime.sha == binding.base_contract_sha {
+		return error('managed baseline activation runtime contract must differ from the reviewed base')
+	}
+	if require_string_member(manifest, 'v_source_sha')! != runtime.sha {
+		return error('managed baseline activation V source must equal the runtime contract SHA')
+	}
+	for key in ['schema_version', 'contract_version', 'target_id', 'branch', 'recipe', 'patches',
+		'transforms', 'header_effects', 'integrations', 'probes', 'affected_targets'] {
+		if !json_equal(require_member(base_manifest, key)!, require_member(manifest, key)!) {
+			return error('managed baseline activation changed immutable manifest policy')
+		}
+	}
+	base_sources := require_array_member(base_manifest, 'sources')!
+	sources := require_array_member(manifest, 'sources')!
+	if base_sources.len != sources.len {
+		return error('managed baseline activation changed the reviewed source set')
+	}
+	mut runtime_tree := ''
+	for authority in evidence {
+		if authority.authority == 'runtime-contract' {
+			runtime_tree = validate_managed_baseline_runtime_contract_checkout(contract_root,
+				runtime)!
+		}
+	}
+	for index, source in sources {
+		base_source := base_sources[index]
+		for key in ['id', 'repository', 'ref'] {
+			if !json_equal(require_member(base_source, key)!, require_member(source, key)!) {
+				return error('managed baseline activation changed immutable source policy')
+			}
+		}
+		if require_member(base_source, 'sha')!.kind != .null_value
+			|| require_member(base_source, 'tree')!.kind != .null_value {
+			return error('managed baseline activation base sources must remain entirely unresolved')
+		}
+		sha := require_string_member(source, 'sha')!
+		tree := require_string_member(source, 'tree')!
+		if !is_lower_hex_40(sha) || !is_lower_hex_40(tree) {
+			return error('managed baseline activation candidate sources must resolve to exact Git objects')
+		}
+		mut evidence_matches := 0
+		for authority in evidence {
+			if authority.id != require_string_member(source, 'id')! {
+				continue
+			}
+			evidence_matches++
+			expected_sha := if authority.authority == 'runtime-contract' {
+				runtime.sha
+			} else {
+				authority.sha
+			}
+			expected_tree := if authority.authority == 'runtime-contract' {
+				runtime_tree
+			} else {
+				authority.tree
+			}
+			if sha != expected_sha || tree != expected_tree {
+				return error('managed baseline activation source differs from reviewed commit evidence')
+			}
+		}
+		if evidence_matches != 1 {
+			return error('managed baseline activation source has no unique reviewed commit evidence')
+		}
+	}
+	for collection in ['overlays', 'inventory', 'outputs'] {
+		base_entries := require_array_member(base_manifest, collection)!
+		entries := require_array_member(manifest, collection)!
+		if base_entries.len != entries.len {
+			return error('managed baseline activation changed immutable payload membership')
+		}
+		for index, entry in entries {
+			if !json_equal(managed_baseline_payload_entry_projection(base_entries[index])!,
+				managed_baseline_payload_entry_projection(entry)!) {
+				return error('managed baseline activation changed immutable payload bytes or policy')
+			}
+		}
+	}
+	status := require_string_member(manifest, 'provenance_status')!
+	if status !in ['complete', 'opaque-accepted'] || !manifest_sources_are_resolved(manifest)!
+		|| !manifest_toolchain_is_resolved(manifest)! {
+		return error('managed baseline activation candidate must have complete resolved provenance')
+	}
+	validate_managed_baseline_activation_payload_provenance(manifest, binding, runtime, evidence)!
+}
+
+fn validate_managed_baseline_activation_payload_provenance(manifest JsonValue,
+	binding ManagedBaselineActivationBinding, runtime RuntimeContractBinding,
+	evidence []ManagedBaselineSourceCommitEvidence) ! {
+	for collection in ['overlays', 'inventory', 'outputs'] {
+		for entry in require_array_member(manifest, collection)! {
+			provenance := require_object_member(entry, 'provenance')!
+			repository := require_member(provenance, 'repository')!
+			sha := require_member(provenance, 'sha')!
+			if require_string_member(provenance, 'status')! == 'incomplete' {
+				continue
+			}
+			if repository.kind != .string_value || sha.kind != .string_value {
+				return error('managed baseline activation complete payload provenance must resolve repository and SHA')
+			}
+			expected_sha := match repository.string_value {
+				'TinyCC/tinycc' {
+					managed_baseline_activation_evidence_sha(evidence, 'tinycc', runtime)!
+				}
+				'ivmai/bdwgc' {
+					managed_baseline_activation_evidence_sha(evidence, 'bdwgc', runtime)!
+				}
+				'bdwgc/libatomic_ops' {
+					managed_baseline_activation_evidence_sha(evidence, 'libatomic_ops', runtime)!
+				}
+				'vlang/tccbin' {
+					binding.base_sha
+				}
+				'vlang/v' {
+					managed_baseline_activation_evidence_sha(evidence, 'v-libgc', runtime)!
+				}
+				else {
+					return error('managed baseline activation payload provenance repository is not an authenticated authority')
+				}
+			}
+			if sha.string_value != expected_sha {
+				return error('managed baseline activation payload provenance SHA differs from its authenticated authority')
+			}
+		}
+	}
+}
+
+fn managed_baseline_activation_evidence_sha(evidence []ManagedBaselineSourceCommitEvidence,
+	source_id string, runtime RuntimeContractBinding) !string {
+	mut matches := 0
+	mut expected_sha := ''
+	for authority in evidence {
+		if authority.id == source_id {
+			matches++
+			expected_sha = if authority.authority == 'runtime-contract' {
+				runtime.sha
+			} else {
+				authority.sha
+			}
+		}
+	}
+	if matches != 1 || !is_lower_hex_40(expected_sha) {
+		return error('managed baseline activation payload provenance authority is absent or ambiguous')
+	}
+	return expected_sha
+}
+
+fn managed_baseline_payload_entry_projection(entry JsonValue) !JsonValue {
+	return select_object_members(entry, ['path', 'kind', 'git_mode', 'sha256', 'symlink_target',
+		'role', 'opaque', 'opaque_acceptance_id', 'format', 'object_type', 'machine', 'os_abi'])!
+}
+
+fn validate_managed_baseline_activation_transition(repository_root string, base_sha string,
+	candidate_sha string) ! {
+	diff := read_candidate_transition_status(repository_root, base_sha, candidate_sha)!
+	if diff != 'M\x00${candidate_manifest_path}\x00' {
+		return error('managed baseline activation transition must modify only the authoritative manifest')
+	}
 }
 
 fn validate_candidate_base_controls(base_root string, base_sha string, manifest_path string,
@@ -374,6 +634,76 @@ fn canonical_candidate_work_root(path string) !string {
 	}
 	canonical_parent := canonical_contract_root(parent)!
 	return '${canonical_parent}/${base}'
+}
+
+fn validate_managed_baseline_runtime_contract_checkout(root string,
+	runtime RuntimeContractBinding) !string {
+	if runtime.repository != 'vlang/v' {
+		return error('managed baseline runtime source requires the vlang/v contract authority')
+	}
+	inside := successful_candidate_git(root, ['rev-parse', '--is-inside-work-tree'],
+		'managed baseline runtime contract checkout cannot be inspected')!
+	if inside.trim_space() != 'true' {
+		return error('managed baseline runtime contract root is not a Git worktree')
+	}
+	toplevel := successful_candidate_git(root, ['rev-parse', '--show-toplevel'],
+		'managed baseline runtime contract top level cannot be resolved')!
+	if canonical_contract_root(toplevel.trim_space())! != root {
+		return error('managed baseline runtime contract root differs from its Git top level')
+	}
+	object_format := successful_candidate_git(root, ['rev-parse', '--show-object-format'],
+		'managed baseline runtime contract object format cannot be resolved')!
+	if object_format.trim_space() != 'sha1' {
+		return error('managed baseline runtime contract must use the SHA-1 Git object format')
+	}
+	shallow := successful_candidate_git(root, ['rev-parse', '--is-shallow-repository'],
+		'managed baseline runtime contract shallow state cannot be resolved')!
+	if shallow.trim_space() != 'false' {
+		return error('managed baseline runtime contract must contain complete non-shallow history')
+	}
+	autocrlf := successful_candidate_git(root, ['config', '--local', '--get', 'core.autocrlf'],
+		'managed baseline runtime contract must set core.autocrlf=false locally')!
+	if autocrlf.trim_space() != 'false' {
+		return error('managed baseline runtime contract must set core.autocrlf=false locally')
+	}
+	validate_candidate_local_git_config(root)!
+	validate_candidate_git_storage(root)!
+	origin := successful_candidate_git(root, ['remote', 'get-url', 'origin'],
+		'managed baseline runtime contract origin cannot be resolved')!.trim_space()
+	if origin !in ['https://github.com/vlang/v', 'https://github.com/vlang/v.git'] {
+		return error('managed baseline runtime contract origin is not the vlang/v HTTPS repository')
+	}
+	replacements := successful_candidate_git(root, ['for-each-ref', '--format=%(refname)',
+		'refs/replace/'], 'managed baseline runtime contract replacement refs cannot be inspected')!
+	if replacements != '' {
+		return error('managed baseline runtime contract must not contain replacement refs')
+	}
+	resolved := successful_candidate_git(root,
+		['rev-parse', '--verify', '${runtime.sha}^{commit}'],
+		'managed baseline runtime contract commit cannot be resolved without lazy fetching')!
+	if resolved.trim_space() != runtime.sha {
+		return error('managed baseline runtime contract commit resolution is not exact')
+	}
+	head := successful_candidate_git(root, ['rev-parse', 'HEAD'],
+		'managed baseline runtime contract HEAD cannot be resolved')!
+	if head.trim_space() != runtime.sha {
+		return error('managed baseline runtime contract checkout is not at the runtime SHA')
+	}
+	symbolic := candidate_repository_git(root, ['symbolic-ref', '-q', 'HEAD'])!
+	if symbolic.exit_code != 1 || symbolic.output != '' {
+		return error('managed baseline runtime contract checkout must be detached')
+	}
+	status := successful_candidate_git(root, ['status', '--porcelain=v1', '--untracked-files=no'],
+		'managed baseline runtime contract status cannot be inspected')!
+	if status != '' {
+		return error('managed baseline runtime contract checkout must have no tracked changes')
+	}
+	tree := successful_candidate_git(root, ['rev-parse', '--verify', '${runtime.sha}^{tree}'],
+		'managed baseline runtime contract tree cannot be resolved')!.trim_space()
+	if !is_lower_hex_40(tree) {
+		return error('managed baseline runtime contract tree is not an exact Git object ID')
+	}
+	return tree
 }
 
 fn candidate_git(args []string) !os.Result {

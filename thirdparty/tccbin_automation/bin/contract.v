@@ -1,6 +1,8 @@
 module bin
 
+import crypto.sha1
 import crypto.sha256
+import encoding.base64
 import os
 
 const managed_target_ids = [
@@ -45,9 +47,15 @@ const normalized_gate_ids = [
 
 const staged_provenance_incomplete_error = 'staged provenance is incomplete'
 
+const managed_baseline_contract_sha = '7545e515b434cd399333d43659238427d72e22e7'
+
 const toolchain_identity_document_max_bytes = u64(512 * 1024)
 
 const toolchain_identity_document_buffer_bytes = 16 * 1024
+
+const managed_baseline_source_commit_max_bytes = 64 * 1024
+
+const managed_baseline_source_commit_base64_max_bytes = 87_384
 
 // FingerprintSet keeps the three non-interchangeable hashes of a bundle contract.
 pub struct FingerprintSet {
@@ -127,6 +135,27 @@ struct LegacyOnboardingBinding {
 	base_sha      string
 	policy_path   string
 	policy_sha256 string
+}
+
+struct ManagedBaselineActivationBinding {
+	base_sha                 string
+	base_tree                string
+	parent_sha               string
+	base_manifest_sha256     string
+	base_contract_repository string
+	base_contract_sha        string
+	policy_path              string
+	policy_sha256            string
+}
+
+struct ManagedBaselineSourceCommitEvidence {
+	id                string
+	repository        string
+	ref               string
+	authority         string
+	sha               string
+	tree              string
+	raw_commit_base64 string
 }
 
 struct ToolchainProfileBinding {
@@ -491,6 +520,7 @@ pub fn validate_registry(automation_root string) ![]SchemaIssue {
 	issues << validate_registry_semantics(registry)!
 	if issues.len == 0 {
 		issues << validate_registry_onboarding_policies(automation_root, registry)!
+		issues << validate_registry_managed_baseline_activation_policies(automation_root, registry)!
 		issues << validate_registry_toolchain_profiles(automation_root, registry)!
 	}
 	return issues
@@ -1207,6 +1237,23 @@ fn validate_registry_onboarding_policies(automation_root string, registry JsonVa
 	return issues
 }
 
+fn validate_registry_managed_baseline_activation_policies(automation_root string,
+	registry JsonValue) ![]SchemaIssue {
+	mut issues := []SchemaIssue{}
+	for target in require_array_member(registry, 'managed_ci_targets')! {
+		target_id := require_string_member(target, 'id')!
+		binding := managed_baseline_activation_binding(target)!
+		if binding.policy_path == '' {
+			continue
+		}
+		load_managed_baseline_activation_policy(automation_root, target_id, binding,
+			toolchain_profile_binding(target)!) or {
+			issues << SchemaIssue{'$/managed_ci_targets', err.msg()}
+		}
+	}
+	return issues
+}
+
 fn legacy_onboarding_binding(target JsonValue) !LegacyOnboardingBinding {
 	onboarding := require_object_member(target, 'legacy_onboarding')!
 	policy_path := require_nullable_string_member(onboarding, 'policy_path')!
@@ -1218,6 +1265,25 @@ fn legacy_onboarding_binding(target JsonValue) !LegacyOnboardingBinding {
 		base_sha:      require_string_member(onboarding, 'base_sha')!
 		policy_path:   policy_path
 		policy_sha256: policy_sha256
+	}
+}
+
+fn managed_baseline_activation_binding(target JsonValue) !ManagedBaselineActivationBinding {
+	activation := require_object_member(target, 'managed_baseline_activation')!
+	policy_path := require_nullable_string_member(activation, 'policy_path')!
+	policy_sha256 := require_nullable_string_member(activation, 'policy_sha256')!
+	if (policy_path == '') != (policy_sha256 == '') {
+		return error('managed baseline activation policy path and hash must both be null or both be resolved')
+	}
+	return ManagedBaselineActivationBinding{
+		base_sha:                 require_string_member(activation, 'base_sha')!
+		base_tree:                require_string_member(activation, 'base_tree')!
+		parent_sha:               require_string_member(activation, 'parent_sha')!
+		base_manifest_sha256:     require_string_member(activation, 'base_manifest_sha256')!
+		base_contract_repository: require_string_member(activation, 'base_contract_repository')!
+		base_contract_sha:        require_string_member(activation, 'base_contract_sha')!
+		policy_path:              policy_path
+		policy_sha256:            policy_sha256
 	}
 }
 
@@ -1233,6 +1299,22 @@ fn reviewed_legacy_onboarding_binding(automation_root string, target_id string,
 		return error('legacy onboarding base differs from the reviewed target pin')
 	}
 	policy := load_legacy_onboarding_policy(automation_root, target_id, binding,
+		toolchain_profile_binding(target)!)!
+	return binding, policy
+}
+
+fn reviewed_managed_baseline_activation_binding(automation_root string, target_id string,
+	base_sha string) !(ManagedBaselineActivationBinding, JsonValue) {
+	registry := parse_strict_json(os.read_file(os.join_path(automation_root, 'targets.json'))!)!
+	target := registry_target_by_id(registry, target_id)!
+	binding := managed_baseline_activation_binding(target)!
+	if binding.policy_path == '' {
+		return error('target has no reviewed managed baseline activation policy')
+	}
+	if base_sha != binding.base_sha {
+		return error('managed baseline activation base differs from the reviewed target pin')
+	}
+	policy := load_managed_baseline_activation_policy(automation_root, target_id, binding,
 		toolchain_profile_binding(target)!)!
 	return binding, policy
 }
@@ -1260,6 +1342,9 @@ fn load_legacy_onboarding_policy(automation_root string, target_id string,
 	if policy_issues.len > 0 {
 		return error('legacy onboarding policy schema failed with ${policy_issues.len} issue(s)')
 	}
+	if require_integer_member(policy, 'projection_version')! != 1 {
+		return error('legacy onboarding policy must retain projection version 1')
+	}
 	if require_string_member(policy, 'target_id')! != target_id {
 		return error('legacy onboarding policy target differs from its registry target')
 	}
@@ -1271,6 +1356,50 @@ fn load_legacy_onboarding_policy(automation_root string, target_id string,
 	}
 	if json_sha256(policy) != binding.policy_sha256 {
 		return error('legacy onboarding policy hash differs from the registry')
+	}
+	return policy
+}
+
+fn load_managed_baseline_activation_policy(automation_root string, target_id string,
+	binding ManagedBaselineActivationBinding,
+	toolchain_binding ToolchainProfileBinding) !JsonValue {
+	expected_path := 'baseline-activation/${target_id}.policy.json'
+	if binding.policy_path != expected_path || !contract_relative_path_is_safe(binding.policy_path) {
+		return error('managed baseline activation policy path differs from the exact target path')
+	}
+	validate_staged_parent_chain(automation_root, binding.policy_path) or {
+		return error('managed baseline activation policy parent chain is not physical')
+	}
+	policy_path := os.join_path(automation_root, binding.policy_path)
+	if !os.is_file(policy_path) || os.is_link(policy_path) {
+		return error('managed baseline activation policy is not a physical regular file')
+	}
+	policy_source := read_stable_toolchain_document(policy_path,
+		'managed baseline activation policy')!
+	policy := parse_strict_json(policy_source)!
+	if policy_source != canonical_json(policy) {
+		return error('managed baseline activation policy bytes must be exact canonical JSON')
+	}
+	policy_issues := validate_json_value(os.join_path(automation_root, 'schemas',
+		'onboarding-policy.schema.json'), policy)!
+	if policy_issues.len > 0 {
+		return error('managed baseline activation policy schema failed with ${policy_issues.len} issue(s)')
+	}
+	if require_integer_member(policy, 'projection_version')! != 2 {
+		return error('managed baseline activation policy must use projection version 2')
+	}
+	managed_baseline_source_commit_evidence(policy)!
+	if require_string_member(policy, 'target_id')! != target_id {
+		return error('managed baseline activation policy target differs from its registry target')
+	}
+	policy_toolchain := require_object_member(policy, 'toolchain')!
+	if toolchain_binding.profile_id == ''
+		|| require_string_member(policy_toolchain, 'profile_id')! != toolchain_binding.profile_id
+		|| require_string_member(policy_toolchain, 'profile_sha256')! != toolchain_binding.profile_sha256 {
+		return error('managed baseline activation policy toolchain differs from the reviewed target profile')
+	}
+	if json_sha256(policy) != binding.policy_sha256 {
+		return error('managed baseline activation policy hash differs from the registry')
 	}
 	return policy
 }
@@ -1344,6 +1473,148 @@ pub fn legacy_onboarding_policy_projection(manifest JsonValue) !JsonValue {
 	])!
 }
 
+// managed_baseline_activation_policy_projection adds an independent, reviewed commit-object
+// authority to the otherwise static onboarding projection. The legacy version 1 projection is
+// deliberately left byte-for-byte unchanged.
+pub fn managed_baseline_activation_policy_projection(manifest JsonValue,
+	source_commit_evidence JsonValue) !JsonValue {
+	legacy := legacy_onboarding_policy_projection(manifest)!
+	mut keys := legacy.object_keys.clone()
+	mut values := legacy.object_values.clone()
+	values[0] = JsonValue{
+		kind:      .integer
+		int_value: 2
+	}
+	keys << 'source_commit_evidence'
+	values << source_commit_evidence
+	projection := object_value_from_pairs(keys, values)!
+	managed_baseline_source_commit_evidence(projection)!
+	return projection
+}
+
+fn managed_baseline_source_commit_evidence(policy JsonValue) ![]ManagedBaselineSourceCommitEvidence {
+	if require_integer_member(policy, 'projection_version')! != 2 {
+		return error('managed baseline source commit evidence requires projection version 2')
+	}
+	sources := require_array_member(policy, 'sources')!
+	entries := require_array_member(policy, 'source_commit_evidence')!
+	if sources.len == 0 || sources.len > 3 || entries.len != sources.len {
+		return error('managed baseline source commit evidence must be bijective with the source matrix')
+	}
+	mut source_ids := []string{cap: sources.len}
+	for source in sources {
+		source_id := require_string_member(source, 'id')!
+		if source_id in source_ids {
+			return error('managed baseline source matrix contains a duplicate source ID')
+		}
+		source_ids << source_id
+	}
+	mut evidence := []ManagedBaselineSourceCommitEvidence{cap: entries.len}
+	mut evidence_ids := []string{cap: entries.len}
+	for entry in entries {
+		authority := require_string_member(entry, 'authority')!
+		mut parsed := ManagedBaselineSourceCommitEvidence{
+			id:         require_string_member(entry, 'id')!
+			repository: require_string_member(entry, 'repository')!
+			ref:        require_string_member(entry, 'ref')!
+			authority:  authority
+		}
+		if parsed.id in evidence_ids {
+			return error('managed baseline source commit evidence contains a duplicate source ID')
+		}
+		if authority == 'source-commit-object' {
+			require_exact_keys(entry, ['id', 'repository', 'ref', 'authority', 'sha', 'tree',
+				'raw_commit_base64'])!
+			if parsed.id !in ['tinycc', 'bdwgc', 'libatomic_ops'] {
+				return error('managed baseline external commit authority has an unsupported source ID')
+			}
+			parsed = ManagedBaselineSourceCommitEvidence{
+				...parsed
+				sha:               require_string_member(entry, 'sha')!
+				tree:              require_string_member(entry, 'tree')!
+				raw_commit_base64: require_string_member(entry, 'raw_commit_base64')!
+			}
+			validate_managed_baseline_raw_commit_evidence(parsed)!
+		} else if authority == 'runtime-contract' {
+			require_exact_keys(entry, ['id', 'repository', 'ref', 'authority'])!
+			if parsed.id != 'v-libgc' || parsed.repository != 'https://github.com/vlang/v.git'
+				|| parsed.ref != 'master' {
+				return error('managed baseline runtime-contract authority is restricted to v-libgc')
+			}
+		} else {
+			return error('managed baseline source commit evidence authority is unsupported')
+		}
+		evidence_ids << parsed.id
+		evidence << parsed
+	}
+	for entry in evidence {
+		if entry.id !in source_ids {
+			return error('managed baseline source commit evidence contains an unreferenced source ID')
+		}
+	}
+	for index, source in sources {
+		source_id := require_string_member(source, 'id')!
+		entry := evidence[index]
+		if entry.id != source_id {
+			return error('managed baseline source commit evidence order differs from the source matrix')
+		}
+		if entry.repository != require_string_member(source, 'repository')!
+			|| entry.ref != require_string_member(source, 'ref')! {
+			return error('managed baseline source commit evidence changed source repository or ref')
+		}
+	}
+	return evidence
+}
+
+fn validate_managed_baseline_raw_commit_evidence(
+	evidence ManagedBaselineSourceCommitEvidence) ! {
+	if !is_lower_hex_40(evidence.sha) || !is_lower_hex_40(evidence.tree) {
+		return error('managed baseline commit evidence must use lowercase SHA-1 object IDs')
+	}
+	if evidence.raw_commit_base64.len < 4
+		|| evidence.raw_commit_base64.len > managed_baseline_source_commit_base64_max_bytes {
+		return error('managed baseline raw commit evidence exceeds its encoded byte bound')
+	}
+	raw := base64.decode(evidence.raw_commit_base64)
+	if raw.len == 0 || raw.len > managed_baseline_source_commit_max_bytes
+		|| base64.encode(raw) != evidence.raw_commit_base64 {
+		return error('managed baseline raw commit evidence is not canonical bounded base64')
+	}
+	mut material := 'commit ${raw.len}\x00'.bytes()
+	material << raw
+	if sha1.sum(material).hex() != evidence.sha {
+		return error('managed baseline raw commit evidence SHA differs from its Git object ID')
+	}
+	raw_source := raw.bytestr()
+	header_end := raw_source.index('\n\n') or {
+		return error('managed baseline raw commit evidence has no complete Git commit header')
+	}
+	header := raw_source[..header_end]
+	if header == '' || header.contains('\x00') || header.contains('\r') {
+		return error('managed baseline raw commit evidence has a malformed Git commit header')
+	}
+	lines := header.split('\n')
+	mut tree_count := 0
+	mut observed_tree := ''
+	for index, line in lines {
+		if line == '' {
+			return error('managed baseline raw commit evidence has a malformed Git commit header')
+		}
+		if line.starts_with('tree ') {
+			tree_count++
+			if index == 0 {
+				observed_tree = line.all_after('tree ')
+			}
+		}
+	}
+	if tree_count != 1 || observed_tree == '' || !is_lower_hex_40(observed_tree) {
+		return error('managed baseline raw commit evidence must start with one exact tree header')
+	}
+	if observed_tree != evidence.tree {
+		return error('managed baseline raw commit evidence tree differs from its declared tree')
+	}
+}
+
 // manifest_toolchain_profile_projection intentionally excludes the producer observation. A
 // monthly build may refresh observed facts, but it cannot migrate the reviewed profile authority.
 fn manifest_toolchain_profile_projection(manifest JsonValue) !JsonValue {
@@ -1364,6 +1635,15 @@ fn validate_manifest_legacy_onboarding_policy(manifest JsonValue, policy JsonVal
 	}
 }
 
+fn validate_manifest_managed_baseline_activation_policy(manifest JsonValue,
+	policy JsonValue) ! {
+	projection := managed_baseline_activation_policy_projection(manifest, require_member(policy,
+		'source_commit_evidence')!)!
+	if !json_equal(projection, policy) {
+		return error('candidate manifest differs from the reviewed managed baseline activation policy')
+	}
+}
+
 // validate_registry_semantics checks the immutable six-target graph independently of I/O.
 pub fn validate_registry_semantics(registry JsonValue) ![]SchemaIssue {
 	mut issues := []SchemaIssue{}
@@ -1378,6 +1658,9 @@ pub fn validate_registry_semantics(registry JsonValue) ![]SchemaIssue {
 	mut actual_branches := []string{}
 	mut seen_target_rows := []string{}
 	mut onboarding_base_shas := []string{}
+	mut managed_baseline_shas := []string{}
+	mut managed_baseline_trees := []string{}
+	mut managed_baseline_manifest_hashes := []string{}
 	mut toolchain_profile_ids := []string{}
 	for target in managed {
 		target_id := require_string_member(target, 'id')!
@@ -1388,6 +1671,26 @@ pub fn validate_registry_semantics(registry JsonValue) ![]SchemaIssue {
 			issues << SchemaIssue{'$/managed_ci_targets', 'legacy onboarding base SHAs must be unique'}
 		}
 		onboarding_base_shas << binding.base_sha
+		activation := managed_baseline_activation_binding(target)!
+		if activation.base_sha in managed_baseline_shas {
+			issues << SchemaIssue{'$/managed_ci_targets', 'managed baseline activation SHAs must be unique'}
+		}
+		managed_baseline_shas << activation.base_sha
+		if activation.base_tree in managed_baseline_trees {
+			issues << SchemaIssue{'$/managed_ci_targets', 'managed baseline activation trees must be unique'}
+		}
+		managed_baseline_trees << activation.base_tree
+		if activation.base_manifest_sha256 in managed_baseline_manifest_hashes {
+			issues << SchemaIssue{'$/managed_ci_targets', 'managed baseline activation manifest hashes must be unique'}
+		}
+		managed_baseline_manifest_hashes << activation.base_manifest_sha256
+		if activation.parent_sha != binding.base_sha || activation.base_sha == activation.parent_sha {
+			issues << SchemaIssue{'$/managed_ci_targets', 'managed baseline activation parent must equal the distinct legacy onboarding base'}
+		}
+		if activation.base_contract_repository != 'vlang/v'
+			|| activation.base_contract_sha != managed_baseline_contract_sha {
+			issues << SchemaIssue{'$/managed_ci_targets', 'managed baseline activation contract binding must equal the reviewed Phase A contract'}
+		}
 		toolchain_binding := toolchain_profile_binding(target)!
 		if toolchain_binding.profile_id != '' {
 			if toolchain_binding.profile_id in toolchain_profile_ids {
@@ -2471,6 +2774,11 @@ fn validate_registry_target_tuple(target JsonValue) ![]SchemaIssue {
 	binding := legacy_onboarding_binding(target)!
 	if binding.policy_path != '' && binding.policy_path != 'onboarding/${target_id}.policy.json' {
 		issues << SchemaIssue{'$/managed_ci_targets', 'managed target legacy onboarding policy path is not exact'}
+	}
+	activation := managed_baseline_activation_binding(target)!
+	if activation.policy_path != ''
+		&& activation.policy_path != 'baseline-activation/${target_id}.policy.json' {
+		issues << SchemaIssue{'$/managed_ci_targets', 'managed target baseline activation policy path is not exact'}
 	}
 	toolchain_binding := toolchain_profile_binding(target)!
 	if toolchain_binding.profile_path != ''

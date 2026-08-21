@@ -1205,7 +1205,7 @@ fn prepare_live_multi_source_atomic_state(suffix string,
 	assert os.execute('git -C ${os.quoted_path(work_root)} commit --allow-empty -qm atomic-head-k2').exit_code == 0
 	head := os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
 	clone :=
-		os.execute('git clone -q --bare ${os.quoted_path(work_root)} ${os.quoted_path(bare_root)}')
+		os.execute('git clone -q --bare --no-local ${os.quoted_path(work_root)} ${os.quoted_path(bare_root)}')
 	assert clone.exit_code == 0, clone.output
 	proof := live_state_proof_set(os.real_path(bare_root), head, [target_commit])
 	freebsd_root := bin.parse_strict_json(freebsd_target) or { panic(err) }
@@ -1532,7 +1532,7 @@ fn prepare_live_source_atomic_state(suffix string,
 		head = os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
 	}
 	clone :=
-		os.execute('git clone -q --bare ${os.quoted_path(work_root)} ${os.quoted_path(bare_root)}')
+		os.execute('git clone -q --bare --no-local ${os.quoted_path(work_root)} ${os.quoted_path(bare_root)}')
 	assert clone.exit_code == 0, clone.output
 	proof := if options.non_first_parent_evidence_at_h {
 		live_state_proof(os.real_path(bare_root), head)
@@ -1622,7 +1622,8 @@ fn prepare_live_state_inventory(suffix string, target_source string, removed_rel
 	assert head.exit_code == 0
 	bare_root := '${root}.git'
 	os.rmdir_all(bare_root) or {}
-	clone := os.execute('git clone -q --bare ${os.quoted_path(root)} ${os.quoted_path(bare_root)}')
+	clone :=
+		os.execute('git clone -q --bare --no-local ${os.quoted_path(root)} ${os.quoted_path(bare_root)}')
 	assert clone.exit_code == 0, clone.output
 	os.rmdir_all(root) or {}
 	return os.real_path(bare_root), head.output.trim_space()
@@ -2586,7 +2587,7 @@ fn test_live_state_reader_fails_closed_on_corrupt_duplicate_symlink_or_wrong_che
 	assert os.execute('git -C ${os.quoted_path(work_root)} commit -qm symlink').exit_code == 0
 	symlink_head :=
 		os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
-	assert os.execute('git clone -q --bare ${os.quoted_path(work_root)} ${os.quoted_path(symlink_bare)}').exit_code == 0
+	assert os.execute('git clone -q --bare --no-local ${os.quoted_path(work_root)} ${os.quoted_path(symlink_bare)}').exit_code == 0
 	symlinked := bin.inspect_live_receiver_state(automation_root(), os.real_path(symlink_bare),
 		live_state_trust(), live_state_proof(os.real_path(symlink_bare), symlink_head),
 		live_handoff_id) or { panic(err) }

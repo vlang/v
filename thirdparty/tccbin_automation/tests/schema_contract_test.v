@@ -360,6 +360,18 @@ fn registry_with_toolchain_profile(registry_source string, target_id string, pro
 		tail.replace_once(binding_marker, '"toolchain_profile": {\n        "profile_id": "${profile_id}",\n        "profile_path": "${profile_path}",\n        "profile_sha256": "${profile_sha256}"\n      }')
 }
 
+fn registry_with_managed_baseline_activation_policy(registry_source string, target_id string,
+	policy_path string, policy_sha256 string) string {
+	target_marker := '"id": "${target_id}"'
+	target_offset := registry_source.index(target_marker) or { panic('target marker missing') }
+	prefix := registry_source[..target_offset]
+	tail := registry_source[target_offset..]
+	binding_marker := '"policy_path": null,\n        "policy_sha256": null\n      },\n      "toolchain_profile"'
+	assert tail.count(binding_marker) > 0
+	return prefix +
+		tail.replace_once(binding_marker, '"policy_path": "${policy_path}",\n        "policy_sha256": "${policy_sha256}"\n      },\n      "toolchain_profile"')
+}
+
 fn test_all_schema_patterns_compile_and_contract_boundaries_are_discriminating() {
 	occurrences := schema_pattern_occurrences()
 	assert occurrences.len > 0
@@ -1566,6 +1578,10 @@ fn test_registry_rejects_every_semantic_tuple_drift() {
 			'"affected_targets": ["linux-amd64"]'),
 		source.replace_once('fdf5cdfea6ea84612e068bc3bea433dbba263404',
 			'ece46f06fbe6eb701d52442f11dd59c48d166cae'),
+		source.replace_once('"base_contract_sha": "7545e515b434cd399333d43659238427d72e22e7"',
+			'"base_contract_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"'),
+		source.replace_once('"parent_sha": "fdf5cdfea6ea84612e068bc3bea433dbba263404"',
+			'"parent_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"'),
 		source.replace_once('"path": "lib/openlibm.o"', '"path": "lib/other.o"'),
 		source.replace_once('"architectures": ["x64"]', '"architectures": ["i386"]'),
 	]
@@ -1574,6 +1590,87 @@ fn test_registry_rejects_every_semantic_tuple_drift() {
 		issues := bin.validate_registry_semantics(registry) or { panic(err) }
 		assert issues.len > 0
 	}
+}
+
+fn test_production_registry_locks_the_six_managed_baseline_activation_tuples() {
+	registry_source := os.read_file(os.join_path(automation_root(), 'targets.json')) or {
+		panic(err)
+	}
+	registry := bin.parse_strict_json(registry_source) or { panic(err) }
+	managed := registry.object_value('managed_ci_targets') or { panic('managed targets missing') }
+	expected := {
+		'freebsd-amd64': [
+			'e71cda6242e88e47312ca9bfc4548b0579636e0c',
+			'9438879ad9906e970d45bafacf6ce2cc63ae4c53',
+			'fdf5cdfea6ea84612e068bc3bea433dbba263404',
+			'a9c2f15451a7e94261c6dd4d9e47cc3965414a2179d04af5902dffc9471a4db3',
+		]
+		'linux-amd64':   [
+			'd6e7ac1b1bcc98aed734a6ecbfa8509f24606c74',
+			'22851c0f356fefcb63718ce63d50a870150a491c',
+			'ece46f06fbe6eb701d52442f11dd59c48d166cae',
+			'bcdce1bea1facb24175229a16dc6e8a2c4210aafc05f0526b2728dc060223ed4',
+		]
+		'macos-amd64':   [
+			'199fa78395ca413aac23d02ec69cc5e7b1d805a2',
+			'db67711bfeb33be63dbc8eb03ecdddc2e127cc8c',
+			'da8ac5a4369accc67c485191d02535d77718a1c8',
+			'09dc54928f4690cfee7fd113de93f36479a40cabd10eeb3ee416a3175b42270a',
+		]
+		'macos-arm64':   [
+			'1d0ad0ecf70a91a1df64cebf215e683b1d5aedb5',
+			'96af5121f065310ba9168e3e2dc61adf340e2738',
+			'274abd2466a14861b75e5b91fd946ad27d114499',
+			'be45aaee1e65cc1ed2ee6bd2f121d72cbc248887ffa3d57f4b6d59cb6ea73525',
+		]
+		'openbsd-amd64': [
+			'8c7d96c75ea8548f007432d70f1ae33cccd81838',
+			'f75c4862711184c4c191a73e6f996eb421bd37b4',
+			'45230fde96c17fff4baf37deb55e90803c043063',
+			'873b62af697ba25f0abe5887ba05972a93bd48990233853b362bed6cb9137699',
+		]
+		'windows-amd64': [
+			'86ae5844b8b56071b21ae3aa138b247d5eb9ddd9',
+			'818d7794ebdf41de60e5679d485e3a5d49272171',
+			'f7c7199bb87fda8b80b31fefa470b2efc952326b',
+			'b5728124ecf8dc01e4f16cf4188411d6f633bb57997ef36df2dc5fd182e8535a',
+		]
+	}
+	mut observed := map[string][]string{}
+	for target in managed.array_value {
+		id := (target.object_value('id') or { panic('target id missing') }).string_value
+		activation := target.object_value('managed_baseline_activation') or {
+			panic('managed baseline activation binding missing')
+		}
+		observed[id] = [
+			(activation.object_value('base_sha') or { panic('base SHA missing') }).string_value,
+			(activation.object_value('base_tree') or { panic('base tree missing') }).string_value,
+			(activation.object_value('parent_sha') or { panic('parent SHA missing') }).string_value,
+			(activation.object_value('base_manifest_sha256') or {
+				panic('base manifest SHA-256 missing')
+			}).string_value,
+		]
+		assert (activation.object_value('base_contract_repository') or {
+			panic('base contract repository missing')
+		}).string_value == 'vlang/v'
+		assert (activation.object_value('base_contract_sha') or {
+			panic('base contract SHA missing')
+		}).string_value == '7545e515b434cd399333d43659238427d72e22e7'
+		assert (activation.object_value('policy_path') or {
+			panic('activation policy path missing')
+		}).kind == .null_value
+		assert (activation.object_value('policy_sha256') or {
+			panic('activation policy hash missing')
+		}).kind == .null_value
+	}
+	assert observed == expected
+
+	half_pair := registry_source.replace_once('"policy_path": null,\n        "policy_sha256": null\n      },\n      "toolchain_profile"',
+		'"policy_path": "baseline-activation/freebsd-amd64.policy.json",\n        "policy_sha256": null\n      },\n      "toolchain_profile"')
+	half_pair_issues := validate_schema_source('targets.schema.json', half_pair,
+		'managed-baseline-activation-half-pair')
+	assert half_pair_issues.len == 1, '${half_pair_issues}'
+	assert half_pair_issues[0].path == '$/managed_ci_targets/0/managed_baseline_activation/policy_sha256'
 }
 
 fn test_production_registry_locks_the_six_reviewed_legacy_base_literals() {
@@ -1886,6 +1983,87 @@ fn test_legacy_onboarding_registry_is_dormant_until_one_canonical_policy_is_revi
 	assert noncanonical_issues[0].message == 'legacy onboarding policy bytes must be exact canonical JSON'
 }
 
+fn test_managed_baseline_activation_policy_loader_is_dormant_and_closed() {
+	root := automation_root()
+	temporary := os.join_path(os.temp_dir(), 'tccbin-baseline-activation-policy-${os.getpid()}')
+	os.rmdir_all(temporary) or {}
+	os.mkdir_all(temporary) or { panic(err) }
+	defer {
+		os.rmdir_all(temporary) or {}
+	}
+	os.cp_all(os.join_path(root, 'schemas'), os.join_path(temporary, 'schemas'), true) or {
+		panic(err)
+	}
+	registry_source := os.read_file(os.join_path(root, 'targets.json')) or { panic(err) }
+	evidence_fixture := managed_baseline_evidence_fixture(schema_fixture_with_resolved_producer('manifest-complete.valid.json',
+		'linux-amd64'))
+	manifest := bin.parse_strict_json(evidence_fixture.manifest_source) or { panic(err) }
+	policy := bin.managed_baseline_activation_policy_projection(manifest, evidence_fixture.evidence) or {
+		panic(err)
+	}
+	policy_source := bin.canonical_json(policy)
+	policy_hash := bin.json_sha256(policy)
+	policy_relative_path := 'baseline-activation/linux-amd64.policy.json'
+	policy_path := os.join_path(temporary, policy_relative_path)
+	os.mkdir_all(os.dir(policy_path)) or { panic(err) }
+	os.write_file(policy_path, policy_source) or { panic(err) }
+
+	profile_source := t2a_profile_source('linux-amd64')
+	profile := bin.parse_strict_json(profile_source) or { panic(err) }
+	profile_sha256 := bin.json_sha256(profile)
+	profile_relative_path := 'toolchain-profiles/linux-amd64.profile.json'
+	profile_path := os.join_path(temporary, profile_relative_path)
+	os.mkdir_all(os.dir(profile_path)) or { panic(err) }
+	os.write_file(profile_path, profile_source) or { panic(err) }
+	with_profile := registry_with_toolchain_profile(registry_source, 'linux-amd64',
+		'linux-amd64-synthetic-v1', profile_relative_path, profile_sha256)
+	resolved_registry := registry_with_managed_baseline_activation_policy(with_profile,
+		'linux-amd64', policy_relative_path, policy_hash)
+	os.write_file(os.join_path(temporary, 'targets.json'), resolved_registry) or { panic(err) }
+	issues := bin.validate_registry(temporary) or { panic(err) }
+	assert issues.len == 0, '${issues}'
+	mut missing_evidence_keys := policy.object_keys.clone()
+	mut missing_evidence_values := policy.object_values.clone()
+	evidence_index := missing_evidence_keys.index('source_commit_evidence')
+	assert evidence_index >= 0
+	missing_evidence_keys.delete(evidence_index)
+	missing_evidence_values.delete(evidence_index)
+	missing_evidence_policy := bin.JsonValue{
+		kind:          .object
+		object_keys:   missing_evidence_keys
+		object_values: missing_evidence_values
+	}
+	missing_evidence_issues := validate_schema_source('onboarding-policy.schema.json',
+		bin.canonical_json(missing_evidence_policy), 'baseline-activation-v2-missing-evidence')
+	assert missing_evidence_issues.len > 0
+	mut legacy_with_evidence_values := policy.object_values.clone()
+	legacy_with_evidence_values[0] = bin.JsonValue{
+		kind:      .integer
+		int_value: 1
+	}
+	legacy_with_evidence_policy := bin.JsonValue{
+		kind:          .object
+		object_keys:   policy.object_keys.clone()
+		object_values: legacy_with_evidence_values
+	}
+	legacy_with_evidence_issues := validate_schema_source('onboarding-policy.schema.json',
+		bin.canonical_json(legacy_with_evidence_policy), 'legacy-v1-with-source-evidence')
+	assert legacy_with_evidence_issues.len > 0
+
+	wrong_path_registry := resolved_registry.replace_once(policy_relative_path,
+		'baseline-activation/freebsd-amd64.policy.json')
+	os.write_file(os.join_path(temporary, 'targets.json'), wrong_path_registry) or { panic(err) }
+	wrong_path_issues := bin.validate_registry(temporary) or { panic(err) }
+	assert wrong_path_issues.len == 1, '${wrong_path_issues}'
+	assert wrong_path_issues[0].message == 'managed target baseline activation policy path is not exact'
+
+	os.write_file(policy_path, '${policy_source}\n') or { panic(err) }
+	os.write_file(os.join_path(temporary, 'targets.json'), resolved_registry) or { panic(err) }
+	noncanonical_issues := bin.validate_registry(temporary) or { panic(err) }
+	assert noncanonical_issues.len == 1, '${noncanonical_issues}'
+	assert noncanonical_issues[0].message == 'managed baseline activation policy bytes must be exact canonical JSON'
+}
+
 fn test_legacy_onboarding_policy_projection_excludes_only_dynamic_identity_and_bytes() {
 	source := schema_fixture_with_resolved_producer('manifest-complete.valid.json', 'linux-amd64')
 	manifest := bin.parse_strict_json(source) or { panic(err) }
@@ -1972,9 +2150,10 @@ fn test_legacy_onboarding_policy_projection_excludes_only_dynamic_identity_and_b
 fn test_candidate_compose_cli_has_an_explicit_mode_and_no_stdout_result_protocol() {
 	assert bin.parse_candidate_transition_kind('monthly') or { panic(err) } == .monthly
 	assert bin.parse_candidate_transition_kind('legacy-onboard') or { panic(err) } == .legacy_onboard
+	assert bin.parse_candidate_transition_kind('baseline-activate') or { panic(err) } == .baseline_activate
 	mut rejected := ''
 	bin.parse_candidate_transition_kind('legacy') or { rejected = err.msg() }
-	assert rejected == 'candidate transition kind must be monthly or legacy-onboard'
+	assert rejected == 'candidate transition kind must be monthly, legacy-onboard, or baseline-activate'
 	source := os.read_file(os.join_path(automation_root(), 'bin', 'cmd', 'main.v')) or {
 		panic(err)
 	}
@@ -1984,10 +2163,10 @@ fn test_candidate_compose_cli_has_an_explicit_mode_and_no_stdout_result_protocol
 	}
 	block := source[start..start + finish_relative]
 	assert block.contains('if os.args.len != 9')
-	assert block.contains('<target-id> <monthly|legacy-onboard>')
+	assert block.contains('<target-id> <monthly|legacy-onboard|baseline-activate>')
 	assert block.count('bin.compose_candidate_for_execution(') == 1
 	assert block.split_into_lines().all(!it.trim_space().starts_with('print'))
-	assert source.contains('candidate-preflight <target-id> <monthly|legacy-onboard>')
+	assert source.contains('candidate-preflight <target-id> <monthly|legacy-onboard|baseline-activate>')
 	composition_source := os.read_file(os.join_path(automation_root(), 'bin',
 		'candidate_composition.v')) or { panic(err) }
 	assert composition_source.count("['hash-object', '-w', '--no-filters', '--',") == 2

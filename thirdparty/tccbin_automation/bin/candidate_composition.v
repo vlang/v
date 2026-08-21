@@ -34,8 +34,13 @@ pub fn compose_candidate_for_execution(automation_root string, request Candidate
 		return error('candidate composition target is not managed')
 	}
 	mut onboarding_policy := JsonValue{}
+	mut activation_binding := ManagedBaselineActivationBinding{}
+	mut activation_policy := JsonValue{}
 	if request.kind == .legacy_onboard {
 		_, onboarding_policy = reviewed_legacy_onboarding_binding(automation_root,
+			request.target_id, request.base_sha)!
+	} else if request.kind == .baseline_activate {
+		activation_binding, activation_policy = reviewed_managed_baseline_activation_binding(automation_root,
 			request.target_id, request.base_sha)!
 	}
 	if !is_lower_hex_40(request.base_sha) {
@@ -43,6 +48,7 @@ pub fn compose_candidate_for_execution(automation_root string, request Candidate
 	}
 	base_root, raw_root, manifest_source_path, result_root := validate_candidate_composition_roots(automation_root,
 		request)!
+	contract_root := canonical_contract_root(os.join_path(automation_root, '..', '..'))!
 	validate_composition_base_repository(base_root, request.base_sha)!
 
 	result_parent := os.dir(result_root)
@@ -69,8 +75,11 @@ pub fn compose_candidate_for_execution(automation_root string, request Candidate
 			return error('monthly composition base manifest failed with ${base_issues.len} issue(s)')
 		}
 		base_manifest = parse_strict_json(os.read_file(manifest_destination)!)!
-	} else {
+	} else if request.kind == .legacy_onboard {
 		attest_legacy_candidate_manifest_absent(candidate_root, request.base_sha)!
+	} else {
+		base_manifest = attest_managed_baseline_activation_base(automation_root, request.target_id,
+			candidate_root, request.base_sha, manifest_destination, activation_binding)!
 	}
 	materialize_candidate_manifest(candidate_root, request.base_sha, request.kind,
 		manifest_source_path)!
@@ -87,9 +96,12 @@ pub fn compose_candidate_for_execution(automation_root string, request Candidate
 		validate_manifest_legacy_onboarding_policy(manifest, onboarding_policy)!
 		validate_legacy_onboarding_base_controls(automation_root, candidate_root, request.base_sha,
 			manifest)!
-	} else {
+	} else if request.kind == .monthly {
 		validate_candidate_policy_projection(base_manifest, manifest)!
 		validate_composition_control_inputs(candidate_root, request.base_sha, manifest)!
+	} else {
+		validate_managed_baseline_activation_candidate(base_manifest, manifest, runtime,
+			activation_binding, activation_policy, contract_root)!
 	}
 
 	compose_declared_candidate_payload(candidate_root, request.base_sha, raw_root, manifest)!
@@ -216,7 +228,7 @@ fn validate_composition_base_repository(root string, base_sha string) ! {
 
 fn materialize_candidate_manifest(candidate_root string, base_sha string,
 	kind CandidateTransitionKind, source_path string) ! {
-	if kind == .monthly {
+	if kind != .legacy_onboard {
 		attest_candidate_manifest_present(candidate_root, base_sha)!
 	} else {
 		attest_legacy_candidate_manifest_absent(candidate_root, base_sha)!
@@ -251,7 +263,7 @@ fn materialize_candidate_manifest(candidate_root string, base_sha string,
 		|| temporary_observation.nlink != 1 {
 		return error('candidate manifest temporary materialization is not a private regular file')
 	}
-	if kind == .monthly {
+	if kind != .legacy_onboard {
 		attest_candidate_manifest_present(candidate_root, base_sha)!
 		os.rm(destination_path)!
 	} else {
