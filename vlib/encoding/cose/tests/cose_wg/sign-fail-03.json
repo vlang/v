@@ -1,0 +1,37 @@
+{
+   "title":"sign-fail-03: Change Sign Algorithm",
+   "fail":true,
+   "input":{
+      "plaintext":"This is the content.",
+      "sign0":{
+         "key":{
+            "kty":"EC",
+            "kid":"11",
+            "crv":"P-256",
+            "x":"usWxHK2PmfnHKwXPS54m0kTcGJ90UiglWiGahtagnv8",
+            "y":"IBOL-C3BttVivg-lSreASjpkttcsz-1rb7btKLv8EX4",
+            "d":"V8kgd2ZBRuh2dgyVINBUqpPDr7BOMGcF22CQMIUHtNM"
+         },
+         "unprotected":{
+            "kid":"11"
+         },
+         "protected":{
+            "alg":"ES256"
+         },
+         "alg":"ES256"
+      },
+      "failures":{
+         "ChangeAttr":{
+            "alg":-999
+         }
+      },
+      "rng_description":"seed for signature"
+   },
+   "intermediates":{
+      "ToBeSign_hex":"846A5369676E61747572653143A101264054546869732069732074686520636F6E74656E742E"
+   },
+   "output":{
+      "cbor_diag":"18([h'A1013903E6', {4: h'3131'}, h'546869732069732074686520636F6E74656E742E', h'8EB33E4CA31D1C465AB05AAC34CC6B23D58FEF5C083106C4D25A91AEF0B0117E2AF9A291AA32E14AB834DC56ED2A223444547E01F11D3B0916E5A4C345CACB36'])",
+      "cbor":"D28445A1013903E6A10442313154546869732069732074686520636F6E74656E742E58408EB33E4CA31D1C465AB05AAC34CC6B23D58FEF5C083106C4D25A91AEF0B0117E2AF9A291AA32E14AB834DC56ED2A223444547E01F11D3B0916E5A4C345CACB36"
+   }
+}
