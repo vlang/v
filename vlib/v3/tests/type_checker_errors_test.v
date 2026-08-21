@@ -584,6 +584,23 @@ fn test_type_checker_reports_core_semantic_errors() {
 	}, 'main.v', 'cannot append `[]modb.Foo` to `[]moda.Foo`')
 }
 
+fn test_vv_input_with_comma_in_decl_assign_is_rejected_without_overwrite() {
+	v3_bin := build_v3()
+	source_path := unique_temp_path('comma_in_decl_assign') + '.vv'
+	default_output := source_path.all_before_last('.vv')
+	source := 'fn main() {\n\ta := [1, 2, 3]\n\tmut b := a.clone(), a.clone()\n\tprintln(b)\n}\n'
+	os.write_file(source_path, source) or { panic(err) }
+	defer {
+		os.rm(source_path) or {}
+		os.rm(default_output) or {}
+	}
+	result := os.execute('${v3_bin} -nocache ${source_path}')
+	assert result.exit_code != 0, 'expected compile failure, got success: ${result.output}'
+	assert result.output.contains('unexpected `,` in expression, use `;` or a new line to separate statements'), result.output
+
+	assert (os.read_file(source_path) or { panic(err) }) == source
+}
+
 fn test_interface_container_as_cast_requirements() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_nonempty_interface_as_array_pattern',

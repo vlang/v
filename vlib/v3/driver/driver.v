@@ -6372,7 +6372,7 @@ fn v3_profile_optional_arg_value(args []string, idx int, command_seen bool) (str
 		return '-', false
 	}
 	if !command_seen && (next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
-		|| next.ends_with('.vsh') || os.is_dir(next)
+		|| next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next)
 		|| !v3_has_following_positional_arg(args, idx + 2)) {
 		return '-', false
 	}
