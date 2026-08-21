@@ -350,7 +350,7 @@ pub fn issue_bot_zone_size_is_valid(byte_count int) bool {
 pub fn sanitize_issue_summary(summary string) string {
 	mut lines := strip_terminal_controls(summary).split_into_lines()
 	if lines.len > issue_summary_max_lines {
-		lines = lines[lines.len - issue_summary_max_lines..]
+		lines = lines[lines.len - issue_summary_max_lines..].clone()
 	}
 	mut sanitized := []string{cap: lines.len}
 	for raw_line in lines {

@@ -42,3 +42,15 @@ fn test_jcs_preserves_valid_surrogate_pairs_as_utf8() {
 	value := bin.parse_strict_json('{"rocket":"\\uD83D\\uDE80"}') or { panic(err) }
 	assert bin.canonical_json(value) == '{"rocket":"🚀"}'
 }
+
+fn test_strict_json_preserves_surrogate_pair_boundaries() {
+	for source, expected in {
+		'"\\uD800\\uDC00"': 0x10000
+		'"\\uDBFF\\uDFFF"': 0x10ffff
+	} {
+		value := bin.parse_strict_json(source) or { panic(err) }
+		runes := value.string_value.runes()
+		assert runes.len == 1
+		assert runes[0] == rune(expected)
+	}
+}

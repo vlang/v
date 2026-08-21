@@ -1031,14 +1031,13 @@ fn validate_recovery_handoff_history_semantics(root JsonValue) ![]SchemaIssue {
 			issues << semantic_issue('${path}/subject_ref_head',
 				'recovery handoff ref HEAD must equal its immutable native subject SHA')
 		}
-		canonical_ref := 'thirdparty-${target_id}'
-		if require_string_member(handoff_subject, 'original_ref')! == canonical_ref
+		target_canonical_ref := 'thirdparty-${target_id}'
+		if require_string_member(handoff_subject, 'original_ref')! == target_canonical_ref
 			&& require_string_member(handoff, 'expected_canonical_head')! != require_string_member(handoff_subject, 'sha')! {
 			issues << semantic_issue('${path}/expected_canonical_head',
 				'canonical recovery handoff must retain the subject SHA as expected HEAD')
 		}
-		issues << validate_recovery_handoff_cas_semantics(root, handoff, path, handoff_id,
-			handoff_subject_hash, ordinal)!
+		issues << validate_recovery_handoff_cas_semantics(root, handoff, path, handoff_id, ordinal)!
 		state := require_string_member(handoff, 'state')!
 		if state != 'complete' {
 			unfinished_count++
@@ -1135,7 +1134,7 @@ fn current_authority_check_sources(root JsonValue) !JsonValue {
 }
 
 fn validate_recovery_handoff_cas_semantics(root JsonValue, handoff JsonValue, path string,
-	handoff_id string, handoff_subject_hash string, ordinal i64) ![]SchemaIssue {
+	handoff_id string, ordinal i64) ![]SchemaIssue {
 	mut issues := []SchemaIssue{}
 	dispatch_ids := require_array_member(handoff, 'dispatch_operation_ids')!
 	if require_integer_member(handoff, 'dispatch_generation')! != i64(dispatch_ids.len) {

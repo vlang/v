@@ -33,6 +33,30 @@ jobs:
           persist-credentials: false
       - name: Configure the immutable VC bootstrap snapshot
         run: git -C vc config --local core.autocrlf false
+      - name: Checkout the immutable TCC bootstrap bundle
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vlang/tccbin
+          ref: ece46f06fbe6eb701d52442f11dd59c48d166cae
+          path: thirdparty/tcc
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Configure and verify the immutable TCC bootstrap bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C thirdparty/tcc config --local core.autocrlf false
+          test "$(git -C thirdparty/tcc rev-parse HEAD)" = "ece46f06fbe6eb701d52442f11dd59c48d166cae"
+          tcc_symbolic_ref_rc=0
+          git -C thirdparty/tcc symbolic-ref --quiet HEAD >/dev/null || tcc_symbolic_ref_rc=$?
+          test "$tcc_symbolic_ref_rc" -eq 1
+          tcc_status="$(git -C thirdparty/tcc status --porcelain --untracked-files=all)"
+          test -z "$tcc_status"
+          test "$(git -C thirdparty/tcc config --local --get core.autocrlf)" = "false"
+          test -x thirdparty/tcc/tcc.exe
+          test -f thirdparty/tcc/lib/libgc.a
+          thirdparty/tcc/tcc.exe --version
       - name: Build the local compiler
         run: |
           make local=1
