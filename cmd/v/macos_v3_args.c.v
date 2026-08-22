@@ -24,7 +24,7 @@ fn macos_v3_non_compilation_command(command string) bool {
 // precedence, options/modes V3 cannot honor yet, and whether the command is an
 // actual compilation command (never `test` or external tools). Compiler bootstrap
 // targets normally stay on V1, but explicit `-b fastc` owns those targets too: its
-// direct emitter falls back to V3's checked C backend for the full compiler source.
+// complete lane uses V3's checked frontend and full fastc generator for the compiler source.
 // Both the Darwin dispatcher (where it overrides the default heuristic) and the
 // non-macOS dispatcher (where it is the sole gate) rely on it, so it must stay
 // platform neutral.
@@ -36,7 +36,9 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
 		return false
 	}
-	if prefs.autofree && prefs.is_run {
+	if prefs.autofree && prefs.is_run && !macos_v3_fastc_requested(prefs) {
+		// V1 still owns the established `v -autofree run ...` orchestration.
+		// FastC promotes autofree programs to its checked C lane.
 		return false
 	}
 	if prefs.path == '' || command == 'test' || macos_v3_non_compilation_command(command)
@@ -63,6 +65,16 @@ fn macos_v3_fastc_requested(prefs &pref.Preferences) bool {
 		}
 	}
 	return selected_backend == 'fastc'
+}
+
+// macos_v3_test_ownership_uses_v1 keeps ownership/autofree test binaries on
+// V1. vtest marks its per-file compilations with `-skip-running`; compiling an
+// autofree test through the ownership-enabled V3 tool can consume far more
+// memory than the test itself. Direct V3 ownership builds remain available;
+// fastc uses the same checked ownership lane as the C backend.
+fn macos_v3_test_ownership_uses_v1(prefs &pref.Preferences, args []string) bool {
+	return prefs.skip_running && !macos_v3_fastc_requested(prefs)
+		&& (prefs.autofree || '-ownership' in args)
 }
 
 // These helpers are shared by the native Darwin dispatcher and the default

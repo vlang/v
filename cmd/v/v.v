@@ -219,6 +219,11 @@ fn invoke_help_and_exit(remaining []string) {
 fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_args []string) {
 	is_ownership := '-ownership' in merged_args
 	is_autofree := prefs.autofree
+	$if macos {
+		if macos_v3_test_ownership_uses_v1(prefs, merged_args) {
+			return
+		}
+	}
 	if !ownership_delegation_is_requested(is_ownership, is_autofree, prefs.old_compiler,
 		os.user_os()) {
 		return

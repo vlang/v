@@ -413,7 +413,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					short := qname.all_after_last('.')
 					add_suffix_candidate(mut suffix_map, short, qname)
 				}
-				if fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v') {
+				if (fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v'))
+					|| (fn_decl_module == 'fastc'
+					&& fn_decl_file.ends_with('/gen/fastc/interface.v')) {
 					c_interface_roots << node.value
 					if qname != node.value {
 						c_interface_roots << qname
@@ -481,6 +483,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		// are only selected after markused (by prealloc/worker lowering). Keep their
 		// concrete callees available for self-hosted compiler builds.
 		for seed in ['c.FlatGen.gen_fn_items_scoped_batches',
+			'fastc.FlatGen.gen_fn_items_scoped_batches',
 			'markused.CallCollector.collect_bodies_scoped_batches',
 			'parser.Parser.precollect_parallel_comptime_consts',
 			'types.TypeChecker.check_scoped_batches', 'driver.compare_print_notices',
@@ -1296,7 +1299,10 @@ fn markused_generated_c_helper_name(name string) bool {
 		'FlatGen.sum_type_index_resolved', 'c.FlatGen.sum_type_index',
 		'c.FlatGen.sum_type_index_resolved', 'v3.gen.c.FlatGen.sum_type_index',
 		'v3.gen.c.FlatGen.sum_type_index_resolved', 'c__FlatGen__sum_type_index',
-		'c__FlatGen__sum_type_index_resolved']
+		'c__FlatGen__sum_type_index_resolved', 'fastc.FlatGen.sum_type_index',
+		'fastc.FlatGen.sum_type_index_resolved', 'v3.gen.fastc.FlatGen.sum_type_index',
+		'v3.gen.fastc.FlatGen.sum_type_index_resolved', 'fastc__FlatGen__sum_type_index',
+		'fastc__FlatGen__sum_type_index_resolved']
 }
 
 fn markused_generated_c_helper_aliases(name string) []string {
@@ -1308,6 +1314,9 @@ fn markused_generated_c_helper_aliases(name string) []string {
 			'c.FlatGen.sum_type_index_resolved',
 			'v3.gen.c.FlatGen.sum_type_index_resolved',
 			'c__FlatGen__sum_type_index_resolved',
+			'fastc.FlatGen.sum_type_index_resolved',
+			'v3.gen.fastc.FlatGen.sum_type_index_resolved',
+			'fastc__FlatGen__sum_type_index_resolved',
 		])
 	}
 	if name.contains('sum_type_index') {
@@ -1318,6 +1327,9 @@ fn markused_generated_c_helper_aliases(name string) []string {
 			'c.FlatGen.sum_type_index',
 			'v3.gen.c.FlatGen.sum_type_index',
 			'c__FlatGen__sum_type_index',
+			'fastc.FlatGen.sum_type_index',
+			'v3.gen.fastc.FlatGen.sum_type_index',
+			'fastc__FlatGen__sum_type_index',
 		])
 	}
 	return [name]
@@ -1934,7 +1946,8 @@ fn build_prepared_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker) 
 		if qname != node.value && qname.index_u8(`.`) >= 0 && can_suffix_match {
 			add_suffix_candidate(mut result.suffix_map, qname.all_after_last('.'), qname)
 		}
-		if fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v') {
+		if (fn_decl_module == 'c' && fn_decl_file.ends_with('/gen/c/interface.v'))
+			|| (fn_decl_module == 'fastc' && fn_decl_file.ends_with('/gen/fastc/interface.v')) {
 			result.c_interface_roots << node.value
 			if qname != node.value {
 				result.c_interface_roots << qname

@@ -5,6 +5,9 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+// This file is the scanner-direct optimization. The complete checked backend is
+// FlatGen, split across the other files in this module.
+
 const c_preamble = r'#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -62,7 +65,7 @@ mut:
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
 // not construct a flat AST or invoke semantic type checking. Unsupported syntax is returned as
-// an error so the driver can retry the source with the normal C backend.
+// an error so the driver can promote the source to fastc's complete checked lane.
 pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)

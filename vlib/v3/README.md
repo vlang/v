@@ -95,24 +95,28 @@ edit-run cycle. It scans the source once and emits GNU C while consuming tokens.
 not create a flat AST and does not run imports, type checking, transform, type annotation, or
 mark-used. Bundled TinyCC compiles the emitted translation unit immediately.
 
-FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
-expressions, `if`/`else`, and condition, C-style, infinite, and integer-range `for` loops. GNU
-`typeof` carries `:=` declarations into C without V type inference. Unsupported syntax silently
-selects the normal C backend. A TinyCC error is also discarded and the original V source is
-reparsed by the normal C backend, so the user receives V parser or type-checker diagnostics rather
-than a speculative C diagnostic. A successfully compiled `run` program keeps its exit status and
-is never retried.
+FastC's direct lane currently emits primitive functions and parameters, inferred local
+declarations, ordinary expressions, `if`/`else`, and condition, C-style, infinite, and
+integer-range `for` loops. GNU
+`typeof` carries `:=` declarations into C without V type inference. Unsupported syntax promotes
+the source to fastc's complete lane, which uses the parser, checker, transformer, and mark-used
+pass, then emits C with its own `v3.gen.fastc.FlatGen` backend. That backend is a full fork of the
+V3 C generator rather than an alias or a runtime switch to `v3.gen.c`. A TinyCC error is also
+discarded and the original V source is compiled by the checked fastc lane, so the user receives V
+parser or type-checker diagnostics rather than a speculative C diagnostic. The complete lane has
+the same language and ownership/autofree coverage as the C backend. A successfully compiled `run`
+program keeps its exit status and is never retried.
 
 The direct path is limited to host-target, non-production, non-test, non-shared single-file builds.
-Other modes select the normal C backend before source scanning. `-o file.c` emits the standalone
-fast C translation unit without invoking TinyCC.
+Compiler/self-host and other non-direct modes enter the complete lane before source scanning.
+`-o file.c` emits the standalone fast C translation unit when the direct lane supports the input;
+otherwise it emits the complete `v3.gen.fastc` translation unit.
 
 `v self -b fastc` and direct compiler builds such as `v -b fastc -o v2 cmd/v` are routed to V3.
-The compiler source is outside the direct subset, so fastc immediately selects the checked V3 C
-backend for that build. The resulting self-hosted compiler retains fastc and can use the direct
-path for supported user programs, including when its output has a custom filename in the V checkout.
-The fastc integration test self-hosts the standalone V3 compiler through five successive generations
-and verifies that the fifth generation still compiles and runs a direct-fastc program.
+Self-host builds enter fastc's complete lane directly. The checked frontend feeds the independent
+`v3.gen.fastc.FlatGen` implementation, so the resulting compiler supports the full V3 source tree
+and retains both fastc lanes for user programs, including when its output has a custom filename in
+the V checkout. The fastc integration test exercises five successive self-host generations.
 
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
 detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets

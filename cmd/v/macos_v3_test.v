@@ -1711,4 +1711,24 @@ fn test_macos_v3_fastc_routes_compiler_selfhost_targets() {
 	assert !macos_v3_fastc_requested(&pref.Preferences{
 		build_options: ['-b fastc', '-b c']
 	})
+	assert macos_v3_force_requested('run', &pref.Preferences{
+		new_compiler:  true
+		autofree:      true
+		is_run:        true
+		path:          'main.v'
+		build_options: ['-b fastc']
+	})
+}
+
+fn test_macos_v3_vtest_ownership_modes_use_v1_except_fastc() {
+	mut prefs := &pref.Preferences{
+		skip_running: true
+		autofree:     true
+	}
+	assert macos_v3_test_ownership_uses_v1(prefs, ['-skip-running', '-autofree', 'main.v'])
+	prefs.autofree = false
+	assert macos_v3_test_ownership_uses_v1(prefs, ['-skip-running', '-ownership', 'main.v'])
+	prefs.build_options = ['-b fastc']
+	assert !macos_v3_test_ownership_uses_v1(prefs, ['-skip-running', '-ownership', '-b',
+		'fastc', 'main.v'])
 }
