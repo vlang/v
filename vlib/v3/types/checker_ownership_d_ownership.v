@@ -4319,7 +4319,7 @@ fn (mut tc TypeChecker) ownership_prescan_branch_tail_for_owned_calls(branch_id 
 		branch_local_types)
 }
 
-fn (mut tc TypeChecker) ownership_prescan_params_field_arg(node flat.Node, info CallInfo, arg_node flat.Node, arg_id flat.NodeId, mut owned_locals map[string]bool, mut local_types map[string]Type) {
+fn (mut tc TypeChecker) ownership_prescan_collapsed_field_arg(node flat.Node, info CallInfo, arg_node flat.Node, arg_id flat.NodeId, mut owned_locals map[string]bool, mut local_types map[string]Type) {
 	field_name := arg_node.value
 	arg_owned := tc.ownership_prescan_expr_for_owned_calls(arg_id, mut owned_locals, mut
 		local_types)
@@ -4329,14 +4329,14 @@ fn (mut tc TypeChecker) ownership_prescan_params_field_arg(node flat.Node, info 
 		}
 		return
 	}
-	param_idx := tc.ownership_call_params_struct_decl_param_idx(node, info)
+	param_idx := tc.ownership_call_collapsed_struct_decl_param_idx(node, info)
 	if param_idx < 0 {
 		if arg_owned {
 			tc.ownership_prescan_consume_local(arg_id, mut owned_locals)
 		}
 		return
 	}
-	suffix := '.${field_name}'
+	suffix := tc.ownership_collapsed_field_suffix(node, info, field_name)
 	if arg_owned {
 		arg_name := tc.ownership_expr_ident_name(arg_id)
 		arg_type := if arg_name.len > 0 {
@@ -4425,8 +4425,8 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 		arg_node := tc.a.child_node(&node, i)
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		if arg_node.kind == .field_init {
-			tc.ownership_prescan_params_field_arg(node, info, arg_node, arg_id, mut owned_locals, mut
-				local_types)
+			tc.ownership_prescan_collapsed_field_arg(node, info, arg_node, arg_id, mut
+				owned_locals, mut local_types)
 			continue
 		}
 		param_idx := tc.ownership_call_arg_decl_param_idx(info, i)
@@ -4724,21 +4724,26 @@ fn (tc &TypeChecker) ownership_call_arg_expected_type(info CallInfo, type_param_
 	return Type(void_)
 }
 
-fn (tc &TypeChecker) ownership_call_params_struct_decl_param_idx(node flat.Node, info CallInfo) int {
+fn (tc &TypeChecker) ownership_call_collapsed_struct_decl_param_idx(node flat.Node, info CallInfo) int {
 	if info.params.len == 0 {
 		return -1
 	}
-	mut type_param_idx := -1
-	for i := info.params.len - 1; i >= 0; i-- {
-		if tc.is_params_struct_type(info.params[i]) {
-			type_param_idx = i
-			break
-		}
-	}
-	if type_param_idx < 0 {
+	type_param_idx := tc.collapsed_call_arg_param_idx(node, info)
+	if type_param_idx < 0 || type_param_idx >= info.params.len {
 		return -1
 	}
+	target := tc.collapsed_call_arg_type(node, info) or { return -1 }
+	_ := struct_type_from_type(unwrap_pointer(target)) or { return -1 }
 	return type_param_idx - tc.ownership_call_arg_shift(node, info)
+}
+
+fn (tc &TypeChecker) ownership_collapsed_field_suffix(node flat.Node, info CallInfo, field_name string) string {
+	type_param_idx := tc.collapsed_call_arg_param_idx(node, info)
+	if info.is_variadic && type_param_idx == info.params.len - 1 && type_param_idx >= 0
+		&& info.params[type_param_idx] is Array {
+		return '[0].${field_name}'
+	}
+	return '.${field_name}'
 }
 
 fn (tc &TypeChecker) ownership_prescan_consume_local(expr_id flat.NodeId, mut owned_locals map[string]bool) {
@@ -8395,16 +8400,16 @@ fn ownership_add_conditional_move_source(mut moved_sources []OwnershipConditiona
 	}
 }
 
-fn (mut tc TypeChecker) ownership_after_params_field_arg(node flat.Node, info CallInfo, arg_node flat.Node, arg_id flat.NodeId, pos flat.NodeId, call_name string, mut call_borrows []string) {
+fn (mut tc TypeChecker) ownership_after_collapsed_field_arg(node flat.Node, info CallInfo, arg_node flat.Node, arg_id flat.NodeId, pos flat.NodeId, call_name string, mut call_borrows []string) {
 	field_name := arg_node.value
 	if field_name.len == 0 || info.name.len == 0 {
 		return
 	}
-	param_idx := tc.ownership_call_params_struct_decl_param_idx(node, info)
+	param_idx := tc.ownership_call_collapsed_struct_decl_param_idx(node, info)
 	if param_idx < 0 {
 		return
 	}
-	suffix := '.${field_name}'
+	suffix := tc.ownership_collapsed_field_suffix(node, info, field_name)
 	borrow_name := tc.ownership_borrowed_name(arg_id)
 	if borrow_name.len > 0 {
 		if moved := tc.ownership_moved_conflict(borrow_name) {
@@ -9005,7 +9010,7 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		arg_node := tc.a.child_node(&node, i)
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		if arg_node.kind == .field_init {
-			tc.ownership_after_params_field_arg(node, info, arg_node, arg_id, id, call_name, mut
+			tc.ownership_after_collapsed_field_arg(node, info, arg_node, arg_id, id, call_name, mut
 				call_borrows)
 			continue
 		}
@@ -10302,10 +10307,15 @@ fn (tc &TypeChecker) ownership_call_arg_for_return_param_source_info(node flat.N
 			return none
 		}
 	}
-	if source_suffix.starts_with('.') {
-		params_idx := tc.ownership_call_params_struct_decl_param_idx(node, info)
+	field_suffix := if source_suffix.starts_with('[0].') {
+		source_suffix[3..]
+	} else {
+		source_suffix
+	}
+	if field_suffix.starts_with('.') {
+		params_idx := tc.ownership_call_collapsed_struct_decl_param_idx(node, info)
 		if params_idx == param_idx {
-			field_name, rest := ownership_split_first_field_suffix(source_suffix)
+			field_name, rest := ownership_split_first_field_suffix(field_suffix)
 			if field_name.len > 0 {
 				for i in 1 .. node.children_count {
 					arg_node := tc.a.child_node(&node, i)
