@@ -1456,6 +1456,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
 	t.materialize_generic_structs(true)
 	t.monomorph_profile('mono wrapper structs: ${time.ticks() - debug_started} ms')
+	t.run_auto_str_synthesis_rounds(base_node_count)
 	t.run_default_clone_synthesis_rounds(base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
 	t.monomorph_profile('mono wrapper sums: ${time.ticks() - debug_started} ms')
