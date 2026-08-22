@@ -6933,6 +6933,106 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 }
 
 fn c_preserved_system_include_declared_fns(include_arg string) []string {
+	if include_arg in ['"sqlite3.h"', '<sqlite3.h>'] {
+		return [
+			'sqlite3_bind_double',
+			'sqlite3_bind_int',
+			'sqlite3_bind_int64',
+			'sqlite3_bind_null',
+			'sqlite3_bind_text',
+			'sqlite3_busy_timeout',
+			'sqlite3_changes',
+			'sqlite3_close',
+			'sqlite3_column_bytes',
+			'sqlite3_column_count',
+			'sqlite3_column_double',
+			'sqlite3_column_int',
+			'sqlite3_column_int64',
+			'sqlite3_column_name',
+			'sqlite3_column_text',
+			'sqlite3_column_type',
+			'sqlite3_errmsg',
+			'sqlite3_errstr',
+			'sqlite3_finalize',
+			'sqlite3_free',
+			'sqlite3_last_insert_rowid',
+			'sqlite3_memory_used',
+			'sqlite3_open',
+			'sqlite3_open_v2',
+			'sqlite3_prepare_v2',
+			'sqlite3_reset',
+			'sqlite3_step',
+			'sqlite3_vfs_find',
+			'sqlite3_vfs_register',
+			'sqlite3_vfs_unregister',
+		]
+	}
+	if include_arg == '<mbedtls/net_sockets.h>' {
+		return [
+			'mbedtls_net_accept',
+			'mbedtls_net_bind',
+			'mbedtls_net_connect',
+			'mbedtls_net_free',
+			'mbedtls_net_init',
+			'mbedtls_net_recv',
+			'mbedtls_net_recv_timeout',
+			'mbedtls_net_send',
+		]
+	}
+	if include_arg == '<mbedtls/entropy.h>' {
+		return ['mbedtls_entropy_free', 'mbedtls_entropy_func', 'mbedtls_entropy_init']
+	}
+	if include_arg == '<mbedtls/ctr_drbg.h>' {
+		return [
+			'mbedtls_ctr_drbg_free',
+			'mbedtls_ctr_drbg_init',
+			'mbedtls_ctr_drbg_random',
+			'mbedtls_ctr_drbg_seed',
+		]
+	}
+	if include_arg == '<mbedtls/error.h>' {
+		return ['mbedtls_high_level_strerr']
+	}
+	if include_arg == '<mbedtls/ssl.h>' {
+		return [
+			'mbedtls_debug_set_threshold',
+			'mbedtls_pk_free',
+			'mbedtls_pk_init',
+			'mbedtls_pk_parse_key',
+			'mbedtls_pk_parse_keyfile',
+			'mbedtls_pk_sign_ext',
+			'mbedtls_pk_verify',
+			'mbedtls_pk_verify_ext',
+			'mbedtls_ssl_conf_alpn_protocols',
+			'mbedtls_ssl_conf_authmode',
+			'mbedtls_ssl_conf_ca_chain',
+			'mbedtls_ssl_conf_own_cert',
+			'mbedtls_ssl_conf_read_timeout',
+			'mbedtls_ssl_conf_rng',
+			'mbedtls_ssl_conf_sni',
+			'mbedtls_ssl_config_defaults',
+			'mbedtls_ssl_config_free',
+			'mbedtls_ssl_config_init',
+			'mbedtls_ssl_free',
+			'mbedtls_ssl_get_alpn_protocol',
+			'mbedtls_ssl_handshake',
+			'mbedtls_ssl_init',
+			'mbedtls_ssl_read',
+			'mbedtls_ssl_session_reset',
+			'mbedtls_ssl_set_bio',
+			'mbedtls_ssl_set_hostname',
+			'mbedtls_ssl_set_hs_authmode',
+			'mbedtls_ssl_set_hs_ca_chain',
+			'mbedtls_ssl_set_hs_own_cert',
+			'mbedtls_ssl_setup',
+			'mbedtls_ssl_write',
+			'mbedtls_x509_crt_free',
+			'mbedtls_x509_crt_init',
+			'mbedtls_x509_crt_parse',
+			'mbedtls_x509_crt_parse_file',
+			'mbedtls_x509_crt_verify',
+		]
+	}
 	if include_arg == '<dlfcn.h>' {
 		return ['dlclose', 'dlerror', 'dlopen', 'dlsym']
 	}
@@ -16926,6 +17026,12 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
 		g.writeln('#ifndef VCALLCONV')
 		g.writeln('#define VCALLCONV(x)')
+		g.writeln('#endif')
+		// TCC does not predefine __GLIBC__. Let glibc's feature header identify the
+		// active libc before V1's compatible manual stdio declarations choose between
+		// the glibc and musl stream qualifiers.
+		g.writeln('#if defined(__linux__) && !defined(__ANDROID__)')
+		g.writeln('#include <features.h>')
 		g.writeln('#endif')
 		g.write(manual_stdlib_c_headers())
 		g.writeln('void abort(void);')

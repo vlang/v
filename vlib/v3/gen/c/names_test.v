@@ -257,13 +257,32 @@ fn test_guarded_preamble_externs_keep_explicit_declarations() {
 	g.c_directives << CDirective{
 		text: '#include <math.h>'
 	}
-	for name in ['accept', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl', 'rmdir'] {
+	for name in ['accept', 'accept4', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl',
+		'pthread_rwlockattr_destroy', 'rmdir', 'syscall'] {
 		assert !g.should_emit_c_extern_decl(name)
 	}
 }
 
+fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations() {
+	mut g := FlatGen.new()
+	g.c_directives << CDirective{
+		text: '#include <math.h>'
+	}
+	g.preamble()
+	preamble := g.sb.str()
+	features := preamble.index('#include <features.h>') or { -1 }
+	manual_stdio := preamble.index('// c_headers') or { -1 }
+	assert features >= 0
+	assert manual_stdio >= 0
+	assert features < manual_stdio
+}
+
 fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_declared_fns('<stdio.h>').len == 0
+	assert 'sqlite3_bind_text' in c_preserved_system_include_declared_fns('"sqlite3.h"')
+	assert 'sqlite3_column_name' in c_preserved_system_include_declared_fns('<sqlite3.h>')
+	assert 'mbedtls_pk_parse_key' in c_preserved_system_include_declared_fns('<mbedtls/ssl.h>')
+	assert 'mbedtls_net_accept' in c_preserved_system_include_declared_fns('<mbedtls/net_sockets.h>')
 	assert c_preserved_system_include_declared_fns('<openssl/ssl.h>') == ['X509_free']
 	assert c_preserved_system_include_declared_fns('<openssl/x509.h>') == [
 		'X509_free',

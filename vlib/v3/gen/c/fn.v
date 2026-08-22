@@ -15118,6 +15118,7 @@ const c_system_libc_preamble_declared_fns = {
 	'__builtin_ctzll':               true
 	'abs':                           true
 	'accept':                        true
+	'accept4':                       true
 	'atomic_thread_fence':           true
 	'bind':                          true
 	'chdir':                         true
@@ -15174,6 +15175,7 @@ const c_system_libc_preamble_declared_fns = {
 	'pthread_rwlock_unlock':         true
 	'pthread_rwlock_wrlock':         true
 	'pthread_rwlockattr_init':       true
+	'pthread_rwlockattr_destroy':    true
 	'pthread_rwlockattr_setkind_np': true
 	'kevent':                        true
 	'kqueue':                        true
@@ -15199,6 +15201,7 @@ const c_system_libc_preamble_declared_fns = {
 	'symlink':                       true
 	'sysconf':                       true
 	'system':                        true
+	'syscall':                       true
 	'timegm':                        true
 	'unlink':                        true
 	'unsetenv':                      true
