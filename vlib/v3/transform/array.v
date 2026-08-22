@@ -11,8 +11,8 @@ fn (mut t Transformer) make_array_new_call(elem_type string, len_expr flat.NodeI
 	} else {
 		elem_type
 	}
-	return t.make_call_typed('array_new', arr3(t.make_sizeof_type(storage_size_type), len_expr,
-		cap_expr), '[]${elem_type}')
+	return t.make_call_typed('array_new',
+		[t.make_sizeof_type(storage_size_type), len_expr, cap_expr], '[]${elem_type}')
 }
 
 fn shared_array_inner_type_text(raw string) ?string {
@@ -91,7 +91,7 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 	base := t.transform_expr(base_id)
 	count := t.transform_expr(count_id)
 	selector := t.make_selector(base, 'repeat_to_depth', '')
-	return t.make_call_expr_typed(selector, arr2(count, t.make_int_literal(depth)), node.typ)
+	return t.make_call_expr_typed(selector, [count, t.make_int_literal(depth)], node.typ)
 }
 
 // make_plain_array_repeat_value preserves the repeated result before destroying a
@@ -104,11 +104,13 @@ fn (mut t Transformer) make_plain_array_repeat_value(base_id flat.NodeId, count_
 	count := t.transform_expr_for_type(count_id, 'int')
 	repeat_selector := t.make_selector(stable_source, 'repeat_to_depth', '')
 	clone_depth := array_repeat_clone_depth(array_type)
-	repeated := t.make_call_expr_typed(repeat_selector,
-		arr2(count, t.make_int_literal(clone_depth)), array_type)
+	repeated := t.make_call_expr_typed(repeat_selector, [count, t.make_int_literal(clone_depth)],
+		array_type)
 	out_name := t.new_temp('plain_array_repeat')
 	t.pending_stmts << t.make_decl_assign_typed(out_name, repeated, array_type)
-	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source), 'void'))
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
+		stable_source,
+	], 'void'))
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), array_type)
 	return result
@@ -131,7 +133,7 @@ fn (mut t Transformer) make_owned_array_repeat_value(base_id flat.NodeId, count_
 		'owned_array_repeat_source')
 	count := t.transform_expr_for_type(count_id, 'int')
 	repeat_selector := t.make_selector(stable_source, 'repeat_to_depth', '')
-	storage_repeat := t.make_call_expr_typed(repeat_selector, arr2(count, t.make_int_literal(0)),
+	storage_repeat := t.make_call_expr_typed(repeat_selector, [count, t.make_int_literal(0)],
 		array_type)
 	out_name := t.new_temp('owned_array_repeat')
 	idx_name := t.new_temp('owned_array_repeat_idx')
@@ -151,8 +153,9 @@ fn (mut t Transformer) make_owned_array_repeat_value(base_id flat.NodeId, count_
 		skip_ownership_drops: true
 	})
 	if source_is_owned_temporary {
-		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
-			'void'))
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
+			stable_source,
+		], 'void'))
 	}
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), array_type)
@@ -254,18 +257,20 @@ fn array_nested_eq_depth(typ string) int {
 fn (mut t Transformer) make_array_push_many_call(lhs_addr flat.NodeId, rhs flat.NodeId, rhs_type string) flat.NodeId {
 	t.mark_fn_used('array__push_many')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'push_many')
-	return t.make_call_typed('array__push_many', arr3(lhs_addr, t.make_selector(rhs_value, 'data',
-		'voidptr'), t.make_selector(rhs_value, 'len', 'int')), 'void')
+	return t.make_call_typed('array__push_many', [lhs_addr,
+		t.make_selector(rhs_value, 'data', 'voidptr'), t.make_selector(rhs_value, 'len', 'int')],
+		'void')
 }
 
 fn (mut t Transformer) make_array_insert_many_call(lhs_addr flat.NodeId, index flat.NodeId, rhs flat.NodeId, rhs_type string) flat.NodeId {
 	if t.is_fixed_array_type(rhs_type) {
-		return t.make_call_typed('array__insert_many', arr4(lhs_addr, index, rhs,
-			t.make_fixed_array_len_expr(rhs_type)), 'void')
+		return t.make_call_typed('array__insert_many', [lhs_addr, index, rhs,
+			t.make_fixed_array_len_expr(rhs_type)], 'void')
 	}
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'insert_many')
-	return t.make_call_typed('array__insert_many', arr4(lhs_addr, index, t.make_selector(rhs_value,
-		'data', 'voidptr'), t.make_selector(rhs_value, 'len', 'int')), 'void')
+	return t.make_call_typed('array__insert_many', [lhs_addr, index,
+		t.make_selector(rhs_value, 'data', 'voidptr'), t.make_selector(rhs_value, 'len', 'int')],
+		'void')
 }
 
 fn (mut t Transformer) transform_array_many_rhs(id flat.NodeId, node flat.Node, array_type string) flat.NodeId {
@@ -320,7 +325,9 @@ fn (mut t Transformer) make_array_clone_from_owned_temporary(source flat.NodeId,
 	out_name := t.new_temp('array_clone')
 	cloned := t.make_array_clone_value(stable_source, array_type)
 	t.pending_stmts << t.make_decl_assign_typed(out_name, cloned, array_type)
-	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source), 'void'))
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
+		stable_source,
+	], 'void'))
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), array_type)
 	return result
@@ -347,8 +354,9 @@ fn (mut t Transformer) make_array_reverse_call(base_id flat.NodeId, base_type st
 		clone := t.make_array_clone_call(base_id, base_type)
 		stable_clone := t.stable_transformed_expr_for_reuse(clone, clean_type, 'owned_reverse')
 		t.mark_fn_used('array__reverse_in_place')
-		reverse := t.make_call_typed('array__reverse_in_place', arr1(t.runtime_addr(stable_clone,
-			clean_type)), 'void')
+		reverse := t.make_call_typed('array__reverse_in_place', [
+			t.runtime_addr(stable_clone, clean_type),
+		], 'void')
 		t.pending_stmts << t.make_expr_stmt(reverse)
 		return stable_clone
 	}
@@ -357,17 +365,19 @@ fn (mut t Transformer) make_array_reverse_call(base_id flat.NodeId, base_type st
 		receiver = t.make_prefix(.mul, receiver)
 		t.set_node_typ(int(receiver), clean_type)
 	}
-	return t.make_call_typed('array__reverse', arr1(receiver), clean_type)
+	return t.make_call_typed('array__reverse', [receiver], clean_type)
 }
 
 fn (mut t Transformer) make_array_clone_value(receiver flat.NodeId, base_type string) flat.NodeId {
 	clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
 	depth := array_repeat_clone_depth(clean_type)
 	if depth > 0 {
-		return t.make_call_typed('array__clone_to_depth', arr2(t.runtime_addr(receiver, base_type),
-			t.make_int_literal(depth)), clean_type)
+		return t.make_call_typed('array__clone_to_depth', [
+			t.runtime_addr(receiver, base_type),
+			t.make_int_literal(depth),
+		], clean_type)
 	}
-	return t.make_call_typed('array__clone', arr1(t.runtime_addr(receiver, base_type)), clean_type)
+	return t.make_call_typed('array__clone', [t.runtime_addr(receiver, base_type)], clean_type)
 }
 
 fn (mut t Transformer) clone_nested_array_spread_value(spread flat.NodeId, spread_type string) flat.NodeId {
@@ -629,8 +639,10 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 			t.transform_expr_for_type(elem_id, elem_type)
 		}
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
-		call := t.make_call_typed('array_push', arr2(t.make_prefix(.amp, t.make_ident(tmp_name)), t.make_prefix(.amp,
-			t.make_ident(value_name))), 'void')
+		call := t.make_call_typed('array_push', [
+			t.make_prefix(.amp, t.make_ident(tmp_name)),
+			t.make_prefix(.amp, t.make_ident(value_name)),
+		], 'void')
 		t.pending_stmts << t.make_expr_stmt(call)
 	}
 	result := t.make_ident(tmp_name)
@@ -685,8 +697,9 @@ fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id fl
 			stable_source, array_type)
 		t.pending_stmts << t.make_expr_stmt(call)
 		if source_is_owned_temporary {
-			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
-				arr1(stable_source), 'void'))
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
+				stable_source,
+			], 'void'))
 		}
 		return
 	}
@@ -703,14 +716,17 @@ fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id fl
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_decl_assign_typed(value_name, cloned_elem, elem_type)
-	body << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
-		t.make_ident(out_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))
+	body << t.make_expr_stmt(t.make_call_typed('array_push', [
+		t.make_prefix(.amp, t.make_ident(out_name)),
+		t.make_prefix(.amp, t.make_ident(value_name)),
+	], 'void'))
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
 		skip_ownership_drops: true
 	})
 	if source_is_owned_temporary {
-		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
-			'void'))
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
+			stable_source,
+		], 'void'))
 	}
 }
 
@@ -896,8 +912,10 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 			t.transform_expr_for_type(elem_id, elem_type)
 		}
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
-		call := t.make_call_typed('array_push', arr2(t.make_prefix(.amp, t.make_ident(tmp_name)), t.make_prefix(.amp,
-			t.make_ident(value_name))), 'void')
+		call := t.make_call_typed('array_push', [
+			t.make_prefix(.amp, t.make_ident(tmp_name)),
+			t.make_prefix(.amp, t.make_ident(value_name)),
+		], 'void')
 		t.pending_stmts << t.make_expr_stmt(call)
 	}
 	result := t.make_ident(tmp_name)
@@ -1299,8 +1317,8 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	lhs_addr := t.runtime_addr(lhs, lhs_type)
 	if push_many {
 		call := if t.is_fixed_array_type(rhs_type) {
-			t.make_call_typed('array_push_many_ptr', arr3(lhs_addr, rhs,
-				t.make_fixed_array_len_expr(rhs_type)), 'void')
+			t.make_call_typed('array_push_many_ptr', [lhs_addr, rhs,
+				t.make_fixed_array_len_expr(rhs_type)], 'void')
 		} else {
 			t.make_array_push_many_call(lhs_addr, rhs, rhs_type)
 		}
@@ -1317,8 +1335,8 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	value_name := t.new_temp('arr_val')
 	value_type := t.shared_array_lhs_inner_type(lhs_id) or { elem_type }
 	result << t.make_decl_assign_typed(value_name, rhs, value_type)
-	push_call := t.make_call_typed('array_push', arr2(lhs_addr, t.make_prefix(.amp,
-		t.make_ident(value_name))), 'void')
+	push_call := t.make_call_typed('array_push', [lhs_addr,
+		t.make_prefix(.amp, t.make_ident(value_name))], 'void')
 	if shared_inner := t.shared_array_lhs_inner_type(lhs_id) {
 		t.set_node_value(int(push_call), 'shared_array_push:${shared_inner}')
 	}
@@ -1491,8 +1509,8 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	lhs_addr := t.runtime_addr(t.make_selector(source, 'value', array_type), array_type)
 	if push_many {
 		call := if t.is_fixed_array_type(rhs_type) {
-			t.make_call_typed('array_push_many_ptr', arr3(lhs_addr, rhs,
-				t.make_fixed_array_len_expr(rhs_type)), 'void')
+			t.make_call_typed('array_push_many_ptr', [lhs_addr, rhs,
+				t.make_fixed_array_len_expr(rhs_type)], 'void')
 		} else {
 			t.make_array_push_many_call(lhs_addr, rhs, rhs_type)
 		}
@@ -1502,8 +1520,8 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	}
 	value_name := t.new_temp('arr_val')
 	result << t.make_decl_assign_typed(value_name, rhs, elem_type)
-	result << t.make_expr_stmt(t.make_call_typed('array_push', arr2(lhs_addr, t.make_prefix(.amp,
-		t.make_ident(value_name))), 'void'))
+	result << t.make_expr_stmt(t.make_call_typed('array_push', [lhs_addr,
+		t.make_prefix(.amp, t.make_ident(value_name))], 'void'))
 	return result
 }
 
@@ -1623,8 +1641,8 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	t.mark_fn_used('array__prepend')
 	t.mark_fn_used('array__insert')
 	t.mark_fn_used('array__needs_unique_shift')
-	return t.make_call_typed('array__prepend', arr2(t.runtime_addr(base, base_type), t.make_prefix(.amp,
-		t.make_ident(value_name))), 'void')
+	return t.make_call_typed('array__prepend', [t.runtime_addr(base, base_type),
+		t.make_prefix(.amp, t.make_ident(value_name))], 'void')
 }
 
 // lower_array_insert_call builds lower array insert call data for transform.
@@ -1675,8 +1693,8 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
 	t.mark_fn_used('array__insert')
 	t.mark_fn_used('array__needs_unique_shift')
-	return t.make_call_typed('array__insert', arr3(t.runtime_addr(base, base_type), index, t.make_prefix(.amp,
-		t.make_ident(value_name))), 'void')
+	return t.make_call_typed('array__insert', [t.runtime_addr(base, base_type), index,
+		t.make_prefix(.amp, t.make_ident(value_name))], 'void')
 }
 
 fn (mut t Transformer) lower_array_push_many_call(node flat.Node, fn_node flat.Node, base_type string, elem_type string) ?flat.NodeId {
@@ -1697,12 +1715,12 @@ fn (mut t Transformer) lower_array_push_many_call(node flat.Node, fn_node flat.N
 		}
 		value_name := t.new_temp('arr_val')
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
-		return t.make_call_typed('array_push_many_ptr', arr3(base_addr, t.make_prefix(.amp,
-			t.make_ident(value_name)), t.make_int_literal(1)), 'void')
+		return t.make_call_typed('array_push_many_ptr', [base_addr,
+			t.make_prefix(.amp, t.make_ident(value_name)), t.make_int_literal(1)], 'void')
 	}
 	value := t.transform_expr(value_id)
 	count := t.transform_expr_for_type(count_id, 'int')
-	return t.make_call_typed('array_push_many_ptr', arr3(base_addr, value, count), 'void')
+	return t.make_call_typed('array_push_many_ptr', [base_addr, value, count], 'void')
 }
 
 fn (t &Transformer) push_many_count_is_type_name(id flat.NodeId) bool {
@@ -2128,8 +2146,7 @@ fn (mut t Transformer) array_get_value(base flat.NodeId, index flat.NodeId, elem
 	if t.array_get_base_is_fixed_array(base) {
 		return t.make_index(base, index, elem_type)
 	}
-	get_call := t.make_call_typed('array_get', arr2(t.array_get_runtime_base(base), index),
-		'voidptr')
+	get_call := t.make_call_typed('array_get', [t.array_get_runtime_base(base), index], 'voidptr')
 	ptr := t.make_cast('&${elem_type}', get_call, '&${elem_type}')
 	value := t.make_prefix(.mul, ptr)
 	t.set_node_typ(int(value), elem_type)
@@ -2144,8 +2161,7 @@ fn (mut t Transformer) array_get_ptr(base flat.NodeId, index flat.NodeId, elem_t
 		t.set_node_typ(int(ptr), '&${elem_type}')
 		return ptr
 	}
-	get_call := t.make_call_typed('array_get', arr2(t.array_get_runtime_base(base), index),
-		'voidptr')
+	get_call := t.make_call_typed('array_get', [t.array_get_runtime_base(base), index], 'voidptr')
 	return t.make_cast('&${elem_type}', get_call, '&${elem_type}')
 }
 
@@ -2284,15 +2300,15 @@ fn (mut t Transformer) transform_array_predicate(predicate_id flat.NodeId, defau
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
 	predicate := if predicate_fn_name.len > 0 {
-		t.make_call_typed(predicate_fn_name, arr1(t.make_ident(elem_name)), 'bool')
+		t.make_call_typed(predicate_fn_name, [t.make_ident(elem_name)], 'bool')
 	} else if predicate_is_fn_value || predicate_allocates_closure {
 		fn_value, setup := t.materialize_array_callback(predicate_id, prefix)
 		callback_setup = setup.clone()
 		fn_value_node := t.a.nodes[int(fn_value)]
 		if fn_value_node.kind == .ident {
-			t.make_call_typed(fn_value_node.value, arr1(t.make_ident(elem_name)), 'bool')
+			t.make_call_typed(fn_value_node.value, [t.make_ident(elem_name)], 'bool')
 		} else {
-			t.make_call_expr_typed(fn_value, arr1(t.make_ident(elem_name)), 'bool')
+			t.make_call_expr_typed(fn_value, [t.make_ident(elem_name)], 'bool')
 		}
 	} else {
 		t.transform_expr(predicate_source)
@@ -2338,12 +2354,13 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 		cleanup_guard_name = t.new_temp('filter_values_live')
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
 		deferred_drops := [
-			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void')),
-			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(out_name)), 'void')),
+			t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void')),
+			t.make_expr_stmt(t.make_call_typed('drop_owned', [
+				t.make_ident(out_name)], 'void')),
 		]
 		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
 			t.make_block(deferred_drops), t.make_empty())
-		defer_body := t.make_block(arr1(guarded_drop))
+		defer_body := t.make_block([guarded_drop])
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
@@ -2395,15 +2412,15 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
 	predicate := if predicate_fn_name.len > 0 {
-		t.make_call_typed(predicate_fn_name, arr1(t.make_ident(elem_name)), 'bool')
+		t.make_call_typed(predicate_fn_name, [t.make_ident(elem_name)], 'bool')
 	} else if predicate_is_fn_value || predicate_allocates_closure {
 		fn_value, setup := t.materialize_array_callback(predicate_id, 'filter_callback')
 		callback_setup = setup.clone()
 		fn_value_node := t.a.nodes[int(fn_value)]
 		if fn_value_node.kind == .ident {
-			t.make_call_typed(fn_value_node.value, arr1(t.make_ident(elem_name)), 'bool')
+			t.make_call_typed(fn_value_node.value, [t.make_ident(elem_name)], 'bool')
 		} else {
-			t.make_call_expr_typed(fn_value, arr1(t.make_ident(elem_name)), 'bool')
+			t.make_call_expr_typed(fn_value, [t.make_ident(elem_name)], 'bool')
 		}
 	} else {
 		t.transform_expr(predicate_source)
@@ -2433,8 +2450,10 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 		pushed_name = t.new_temp('filter_value')
 		then_body << t.make_decl_assign_typed(pushed_name, cloned_elem, elem_type)
 	}
-	push_call := t.make_call_typed('array_push', arr2(t.make_prefix(.amp, t.make_ident(out_name)), t.make_prefix(.amp,
-		t.make_ident(pushed_name))), 'void')
+	push_call := t.make_call_typed('array_push', [
+		t.make_prefix(.amp, t.make_ident(out_name)),
+		t.make_prefix(.amp, t.make_ident(pushed_name)),
+	], 'void')
 	then_body << t.make_expr_stmt(push_call)
 	then_block := t.make_block(then_body)
 	loop_body << t.make_if(predicate, then_block, t.make_empty())
@@ -2442,7 +2461,7 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 		skip_ownership_drops: true
 	})
 	if source_needs_drop {
-		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))
 		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	for stmt in prefix {
@@ -2541,15 +2560,15 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
 	mapped_expr := if map_fn_name.len > 0 {
-		t.make_call_typed(map_fn_name, arr1(t.make_ident(elem_name)), result_elem_type)
+		t.make_call_typed(map_fn_name, [t.make_ident(elem_name)], result_elem_type)
 	} else if map_expr_is_fn_value || map_callback_allocates_closure {
 		fn_value, setup := t.materialize_array_callback(map_expr_id, 'map_callback')
 		callback_setup = setup.clone()
 		fn_value_node := t.a.nodes[int(fn_value)]
 		if fn_value_node.kind == .ident && result_elem_type.len > 0 {
-			t.make_call_typed(fn_value_node.value, arr1(t.make_ident(elem_name)), result_elem_type)
+			t.make_call_typed(fn_value_node.value, [t.make_ident(elem_name)], result_elem_type)
 		} else {
-			t.make_call_expr_typed(fn_value, arr1(t.make_ident(elem_name)), result_elem_type)
+			t.make_call_expr_typed(fn_value, [t.make_ident(elem_name)], result_elem_type)
 		}
 	} else if has_bound_method_array {
 		t.make_cast(result_elem_type, t.make_cast('usize', t.make_ident(elem_name), 'usize'),
@@ -2624,12 +2643,13 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		cleanup_guard_name = t.new_temp('map_values_live')
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
 		deferred_drops := [
-			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void')),
-			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(out_name)), 'void')),
+			t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void')),
+			t.make_expr_stmt(t.make_call_typed('drop_owned', [
+				t.make_ident(out_name)], 'void')),
 		]
 		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
 			t.make_block(deferred_drops), t.make_empty())
-		defer_body := t.make_block(arr1(guarded_drop))
+		defer_body := t.make_block([guarded_drop])
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
@@ -2663,13 +2683,15 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		pushed_name = t.new_temp('map_cloned_val')
 		loop_body << t.make_decl_assign_typed(pushed_name, cloned_value, result_elem_type)
 	}
-	loop_body << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
-		t.make_ident(out_name)), t.make_prefix(.amp, t.make_ident(pushed_name))), 'void'))
+	loop_body << t.make_expr_stmt(t.make_call_typed('array_push', [
+		t.make_prefix(.amp, t.make_ident(out_name)),
+		t.make_prefix(.amp, t.make_ident(pushed_name)),
+	], 'void'))
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
 		skip_ownership_drops: true
 	})
 	if source_needs_drop {
-		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))
 		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	for stmt in prefix {
@@ -3108,10 +3130,11 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 	if source_is_owned_temporary {
 		cleanup_guard_name = t.new_temp('count_source_live')
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
-		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
-		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
-			t.make_block(arr1(deferred_drop)), t.make_empty())
-		defer_body := t.make_block(arr1(guarded_drop))
+		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name), t.make_block([
+			deferred_drop,
+		]), t.make_empty())
+		defer_body := t.make_block([guarded_drop])
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
@@ -3138,12 +3161,12 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 		loop_body << stmt
 	}
 	inc := t.make_assign_op(t.make_ident(result_name), t.make_int_literal(1), .plus_assign)
-	loop_body << t.make_if(predicate, t.make_block(arr1(inc)), t.make_empty())
+	loop_body << t.make_if(predicate, t.make_block([inc]), t.make_empty())
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
 		skip_ownership_drops: true
 	})
 	if source_is_owned_temporary {
-		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))
 		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	for stmt in prefix {
@@ -3177,10 +3200,11 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 	if source_is_owned_temporary {
 		cleanup_guard_name = t.new_temp('${method}_source_live')
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
-		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
-		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
-			t.make_block(arr1(deferred_drop)), t.make_empty())
-		defer_body := t.make_block(arr1(guarded_drop))
+		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name), t.make_block([
+			deferred_drop,
+		]), t.make_empty())
+		defer_body := t.make_block([guarded_drop])
 		defer_start := t.a.children.len
 		t.a.children << defer_body
 		prefix << t.a.add_node(flat.Node{
@@ -3209,16 +3233,16 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 	if method == 'all' {
 		not_predicate := t.make_prefix(.not, t.make_paren(predicate))
 		assign_false := t.make_assign(t.make_ident(result_name), t.make_bool_literal(false))
-		loop_body << t.make_if(not_predicate, t.make_block(arr1(assign_false)), t.make_empty())
+		loop_body << t.make_if(not_predicate, t.make_block([assign_false]), t.make_empty())
 	} else {
 		assign_true := t.make_assign(t.make_ident(result_name), t.make_bool_literal(true))
-		loop_body << t.make_if(predicate, t.make_block(arr1(assign_true)), t.make_empty())
+		loop_body << t.make_if(predicate, t.make_block([assign_true]), t.make_empty())
 	}
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
 		skip_ownership_drops: true
 	})
 	if source_is_owned_temporary {
-		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', [base], 'void'))
 		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	for stmt in prefix {
@@ -3335,7 +3359,7 @@ fn (mut t Transformer) make_array_default_sort_stmt(base flat.NodeId, elem_type 
 	if int(cmp_id) < 0 {
 		if helper := t.array_default_sort_runtime_helper(elem_type) {
 			base_addr := t.make_prefix(.amp, base)
-			return t.make_expr_stmt(t.make_call_typed(helper, arr1(base_addr), 'void'))
+			return t.make_expr_stmt(t.make_call_typed(helper, [base_addr], 'void'))
 		}
 	}
 	i_name := t.new_temp('sort_i')
@@ -3435,7 +3459,7 @@ fn (mut t Transformer) array_sort_less_expr(base flat.NodeId, elem_type string, 
 		return cmp
 	}
 	if elem_type == 'string' {
-		return t.make_call_typed('string__lt', arr2(cur, prev), 'bool')
+		return t.make_call_typed('string__lt', [cur, prev], 'bool')
 	}
 	if cmp := t.array_sort_struct_less_expr(cur, prev, elem_type) {
 		return cmp
@@ -3452,7 +3476,7 @@ fn (mut t Transformer) array_sort_struct_less_expr(cur flat.NodeId, prev flat.No
 		return none
 	}
 	call_info := t.struct_operator_call_info(struct_type, .lt) or { return none }
-	args := if call_info.reverse { arr2(prev, cur) } else { arr2(cur, prev) }
+	args := if call_info.reverse { [prev, cur] } else { [cur, prev] }
 	t.mark_fn_used_name(call_info.name)
 	call := t.make_call_typed(call_info.name, args, 'bool')
 	if call_info.negate {
@@ -3480,7 +3504,7 @@ fn (mut t Transformer) array_sort_simple_operator_expr(node flat.Node, cur flat.
 	call_info := t.struct_operator_call_info(struct_type, node.op) or { return none }
 	lhs := if lhs_node.value == 'a' { cur } else { prev }
 	rhs := if rhs_node.value == 'a' { cur } else { prev }
-	args := if call_info.reverse { arr2(rhs, lhs) } else { arr2(lhs, rhs) }
+	args := if call_info.reverse { [rhs, lhs] } else { [lhs, rhs] }
 	t.mark_fn_used_name(call_info.name)
 	call := t.make_call_typed(call_info.name, args, node.typ)
 	if call_info.negate {
@@ -3505,7 +3529,7 @@ fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type 
 			}
 		}
 	}
-	call := t.make_call_expr_typed(cmp, arr2(cur_arg, prev_arg), 'int')
+	call := t.make_call_expr_typed(cmp, [cur_arg, prev_arg], 'int')
 	return t.make_infix(.lt, call, t.make_int_literal(0))
 }
 

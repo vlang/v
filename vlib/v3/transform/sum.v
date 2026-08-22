@@ -1391,8 +1391,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 				actual_type_id := t.make_selector_op(source, '_typ', 'int', field_op)
 				mismatch := t.make_infix(.ne, actual_type_id, t.make_int_literal(type_id))
 				message := 'as cast: cannot cast interface value to `${target_type}`'
-				t.pending_stmts << t.make_if(mismatch,
-					t.make_block(arr1(t.make_panic_stmt(message))), t.make_empty())
+				t.pending_stmts << t.make_if(mismatch, t.make_block([
+					t.make_panic_stmt(message),
+				]), t.make_empty())
 				object := t.make_selector_op(source, '_object', 'voidptr', field_op)
 				cast := t.make_cast('&${target_type}', object, '&${target_type}')
 				current := t.make_prefix(.mul, cast)
