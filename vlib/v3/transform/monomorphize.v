@@ -1348,8 +1348,7 @@ fn (t &Transformer) generic_struct_spec_has_emitted_method(base string, args []s
 }
 
 fn (t &Transformer) generic_struct_method_used_for_spec(spec string, decl GenericFnDecl, args []string, method string) bool {
-	if method == 'str'
-		&& (t.used_fn_contains_name(decl.node.value) || t.used_fn_contains_name(decl.key)) {
+	if method == 'str' && t.generic_str_template_is_used(decl) {
 		return true
 	}
 	direct := '${spec}.${method}'
@@ -1442,8 +1441,17 @@ fn (t &Transformer) needs_generic_struct_method_specialization(decls map[string]
 		}
 	}
 	for _, decl in decls {
-		if decl.node.value.ends_with('.str')
-			&& (t.used_fn_contains_name(decl.node.value) || t.used_fn_contains_name(decl.key)) {
+		if decl.node.value.ends_with('.str') && t.generic_str_template_is_used(decl) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) generic_str_template_is_used(decl GenericFnDecl) bool {
+	qualified := transform_qualified_fn_name(decl.module, decl.node.value)
+	for name in [decl.node.value, decl.key, qualified, c_name(qualified)] {
+		if t.used_fn_contains_name(name) {
 			return true
 		}
 	}

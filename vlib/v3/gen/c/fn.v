@@ -2035,6 +2035,13 @@ fn (g &FlatGen) concrete_generic_method_name_from_call_receiver(node flat.Node, 
 		if resolved := g.resolve_concrete_generic_method_name(receiver_name, method) {
 			return resolved
 		}
+		// A receiver can retain a source alias in its semantic spelling
+		// (`FixedBox[Pair]`) while its emitted specialization uses the alias target's
+		// storage ABI (`FixedBox_string_2`). Match the registered receiver parameter
+		// after ordinary source-name resolution fails so the call reaches that body.
+		if resolved := g.method_name_by_receiver_param_type(receiver_type, method) {
+			return resolved
+		}
 	}
 	for receiver in cgen_flattened_generic_receiver_short_variants(receiver_name) {
 		candidate := '${receiver}.${method}'
