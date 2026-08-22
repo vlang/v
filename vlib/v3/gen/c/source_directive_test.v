@@ -358,6 +358,19 @@ fn test_cache_split_uses_system_sigaction_declaration() {
 	assert g.skip_builtin_struct('C.sigaction')
 }
 
+fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'uiold', 'ui_darwin.c.v', flat.Node{})
+	assert g.skip_builtin_struct('C.NSFont')
+
+	g.register_struct_decl_info('C.Local', 'C.Local', 'main', 'main.v', flat.Node{})
+	assert !g.skip_builtin_struct('C.Local')
+}
+
 fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	mut headerless := FlatGen.new()
 	assert !headerless.c_directives_use_system_libc()

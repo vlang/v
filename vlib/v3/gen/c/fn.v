@@ -3139,7 +3139,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	} else if method_key.len > 0 {
 		params = g.tc.fn_param_types[method_key] or { return false }
 		ret = g.tc.fn_ret_types[method_key] or { types.Type(types.void_) }
-		cname = g.cname(method_key)
+		cname = g.direct_call_name(method_key)
 	} else if ci := g.tc.generic_method_value_info['${receiver_name}.${method}'] {
 		// Generic receiver (`Box[int]`): the open `Box[T].get` registration is gone by
 		// cgen, so use the substituted params/return the checker stashed, plus the
@@ -3159,7 +3159,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 			}
 		}
 		ret = ci.return_type
-		cname = g.cname('${receiver_name}.${method}')
+		cname = g.direct_call_name('${receiver_name}.${method}')
 	} else {
 		return false
 	}
@@ -16128,7 +16128,7 @@ fn (mut g FlatGen) concrete_optional_type_name(t types.Type) string {
 	if g.type_contains_generic_placeholder(base_type) {
 		return 'Optional'
 	}
-	mut inner_ct := g.value_c_type(base_type)
+	mut inner_ct := g.optional_payload_c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
 	}

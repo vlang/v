@@ -47,6 +47,11 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	assert g.optional_payload_c_type(types.Type(types.Array{
 		elem_type: types.Type(types.int_)
 	})) == 'Array'
+	result_type := types.Type(types.ResultType{
+		base_type: value_type
+	})
+	assert g.concrete_optional_type_name(result_type) == 'Optional_json2__StructKeyDecodeResult_TestEchoArgs'
+	assert g.needed_optional_types['Optional_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
 }
 
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {

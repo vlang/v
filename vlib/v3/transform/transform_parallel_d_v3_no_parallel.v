@@ -15,6 +15,10 @@ fn (mut _ Transformer) prepare_parallel_monomorph_scan(_ int, _ int) bool {
 	return false
 }
 
+fn (mut _ Transformer) run_parallel_monomorphize_specs(_ []PendingGenericFnSpec, _ map[string]GenericStructDecl, _ map[string]GenericSumDecl, mut _ map[string]bool, mut _ []string) bool {
+	return false
+}
+
 // collect_interface_boxed_types_parallel keeps the interface scan serial when
 // v3 is built with the internal `v3_no_parallel` define.
 fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {
