@@ -185,6 +185,9 @@ fn (mut g DirectGen) parse_function() ! {
 	g.protos.writeln('${c_return_type} ${name}(${c_params});')
 	g.write_line('${c_return_type} ${name}(${c_params}) {')
 	g.indent++
+	if is_main {
+		g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
+	}
 	previous_in_main := g.in_main
 	g.in_main = is_main
 	g.parse_block_body()!
@@ -237,6 +240,9 @@ fn (mut g DirectGen) parse_type() !string {
 		return g.unsupported('type `${g.token_source()}`')
 	}
 	raw_type := g.lit
+	if raw_type == 'charptr' || (raw_type == 'char' && pointers > 0) {
+		return g.unsupported('character pointer types')
+	}
 	g.next()
 	if g.tok in [.dot, .lsbr, .question, .not] {
 		return g.unsupported('compound type `${raw_type}`')
@@ -574,7 +580,7 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 
 fn (g &DirectGen) expression_token() !string {
 	return match g.tok {
-		.name { g.lit }
+		.name { g.expression_name()! }
 		.number { fastc_c_number(g.lit)! }
 		.string { fastc_c_string(g.lit)! }
 		.char { fastc_c_char(g.lit)! }
@@ -587,6 +593,13 @@ fn (g &DirectGen) expression_token() !string {
 		.semicolon { ';' }
 		else { g.tok.str() }
 	}
+}
+
+fn (g &DirectGen) expression_name() !string {
+	if g.lit == 'charptr' {
+		return g.unsupported('charptr expressions')
+	}
+	return g.lit
 }
 
 fn fastc_nondecimal_literal_requires_checked_type(literal string) bool {

@@ -1,4 +1,5 @@
 import os
+import time
 import v3.cmdexec
 
 const fastc_backend_v3_dir = os.dir(os.dir(@FILE))
@@ -39,10 +40,48 @@ fn main() {
 	assert valid_compile.output.contains('  check '), valid_compile.output
 	retained_c := os.read_file(valid_binary + '.c') or { panic(err) }
 	assert retained_c.contains('__typeof__((twice(21))) value = (twice(21));')
+	assert retained_c.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 	assert !retained_c.contains('builtin__builtin_init')
 	valid_run := cmdexec.run(valid_binary, [])
 	assert valid_run.exit_code == 0, valid_run.output
 	assert valid_run.output.trim_space() == '42'
+
+	unbuffered_source := os.join_path(root, 'unbuffered_stdout.v')
+	os.write_file(unbuffered_source, "module main
+
+fn main() {
+	print('ready')
+	for {}
+}
+") or {
+		panic(err)
+	}
+	unbuffered_binary := os.join_path(root, 'unbuffered_stdout')
+	unbuffered_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', unbuffered_binary,
+		unbuffered_source])
+	assert unbuffered_compile.exit_code == 0, unbuffered_compile.output
+	unbuffered_c := os.read_file(unbuffered_binary + '.c') or { panic(err) }
+	assert unbuffered_c.contains('V_FASTC_PRINT_SELECT')
+	assert unbuffered_c.contains('setvbuf(stdout, NULL, _IONBF, 0);')
+	mut unbuffered_process := os.new_process(unbuffered_binary)
+	unbuffered_process.set_redirect_stdio()
+	unbuffered_process.run()
+	mut ready_output := ''
+	for _ in 0 .. 300 {
+		ready_output += unbuffered_process.stdout_read()
+		if ready_output.contains('ready') {
+			break
+		}
+		time.sleep(10 * time.millisecond)
+	}
+	if unbuffered_process.is_alive() {
+		unbuffered_process.signal_kill()
+	}
+	unbuffered_process.wait()
+	ready_output += unbuffered_process.stdout_slurp()
+	ready_error := unbuffered_process.stderr_slurp()
+	unbuffered_process.close()
+	assert ready_output.contains('ready'), '${ready_output}\n${ready_error}'
 
 	unused_source := os.join_path(root, 'unused.v')
 	os.write_file(unused_source, 'module main
@@ -245,6 +284,31 @@ fn main() {
 	narrow_run := cmdexec.run(narrow_binary, [])
 	assert narrow_run.exit_code == 0, narrow_run.output
 	assert narrow_run.output.trim_space() == '0'
+
+	charptr_source := os.join_path(root, 'charptr_print.v')
+	os.write_file(charptr_source, 'module main
+
+fn show(p charptr) {
+	println(p)
+}
+
+fn main() {
+	unsafe {
+		show(nil)
+	}
+}
+') or {
+		panic(err)
+	}
+	charptr_binary := os.join_path(root, 'charptr_print')
+	charptr_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', charptr_binary,
+		charptr_source])
+	assert charptr_compile.exit_code == 0, charptr_compile.output
+	charptr_c := os.read_file(charptr_binary + '.c') or { panic(err) }
+	assert !charptr_c.contains('V_FASTC_PRINT_SELECT')
+	charptr_run := cmdexec.run(charptr_binary, [])
+	assert charptr_run.exit_code == 0, charptr_run.output
+	assert charptr_run.output.trim_space() == '0', charptr_run.output
 
 	min_int_source := os.join_path(root, 'inferred_min_int.v')
 	os.write_file(min_int_source, 'module main

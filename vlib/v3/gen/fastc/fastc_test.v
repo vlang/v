@@ -32,6 +32,7 @@ fn twice(value int) int {
 	assert c_source.contains('__v_fastc_range_start_0 = (0);')
 	assert c_source.contains('__v_fastc_range_end_1 = (3);')
 	assert c_source.contains('int twice(int value);')
+	assert c_source.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 	assert !c_source.contains('v3.flat')
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_${os.getpid()}')
@@ -200,6 +201,8 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		'module main\nfn main() { println(sizeof(string)) }\n',
 		"module main\nfn main() { s := 'abc'; println(s[0]) }\n",
 		"module main\nfn main() { println(c'a') }\n",
+		'module main\nfn show(p charptr) { println(p) }\nfn main() { unsafe { show(nil) } }\n',
+		'module main\nfn main() { p := charptr(0); println(p) }\n',
 		'module main\nfn main() { mut x := -2_147_483_648; x--; println(x) }\n',
 		'module main\nfn main() { for i := -2_147_483_648; true; i-- { println(i); break } }\n',
 		'module main\nfn main() { mut x := -2_147_483_648 - 1; println(x) }\n',
