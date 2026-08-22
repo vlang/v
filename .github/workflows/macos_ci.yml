@@ -157,7 +157,10 @@ jobs:
           EOF
           ./v -cc clang -o "$RUNNER_TEMP/multiwindow_ci_watchdog" "$RUNNER_TEMP/multiwindow_ci_watchdog.v"
       - name: Multiwindow Metal regressions and runtime probes
+        # Some multiwindow tests still exercise V3-incompatible constructs. The
+        # direct canary above remains strict; this lane also verifies fallback.
         env:
+          V_MACOS_V3_NO_FALLBACK: 0
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: appkit
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: appkit

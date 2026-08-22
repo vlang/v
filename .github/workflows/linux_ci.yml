@@ -485,6 +485,11 @@ jobs:
           EOF
           chmod +x "$RUNNER_TEMP/multiwindow_weston_command.sh"
       - name: Multiwindow portable and mock regressions
+        # These regressions intentionally cover compatibility paths that V3 does not
+        # support yet. Keep the direct canary and ordinary compiler suite strict, while
+        # allowing this lane to verify that the stable-compiler fallback still works.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: |
           set -euo pipefail
 
@@ -526,6 +531,7 @@ jobs:
               /tmp/gg_multiwindow_default
       - name: Multiwindow X11 native regressions
         env:
+          V_MACOS_V3_NO_FALLBACK: 0
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: x11
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: x11
@@ -575,6 +581,7 @@ jobs:
             /tmp/gg_multiwindow_x11
       - name: Multiwindow Wayland native regressions
         env:
+          V_MACOS_V3_NO_FALLBACK: 0
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: wayland
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: wayland
