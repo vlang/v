@@ -4498,16 +4498,16 @@ fn (mut g FlatGen) collect_preserved_include_metadata(include_arg string, source
 }
 
 fn (mut g FlatGen) collect_preserved_header_tree(include_arg string, source_file string, include_dirs []string) bool {
-	// Some system APIs are declared through macros that the lightweight header
-	// declaration scanner cannot expand (for example OpenSSL's X509_free).
-	// Record the known declarations even when the resolved tree is scanned below.
-	g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
-	g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
-	g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
 		mut tree_size := CHeaderTreeSize{}
 		if os.is_file(path)
 			&& c_header_tree_exceeds_inline_limit(path, g.compiler_vroot, include_dirs, mut tree_size) {
+			// Some system APIs are declared through macros that the lightweight header
+			// declaration scanner cannot expand (for example OpenSSL's X509_free).
+			// Record the known declarations only when the header will be preserved.
+			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 			g.collect_preserved_header_file(path, include_dirs)
 			return true
 		}
