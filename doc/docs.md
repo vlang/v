@@ -118,8 +118,9 @@ An internal V3 compiler error on a short program (and any directory build such a
 file, so it can still upload a strict-subset excerpt of that file plus a few lines
 of context around the failing line, even when the file is short. Inline-assembly
 fallbacks are notice-only and do not submit a report; reporting is also skipped
-for test compilations and in GitHub CI. You can turn it off entirely by setting
-the environment variable `V_C_ERROR_BUG_REPORT_DISABLED=1`.
+for test compilations and to the default endpoint in GitHub CI. A custom endpoint
+set with `-bug-report-url` or `V_C_ERROR_BUG_REPORT_URL` remains active in CI. You
+can turn reporting off entirely by setting `V_C_ERROR_BUG_REPORT_DISABLED=1`.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
