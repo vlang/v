@@ -2828,6 +2828,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	} else {
 		g.precompute_consts()
 	}
+	if defer_parallel_support {
+		// The declaration worker emits builtin ABI helpers concurrently with the
+		// function-body workers. Seed compatibility helpers before it starts; body
+		// workers still merge any lowering-only discoveries below.
+		g.preseed_libc_compat_fns()
+	}
 	g.timing_profile('  [ttime] cg precompute      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
 	orig_sb := g.sb
