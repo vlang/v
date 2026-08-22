@@ -52,28 +52,44 @@ static void v_fastc_println_unsigned(unsigned long long value) { printf("%llu\n"
 
 '
 
+struct FastcFunctionSignature {
+	parameter_types []string
+	return_type     string
+}
+
+struct FastcLocal {
+	is_mut bool
+	typ    string
+}
+
+struct FastcExpressionToken {
+	tok token.Token
+	lit string
+}
+
 struct Parser {
 	path string
 mut:
-	s           scanner.Scanner
-	tok         token.Token
-	lit         string
-	out         strings.Builder
-	protos      strings.Builder
-	indent      int
-	in_main     bool
-	has_main    bool
-	temp_id     int
-	locals      map[string]bool
-	functions   map[string]bool
-	return_type string
+	s                    scanner.Scanner
+	tok                  token.Token
+	lit                  string
+	out                  strings.Builder
+	protos               strings.Builder
+	indent               int
+	in_main              bool
+	has_main             bool
+	temp_id              int
+	locals               map[string]FastcLocal
+	functions            map[string]FastcFunctionSignature
+	return_type          string
+	last_expression_type string
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
 // not construct an AST or invoke semantic type checking. Unsupported syntax is returned as an
 // error; FastC never retries through an AST-based backend.
 pub fn generate(source string, path string, prefs &pref.Preferences) !string {
-	functions := collect_function_names(source, path, prefs)!
+	functions := collect_function_signatures(source, path, prefs)!
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
@@ -85,27 +101,72 @@ pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 		functions: functions
 	}
 	gen.s.init(file, source)
-	return gen.run()
+	generated := gen.run()!
+	if gen.s.diagnostics.len > 0 {
+		diagnostic := gen.s.diagnostics[0]
+		return error('fastc scanner error at byte ${diagnostic.offset} in ${path}: ${diagnostic.message}')
+	}
+	return generated
 }
 
-fn collect_function_names(source string, path string, prefs &pref.Preferences) !map[string]bool {
+fn collect_function_signatures(source string, path string, prefs &pref.Preferences) !map[string]FastcFunctionSignature {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
-	mut functions := map[string]bool{}
+	mut functions := map[string]FastcFunctionSignature{}
 	mut brace_depth := 0
 	mut tok := scan.scan()
 	for tok != .eof {
 		if tok == .key_fn && brace_depth == 0 {
 			tok = scan.scan()
-			if tok == .name {
-				name := scan.lit
-				if name in functions {
-					return error('fastc parser does not support duplicate function `${name}` in ${path}')
+			if tok != .name {
+				return error('fastc parser does not support function declaration in ${path}')
+			}
+			name := scan.lit
+			if name in functions {
+				return error('fastc parser does not support duplicate function `${name}` in ${path}')
+			}
+			tok = scan.scan()
+			if tok != .lpar {
+				return error('fastc parser does not support function `${name}` declaration in ${path}')
+			}
+			tok = scan.scan()
+			mut parameter_types := []string{}
+			for tok != .rpar {
+				if tok in [.key_mut, .key_shared] {
+					return error('fastc parser does not support mutable or shared parameters in ${path}')
 				}
-				functions[name] = true
+				if tok != .name {
+					return error('fastc parser does not support function parameters in ${path}')
+				}
+				tok = scan.scan()
+				if tok == .comma {
+					return error('fastc parser does not support grouped parameter names in ${path}')
+				}
+				parameter_type, next_token := fastc_scan_type(mut scan, tok, path)!
+				parameter_types << parameter_type
+				tok = next_token
+				if tok == .comma {
+					tok = scan.scan()
+					continue
+				}
+				if tok != .rpar {
+					return error('fastc parser does not support function parameter separator in ${path}')
+				}
+			}
+			tok = scan.scan()
+			mut return_type := 'void'
+			if tok != .lcbr {
+				return_type, tok = fastc_scan_type(mut scan, tok, path)!
+			}
+			if tok != .lcbr {
+				return error('fastc parser does not support function `${name}` body in ${path}')
+			}
+			functions[name] = FastcFunctionSignature{
+				parameter_types: parameter_types
+				return_type:     return_type
 			}
 			continue
 		}
@@ -117,6 +178,27 @@ fn collect_function_names(source string, path string, prefs &pref.Preferences) !
 		tok = scan.scan()
 	}
 	return functions
+}
+
+fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string) !(string, token.Token) {
+	mut tok := first
+	mut pointers := 0
+	for tok == .amp || tok == .mul {
+		pointers++
+		tok = scan.scan()
+	}
+	if tok != .name {
+		return error('fastc parser does not support type `${tok.str()}` in ${path}')
+	}
+	raw_type := scan.lit
+	base := fastc_primitive_c_type(raw_type) or {
+		return error('fastc parser does not support undeclared type `${raw_type}` in ${path}')
+	}
+	tok = scan.scan()
+	if tok in [.dot, .lsbr, .question, .not] {
+		return error('fastc parser does not support compound type `${raw_type}` in ${path}')
+	}
+	return base + '*'.repeat(pointers), tok
 }
 
 fn (mut g Parser) run() !string {
@@ -197,7 +279,7 @@ fn (mut g Parser) parse_module() ! {
 }
 
 fn (mut g Parser) parse_function() ! {
-	g.locals = map[string]bool{}
+	g.locals = map[string]FastcLocal{}
 	g.next()
 	if g.tok == .lpar {
 		return g.unsupported('methods')
@@ -254,7 +336,7 @@ fn (mut g Parser) parse_function() ! {
 }
 
 fn (mut g Parser) parse_script() ! {
-	g.locals = map[string]bool{}
+	g.locals = map[string]FastcLocal{}
 	g.has_main = true
 	g.protos.writeln('int main(void);')
 	g.write_line('int main(void) {')
@@ -292,7 +374,9 @@ fn (mut g Parser) parse_parameters() ![]string {
 		}
 		type_name := g.parse_type()!
 		params << '${type_name} ${name}'
-		g.locals[name] = false
+		g.locals[name] = FastcLocal{
+			typ: type_name
+		}
 		if g.tok == .comma {
 			g.next()
 			g.skip_semicolons()
@@ -326,7 +410,14 @@ fn (mut g Parser) parse_type() !string {
 	if g.tok in [.dot, .lsbr, .question, .not] {
 		return g.unsupported('compound type `${raw_type}`')
 	}
-	base := match raw_type {
+	base := fastc_primitive_c_type(raw_type) or {
+		return g.unsupported('undeclared type `${raw_type}`')
+	}
+	return base + '*'.repeat(pointers)
+}
+
+fn fastc_primitive_c_type(raw_type string) ?string {
+	return match raw_type {
 		'bool' { 'bool' }
 		'byte' { 'byte' }
 		'char' { 'char' }
@@ -349,9 +440,8 @@ fn (mut g Parser) parse_type() !string {
 		'voidptr' { 'voidptr' }
 		'byteptr' { 'byteptr' }
 		'charptr' { 'charptr' }
-		else { raw_type }
+		else { none }
 	}
-	return base + '*'.repeat(pointers)
 }
 
 fn fastc_has_narrow_integer_type(type_name string) bool {
@@ -426,6 +516,7 @@ fn (mut g Parser) parse_if() !bool {
 	if condition.len == 0 {
 		return g.unsupported('empty if condition')
 	}
+	g.require_boolean_condition('if')!
 	g.expect(.lcbr)!
 	g.write_line('if (${condition}) {')
 	g.indent++
@@ -473,6 +564,7 @@ fn (mut g Parser) parse_for() !bool {
 			}
 			g.next()
 			start := g.read_expression([token.Token.dotdot])!
+			start_type := fastc_normalize_inferred_type(g.last_expression_type)
 			g.expect(.dotdot)!
 			end := g.read_expression([token.Token.lcbr])!
 			g.expect(.lcbr)!
@@ -482,7 +574,9 @@ fn (mut g Parser) parse_for() !bool {
 			g.write_line('__typeof__((${start})) ${start_name} = (${start});')
 			g.write_line('__typeof__((${end})) ${end_name} = (${end});')
 			g.write_line('for (__typeof__((${start_name})) ${name} = (${start_name}); ${name} < (${end_name}); ${name}++) {')
-			g.locals[name] = false
+			g.locals[name] = FastcLocal{
+				typ: start_type
+			}
 			g.indent++
 			_ = g.parse_block_body()!
 			g.indent--
@@ -496,9 +590,14 @@ fn (mut g Parser) parse_for() !bool {
 			}
 			g.next()
 			initial := g.read_expression([token.Token.semicolon])!
+			initial_type := fastc_normalize_inferred_type(g.last_expression_type)
 			g.expect(.semicolon)!
-			g.locals[name] = true
+			g.locals[name] = FastcLocal{
+				is_mut: true
+				typ:    initial_type
+			}
 			condition := g.read_expression([token.Token.semicolon])!
+			g.require_boolean_condition('for')!
 			g.expect(.semicolon)!
 			update := g.read_expression([token.Token.lcbr])!
 			g.expect(.lcbr)!
@@ -512,6 +611,7 @@ fn (mut g Parser) parse_for() !bool {
 		}
 		g.validate_expression_name(name, .unknown)!
 		condition := g.read_expression_with_prefix(name, [token.Token.lcbr])!
+		g.require_boolean_condition('for')!
 		g.expect(.lcbr)!
 		g.write_line('while (${condition}) {')
 		g.indent++
@@ -521,6 +621,7 @@ fn (mut g Parser) parse_for() !bool {
 		return false
 	}
 	condition := g.read_expression([token.Token.lcbr])!
+	g.require_boolean_condition('for')!
 	g.expect(.lcbr)!
 	g.write_line('while (${condition}) {')
 	g.indent++
@@ -544,9 +645,25 @@ fn (mut g Parser) parse_return() !bool {
 		return g.unsupported('value return in void function')
 	}
 	expression := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+	actual_type := g.last_expression_type
+	if actual_type.len == 0 {
+		return g.unsupported('unverifiable return expression type')
+	}
+	if !fastc_call_types_are_compatible(actual_type, g.return_type) {
+		return g.unsupported('return expression of type `${actual_type}` in function returning `${g.return_type}`')
+	}
 	g.consume_statement_end()
 	g.write_line('return ${expression};')
 	return true
+}
+
+fn (g &Parser) require_boolean_condition(kind string) ! {
+	if g.last_expression_type.len == 0 {
+		return g.unsupported('unverifiable ${kind} condition type')
+	}
+	if g.last_expression_type != 'bool' {
+		return g.unsupported('${kind} condition of type `${g.last_expression_type}` instead of `bool`')
+	}
 }
 
 fn (mut g Parser) parse_mutable_declaration() ! {
@@ -574,10 +691,35 @@ fn (mut g Parser) parse_simple_statement() ! {
 			return
 		}
 		if (g.tok.is_assignment() || g.tok in [.inc, .dec])
-			&& (name !in g.locals || !g.locals[name]) {
+			&& (name !in g.locals || !g.locals[name].is_mut) {
 			return g.unsupported('mutation of immutable or unknown name `${name}`')
 		}
 		g.validate_expression_name(name, .unknown)!
+		if g.tok.is_assignment() {
+			if g.tok in [.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
+				return g.unsupported('shift expressions')
+			}
+			if g.tok in [.div_assign, .mod_assign] {
+				return g.unsupported('division or modulo expressions')
+			}
+			operator := g.tok
+			g.next()
+			value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+			if value.len == 0 {
+				return g.unsupported('empty assignment to `${name}`')
+			}
+			actual_type := g.last_expression_type
+			expected_type := g.locals[name].typ
+			if actual_type.len == 0 || expected_type.len == 0 {
+				return g.unsupported('unverifiable assignment type for `${name}`')
+			}
+			if !fastc_call_types_are_compatible(actual_type, expected_type) {
+				return g.unsupported('assignment of type `${actual_type}` to `${name}` of type `${expected_type}`')
+			}
+			g.consume_statement_end()
+			g.write_line('${name}${operator.str()}${value};')
+			return
+		}
 		expression :=
 			g.read_expression_with_prefix(name, [token.Token.semicolon, token.Token.rcbr])!
 		g.consume_statement_end()
@@ -611,7 +753,18 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool) ! {
 	} else {
 		g.write_line('__typeof__((${expression})) ${name} = (${expression});')
 	}
-	g.locals[name] = is_mut
+	g.locals[name] = FastcLocal{
+		is_mut: is_mut
+		typ:    fastc_normalize_inferred_type(g.last_expression_type)
+	}
+}
+
+fn fastc_normalize_inferred_type(typ string) string {
+	return match typ {
+		'integer literal' { 'int' }
+		'float literal' { 'f64' }
+		else { typ }
+	}
 }
 
 fn (mut g Parser) consume_statement_end() {
@@ -626,8 +779,13 @@ fn (mut g Parser) read_expression(stops []token.Token) !string {
 
 fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token) !string {
 	mut result := strings.new_builder(64)
+	mut expression_tokens := []FastcExpressionToken{}
 	if prefix.len > 0 {
 		result.write_string(prefix)
+		expression_tokens << FastcExpressionToken{
+			tok: .name
+			lit: prefix
+		}
 	}
 	mut paren_depth := 0
 	mut has_sum_arithmetic_operator := false
@@ -701,6 +859,10 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 			// levels and also orders + and - above &. Reject ambiguous token streams.
 			return g.unsupported('mixed operator precedence')
 		}
+		expression_tokens << FastcExpressionToken{
+			tok: g.tok
+			lit: g.lit
+		}
 		piece := g.expression_token(previous_token)!
 		if result.len > 0 && fastc_needs_space(result.last(), piece) {
 			result.write_u8(` `)
@@ -724,6 +886,8 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 	if paren_depth != 0 {
 		return g.unsupported('unbalanced expression')
 	}
+	g.validate_expression_calls(expression_tokens)!
+	g.last_expression_type = g.infer_expression_type(expression_tokens)
 	return result.str().trim_space()
 }
 
@@ -750,6 +914,11 @@ fn (g &Parser) expression_name(previous token.Token) !string {
 }
 
 fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
+	if fastc_has_narrow_integer_type(name) {
+		// C promotes narrow operands before arithmetic. Reject narrow casts in
+		// expressions until FastC can explicitly restore V's wrapping result type.
+		return g.unsupported('narrow integer cast expressions')
+	}
 	if name == 'charptr' {
 		return g.unsupported('charptr expressions')
 	}
@@ -761,6 +930,240 @@ fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
 		return
 	}
 	return g.unsupported('unresolved name `${name}`')
+}
+
+fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
+	mut i := 0
+	for i + 1 < tokens.len {
+		if tokens[i].tok != .name || tokens[i + 1].tok != .lpar {
+			i++
+			continue
+		}
+		call_end := fastc_matching_rpar(tokens, i + 1) or {
+			return g.unsupported('unbalanced function call `${tokens[i].lit}`')
+		}
+		call_args := fastc_call_arguments(tokens, i + 1, call_end) or {
+			return g.unsupported('function call `${tokens[i].lit}` arguments')
+		}
+		for argument in call_args {
+			g.validate_expression_calls(argument)!
+		}
+		name := tokens[i].lit
+		if signature := g.functions[name] {
+			if call_args.len != signature.parameter_types.len {
+				return g.unsupported('function `${name}` call with ${call_args.len} arguments instead of ${signature.parameter_types.len}')
+			}
+			for argument_index, argument in call_args {
+				actual_type := g.infer_expression_type(argument)
+				expected_type := signature.parameter_types[argument_index]
+				if actual_type.len == 0 {
+					return g.unsupported('unverifiable argument ${argument_index + 1} to function `${name}`')
+				}
+				if !fastc_call_types_are_compatible(actual_type, expected_type) {
+					return g.unsupported('argument ${argument_index + 1} of type `${actual_type}` to function `${name}` expecting `${expected_type}`')
+				}
+			}
+		} else if name in ['print', 'println'] {
+			if call_args.len != 1 {
+				return g.unsupported('function `${name}` call with ${call_args.len} arguments')
+			}
+		} else if _ := fastc_primitive_c_type(name) {
+			if call_args.len != 1 {
+				return g.unsupported('cast `${name}` with ${call_args.len} arguments')
+			}
+		} else {
+			return g.unsupported('unresolved function call `${name}`')
+		}
+		i = call_end + 1
+	}
+}
+
+fn fastc_matching_rpar(tokens []FastcExpressionToken, open int) ?int {
+	mut depth := 0
+	for i in open .. tokens.len {
+		match tokens[i].tok {
+			.lpar {
+				depth++
+			}
+			.rpar {
+				depth--
+				if depth == 0 {
+					return i
+				}
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn fastc_call_arguments(tokens []FastcExpressionToken, open int, close int) ![][]FastcExpressionToken {
+	if open + 1 == close {
+		return [][]FastcExpressionToken{}
+	}
+	mut call_args := [][]FastcExpressionToken{}
+	mut start := open + 1
+	mut depth := 0
+	for i in open + 1 .. close {
+		match tokens[i].tok {
+			.lpar {
+				depth++
+			}
+			.rpar {
+				depth--
+			}
+			.comma {
+				if depth == 0 {
+					if start == i {
+						return error('empty fastc function argument')
+					}
+					call_args << tokens[start..i]
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	if start == close {
+		return error('empty fastc function argument')
+	}
+	call_args << tokens[start..close]
+	return call_args
+}
+
+fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) string {
+	if tokens.len == 0 {
+		return ''
+	}
+	mut start := 0
+	mut end := tokens.len
+	for end - start >= 2 && tokens[start].tok == .lpar {
+		wrapper_end := fastc_matching_rpar(tokens[start..end], 0) or { break }
+		if wrapper_end != end - start - 1 {
+			break
+		}
+		start++
+		end--
+	}
+	if start >= end {
+		return ''
+	}
+	if end - start == 1 {
+		item := tokens[start]
+		return match item.tok {
+			.name {
+				if local := g.locals[item.lit] {
+					local.typ
+				} else {
+					''
+				}
+			}
+			.number {
+				fastc_number_expression_type(item.lit)
+			}
+			.string {
+				'string'
+			}
+			.key_true, .key_false {
+				'bool'
+			}
+			.key_nil {
+				'nil'
+			}
+			else {
+				''
+			}
+		}
+	}
+	if tokens[start].tok == .name && start + 1 < end && tokens[start + 1].tok == .lpar {
+		if close := fastc_matching_rpar(tokens[start..end], 1) {
+			if close == end - start - 1 {
+				name := tokens[start].lit
+				if signature := g.functions[name] {
+					return signature.return_type
+				}
+				if primitive := fastc_primitive_c_type(name) {
+					return primitive
+				}
+				return ''
+			}
+		}
+	}
+	if tokens[start].tok in [.plus, .minus] {
+		return g.infer_expression_type(tokens[start + 1..end])
+	}
+	if tokens[end - 1].tok in [.inc, .dec] {
+		return g.infer_expression_type(tokens[start..end - 1])
+	}
+	mut depth := 0
+	for i in start .. end {
+		match tokens[i].tok {
+			.lpar { depth++ }
+			.rpar { depth-- }
+			else {}
+		}
+		if depth != 0 {
+			continue
+		}
+		if tokens[i].tok.is_assignment() {
+			return g.infer_expression_type(tokens[start..i])
+		}
+		if tokens[i].tok in [.plus, .minus, .mul, .amp, .pipe, .xor] && i > start {
+			left_type := g.infer_expression_type(tokens[start..i])
+			right_type := g.infer_expression_type(tokens[i + 1..end])
+			return fastc_common_arithmetic_type(left_type, right_type)
+		}
+	}
+	return ''
+}
+
+fn fastc_number_expression_type(literal string) string {
+	clean := literal.replace('_', '')
+	if clean.contains('.') || (!(clean.starts_with('0x') || clean.starts_with('0X'))
+		&& clean.contains_any('eE')) {
+		return 'float literal'
+	}
+	return 'integer literal'
+}
+
+fn fastc_common_arithmetic_type(left string, right string) string {
+	if left == right {
+		return left
+	}
+	if left == 'integer literal' && fastc_is_integer_type(right) {
+		return right
+	}
+	if right == 'integer literal' && fastc_is_integer_type(left) {
+		return left
+	}
+	if left == 'float literal' && right in ['f32', 'f64'] {
+		return right
+	}
+	if right == 'float literal' && left in ['f32', 'f64'] {
+		return left
+	}
+	return ''
+}
+
+fn fastc_call_types_are_compatible(actual string, expected string) bool {
+	if actual == expected {
+		return true
+	}
+	if actual == 'integer literal' {
+		return fastc_is_integer_type(expected)
+	}
+	if actual == 'float literal' {
+		return expected in ['f32', 'f64']
+	}
+	if actual == 'nil' {
+		return expected.ends_with('*') || expected in ['voidptr', 'byteptr', 'charptr']
+	}
+	return false
+}
+
+fn fastc_is_integer_type(typ string) bool {
+	return typ in ['byte', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'rune', 'u8', 'u16',
+		'u32', 'u64', 'unsigned int', 'usize']
 }
 
 fn fastc_nondecimal_literal_is_type_sensitive(literal string) bool {

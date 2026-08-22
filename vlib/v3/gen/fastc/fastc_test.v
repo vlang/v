@@ -102,6 +102,206 @@ fn later(value int) int {
 	assert c_source.contains('println(later(2));')
 }
 
+fn test_narrow_integer_cast_expressions_are_rejected() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main
+
+fn main() {
+	println(u8(255) + u8(1))
+}
+',
+		'narrow_cast_expression.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('narrow integer cast expressions'), message
+}
+
+fn test_undeclared_function_signature_types_are_rejected() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn show(x size_t) { println(1) }\nfn main() { show(1) }\n',
+		'module main\nfn value() size_t { return 1 }\nfn main() { println(value()) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'undeclared_signature_type.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('undeclared type `size_t`'), message
+	}
+}
+
+fn test_declared_function_call_argument_types_are_validated() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main
+
+fn show(x bool) {
+	println(x)
+}
+
+fn main() {
+	show(2)
+}
+',
+		'invalid_call_argument.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('argument 1 of type `integer literal`'), message
+	assert message.contains('function `show` expecting `bool`'), message
+
+	c_source := generate('module main
+
+fn increment(x int) int {
+	return x + 1
+}
+
+fn show(x bool) {
+	println(x)
+}
+
+fn main() {
+	value := 2
+	flag := true
+	println(increment(value))
+	show(flag)
+}
+',
+		'valid_call_arguments.v', prefs) or { panic(err) }
+	assert c_source.contains('println(increment(value));')
+	assert c_source.contains('show(flag);')
+}
+
+fn test_scanner_diagnostics_are_rejected() {
+	prefs := pref.new_preferences()
+	source := "module main\nfn main() { println('" + r'\_' + "') }\n"
+	mut message := ''
+	_ := generate(source, 'scanner_diagnostic.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('fastc scanner error'), message
+	assert message.contains('`_` unknown escape sequence'), message
+}
+
+fn test_conditions_must_be_boolean() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { if 2 { println(1) } }\n',
+		'module main\nfn main() { value := 2; for value { break } }\n',
+		'module main\nfn main() { for 2 { break } }\n',
+		'module main\nfn main() { for i := 0; 2; i++ { break } }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'non_boolean_condition.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('condition of type'), message
+		assert message.contains('instead of `bool`'), message
+	}
+
+	c_source := generate('module main
+
+fn ready() bool {
+	return true
+}
+
+fn main() {
+	flag := true
+	if flag {
+		println(1)
+	}
+	for ready() {
+		break
+	}
+	for i := 0; ready(); i++ {
+		break
+	}
+}
+',
+		'boolean_conditions.v', prefs) or { panic(err) }
+	assert c_source.contains('if (flag) {')
+	assert c_source.contains('while (ready()) {')
+	assert c_source.contains('; ready(); i++) {')
+}
+
+fn test_return_expression_type_is_validated() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn value() bool { return 2 }\nfn main() { println(value()) }\n',
+		'module main\nfn value() int { return true }\nfn main() { println(value()) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'invalid_return_type.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('return expression of type'), message
+		assert message.contains('function returning'), message
+	}
+
+	c_source := generate('module main
+
+fn enabled() bool {
+	return true
+}
+
+fn value() int {
+	return 2
+}
+
+fn main() {
+	println(enabled())
+	println(value())
+}
+',
+		'valid_return_types.v', prefs) or { panic(err) }
+	assert c_source.contains('return ((bool)true);')
+	assert c_source.contains('return 2;')
+}
+
+fn test_assignment_value_type_is_validated() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { mut enabled := false; enabled = 2; println(enabled) }\n',
+		'module main\nfn main() { mut count := 1; count = true; println(count) }\n',
+		'module main\nfn main() { mut enabled := false; enabled += 1; println(enabled) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'invalid_assignment_type.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('assignment of type'), message
+		assert message.contains('of type'), message
+	}
+
+	c_source := generate('module main
+
+fn ready() bool {
+	return true
+}
+
+fn main() {
+	mut enabled := false
+	enabled = ready()
+	mut count := 1
+	count = 2
+	count += 3
+	println(enabled)
+	println(count)
+}
+',
+		'valid_assignment_types.v', prefs) or { panic(err) }
+	assert c_source.contains('enabled=ready();')
+	assert c_source.contains('count=2;')
+	assert c_source.contains('count+=3;')
+}
+
 fn test_bare_return_from_main_emits_zero() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main

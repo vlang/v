@@ -64,6 +64,21 @@ fn main() {
 	assert cross_source.contains('V_FASTC_PRINT_SELECT')
 	assert !cross_source.contains('builtin__builtin_init')
 
+	run_c := os.join_path(root, 'run_output.c')
+	run_c_result := cmdexec.run(v3_bin,
+		['-silent', '-b', 'fastc', '-o', run_c, 'run', valid_source])
+	assert run_c_result.exit_code == 0, run_c_result.output
+	assert os.is_file(run_c)
+	assert !os.exists(run_c.all_before_last('.c'))
+	run_c_source := os.read_file(run_c) or { panic(err) }
+	assert run_c_source.contains('V_FASTC_PRINT_SELECT')
+
+	run_stdout_result := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', '-', 'run',
+		valid_source])
+	assert run_stdout_result.exit_code == 0, run_stdout_result.output
+	assert run_stdout_result.output.contains('V_FASTC_PRINT_SELECT')
+	assert !run_stdout_result.output.ends_with('42\n15\n')
+
 	import_source := os.join_path(root, 'import.v')
 	write_fastc_test_source(import_source, 'module main
 
@@ -170,8 +185,9 @@ fn main() {
 			expected: 'fastc parser does not support compiler self-hosting'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
-				os.join_path(root, 'no_main.c'), valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
+				'no_main.c'),
+				valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{

@@ -7477,19 +7477,21 @@ pub fn run(args []string) {
 					exit(1)
 				}
 			}
-		} else {
-			if backend_explicit {
-				os.write_file(bin_file + '.c', fastc_source) or {
-					eprintln('failed to retain generated fastc output ${bin_file}.c: ${err.msg()}')
-					exit(1)
-				}
+			b.print_report()
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			return
+		}
+		if backend_explicit {
+			os.write_file(bin_file + '.c', fastc_source) or {
+				eprintln('failed to retain generated fastc output ${bin_file}.c: ${err.msg()}')
+				exit(1)
 			}
-			if keep_c {
-				keep_c_file := keep_c_output_file(bin_file)
-				os.write_file(keep_c_file, fastc_source) or {
-					eprintln('failed to retain generated fastc output ${keep_c_file}: ${err.msg()}')
-					exit(1)
-				}
+		}
+		if keep_c {
+			keep_c_file := keep_c_output_file(bin_file)
+			os.write_file(keep_c_file, fastc_source) or {
+				eprintln('failed to retain generated fastc output ${keep_c_file}: ${err.msg()}')
+				exit(1)
 			}
 		}
 		if should_run {
