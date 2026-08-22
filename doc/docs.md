@@ -82,7 +82,9 @@ target OS different from the host, the established compiler in `vlib/v` is
 used. V scripts (`.vsh`, including `v run script.vsh`), the `crun` and
 `build-module` commands, and debug builds selected with `-g`/`-debug` also
 remain on the established compiler. Same-OS cross-architecture builds can still
-use V3 when the target is supported.
+use V3 when the target is supported. Copies or symlinks whose resolved compiler
+executable is not named `v` or `vnew` also remain on the established compiler by
+default; pass `-new-compiler` to select V3 explicitly in those installations.
 
 You normally do not need to do anything: when V3 cannot yet build an eligible
 program, `v` automatically falls back to the established compiler, so your build

@@ -4530,12 +4530,12 @@ fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []str
 	}
 	g.preserved_header_files_seen[real_path] = true
 	text := os.read_file(real_path) or { return }
-	possible_text := c_header_possible_active_text(text, g.c_flags, g.c99_mode, g.target)
-	g.collect_inlined_c_structs(possible_text)
-	g.collect_inlined_c_fns(possible_text)
-	g.collect_inlined_c_declared_fns(possible_text)
+	active_text := c_header_definitely_active_text(text, g.c_flags, g.c99_mode, g.target)
+	g.collect_inlined_c_structs(active_text)
+	g.collect_inlined_c_fns(active_text)
+	g.collect_inlined_c_declared_fns(active_text)
 	mut in_block_comment := false
-	for line in possible_text.split_into_lines() {
+	for line in active_text.split_into_lines() {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		if c_directive_name(clean) !in ['include', 'import'] {
@@ -4559,17 +4559,17 @@ fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []str
 	}
 }
 
-// c_header_possible_active_text removes declarations from preprocessor branches
-// known to be inactive for the current target and C flags. Unknown branches stay
-// in the scan so a declaration that the real compiler may see remains authoritative.
-fn c_header_possible_active_text(text string, flags []string, c99_mode bool, target pref.Target) string {
+// c_header_definitely_active_text retains declarations only from preprocessor
+// branches known to be active for the current target and C flags. A declaration
+// in an unresolved branch cannot safely suppress a generated C prototype.
+fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, target pref.Target) string {
 	mut defined := map[string]bool{}
 	mut undefined := map[string]bool{}
 	mut uncertain := map[string]bool{}
-	// A preserved header inherits macros from its including source and parent
-	// headers. That context is not carried through this lightweight recursive
-	// scan, so an otherwise unknown macro must keep both branches possible.
-	mut external_macros_possible := true
+	// Preinclude headers begin before generated source declarations. An earlier
+	// nested include can still introduce unknown macros, which makes later
+	// conditions unresolved and therefore unsuitable for prototype suppression.
+	mut external_macros_possible := false
 	mut i := 0
 	for i < flags.len {
 		clean := trimmed_space(flags[i])
@@ -4685,11 +4685,9 @@ fn c_header_possible_active_text(text string, flags []string, c99_mode bool, tar
 			output.writeln('')
 			continue
 		}
-		mut possibly_active := true
 		mut definitely_active := true
 		for depth in 0 .. condition_known.len {
 			if condition_known[depth] && !condition_active[depth] {
-				possibly_active = false
 				definitely_active = false
 				break
 			}
@@ -4697,7 +4695,7 @@ fn c_header_possible_active_text(text string, flags []string, c99_mode bool, tar
 				definitely_active = false
 			}
 		}
-		if !possibly_active {
+		if !definitely_active {
 			output.writeln('')
 			continue
 		}
@@ -4717,10 +4715,6 @@ fn c_header_possible_active_text(text string, flags []string, c99_mode bool, tar
 						defined.delete(macro_name)
 						undefined[macro_name] = true
 					}
-				} else {
-					defined.delete(macro_name)
-					undefined.delete(macro_name)
-					uncertain[macro_name] = true
 				}
 			}
 		}
@@ -4732,8 +4726,8 @@ fn c_header_possible_active_text(text string, flags []string, c99_mode bool, tar
 fn c_preprocessor_ifdef_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
 	if external_macros_possible && name !in defined && name !in undefined && name !in uncertain
 		&& name !in ['__linux__', '__linux', 'linux', 'unix', '__APPLE__', '__MACH__', '_WIN32', '_WIN64', '__FreeBSD__', '__OpenBSD__', '__NetBSD__'] {
-		// An earlier include can define an otherwise unknown macro. Keep both
-		// branches in that case so the declaration scan never drops active code.
+		// An earlier include can define an otherwise unknown macro, so its state
+		// cannot be inferred by this lightweight scan.
 		return false, true
 	}
 	return c_preprocessor_macro_state(name, defined, undefined, uncertain, strict_iso_mode, target)
