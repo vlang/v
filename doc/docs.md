@@ -79,9 +79,9 @@ On macOS and Linux, `v` compiles your program with the experimental **V3**
 compiler (a newer implementation of the V compiler, whose source lives in
 `vlib/v3`) by default. On other platforms, and for C builds that select a
 target OS different from the host, the established compiler in `vlib/v` is
-used. V scripts (`.vsh`, including `v run script.vsh`) also remain on the
-established compiler. Same-OS cross-architecture builds can still use V3 when
-the target is supported.
+used. V scripts (`.vsh`, including `v run script.vsh`) and debug builds selected
+with `-g`/`-debug` also remain on the established compiler. Same-OS
+cross-architecture builds can still use V3 when the target is supported.
 
 You normally do not need to do anything: when V3 cannot yet build an eligible
 program, `v` automatically falls back to the established compiler, so your build

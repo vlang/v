@@ -80,6 +80,16 @@ fn test_v3_default_diagnostic_color_uses_environment() {
 	assert ansi.red('error') == '\x1b[31merror\x1b[39m'
 }
 
+fn test_macos_v3_fallback_payload_validation() {
+	assert macos_v3_fallback_payload_is_valid('compiler_error\nsemantic checking')
+	assert macos_v3_fallback_payload_is_valid('compiler_error')
+	assert macos_v3_fallback_payload_is_valid('inline_asm')
+	assert macos_v3_fallback_payload_is_valid('c_compilation_error')
+	assert !macos_v3_fallback_payload_is_valid('')
+	assert !macos_v3_fallback_payload_is_valid('compiler')
+	assert !macos_v3_fallback_payload_is_valid('compiler_error_partial')
+}
+
 fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
 	root := os.join_path(os.temp_dir(), 'v3_parallel_cc_active_directive_${os.getpid()}')
 	os.rmdir_all(root) or {}
