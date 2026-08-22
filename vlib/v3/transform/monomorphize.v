@@ -451,6 +451,16 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		{
 			changed = true
 		}
+		mut generic_sum_method_specs := map[string]string{}
+		for spec, context in generic_sum_specs {
+			generic_sum_method_specs[spec] = context.base
+		}
+		if t.specialize_generic_struct_methods(generic_sum_method_specs, decls,
+			methods_by_receiver, method_level_params, interfaces_by_method, mut
+			interface_impl_cache, mut emitted)
+		{
+			changed = true
+		}
 		t.monomorph_profile('mono round ${debug_round} methods: ${time.ticks() - method_started} ms')
 		if t.drain_pending_generic_fn_specs(struct_decls, sum_decls, mut emitted, mut generated) {
 			changed = true
@@ -1338,6 +1348,10 @@ fn (t &Transformer) generic_struct_spec_has_emitted_method(base string, args []s
 }
 
 fn (t &Transformer) generic_struct_method_used_for_spec(spec string, decl GenericFnDecl, args []string, method string) bool {
+	if method == 'str'
+		&& (t.used_fn_contains_name(decl.node.value) || t.used_fn_contains_name(decl.key)) {
+		return true
+	}
 	direct := '${spec}.${method}'
 	if t.used_fn_contains_name(direct) {
 		return true
@@ -1424,6 +1438,12 @@ fn (t &Transformer) needs_generic_struct_method_specialization(decls map[string]
 	}
 	for decl_key, _ in decls {
 		if decl_key.contains('.') && is_operator_method_name(decl_key.all_after_last('.')) {
+			return true
+		}
+	}
+	for _, decl in decls {
+		if decl.node.value.ends_with('.str')
+			&& (t.used_fn_contains_name(decl.node.value) || t.used_fn_contains_name(decl.key)) {
 			return true
 		}
 	}
@@ -12375,6 +12395,10 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg string) string {
 		return '${base}[${canonical_args.join(', ')}]'
 	}
 	if t.generic_arg_is_alias_name(clean, '') {
+		normalized_alias := t.normalize_type_alias(clean)
+		if normalized_alias != clean && t.is_fixed_array_type(normalized_alias) {
+			return t.canonical_generic_specialization_arg(normalized_alias)
+		}
 		return clean
 	}
 	// A checker-resolved qualified type is already a canonical semantic name.

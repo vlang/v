@@ -189,13 +189,10 @@ fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_param
 	// the selected method signature carries its materialized receiver
 	// (Box[Local]). The boxed object uses the latter storage type.
 	expected_value_type := types.unwrap_pointer(expected_type)
-	mut storage_cct := if expected_value_type is types.Unknown {
+	storage_cct := if expected_value_type is types.Unknown {
 		concrete_cct
 	} else {
-		g.tc.c_type(expected_value_type)
-	}
-	if storage_cct.starts_with('fn_ptr:') {
-		storage_cct = naming.fn_ptr_type_name(storage_cct)
+		g.interface_storage_c_type(expected_value_type)
 	}
 	return if wants_ptr {
 		'(${storage_cct}*)i->_object'
@@ -2067,16 +2064,22 @@ fn (g &FlatGen) interface_dispatch_boxed_value_expr(concrete string) string {
 
 fn (g &FlatGen) interface_concrete_storage_c_type(concrete string) string {
 	concrete_type := g.interface_concrete_type(concrete)
-	ct := if concrete_type is types.Unknown {
-		g.cname(concrete)
-	} else {
-		g.tc.c_type(concrete_type)
+	if concrete_type is types.Unknown {
+		if concrete.starts_with('fn_ptr:') {
+			return naming.fn_ptr_type_name(concrete)
+		}
+		return g.cname(concrete)
 	}
+	return g.interface_storage_c_type(concrete_type)
+}
+
+fn (g &FlatGen) interface_storage_c_type(typ types.Type) string {
+	ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
 		return naming.fn_ptr_type_name(ct)
 	}
-	if concrete.starts_with('fn_ptr:') {
-		return naming.fn_ptr_type_name(concrete)
+	if typ.name().starts_with('fn_ptr:') {
+		return naming.fn_ptr_type_name(typ.name())
 	}
 	return ct
 }

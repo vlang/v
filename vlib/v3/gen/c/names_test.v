@@ -54,6 +54,13 @@ fn test_c_name_preserves_c_receiver_method_namespace() {
 	assert c_name('C.SSL_CTX.str') == 'C__SSL_CTX__str'
 }
 
+fn test_struct_init_main_type_lock_matches_only_a_type_component() {
+	assert struct_init_has_main_type_lock('main.Context')
+	assert struct_init_has_main_type_lock('other.Box[map[other.Key]main.Context]')
+	assert !struct_init_has_main_type_lock('domain.Context')
+	assert !struct_init_has_main_type_lock('some.main.Context')
+}
+
 fn test_c_name_generated_string_symbol_collision() {
 	assert c_name('_str_1') == 'v__str_1'
 	assert c_name('_str_002') == 'v__str_002'
