@@ -173,6 +173,7 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		'module main\nfn main() { mut x := -2_147_483_648; x--; println(x) }\n',
 		'module main\nfn main() { for i := -2_147_483_648; true; i-- { println(i); break } }\n',
 		'module main\nfn main() { x := 0xffff_ffff | 0; println(x) }\n',
+		'module main\nfn main() { mut a := 1; mut b := 2; a, b = b, a; println(a); println(b) }\n',
 	] {
 		mut failed := false
 		_ := generate(source, 'typed_expression.v', prefs) or {
@@ -189,4 +190,7 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 	low_hex_c := generate('module main\nfn main() { x := 0x7fff_ffff | 0; println(x) }\n',
 		'low_hex_literal.v', prefs) or { panic(err) }
 	assert low_hex_c.contains('__typeof__((0x7fffffff|0)) x = (0x7fffffff|0);')
+	call_c := generate('module main\nfn sum(a int, b int) int { return a + b }\nfn main() { println(sum(1, 2)) }\n',
+		'call_comma.v', prefs) or { panic(err) }
+	assert call_c.contains('println(sum(1,2));')
 }

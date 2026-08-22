@@ -529,6 +529,11 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 		if paren_depth == 0 && g.tok in stops {
 			break
 		}
+		if paren_depth == 0 && g.tok == .comma {
+			// V's top-level commas form simultaneous multi-target assignments.
+			// Copying them to C would instead emit comma operators.
+			return g.unsupported('parallel assignments')
+		}
 		if g.tok in [.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .not] {
 			// C represents comparison and logical results as int. Without V type
 			// information, accepting them here would make generic printing and

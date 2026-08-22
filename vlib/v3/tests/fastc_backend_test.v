@@ -278,6 +278,29 @@ fn main() {
 	assert high_hex_run.exit_code == 0, high_hex_run.output
 	assert high_hex_run.output.trim_space() == '-1'
 
+	parallel_assign_source := os.join_path(root, 'parallel_assign.v')
+	os.write_file(parallel_assign_source, 'module main
+
+fn main() {
+	mut a := 1
+	mut b := 2
+	a, b = b, a
+	println(a)
+	println(b)
+}
+') or {
+		panic(err)
+	}
+	parallel_assign_binary := os.join_path(root, 'parallel_assign')
+	parallel_assign_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
+		parallel_assign_binary, parallel_assign_source])
+	assert parallel_assign_compile.exit_code == 0, parallel_assign_compile.output
+	parallel_assign_c := os.read_file(parallel_assign_binary + '.c') or { panic(err) }
+	assert !parallel_assign_c.contains('V_FASTC_PRINT_SELECT')
+	parallel_assign_run := cmdexec.run(parallel_assign_binary, [])
+	assert parallel_assign_run.exit_code == 0, parallel_assign_run.output
+	assert parallel_assign_run.output.trim_space() == '2\n1'
+
 	shift_source := os.join_path(root, 'oversized_shift.v')
 	os.write_file(shift_source, 'module main
 
