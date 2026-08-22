@@ -28,7 +28,7 @@ fn macos_v3_non_compilation_command(command string) bool {
 // rely on it, so it must stay platform neutral.
 @[markused]
 fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
-	if !prefs.new_compiler || prefs.old_compiler {
+	if !macos_v3_explicit_compilation_requested(command, prefs) {
 		return false
 	}
 	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
@@ -40,14 +40,20 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 		// delegated to the ownership compiler before reaching this dispatcher.
 		return false
 	}
-	if prefs.path == '' || command == 'test' || macos_v3_non_compilation_command(command)
-		|| command in external_tools {
+	return true
+}
+
+// macos_v3_explicit_compilation_requested reports whether `-new-compiler` targets a command that
+// actually compiles V source. Compatibility validation must not reject unrelated external tools.
+@[markused]
+fn macos_v3_explicit_compilation_requested(command string, prefs &pref.Preferences) bool {
+	if !prefs.new_compiler || prefs.old_compiler || prefs.path == '' || command == 'test'
+		|| macos_v3_non_compilation_command(command) || command in external_tools {
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
-	if normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
-		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
-		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v') {
+	if is_macos_v3_vroot_path(normalized_path, 'cmd/v', true)
+		|| is_macos_v3_vroot_path(normalized_path, 'vlib/v3/v3.v', false) {
 		return false
 	}
 	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
