@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "audience": "vlang/v:tccbin-automation-state",
+  "targets": [
+    {
+      "target_id": "linux-amd64",
+      "generation": 5,
+      "canonical_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+      "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+      "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+      "active_consumer_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "active_recovery_handoff_id": "6513c90942a3e5ac149d70b2c32145bf21e72f3bad6cf262d3e6add9ca19fbba",
+      "active_subject_hash": "a3df03e05747472e2cc68ebf831503018a77a8a5dd7e2c575f0fd810ef3786f3"
+    },
+    {
+      "target_id": "windows-amd64",
+      "generation": 8,
+      "canonical_head": "cccccccccccccccccccccccccccccccccccccccc",
+      "input_fingerprint": "8888888888888888888888888888888888888888888888888888888888888888",
+      "artifact_fingerprint": "9999999999999999999999999999999999999999999999999999999999999999",
+      "manifest_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "active_consumer_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "active_recovery_handoff_id": "7777777777777777777777777777777777777777777777777777777777777777",
+      "active_subject_hash": "9afdb6dd7a6fc43af42dadaade4808c92689c0c7e45468c45f5a0946f123f466"
+    }
+  ],
+  "entries": [
+    {
+      "id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "record_type": "consumer",
+      "target_id": "linux-amd64",
+      "consumer_type": "candidate",
+      "resume_capability": "native_gate",
+      "intent_or_operation_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "expected_ledger_generation": 5,
+      "expected_canonical_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "subject_ref_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "subject_hash": "a3df03e05747472e2cc68ebf831503018a77a8a5dd7e2c575f0fd810ef3786f3",
+      "subject": {
+        "consumer_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "consumer_kind": "initial_adopt_current",
+        "intent_or_operation_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "target_id": "linux-amd64",
+        "subject_generation": 4,
+        "initial_run_mode": "original_push",
+        "remediation_trigger": null,
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "original_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+        "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+        "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+        "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+        "digests": [
+          {
+            "path": "tcc.exe",
+            "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+          }
+        ]
+      },
+      "receiver_repository": "vlang/v",
+      "workflow_id": 1001,
+      "workflow_path": ".github/workflows/update_tccbin.yml",
+      "workflow_ref": "master",
+      "event": "workflow_dispatch",
+      "run_name": "tccbin-gate-1111111111111111111111111111111111111111111111111111111111111111",
+      "state": "pending",
+      "selected_run_id": 0,
+      "selected_run_attempt": 0,
+      "receiver_master_sha": null
+    },
+    {
+      "id": "6513c90942a3e5ac149d70b2c32145bf21e72f3bad6cf262d3e6add9ca19fbba",
+      "record_type": "handoff",
+      "target_id": "linux-amd64",
+      "consumer_type": "candidate",
+      "resume_capability": "native_gate",
+      "intent_or_operation_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "expected_ledger_generation": 5,
+      "expected_canonical_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "subject_ref_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "subject_hash": "a3df03e05747472e2cc68ebf831503018a77a8a5dd7e2c575f0fd810ef3786f3",
+      "subject": {
+        "consumer_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "consumer_kind": "initial_adopt_current",
+        "intent_or_operation_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "target_id": "linux-amd64",
+        "subject_generation": 4,
+        "initial_run_mode": "original_push",
+        "remediation_trigger": null,
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "original_ref": "tccbin-candidate/linux-amd64/1111111111111111111111111111111111111111111111111111111111111111",
+        "input_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+        "artifact_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+        "manifest_hash": "5555555555555555555555555555555555555555555555555555555555555555",
+        "digests": [
+          {
+            "path": "tcc.exe",
+            "sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+          }
+        ]
+      },
+      "receiver_repository": "vlang/v",
+      "workflow_id": 1001,
+      "workflow_path": ".github/workflows/update_tccbin.yml",
+      "workflow_ref": "master",
+      "event": "workflow_dispatch",
+      "run_name": "tccbin-recovery-6513c90942a3e5ac149d70b2c32145bf21e72f3bad6cf262d3e6add9ca19fbba",
+      "state": "pending",
+      "selected_run_id": 0,
+      "selected_run_attempt": 0,
+      "receiver_master_sha": null
+    },
+    {
+      "id": "7777777777777777777777777777777777777777777777777777777777777777",
+      "record_type": "handoff",
+      "target_id": "windows-amd64",
+      "consumer_type": "post-validation",
+      "resume_capability": "v_smoke",
+      "intent_or_operation_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "expected_ledger_generation": 8,
+      "expected_canonical_head": "cccccccccccccccccccccccccccccccccccccccc",
+      "subject_ref_head": "cccccccccccccccccccccccccccccccccccccccc",
+      "subject_hash": "9afdb6dd7a6fc43af42dadaade4808c92689c0c7e45468c45f5a0946f123f466",
+      "subject": {
+        "consumer_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "consumer_kind": "publish_post",
+        "intent_or_operation_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "target_id": "windows-amd64",
+        "subject_generation": 6,
+        "initial_run_mode": "original_push",
+        "remediation_trigger": null,
+        "sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "tree": "dddddddddddddddddddddddddddddddddddddddd",
+        "original_ref": "thirdparty-windows-amd64",
+        "input_fingerprint": "8888888888888888888888888888888888888888888888888888888888888888",
+        "artifact_fingerprint": "9999999999999999999999999999999999999999999999999999999999999999",
+        "manifest_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "digests": [
+          {
+            "path": "tcc.exe",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      },
+      "receiver_repository": "vlang/v",
+      "workflow_id": 1002,
+      "workflow_path": ".github/workflows/tccbin_revalidate.yml",
+      "workflow_ref": "master",
+      "event": "workflow_dispatch",
+      "run_name": "tccbin-recovery-7777777777777777777777777777777777777777777777777777777777777777",
+      "state": "dispatched",
+      "selected_run_id": 9001,
+      "selected_run_attempt": 1,
+      "receiver_master_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  ]
+}

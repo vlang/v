@@ -741,6 +741,14 @@ pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)
 	mut stored := node
 	stored.set_type_text_id(a.node_type_text_id(stored.typ, stored.type_text_id()))
+	if a.nodes.len < a.nodes.cap {
+		unsafe {
+			mut slot := &Node(&u8(a.nodes.data) + usize(a.nodes.len) * sizeof(Node))
+			*slot = stored
+			a.nodes.len++
+		}
+		return id
+	}
 	a.nodes << stored
 	return id
 }
@@ -760,6 +768,14 @@ pub fn (mut a FlatAst) begin_children() int {
 
 // add_child updates add child state for FlatAst.
 pub fn (mut a FlatAst) add_child(id NodeId) {
+	if a.children.len < a.children.cap {
+		unsafe {
+			mut slot := &NodeId(&u8(a.children.data) + usize(a.children.len) * sizeof(NodeId))
+			*slot = id
+			a.children.len++
+		}
+		return
+	}
 	a.children << id
 }
 

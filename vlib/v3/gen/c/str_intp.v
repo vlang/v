@@ -383,8 +383,8 @@ fn (mut g FlatGen) string_literals_from(start int) {
 
 // intern_string supports intern string handling for FlatGen.
 fn (mut g FlatGen) intern_string(s string) int {
-	if s in g.str_lit_ids {
-		return g.str_lit_ids[s]
+	if id := g.str_lit_ids[s] {
+		return id
 	}
 	if g.str_lits_shared {
 		g.str_lits = g.str_lits.clone()

@@ -430,6 +430,44 @@ fn main() {
 	assert used['new_map']
 }
 
+fn test_prepared_markused_combines_exact_and_lowered_dependencies() {
+	src := os.join_path(os.temp_dir(), 'v3_markused_prepared_exact_edges.v')
+	os.write_file(src, '
+fn direct_target() {}
+fn callback_target() {}
+fn take_callback(callback fn ()) { callback() }
+fn default_target() int { return 1 }
+
+struct Config {
+	value int = default_target()
+}
+
+fn main() {
+	direct_target()
+	take_callback(callback_target)
+	_ := Config{}
+}
+') or {
+		panic(err)
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(src)
+	mut tc := types.TypeChecker.new(a)
+	tc.enable_globals = true
+	tc.collect(a)
+	tc.diagnostic_files[src] = true
+	prepared_thread := spawn markused.prepare_markused_declarations(a, &tc, true)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	mut prepared := prepared_thread.wait()
+	used := markused.mark_used_without_generic_detection_prepared(a, &tc, mut prepared)
+	prepared.release()
+	assert used['direct_target']
+	assert used['callback_target']
+	assert used['default_target']
+}
+
 fn test_self_typed_default_collects_explicit_initializer_calls() {
 	used := mark_used_source('self_typed_default_explicit_call', '
 interface Value {}

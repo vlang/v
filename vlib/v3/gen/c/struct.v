@@ -3748,9 +3748,10 @@ fn (g &FlatGen) find_struct_decl_preferred(type_name string) ?StructDeclInfo {
 }
 
 fn (g &FlatGen) find_struct_decl_preferred_uncached(type_name string) ?StructDeclInfo {
-	short_name := if type_name.contains('.') { type_name.all_after_last('.') } else { type_name }
-	preferred_name := if !type_name.contains('.') && g.tc.cur_module.len > 0
-		&& g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
+	has_dot := type_name.contains('.')
+	short_name := if has_dot { c_short_name_view(type_name) } else { type_name }
+	preferred_name := if !has_dot && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
+		&& g.tc.cur_module != 'builtin' {
 		'${g.tc.cur_module}.${type_name}'
 	} else {
 		type_name
@@ -3760,7 +3761,7 @@ fn (g &FlatGen) find_struct_decl_preferred_uncached(type_name string) ?StructDec
 			return info
 		}
 	}
-	if type_name.contains('.') {
+	if has_dot {
 		if info := g.struct_decl_infos[type_name] {
 			return info
 		}

@@ -118,10 +118,9 @@ fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
 		// vs the registered `map[string]toml.ast.Value`) match on the
 		// module-stripped spelling only when that spelling is unambiguous.
 		if variant.contains('.') || variant.contains('[') {
-			short_variant := short_module_type_text(variant)
 			mut short_match := 0
 			for i, v in g.tc.sum_types[sum_name] {
-				if short_module_type_text(v) == short_variant {
+				if short_module_type_texts_equal(v, variant) {
 					if short_match != 0 {
 						return 0
 					}
@@ -429,12 +428,24 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 
 fn (mut g FlatGen) precompute_sum_name_lookup() {
 	g.sum_name_lookup = map[string]string{}
-	for name, _ in g.tc.sum_types {
+	g.sum_variant_lookup = map[string]map[string]string{}
+	for name, variants in g.tc.sum_types {
 		g.sum_name_lookup[name] = name
 		short := c_short_name_view(name)
 		if short.len > 0 && short !in g.sum_name_lookup {
 			g.sum_name_lookup[short] = name
 		}
+		mut lookup := map[string]string{}
+		for variant in variants {
+			lookup[variant] = variant
+		}
+		for variant in variants {
+			variant_short := c_short_name_view(variant)
+			if variant_short.len > 0 && variant_short !in lookup {
+				lookup[variant_short] = variant
+			}
+		}
+		g.sum_variant_lookup[name] = lookup.move()
 	}
 }
 
@@ -442,16 +453,9 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 fn (g &FlatGen) resolve_variant(sum_name string, variant string) string {
 	resolved_sum := g.resolve_sum_name(sum_name)
 	normalized_variant := g.normalize_variant_name(variant)
-	if resolved_sum in g.tc.sum_types {
-		for v in g.tc.sum_types[resolved_sum] {
-			if v == normalized_variant {
-				return normalized_variant
-			}
-		}
-		for v in g.tc.sum_types[resolved_sum] {
-			if v.all_after_last('.') == normalized_variant {
-				return v
-			}
+	if lookup := g.sum_variant_lookup[resolved_sum] {
+		if resolved := lookup[normalized_variant] {
+			return resolved
 		}
 	}
 	return normalized_variant
@@ -2092,32 +2096,69 @@ fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {
 	return g.tc.parse_type(concrete)
 }
 
-// short_module_type_text strips module qualifiers from every identifier in a
-// type text: `map[string]toml.ast.Value` -> `map[string]Value`.
-fn short_module_type_text(text string) string {
-	mut out := []u8{cap: text.len}
-	mut i := 0
-	for i < text.len {
-		c := text[i]
-		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
-			start := i
-			for i < text.len {
-				c2 := text[i]
-				if (c2 >= `a` && c2 <= `z`) || (c2 >= `A` && c2 <= `Z`)
-					|| (c2 >= `0` && c2 <= `9`) || c2 == `_` || c2 == `.` {
-					i++
-				} else {
-					break
-				}
+// short_module_type_texts_equal compares the module-stripped spellings without
+// allocating either temporary text. Identifier tokens retain only the suffix
+// after their final dot; punctuation is compared byte for byte.
+@[direct_array_access]
+fn short_module_type_texts_equal(a string, b string) bool {
+	mut ai := 0
+	mut bi := 0
+	for ai < a.len && bi < b.len {
+		ac := a[ai]
+		bc := b[bi]
+		a_ident := (ac >= `a` && ac <= `z`) || (ac >= `A` && ac <= `Z`) || ac == `_`
+		b_ident := (bc >= `a` && bc <= `z`) || (bc >= `A` && bc <= `Z`) || bc == `_`
+		if a_ident != b_ident {
+			return false
+		}
+		if !a_ident {
+			if ac != bc {
+				return false
 			}
-			token := text[start..i]
-			unsafe { out.push_many(token.all_after_last('.').str, token.all_after_last('.').len) }
+			ai++
+			bi++
 			continue
 		}
-		out << c
-		i++
+		mut a_short := ai
+		mut b_short := bi
+		mut a_end := ai
+		mut b_end := bi
+		for a_end < a.len {
+			c := a[a_end]
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+				|| (c >= `0` && c <= `9`) || c == `_` || c == `.` {
+				if c == `.` {
+					a_short = a_end + 1
+				}
+				a_end++
+				continue
+			}
+			break
+		}
+		for b_end < b.len {
+			c := b[b_end]
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+				|| (c >= `0` && c <= `9`) || c == `_` || c == `.` {
+				if c == `.` {
+					b_short = b_end + 1
+				}
+				b_end++
+				continue
+			}
+			break
+		}
+		if a_end - a_short != b_end - b_short {
+			return false
+		}
+		for offset in 0 .. a_end - a_short {
+			if a[a_short + offset] != b[b_short + offset] {
+				return false
+			}
+		}
+		ai = a_end
+		bi = b_end
 	}
-	return out.bytestr()
+	return ai == a.len && bi == b.len
 }
 
 fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quote_string bool, mut stack []string) ?string {

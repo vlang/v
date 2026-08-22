@@ -25,6 +25,34 @@ fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.Node
 	})
 }
 
+fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	pointer_type := types.Type(types.Pointer{
+		base_type: types.Type(types.int_)
+	})
+	value_id := stmt_test_node(mut a, .ident, 'value', [])
+	tc.register_synth_type(value_id, pointer_type)
+	children_start := a.children.len
+	a.children << value_id
+	deref_id := a.add_node(flat.Node{
+		kind:           .prefix
+		op:             .mul
+		typ:            '&int'
+		children_start: i32(children_start)
+		children_count: 1
+	})
+
+	actual := g.usable_expr_type(deref_id)
+	assert actual is types.Pointer
+	if actual is types.Pointer {
+		assert actual.base_type == types.Type(types.int_)
+	}
+}
+
 fn test_primitive_fixed_array_zero_initializer_is_compact() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

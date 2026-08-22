@@ -44,6 +44,18 @@ fn parse_parser_regression_backend_diagnostics(name string, source string, backe
 	return p.diagnostics
 }
 
+fn test_vv_input_is_counted_as_v_source() {
+	path := os.join_path(os.temp_dir(), 'v3_parser_source_count_${os.getpid()}.vv')
+	os.write_file(path, 'fn main() {}\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_into(path)
+	assert p.parsed_v_files == 1
+	assert p.parsed_v_file_paths == [path]
+}
+
 // interface_method_param_types supports interface method param types handling for v3 tests.
 fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []string {
 	for node in a.nodes {

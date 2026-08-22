@@ -10,6 +10,14 @@ fn test_default_bin_file_strips_backend_source_extension() {
 	assert default_bin_file_for_input('foo.js.v') == 'foo'
 	assert default_bin_file_for_input('foo.wasm.v') == 'foo'
 	assert default_bin_file_for_input('foo.v') == 'foo'
+	assert default_bin_file_for_input('foo.vv') == 'foo'
+}
+
+fn test_profile_optional_arg_recognizes_vv_source() {
+	value, consumed := v3_profile_optional_arg_value(['-profile', 'fixture.vv', '-o', 'out'], 0,
+		false)
+	assert value == '-'
+	assert !consumed
 }
 
 fn test_default_bin_file_uses_safe_hidden_source_name() {

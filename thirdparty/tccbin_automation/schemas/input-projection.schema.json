@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "input-projection.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "contract_repository",
+    "contract_sha",
+    "contract_mode",
+    "target_id",
+    "branch",
+    "v_source_sha",
+    "sources",
+    "recipe",
+    "toolchain",
+    "patches",
+    "transforms",
+    "header_effects",
+    "integrations",
+    "overlays",
+    "input_inventory",
+    "probes",
+    "provenance_status",
+    "opaque_policy_hash",
+    "opaque_acceptance_ids",
+    "affected_targets"
+  ],
+  "properties": {
+    "contract_version": {"$ref": "common.schema.json#/$defs/contract_version"},
+    "contract_repository": {"$ref": "common.schema.json#/$defs/repository"},
+    "contract_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+    "contract_mode": {"$ref": "common.schema.json#/$defs/contract_mode"},
+    "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+    "branch": {"$ref": "common.schema.json#/$defs/branch"},
+    "v_source_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+    "sources": {"$ref": "bundle-manifest.schema.json#/properties/sources"},
+    "recipe": {"$ref": "bundle-manifest.schema.json#/properties/recipe"},
+    "toolchain": {"$ref": "bundle-manifest.schema.json#/properties/toolchain"},
+    "patches": {"$ref": "bundle-manifest.schema.json#/properties/patches"},
+    "transforms": {"$ref": "bundle-manifest.schema.json#/properties/transforms"},
+    "header_effects": {"type": "array", "items": {"$ref": "patch-effect.schema.json"}},
+    "integrations": {"type": "array", "items": {"$ref": "patch-effect.schema.json"}},
+    "overlays": {"type": "array", "items": {"$ref": "inventory-entry.schema.json"}},
+    "input_inventory": {"type": "array", "items": {"$ref": "inventory-entry.schema.json"}},
+    "probes": {"$ref": "bundle-manifest.schema.json#/properties/probes"},
+    "provenance_status": {"$ref": "common.schema.json#/$defs/provenance_status"},
+    "opaque_policy_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "opaque_acceptance_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "const": "windows-amd64-openlibm-v1"}
+    },
+    "affected_targets": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/target_id"}
+    }
+  }
+}

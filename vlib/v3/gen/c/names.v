@@ -30,6 +30,31 @@ fn c_name_recent_slot(name string) int {
 	return int(((u64(voidptr(name.str)) >> 4) ^ u64(name.len)) & 1023)
 }
 
+// c_name_is_pre_sanitized reports names that are already unambiguously in V's
+// module-qualified C spelling. C keywords, libc collisions and special builtin
+// rewrites never contain `__`, so these names can bypass the map-backed slow
+// path after their direct-cache miss.
+@[direct_array_access; inline]
+fn c_name_is_pre_sanitized(name string) bool {
+	mut previous_underscore := false
+	mut has_double_underscore := false
+	for i in 0 .. name.len {
+		c := name[i]
+		if (c < `a` || c > `z`) && (c < `A` || c > `Z`) && (c < `0` || c > `9`) && c != `_` {
+			return false
+		}
+		if c == `_` {
+			if previous_underscore {
+				has_double_underscore = true
+			}
+			previous_underscore = true
+		} else {
+			previous_underscore = false
+		}
+	}
+	return has_double_underscore
+}
+
 @[inline]
 fn (c &CNameCache) recent(name string) ?string {
 	if name.len > 65535 {
@@ -228,6 +253,12 @@ fn (g &FlatGen) cname(name string) string {
 		cache.last_name = name
 		cache.last_value = cached
 		return cached
+	}
+	if c_name_is_pre_sanitized(name) {
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
 	}
 	if cached := cache.entries[name] {
 		cache.last_name = name

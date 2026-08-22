@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "targets.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "known_bundle_branches",
+    "managed_ci_targets",
+    "opaque_acceptances"
+  ],
+  "properties": {
+    "contract_version": {"$ref": "common.schema.json#/$defs/contract_version"},
+    "known_bundle_branches": {
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/branch"}
+    },
+    "managed_ci_targets": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "os",
+          "abi",
+          "architecture",
+          "branch",
+          "native_workflow",
+          "publish_unlock_variable",
+          "affected_targets",
+          "legacy_onboarding",
+          "managed_baseline_activation",
+          "toolchain_profile"
+        ],
+        "properties": {
+          "id": {"$ref": "common.schema.json#/$defs/target_id"},
+          "os": {"$ref": "common.schema.json#/$defs/os_family"},
+          "abi": {"type": "string", "minLength": 1, "maxLength": 32},
+          "architecture": {"type": "string", "enum": ["amd64", "arm64"]},
+          "branch": {"$ref": "common.schema.json#/$defs/branch"},
+          "native_workflow": {"$ref": "common.schema.json#/$defs/relative_path"},
+          "publish_unlock_variable": {
+            "type": "string",
+            "pattern": "^TCCBIN_[A-Z0-9_]+_PUBLISH_UNLOCKED$"
+          },
+          "affected_targets": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"$ref": "common.schema.json#/$defs/target_id"}
+          },
+          "legacy_onboarding": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["base_sha", "policy_path", "policy_sha256"],
+            "properties": {
+              "base_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+              "policy_path": {
+                "oneOf": [
+                  {"type": "null"},
+                  {
+                    "type": "string",
+                    "pattern": "^onboarding/[a-z0-9][a-z0-9._\\-]+\\.policy\\.json$"
+                  }
+                ]
+              },
+              "policy_sha256": {"$ref": "common.schema.json#/$defs/nullable_sha256"}
+            },
+            "allOf": [
+              {
+                "if": {"properties": {"policy_path": {"type": "null"}}},
+                "then": {"properties": {"policy_sha256": {"type": "null"}}},
+                "else": {"properties": {"policy_sha256": {"$ref": "common.schema.json#/$defs/sha256"}}}
+              }
+            ]
+          },
+          "managed_baseline_activation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "base_sha",
+              "base_tree",
+              "parent_sha",
+              "base_manifest_sha256",
+              "base_contract_repository",
+              "base_contract_sha",
+              "policy_path",
+              "policy_sha256"
+            ],
+            "properties": {
+              "base_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+              "base_tree": {"$ref": "common.schema.json#/$defs/sha40"},
+              "parent_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+              "base_manifest_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+              "base_contract_repository": {"type": "string", "const": "vlang/v"},
+              "base_contract_sha": {"$ref": "common.schema.json#/$defs/sha40"},
+              "policy_path": {
+                "oneOf": [
+                  {"type": "null"},
+                  {
+                    "type": "string",
+                    "pattern": "^baseline-activation/[a-z0-9][a-z0-9._\\-]+\\.policy\\.json$"
+                  }
+                ]
+              },
+              "policy_sha256": {"$ref": "common.schema.json#/$defs/nullable_sha256"}
+            },
+            "allOf": [
+              {
+                "if": {"properties": {"policy_path": {"type": "null"}}},
+                "then": {"properties": {"policy_sha256": {"type": "null"}}},
+                "else": {"properties": {"policy_sha256": {"$ref": "common.schema.json#/$defs/sha256"}}}
+              }
+            ]
+          },
+          "toolchain_profile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["profile_id", "profile_path", "profile_sha256"],
+            "properties": {
+              "profile_id": {},
+              "profile_path": {},
+              "profile_sha256": {}
+            },
+            "oneOf": [
+              {
+                "properties": {
+                  "profile_id": {"const": null},
+                  "profile_path": {"const": null},
+                  "profile_sha256": {"const": null}
+                }
+              },
+              {
+                "properties": {
+                  "profile_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9._\\-]{2,127}$"
+                  },
+                  "profile_path": {
+                    "type": "string",
+                    "pattern": "^toolchain-profiles/[a-z0-9][a-z0-9._\\-]+\\.profile\\.json$"
+                  },
+                  "profile_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "opaque_acceptances": {
+      "type": "array",
+      "maxItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "target_id",
+          "path",
+          "type",
+          "git_mode",
+          "sha256",
+          "format",
+          "object_type",
+          "machine",
+          "os_abi",
+          "role",
+          "required_probe_id",
+          "architectures"
+        ],
+        "properties": {
+          "id": {"type": "string", "const": "windows-amd64-openlibm-v1"},
+          "target_id": {"type": "string", "const": "windows-amd64"},
+          "path": {"type": "string", "const": "lib/openlibm.o"},
+          "type": {"type": "string", "const": "file"},
+          "git_mode": {"type": "string", "const": "100644"},
+          "sha256": {
+            "type": "string",
+            "const": "9a11e182e1f6b522030d1b8685666147de0ebb562b9d02cce189690fd07cb7db"
+          },
+          "format": {"type": "string", "const": "ELF64 little-endian"},
+          "object_type": {"type": "string", "const": "ET_REL"},
+          "machine": {"type": "string", "const": "EM_X86_64"},
+          "os_abi": {"type": "string", "const": "System V"},
+          "role": {"type": "string", "const": "legacy-math-runtime"},
+          "required_probe_id": {"type": "string", "const": "opaque-openlibm"},
+          "architectures": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "const": "x64"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -332,7 +332,7 @@ fn (t &Transformer) resolve_collection_receiver_method_name(base_id flat.NodeId,
 fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, method string) ?string {
 	if !isnil(t.receiver_method_cache) {
 		mut cache := t.receiver_method_cache
-		if cache.module != t.cur_module || cache.fn_count != t.fn_ret_types.len {
+		if !same_transform_text(cache.module, t.cur_module) || cache.fn_count != t.fn_ret_types.len {
 			cache.module = t.cur_module
 			cache.fn_count = t.fn_ret_types.len
 			cache.entries.clear()
@@ -5327,7 +5327,7 @@ fn (t &Transformer) lookup_str_alias_uncached(clean_typ string) ?string {
 			}
 		}
 		for aname, target in t.tc.type_aliases {
-			if aname.all_after_last('.') == clean_typ {
+			if short_name_view(aname) == clean_typ {
 				return target
 			}
 		}
@@ -8387,8 +8387,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 	}
 	base_node := t.a.nodes[int(base_id)]
-	if (array_type_has_generic_placeholder(base_type) || base_type.contains('unknown'))
-		&& base_node.kind == .call {
+	if base_node.kind == .call {
 		concrete_base_type := t.concrete_generic_call_return_type(base_id, base_node)
 		if concrete_base_type.starts_with('[]') {
 			base_type = concrete_base_type
@@ -13574,7 +13573,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	}
 	if node.children_count > 0 && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		fn_node := t.a.child_node(&node, 0)
-		short_name := name.all_after_last('.')
+		short_name := short_name_view(name)
 		if fn_node.kind == .ident && fn_node.value == short_name {
 			qname := '${t.cur_module}.${short_name}'
 			if ret := t.tc.fn_ret_types[qname] {

@@ -123,7 +123,8 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 		return t.resolve_interface_type_name_uncached(name)
 	}
 	mut cache := t.interface_type_cache
-	if cache.module != t.cur_module || cache.file != t.cur_file {
+	if !same_transform_text(cache.module, t.cur_module)
+		|| !same_transform_text(cache.file, t.cur_file) {
 		cache.module = t.cur_module
 		cache.file = t.cur_file
 		cache.entries.clear()
