@@ -91,7 +91,7 @@ program, `v` automatically falls back to the established compiler, so your build
 keeps working. A fallback also prints a short notice, for example:
 
 ```text
-note: the experimental V3 compiler could not build this program, so V used the stable compiler instead.
+note: V3 could not build this program, so V used the stable compiler instead.
 ```
 
 ### Opting out with `-old-compiler`

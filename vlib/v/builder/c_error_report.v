@@ -592,7 +592,7 @@ fn report_includes_v_source(report CErrorBugReport) bool {
 // program so the stable compiler was used instead. `submitted` selects whether a bug
 // report was actually filed; `report_url` is where it went (empty when not filed).
 fn print_v3_fallback_notice(report_url string, submitted bool, source_uploaded bool) {
-	eprintln('note: the experimental V3 compiler could not build this program, so V used the stable compiler instead.')
+	eprintln('note: V3 could not build this program, so V used the stable compiler instead.')
 	if !submitted {
 		return
 	}

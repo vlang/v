@@ -1612,7 +1612,7 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 		// An inline-assembly fallback is a known limitation, not a bug (so no report is
 		// filed), but the standard fallback notice must still be printed once the stable
 		// build succeeds, matching doc/docs.md (PR #28131 review).
-		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
+		assert compiler_output.contains('V3 could not build this program'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0
@@ -1752,7 +1752,7 @@ fn main() {
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, compiler_output
-		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
+		assert compiler_output.contains('V3 could not build this program'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, run.output
@@ -1820,7 +1820,7 @@ fn main() {
 		process.close()
 		assert exit_code == 0, compiler_output
 		// The notice must appear even though no single source file could be staged.
-		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
+		assert compiler_output.contains('V3 could not build this program'), compiler_output
 		// A metadata-only report is still submitted (not dropped): the attempt to the
 		// unroutable endpoint is what fails here, proving a report was constructed.
 		assert compiler_output.contains('V3 compiler bug report was not sent'), compiler_output
@@ -1878,19 +1878,32 @@ fn main() {
 		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
-		mut process := os.new_process(@VEXE)
-		process.set_args(['-gc', 'none', '-o', '-', source])
+		stdout_path := os.join_path(root, 'stdout.c')
+		stderr_path := os.join_path(root, 'stderr.txt')
+		environment['V_TEST_STDOUT'] = stdout_path
+		environment['V_TEST_STDERR'] = stderr_path
+		mut process := os.new_process('/bin/sh')
+		process.set_args([
+			'-c',
+			'exec "\$@" > "\$V_TEST_STDOUT" 2> "\$V_TEST_STDERR"',
+			'sh',
+			@VEXE,
+			'-gc',
+			'none',
+			'-o',
+			'-',
+			source,
+		])
 		process.set_environment(environment)
-		process.set_redirect_stdio()
 		process.run()
 		process.wait()
-		stdout := process.stdout_slurp()
-		stderr := process.stderr_slurp()
 		exit_code := process.code
 		process.close()
+		stdout := os.read_file(stdout_path) or { '' }
+		stderr := os.read_file(stderr_path) or { '' }
 		assert exit_code == 0, stdout + stderr
 		// The fallback happened and its diagnostics went to stderr.
-		assert stderr.contains('the experimental V3 compiler could not build this program'), stderr
+		assert stderr.contains('V3 could not build this program'), stderr
 		assert stderr.contains('bug report was not sent'), stderr
 		// stdout is the generated C only — valid C, with no report text of any kind.
 		assert stdout.contains('typedef') || stdout.contains('#define'), 'stdout is not generated C'
@@ -1961,10 +1974,10 @@ fn test_macos_v3_inline_asm_trace_stays_off_generated_c_stdout() {
 		stderr := os.read_file(stderr_path) or { '' }
 		assert exit_code == 0, stdout + stderr
 		assert stderr.contains('compatibility compiler for inline assembly'), stderr
-		assert stderr.contains('the experimental V3 compiler could not build this program'), stderr
+		assert stderr.contains('V3 could not build this program'), stderr
 		assert stdout.contains('typedef') || stdout.contains('#define'), 'stdout is not generated C'
 		for leaked in ['compatibility compiler for inline assembly',
-			'the experimental V3 compiler could not build this program'] {
+			'V3 could not build this program'] {
 			assert !stdout.contains(leaked), 'fallback trace leaked onto `-o -` stdout: `${leaked}`'
 		}
 	}
