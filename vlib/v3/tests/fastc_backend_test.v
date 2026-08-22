@@ -211,6 +211,27 @@ fn main() {
 	assert narrow_run.exit_code == 0, narrow_run.output
 	assert narrow_run.output.trim_space() == '0'
 
+	min_int_source := os.join_path(root, 'inferred_min_int.v')
+	os.write_file(min_int_source, 'module main
+
+fn main() {
+	mut x := -2147483648
+	x--
+	println(x)
+}
+') or {
+		panic(err)
+	}
+	min_int_binary := os.join_path(root, 'inferred_min_int')
+	min_int_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', min_int_binary,
+		min_int_source])
+	assert min_int_compile.exit_code == 0, min_int_compile.output
+	min_int_c := os.read_file(min_int_binary + '.c') or { panic(err) }
+	assert !min_int_c.contains('V_FASTC_PRINT_SELECT')
+	min_int_run := cmdexec.run(min_int_binary, [])
+	assert min_int_run.exit_code == 0, min_int_run.output
+	assert min_int_run.output.trim_space() == '2147483647'
+
 	shift_source := os.join_path(root, 'oversized_shift.v')
 	os.write_file(shift_source, 'module main
 

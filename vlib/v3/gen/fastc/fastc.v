@@ -479,6 +479,11 @@ fn (mut g DirectGen) parse_declaration_after_name(name string) ! {
 	if expression.len == 0 {
 		return g.unsupported('empty declaration')
 	}
+	if fastc_is_inferred_min_int_literal(expression) {
+		// C gives the positive token in -2147483648 a wider type before applying
+		// unary minus, while V infers int for the complete literal.
+		return g.unsupported('minimum int literal inference')
+	}
 	g.consume_statement_end()
 	// GNU typeof is unevaluated and is supported by bundled TinyCC. It lets the
 	// direct path preserve V's `:=` without running any inference or type checker.
@@ -489,6 +494,14 @@ fn (mut g DirectGen) parse_declaration_after_name(name string) ! {
 	} else {
 		g.write_line('__typeof__((${expression})) ${name} = (${expression});')
 	}
+}
+
+fn fastc_is_inferred_min_int_literal(expression string) bool {
+	mut value := expression.trim_space()
+	for value.len >= 2 && value[0] == `(` && value[value.len - 1] == `)` {
+		value = value[1..value.len - 1].trim_space()
+	}
+	return value == '-2147483648'
 }
 
 fn (mut g DirectGen) consume_statement_end() {
