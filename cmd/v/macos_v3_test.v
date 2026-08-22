@@ -2198,11 +2198,24 @@ fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {
 }
 
 fn test_macos_v3_forwarded_args_strip_new_compiler_flag() {
-	$if macos {
+	$if macos || linux {
 		prefs := &pref.Preferences{}
 		forwarded := macos_v3_forwarded_args(prefs, ['-new-compiler', 'main.v'])
 		assert '-new-compiler' !in forwarded
 		assert 'main.v' in forwarded
+
+		run_prefs := &pref.Preferences{
+			is_run:   true
+			run_args: ['-new-compiler']
+		}
+		run_forwarded := macos_v3_forwarded_args(run_prefs, [
+			'-new-compiler',
+			'run',
+			'main.v',
+			'-new-compiler',
+		])
+		assert run_forwarded.count(it == '-new-compiler') == 1
+		assert run_forwarded.last() == '-new-compiler'
 	}
 }
 
