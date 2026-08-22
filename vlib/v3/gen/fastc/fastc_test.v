@@ -106,18 +106,17 @@ fn main() {
 	assert !c_source.contains('i < (limit())')
 }
 
-fn test_decimal_and_rune_literals_preserve_v_values() {
+fn test_decimal_literals_preserve_v_values() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main
 
 fn main() {
 	println(0_123)
-	println(`★`)
 }
-',
-		'literal_values.v', prefs) or { panic(err) }
+', 'literal_values.v', prefs) or {
+		panic(err)
+	}
 	assert c_source.contains('println(123);')
-	assert c_source.contains('println(9733);')
 }
 
 fn test_hex_string_escape_has_fixed_width_in_c() {
@@ -201,6 +200,9 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		'module main\nfn main() { println(sizeof(string)) }\n',
 		"module main\nfn main() { s := 'abc'; println(s[0]) }\n",
 		"module main\nfn main() { println(c'a') }\n",
+		'module main\nfn main() { println(`A`) }\n',
+		'module main\nfn show(r rune) { println(r) }\nfn main() { show(65) }\n',
+		'module main\nfn main() { println(rune(65)) }\n',
 		'module main\nfn show(p charptr) { println(p) }\nfn main() { unsafe { show(nil) } }\n',
 		'module main\nfn main() { p := charptr(0); println(p) }\n',
 		'module main\nfn main() { println(1 ^ 2 + 3) }\n',

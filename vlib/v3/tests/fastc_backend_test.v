@@ -625,21 +625,33 @@ fn main() {
 
 fn main() {
 	println(0_123)
-	println(`★`)
 }
-') or {
-		panic(err)
-	}
+') or { panic(err) }
 	literal_binary := os.join_path(root, 'literal_values')
 	literal_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', literal_binary,
 		literal_source])
 	assert literal_compile.exit_code == 0, literal_compile.output
 	literal_c := os.read_file(literal_binary + '.c') or { panic(err) }
 	assert literal_c.contains('println(123);')
-	assert literal_c.contains('println(9733);')
 	literal_run := cmdexec.run(literal_binary, [])
 	assert literal_run.exit_code == 0, literal_run.output
-	assert literal_run.output.trim_space() == '123\n9733'
+	assert literal_run.output.trim_space() == '123'
+
+	rune_source := os.join_path(root, 'rune_print.v')
+	os.write_file(rune_source, 'module main
+
+fn main() {
+	println(`A`)
+}
+') or { panic(err) }
+	rune_binary := os.join_path(root, 'rune_print')
+	rune_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', rune_binary, rune_source])
+	assert rune_compile.exit_code == 0, rune_compile.output
+	rune_c := os.read_file(rune_binary + '.c') or { panic(err) }
+	assert !rune_c.contains('V_FASTC_PRINT_SELECT')
+	rune_run := cmdexec.run(rune_binary, [])
+	assert rune_run.exit_code == 0, rune_run.output
+	assert rune_run.output.trim_space() == 'A', rune_run.output
 
 	hex_escape_source := os.join_path(root, 'hex_escape.v')
 	os.write_file(hex_escape_source, "module main

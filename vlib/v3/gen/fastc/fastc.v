@@ -243,6 +243,9 @@ fn (mut g DirectGen) parse_type() !string {
 	if raw_type == 'charptr' || (raw_type == 'char' && pointers > 0) {
 		return g.unsupported('character pointer types')
 	}
+	if raw_type == 'rune' {
+		return g.unsupported('rune types')
+	}
 	g.next()
 	if g.tok in [.dot, .lsbr, .question, .not] {
 		return g.unsupported('compound type `${raw_type}`')
@@ -614,7 +617,7 @@ fn (g &DirectGen) expression_token() !string {
 		.name { g.expression_name()! }
 		.number { fastc_c_number(g.lit)! }
 		.string { fastc_c_string(g.lit)! }
-		.char { fastc_c_char(g.lit)! }
+		.char { g.unsupported('rune or C character literals') }
 		// stdbool's true/false macros have C type int. Cast them so _Generic
 		// dispatch preserves V's bool type when no operator requires promotion.
 		.key_true { '((bool)true)' }
@@ -629,6 +632,9 @@ fn (g &DirectGen) expression_token() !string {
 fn (g &DirectGen) expression_name() !string {
 	if g.lit == 'charptr' {
 		return g.unsupported('charptr expressions')
+	}
+	if g.lit == 'rune' {
+		return g.unsupported('rune expressions')
 	}
 	return g.lit
 }
@@ -854,21 +860,4 @@ fn fastc_string_contains_nul(content string, is_raw bool) bool {
 		i += 2
 	}
 	return false
-}
-
-fn fastc_c_char(literal string) !string {
-	if literal.starts_with('c:') {
-		// C string literals are pointers even when they contain one byte. The
-		// scanner-only lane cannot preserve that type through generic printing.
-		return error('C string literals require checked fastc')
-	}
-	mut value := literal
-	if value.len == 0 || value.starts_with('\\') {
-		return error('unsupported fastc character literal')
-	}
-	runes := value.runes()
-	if runes.len != 1 {
-		return error('unsupported fastc character literal')
-	}
-	return int(runes[0]).str()
 }
