@@ -310,6 +310,25 @@ fn main() {
 	assert charptr_run.exit_code == 0, charptr_run.output
 	assert charptr_run.output.trim_space() == '0', charptr_run.output
 
+	precedence_source := os.join_path(root, 'mixed_precedence.v')
+	os.write_file(precedence_source, 'module main
+
+fn main() {
+	println(1 ^ 2 + 3)
+}
+') or {
+		panic(err)
+	}
+	precedence_binary := os.join_path(root, 'mixed_precedence')
+	precedence_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', precedence_binary,
+		precedence_source])
+	assert precedence_compile.exit_code == 0, precedence_compile.output
+	precedence_c := os.read_file(precedence_binary + '.c') or { panic(err) }
+	assert !precedence_c.contains('V_FASTC_PRINT_SELECT')
+	precedence_run := cmdexec.run(precedence_binary, [])
+	assert precedence_run.exit_code == 0, precedence_run.output
+	assert precedence_run.output.trim_space() == '6', precedence_run.output
+
 	min_int_source := os.join_path(root, 'inferred_min_int.v')
 	os.write_file(min_int_source, 'module main
 

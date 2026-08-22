@@ -513,6 +513,11 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 		result.write_string(prefix)
 	}
 	mut paren_depth := 0
+	mut has_sum_arithmetic_operator := false
+	mut has_multiply_operator := false
+	mut has_and_operator := false
+	mut has_pipe_operator := false
+	mut has_xor_operator := false
 	for g.tok != .eof {
 		if paren_depth == 0 && g.tok in stops {
 			break
@@ -552,6 +557,32 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 		if g.tok in [.lcbr, .rcbr, .str_dollar, .key_match, .key_or, .key_as, .key_is, .not_is,
 			.key_in, .not_in, .arrow, .power] {
 			return g.unsupported('expression token `${g.token_source()}`')
+		}
+		match g.tok {
+			.plus, .minus {
+				has_sum_arithmetic_operator = true
+			}
+			.mul {
+				has_multiply_operator = true
+			}
+			.amp {
+				has_and_operator = true
+			}
+			.pipe {
+				has_pipe_operator = true
+			}
+			.xor {
+				has_xor_operator = true
+			}
+			else {}
+		}
+		if (has_sum_arithmetic_operator && (has_and_operator || has_pipe_operator
+			|| has_xor_operator)) || (has_multiply_operator && has_and_operator)
+			|| (has_pipe_operator && has_xor_operator) {
+			// V groups + and - with | and ^, and * with &, while C splits
+			// those levels and also orders + and - above &. The checked lane
+			// preserves V's parsed expression tree for these mixes.
+			return g.unsupported('mixed operator precedence')
 		}
 		piece := g.expression_token()!
 		if result.len > 0 && fastc_needs_space(result.last(), piece) {
