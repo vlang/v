@@ -302,6 +302,50 @@ fn main() {
 	assert c_source.contains('count+=3;')
 }
 
+fn test_main_must_not_return_a_value() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main\nfn main() int { return 7 }\n', 'value_returning_main.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('main function returning `int`'), message
+}
+
+fn test_range_bounds_must_be_integers() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { for i in 0.0 .. 2.0 { println(i) } }\n',
+		'module main\nfn main() { for i in 0 .. 2.0 { println(i) } }\n',
+		'module main\nfn main() { for i in false .. true { println(i) } }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'invalid_range_bounds.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('range bounds of types'), message
+		assert message.contains('must both be integers'), message
+	}
+}
+
+fn test_arithmetic_operands_must_be_numeric() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { println(true + false) }\n',
+		'module main\nfn main() { value := true * false; println(value) }\n',
+		'module main\nfn main() { mut value := true; value += false; println(value) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'non_numeric_arithmetic.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('arithmetic'), message
+		assert message.contains('non-numeric') || message.contains('operands of types'), message
+	}
+}
+
 fn test_bare_return_from_main_emits_zero() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main

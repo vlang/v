@@ -304,6 +304,9 @@ fn (mut g Parser) parse_function() ! {
 		// result type. Reject them until the direct parser tracks the required type.
 		return g.unsupported('narrow integer function types')
 	}
+	if name == 'main' && params.len == 0 && return_type != 'void' {
+		return g.unsupported('main function returning `${return_type}`')
+	}
 	g.expect(.lcbr)!
 	is_main := name == 'main' && params.len == 0
 	if is_main {
@@ -564,9 +567,14 @@ fn (mut g Parser) parse_for() !bool {
 			}
 			g.next()
 			start := g.read_expression([token.Token.dotdot])!
-			start_type := fastc_normalize_inferred_type(g.last_expression_type)
+			start_expression_type := g.last_expression_type
 			g.expect(.dotdot)!
 			end := g.read_expression([token.Token.lcbr])!
+			end_expression_type := g.last_expression_type
+			if !fastc_is_integer_expression_type(start_expression_type)
+				|| !fastc_is_integer_expression_type(end_expression_type) {
+				return g.unsupported('range bounds of types `${start_expression_type}` and `${end_expression_type}` must both be integers')
+			}
 			g.expect(.lcbr)!
 			start_name := g.temporary_name('range_start')
 			end_name := g.temporary_name('range_end')
@@ -575,7 +583,7 @@ fn (mut g Parser) parse_for() !bool {
 			g.write_line('__typeof__((${end})) ${end_name} = (${end});')
 			g.write_line('for (__typeof__((${start_name})) ${name} = (${start_name}); ${name} < (${end_name}); ${name}++) {')
 			g.locals[name] = FastcLocal{
-				typ: start_type
+				typ: fastc_normalize_inferred_type(start_expression_type)
 			}
 			g.indent++
 			_ = g.parse_block_body()!
@@ -715,6 +723,10 @@ fn (mut g Parser) parse_simple_statement() ! {
 			}
 			if !fastc_call_types_are_compatible(actual_type, expected_type) {
 				return g.unsupported('assignment of type `${actual_type}` to `${name}` of type `${expected_type}`')
+			}
+			if operator != .assign && (!fastc_is_numeric_expression_type(actual_type)
+				|| !fastc_is_numeric_expression_type(expected_type)) {
+				return g.unsupported('arithmetic assignment `${operator.str()}` on non-numeric type `${expected_type}`')
 			}
 			g.consume_statement_end()
 			g.write_line('${name}${operator.str()}${value};')
@@ -887,7 +899,7 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 		return g.unsupported('unbalanced expression')
 	}
 	g.validate_expression_calls(expression_tokens)!
-	g.last_expression_type = g.infer_expression_type(expression_tokens)
+	g.last_expression_type = g.infer_expression_type(expression_tokens)!
 	return result.str().trim_space()
 }
 
@@ -954,7 +966,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments instead of ${signature.parameter_types.len}')
 			}
 			for argument_index, argument in call_args {
-				actual_type := g.infer_expression_type(argument)
+				actual_type := g.infer_expression_type(argument)!
 				expected_type := signature.parameter_types[argument_index]
 				if actual_type.len == 0 {
 					return g.unsupported('unverifiable argument ${argument_index + 1} to function `${name}`')
@@ -967,6 +979,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			if call_args.len != 1 {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments')
 			}
+			_ = g.infer_expression_type(call_args[0])!
 		} else if _ := fastc_primitive_c_type(name) {
 			if call_args.len != 1 {
 				return g.unsupported('cast `${name}` with ${call_args.len} arguments')
@@ -1031,7 +1044,7 @@ fn fastc_call_arguments(tokens []FastcExpressionToken, open int, close int) ![][
 	return call_args
 }
 
-fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) string {
+fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 	if tokens.len == 0 {
 		return ''
 	}
@@ -1090,10 +1103,18 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) string {
 		}
 	}
 	if tokens[start].tok in [.plus, .minus] {
-		return g.infer_expression_type(tokens[start + 1..end])
+		operand_type := g.infer_expression_type(tokens[start + 1..end])!
+		if !fastc_is_numeric_expression_type(operand_type) {
+			return g.unsupported('arithmetic `${tokens[start].tok.str()}` on non-numeric type `${operand_type}`')
+		}
+		return operand_type
 	}
 	if tokens[end - 1].tok in [.inc, .dec] {
-		return g.infer_expression_type(tokens[start..end - 1])
+		operand_type := g.infer_expression_type(tokens[start..end - 1])!
+		if !fastc_is_numeric_expression_type(operand_type) {
+			return g.unsupported('arithmetic `${tokens[end - 1].tok.str()}` on non-numeric type `${operand_type}`')
+		}
+		return operand_type
 	}
 	mut depth := 0
 	for i in start .. end {
@@ -1106,12 +1127,16 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) string {
 			continue
 		}
 		if tokens[i].tok.is_assignment() {
-			return g.infer_expression_type(tokens[start..i])
+			return g.infer_expression_type(tokens[start..i])!
 		}
 		if tokens[i].tok in [.plus, .minus, .mul, .amp, .pipe, .xor] && i > start {
-			left_type := g.infer_expression_type(tokens[start..i])
-			right_type := g.infer_expression_type(tokens[i + 1..end])
-			return fastc_common_arithmetic_type(left_type, right_type)
+			left_type := g.infer_expression_type(tokens[start..i])!
+			right_type := g.infer_expression_type(tokens[i + 1..end])!
+			common_type := fastc_common_arithmetic_type(left_type, right_type)
+			if common_type.len == 0 {
+				return g.unsupported('arithmetic `${tokens[i].tok.str()}` operands of types `${left_type}` and `${right_type}`')
+			}
+			return common_type
 		}
 	}
 	return ''
@@ -1127,7 +1152,7 @@ fn fastc_number_expression_type(literal string) string {
 }
 
 fn fastc_common_arithmetic_type(left string, right string) string {
-	if left == right {
+	if left == right && fastc_is_numeric_expression_type(left) {
 		return left
 	}
 	if left == 'integer literal' && fastc_is_integer_type(right) {
@@ -1143,6 +1168,14 @@ fn fastc_common_arithmetic_type(left string, right string) string {
 		return left
 	}
 	return ''
+}
+
+fn fastc_is_numeric_expression_type(typ string) bool {
+	return typ in ['integer literal', 'float literal', 'f32', 'f64'] || fastc_is_integer_type(typ)
+}
+
+fn fastc_is_integer_expression_type(typ string) bool {
+	return typ == 'integer literal' || fastc_is_integer_type(typ)
 }
 
 fn fastc_call_types_are_compatible(actual string, expected string) bool {
