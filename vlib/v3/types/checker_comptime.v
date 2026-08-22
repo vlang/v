@@ -3610,7 +3610,7 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	}
 	if node.op == .amp && address_child.kind == .index && address_child.children_count > 0 {
 		base_id := tc.a.child(&address_child, 0)
-		base_type := unalias_type(unwrap_pointer(tc.resolve_type(base_id)))
+		base_pointer_depth, base_type := type_pointer_depth_and_base(tc.resolve_type(base_id))
 		if base_type is Map && tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
 			tc.record_error_at(.assignment_mismatch,
 				'cannot take the address of map values outside `unsafe`', child_id,
@@ -3619,8 +3619,9 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		}
 		base := tc.a.node(base_id)
 		if base_type is Array && unalias_type(base_type.elem_type) !is Pointer
-			&& base.kind == .ident && tc.ident_is_mutable_lvalue(base.value) && tc.unsafe_depth == 0
-			&& !tc.expr_is_inside_unsafe_block(id) {
+			&& base.kind == .ident
+			&& (base_pointer_depth > 0 || tc.ident_is_mutable_lvalue(base.value))
+			&& tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
 			tc.record_error_at(.assignment_mismatch,
 				'cannot take the address of mutable array elements outside unsafe blocks',
 				child_id, tc.index_brackets_pos(address_child))
