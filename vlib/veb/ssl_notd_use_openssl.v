@@ -29,7 +29,9 @@ fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 		println('[veb] Running app on https://${startup_host(params)}:${params.port}/')
 	}
 	flush_stdout()
-	mut ssl_listener := mbedtls.new_ssl_listener(listen_addr(params), params.ssl_config)!
+	mut ssl_listener := mbedtls.new_ssl_listener(listen_addr(params), params.ssl_config,
+		family: params.family
+	)!
 	defer {
 		ssl_listener.shutdown() or {}
 	}

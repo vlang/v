@@ -70,7 +70,17 @@ fn ssl_remaining_timeout(deadline time.Time) time.Duration {
 	if deadline.unix() == 0 {
 		return net.infinite_timeout
 	}
-	return deadline - time.now()
+	remaining := deadline - time.now()
+	if remaining <= 0 {
+		// The finite deadline has already expired. Return a minimal positive
+		// duration so select()/wait_for() perform an immediate, zero-length wait
+		// and report net.err_timed_out, instead of misreading a non-positive
+		// remaining time as net.infinite_timeout (== "wait forever"). Without
+		// this, a peer that stalls mid-handshake/read could park the caller
+		// indefinitely despite a finite timeout being configured.
+		return time.nanosecond
+	}
+	return remaining
 }
 
 // close closes the ssl connection and does cleanup
