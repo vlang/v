@@ -522,6 +522,11 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 			// undefined and may mask the count to the operand width instead.
 			return g.unsupported('shift expressions')
 		}
+		if g.tok == .key_sizeof {
+			// Direct C representations can differ from V layouts. The checked
+			// lane resolves the V type before lowering sizeof.
+			return g.unsupported('sizeof expressions')
+		}
 		if g.tok in [.lsbr, .rsbr] {
 			// Indexing requires V element types and bounds checks. C pointer/array
 			// indexing cannot preserve either in this scanner-only lane.
@@ -567,7 +572,6 @@ fn (g &DirectGen) expression_token() !string {
 		.key_true { '((bool)true)' }
 		.key_false { '((bool)false)' }
 		.key_nil { 'NULL' }
-		.key_sizeof { 'sizeof' }
 		.key_likely, .key_unlikely { '' }
 		.semicolon { ';' }
 		else { g.tok.str() }

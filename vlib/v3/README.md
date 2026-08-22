@@ -109,14 +109,15 @@ the same language and ownership/autofree coverage as the C backend. A successful
 program keeps its exit status and is never retried.
 
 Integer-range bounds in the direct lane are evaluated once, from left to right. Float printing,
-embedded-NUL string literals, assertions, comparison/logical and shift expressions, and functions
-with narrow integer signatures are promoted to the complete lane. Indexing expressions are
-promoted as well, preserving V element types and bounds checks. Together these promotions preserve
-V's formatting, byte-length, diagnostics, boolean typing, integer-wrapping, and safe-shift behavior
-instead of relying on incompatible raw C semantics.
+embedded-NUL string literals, assertions, `sizeof`, comparison/logical and shift expressions, and
+functions with narrow integer signatures are promoted to the complete lane. Indexing expressions
+are promoted as well, preserving V layouts, element types, and bounds checks. Together these
+promotions preserve V's formatting, byte-length, diagnostics, boolean typing, integer-wrapping,
+and safe-shift behavior instead of relying on incompatible raw C semantics.
 
 The direct path is limited to host-target, non-production, non-test, non-shared single-file builds.
-Compiler/self-host and other non-direct modes enter the complete lane before source scanning.
+Compiler/self-host, strict C, and other non-direct modes enter the complete lane before source
+scanning.
 `-o file.c` emits the standalone fast C translation unit when the direct lane supports the input;
 otherwise it emits the complete `v3.gen.fastc` translation unit. Direct C-only output is published
 only after both V semantic checking and TinyCC validation succeed.

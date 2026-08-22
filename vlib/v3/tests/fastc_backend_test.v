@@ -44,6 +44,17 @@ fn main() {
 	assert valid_run.exit_code == 0, valid_run.output
 	assert valid_run.output.trim_space() == '42'
 
+	strict_binary := os.join_path(root, 'strict')
+	strict_compile := cmdexec.run(v3_bin, ['-silent', '-cstrict', '-b', 'fastc', '-o', strict_binary,
+		valid_source])
+	assert strict_compile.exit_code == 0, strict_compile.output
+	strict_c := os.read_file(strict_binary + '.c') or { panic(err) }
+	assert !strict_c.contains('__typeof__((twice(21))) value = (twice(21));')
+	assert !strict_c.contains('V_FASTC_PRINT_SELECT')
+	strict_run := cmdexec.run(strict_binary, [])
+	assert strict_run.exit_code == 0, strict_run.output
+	assert strict_run.output.trim_space() == '42'
+
 	invalid_source := os.join_path(root, 'invalid.v')
 	os.write_file(invalid_source, 'module main
 
@@ -220,6 +231,24 @@ fn main() {
 	shift_run := cmdexec.run(shift_binary, [])
 	assert shift_run.exit_code == 0, shift_run.output
 	assert shift_run.output.trim_space() == '0'
+
+	sizeof_source := os.join_path(root, 'sizeof_string.v')
+	os.write_file(sizeof_source, 'module main
+
+fn main() {
+	println(sizeof(string))
+}
+') or {
+		panic(err)
+	}
+	sizeof_binary := os.join_path(root, 'sizeof_string')
+	sizeof_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', sizeof_binary,
+		sizeof_source])
+	assert sizeof_compile.exit_code == 0, sizeof_compile.output
+	sizeof_run := cmdexec.run(sizeof_binary, [])
+	assert sizeof_run.exit_code == 0, sizeof_run.output
+	expected_string_size := (sizeof(voidptr) + 2 * sizeof(int)).str()
+	assert sizeof_run.output.trim_space() == expected_string_size
 
 	string_index_source := os.join_path(root, 'string_index.v')
 	os.write_file(string_index_source, "module main
