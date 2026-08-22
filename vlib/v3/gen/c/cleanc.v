@@ -4550,29 +4550,39 @@ fn c_header_tree_exceeds_inline_limit(path string, vroot string, include_dirs []
 }
 
 fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []string) {
+	state := c_header_macro_state_for_flags(g.c_flags)
+	g.collect_preserved_header_file_with_state(path, include_dirs, state)
+}
+
+fn (mut g FlatGen) collect_preserved_header_file_with_state(path string, include_dirs []string, state CHeaderMacroState) {
 	real_path := os.real_path(path)
 	if real_path.len == 0 || g.preserved_header_files_seen[real_path] {
 		return
 	}
 	g.preserved_header_files_seen[real_path] = true
 	text := os.read_file(real_path) or { return }
-	active_text := c_header_definitely_active_text(text, g.c_flags, g.c99_mode, g.target)
+	scan := c_header_definitely_active_scan(text, state, c_effective_strict_iso_mode(g.c_flags,
+		g.c99_mode), g.target)
+	active_text := scan.text
 	g.collect_inlined_c_structs(active_text)
 	g.collect_inlined_c_fns(active_text)
 	g.collect_inlined_c_declared_fns(active_text)
 	mut in_block_comment := false
+	mut include_index := 0
 	for line in active_text.split_into_lines() {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		if c_directive_name(clean) !in ['include', 'import'] {
 			continue
 		}
+		include_state := scan.include_states[include_index]
+		include_index++
 		include_arg := c_include_arg(c_directive_arg(clean), g.compiler_vroot, real_path)
 		mut found := false
 		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
 			include_dirs) {
 			if os.is_file(nested_path) {
-				g.collect_preserved_header_file(nested_path, include_dirs)
+				g.collect_preserved_header_file_with_state(nested_path, include_dirs, include_state)
 				found = true
 				break
 			}
@@ -4585,17 +4595,21 @@ fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []str
 	}
 }
 
-// c_header_definitely_active_text retains declarations only from preprocessor
-// branches known to be active for the current target and C flags. A declaration
-// in an unresolved branch cannot safely suppress a generated C prototype.
-fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, target pref.Target) string {
+struct CHeaderMacroState {
+	defined                  map[string]bool
+	undefined                map[string]bool
+	uncertain                map[string]bool
+	external_macros_possible bool
+}
+
+struct CHeaderActiveScan {
+	text           string
+	include_states []CHeaderMacroState
+}
+
+fn c_header_macro_state_for_flags(flags []string) CHeaderMacroState {
 	mut defined := map[string]bool{}
 	mut undefined := map[string]bool{}
-	mut uncertain := map[string]bool{}
-	// Preinclude headers begin before generated source declarations. An earlier
-	// nested include can still introduce unknown macros, which makes later
-	// conditions unresolved and therefore unsuitable for prototype suppression.
-	mut external_macros_possible := false
 	mut i := 0
 	for i < flags.len {
 		clean := trimmed_space(flags[i])
@@ -4626,11 +4640,35 @@ fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, t
 		}
 		i++
 	}
-	strict_iso_mode := c_effective_strict_iso_mode(flags, c99_mode)
+	return CHeaderMacroState{
+		defined:   defined
+		undefined: undefined
+		uncertain: map[string]bool{}
+	}
+}
+
+// c_header_definitely_active_text retains declarations only from preprocessor
+// branches known to be active for the current target and C flags. A declaration
+// in an unresolved branch cannot safely suppress a generated C prototype.
+fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, target pref.Target) string {
+	state := c_header_macro_state_for_flags(flags)
+	return c_header_definitely_active_scan(text, state,
+		c_effective_strict_iso_mode(flags, c99_mode), target).text
+}
+
+fn c_header_definitely_active_scan(text string, state CHeaderMacroState, strict_iso_mode bool, target pref.Target) CHeaderActiveScan {
+	mut defined := state.defined.clone()
+	mut undefined := state.undefined.clone()
+	mut uncertain := state.uncertain.clone()
+	// Preinclude headers begin before generated source declarations. An earlier
+	// nested include can still introduce unknown macros, which makes later
+	// conditions unresolved and therefore unsuitable for prototype suppression.
+	mut external_macros_possible := state.external_macros_possible
 	mut condition_known := []bool{}
 	mut condition_active := []bool{}
 	mut condition_taken_known := []bool{}
 	mut condition_taken := []bool{}
+	mut include_states := []CHeaderMacroState{}
 	mut output := strings.new_builder(text.len)
 	mut in_block_comment := false
 	for line in c_join_continued_lines(text) {
@@ -4748,12 +4786,21 @@ fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, t
 			continue
 		}
 		if name in ['include', 'import'] {
+			include_states << CHeaderMacroState{
+				defined:                  defined.clone()
+				undefined:                undefined.clone()
+				uncertain:                uncertain.clone()
+				external_macros_possible: external_macros_possible
+			}
 			c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
 			external_macros_possible = true
 		}
 		output.writeln(line)
 	}
-	return output.str()
+	return CHeaderActiveScan{
+		text:           output.str()
+		include_states: include_states
+	}
 }
 
 fn c_preprocessor_ifdef_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, strict_iso_mode bool, target pref.Target) (bool, bool) {

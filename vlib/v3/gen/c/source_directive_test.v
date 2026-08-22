@@ -111,9 +111,9 @@ fn test_preserved_header_collects_only_definitely_active_declarations() {
 	assert 'active_fn' in g.inlined_c_declared_fns
 	assert 'optional_fn' !in g.inlined_c_declared_fns
 	// Macro changes in recursively scanned headers are not carried back into the
-	// parent scan, so those declarations cannot safely suppress prototypes either.
+	// parent scan, so that declaration cannot safely suppress a prototype.
 	assert 'include_enabled_fn' !in g.inlined_c_declared_fns
-	assert 'parent_enabled_fn' !in g.inlined_c_declared_fns
+	assert 'parent_enabled_fn' in g.inlined_c_declared_fns
 	assert os.real_path(inactive_header) !in g.preserved_header_files_seen
 	assert os.real_path(macro_header) in g.preserved_header_files_seen
 
@@ -121,6 +121,26 @@ fn test_preserved_header_collects_only_definitely_active_declarations() {
 	enabled_g.c_flags << '-DOPTIONAL_API'
 	enabled_g.collect_preserved_header_file(header, [root])
 	assert 'optional_fn' in enabled_g.inlined_c_declared_fns
+}
+
+fn test_preserved_header_passes_definite_parent_macro_state_to_children() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_parent_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	child := os.join_path(root, 'child.h')
+	parent := os.join_path(root, 'parent.h')
+	os.write_file(child,
+		'#ifdef ENABLE_API\n#define enabled_api(x) ((x) + 1)\n#endif\n#ifndef OMIT_API\nint omitted_api(void);\n#endif\n')!
+	os.write_file(parent, '#define ENABLE_API 1\n#define OMIT_API 1\n#include "child.h"\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(parent, [root])
+
+	assert 'enabled_api' in g.inlined_c_declared_fns
+	assert 'omitted_api' !in g.inlined_c_declared_fns
 }
 
 fn test_preserved_header_keeps_conditional_macro_mutations_uncertain() {
