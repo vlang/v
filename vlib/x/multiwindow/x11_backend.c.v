@@ -61,9 +61,11 @@ type X11NativeColormap = X11NativeULong
 type X11NativeCursor = X11NativeULong
 type X11NativeWindow = X11NativeULong
 
-struct C.Display {}
-
 $if linux && x_multiwindow_x11 ? {
+	struct C.Display {}
+
+	type X11Display = &C.Display
+
 	@[typedef]
 	union C.XClientMessageData {
 	mut:
@@ -197,6 +199,8 @@ $if linux && x_multiwindow_x11 ? {
 	fn C.v_multiwindow_x11_apply_config_hints(display &C.Display, window X11NativeWindow, width int, height int, min_width int, min_height int, resizable int, borderless int, fullscreen int) int
 	fn C.v_multiwindow_x11_get_window_size(display &C.Display, window X11NativeWindow, out_width &int, out_height &int) int
 	fn C.v_multiwindow_x11_create_egl_window(display &C.Display, root X11NativeWindow, screen int, native_visual_id int, width int, height int, out_colormap &X11NativeColormap) X11NativeWindow
+} $else {
+	type X11Display = voidptr
 }
 
 struct X11WindowRecord {
@@ -227,7 +231,7 @@ mut:
 struct X11Backend {
 mut:
 	native_operations             &NativeOperationAuthority = unsafe { nil }
-	display                       &C.Display                = unsafe { nil }
+	display                       X11Display                = unsafe { nil }
 	screen                        int
 	root                          X11NativeWindow
 	wm_protocols                  X11NativeAtom
