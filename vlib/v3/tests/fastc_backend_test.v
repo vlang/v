@@ -44,6 +44,21 @@ fn main() {
 	assert valid_run.exit_code == 0, valid_run.output
 	assert valid_run.output.trim_space() == '42'
 
+	unused_source := os.join_path(root, 'unused.v')
+	os.write_file(unused_source, 'module main
+
+fn main() {
+	x := 1
+}
+') or { panic(err) }
+	unused_binary := os.join_path(root, 'unused')
+	unused_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', unused_binary,
+		unused_source])
+	assert unused_compile.exit_code == 0, unused_compile.output
+	assert unused_compile.output.count('unused variable: `x`') == 1, unused_compile.output
+	unused_c := os.read_file(unused_binary + '.c') or { panic(err) }
+	assert unused_c.contains('__typeof__((1)) x = (1);')
+
 	strict_binary := os.join_path(root, 'strict')
 	strict_compile := cmdexec.run(v3_bin, ['-silent', '-cstrict', '-b', 'fastc', '-o', strict_binary,
 		valid_source])
@@ -262,6 +277,26 @@ fn main() {
 	composite_min_int_run := cmdexec.run(composite_min_int_binary, [])
 	assert composite_min_int_run.exit_code == 0, composite_min_int_run.output
 	assert composite_min_int_run.output.trim_space() == '2147483647'
+
+	oversized_decimal_source := os.join_path(root, 'inferred_oversized_decimal.v')
+	os.write_file(oversized_decimal_source, 'module main
+
+fn main() {
+	x := 2147483649 | 0
+	println(x)
+}
+') or {
+		panic(err)
+	}
+	oversized_decimal_binary := os.join_path(root, 'inferred_oversized_decimal')
+	oversized_decimal_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
+		oversized_decimal_binary, oversized_decimal_source])
+	assert oversized_decimal_compile.exit_code == 0, oversized_decimal_compile.output
+	oversized_decimal_c := os.read_file(oversized_decimal_binary + '.c') or { panic(err) }
+	assert !oversized_decimal_c.contains('V_FASTC_PRINT_SELECT')
+	oversized_decimal_run := cmdexec.run(oversized_decimal_binary, [])
+	assert oversized_decimal_run.exit_code == 0, oversized_decimal_run.output
+	assert oversized_decimal_run.output.trim_space() == '-2147483647'
 
 	min_int_loop_source := os.join_path(root, 'inferred_min_int_loop.v')
 	os.write_file(min_int_loop_source, 'module main

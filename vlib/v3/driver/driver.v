@@ -8208,6 +8208,11 @@ pub fn run(args []string) {
 				os.rm(fastc_bin_file) or {}
 			}
 			if fastc_result.success {
+				if pre_tc.notices.len > 0 {
+					print_type_diagnostics(a, pre_tc.notices, []types.TypeError{},
+						is_checker_fixture)
+					pre_tc.notices.clear()
+				}
 				b.step('tcc')
 				b.metric('generated C size', fastc_direct_source.len, 'bytes')
 				if c_only {

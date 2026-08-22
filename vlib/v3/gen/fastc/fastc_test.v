@@ -197,6 +197,7 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		'module main\nfn main() { mut x := -2_147_483_648; x--; println(x) }\n',
 		'module main\nfn main() { for i := -2_147_483_648; true; i-- { println(i); break } }\n',
 		'module main\nfn main() { mut x := -2_147_483_648 - 1; println(x) }\n',
+		'module main\nfn main() { x := 2_147_483_649 | 0; println(x) }\n',
 		'module main\nfn main() { x := 0xffff_ffff | 0; println(x) }\n',
 		'module main\nfn main() { x := 0b11111111111111111111111111111111 | 0; println(x) }\n',
 		'module main\nfn main() { mut a := 1; mut b := 2; a, b = b, a; println(a); println(b) }\n',

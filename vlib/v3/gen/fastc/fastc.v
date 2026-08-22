@@ -609,13 +609,36 @@ fn fastc_nondecimal_literal_requires_checked_type(literal string) bool {
 	return false
 }
 
+fn fastc_decimal_literal_requires_checked_type(literal string) bool {
+	clean := literal.replace('_', '')
+	if clean.len == 0 || clean.contains_any('.eE') {
+		return false
+	}
+	for digit in clean {
+		if !digit.is_digit() {
+			return false
+		}
+	}
+	digits := clean.trim_left('0')
+	int_max_literal := '2147483647'
+	if digits.len != int_max_literal.len {
+		return digits.len > int_max_literal.len
+	}
+	for i in 0 .. digits.len {
+		if digits[i] != int_max_literal[i] {
+			return digits[i] > int_max_literal[i]
+		}
+	}
+	return false
+}
+
 fn fastc_c_number(literal string) !string {
 	clean := literal.replace('_', '')
-	if clean == '2147483648' {
-		// C assigns this positive token a wider type before unary minus or any
-		// surrounding operation. V can instead resolve the complete expression as
-		// int, so only the checked lane can preserve its inferred type and wrapping.
-		return error('minimum int literal expressions require checked fastc')
+	if fastc_decimal_literal_requires_checked_type(literal) {
+		// C assigns oversized decimal tokens a wider type before any surrounding
+		// operation. V can instead resolve the complete expression as int, so only
+		// the checked lane can preserve its inferred type and wrapping.
+		return error('oversized decimal literal expressions require checked fastc')
 	}
 	if fastc_nondecimal_literal_requires_checked_type(literal) {
 		return error('high-bit nondecimal literals require checked fastc')
