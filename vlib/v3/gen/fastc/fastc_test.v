@@ -160,8 +160,16 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		'module main\nfn main() { println(!false) }\n',
 		'module main\nfn show(a u8, b u8) { println(a + b) }\nfn main() { show(255, 1) }\n',
 		'module main\nfn show(x int, n int) { println(x << n) }\nfn main() { show(1, 32) }\n',
+		'module main\nfn shift(n int) { mut x := 1; x <<= n; println(x) }\nfn main() { shift(32) }\n',
+		'module main\nfn shift(n int) { mut x := 1; x >>= n; println(x) }\nfn main() { shift(32) }\n',
+		'module main\nfn shift(n int) { mut x := 1; x >>>= n; println(x) }\nfn main() { shift(32) }\n',
+		'module main\nfn divide(a int, b int) int { return a / b }\nfn main() { println(divide(1, 0)) }\n',
+		'module main\nfn modulo(a int, b int) int { return a % b }\nfn main() { println(modulo(1, 0)) }\n',
+		'module main\nfn divide(b int) { mut x := 1; x /= b; println(x) }\nfn main() { divide(0) }\n',
+		'module main\nfn modulo(b int) { mut x := 1; x %= b; println(x) }\nfn main() { modulo(0) }\n',
 		'module main\nfn main() { println(sizeof(string)) }\n',
 		"module main\nfn main() { s := 'abc'; println(s[0]) }\n",
+		"module main\nfn main() { println(c'a') }\n",
 	] {
 		mut failed := false
 		_ := generate(source, 'typed_expression.v', prefs) or {

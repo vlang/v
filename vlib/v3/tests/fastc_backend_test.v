@@ -232,6 +232,55 @@ fn main() {
 	assert shift_run.exit_code == 0, shift_run.output
 	assert shift_run.output.trim_space() == '0'
 
+	shift_assign_source := os.join_path(root, 'oversized_shift_assign.v')
+	os.write_file(shift_assign_source, 'module main
+
+fn shift(n int) {
+	mut x := 1
+	x <<= n
+	println(x)
+}
+
+fn main() {
+	shift(32)
+}
+') or {
+		panic(err)
+	}
+	shift_assign_binary := os.join_path(root, 'oversized_shift_assign')
+	shift_assign_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', shift_assign_binary,
+		shift_assign_source])
+	assert shift_assign_compile.exit_code == 0, shift_assign_compile.output
+	shift_assign_run := cmdexec.run(shift_assign_binary, [])
+	assert shift_assign_run.exit_code == 0, shift_assign_run.output
+	assert shift_assign_run.output.trim_space() == '0'
+
+	for is_modulo in [false, true] {
+		case_name := if is_modulo { 'modulo' } else { 'division' }
+		operator := if is_modulo { '%' } else { '/' }
+		message := if is_modulo { 'modulo by zero' } else { 'division by zero' }
+		zero_source := os.join_path(root, '${case_name}_by_zero.v')
+		os.write_file(zero_source, 'module main
+
+fn calculate(a int, b int) int {
+	return a ${operator} b
+}
+
+fn main() {
+	println(calculate(1, 0))
+}
+') or {
+			panic(err)
+		}
+		zero_binary := os.join_path(root, '${case_name}_by_zero')
+		zero_compile := cmdexec.run(v3_bin,
+			['-silent', '-b', 'fastc', '-o', zero_binary, zero_source])
+		assert zero_compile.exit_code == 0, zero_compile.output
+		zero_run := cmdexec.run(zero_binary, [])
+		assert zero_run.exit_code != 0, zero_run.output
+		assert zero_run.output.contains('V panic: ${message}'), zero_run.output
+	}
+
 	sizeof_source := os.join_path(root, 'sizeof_string.v')
 	os.write_file(sizeof_source, 'module main
 
@@ -267,6 +316,23 @@ fn main() {
 	string_index_run := cmdexec.run(string_index_binary, [])
 	assert string_index_run.exit_code == 0, string_index_run.output
 	assert string_index_run.output.trim_space() == '97'
+
+	c_string_source := os.join_path(root, 'c_string.v')
+	os.write_file(c_string_source, "module main
+
+fn main() {
+	println(c'a')
+}
+") or { panic(err) }
+	c_string_binary := os.join_path(root, 'c_string')
+	c_string_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', c_string_binary,
+		c_string_source])
+	assert c_string_compile.exit_code == 0, c_string_compile.output
+	c_string_c := os.read_file(c_string_binary + '.c') or { panic(err) }
+	assert !c_string_c.contains('V_FASTC_PRINT_SELECT')
+	c_string_run := cmdexec.run(c_string_binary, [])
+	assert c_string_run.exit_code == 0, c_string_run.output
+	assert c_string_run.output.trim_space() != '97', c_string_run.output
 
 	mutable_interface_source := os.join_path(os.dir(@FILE), 'mutable_interface_array_value_test.v')
 	mutable_interface_binary := os.join_path(root, 'mutable_interface_array_value_test')

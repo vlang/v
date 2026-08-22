@@ -517,10 +517,16 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 			// inferred locals observe 0/1 instead of false/true.
 			return g.unsupported('comparison or logical expressions')
 		}
-		if g.tok in [.left_shift, .right_shift, .right_shift_unsigned] {
+		if g.tok in [.left_shift, .right_shift, .right_shift_unsigned, .left_shift_assign,
+			.right_shift_assign, .right_shift_unsigned_assign] {
 			// V defines oversized shifts to produce zero. Raw C shifts are
 			// undefined and may mask the count to the operand width instead.
 			return g.unsupported('shift expressions')
+		}
+		if g.tok in [.div, .div_assign, .mod, .mod_assign] {
+			// Integer division and modulo require V's runtime zero checks. This
+			// scanner-only lane has no type information to add them selectively.
+			return g.unsupported('division or modulo expressions')
 		}
 		if g.tok == .key_sizeof {
 			// Direct C representations can differ from V layouts. The checked
@@ -712,10 +718,12 @@ fn fastc_string_contains_nul(content string, is_raw bool) bool {
 }
 
 fn fastc_c_char(literal string) !string {
-	mut value := literal
-	if value.starts_with('c:') {
-		value = value[2..]
+	if literal.starts_with('c:') {
+		// C string literals are pointers even when they contain one byte. The
+		// scanner-only lane cannot preserve that type through generic printing.
+		return error('C string literals require checked fastc')
 	}
+	mut value := literal
 	if value.len == 0 || value.starts_with('\\') {
 		return error('unsupported fastc character literal')
 	}

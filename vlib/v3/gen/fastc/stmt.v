@@ -6830,6 +6830,34 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					i += 2
 					continue
 				}
+				if node.op in [.div_assign, .mod_assign]
+					&& g.value_unalias_type(lhs_type).is_integer() {
+					divmod_op := if node.op == .div_assign { flat.Op.div } else { flat.Op.mod }
+					lhs_assign_id := g.a.child(&node, i)
+					if g.a.nodes[int(lhs_assign_id)].kind == .ident {
+						mut lhs_text := g.expr_to_string(lhs_assign_id)
+						if g.assign_lhs_needs_deref(lhs_assign_id, lhs_type, rhs_type, node.op) {
+							lhs_text = '*${lhs_text}'
+						}
+						g.write('${lhs_text} = ')
+						g.gen_safe_integer_divmod_from_text(lhs_text, rhs_id, lhs_type, divmod_op)
+						g.writeln(';')
+					} else {
+						// Compound assignment evaluates its lvalue once; spill the
+						// address before evaluating the divisor.
+						lhs_ct := g.value_c_type(lhs_type)
+						addr_tmp := g.tmp_name()
+						g.write('{ ${lhs_ct}* ${addr_tmp} = &(')
+						g.gen_expr(lhs_assign_id)
+						g.write('); *${addr_tmp} = ')
+						g.gen_safe_integer_divmod_from_text('*${addr_tmp}', rhs_id, lhs_type,
+							divmod_op)
+						g.writeln('; }')
+					}
+					g.expected_enum = ''
+					i += 2
+					continue
+				}
 				if node.op == .assign
 					&& g.gen_local_optional_abi_assignment(lhs_id, rhs_id, lhs, lhs_type, rhs_type) {
 					g.expected_enum = ''
@@ -6863,6 +6891,15 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 		}
 		i += 2
 	}
+}
+
+fn (mut g FlatGen) gen_safe_integer_divmod_from_text(lhs_text string, rhs_id flat.NodeId, lhs_type types.Type, op flat.Op) {
+	c_type := g.value_c_type(lhs_type)
+	rhs_tmp := g.tmp_name()
+	message := if op == .div { 'division by zero' } else { 'modulo by zero' }
+	g.write('({ ${c_type} ${rhs_tmp} = (${c_type})(')
+	g.gen_expr(rhs_id)
+	g.write('); if (${rhs_tmp} == 0) v_panic(_S("${message}")); (${c_type})((${lhs_text}) ${g.op_str(op)} ${rhs_tmp}); })')
 }
 
 fn (mut g FlatGen) gen_local_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs flat.Node, lhs_type types.Type, rhs_type types.Type) bool {
