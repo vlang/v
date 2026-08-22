@@ -1995,7 +1995,8 @@ fn test_take_macos_v3_report_content_carries_no_path() {
 		os.unsetenv(macos_v3_c_error_dir_env)
 		// A forwarded content report round-trips as content only.
 		compiler_error := macos_v3_compiler_error_message('type specialization')
-		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3', compiler_error, '')
+		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3', compiler_error, '',
+			[])
 		report := take_macos_v3_report_content() or {
 			assert false, 'the forwarded content report must be returned'
 			return
@@ -2152,7 +2153,7 @@ fn test_macos_v3_directory_c_output_differs_from_old_compiler() {
 }
 
 fn test_macos_v3_directory_default_output_is_source_adjacent() {
-	$if macos {
+	$if macos || linux {
 		root := os.join_path(os.real_path(os.vtmp_dir()),
 			'macos_v3_directory_output_${os.getpid()}')
 		source_dir := os.join_path(root, 'app')
