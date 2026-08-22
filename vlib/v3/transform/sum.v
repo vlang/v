@@ -1343,7 +1343,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	clean_type0 := t.trim_pointer_type(expr_type)
 	if t.is_interface_type_name(clean_type0) {
-		if target_iface := t.resolve_interface_pattern_interface(node.value) {
+		target_is_pointer := node.value.starts_with('&')
+		target_pattern := t.trim_pointer_type(node.value)
+		if target_iface := t.resolve_interface_pattern_interface(target_pattern) {
 			// Use the raw interface expression here. Applying the active smartcast
 			// first would build the target interface once, then the explicit `as`
 			// conversion would incorrectly treat that value as the original source
@@ -1354,6 +1356,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 				t.transform_expr(expr_id)
 			}
 			if converted := t.convert_interface_expr_to_interface(child, expr_type, target_iface) {
+				if target_is_pointer {
+					return t.heap_copy_interface_expr(converted, target_iface, node.value)
+				}
 				return converted
 			}
 		}

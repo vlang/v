@@ -11922,8 +11922,7 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		a_app = a_app[1..]
 		e_app = e_app[1..]
 	}
-	if !isnil(t.tc) && a_app.contains('[') && e_app.contains('[')
-		&& t.tc.generic_type_name_matches(a_app, e_app) {
+	if !isnil(t.tc) && t.tc.generic_type_name_matches(a_app, e_app) {
 		return true
 	}
 	return false

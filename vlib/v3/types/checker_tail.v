@@ -6183,7 +6183,12 @@ fn (tc &TypeChecker) imported_fn_key(module_name string, fn_name string) ?string
 fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallInfo {
 	idx := int(id)
 	mut memo := tc.body_resolve_memo
-	if tc.memo_call_info && !isnil(memo) && memo.active && idx >= memo.lo && idx <= memo.hi {
+	// A grouped type-pattern match checks the same branch body once for each
+	// smartcast variant. Receiver call resolution is therefore contextual for
+	// calls on that subject and must not reuse the first variant's CallInfo.
+	context_stable := !tc.call_has_smartcast_receiver(node)
+	if context_stable && tc.memo_call_info && !isnil(memo) && memo.active && idx >= memo.lo
+		&& idx <= memo.hi {
 		slot := idx & 2047
 		if memo.call_generations[slot] == memo.call_generation && memo.call_ids[slot] == idx {
 			return memo.call_infos[slot]
@@ -6206,6 +6211,17 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		return info
 	}
 	return tc.resolve_call_info_uncached(id, node)
+}
+
+fn (tc &TypeChecker) call_has_smartcast_receiver(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return false
+	}
+	return tc.smartcast_type(tc.a.child(fn_node, 0)) != none
 }
 
 @[direct_array_access]
