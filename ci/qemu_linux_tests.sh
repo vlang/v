@@ -203,7 +203,8 @@ if ((sync_checkout)); then
 	ssh "${ssh_options[@]}" "$guest" bash -s -- "$guest_repo" <<'EOF'
 set -Eeuo pipefail
 guest_repo=$1
-manifest=$(git -C "$guest_repo" rev-parse --git-path qemu-linux-tests-untracked)
+git_dir=$(git -C "$guest_repo" rev-parse --absolute-git-dir)
+manifest="${git_dir}/qemu-linux-tests-untracked"
 if [[ -f "$manifest" ]]; then
 	cd "$guest_repo"
 	while IFS= read -r -d '' path; do
@@ -245,7 +246,7 @@ EOF
 			printf '%s\0' "$path"
 		done \
 		| ssh "${ssh_options[@]}" "$guest" \
-			"manifest=\$(git -C ${guest_repo_q} rev-parse --git-path qemu-linux-tests-untracked) && cat > \"\$manifest\""
+			"git_dir=\$(git -C ${guest_repo_q} rev-parse --absolute-git-dir) && cat > \"\${git_dir}/qemu-linux-tests-untracked\""
 fi
 
 if (($# == 0)); then

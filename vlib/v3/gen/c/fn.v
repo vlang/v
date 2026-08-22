@@ -1418,6 +1418,9 @@ fn (mut g FlatGen) libc_compat_call_name(name string) ?string {
 
 fn (mut g FlatGen) preseed_libc_compat_fns() {
 	refs := g.c_extern_referenced_symbols()
+	if refs['C.syscall'] || refs['syscall'] {
+		g.libc_compat_fns[c_libc_compat_syscall_decl_key] = true
+	}
 	if refs['C.gettid'] || refs['gettid'] || g.used_fn_contains_in_module('v_gettid', 'builtin') {
 		g.libc_compat_fns['gettid'] = true
 	}
