@@ -287,6 +287,22 @@ fn main() {
 	assert !wait_header_has_include_directive(hello.c_code), hello.c_code
 }
 
+fn test_linux_system_preamble_provides_syscall_constants() {
+	$if !linux {
+		return
+	}
+	v3_bin := wait_header_build_v3()
+	with_rand := wait_header_compile(v3_bin, 'with_crypto_rand', 'module main
+
+import crypto.rand
+
+fn main() {
+	assert rand.bytes(1)!.len == 1
+}
+')
+	assert with_rand.c_code.contains('#include <sys/syscall.h>'), with_rand.c_code
+}
+
 fn test_user_c_decl_emits_extern_prototype_without_headers() {
 	$if windows {
 		return

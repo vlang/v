@@ -17142,6 +17142,9 @@ fn (mut g FlatGen) system_libc_headers() {
 		'wchar.h'] {
 		g.writeln('#include <${header}>')
 	}
+	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
+	g.writeln('#include <sys/syscall.h>')
+	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)')
 	g.writeln('#include <sys/event.h>')
 	g.writeln('#endif')
