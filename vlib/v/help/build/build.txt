@@ -27,7 +27,8 @@ The default compiler:
   such as `v .` submits metadata only, while a generated-C error maps to a V file
   and can still upload a strict-subset excerpt of it, even for a short file.
   Inline-assembly fallbacks are notice-only; test compilations and GitHub CI also
-  submit no report. Pass `-old-compiler` (see `v help build-c`) to always use the
+  submit no report to the default endpoint. An explicitly configured custom bug
+  report URL remains active in CI. Pass `-old-compiler` (see `v help build-c`) to always use the
   established compiler and skip the V3 attempt and its fallback reporting. The
   established compiler can still report its own eligible generated-C failures;
   set V_C_ERROR_BUG_REPORT_DISABLED=1 to disable all such submissions.

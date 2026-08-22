@@ -24,8 +24,9 @@ see also `v help build`.
       never the whole file). An internal V3 error on a short program or a
       directory build such as `v .` submits metadata only, while a generated-C
       error can still include a strict-subset excerpt. Inline-assembly fallbacks
-      are notice-only; test compilations and GitHub CI also submit no report. See
-      `v help build` for the full description of the default.
+      are notice-only; test compilations and GitHub CI also submit no report to
+      the default endpoint. An explicitly configured custom bug report URL remains
+      active in CI. See `v help build` for the full description of the default.
 
    -cflags <flag>
       Pass the provided flag as is to the C compiler.
@@ -359,7 +360,8 @@ see also `v help build`.
       Useful with `v bug-report --host localhost --port 8080` for local testing.
       The report includes both the failing generated C line and the V source line
       that produced it (V code is regenerated with `#line` info if needed to map it).
-      Automatic reports to bugs.vlang.io are skipped when running in GitHub CI.
+      Automatic reports to bugs.vlang.io are skipped when running in GitHub CI;
+      an explicitly configured custom endpoint remains active.
       Set V_C_ERROR_BUG_REPORT_DISABLED=1 to disable automatic report submission.
 
    -dump-c-flags file.txt
