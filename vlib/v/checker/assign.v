@@ -158,6 +158,14 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		c.inside_recheck = old_recheck
 	}
 	for i, mut right in node.right {
+		// early check: if right-side has more values than left-side for a declaration
+		// (e.g. `x := a, b` — comma not valid in expression), produce a clear error
+		// and exit before any out-of-bounds access on node.left
+		if is_decl && i >= node.left.len {
+			c.error('unexpected `,` in expression, use `;` or a new line to separate statements',
+				right.pos())
+			return
+		}
 		if right in [ast.ArrayInit, ast.CallExpr, ast.ComptimeCall, ast.DumpExpr, ast.IfExpr,
 			ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.ParExpr, ast.SelectorExpr, ast.StructInit] {
 			if right in [ast.ArrayInit, ast.IfExpr, ast.MapInit, ast.MatchExpr, ast.StructInit]

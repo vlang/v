@@ -37,6 +37,89 @@ struct CheckWorkItem {
 	rank     i64
 }
 
+struct InterfaceImplChunkArgs {
+	checker     voidptr
+	iface_names voidptr
+	results     voidptr
+	start       int
+	end         int
+}
+
+struct InterfaceImplResults {
+mut:
+	items []&InterfaceImplIndex
+}
+
+fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
+	a := unsafe { &InterfaceImplChunkArgs(arg) }
+	tc := unsafe { &TypeChecker(a.checker) }
+	iface_names := unsafe { &[]string(a.iface_names) }
+	mut results := unsafe { &InterfaceImplResults(a.results) }
+	for i in a.start .. a.end {
+		iface_name := unsafe { iface_names[i] }
+		impls := if is_builtin_ierror_name(iface_name) {
+			tc.ierror_impl_names()
+		} else {
+			tc.interface_impl_names_uncached(iface_name)
+		}
+		results.items[i] = &InterfaceImplIndex{
+			names: impls
+			ids:   stable_interface_type_ids(impls)
+		}
+	}
+	return unsafe { nil }
+}
+
+fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []string) bool {
+	$if windows {
+		return false
+	} $else {
+		if iface_names.len < 8 || isnil(tc.a) || isnil(tc.a.worker_pool) {
+			return false
+		}
+		n_jobs := int_min(tc.a.worker_pool.size() + 1, iface_names.len)
+		if n_jobs <= 1 {
+			return false
+		}
+		tc.install_type_cache_overlay()
+		mut checkers := []&TypeChecker{cap: n_jobs}
+		checkers << tc
+		for _ in 1 .. n_jobs {
+			checkers << tc.fork_for_parallel_transform(tc.a)
+		}
+		mut results := &InterfaceImplResults{
+			items: []&InterfaceImplIndex{cap: iface_names.len}
+		}
+		for _ in iface_names {
+			results.items << &InterfaceImplIndex(unsafe { nil })
+		}
+		mut args := []InterfaceImplChunkArgs{cap: n_jobs}
+		mut tasks := []workers.Task{cap: n_jobs}
+		for job in 0 .. n_jobs {
+			args << InterfaceImplChunkArgs{
+				checker:     voidptr(checkers[job])
+				iface_names: unsafe { voidptr(&iface_names) }
+				results:     voidptr(results)
+				start:       iface_names.len * job / n_jobs
+				end:         iface_names.len * (job + 1) / n_jobs
+			}
+			tasks << workers.Task{
+				run:        interface_impl_index_chunk_thread
+				arg:        unsafe { voidptr(&args[job]) }
+				force_sync: job == 0
+			}
+		}
+		tc.a.worker_pool.run(tasks)
+		tc.restore_type_cache_base()
+		for i, iface_name in iface_names {
+			if !isnil(results.items[i]) {
+				tc.interface_impl_indexes[iface_name] = results.items[i]
+			}
+		}
+		return true
+	}
+}
+
 struct UnusedFnVarCandidate {
 	name   string
 	lhs_id flat.NodeId

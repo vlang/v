@@ -67,8 +67,10 @@ mut:
 	next_file_id          int = 1
 	cur_module            string
 	cur_fn                string
-	cur_veb_ctx_name      string   // source-level name of the active veb request context
-	veb_tmpl_counter      int      // monotonic id for unique `$veb.html`/`$tmpl` builder var names
+	cur_veb_ctx_name      string // source-level name of the active veb request context
+	veb_tmpl_counter      int    // monotonic id for unique `$veb.html`/`$tmpl` builder var names
+	has_veb_template      bool
+	may_have_local_types  bool
 	cur_struct            string   // receiver type name of the current method, for `@STRUCT`
 	cur_method_is_static  bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
 	defer_depth           int      // >0 while parsing a `defer` block body; gates `$res()` to defer contexts only
@@ -297,11 +299,13 @@ pub fn (mut p Parser) parse_into(path string) {
 	// every source buffer so those views remain valid through later phases.
 	p.a.source_buffers << src
 	stable_src := p.a.source_buffers.last()
+	p.has_veb_template = false
+	p.may_have_local_types = stable_src.contains('struct') || stable_src.contains('union')
 	p.unsupported_inline_asm_guards.clear()
 	if !p.prefs.supports_inline_asm {
 		p.precollect_unsupported_inline_asm_guards(stable_src, p.prefs.target.arch)
 	}
-	if path.ends_with('.v') {
+	if path.ends_with('.v') || path.ends_with('.vv') {
 		p.parsed_v_files++
 		p.parsed_v_file_paths << path
 	} else if path.ends_with('.vh') {
@@ -12577,6 +12581,9 @@ fn local_type_decl_name_for_scope(name string, scope string) string {
 }
 
 fn (mut p Parser) predeclare_local_type_names_in_block(open_brace_pos int) {
+	if !p.may_have_local_types {
+		return
+	}
 	scope := p.current_local_type_scope()
 	if scope.len == 0 || open_brace_pos < 0 || open_brace_pos >= p.s.src.len {
 		return

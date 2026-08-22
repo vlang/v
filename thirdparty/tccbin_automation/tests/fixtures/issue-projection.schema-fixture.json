@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "owner_repository": "vlang/tccbin",
+  "os": "windows",
+  "marker_hash": "6c8a33b7705abcd793a436b0e7aa4b99b6d2aa3acc949552530b6b08197e075f",
+  "title": "[TCC bundles/Windows] Human review required",
+  "entries": [
+    {
+      "abi": "ucrt-pe",
+      "target_id": "windows-amd64",
+      "architecture": "x64",
+      "component": "payload",
+      "failure_class": "payload-review-required",
+      "status": "active",
+      "diagnostics": [
+        {
+          "schema_version": 1,
+          "repository": "vlang/tccbin",
+          "os": "windows",
+          "target_id": "windows-amd64",
+          "architecture": "x64",
+          "component": "payload",
+          "failure_class": "payload-review-required",
+          "test_id": "payload-inventory",
+          "lane": "x64",
+          "expected": "all declared runtime inputs are present",
+          "observed_summary": "missing declared runtime input",
+          "subject_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "input_fingerprint": "2222222222222222222222222222222222222222222222222222222222222222",
+          "artifact_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+          "run_url": "https://github.com/vlang/tccbin/actions/runs/1",
+          "job_url": "https://github.com/vlang/tccbin/actions/runs/1/job/2",
+          "artifact_url": null,
+          "human_action": "review-change"
+        }
+      ]
+    }
+  ],
+  "should_be_open": true
+}

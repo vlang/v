@@ -20,11 +20,11 @@ import sync.pool
 // in C++, or have special meaning in V
 const c_reserved = ['asm', 'array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class',
 	'complex', 'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error',
-	'exit', 'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int',
-	'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return', 'short',
-	'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename', 'typeof',
-	'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'stdout', 'stdin',
-	'stderr', 'errno', 'environ', 'requires']
+	'exit', 'explicit', 'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline',
+	'int', 'long', 'malloc', 'namespace', 'new', 'nil', 'operator', 'panic', 'register', 'restrict',
+	'return', 'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef',
+	'typename', 'typeof', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template',
+	'true', 'stdout', 'stdin', 'stderr', 'errno', 'environ', 'requires']
 const c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 // same order as in token.Kind
 const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
@@ -5169,7 +5169,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		field_styp := g.styp(field.typ)
 		if got_sym.kind in [.sum_type, .interface] {
 			// the field is already a wrapped pointer; we shouldn't wrap it once again
-			sb.write_string(', .${c_name(field.name)} = ptr->${field.name}')
+			sb.write_string(', .${c_name(field.name)} = ptr->${c_name(field.name)}')
 		} else {
 			sb.write_string(', .${c_name(field.name)} = (${field_styp}*)((char*)${ptr} + __offsetof_ptr(${ptr}, ${type_cname}, ${c_name(field.name)}))')
 		}
@@ -8208,7 +8208,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							g.write('I_${field_sym.cname}_as_I_${cast_sym.cname}(${ptr}')
 							g.expr(node.expr)
 							dot := if lhs_expr_type.is_ptr() { '->' } else { '.' }
-							g.write('${dot}${node.field_name}))')
+							g.write('${dot}${field_name}))')
 							return
 						} else if !is_option_unwrap {
 							if i != 0 {
@@ -10524,14 +10524,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 						if obj_sym.kind == .interface && cast_sym.kind == .interface {
 							if cast_sym.cname != obj_sym.cname {
 								ptr := '*'.repeat(resolved_var.typ.nr_muls())
-								g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.name})')
+								g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${name})')
 							} else {
 								ptr := if is_option {
 									''
 								} else {
 									'*'.repeat(resolved_var.typ.nr_muls())
 								}
-								g.write('${ptr}${node.name}')
+								g.write('${ptr}${name}')
 							}
 						} else {
 							if sumtype_fn_value_smartcast {
@@ -13628,8 +13628,16 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 		.sum_type {
 			return if decode_sumtype { g.type_default_sumtype(typ, sym) } else { '{0}' }
 		}
-		.interface, .multi_return, .thread {
+		.interface, .multi_return {
 			return '{0}'
+		}
+		.thread {
+			// Windows uses a struct for typed thread handles, while untyped Windows
+			// handles and POSIX pthread_t values are scalar types.
+			if g.pref.os == .windows && g.styp(typ) != '__v_thread' {
+				return '{0}'
+			}
+			return '0'
 		}
 		.alias {
 			return g.type_default((sym.info as ast.Alias).parent_type)

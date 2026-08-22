@@ -26,8 +26,7 @@ const max_shared_transform_jobs = 18
 const shared_transform_chunks_per_job = 2
 const max_parallel_monomorph_jobs = 18
 // Recycle scratch arenas throughout large self-hosting transforms.
-const scoped_transform_worker_batches = 16
-const scoped_transform_master_batches = 16
+const scoped_transform_batches = 16
 const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
 
@@ -114,12 +113,7 @@ $if !windows {
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
 		mut csw := time.new_stopwatch()
 		if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
-			max_batches := if a.is_master {
-				scoped_transform_master_batches
-			} else {
-				scoped_transform_worker_batches
-			}
-			w.transform_scoped_helper_batches(*items, max_batches)
+			w.transform_scoped_helper_batches(*items, scoped_transform_batches)
 		} else {
 			w.transform_pure_items_serial(*items)
 		}
@@ -212,10 +206,12 @@ $if !windows {
 
 // TopLevelKindScanArgs is the payload for one top-level-kind flag-scan worker.
 struct TopLevelKindScanArgs {
-	a                 &flat.FlatAst = unsafe { nil }
+	a                 &flat.FlatAst      = unsafe { nil }
+	tc                &types.TypeChecker = unsafe { nil }
 	start             int
 	end               int
 	flags             voidptr // &u8 base of the per-node flag array (index 0 == node `base`)
+	escape_flags      voidptr // optional &u8 base for escape-precheck candidates
 	base              int
 	prefix_param_scan bool
 }
@@ -224,9 +220,12 @@ $if !windows {
 	// literal_decl_scan_thread marks the sparse node kinds needed to associate
 	// a function literal with its containing top-level declaration. The low
 	// nibble is also a cheap transform-cost weight used to balance fn workers.
+	// Genuine top-level boundaries are marked by the master after the scan: node
+	// kind alone cannot distinguish a top-level type from a local type declaration.
 	fn literal_decl_scan_thread(arg voidptr) voidptr {
 		a := unsafe { &TopLevelKindScanArgs(arg) }
 		flags := unsafe { &u8(a.flags) }
+		escape_flags := unsafe { &u8(a.escape_flags) }
 		for i in a.start .. a.end {
 			node := unsafe { &a.a.nodes[i] }
 			mut flag := match node.kind {
@@ -260,12 +259,34 @@ $if !windows {
 			} else if node.kind in [.const_decl, .global_decl] {
 				flag |= 64
 			}
-			if node.kind in [.file, .module_decl, .struct_decl, .type_decl, .interface_decl,
-				.enum_decl, .import_decl, .const_decl, .global_decl, .fn_decl, .c_fn_decl] {
-				flag |= 128
-			}
 			unsafe {
 				flags[i - a.base] = flag
+			}
+			mut may_escape := node.kind == .prefix && node.op == .amp
+			if !may_escape && node.kind == .call && node.children_count > 1 {
+				name := a.tc.resolved_call_name(flat.NodeId(i)) or {
+					unsafe {
+						escape_flags[i - a.base] = 1
+					}
+					continue
+				}
+				params := a.tc.fn_param_types[name] or {
+					unsafe {
+						escape_flags[i - a.base] = 1
+					}
+					continue
+				}
+				for param in params {
+					if escape_type_is_void_pointer(param) {
+						may_escape = true
+						break
+					}
+				}
+			}
+			if may_escape {
+				unsafe {
+					escape_flags[i - a.base] = 1
+				}
 			}
 		}
 		return unsafe { nil }
@@ -299,11 +320,14 @@ $if !windows {
 // scan_literal_decl_flags_parallel fills the sparse literal/declaration flags
 // used by collect_literal_fn_decls. The master can then word-scan the compact
 // byte array instead of streaming every full AST node header.
-fn scan_literal_decl_flags_parallel(a &flat.FlatAst, limit int, mut flags []u8) bool {
+fn scan_literal_decl_flags_parallel(t &Transformer, limit int, mut flags []u8, mut escape_flags []u8) bool {
 	$if windows {
 		return false
 	} $else {
-		if isnil(a.worker_pool) || limit < 65536 || limit > a.nodes.len || flags.len < limit {
+		a := t.a
+		if isnil(t.tc) || isnil(a.worker_pool) || limit < 65536 || limit > a.nodes.len
+			|| flags.len < limit || escape_flags.len < limit || t.tc.top_level_idx.len == 0
+			|| t.tc.top_level_idx_nodes_len != limit {
 			return false
 		}
 		n_jobs := a.worker_pool.size() + 1
@@ -319,10 +343,12 @@ fn scan_literal_decl_flags_parallel(a &flat.FlatAst, limit int, mut flags []u8) 
 				break
 			}
 			args << TopLevelKindScanArgs{
-				a:     a
-				start: start
-				end:   end
-				flags: flags.data
+				a:            a
+				tc:           t.tc
+				start:        start
+				end:          end
+				flags:        flags.data
+				escape_flags: escape_flags.data
 			}
 		}
 		mut tasks := []workers.Task{cap: args.len}
@@ -334,6 +360,25 @@ fn scan_literal_decl_flags_parallel(a &flat.FlatAst, limit int, mut flags []u8) 
 			}
 		}
 		a.worker_pool.run(tasks)
+		// top_level_idx also contains synthesized anonymous/function-local type
+		// declarations so later passes can find them. They are not subtree
+		// boundaries: an escape candidate before one still belongs to the enclosing
+		// function. Exclude those exact ids while marking reset points.
+		mut synthetic_pos := 0
+		for idx in t.tc.top_level_idx {
+			for synthetic_pos < t.tc.synthetic_top_level_type_ids.len
+				&& t.tc.synthetic_top_level_type_ids[synthetic_pos] < idx {
+				synthetic_pos++
+			}
+			if synthetic_pos < t.tc.synthetic_top_level_type_ids.len
+				&& t.tc.synthetic_top_level_type_ids[synthetic_pos] == idx {
+				synthetic_pos++
+				continue
+			}
+			if idx >= 0 && idx < limit {
+				flags[idx] |= u8(128)
+			}
+		}
 		return true
 	}
 }
@@ -949,17 +994,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
 		available_jobs := t.a.worker_pool.size() + 1
-		// Forked checkers carry substantial semantic indexes. Small programs do not have
-		// enough specialization work to repay a full machine-sized set of those clones.
-		mut job_limit := if t.a.nodes.len < 1_000_000 {
-			int_min(available_jobs, 4)
-		} else {
-			available_jobs
-		}
 		configured_jobs := os.getenv('V3_MONOMORPH_JOBS').int()
-		if configured_jobs > 0 && configured_jobs < job_limit {
-			job_limit = configured_jobs
-		}
+		job_limit := monomorph_job_limit(available_jobs, t.a.nodes.len, configured_jobs)
 		n_jobs := monomorph_job_count(job_limit, specs.len)
 		if n_jobs <= 1 {
 			return false
@@ -1397,6 +1433,19 @@ fn monomorph_job_count(n_runtime_jobs int, n_specs int) int {
 		n = n_specs
 	}
 	return n
+}
+
+fn monomorph_job_limit(available_jobs int, node_count int, configured_jobs int) int {
+	if available_jobs <= 1 {
+		return 1
+	}
+	if configured_jobs > 0 {
+		return int_min(available_jobs, configured_jobs)
+	}
+	// Each helper retains a forked checker and its disposable specialization arena
+	// until the final publication barrier. Two workers keep large applications under
+	// the normal memory budget; smaller programs retain the lower-latency four-way path.
+	return int_min(available_jobs, if node_count >= 500_000 { 2 } else { 4 })
 }
 
 // monomorph_regions_can_merge_in_place reports whether sequential leftward

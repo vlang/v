@@ -394,19 +394,35 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 	g.collect_declaration_signature_types()
 	// Calls without a resolved expression type are the only optional-type source
 	// not covered by the shared declaration-signature scan.
+	mut seen_type_ids := []bool{len: 65536}
+	mut seen_type_texts := map[string]bool{}
 	for idx, node in g.a.nodes {
 		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
 			continue
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
 			name := g.tc.resolved_call_names[idx]
-			if typ := g.tc.fn_ret_types[name] {
-				g.collect_optional_typedef_type(typ)
+			if name in g.tc.fn_ret_types {
+				// collect_declaration_signature_types() already processed this exact
+				// return entry; only calls without checker return metadata need their
+				// transformed node spelling inspected below.
 				continue
 			}
 		}
 		if node.typ.len > 0 && node.typ !in ['int', 'array', 'map', 'unknown']
 			&& cgen_type_text_is_complete(node.typ) {
+			type_id := node.type_text_id()
+			if type_id != 0 {
+				if seen_type_ids[int(type_id)] {
+					continue
+				}
+				seen_type_ids[int(type_id)] = true
+			} else {
+				if node.typ in seen_type_texts {
+					continue
+				}
+				seen_type_texts[node.typ] = true
+			}
 			g.collect_optional_typedef_type(g.parse_node_type(&node))
 		}
 	}
@@ -449,7 +465,8 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 	// Parallel monomorph workers can append concrete declarations before their
 	// checker signature maps are merged. Read declaration nodes directly too, so
 	// an option/result used only by a worker specialization still gets a typedef.
-	for idx, node in g.a.nodes {
+	for idx in g.top_level_nodes() {
+		node := g.a.nodes[idx]
 		if node.kind != .fn_decl {
 			continue
 		}
@@ -1792,7 +1809,7 @@ fn enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) 
 }
 
 // type_alias_decls returns type alias decls data for FlatGen.
-fn (mut g FlatGen) type_alias_decls() {
+fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 	mut emitted := false
 	mut main_aliases := map[string]bool{}
 	if g.tc.autofree_mode {
@@ -1825,7 +1842,14 @@ fn (mut g FlatGen) type_alias_decls() {
 		if g.tc.autofree_mode && !main_aliases[name] {
 			continue
 		}
-		ct := g.tc.c_type(g.tc.parse_type(target))
+		mut ct := g.tc.c_type(g.tc.parse_type(target))
+		is_fn_ptr_alias := ct.starts_with('fn_ptr:')
+		if is_fn_ptr_alias {
+			ct = g.resolve_fn_ptr_type(ct)
+		}
+		if is_fn_ptr_alias != emit_fn_ptr_aliases {
+			continue
+		}
 		alias_cname := if g.tc.autofree_mode { g.cname('main.${name}') } else { g.cname(name) }
 		if ct == 'void' || ct == alias_cname {
 			continue

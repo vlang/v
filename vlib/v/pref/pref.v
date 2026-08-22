@@ -158,6 +158,7 @@ pub mut:
 	show_depgraph          bool // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
 	show_unused_params     bool = true // regular function params should report as unused by default.
 	old_compiler           bool   // `-old-compiler` - bypass experimental compiler dispatchers.
+	new_compiler           bool   // `-new-compiler` - force the experimental V3 compiler and disable the V1 fallback.
 	c_error_bug_report_url string // `-bug-report-url url` - override the automatic C compiler bug report endpoint.
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
@@ -559,6 +560,9 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 			}
 			'-old-compiler' {
 				res.old_compiler = true
+			}
+			'-new-compiler' {
+				res.new_compiler = true
 			}
 			'-checker-fixture', '-macos-v3-compat-c99' {
 				// Passed through to the embedded V3 diagnostic fixture runner.

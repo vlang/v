@@ -1,6 +1,7 @@
 module bench
 
 import os
+import time
 
 const memory_monitor_test_child = 'V3_MEMORY_MONITOR_TEST_CHILD'
 
@@ -10,8 +11,8 @@ fn test_memory_limit_error_starts_at_limit() {
 
 	message := memory_limit_error(default_memory_limit_kb, default_memory_limit_kb, 'after parse',
 		'RSS')
-	assert message.contains('2304 MiB RSS after parse')
-	assert message.contains('limit: 2304 MiB')
+	assert message.contains('2560 MiB RSS after parse')
+	assert message.contains('limit: 2560 MiB')
 	assert message.contains('`-no-memory-limit`')
 }
 
@@ -56,8 +57,37 @@ fn test_step_parts_record_individual_timings() {
 	assert b.steps.len == 2
 	assert b.steps[0].name == 'parse .vh (parallel)'
 	assert b.steps[0].time_us == 1250
+	assert b.steps[0].stage_peak_ram_kb == 0
 	assert b.steps[1].name == 'parse .v'
 	assert b.steps[1].time_us == 2750
+	assert b.steps[1].stage_peak_ram_kb == 0
+	b.step_measured('ownership', 500)
+	assert b.steps[2].stage_peak_ram_kb == 0
+}
+
+fn test_finish_stage_memory_reports_and_resets_sampled_peak() {
+	mut b := new()
+	current := current_rss_kb()
+	mut monitor := unsafe { &StageMemoryMonitor(voidptr(b.stage_memory)) }
+	monitor.mutex.lock()
+	monitor.rss_peak_kb = current + 2048
+	monitor.mutex.unlock()
+	assert b.finish_stage_memory(current) == current + 2048
+	monitor.mutex.lock()
+	reset_peak := monitor.rss_peak_kb
+	monitor.mutex.unlock()
+	assert reset_peak == current
+}
+
+fn test_stage_memory_monitor_stops_before_state_release() {
+	mut b := new()
+	b.disable_memory_limit()
+	b.memory_monitor_interval = time.minute
+	b.start_memory_monitor()
+	stopwatch := time.new_stopwatch()
+	b.stop_memory_monitor()
+	assert !b.memory_monitor_started
+	assert stopwatch.elapsed() < time.second
 }
 
 fn test_limit_memory_metric_is_available() {

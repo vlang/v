@@ -217,6 +217,47 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 	}
 }
 
+fn test_macos_v3_compiler_bootstrap_is_detected_from_any_cwd() {
+	// Repo-relative and absolute spellings are recognized directly.
+	assert is_macos_v3_compiler_bootstrap('vlib/v3/v3.v')
+	assert is_macos_v3_compiler_bootstrap('/home/user/v/vlib/v3/v3.v')
+	// Non-bootstrap targets stay on the V3 path.
+	assert !is_macos_v3_compiler_bootstrap('main.v')
+	assert !is_macos_v3_compiler_bootstrap('cmd/v')
+	assert !is_macos_v3_compiler_bootstrap('some/other/place/v3.v')
+
+	// A bare `v3.v` invoked from inside vlib/v3 must resolve to the bootstrap so
+	// it builds with the compatibility compiler instead of the embedded V3 driver.
+	// Use an isolated <tmp>/vlib/v3/v3.v so this exercises the real-path
+	// resolution unconditionally, independent of where this test file lives.
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_bootstrap_${os.getpid()}')
+	v3_dir := os.join_path(root, 'vlib', 'v3')
+	other_dir := os.join_path(root, 'elsewhere')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(v3_dir) or { panic(err) }
+	os.mkdir_all(other_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(v3_dir, 'v3.v'), 'module main\n') or { panic(err) }
+	os.write_file(os.join_path(other_dir, 'v3.v'), 'module main\n') or { panic(err) }
+
+	saved := os.getwd()
+	defer {
+		os.chdir(saved) or {}
+	}
+	os.chdir(v3_dir) or { panic(err) }
+	bare := is_macos_v3_compiler_bootstrap('v3.v')
+	dotted := is_macos_v3_compiler_bootstrap('./v3.v')
+	// A bare `v3.v` that is not under vlib/v3 must stay on the V3 path.
+	os.chdir(other_dir) or { panic(err) }
+	non_bootstrap := is_macos_v3_compiler_bootstrap('v3.v')
+	os.chdir(saved) or {}
+	assert bare
+	assert dotted
+	assert !non_bootstrap
+}
+
 fn test_macos_v3_dispatch_allows_the_implicit_gc_default() {
 	$if macos {
 		implicit_gc, _ := pref.parse_args_and_show_errors([], ['', 'main.v'], false)
@@ -1044,7 +1085,8 @@ fn main() {
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
 	mut process := os.new_process(@VEXE)
-	process.set_args(['-ownership', '-d=ownership', '-gc', 'none', '-o', output, source])
+	process.set_args(['-ownership', '-no-parallel', '-d=ownership', '-gc', 'none', '-o', output,
+		source])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()
@@ -1574,4 +1616,116 @@ fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {
 		assert !is_macos_v3_default_executable('/tmp/vstrict1')
 		assert !is_macos_v3_default_executable('/tmp/vp')
 	}
+}
+
+fn test_macos_v3_forwarded_args_strip_new_compiler_flag() {
+	$if macos {
+		prefs := &pref.Preferences{}
+		forwarded := macos_v3_forwarded_args(prefs, ['-new-compiler', 'main.v'])
+		assert '-new-compiler' !in forwarded
+		assert 'main.v' in forwarded
+	}
+}
+
+fn test_macos_v3_force_requested_forces_v3_for_compile_targets() {
+	$if macos {
+		build := &pref.Preferences{
+			new_compiler: true
+			path:         'main.v'
+		}
+		assert macos_v3_force_requested('build', build)
+		run := &pref.Preferences{
+			new_compiler: true
+			path:         'main.v'
+		}
+		assert macos_v3_force_requested('run', run)
+	}
+}
+
+fn test_macos_v3_force_requested_respects_hard_limits() {
+	$if macos {
+		// not requested without the flag
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			path: 'main.v'
+		})
+		// `-old-compiler` always wins
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			new_compiler: true
+			old_compiler: true
+			path:         'main.v'
+		})
+		// the `test` command stays with vtest
+		assert !macos_v3_force_requested('test', &pref.Preferences{
+			new_compiler: true
+			path:         'main_test.v'
+		})
+		// V3 is never forced onto options it cannot honor yet
+		assert !macos_v3_force_requested('build', &pref.Preferences{
+			new_compiler:   true
+			path:           'main.v'
+			use_coroutines: true
+		})
+	}
+}
+
+// This gate is shared by the Darwin and non-macOS dispatchers, so keep it
+// unguarded: it protects command routing on every platform where `-new-compiler`
+// is accepted.
+fn test_macos_v3_new_compiler_routing_and_precedence() {
+	// Compilation commands are taken over by V3.
+	assert macos_v3_force_requested('run', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert macos_v3_force_requested('build', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	// Non-compilation commands are never handed to V3 as compiler inputs.
+	assert !macos_v3_force_requested('fmt', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('doc', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('version', &pref.Preferences{
+		new_compiler: true
+	})
+	// The test command stays with the vtest dispatcher.
+	assert !macos_v3_force_requested('test', &pref.Preferences{
+		new_compiler: true
+		path:         'main_test.v'
+	})
+	// V3 recognizes only run/build/test. Other builtin commands whose token the
+	// launcher turns into a path (crun -> `.v`, build-module -> directory,
+	// interpret/translate -> `.v`) must not be handed to V3, or the command token
+	// becomes its first input path and collides with the real target.
+	assert !macos_v3_force_requested('crun', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('build-module', &pref.Preferences{
+		new_compiler: true
+		path:         os.temp_dir()
+	})
+	assert !macos_v3_force_requested('interpret', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('translate', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	// `-old-compiler` takes precedence over `-new-compiler`.
+	assert !macos_v3_force_requested('run', &pref.Preferences{
+		new_compiler: true
+		old_compiler: true
+		path:         'main.v'
+	})
+	// Without the flag, V3 is not forced at all.
+	assert !macos_v3_force_requested('run', &pref.Preferences{
+		path: 'main.v'
+	})
 }

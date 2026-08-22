@@ -40,6 +40,18 @@ non-none garbage collectors, sanitizer builds, live reload, and `-autofree run` 
 path until V3 supports their runtime behavior. Pass `-old-compiler` to explicitly select the
 compatibility compiler for another user build. Other operating systems are unchanged.
 
+Pass `-new-compiler` for the opposite: it runs the embedded V3 driver (`vlib/v3`) in the SAME
+process, exactly like the default macOS path — it never launches a separate `v3` executable. On
+macOS it forces V3 for a `run`/`build` target even when the default heuristic would defer to V1;
+on other platforms it opts into V3 (which is otherwise V1 by default). In both cases it disables
+the automatic V1 fallback so a V3 failure is reported instead of silently retried with V1. It
+never forces V3 onto options V3 cannot honor yet (those error asking you to drop the flag), leaves
+the `test` command to the test dispatcher, and errors on builds that do not embed the V3 compiler
+(the portable cross-VC bootstrap). `-old-compiler` takes precedence when both are given.
+
+To make this possible the V3 driver (`vlib/v3`) is linked into `cmd/v` on every normal build, not
+only on macOS, so `v -new-compiler` compiles in-process on all platforms.
+
 The in-process path supports the split module cache and uses parallel stages while the input
 remains within its scratch-memory safety limit.
 
@@ -68,11 +80,13 @@ currently supported collector mode. Directory builds read `subdirs` through the 
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
-The driver monitors compiler memory throughout the build and exits when it reaches 2.25 GiB
+The driver monitors compiler memory throughout the build and exits when it reaches 2.5 GiB
 (4 GiB for compiler self-host builds).
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
-On macOS, each stage benchmark prints physical footprint immediately after RSS.
+Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
+breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
+physical footprint immediately after RSS.
 
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
 detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets

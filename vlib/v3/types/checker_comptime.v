@@ -9391,13 +9391,18 @@ fn (tc &TypeChecker) direct_parent_kind(id flat.NodeId) flat.NodeKind {
 	return .empty
 }
 
+@[direct_array_access; inline]
 fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 	idx := int(id)
+	if tc.direct_parent_index_trusted && idx >= 0 && idx < tc.direct_parent_ids.len {
+		return tc.direct_parent_ids[idx]
+	}
+	return tc.direct_parent_id_untrusted(id, idx)
+}
+
+fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.NodeId {
 	if idx >= 0 && idx < tc.direct_parent_ids.len {
 		parent_id := tc.direct_parent_ids[idx]
-		if tc.direct_parent_index_trusted {
-			return parent_id
-		}
 		if parent_id != flat.empty_node {
 			parent := tc.a.node(parent_id)
 			for i in 0 .. parent.children_count {
@@ -13400,6 +13405,15 @@ fn (mut tc TypeChecker) check_multi_value_list_decl_assign(id flat.NodeId, node 
 	rhs_count := tc.multi_assign_rhs_count(node)
 	if lhs_ids.len == 0 || rhs_count <= 1 {
 		return false
+	}
+	if lhs_ids.len == 1 {
+		first_rhs_id := tc.multi_assign_rhs_id(node, 0)
+		tc.check_node(first_rhs_id)
+		unexpected_rhs_id := tc.multi_assign_rhs_id(node, 1)
+		tc.record_error(.assignment_mismatch,
+			'unexpected `,` in expression, use `;` or a new line to separate statements',
+			unexpected_rhs_id)
+		return true
 	}
 	mut rhs_ids := []flat.NodeId{cap: rhs_count}
 	mut multi_ids := []flat.NodeId{}

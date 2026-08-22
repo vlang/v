@@ -171,6 +171,18 @@ mut:
 	values     []types.Type
 }
 
+@[heap]
+struct SumVariantActualCache {
+mut:
+	by_sum map[string]&SumVariantActualEntries
+}
+
+@[heap]
+struct SumVariantActualEntries {
+mut:
+	values map[string]string
+}
+
 fn (mut g FlatGen) begin_usable_expr_type_memo() {
 	if !g.memo_usable_expr_types {
 		return
@@ -300,12 +312,14 @@ mut:
 	local_pointer_storage_by_owner map[string]bool   // exact scope binding owner -> C storage is already a pointer
 	local_c_type_by_owner          map[string]string // exact scope binding owner -> emitted C declaration type
 	local_mutable_by_owner         map[string]bool
-	local_pointer_alias_by_owner   map[string]string   // exact scope binding owner -> stack local whose address is stored
-	local_pointer_alias_mut_param  map[string]bool     // exact scope binding owner -> alias source is a mut parameter
-	local_raw_type_by_owner        map[string]string   // exact scope binding owner -> source-level raw type text
-	local_shared_storage_by_owner  map[string]bool     // exact scope binding owner -> C storage is a shared wrapper pointer
-	local_fn_value_c_name_by_owner map[string]string   // exact scope binding owner -> lifted fn-literal C name
-	sum_name_lookup                map[string]string   // full/short sum type name -> canonical sum type name
+	local_pointer_alias_by_owner   map[string]string            // exact scope binding owner -> stack local whose address is stored
+	local_pointer_alias_mut_param  map[string]bool              // exact scope binding owner -> alias source is a mut parameter
+	local_raw_type_by_owner        map[string]string            // exact scope binding owner -> source-level raw type text
+	local_shared_storage_by_owner  map[string]bool              // exact scope binding owner -> C storage is a shared wrapper pointer
+	local_fn_value_c_name_by_owner map[string]string            // exact scope binding owner -> lifted fn-literal C name
+	sum_name_lookup                map[string]string            // full/short sum type name -> canonical sum type name
+	sum_variant_lookup             map[string]map[string]string // sum name -> exact/short variant -> canonical variant
+	sum_variant_actual_cache       &SumVariantActualCache = &SumVariantActualCache{} // sum name + semantic actual type -> canonical variant (empty means miss)
 	module_init_fns                []string            // C names of module-level `init()` fns, in source order
 	module_init_fn_modules         map[string]string   // C init fn name -> V module name
 	module_cleanup_fns             []string            // C names of module-level `cleanup()` fns, in source order
@@ -395,6 +409,7 @@ mut:
 	output_path                  string
 	output_error                 string
 	c99_mode                     bool
+	trace_calls                  bool
 	inside_trace_call            bool
 	skip_generics                bool
 	skip_enum_autostr            bool
@@ -410,6 +425,7 @@ mut:
 	cur_param_names              []string
 	cur_param_type_values        []types.Type
 	cur_param_types              map[string]types.Type
+	cur_param_name_bits          u64
 	cur_concrete_optional_params map[string]bool
 	cur_mut_params               map[string]bool
 	cur_mut_pointer_params       map[string]bool
@@ -990,6 +1006,8 @@ pub fn FlatGen.new() FlatGen {
 		local_fn_value_c_name_by_owner:  map[string]string{}
 		shadowed_global_locals:          map[string]bool{}
 		sum_name_lookup:                 map[string]string{}
+		sum_variant_lookup:              map[string]map[string]string{}
+		sum_variant_actual_cache:        &SumVariantActualCache{}
 		module_init_fns:                 []string{}
 		module_init_fn_modules:          map[string]string{}
 		module_cleanup_fns:              []string{}
@@ -1196,6 +1214,7 @@ pub fn (mut g FlatGen) set_suppress_main(enabled bool) {
 // directives resolves configured values over fallbacks.
 pub fn (mut g FlatGen) set_compile_values(values map[string]string) {
 	g.compile_values = values.clone()
+	g.trace_calls = 'trace' in g.compile_values
 }
 
 // set_cache_split enables stable cache markers and string symbols in generated C.
@@ -2542,6 +2561,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.local_fn_value_c_name_by_owner.clear()
 	g.shadowed_global_locals.clear()
 	g.sum_name_lookup.clear()
+	g.sum_variant_lookup.clear()
+	g.sum_variant_actual_cache.by_sum.clear()
 	g.module_init_fns = []string{}
 	g.module_init_fn_modules.clear()
 	g.module_cleanup_fns = []string{}
@@ -2604,6 +2625,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types.clear()
+	g.cur_param_name_bits = 0
 	g.cur_concrete_optional_params.clear()
 	g.cur_mut_params.clear()
 	g.cur_mut_pointer_params.clear()
@@ -2684,7 +2706,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
-	g.collect_gen_info()
+	g.collect_gen_info(effective_no_parallel)
 	g.precompute_local_global_suffix_names()
 	g.preintern_json_encode_strings()
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -2708,18 +2730,22 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		mut parallel_iface_scan := false
 		mut iface_worker := &FlatGen{}
 		mut iface_threads := []thread voidptr{cap: 1}
-		$if !v3_no_parallel ? {
-			parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
+		$if !windows {
+			$if !v3_no_parallel ? {
+				parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
+			}
 		}
 		if parallel_iface_scan {
-			$if !v3_no_parallel ? {
-				iface_worker = g.new_parallel_worker(4)
-				iface_worker.interface_boxed_types = map[string]bool{}
-				iface_worker.interface_boxed_types_done = false
-				iface_worker.iface_impls = map[string][]string{}
-				iface_worker.iface_type_ids = map[string]int{}
-				iface_worker.ierror_method_emit_names = map[string]bool{}
-				iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
+			$if !windows {
+				$if !v3_no_parallel ? {
+					iface_worker = g.new_parallel_worker(4)
+					iface_worker.interface_boxed_types = map[string]bool{}
+					iface_worker.interface_boxed_types_done = false
+					iface_worker.iface_impls = map[string][]string{}
+					iface_worker.iface_type_ids = map[string]int{}
+					iface_worker.ierror_method_emit_names = map[string]bool{}
+					iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
+				}
 			}
 		} else {
 			g.collect_interface_impls()
@@ -2745,12 +2771,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.timing_profile('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		if parallel_iface_scan {
-			$if !v3_no_parallel ? {
-				_ = iface_threads[0].wait()
-				g.publish_interface_impl_scan(mut iface_worker)
-				g.precompute_required_interface_dispatch_methods()
-				g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
-				cgsw.restart()
+			$if !windows {
+				$if !v3_no_parallel ? {
+					_ = iface_threads[0].wait()
+					g.publish_interface_impl_scan(mut iface_worker)
+					g.precompute_required_interface_dispatch_methods()
+					g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+					cgsw.restart()
+				}
 			}
 		}
 		parallel_prep_done := g.run_pre_dispatch_parallel(effective_no_parallel)
@@ -3100,7 +3128,7 @@ fn (mut g FlatGen) gen_global_declaration_block() {
 fn (mut g FlatGen) gen_type_declaration_block() {
 	g.enum_decls()
 	g.type_forward_decls()
-	g.type_alias_decls()
+	g.type_alias_decls(false)
 	// Forward-declare multi-return structs before fn-ptr typedefs, which may name a
 	// multi-return as a by-value return type (full bodies come after struct_decls).
 	g.multi_return_forward_decls()
@@ -3109,6 +3137,7 @@ fn (mut g FlatGen) gen_type_declaration_block() {
 	// array in param or return position) and the function declarations.
 	g.fixed_array_early_typedefs()
 	g.fn_ptr_typedefs()
+	g.type_alias_decls(true)
 	g.struct_decls()
 	g.fixed_array_typedefs()
 	g.multi_return_typedefs()
@@ -3534,11 +3563,11 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 }
 
 @[direct_array_access]
-fn (mut g FlatGen) collect_gen_info() {
+fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	profile := !isnil(g.tc) && g.tc.verbose
 	mut presw := time.new_stopwatch()
 	g.unused_param_seen = &UnusedParamSeen{}
-	g.reserve_collect_gen_info_maps()
+	g.reserve_collect_gen_info_maps(no_parallel)
 	if profile {
 		g.timing_profile('  [ttime]   ci reserve maps  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		presw.restart()
@@ -3568,10 +3597,11 @@ fn (mut g FlatGen) collect_gen_info() {
 	mut preferred_shared_fn_node_indexes := map[string]int{}
 	mut preferred_shared_fn_params := map[string][]bool{}
 	mut fn_signature_registrations := []FnSignatureRegistration{cap: 16_384}
-	defer_fn_signature_registrations := g.scope_parallel_workers && g.skip_generics
+	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics
 		&& g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	top_level_nodes := g.top_level_nodes()
-	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes)
+	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel)
+	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
 	for top_level_pos, node_idx in top_level_nodes {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
@@ -3599,8 +3629,13 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 		if kind_id == 61 {
 			ci_t0 := if profile { time.sys_mono_now() } else { u64(0) }
-			full_name := qualify_name_in_module(cur_module, node.value)
-			if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, cur_module) {
+			mut prep := CollectGenFnPrep{}
+			if has_parallel_fn_preps {
+				prep = fn_preps[top_level_pos]
+			}
+			if (has_parallel_fn_preps && !prep.prepared)
+				|| (!has_parallel_fn_preps && g.has_used_fn_filter()
+				&& !g.used_fn_contains_in_module(node.value, cur_module)) {
 				if g.incremental_fn_names.len == 0 {
 					g.preseed_unused_fn_ptr_param_types(node, cur_module, cur_file)
 				}
@@ -3609,12 +3644,11 @@ fn (mut g FlatGen) collect_gen_info() {
 				}
 				continue
 			}
+			full_name := qualify_name_in_module(cur_module, node.value)
 			g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
 			ci_p0 := if profile { time.sys_mono_now() } else { u64(0) }
-			prep := if top_level_pos < fn_preps.len && fn_preps[top_level_pos].prepared {
-				fn_preps[top_level_pos]
-			} else {
-				g.compute_collect_gen_fn_prep(node, cur_module, cur_file)
+			if !has_parallel_fn_preps {
+				prep = g.compute_collect_gen_fn_prep(node, cur_module, cur_file)
 			}
 			ptypes := prep.ptypes
 			shared_params := prep.shared_params
@@ -3944,8 +3978,8 @@ mut:
 }
 
 @[direct_array_access]
-fn (mut g FlatGen) reserve_collect_gen_info_maps() {
-	counts := g.scan_collect_gen_info()
+fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool) {
+	counts := g.scan_collect_gen_info(no_parallel)
 	mut fn_count := counts.fn_count
 	struct_count := counts.struct_count
 	global_count := counts.global_count
@@ -6836,15 +6870,7 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 		}
 		g.inlined_c_structs[tag] = true
 	}
-	for alias in c_typedef_struct_aliases(text) {
-		g.inlined_c_structs[alias] = true
-		g.inlined_c_typedef_names[alias] = true
-	}
-	for alias in c_typedef_union_aliases(text) {
-		g.inlined_c_structs[alias] = true
-		g.inlined_c_typedef_names[alias] = true
-	}
-	for alias in c_typedef_enum_aliases(text) {
+	for alias in c_typedef_all_aggregate_aliases(text) {
 		g.inlined_c_structs[alias] = true
 		g.inlined_c_typedef_names[alias] = true
 	}
@@ -7248,6 +7274,10 @@ fn c_cache_implementation_macro(name string) bool {
 fn c_strip_comments(text string) string {
 	mut sb := strings.new_builder(text.len)
 	mut i := 0
+	// Copy non-comment content in runs rather than one byte at a time: header
+	// bodies are large and mostly comment-free, so a per-byte write_u8 dominated
+	// the inlined-declaration scan.
+	mut run_start := 0
 	mut in_block := false
 	for i < text.len {
 		c := text[i]
@@ -7255,6 +7285,7 @@ fn c_strip_comments(text string) string {
 			if c == `*` && i + 1 < text.len && text[i + 1] == `/` {
 				in_block = false
 				i += 2
+				run_start = i
 				continue
 			}
 			if c == `\n` {
@@ -7265,19 +7296,32 @@ fn c_strip_comments(text string) string {
 		}
 		if c == `/` && i + 1 < text.len {
 			if text[i + 1] == `*` {
+				if i > run_start {
+					sb.write_string(text[run_start..i])
+				}
 				in_block = true
 				i += 2
 				continue
 			}
 			if text[i + 1] == `/` {
+				if i > run_start {
+					sb.write_string(text[run_start..i])
+				}
 				for i < text.len && text[i] != `\n` {
 					i++
 				}
+				run_start = i
 				continue
 			}
 		}
-		sb.write_u8(c)
 		i++
+	}
+	// An unterminated block comment runs to EOF: its text must be dropped, not
+	// flushed. run_start still points before the opening `/*` in that case
+	// (it only advances past a closing `*/`), so guarding on !in_block avoids
+	// re-appending the whole unfinished comment.
+	if !in_block && i > run_start {
+		sb.write_string(text[run_start..i])
 	}
 	return sb.str()
 }
@@ -7489,6 +7533,120 @@ fn c_typedef_plain_aliases(text string) []string {
 				aliases << alias
 			}
 		}
+	}
+	return aliases
+}
+
+// c_text_matches_at reports whether `word` appears at `pos` in `text` without
+// allocating a substring.
+@[inline]
+fn c_text_matches_at(text string, pos int, word string) bool {
+	if pos < 0 || pos + word.len > text.len {
+		return false
+	}
+	for j in 0 .. word.len {
+		if text[pos + j] != word[j] {
+			return false
+		}
+	}
+	return true
+}
+
+// c_typedef_all_aggregate_aliases collects `typedef struct|union|enum` alias
+// names in a single scan, replacing three separate full-text passes (one per
+// kind). The result is a set, so finding all three in text order yields the same
+// names as the three passes.
+//
+// It reproduces those passes exactly, including their failure behavior: each
+// per-kind scan `break`ed at its own first malformed candidate (an unbalanced
+// brace or missing `;`, e.g. from a `{` inside a comment in the raw header
+// text). So each kind here stops independently at its first malformed candidate
+// and is skipped thereafter. This keeps one kind's failure from suppressing the
+// others, and — crucially — never resumes *inside* a malformed candidate to pick
+// up a later same-kind typedef (such as a complete one inside the same comment)
+// that the original scan would already have stopped before.
+fn c_typedef_all_aggregate_aliases(text string) []string {
+	mut aliases := []string{}
+	mut start := 0
+	// kind codes: 0 = struct, 1 = union, 2 = enum.
+	mut stopped := [false, false, false]
+	for start < text.len {
+		idx := text.index_after('typedef ', start) or { break }
+		kw := idx + 'typedef '.len
+		mut prefix_len := 0
+		mut kind := 0
+		if c_text_matches_at(text, kw, 'struct') {
+			prefix_len = 'typedef struct'.len
+			kind = 0
+		} else if c_text_matches_at(text, kw, 'union') {
+			prefix_len = 'typedef union'.len
+			kind = 1
+		} else if c_text_matches_at(text, kw, 'enum') {
+			prefix_len = 'typedef enum'.len
+			kind = 2
+		} else {
+			start = kw
+			continue
+		}
+		if stopped[kind] {
+			start = kw
+			continue
+		}
+		mut pos := idx + prefix_len
+		if pos < text.len && c_ident_char(text[pos]) {
+			start = pos + 1
+			continue
+		}
+		for pos < text.len && text[pos].is_space() {
+			pos++
+		}
+		mut had_tag := false
+		if pos < text.len && text[pos] != `{` {
+			tag := c_header_struct_tag_at(text, pos)
+			if tag.len == 0 {
+				start = pos + 1
+				continue
+			}
+			had_tag = true
+			pos += tag.len
+			for pos < text.len && text[pos].is_space() {
+				pos++
+			}
+		}
+		if pos >= text.len || text[pos] != `{` {
+			if had_tag {
+				semi_idx := c_index_u8_after(text, `;`, pos)
+				if semi_idx >= 0 {
+					for alias in c_typedef_declarator_aliases(text[pos..semi_idx]) {
+						aliases << alias
+					}
+					start = semi_idx + 1
+					continue
+				}
+			}
+			start = pos + 1
+			continue
+		}
+		close_idx := c_matching_brace_end(text, pos)
+		if close_idx < 0 {
+			// Unbalanced brace (e.g. a `{` inside a comment): this kind's scan
+			// `break`ed here. Stop this kind so later same-kind candidates inside
+			// the malformed region are ignored, and advance only past the current
+			// `typedef ` keyword so the other kinds keep scanning.
+			stopped[kind] = true
+			start = kw
+			continue
+		}
+		semi_idx := c_index_u8_after(text, `;`, close_idx + 1)
+		if semi_idx < 0 {
+			stopped[kind] = true
+			start = kw
+			continue
+		}
+		for alias in c_typedef_declarator_aliases(text[close_idx + 1..semi_idx]) {
+			aliases << alias
+		}
+		start = semi_idx + 1
 	}
 	return aliases
 }
@@ -11326,8 +11484,38 @@ fn (g &FlatGen) sum_type_for_expected_value(expected types.Type) ?types.SumType 
 
 fn (g &FlatGen) sum_variant_for_actual(sum_name0 string, actual types.Type) ?string {
 	sum_name := g.resolve_sum_name(sum_name0)
+	actual_name := actual.name()
+	if sum_cache := g.sum_variant_actual_cache.by_sum[sum_name] {
+		if cached := sum_cache.values[actual_name] {
+			if cached.len > 0 {
+				return cached
+			}
+			return none
+		}
+	}
+	result := g.sum_variant_for_actual_uncached(sum_name, actual, actual_name) or {
+		mut cache := g.sum_variant_actual_cache
+		mut sum_cache := cache.by_sum[sum_name] or {
+			created := &SumVariantActualEntries{}
+			cache.by_sum[sum_name] = created
+			created
+		}
+		sum_cache.values[actual_name] = ''
+		return none
+	}
+	mut cache := g.sum_variant_actual_cache
+	mut sum_cache := cache.by_sum[sum_name] or {
+		created := &SumVariantActualEntries{}
+		cache.by_sum[sum_name] = created
+		created
+	}
+	sum_cache.values[actual_name] = result
+	return result
+}
+
+fn (g &FlatGen) sum_variant_for_actual_uncached(sum_name string, actual types.Type, actual_name string) ?string {
 	variants := g.tc.sum_types[sum_name] or { return none }
-	mut variant := g.resolve_variant(sum_name, actual.name())
+	mut variant := g.resolve_variant(sum_name, actual_name)
 	if variant in variants {
 		return variant
 	}
@@ -13618,9 +13806,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		g.write('0')
 		return
 	}
-	if replacement := g.assert_expr_overrides[int(id)] {
-		g.write(replacement)
-		return
+	if g.assert_expr_overrides.len > 0 {
+		if replacement := g.assert_expr_overrides[int(id)] {
+			g.write(replacement)
+			return
+		}
 	}
 	node := unsafe { &g.a.nodes[int(id)] }
 	match node.kind {
@@ -13738,8 +13928,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			is_current_param := node.value in g.cur_param_names
-				|| g.current_param_type(node.value) != none
+			is_current_param := g.current_param_type(node.value) != none
 			is_local := if is_current_param {
 				true
 			} else if owner := g.tc.cur_scope.lookup_owner(node.value) {
@@ -13747,8 +13936,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else {
 				false
 			}
-			current_global_name := qualify_name_in_module(g.tc.cur_module, node.value)
-			is_current_module_global := current_global_name in g.global_types
+			current_global_name := if is_local {
+				''
+			} else {
+				qualify_name_in_module(g.tc.cur_module, node.value)
+			}
+			is_current_module_global := !is_local && current_global_name in g.global_types
 			const_name := if !is_local && !is_current_module_global {
 				g.const_ref_name(node.value)
 			} else {
@@ -18994,8 +19187,9 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		g.tc.cur_module = cur_module
 		// Struct-init node types use scratch text while fields are transformed; the
 		// declared struct metadata above is the authoritative fixed-array source.
-		if node.kind != .struct_init && fixed_array_type_text_may_need_typedef(node.typ)
-			&& fixed_array_text_first_seen(node.typ, cur_module, mut text_seen) {
+		if node.kind != .struct_init && node.typ.len > 1
+			&& fixed_array_text_first_seen(node.typ, cur_module, mut text_seen)
+			&& fixed_array_type_text_may_need_typedef(node.typ) {
 			g.collect_fixed_array_typedef_text(node.typ, cur_module, mut needed)
 		}
 		match node.kind {
@@ -20553,9 +20747,9 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	if qname == 'builtin__error_sentinel' {
 		type_id := g.ierror_type_id_for_pattern('MessageError')
 		object_name := '${qname}__object'
-		message := '(string){"error", 5, 1}'
-		g.writeln('MessageError ${object_name} = (MessageError){.msg = ${message}};')
-		g.writeln('IError ${qname} = (IError){._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
+		message := '{"error", 5, 1}'
+		g.writeln('MessageError ${object_name} = {.msg = ${message}};')
+		g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
 		g.tc.cur_module = old_module
 		return
 	}

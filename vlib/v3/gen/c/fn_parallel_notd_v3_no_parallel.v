@@ -16,64 +16,76 @@ const min_flat_cgen_parallel_items = 128
 const scoped_cgen_worker_batches = 32
 const flat_cgen_chunks_per_job = 12
 
+// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
+struct FlatCgenChunkArgs {
+	worker         voidptr
+	work_items_ptr voidptr
+	is_master      bool
+}
+
+struct FlatCgenCostArgs {
+	a         &flat.FlatAst
+	items_ptr voidptr
+	start     int
+	end       int
+	g         voidptr // &FlatGen, non-nil in fused prep mode (read-only access)
+mut:
+	refs  map[string]bool
+	cands []FlatCgenPrepCandidate
+}
+
+struct FlatCgenDynamicArgs {
+	work_chunks_ptr voidptr
+	chunk_queue     chan int
+	reserve_cost    i64
+mut:
+	worker voidptr
+}
+
+struct CollectGenInfoFnPrepArgs {
+	g            voidptr // read-only &FlatGen master
+	node_ids_ptr voidptr // &[]int
+	preps_ptr    voidptr // &[]CollectGenFnPrep; shards fill disjoint positions
+	start        int
+	end          int
+	file         string
+	module_name  string
+}
+
+struct CollectGenInfoScanArgs {
+	g     voidptr // read-only &FlatGen master
+	start int
+	end   int
+mut:
+	counts         CollectGenInfoScanCounts
+	top_level_pos  int
+	string_pos     int
+	top_levels_ptr voidptr
+	strings_ptr    voidptr
+}
+
+struct FnSignatureRegistrationArgs {
+	g                 voidptr
+	registrations_ptr voidptr
+	group             int
+}
+
+struct FlatCgenSelectArgs {
+	g                       voidptr
+	nodes_ptr               voidptr
+	start                   int
+	end                     int
+	file                    string
+	module_name             string
+	direct_array_access_fns DirectArrayAccessFns
+	ignore_overflow_fns     DirectArrayAccessFns
+	program_modules         map[string]bool
+mut:
+	candidates []FlatFnGenCandidate
+	scope      voidptr
+}
+
 $if !windows {
-	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
-	struct FlatCgenChunkArgs {
-		worker         voidptr
-		work_items_ptr voidptr
-		is_master      bool
-	}
-
-	struct FlatCgenCostArgs {
-		a         &flat.FlatAst
-		items_ptr voidptr
-		start     int
-		end       int
-		g         voidptr // &FlatGen, non-nil in fused prep mode (read-only access)
-	mut:
-		refs  map[string]bool
-		cands []FlatCgenPrepCandidate
-	}
-
-	struct FlatCgenDynamicArgs {
-		dispatcher      voidptr
-		worker_id       int
-		work_chunks_ptr voidptr
-		chunk_queue     chan int
-		reserve_cost    i64
-	mut:
-		worker      voidptr
-		setup_scope voidptr
-	}
-
-	struct CollectGenInfoFnPrepArgs {
-		g            voidptr // read-only &FlatGen master
-		node_ids_ptr voidptr // &[]int
-		preps_ptr    voidptr // &[]CollectGenFnPrep; shards fill disjoint positions
-		start        int
-		end          int
-		file         string
-		module_name  string
-	}
-
-	struct CollectGenInfoScanArgs {
-		g     voidptr // read-only &FlatGen master
-		start int
-		end   int
-	mut:
-		counts         CollectGenInfoScanCounts
-		top_level_pos  int
-		string_pos     int
-		top_levels_ptr voidptr
-		strings_ptr    voidptr
-	}
-
-	struct FnSignatureRegistrationArgs {
-		g                 voidptr
-		registrations_ptr voidptr
-		group             int
-	}
-
 	fn fn_signature_registration_thread(arg voidptr) voidptr {
 		a := unsafe { &FnSignatureRegistrationArgs(arg) }
 		mut g := unsafe { &FlatGen(a.g) }
@@ -82,21 +94,6 @@ $if !windows {
 			g.apply_fn_signature_registration_group(registration, a.group)
 		}
 		return unsafe { nil }
-	}
-
-	struct FlatCgenSelectArgs {
-		g                       voidptr
-		nodes_ptr               voidptr
-		start                   int
-		end                     int
-		file                    string
-		module_name             string
-		direct_array_access_fns DirectArrayAccessFns
-		ignore_overflow_fns     DirectArrayAccessFns
-		program_modules         map[string]bool
-	mut:
-		candidates []FlatFnGenCandidate
-		scope      voidptr
 	}
 
 	fn flat_cgen_select_thread(arg voidptr) voidptr {
@@ -220,6 +217,7 @@ $if !windows {
 			g := unsafe { &FlatGen(a.g) }
 			mut text_cache := &PrepTypTextCache{}
 			mut type_seen := &PreseedTypeSeen{}
+			mut resolved_call_cache := &ResolvedCallTypeCache{}
 			mut cur_file := ''
 			mut cur_module := ''
 			for idx in a.start .. a.end {
@@ -233,7 +231,7 @@ $if !windows {
 					}
 					cost, needs_prelude_scan := exact_flat_fn_gen_item_cost_and_prep(g,
 						items[idx].node_id, idx, mut a.refs, mut stack, mut a.cands, mut
-						text_cache, mut type_seen)
+						text_cache, mut type_seen, mut resolved_call_cache)
 					items[idx].cost = cost
 					items[idx].skip_prelude_scan = !needs_prelude_scan
 				}
@@ -434,12 +432,6 @@ $if !windows {
 
 	fn flat_cgen_dynamic_thread(arg voidptr) voidptr {
 		mut a := unsafe { &FlatCgenDynamicArgs(arg) }
-		if isnil(a.worker) {
-			dispatcher := unsafe { &FlatGen(a.dispatcher) }
-			a.setup_scope = cgen_worker_scope_begin(dispatcher.scope_parallel_workers)
-			a.worker = voidptr(dispatcher.new_parallel_dispatch_worker(a.worker_id))
-			cgen_worker_scope_leave(a.setup_scope)
-		}
 		mut w := unsafe { &FlatGen(a.worker) }
 		chunks := unsafe { &[][]FlatFnGenItem(a.work_chunks_ptr) }
 		w.gen_fn_chunks_scoped_dynamic(*chunks, a.chunk_queue, a.reserve_cost)
@@ -523,12 +515,12 @@ fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns Di
 // scan_collect_gen_info partitions the read-only whole-AST sizing scan across
 // the persistent pool. A count pass computes exact output offsets, then a fill
 // pass writes disjoint ranges while preserving AST order.
-fn (mut g FlatGen) scan_collect_gen_info() CollectGenInfoScanCounts {
+fn (mut g FlatGen) scan_collect_gen_info(no_parallel bool) CollectGenInfoScanCounts {
 	$if windows {
 		return g.scan_collect_gen_info_serial()
 	} $else {
-		if isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0 || g.a.nodes.len < 65_536
-			|| os.getenv('V3_NO_PAR_CGEN_INFO_SCAN') != '' {
+		if no_parallel || isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0
+			|| g.a.nodes.len < 65_536 || os.getenv('V3_NO_PAR_CGEN_INFO_SCAN') != '' {
 			return g.scan_collect_gen_info_serial()
 		}
 		mut n_jobs := g.a.worker_pool.size() + 1
@@ -687,12 +679,12 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(parallel bool
 // collect_gen_info_fn_preps resolves used function signatures on the persistent
 // worker pool. Registration stays serial in collect_gen_info, preserving all
 // source-order and duplicate-declaration semantics.
-fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []int) []CollectGenFnPrep {
+fn (mut g FlatGen) collect_gen_info_fn_preps(node_ids []int, no_parallel bool) []CollectGenFnPrep {
 	$if windows {
 		return []CollectGenFnPrep{}
 	} $else {
-		if isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0 || node_ids.len < 2048
-			|| os.getenv('V3_NO_PAR_CGEN_INFO_FNS') != '' {
+		if no_parallel || isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0
+			|| node_ids.len < 2048 || os.getenv('V3_NO_PAR_CGEN_INFO_FNS') != '' {
 			return []CollectGenFnPrep{}
 		}
 		mut n_jobs := g.a.worker_pool.size() + 1
@@ -1447,20 +1439,18 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		if parallel_type_decls {
 			fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 			static_dispatch := fail.len > 0
-			lazy_worker_setup := !static_dispatch && os.getenv('V3_NO_PAR_CGEN_WORKER_SETUP') == ''
 			worker_count := if static_dispatch { chunk_count } else { n_jobs }
 			mut cgen_workers := []voidptr{len: worker_count, init: unsafe { nil }}
-			mut worker_setup_scopes := []voidptr{len: worker_count, init: unsafe { nil }}
 			mut ordered_chunk_outputs := []string{}
 			mut ordered_wrapper_defs := []ParallelChunkWrapperDefs{}
-			mut worker_setup_scope := unsafe { nil }
-			if !lazy_worker_setup {
-				worker_setup_scope = cgen_worker_scope_begin(true)
-				for ci := 0; ci < worker_count; ci++ {
-					cgen_workers[ci] = voidptr(g.new_parallel_dispatch_worker(ci))
-				}
-				cgen_worker_scope_leave(worker_setup_scope)
+			// Snapshot body-worker state before the declaration task starts mutating
+			// the master generator. Constructing workers lazily from that task's
+			// concurrent state can copy a moved map or a partially updated cache.
+			worker_setup_scope := cgen_worker_scope_begin(true)
+			for ci := 0; ci < worker_count; ci++ {
+				cgen_workers[ci] = voidptr(g.new_parallel_dispatch_worker(ci))
 			}
+			cgen_worker_scope_leave(worker_setup_scope)
 			g.timing_profile('  [ttime]   cg wkr setup     ${f64(stsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
 			if static_dispatch {
 				mut args := []FlatCgenChunkArgs{cap: chunk_count}
@@ -1508,8 +1498,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				}
 				for ci in 0 .. worker_count {
 					args << FlatCgenDynamicArgs{
-						dispatcher:      voidptr(g)
-						worker_id:       ci
 						worker:          cgen_workers[ci]
 						work_chunks_ptr: unsafe { voidptr(&chunk_items) }
 						chunk_queue:     chunk_queue
@@ -1522,19 +1510,13 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					}
 				}
 				g.parallel_used = g.a.worker_pool.run(tasks)
-				if lazy_worker_setup {
-					for ci in 0 .. worker_count {
-						cgen_workers[ci] = args[ci].worker
-						worker_setup_scopes[ci] = args[ci].setup_scope
-					}
-				}
 				g.timing_profile('  [ttime]   cg pool.run      ${f64(dsw.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count}, workers: ${worker_count})')
 			}
 			// The declaration thread disables the master's caches while body
 			// workers use their private copies. Restore them for synthetic output.
 			mut msw := time.new_stopwatch()
 			g.reset_context_lookup_caches()
-			for ci, worker_ptr in cgen_workers {
+			for worker_ptr in cgen_workers {
 				mut w := unsafe { &FlatGen(worker_ptr) }
 				if ordered_chunk_outputs.len > 0 {
 					g.merge_parallel_worker_ordered(w, mut ordered_chunk_outputs, mut
@@ -1543,9 +1525,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					g.merge_parallel_worker(w)
 				}
 				g.finish_parallel_worker_scope(mut w)
-				if worker_setup_scopes[ci] != unsafe { nil } {
-					cgen_worker_scope_free(worker_setup_scopes[ci])
-				}
 			}
 			g.replay_ordered_parallel_wrapper_defs(ordered_wrapper_defs)
 			g.timing_profile('  [ttime]   cg merge         ${f64(msw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -1554,9 +1533,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					g.fn_segs << output
 				}
 			}
-			if worker_setup_scope != unsafe { nil } {
-				cgen_worker_scope_free(worker_setup_scope)
-			}
+			cgen_worker_scope_free(worker_setup_scope)
 			// Cgen's cache is reset by the driver after this stage. Discard its
 			// overlay so worker-arena memo values cannot escape into the base.
 			g.tc.discard_type_cache_overlay_after_forks()
@@ -1913,6 +1890,9 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node &flat.Node) ?type
 		return none
 	}
 	if g.tc.parallel_check_sparse && (idx < g.tc.check_range_lo || idx > g.tc.check_range_hi) {
+		if g.tc.sparse_expr_type_values.len == 0 && node.kind != .call {
+			return none
+		}
 		if t := g.tc.sparse_expr_type_values[idx] {
 			return t
 		}
@@ -1948,13 +1928,22 @@ struct FlatCgenPrepCandidate {
 	item_idx int
 }
 
+struct ResolvedCallTypeCache {
+mut:
+	ptrs   [4096]voidptr
+	lens   [4096]int
+	values [4096]types.Type
+	seen   [4096]bool
+	found  [4096]bool
+}
+
 // exact_flat_fn_gen_item_cost_and_prep is exact_flat_fn_gen_item_cost plus the
 // candidate collection of the former serial fused prep walk: distinct type
 // texts and distinct cached expression types, in encounter order. All FlatGen
 // and checker access is read-only (nothing writes the dense expr caches during
 // cgen; every remember_expr_type caller is a mut check-phase path).
 @[direct_array_access]
-fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_idx int, mut c_extern_refs map[string]bool, mut stack []flat.NodeId, mut cands []FlatCgenPrepCandidate, mut text_cache PrepTypTextCache, mut type_seen PreseedTypeSeen) (int, bool) {
+fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_idx int, mut c_extern_refs map[string]bool, mut stack []flat.NodeId, mut cands []FlatCgenPrepCandidate, mut text_cache PrepTypTextCache, mut type_seen PreseedTypeSeen, mut resolved_call_cache ResolvedCallTypeCache) (int, bool) {
 	a := g.a
 	mut cost := 0
 	mut needs_prelude_scan := false
@@ -1985,7 +1974,7 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 				}
 			}
 		}
-		if parallel_type_text_may_preseed(g, node.typ) {
+		if node.typ.len > 0 {
 			slot := int((u64(voidptr(node.typ.str)) >> 4) & 4095)
 			if text_cache.gens[slot] != text_cache.generation
 				|| text_cache.ptrs[slot] != voidptr(node.typ.str)
@@ -1993,13 +1982,16 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 				text_cache.ptrs[slot] = voidptr(node.typ.str)
 				text_cache.gens[slot] = text_cache.generation
 				text_cache.lens[slot] = node.typ.len
-				cands << FlatCgenPrepCandidate{
-					text:     node.typ
-					item_idx: item_idx
+				text_cache.verdicts[slot] = parallel_type_text_may_preseed(g, node.typ)
+				if text_cache.verdicts[slot] {
+					cands << FlatCgenPrepCandidate{
+						text:     node.typ
+						item_idx: item_idx
+					}
 				}
 			}
 		}
-		if expr_type := g.parallel_cached_expr_type(id, node) {
+		if expr_type := g.parallel_cached_expr_type_with_cache(id, node, mut resolved_call_cache) {
 			w0, w1, slot := preseed_type_words(expr_type)
 			if !type_seen.seen[slot] || type_seen.w0[slot] != w0 || type_seen.w1[slot] != w1 {
 				type_seen.w0[slot] = w0
@@ -2020,6 +2012,42 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 		}
 	}
 	return cost, needs_prelude_scan
+}
+
+@[direct_array_access]
+fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.Node, mut cache ResolvedCallTypeCache) ?types.Type {
+	idx := int(id)
+	if idx < 0 {
+		return none
+	}
+	if g.tc.parallel_check_sparse && (idx < g.tc.check_range_lo || idx > g.tc.check_range_hi) {
+		return g.parallel_cached_expr_type(id, node)
+	}
+	if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len && g.tc.expr_type_set[idx] {
+		return g.tc.expr_type_values[idx]
+	}
+	if node.kind != .call || idx >= g.tc.resolved_call_set.len
+		|| idx >= g.tc.resolved_call_names.len || !g.tc.resolved_call_set[idx] {
+		return none
+	}
+	name := g.tc.resolved_call_names[idx]
+	slot := int((u64(voidptr(name.str)) >> 4 ^ u64(name.len)) & 4095)
+	if cache.seen[slot] && cache.ptrs[slot] == voidptr(name.str) && cache.lens[slot] == name.len {
+		if cache.found[slot] {
+			return cache.values[slot]
+		}
+		return none
+	}
+	cache.ptrs[slot] = voidptr(name.str)
+	cache.lens[slot] = name.len
+	cache.seen[slot] = true
+	if typ := g.tc.fn_ret_types[name] {
+		cache.values[slot] = typ
+		cache.found[slot] = true
+		return typ
+	}
+	cache.found[slot] = false
+	return none
 }
 
 // parallel_type_text_may_preseed cheaply rejects builtin/container type text
@@ -2291,6 +2319,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		ierror_method_emit_names:       g.ierror_method_emit_names
 		recursive_drop_helpers:         g.recursive_drop_helpers
 		sum_name_lookup:                g.sum_name_lookup
+		sum_variant_lookup:             g.sum_variant_lookup
+		sum_variant_actual_cache:       &SumVariantActualCache{}
 		module_init_fns:                g.module_init_fns
 		module_init_fn_modules:         g.module_init_fn_modules
 		module_cleanup_fns:             g.module_cleanup_fns
@@ -2306,6 +2336,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		has_builtins:                   g.has_builtins
 		cache_split:                    g.cache_split
 		compile_values:                 g.compile_values
+		trace_calls:                    g.trace_calls
 		skip_generics:                  g.skip_generics
 		tmp_count:                      (worker_id + 1) * 100_000
 		line_start:                     true
@@ -2365,6 +2396,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		} else {
 			g.cur_param_types.clone()
 		}
+		cur_param_name_bits:            g.cur_param_name_bits
 		cur_concrete_optional_params:   if result_only {
 			g.cur_concrete_optional_params
 		} else {

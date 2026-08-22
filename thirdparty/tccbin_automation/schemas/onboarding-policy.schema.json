@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "onboarding-policy.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projection_version",
+    "schema_version",
+    "contract_version",
+    "target_id",
+    "branch",
+    "sources",
+    "recipe",
+    "toolchain",
+    "patches",
+    "transforms",
+    "header_effects",
+    "integrations",
+    "probes",
+    "affected_targets",
+    "payload_policy"
+  ],
+  "properties": {
+    "projection_version": {"type": "integer", "enum": [1, 2]},
+    "schema_version": {"type": "integer", "const": 1},
+    "contract_version": {"$ref": "common.schema.json#/$defs/contract_version"},
+    "target_id": {"$ref": "common.schema.json#/$defs/target_id"},
+    "branch": {"$ref": "common.schema.json#/$defs/branch"},
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "repository", "ref"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"},
+          "repository": {"type": "string", "minLength": 3, "maxLength": 256},
+          "ref": {"type": "string", "minLength": 1, "maxLength": 256}
+        }
+      }
+    },
+    "source_commit_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/source_commit_object_evidence"},
+          {"$ref": "#/$defs/runtime_contract_evidence"}
+        ]
+      }
+    },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "version"],
+      "properties": {
+        "path": {"$ref": "common.schema.json#/$defs/relative_path"},
+        "version": {"type": "integer", "minimum": 1}
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_sha256"],
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._\\-]{2,127}$"
+        },
+        "profile_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    },
+    "patches": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/static_patch"}
+    },
+    "transforms": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/static_transform"}
+    },
+    "header_effects": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "patch-effect.schema.json"}
+    },
+    "integrations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "patch-effect.schema.json"}
+    },
+    "probes": {
+      "type": "array",
+      "minItems": 9,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/probe"}
+    },
+    "affected_targets": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "common.schema.json#/$defs/target_id"}
+    },
+    "payload_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overlays", "inventory", "outputs"],
+      "properties": {
+        "overlays": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/static_payload"}
+        },
+        "inventory": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/static_payload"}
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/static_payload"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"projection_version": {"const": 1}},
+        "required": ["projection_version"]
+      },
+      "then": {"not": {"required": ["source_commit_evidence"]}}
+    },
+    {
+      "if": {
+        "properties": {"projection_version": {"const": 2}},
+        "required": ["projection_version"]
+      },
+      "then": {"required": ["source_commit_evidence"]}
+    }
+  ],
+  "$defs": {
+    "source_commit_object_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "repository",
+        "ref",
+        "authority",
+        "sha",
+        "tree",
+        "raw_commit_base64"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["tinycc", "bdwgc", "libatomic_ops"]
+        },
+        "repository": {"type": "string", "minLength": 3, "maxLength": 256},
+        "ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "authority": {"type": "string", "const": "source-commit-object"},
+        "sha": {"$ref": "common.schema.json#/$defs/sha40"},
+        "tree": {"$ref": "common.schema.json#/$defs/sha40"},
+        "raw_commit_base64": {"type": "string", "minLength": 4, "maxLength": 87384}
+      }
+    },
+    "runtime_contract_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "repository", "ref", "authority"],
+      "properties": {
+        "id": {"type": "string", "const": "v-libgc"},
+        "repository": {"type": "string", "const": "https://github.com/vlang/v.git"},
+        "ref": {"type": "string", "const": "master"},
+        "authority": {"type": "string", "const": "runtime-contract"}
+      }
+    },
+    "static_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "order", "category", "auto_deprecatable", "state", "effects"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"},
+        "path": {"$ref": "common.schema.json#/$defs/relative_path"},
+        "order": {"type": "integer", "minimum": 1},
+        "category": {"type": "string", "enum": ["upstream-candidate", "v-integration"]},
+        "auto_deprecatable": {"type": "boolean"},
+        "state": {
+          "type": "string",
+          "enum": [
+            "active-required",
+            "auto-retirement-candidate",
+            "deprecated-upstream-validated",
+            "human-review-required"
+          ]
+        },
+        "effects": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "patch-effect.schema.json"}
+        }
+      }
+    },
+    "static_transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "owner", "order", "apply_stage", "effect_ids"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"},
+        "path": {"$ref": "common.schema.json#/$defs/relative_path"},
+        "owner": {"type": "string", "enum": ["bundle-overlay", "v-libgc"]},
+        "order": {"type": "integer", "minimum": 1},
+        "apply_stage": {
+          "type": "string",
+          "enum": ["bundle-payload-post-copy", "v-libgc-source-prebuild"]
+        },
+        "effect_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"}
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "required", "expected_lanes", "oracle"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._\\-]+$"},
+        "required": {"type": "boolean"},
+        "expected_lanes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128}
+        },
+        "oracle": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    },
+    "static_payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "kind",
+        "git_mode",
+        "symlink_target",
+        "role",
+        "opaque",
+        "opaque_acceptance_id",
+        "format",
+        "object_type",
+        "machine",
+        "os_abi",
+        "provenance"
+      ],
+      "properties": {
+        "path": {"$ref": "common.schema.json#/$defs/relative_path"},
+        "kind": {"type": "string", "enum": ["file", "executable", "symlink"]},
+        "git_mode": {"$ref": "common.schema.json#/$defs/git_mode"},
+        "symlink_target": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/symlink_target"}
+          ]
+        },
+        "role": {"type": "string", "minLength": 1, "maxLength": 128},
+        "opaque": {"type": "boolean"},
+        "opaque_acceptance_id": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "const": "windows-amd64-openlibm-v1"}
+          ]
+        },
+        "format": {"$ref": "#/$defs/nullable_short_string"},
+        "object_type": {"$ref": "#/$defs/nullable_short_string"},
+        "machine": {"$ref": "#/$defs/nullable_short_string"},
+        "os_abi": {"$ref": "#/$defs/nullable_short_string"},
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "source_path", "license"],
+          "properties": {
+            "repository": {
+              "oneOf": [
+                {"type": "null"},
+                {"$ref": "common.schema.json#/$defs/repository"}
+              ]
+            },
+            "source_path": {
+              "oneOf": [
+                {"type": "null"},
+                {"$ref": "common.schema.json#/$defs/relative_path"}
+              ]
+            },
+            "license": {
+              "oneOf": [
+                {"type": "null"},
+                {"type": "string", "minLength": 1}
+              ]
+            }
+          }
+        }
+      }
+    },
+    "nullable_short_string": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "minLength": 1, "maxLength": 128}
+      ]
+    }
+  }
+}

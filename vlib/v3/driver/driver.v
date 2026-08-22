@@ -1685,7 +1685,7 @@ fn input_is_legacy_diagnostic_fixture(input_file string) bool {
 fn default_bin_file_for_input(input_file string) string {
 	if os.is_dir(input_file) {
 		real_input := os.real_path(input_file)
-		return os.join_path_single(real_input, os.base(real_input))
+		return os.base(real_input)
 	}
 	resolved_input := if os.exists(input_file) { os.real_path(input_file) } else { input_file }
 	if !resolved_input.ends_with('.v') && !resolved_input.ends_with('.vv')
@@ -2717,8 +2717,8 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 					// survive, the owner object (full include) and the program unit's
 					// public replay both define the symbol, so the warm cached link
 					// fails with a duplicate symbol. Fail closed instead of splitting.
-					if cache_native_public_include_replays_external_definition(real_root,
-						context, implementation_macros, c_flags, ccompiler, target)
+					if cache_native_public_include_replays_external_definition(real_root, context,
+						implementation_macros, c_flags, ccompiler, target)
 					{
 						if os.getenv('V3_CACHE_TRACE') != '' {
 							eprintln('  V3 module cache ungated native definition: module=${module_name} path=${real_root}')
@@ -2896,8 +2896,10 @@ fn cache_native_public_include_replays_external_definition(path string, context 
 		target) or { return true }
 	source := os.read_file(os.real_path(path)) or { return true }
 	file_scope := c_source_file_scope_identifiers(source)
-	all_functions, functions_complete := modulecache.c_source_function_identifiers_with_status(preprocessed)
-	static_functions, static_complete := modulecache.c_source_static_function_identifiers_with_status(preprocessed)
+	all_functions, functions_complete :=
+		modulecache.c_source_function_identifiers_with_status(preprocessed)
+	static_functions, static_complete :=
+		modulecache.c_source_static_function_identifiers_with_status(preprocessed)
 	if !functions_complete || !static_complete {
 		return true
 	}
@@ -4424,9 +4426,16 @@ fn monomorph_cache_semantic_signature(a &flat.FlatAst, source_files []string) st
 			file_ids << idx
 		}
 	}
-	file_ids.sort_with_compare(fn [a] (left &int, right &int) int {
-		return a.nodes[*left].value.compare(a.nodes[*right].value)
-	})
+	// Keep the self-hosting path capture-free so V can be built with `-no-closures`.
+	for i in 1 .. file_ids.len {
+		value := file_ids[i]
+		mut j := i
+		for j > 0 && a.nodes[file_ids[j - 1]].value > a.nodes[value].value {
+			file_ids[j] = file_ids[j - 1]
+			j--
+		}
+		file_ids[j] = value
+	}
 	for idx in file_ids {
 		hash = c_hash_monomorph_node(hash, a, flat.NodeId(idx), cacheable_strings,
 			declaration_attributes)
@@ -6370,7 +6379,7 @@ fn v3_profile_optional_arg_value(args []string, idx int, command_seen bool) (str
 		return '-', false
 	}
 	if !command_seen && (next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
-		|| next.ends_with('.vsh') || os.is_dir(next)
+		|| next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next)
 		|| !v3_has_following_positional_arg(args, idx + 2)) {
 		return '-', false
 	}
@@ -6609,6 +6618,11 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] in ['-strict', '-cstrict'] {
 			is_strict = true
+			i++
+		} else if args[i] == '-new-compiler' {
+			// Accepted for symmetry with cmd/v's `-new-compiler`: V3 is already the
+			// compiler at this point, so selecting it again is a no-op. cmd/v strips
+			// this before forwarding; it is tolerated here for direct V3 invocations.
 			i++
 		} else if args[i] == '-ownership' || args[i] == '--ownership' {
 			// The ownership checker itself is compiled into v3 via `-d ownership`.
@@ -7211,6 +7225,9 @@ pub fn run(args []string) {
 		b.use_self_host_memory_limit()
 	}
 	b.start_memory_monitor()
+	defer {
+		b.stop_memory_monitor()
+	}
 	mut c_object_cache_stats := CObjectCacheStats{}
 	if !silent {
 		println('=== v3 benchmark ===')
@@ -8580,7 +8597,14 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('transform', transform_was_parallel)
 		}
-		pre_tc.refresh_rewritten_parent_index(a)
+		// Self-host C generation consumes the transformer's explicit node types and
+		// the checker's resolved-call sidecars; it does not perform a second semantic
+		// annotation walk. Keep the checked source parent index in that fast path
+		// instead of rebuilding parents for 1M+ appended lowering nodes that no later
+		// stage queries.
+		if !building_v {
+			pre_tc.refresh_rewritten_parent_index(a)
+		}
 		if transform_errors.len > 0 {
 			eprintln('type checker found ${transform_errors.len} error(s):')
 			for message in transform_errors {
@@ -8605,11 +8629,11 @@ pub fn run(args []string) {
 		if !building_v {
 			if uses_generics && (!incremental_cache_hit || incremental_needs_monomorphize) {
 				if scope_prealloc_stages {
-					// Volt's reachable specialization set settles just below 4x the
-					// transformed node count. Reserving that bounded final size avoids
-					// growing 3x caches to 6x inside the disposable monomorph arena and
-					// then copying those oversized arrays back into the parent.
-					pre_tc.materialize_sparse_transform_node_caches(a.nodes.len, a.nodes.len * 4)
+					// Volt's reachable specialization set settles near 2.3x the
+					// transformed node count. A 3x reservation keeps the dense semantic
+					// caches stable through monomorphization without retaining a fourth
+					// mostly-empty copy of every node-indexed slab.
+					pre_tc.materialize_sparse_transform_node_caches(a.nodes.len, a.nodes.len * 3)
 				}
 				// Generic lowering rewrites and clones call nodes in disposable arenas.
 				// Resolve their final names from the owned transformed AST instead of
@@ -8685,10 +8709,10 @@ pub fn run(args []string) {
 				eprintln('mono AST before reserve: ${a.nodes.len}/${a.nodes.cap} nodes, ${a.children.len}/${a.children.cap} children')
 			}
 			base_monomorph_nodes := a.nodes.len
-			// Volt's current generic closure retains about 5x the transformed node
-			// and child counts. Reserve that measured final size directly so one
-			// slightly-larger closure does not double both multi-million-item slabs.
-			reserve_flat_ast_exact(mut a, a.nodes.len * 5 + 65536, a.children.len * 5 + 65536)
+			// Volt's current generic closure retains about 2.3x the transformed node
+			// and child counts. Four times the input leaves each parallel append region
+			// enough headroom while avoiding a fifth mostly-empty AST slab.
+			reserve_flat_ast_exact(mut a, a.nodes.len * 4 + 65536, a.children.len * 4 + 65536)
 			monomorph_nodes_cap := a.nodes.cap
 			monomorph_children_cap := a.children.cap
 			base_specialized_fns := a.specialized_fn_nodes.len

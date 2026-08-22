@@ -3,7 +3,7 @@ module transform
 import v3.flat
 import v3.types
 
-fn scan_literal_decl_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8) bool {
+fn scan_literal_decl_flags_parallel(_ &Transformer, _ int, mut _ []u8, mut _ []u8) bool {
 	return false
 }
 
@@ -12,6 +12,10 @@ fn scan_top_level_kind_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8, _ bool
 }
 
 fn (mut _ Transformer) prepare_parallel_monomorph_scan(_ int, _ int) bool {
+	return false
+}
+
+fn (mut _ Transformer) run_parallel_monomorphize_specs(_ []PendingGenericFnSpec, _ map[string]GenericStructDecl, _ map[string]GenericSumDecl, mut _ map[string]bool, mut _ []string) bool {
 	return false
 }
 
