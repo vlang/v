@@ -13632,6 +13632,11 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 			return '{0}'
 		}
 		.thread {
+			// Windows uses a struct for typed thread handles, while untyped Windows
+			// handles and POSIX pthread_t values are scalar types.
+			if g.pref.os == .windows && g.styp(typ) != '__v_thread' {
+				return '{0}'
+			}
 			return '0'
 		}
 		.alias {

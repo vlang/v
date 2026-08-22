@@ -9031,6 +9031,11 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		node.typ
 	} else if t.generic_type_text_contains_alias(substituted_node_type, t.cur_module) {
 		substituted_node_type
+	} else if node.kind == .comptime_for {
+		// Reflection needs the source-level generic application (`Box[int]`) so it
+		// can substitute the receiver method's `T`. The storage spelling
+		// (`Box_int`) intentionally loses those arguments.
+		substituted_node_type
 	} else if node.kind == .directive && node.value == 'string_interp_format' {
 		substituted_node_type
 	} else {

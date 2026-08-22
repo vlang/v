@@ -5878,7 +5878,9 @@ fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
 
 fn (t &Transformer) generic_specialized_source_type_name(typ string) ?string {
 	clean := typ.trim_space().trim_left('&')
-	args := t.recorded_generic_specialization_args(clean) or { return none }
+	args := t.recorded_generic_specialization_args(clean) or {
+		t.decode_single_generic_specialized_type_args(clean) or { return none }
+	}
 	if args.len == 0 {
 		return none
 	}
@@ -5894,6 +5896,43 @@ fn (t &Transformer) generic_specialized_source_type_name(typ string) ?string {
 				&& generic_specialized_type_matches_flat_name(clean, base, args) {
 				return generic_specialized_source_type_name_for_base(base, args)
 			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) decode_single_generic_specialized_type_args(name string) ?[]string {
+	if isnil(t.tc) {
+		return none
+	}
+	for base, params in t.tc.struct_generic_params {
+		if params.len != 1 {
+			continue
+		}
+		if args := decode_single_generic_specialized_type_args_for_base(name, base) {
+			return args
+		}
+	}
+	for base, params in t.tc.sum_generic_params {
+		if params.len != 1 {
+			continue
+		}
+		if args := decode_single_generic_specialized_type_args_for_base(name, base) {
+			return args
+		}
+	}
+	return none
+}
+
+fn decode_single_generic_specialized_type_args_for_base(name string, base string) ?[]string {
+	short_base := base.all_after_last('.')
+	for prefix in [base, c_name(base), short_base, c_name(short_base)] {
+		if !name.starts_with('${prefix}_') {
+			continue
+		}
+		decoded := generic_type_arg_from_suffix_with_containers(name[prefix.len + 1..])
+		if decoded.len > 0 && generic_specialized_type_matches_flat_name(name, base, [decoded]) {
+			return [decoded]
 		}
 	}
 	return none

@@ -1,3 +1,4 @@
+// vtest build: started_postgres?
 module main
 
 import db.pg

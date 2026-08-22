@@ -3279,7 +3279,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 				literal_decls := t.collect_literal_fn_decls(t.a.nodes.len)
 				pure_items := t.transform_serial_then_collect_pure(literal_decls)
 				t.prepare_parallel_call_param_types()
-				t.transform_scoped_helper_batches(pure_items, scoped_transform_master_batches)
+				t.transform_scoped_helper_batches(pure_items, scoped_transform_batches)
 				t.transform_deferred_str_items()
 				if !has_entry_main {
 					t.transform_top_level_user_stmts()

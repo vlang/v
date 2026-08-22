@@ -1119,8 +1119,25 @@ fn comptime_method_receiver_matches(receiver string, requested string, normalize
 	return false
 }
 
+fn (t &Transformer) comptime_method_source_type(raw string) string {
+	clean := comptime_method_receiver_type(raw)
+	if source := t.generic_specialized_source_type_name(clean) {
+		return source
+	}
+	if current_args := t.recorded_generic_specialization_args(t.cur_fn_name) {
+		for arg in current_args {
+			base, args, ok := generic_app_parts(comptime_method_receiver_type(arg))
+			if ok && generic_specialized_type_matches_flat_name(clean, base, args) {
+				return arg
+			}
+		}
+	}
+	return raw
+}
+
 fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
-	normalized := t.comptime_normalize_type_alias_chain(base_type)
+	requested := t.comptime_method_source_type(base_type)
+	normalized := t.comptime_normalize_type_alias_chain(requested)
 	mut module_name := ''
 	mut file_name := ''
 	mut methods := []MethodMeta{}
@@ -1142,7 +1159,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		}
 		first := t.a.child_node(&node, 0)
 		if first.kind != .param || first.op != .dot || first.value.len == 0
-			|| !comptime_method_receiver_matches(first.typ, base_type, normalized, module_name, t.cur_module) {
+			|| !comptime_method_receiver_matches(first.typ, requested, normalized, module_name, t.cur_module) {
 			continue
 		}
 		name := node.value.all_after_last('.')
@@ -1151,7 +1168,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		}
 		seen[name] = true
 		generic_args, generic_params := t.comptime_method_receiver_generic_args(first.typ,
-			base_type, normalized)
+			requested, normalized)
 		mut params := []ParamMeta{}
 		for i in 1 .. node.children_count {
 			param := t.a.child_node(&node, i)

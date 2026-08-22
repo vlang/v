@@ -1809,7 +1809,7 @@ fn enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) 
 }
 
 // type_alias_decls returns type alias decls data for FlatGen.
-fn (mut g FlatGen) type_alias_decls() {
+fn (mut g FlatGen) type_alias_decls(emit_fn_ptr_aliases bool) {
 	mut emitted := false
 	mut main_aliases := map[string]bool{}
 	if g.tc.autofree_mode {
@@ -1842,7 +1842,14 @@ fn (mut g FlatGen) type_alias_decls() {
 		if g.tc.autofree_mode && !main_aliases[name] {
 			continue
 		}
-		ct := g.tc.c_type(g.tc.parse_type(target))
+		mut ct := g.tc.c_type(g.tc.parse_type(target))
+		is_fn_ptr_alias := ct.starts_with('fn_ptr:')
+		if is_fn_ptr_alias {
+			ct = g.resolve_fn_ptr_type(ct)
+		}
+		if is_fn_ptr_alias != emit_fn_ptr_aliases {
+			continue
+		}
 		alias_cname := if g.tc.autofree_mode { g.cname('main.${name}') } else { g.cname(name) }
 		if ct == 'void' || ct == alias_cname {
 			continue

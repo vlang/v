@@ -1,3 +1,4 @@
+// vtest build: macos
 import sync
 
 struct MutexHolder {
