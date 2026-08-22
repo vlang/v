@@ -232,6 +232,32 @@ fn main() {
 	assert min_int_run.exit_code == 0, min_int_run.output
 	assert min_int_run.output.trim_space() == '2147483647'
 
+	min_int_loop_source := os.join_path(root, 'inferred_min_int_loop.v')
+	os.write_file(min_int_loop_source, 'module main
+
+fn main() {
+	mut iterations := 0
+	for i := -2147483648; true; i-- {
+		println(i)
+		iterations++
+		if iterations == 2 {
+			break
+		}
+	}
+}
+') or {
+		panic(err)
+	}
+	min_int_loop_binary := os.join_path(root, 'inferred_min_int_loop')
+	min_int_loop_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', min_int_loop_binary,
+		min_int_loop_source])
+	assert min_int_loop_compile.exit_code == 0, min_int_loop_compile.output
+	min_int_loop_c := os.read_file(min_int_loop_binary + '.c') or { panic(err) }
+	assert !min_int_loop_c.contains('V_FASTC_PRINT_SELECT')
+	min_int_loop_run := cmdexec.run(min_int_loop_binary, [])
+	assert min_int_loop_run.exit_code == 0, min_int_loop_run.output
+	assert min_int_loop_run.output.trim_space() == '-2147483648\n2147483647'
+
 	shift_source := os.join_path(root, 'oversized_shift.v')
 	os.write_file(shift_source, 'module main
 

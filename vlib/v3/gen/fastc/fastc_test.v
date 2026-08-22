@@ -171,6 +171,7 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		"module main\nfn main() { s := 'abc'; println(s[0]) }\n",
 		"module main\nfn main() { println(c'a') }\n",
 		'module main\nfn main() { mut x := -2_147_483_648; x--; println(x) }\n',
+		'module main\nfn main() { for i := -2_147_483_648; true; i-- { println(i); break } }\n',
 	] {
 		mut failed := false
 		_ := generate(source, 'typed_expression.v', prefs) or {

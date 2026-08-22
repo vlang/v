@@ -393,6 +393,11 @@ fn (mut g DirectGen) parse_for() ! {
 		if g.tok == .decl_assign {
 			g.next()
 			initial := g.read_expression([token.Token.semicolon])!
+			if fastc_is_inferred_min_int_literal(initial) {
+				// C-style loop initializers have the same V inference rules as local
+				// declarations and cannot rely on C's wider literal type.
+				return g.unsupported('minimum int literal inference')
+			}
 			g.expect(.semicolon)!
 			condition := g.read_expression([token.Token.semicolon])!
 			g.expect(.semicolon)!
