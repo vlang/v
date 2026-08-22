@@ -271,9 +271,9 @@ fn test_objective_c_message_header_remains_in_generated_source() {
 	assert c_include_should_remain_in_inlined_text('<objc/message.h>')
 }
 
-fn test_resolved_preserved_header_keeps_macro_declared_functions_authoritative() {
+fn test_preserved_include_keeps_macro_declared_functions_authoritative() {
 	mut g := FlatGen.new()
-	g.collect_preserved_header_tree('<openssl/ssl.h>', '', []string{})
+	g.collect_preserved_include_metadata('<openssl/ssl.h>', '')
 	assert !g.should_emit_c_extern_decl('X509_free')
 }
 
