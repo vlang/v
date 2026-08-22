@@ -37,9 +37,10 @@ compiled by V3.
 `cmd/v` remains the CLI and compatibility dispatcher. Its own build, its internal command-tool
 bootstrap, and the `vlib/v3/v3.v` compiler bootstrap retain the compatibility compiler. Explicit
 non-none garbage collectors, sanitizer builds, live reload, and autofree also stay off the default
-V3 path until V3 supports their runtime behavior. Pass `-old-compiler` to explicitly select the
-compatibility compiler for another user build. On Windows and the BSDs, where the V3 driver is not
-embedded, `v` uses the established compiler by default.
+V3 path until V3 supports their runtime behavior. Debug builds selected with `-g`/`-debug` also use
+the established compiler; `-cg`/`-cdebug` remains eligible for V3. Pass `-old-compiler` to
+explicitly select the compatibility compiler for another user build. On Windows and the BSDs,
+where the V3 driver is not embedded, `v` uses the established compiler by default.
 
 Pass `-new-compiler` for the opposite: it runs the embedded V3 driver (`vlib/v3`) in the SAME
 process, exactly like the default macOS and Linux path — it never launches a separate `v3`

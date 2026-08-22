@@ -6125,9 +6125,18 @@ fn clear_macos_v3_compiler_error_fallback(fallback_file string) {
 	}
 }
 
+fn macos_v3_fallback_payload_is_valid(payload string) bool {
+	reason := payload.all_before('\n')
+	return reason in [macos_v3_inline_asm_fallback, macos_v3_compiler_error_fallback,
+		macos_v3_c_error_fallback]
+}
+
 fn macos_v3_fallback_suppresses_diagnostics(fallback_file string) bool {
-	return fallback_file != '' && os.getenv(macos_v3_no_fallback_env) != '1'
-		&& os.is_file(fallback_file)
+	if fallback_file == '' || os.getenv(macos_v3_no_fallback_env) == '1' {
+		return false
+	}
+	payload := os.read_file(fallback_file) or { return false }
+	return macos_v3_fallback_payload_is_valid(payload)
 }
 
 fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {
