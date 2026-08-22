@@ -12274,6 +12274,14 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg string) string {
 			}
 		}
 	}
+	// Fixed-array arguments are shortened as `Elem_len` in generated free-function
+	// names. A later global scan can observe that encoded spelling through the
+	// specialized callback ABI and infer it as a fresh type argument. Restore the
+	// source spelling before forming the specialization key, while preserving a
+	// real user type that happens to use the same name.
+	if fixed := t.canonical_short_fixed_array_arg(clean) {
+		return fixed
+	}
 	if clean.starts_with('[') {
 		bracket_end := generic_matching_bracket(clean, 0)
 		if bracket_end > 1 && bracket_end < clean.len - 1 {
@@ -12424,6 +12432,33 @@ fn (t &Transformer) canonical_suffix_fixed_array_arg(arg string) ?string {
 		return none
 	}
 	return '[${clean_len}]${t.canonical_generic_specialization_arg(elem)}'
+}
+
+fn (t &Transformer) canonical_short_fixed_array_arg(arg string) ?string {
+	clean := arg.trim_space()
+	if clean.len == 0 || t.type_name_is_declared(clean) {
+		return none
+	}
+	split := clean.last_index_u8(`_`)
+	if split <= 0 || split + 1 >= clean.len {
+		return none
+	}
+	len_text := clean[split + 1..]
+	if !is_decimal_text(len_text) {
+		return none
+	}
+	encoded_elem := clean[..split]
+	canonical_elem := t.canonical_generic_specialization_arg(encoded_elem)
+	if canonical_elem == encoded_elem && !types.is_builtin_type_name(encoded_elem)
+		&& !t.type_name_is_declared(encoded_elem) {
+		return none
+	}
+	candidate := '[${len_text}]${canonical_elem}'
+	encoded := generic_fixed_array_type_arg_short(candidate) or { return none }
+	if encoded != clean {
+		return none
+	}
+	return candidate
 }
 
 fn (t &Transformer) recorded_generic_specialization_args(typ string) ?[]string {
