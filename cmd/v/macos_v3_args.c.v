@@ -121,7 +121,19 @@ fn macos_v3_leading_option_consumes_value(option string) bool {
 fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
 	// `-new-compiler` is consumed by cmd/v to select V3; it must not reach the V3
 	// driver, which is already running and would reject it as an unknown option.
-	mut forwarded_args := raw_args.filter(it != '-new-compiler')
+	// The parser keeps every argument after a `run` target in `run_args`; those
+	// belong to the program, so do not consume their compiler-like spellings.
+	mut compiler_args_len := raw_args.len
+	if prefs.run_args.len <= raw_args.len {
+		compiler_args_len -= prefs.run_args.len
+	}
+	mut forwarded_args := []string{cap: raw_args.len}
+	for i, arg in raw_args {
+		if arg == '-new-compiler' && i < compiler_args_len {
+			continue
+		}
+		forwarded_args << arg
+	}
 	if prefs.enable_globals {
 		for i, arg in forwarded_args {
 			if arg == '--enable-globals' {
