@@ -250,10 +250,12 @@ fn run_dynamic_texture_probe() ! {
 
 fn run_app_resource_only_identity_probe(backend gg.MultiWindowBackend, stale_image gg.WindowImageId) ! {
 	frame_ready := chan bool{cap: 1}
+	stop_queued_ack := chan bool{cap: 1}
 	driver_result := chan string{cap: 1}
 	mut state := &AppResourceOnlyProbeState{}
 	mut app := gg.new_app(backend: backend, queue_size: 4, require_renderer: true)!
-	driver := spawn drive_app_resource_only_probe(mut app, frame_ready, driver_result)
+	driver := spawn drive_app_resource_only_probe(mut app, frame_ready, stop_queued_ack,
+		driver_result)
 	mut run_error := ''
 	app.run(
 		app_resource_init_fn:    fn [mut state] (mut resources gg.AppResourceContext) ! {
@@ -266,7 +268,7 @@ fn run_app_resource_only_identity_probe(backend gg.MultiWindowBackend, stale_ima
 			state.current_image = resources.make_image(&desc)!
 			state.init_calls++
 		}
-		app_resource_frame_fn:   fn [stale_image, frame_ready, mut state] (mut resources gg.AppResourceContext) ! {
+		app_resource_frame_fn:   fn [stale_image, frame_ready, stop_queued_ack, mut state] (mut resources gg.AppResourceContext) ! {
 			if state.frame_calls != 0 {
 				return error('app-resource-only callback ran again before its accepted stop')
 			}
@@ -289,6 +291,14 @@ fn run_app_resource_only_identity_probe(backend gg.MultiWindowBackend, stale_ima
 			state.identity_rejected = true
 			state.frame_calls++
 			frame_ready <- true
+			// A successful `post` means queued, not stopped. Keep this first frame active
+			// until the driver acknowledges that the stop closure was accepted.
+			select {
+				_ := <-stop_queued_ack {}
+				dynamic_texture_probe_watchdog {
+					return error('watchdog expired waiting for app-resource-only stop admission acknowledgement')
+				}
+			}
 		}
 		app_resource_cleanup_fn: fn [mut state] (mut resources gg.AppResourceContext) ! {
 			resources.retire_image(state.current_image)!
@@ -309,7 +319,7 @@ fn run_app_resource_only_identity_probe(backend gg.MultiWindowBackend, stale_ima
 	assert state.identity_rejected
 }
 
-fn drive_app_resource_only_probe(mut app gg.App, frame_ready chan bool, result chan string) {
+fn drive_app_resource_only_probe(mut app gg.App, frame_ready chan bool, stop_queued_ack chan bool, result chan string) {
 	select {
 		_ := <-frame_ready {}
 		dynamic_texture_probe_watchdog {
@@ -323,6 +333,7 @@ fn drive_app_resource_only_probe(mut app gg.App, frame_ready chan bool, result c
 		result <- 'app-resource-only stop admission failed: ${err.msg()}'
 		return
 	}
+	stop_queued_ack <- true
 	result <- ''
 }
 

@@ -1,6 +1,7 @@
 name: CI macOS
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
@@ -133,8 +134,56 @@ jobs:
           }
           EOF
           ./v -cc clang -o "$RUNNER_TEMP/multiwindow_ci_watchdog" "$RUNNER_TEMP/multiwindow_ci_watchdog.v"
+      - name: Native operation proof (explicit V1 compatibility gate)
+        env:
+          V_MACOS_V3_NO_FALLBACK: '1'
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: appkit
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: appkit
+          V_MULTIWINDOW_PROBE_BACKEND: appkit
+        run: |
+          set -euo pipefail
+
+          source='vlib/x/multiwindow/native_operation_proof_test.v'
+          expected_source_sha256='429cbaf1ce2c2cda26c4b9a421f62997e85bc57e210e49062daded89a2a95667'
+          if [[ "${VFLAGS:-}" != '-cc clang' ]]; then
+            echo "native operation V1 compatibility gate VFLAGS mismatch" >&2
+            exit 1
+          fi
+          if [[ ! -s "$source" ]]; then
+            echo "native operation V1 compatibility gate source is missing or empty" >&2
+            exit 1
+          fi
+          actual_source_sha256="$(shasum -a 256 "$source" | awk '{print $1}')"
+          if [[ "$actual_source_sha256" != "$expected_source_sha256" ]]; then
+            echo "native operation V1 compatibility gate source hash mismatch" >&2
+            exit 1
+          fi
+          source_test_count="$(grep -Ec '^fn test_[A-Za-z0-9_]+\(\) \{$' "$source")"
+          if [[ "$source_test_count" != '53' ]]; then
+            echo "native operation V1 compatibility gate source test count mismatch" >&2
+            exit 1
+          fi
+          if [[ -n "${V_MACOS_V3_RETRY:-}" \
+            || -n "${V_MACOS_V3_FALLBACK_FILE:-}" \
+            || -n "${V_MACOS_V3_C_ERROR_DIR:-}" \
+            || -n "${VTEST_ONLY:-}" \
+            || -n "${VTEST_ONLY_FN:-}" \
+            || -n "${VTEST_RUNNER:-}" \
+            || -n "${V_MULTIWINDOW_NATIVE_PROOF_EGL_BAD_DISPLAY_CHILD:-}" \
+            || -n "${V_MULTIWINDOW_NATIVE_PROOF_APPKIT_ORDINAL_EXHAUSTION_CHILD:-}" ]]; then
+            echo "native operation V1 compatibility gate inherited selector mismatch" >&2
+            exit 1
+          fi
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+            ./v -old-compiler -no-retry-compilation -cc clang \
+            -d gg_multiwindow -d sokol_metal test "$source"
+          printf 'MULTIWINDOW_MACOS_NATIVE_OPERATION_PROOF status=PASS route=V1_COMPAT sha256=%s tests=%s\n' \
+            "$actual_source_sha256" "$source_test_count"
       - name: Multiwindow Metal regressions and runtime probes
         env:
+          V_MACOS_V3_NO_FALLBACK: '1'
           VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
           VGG_MULTIWINDOW_RUNTIME_BACKEND: appkit
           VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: appkit
@@ -152,11 +201,17 @@ jobs:
             vlib/x/multiwindow/event_terminal_delivery_test.v
             vlib/x/multiwindow/internal_fault_matrix_test.v
             vlib/x/multiwindow/multiwindow_test.v
-            vlib/x/multiwindow/native_operation_proof_test.v
             vlib/x/multiwindow/render_scheduler_test.v
             vlib/x/multiwindow/render_target_lease_test.v
+            vlib/x/multiwindow/service_mock_test.v
+            vlib/x/multiwindow/service_native_appkit_contract_red_test.v
+            vlib/x/multiwindow/service_native_appkit_final_nonreadback_red_test.v
+            vlib/x/multiwindow/service_native_appkit_nonreadback_test.v
+            vlib/x/multiwindow/service_native_appkit_readback_metal_red_test.v
             vlib/x/multiwindow/teardown_contract_test.v
+            vlib/sokol/gfx/metal_private_hook_contract_test.v
             vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_appkit_readback_d_gg_multiwindow_test.v
             vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v
             vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v
             vlib/gg/multiwindow_render_runtime_contract_test.v
@@ -164,10 +219,24 @@ jobs:
             vlib/gg/draw_fns_api_test.v
             vlib/gg/draw_rect_empty_test.v
           )
+          native_operation_proof='vlib/x/multiwindow/native_operation_proof_test.v'
+          if [[ "${#tests[@]}" -ne 21 ]]; then
+            echo "multiwindow Metal test inventory cardinality mismatch" >&2
+            exit 1
+          fi
+          for test in "${tests[@]}"; do
+            if [[ "$test" == "$native_operation_proof" ]]; then
+              echo "native operation proof leaked into the strict V3 Metal inventory" >&2
+              exit 1
+            fi
+          done
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               ./v -cc clang -d gg_multiwindow -d sokol_metal test "$test"
           done
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+            ./v -cc clang test vlib/gg/multiwindow_services_contract_test.v
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
             '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' \

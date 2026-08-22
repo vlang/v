@@ -58,7 +58,7 @@ fn install_dependencies_for_examples_and_tools_tcc() {
 	}
 	exec('v retry -- sudo apt update')
 	exec('v retry -- sudo apt install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind')
-	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev')
+	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev libx11-xcb-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev')
 	// The following is needed for examples/wkhtmltopdf.v
@@ -186,7 +186,7 @@ fn install_dependencies_for_examples_and_tools_gcc() {
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
-	exec('v retry -- sudo apt install --quiet -y libx11-dev libgl1-mesa-dri xauth xvfb')
+	exec('v retry -- sudo apt install --quiet -y libx11-dev libx11-xcb-dev libgl1-mesa-dri xauth xvfb')
 }
 
 fn recompile_v_with_cstrict_gcc() {
@@ -311,7 +311,7 @@ fn install_dependencies_for_examples_and_tools_clang() {
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
-	exec('v retry -- sudo apt install --quiet -y clang')
+	exec('v retry -- sudo apt install --quiet -y clang libx11-xcb-dev')
 }
 
 fn recompile_v_with_cstrict_clang() {

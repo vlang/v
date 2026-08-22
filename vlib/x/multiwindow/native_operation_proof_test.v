@@ -4970,37 +4970,65 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			registry := native_identity(backend.registry)
 			display := native_identity(backend.display)
 			compositor := native_identity(backend.compositor)
+			relative_manager := native_identity(backend.relative_pointer_manager)
+			pointer_constraints := native_identity(backend.pointer_constraints)
+			foreign_exporter := native_identity(backend.foreign_exporter)
+			fractional_manager := native_identity(backend.fractional_scale_manager)
+			viewporter := native_identity(backend.viewporter)
 			for record in backend.windows {
 				surface := native_identity(record.surface)
 				xdg_surface := native_identity(record.xdg_surface)
 				xdg_toplevel := native_identity(record.xdg_toplevel)
 				decoration := native_identity(record.toplevel_decoration)
 				callback := native_identity(record.frame_callback)
+				fractional_scale := native_identity(record.fractional_scale)
+				viewport := native_identity(record.viewport)
+				locked_pointer := native_identity(record.locked_pointer)
+				relative_pointer := native_identity(record.relative_pointer)
 				native_append_unique_identity_for_test(mut identities, callback)
 				for buffer in record.fallback_buffers {
 					buffer_identity := native_identity(buffer)
 					native_append_unique_identity_for_test(mut identities, buffer_identity)
 					native_append_release_order_for_test(mut orders, buffer_identity, surface)
 				}
-				for identity in [decoration, xdg_toplevel, xdg_surface, surface] {
+				for identity in [decoration, fractional_scale, viewport, locked_pointer,
+					relative_pointer, xdg_toplevel, xdg_surface, surface] {
 					native_append_unique_identity_for_test(mut identities, identity)
 				}
 				native_append_release_order_for_test(mut orders, callback, surface)
 				native_append_release_order_for_test(mut orders, decoration, xdg_toplevel)
+				native_append_release_order_for_test(mut orders, fractional_scale,
+					fractional_manager)
+				native_append_release_order_for_test(mut orders, viewport, viewporter)
+				native_append_release_order_for_test(mut orders, locked_pointer,
+					pointer_constraints)
+				native_append_release_order_for_test(mut orders, relative_pointer, relative_manager)
 				native_append_release_order_for_test(mut orders, xdg_toplevel, xdg_surface)
 				native_append_release_order_for_test(mut orders, xdg_surface, surface)
 				native_append_release_order_for_test(mut orders, surface, compositor)
 			}
 			pending_alias := native_identity(backend.pending_drop_offer)
 			for identity in [native_identity(backend.data_offer), pending_alias,
+				native_identity(backend.incoming_offer), native_identity(backend.selection_offer),
+				native_identity(backend.clipboard_source),
 				native_identity(backend.cursor_shape_device),
 				native_identity(backend.pointer), native_identity(backend.keyboard),
 				native_identity(backend.touch), native_identity(backend.data_device),
 				native_identity(backend.data_device_manager),
-				native_identity(backend.cursor_shape_manager),
+				native_identity(backend.cursor_shape_manager), relative_manager, pointer_constraints,
+				foreign_exporter, fractional_manager, viewporter,
 				native_identity(backend.decoration_manager), native_identity(backend.shm),
 				native_identity(backend.wm_base), native_identity(backend.seat), compositor, registry] {
 				native_append_unique_identity_for_test(mut identities, identity)
+			}
+			for output in backend.outputs {
+				native_append_unique_identity_for_test(mut identities,
+					native_identity(output.proxy))
+			}
+			for portal in backend.portal_exports {
+				portal_identity := native_identity(portal.exported)
+				native_append_unique_identity_for_test(mut identities, portal_identity)
+				native_append_release_order_for_test(mut orders, portal_identity, foreign_exporter)
 			}
 			data_device := native_identity(backend.data_device)
 			data_manager := native_identity(backend.data_device_manager)
@@ -8310,8 +8338,9 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 				proof.platform_ticket.ticket_id) == -1
 		}
 		mut public_closed := 0
-		for event in app.drain_events()! {
-			if event.kind == .window_destroyed && event.window_id == second_window {
+		for event in app.drain_queued_events()! {
+			if event.kind == .lifecycle && event.lifecycle.kind == .window_destroyed
+				&& event.lifecycle.window_id == second_window {
 				public_closed++
 			}
 		}

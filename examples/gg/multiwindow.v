@@ -19,7 +19,11 @@ const visible_last_event_limit = 4
 const visible_title_limit = 220
 const visual_margin = 18
 const visual_badge_size = 16
-const visual_counter_height = 12
+const visual_counter_height = 8
+const dashboard_control_height = 24
+const dashboard_control_gap = 6
+const dashboard_control_text_scale = 1
+const dashboard_control_horizontal_padding = 7
 const client_chrome_titlebar_height = 36
 const client_chrome_frame_thickness = 5
 const client_chrome_resize_margin = 18
@@ -27,6 +31,24 @@ const client_chrome_close_button_size = 18
 const client_chrome_close_button_margin = 9
 const client_chrome_control_gap = 7
 const client_chrome_title_text_scale = 2
+
+enum DashboardControl {
+	inactive
+	new_window
+	close
+	focus
+	resize
+	show_hide
+}
+
+struct DashboardControlRect {
+	control DashboardControl
+	label   string
+	x       int
+	y       int
+	width   int
+	height  int
+}
 
 struct WindowDashboard {
 	id gg.WindowId
@@ -62,6 +84,19 @@ mut:
 	resized               int
 	printed_inputs        int
 	unattended_close_sent bool
+	hovered_window        string
+	hovered_control       DashboardControl
+	pressed_window        string
+	pressed_control       DashboardControl
+	last_action           string = 'READY'
+	last_action_target    string = 'DASHBOARD'
+	last_action_result    string = 'WAITING'
+	last_action_detail    string
+	next_window_number    int = 3
+	action_attempts       int
+	hidden_windows        map[string]bool
+	last_created_window   gg.WindowId
+	has_last_created      bool
 	render_signaled       map[string]bool
 	windows               []WindowDashboard
 }
@@ -199,6 +234,12 @@ fn run_example_session(mut app gg.App) ! {
 	caps = state.caps
 	print_interactive_chrome_help(state.caps, state.has_client_chrome())
 	state.update_all_titles(mut app)!
+	if state.unattended && !caps.explicit_swapchain {
+		verify_dashboard_logical_layout()!
+		state.exercise_unattended_controls(mut app, frames, main_window, tools_window)!
+		state.sync_runtime(mut app)!
+		state.update_all_titles(mut app)!
+	}
 
 	println('live windows:')
 	for info in app.window_infos()! {
@@ -206,13 +247,22 @@ fn run_example_session(mut app gg.App) ! {
 	}
 
 	if state.unattended && caps.explicit_swapchain {
+		verify_dashboard_logical_layout()!
 		driver_result := chan string{cap: 1}
+		action_result := chan string{cap: 1}
+		action_job := fn [frames, mut state, main_window, tools_window, action_result] (mut queued_app gg.App) ! {
+			state.exercise_unattended_controls(mut queued_app, frames, main_window, tools_window) or {
+				action_result <- err.msg()
+				return
+			}
+			action_result <- ''
+		}
 		driver := spawn drive_unattended_render(mut app, frames, [
 			main_window.str(),
 			tools_window.str(),
-		], driver_result)
+		], tools_window.str(), action_job, action_result, driver_result)
 		mut run_error := ''
-		run_example_event_loop(mut app, mut state) or { run_error = err.msg() }
+		run_example_event_loop(mut app, mut state, frames) or { run_error = err.msg() }
 		driver.wait()
 		driver_error := <-driver_result
 		if run_error != '' {
@@ -223,21 +273,21 @@ fn run_example_session(mut app gg.App) ! {
 		}
 		return
 	}
-	run_example_event_loop(mut app, mut state)!
+	run_example_event_loop(mut app, mut state, frames)!
 }
 
-fn run_example_event_loop(mut app gg.App, mut state EventState) ! {
+fn run_example_event_loop(mut app gg.App, mut state EventState, frames chan string) ! {
 	app.run(
 		event_fn: fn [mut state] (event gg.WindowEvent, mut app gg.App) ! {
 			handle_window_event(event, mut app, mut state)!
 		}
-		input_fn: fn [mut state] (event gg.WindowInputEvent, mut app gg.App) ! {
-			handle_input_event(event, mut app, mut state)!
+		input_fn: fn [frames, mut state] (event gg.WindowInputEvent, mut app gg.App) ! {
+			handle_input_event(event, mut app, mut state, frames)!
 		}
 	)!
 }
 
-fn drive_unattended_render(mut app gg.App, frames chan string, expected []string, result chan string) {
+fn drive_unattended_render(mut app gg.App, frames chan string, expected []string, remapped_window string, action_job gg.AppJobFn, action_result chan string, result chan string) {
 	mut seen := map[string]bool{}
 	for seen.len < expected.len {
 		select {
@@ -253,6 +303,38 @@ fn drive_unattended_render(mut app gg.App, frames chan string, expected []string
 				}
 				result <- ('render barrier timeout with ' + seen.len.str() + '/' +
 					expected.len.str() + ' windows rendered')
+				return
+			}
+		}
+	}
+	app.post(action_job) or {
+		result <- ('dashboard action admission failed: ' + err.msg())
+		return
+	}
+	select {
+		action_error := <-action_result {
+			if action_error != '' {
+				post_unattended_render_stop(mut app) or {}
+				result <- ('dashboard actions failed: ' + action_error)
+				return
+			}
+		}
+		unattended_render_timeout {
+			post_unattended_render_stop(mut app) or {}
+			result <- 'dashboard action timeout'
+			return
+		}
+	}
+	for {
+		select {
+			window := <-frames {
+				if window == remapped_window {
+					break
+				}
+			}
+			unattended_render_timeout {
+				post_unattended_render_stop(mut app) or {}
+				result <- 'shown window did not render after remap'
 				return
 			}
 		}
@@ -279,6 +361,7 @@ fn print_capability_families(caps gg.Capabilities) {
 }
 
 fn print_interactive_chrome_help(caps gg.Capabilities, has_client_chrome bool) {
+	println('application controls: NEW, CLOSE, FOCUS, RESIZE, and SHOW-HIDE; hover and click inside any dashboard')
 	if has_client_chrome {
 		println('Wayland client-side titlebar/frame enabled as fallback: drag the titlebar to move; drag frame edges/corners to resize; click the close button')
 		println('move/resize is started from gg.App input_fn using the current native user-action serial')
@@ -288,7 +371,7 @@ fn print_interactive_chrome_help(caps gg.Capabilities, has_client_chrome bool) {
 		println('interactive move/resize available through native decorations; client chrome demo disabled')
 		return
 	}
-	println('interactive move/resize unavailable for this backend; dashboard remains event-only')
+	println('interactive move/resize unavailable for this backend; application dashboard controls remain available')
 }
 
 fn handle_window_event(event gg.WindowEvent, mut app gg.App, mut state EventState) ! {
@@ -338,7 +421,7 @@ fn (mut state EventState) schedule_unattended_close(mut app gg.App) ! {
 	})!
 }
 
-fn handle_input_event(event gg.WindowInputEvent, mut app gg.App, mut state EventState) ! {
+fn handle_input_event(event gg.WindowInputEvent, mut app gg.App, mut state EventState, frames chan string) ! {
 	message := input_event_summary(event)
 	if message == '' {
 		return
@@ -346,7 +429,19 @@ fn handle_input_event(event gg.WindowInputEvent, mut app gg.App, mut state Event
 	state.note_input(event, message)
 	state.sync_runtime(mut app) or {}
 	native_decorations := state.window_native_decorations(event.window)
-	update_client_chrome_cursor(event, mut app, state.caps, native_decorations) or {}
+	hovered_control := state.update_dashboard_control_hover(event, native_decorations)
+	update_dashboard_cursor(event, mut app, state.caps, native_decorations, hovered_control) or {}
+	if !state.unattended && hovered_control != .inactive && event.event.typ == .mouse_down
+		&& event.event.mouse_button == .left
+		&& state.admit_dashboard_control_press(event.window, hovered_control) {
+		state.perform_dashboard_control(hovered_control, event.window, mut app, frames)
+		// Dashboard action failures are reflected in persistent status. Nothing fallible
+		// is propagated after the action, so callback replay cannot repeat the effect.
+		state.sync_runtime(mut app) or {}
+		state.update_all_titles(mut app) or {}
+		state.print_input(message)
+		return
+	}
 	action_message := maybe_begin_client_chrome_action(event, mut app, state.caps,
 		native_decorations) or { 'interactive chrome action failed: ${err.msg()}' }
 	if action_message != '' {
@@ -354,11 +449,174 @@ fn handle_input_event(event gg.WindowInputEvent, mut app gg.App, mut state Event
 		state.note_chrome_action(event.window, action_message)
 	}
 	state.update_window_title(mut app, event.window)!
+	state.print_input(message)
+}
+
+fn (mut state EventState) admit_dashboard_control_press(window gg.WindowId, control DashboardControl) bool {
+	key := window.str()
+	if state.pressed_window == key && state.pressed_control == control {
+		return false
+	}
+	state.pressed_window = key
+	state.pressed_control = control
+	return true
+}
+
+fn (mut state EventState) print_input(message string) {
 	if state.printed_inputs >= state.input_limit {
 		return
 	}
 	state.printed_inputs++
 	println('input ${state.printed_inputs}/${state.input_limit}: ${message}')
+}
+
+fn (mut state EventState) exercise_unattended_controls(mut app gg.App, frames chan string, main_window gg.WindowId, tools_window gg.WindowId) ! {
+	start_attempts := state.action_attempts
+	state.perform_dashboard_control(.focus, main_window, mut app, frames)
+	state.perform_dashboard_control(.resize, main_window, mut app, frames)
+	state.perform_dashboard_control(.show_hide, main_window, mut app, frames)
+	if state.last_action_result != 'OK' {
+		return error('unattended HIDE control failed: ${state.last_action_detail}')
+	}
+	state.render_signaled[tools_window.str()] = false
+	state.perform_dashboard_control(.show_hide, main_window, mut app, frames)
+	if state.last_action_result != 'OK' {
+		return error('unattended SHOW control failed: ${state.last_action_detail}')
+	}
+	state.perform_dashboard_control(.new_window, tools_window, mut app, frames)
+	if !state.has_last_created || !app.window_exists(state.last_created_window) {
+		return error('unattended NEW control did not create a live window')
+	}
+	state.perform_dashboard_control(.close, state.last_created_window, mut app, frames)
+	if state.last_action_result != 'OK' {
+		return error('unattended CLOSE control was not admitted')
+	}
+	if state.action_attempts != start_attempts + 6 {
+		return error('unattended dashboard control count mismatch: expected=6 actual=${state.action_attempts - start_attempts}')
+	}
+	println('MULTIWINDOW_EXAMPLE_CONTROLS actions=6 focus=attempted resize=attempted hide=attempted show=attempted new=attempted close=attempted')
+}
+
+fn (mut state EventState) perform_dashboard_control(control DashboardControl, source gg.WindowId, mut app gg.App, frames chan string) {
+	match control {
+		.new_window {
+			label := 'Window ${state.next_window_number}'
+			mut created := gg.WindowId{}
+			if state.caps.explicit_swapchain {
+				created = app.create_window(
+					title:       label
+					width:       480
+					height:      300
+					redraw_mode: .continuous
+					frame_fn:    fn [frames, mut state] (mut window gg.WindowContext) ! {
+						state.draw_window(mut window, frames)!
+					}
+				) or {
+					state.record_dashboard_action('NEW', label, false, err.msg())
+					return
+				}
+			} else {
+				created = app.create_window(
+					title:  label
+					width:  480
+					height: 300
+				) or {
+					state.record_dashboard_action('NEW', label, false, err.msg())
+					return
+				}
+			}
+			state.next_window_number++
+			state.track_window(created, label, 480, 300)
+			state.last_created_window = created
+			state.has_last_created = true
+			state.record_dashboard_action('NEW', label, true, created.str())
+		}
+		.close {
+			target := state.window_label(source)
+			app.destroy_window(source) or {
+				state.record_dashboard_action('CLOSE', target, false, err.msg())
+				return
+			}
+			state.hidden_windows.delete(source.str())
+			state.record_dashboard_action('CLOSE', target, true, 'destroy admitted')
+		}
+		.focus {
+			target := state.window_label(source)
+			app.request_window_focus(source) or {
+				state.record_dashboard_action('FOCUS', target, false, err.msg())
+				return
+			}
+			state.record_dashboard_action('FOCUS', target, true, 'focus requested')
+		}
+		.resize {
+			target := state.window_label(source)
+			mut width := 640
+			mut height := 360
+			if index := state.window_index(source) {
+				dashboard := state.windows[index]
+				width = if dashboard.width >= 760 { 560 } else { dashboard.width + 80 }
+				height = if dashboard.height >= 500 { 320 } else { dashboard.height + 50 }
+			}
+			app.resize_window(source, width, height) or {
+				state.record_dashboard_action('RESIZE', target, false, err.msg())
+				return
+			}
+			state.record_dashboard_action('RESIZE', target, true, '${width}x${height}')
+		}
+		.show_hide {
+			target_id := state.show_hide_target(source, &app) or {
+				state.record_dashboard_action('SHOW-HIDE', state.window_label(source), false,
+					'no live target')
+				return
+			}
+			target := state.window_label(target_id)
+			key := target_id.str()
+			if state.hidden_windows[key] {
+				app.show_window(target_id) or {
+					state.record_dashboard_action('SHOW', target, false, err.msg())
+					return
+				}
+				state.hidden_windows[key] = false
+				state.record_dashboard_action('SHOW', target, true, 'show requested')
+			} else {
+				app.hide_window(target_id) or {
+					state.record_dashboard_action('HIDE', target, false, err.msg())
+					return
+				}
+				state.hidden_windows[key] = true
+				state.record_dashboard_action('HIDE', target, true, 'hide requested')
+			}
+		}
+		.inactive {}
+	}
+}
+
+fn (state &EventState) show_hide_target(source gg.WindowId, app &gg.App) ?gg.WindowId {
+	for dashboard in state.windows {
+		if dashboard.id.str() != source.str() && app.window_exists(dashboard.id) {
+			return dashboard.id
+		}
+	}
+	if app.window_exists(source) {
+		return source
+	}
+	return none
+}
+
+fn (state &EventState) window_label(id gg.WindowId) string {
+	if index := state.window_index(id) {
+		return state.windows[index].label
+	}
+	return id.str()
+}
+
+fn (mut state EventState) record_dashboard_action(action string, target string, success bool, detail string) {
+	state.action_attempts++
+	state.last_action = action
+	state.last_action_target = target
+	state.last_action_result = if success { 'OK' } else { 'ERROR' }
+	state.last_action_detail = detail
+	println('dashboard control action=${action} target=${target} result=${state.last_action_result} detail=${detail}')
 }
 
 fn (mut state EventState) track_window(id gg.WindowId, label string, width int, height int) {
@@ -455,6 +713,7 @@ fn (mut state EventState) note_lifecycle(event gg.WindowEvent) {
 		.window_destroyed {
 			dashboard.live = false
 			dashboard.add_last_event('destroyed', 'window')
+			state.hidden_windows.delete(event.window.str())
 		}
 	}
 
@@ -549,7 +808,8 @@ fn (state &EventState) window_title(dashboard WindowDashboard) string {
 		'last: ' + dashboard.last_events.join(' | ')
 	}
 	counters := 'events l=${dashboard.lifecycle} in=${dashboard.inputs} key=${dashboard.key} text=${dashboard.text} mouse=${dashboard.mouse}+${dashboard.scroll} focus=${dashboard.focus} drop=${dashboard.drop} touch=${dashboard.touch} clip=${dashboard.clipboard} win=${dashboard.window} other=${dashboard.other}'
-	return truncate_title('${dashboard.label} | ${state.caps.backend} ${caps} | ${chrome} | ${live} | ${counters} | ${last}')
+	action := 'action ${state.last_action}/${state.last_action_target}/${state.last_action_result}'
+	return truncate_title('${dashboard.label} | ${state.caps.backend} ${caps} | ${chrome} | ${live} | ${action} | ${counters} | ${last}')
 }
 
 fn (state &EventState) chrome_title_hint(dashboard WindowDashboard) string {
@@ -618,20 +878,29 @@ fn (mut state EventState) draw_window(mut window gg.WindowContext, frames chan s
 	if !dashboard.live {
 		return
 	}
-	width := max_int(1, info.metrics.framebuffer_size.width)
-	height := max_int(1, info.metrics.framebuffer_size.height)
+	width := max_int(1, int(info.metrics.logical_size.width))
+	height := max_int(1, int(info.metrics.logical_size.height))
 	caps := state.caps
+	hovered_control := if state.hovered_window == id.str() {
+		state.hovered_control
+	} else {
+		DashboardControl.inactive
+	}
+	last_action := state.last_action
+	last_action_target := state.last_action_target
+	last_action_result := state.last_action_result
 	background := dashboard_background(caps)
 	action := gfx.create_clear_pass_action(background.r, background.g, background.b, background.a)
-	window.with_swapchain_sgl(action, fn [dashboard, caps, width, height] (mut drawing gg.WindowSglContext) ! {
+	window.with_swapchain_sgl(action, fn [dashboard, caps, width, height, hovered_control, last_action, last_action_target, last_action_result] (mut drawing gg.WindowSglContext) ! {
 		drawing.defaults()
 		drawing.matrix_mode_projection()
 		drawing.load_identity()
 		drawing.ortho(0, f32(width), f32(height), 0, -1, 1)
-		draw_window_dashboard(mut drawing, dashboard, caps, width, height)
+		draw_window_dashboard(mut drawing, dashboard, caps, width, height, hovered_control,
+			last_action, last_action_target, last_action_result)
 	})!
 	key := id.str()
-	if !state.render_signaled[key] {
+	if state.unattended && !state.render_signaled[key] {
 		state.render_signaled[key] = true
 		frames <- key
 	}
@@ -667,9 +936,9 @@ fn draw_rect_empty(mut window gg.WindowSglContext, x f32, y f32, width f32, heig
 	window.end()
 }
 
-fn draw_window_dashboard(mut window gg.WindowSglContext, dashboard WindowDashboard, caps gg.Capabilities, framebuffer_width int, framebuffer_height int) {
-	width := max_int(220, framebuffer_width)
-	height := max_int(180, framebuffer_height)
+fn draw_window_dashboard(mut window gg.WindowSglContext, dashboard WindowDashboard, caps gg.Capabilities, framebuffer_width int, framebuffer_height int, hovered_control DashboardControl, last_action string, last_action_target string, last_action_result string) {
+	width := max_int(1, framebuffer_width)
+	height := max_int(1, framebuffer_height)
 	inner_width := max_int(64, width - 2 * visual_margin)
 	client_chrome := client_chrome_enabled(caps, dashboard.native_decorations)
 	content_top := if client_chrome {
@@ -688,10 +957,143 @@ fn draw_window_dashboard(mut window gg.WindowSglContext, dashboard WindowDashboa
 		draw_rect_empty(mut window, 8, 8, f32(width - 16), f32(height - 16), gg.rgb(96, 116, 142))
 	}
 
-	draw_lifecycle_panel(mut window, dashboard, caps, width, height, content_top)
-	draw_capability_badges(mut window, caps, visual_margin, content_top + 28)
-	draw_counter_bars(mut window, dashboard, visual_margin, content_top + 72, inner_width)
+	control_bottom := draw_dashboard_control_bar(mut window, width, content_top, hovered_control)
+	status_color := if last_action_result == 'ERROR' {
+		gg.rgb(242, 112, 112)
+	} else {
+		gg.rgb(182, 214, 232)
+	}
+	status_y := control_bottom + 8
+	draw_tiny_text(mut window, 'LAST ${last_action} ${last_action_target} ${last_action_result}',
+		visual_margin, status_y, inner_width, 1, status_color)
+	badge_y := status_y + 18
+	draw_capability_badges(mut window, caps, visual_margin, badge_y)
+	draw_counter_bars(mut window, dashboard, visual_margin, badge_y + 30, inner_width)
 	draw_last_event_strip(mut window, dashboard, visual_margin, height - 54, inner_width)
+}
+
+fn draw_dashboard_control_bar(mut window gg.WindowSglContext, width int, content_top int, hovered DashboardControl) int {
+	mut bottom := content_top
+	for control in dashboard_control_rects(width, content_top) {
+		active := control.control == hovered
+		fill := if active { gg.rgb(66, 139, 214) } else { gg.rgb(45, 57, 72) }
+		border := if active { gg.rgb(224, 240, 255) } else { gg.rgb(112, 132, 154) }
+		text_color := if active { gg.rgb(255, 255, 255) } else { gg.rgb(214, 224, 236) }
+		draw_rect_filled(mut window, f32(control.x), f32(control.y), f32(control.width),
+			f32(control.height), fill)
+		draw_rect_empty(mut window, f32(control.x), f32(control.y), f32(control.width),
+			f32(control.height), border)
+		text_width := control.label.len * 6 * dashboard_control_text_scale
+		text_x := control.x + max_int(0, (control.width - text_width) / 2)
+		text_y := control.y + (control.height - 7 * dashboard_control_text_scale) / 2
+		draw_tiny_text(mut window, control.label, text_x, text_y, control.width - 4,
+			dashboard_control_text_scale, text_color)
+		bottom = max_int(bottom, control.y + control.height)
+	}
+	return bottom
+}
+
+fn dashboard_control_label(control DashboardControl) string {
+	return match control {
+		.new_window { 'NEW' }
+		.close { 'CLOSE' }
+		.focus { 'FOCUS' }
+		.resize { 'RESIZE' }
+		.show_hide { 'SHOW-HIDE' }
+		.inactive { '' }
+	}
+}
+
+fn dashboard_control_rects(width int, content_top int) []DashboardControlRect {
+	controls := [DashboardControl.new_window, .close, .focus, .resize, .show_hide]
+	mut rects := []DashboardControlRect{cap: controls.len}
+	mut x := visual_margin
+	mut y := content_top + 14
+	for control in controls {
+		label := dashboard_control_label(control)
+		button_width := max_int(32, label.len * 6 * dashboard_control_text_scale +
+			2 * dashboard_control_horizontal_padding)
+		if x > visual_margin && x + button_width > width - visual_margin {
+			x = visual_margin
+			y += dashboard_control_height + dashboard_control_gap
+		}
+		rects << DashboardControlRect{
+			control: control
+			label:   label
+			x:       x
+			y:       y
+			width:   button_width
+			height:  dashboard_control_height
+		}
+		x += button_width + dashboard_control_gap
+	}
+	return rects
+}
+
+fn dashboard_control_at(x f32, y f32, width int, content_top int) DashboardControl {
+	for control in dashboard_control_rects(width, content_top) {
+		if x >= f32(control.x) && x <= f32(control.x + control.width) && y >= f32(control.y)
+			&& y <= f32(control.y + control.height) {
+			return control.control
+		}
+	}
+	return .inactive
+}
+
+fn verify_dashboard_logical_layout() ! {
+	baseline := dashboard_control_rects(360, client_chrome_titlebar_height +
+		client_chrome_frame_thickness)
+	for dpi_scale in [f32(1), 2] {
+		framebuffer_width := int(360 * dpi_scale)
+		logical_width := int(f32(framebuffer_width) / dpi_scale)
+		rects := dashboard_control_rects(logical_width, client_chrome_titlebar_height +
+			client_chrome_frame_thickness)
+		if rects != baseline {
+			return error('dashboard logical layout changed at dpi scale ${dpi_scale}')
+		}
+		for rect in rects {
+			control := dashboard_control_at(f32(rect.x + rect.width / 2), f32(rect.y +
+				rect.height / 2), logical_width, client_chrome_titlebar_height +
+				client_chrome_frame_thickness)
+			if control != rect.control {
+				return error('dashboard hit-test mismatch at dpi scale ${dpi_scale}')
+			}
+		}
+	}
+}
+
+fn (mut state EventState) update_dashboard_control_hover(event gg.WindowInputEvent, native_decorations bool) DashboardControl {
+	input := event.event
+	if input.typ == .mouse_leave {
+		if state.hovered_window == event.window.str() {
+			state.hovered_window = ''
+			state.hovered_control = .inactive
+		}
+		if state.pressed_window == event.window.str() {
+			state.pressed_window = ''
+			state.pressed_control = .inactive
+		}
+		return .inactive
+	}
+	if input.typ == .mouse_up && state.pressed_window == event.window.str() {
+		state.pressed_window = ''
+		state.pressed_control = .inactive
+	}
+	if input.typ !in [.mouse_enter, .mouse_move, .mouse_down, .mouse_up] {
+		if state.hovered_window == event.window.str() {
+			return state.hovered_control
+		}
+		return .inactive
+	}
+	content_top := if client_chrome_enabled(state.caps, native_decorations) {
+		client_chrome_titlebar_height + client_chrome_frame_thickness
+	} else {
+		0
+	}
+	control := dashboard_control_at(input.mouse_x, input.mouse_y, input.window_width, content_top)
+	state.hovered_window = event.window.str()
+	state.hovered_control = control
+	return control
 }
 
 fn draw_client_chrome_zones(mut window gg.WindowSglContext, dashboard WindowDashboard, caps gg.Capabilities, width int, height int) {
@@ -848,27 +1250,6 @@ fn tiny_title_glyph(ch u8) []string {
 	}
 }
 
-fn draw_lifecycle_panel(mut window gg.WindowSglContext, dashboard WindowDashboard, caps gg.Capabilities, width int, height int, content_top int) {
-	status_color := if dashboard.live { gg.rgb(82, 196, 126) } else { gg.rgb(196, 82, 82) }
-	activity_color := if dashboard.last_families.len == 0 {
-		gg.rgb(78, 88, 104)
-	} else {
-		event_family_color(dashboard.last_families[dashboard.last_families.len - 1])
-	}
-	panel_y := content_top + 20
-	draw_rect_filled(mut window, visual_margin, panel_y, 46, 8, status_color)
-	if client_chrome_enabled(caps, dashboard.native_decorations) {
-		draw_rect_filled(mut window, f32(width - 54), f32(panel_y), 34, 34, activity_color)
-		draw_rect_empty(mut window, f32(width - 56), f32(panel_y - 2), 38, 38,
-			gg.rgb(176, 188, 204))
-	} else {
-		draw_rect_filled(mut window, visual_margin + 56, panel_y, 72, 8, gg.rgb(78, 88, 104))
-		draw_rect_empty(mut window, visual_margin + 56, panel_y, 72, 8, gg.rgb(122, 135, 152))
-	}
-	draw_rect_filled(mut window, visual_margin, f32(height - 20), f32(max_int(8, min_int(width - 2 * visual_margin,
-		dashboard.width / 5))), 4, status_color)
-}
-
 fn draw_capability_badges(mut window gg.WindowSglContext, caps gg.Capabilities, x int, y int) {
 	mut badge_x := x
 	draw_capability_badge(mut window, badge_x, y, caps.native, gg.rgb(46, 180, 125))
@@ -900,19 +1281,19 @@ fn draw_counter_bars(mut window gg.WindowSglContext, dashboard WindowDashboard, 
 	mut row_y := y
 	draw_counter_bar(mut window, x, row_y, width, dashboard.lifecycle, max_value,
 		event_family_color('window'))
-	row_y += visual_counter_height + 7
+	row_y += visual_counter_height + 4
 	draw_counter_bar(mut window, x, row_y, width, dashboard.key, max_value,
 		event_family_color('key'))
-	row_y += visual_counter_height + 7
+	row_y += visual_counter_height + 4
 	draw_counter_bar(mut window, x, row_y, width, dashboard.mouse + dashboard.scroll, max_value,
 		event_family_color('mouse'))
-	row_y += visual_counter_height + 7
+	row_y += visual_counter_height + 4
 	draw_counter_bar(mut window, x, row_y, width, dashboard.focus, max_value,
 		event_family_color('focus'))
-	row_y += visual_counter_height + 7
+	row_y += visual_counter_height + 4
 	draw_counter_bar(mut window, x, row_y, width, dashboard.drop + dashboard.touch +
 		dashboard.clipboard, max_value, event_family_color('drop'))
-	row_y += visual_counter_height + 7
+	row_y += visual_counter_height + 4
 	draw_counter_bar(mut window, x, row_y, width, dashboard.text + dashboard.other, max_value,
 		event_family_color('text'))
 }
@@ -1142,8 +1523,8 @@ fn maybe_begin_client_chrome_action(event gg.WindowInputEvent, mut app gg.App, c
 	return ''
 }
 
-fn update_client_chrome_cursor(event gg.WindowInputEvent, mut app gg.App, caps gg.Capabilities, native_decorations bool) ! {
-	if !client_chrome_enabled(caps, native_decorations) || !caps.cursor_shapes {
+fn update_dashboard_cursor(event gg.WindowInputEvent, mut app gg.App, caps gg.Capabilities, native_decorations bool, hovered_control DashboardControl) ! {
+	if !caps.cursor_shapes {
 		return
 	}
 	input := event.event
@@ -1152,8 +1533,14 @@ fn update_client_chrome_cursor(event gg.WindowInputEvent, mut app gg.App, caps g
 			app.set_window_cursor(event.window, .default)!
 		}
 		.mouse_enter, .mouse_move {
-			shape := client_chrome_cursor_shape_at(input.mouse_x, input.mouse_y,
-				input.window_width, input.window_height)
+			shape := if hovered_control != .inactive {
+				gg.WindowCursorShape.pointer
+			} else if client_chrome_enabled(caps, native_decorations) {
+				client_chrome_cursor_shape_at(input.mouse_x, input.mouse_y, input.window_width,
+					input.window_height)
+			} else {
+				gg.WindowCursorShape.default
+			}
 			app.set_window_cursor(event.window, shape)!
 		}
 		else {}
