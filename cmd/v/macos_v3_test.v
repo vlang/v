@@ -228,17 +228,34 @@ fn test_macos_v3_compiler_bootstrap_is_detected_from_any_cwd() {
 
 	// A bare `v3.v` invoked from inside vlib/v3 must resolve to the bootstrap so
 	// it builds with the compatibility compiler instead of the embedded V3 driver.
-	repo_root := os.dir(os.dir(os.real_path(@FILE)))
-	v3_dir := os.join_path(repo_root, 'vlib', 'v3')
-	if os.exists(os.join_path(v3_dir, 'v3.v')) {
-		saved := os.getwd()
-		os.chdir(v3_dir) or { return }
-		bare := is_macos_v3_compiler_bootstrap('v3.v')
-		dotted := is_macos_v3_compiler_bootstrap('./v3.v')
-		os.chdir(saved) or {}
-		assert bare
-		assert dotted
+	// Use an isolated <tmp>/vlib/v3/v3.v so this exercises the real-path
+	// resolution unconditionally, independent of where this test file lives.
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_bootstrap_${os.getpid()}')
+	v3_dir := os.join_path(root, 'vlib', 'v3')
+	other_dir := os.join_path(root, 'elsewhere')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(v3_dir) or { panic(err) }
+	os.mkdir_all(other_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
 	}
+	os.write_file(os.join_path(v3_dir, 'v3.v'), 'module main\n') or { panic(err) }
+	os.write_file(os.join_path(other_dir, 'v3.v'), 'module main\n') or { panic(err) }
+
+	saved := os.getwd()
+	defer {
+		os.chdir(saved) or {}
+	}
+	os.chdir(v3_dir) or { panic(err) }
+	bare := is_macos_v3_compiler_bootstrap('v3.v')
+	dotted := is_macos_v3_compiler_bootstrap('./v3.v')
+	// A bare `v3.v` that is not under vlib/v3 must stay on the V3 path.
+	os.chdir(other_dir) or { panic(err) }
+	non_bootstrap := is_macos_v3_compiler_bootstrap('v3.v')
+	os.chdir(saved) or {}
+	assert bare
+	assert dotted
+	assert !non_bootstrap
 }
 
 fn test_macos_v3_dispatch_allows_the_implicit_gc_default() {
