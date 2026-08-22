@@ -78,3 +78,28 @@ fn main() {
 	assert c_source.contains('void stop(void) {\n\treturn;\n}')
 	assert c_source.contains('if (true) {\n\t\treturn 0;\n\t}')
 }
+
+fn test_integer_range_caches_bounds() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn start() int {
+	return 0
+}
+
+fn limit() int {
+	return 3
+}
+
+fn main() {
+	for i in start() .. limit() {
+		println(i)
+	}
+}
+',
+		'range_bounds.v', prefs) or { panic(err) }
+	assert c_source.contains('__v_fastc_range_start_0 = (start());')
+	assert c_source.contains('__v_fastc_range_end_1 = (limit());')
+	assert c_source.contains('i < (__v_fastc_range_end_1)')
+	assert !c_source.contains('i < (limit())')
+}

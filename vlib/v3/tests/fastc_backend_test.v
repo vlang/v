@@ -111,6 +111,64 @@ fn main() {
 	early_return_run := cmdexec.run(early_return_binary, [])
 	assert early_return_run.exit_code == 0, early_return_run.output
 
+	range_source := os.join_path(root, 'range.v')
+	os.write_file(range_source, 'module main
+
+fn start() int {
+	println("start")
+	return 0
+}
+
+fn limit() int {
+	println("limit")
+	return 3
+}
+
+fn main() {
+	for i in start() .. limit() {
+		println(i)
+	}
+}
+') or {
+		panic(err)
+	}
+	range_binary := os.join_path(root, 'range')
+	range_compile := cmdexec.run(v3_bin,
+		['-silent', '-b', 'fastc', '-o', range_binary, range_source])
+	assert range_compile.exit_code == 0, range_compile.output
+	range_c := os.read_file(range_binary + '.c') or { panic(err) }
+	assert range_c.contains('__v_fastc_range_start_0 = (start());')
+	assert range_c.contains('__v_fastc_range_end_1 = (limit());')
+	range_run := cmdexec.run(range_binary, [])
+	assert range_run.exit_code == 0, range_run.output
+	assert range_run.output.trim_space() == 'start\nlimit\n0\n1\n2'
+
+	float_source := os.join_path(root, 'float.v')
+	os.write_file(float_source, 'module main
+
+fn main() {
+	println(2.0)
+	println(12.3456789)
+}
+') or {
+		panic(err)
+	}
+	float_binary := os.join_path(root, 'float')
+	float_compile := cmdexec.run(v3_bin,
+		['-silent', '-b', 'fastc', '-o', float_binary, float_source])
+	assert float_compile.exit_code == 0, float_compile.output
+	float_run := cmdexec.run(float_binary, [])
+	assert float_run.exit_code == 0, float_run.output
+	assert float_run.output.trim_space() == '2.0\n12.3456789'
+
+	mutable_interface_source := os.join_path(os.dir(@FILE), 'mutable_interface_array_value_test.v')
+	mutable_interface_binary := os.join_path(root, 'mutable_interface_array_value_test')
+	mutable_interface_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
+		mutable_interface_binary, mutable_interface_source])
+	assert mutable_interface_compile.exit_code == 0, mutable_interface_compile.output
+	mutable_interface_run := cmdexec.run(mutable_interface_binary, [])
+	assert mutable_interface_run.exit_code == 0, mutable_interface_run.output
+
 	old_vjobs := os.getenv('VJOBS')
 	os.setenv('VJOBS', '4', true)
 	mut selfhosted_v3 := v3_bin

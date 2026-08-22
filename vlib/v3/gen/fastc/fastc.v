@@ -37,17 +37,18 @@ static void v_fastc_print_bool(bool value) { fputs(value ? "true" : "false", std
 static void v_fastc_print_char(char value) { fputc(value, stdout); }
 static void v_fastc_print_signed(long long value) { printf("%lld", value); }
 static void v_fastc_print_unsigned(unsigned long long value) { printf("%llu", value); }
-static void v_fastc_print_float(double value) { printf("%g", value); }
 static void v_fastc_println_string(const char *value) { puts(value); }
 static void v_fastc_println_bool(bool value) { puts(value ? "true" : "false"); }
 static void v_fastc_println_char(char value) { fputc(value, stdout); fputc(10, stdout); }
 static void v_fastc_println_signed(long long value) { printf("%lld\n", value); }
 static void v_fastc_println_unsigned(unsigned long long value) { printf("%llu\n", value); }
-static void v_fastc_println_float(double value) { printf("%g\n", value); }
 
-#define V_FASTC_PRINT_SELECT(value, string_fn, bool_fn, char_fn, signed_fn, unsigned_fn, float_fn) _Generic((value), char *: string_fn, const char *: string_fn, bool: bool_fn, char: char_fn, signed char: signed_fn, short: signed_fn, int: signed_fn, long: signed_fn, long long: signed_fn, unsigned char: unsigned_fn, unsigned short: unsigned_fn, unsigned int: unsigned_fn, unsigned long: unsigned_fn, unsigned long long: unsigned_fn, float: float_fn, double: float_fn)(value)
-#define print(value) V_FASTC_PRINT_SELECT(value, v_fastc_print_string, v_fastc_print_bool, v_fastc_print_char, v_fastc_print_signed, v_fastc_print_unsigned, v_fastc_print_float)
-#define println(value) V_FASTC_PRINT_SELECT(value, v_fastc_println_string, v_fastc_println_bool, v_fastc_println_char, v_fastc_println_signed, v_fastc_println_unsigned, v_fastc_println_float)
+/* Float formatting belongs to the V strconv routines. Leaving float and double
+ * unmatched makes TinyCC reject this speculative candidate so the driver uses
+ * the checked FastC lane instead of silently applying printf %g semantics. */
+#define V_FASTC_PRINT_SELECT(value, string_fn, bool_fn, char_fn, signed_fn, unsigned_fn) _Generic((value), char *: string_fn, const char *: string_fn, bool: bool_fn, char: char_fn, signed char: signed_fn, short: signed_fn, int: signed_fn, long: signed_fn, long long: signed_fn, unsigned char: unsigned_fn, unsigned short: unsigned_fn, unsigned int: unsigned_fn, unsigned long: unsigned_fn, unsigned long long: unsigned_fn)(value)
+#define print(value) V_FASTC_PRINT_SELECT(value, v_fastc_print_string, v_fastc_print_bool, v_fastc_print_char, v_fastc_print_signed, v_fastc_print_unsigned)
+#define println(value) V_FASTC_PRINT_SELECT(value, v_fastc_println_string, v_fastc_println_bool, v_fastc_println_char, v_fastc_println_signed, v_fastc_println_unsigned)
 #define assert(value) do { if (!(value)) { fprintf(stderr, "assertion failed: %s\n", #value); abort(); } } while (0)
 
 '
@@ -62,6 +63,7 @@ mut:
 	protos  strings.Builder
 	indent  int
 	in_main bool
+	temp_id int
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
@@ -112,6 +114,12 @@ fn (mut g DirectGen) run() !string {
 fn (mut g DirectGen) next() {
 	g.tok = g.s.scan()
 	g.lit = g.s.lit
+}
+
+fn (mut g DirectGen) temporary_name(kind string) string {
+	name := '__v_fastc_${kind}_${g.temp_id}'
+	g.temp_id++
+	return name
 }
 
 fn (mut g DirectGen) skip_semicolons() {
@@ -355,7 +363,12 @@ fn (mut g DirectGen) parse_for() ! {
 			g.expect(.dotdot)!
 			end := g.read_expression([token.Token.lcbr])!
 			g.expect(.lcbr)!
-			g.write_line('for (__typeof__((${start})) ${name} = (${start}); ${name} < (${end}); ${name}++) {')
+			start_name := g.temporary_name('range_start')
+			end_name := g.temporary_name('range_end')
+			// V evaluates both range bounds exactly once, from left to right.
+			g.write_line('__typeof__((${start})) ${start_name} = (${start});')
+			g.write_line('__typeof__((${end})) ${end_name} = (${end});')
+			g.write_line('for (__typeof__((${start_name})) ${name} = (${start_name}); ${name} < (${end_name}); ${name}++) {')
 			g.indent++
 			g.parse_block_body()!
 			g.indent--

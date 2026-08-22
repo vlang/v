@@ -108,6 +108,9 @@ parser or type-checker diagnostics rather than a speculative C diagnostic. The c
 the same language and ownership/autofree coverage as the C backend. A successfully compiled `run`
 program keeps its exit status and is never retried.
 
+Integer-range bounds in the direct lane are evaluated once, from left to right. Float printing is
+promoted to the complete lane so it uses V's `strconv` formatting rather than C `printf` rules.
+
 The direct path is limited to host-target, non-production, non-test, non-shared single-file builds.
 Compiler/self-host and other non-direct modes enter the complete lane before source scanning.
 `-o file.c` emits the standalone fast C translation unit when the direct lane supports the input;
