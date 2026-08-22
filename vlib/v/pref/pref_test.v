@@ -553,6 +553,54 @@ fn test_new_compiler_flag_is_accepted() {
 	assert '-new-compiler' !in prefs.build_options
 }
 
+fn test_fastc_backend_selects_v3_driver() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.backend_set_by_flag
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+	assert prefs.build_options.contains('-b fastc')
+}
+
+fn test_later_backend_overrides_fastc_v3_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-b', 'c', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert !prefs.is_fastc
+	assert !prefs.new_compiler
+}
+
+fn test_final_fastc_backend_selects_v3_driver() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'c', '-b', 'fastc', target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_explicit_new_compiler_survives_backend_override() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-new-compiler', '-b', 'fastc', '-b',
+		'c', target], false)
+	assert command == target
+	assert !prefs.is_fastc
+	assert prefs.new_compiler
+}
+
+fn test_repeated_backend_flags_preserve_final_fastc_selection() {
+	target := os.join_path(vroot, 'examples', 'hello_world.v')
+	prefs, command := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-b', 'c', '-b', 'fastc',
+		target], false)
+	assert command == target
+	assert prefs.backend == .c
+	assert prefs.is_fastc
+	assert prefs.new_compiler
+}
+
 fn test_v3_checker_fixture_flag_is_accepted() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	for flag in ['-checker-fixture', '-macos-v3-compat-c99'] {

@@ -8,8 +8,8 @@ import v.util
 // compiler normally. `-new-compiler` opts into the embedded V3 driver and runs
 // it in THIS process, the same way V3 runs by default on macOS. It applies the
 // same gating as the Darwin dispatcher: `-old-compiler` wins, V1-only options
-// are rejected, and only actual compilation commands are taken over (never
-// `fmt`, `version`, `test`, external tools, or the compiler bootstrap).
+// are rejected, and only actual compilation commands are taken over. Compiler
+// bootstrap targets are included only when the V3-only fastc backend is explicit.
 fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3CErrorReport {
 	if !prefs.new_compiler || prefs.old_compiler {
 		// V1 is the default here, and `-old-compiler` takes precedence.
@@ -17,6 +17,10 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 	}
 	if !macos_v3_driver_is_available() {
 		eprintln('`-new-compiler` requires a build that embeds the V3 compiler, which this one does not.')
+		exit(1)
+	}
+	if message := macos_v3_fastc_incompatibility(prefs) {
+		eprintln(message)
 		exit(1)
 	}
 	raw_args := util.join_env_vflags_and_os_args()[1..]

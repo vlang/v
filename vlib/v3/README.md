@@ -3,11 +3,11 @@
 Clean rewrite of the V compiler. Reuses v2's scanner, uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
-markused pass for dead-code elimination, recursive import resolution, and three
-backends: a direct flat-AST-to-C backend, a native ARM64 backend via SSA IR with
-a built-in linker, and a direct flat-AST-to-WebAssembly backend. With `-prod`,
-the ARM64 backend runs SSA optimization, MIR lowering, and instruction
-selection.
+markused pass for dead-code elimination, recursive import resolution, and
+backends: a direct flat-AST-to-C backend, a scanner-to-C fast path, a native
+ARM64 backend via SSA IR with a built-in linker, and a direct
+flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
+optimization, MIR lowering, and instruction selection.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
@@ -87,6 +87,49 @@ current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety 
 Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.
+
+## Fast C backend
+
+`-b fastc` selects the embedded V3 driver and a speculative single-file backend for the shortest
+edit-run cycle. It scans the source once and emits GNU C while consuming tokens. This path does
+not create a flat AST itself. Before accepting its speculative output, the driver runs the normal
+parser and semantic checker over the V source, then asks bundled TinyCC to validate the complete
+translation unit. A successful direct build skips transform, type annotation, and mark-used.
+
+FastC's direct lane currently emits primitive functions and parameters, inferred local
+declarations, ordinary expressions, `if`/`else`, and condition, C-style, infinite, and
+integer-range `for` loops. GNU
+`typeof` carries `:=` declarations into C without V type inference. Unsupported syntax promotes
+the source to fastc's complete lane, which uses the parser, checker, transformer, and mark-used
+pass, then emits C with its own `v3.gen.fastc.FlatGen` backend. That backend is a full fork of the
+V3 C generator rather than an alias or a runtime switch to `v3.gen.c`. A TinyCC error is also
+discarded and the original V source is compiled by the checked fastc lane, so the user receives V
+parser or type-checker diagnostics rather than a speculative C diagnostic. The complete lane has
+the same language and ownership/autofree coverage as the C backend. A successfully compiled `run`
+program keeps its exit status and is never retried.
+
+Integer-range bounds in the direct lane are evaluated once, from left to right. Float printing,
+C-string and embedded-NUL string literals, assertions, `sizeof`, comparison/logical, shift,
+division, and modulo expressions, and functions with narrow integer signatures are promoted to
+the complete lane. Expressions containing decimal `2147483648`, including composite minimum-`int`
+expressions, are promoted as well, as are hexadecimal and binary literals above the signed 32-bit
+range. Parallel assignments and indexing expressions are promoted, preserving
+simultaneous assignment, V layouts, inferred types, element types, and bounds checks. Together these
+promotions preserve V's formatting, byte-length, diagnostics, boolean typing, integer-wrapping,
+safe-shift, and zero-divisor behavior instead of relying on incompatible raw C semantics.
+
+The direct path is limited to host-target, non-debug, non-production, non-test, non-shared
+single-file builds. Compiler/self-host, strict C, and other non-direct modes enter the complete lane
+before source scanning.
+`-o file.c` emits the standalone fast C translation unit when the direct lane supports the input;
+otherwise it emits the complete `v3.gen.fastc` translation unit. Direct C-only output is published
+only after both V semantic checking and TinyCC validation succeed.
+
+`v self -b fastc` and direct compiler builds such as `v -b fastc -o v2 cmd/v` are routed to V3.
+Self-host builds enter fastc's complete lane directly. The checked frontend feeds the independent
+`v3.gen.fastc.FlatGen` implementation, so the resulting compiler supports the full V3 source tree
+and retains both fastc lanes for user programs, including when its output has a custom filename in
+the V checkout. The fastc integration test exercises five successive self-host generations.
 
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
 detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets
@@ -169,6 +212,9 @@ the plan and run the complete diagnostic and generation pipeline normally.
 ## Architecture
 
 ```
+source -> fastc scanner/emitter -> TinyCC
+     \-> on unsupported syntax or TinyCC error: normal pipeline below
+
 source + vlib/builtin -> scanner -> flat parser -> flat AST -> imports
   -> check -> transform -> annotate types -> markused -> gen C -> cc
                                           \-> SSA build -> ARM64 gen -> link

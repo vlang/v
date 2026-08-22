@@ -37,9 +37,17 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 		}
 		return take_macos_v3_c_error_report()
 	}
+	if message := macos_v3_fastc_incompatibility(prefs) {
+		eprintln(message)
+		exit(1)
+	}
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
-	if !is_macos_v3_default_executable(os.executable()) {
+	if macos_v3_test_ownership_uses_v1(prefs, forwarded_args) {
+		trace_macos_v3_skip('vtest ownership/autofree compilation')
+		return take_macos_v3_c_error_report()
+	}
+	if !macos_v3_executable_can_dispatch(os.executable(), prefs) {
 		trace_macos_v3_skip('non-default compiler executable `${os.executable()}`')
 		return none
 	}
@@ -66,6 +74,10 @@ fn is_macos_v3_default_executable(vexe string) bool {
 	return os.base(vexe) in ['v', 'v.exe', 'vnew', 'vnew.exe']
 }
 
+fn macos_v3_executable_can_dispatch(vexe string, prefs &pref.Preferences) bool {
+	return is_macos_v3_default_executable(vexe) || macos_v3_fastc_requested(prefs)
+}
+
 fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.old_compiler {
 		return false
@@ -76,9 +88,10 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		// dispatch, but it must not prevent V3 from being the default compiler.
 		return false
 	}
-	if prefs.autofree && prefs.is_run {
+	if prefs.autofree && prefs.is_run && !macos_v3_fastc_requested(prefs) {
 		// V1 still owns the established `v -autofree run ...` orchestration.
 		// Direct autofree builds are selected earlier by the ownership dispatcher.
+		// FastC promotes autofree programs to its checked C lane.
 		return false
 	}
 	if command == 'test' {
