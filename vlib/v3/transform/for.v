@@ -533,8 +533,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 				t.infer_for_in_elem_type(iter_type, node)
 			}
 			if elem_type.len > 0 {
-				val_type := if (node.op == .amp || iter_type.starts_with('&map['))
-					&& !t.normalize_type_alias(elem_type).starts_with('&') {
+				val_type := if node.op == .amp || iter_type.starts_with('&map[') {
 					'&${elem_type}'
 				} else {
 					elem_type
@@ -553,8 +552,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 					t.infer_for_in_elem_type(iter_type, node)
 				}
 				if elem_type.len > 0 {
-					value_type := if (node.op == .amp || iter_type.starts_with('&map['))
-						&& !t.normalize_type_alias(elem_type).starts_with('&') {
+					value_type := if node.op == .amp || iter_type.starts_with('&map[') {
 						'&${elem_type}'
 					} else {
 						elem_type

@@ -6498,7 +6498,6 @@ pub fn run(args []string) {
 	mut explicit_output := false
 	mut backend := 'c'
 	mut backend_explicit := false
-	mut fastc_full_codegen := false
 	mut target_os := os.user_os()
 	mut target_os_explicit := false
 	mut target_arch := pref.host_arch()
@@ -7099,12 +7098,12 @@ pub fn run(args []string) {
 			eprintln('unsupported garbage collector define `${define_name}`; v3 programs must not use a garbage collector')
 			exit(1)
 		}
-		if define_name == 'ownership' && !ownership_checker_compiled() {
+		if define_name == 'ownership' && backend != 'fastc' && !ownership_checker_compiled() {
 			eprintln('ownership support is not compiled into this v3 executable')
 			exit(1)
 		}
 	}
-	if ownership_mode && !ownership_checker_compiled() {
+	if ownership_mode && backend != 'fastc' && !ownership_checker_compiled() {
 		eprintln('ownership support is not compiled into this v3 executable')
 		exit(1)
 	}
@@ -7349,48 +7348,162 @@ pub fn run(args []string) {
 		eprintln('v.pref.lookup_path: ${os.join_path(prefs.vroot, 'vlib')}')
 	}
 	prefs.supports_inline_asm = is_checker_fixture
-	mut fastc_direct_source := ''
-	mut fastc_direct_pending := false
 	if backend == 'fastc' {
+		// FastC is a standalone parser that emits C while consuming scanner tokens.
+		// Never let an unsupported FastC input continue into the AST frontend below.
+		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+		if !input_file.ends_with('.v') || !os.is_file(input_file) || file_list.len > 0 {
+			eprintln('fastc requires exactly one `.v` input file')
+			exit(1)
+		}
 		fastc_host := pref.host_target()
-		fastc_eligible := input_file.ends_with('.v') && os.is_file(input_file) && file_list.len == 0
-			&& target.os == fastc_host.os && target.arch == fastc_host.arch && !is_test_command
-			&& !building_v && !is_selfhost && !is_checker_fixture && !is_prod && !is_shared
-			&& !is_livemain && !is_liveshared && !is_o && !is_prof && !is_debug
-			&& coverage_dir.len == 0 && !ownership_mode && !only_check_syntax && !check_only
-			&& print_fn_names.len == 0 && !print_v_files && !print_watched_files
-			&& dump_c_flags.len == 0 && generate_c_project.len == 0 && !c99_explicit
-			&& !c_compiler_explicit && !no_builtin && !no_preludes && !check_overflow
-			&& 'no_main' !in prefs.user_defines && !translated_mode && !is_repl && !is_strict
-		mut generated_fastc := false
-		mut fastc_source := ''
-		if fastc_eligible {
-			source := os.read_file(input_file) or { '' }
-			if source.len > 0 {
-				fastc_source = fastc.generate(source, input_file, prefs) or { '' }
-				generated_fastc = fastc_source.len > 0
+		if !c_only && (target.os != fastc_host.os || target.arch != fastc_host.arch) {
+			eprintln('fastc can only build executables for the host target; use `-o file.c` for cross-target C output')
+			exit(1)
+		}
+		mut unsupported_modes := []string{}
+		if is_test_command || is_checker_fixture {
+			unsupported_modes << 'test/checker mode'
+		}
+		if building_v || is_selfhost {
+			unsupported_modes << 'compiler self-hosting'
+		}
+		if is_prod {
+			unsupported_modes << '`-prod`'
+		}
+		if is_shared || is_livemain || is_liveshared {
+			unsupported_modes << 'shared/live builds'
+		}
+		if is_o {
+			unsupported_modes << 'object-file output'
+		}
+		if is_prof || coverage_dir.len > 0 {
+			unsupported_modes << 'profiling/coverage'
+		}
+		if ownership_mode || 'ownership' in prefs.user_defines {
+			unsupported_modes << 'ownership/autofree'
+		}
+		if only_check_syntax || check_only {
+			unsupported_modes << 'syntax/check-only mode'
+		}
+		if print_fn_names.len > 0 || print_v_files || print_watched_files || dump_c_flags.len > 0
+			|| generate_c_project.len > 0 {
+			unsupported_modes << 'compiler inspection output'
+		}
+		if c99_explicit || is_strict || check_overflow {
+			unsupported_modes << 'strict/checked C modes'
+		}
+		if c_compiler_explicit {
+			unsupported_modes << 'custom C compilers'
+		}
+		if no_builtin || no_preludes {
+			unsupported_modes << 'custom builtin/prelude modes'
+		}
+		if 'no_main' in prefs.user_defines {
+			unsupported_modes << '`-d no_main`'
+		}
+		if translated_mode || is_repl {
+			unsupported_modes << 'translated/REPL mode'
+		}
+		if unsupported_modes.len > 0 {
+			eprintln('fastc parser does not support ${unsupported_modes.join(', ')}')
+			exit(1)
+		}
+		source := os.read_file(input_file) or {
+			eprintln('fastc could not read `${input_file}`: ${err.msg()}')
+			exit(1)
+			''
+		}
+		fastc_source := fastc.generate(source, input_file, prefs) or {
+			eprintln(err.msg())
+			exit(1)
+			''
+		}
+		b.step('fastc parse+gen')
+		// Validate generated C before publishing it. C-only builds use a throwaway
+		// executable; normal builds keep the binary produced by bundled TinyCC.
+		fastc_bin_file := if c_only {
+			os.join_path_single(os.vtmp_dir(),
+				'v3_fastc_validate_${os.getpid()}_${tempname.unique_token()}')
+		} else {
+			bin_file
+		}
+		fastc_result := compile_v3_fastc_source(fastc_source, fastc_bin_file, prefs,
+			environment_c_flags, user_c_flags, environment_ld_flags, is_debug)
+		if (!silent || show_cc) && fastc_result.command.len > 0 {
+			if c_to_stdout {
+				eprintln('  > ${fastc_result.command}')
+			} else {
+				println('  > ${fastc_result.command}')
 			}
 		}
-		if generated_fastc {
-			b.step('fastc')
-			// Keep the speculative translation private until the checked frontend has
-			// accepted the V program and TinyCC has accepted the generated C.
-			fastc_direct_source = fastc_source
-			fastc_direct_pending = true
-		} else {
-			b.step('fastc (checked)')
+		if show_c_output && fastc_result.output.len > 0 {
+			header := '======== Output of TinyCC fastc ========'
+			if c_to_stdout {
+				eprintln(header)
+				eprintln(fastc_result.output.trim_space())
+				eprintln('='.repeat(header.len))
+			} else {
+				println(header)
+				println(fastc_result.output.trim_space())
+				println('='.repeat(header.len))
+			}
 		}
-		// FastC's complete lane uses the checked frontend and its own FlatGen backend.
-		// The direct emitter builds no semantic model, so its candidate remains pending
-		// while that same frontend validates the V source below. Scanner-emitter
-		// diagnostics stay private so user-facing errors still come from the V frontend.
-		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-		fastc_full_codegen = true
-		// The shared frontend uses C source suffixes and C compile-time conditions for
-		// both C-emitting backends. Keep that source-selection identity independent
-		// from the FlatGen implementation selected below.
-		backend = 'c'
-		prefs.backend = 'c'
+		if c_only {
+			os.rm(fastc_bin_file) or {}
+		}
+		if !fastc_result.success {
+			if fastc_result.command.len == 0 {
+				eprintln('fastc requires the bundled TinyCC executable')
+			} else if !show_c_output && fastc_result.output.len > 0 {
+				eprintln(fastc_result.output.trim_space())
+			}
+			exit(1)
+		}
+		b.step('tcc')
+		b.metric('generated C size', fastc_source.len, 'bytes')
+		if c_only {
+			if c_to_stdout {
+				print(fastc_source)
+			} else {
+				staged_output := '${output_file}.stage.${tempname.unique_token()}'
+				os.write_file(staged_output, fastc_source) or {
+					eprintln('error writing fastc output ${output_file}: ${err.msg()}')
+					exit(1)
+				}
+				os.mv(staged_output, output_file) or {
+					os.rm(staged_output) or {}
+					eprintln('error finalizing fastc output ${output_file}: ${err.msg()}')
+					exit(1)
+				}
+			}
+		} else {
+			if backend_explicit {
+				os.write_file(bin_file + '.c', fastc_source) or {
+					eprintln('failed to retain generated fastc output ${bin_file}.c: ${err.msg()}')
+					exit(1)
+				}
+			}
+			if keep_c {
+				keep_c_file := keep_c_output_file(bin_file)
+				os.write_file(keep_c_file, fastc_source) or {
+					eprintln('failed to retain generated fastc output ${keep_c_file}: ${err.msg()}')
+					exit(1)
+				}
+			}
+		}
+		if should_run {
+			run_result := run_binary(bin_file, run_args)
+			if remove_binary_after_run {
+				os.rm(bin_file) or {}
+			}
+			if run_result != 0 {
+				exit(run_result)
+			}
+			b.step('run')
+		}
+		b.print_report()
+		return
 	}
 	minimal_literal_output := !is_prof
 		&& input_uses_minimal_literal_output_builtin(input_file, prefs, is_test_command, is_checker_fixture)
@@ -7399,9 +7512,9 @@ pub fn run(args []string) {
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
-	cache_enabled := backend == 'c' && !fastc_direct_pending && !c_only && !no_cache
-		&& !no_skip_unused && !no_builtin && !keep_c && !backend_explicit && !c_compiler_explicit
-		&& !minimal_literal_output && target.os == host_target.os && target.arch == host_target.arch
+	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
+		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
+		&& target.os == host_target.os && target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
@@ -8182,91 +8295,6 @@ pub fn run(args []string) {
 		if check_only {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			return
-		}
-		if fastc_direct_pending {
-			// The scanner-direct emitter is intentionally syntax-oriented. Accept its
-			// candidate only after the normal frontend has enforced V semantics, then
-			// ask TinyCC to validate the complete translation unit. C-only builds use a
-			// throwaway executable so invalid C is never published to a file or stdout.
-			fastc_bin_file := if c_only {
-				os.join_path_single(os.vtmp_dir(),
-					'v3_fastc_validate_${os.getpid()}_${tempname.unique_token()}')
-			} else {
-				bin_file
-			}
-			fastc_result := compile_v3_fastc_source(fastc_direct_source, fastc_bin_file, prefs,
-				environment_c_flags, user_c_flags, environment_ld_flags, is_debug)
-			if !silent || show_cc {
-				if fastc_result.command.len > 0 {
-					if c_to_stdout {
-						eprintln('  > ${fastc_result.command}')
-					} else {
-						println('  > ${fastc_result.command}')
-					}
-				}
-			}
-			if show_c_output && fastc_result.output.len > 0 {
-				header := '======== Output of TinyCC fastc ========'
-				println(header)
-				println(fastc_result.output.trim_space())
-				println('='.repeat(header.len))
-			}
-			if c_only {
-				os.rm(fastc_bin_file) or {}
-			}
-			if fastc_result.success {
-				if pre_tc.notices.len > 0 {
-					print_type_diagnostics(a, pre_tc.notices, []types.TypeError{},
-						is_checker_fixture)
-					pre_tc.notices.clear()
-				}
-				b.step('tcc')
-				b.metric('generated C size', fastc_direct_source.len, 'bytes')
-				if c_only {
-					if c_to_stdout {
-						print(fastc_direct_source)
-					} else {
-						staged_output := '${output_file}.stage.${tempname.unique_token()}'
-						os.write_file(staged_output, fastc_direct_source) or {
-							eprintln('error writing fastc output ${output_file}: ${err.msg()}')
-							exit(1)
-						}
-						os.mv(staged_output, output_file) or {
-							os.rm(staged_output) or {}
-							eprintln('error finalizing fastc output ${output_file}: ${err.msg()}')
-							exit(1)
-						}
-					}
-				} else {
-					if backend_explicit {
-						os.write_file(bin_file + '.c', fastc_direct_source) or {
-							eprintln('failed to retain generated fastc output ${bin_file}.c: ${err.msg()}')
-							exit(1)
-						}
-					}
-					if keep_c {
-						keep_c_file := keep_c_output_file(bin_file)
-						os.write_file(keep_c_file, fastc_direct_source) or {
-							eprintln('failed to retain generated fastc output ${keep_c_file}: ${err.msg()}')
-							exit(1)
-						}
-					}
-				}
-				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-				if should_run {
-					run_result := run_binary(bin_file, run_args)
-					if remove_binary_after_run {
-						os.rm(bin_file) or {}
-					}
-					if run_result != 0 {
-						exit(run_result)
-					}
-					b.step('run')
-				}
-				b.print_report()
-				return
-			}
-			b.step('tcc (checked)')
 		}
 		if cache_state.manager.enabled {
 			if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files,
@@ -9155,93 +9183,48 @@ pub fn run(args []string) {
 			cgen_scope := prealloc_scope_begin_for_v3()
 			mut scoped_generated_c_flags := []string{}
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
-			if fastc_full_codegen {
-				mut g := fastc.FlatGen.new()
-				g.set_initial_c_flags(user_c_flags)
-				g.set_c99_mode(prefs.c99)
-				g.set_ccompiler(prefs.ccompiler)
-				g.set_prod(prefs.is_prod)
-				g.set_check_overflow(check_overflow)
-				g.set_force_bounds_checking(prefs.force_bounds_checking)
-				g.set_prealloc('prealloc' in prefs.user_defines)
-				g.set_skip_generics(skip_transform_generics)
-				g.set_skip_enum_autostr(trivial_literal_output)
-				g.set_compiler_vexe(prefs.vexe)
-				g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
-				g.set_target(prefs.target)
-				g.set_thread_stack_size(prefs.thread_stack_size)
-				g.set_show_test_stats(show_test_stats)
-				g.set_show_test_summary(is_test_command)
-				g.set_test_run_only(run_only)
-				g.set_print_fn_names(print_fn_names)
-				g.set_profile(profile_file, profile_no_inline, profile_fns)
-				g.set_shared(prefs.is_shared)
-				g.set_object_file_mode(is_o)
-				g.set_suppress_main('no_main' in prefs.user_defines)
-				g.set_coverage(coverage_dir, args.join(' '))
-				g.set_compile_values(prefs.compile_values)
-				g.set_cache_split(cache_state.manager.enabled)
-				g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
-				g.set_program_body_only(generic_cache_hit)
-				g.set_cache_program_files(user_files)
-				g.set_incremental_fn_names(incremental_changed_names)
-				g.set_cached_support_declarations(incremental_known_declarations)
-				g.set_scope_parallel_workers(!generic_cache_hit)
-				g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
-					cache_no_parallel_cgen, test_files) or {
-					eprintln('error writing ${generated_path}: ${err}')
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
-				cgen_was_parallel = g.was_parallel()
-				if !incremental_cache_hit {
-					scoped_generated_c_flags = g.c_flags()
-				}
-				g.free_parallel_worker_scopes()
-			} else {
-				mut g := cgen.FlatGen.new()
-				g.set_initial_c_flags(user_c_flags)
-				g.set_c99_mode(prefs.c99)
-				g.set_ccompiler(prefs.ccompiler)
-				g.set_prod(prefs.is_prod)
-				g.set_check_overflow(check_overflow)
-				g.set_force_bounds_checking(prefs.force_bounds_checking)
-				g.set_prealloc('prealloc' in prefs.user_defines)
-				g.set_skip_generics(skip_transform_generics)
-				g.set_skip_enum_autostr(trivial_literal_output)
-				g.set_compiler_vexe(prefs.vexe)
-				g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
-				g.set_target(prefs.target)
-				g.set_thread_stack_size(prefs.thread_stack_size)
-				g.set_show_test_stats(show_test_stats)
-				g.set_show_test_summary(is_test_command)
-				g.set_test_run_only(run_only)
-				g.set_print_fn_names(print_fn_names)
-				g.set_profile(profile_file, profile_no_inline, profile_fns)
-				g.set_shared(prefs.is_shared)
-				g.set_object_file_mode(is_o)
-				g.set_suppress_main('no_main' in prefs.user_defines)
-				g.set_coverage(coverage_dir, args.join(' '))
-				g.set_compile_values(prefs.compile_values)
-				g.set_cache_split(cache_state.manager.enabled)
-				g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
-				g.set_program_body_only(generic_cache_hit)
-				g.set_cache_program_files(user_files)
-				g.set_incremental_fn_names(incremental_changed_names)
-				g.set_cached_support_declarations(incremental_known_declarations)
-				g.set_scope_parallel_workers(!generic_cache_hit)
-				g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
-					cache_no_parallel_cgen, test_files) or {
-					eprintln('error writing ${generated_path}: ${err}')
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
-				cgen_was_parallel = g.was_parallel()
-				if !incremental_cache_hit {
-					scoped_generated_c_flags = g.c_flags()
-				}
-				g.free_parallel_worker_scopes()
+			mut g := cgen.FlatGen.new()
+			g.set_initial_c_flags(user_c_flags)
+			g.set_c99_mode(prefs.c99)
+			g.set_ccompiler(prefs.ccompiler)
+			g.set_prod(prefs.is_prod)
+			g.set_check_overflow(check_overflow)
+			g.set_force_bounds_checking(prefs.force_bounds_checking)
+			g.set_prealloc('prealloc' in prefs.user_defines)
+			g.set_skip_generics(skip_transform_generics)
+			g.set_skip_enum_autostr(trivial_literal_output)
+			g.set_compiler_vexe(prefs.vexe)
+			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
+			g.set_target(prefs.target)
+			g.set_thread_stack_size(prefs.thread_stack_size)
+			g.set_show_test_stats(show_test_stats)
+			g.set_show_test_summary(is_test_command)
+			g.set_test_run_only(run_only)
+			g.set_print_fn_names(print_fn_names)
+			g.set_profile(profile_file, profile_no_inline, profile_fns)
+			g.set_shared(prefs.is_shared)
+			g.set_object_file_mode(is_o)
+			g.set_suppress_main('no_main' in prefs.user_defines)
+			g.set_coverage(coverage_dir, args.join(' '))
+			g.set_compile_values(prefs.compile_values)
+			g.set_cache_split(cache_state.manager.enabled)
+			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
+			g.set_program_body_only(generic_cache_hit)
+			g.set_cache_program_files(user_files)
+			g.set_incremental_fn_names(incremental_changed_names)
+			g.set_cached_support_declarations(incremental_known_declarations)
+			g.set_scope_parallel_workers(!generic_cache_hit)
+			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
+				cache_no_parallel_cgen, test_files) or {
+				eprintln('error writing ${generated_path}: ${err}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
 			}
+			cgen_was_parallel = g.was_parallel()
+			if !incremental_cache_hit {
+				scoped_generated_c_flags = g.c_flags()
+			}
+			g.free_parallel_worker_scopes()
 			prealloc_scope_leave_for_v3(cgen_scope)
 			if !incremental_cache_hit {
 				generated_c_flags = clone_string_list(scoped_generated_c_flags)
@@ -9254,88 +9237,45 @@ pub fn run(args []string) {
 			prealloc_scope_free_for_v3(cgen_scope)
 		} else if !cgen_cache_hit {
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
-			if fastc_full_codegen {
-				mut g := fastc.FlatGen.new()
-				g.set_initial_c_flags(user_c_flags)
-				g.set_c99_mode(prefs.c99)
-				g.set_ccompiler(prefs.ccompiler)
-				g.set_prod(prefs.is_prod)
-				g.set_check_overflow(check_overflow)
-				g.set_force_bounds_checking(prefs.force_bounds_checking)
-				g.set_prealloc('prealloc' in prefs.user_defines)
-				g.set_skip_generics(skip_transform_generics)
-				g.set_skip_enum_autostr(trivial_literal_output)
-				g.set_compiler_vexe(prefs.vexe)
-				g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
-				g.set_target(prefs.target)
-				g.set_thread_stack_size(prefs.thread_stack_size)
-				g.set_show_test_stats(show_test_stats)
-				g.set_show_test_summary(is_test_command)
-				g.set_test_run_only(run_only)
-				g.set_print_fn_names(print_fn_names)
-				g.set_profile(profile_file, profile_no_inline, profile_fns)
-				g.set_shared(prefs.is_shared)
-				g.set_object_file_mode(is_o)
-				g.set_suppress_main('no_main' in prefs.user_defines)
-				g.set_coverage(coverage_dir, args.join(' '))
-				g.set_compile_values(prefs.compile_values)
-				g.set_cache_split(cache_state.manager.enabled)
-				g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
-				g.set_program_body_only(generic_cache_hit)
-				g.set_cache_program_files(user_files)
-				g.set_incremental_fn_names(incremental_changed_names)
-				g.set_cached_support_declarations(incremental_known_declarations)
-				g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
-					cache_no_parallel_cgen, test_files) or {
-					eprintln('error writing ${generated_path}: ${err}')
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
-				cgen_was_parallel = g.was_parallel()
-				if !incremental_cache_hit {
-					generated_c_flags = g.c_flags()
-				}
-			} else {
-				mut g := cgen.FlatGen.new()
-				g.set_initial_c_flags(user_c_flags)
-				g.set_c99_mode(prefs.c99)
-				g.set_ccompiler(prefs.ccompiler)
-				g.set_prod(prefs.is_prod)
-				g.set_check_overflow(check_overflow)
-				g.set_force_bounds_checking(prefs.force_bounds_checking)
-				g.set_prealloc('prealloc' in prefs.user_defines)
-				g.set_skip_generics(skip_transform_generics)
-				g.set_skip_enum_autostr(trivial_literal_output)
-				g.set_compiler_vexe(prefs.vexe)
-				g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
-				g.set_target(prefs.target)
-				g.set_thread_stack_size(prefs.thread_stack_size)
-				g.set_show_test_stats(show_test_stats)
-				g.set_show_test_summary(is_test_command)
-				g.set_test_run_only(run_only)
-				g.set_print_fn_names(print_fn_names)
-				g.set_profile(profile_file, profile_no_inline, profile_fns)
-				g.set_shared(prefs.is_shared)
-				g.set_object_file_mode(is_o)
-				g.set_suppress_main('no_main' in prefs.user_defines)
-				g.set_coverage(coverage_dir, args.join(' '))
-				g.set_compile_values(prefs.compile_values)
-				g.set_cache_split(cache_state.manager.enabled)
-				g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
-				g.set_program_body_only(generic_cache_hit)
-				g.set_cache_program_files(user_files)
-				g.set_incremental_fn_names(incremental_changed_names)
-				g.set_cached_support_declarations(incremental_known_declarations)
-				g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
-					cache_no_parallel_cgen, test_files) or {
-					eprintln('error writing ${generated_path}: ${err}')
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
-				cgen_was_parallel = g.was_parallel()
-				if !incremental_cache_hit {
-					generated_c_flags = g.c_flags()
-				}
+			mut g := cgen.FlatGen.new()
+			g.set_initial_c_flags(user_c_flags)
+			g.set_c99_mode(prefs.c99)
+			g.set_ccompiler(prefs.ccompiler)
+			g.set_prod(prefs.is_prod)
+			g.set_check_overflow(check_overflow)
+			g.set_force_bounds_checking(prefs.force_bounds_checking)
+			g.set_prealloc('prealloc' in prefs.user_defines)
+			g.set_skip_generics(skip_transform_generics)
+			g.set_skip_enum_autostr(trivial_literal_output)
+			g.set_compiler_vexe(prefs.vexe)
+			g.set_compiler_vexe_env_setup(!pref.has_macos_v3_caller_environment())
+			g.set_target(prefs.target)
+			g.set_thread_stack_size(prefs.thread_stack_size)
+			g.set_show_test_stats(show_test_stats)
+			g.set_show_test_summary(is_test_command)
+			g.set_test_run_only(run_only)
+			g.set_print_fn_names(print_fn_names)
+			g.set_profile(profile_file, profile_no_inline, profile_fns)
+			g.set_shared(prefs.is_shared)
+			g.set_object_file_mode(is_o)
+			g.set_suppress_main('no_main' in prefs.user_defines)
+			g.set_coverage(coverage_dir, args.join(' '))
+			g.set_compile_values(prefs.compile_values)
+			g.set_cache_split(cache_state.manager.enabled)
+			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
+			g.set_program_body_only(generic_cache_hit)
+			g.set_cache_program_files(user_files)
+			g.set_incremental_fn_names(incremental_changed_names)
+			g.set_cached_support_declarations(incremental_known_declarations)
+			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
+				cache_no_parallel_cgen, test_files) or {
+				eprintln('error writing ${generated_path}: ${err}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+			cgen_was_parallel = g.was_parallel()
+			if !incremental_cache_hit {
+				generated_c_flags = g.c_flags()
 			}
 		}
 		if incremental_cache_hit {
@@ -9364,9 +9304,7 @@ pub fn run(args []string) {
 			}
 		}
 		a.close_workers()
-		if fastc_full_codegen {
-			b.step_parallel('fastc gen', cgen_was_parallel)
-		} else if cgen_cache_hit {
+		if cgen_cache_hit {
 			b.step('cgen (cached)')
 		} else if incremental_cache_hit {
 			b.step_parallel('cgen (incremental)', cgen_was_parallel)

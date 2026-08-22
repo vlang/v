@@ -91,7 +91,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	if prefs.autofree && prefs.is_run && !macos_v3_fastc_requested(prefs) {
 		// V1 still owns the established `v -autofree run ...` orchestration.
 		// Direct autofree builds are selected earlier by the ownership dispatcher.
-		// FastC promotes autofree programs to its checked C lane.
+		// Explicit FastC stays on V3 and reports this mode as unsupported.
 		return false
 	}
 	if command == 'test' {

@@ -219,6 +219,11 @@ fn invoke_help_and_exit(remaining []string) {
 fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_args []string) {
 	is_ownership := '-ownership' in merged_args
 	is_autofree := prefs.autofree
+	if prefs.is_fastc {
+		// FastC owns its whole invocation and must never launch the AST-based
+		// ownership compiler. Its direct parser reports unsupported modes.
+		return
+	}
 	$if macos {
 		if macos_v3_test_ownership_uses_v1(prefs, merged_args) {
 			return

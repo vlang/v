@@ -90,46 +90,32 @@ physical footprint immediately after RSS.
 
 ## Fast C backend
 
-`-b fastc` selects the embedded V3 driver and a speculative single-file backend for the shortest
-edit-run cycle. It scans the source once and emits GNU C while consuming tokens. This path does
-not create a flat AST itself. Before accepting its speculative output, the driver runs the normal
-parser and semantic checker over the V source, then asks bundled TinyCC to validate the complete
-translation unit. A successful direct build skips transform, type annotation, and mark-used.
+`-b fastc` selects the embedded V3 driver and its AST-free single-file parser for the shortest
+edit-run cycle. FastC scans the source once and emits GNU C while consuming tokens. It never invokes
+the flat parser, semantic checker, transformer, mark-used pass, or conventional C generator.
+Bundled TinyCC validates the emitted translation unit before any C file or executable is published.
+Unsupported V syntax and TinyCC errors are reported directly; FastC never retries through an
+AST-based backend.
 
-FastC's direct lane currently emits primitive functions and parameters, inferred local
-declarations, ordinary expressions, `if`/`else`, and condition, C-style, infinite, and
-integer-range `for` loops. GNU
-`typeof` carries `:=` declarations into C without V type inference. Unsupported syntax promotes
-the source to fastc's complete lane, which uses the parser, checker, transformer, and mark-used
-pass, then emits C with its own `v3.gen.fastc.FlatGen` backend. That backend is a full fork of the
-V3 C generator rather than an alias or a runtime switch to `v3.gen.c`. A TinyCC error is also
-discarded and the original V source is compiled by the checked fastc lane, so the user receives V
-parser or type-checker diagnostics rather than a speculative C diagnostic. The complete lane has
-the same language and ownership/autofree coverage as the C backend. A successfully compiled `run`
-program keeps its exit status and is never retried.
+FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
+expressions, `if`/`else`, and condition, C-style, infinite, and integer-range `for` loops. GNU
+`typeof` carries `:=` declarations into C without V type inference. Integer-range bounds are
+evaluated once, from left to right. The parser also rejects mutation of immutable or unknown local
+names instead of relying on C's weaker assignment rules.
 
-Integer-range bounds in the direct lane are evaluated once, from left to right. Float printing,
-C-string and embedded-NUL string literals, assertions, `sizeof`, comparison/logical, shift,
-division, and modulo expressions, and functions with narrow integer signatures are promoted to
-the complete lane. Expressions containing decimal `2147483648`, including composite minimum-`int`
-expressions, are promoted as well, as are hexadecimal and binary literals above the signed 32-bit
-range. Parallel assignments and indexing expressions are promoted, preserving
-simultaneous assignment, V layouts, inferred types, element types, and bounds checks. Together these
-promotions preserve V's formatting, byte-length, diagnostics, boolean typing, integer-wrapping,
-safe-shift, and zero-divisor behavior instead of relying on incompatible raw C semantics.
+Syntax whose V semantics require type or runtime information is rejected until FastC can lower it
+directly. This includes float printing, C-string and embedded-NUL string literals, runes,
+assertions, `sizeof`, comparison/logical, shift, division, modulo, indexing, parallel assignment,
+mixed-precedence expressions, narrow integer signatures, oversized decimal literals, and
+high-bit hexadecimal or binary literals. Rejecting these constructs avoids silently applying
+incompatible C formatting, inference, wrapping, shift, bounds, and zero-divisor behavior.
 
-The direct path is limited to host-target, non-debug, non-production, non-test, non-shared
-single-file builds. Compiler/self-host, strict C, and other non-direct modes enter the complete lane
-before source scanning.
-`-o file.c` emits the standalone fast C translation unit when the direct lane supports the input;
-otherwise it emits the complete `v3.gen.fastc` translation unit. Direct C-only output is published
-only after both V semantic checking and TinyCC validation succeed.
-
-`v self -b fastc` and direct compiler builds such as `v -b fastc -o v2 cmd/v` are routed to V3.
-Self-host builds enter fastc's complete lane directly. The checked frontend feeds the independent
-`v3.gen.fastc.FlatGen` implementation, so the resulting compiler supports the full V3 source tree
-and retains both fastc lanes for user programs, including when its output has a custom filename in
-the V checkout. The fastc integration test exercises five successive self-host generations.
+FastC requires exactly one `.v` input. Executables are host-target only; `-o file.c` also permits an
+explicit cross target and publishes C after TinyCC validation. Production, test, shared/live,
+ownership/autofree, self-host, object-file, profiling/coverage, strict C, custom compiler,
+custom-builtin, `no_main`, translated, and REPL modes are currently rejected. Explicit FastC
+compiler builds still route to V3 so the FastC parser reports the unsupported input rather than
+silently selecting V1.
 
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
 detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets
@@ -212,8 +198,7 @@ the plan and run the complete diagnostic and generation pipeline normally.
 ## Architecture
 
 ```
-source -> fastc scanner/emitter -> TinyCC
-     \-> on unsupported syntax or TinyCC error: normal pipeline below
+source -> scanner -> fastc parser/C emitter -> TinyCC
 
 source + vlib/builtin -> scanner -> flat parser -> flat AST -> imports
   -> check -> transform -> annotate types -> markused -> gen C -> cc

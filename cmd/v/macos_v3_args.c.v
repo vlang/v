@@ -44,8 +44,8 @@ fn is_macos_v3_compiler_bootstrap(normalized_path string) bool {
 // invocation to the embedded V3 compiler. It gates on `-old-compiler`
 // precedence, options/modes V3 cannot honor yet, and whether the command is an
 // actual compilation command (never `test` or external tools). Compiler bootstrap
-// targets normally stay on V1, but explicit `-b fastc` owns those targets too: its
-// complete lane uses V3's checked frontend and full fastc generator for the compiler source.
+// targets normally stay on V1, but explicit `-b fastc` still routes to V3 so its
+// AST-free parser can report unsupported source instead of silently selecting V1.
 // Both the Darwin dispatcher (where it overrides the default heuristic) and the
 // non-macOS dispatcher (where it is the sole gate) rely on it, so it must stay
 // platform neutral.
@@ -59,7 +59,7 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 	}
 	if prefs.autofree && prefs.is_run && !macos_v3_fastc_requested(prefs) {
 		// V1 still owns the established `v -autofree run ...` orchestration.
-		// FastC promotes autofree programs to its checked C lane.
+		// Explicit FastC stays on V3 and reports this mode as unsupported.
 		return false
 	}
 	if prefs.path == '' || command == 'test' || macos_v3_non_compilation_command(command)
@@ -99,8 +99,8 @@ fn macos_v3_fastc_incompatibility(prefs &pref.Preferences) ?string {
 // macos_v3_test_ownership_uses_v1 keeps ownership/autofree test binaries on
 // V1. vtest marks its per-file compilations with `-skip-running`; compiling an
 // autofree test through the ownership-enabled V3 tool can consume far more
-// memory than the test itself. Direct V3 ownership builds remain available;
-// fastc uses the same checked ownership lane as the C backend.
+// memory than the test itself. Explicit FastC is never diverted to an AST-based
+// ownership compiler; its parser reports the unsupported mode itself.
 fn macos_v3_test_ownership_uses_v1(prefs &pref.Preferences, args []string) bool {
 	return prefs.skip_running && !macos_v3_fastc_requested(prefs)
 		&& (prefs.autofree || '-ownership' in args)

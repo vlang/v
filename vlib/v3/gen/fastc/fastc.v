@@ -5,8 +5,8 @@ import v3.pref
 import v3.scanner
 import v3.token
 
-// This file is the scanner-direct optimization. The complete checked backend is
-// FlatGen, split across the other files in this module.
+// FastC parses scanner tokens and emits C immediately. It deliberately has no
+// AST, semantic-checker, transformer, mark-used, or conventional cgen path.
 
 const c_preamble = r'#include <stdbool.h>
 #include <stdint.h>
@@ -44,35 +44,37 @@ static void v_fastc_println_signed(long long value) { printf("%lld\n", value); }
 static void v_fastc_println_unsigned(unsigned long long value) { printf("%llu\n", value); }
 
 /* Float formatting belongs to the V strconv routines. Leaving float and double
- * unmatched makes TinyCC reject this speculative candidate so the driver uses
- * the checked FastC lane instead of silently applying printf %g semantics. */
+ * unmatched makes TinyCC reject unsupported printing instead of silently
+ * applying printf %g semantics. */
 #define V_FASTC_PRINT_SELECT(value, string_fn, bool_fn, char_fn, signed_fn, unsigned_fn) _Generic((value), char *: string_fn, const char *: string_fn, bool: bool_fn, char: char_fn, signed char: signed_fn, short: signed_fn, int: signed_fn, long: signed_fn, long long: signed_fn, unsigned char: unsigned_fn, unsigned short: unsigned_fn, unsigned int: unsigned_fn, unsigned long: unsigned_fn, unsigned long long: unsigned_fn)(value)
 #define print(value) V_FASTC_PRINT_SELECT(value, v_fastc_print_string, v_fastc_print_bool, v_fastc_print_char, v_fastc_print_signed, v_fastc_print_unsigned)
 #define println(value) V_FASTC_PRINT_SELECT(value, v_fastc_println_string, v_fastc_println_bool, v_fastc_println_char, v_fastc_println_signed, v_fastc_println_unsigned)
 
 '
 
-struct DirectGen {
+struct Parser {
 	path string
 mut:
-	s       scanner.Scanner
-	tok     token.Token
-	lit     string
-	out     strings.Builder
-	protos  strings.Builder
-	indent  int
-	in_main bool
-	temp_id int
+	s        scanner.Scanner
+	tok      token.Token
+	lit      string
+	out      strings.Builder
+	protos   strings.Builder
+	indent   int
+	in_main  bool
+	has_main bool
+	temp_id  int
+	locals   map[string]bool
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
-// not construct a flat AST or invoke semantic type checking. Unsupported syntax is returned as
-// an error so the driver can promote the source to fastc's complete checked lane.
+// not construct an AST or invoke semantic type checking. Unsupported syntax is returned as an
+// error; FastC never retries through an AST-based backend.
 pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
-	mut gen := DirectGen{
+	mut gen := Parser{
 		path:   path
 		s:      scanner.new_scanner(prefs, .normal)
 		out:    strings.new_builder(source.len)
@@ -82,7 +84,7 @@ pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 	return gen.run()
 }
 
-fn (mut g DirectGen) run() !string {
+fn (mut g Parser) run() !string {
 	g.next()
 	for g.tok != .eof {
 		g.skip_semicolons()
@@ -100,7 +102,14 @@ fn (mut g DirectGen) run() !string {
 			g.parse_function()!
 			continue
 		}
-		return g.unsupported('top-level `${g.token_source()}`')
+		if g.tok == .key_import {
+			return g.unsupported('top-level `${g.token_source()}`')
+		}
+		if g.has_main {
+			return g.unsupported('top-level `${g.token_source()}` after `main`')
+		}
+		g.parse_script()!
+		break
 	}
 	mut result := strings.new_builder(c_preamble.len + g.protos.len + g.out.len + 2)
 	result.write_string(c_preamble)
@@ -110,41 +119,41 @@ fn (mut g DirectGen) run() !string {
 	return result.str()
 }
 
-fn (mut g DirectGen) next() {
+fn (mut g Parser) next() {
 	g.tok = g.s.scan()
 	g.lit = g.s.lit
 }
 
-fn (mut g DirectGen) temporary_name(kind string) string {
+fn (mut g Parser) temporary_name(kind string) string {
 	name := '__v_fastc_${kind}_${g.temp_id}'
 	g.temp_id++
 	return name
 }
 
-fn (mut g DirectGen) skip_semicolons() {
+fn (mut g Parser) skip_semicolons() {
 	for g.tok == .semicolon {
 		g.next()
 	}
 }
 
-fn (g &DirectGen) unsupported(feature string) IError {
-	return error('fastc does not directly emit ${feature} in ${g.path}')
+fn (g &Parser) unsupported(feature string) IError {
+	return error('fastc parser does not support ${feature} in ${g.path}')
 }
 
-fn (mut g DirectGen) expect(expected token.Token) ! {
+fn (mut g Parser) expect(expected token.Token) ! {
 	if g.tok != expected {
 		return g.unsupported('`${expected.str()}` after `${g.token_source()}`')
 	}
 	g.next()
 }
 
-fn (mut g DirectGen) parse_module() ! {
+fn (mut g Parser) parse_module() ! {
 	g.next()
 	if g.tok != .name {
 		return g.unsupported('module declaration')
 	}
-	// A direct single-file unit has no module namespace to resolve. `main` is
-	// accepted and discarded; every other module falls through to normal cgen.
+	// A single-file unit has no module namespace to resolve. `main` is accepted
+	// and discarded; every other module is reported as unsupported.
 	if g.lit != 'main' {
 		return g.unsupported('module `${g.lit}`')
 	}
@@ -152,7 +161,8 @@ fn (mut g DirectGen) parse_module() ! {
 	g.skip_semicolons()
 }
 
-fn (mut g DirectGen) parse_function() ! {
+fn (mut g Parser) parse_function() ! {
+	g.locals = map[string]bool{}
 	g.next()
 	if g.tok == .lpar {
 		return g.unsupported('methods')
@@ -173,13 +183,15 @@ fn (mut g DirectGen) parse_function() ! {
 	}
 	if fastc_has_narrow_integer_type(return_type)
 		|| params.any(fastc_parameter_has_narrow_integer_type) {
-		// C promotes narrow operands before arithmetic, while V retains the
-		// narrow result type. The checked lane has the type information needed
-		// to preserve wrapping semantics.
+		// C promotes narrow operands before arithmetic, while V retains the narrow
+		// result type. Reject them until the direct parser tracks the required type.
 		return g.unsupported('narrow integer function types')
 	}
 	g.expect(.lcbr)!
 	is_main := name == 'main' && params.len == 0
+	if is_main {
+		g.has_main = true
+	}
 	c_return_type := if is_main { 'int' } else { return_type }
 	c_params := if params.len == 0 { 'void' } else { params.join(', ') }
 	g.protos.writeln('${c_return_type} ${name}(${c_params});')
@@ -200,7 +212,29 @@ fn (mut g DirectGen) parse_function() ! {
 	g.out.writeln('')
 }
 
-fn (mut g DirectGen) parse_parameters() ![]string {
+fn (mut g Parser) parse_script() ! {
+	g.locals = map[string]bool{}
+	g.has_main = true
+	g.protos.writeln('int main(void);')
+	g.write_line('int main(void) {')
+	g.indent++
+	g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
+	g.in_main = true
+	g.skip_semicolons()
+	for g.tok != .eof {
+		if g.tok in [.key_module, .key_pub, .key_static, .key_fn] {
+			return g.unsupported('declaration after top-level statements')
+		}
+		g.parse_statement()!
+		g.skip_semicolons()
+	}
+	g.write_line('return 0;')
+	g.indent--
+	g.write_line('}')
+	g.out.writeln('')
+}
+
+fn (mut g Parser) parse_parameters() ![]string {
 	mut params := []string{}
 	g.skip_semicolons()
 	for g.tok != .rpar {
@@ -217,6 +251,7 @@ fn (mut g DirectGen) parse_parameters() ![]string {
 		}
 		type_name := g.parse_type()!
 		params << '${type_name} ${name}'
+		g.locals[name] = false
 		if g.tok == .comma {
 			g.next()
 			g.skip_semicolons()
@@ -230,7 +265,7 @@ fn (mut g DirectGen) parse_parameters() ![]string {
 	return params
 }
 
-fn (mut g DirectGen) parse_type() !string {
+fn (mut g Parser) parse_type() !string {
 	mut pointers := 0
 	for g.tok == .amp || g.tok == .mul {
 		pointers++
@@ -287,7 +322,7 @@ fn fastc_parameter_has_narrow_integer_type(parameter string) bool {
 	return fields.len > 0 && fastc_has_narrow_integer_type(fields[0])
 }
 
-fn (mut g DirectGen) parse_block_body() ! {
+fn (mut g Parser) parse_block_body() ! {
 	g.skip_semicolons()
 	for g.tok != .rcbr {
 		if g.tok == .eof {
@@ -300,7 +335,7 @@ fn (mut g DirectGen) parse_block_body() ! {
 	g.skip_semicolons()
 }
 
-fn (mut g DirectGen) parse_statement() ! {
+fn (mut g Parser) parse_statement() ! {
 	match g.tok {
 		.key_if {
 			g.parse_if()!
@@ -335,7 +370,7 @@ fn (mut g DirectGen) parse_statement() ! {
 	}
 }
 
-fn (mut g DirectGen) parse_if() ! {
+fn (mut g Parser) parse_if() ! {
 	g.next()
 	condition := g.read_expression([token.Token.lcbr])!
 	if condition.len == 0 {
@@ -367,7 +402,7 @@ fn (mut g DirectGen) parse_if() ! {
 	g.write_line('}')
 }
 
-fn (mut g DirectGen) parse_for() ! {
+fn (mut g Parser) parse_for() ! {
 	g.next()
 	if g.tok == .lcbr {
 		g.next()
@@ -432,7 +467,7 @@ fn (mut g DirectGen) parse_for() ! {
 	g.write_line('}')
 }
 
-fn (mut g DirectGen) parse_return() ! {
+fn (mut g Parser) parse_return() ! {
 	g.next()
 	if g.tok == .semicolon || g.tok == .rcbr {
 		g.consume_statement_end()
@@ -444,7 +479,7 @@ fn (mut g DirectGen) parse_return() ! {
 	g.write_line('return ${expression};')
 }
 
-fn (mut g DirectGen) parse_mutable_declaration() ! {
+fn (mut g Parser) parse_mutable_declaration() ! {
 	g.next()
 	if g.tok != .name {
 		return g.unsupported('mutable declaration')
@@ -454,10 +489,10 @@ fn (mut g DirectGen) parse_mutable_declaration() ! {
 	if g.tok != .decl_assign {
 		return g.unsupported('`mut` statement without `:=`')
 	}
-	g.parse_declaration_after_name(name)!
+	g.parse_declaration_after_name(name, true)!
 }
 
-fn (mut g DirectGen) parse_simple_statement() ! {
+fn (mut g Parser) parse_simple_statement() ! {
 	if g.tok == .key_assert {
 		return g.unsupported('assert statements')
 	}
@@ -465,8 +500,12 @@ fn (mut g DirectGen) parse_simple_statement() ! {
 		name := g.lit
 		g.next()
 		if g.tok == .decl_assign {
-			g.parse_declaration_after_name(name)!
+			g.parse_declaration_after_name(name, false)!
 			return
+		}
+		if (g.tok.is_assignment() || g.tok in [.inc, .dec])
+			&& (name !in g.locals || !g.locals[name]) {
+			return g.unsupported('mutation of immutable or unknown name `${name}`')
 		}
 		expression :=
 			g.read_expression_with_prefix(name, [token.Token.semicolon, token.Token.rcbr])!
@@ -482,7 +521,10 @@ fn (mut g DirectGen) parse_simple_statement() ! {
 	g.write_line('${expression};')
 }
 
-fn (mut g DirectGen) parse_declaration_after_name(name string) ! {
+fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool) ! {
+	if name in g.locals {
+		return g.unsupported('redeclaration of `${name}`')
+	}
 	g.next()
 	expression := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 	if expression.len == 0 {
@@ -498,19 +540,20 @@ fn (mut g DirectGen) parse_declaration_after_name(name string) ! {
 	} else {
 		g.write_line('__typeof__((${expression})) ${name} = (${expression});')
 	}
+	g.locals[name] = is_mut
 }
 
-fn (mut g DirectGen) consume_statement_end() {
+fn (mut g Parser) consume_statement_end() {
 	if g.tok == .semicolon {
 		g.next()
 	}
 }
 
-fn (mut g DirectGen) read_expression(stops []token.Token) !string {
+fn (mut g Parser) read_expression(stops []token.Token) !string {
 	return g.read_expression_with_prefix('', stops)
 }
 
-fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.Token) !string {
+fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token) !string {
 	mut result := strings.new_builder(64)
 	if prefix.len > 0 {
 		result.write_string(prefix)
@@ -548,8 +591,8 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 			return g.unsupported('division or modulo expressions')
 		}
 		if g.tok == .key_sizeof {
-			// Direct C representations can differ from V layouts. The checked
-			// lane resolves the V type before lowering sizeof.
+			// Direct C representations can differ from V layouts. Reject sizeof
+			// until the parser tracks enough V type information to lower it.
 			return g.unsupported('sizeof expressions')
 		}
 		if g.tok in [.lsbr, .rsbr] {
@@ -582,9 +625,8 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 		if (has_sum_arithmetic_operator && (has_and_operator || has_pipe_operator
 			|| has_xor_operator)) || (has_multiply_operator && has_and_operator)
 			|| (has_pipe_operator && has_xor_operator) {
-			// V groups + and - with | and ^, and * with &, while C splits
-			// those levels and also orders + and - above &. The checked lane
-			// preserves V's parsed expression tree for these mixes.
+			// V groups + and - with | and ^, and * with &, while C splits those
+			// levels and also orders + and - above &. Reject ambiguous token streams.
 			return g.unsupported('mixed operator precedence')
 		}
 		piece := g.expression_token()!
@@ -612,7 +654,7 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 	return result.str().trim_space()
 }
 
-fn (g &DirectGen) expression_token() !string {
+fn (g &Parser) expression_token() !string {
 	return match g.tok {
 		.name { g.expression_name()! }
 		.number { fastc_c_number(g.lit)! }
@@ -629,7 +671,7 @@ fn (g &DirectGen) expression_token() !string {
 	}
 }
 
-fn (g &DirectGen) expression_name() !string {
+fn (g &Parser) expression_name() !string {
 	if g.lit == 'charptr' {
 		return g.unsupported('charptr expressions')
 	}
@@ -639,7 +681,7 @@ fn (g &DirectGen) expression_name() !string {
 	return g.lit
 }
 
-fn fastc_nondecimal_literal_requires_checked_type(literal string) bool {
+fn fastc_nondecimal_literal_is_type_sensitive(literal string) bool {
 	clean := literal.replace('_', '')
 	if clean.len <= 2 || clean[0] != `0` {
 		return false
@@ -659,7 +701,7 @@ fn fastc_nondecimal_literal_requires_checked_type(literal string) bool {
 	return false
 }
 
-fn fastc_decimal_literal_requires_checked_type(literal string) bool {
+fn fastc_decimal_literal_is_type_sensitive(literal string) bool {
 	clean := literal.replace('_', '')
 	if clean.len == 0 || clean.contains_any('.eE') {
 		return false
@@ -684,14 +726,13 @@ fn fastc_decimal_literal_requires_checked_type(literal string) bool {
 
 fn fastc_c_number(literal string) !string {
 	clean := literal.replace('_', '')
-	if fastc_decimal_literal_requires_checked_type(literal) {
+	if fastc_decimal_literal_is_type_sensitive(literal) {
 		// C assigns oversized decimal tokens a wider type before any surrounding
-		// operation. V can instead resolve the complete expression as int, so only
-		// the checked lane can preserve its inferred type and wrapping.
-		return error('oversized decimal literal expressions require checked fastc')
+		// operation. Reject them until the direct parser can preserve V inference.
+		return error('fastc parser does not support oversized decimal literal expressions')
 	}
-	if fastc_nondecimal_literal_requires_checked_type(literal) {
-		return error('high-bit nondecimal literals require checked fastc')
+	if fastc_nondecimal_literal_is_type_sensitive(literal) {
+		return error('fastc parser does not support high-bit nondecimal literals')
 	}
 	if clean.len < 2 || clean[0] != `0` || !clean[1].is_digit() || clean.contains_any('.eE') {
 		return clean
@@ -703,14 +744,14 @@ fn fastc_c_number(literal string) !string {
 	return clean[first_digit..]
 }
 
-fn (g &DirectGen) token_source() string {
+fn (g &Parser) token_source() string {
 	if g.lit.len > 0 {
 		return g.lit
 	}
 	return g.tok.str()
 }
 
-fn (mut g DirectGen) write_line(line string) {
+fn (mut g Parser) write_line(line string) {
 	for _ in 0 .. g.indent {
 		g.out.write_u8(`\t`)
 	}
@@ -740,7 +781,7 @@ fn fastc_c_string(literal string) !string {
 	}
 	content := raw[1..raw.len - 1]
 	if fastc_string_contains_nul(content, is_raw) {
-		return error('embedded NUL string literals require checked fastc')
+		return error('fastc parser does not support embedded NUL string literals')
 	}
 	mut result := strings.new_builder(raw.len + 2)
 	result.write_u8(`"`)

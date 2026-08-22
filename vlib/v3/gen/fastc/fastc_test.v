@@ -52,7 +52,15 @@ fn twice(value int) int {
 	assert run_result.output.trim_space() == 'total=6'
 }
 
-fn test_unsupported_import_requests_normal_backend() {
+fn test_top_level_statements_emit_main_directly() {
+	prefs := pref.new_preferences()
+	c_source := generate("println('Hello, World!')\n", 'hello_world.v', prefs) or { panic(err) }
+	assert c_source.contains('int main(void) {')
+	assert c_source.contains('println("Hello, World!");')
+	assert c_source.contains('setvbuf(stdout, NULL, _IONBF, 0);')
+}
+
+fn test_unsupported_import_is_rejected() {
 	prefs := pref.new_preferences()
 	mut failed := false
 	_ := generate('module main\nimport os\nfn main() {}\n', 'imports.v', prefs) or {
@@ -148,7 +156,7 @@ fn main() {
 	assert fastc_c_string(r"'left\nright'")! == r'"left\nright"'
 }
 
-fn test_runtime_sensitive_constructs_request_checked_lane() {
+fn test_runtime_sensitive_constructs_are_rejected() {
 	prefs := pref.new_preferences()
 	for source in ['module main
 
@@ -183,7 +191,7 @@ fn main() {
 	assert assert_failed
 }
 
-fn test_type_sensitive_expressions_request_checked_lane() {
+fn test_type_sensitive_expressions_are_rejected() {
 	prefs := pref.new_preferences()
 	for source in [
 		'module main\nfn main() { println(1 == 1) }\n',
