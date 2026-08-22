@@ -28,8 +28,9 @@ fn test_macos_v3_driver_source_selection_matches_cross_define() {
 }
 
 fn test_macos_v3_keeps_established_compiler_sources_on_v1() {
+	vroot := os.real_path(os.dir(@VEXE))
 	for path in ['vlib/v/checker/pkgconfig_static_mode_test.v',
-		'/workspace/v/vlib/v/builder/c_error_report_test.v', 'vlib/v/compiler_errors_test.v'] {
+		os.join_path(vroot, 'vlib/v/builder/c_error_report_test.v'), 'vlib/v/compiler_errors_test.v'] {
 		assert is_macos_v3_v1_compiler_source(path)
 		assert !is_macos_v3_relevant_command(path, &pref.Preferences{
 			path: path
@@ -42,6 +43,11 @@ fn test_macos_v3_keeps_established_compiler_sources_on_v1() {
 			path: path
 		})
 	}
+	user_path := os.join_path(os.vtmp_dir(), 'project/vlib/v/app/main.v')
+	assert !is_macos_v3_v1_compiler_source(user_path)
+	assert is_macos_v3_relevant_command(user_path, &pref.Preferences{
+		path: user_path
+	})
 }
 
 fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
@@ -1291,6 +1297,7 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 			'LDFLAGS':                  '-L/caller/lib -lcaller'
 			'VEXE':                     'caller-vexe'
 			'VCHILD':                   'caller-vchild'
+			'V_MACOS_V3_NO_FALLBACK':   'caller-no-fallback'
 			'V_MACOS_V3_FALLBACK_FILE': '/tmp/stale-fallback'
 			'V_MACOS_V3_C_ERROR_DIR':   '/tmp/stale-c-error'
 			'V_MACOS_V3_RETRY':         '1'
@@ -1310,6 +1317,8 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 		assert environment[macos_v3_caller_vexe_env] == 'caller-vexe'
 		assert environment[macos_v3_caller_vchild_present_env] == '1'
 		assert environment[macos_v3_caller_vchild_env] == 'caller-vchild'
+		assert environment[macos_v3_caller_no_fallback_present_env] == '1'
+		assert environment[macos_v3_caller_no_fallback_env] == 'caller-no-fallback'
 
 		unset_environment := macos_v3_child_environment(@VEXE, '/tmp/macos_v3_fallback', {
 			'PATH': '/usr/bin'
@@ -1318,30 +1327,36 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 		assert unset_environment[macos_v3_caller_vexe_env] == ''
 		assert unset_environment[macos_v3_caller_vchild_present_env] == '0'
 		assert unset_environment[macos_v3_caller_vchild_env] == ''
+		assert unset_environment[macos_v3_caller_no_fallback_present_env] == '0'
+		assert unset_environment[macos_v3_caller_no_fallback_env] == ''
 	}
 }
 
 fn test_macos_v3_redispatch_preserves_original_caller_environment() {
 	dispatch_environment := {
-		'PATH':                             '/usr/bin'
-		'VEXE':                             '/internal/v'
-		'VCHILD':                           'true'
-		'V_MACOS_V3_FALLBACK_FILE':         '/tmp/old-fallback'
-		'V_MACOS_V3_C_ERROR_DIR':           '/tmp/old-c-error'
-		'V_MACOS_V3_VHASH':                 'internal-hash'
-		'V_MACOS_V3_VCURRENT_HASH':         'internal-current-hash'
-		'V_MACOS_V3_EMBEDDED':              '1'
-		'V3_CRUN_BUILD_IDENTITY':           'restart-identity'
-		'V3_INTERNAL_RESTART':              '1'
-		macos_v3_caller_vexe_env:           'caller-vexe'
-		macos_v3_caller_vexe_present_env:   '1'
-		macos_v3_caller_vchild_env:         'caller-vchild'
-		macos_v3_caller_vchild_present_env: '1'
+		'PATH':                                  '/usr/bin'
+		'VEXE':                                  '/internal/v'
+		'VCHILD':                                'true'
+		'V_MACOS_V3_FALLBACK_FILE':              '/tmp/old-fallback'
+		'V_MACOS_V3_C_ERROR_DIR':                '/tmp/old-c-error'
+		'V_MACOS_V3_VHASH':                      'internal-hash'
+		'V_MACOS_V3_VCURRENT_HASH':              'internal-current-hash'
+		'V_MACOS_V3_EMBEDDED':                   '1'
+		'V_MACOS_V3_NO_FALLBACK':                '1'
+		'V3_CRUN_BUILD_IDENTITY':                'restart-identity'
+		'V3_INTERNAL_RESTART':                   '1'
+		macos_v3_caller_vexe_env:                'caller-vexe'
+		macos_v3_caller_vexe_present_env:        '1'
+		macos_v3_caller_vchild_env:              'caller-vchild'
+		macos_v3_caller_vchild_present_env:      '1'
+		macos_v3_caller_no_fallback_env:         'caller-no-fallback'
+		macos_v3_caller_no_fallback_present_env: '1'
 	}
 	caller_environment := macos_v3_original_caller_environment(dispatch_environment)
 	assert caller_environment['PATH'] == '/usr/bin'
 	assert caller_environment['VEXE'] == 'caller-vexe'
 	assert caller_environment['VCHILD'] == 'caller-vchild'
+	assert caller_environment[macos_v3_no_fallback_env] == 'caller-no-fallback'
 	assert macos_v3_fallback_file_env !in caller_environment
 	assert macos_v3_c_error_dir_env !in caller_environment
 	assert macos_v3_vhash_env !in caller_environment
@@ -1360,6 +1375,8 @@ fn test_macos_v3_redispatch_preserves_original_caller_environment() {
 	assert child_environment[macos_v3_caller_vexe_present_env] == '1'
 	assert child_environment[macos_v3_caller_vchild_env] == 'caller-vchild'
 	assert child_environment[macos_v3_caller_vchild_present_env] == '1'
+	assert child_environment[macos_v3_caller_no_fallback_env] == 'caller-no-fallback'
+	assert child_environment[macos_v3_caller_no_fallback_present_env] == '1'
 	// Internal restart state remains available to the next V3 pass.
 	assert child_environment['V3_CRUN_BUILD_IDENTITY'] == 'restart-identity'
 	assert child_environment['V3_INTERNAL_RESTART'] == '1'
@@ -1369,9 +1386,12 @@ fn test_macos_v3_redispatch_preserves_original_caller_environment() {
 	unset_dispatch_environment[macos_v3_caller_vexe_present_env] = '0'
 	unset_dispatch_environment[macos_v3_caller_vchild_env] = ''
 	unset_dispatch_environment[macos_v3_caller_vchild_present_env] = '0'
+	unset_dispatch_environment[macos_v3_caller_no_fallback_env] = ''
+	unset_dispatch_environment[macos_v3_caller_no_fallback_present_env] = '0'
 	unset_caller_environment := macos_v3_original_caller_environment(unset_dispatch_environment)
 	assert 'VEXE' !in unset_caller_environment
 	assert 'VCHILD' !in unset_caller_environment
+	assert macos_v3_no_fallback_env !in unset_caller_environment
 }
 
 fn test_macos_v3_redispatch_run_observes_original_caller_environment() {
@@ -1384,7 +1404,7 @@ fn test_macos_v3_redispatch_run_observes_original_caller_environment() {
 		}
 		source := os.join_path(root, 'main.v')
 		os.write_file(source,
-			"module main\n\nimport os\n\nconst compile_vexe = \$env('VEXE')\nconst compile_vchild = \$env('VCHILD')\n\nfn main() {\n\truntime_vexe := os.getenv('VEXE')\n\truntime_vchild := os.getenv('VCHILD')\n\tprintln('\${compile_vexe}|\${compile_vchild}|\${runtime_vexe}|\${runtime_vchild}')\n}\n")!
+			"module main\n\nimport os\n\nconst compile_vexe = \$env('VEXE')\nconst compile_vchild = \$env('VCHILD')\nconst compile_no_fallback = \$env('V_MACOS_V3_NO_FALLBACK')\n\nfn main() {\n\truntime_vexe := os.getenv('VEXE')\n\truntime_vchild := os.getenv('VCHILD')\n\truntime_no_fallback := os.getenv('V_MACOS_V3_NO_FALLBACK')\n\tprintln('\${compile_vexe}|\${compile_vchild}|\${runtime_vexe}|\${runtime_vchild}|\${compile_no_fallback}|\${runtime_no_fallback}')\n}\n")!
 		mut environment := os.environ()
 		environment['CFLAGS'] = ''
 		environment['LDFLAGS'] = ''
@@ -1396,6 +1416,9 @@ fn test_macos_v3_redispatch_run_observes_original_caller_environment() {
 		environment[macos_v3_caller_vexe_present_env] = '1'
 		environment[macos_v3_caller_vchild_env] = 'caller-vchild'
 		environment[macos_v3_caller_vchild_present_env] = '1'
+		environment[macos_v3_no_fallback_env] = '1'
+		environment[macos_v3_caller_no_fallback_env] = 'caller-no-fallback'
+		environment[macos_v3_caller_no_fallback_present_env] = '1'
 		environment[macos_v3_embedded_env] = '1'
 		environment['V3_INTERNAL_RESTART'] = '1'
 		mut process := os.new_process(@VEXE)
@@ -1408,7 +1431,7 @@ fn test_macos_v3_redispatch_run_observes_original_caller_environment() {
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, output
-		assert output.contains('caller-vexe|caller-vchild|caller-vexe|caller-vchild'), output
+		assert output.contains('caller-vexe|caller-vchild|caller-vexe|caller-vchild|caller-no-fallback|caller-no-fallback'), output
 	}
 }
 
@@ -1523,7 +1546,7 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 ')!
 		mut environment := os.environ()
 		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
-		// guard that CI sets for runner compilation — otherwise V3 exits at the failure
+		// guard that CI sets for eligible V3 builds — otherwise V3 exits at the failure
 		// instead of retrying and the fallback never happens (PR #28131 review).
 		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['GITHUB_ACTIONS'] = 'true'
@@ -1667,7 +1690,7 @@ fn main() {
 ')!
 		mut environment := os.environ()
 		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
-		// guard that CI sets for runner compilation — otherwise V3 exits at the failure
+		// guard that CI sets for eligible V3 builds — otherwise V3 exits at the failure
 		// instead of retrying and the fallback never happens (PR #28131 review).
 		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
@@ -1736,7 +1759,7 @@ fn main() {
 		output := os.join_path(root, 'app_bin')
 		mut environment := os.environ()
 		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
-		// guard that CI sets for runner compilation — otherwise V3 exits at the failure
+		// guard that CI sets for eligible V3 builds — otherwise V3 exits at the failure
 		// instead of retrying and the fallback never happens (PR #28131 review).
 		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''

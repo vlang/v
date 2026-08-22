@@ -24,6 +24,8 @@ const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
+const macos_v3_caller_no_fallback_env = 'V_MACOS_V3_CALLER_NO_FALLBACK'
+const macos_v3_caller_no_fallback_present_env = 'V_MACOS_V3_CALLER_NO_FALLBACK_PRESENT'
 const macos_v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 const macos_v3_retry_env = 'V_MACOS_V3_RETRY'
 const macos_v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
@@ -143,9 +145,8 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
 	// cmd/v remains the command dispatcher. All other user compilation and test
 	// modes use V3 by default.
-	if normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
-		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
-		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v')
+	if is_macos_v3_vroot_path(normalized_path, 'cmd/v', true)
+		|| is_macos_v3_vroot_path(normalized_path, 'vlib/v3/v3.v', false)
 		|| is_macos_v3_v1_compiler_source(normalized_path)
 		|| is_macos_v3_internal_tool_bootstrap(normalized_path, os.getenv('VCHILD') == 'true') {
 		return false
@@ -161,26 +162,35 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 }
 
 fn is_macos_v3_v1_compiler_source(normalized_path string) bool {
-	is_compiler_source := normalized_path.starts_with('vlib/v/')
-		|| normalized_path.contains('/vlib/v/')
-	if !is_compiler_source {
+	compiler_dir := macos_v3_vroot_path_value('vlib/v')
+	path := os.real_path(normalized_path).replace('\\', '/').trim_right('/')
+	if path != compiler_dir && !path.starts_with(compiler_dir + '/') {
 		return false
 	}
-	if normalized_path.starts_with('vlib/v3/') || normalized_path.contains('/vlib/v3/') {
+	relative := path[compiler_dir.len..].trim_left('/')
+	if relative == 'v3' || relative.starts_with('v3/') {
 		return false
 	}
 	// The established compiler's implementation modules still require V1 to compile.
 	// Keep the language-level regression suites on V3: their files are ordinary user
 	// programs even though they live below the compiler tree.
-	return !normalized_path.starts_with('vlib/v/tests/')
-		&& !normalized_path.contains('/vlib/v/tests/')
-		&& !normalized_path.starts_with('vlib/v/slow_tests/')
-		&& !normalized_path.contains('/vlib/v/slow_tests/')
+	return relative != 'tests' && !relative.starts_with('tests/') && relative != 'slow_tests'
+		&& !relative.starts_with('slow_tests/')
+}
+
+fn macos_v3_vroot_path_value(relative string) string {
+	vroot := os.real_path(os.dir(pref.vexe_path()))
+	return os.real_path(os.join_path(vroot, relative)).replace('\\', '/').trim_right('/')
+}
+
+fn is_macos_v3_vroot_path(normalized_path string, relative string, include_children bool) bool {
+	path := os.real_path(normalized_path).replace('\\', '/').trim_right('/')
+	target := macos_v3_vroot_path_value(relative)
+	return path == target || (include_children && path.starts_with(target + '/'))
 }
 
 fn is_macos_v3_internal_tool_bootstrap(normalized_path string, is_vchild bool) bool {
-	return is_vchild
-		&& (normalized_path.starts_with('cmd/tools/') || normalized_path.contains('/cmd/tools/'))
+	return is_vchild && is_macos_v3_vroot_path(normalized_path, 'cmd/tools', true)
 }
 
 fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3CErrorReport {
@@ -420,6 +430,9 @@ fn macos_v3_child_environment(vexe string, fallback_file string, caller_environm
 		macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
 	preserve_macos_v3_caller_environment_value(mut environment, caller_environment, 'VCHILD',
 		macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+	preserve_macos_v3_caller_environment_value(mut environment, caller_environment,
+		macos_v3_no_fallback_env, macos_v3_caller_no_fallback_env,
+		macos_v3_caller_no_fallback_present_env)
 	for private_name in ['V_MACOS_V3_FALLBACK_FILE', 'V_MACOS_V3_C_ERROR_DIR', 'V_MACOS_V3_RETRY'] {
 		environment.delete(private_name)
 	}
@@ -463,11 +476,18 @@ fn macos_v3_original_caller_environment(dispatch_environment map[string]string) 
 		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment,
 			'VCHILD', macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
 	}
+	no_fallback_present := dispatch_environment[macos_v3_caller_no_fallback_present_env] or { '' }
+	if no_fallback_present in ['0', '1'] {
+		restore_macos_v3_caller_environment_value(mut caller_environment, dispatch_environment,
+			macos_v3_no_fallback_env, macos_v3_caller_no_fallback_env,
+			macos_v3_caller_no_fallback_present_env)
+	}
 	for private_name in [macos_v3_fallback_file_env, macos_v3_c_error_dir_env, macos_v3_vhash_env,
 		macos_v3_vcurrent_hash_env, macos_v3_embedded_env, macos_v3_retry_env,
 		'V3_CRUN_BUILD_IDENTITY', 'V3_INTERNAL_RESTART', macos_v3_caller_vexe_env,
 		macos_v3_caller_vexe_present_env, macos_v3_caller_vchild_env,
-		macos_v3_caller_vchild_present_env] {
+		macos_v3_caller_vchild_present_env, macos_v3_caller_no_fallback_env,
+		macos_v3_caller_no_fallback_present_env] {
 		caller_environment.delete(private_name)
 	}
 	return caller_environment

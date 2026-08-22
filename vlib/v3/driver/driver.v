@@ -5998,13 +5998,17 @@ fn record_user_define(mut defines []string, mut values map[string]string, define
 	values[name] = value
 }
 
-fn stage_macos_v3_compiler_error_fallback(fallback_file string, stage string) {
-	if fallback_file != '' {
-		// The first line remains the machine-readable fallback reason. The second
-		// carries only a controlled stage name, so a successful compatibility build
-		// can report where V3 failed even when no source excerpt is available.
-		os.write_file(fallback_file, '${macos_v3_compiler_error_fallback}\n${stage}') or {}
+fn stage_macos_v3_compiler_error_fallback(fallback_file string, stage string) bool {
+	if fallback_file == '' {
+		return false
 	}
+	// The first line remains the machine-readable fallback reason. The second
+	// carries only a controlled stage name, so a successful compatibility build
+	// can report where V3 failed even when no source excerpt is available.
+	os.write_file(fallback_file, '${macos_v3_compiler_error_fallback}\n${stage}') or {
+		return false
+	}
+	return true
 }
 
 fn clear_macos_v3_compiler_error_fallback(fallback_file string) {
@@ -6015,6 +6019,7 @@ fn clear_macos_v3_compiler_error_fallback(fallback_file string) {
 
 fn macos_v3_fallback_suppresses_diagnostics(fallback_file string) bool {
 	return fallback_file != '' && os.getenv(macos_v3_no_fallback_env) != '1'
+		&& os.is_file(fallback_file)
 }
 
 fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {

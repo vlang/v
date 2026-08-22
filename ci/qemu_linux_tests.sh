@@ -26,6 +26,7 @@ Environment overrides:
   V_QEMU_NO_FALLBACK   Set V_MACOS_V3_NO_FALLBACK (default: 1)
   V_QEMU_STOP_AFTER    Power off the guest after the run when set to 1
   V_QEMU_FIRMWARE      AArch64 UEFI firmware path
+  V_QEMU_RSYNC         Host rsync executable (only needed when syncing)
 
 Examples:
   ci/qemu_linux_tests.sh
@@ -73,14 +74,18 @@ no_fallback=${V_QEMU_NO_FALLBACK:-1}
 stop_after=${V_QEMU_STOP_AFTER:-0}
 
 qemu_bin=${V_QEMU_BIN:-$(command -v qemu-system-aarch64 || true)}
-rsync_bin=${V_QEMU_RSYNC:-$(command -v rsync || true)}
 if [[ -z "$qemu_bin" ]]; then
 	echo 'qemu-system-aarch64 is required (on macOS: brew install qemu).' >&2
 	exit 1
 fi
-if [[ -z "$rsync_bin" ]]; then
-	echo 'rsync is required.' >&2
-	exit 1
+rsync_bin=
+if ((sync_checkout)); then
+	rsync_candidate=${V_QEMU_RSYNC:-rsync}
+	rsync_bin=$(command -v "$rsync_candidate" || true)
+	if [[ -z "$rsync_bin" ]]; then
+		echo 'rsync is required unless --no-sync is used.' >&2
+		exit 1
+	fi
 fi
 
 key_file="${vm_dir}/id_ed25519"
@@ -176,6 +181,12 @@ trap power_off EXIT
 start_vm
 wait_for_ssh
 
+if ((provision)); then
+	# A fresh Debian guest does not necessarily have the remote half of rsync yet.
+	# Install it before attempting to transfer the checkout.
+	ssh "${ssh_options[@]}" "$guest" "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential clang git lld rsync pkg-config libssl-dev sqlite3 libsqlite3-dev valgrind libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev libwayland-dev libxkbcommon-dev libwayland-egl1 libxkbcommon-x11-dev wayland-protocols libx11-dev libgl1-mesa-dri xauth xvfb"
+fi
+
 host_head=$(git -C "$repo_root" rev-parse HEAD)
 guest_head=$(ssh "${ssh_options[@]}" "$guest" "git -C '${guest_repo}' rev-parse HEAD")
 if [[ "$host_head" != "$guest_head" ]]; then
@@ -185,16 +196,26 @@ if [[ "$host_head" != "$guest_head" ]]; then
 fi
 
 if ((sync_checkout)); then
-	git -C "$repo_root" ls-files -z --cached --others --exclude-standard | "$rsync_bin" -az \
+	printf -v guest_repo_q '%q' "$guest_repo"
+	# Remove tracked paths deleted or renamed in the local worktree. The NUL-delimited
+	# protocol keeps arbitrary Git filenames safe, and every removal is scoped beneath
+	# the already-validated guest checkout.
+	git -C "$repo_root" diff --no-renames --name-only --diff-filter=D -z HEAD -- \
+		| ssh "${ssh_options[@]}" "$guest" "cd ${guest_repo_q} && xargs -0 -r rm -f --"
+	# Staged deletions are absent from `git ls-files --cached`, while unstaged
+	# deletions are still listed. Send only paths that currently exist locally.
+	git -C "$repo_root" ls-files -z --cached --others --exclude-standard \
+		| while IFS= read -r -d '' path; do
+			if [[ -e "${repo_root}/${path}" || -L "${repo_root}/${path}" ]]; then
+				printf '%s\0' "$path"
+			fi
+		done \
+		| "$rsync_bin" -az \
 		--from0 \
 		--files-from=- \
 		--exclude '.detect_tcc*' \
 		-e "ssh -i ${key_file} -p ${ssh_port} -o UserKnownHostsFile=${known_hosts_file} -o StrictHostKeyChecking=yes" \
 		"${repo_root}/" "${guest}:${guest_repo}/"
-fi
-
-if ((provision)); then
-	ssh "${ssh_options[@]}" "$guest" "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential clang git lld rsync pkg-config libssl-dev sqlite3 libsqlite3-dev valgrind libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev libwayland-dev libxkbcommon-dev libwayland-egl1 libxkbcommon-x11-dev wayland-protocols libx11-dev libgl1-mesa-dri xauth xvfb"
 fi
 
 if (($# == 0)); then

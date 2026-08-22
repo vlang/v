@@ -36,20 +36,17 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      # V3 is the default compiler on Linux; disable the V3->V1 fallback for the
-      # whole job so a V3 regression fails CI directly — including when it stops
-      # ci/linux_ci.vsh itself (compiled by `v run`) from building.
+      # V3 is the default compiler on Linux; disable the V3->V1 fallback for every
+      # eligible V3 build so a regression fails CI directly. The `.vsh` runner is
+      # intentionally compiled by V1; the canary below verifies V3 dispatch itself.
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
-        # `make`'s post-bootstrap `v run` helpers (cmd/tools/detect_tcc.v and
-        # .github/problem-matchers/register_all.vsh) are not buildable by V3 yet and
-        # legitimately fall back to V1; without clearing the job-wide no-fallback guard for
-        # this bootstrap step that fallback would become a hard build failure. The canary
-        # and the self-test steps below keep the guard, so V3 is still enforced where it
-        # must build the program.
+        # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
+        # compatibility fallback, while register_all.vsh intentionally uses V1. Clear the
+        # guard for this bootstrap step; later eligible builds and the canary retain it.
         env:
           V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
@@ -122,20 +119,17 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      # V3 is the default compiler on Linux; disable the V3->V1 fallback for the
-      # whole job so a V3 regression fails CI directly — including when it stops
-      # ci/linux_ci.vsh itself (compiled by `v run`) from building.
+      # V3 is the default compiler on Linux; disable the V3->V1 fallback for every
+      # eligible V3 build so a regression fails CI directly. The `.vsh` runner is
+      # intentionally compiled by V1; the canary below verifies V3 dispatch itself.
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        # `make`'s post-bootstrap `v run` helpers (cmd/tools/detect_tcc.v and
-        # .github/problem-matchers/register_all.vsh) are not buildable by V3 yet and
-        # legitimately fall back to V1; without clearing the job-wide no-fallback guard for
-        # this bootstrap step that fallback would become a hard build failure. The canary
-        # and the self-test steps below keep the guard, so V3 is still enforced where it
-        # must build the program.
+        # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
+        # compatibility fallback, while register_all.vsh intentionally uses V1. Clear the
+        # guard for this bootstrap step; later eligible builds and the canary retain it.
         env:
           V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
@@ -670,20 +664,17 @@ jobs:
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
-      # V3 is the default compiler on Linux; disable the V3->V1 fallback for the
-      # whole job so a V3 regression fails CI directly — including when it stops
-      # ci/linux_ci.vsh itself (compiled by `v run`) from building.
+      # V3 is the default compiler on Linux; disable the V3->V1 fallback for every
+      # eligible V3 build so a regression fails CI directly. The `.vsh` runner is
+      # intentionally compiled by V1; the canary below verifies V3 dispatch itself.
       V_MACOS_V3_NO_FALLBACK: 1
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
-        # `make`'s post-bootstrap `v run` helpers (cmd/tools/detect_tcc.v and
-        # .github/problem-matchers/register_all.vsh) are not buildable by V3 yet and
-        # legitimately fall back to V1; without clearing the job-wide no-fallback guard for
-        # this bootstrap step that fallback would become a hard build failure. The canary
-        # and the self-test steps below keep the guard, so V3 is still enforced where it
-        # must build the program.
+        # `make` runs bootstrap helpers before the V3 canary: detect_tcc.v may need the
+        # compatibility fallback, while register_all.vsh intentionally uses V1. Clear the
+        # guard for this bootstrap step; later eligible builds and the canary retain it.
         env:
           V_MACOS_V3_NO_FALLBACK: 0
         run: make -j4 && ./v symlink
