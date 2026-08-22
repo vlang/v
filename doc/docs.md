@@ -6218,6 +6218,21 @@ folder containing `v.mod`.
 V packages are installed normally in your `~/.vmodules` folder. That
 location can be overridden by setting the env variable `VMODULES`.
 
+### Package names and import paths
+
+A package name can contain characters that are not valid in a V import
+path, for example `-` or uppercase letters. Such names are normalized
+when the package is installed: `-` becomes `_` and the name is
+lowercased. A package named `my-mod` is therefore installed as
+`~/.vmodules/my_mod` and imported with `import my_mod`. The same applies
+to the publisher part of a VPM package name, so `Some-Publisher.repo` is
+installed as `~/.vmodules/some_publisher/repo` and imported with
+`import some_publisher.repo`.
+
+`v install` prints a warning with the resulting import path whenever it
+has to normalize a name. If you publish a package, prefer a `name` in
+`v.mod` that is already a valid import path.
+
 ### Package commands
 
 You can use the V frontend to do package operations, just like you can

@@ -94,10 +94,24 @@ fn install_modules(modules []Module, selected_server_url string) {
 			}
 		}
 		println('Installed `${m.name}` in ${m.install_path_fmted} .')
+		m.warn_on_normalized_name()
 	}
 	if errors > 0 {
 		exit(1)
 	}
+}
+
+// Module names may contain characters that are not valid in V import paths, e.g. `-`.
+// Those are normalized away when the module is placed into `vmodules`, so point out
+// the resulting import path instead of leaving the mismatch for the compiler to report.
+fn (m Module) warn_on_normalized_name() {
+	import_path := import_path_of(m.install_path)
+	if import_path == m.name {
+		return
+	}
+	vpm_warn('`${m.name}` is not a valid V import path, it was installed as `${import_path}`.',
+		details: 'Use `import ${import_path}` to import it.\nConsider renaming the `name` field in the `v.mod` of the module.'
+	)
 }
 
 fn (m Module) install() InstallResult {
