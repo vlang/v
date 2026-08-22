@@ -2122,6 +2122,12 @@ pub fn (mut tc TypeChecker) rebuild_scoped_transform_signature_maps() {
 	tc.fn_param_types = param_types.move()
 	tc.fn_variadic = variadic.move()
 	tc.specialized_generic_fns = specialized.move()
+	// The change log is only meaningful while a fork is waiting to be merged.
+	// Its backing array may itself belong to the disposable transform scope, so
+	// do not let a later monomorph pass append through that released storage.
+	tc.transform_signature_names_log = []string{}
+	tc.transform_signature_maps_shared = false
+	tc.transform_signature_maps_changed = false
 }
 
 // begin_sparse_transform_node_caches keeps source-node entries in their dense

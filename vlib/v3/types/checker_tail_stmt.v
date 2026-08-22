@@ -8838,9 +8838,6 @@ fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
 	if tc.c_type(actual) == tc.c_type(expected) && tc.type_compatible(actual, expected) {
 		return true
 	}
-	if fn_param_can_cast_userdata_param(actual, expected) {
-		return true
-	}
 	return fn_return_canonical_type_name(actual) == fn_return_canonical_type_name(expected)
 }
 
@@ -12557,6 +12554,39 @@ fn (tc &TypeChecker) for_body_writes_key_before(parent flat.Node, body_index int
 	return tc.subtree_assigns_key(current, key)
 }
 
+// branch_writes_key_before reports whether an earlier statement in a branch
+// invalidates `key` before `target` is evaluated.
+fn (tc &TypeChecker) branch_writes_key_before(branch_id flat.NodeId, target flat.NodeId, key string) bool {
+	if !tc.valid_node_id(branch_id) || !tc.valid_node_id(target) {
+		return false
+	}
+	branch := tc.a.node(branch_id)
+	if branch.kind != .block {
+		return false
+	}
+	mut direct_child := target
+	for _ in 0 .. 128 {
+		parent_id := tc.direct_parent_id(direct_child)
+		if parent_id == branch_id {
+			break
+		}
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		direct_child = parent_id
+	}
+	for i in 0 .. branch.children_count {
+		child_id := tc.a.child(branch, i)
+		if child_id == direct_child {
+			return false
+		}
+		if tc.subtree_assigns_key(child_id, key) {
+			return true
+		}
+	}
+	return false
+}
+
 // write_key_invalidates_key reports whether assigning `write_key` invalidates the
 // narrowing tracked for `key`. Besides an exact match, reassigning an ancestor
 // (`holder` or `items[0]`) replaces the storage a narrowed descendant
@@ -12734,7 +12764,8 @@ fn (tc &TypeChecker) lexical_if_smartcast_candidate(id flat.NodeId, key string) 
 					tc.extract_else_branch_smartcasts(cond_id)
 				}
 				for binding in bindings {
-					if binding.name == key {
+					branch_id := tc.a.child(parent, branch_index)
+					if binding.name == key && !tc.branch_writes_key_before(branch_id, id, key) {
 						return LexicalSmartcastCandidate{
 							typ:   binding.typ
 							depth: depth

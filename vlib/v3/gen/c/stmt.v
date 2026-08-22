@@ -5710,8 +5710,6 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				g.tc.c_type(v_type)
 			} else if rhs.kind == .struct_init {
 				g.struct_init_decl_c_type(rhs_id, rhs, v_type)
-			} else if semantic_v_type is types.Enum {
-				g.value_c_type(v_type)
 			} else {
 				g.value_c_type(v_type)
 			}

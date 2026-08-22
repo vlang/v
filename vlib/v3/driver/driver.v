@@ -4427,9 +4427,16 @@ fn monomorph_cache_semantic_signature(a &flat.FlatAst, source_files []string) st
 			file_ids << idx
 		}
 	}
-	file_ids.sort_with_compare(fn [a] (left &int, right &int) int {
-		return a.nodes[*left].value.compare(a.nodes[*right].value)
-	})
+	// Keep the self-hosting path capture-free so V can be built with `-no-closures`.
+	for i in 1 .. file_ids.len {
+		value := file_ids[i]
+		mut j := i
+		for j > 0 && a.nodes[file_ids[j - 1]].value > a.nodes[value].value {
+			file_ids[j] = file_ids[j - 1]
+			j--
+		}
+		file_ids[j] = value
+	}
 	for idx in file_ids {
 		hash = c_hash_monomorph_node(hash, a, flat.NodeId(idx), cacheable_strings,
 			declaration_attributes)
@@ -6373,7 +6380,7 @@ fn v3_profile_optional_arg_value(args []string, idx int, command_seen bool) (str
 		return '-', false
 	}
 	if !command_seen && (next in ['run', 'build', 'test', 'doc'] || next.ends_with('.v')
-		|| next.ends_with('.vsh') || os.is_dir(next)
+		|| next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next)
 		|| !v3_has_following_positional_arg(args, idx + 2)) {
 		return '-', false
 	}

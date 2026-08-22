@@ -4847,6 +4847,16 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	if g.inlined_c_structs[name] {
 		return true
 	}
+	if name.starts_with('C.') {
+		if info := g.struct_decl_infos[name] {
+			// Platform binding files describe types supplied by their C/Objective-C
+			// headers. Emitting a fallback body can redefine Objective-C classes such
+			// as NSFont, while V1 deliberately leaves these declarations header-owned.
+			if info.file.ends_with('.c.v') {
+				return true
+			}
+		}
+	}
 	resolved_name := g.struct_cname(name).trim_string_left('struct ').trim_string_left('union ')
 	if resolved_name == 'mach_timebase_info_data_t' {
 		return true

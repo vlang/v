@@ -37,11 +37,11 @@ vlib/v/checker/tests/assign_multi_mismatch.vv:30:15: notice: condition is always
    29 | _ := if true { f() } else { f() }
    30 | _, _ := 0, if true { f() } else { f() }
       |               ~~~~
-vlib/v/checker/tests/assign_multi_mismatch.vv:5:3: error: assignment mismatch: 1 variable 2 values
+vlib/v/checker/tests/assign_multi_mismatch.vv:5:9: error: unexpected `,` in expression, use `;` or a new line to separate statements
     3 | }
     4 | 
     5 | _ := 0, 0
-      |   ~~
+      |         ^
     6 | _ := f()
     7 | _, _ := f()
 vlib/v/checker/tests/assign_multi_mismatch.vv:6:3: error: assignment mismatch: 1 variable but `f()` returns 2 values

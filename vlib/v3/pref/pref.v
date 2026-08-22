@@ -974,10 +974,6 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'no_backtrace' {
 			return p.backend == 'arm64' || name in p.user_defines
 		}
-		'gcboehm', 'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding',
-		'nofloat' {
-			return name in p.user_defines
-		}
 		else {
 			return name in p.user_defines
 		}

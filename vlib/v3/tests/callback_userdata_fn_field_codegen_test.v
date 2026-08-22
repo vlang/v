@@ -55,6 +55,45 @@ fn callback_adapter_names(generated string, prefix string) []string {
 	return names
 }
 
+fn test_autofree_bound_main_method_callback_uses_emitted_symbol() {
+	v3_bin := callback_build_v3()
+	source := callback_write_source('autofree_bound_main_method', 'module main
+
+struct Event {
+	value int
+}
+
+struct App {
+mut:
+	value int
+}
+
+struct Config {
+	on_event fn (&Event)
+}
+
+fn (mut app App) on_event(event &Event) {
+	app.value = event.value
+}
+
+fn main() {
+	mut app := &App{}
+	config := Config{on_event: app.on_event}
+	config.on_event(&Event{value: 73})
+	println(app.value)
+}
+')
+	out := os.join_path(os.temp_dir(), 'v3_callback_bound_method_autofree_${os.getpid()}')
+	compile := os.execute('${v3_bin} -autofree ${source} -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '73'
+	generated := os.read_file(out + '.c') or { panic(err) }
+	assert generated.contains('main__App_on_event('), generated
+	assert !generated.contains('void App__on_event('), generated
+}
+
 fn test_callback_userdata_fn_field_adapters() {
 	v3_bin := callback_build_v3()
 	good_src := callback_write_source('good', 'module main

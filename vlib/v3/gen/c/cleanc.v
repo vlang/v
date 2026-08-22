@@ -2706,7 +2706,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
-	g.collect_gen_info()
+	g.collect_gen_info(effective_no_parallel)
 	g.precompute_local_global_suffix_names()
 	g.preintern_json_encode_strings()
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -2730,18 +2730,22 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		mut parallel_iface_scan := false
 		mut iface_worker := &FlatGen{}
 		mut iface_threads := []thread voidptr{cap: 1}
-		$if !v3_no_parallel ? {
-			parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
+		$if !windows {
+			$if !v3_no_parallel ? {
+				parallel_iface_scan = g.scope_parallel_workers && !effective_no_parallel
+			}
 		}
 		if parallel_iface_scan {
-			$if !v3_no_parallel ? {
-				iface_worker = g.new_parallel_worker(4)
-				iface_worker.interface_boxed_types = map[string]bool{}
-				iface_worker.interface_boxed_types_done = false
-				iface_worker.iface_impls = map[string][]string{}
-				iface_worker.iface_type_ids = map[string]int{}
-				iface_worker.ierror_method_emit_names = map[string]bool{}
-				iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
+			$if !windows {
+				$if !v3_no_parallel ? {
+					iface_worker = g.new_parallel_worker(4)
+					iface_worker.interface_boxed_types = map[string]bool{}
+					iface_worker.interface_boxed_types_done = false
+					iface_worker.iface_impls = map[string][]string{}
+					iface_worker.iface_type_ids = map[string]int{}
+					iface_worker.ierror_method_emit_names = map[string]bool{}
+					iface_threads << spawn interface_impl_scan_thread(voidptr(iface_worker))
+				}
 			}
 		} else {
 			g.collect_interface_impls()
@@ -2767,12 +2771,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.timing_profile('  [ttime]   cg preseeds      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		if parallel_iface_scan {
-			$if !v3_no_parallel ? {
-				_ = iface_threads[0].wait()
-				g.publish_interface_impl_scan(mut iface_worker)
-				g.precompute_required_interface_dispatch_methods()
-				g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
-				cgsw.restart()
+			$if !windows {
+				$if !v3_no_parallel ? {
+					_ = iface_threads[0].wait()
+					g.publish_interface_impl_scan(mut iface_worker)
+					g.precompute_required_interface_dispatch_methods()
+					g.timing_profile('  [ttime]   cg iface wait    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (overlapped)')
+					cgsw.restart()
+				}
 			}
 		}
 		parallel_prep_done := g.run_pre_dispatch_parallel(effective_no_parallel)
@@ -3122,7 +3128,7 @@ fn (mut g FlatGen) gen_global_declaration_block() {
 fn (mut g FlatGen) gen_type_declaration_block() {
 	g.enum_decls()
 	g.type_forward_decls()
-	g.type_alias_decls()
+	g.type_alias_decls(false)
 	// Forward-declare multi-return structs before fn-ptr typedefs, which may name a
 	// multi-return as a by-value return type (full bodies come after struct_decls).
 	g.multi_return_forward_decls()
@@ -3131,6 +3137,7 @@ fn (mut g FlatGen) gen_type_declaration_block() {
 	// array in param or return position) and the function declarations.
 	g.fixed_array_early_typedefs()
 	g.fn_ptr_typedefs()
+	g.type_alias_decls(true)
 	g.struct_decls()
 	g.fixed_array_typedefs()
 	g.multi_return_typedefs()
@@ -3556,11 +3563,11 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 }
 
 @[direct_array_access]
-fn (mut g FlatGen) collect_gen_info() {
+fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	profile := !isnil(g.tc) && g.tc.verbose
 	mut presw := time.new_stopwatch()
 	g.unused_param_seen = &UnusedParamSeen{}
-	g.reserve_collect_gen_info_maps()
+	g.reserve_collect_gen_info_maps(no_parallel)
 	if profile {
 		g.timing_profile('  [ttime]   ci reserve maps  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		presw.restart()
@@ -3590,10 +3597,10 @@ fn (mut g FlatGen) collect_gen_info() {
 	mut preferred_shared_fn_node_indexes := map[string]int{}
 	mut preferred_shared_fn_params := map[string][]bool{}
 	mut fn_signature_registrations := []FnSignatureRegistration{cap: 16_384}
-	defer_fn_signature_registrations := g.scope_parallel_workers && g.skip_generics
+	defer_fn_signature_registrations := !no_parallel && g.scope_parallel_workers && g.skip_generics
 		&& g.incremental_fn_names.len == 0 && par_cgen_prep_enabled()
 	top_level_nodes := g.top_level_nodes()
-	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes)
+	fn_preps := g.collect_gen_info_fn_preps(top_level_nodes, no_parallel)
 	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
 	for top_level_pos, node_idx in top_level_nodes {
 		node := g.a.nodes[node_idx]
@@ -3971,8 +3978,8 @@ mut:
 }
 
 @[direct_array_access]
-fn (mut g FlatGen) reserve_collect_gen_info_maps() {
-	counts := g.scan_collect_gen_info()
+fn (mut g FlatGen) reserve_collect_gen_info_maps(no_parallel bool) {
+	counts := g.scan_collect_gen_info(no_parallel)
 	mut fn_count := counts.fn_count
 	struct_count := counts.struct_count
 	global_count := counts.global_count
@@ -20740,9 +20747,9 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	if qname == 'builtin__error_sentinel' {
 		type_id := g.ierror_type_id_for_pattern('MessageError')
 		object_name := '${qname}__object'
-		message := '(string){"error", 5, 1}'
-		g.writeln('MessageError ${object_name} = (MessageError){.msg = ${message}};')
-		g.writeln('IError ${qname} = (IError){._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
+		message := '{"error", 5, 1}'
+		g.writeln('MessageError ${object_name} = {.msg = ${message}};')
+		g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
 		g.tc.cur_module = old_module
 		return
 	}

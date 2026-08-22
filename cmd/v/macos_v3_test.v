@@ -217,6 +217,47 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 	}
 }
 
+fn test_macos_v3_compiler_bootstrap_is_detected_from_any_cwd() {
+	// Repo-relative and absolute spellings are recognized directly.
+	assert is_macos_v3_compiler_bootstrap('vlib/v3/v3.v')
+	assert is_macos_v3_compiler_bootstrap('/home/user/v/vlib/v3/v3.v')
+	// Non-bootstrap targets stay on the V3 path.
+	assert !is_macos_v3_compiler_bootstrap('main.v')
+	assert !is_macos_v3_compiler_bootstrap('cmd/v')
+	assert !is_macos_v3_compiler_bootstrap('some/other/place/v3.v')
+
+	// A bare `v3.v` invoked from inside vlib/v3 must resolve to the bootstrap so
+	// it builds with the compatibility compiler instead of the embedded V3 driver.
+	// Use an isolated <tmp>/vlib/v3/v3.v so this exercises the real-path
+	// resolution unconditionally, independent of where this test file lives.
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_bootstrap_${os.getpid()}')
+	v3_dir := os.join_path(root, 'vlib', 'v3')
+	other_dir := os.join_path(root, 'elsewhere')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(v3_dir) or { panic(err) }
+	os.mkdir_all(other_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(v3_dir, 'v3.v'), 'module main\n') or { panic(err) }
+	os.write_file(os.join_path(other_dir, 'v3.v'), 'module main\n') or { panic(err) }
+
+	saved := os.getwd()
+	defer {
+		os.chdir(saved) or {}
+	}
+	os.chdir(v3_dir) or { panic(err) }
+	bare := is_macos_v3_compiler_bootstrap('v3.v')
+	dotted := is_macos_v3_compiler_bootstrap('./v3.v')
+	// A bare `v3.v` that is not under vlib/v3 must stay on the V3 path.
+	os.chdir(other_dir) or { panic(err) }
+	non_bootstrap := is_macos_v3_compiler_bootstrap('v3.v')
+	os.chdir(saved) or {}
+	assert bare
+	assert dotted
+	assert !non_bootstrap
+}
+
 fn test_macos_v3_dispatch_allows_the_implicit_gc_default() {
 	$if macos {
 		implicit_gc, _ := pref.parse_args_and_show_errors([], ['', 'main.v'], false)
@@ -1044,7 +1085,8 @@ fn main() {
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
 	mut process := os.new_process(@VEXE)
-	process.set_args(['-ownership', '-d=ownership', '-gc', 'none', '-o', output, source])
+	process.set_args(['-ownership', '-no-parallel', '-d=ownership', '-gc', 'none', '-o', output,
+		source])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()

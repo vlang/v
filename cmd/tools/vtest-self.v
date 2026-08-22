@@ -295,6 +295,7 @@ const skip_on_ubuntu_musl = [
 	'vlib/orm/orm_serial_attribute_test.v',
 	'vlib/orm/orm_option_subselect_test.v',
 	'vlib/orm/orm_func_test.v',
+	'vlib/orm/orm_module_table_prefix/orm_module_table_prefix_test.v',
 	'vlib/orm/orm_where_in_test.v',
 	'vlib/sokol/gfx/gfx_test.v', // sokol_app.h needs GL/gl.h, not installed in the musl Docker image
 	'vlib/v/gen/c/sql_assert_temp_var_test.v', // sqlite header dependency pulls in glibc sys/cdefs.h on musl-gcc

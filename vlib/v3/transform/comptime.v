@@ -331,7 +331,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	// one-letter name from another function, but this template's `T` must not be
 	// expanded until its specialization is cloned.
 	if is_generic_fn_placeholder_name(node.typ) && t.generic_arg_is_unresolved(node.typ) {
-		return arr1(id)
+		return [id]
 	}
 	base_type := if kind == 'methods' {
 		source := t.comptime_for_value_source_type(node.typ) or { node.typ }
@@ -343,7 +343,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	// Its metadata and `$zero(field.typ)` children are needed when the concrete
 	// specialization is cloned later; erasing them here leaves empty child ids.
 	if t.generic_arg_is_unresolved(base_type) {
-		return arr1(id)
+		return [id]
 	}
 	t.ignore_comptime_for_subtree(id)
 	body_id := t.a.child(&node, 0)
@@ -1119,8 +1119,25 @@ fn comptime_method_receiver_matches(receiver string, requested string, normalize
 	return false
 }
 
+fn (t &Transformer) comptime_method_source_type(raw string) string {
+	clean := comptime_method_receiver_type(raw)
+	if source := t.generic_specialized_source_type_name(clean) {
+		return source
+	}
+	if current_args := t.recorded_generic_specialization_args(t.cur_fn_name) {
+		for arg in current_args {
+			base, args, ok := generic_app_parts(comptime_method_receiver_type(arg))
+			if ok && generic_specialized_type_matches_flat_name(clean, base, args) {
+				return arg
+			}
+		}
+	}
+	return raw
+}
+
 fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
-	normalized := t.comptime_normalize_type_alias_chain(base_type)
+	requested := t.comptime_method_source_type(base_type)
+	normalized := t.comptime_normalize_type_alias_chain(requested)
 	mut module_name := ''
 	mut file_name := ''
 	mut methods := []MethodMeta{}
@@ -1142,7 +1159,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		}
 		first := t.a.child_node(&node, 0)
 		if first.kind != .param || first.op != .dot || first.value.len == 0
-			|| !comptime_method_receiver_matches(first.typ, base_type, normalized, module_name, t.cur_module) {
+			|| !comptime_method_receiver_matches(first.typ, requested, normalized, module_name, t.cur_module) {
 			continue
 		}
 		name := node.value.all_after_last('.')
@@ -1151,7 +1168,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		}
 		seen[name] = true
 		generic_args, generic_params := t.comptime_method_receiver_generic_args(first.typ,
-			base_type, normalized)
+			requested, normalized)
 		mut params := []ParamMeta{}
 		for i in 1 .. node.children_count {
 			param := t.a.child_node(&node, i)
@@ -3410,7 +3427,7 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		arg := t.a.child_node(&node, 1)
 		if callee.kind == .ident && callee.value == '__v3_isreftype' && arg.kind == .ident
 			&& arg.value == var_name {
-			return t.make_call('__v3_isreftype', arr1(t.make_sizeof_type(fm.comptime_typ)))
+			return t.make_call('__v3_isreftype', [t.make_sizeof_type(fm.comptime_typ)])
 		}
 	}
 	if node.kind == .ident && node.value == var_name {

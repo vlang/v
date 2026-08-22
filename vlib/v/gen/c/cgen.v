@@ -13628,8 +13628,16 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 		.sum_type {
 			return if decode_sumtype { g.type_default_sumtype(typ, sym) } else { '{0}' }
 		}
-		.interface, .multi_return, .thread {
+		.interface, .multi_return {
 			return '{0}'
+		}
+		.thread {
+			// Windows uses a struct for typed thread handles, while untyped Windows
+			// handles and POSIX pthread_t values are scalar types.
+			if g.pref.os == .windows && g.styp(typ) != '__v_thread' {
+				return '{0}'
+			}
+			return '0'
 		}
 		.alias {
 			return g.type_default((sym.info as ast.Alias).parent_type)

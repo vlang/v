@@ -19,6 +19,27 @@ fn macos_v3_non_compilation_command(command string) bool {
 		'interpret', 'get', 'translate']
 }
 
+// is_macos_v3_compiler_bootstrap reports whether `normalized_path` targets the
+// `vlib/v3/v3.v` compiler bootstrap, which must build with the compatibility
+// compiler rather than the embedded V3 driver. It matches the repo-relative path
+// and any path ending in it, and also resolves a bare `v3.v` (for example when
+// invoked from inside `vlib/v3`) through its real path, so the bootstrap is
+// recognized regardless of the working directory. Both dispatch gates rely on
+// it, so keep the detection in one place to stop them drifting.
+@[markused]
+fn is_macos_v3_compiler_bootstrap(normalized_path string) bool {
+	if normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v') {
+		return true
+	}
+	// Only a file literally named `v3.v` can be the bootstrap; skip the real-path
+	// resolution (a filesystem lookup) for every other compilation target.
+	if os.base(normalized_path) != 'v3.v' {
+		return false
+	}
+	real_path := os.real_path(normalized_path).replace('\\', '/').trim_right('/')
+	return real_path == 'vlib/v3/v3.v' || real_path.ends_with('/vlib/v3/v3.v')
+}
+
 // macos_v3_force_requested reports whether `-new-compiler` should hand this
 // invocation to the embedded V3 compiler. It gates on `-old-compiler`
 // precedence, options/modes V3 cannot honor yet, and whether the command is an
@@ -48,7 +69,7 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
 	compiler_bootstrap := normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
 		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
-		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v')
+		|| is_macos_v3_compiler_bootstrap(normalized_path)
 	if compiler_bootstrap && !macos_v3_fastc_requested(prefs) {
 		return false
 	}

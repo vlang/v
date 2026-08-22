@@ -39,21 +39,21 @@ mut:
 	decls []ComptimeConstPrepassDecl
 }
 
-$if !windows {
-	// ParseChunkArgs is the payload handed to each worker thread.
-	struct ParseChunkArgs {
-		worker        voidptr // &Parser
-		paths_ptr     voidptr // &[]string
-		starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
-		prepass_chunk voidptr // &ComptimeConstPrepassChunk
-		start         int
-		end           int
-		chunk_bytes   int
-		scope_enabled bool
-	mut:
-		scope voidptr
-	}
+// ParseChunkArgs is the payload handed to each worker thread.
+struct ParseChunkArgs {
+	worker        voidptr // &Parser
+	paths_ptr     voidptr // &[]string
+	starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
+	prepass_chunk voidptr // &ComptimeConstPrepassChunk
+	start         int
+	end           int
+	chunk_bytes   int
+	scope_enabled bool
+mut:
+	scope voidptr
+}
 
+$if !windows {
 	// parse_chunk_thread parses one worker's contiguous range of files into the
 	// worker's private FlatAst, recording each file's worker-local first node id
 	// into its own preallocated slot of the shared starts array.
@@ -257,9 +257,17 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		for ci in 1 .. n_chunks {
 			order << ci
 		}
-		order.sort_with_compare(fn [worker_chunk_bytes] (a &int, b &int) int {
-			return worker_chunk_bytes[*b - 1] - worker_chunk_bytes[*a - 1]
-		})
+		// Keep this capture-free so the compiler can self-host with `-no-closures`.
+		for i in 1 .. order.len {
+			current := order[i]
+			current_bytes := worker_chunk_bytes[current - 1]
+			mut j := i
+			for j > 0 && worker_chunk_bytes[order[j - 1] - 1] < current_bytes {
+				order[j] = order[j - 1]
+				j--
+			}
+			order[j] = current
+		}
 		mut tasks := []workers.Task{cap: n_chunks}
 		for ci in order {
 			helper_idx := ci - 1

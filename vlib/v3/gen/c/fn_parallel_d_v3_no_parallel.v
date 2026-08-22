@@ -9,7 +9,7 @@ fn par_cgen_prep_enabled() bool {
 	return false
 }
 
-fn (mut g FlatGen) scan_collect_gen_info() CollectGenInfoScanCounts {
+fn (mut g FlatGen) scan_collect_gen_info(_ bool) CollectGenInfoScanCounts {
 	return g.scan_collect_gen_info_serial()
 }
 
@@ -35,7 +35,7 @@ fn (mut g FlatGen) prepare_shared_sum_and_fixed_array_ret_wrappers(_ bool) bool 
 	return false
 }
 
-fn (mut g FlatGen) collect_gen_info_fn_preps(_ []int) []CollectGenFnPrep {
+fn (mut g FlatGen) collect_gen_info_fn_preps(_ []int, _ bool) []CollectGenFnPrep {
 	return []CollectGenFnPrep{}
 }
 
