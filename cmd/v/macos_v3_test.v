@@ -1900,6 +1900,75 @@ fn main() {
 	}
 }
 
+fn test_macos_v3_inline_asm_trace_stays_off_generated_c_stdout() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_inline_asm_stdout_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'gen.v')
+		asm_body := $if arm64 {
+			'asm arm64 {
+		mov output, 1
+		; +r (output)
+	}'
+		} $else {
+			'asm amd64 {
+		mov eax, 1
+		mov output, eax
+		; =r (output)
+		; ; eax
+	}'
+		}
+		os.write_file(source, 'fn main() {
+	mut output := 0
+	${asm_body}
+	assert output == 1
+}
+')!
+		mut environment := os.environ()
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
+		environment['V3_CACHE_TRACE'] = '1'
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		stdout_path := os.join_path(root, 'stdout.c')
+		stderr_path := os.join_path(root, 'stderr.txt')
+		environment['V_TEST_STDOUT'] = stdout_path
+		environment['V_TEST_STDERR'] = stderr_path
+		mut process := os.new_process('/bin/sh')
+		process.set_args([
+			'-c',
+			'exec "\$@" > "\$V_TEST_STDOUT" 2> "\$V_TEST_STDERR"',
+			'sh',
+			@VEXE,
+			'-gc',
+			'none',
+			'-o',
+			'-',
+			source,
+		])
+		process.set_environment(environment)
+		process.run()
+		process.wait()
+		exit_code := process.code
+		process.close()
+		stdout := os.read_file(stdout_path) or { '' }
+		stderr := os.read_file(stderr_path) or { '' }
+		assert exit_code == 0, stdout + stderr
+		assert stderr.contains('compatibility compiler for inline assembly'), stderr
+		assert stderr.contains('the experimental V3 compiler could not build this program'), stderr
+		assert stdout.contains('typedef') || stdout.contains('#define'), 'stdout is not generated C'
+		for leaked in ['compatibility compiler for inline assembly',
+			'the experimental V3 compiler could not build this program'] {
+			assert !stdout.contains(leaked), 'fallback trace leaked onto `-o -` stdout: `${leaked}`'
+		}
+	}
+}
+
 fn clear_macos_v3_report_env() {
 	for suffix in ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE'] {
 		os.unsetenv('V_MACOS_V3_REPORT_${suffix}')
