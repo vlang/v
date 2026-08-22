@@ -107,7 +107,7 @@ fn main() {
 		early_return_source])
 	assert early_return_compile.exit_code == 0, early_return_compile.output
 	early_return_c := os.read_file(early_return_binary + '.c') or { panic(err) }
-	assert early_return_c.contains('if (true) {\n\t\treturn 0;\n\t}')
+	assert early_return_c.contains('if (((bool)true)) {\n\t\treturn 0;\n\t}')
 	early_return_run := cmdexec.run(early_return_binary, [])
 	assert early_return_run.exit_code == 0, early_return_run.output
 
@@ -160,6 +160,45 @@ fn main() {
 	float_run := cmdexec.run(float_binary, [])
 	assert float_run.exit_code == 0, float_run.output
 	assert float_run.output.trim_space() == '2.0\n12.3456789'
+
+	bool_source := os.join_path(root, 'bool_results.v')
+	os.write_file(bool_source, 'module main
+
+fn main() {
+	println(1 == 1)
+	println(!false)
+	println(true)
+}
+') or {
+		panic(err)
+	}
+	bool_binary := os.join_path(root, 'bool_results')
+	bool_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', bool_binary, bool_source])
+	assert bool_compile.exit_code == 0, bool_compile.output
+	bool_run := cmdexec.run(bool_binary, [])
+	assert bool_run.exit_code == 0, bool_run.output
+	assert bool_run.output.trim_space() == 'true\ntrue\ntrue'
+
+	narrow_source := os.join_path(root, 'narrow_arithmetic.v')
+	os.write_file(narrow_source, 'module main
+
+fn show(a u8, b u8) {
+	println(a + b)
+}
+
+fn main() {
+	show(255, 1)
+}
+') or {
+		panic(err)
+	}
+	narrow_binary := os.join_path(root, 'narrow_arithmetic')
+	narrow_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', narrow_binary,
+		narrow_source])
+	assert narrow_compile.exit_code == 0, narrow_compile.output
+	narrow_run := cmdexec.run(narrow_binary, [])
+	assert narrow_run.exit_code == 0, narrow_run.output
+	assert narrow_run.output.trim_space() == '0'
 
 	mutable_interface_source := os.join_path(os.dir(@FILE), 'mutable_interface_array_value_test.v')
 	mutable_interface_binary := os.join_path(root, 'mutable_interface_array_value_test')

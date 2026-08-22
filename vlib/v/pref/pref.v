@@ -457,6 +457,8 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 	mut no_skip_unused := false
 	mut command, mut command_idx := '', 0
 	mut build_vsh_source := false
+	mut new_compiler_set_by_flag := false
+	mut selected_backend := ''
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
 		if pass_external_command_args && command_idx < i && command in known_external_commands {
@@ -563,6 +565,7 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 			}
 			'-new-compiler' {
 				res.new_compiler = true
+				new_compiler_set_by_flag = true
 			}
 			'-checker-fixture', '-macos-v3-compat-c99' {
 				// Passed through to the embedded V3 diagnostic fixture runner.
@@ -1129,14 +1132,10 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 			}
 			'-b', '-backend' {
 				sbackend := cmdline.option(args[i..], arg, 'c')
+				selected_backend = sbackend
 				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or {
 					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, fastc, js, js_node, js_browser, js_freestanding, wasm')
-				}
-				if sbackend == 'fastc' {
-					// FastC belongs to the embedded V3 driver. Keep V1's backend enum on C
-					// solely so cmd/v can finish parsing and forward the original arguments.
-					res.new_compiler = true
 				}
 				if b == .wasm {
 					res.compile_defines << 'wasm'
@@ -1391,6 +1390,11 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 	}
 	res.build_options = m.keys()
 	// eprintln('>> res.build_options: ${res.build_options}')
+	// FastC belongs to the embedded V3 driver, but both `fastc` and `c` use
+	// Backend.c while cmd/v parses the command line. Only the final backend
+	// option should select V3 implicitly; an explicit -new-compiler remains an
+	// independent request.
+	res.new_compiler = new_compiler_set_by_flag || selected_backend == 'fastc'
 	res.fill_with_defaults()
 	if res.generate_c_project != '' {
 		// The generated C project should not depend on cached V module objects.

@@ -10,10 +10,10 @@ fn test_generate_and_compile_without_flat_ast() {
 fn main() {
 	mut total := 0
 	label := "total="
-	for i := 0; i < 3; i++ {
+	for i in 0 .. 3 {
 		total += twice(i)
 	}
-	if total == 6 {
+	if true {
 		print(label)
 		println(total)
 	} else {
@@ -29,7 +29,8 @@ fn twice(value int) int {
 	c_source := generate(source, 'fastc_test.v', prefs) or { panic(err) }
 	assert c_source.contains('__typeof__((0)) total = (0);')
 	assert c_source.contains('string label = ("total=");')
-	assert c_source.contains('for (__typeof__((0)) i = (0); i<3; i++) {')
+	assert c_source.contains('__v_fastc_range_start_0 = (0);')
+	assert c_source.contains('__v_fastc_range_end_1 = (3);')
 	assert c_source.contains('int twice(int value);')
 	assert !c_source.contains('v3.flat')
 
@@ -76,7 +77,7 @@ fn main() {
 ',
 		'bare_return.v', prefs) or { panic(err) }
 	assert c_source.contains('void stop(void) {\n\treturn;\n}')
-	assert c_source.contains('if (true) {\n\t\treturn 0;\n\t}')
+	assert c_source.contains('if (((bool)true)) {\n\t\treturn 0;\n\t}')
 }
 
 fn test_integer_range_caches_bounds() {
@@ -143,4 +144,25 @@ fn main() {
 		''
 	}
 	assert assert_failed
+}
+
+fn test_type_sensitive_expressions_request_checked_lane() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { println(1 == 1) }\n',
+		'module main\nfn main() { println(!false) }\n',
+		'module main\nfn show(a u8, b u8) { println(a + b) }\nfn main() { show(255, 1) }\n',
+	] {
+		mut failed := false
+		_ := generate(source, 'typed_expression.v', prefs) or {
+			failed = true
+			''
+		}
+		assert failed
+	}
+
+	bool_c := generate('module main\nfn main() { println(true) }\n', 'bool_literal.v', prefs) or {
+		panic(err)
+	}
+	assert bool_c.contains('println(((bool)true));')
 }

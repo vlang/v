@@ -171,6 +171,13 @@ fn (mut g DirectGen) parse_function() ! {
 	if g.tok != .lcbr {
 		return_type = g.parse_type()!
 	}
+	if fastc_has_narrow_integer_type(return_type)
+		|| params.any(fastc_parameter_has_narrow_integer_type) {
+		// C promotes narrow operands before arithmetic, while V retains the
+		// narrow result type. The checked lane has the type information needed
+		// to preserve wrapping semantics.
+		return g.unsupported('narrow integer function types')
+	}
 	g.expect(.lcbr)!
 	is_main := name == 'main' && params.len == 0
 	c_return_type := if is_main { 'int' } else { return_type }
@@ -260,6 +267,15 @@ fn (mut g DirectGen) parse_type() !string {
 		else { raw_type }
 	}
 	return base + '*'.repeat(pointers)
+}
+
+fn fastc_has_narrow_integer_type(type_name string) bool {
+	return type_name.trim_right('*') in ['byte', 'char', 'i8', 'i16', 'u8', 'u16']
+}
+
+fn fastc_parameter_has_narrow_integer_type(parameter string) bool {
+	fields := parameter.fields()
+	return fields.len > 0 && fastc_has_narrow_integer_type(fields[0])
 }
 
 fn (mut g DirectGen) parse_block_body() ! {
@@ -496,6 +512,12 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 		if paren_depth == 0 && bracket_depth == 0 && g.tok in stops {
 			break
 		}
+		if g.tok in [.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .not] {
+			// C represents comparison and logical results as int. Without V type
+			// information, accepting them here would make generic printing and
+			// inferred locals observe 0/1 instead of false/true.
+			return g.unsupported('comparison or logical expressions')
+		}
 		if g.tok in [.lcbr, .rcbr, .str_dollar, .key_match, .key_or, .key_as, .key_is, .not_is,
 			.key_in, .not_in, .arrow, .power, .right_shift_unsigned] {
 			return g.unsupported('expression token `${g.token_source()}`')
@@ -540,8 +562,10 @@ fn (g &DirectGen) expression_token() !string {
 		.number { fastc_c_number(g.lit) }
 		.string { fastc_c_string(g.lit)! }
 		.char { fastc_c_char(g.lit)! }
-		.key_true { 'true' }
-		.key_false { 'false' }
+		// stdbool's true/false macros have C type int. Cast them so _Generic
+		// dispatch preserves V's bool type when no operator requires promotion.
+		.key_true { '((bool)true)' }
+		.key_false { '((bool)false)' }
 		.key_nil { 'NULL' }
 		.key_sizeof { 'sizeof' }
 		.key_likely, .key_unlikely { '' }
