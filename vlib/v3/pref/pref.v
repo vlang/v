@@ -959,10 +959,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'test' {
 			return p.is_test
 		}
-		'native' {
-			return p.backend == 'arm64'
-		}
-		'builtin_write_buf_to_fd_should_use_c_write' {
+		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
 			return p.backend == 'arm64'
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
@@ -973,10 +970,6 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		}
 		'no_backtrace' {
 			return p.backend == 'arm64' || name in p.user_defines
-		}
-		'gcboehm', 'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding',
-		'nofloat' {
-			return name in p.user_defines
 		}
 		else {
 			return name in p.user_defines

@@ -569,11 +569,12 @@ struct ObjectiveCppSourceRequest {
 }
 
 struct CInlineHeader {
-	text                 string
-	preserved_directives []string
-	preserved_c_fns      []string
-	preserved_c_structs  []string
-	preserved_headers    []CPreservedHeader
+	text                      string
+	preserved_directives      []string
+	preserved_c_fns           []string
+	preserved_c_structs       []string
+	preserved_c_typedef_names []string
+	preserved_headers         []CPreservedHeader
 }
 
 struct CPreservedHeader {
@@ -4177,6 +4178,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if include_arg.len == 0 {
 			return true
 		}
+		g.collect_preserved_include_metadata(include_arg, source_file)
 		directive := '#include ${include_arg}'
 		if node.value == 'preinclude' {
 			if directive !in g.preinclude_directives {
@@ -4266,6 +4268,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if trimmed_space(include_arg) == '<objc/message.h>' {
 			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 			return true
 		}
@@ -4302,6 +4305,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			g.collect_inlined_c_declared_fns(header_text)
 			g.collect_preserved_c_fns(header.preserved_c_fns)
 			g.collect_preserved_c_structs(header.preserved_c_structs)
+			g.collect_preserved_c_typedef_names(header.preserved_c_typedef_names)
 			for preserved_header in header.preserved_headers {
 				g.collect_preserved_header_tree(preserved_header.include_arg,
 					preserved_header.source_file, include_dirs)
@@ -4332,6 +4336,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>']) {
 			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 		}
 		return true
@@ -4419,12 +4424,26 @@ fn (mut g FlatGen) emit_postinclude_directives() {
 	}
 }
 
+fn (mut g FlatGen) collect_preserved_include_metadata(include_arg string, source_file string) {
+	g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+	g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+	g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
+	include_dirs := c_flag_include_dirs(g.c_flags)
+	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		if os.is_file(path) {
+			g.collect_preserved_header_file(path, include_dirs)
+			return
+		}
+	}
+}
+
 fn (mut g FlatGen) collect_preserved_header_tree(include_arg string, source_file string, include_dirs []string) bool {
 	// Some system APIs are declared through macros that the lightweight header
 	// declaration scanner cannot expand (for example OpenSSL's X509_free).
 	// Record the known declarations even when the resolved tree is scanned below.
 	g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 	g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+	g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
 		mut tree_size := CHeaderTreeSize{}
 		if os.is_file(path)
@@ -4494,6 +4513,7 @@ fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []str
 		if !found {
 			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 		}
 	}
 }
@@ -4515,11 +4535,12 @@ fn c_inline_header_text(include_arg string, vroot string, source_file string, in
 			seen, mut inlining, mut output)
 		{
 			return CInlineHeader{
-				text:                 output.str()
-				preserved_directives: header.preserved_directives
-				preserved_c_fns:      header.preserved_c_fns
-				preserved_c_structs:  header.preserved_c_structs
-				preserved_headers:    header.preserved_headers
+				text:                      output.str()
+				preserved_directives:      header.preserved_directives
+				preserved_c_fns:           header.preserved_c_fns
+				preserved_c_structs:       header.preserved_c_structs
+				preserved_c_typedef_names: header.preserved_c_typedef_names
+				preserved_headers:         header.preserved_headers
 			}
 		}
 		unsafe { output.free() }
@@ -4554,6 +4575,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 	mut preserved_directives := []string{}
 	mut preserved_c_fns := []string{}
 	mut preserved_c_structs := []string{}
+	mut preserved_c_typedef_names := []string{}
 	mut preserved_headers := []CPreservedHeader{}
 	mut include_context := []string{}
 	mut include_prefix := []string{}
@@ -4595,6 +4617,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 						}
 						preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
 						preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
+						preserved_c_typedef_names << c_preserved_system_include_typedef_names(include_arg)
 						inlined = true
 						break
 					}
@@ -4613,6 +4636,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 					}
 					preserved_c_fns << nested.preserved_c_fns
 					preserved_c_structs << nested.preserved_c_structs
+					preserved_c_typedef_names << nested.preserved_c_typedef_names
 					preserved_headers << nested.preserved_headers
 					inlined = true
 					break
@@ -4623,11 +4647,13 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 				output.writeln('#include ${include_arg}')
 				preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
 				preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
+				preserved_c_typedef_names << c_preserved_system_include_typedef_names(include_arg)
 			} else if !inlined && c_should_preserve_uninlined_include(include_arg) {
 				preserved_directives << c_preserved_nested_include_directive(include_arg,
 					include_context, include_prefix)
 				preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
 				preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
+				preserved_c_typedef_names << c_preserved_system_include_typedef_names(include_arg)
 			}
 			continue
 		}
@@ -4636,10 +4662,11 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 		c_update_nested_include_prefix(clean, line, mut include_prefix)
 	}
 	return CInlineHeader{
-		preserved_directives: preserved_directives
-		preserved_c_fns:      preserved_c_fns
-		preserved_c_structs:  preserved_c_structs
-		preserved_headers:    preserved_headers
+		preserved_directives:      preserved_directives
+		preserved_c_fns:           preserved_c_fns
+		preserved_c_structs:       preserved_c_structs
+		preserved_c_typedef_names: preserved_c_typedef_names
+		preserved_headers:         preserved_headers
 	}
 }
 
@@ -5134,6 +5161,20 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 				&& condition_active[depth]
 		}
 		if !possibly_active {
+			// A macro introduced only by a known-inactive branch is not available to
+			// later guards. Remember that fact so private platform selectors such as
+			// sokol's `_SAPP_MACOS` do not make Linux translation units look like
+			// Objective-C. Command-line definitions were seeded above and retain
+			// precedence here.
+			if name == 'define' {
+				parts := c_directive_arg(clean).fields()
+				if parts.len > 0 {
+					macro_name := parts[0].all_before('(')
+					if macro_name.len > 0 && macro_name !in defined && macro_name !in uncertain {
+						undefined[macro_name] = true
+					}
+				}
+			}
 			possible_text.writeln('')
 			definite_text.writeln('')
 			continue
@@ -6647,8 +6688,105 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 	if include_arg == '<dlfcn.h>' {
 		return ['dlclose', 'dlerror', 'dlopen', 'dlsym']
 	}
+	if include_arg == '<X11/Xlib.h>' {
+		return [
+			'ConnectionNumber',
+			'XChangeProperty',
+			'XCheckTypedWindowEvent',
+			'XCloseDisplay',
+			'XConvertSelection',
+			'XCreateColormap',
+			'XCreateFontCursor',
+			'XCreateWindow',
+			'XDefaultDepth',
+			'XDefaultRootWindow',
+			'XDefaultScreen',
+			'XDefaultVisual',
+			'XDefineCursor',
+			'XDestroyWindow',
+			'XDisplayHeight',
+			'XDisplayWidth',
+			'XDisplayWidthMM',
+			'XFilterEvent',
+			'XFlush',
+			'XFree',
+			'XFreeColormap',
+			'XFreeCursor',
+			'XFreeEventData',
+			'XGetEventData',
+			'XGetKeyboardMapping',
+			'XGetSelectionOwner',
+			'XGetWindowAttributes',
+			'XGetWindowProperty',
+			'XGrabPointer',
+			'XInitThreads',
+			'XInternAtom',
+			'XMapWindow',
+			'XNextEvent',
+			'XOpenDisplay',
+			'XPending',
+			'XQueryExtension',
+			'XRaiseWindow',
+			'XResourceManagerString',
+			'XSendEvent',
+			'XSetErrorHandler',
+			'XSetSelectionOwner',
+			'XSetWMProtocols',
+			'XSync',
+			'XUndefineCursor',
+			'XUngrabPointer',
+			'XUnmapWindow',
+			'XWarpPointer',
+		]
+	}
+	if include_arg == '<X11/Xutil.h>' {
+		return [
+			'XAllocSizeHints',
+			'XGetVisualInfo',
+			'XLookupString',
+			'XSetWMNormalHints',
+			'Xutf8SetWMProperties',
+		]
+	}
+	if include_arg == '<X11/Xresource.h>' {
+		return ['XrmDestroyDatabase', 'XrmGetResource', 'XrmGetStringDatabase', 'XrmInitialize']
+	}
+	if include_arg == '<X11/XKBlib.h>' {
+		return [
+			'XkbFreeKeyboard',
+			'XkbFreeNames',
+			'XkbGetMap',
+			'XkbGetNames',
+			'XkbSetDetectableAutoRepeat',
+		]
+	}
+	if include_arg == '<X11/extensions/XInput2.h>' {
+		return ['XIQueryVersion', 'XISelectEvents']
+	}
+	if include_arg == '<X11/Xcursor/Xcursor.h>' {
+		return [
+			'XcursorGetDefaultSize',
+			'XcursorGetTheme',
+			'XcursorImageCreate',
+			'XcursorImageDestroy',
+			'XcursorImageLoadCursor',
+			'XcursorLibraryLoadImage',
+		]
+	}
 	if include_arg == '<sys/ptrace.h>' {
 		return ['ptrace']
+	}
+	if include_arg == '<sys/socket.h>' {
+		return ['accept4', 'bind', 'listen', 'recv', 'send', 'setsockopt', 'socket']
+	}
+	if include_arg == '<sys/sendfile.h>' {
+		return ['sendfile']
+	}
+	if include_arg == '<pthread.h>' {
+		return ['pthread_sigmask']
+	}
+	if include_arg == '<signal.h>' {
+		return ['sigtimedwait']
 	}
 	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
 		return [
@@ -6675,6 +6813,47 @@ fn c_preserved_system_include_struct_names(include_arg string) []string {
 	if include_arg == '<poll.h>' {
 		return ['pollfd']
 	}
+	if include_arg == '<X11/Xlib.h>' {
+		return [
+			'Display',
+			'Screen',
+			'Visual',
+			'XButtonEvent',
+			'XClientMessageData',
+			'XClientMessageEvent',
+			'XCrossingEvent',
+			'XDestroyWindowEvent',
+			'XEvent',
+			'XFocusChangeEvent',
+			'XGenericEventCookie',
+			'XKeyEvent',
+			'XMotionEvent',
+			'XPropertyEvent',
+			'XSelectionClearEvent',
+			'XSelectionEvent',
+			'XSelectionRequestEvent',
+			'XSetWindowAttributes',
+			'XWindowAttributes',
+		]
+	}
+	if include_arg == '<X11/Xutil.h>' {
+		return ['XSizeHints', 'XVisualInfo']
+	}
+	if include_arg == '<X11/Xresource.h>' {
+		return ['XrmValue']
+	}
+	if include_arg == '<X11/XKBlib.h>' {
+		return ['XkbDescRec', 'XkbKeyAliasRec', 'XkbKeyNameRec', 'XkbNamesRec']
+	}
+	if include_arg == '<X11/extensions/XInput2.h>' {
+		return ['XIEventMask', 'XIRawEvent', 'XIValuatorState']
+	}
+	if include_arg == '<X11/Xcursor/Xcursor.h>' {
+		return ['XcursorImage']
+	}
+	if include_arg == '<X11/extensions/Xrandr.h>' {
+		return ['XRRCrtcInfo', 'XRROutputInfo', 'XRRScreenResources']
+	}
 	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
 		return [
 			'host_t',
@@ -6684,6 +6863,13 @@ fn c_preserved_system_include_struct_names(include_arg string) []string {
 			'vm_size_t',
 			'vm_statistics64_data_t',
 		]
+	}
+	return []string{}
+}
+
+fn c_preserved_system_include_typedef_names(include_arg string) []string {
+	if include_arg.starts_with('<X11/') {
+		return c_preserved_system_include_struct_names(include_arg)
 	}
 	return []string{}
 }
@@ -7406,6 +7592,12 @@ fn (mut g FlatGen) collect_preserved_c_fns(names []string) {
 fn (mut g FlatGen) collect_preserved_c_structs(names []string) {
 	for name in names {
 		g.inlined_c_structs[name] = true
+	}
+}
+
+fn (mut g FlatGen) collect_preserved_c_typedef_names(names []string) {
+	for name in names {
+		g.inlined_c_typedef_names[name] = true
 	}
 }
 

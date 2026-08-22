@@ -368,6 +368,13 @@ fn test_objective_c_header_detection() {
 	assert !c_header_text_needs_objective_c_for_target('#if !defined(FEATURE)\n@interface Disabled\n@end\n#endif\n', [
 		'-DFEATURE(x)=x',
 	], false, pref.host_target())
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	private_platform_header := '#if defined(__APPLE__)\n#define _LIB_MACOS 1\n#elif defined(__linux__)\n#define _LIB_LINUX 1\n#endif\n#if defined(_LIB_MACOS)\n@interface MacOnly\n@end\n#endif\n'
+	assert !c_header_text_needs_objective_c_for_target(private_platform_header, []string{}, false,
+		linux)
+	assert c_header_text_needs_objective_c_for_target(private_platform_header, [
+		'-D_LIB_MACOS=1',
+	], false, linux)
 	assert c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\n#else\n@interface Enabled\n@end\n#endif\n')
 	assert c_header_text_needs_objective_c('#ifdef COMPILER_MACRO\n@interface PossiblyEnabled\n@end\n#endif\n')
 	imports :=
@@ -376,6 +383,43 @@ fn test_objective_c_header_detection() {
 	guarded :=
 		c_header_objective_c_framework_imports('#ifdef __APPLE__\n#include <Cocoa/Cocoa.h>\n#else\n#include <X11/Xlib.h>\n#endif\n')
 	assert guarded == '#ifdef __APPLE__\n#include <Cocoa/Cocoa.h>\n#endif'
+}
+
+fn test_sokol_header_does_not_select_objective_c_on_linux() {
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	header := os.join_path(@VEXEROOT, 'thirdparty', 'sokol', 'sokol_app.h')
+	assert !cache_native_input_path_needs_objective_c(header, [
+		'-DSOKOL_GLCORE',
+		'-USOKOL_D3D11',
+		'-USOKOL_GLES3',
+		'-USOKOL_METAL',
+		'-USOKOL_VULKAN',
+		'-USOKOL_WGPU',
+		'-DSOKOL_NO_ENTRY',
+	], false, linux)
+}
+
+fn test_x11_system_headers_preserve_external_structs() {
+	assert 'XGetWindowAttributes' in c_preserved_system_include_declared_fns('<X11/Xlib.h>')
+	assert 'XSetWMNormalHints' in c_preserved_system_include_declared_fns('<X11/Xutil.h>')
+	assert 'XrmGetResource' in c_preserved_system_include_declared_fns('<X11/Xresource.h>')
+	assert 'XkbGetMap' in c_preserved_system_include_declared_fns('<X11/XKBlib.h>')
+	assert 'XISelectEvents' in c_preserved_system_include_declared_fns('<X11/extensions/XInput2.h>')
+	assert 'XcursorImageCreate' in c_preserved_system_include_declared_fns('<X11/Xcursor/Xcursor.h>')
+	assert 'accept4' in c_preserved_system_include_declared_fns('<sys/socket.h>')
+	assert 'sendfile' in c_preserved_system_include_declared_fns('<sys/sendfile.h>')
+	assert 'pthread_sigmask' in c_preserved_system_include_declared_fns('<pthread.h>')
+	assert 'sigtimedwait' in c_preserved_system_include_declared_fns('<signal.h>')
+	assert 'Display' in c_preserved_system_include_struct_names('<X11/Xlib.h>')
+	assert 'Display' in c_preserved_system_include_typedef_names('<X11/Xlib.h>')
+	assert 'XEvent' in c_preserved_system_include_struct_names('<X11/Xlib.h>')
+	assert 'XVisualInfo' in c_preserved_system_include_struct_names('<X11/Xutil.h>')
+	assert 'XrmValue' in c_preserved_system_include_struct_names('<X11/Xresource.h>')
+	assert 'XkbDescRec' in c_preserved_system_include_struct_names('<X11/XKBlib.h>')
+	assert 'XIEventMask' in c_preserved_system_include_struct_names('<X11/extensions/XInput2.h>')
+	assert 'XcursorImage' in c_preserved_system_include_struct_names('<X11/Xcursor/Xcursor.h>')
+	assert 'XRRCrtcInfo' in c_preserved_system_include_struct_names('<X11/extensions/Xrandr.h>')
+	assert 'XRRCrtcInfo' in c_preserved_system_include_typedef_names('<X11/extensions/Xrandr.h>')
 }
 
 fn test_large_transitive_header_tree_is_preserved() {

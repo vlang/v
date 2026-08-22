@@ -2284,6 +2284,12 @@ fn should_scope_prealloc_cgen() bool {
 }
 
 fn should_parallel_monomorphize() bool {
+	// Compiler executables built by TinyCC can corrupt their heap while several
+	// specialization workers merge their results. Keep that build serial until
+	// the parallel merge is safe under TinyCC as well as clang and GCC.
+	$if tinyc {
+		return false
+	}
 	return os.getenv('V3_DISABLE_PARALLEL_MONOMORPHIZE') != '1'
 }
 

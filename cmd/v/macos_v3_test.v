@@ -211,7 +211,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert !is_macos_v3_relevant_command('build-module', prefs)
 		prefs.is_script = true
 		prefs.path = 'script.vsh'
-		assert is_macos_v3_relevant_command('script.vsh', prefs)
+		prefs.is_vsh = true
+		assert !is_macos_v3_relevant_command('script.vsh', prefs)
+		prefs.is_vsh = false
 		assert !is_macos_v3_relevant_command('crun', prefs)
 		for path in ['foo.c.v', 'foo.js.v', 'foo.wasm.v', '.v'] {
 			prefs.path = path

@@ -114,12 +114,7 @@ $if !windows {
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
 		mut csw := time.new_stopwatch()
 		if w.scope_parallel_workers && (!a.is_master || w.retain_worker_results) {
-			max_batches := if a.is_master {
-				scoped_transform_master_batches
-			} else {
-				scoped_transform_worker_batches
-			}
-			w.transform_scoped_helper_batches(*items, max_batches)
+			w.transform_scoped_helper_batches(*items, scoped_transform_worker_batches)
 		} else {
 			w.transform_pure_items_serial(*items)
 		}
