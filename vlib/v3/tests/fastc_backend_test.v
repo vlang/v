@@ -36,7 +36,7 @@ fn main() {
 		valid_source])
 	assert valid_compile.exit_code == 0, valid_compile.output
 	assert valid_compile.output.contains('fastc')
-	assert !valid_compile.output.contains('  parse '), valid_compile.output
+	assert valid_compile.output.contains('  check '), valid_compile.output
 	retained_c := os.read_file(valid_binary + '.c') or { panic(err) }
 	assert retained_c.contains('__typeof__((twice(21))) value = (twice(21));')
 	assert !retained_c.contains('builtin__builtin_init')
@@ -59,6 +59,57 @@ fn main() {
 	assert invalid_compile.exit_code != 0
 	assert invalid_compile.output.contains('undefined variable: `missing_name`'), invalid_compile.output
 	assert !invalid_compile.output.to_lower().contains('tcc:'), invalid_compile.output
+
+	immutable_source := os.join_path(root, 'immutable.v')
+	os.write_file(immutable_source, 'module main
+
+fn main() {
+	value := 1
+	value = 2
+}
+') or {
+		panic(err)
+	}
+	immutable_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
+		os.join_path(root, 'immutable'), immutable_source])
+	assert immutable_compile.exit_code != 0
+	assert immutable_compile.output.contains('immutable'), immutable_compile.output
+	assert !immutable_compile.output.to_lower().contains('tcc:'), immutable_compile.output
+
+	invalid_c := os.join_path(root, 'invalid.c')
+	invalid_c_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', invalid_c,
+		invalid_source])
+	assert invalid_c_compile.exit_code != 0
+	assert invalid_c_compile.output.contains('undefined variable: `missing_name`'), invalid_c_compile.output
+
+	assert !os.exists(invalid_c)
+
+	invalid_stdout_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', '-',
+		invalid_source])
+	assert invalid_stdout_compile.exit_code != 0
+	assert invalid_stdout_compile.output.contains('undefined variable: `missing_name`'), invalid_stdout_compile.output
+
+	assert !invalid_stdout_compile.output.contains('V_FASTC_PRINT_SELECT'), invalid_stdout_compile.output
+
+	early_return_source := os.join_path(root, 'early_return.v')
+	os.write_file(early_return_source, 'module main
+
+fn main() {
+	if true {
+		return
+	}
+}
+') or {
+		panic(err)
+	}
+	early_return_binary := os.join_path(root, 'early_return')
+	early_return_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', early_return_binary,
+		early_return_source])
+	assert early_return_compile.exit_code == 0, early_return_compile.output
+	early_return_c := os.read_file(early_return_binary + '.c') or { panic(err) }
+	assert early_return_c.contains('if (true) {\n\t\treturn 0;\n\t}')
+	early_return_run := cmdexec.run(early_return_binary, [])
+	assert early_return_run.exit_code == 0, early_return_run.output
 
 	old_vjobs := os.getenv('VJOBS')
 	os.setenv('VJOBS', '4', true)

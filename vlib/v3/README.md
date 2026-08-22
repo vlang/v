@@ -92,8 +92,9 @@ physical footprint immediately after RSS.
 
 `-b fastc` selects the embedded V3 driver and a speculative single-file backend for the shortest
 edit-run cycle. It scans the source once and emits GNU C while consuming tokens. This path does
-not create a flat AST and does not run imports, type checking, transform, type annotation, or
-mark-used. Bundled TinyCC compiles the emitted translation unit immediately.
+not create a flat AST itself. Before accepting its speculative output, the driver runs the normal
+parser and semantic checker over the V source, then asks bundled TinyCC to validate the complete
+translation unit. A successful direct build skips transform, type annotation, and mark-used.
 
 FastC's direct lane currently emits primitive functions and parameters, inferred local
 declarations, ordinary expressions, `if`/`else`, and condition, C-style, infinite, and
@@ -110,7 +111,8 @@ program keeps its exit status and is never retried.
 The direct path is limited to host-target, non-production, non-test, non-shared single-file builds.
 Compiler/self-host and other non-direct modes enter the complete lane before source scanning.
 `-o file.c` emits the standalone fast C translation unit when the direct lane supports the input;
-otherwise it emits the complete `v3.gen.fastc` translation unit.
+otherwise it emits the complete `v3.gen.fastc` translation unit. Direct C-only output is published
+only after both V semantic checking and TinyCC validation succeed.
 
 `v self -b fastc` and direct compiler builds such as `v -b fastc -o v2 cmd/v` are routed to V3.
 Self-host builds enter fastc's complete lane directly. The checked frontend feeds the independent

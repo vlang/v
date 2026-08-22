@@ -55,12 +55,13 @@ static void v_fastc_println_float(double value) { printf("%g\n", value); }
 struct DirectGen {
 	path string
 mut:
-	s      scanner.Scanner
-	tok    token.Token
-	lit    string
-	out    strings.Builder
-	protos strings.Builder
-	indent int
+	s       scanner.Scanner
+	tok     token.Token
+	lit     string
+	out     strings.Builder
+	protos  strings.Builder
+	indent  int
+	in_main bool
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
@@ -170,7 +171,10 @@ fn (mut g DirectGen) parse_function() ! {
 	g.protos.writeln('${c_return_type} ${name}(${c_params});')
 	g.write_line('${c_return_type} ${name}(${c_params}) {')
 	g.indent++
+	previous_in_main := g.in_main
+	g.in_main = is_main
 	g.parse_block_body()!
+	g.in_main = previous_in_main
 	if is_main {
 		g.write_line('return 0;')
 	}
@@ -395,7 +399,7 @@ fn (mut g DirectGen) parse_return() ! {
 	g.next()
 	if g.tok == .semicolon || g.tok == .rcbr {
 		g.consume_statement_end()
-		g.write_line('return;')
+		g.write_line(if g.in_main { 'return 0;' } else { 'return;' })
 		return
 	}
 	expression := g.read_expression([token.Token.semicolon, token.Token.rcbr])!

@@ -7342,6 +7342,8 @@ pub fn run(args []string) {
 		eprintln('v.pref.lookup_path: ${os.join_path(prefs.vroot, 'vlib')}')
 	}
 	prefs.supports_inline_asm = is_checker_fixture
+	mut fastc_direct_source := ''
+	mut fastc_direct_pending := false
 	if backend == 'fastc' {
 		fastc_host := pref.host_target()
 		fastc_eligible := input_file.ends_with('.v') && os.is_file(input_file) && file_list.len == 0
@@ -7363,71 +7365,17 @@ pub fn run(args []string) {
 		}
 		if generated_fastc {
 			b.step('fastc')
-			if c_only {
-				if c_to_stdout {
-					print(fastc_source)
-				} else {
-					os.write_file(output_file, fastc_source) or {
-						eprintln('error writing fastc output ${output_file}: ${err.msg()}')
-						exit(1)
-					}
-				}
-				b.metric('generated C size', fastc_source.len, 'bytes')
-				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-				b.print_report()
-				return
-			}
-			fastc_result := compile_v3_fastc_source(fastc_source, bin_file, prefs,
-				environment_c_flags, user_c_flags, environment_ld_flags, is_debug)
-			if !silent || show_cc {
-				if fastc_result.command.len > 0 {
-					println('  > ${fastc_result.command}')
-				}
-			}
-			if show_c_output && fastc_result.output.len > 0 {
-				header := '======== Output of TinyCC fastc ========'
-				println(header)
-				println(fastc_result.output.trim_space())
-				println('='.repeat(header.len))
-			}
-			if fastc_result.success {
-				b.step('tcc')
-				b.metric('generated C size', fastc_source.len, 'bytes')
-				if backend_explicit {
-					os.write_file(bin_file + '.c', fastc_source) or {
-						eprintln('failed to retain generated fastc output ${bin_file}.c: ${err.msg()}')
-						exit(1)
-					}
-				}
-				if keep_c {
-					keep_c_file := keep_c_output_file(bin_file)
-					os.write_file(keep_c_file, fastc_source) or {
-						eprintln('failed to retain generated fastc output ${keep_c_file}: ${err.msg()}')
-						exit(1)
-					}
-				}
-				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-				if should_run {
-					run_result := run_binary(bin_file, run_args)
-					if remove_binary_after_run {
-						os.rm(bin_file) or {}
-					}
-					if run_result != 0 {
-						exit(run_result)
-					}
-					b.step('run')
-				}
-				b.print_report()
-				return
-			}
-			b.step('tcc (checked)')
+			// Keep the speculative translation private until the checked frontend has
+			// accepted the V program and TinyCC has accepted the generated C.
+			fastc_direct_source = fastc_source
+			fastc_direct_pending = true
 		} else {
 			b.step('fastc (checked)')
 		}
 		// FastC's complete lane uses the checked frontend and its own FlatGen backend.
-		// Only the speculative direct lane above skips semantic analysis.
-		// It deliberately reports no scanner-emitter or TinyCC diagnostics before
-		// promoting the source so user-facing errors still come from the V frontend.
+		// The direct emitter builds no semantic model, so its candidate remains pending
+		// while that same frontend validates the V source below. Scanner-emitter
+		// diagnostics stay private so user-facing errors still come from the V frontend.
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		fastc_full_codegen = true
 		// The shared frontend uses C source suffixes and C compile-time conditions for
@@ -7443,9 +7391,9 @@ pub fn run(args []string) {
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
 	// builtin source set, which likewise must remain a monolithic translation unit.
-	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
-		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
-		&& target.os == host_target.os && target.arch == host_target.arch
+	cache_enabled := backend == 'c' && !fastc_direct_pending && !c_only && !no_cache
+		&& !no_skip_unused && !no_builtin && !keep_c && !backend_explicit && !c_compiler_explicit
+		&& !minimal_literal_output && target.os == host_target.os && target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
@@ -8226,6 +8174,86 @@ pub fn run(args []string) {
 		if check_only {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			return
+		}
+		if fastc_direct_pending {
+			// The scanner-direct emitter is intentionally syntax-oriented. Accept its
+			// candidate only after the normal frontend has enforced V semantics, then
+			// ask TinyCC to validate the complete translation unit. C-only builds use a
+			// throwaway executable so invalid C is never published to a file or stdout.
+			fastc_bin_file := if c_only {
+				os.join_path_single(os.vtmp_dir(),
+					'v3_fastc_validate_${os.getpid()}_${tempname.unique_token()}')
+			} else {
+				bin_file
+			}
+			fastc_result := compile_v3_fastc_source(fastc_direct_source, fastc_bin_file, prefs,
+				environment_c_flags, user_c_flags, environment_ld_flags, is_debug)
+			if !silent || show_cc {
+				if fastc_result.command.len > 0 {
+					if c_to_stdout {
+						eprintln('  > ${fastc_result.command}')
+					} else {
+						println('  > ${fastc_result.command}')
+					}
+				}
+			}
+			if show_c_output && fastc_result.output.len > 0 {
+				header := '======== Output of TinyCC fastc ========'
+				println(header)
+				println(fastc_result.output.trim_space())
+				println('='.repeat(header.len))
+			}
+			if c_only {
+				os.rm(fastc_bin_file) or {}
+			}
+			if fastc_result.success {
+				b.step('tcc')
+				b.metric('generated C size', fastc_direct_source.len, 'bytes')
+				if c_only {
+					if c_to_stdout {
+						print(fastc_direct_source)
+					} else {
+						staged_output := '${output_file}.stage.${tempname.unique_token()}'
+						os.write_file(staged_output, fastc_direct_source) or {
+							eprintln('error writing fastc output ${output_file}: ${err.msg()}')
+							exit(1)
+						}
+						os.mv(staged_output, output_file) or {
+							os.rm(staged_output) or {}
+							eprintln('error finalizing fastc output ${output_file}: ${err.msg()}')
+							exit(1)
+						}
+					}
+				} else {
+					if backend_explicit {
+						os.write_file(bin_file + '.c', fastc_direct_source) or {
+							eprintln('failed to retain generated fastc output ${bin_file}.c: ${err.msg()}')
+							exit(1)
+						}
+					}
+					if keep_c {
+						keep_c_file := keep_c_output_file(bin_file)
+						os.write_file(keep_c_file, fastc_direct_source) or {
+							eprintln('failed to retain generated fastc output ${keep_c_file}: ${err.msg()}')
+							exit(1)
+						}
+					}
+				}
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				if should_run {
+					run_result := run_binary(bin_file, run_args)
+					if remove_binary_after_run {
+						os.rm(bin_file) or {}
+					}
+					if run_result != 0 {
+						exit(run_result)
+					}
+					b.step('run')
+				}
+				b.print_report()
+				return
+			}
+			b.step('tcc (checked)')
 		}
 		if cache_state.manager.enabled {
 			if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files,

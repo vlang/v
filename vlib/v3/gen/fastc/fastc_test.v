@@ -59,3 +59,22 @@ fn test_unsupported_import_requests_normal_backend() {
 	}
 	assert failed
 }
+
+fn test_bare_return_from_main_emits_zero() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn stop() {
+	return
+}
+
+fn main() {
+	if true {
+		return
+	}
+}
+',
+		'bare_return.v', prefs) or { panic(err) }
+	assert c_source.contains('void stop(void) {\n\treturn;\n}')
+	assert c_source.contains('if (true) {\n\t\treturn 0;\n\t}')
+}
