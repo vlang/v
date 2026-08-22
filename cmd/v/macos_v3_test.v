@@ -1741,6 +1741,32 @@ fn test_macos_v3_fastc_rejects_incompatible_preferences() {
 	assert macos_v3_fastc_incompatibility(overridden) == none
 }
 
+fn test_macos_v3_fastc_allows_explicit_target_os() {
+	fastc_linux, _ := pref.parse_args_and_show_errors([],
+		['-b', 'fastc', '-os', 'linux', 'main.v'], false)
+	assert fastc_linux.backend == .c
+	assert fastc_linux.is_fastc
+	assert fastc_linux.os == .linux
+	assert !v3_has_v1_only_preferences(fastc_linux)
+	assert macos_v3_fastc_incompatibility(fastc_linux) == none
+	assert macos_v3_force_requested('build', fastc_linux)
+
+	fastc_cross_c, _ := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-os', 'windows', '-o',
+		'main.c', 'main.v'], false)
+	assert fastc_cross_c.backend == .c
+	assert fastc_cross_c.is_fastc
+	assert fastc_cross_c.os == .windows
+	assert fastc_cross_c.out_name.ends_with('main.c')
+	assert !v3_has_v1_only_preferences(fastc_cross_c)
+	assert macos_v3_fastc_incompatibility(fastc_cross_c) == none
+	assert macos_v3_force_requested('build', fastc_cross_c)
+
+	standard_linux, _ := pref.parse_args_and_show_errors([], ['-b', 'c', '-os', 'linux', 'main.v'],
+		false)
+	assert !standard_linux.is_fastc
+	assert v3_has_v1_only_preferences(standard_linux)
+}
+
 fn test_macos_v3_vtest_ownership_modes_use_v1_except_fastc() {
 	mut prefs := &pref.Preferences{
 		skip_running: true

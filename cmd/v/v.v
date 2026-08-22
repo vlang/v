@@ -293,7 +293,7 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		|| prefs.c_error_bug_report_url.len > 0 || prefs.wasm_validate
 		|| prefs.wasm_stack_top != 1024 + (16 * 1024) || prefs.line_info.len > 0
 		|| prefs.use_coroutines || prefs.checker_match_exhaustive_cutoff_limit != 12
-		|| (prefs.backend == .c && prefs.os !in [._auto, .macos])
+		|| (prefs.backend == .c && !prefs.is_fastc && prefs.os !in [._auto, .macos])
 		|| prefs.build_options.any(it.starts_with('-debug-tcc')) || prefs.is_musl
 		|| prefs.build_options.any(it in ['-musl', '-glibc']) || !prefs.relaxed_gcc14 {
 		return true
