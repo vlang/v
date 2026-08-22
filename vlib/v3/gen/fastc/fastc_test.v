@@ -70,6 +70,38 @@ fn test_unsupported_import_is_rejected() {
 	assert failed
 }
 
+fn test_unresolved_names_are_rejected_before_c_emission() {
+	prefs := pref.new_preferences()
+	for source in [
+		"module main\nfn main() { puts('hello') }\n",
+		'module main\nfn main() { printf("hello") }\n',
+		'module main\nfn main() { value := stdout; println(value) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'unresolved_name.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('fastc parser does not support unresolved name'), message
+	}
+}
+
+fn test_declared_names_are_available_without_an_ast() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn main() {
+	println(later(2))
+}
+
+fn later(value int) int {
+	return value + 1
+}
+',
+		'declared_names.v', prefs) or { panic(err) }
+	assert c_source.contains('println(later(2));')
+}
+
 fn test_bare_return_from_main_emits_zero() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main

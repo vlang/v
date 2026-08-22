@@ -55,33 +55,67 @@ static void v_fastc_println_unsigned(unsigned long long value) { printf("%llu\n"
 struct Parser {
 	path string
 mut:
-	s        scanner.Scanner
-	tok      token.Token
-	lit      string
-	out      strings.Builder
-	protos   strings.Builder
-	indent   int
-	in_main  bool
-	has_main bool
-	temp_id  int
-	locals   map[string]bool
+	s         scanner.Scanner
+	tok       token.Token
+	lit       string
+	out       strings.Builder
+	protos    strings.Builder
+	indent    int
+	in_main   bool
+	has_main  bool
+	temp_id   int
+	locals    map[string]bool
+	functions map[string]bool
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
 // not construct an AST or invoke semantic type checking. Unsupported syntax is returned as an
 // error; FastC never retries through an AST-based backend.
 pub fn generate(source string, path string, prefs &pref.Preferences) !string {
+	functions := collect_function_names(source, path, prefs)!
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
 	mut gen := Parser{
-		path:   path
-		s:      scanner.new_scanner(prefs, .normal)
-		out:    strings.new_builder(source.len)
-		protos: strings.new_builder(256)
+		path:      path
+		s:         scanner.new_scanner(prefs, .normal)
+		out:       strings.new_builder(source.len)
+		protos:    strings.new_builder(256)
+		functions: functions
 	}
 	gen.s.init(file, source)
 	return gen.run()
+}
+
+fn collect_function_names(source string, path string, prefs &pref.Preferences) !map[string]bool {
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file(path, source.len)
+	file.index_lines(source)
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(file, source)
+	mut functions := map[string]bool{}
+	mut brace_depth := 0
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .key_fn && brace_depth == 0 {
+			tok = scan.scan()
+			if tok == .name {
+				name := scan.lit
+				if name in functions {
+					return error('fastc parser does not support duplicate function `${name}` in ${path}')
+				}
+				functions[name] = true
+			}
+			continue
+		}
+		if tok == .lcbr {
+			brace_depth++
+		} else if tok == .rcbr && brace_depth > 0 {
+			brace_depth--
+		}
+		tok = scan.scan()
+	}
+	return functions
 }
 
 fn (mut g Parser) run() !string {
@@ -417,6 +451,9 @@ fn (mut g Parser) parse_for() ! {
 		name := g.lit
 		g.next()
 		if g.tok == .key_in {
+			if name in g.locals {
+				return g.unsupported('redeclaration of `${name}`')
+			}
 			g.next()
 			start := g.read_expression([token.Token.dotdot])!
 			g.expect(.dotdot)!
@@ -428,16 +465,22 @@ fn (mut g Parser) parse_for() ! {
 			g.write_line('__typeof__((${start})) ${start_name} = (${start});')
 			g.write_line('__typeof__((${end})) ${end_name} = (${end});')
 			g.write_line('for (__typeof__((${start_name})) ${name} = (${start_name}); ${name} < (${end_name}); ${name}++) {')
+			g.locals[name] = false
 			g.indent++
 			g.parse_block_body()!
 			g.indent--
+			g.locals.delete(name)
 			g.write_line('}')
 			return
 		}
 		if g.tok == .decl_assign {
+			if name in g.locals {
+				return g.unsupported('redeclaration of `${name}`')
+			}
 			g.next()
 			initial := g.read_expression([token.Token.semicolon])!
 			g.expect(.semicolon)!
+			g.locals[name] = true
 			condition := g.read_expression([token.Token.semicolon])!
 			g.expect(.semicolon)!
 			update := g.read_expression([token.Token.lcbr])!
@@ -446,9 +489,11 @@ fn (mut g Parser) parse_for() ! {
 			g.indent++
 			g.parse_block_body()!
 			g.indent--
+			g.locals.delete(name)
 			g.write_line('}')
 			return
 		}
+		g.validate_expression_name(name, .unknown)!
 		condition := g.read_expression_with_prefix(name, [token.Token.lcbr])!
 		g.expect(.lcbr)!
 		g.write_line('while (${condition}) {')
@@ -507,6 +552,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 			&& (name !in g.locals || !g.locals[name]) {
 			return g.unsupported('mutation of immutable or unknown name `${name}`')
 		}
+		g.validate_expression_name(name, .unknown)!
 		expression :=
 			g.read_expression_with_prefix(name, [token.Token.semicolon, token.Token.rcbr])!
 		g.consume_statement_end()
@@ -564,6 +610,7 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 	mut has_and_operator := false
 	mut has_pipe_operator := false
 	mut has_xor_operator := false
+	mut previous_token := token.Token.unknown
 	for g.tok != .eof {
 		if paren_depth == 0 && g.tok in stops {
 			break
@@ -629,7 +676,7 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 			// levels and also orders + and - above &. Reject ambiguous token streams.
 			return g.unsupported('mixed operator precedence')
 		}
-		piece := g.expression_token()!
+		piece := g.expression_token(previous_token)!
 		if result.len > 0 && fastc_needs_space(result.last(), piece) {
 			result.write_u8(` `)
 		}
@@ -646,6 +693,7 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 			}
 			else {}
 		}
+		previous_token = g.tok
 		g.next()
 	}
 	if paren_depth != 0 {
@@ -654,9 +702,9 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 	return result.str().trim_space()
 }
 
-fn (g &Parser) expression_token() !string {
+fn (g &Parser) expression_token(previous token.Token) !string {
 	return match g.tok {
-		.name { g.expression_name()! }
+		.name { g.expression_name(previous)! }
 		.number { fastc_c_number(g.lit)! }
 		.string { fastc_c_string(g.lit)! }
 		.char { g.unsupported('rune or C character literals') }
@@ -671,14 +719,23 @@ fn (g &Parser) expression_token() !string {
 	}
 }
 
-fn (g &Parser) expression_name() !string {
-	if g.lit == 'charptr' {
+fn (g &Parser) expression_name(previous token.Token) !string {
+	g.validate_expression_name(g.lit, previous)!
+	return g.lit
+}
+
+fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
+	if name == 'charptr' {
 		return g.unsupported('charptr expressions')
 	}
-	if g.lit == 'rune' {
+	if name == 'rune' {
 		return g.unsupported('rune expressions')
 	}
-	return g.lit
+	if previous == .dot || name in g.locals || name in g.functions
+		|| name in ['print', 'println', 'bool', 'byte', 'char', 'f32', 'f64', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'string', 'u8', 'u16', 'u32', 'u64', 'uint', 'usize', 'voidptr', 'byteptr'] {
+		return
+	}
+	return g.unsupported('unresolved name `${name}`')
 }
 
 fn fastc_nondecimal_literal_is_type_sensitive(literal string) bool {

@@ -122,6 +122,22 @@ fn main() {
 	assert !os.exists(invalid_binary)
 	assert !os.exists(invalid_binary + '.c')
 
+	preamble_name_source := os.join_path(root, 'preamble_name.v')
+	write_fastc_test_source(preamble_name_source, "module main
+
+fn main() {
+	puts('hello')
+}
+")
+	preamble_name_binary := os.join_path(root, 'preamble_name')
+	preamble_name_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
+		preamble_name_binary, preamble_name_source])
+	assert preamble_name_compile.exit_code != 0
+	assert preamble_name_compile.output.contains('fastc parser does not support unresolved name `puts`'), preamble_name_compile.output
+
+	assert !os.exists(preamble_name_binary)
+	assert !os.exists(preamble_name_binary + '.c')
+
 	for invocation in [
 		UnsupportedFastCInvocation{
 			args:     ['-silent', '-prod', '-b', 'fastc', '-o', os.join_path(root, 'prod'),
@@ -134,8 +150,9 @@ fn main() {
 			expected: 'fastc parser does not support compiler self-hosting'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
-				os.join_path(root, 'no_main.c'), valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
+				'no_main.c'),
+				valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{
