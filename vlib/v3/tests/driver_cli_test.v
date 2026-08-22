@@ -1069,6 +1069,8 @@ fn main() {
 	source_name := os.read_file(os.join_path(report_dir, 'source_name'))!.trim_space()
 	assert source_name == 'src.c'
 	assert os.is_file(os.join_path(report_dir, source_name))
+	v_sources := os.read_file(os.join_path(report_dir, 'v_sources'))!.split('\x00')
+	assert os.real_path(source) in v_sources
 }
 
 fn test_driver_cg_selects_debug_module_files() {

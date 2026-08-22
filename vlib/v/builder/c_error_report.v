@@ -295,10 +295,12 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 // fallback, reading ONLY files the caller already trusts — it must be invoked by the
 // process that staged the report, never by one that merely inherited a report path from
 // the environment. `c_file` is the user's V source for a V3 internal error, or the staged
-// generated C for a generated-C compilation error. The returned snippet is always a
-// bounded strict subset (never a whole file); ('', '') means no source is available
-// (e.g. a directory build), so the report stays metadata-only.
-pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string) (string, string) {
+// generated C for a generated-C compilation error. `allowed_v_sources` is the set of
+// source files that V3 actually parsed; generated-C mappings outside that set are
+// rejected before their contents are read. The returned snippet is always a bounded
+// strict subset (never a whole file); ('', '') means no source is available (e.g. a
+// directory build), so the report stays metadata-only.
+pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string, allowed_v_sources []string) (string, string) {
 	if c_file == '' || !os.is_file(c_file) {
 		return '', ''
 	}
@@ -306,15 +308,14 @@ pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string) (
 		src := os.read_file(c_file) or { return '', '' }
 		return os.base(c_file), v3_report_v_source(src)
 	}
-	return bounded_v_source_for_generated_c(c_output, c_file)
+	return bounded_v_source_for_generated_c(c_output, c_file, allowed_v_sources)
 }
 
 // bounded_v_source_for_generated_c maps a generated-C compilation error back to the V
 // source line it came from (via the #line directives in the trusted staged C) and returns
-// a bounded window of that V file. Both files read here are trusted: the generated C was
-// staged by this process's own V3 run, and the V file it references is the user's real
-// source being compiled.
-fn bounded_v_source_for_generated_c(c_output string, generated_c_file string) (string, string) {
+// a bounded window of that V file. The generated C was staged by this process's own V3
+// run, while its mapped V path is trusted only when it matches a parsed compiler input.
+fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, allowed_v_sources []string) (string, string) {
 	c_source := os.read_file(generated_c_file) or { return '', '' }
 	c_lines := c_source.split_into_lines()
 	mut v_file := ''
@@ -328,7 +329,7 @@ fn bounded_v_source_for_generated_c(c_output string, generated_c_file string) (s
 		v_file = source_loc.file
 		v_line = source_loc.line
 	}
-	if v_file == '' || !os.is_file(v_file) {
+	if v_file == '' || !allowed_v_sources.any(same_path(it, v_file)) || !os.is_file(v_file) {
 		return '', ''
 	}
 	mapped_source := os.read_file(v_file) or { return '', '' }

@@ -1545,6 +1545,7 @@ fn test_macos_v3_reads_c_error_fallback_report() {
 		os.write_file(os.join_path(root, macos_v3_c_error_compiler_file), 'clang')!
 		os.write_file(os.join_path(root, macos_v3_c_error_output_file),
 			'src.c:2:1: error: generated failure')!
+		os.write_file(os.join_path(root, macos_v3_c_error_v_sources_file), '')!
 		os.write_file(os.join_path(root, 'src.c'), 'int main(void) { return missing; }\n')!
 		report := read_macos_v3_c_error_report(root) or {
 			assert false
@@ -1665,7 +1666,7 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		os.write_file(source, whole)!
 		compiler_error := macos_v3_compiler_error_message('source parsing')
 		v_file, v_source := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
-			compiler_error, macos_v3_compiler_error_input_source(source))
+			compiler_error, macos_v3_compiler_error_input_source(source), [])
 		assert v_file == 'prog.v'
 		assert v_source != ''
 		assert compiler_error.contains('during source parsing')
@@ -1678,7 +1679,7 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		for empty in [root, note, os.join_path(root, 'missing.v'), ''] {
 			resolved := macos_v3_compiler_error_input_source(empty)
 			ef, es := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
-				compiler_error, resolved)
+				compiler_error, resolved, [])
 			assert ef == '', empty
 			assert es == '', empty
 		}

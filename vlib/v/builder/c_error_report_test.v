@@ -324,7 +324,7 @@ fn test_external_v3_report_env_round_trip() {
 	os.write_file(c_file, lines.join('\n'))!
 	// The owning process bounds the source into content...
 	v_file, v_source := bounded_v3_fallback_source(external_v3_compiler_error_kind,
-		'error: v3 failed', c_file)
+		'error: v3 failed', c_file, [])
 	assert v_file == 'main.v'
 	assert v_source != ''
 	assert v_source.contains(c_error_v_source_truncation_notice)
@@ -625,7 +625,7 @@ fn test_bounded_v3_fallback_source_maps_generated_c_error() {
 	os.write_file(generated_c, '#line 100 "${v_path}"\nint a = 1;\nint b = missing;\n')!
 	c_output := '${generated_c}:3:9: error: use of undeclared identifier missing'
 	// kind '' selects the generated-C mapping path.
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c)
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, [v_path])
 	assert v_file == 'source.v'
 	assert v_source != ''
 	// A bounded strict subset centered on the mapped V line (~100), never the whole file.
@@ -654,10 +654,34 @@ fn test_bounded_v3_fallback_source_rejects_nonblank_whole_file_generated_c() {
 	generated_c := os.join_path(dir, 'program.tmp.c')
 	os.write_file(generated_c, '#line 40 "${v_path}"\nint b = missing;\n')!
 	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c)
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, [v_path])
 	assert v_file == 'source.v'
 	// The mapped window exposes every nonblank line, so no source is uploaded.
 	assert v_source == '', v_source
+}
+
+fn test_bounded_v3_fallback_source_rejects_unparsed_mapped_file() {
+	// A project-controlled preinclude can inject a #line directive naming an unrelated
+	// local .v file. Only files V3 actually parsed may contribute source to the automatic
+	// fallback report (PR #28131 review).
+	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_unparsed_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	parsed_path := os.join_path(dir, 'parsed.v')
+	unrelated_path := os.join_path(dir, 'unrelated.v')
+	os.write_file(parsed_path, 'fn parsed() {}\n')!
+	os.write_file(unrelated_path, 'const private_value = "must not be uploaded"\n')!
+	generated_c := os.join_path(dir, 'program.tmp.c')
+	os.write_file(generated_c, '#line 1 "${unrelated_path}"\nint exposed = missing;\n')!
+	c_output := '${generated_c}:2:15: error: use of undeclared identifier missing'
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, [
+		parsed_path,
+	])
+	assert v_file == ''
+	assert v_source == ''
 }
 
 fn test_generated_c_reset_line_is_not_reported_as_v_source() {

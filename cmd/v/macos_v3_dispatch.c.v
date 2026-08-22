@@ -35,6 +35,7 @@ const macos_v3_c_error_fallback = 'c_compilation_error'
 const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
 const macos_v3_c_error_source_name_file = 'source_name'
+const macos_v3_c_error_v_sources_file = 'v_sources'
 // optional marker file inside a staged report dir; when it holds
 // `macos_v3_compiler_error_fallback` the report describes a V3 internal compiler
 // error (V source only) instead of a generated-C compilation error.
@@ -281,7 +282,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 			return
 		}
 		export_macos_v3_report_content(report.kind, report.ccompiler, report.c_output,
-			report.c_file)
+			report.c_file, report.v_sources)
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 C compilation failed; retrying with `-old-compiler`.')
@@ -295,7 +296,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		// fallback is never silent.
 		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3',
 			macos_v3_compiler_error_message(fallback_stage),
-			macos_v3_compiler_error_input_source(input_path))
+			macos_v3_compiler_error_input_source(input_path), [])
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
@@ -305,7 +306,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		// filing a report. Still forward a notice-only marker so that once the stable
 		// build succeeds the user sees the documented fallback notice (doc/docs.md) rather
 		// than a silent switch that is indistinguishable from a direct V3 success.
-		export_macos_v3_report_content(macos_v3_inline_asm_fallback, 'v3', '', '')
+		export_macos_v3_report_content(macos_v3_inline_asm_fallback, 'v3', '', '', [])
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 requested the compatibility compiler for inline assembly')
@@ -340,8 +341,8 @@ fn take_macos_v3_report_content() ?MacosV3CErrorReport {
 // export_macos_v3_report_content bounds the fallback source in THIS process — which staged
 // the report and therefore trusts `c_file` — and forwards only that content to the V1
 // retry through the environment.
-fn export_macos_v3_report_content(kind string, ccompiler string, c_output string, c_file string) {
-	v_file, v_source := builder.bounded_v3_fallback_source(kind, c_output, c_file)
+fn export_macos_v3_report_content(kind string, ccompiler string, c_output string, c_file string, v_sources []string) {
+	v_file, v_source := builder.bounded_v3_fallback_source(kind, c_output, c_file, v_sources)
 	builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
 		kind:          kind
 		ccompiler:     ccompiler
@@ -384,6 +385,7 @@ struct MacosV3StagedReport {
 	ccompiler  string
 	c_output   string
 	c_file     string
+	v_sources  []string
 	report_dir string
 }
 
@@ -416,11 +418,16 @@ fn read_macos_v3_c_error_report(report_dir string) ?MacosV3StagedReport {
 		// compiler-error report may be notice-only (a directory / non-file build).
 		return none
 	}
+	v_sources_text := os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file)) or {
+		return none
+	}
+	v_sources := v_sources_text.split('\x00').filter(it != '')
 	return MacosV3StagedReport{
 		kind:       kind
 		ccompiler:  ccompiler.trim_space()
 		c_output:   c_output
 		c_file:     c_file
+		v_sources:  v_sources
 		report_dir: report_dir
 	}
 }
