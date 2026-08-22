@@ -202,7 +202,8 @@ if ((provision)); then
 fi
 
 host_head=$(git -C "$repo_root" rev-parse HEAD)
-guest_head=$(ssh "${ssh_options[@]}" "$guest" "git -C '${guest_repo}' rev-parse HEAD")
+printf -v guest_repo_q '%q' "$guest_repo"
+guest_head=$(ssh "${ssh_options[@]}" "$guest" "git -C ${guest_repo_q} rev-parse HEAD")
 if [[ "$host_head" != "$guest_head" ]]; then
 	echo "Host and guest baselines differ (${host_head} != ${guest_head})." >&2
 	echo "Update ${guest_repo} in the guest before syncing local changes." >&2
@@ -210,7 +211,6 @@ if [[ "$host_head" != "$guest_head" ]]; then
 fi
 
 if ((sync_checkout)); then
-	printf -v guest_repo_q '%q' "$guest_repo"
 	# Remove every untracked path copied by the previous sync before restoring the
 	# current set. This keeps a locally deleted untracked source from lingering in
 	# guest module discovery without cleaning unrelated guest build artifacts.
@@ -267,7 +267,6 @@ if (($# == 0)); then
 	set -- test-all
 fi
 
-printf -v guest_repo_q '%q' "$guest_repo"
 printf -v jobs_q '%q' "$jobs"
 printf -v vflags_q '%q' "$vflags"
 printf -v no_fallback_q '%q' "$no_fallback"
