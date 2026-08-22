@@ -197,6 +197,26 @@ fi
 
 if ((sync_checkout)); then
 	printf -v guest_repo_q '%q' "$guest_repo"
+	# Remove every untracked path copied by the previous sync before restoring the
+	# current set. This keeps a locally deleted untracked source from lingering in
+	# guest module discovery without cleaning unrelated guest build artifacts.
+	ssh "${ssh_options[@]}" "$guest" bash -s -- "$guest_repo" <<'EOF'
+set -Eeuo pipefail
+guest_repo=$1
+manifest=$(git -C "$guest_repo" rev-parse --git-path qemu-linux-tests-untracked)
+if [[ -f "$manifest" ]]; then
+	cd "$guest_repo"
+	while IFS= read -r -d '' path; do
+		case "$path" in
+			'' | /* | .. | ../* | */.. | */../*)
+				echo "Invalid path in QEMU sync manifest: ${path}" >&2
+				exit 1
+				;;
+		esac
+		rm -f -- "$path"
+	done < "$manifest"
+fi
+EOF
 	# Remove tracked paths deleted or renamed in the local worktree. The NUL-delimited
 	# protocol keeps arbitrary Git filenames safe, and every removal is scoped beneath
 	# the already-validated guest checkout.
@@ -216,6 +236,16 @@ if ((sync_checkout)); then
 		--exclude '.detect_tcc*' \
 		-e "ssh -i ${key_file} -p ${ssh_port} -o UserKnownHostsFile=${known_hosts_file} -o StrictHostKeyChecking=yes" \
 		"${repo_root}/" "${guest}:${guest_repo}/"
+	# Record only untracked paths that the rsync exclusion above allows through.
+	git -C "$repo_root" ls-files -z --others --exclude-standard \
+		| while IFS= read -r -d '' path; do
+			case "$path" in
+				.detect_tcc* | */.detect_tcc*) continue ;;
+			esac
+			printf '%s\0' "$path"
+		done \
+		| ssh "${ssh_options[@]}" "$guest" \
+			"manifest=\$(git -C ${guest_repo_q} rev-parse --git-path qemu-linux-tests-untracked) && cat > \"\$manifest\""
 fi
 
 if (($# == 0)); then

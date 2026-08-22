@@ -63,25 +63,26 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 	if prefs.old_compiler {
 		return take_macos_v3_report_content()
 	}
+	explicit_compilation := macos_v3_explicit_compilation_requested(command, prefs)
 	if !macos_v3_driver_is_available() {
-		if prefs.new_compiler {
+		if explicit_compilation {
 			eprintln('`-new-compiler` requires a build that embeds the V3 compiler, which this one does not.')
 			exit(1)
 		}
 		return take_macos_v3_report_content()
 	}
-	if macos_v3_explicit_autofree_is_unsupported(prefs) {
+	if explicit_compilation && macos_v3_explicit_autofree_is_unsupported(prefs) {
 		eprintln('`-new-compiler` cannot be combined with `-autofree`: the embedded V3 compiler does not include ownership support. Remove `-new-compiler` to use the established compiler.')
 		exit(1)
 	}
-	if macos_v3_explicit_v1_preferences_are_unsupported(prefs) {
+	if explicit_compilation && macos_v3_explicit_v1_preferences_are_unsupported(prefs) {
 		eprintln('`-new-compiler` cannot be combined with options that require the established compiler; remove those options or drop `-new-compiler`.')
 		exit(1)
 	}
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
 	if macos_v3_has_v1_only_leading_option(forwarded_args, command) {
-		if prefs.new_compiler {
+		if explicit_compilation {
 			eprintln('`-new-compiler` cannot be combined with a V1-only option; remove it or drop `-new-compiler`.')
 			exit(1)
 		}
