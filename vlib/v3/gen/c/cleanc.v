@@ -20748,9 +20748,12 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	if qname == 'builtin__error_sentinel' {
 		type_id := g.ierror_type_id_for_pattern('MessageError')
 		object_name := '${qname}__object'
-		message := '(string){"error", 5, 1}'
-		g.writeln('MessageError ${object_name} = (MessageError){.msg = ${message}};')
-		g.writeln('IError ${qname} = (IError){._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
+		message := '{"error", 5, 1}'
+		// File-scope initializers need brace lists rather than compound-literal
+		// casts: GCC rejects the latter as non-constant when cached modules are
+		// linked separately.
+		g.writeln('MessageError ${object_name} = {.msg = ${message}};')
+		g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
 		g.tc.cur_module = old_module
 		return
 	}

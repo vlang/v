@@ -167,13 +167,13 @@ fn test_watch_run_forwards_terminal_input() {
 		mut process := os.new_process(script_exe)
 		process.set_redirect_stdio()
 		process.use_pgroup = true
-		command := '${os.quoted_path(vwatch_stdin_vexe)} watch run ${os.quoted_path(source_path)} ${os.quoted_path(marker_path)}'
+		command := '${os.quoted_path(vwatch_stdin_vexe)} watch --only-watch=*.v run ${os.quoted_path(source_path)} ${os.quoted_path(marker_path)}'
 		$if openbsd {
 			stty_exe := required_openbsd_tool('stty')
 			process.set_args(openbsd_script_args(stty_exe, command, ready_path))
 		} $else $if macos || freebsd {
-			process.set_args(['-q', '/dev/null', vwatch_stdin_vexe, 'watch', 'run', source_path,
-				marker_path])
+			process.set_args(['-q', '/dev/null', vwatch_stdin_vexe, 'watch', '--only-watch=*.v',
+				'run', source_path, marker_path])
 		} $else {
 			process.set_args(['-q', '-c', command, '/dev/null'])
 		}
