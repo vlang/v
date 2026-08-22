@@ -4,10 +4,23 @@ import os
 import v3.pref
 
 fn test_whole_program_cache_is_not_persistent_for_test_inputs() {
+	old_v3cache := os.getenv('V3CACHE')
+	had_v3cache := 'V3CACHE' in os.environ()
+	defer {
+		if had_v3cache {
+			os.setenv('V3CACHE', old_v3cache, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+	}
+	os.unsetenv('V3CACHE')
 	assert persistent_program_cache_enabled(true, false, os.join_path(os.temp_dir(), 'v3_cache'))
 	assert !persistent_program_cache_enabled(true, true, os.join_path(os.temp_dir(), 'v3_cache'))
 	assert !persistent_program_cache_enabled(false, false, os.join_path(os.temp_dir(), 'v3_cache'))
 	assert !persistent_program_cache_enabled(true, false, os.join_path(os.temp_dir(),
+		'tsession_test'))
+	os.setenv('V3CACHE', os.join_path(os.temp_dir(), 'bounded_v3_cache'), true)
+	assert persistent_program_cache_enabled(true, false, os.join_path(os.temp_dir(),
 		'tsession_test'))
 }
 

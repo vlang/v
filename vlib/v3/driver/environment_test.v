@@ -176,6 +176,14 @@ fn test_wayland_gg_precheck_inspects_parsed_imports_in_every_user_file() {
 	assert parsed_files_import_linux_gg(a, [sapp_file])
 }
 
+fn test_linux_wayland_only_session_matches_established_compiler_detection() {
+	assert is_linux_wayland_only_session('linux', '', 'wayland-0', '')
+	assert is_linux_wayland_only_session('linux', '', '', 'Wayland')
+	assert !is_linux_wayland_only_session('linux', ':0', 'wayland-0', 'wayland')
+	assert !is_linux_wayland_only_session('macos', '', 'wayland-0', 'wayland')
+	assert !is_linux_wayland_only_session('linux', '', '', 'x11')
+}
+
 fn test_v3_run_only_cache_identity_distinguishes_patterns() {
 	assert v3_run_only_cache_identity([]) == ''
 	first := v3_run_only_cache_identity(['test_one'])

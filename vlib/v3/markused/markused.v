@@ -193,7 +193,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		a:  a
 		tc: tc.fork_for_parallel_transform(a)
 	}
-	rt_scan_parallel := par_markused_seeds_enabled() && !trivial_literal_output
+	markused_parallel_allowed := !isnil(a.worker_pool) || tc.scoped_parallel_workers_enabled()
+	rt_scan_parallel := markused_parallel_allowed && par_markused_seeds_enabled()
+		&& !trivial_literal_output
 	rt_scan.enabled = rt_scan_parallel
 	mut rt_scan_threads := []thread{cap: 1}
 	if rt_scan_parallel {

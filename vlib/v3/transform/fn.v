@@ -10430,13 +10430,13 @@ fn (mut t Transformer) validate_specialized_enum_from_call(call_id flat.NodeId, 
 		|| t.is_integer_type_name(actual) {
 		return true
 	}
+	actual_display := typeof_display_type_text(actual)
 	enum_node := t.a.nodes[int(enum_id)]
 	enum_name := if enum_node.kind == .ident && enum_node.value.len > 0 {
 		enum_node.value
 	} else {
 		t.node_type(enum_id)
 	}
-	actual_display := typeof_display_type_text(actual)
 	t.record_monomorph_error('cannot use `${actual_display}` as argument 1 to `${enum_name}.from`; expected string or integer')
 	return false
 }

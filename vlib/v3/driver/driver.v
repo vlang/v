@@ -2464,8 +2464,10 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_dir string) bool {
 	// Test sessions compile thousands of unique programs. Their shared module
 	// objects are reusable, but retaining every whole-program snapshot only grows
-	// the temporary session until the complete suite exits.
-	return cache_enabled && !test_input && !os.base(vtmp_dir).starts_with('tsession_')
+	// the temporary session until the complete suite exits. An explicit V3CACHE
+	// is caller-owned and is used by cache regression tests with bounded roots.
+	return cache_enabled && !test_input
+		&& (!os.base(vtmp_dir).starts_with('tsession_') || os.getenv('V3CACHE') != '')
 }
 
 fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAst, prefs &pref.Preferences, user_files []string, user_c_flags []string) bool {
@@ -6428,6 +6430,11 @@ fn v3_environment_show_test_stats() bool {
 	return os.getenv('VTEST_SHOW_ASSERTS').len > 0
 }
 
+fn is_linux_wayland_only_session(target_os string, display string, wayland_display string, session_type string) bool {
+	return target_os == 'linux' && display == ''
+		&& (wayland_display != '' || session_type.to_lower() == 'wayland')
+}
+
 fn show_v3_c_compiler_output(enabled bool, compiler string, result os.Result) {
 	if !enabled {
 		return
@@ -7230,6 +7237,10 @@ pub fn run(args []string) {
 		eprintln(err.msg())
 		exit(1)
 	}
+	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
+		&& !user_defines.any(it.all_before('=').trim_space() == 'linux_wayland_session') {
+		user_defines << 'linux_wayland_session'
+	}
 	cmd_v_build := input_is_cmd_v(input_file)
 	cmd_v_module_input := input_loads_cmd_v_module(input_file)
 	v3_compiler_tree_input := input_is_v3_compiler_tree(input_file)
@@ -7628,8 +7639,7 @@ pub fn run(args []string) {
 	}
 	prefs.is_test = user_files.any(is_v3_test_file(it, backend, prefs.target))
 	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
-	if target.os == 'linux' && os.getenv('DISPLAY') == '' && os.getenv('WAYLAND_DISPLAY') != ''
-		&& os.getenv('XDG_SESSION_TYPE') == 'wayland'
+	if is_linux_wayland_only_session(target.os, os.getenv('DISPLAY'), os.getenv('WAYLAND_DISPLAY'), os.getenv('XDG_SESSION_TYPE'))
 		&& !user_defines.any(it.all_before('=').trim_space() == 'sokol_wayland')
 		&& parsed_files_import_linux_gg(a, user_files) {
 		eprintln('`gg`/`sokol.sapp` cannot run in a Wayland-only Linux session without `-d sokol_wayland`.')
@@ -8079,7 +8089,7 @@ pub fn run(args []string) {
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
-		if scope_prealloc_check && a.missing_imports.len == 0 {
+		if scope_prealloc_check && !current_no_parallel && a.missing_imports.len == 0 {
 			pre_tc.enable_scoped_parallel_workers()
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
