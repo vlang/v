@@ -95,7 +95,7 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 	// modes use V3 by default.
 	if normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
 		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
-		|| normalized_path == 'vlib/v3/v3.v' || normalized_path.ends_with('/vlib/v3/v3.v')
+		|| is_macos_v3_compiler_bootstrap(normalized_path)
 		|| is_macos_v3_internal_tool_bootstrap(normalized_path, os.getenv('VCHILD') == 'true') {
 		return false
 	}

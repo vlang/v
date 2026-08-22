@@ -3541,7 +3541,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.reset_var_types()
 	for i in 0 .. decl.node.children_count {
 		param_child := t.a.child_node(&decl.node, i)
-		if node_kind_id(param_child) != 75 {
+		if int(param_child.kind) != 75 {
 			if t.prefix_param_scan {
 				break
 			}
@@ -3781,7 +3781,7 @@ fn (mut t Transformer) seed_generated_fn_body_context(root flat.NodeId) {
 			continue
 		}
 		child := t.a.nodes[int(child_id)]
-		if node_kind_id(child) != 75 {
+		if int(child.kind) != 75 {
 			if t.prefix_param_scan {
 				break
 			}
