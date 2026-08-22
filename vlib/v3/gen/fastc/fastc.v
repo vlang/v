@@ -393,11 +393,6 @@ fn (mut g DirectGen) parse_for() ! {
 		if g.tok == .decl_assign {
 			g.next()
 			initial := g.read_expression([token.Token.semicolon])!
-			if fastc_is_inferred_min_int_literal(initial) {
-				// C-style loop initializers have the same V inference rules as local
-				// declarations and cannot rely on C's wider literal type.
-				return g.unsupported('minimum int literal inference')
-			}
 			g.expect(.semicolon)!
 			condition := g.read_expression([token.Token.semicolon])!
 			g.expect(.semicolon)!
@@ -484,11 +479,6 @@ fn (mut g DirectGen) parse_declaration_after_name(name string) ! {
 	if expression.len == 0 {
 		return g.unsupported('empty declaration')
 	}
-	if fastc_is_inferred_min_int_literal(expression) {
-		// C gives the positive token in -2147483648 a wider type before applying
-		// unary minus, while V infers int for the complete literal.
-		return g.unsupported('minimum int literal inference')
-	}
 	g.consume_statement_end()
 	// GNU typeof is unevaluated and is supported by bundled TinyCC. It lets the
 	// direct path preserve V's `:=` without running any inference or type checker.
@@ -499,14 +489,6 @@ fn (mut g DirectGen) parse_declaration_after_name(name string) ! {
 	} else {
 		g.write_line('__typeof__((${expression})) ${name} = (${expression});')
 	}
-}
-
-fn fastc_is_inferred_min_int_literal(expression string) bool {
-	mut value := expression.trim_space()
-	for value.len >= 2 && value[0] == `(` && value[value.len - 1] == `)` {
-		value = value[1..value.len - 1].trim_space()
-	}
-	return value == '-2147483648'
 }
 
 fn (mut g DirectGen) consume_statement_end() {
@@ -622,10 +604,16 @@ fn fastc_hex_literal_requires_checked_type(literal string) bool {
 }
 
 fn fastc_c_number(literal string) !string {
+	clean := literal.replace('_', '')
+	if clean == '2147483648' {
+		// C assigns this positive token a wider type before unary minus or any
+		// surrounding operation. V can instead resolve the complete expression as
+		// int, so only the checked lane can preserve its inferred type and wrapping.
+		return error('minimum int literal expressions require checked fastc')
+	}
 	if fastc_hex_literal_requires_checked_type(literal) {
 		return error('high-bit hexadecimal literals require checked fastc')
 	}
-	clean := literal.replace('_', '')
 	if clean.len < 2 || clean[0] != `0` || !clean[1].is_digit() || clean.contains_any('.eE') {
 		return clean
 	}

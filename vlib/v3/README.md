@@ -111,12 +111,12 @@ program keeps its exit status and is never retried.
 Integer-range bounds in the direct lane are evaluated once, from left to right. Float printing,
 C-string and embedded-NUL string literals, assertions, `sizeof`, comparison/logical, shift,
 division, and modulo expressions, and functions with narrow integer signatures are promoted to
-the complete lane. Inferred declarations and C-style loop initializers using the minimum `int`
-literal are promoted as well, as are expressions containing hexadecimal literals above the signed
-32-bit range. Parallel assignments and indexing expressions are promoted, preserving simultaneous
-assignment, V layouts, inferred types, element types, and bounds checks. Together these promotions
-preserve V's formatting, byte-length, diagnostics, boolean typing, integer-wrapping, safe-shift,
-and zero-divisor behavior instead of relying on incompatible raw C semantics.
+the complete lane. Expressions containing decimal `2147483648`, including composite minimum-`int`
+expressions, are promoted as well, as are expressions containing hexadecimal literals above the
+signed 32-bit range. Parallel assignments and indexing expressions are promoted, preserving
+simultaneous assignment, V layouts, inferred types, element types, and bounds checks. Together these
+promotions preserve V's formatting, byte-length, diagnostics, boolean typing, integer-wrapping,
+safe-shift, and zero-divisor behavior instead of relying on incompatible raw C semantics.
 
 The direct path is limited to host-target, non-production, non-test, non-shared single-file builds.
 Compiler/self-host, strict C, and other non-direct modes enter the complete lane before source

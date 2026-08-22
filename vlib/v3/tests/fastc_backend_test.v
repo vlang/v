@@ -232,6 +232,26 @@ fn main() {
 	assert min_int_run.exit_code == 0, min_int_run.output
 	assert min_int_run.output.trim_space() == '2147483647'
 
+	composite_min_int_source := os.join_path(root, 'inferred_composite_min_int.v')
+	os.write_file(composite_min_int_source, 'module main
+
+fn main() {
+	mut x := -2147483648 - 1
+	println(x)
+}
+') or {
+		panic(err)
+	}
+	composite_min_int_binary := os.join_path(root, 'inferred_composite_min_int')
+	composite_min_int_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
+		composite_min_int_binary, composite_min_int_source])
+	assert composite_min_int_compile.exit_code == 0, composite_min_int_compile.output
+	composite_min_int_c := os.read_file(composite_min_int_binary + '.c') or { panic(err) }
+	assert !composite_min_int_c.contains('V_FASTC_PRINT_SELECT')
+	composite_min_int_run := cmdexec.run(composite_min_int_binary, [])
+	assert composite_min_int_run.exit_code == 0, composite_min_int_run.output
+	assert composite_min_int_run.output.trim_space() == '2147483647'
+
 	min_int_loop_source := os.join_path(root, 'inferred_min_int_loop.v')
 	os.write_file(min_int_loop_source, 'module main
 
