@@ -24,6 +24,7 @@ Environment overrides:
   V_QEMU_JOBS          V test jobs (default: virtual CPU count)
   V_QEMU_VFLAGS        Flags inherited by V subprocesses (default: -cc clang)
   V_QEMU_NO_FALLBACK   Set V_MACOS_V3_NO_FALLBACK (default: 1)
+  V_QEMU_TMPDIR        Guest disk-backed temporary root (default: /var/tmp/v-qemu-tests)
   V_QEMU_STOP_AFTER    Power off the guest after the run when set to 1
   V_QEMU_FIRMWARE      AArch64 UEFI firmware path
   V_QEMU_RSYNC         Host rsync executable (only needed when syncing)
@@ -71,7 +72,13 @@ memory_mb=${V_QEMU_MEMORY_MB:-16384}
 jobs=${V_QEMU_JOBS:-$cpus}
 vflags=${V_QEMU_VFLAGS:--cc clang}
 no_fallback=${V_QEMU_NO_FALLBACK:-1}
+guest_tmp_root=${V_QEMU_TMPDIR:-/var/tmp/v-qemu-tests}
 stop_after=${V_QEMU_STOP_AFTER:-0}
+
+if [[ "$guest_tmp_root" != /* ]]; then
+	echo "V_QEMU_TMPDIR must be an absolute guest path: ${guest_tmp_root}" >&2
+	exit 1
+fi
 
 qemu_bin=${V_QEMU_BIN:-$(command -v qemu-system-aarch64 || true)}
 if [[ -z "$qemu_bin" ]]; then
@@ -270,10 +277,16 @@ fi
 printf -v jobs_q '%q' "$jobs"
 printf -v vflags_q '%q' "$vflags"
 printf -v no_fallback_q '%q' "$no_fallback"
+printf -v guest_tmp_root_q '%q' "$guest_tmp_root"
+printf -v guest_tmp_template_q '%q' "${guest_tmp_root%/}/run.XXXXXXXX"
 printf -v test_command '%q ' ./vnew "$@"
 
 remote_command="cd ${guest_repo_q}"
+remote_command+=" && mkdir -p ${guest_tmp_root_q}"
+remote_command+=" && qemu_tmp=\$(mktemp -d ${guest_tmp_template_q})"
+remote_command+=" && trap 'rm -rf -- \"\$qemu_tmp\"' EXIT"
 remote_command+=" && export PATH=${guest_repo_q}:\$PATH VFLAGS=${vflags_q}"
+remote_command+=" TMPDIR=\$qemu_tmp"
 remote_command+=" V_C_ERROR_BUG_REPORT_DISABLED=1"
 remote_command+=" && if [ ! -f thirdparty/tcc/lib/libgc.a ]; then make; fi"
 remote_command+=" && ./v -old-compiler -o ./vnew cmd/v"
