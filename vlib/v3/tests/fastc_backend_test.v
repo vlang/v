@@ -200,6 +200,24 @@ fn main() {
 	assert narrow_run.exit_code == 0, narrow_run.output
 	assert narrow_run.output.trim_space() == '0'
 
+	string_index_source := os.join_path(root, 'string_index.v')
+	os.write_file(string_index_source, "module main
+
+fn main() {
+	s := 'abc'
+	println(s[0])
+}
+") or {
+		panic(err)
+	}
+	string_index_binary := os.join_path(root, 'string_index')
+	string_index_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', string_index_binary,
+		string_index_source])
+	assert string_index_compile.exit_code == 0, string_index_compile.output
+	string_index_run := cmdexec.run(string_index_binary, [])
+	assert string_index_run.exit_code == 0, string_index_run.output
+	assert string_index_run.output.trim_space() == '97'
+
 	mutable_interface_source := os.join_path(os.dir(@FILE), 'mutable_interface_array_value_test.v')
 	mutable_interface_binary := os.join_path(root, 'mutable_interface_array_value_test')
 	mutable_interface_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',

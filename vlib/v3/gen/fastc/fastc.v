@@ -507,9 +507,8 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 		result.write_string(prefix)
 	}
 	mut paren_depth := 0
-	mut bracket_depth := 0
 	for g.tok != .eof {
-		if paren_depth == 0 && bracket_depth == 0 && g.tok in stops {
+		if paren_depth == 0 && g.tok in stops {
 			break
 		}
 		if g.tok in [.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .not] {
@@ -517,6 +516,11 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 			// information, accepting them here would make generic printing and
 			// inferred locals observe 0/1 instead of false/true.
 			return g.unsupported('comparison or logical expressions')
+		}
+		if g.tok in [.lsbr, .rsbr] {
+			// Indexing requires V element types and bounds checks. C pointer/array
+			// indexing cannot preserve either in this scanner-only lane.
+			return g.unsupported('expression token `${g.token_source()}`')
 		}
 		if g.tok in [.lcbr, .rcbr, .str_dollar, .key_match, .key_or, .key_as, .key_is, .not_is,
 			.key_in, .not_in, .arrow, .power, .right_shift_unsigned] {
@@ -537,20 +541,11 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 				}
 				paren_depth--
 			}
-			.lsbr {
-				bracket_depth++
-			}
-			.rsbr {
-				if bracket_depth == 0 {
-					break
-				}
-				bracket_depth--
-			}
 			else {}
 		}
 		g.next()
 	}
-	if paren_depth != 0 || bracket_depth != 0 {
+	if paren_depth != 0 {
 		return g.unsupported('unbalanced expression')
 	}
 	return result.str().trim_space()

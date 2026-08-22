@@ -152,6 +152,7 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		'module main\nfn main() { println(1 == 1) }\n',
 		'module main\nfn main() { println(!false) }\n',
 		'module main\nfn show(a u8, b u8) { println(a + b) }\nfn main() { show(255, 1) }\n',
+		"module main\nfn main() { s := 'abc'; println(s[0]) }\n",
 	] {
 		mut failed := false
 		_ := generate(source, 'typed_expression.v', prefs) or {

@@ -110,9 +110,10 @@ program keeps its exit status and is never retried.
 
 Integer-range bounds in the direct lane are evaluated once, from left to right. Float printing,
 embedded-NUL string literals, assertions, comparison/logical expressions, and functions with
-narrow integer signatures are promoted to the complete lane so they use V's formatting,
-byte-length, diagnostics, boolean typing, and integer-wrapping behavior rather than C library
-approximations.
+narrow integer signatures are promoted to the complete lane. Indexing expressions are promoted
+as well, preserving V element types and bounds checks. These promotions avoid C library
+approximations of V's formatting, byte-length, diagnostics, boolean typing, and integer-wrapping
+behavior.
 
 The direct path is limited to host-target, non-production, non-test, non-shared single-file builds.
 Compiler/self-host and other non-direct modes enter the complete lane before source scanning.
