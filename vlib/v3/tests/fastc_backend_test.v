@@ -81,6 +81,15 @@ fn main() {
 	assert debug_run.exit_code == 0, debug_run.output
 	assert debug_run.output.trim_space() == '42'
 
+	no_main_c_file := os.join_path(root, 'no_main.c')
+	no_main_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
+		no_main_c_file, valid_source])
+	assert no_main_compile.exit_code == 0, no_main_compile.output
+	no_main_c := os.read_file(no_main_c_file) or { panic(err) }
+	assert !no_main_c.contains('V_FASTC_PRINT_SELECT')
+	assert !no_main_c.contains('int main(void) {')
+	assert no_main_c.contains('main__main')
+
 	invalid_source := os.join_path(root, 'invalid.v')
 	os.write_file(invalid_source, 'module main
 
@@ -567,6 +576,25 @@ fn main() {
 	hex_escape_run := cmdexec.run(hex_escape_binary, [])
 	assert hex_escape_run.exit_code == 0, hex_escape_run.output
 	assert hex_escape_run.output.trim_space() == 'aardvark'
+
+	partial_octal_source := os.join_path(root, 'partial_octal_escape.v')
+	os.write_file(partial_octal_source, r"module main
+
+fn main() {
+	println('\12')
+}
+") or {
+		panic(err)
+	}
+	partial_octal_binary := os.join_path(root, 'partial_octal_escape')
+	partial_octal_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
+		partial_octal_binary, partial_octal_source])
+	assert partial_octal_compile.exit_code == 0, partial_octal_compile.output
+	partial_octal_c := os.read_file(partial_octal_binary + '.c') or { panic(err) }
+	assert partial_octal_c.contains(r'println("\\12");')
+	partial_octal_run := cmdexec.run(partial_octal_binary, [])
+	assert partial_octal_run.exit_code == 0, partial_octal_run.output.bytes().str()
+	assert partial_octal_run.output == '\\12\n', partial_octal_run.output.bytes().str()
 
 	continued_string_source := os.join_path(root, 'continued_string.v')
 	os.write_file(continued_string_source, r"module main

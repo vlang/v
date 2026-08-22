@@ -126,6 +126,12 @@ fn test_hex_string_escape_has_fixed_width_in_c() {
 	assert c_source.contains(r'println("\141ardvark");')
 }
 
+fn test_partial_octal_string_escapes_are_reencoded() {
+	assert fastc_c_string(r"'\1'")! == r'"\\1"'
+	assert fastc_c_string(r"'\12'")! == r'"\\12"'
+	assert fastc_c_string(r"'\123'")! == r'"\123"'
+}
+
 fn test_string_line_continuations_match_v_unescaping() {
 	prefs := pref.new_preferences()
 	source := r"module main

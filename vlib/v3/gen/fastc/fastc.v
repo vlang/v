@@ -729,6 +729,16 @@ fn fastc_c_string(literal string) !string {
 				i += 4
 				continue
 			}
+			if raw[i + 1] >= `0` && raw[i + 1] <= `7` && (i + 3 >= raw.len - 1
+				|| raw[i + 2] < `0` || raw[i + 2] > `7` || raw[i + 3] < `0`
+				|| raw[i + 3] > `7`) {
+				// V only decodes three-digit octal escapes. Preserve a shorter
+				// spelling as a literal backslash and digits instead of letting C
+				// consume it as a one- or two-digit octal escape.
+				result.write_string('\\\\')
+				i++
+				continue
+			}
 			result.write_u8(c)
 			result.write_u8(raw[i + 1])
 			i += 2
