@@ -140,6 +140,7 @@ printf "%s\\n" "\$*" >> ${os.quoted_path(rsync_trace)}
 archive=0
 delete_destination=0
 exclude_root_github=0
+exclude_root_git=0
 while [ "\$#" -gt 0 ]; do
 	case "\$1" in
 		-a)
@@ -152,6 +153,10 @@ while [ "\$#" -gt 0 ]; do
 			;;
 		--exclude=/.github/)
 			exclude_root_github=1
+			shift
+			;;
+		--exclude=/.git|--exclude=/.git/)
+			exclude_root_git=1
 			shift
 			;;
 		--)
@@ -195,12 +200,12 @@ for source_path in "\$@"; do
 	case "\$source_path" in
 		*/)
 			mkdir -p -- "\$destination_path"
-			if [ "\$exclude_root_github" = 1 ]; then
+			if [ "\$exclude_root_github" = 1 ] || [ "\$exclude_root_git" = 1 ]; then
 				for source_entry in "\${source_path}".[!.]* "\${source_path}"..?* "\${source_path}"*; do
 					if [ ! -e "\$source_entry" ] && [ ! -L "\$source_entry" ]; then
 						continue
 					fi
-					if [ "\${source_entry##*/}" = ".github" ]; then
+					if { [ "\$exclude_root_github" = 1 ] && [ "\${source_entry##*/}" = ".github" ]; } || { [ "\$exclude_root_git" = 1 ] && [ "\${source_entry##*/}" = ".git" ]; }; then
 						continue
 					fi
 					cp -a -- "\$source_entry" "\$destination_path/"
@@ -254,14 +259,16 @@ fi
 		assert trace_lines[i].starts_with('${option_prefix}${operation}'), trace_lines.str()
 	}
 	rsync_lines := (os.read_file(rsync_trace) or { panic(err) }).trim_space().split_into_lines()
-	assert rsync_lines.len == 7, rsync_lines.str()
-	assert rsync_lines[0].starts_with('-a thirdparty/tcc/ '), rsync_lines.str()
-	assert rsync_lines[1].starts_with('-a --delete --exclude=/.github/ '), rsync_lines.str()
-	assert rsync_lines[2].contains('thirdparty/tcc.original/.git/'), rsync_lines.str()
-	assert rsync_lines[3].contains('thirdparty/tcc.original/lib/libgc'), rsync_lines.str()
-	assert rsync_lines[4].contains('thirdparty/tcc.original/lib/build'), rsync_lines.str()
-	assert rsync_lines[5].contains('thirdparty/tcc.original/README.md'), rsync_lines.str()
-	assert rsync_lines[6].ends_with('/build.sh'), rsync_lines.str()
+	assert rsync_lines.len == 8, rsync_lines.str()
+	assert rsync_lines[0].starts_with('-a --exclude=/.git --exclude=/.git/ thirdparty/tcc/ '), rsync_lines.str()
+
+	assert rsync_lines[1].starts_with('-a thirdparty/tcc/ '), rsync_lines.str()
+	assert rsync_lines[2].starts_with('-a --delete --exclude=/.github/ '), rsync_lines.str()
+	assert rsync_lines[3].contains('thirdparty/tcc.original/.git/'), rsync_lines.str()
+	assert rsync_lines[4].contains('thirdparty/tcc.original/lib/libgc'), rsync_lines.str()
+	assert rsync_lines[5].contains('thirdparty/tcc.original/lib/build'), rsync_lines.str()
+	assert rsync_lines[6].contains('thirdparty/tcc.original/README.md'), rsync_lines.str()
+	assert rsync_lines[7].ends_with('/build.sh'), rsync_lines.str()
 	assert os.execute('${os.quoted_path(os.join_path(tcc_dir, 'tcc.exe'))} --version').output.trim_space() == 'source-test-tcc'
 	staged_source_workflow := os.join_path(root, 'tinycc', 'thirdparty', 'tcc', '.github',
 		'workflows', 'preserve.yml')

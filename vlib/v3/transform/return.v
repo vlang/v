@@ -16,11 +16,11 @@ const transformed_direct_optional_forward_value_prefix = '__transformed_direct_o
 // This is a hook for future sum type return wrapping at the transform level.
 fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count == 0 {
-		return arr1(id)
+		return [id]
 	}
 	// Check if current function returns a sum type
 	if t.cur_fn_ret_type.len == 0 || t.cur_fn_ret_type !in t.sum_types {
-		return arr1(id)
+		return [id]
 	}
 	// Check if the return value is a struct init whose type is a variant
 	child_id := t.a.child(&node, 0)
@@ -32,11 +32,11 @@ fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node f
 				// This is a variant being returned as a sum type.
 				// For now, pass through - C gen handles the wrapping.
 				// TODO: Generate explicit sum type wrapping here.
-				return arr1(id)
+				return [id]
 			}
 		}
 	}
-	return arr1(id)
+	return [id]
 }
 
 // branch_tail_expr extracts the tail EXPRESSION id from a branch block,
@@ -60,7 +60,7 @@ fn (t &Transformer) branch_tail_expr(block_id flat.NodeId) flat.NodeId {
 
 // make_return builds a `return <val>` statement node with the given type.
 fn (mut t Transformer) make_return(val flat.NodeId, ret_typ string) flat.NodeId {
-	return t.make_return_values(arr1(val), ret_typ)
+	return t.make_return_values([val], ret_typ)
 }
 
 fn (mut t Transformer) make_direct_optional_forward_return(val flat.NodeId, ret_typ string) flat.NodeId {
@@ -145,7 +145,7 @@ fn (mut t Transformer) mark_transformed_return(ret_id flat.NodeId, source_id fla
 }
 
 fn (mut t Transformer) make_transformed_return(val flat.NodeId, ret_typ string, source_id flat.NodeId) flat.NodeId {
-	return t.make_transformed_return_values(arr1(val), ret_typ, source_id)
+	return t.make_transformed_return_values([val], ret_typ, source_id)
 }
 
 fn (mut t Transformer) make_transformed_return_values(vals []flat.NodeId, ret_typ string, source_id flat.NodeId) flat.NodeId {
@@ -304,12 +304,12 @@ fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.Nod
 	value := t.make_selector(t.make_ident(tmp_name), 'value', t.optional_base_type(expr_type))
 	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type, ret_type,
 		source_return_id) or {
-		t.make_block(arr1(t.make_transformed_return(value, ret_type, source_return_id)))
+		t.make_block([t.make_transformed_return(value, ret_type, source_return_id)])
 	}
 	err_expr := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
 	err_return := t.make_none_return_stmt_with_err_expr(err_expr)
 	t.mark_transformed_return(err_return, source_return_id)
-	else_block := t.make_block(arr1(err_return))
+	else_block := t.make_block([err_return])
 	result << t.make_if(ok_cond, then_block, else_block)
 	return result
 }
@@ -671,8 +671,10 @@ fn (mut t Transformer) convert_forwarded_array_to_dynamic(value_id flat.NodeId, 
 	t.pending_stmts = t.pending_stmts[..body_pending_start].clone()
 	value_name := t.new_temp('return_array_value')
 	body << t.make_decl_assign_typed(value_name, converted, t.semantic_type_name(expected_elem))
-	body << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
-		t.make_ident(out_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))
+	body << t.make_expr_stmt(t.make_call_typed('array_push', [
+		t.make_prefix(.amp, t.make_ident(out_name)),
+		t.make_prefix(.amp, t.make_ident(value_name)),
+	], 'void'))
 	prefix << t.make_for_stmt(init, cond, post, body, src)
 	for stmt in prefix {
 		t.pending_stmts << stmt
@@ -725,8 +727,7 @@ fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type t
 	keys_type := '[]${actual_key_storage}'
 	prefix << t.make_decl_assign_typed(out_name, t.make_new_map_call(expected_map_type),
 		t.semantic_type_name(expected_type))
-	keys_call := t.make_call_typed('map__keys', arr1(t.runtime_addr(base, actual_map_type)),
-		keys_type)
+	keys_call := t.make_call_typed('map__keys', [t.runtime_addr(base, actual_map_type)], keys_type)
 	prefix << t.make_decl_assign_typed(keys_name, keys_call, keys_type)
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(keys_name),
@@ -875,7 +876,7 @@ fn (mut t Transformer) build_return_if_chain(if_id flat.NodeId, ret_typ string, 
 		if else_node.kind == .if_expr {
 			// else-if chain: recurse, wrap resulting if-stmt in a block
 			inner := t.build_return_if_chain(else_id, ret_typ, extra_return_vals, source_return_id)
-			else_block = t.make_block(arr1(inner))
+			else_block = t.make_block([inner])
 		} else {
 			else_block = t.return_block_from_branch(else_id, ret_typ, extra_return_vals,
 				source_return_id)
@@ -917,7 +918,9 @@ fn (mut t Transformer) try_expand_return_if(source_return_id flat.NodeId, node f
 		extra_return_vals << t.a.child(&node, i)
 	}
 	ret_typ := if t.cur_fn_ret_type.len > 0 { t.cur_fn_ret_type } else { node.typ }
-	return arr1(t.build_return_if_chain(val_id, ret_typ, extra_return_vals, source_return_id))
+	return [
+		t.build_return_if_chain(val_id, ret_typ, extra_return_vals, source_return_id),
+	]
 }
 
 fn (t &Transformer) match_branch_tuple_parts(branch flat.Node, body_start_idx int, count int) ?TupleBlockParts {

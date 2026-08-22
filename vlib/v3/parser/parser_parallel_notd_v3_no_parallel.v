@@ -257,9 +257,17 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		for ci in 1 .. n_chunks {
 			order << ci
 		}
-		order.sort_with_compare(fn [worker_chunk_bytes] (a &int, b &int) int {
-			return worker_chunk_bytes[*b - 1] - worker_chunk_bytes[*a - 1]
-		})
+		// Keep this capture-free so the compiler can self-host with `-no-closures`.
+		for i in 1 .. order.len {
+			current := order[i]
+			current_bytes := worker_chunk_bytes[current - 1]
+			mut j := i
+			for j > 0 && worker_chunk_bytes[order[j - 1] - 1] < current_bytes {
+				order[j] = order[j - 1]
+				j--
+			}
+			order[j] = current
+		}
 		mut tasks := []workers.Task{cap: n_chunks}
 		for ci in order {
 			helper_idx := ci - 1

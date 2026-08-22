@@ -37,7 +37,7 @@ fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name str
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, iface_name)
 	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
 	size := t.make_sizeof_type(iface_name)
-	dup := t.make_non_aliasing_allocation_call('memdup', arr2(addr, size), 'voidptr')
+	dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], 'voidptr')
 	cast := t.make_cast(target_type, dup, target_type)
 	t.set_node_typ(int(cast), target_type)
 	return cast
@@ -645,8 +645,8 @@ fn (t &Transformer) heaped_amp_local_address_child(id flat.NodeId) ?flat.NodeId 
 
 fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, value flat.NodeId, field_type string) flat.NodeId {
 	cond := t.make_infix(.ne, source, t.a.add(.nil_literal))
-	then_block := t.make_block(arr1(t.make_expr_stmt(value)))
-	else_block := t.make_block(arr1(t.make_expr_stmt(t.zero_value_for_type(field_type))))
+	then_block := t.make_block([t.make_expr_stmt(value)])
+	else_block := t.make_block([t.make_expr_stmt(t.zero_value_for_type(field_type))])
 	start := t.a.children.len
 	t.a.children << cond
 	t.a.children << then_block
@@ -760,7 +760,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	} else {
 		addr := t.make_prefix(.amp, source)
 		size := t.make_sizeof_type(concrete_type)
-		dup := t.make_non_aliasing_allocation_call('memdup', arr2(addr, size), 'voidptr')
+		dup := t.make_non_aliasing_allocation_call('memdup', [addr, size], 'voidptr')
 		if t.interface_box_object_cast_needs_raw_call(concrete_type) {
 			t.set_node_typ(int(dup), '&${concrete_type}')
 			dup

@@ -149,8 +149,8 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 	channel_cast := t.make_cast('&sync.Channel', channel_source, '&sync.Channel')
 	prelude << t.make_decl_assign_typed(channel_name, channel_cast, '&sync.Channel')
 	t.mark_fn_used('sync__Channel__pop')
-	pop_call := t.make_call_typed('sync__Channel__pop', arr2(t.make_ident(channel_name), t.make_prefix(.amp,
-		t.make_ident(val_name))), 'bool')
+	pop_call := t.make_call_typed('sync__Channel__pop', [t.make_ident(channel_name),
+		t.make_prefix(.amp, t.make_ident(val_name))], 'bool')
 	prelude << t.make_decl_assign_typed(ok_name, pop_call, 'bool')
 
 	then_id := t.a.child(&node, 1)
@@ -1479,7 +1479,7 @@ fn (mut t Transformer) transform_if_branch_as_block(branch_id flat.NodeId) flat.
 		return t.make_block(children)
 	}
 	mut stmts := []flat.NodeId{}
-	if t.is_stmt_kind_id(node_kind_id(branch)) {
+	if t.is_stmt_kind_id(int(branch.kind)) {
 		expanded := t.transform_stmt(branch_id)
 		t.drain_pending(mut stmts)
 		stmts << expanded

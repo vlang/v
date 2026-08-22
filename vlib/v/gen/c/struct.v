@@ -1297,7 +1297,18 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 
 	if sfield.expected_type.has_flag(.option) && field_unwrap_typ.has_flag(.option)
 		&& g.styp(sfield.expected_type) != g.styp(field_unwrap_typ) {
-		g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
+		expr_base_typ := g.table.unaliased_type(field_unwrap_typ.clear_flag(.option))
+		expected_base_typ := g.table.unaliased_type(sfield.expected_type.clear_flag(.option))
+		expr_base_sym := g.table.final_sym(expr_base_typ)
+		expected_base_sym := g.table.final_sym(expected_base_typ)
+		if expr_base_typ == expected_base_typ
+			|| (expr_base_sym.kind == .function && expected_base_sym.kind == .function) {
+			// Alias-equivalent payloads have the same representation. Clone the complete
+			// option so `none` and error state are preserved along with the payload.
+			g.expr_opt_with_alias(sfield.expr, field_unwrap_typ, sfield.expected_type)
+		} else {
+			g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
+		}
 	} else if (sfield.expected_type.has_flag(.option) && !field_unwrap_typ.has_flag(.option))
 		|| (sfield.expected_type.has_flag(.result) && !field_unwrap_typ.has_flag(.result)) {
 		g.expr_with_opt(sfield.expr, field_unwrap_typ, sfield.expected_type)
