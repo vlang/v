@@ -305,7 +305,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	if !p.prefs.supports_inline_asm {
 		p.precollect_unsupported_inline_asm_guards(stable_src, p.prefs.target.arch)
 	}
-	if path.ends_with('.v') {
+	if path.ends_with('.v') || path.ends_with('.vv') {
 		p.parsed_v_files++
 		p.parsed_v_file_paths << path
 	} else if path.ends_with('.vh') {

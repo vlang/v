@@ -13406,6 +13406,15 @@ fn (mut tc TypeChecker) check_multi_value_list_decl_assign(id flat.NodeId, node 
 	if lhs_ids.len == 0 || rhs_count <= 1 {
 		return false
 	}
+	if lhs_ids.len == 1 {
+		first_rhs_id := tc.multi_assign_rhs_id(node, 0)
+		tc.check_node(first_rhs_id)
+		unexpected_rhs_id := tc.multi_assign_rhs_id(node, 1)
+		tc.record_error(.assignment_mismatch,
+			'unexpected `,` in expression, use `;` or a new line to separate statements',
+			unexpected_rhs_id)
+		return true
+	}
 	mut rhs_ids := []flat.NodeId{cap: rhs_count}
 	mut multi_ids := []flat.NodeId{}
 	mut multi_types := []MultiReturn{}
