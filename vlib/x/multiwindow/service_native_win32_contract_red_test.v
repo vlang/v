@@ -8,6 +8,8 @@ const win32_red_clipboard_max_bytes = 16 * 1024 * 1024
 const win32_red_wm_close = u32(0x0010)
 const win32_red_ws_caption = u64(0x00c00000)
 const win32_red_ws_child = u64(0x40000000)
+const win32_red_dpi_context_unavailable = 1
+const win32_red_dpi_context_rejected = 2
 
 #flag windows -DV_MULTIWINDOW_WIN32_SERVICE_TEST
 
@@ -38,6 +40,12 @@ $if windows {
 	fn C.v_multiwindow_win32_test_modal_show_sequence_value() u64
 	fn C.v_multiwindow_win32_test_modal_destroy_sequence_value() u64
 	fn C.v_multiwindow_win32_test_modal_owner_destroy_sequence_value() u64
+	fn C.v_multiwindow_win32_test_dpi_creation_configure(context_mode int, frame_bias_width int, frame_bias_height int)
+	fn C.v_multiwindow_win32_test_dpi_creation_reset()
+	fn C.v_multiwindow_win32_test_dpi_context_attempt_count() int
+	fn C.v_multiwindow_win32_test_dpi_context_fallback_count() int
+	fn C.v_multiwindow_win32_test_dpi_exact_resize_count() int
+	fn C.v_multiwindow_win32_test_client_size_matches(hwnd voidptr, width int, height int) int
 	fn C.v_multiwindow_test_win32_is_window(hwnd voidptr) int
 	fn C.v_multiwindow_test_win32_is_visible(hwnd voidptr) int
 	fn C.v_multiwindow_test_win32_is_enabled(hwnd voidptr) int
@@ -1448,10 +1456,78 @@ fn test_win32_native_modal_reenable_and_child_first_hwnd_destruction_red() {
 	}
 }
 
+fn win32_red_dpi_creation_fallback_case(context_mode int) ! {
+	$if windows {
+		C.v_multiwindow_win32_test_dpi_creation_configure(context_mode, 37, 29)
+		defer {
+			C.v_multiwindow_win32_test_dpi_creation_reset()
+		}
+		caller_context_before := C.v_multiwindow_test_win32_thread_dpi_awareness_context()
+		assert caller_context_before != unsafe { nil }, 'GetThreadDpiAwarenessContext is unavailable before fallback DPI creation'
+
+		mut app := new_app(backend: .win32)!
+		defer {
+			app.stop() or {}
+		}
+		owner := app.create_window(
+			title:    'Win32 DPI fallback owner ${context_mode}'
+			width:    317
+			height:   193
+			visible:  false
+			high_dpi: true
+		)!
+		owner_hwnd := win32_red_hwnd(app, owner)!
+		assert C.v_multiwindow_win32_test_client_size_matches(owner_hwnd, 317, 193) == 1, 'fallback DPI creation did not preserve the requested owner client size'
+
+		child := app.create_window(
+			title:    'Win32 DPI fallback owned ${context_mode}'
+			width:    271
+			height:   149
+			visible:  false
+			high_dpi: true
+			owner:    owner
+		)!
+		child_hwnd := win32_red_hwnd(app, child)!
+		assert C.v_multiwindow_test_win32_owner(child_hwnd) == owner_hwnd
+		assert C.v_multiwindow_win32_test_client_size_matches(child_hwnd, 271, 149) == 1, 'fallback DPI creation did not preserve the requested owned client size'
+
+		constrained := app.create_window(
+			title:    'Win32 DPI fallback constrained ${context_mode}'
+			width:    96
+			height:   72
+			visible:  false
+			high_dpi: true
+		)!
+		constrained_hwnd := win32_red_hwnd(app, constrained)!
+		assert C.v_multiwindow_win32_test_client_size_matches(constrained_hwnd, 96, 72) == 1, 'non-interactive DPI correction did not preserve a client size below the system tracking minimum'
+		app.poll_events()!
+		creation_events := app.drain_queued_events()!
+		assert creation_events.filter(it.kind == .lifecycle && it.lifecycle.kind == .window_resized).len == 0, 'fallback DPI correction leaked a transient creation resize event'
+
+		app.resize_window(owner, 433, 259)!
+		owner_info := app.window_info(owner)!
+		assert owner_info.width == 433 && owner_info.height == 259
+		assert C.v_multiwindow_win32_test_client_size_matches(owner_hwnd, 433, 259) == 1, 'HWND-aware resize did not preserve the requested client size'
+		assert C.v_multiwindow_win32_test_dpi_context_attempt_count() == 3
+		assert C.v_multiwindow_win32_test_dpi_context_fallback_count() == 3
+		assert C.v_multiwindow_win32_test_dpi_exact_resize_count() >= 4
+
+		caller_context_after := C.v_multiwindow_test_win32_thread_dpi_awareness_context()
+		assert caller_context_after != unsafe { nil }, 'GetThreadDpiAwarenessContext is unavailable after fallback DPI creation'
+		assert C.v_multiwindow_test_win32_dpi_awareness_contexts_equal(caller_context_before,
+			caller_context_after) == 1, 'fallback DPI creation changed the caller thread DPI-awareness context'
+	} $else {
+		_ = context_mode
+		return error('Win32 DPI fallback case is unavailable')
+	}
+}
+
 fn test_win32_native_monitor_dpi_display_change_and_generation_red() {
 	$if windows {
 		eprintln('PACKAGE2_RED_TEST=test_win32_native_monitor_dpi_display_change_and_generation_red')
 		eprintln('PACKAGE2_RED_FAMILY=monitor_dpi_hotplug')
+		win32_red_dpi_creation_fallback_case(win32_red_dpi_context_unavailable)!
+		win32_red_dpi_creation_fallback_case(win32_red_dpi_context_rejected)!
 		empty_calls_before_cold_start :=
 			C.v_multiwindow_test_win32_monitor_enumeration_empty_calls()
 		C.v_multiwindow_test_win32_monitor_enumeration_use_empty()

@@ -48,6 +48,9 @@ fn appkit_public_readback_frame(mut context WindowContext, mut state AppKitPubli
 	if state.requested {
 		return
 	}
+	mut app := context.app
+	assert app.window_operation_capability(context.window_id(), .window_capture)!.support == .available
+	assert app.window_readback_capabilities(context.window_id())!.window_capture
 	state.requested = true
 	state.expected_submitted_frame = context.info.submitted_frame + 1
 	context.with_offscreen(WindowOffscreenPassConfig{
@@ -78,7 +81,6 @@ fn appkit_public_readback_frame(mut context WindowContext, mut state AppKitPubli
 			height: 3
 		}
 	})!
-	mut app := context.app
 	state.window_readback = app.request_window_capture(context.window_id(), WindowReadbackConfig{
 		rect: WindowPixelRect{
 			x:      8
@@ -185,6 +187,57 @@ fn test_multiwindow_appkit_public_readback_requires_live_metal_renderer() {
 	}
 }
 
+fn test_multiwindow_appkit_public_window_capture_requires_frame_producer() {
+	$if darwin && sokol_metal ? {
+		if !appkit_public_readback_runtime_requested() {
+			return
+		}
+		mut app := new_app(backend: .appkit, require_renderer: true)!
+		window := app.create_window(
+			title:    'AppKit capture without a frame producer'
+			width:    48
+			height:   32
+			high_dpi: false
+			init_fn:  fn (mut context WindowInitContext) ! {
+				_ = context
+			}
+		)!
+		assert app.core.renderer_device_available_for_gg()
+		assert gfx.query_backend() == .metal_macos
+		assert app.core.service_operation_capability(window.core, .window_capture)!.support == .available
+		app.core.set_render_window_snapshot_for_gg_test(window.core, .none, true, 48, 32, 1, 0)!
+		snapshot := app.core.render_window_snapshot(window.core)!
+		producer := app.render_runtime.window_capture_producer(window)!
+		assert snapshot.metrics.metrics_available
+		assert snapshot.metrics.framebuffer_width == 48
+		assert snapshot.metrics.framebuffer_height == 32
+		assert snapshot.target.sample_count == 1
+		assert snapshot.block_reason == .none
+		assert !producer.frame_active
+		assert !producer.frame_fn_configured
+		assert managed_window_capture_has_producer(MultiWindowCaptureProducer{
+			frame_fn_configured: true
+		}, snapshot)
+		assert !managed_window_capture_has_producer(producer, snapshot)
+		assert app.window_operation_capability(window, .window_capture)!.support == .unsupported
+		assert !app.window_readback_capabilities(window)!.window_capture
+
+		dirty_before := snapshot.dirty_epoch
+		pending_before := app.pending_window_captures.len
+		mut rejected := false
+		_ = app.request_window_capture(window, WindowReadbackConfig{}) or {
+			rejected = true
+			assert err.msg() == err_multiwindow_render_readback_unsupported
+			WindowReadbackId{}
+		}
+		assert rejected
+		assert app.core.render_window_snapshot(window.core)!.dirty_epoch == dirty_before
+		assert app.pending_window_captures.len == pending_before
+		assert app.core.drain_readback_events()!.len == 0
+		app.stop()!
+	}
+}
+
 fn test_multiwindow_appkit_public_readbacks_are_per_window_and_post_submit() {
 	$if darwin && sokol_metal ? {
 		if !appkit_public_readback_runtime_requested() {
@@ -228,9 +281,11 @@ fn test_multiwindow_appkit_public_readbacks_are_per_window_and_post_submit() {
 			}
 		)!
 		assert app.window_readback_capabilities(first_window)!.offscreen_image
-		assert app.window_readback_capabilities(first_window)!.window_capture
+		assert !app.window_readback_capabilities(first_window)!.window_capture
+		assert app.window_operation_capability(first_window, .window_capture)!.support == .unsupported
 		assert app.window_readback_capabilities(second_window)!.offscreen_image
-		assert app.window_readback_capabilities(second_window)!.window_capture
+		assert !app.window_readback_capabilities(second_window)!.window_capture
+		assert app.window_operation_capability(second_window, .window_capture)!.support == .unsupported
 		mut completion := &AppKitPublicReadbackCompletion{}
 		app.run(
 			readback_fn: fn [results, mut completion] (result WindowReadbackResult, mut app App) ! {

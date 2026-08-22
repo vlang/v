@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <math.h>
 #include <windows.h>
 #include <shellapi.h>
@@ -222,7 +223,68 @@ static inline int v_multiwindow_win32_apply_cursor_shape(HWND hwnd) {
 	return 1;
 }
 
-static inline int v_multiwindow_win32_adjusted_size(int width, int height, DWORD style, DWORD ex_style, int *out_width, int *out_height) {
+typedef BOOL (WINAPI *VMultiwindowWin32BackendAdjustWindowRectExForDpi)(LPRECT,
+	DWORD, BOOL, DWORD, UINT);
+typedef UINT (WINAPI *VMultiwindowWin32BackendGetDpiForWindow)(HWND);
+typedef HANDLE (WINAPI *VMultiwindowWin32BackendSetThreadDpiAwarenessContext)(
+	HANDLE);
+
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+#define V_MULTIWINDOW_WIN32_TEST_DPI_CONTEXT_NORMAL 0
+#define V_MULTIWINDOW_WIN32_TEST_DPI_CONTEXT_UNAVAILABLE 1
+#define V_MULTIWINDOW_WIN32_TEST_DPI_CONTEXT_REJECTED 2
+
+static int v_multiwindow_win32_test_dpi_context_mode;
+static int v_multiwindow_win32_test_dpi_frame_bias_width;
+static int v_multiwindow_win32_test_dpi_frame_bias_height;
+static int v_multiwindow_win32_test_dpi_context_attempts;
+static int v_multiwindow_win32_test_dpi_context_fallbacks;
+static int v_multiwindow_win32_test_dpi_exact_resizes;
+
+static inline void v_multiwindow_win32_test_dpi_creation_configure(
+		int context_mode, int frame_bias_width, int frame_bias_height) {
+	v_multiwindow_win32_test_dpi_context_mode =
+		context_mode >= V_MULTIWINDOW_WIN32_TEST_DPI_CONTEXT_NORMAL
+			&& context_mode <= V_MULTIWINDOW_WIN32_TEST_DPI_CONTEXT_REJECTED
+		? context_mode : V_MULTIWINDOW_WIN32_TEST_DPI_CONTEXT_NORMAL;
+	v_multiwindow_win32_test_dpi_frame_bias_width =
+		frame_bias_width > 0 ? frame_bias_width : 0;
+	v_multiwindow_win32_test_dpi_frame_bias_height =
+		frame_bias_height > 0 ? frame_bias_height : 0;
+	v_multiwindow_win32_test_dpi_context_attempts = 0;
+	v_multiwindow_win32_test_dpi_context_fallbacks = 0;
+	v_multiwindow_win32_test_dpi_exact_resizes = 0;
+}
+
+static inline void v_multiwindow_win32_test_dpi_creation_reset(void) {
+	v_multiwindow_win32_test_dpi_creation_configure(
+		V_MULTIWINDOW_WIN32_TEST_DPI_CONTEXT_NORMAL, 0, 0);
+}
+
+static inline int v_multiwindow_win32_test_dpi_context_attempt_count(void) {
+	return v_multiwindow_win32_test_dpi_context_attempts;
+}
+
+static inline int v_multiwindow_win32_test_dpi_context_fallback_count(void) {
+	return v_multiwindow_win32_test_dpi_context_fallbacks;
+}
+
+static inline int v_multiwindow_win32_test_dpi_exact_resize_count(void) {
+	return v_multiwindow_win32_test_dpi_exact_resizes;
+}
+
+static inline int v_multiwindow_win32_test_client_size_matches(
+		void *hwnd_ptr, int width, int height) {
+	RECT rect = {0, 0, 0, 0};
+	HWND hwnd = (HWND)hwnd_ptr;
+	return hwnd && IsWindow(hwnd) && GetClientRect(hwnd, &rect)
+		&& rect.right - rect.left == width
+		&& rect.bottom - rect.top == height;
+}
+#endif
+
+static inline int v_multiwindow_win32_adjusted_size(int width, int height,
+		DWORD style, DWORD ex_style, int *out_width, int *out_height) {
 	RECT rect = {0, 0, width, height};
 	if (!AdjustWindowRectEx(&rect, style, FALSE, ex_style)) {
 		return 0;
@@ -230,6 +292,117 @@ static inline int v_multiwindow_win32_adjusted_size(int width, int height, DWORD
 	*out_width = rect.right - rect.left;
 	*out_height = rect.bottom - rect.top;
 	return 1;
+}
+
+static inline int v_multiwindow_win32_adjusted_size_for_window(HWND hwnd,
+		int width, int height, DWORD style, DWORD ex_style,
+		int *out_width, int *out_height) {
+	if (!out_width || !out_height || width < 0 || height < 0) {
+		return 0;
+	}
+	if (hwnd && IsWindow(hwnd)) {
+		HMODULE user32 = GetModuleHandleW(L"user32.dll");
+		VMultiwindowWin32BackendGetDpiForWindow get_dpi_for_window = user32
+			? (VMultiwindowWin32BackendGetDpiForWindow)GetProcAddress(
+				user32, "GetDpiForWindow")
+			: NULL;
+		VMultiwindowWin32BackendAdjustWindowRectExForDpi adjust_for_dpi = user32
+			? (VMultiwindowWin32BackendAdjustWindowRectExForDpi)GetProcAddress(
+				user32, "AdjustWindowRectExForDpi")
+			: NULL;
+		UINT dpi = get_dpi_for_window ? get_dpi_for_window(hwnd) : 0;
+		if (adjust_for_dpi && dpi) {
+			RECT rect = {0, 0, width, height};
+			if (adjust_for_dpi(&rect, style, FALSE, ex_style, dpi)) {
+				*out_width = rect.right - rect.left;
+				*out_height = rect.bottom - rect.top;
+				return 1;
+			}
+		}
+
+		RECT client_rect = {0, 0, 0, 0};
+		RECT window_rect = {0, 0, 0, 0};
+		if (GetClientRect(hwnd, &client_rect)
+				&& GetWindowRect(hwnd, &window_rect)) {
+			int client_width = client_rect.right - client_rect.left;
+			int client_height = client_rect.bottom - client_rect.top;
+			int window_width = window_rect.right - window_rect.left;
+			int window_height = window_rect.bottom - window_rect.top;
+			int extra_width = window_width - client_width;
+			int extra_height = window_height - client_height;
+			if (client_width >= 0 && client_height >= 0
+					&& extra_width >= 0 && extra_height >= 0
+					&& width <= INT_MAX - extra_width
+					&& height <= INT_MAX - extra_height) {
+				*out_width = width + extra_width;
+				*out_height = height + extra_height;
+				return 1;
+			}
+		}
+	}
+	return v_multiwindow_win32_adjusted_size(width, height, style, ex_style,
+		out_width, out_height);
+}
+
+static inline void v_multiwindow_win32_record_exact_resize_for_test(void) {
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	v_multiwindow_win32_test_dpi_exact_resizes++;
+#endif
+}
+
+static inline int v_multiwindow_win32_set_exact_client_size(HWND hwnd,
+		int width, int height, DWORD style, DWORD ex_style) {
+	if (!hwnd || !IsWindow(hwnd) || width < 0 || height < 0) {
+		return 0;
+	}
+	RECT client_rect = {0, 0, 0, 0};
+	if (!GetClientRect(hwnd, &client_rect)) {
+		return 0;
+	}
+	int actual_width = client_rect.right - client_rect.left;
+	int actual_height = client_rect.bottom - client_rect.top;
+	if (actual_width == width && actual_height == height) {
+		return 1;
+	}
+	int frame_width = width;
+	int frame_height = height;
+	if (!v_multiwindow_win32_adjusted_size_for_window(hwnd, width, height,
+			style, ex_style, &frame_width, &frame_height)) {
+		return 0;
+	}
+	UINT flags = SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE
+		| SWP_NOOWNERZORDER | SWP_NOSENDCHANGING;
+	v_multiwindow_win32_record_exact_resize_for_test();
+	if (!SetWindowPos(hwnd, NULL, 0, 0, frame_width, frame_height, flags)
+			|| !GetClientRect(hwnd, &client_rect)) {
+		return 0;
+	}
+	actual_width = client_rect.right - client_rect.left;
+	actual_height = client_rect.bottom - client_rect.top;
+	if (actual_width == width && actual_height == height) {
+		return 1;
+	}
+
+	RECT window_rect = {0, 0, 0, 0};
+	if (!GetWindowRect(hwnd, &window_rect)) {
+		return 0;
+	}
+	int64_t corrected_width = (int64_t)(window_rect.right - window_rect.left)
+		+ (int64_t)width - (int64_t)actual_width;
+	int64_t corrected_height = (int64_t)(window_rect.bottom - window_rect.top)
+		+ (int64_t)height - (int64_t)actual_height;
+	if (corrected_width <= 0 || corrected_width > INT_MAX
+			|| corrected_height <= 0 || corrected_height > INT_MAX) {
+		return 0;
+	}
+	v_multiwindow_win32_record_exact_resize_for_test();
+	if (!SetWindowPos(hwnd, NULL, 0, 0, (int)corrected_width,
+			(int)corrected_height, flags)
+			|| !GetClientRect(hwnd, &client_rect)) {
+		return 0;
+	}
+	return client_rect.right - client_rect.left == width
+		&& client_rect.bottom - client_rect.top == height;
 }
 
 static uint64_t v_multiwindow_win32_event_sequence = 1;
@@ -826,7 +999,9 @@ static LRESULT CALLBACK v_multiwindow_win32_wnd_proc(HWND hwnd, UINT msg, WPARAM
 				DWORD ex_style = (DWORD)GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
 				int frame_width = v_multiwindow_win32_max_int(min_width, 1);
 				int frame_height = v_multiwindow_win32_max_int(min_height, 1);
-				if (v_multiwindow_win32_adjusted_size(frame_width, frame_height, style, ex_style, &frame_width, &frame_height)) {
+				if (v_multiwindow_win32_adjusted_size_for_window(hwnd,
+						frame_width, frame_height, style, ex_style,
+						&frame_width, &frame_height)) {
 					if (min_width > 0) {
 						mmi->ptMinTrackSize.x = frame_width;
 					}
@@ -1300,7 +1475,64 @@ static inline int v_multiwindow_win32_set_window_enabled(void *hwnd_ptr, int ena
 	return matched;
 }
 
-typedef HANDLE (WINAPI *VMultiwindowWin32SetThreadDpiAwarenessContext)(HANDLE);
+static inline VMultiwindowWin32BackendSetThreadDpiAwarenessContext
+v_multiwindow_win32_resolve_set_thread_dpi_context(void) {
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	if (v_multiwindow_win32_test_dpi_context_mode
+			== V_MULTIWINDOW_WIN32_TEST_DPI_CONTEXT_UNAVAILABLE) {
+		return NULL;
+	}
+#endif
+	HMODULE user32 = GetModuleHandleW(L"user32.dll");
+	return user32
+		? (VMultiwindowWin32BackendSetThreadDpiAwarenessContext)GetProcAddress(
+			user32, "SetThreadDpiAwarenessContext")
+		: NULL;
+}
+
+static inline HANDLE v_multiwindow_win32_try_per_monitor_v2_context(
+		VMultiwindowWin32BackendSetThreadDpiAwarenessContext set_thread_dpi_context) {
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	v_multiwindow_win32_test_dpi_context_attempts++;
+	if (v_multiwindow_win32_test_dpi_context_mode
+			== V_MULTIWINDOW_WIN32_TEST_DPI_CONTEXT_REJECTED) {
+		v_multiwindow_win32_test_dpi_context_fallbacks++;
+		return NULL;
+	}
+#endif
+	if (!set_thread_dpi_context) {
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+		v_multiwindow_win32_test_dpi_context_fallbacks++;
+#endif
+		return NULL;
+	}
+	HANDLE previous = set_thread_dpi_context((HANDLE)(INT_PTR)-4);
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	if (!previous) {
+		v_multiwindow_win32_test_dpi_context_fallbacks++;
+	}
+#endif
+	return previous;
+}
+
+static inline void v_multiwindow_win32_apply_creation_frame_bias_for_test(
+		int *frame_width, int *frame_height) {
+#if defined(V_MULTIWINDOW_WIN32_SERVICE_TEST)
+	if (frame_width && v_multiwindow_win32_test_dpi_frame_bias_width > 0
+			&& *frame_width <= INT_MAX
+				- v_multiwindow_win32_test_dpi_frame_bias_width) {
+		*frame_width += v_multiwindow_win32_test_dpi_frame_bias_width;
+	}
+	if (frame_height && v_multiwindow_win32_test_dpi_frame_bias_height > 0
+			&& *frame_height <= INT_MAX
+				- v_multiwindow_win32_test_dpi_frame_bias_height) {
+		*frame_height += v_multiwindow_win32_test_dpi_frame_bias_height;
+	}
+#else
+	(void)frame_width;
+	(void)frame_height;
+#endif
+}
 
 static inline void *v_multiwindow_win32_create_window(const wchar_t *title, int width, int height, int min_width, int min_height, int resizable, int high_dpi, int borderless, int fullscreen, int visible, void *owner_ptr, void *data) {
 	DWORD style = v_multiwindow_win32_window_style(resizable, borderless, fullscreen);
@@ -1311,27 +1543,26 @@ static inline void *v_multiwindow_win32_create_window(const wchar_t *title, int 
 	}
 	int client_width = v_multiwindow_win32_max_int(width, min_width);
 	int client_height = v_multiwindow_win32_max_int(height, min_height);
-	int frame_width = client_width;
-	int frame_height = client_height;
-	if (!v_multiwindow_win32_adjusted_size(client_width, client_height, style, ex_style, &frame_width, &frame_height)) {
-		return NULL;
-	}
-	VMultiwindowWin32SetThreadDpiAwarenessContext set_thread_dpi_context = NULL;
+	VMultiwindowWin32BackendSetThreadDpiAwarenessContext set_thread_dpi_context =
+		NULL;
 	HANDLE previous_dpi_context = NULL;
 	if (high_dpi) {
-		HMODULE user32 = GetModuleHandleW(L"user32.dll");
-		set_thread_dpi_context = user32
-			? (VMultiwindowWin32SetThreadDpiAwarenessContext)GetProcAddress(
-				user32, "SetThreadDpiAwarenessContext")
-			: NULL;
-		if (!set_thread_dpi_context) {
-			return NULL;
-		}
-		previous_dpi_context = set_thread_dpi_context((HANDLE)(INT_PTR)-4);
-		if (!previous_dpi_context) {
-			return NULL;
-		}
+		set_thread_dpi_context =
+			v_multiwindow_win32_resolve_set_thread_dpi_context();
+		previous_dpi_context = v_multiwindow_win32_try_per_monitor_v2_context(
+			set_thread_dpi_context);
 	}
+	int frame_width = client_width;
+	int frame_height = client_height;
+	if (!v_multiwindow_win32_adjusted_size_for_window(owner, client_width,
+			client_height, style, ex_style, &frame_width, &frame_height)) {
+		if (previous_dpi_context) {
+			(void)set_thread_dpi_context(previous_dpi_context);
+		}
+		return NULL;
+	}
+	v_multiwindow_win32_apply_creation_frame_bias_for_test(&frame_width,
+		&frame_height);
 	HWND hwnd = CreateWindowExW(
 		ex_style,
 		v_multiwindow_win32_class_name,
@@ -1345,6 +1576,17 @@ static inline void *v_multiwindow_win32_create_window(const wchar_t *title, int 
 		NULL,
 		GetModuleHandleW(NULL),
 		data);
+	if (hwnd) {
+		v_multiwindow_win32_set_hwnd_int_prop(hwnd,
+			v_multiwindow_win32_min_width_prop, min_width);
+		v_multiwindow_win32_set_hwnd_int_prop(hwnd,
+			v_multiwindow_win32_min_height_prop, min_height);
+		if (!v_multiwindow_win32_set_exact_client_size(hwnd, client_width,
+				client_height, style, ex_style)) {
+			DestroyWindow(hwnd);
+			hwnd = NULL;
+		}
+	}
 	if (previous_dpi_context
 		&& !set_thread_dpi_context(previous_dpi_context)) {
 		if (hwnd) {
@@ -1353,8 +1595,6 @@ static inline void *v_multiwindow_win32_create_window(const wchar_t *title, int 
 		return NULL;
 	}
 	if (hwnd) {
-		v_multiwindow_win32_set_hwnd_int_prop(hwnd, v_multiwindow_win32_min_width_prop, min_width);
-		v_multiwindow_win32_set_hwnd_int_prop(hwnd, v_multiwindow_win32_min_height_prop, min_height);
 		DragAcceptFiles(hwnd, TRUE);
 		v_multiwindow_win32_register_touch_window(hwnd);
 	}
@@ -1440,16 +1680,13 @@ static inline int v_multiwindow_win32_set_cursor_shape(void *hwnd, int shape) {
 }
 
 static inline int v_multiwindow_win32_set_client_size(void *hwnd, int width, int height, int min_width, int min_height, int resizable, int borderless, int fullscreen) {
+	HWND native_window = (HWND)hwnd;
 	DWORD style = v_multiwindow_win32_window_style(resizable, borderless, fullscreen);
 	DWORD ex_style = v_multiwindow_win32_window_ex_style(borderless, fullscreen);
 	int client_width = v_multiwindow_win32_max_int(width, min_width);
 	int client_height = v_multiwindow_win32_max_int(height, min_height);
-	int frame_width = client_width;
-	int frame_height = client_height;
-	if (!v_multiwindow_win32_adjusted_size(client_width, client_height, style, ex_style, &frame_width, &frame_height)) {
-		return 0;
-	}
-	return SetWindowPos((HWND)hwnd, NULL, 0, 0, frame_width, frame_height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE) != 0;
+	return v_multiwindow_win32_set_exact_client_size(native_window, client_width,
+		client_height, style, ex_style);
 }
 
 static inline int v_multiwindow_win32_client_width(void *hwnd) {

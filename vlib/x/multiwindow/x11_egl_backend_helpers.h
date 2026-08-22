@@ -328,6 +328,42 @@ static inline int v_multiwindow_x11_checked_wm_state(void *raw_connection,
 	return ok;
 }
 
+static inline int v_multiwindow_x11_checked_property_has_atom(
+		void *raw_connection, unsigned long window, unsigned long property,
+		unsigned long expected, uint32_t max_atoms) {
+	if (!v_multiwindow_x11_checked_connection_usable(raw_connection)
+			|| window == 0 || property == 0 || expected == 0 || max_atoms == 0) {
+		return 0;
+	}
+	xcb_connection_t *connection = (xcb_connection_t *)raw_connection;
+	xcb_get_property_cookie_t cookie = xcb_get_property(connection, 0,
+		(xcb_window_t)window, (xcb_atom_t)property, XCB_ATOM_ATOM, 0,
+		max_atoms);
+	xcb_generic_error_t *error = NULL;
+	xcb_get_property_reply_t *reply =
+		xcb_get_property_reply(connection, cookie, &error);
+	int value_bytes = reply != NULL ? xcb_get_property_value_length(reply) : 0;
+	int valid = reply != NULL && error == NULL
+		&& xcb_connection_has_error(connection) == 0
+		&& reply->type == XCB_ATOM_ATOM && reply->format == 32
+		&& reply->bytes_after == 0 && reply->value_len <= max_atoms
+		&& value_bytes == (int)(reply->value_len * sizeof(xcb_atom_t));
+	int found = 0;
+	if (valid) {
+		xcb_atom_t *atoms = (xcb_atom_t *)xcb_get_property_value(reply);
+		valid = reply->value_len == 0 || atoms != NULL;
+		for (uint32_t i = 0; valid && i < reply->value_len; i++) {
+			if (atoms[i] == (xcb_atom_t)expected) {
+				found = 1;
+				break;
+			}
+		}
+	}
+	free(reply);
+	free(error);
+	return found;
+}
+
 static inline int v_multiwindow_x11_send_event_checked(Display *display, unsigned long window,
 	XEvent *event) {
 	if (display == NULL || window == 0 || event == NULL) {

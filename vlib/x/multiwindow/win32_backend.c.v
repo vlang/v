@@ -1059,11 +1059,13 @@ fn (mut backend Win32Backend) create_window(id WindowId, config WindowConfig) !W
 		title := config.title.to_wide()
 		record_data := unsafe { voidptr(record) }
 		show_after_modal_activation := config.modal && config.visible
+		record.suppress_resize_event = true
 		hwnd := C.v_multiwindow_win32_create_window(title, config.width, config.height,
 			config.min_width, config.min_height, win32_bool_to_int(config.resizable),
 			win32_bool_to_int(config.high_dpi), win32_bool_to_int(config.borderless),
 			win32_bool_to_int(config.fullscreen), win32_bool_to_int(config.visible
 			&& !show_after_modal_activation), owner_hwnd, record_data)
+		record.suppress_resize_event = false
 		if hwnd == unsafe { nil } {
 			backend.windows.delete(index)
 			return error(err_win32_create_window_failed)

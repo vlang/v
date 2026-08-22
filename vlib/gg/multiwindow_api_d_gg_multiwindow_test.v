@@ -482,7 +482,7 @@ fn test_multiwindow_x11_public_managed_offscreen_readback_when_display_is_availa
 		)!
 		capabilities := app.window_readback_capabilities(window)!
 		assert capabilities.offscreen_image
-		assert capabilities.window_capture
+		assert !capabilities.window_capture
 		app.run(
 			readback_fn: fn [results] (result WindowReadbackResult, mut app App) ! {
 				results <- result
@@ -688,6 +688,8 @@ fn x11_window_capture_test_draw(mut context WindowContext, frame u64) ! {
 }
 
 fn x11_window_capture_test_request(mut app App, window WindowId, mut state X11WindowCaptureTestState, submitted_frame u64) ! {
+	assert app.window_operation_capability(window, .window_capture)!.support == .available
+	assert app.window_readback_capabilities(window)!.window_capture
 	state.expected_submitted_frame = submitted_frame + 1
 	state.readback = app.request_window_capture(window, WindowReadbackConfig{
 		rect: WindowPixelRect{
@@ -746,7 +748,7 @@ fn run_x11_public_window_capture_test(external bool) ! {
 			}
 		)!
 		capabilities := app.window_readback_capabilities(state.window)!
-		assert capabilities.window_capture
+		assert !capabilities.window_capture
 		app.run(
 			readback_fn: fn [mut state] (result WindowReadbackResult, mut callback_app App) ! {
 				assert result.id == state.readback
@@ -952,6 +954,8 @@ fn test_multiwindow_x11_legacy_global_frame_is_not_an_off_frame_window_capture_p
 				}
 				proof.service_hits++
 				assert !callback_app.app_frame_active
+				assert callback_app.window_operation_capability(omitted, .window_capture)!.support == .unsupported
+				assert !callback_app.window_readback_capabilities(omitted)!.window_capture
 				proof.dirty_before = callback_app.core.render_window_snapshot(omitted.core)!.dirty_epoch
 				callback_app.request_window_capture(omitted, WindowReadbackConfig{}) or {
 					proof.rejection = err.msg()

@@ -48,7 +48,7 @@ fn x11_run_stale_xid_child_for_test(mode string) ! {
 		live_window := app.create_window(title: 'x11 checked live peer', width: 32, height: 24)!
 		_ = app.drain_queued_events()!
 		if mode in ['requestor', 'requestor_bad_atom', 'requestor_incr', 'requestor_supersede',
-			'requestor_destroy_before_chunk'] {
+			'requestor_reuse_after_eof', 'requestor_destroy_before_chunk'] {
 			owner_index := app.backend.x11.window_record_index(window) or {
 				return error(err_window_not_found)
 			}
@@ -80,7 +80,8 @@ fn x11_run_stale_xid_child_for_test(mode string) ! {
 				}
 			}
 			app.backend.x11.handle_clipboard_selection_request(&event)
-			if mode in ['requestor_incr', 'requestor_supersede', 'requestor_destroy_before_chunk'] {
+			if mode in ['requestor_incr', 'requestor_supersede', 'requestor_reuse_after_eof',
+				'requestor_destroy_before_chunk'] {
 				assert app.backend.x11.clipboard_transfers.len == 1
 				assert app.backend.x11.clipboard_transfers[0].queue == .checked
 				assert C.v_multiwindow_x11_checked_requestor_events_enabled(app.backend.x11.checked_connection,
@@ -106,6 +107,23 @@ fn x11_run_stale_xid_child_for_test(mode string) ! {
 					assert app.backend.x11.clipboard_transfers.len == 0
 					assert C.v_multiwindow_x11_checked_requestor_events_enabled(app.backend.x11.checked_connection,
 						requestor) == 0
+					app.backend.x11.handle_clipboard_selection_request(&event)
+					assert app.backend.x11.clipboard_transfers.len == 1
+					assert app.backend.x11.clipboard_transfers[0].offset == 0
+				} else if mode == 'requestor_reuse_after_eof' {
+					for _ in 0 .. 3 {
+						C.XDeleteProperty(app.backend.x11.display, requestor,
+							app.backend.x11.clipboard_property)
+						C.XSync(app.backend.x11.display, 0)
+						app.backend.x11.drain_checked_clipboard_transfer_events()
+					}
+					assert app.backend.x11.clipboard_transfers.len == 1
+					assert app.backend.x11.clipboard_transfers[0].offset == payload.len
+					// Leave the final Delete queued. Admission must drain it, remove the
+					// completed transfer, then recheck the pair before accepting this request.
+					C.XDeleteProperty(app.backend.x11.display, requestor,
+						app.backend.x11.clipboard_property)
+					C.XSync(app.backend.x11.display, 0)
 					app.backend.x11.handle_clipboard_selection_request(&event)
 					assert app.backend.x11.clipboard_transfers.len == 1
 					assert app.backend.x11.clipboard_transfers[0].offset == 0
@@ -152,6 +170,34 @@ fn x11_run_stale_xid_child_for_test(mode string) ! {
 			return error(err_window_not_found)
 		}
 		native := app.backend.x11.windows[index].window
+		if mode == 'xdnd_source' {
+			source := C.XCreateSimpleWindow(app.backend.x11.display, app.backend.x11.root, 0, 0, 1,
+				1, 0, 0, 0)
+			assert source != X11NativeWindow(0)
+			format := app.backend.x11.text_uri_list
+			C.XChangeProperty(app.backend.x11.display, source, app.backend.x11.xdnd_type_list,
+				X11NativeAtom(4), 32, x11_prop_mode_replace, unsafe { &u8(&format) }, 1)
+			C.XSync(app.backend.x11.display, 0)
+			mut event := C.XEvent{}
+			unsafe {
+				event.xclient.@type = x11_client_message
+				event.xclient.display = app.backend.x11.display
+				event.xclient.window = native
+				event.xclient.message_type = app.backend.x11.xdnd_enter
+				event.xclient.format = 32
+				event.xclient.data.l[0] = X11NativeLong(source)
+				event.xclient.data.l[1] = X11NativeLong((x11_xdnd_version << 24) | 1)
+			}
+			C.XDestroyWindow(app.backend.x11.display, source)
+			C.XSync(app.backend.x11.display, 0)
+			app.backend.x11.handle_xdnd_enter(&event)
+			assert app.backend.x11.xdnd_source == source
+			assert app.backend.x11.xdnd_format == X11NativeAtom(0)
+			assert app.backend.x11.service_checked_connection_usable_for_test()
+			_ = app.backend.x11.service_window_state(live_window)!
+			app.stop()!
+			return
+		}
 		if mode == 'clipboard_owner' {
 			sentinel := app.service_set_clipboard_text(live_window, 'checked-owner-sentinel')!
 			sentinel_events := app.drain_queued_events()!
@@ -330,8 +376,9 @@ fn test_x11_checked_queries_survive_retained_destroyed_window() {
 		}
 		mut modes := ['show', 'hide', 'focus', 'raise', 'position', 'mouse_lock',
 			'mouse_lock_after_grab', 'clipboard_owner', 'restore', 'state', 'probe', 'size',
-			'readback', 'property', 'requestor', 'requestor_bad_atom', 'requestor_incr',
-			'requestor_supersede', 'requestor_destroy_before_chunk']
+			'readback', 'property', 'xdnd_source', 'requestor', 'requestor_bad_atom',
+			'requestor_incr', 'requestor_supersede', 'requestor_reuse_after_eof',
+			'requestor_destroy_before_chunk']
 		$if gg_multiwindow ? || x_multiwindow_render ? {
 			modes << 'render'
 		}

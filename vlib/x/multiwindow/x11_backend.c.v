@@ -341,6 +341,7 @@ $if linux && x_multiwindow_x11 ? {
 	fn C.v_multiwindow_x11_checked_requestor_events_enabled(connection voidptr, window X11NativeWindow) int
 	fn C.v_multiwindow_x11_poll_checked_property_delete(connection voidptr, out_window &X11NativeWindow, out_property &X11NativeAtom) int
 	fn C.v_multiwindow_x11_checked_wm_state(connection voidptr, window X11NativeWindow, wm_state X11NativeAtom, out_state &int) int
+	fn C.v_multiwindow_x11_checked_property_has_atom(connection voidptr, window X11NativeWindow, property X11NativeAtom, expected X11NativeAtom, max_atoms u32) int
 	fn C.v_multiwindow_x11_query_service_state(connection voidptr, root X11NativeWindow, window X11NativeWindow, wm_state X11NativeAtom, net_state X11NativeAtom, max_h X11NativeAtom, max_v X11NativeAtom, fullscreen X11NativeAtom, out &C.VMultiwindowX11ServiceState) int
 	fn C.v_multiwindow_x11_root_supports_atom(display &C.Display, root X11NativeWindow, atom X11NativeAtom) int
 	fn C.v_multiwindow_x11_property_has_atom(display &C.Display, window X11NativeWindow, property X11NativeAtom, expected X11NativeAtom) int
@@ -3245,8 +3246,6 @@ $if linux && x_multiwindow_x11 ? {
 		} else {
 			request.property
 		}
-		pair_active := backend.clipboard_transfers.any(it.requestor == request.requestor
-			&& it.property == property)
 		request_queue := backend.clipboard_transfer_queue(request.requestor)
 		if request_queue == .checked {
 			// A previous transfer's Delete/Destroy notifications live on the
@@ -3261,6 +3260,8 @@ $if linux && x_multiwindow_x11 ? {
 				return
 			}
 		}
+		pair_active := backend.clipboard_transfers.any(it.requestor == request.requestor
+			&& it.property == property)
 		if pair_active {
 			// PropertyNotify carries no transfer generation. Reject overlap on the
 			// same pair so a late delete of the old chunk cannot advance a new reply.
@@ -4001,33 +4002,12 @@ $if linux && x_multiwindow_x11 ? {
 		if backend.xdnd_source == X11NativeWindow(0) {
 			return X11NativeAtom(0)
 		}
-		mut actual_type := X11NativeAtom(0)
-		mut actual_format := 0
-		mut item_count := X11NativeULong(0)
-		mut bytes_after := X11NativeULong(0)
-		mut formats := &X11NativeAtom(unsafe { nil })
-		status := C.XGetWindowProperty(backend.display, backend.xdnd_source,
-			backend.xdnd_type_list, X11NativeLong(0), X11NativeLong(x11_xdnd_max_type_atoms), 0,
-			X11NativeAtom(4), &actual_type, &actual_format, &item_count, &bytes_after,
-			unsafe { &&u8(&formats) })
-		valid_type_list := status == x11_success && actual_type == X11NativeAtom(4)
-			&& actual_format == 32 && bytes_after == X11NativeULong(0) && formats != unsafe { nil }
-			&& item_count <= X11NativeULong(x11_xdnd_max_type_atoms)
-		if !valid_type_list {
-			if formats != unsafe { nil } {
-				C.XFree(formats)
-			}
+		if C.v_multiwindow_x11_checked_property_has_atom(backend.checked_connection,
+			backend.xdnd_source, backend.xdnd_type_list, backend.text_uri_list,
+			u32(x11_xdnd_max_type_atoms)) == 0 {
 			return X11NativeAtom(0)
 		}
-		mut result := X11NativeAtom(0)
-		for i in 0 .. int(item_count) {
-			if unsafe { formats[i] } == backend.text_uri_list {
-				result = backend.text_uri_list
-				break
-			}
-		}
-		C.XFree(formats)
-		return result
+		return backend.text_uri_list
 	}
 
 	fn (backend &X11Backend) send_xdnd_status(accepted bool) {

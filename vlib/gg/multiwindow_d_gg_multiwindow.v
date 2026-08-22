@@ -443,9 +443,21 @@ pub fn (app &App) window_operation_capability(id WindowId, operation WindowOpera
 	app.ensure_initialized()!
 	core_capability := app.core.service_operation_capability(id.core,
 		window_operation_to_core(operation))!
-	if operation == .window_capture && app.capabilities().backend == .wayland {
-		mut available := app.core.renderer_device_available_for_gg()
-			&& gfx.query_backend() in [.glcore33, .gles3]
+	backend := app.capabilities().backend
+	if operation == .window_capture {
+		renderer_active := app.core.renderer_device_available_for_gg()
+		if backend != .wayland && !(backend in [.x11, .appkit] && renderer_active) {
+			return window_operation_capability_from_core(core_capability)
+		}
+		mut available := renderer_active
+		if backend == .appkit {
+			available = available && gfx.query_backend() == .metal_macos
+		} else {
+			available = available && gfx.query_backend() in [.glcore33, .gles3]
+		}
+		if backend in [.x11, .appkit] {
+			available = available && core_capability.support == .available
+		}
 		if available {
 			snapshot := app.core.render_window_snapshot(id.core)!
 			producer := app.render_runtime.window_capture_producer(id)!
