@@ -4712,23 +4712,18 @@ fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, t
 			continue
 		}
 		mut definitely_active := true
+		mut possibly_active := true
 		for depth in 0 .. condition_known.len {
 			if condition_known[depth] && !condition_active[depth] {
 				definitely_active = false
+				possibly_active = false
 				break
 			}
 			if !condition_known[depth] {
 				definitely_active = false
 			}
 		}
-		if !definitely_active {
-			output.writeln('')
-			continue
-		}
-		if name in ['include', 'import'] {
-			c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
-			external_macros_possible = true
-		} else if name in ['define', 'undef'] {
+		if name in ['define', 'undef'] {
 			parts := c_directive_arg(clean).fields()
 			if parts.len > 0 {
 				macro_name := parts[0].all_before('(')
@@ -4741,8 +4736,20 @@ fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, t
 						defined.delete(macro_name)
 						undefined[macro_name] = true
 					}
+				} else if possibly_active {
+					defined.delete(macro_name)
+					undefined.delete(macro_name)
+					uncertain[macro_name] = true
 				}
 			}
+		}
+		if !definitely_active {
+			output.writeln('')
+			continue
+		}
+		if name in ['include', 'import'] {
+			c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+			external_macros_possible = true
 		}
 		output.writeln(line)
 	}

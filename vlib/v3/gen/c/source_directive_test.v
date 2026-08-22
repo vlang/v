@@ -123,6 +123,28 @@ fn test_preserved_header_collects_only_definitely_active_declarations() {
 	assert 'optional_fn' in enabled_g.inlined_c_declared_fns
 }
 
+fn test_preserved_header_keeps_conditional_macro_mutations_uncertain() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_conditional_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'conditional.h')
+	os.write_file(header,
+		'#if FEATURE == 2\n#define HAS_FOO\n#endif\n#ifndef HAS_FOO\nint foo(void);\n#endif\n#define HAS_BAR\n#if FEATURE == 2\n#undef HAS_BAR\n#endif\n#ifndef HAS_BAR\nint bar(void);\n#endif\nint always_active(void);\n')!
+
+	mut g := FlatGen.new()
+	// Macro values from C flags are not evaluated by this lightweight scanner, so
+	// both mutations are possible rather than definitely active or inactive.
+	g.c_flags << '-DFEATURE=2'
+	g.collect_preserved_header_file(header, [root])
+
+	assert 'foo' !in g.inlined_c_declared_fns
+	assert 'bar' !in g.inlined_c_declared_fns
+	assert 'always_active' in g.inlined_c_declared_fns
+}
+
 fn collect_external_input_tree_status(root string, entry string, ambient_ambiguous bool) (bool, []string) {
 	mut active_paths := map[string]bool{}
 	mut collected_paths := map[string]bool{}
