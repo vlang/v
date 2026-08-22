@@ -11,6 +11,7 @@ $if darwin {
 	fn C.v_multiwindow_appkit_test_install_release_mouse_lock_failure(window voidptr) int
 	fn C.v_multiwindow_appkit_test_restore_release_mouse_lock()
 	fn C.v_multiwindow_appkit_test_window_is_visible(window voidptr) int
+	fn C.v_multiwindow_appkit_test_window_is_minimized(window voidptr) int
 	fn C.v_multiwindow_appkit_test_attach_accessibility_child(window voidptr) int
 	fn C.v_multiwindow_appkit_test_accessibility_child_is_detached() int
 	fn C.v_multiwindow_appkit_test_release_accessibility_child()
@@ -285,6 +286,47 @@ fn test_appkit_hide_failure_rolls_back_before_window_hide() {
 			return
 		}
 		assert false, 'AppKit hide unexpectedly succeeded after mouse reassociation failure'
+	}
+}
+
+fn test_appkit_minimize_failure_stops_before_window_mutation() {
+	native := appkit_nonreadback_source('appkit_backend.m')
+	body := appkit_nonreadback_body(native, 'int v_multiwindow_appkit_service_minimize_window')
+	unlock := body.index('if (![state releaseMouseLock])') or { -1 }
+	miniaturize := body.index('[state.window miniaturize:nil]') or { -1 }
+	assert unlock >= 0 && miniaturize > unlock, 'AppKit minimize mutates the native window before mouse unlock succeeds'
+
+	assert body[unlock..miniaturize].contains('return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;')
+
+	$if darwin {
+		if !appkit_native_nonreadback_probes_required() {
+			return
+		}
+		mut app := new_app(backend: .appkit)!
+		defer {
+			C.v_multiwindow_appkit_test_restore_release_mouse_lock()
+			app.stop() or {}
+		}
+		window := app.create_window(title: 'AppKit minimize admission', visible: true)!
+		mut install_state := &AppKitNonreadbackCallbackState{}
+		install := fn [mut install_state] (borrow NativeWindowBorrow) ! {
+			install_state.result =
+				C.v_multiwindow_appkit_test_install_release_mouse_lock_failure(borrow.primary_for_gg())
+		}
+		app.with_native_window_for_gg(window, install)!
+		assert install_state.result == 1
+		app.service_minimize_window(window) or {
+			assert err.msg() == err_capability_unsupported
+			mut minimized_state := &AppKitNonreadbackCallbackState{}
+			inspect := fn [mut minimized_state] (borrow NativeWindowBorrow) ! {
+				minimized_state.result =
+					C.v_multiwindow_appkit_test_window_is_minimized(borrow.primary_for_gg())
+			}
+			app.with_native_window_for_gg(window, inspect)!
+			assert minimized_state.result == 0
+			return
+		}
+		assert false, 'AppKit minimize unexpectedly succeeded after mouse reassociation failure'
 	}
 }
 

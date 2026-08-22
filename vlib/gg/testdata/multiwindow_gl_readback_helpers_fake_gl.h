@@ -32,7 +32,12 @@ typedef struct {
 	int get_integer_calls;
 	int read_calls;
 	int delete_calls;
+	int bind_buffer_calls;
 	int pack_alignment;
+	int pack_row_length;
+	int pack_skip_rows;
+	int pack_skip_pixels;
+	int pixel_pack_buffer;
 	int read_framebuffer;
 	int draw_framebuffer;
 	int read_buffer;
@@ -47,6 +52,10 @@ static inline void v_gg_multiwindow_fake_gl_reset(int stale_errors,
 	v_gg_multiwindow_fake_gl.operation_error = operation_error;
 	v_gg_multiwindow_fake_gl.permanent_error = permanent_error;
 	v_gg_multiwindow_fake_gl.pack_alignment = 8;
+	v_gg_multiwindow_fake_gl.pack_row_length = 7;
+	v_gg_multiwindow_fake_gl.pack_skip_rows = 3;
+	v_gg_multiwindow_fake_gl.pack_skip_pixels = 5;
+	v_gg_multiwindow_fake_gl.pixel_pack_buffer = 41;
 	v_gg_multiwindow_fake_gl.read_framebuffer = 17;
 	v_gg_multiwindow_fake_gl.draw_framebuffer = 29;
 	v_gg_multiwindow_fake_gl.read_buffer = 19;
@@ -72,6 +81,14 @@ static inline void v_gg_multiwindow_fake_gl_get_integer(unsigned int name, int *
 	v_gg_multiwindow_fake_gl.get_integer_calls++;
 	if (name == 0x0D05) {
 		*value = v_gg_multiwindow_fake_gl.pack_alignment;
+	} else if (name == 0x0D02) {
+		*value = v_gg_multiwindow_fake_gl.pack_row_length;
+	} else if (name == 0x0D03) {
+		*value = v_gg_multiwindow_fake_gl.pack_skip_rows;
+	} else if (name == 0x0D04) {
+		*value = v_gg_multiwindow_fake_gl.pack_skip_pixels;
+	} else if (name == 0x88ED) {
+		*value = v_gg_multiwindow_fake_gl.pixel_pack_buffer;
 	} else if (name == 0x8CAA) {
 		*value = v_gg_multiwindow_fake_gl.read_framebuffer;
 	} else if (name == 0x8CA6) {
@@ -82,12 +99,27 @@ static inline void v_gg_multiwindow_fake_gl_get_integer(unsigned int name, int *
 }
 
 static inline void v_gg_multiwindow_fake_gl_pixel_store(unsigned int name, int value) {
-	(void)name;
-	if (value == 1 && v_gg_multiwindow_fake_gl.operation_error ==
+	if (name == 0x0D05 && value == 1 && v_gg_multiwindow_fake_gl.operation_error ==
 		V_GG_MULTIWINDOW_FAKE_GL_ERROR_SETUP) {
 		v_gg_multiwindow_fake_gl.pending_errors++;
 	}
-	v_gg_multiwindow_fake_gl.pack_alignment = value;
+	if (name == 0x0D05) {
+		v_gg_multiwindow_fake_gl.pack_alignment = value;
+	} else if (name == 0x0D02) {
+		v_gg_multiwindow_fake_gl.pack_row_length = value;
+	} else if (name == 0x0D03) {
+		v_gg_multiwindow_fake_gl.pack_skip_rows = value;
+	} else if (name == 0x0D04) {
+		v_gg_multiwindow_fake_gl.pack_skip_pixels = value;
+	}
+}
+
+static inline void v_gg_multiwindow_fake_gl_bind_buffer(unsigned int target,
+		unsigned int buffer) {
+	if (target == 0x88EB) {
+		v_gg_multiwindow_fake_gl.bind_buffer_calls++;
+		v_gg_multiwindow_fake_gl.pixel_pack_buffer = (int)buffer;
+	}
 }
 
 static inline void v_gg_multiwindow_fake_gl_read_pixels(int x, int y, int width,
@@ -97,6 +129,13 @@ static inline void v_gg_multiwindow_fake_gl_read_pixels(int x, int y, int width,
 	(void)format;
 	(void)type;
 	v_gg_multiwindow_fake_gl.read_calls++;
+	if (v_gg_multiwindow_fake_gl.pack_row_length != 0
+			|| v_gg_multiwindow_fake_gl.pack_skip_rows != 0
+			|| v_gg_multiwindow_fake_gl.pack_skip_pixels != 0
+			|| v_gg_multiwindow_fake_gl.pixel_pack_buffer != 0) {
+		v_gg_multiwindow_fake_gl.pending_errors++;
+		return;
+	}
 	memset(pixels, 0x5a, (size_t)width * (size_t)height * 4);
 	if (v_gg_multiwindow_fake_gl.operation_error == V_GG_MULTIWINDOW_FAKE_GL_ERROR_READ) {
 		v_gg_multiwindow_fake_gl.pending_errors++;
@@ -184,6 +223,11 @@ v_gg_multiwindow_fake_sg_query_image_info(v_gg_multiwindow_fake_sg_image image) 
 #define GLuint unsigned int
 #define GL_NO_ERROR 0
 #define GL_PACK_ALIGNMENT 0x0D05
+#define GL_PACK_ROW_LENGTH 0x0D02
+#define GL_PACK_SKIP_ROWS 0x0D03
+#define GL_PACK_SKIP_PIXELS 0x0D04
+#define GL_PIXEL_PACK_BUFFER 0x88EB
+#define GL_PIXEL_PACK_BUFFER_BINDING 0x88ED
 #define GL_FRAMEBUFFER_BINDING 0x8CA6
 #define GL_DRAW_FRAMEBUFFER_BINDING 0x8CA6
 #define GL_READ_FRAMEBUFFER_BINDING 0x8CAA
@@ -199,6 +243,7 @@ v_gg_multiwindow_fake_sg_query_image_info(v_gg_multiwindow_fake_sg_image image) 
 #define glGetError v_gg_multiwindow_fake_gl_get_error
 #define glGetIntegerv v_gg_multiwindow_fake_gl_get_integer
 #define glPixelStorei v_gg_multiwindow_fake_gl_pixel_store
+#define glBindBuffer v_gg_multiwindow_fake_gl_bind_buffer
 #define glReadPixels v_gg_multiwindow_fake_gl_read_pixels
 #define glGenFramebuffers v_gg_multiwindow_fake_gl_gen_framebuffers
 #define glBindFramebuffer v_gg_multiwindow_fake_gl_bind_framebuffer
@@ -219,6 +264,10 @@ v_gg_multiwindow_fake_sg_query_image_info(v_gg_multiwindow_fake_sg_image image) 
 #define V_GG_MULTIWINDOW_GL_ERROR_DRAIN_LIMIT V_GG_MULTIWINDOW_FAKE_GL_ERROR_DRAIN_LIMIT
 #define v_gg_multiwindow_gl_drain_preexisting_errors v_gg_multiwindow_fake_gl_drain_preexisting_errors
 #define v_gg_multiwindow_gl_collect_operation_errors v_gg_multiwindow_fake_gl_collect_operation_errors
+#define VGGMultiwindowGLPackState VGGMultiwindowFakeGLPackState
+#define v_gg_multiwindow_gl_save_pack_state v_gg_multiwindow_fake_gl_save_pack_state
+#define v_gg_multiwindow_gl_set_tight_pack_state v_gg_multiwindow_fake_gl_set_tight_pack_state
+#define v_gg_multiwindow_gl_restore_pack_state v_gg_multiwindow_fake_gl_restore_pack_state
 #define v_gg_multiwindow_gl_readback_window_rgba8 v_gg_multiwindow_fake_gl_readback_window_rgba8
 #define v_gg_multiwindow_gl_readback_image_rgba8 v_gg_multiwindow_fake_gl_readback_image_rgba8
 
@@ -226,6 +275,10 @@ v_gg_multiwindow_fake_sg_query_image_info(v_gg_multiwindow_fake_sg_image image) 
 
 #undef v_gg_multiwindow_gl_readback_image_rgba8
 #undef v_gg_multiwindow_gl_readback_window_rgba8
+#undef v_gg_multiwindow_gl_restore_pack_state
+#undef v_gg_multiwindow_gl_set_tight_pack_state
+#undef v_gg_multiwindow_gl_save_pack_state
+#undef VGGMultiwindowGLPackState
 #undef v_gg_multiwindow_gl_collect_operation_errors
 #undef v_gg_multiwindow_gl_drain_preexisting_errors
 #undef V_GG_MULTIWINDOW_GL_ERROR_DRAIN_LIMIT
@@ -247,6 +300,7 @@ v_gg_multiwindow_fake_sg_query_image_info(v_gg_multiwindow_fake_sg_image image) 
 #undef glGenFramebuffers
 #undef glReadPixels
 #undef glPixelStorei
+#undef glBindBuffer
 #undef glGetIntegerv
 #undef glGetError
 #undef GL_FRAMEBUFFER_COMPLETE
@@ -262,6 +316,11 @@ v_gg_multiwindow_fake_sg_query_image_info(v_gg_multiwindow_fake_sg_image image) 
 #undef GL_DRAW_FRAMEBUFFER_BINDING
 #undef GL_FRAMEBUFFER_BINDING
 #undef GL_PACK_ALIGNMENT
+#undef GL_PACK_ROW_LENGTH
+#undef GL_PACK_SKIP_ROWS
+#undef GL_PACK_SKIP_PIXELS
+#undef GL_PIXEL_PACK_BUFFER
+#undef GL_PIXEL_PACK_BUFFER_BINDING
 #undef GL_NO_ERROR
 #undef GLuint
 #undef GLenum
@@ -279,12 +338,19 @@ v_gg_multiwindow_fake_sg_query_image_info(v_gg_multiwindow_fake_sg_image image) 
 
 static inline int v_gg_multiwindow_fake_gl_window_case(int stale_errors,
 	int operation_error, int permanent_error, int *pack_alignment,
-	int *get_integer_calls, int *read_calls, int *get_error_calls) {
+	int *pack_state_restored, int *bind_buffer_calls, int *get_integer_calls,
+	int *read_calls, int *get_error_calls) {
 	v_gg_multiwindow_fake_gl_reset(stale_errors, operation_error, permanent_error);
 	uint8_t pixels[16];
 	int result = v_gg_multiwindow_fake_gl_readback_window_rgba8(2, 0, 0, 2, 2,
 		pixels, sizeof(pixels));
 	*pack_alignment = v_gg_multiwindow_fake_gl.pack_alignment;
+	*pack_state_restored = v_gg_multiwindow_fake_gl.pack_alignment == 8
+		&& v_gg_multiwindow_fake_gl.pack_row_length == 7
+		&& v_gg_multiwindow_fake_gl.pack_skip_rows == 3
+		&& v_gg_multiwindow_fake_gl.pack_skip_pixels == 5
+		&& v_gg_multiwindow_fake_gl.pixel_pack_buffer == 41;
+	*bind_buffer_calls = v_gg_multiwindow_fake_gl.bind_buffer_calls;
 	*get_integer_calls = v_gg_multiwindow_fake_gl.get_integer_calls;
 	*read_calls = v_gg_multiwindow_fake_gl.read_calls;
 	*get_error_calls = v_gg_multiwindow_fake_gl.get_error_calls;
@@ -293,8 +359,9 @@ static inline int v_gg_multiwindow_fake_gl_window_case(int stale_errors,
 
 static inline int v_gg_multiwindow_fake_gl_image_case(int stale_errors,
 	int operation_error, int permanent_error, int *pack_alignment, int *read_framebuffer,
-	int *draw_framebuffer, int *read_buffer, int *get_integer_calls, int *read_calls,
-	int *delete_calls, int *get_error_calls) {
+	int *draw_framebuffer, int *read_buffer, int *pack_state_restored,
+	int *bind_buffer_calls, int *get_integer_calls, int *read_calls, int *delete_calls,
+	int *get_error_calls) {
 	v_gg_multiwindow_fake_gl_reset(stale_errors, operation_error, permanent_error);
 	uint8_t pixels[16];
 	int result = v_gg_multiwindow_fake_gl_readback_image_rgba8(1, 2, 0, 0, 2, 2,
@@ -303,6 +370,12 @@ static inline int v_gg_multiwindow_fake_gl_image_case(int stale_errors,
 	*read_framebuffer = v_gg_multiwindow_fake_gl.read_framebuffer;
 	*draw_framebuffer = v_gg_multiwindow_fake_gl.draw_framebuffer;
 	*read_buffer = v_gg_multiwindow_fake_gl.read_buffer;
+	*pack_state_restored = v_gg_multiwindow_fake_gl.pack_alignment == 8
+		&& v_gg_multiwindow_fake_gl.pack_row_length == 7
+		&& v_gg_multiwindow_fake_gl.pack_skip_rows == 3
+		&& v_gg_multiwindow_fake_gl.pack_skip_pixels == 5
+		&& v_gg_multiwindow_fake_gl.pixel_pack_buffer == 41;
+	*bind_buffer_calls = v_gg_multiwindow_fake_gl.bind_buffer_calls;
 	*get_integer_calls = v_gg_multiwindow_fake_gl.get_integer_calls;
 	*read_calls = v_gg_multiwindow_fake_gl.read_calls;
 	*delete_calls = v_gg_multiwindow_fake_gl.delete_calls;

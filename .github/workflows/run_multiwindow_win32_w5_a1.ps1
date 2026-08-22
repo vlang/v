@@ -170,12 +170,12 @@ $publicSurface = @(
     [pscustomobject]@{ Path = 'vlib/x/multiwindow/app.v'; Known = 'af32eec55c119907a8bbf544842131018d36d3887347e26486e067a79d78a946'; Passed = $ExpectedAppSha256 }
     [pscustomobject]@{ Path = 'vlib/x/multiwindow/types.v'; Known = '0a9058ba7928945e24284c867eb6182336ea3b1d41e1337786c71105b1fe93b3'; Passed = $ExpectedTypesSha256 }
     [pscustomobject]@{ Path = 'vlib/x/multiwindow/backend.v'; Known = 'dcd0f088c235ae030f8bbc9ab63082c38d93f6f1194373e74d8dcb454d100a3f'; Passed = $ExpectedBackendSha256 }
-    [pscustomobject]@{ Path = 'vlib/x/multiwindow/service_api.v'; Known = 'd8b9d64eb66246338b0d3543c94f267eb1eaf9ad591af1d2b3a1c43de072e45e'; Passed = $ExpectedServiceApiSha256 }
+    [pscustomobject]@{ Path = 'vlib/x/multiwindow/service_api.v'; Known = 'b7e4bc26e85f897a72387e82f4a7a3d545f21230be5c6b9df4fa40a4c82b701f'; Passed = $ExpectedServiceApiSha256 }
     [pscustomobject]@{ Path = 'vlib/x/multiwindow/service_types.v'; Known = 'cd8326b81201727618e758d79970b7a77223fd6418e18afda44a526a3b0b4267'; Passed = $ExpectedServiceTypesSha256 }
-    [pscustomobject]@{ Path = 'vlib/x/multiwindow/service_registry.v'; Known = '51c62ab847fadb8be9904b82d6360ee2f6d85825ead7b7072fad0e76e315a71e'; Passed = $ExpectedServiceRegistrySha256 }
+    [pscustomobject]@{ Path = 'vlib/x/multiwindow/service_registry.v'; Known = 'db244497fd23974c1739d6c7a8bc57a2e3137c8765d4bc7f789efd80a59066b7'; Passed = $ExpectedServiceRegistrySha256 }
     [pscustomobject]@{ Path = 'vlib/x/multiwindow/event_delivery.v'; Known = 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0'; Passed = $ExpectedEventDeliverySha256 }
 )
-$knownPublicRoutingSurfaceSha256 = '7ac684e9a0c0307cbb213b212672910dd335462caa3e9a6058cee2460cdc641d'
+$knownPublicRoutingSurfaceSha256 = '3993513f6865922d0dd47daa32e5ea0a7fd4d7e6c2480b79d1db8f568802aad2'
 
 $greenProductionSurface = @(
     [pscustomobject]@{ Path = 'vlib/x/multiwindow/service_backend.v'; Known = '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be'; Passed = $ExpectedServiceBackendSha256 }

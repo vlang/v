@@ -29,6 +29,7 @@ const err_native_borrow_nil_callback = 'multiwindow: native-window borrow callba
 const err_native_borrow_active = 'multiwindow: native-window borrow is already active'
 const err_native_borrow_stale = 'multiwindow: native-window borrow is stale'
 const err_owner_relation_invalid = 'multiwindow: window owner relation is invalid'
+const err_portal_capacity = 'multiwindow: portal export capacity is exhausted'
 const err_readback_invalid = 'multiwindow: readback result is invalid'
 const err_readback_capacity = 'multiwindow: readback payload capacity is exhausted'
 const err_window_generation_exhausted = 'multiwindow: window generation space is exhausted'

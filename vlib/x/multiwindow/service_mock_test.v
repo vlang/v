@@ -1887,6 +1887,90 @@ fn test_terminal_payload_operation_quotas_survive_until_delivery() {
 	app.stop()!
 }
 
+fn test_portal_lease_quota_survives_delivery_until_explicit_release() {
+	mut app := new_app()!
+	window := app.create_window(title: 'portal lease quota')!
+	_ = app.drain_queued_events()!
+	for _ in 0 .. service_portal_lease_capacity {
+		_ = app.service_request_portal_parent(window)!
+	}
+	assert app.services.pending.len == service_portal_lease_capacity
+	assert app.services.portal_leases.len == service_portal_lease_capacity
+	request_before_reject := app.services.next_request
+	delivery_before_reject := app.next_event_delivery_token
+	app.service_request_portal_parent(window) or {
+		assert err.msg() == err_portal_capacity
+		assert app.services.next_request == request_before_reject
+		assert app.next_event_delivery_token == delivery_before_reject
+	}
+	assert app.services.pending.len == service_portal_lease_capacity
+	assert app.services.portal_leases.len == service_portal_lease_capacity
+
+	events := app.drain_queued_events()!
+	assert events.len == service_portal_lease_capacity
+	assert events.all(it.kind == .service && it.service.kind == .portal_parent
+		&& it.service.portal_parent.status == .ready)
+	assert app.services.pending.len == 0
+	assert app.services.portal_leases.len == service_portal_lease_capacity
+	request_after_delivery := app.services.next_request
+	delivery_after_delivery := app.next_event_delivery_token
+	app.service_request_portal_parent(window) or {
+		assert err.msg() == err_portal_capacity
+		assert app.services.next_request == request_after_delivery
+		assert app.next_event_delivery_token == delivery_after_delivery
+	}
+
+	app.service_release_portal_parent(events[0].service.portal_parent.lease)!
+	retry := app.service_request_portal_parent(window)!
+	retry_events := app.drain_queued_events()!
+	assert retry_events.len == 1
+	assert retry_events[0].service.portal_parent.id == retry
+	for event in events[1..] {
+		app.service_release_portal_parent(event.service.portal_parent.lease)!
+	}
+	app.service_release_portal_parent(retry_events[0].service.portal_parent.lease)!
+	assert app.services.portal_leases.len == 0
+	app.stop()!
+}
+
+fn test_native_portal_admission_quota_rolls_back_and_reopens() {
+	mut app := new_app()!
+	window := app.create_window(title: 'native portal admission quota')!
+	_ = app.drain_queued_events()!
+	mut requests := []ServiceRequestId{cap: service_portal_lease_capacity}
+	mut leases := []ServicePortalLeaseId{cap: service_portal_lease_capacity}
+	for _ in 0 .. service_portal_lease_capacity {
+		request, lease := app.begin_portal_parent_request(window)!
+		requests << request
+		leases << lease
+	}
+	assert app.services.pending.len == service_portal_lease_capacity
+	assert app.services.portal_leases.len == service_portal_lease_capacity
+	request_before_reject := app.services.next_request
+	delivery_before_reject := app.next_event_delivery_token
+	_, _ := app.begin_portal_parent_request(window) or {
+		assert err.msg() == err_portal_capacity
+		ServiceRequestId{}, ServicePortalLeaseId{}
+	}
+	assert app.services.next_request == request_before_reject
+	assert app.next_event_delivery_token == delivery_before_reject
+	assert app.services.pending.len == service_portal_lease_capacity
+	assert app.services.portal_leases.len == service_portal_lease_capacity
+
+	app.rollback_portal_parent_request(requests[0], leases[0])
+	retry_request, retry_lease := app.begin_portal_parent_request(window)!
+	assert retry_request.serial == request_before_reject
+	assert app.services.pending.len == service_portal_lease_capacity
+	assert app.services.portal_leases.len == service_portal_lease_capacity
+	for index in 1 .. requests.len {
+		app.rollback_portal_parent_request(requests[index], leases[index])
+	}
+	app.rollback_portal_parent_request(retry_request, retry_lease)
+	assert app.services.pending.len == 0
+	assert app.services.portal_leases.len == 0
+	app.stop()!
+}
+
 fn test_readback_payload_budget_is_exact_retained_and_fail_closed() {
 	mut app := new_app()!
 	window := app.create_window(title: 'readback payload budget')!

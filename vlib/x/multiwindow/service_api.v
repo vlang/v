@@ -898,6 +898,9 @@ fn (mut app App) complete_mock_portal_parent(id WindowId) !ServiceRequestId {
 	}
 	app.ensure_mock_service_locked()!
 	app.service_window_index_for_admission_locked(id)!
+	if app.services.portal_leases.len >= service_portal_lease_capacity {
+		return error(err_portal_capacity)
+	}
 	if app.services.next_request == 0 {
 		return error(err_service_request_exhausted)
 	}
@@ -941,6 +944,9 @@ fn (mut app App) begin_portal_parent_request(id WindowId) !(ServiceRequestId, Se
 	app.ensure_running_locked()!
 	app.ensure_event_admission_open_locked()!
 	app.service_window_index_for_admission_locked(id)!
+	if app.services.portal_leases.len >= service_portal_lease_capacity {
+		return error(err_portal_capacity)
+	}
 	request := app.services.take_request_id()!
 	lease := ServicePortalLeaseId{
 		app_instance: app.instance_id

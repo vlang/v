@@ -201,6 +201,13 @@ static int v_multiwindow_appkit_test_window_is_visible(void *window_ptr) {
 	return ((__bridge NSWindow *)window_ptr).isVisible ? 1 : 0;
 }
 
+static int v_multiwindow_appkit_test_window_is_minimized(void *window_ptr) {
+	if (window_ptr == NULL || ![NSThread isMainThread]) {
+		return 0;
+	}
+	return ((__bridge NSWindow *)window_ptr).isMiniaturized ? 1 : 0;
+}
+
 static int v_multiwindow_appkit_test_attach_accessibility_child(void *window_ptr) {
 	if (window_ptr == NULL || ![NSThread isMainThread]) {
 		return 0;

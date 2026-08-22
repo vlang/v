@@ -3473,12 +3473,14 @@ int v_multiwindow_appkit_service_minimize_window(void *state_ptr) {
 		if (state == nil) {
 			return 0;
 		}
-		BOOL unlocked = [state releaseMouseLock];
+		if (![state releaseMouseLock]) {
+			return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_FAILED;
+		}
 		if (!state.window.isMiniaturized) {
 			[state.window miniaturize:nil];
 		}
 		[state refreshServiceObservation];
-		return unlocked ? 1 : -1;
+		return V_MULTIWINDOW_APPKIT_SERVICE_RESULT_OK;
 	}
 }
 

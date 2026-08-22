@@ -4,6 +4,7 @@ const service_clipboard_payload_capacity = u64(16 * 1024 * 1024)
 const service_readback_payload_capacity = u64(256 * 1024 * 1024)
 const service_clipboard_pending_capacity = 64
 const service_readback_pending_capacity = 64
+const service_portal_lease_capacity = 64
 
 enum PendingServiceKind {
 	clipboard_read

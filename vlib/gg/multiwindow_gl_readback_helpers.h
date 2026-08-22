@@ -33,6 +33,40 @@ static inline int v_gg_multiwindow_gl_collect_operation_errors(void) {
 	}
 	return 1;
 }
+
+typedef struct {
+	GLint alignment;
+	GLint row_length;
+	GLint skip_rows;
+	GLint skip_pixels;
+	GLint pixel_pack_buffer;
+} VGGMultiwindowGLPackState;
+
+static inline void v_gg_multiwindow_gl_save_pack_state(
+		VGGMultiwindowGLPackState *state) {
+	glGetIntegerv(GL_PACK_ALIGNMENT, &state->alignment);
+	glGetIntegerv(GL_PACK_ROW_LENGTH, &state->row_length);
+	glGetIntegerv(GL_PACK_SKIP_ROWS, &state->skip_rows);
+	glGetIntegerv(GL_PACK_SKIP_PIXELS, &state->skip_pixels);
+	glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &state->pixel_pack_buffer);
+}
+
+static inline void v_gg_multiwindow_gl_set_tight_pack_state(void) {
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+	glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+}
+
+static inline void v_gg_multiwindow_gl_restore_pack_state(
+		const VGGMultiwindowGLPackState *state) {
+	glPixelStorei(GL_PACK_ALIGNMENT, state->alignment);
+	glPixelStorei(GL_PACK_ROW_LENGTH, state->row_length);
+	glPixelStorei(GL_PACK_SKIP_ROWS, state->skip_rows);
+	glPixelStorei(GL_PACK_SKIP_PIXELS, state->skip_pixels);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)state->pixel_pack_buffer);
+}
 #endif
 
 static inline int v_gg_multiwindow_gl_readback_window_rgba8(int framebuffer_height,
@@ -47,12 +81,12 @@ static inline int v_gg_multiwindow_gl_readback_window_rgba8(int framebuffer_heig
 		return V_GG_MULTIWINDOW_GL_READBACK_FAILED;
 	}
 
-	GLint previous_pack_alignment = 0;
-	glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
-	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+	VGGMultiwindowGLPackState pack_state;
+	v_gg_multiwindow_gl_save_pack_state(&pack_state);
+	v_gg_multiwindow_gl_set_tight_pack_state();
 	glReadPixels(x, framebuffer_height - y - height, width, height, GL_RGBA,
 		GL_UNSIGNED_BYTE, pixels);
-	glPixelStorei(GL_PACK_ALIGNMENT, previous_pack_alignment);
+	v_gg_multiwindow_gl_restore_pack_state(&pack_state);
 	if (v_gg_multiwindow_gl_collect_operation_errors()) {
 		return V_GG_MULTIWINDOW_GL_READBACK_FAILED;
 	}
@@ -109,11 +143,11 @@ static inline int v_gg_multiwindow_gl_readback_image_rgba8(uint32_t image_id,
 	GLint previous_read_framebuffer = 0;
 	GLint previous_draw_framebuffer = 0;
 	GLint previous_read_buffer = 0;
-	GLint previous_pack_alignment = 0;
+	VGGMultiwindowGLPackState pack_state;
 	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previous_read_framebuffer);
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_draw_framebuffer);
 	glGetIntegerv(GL_READ_BUFFER, &previous_read_buffer);
-	glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
+	v_gg_multiwindow_gl_save_pack_state(&pack_state);
 
 	GLuint framebuffer = 0;
 	glGenFramebuffers(1, &framebuffer);
@@ -128,10 +162,10 @@ static inline int v_gg_multiwindow_gl_readback_image_rgba8(uint32_t image_id,
 		glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
 	if (framebuffer_complete) {
 		glReadBuffer(GL_COLOR_ATTACHMENT0);
-		glPixelStorei(GL_PACK_ALIGNMENT, 1);
+		v_gg_multiwindow_gl_set_tight_pack_state();
 		glReadPixels(x, image_height - y - height, width, height, GL_RGBA,
 			GL_UNSIGNED_BYTE, pixels);
-		glPixelStorei(GL_PACK_ALIGNMENT, previous_pack_alignment);
+		v_gg_multiwindow_gl_restore_pack_state(&pack_state);
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)previous_read_framebuffer);
 		glReadBuffer((GLenum)previous_read_buffer);
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)previous_draw_framebuffer);
