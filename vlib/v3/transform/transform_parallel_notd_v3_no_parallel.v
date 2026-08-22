@@ -987,6 +987,12 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	$if windows {
 		return false
 	} $else {
+		$if linux && arm64 {
+			// Shared append-only AST regions intermittently corrupt the heap on
+			// Linux/ARM64. Keep the safe serial monomorphizer on that target while
+			// retaining the other parallel compiler stages.
+			return false
+		}
 		if specs.len == 0 {
 			return false
 		}
