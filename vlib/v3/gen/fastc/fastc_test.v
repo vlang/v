@@ -103,3 +103,44 @@ fn main() {
 	assert c_source.contains('i < (__v_fastc_range_end_1)')
 	assert !c_source.contains('i < (limit())')
 }
+
+fn test_decimal_and_rune_literals_preserve_v_values() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn main() {
+	println(0_123)
+	println(`★`)
+}
+',
+		'literal_values.v', prefs) or { panic(err) }
+	assert c_source.contains('println(123);')
+	assert c_source.contains('println(9733);')
+}
+
+fn test_runtime_sensitive_constructs_request_checked_lane() {
+	prefs := pref.new_preferences()
+	mut nul_failed := false
+	_ := generate('module main
+
+fn main() {
+	println("a\\0b")
+}
+', 'nul_string.v', prefs) or {
+		nul_failed = true
+		''
+	}
+	assert nul_failed
+
+	mut assert_failed := false
+	_ := generate('module main
+
+fn main() {
+	assert false
+}
+', 'assert.v', prefs) or {
+		assert_failed = true
+		''
+	}
+	assert assert_failed
+}

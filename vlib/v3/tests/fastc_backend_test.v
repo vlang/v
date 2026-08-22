@@ -169,6 +169,57 @@ fn main() {
 	mutable_interface_run := cmdexec.run(mutable_interface_binary, [])
 	assert mutable_interface_run.exit_code == 0, mutable_interface_run.output
 
+	literal_source := os.join_path(root, 'literal_values.v')
+	os.write_file(literal_source, 'module main
+
+fn main() {
+	println(0_123)
+	println(`★`)
+}
+') or {
+		panic(err)
+	}
+	literal_binary := os.join_path(root, 'literal_values')
+	literal_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', literal_binary,
+		literal_source])
+	assert literal_compile.exit_code == 0, literal_compile.output
+	literal_c := os.read_file(literal_binary + '.c') or { panic(err) }
+	assert literal_c.contains('println(123);')
+	assert literal_c.contains('println(9733);')
+	literal_run := cmdexec.run(literal_binary, [])
+	assert literal_run.exit_code == 0, literal_run.output
+	assert literal_run.output.trim_space() == '123\n9733'
+
+	nul_source := os.join_path(root, 'nul_string.v')
+	os.write_file(nul_source, 'module main
+
+fn main() {
+	println("a\\0b")
+}
+') or { panic(err) }
+	nul_binary := os.join_path(root, 'nul_string')
+	nul_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', nul_binary, nul_source])
+	assert nul_compile.exit_code == 0, nul_compile.output
+	nul_run := cmdexec.run(nul_binary, [])
+	assert nul_run.exit_code == 0, nul_run.output.bytes().str()
+	assert nul_run.output == 'a\0b\n', nul_run.output.bytes().str()
+
+	assert_source := os.join_path(root, 'assert_failure.v')
+	os.write_file(assert_source, 'module main
+
+fn main() {
+	assert false
+}
+') or { panic(err) }
+	assert_binary := os.join_path(root, 'assert_failure')
+	assert_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', assert_binary,
+		assert_source])
+	assert assert_compile.exit_code == 0, assert_compile.output
+	assert_run := cmdexec.run(assert_binary, [])
+	assert assert_run.exit_code == 1, assert_run.output
+	assert assert_run.output.contains('V panic: Assertion failed...'), assert_run.output
+	assert assert_run.output.contains('${assert_source}:4: > assert false'), assert_run.output
+
 	old_vjobs := os.getenv('VJOBS')
 	os.setenv('VJOBS', '4', true)
 	mut selfhosted_v3 := v3_bin

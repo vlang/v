@@ -49,7 +49,6 @@ static void v_fastc_println_unsigned(unsigned long long value) { printf("%llu\n"
 #define V_FASTC_PRINT_SELECT(value, string_fn, bool_fn, char_fn, signed_fn, unsigned_fn) _Generic((value), char *: string_fn, const char *: string_fn, bool: bool_fn, char: char_fn, signed char: signed_fn, short: signed_fn, int: signed_fn, long: signed_fn, long long: signed_fn, unsigned char: unsigned_fn, unsigned short: unsigned_fn, unsigned int: unsigned_fn, unsigned long: unsigned_fn, unsigned long long: unsigned_fn)(value)
 #define print(value) V_FASTC_PRINT_SELECT(value, v_fastc_print_string, v_fastc_print_bool, v_fastc_print_char, v_fastc_print_signed, v_fastc_print_unsigned)
 #define println(value) V_FASTC_PRINT_SELECT(value, v_fastc_println_string, v_fastc_println_bool, v_fastc_println_char, v_fastc_println_signed, v_fastc_println_unsigned)
-#define assert(value) do { if (!(value)) { fprintf(stderr, "assertion failed: %s\n", #value); abort(); } } while (0)
 
 '
 
@@ -435,11 +434,7 @@ fn (mut g DirectGen) parse_mutable_declaration() ! {
 
 fn (mut g DirectGen) parse_simple_statement() ! {
 	if g.tok == .key_assert {
-		g.next()
-		expression := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
-		g.consume_statement_end()
-		g.write_line('assert(${expression});')
-		return
+		return g.unsupported('assert statements')
 	}
 	if g.tok == .name {
 		name := g.lit
@@ -542,7 +537,7 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 fn (g &DirectGen) expression_token() !string {
 	return match g.tok {
 		.name { g.lit }
-		.number { g.lit.replace('_', '') }
+		.number { fastc_c_number(g.lit) }
 		.string { fastc_c_string(g.lit)! }
 		.char { fastc_c_char(g.lit)! }
 		.key_true { 'true' }
@@ -553,6 +548,18 @@ fn (g &DirectGen) expression_token() !string {
 		.semicolon { ';' }
 		else { g.tok.str() }
 	}
+}
+
+fn fastc_c_number(literal string) string {
+	clean := literal.replace('_', '')
+	if clean.len < 2 || clean[0] != `0` || !clean[1].is_digit() || clean.contains_any('.eE') {
+		return clean
+	}
+	mut first_digit := 0
+	for first_digit < clean.len - 1 && clean[first_digit] == `0` {
+		first_digit++
+	}
+	return clean[first_digit..]
 }
 
 fn (g &DirectGen) token_source() string {
@@ -590,6 +597,10 @@ fn fastc_c_string(literal string) !string {
 	if quote !in [`'`, `"`] || raw[raw.len - 1] != quote {
 		return error('interpolated or unfinished fastc string literal')
 	}
+	content := raw[1..raw.len - 1]
+	if fastc_string_contains_nul(content, is_raw) {
+		return error('embedded NUL string literals require checked fastc')
+	}
 	mut result := strings.new_builder(raw.len + 2)
 	result.write_u8(`"`)
 	mut i := 1
@@ -613,13 +624,46 @@ fn fastc_c_string(literal string) !string {
 	return result.str()
 }
 
+fn fastc_string_contains_nul(content string, is_raw bool) bool {
+	if content.bytes().contains(u8(0)) {
+		return true
+	}
+	if is_raw {
+		return false
+	}
+	mut i := 0
+	for i + 1 < content.len {
+		if content[i] != `\\` {
+			i++
+			continue
+		}
+		escape := content[i + 1]
+		if escape == `\\` {
+			i += 2
+			continue
+		}
+		if escape == `0`
+			|| (escape == `x` && i + 3 < content.len && content[i + 2..i + 4] == '00')
+			|| (escape == `u` && i + 5 < content.len && content[i + 2..i + 6] == '0000')
+			|| (escape == `U` && i + 9 < content.len && content[i + 2..i + 10] == '00000000') {
+			return true
+		}
+		i += 2
+	}
+	return false
+}
+
 fn fastc_c_char(literal string) !string {
 	mut value := literal
 	if value.starts_with('c:') {
 		value = value[2..]
 	}
-	if value.len == 0 || value.contains("'") {
+	if value.len == 0 || value.starts_with('\\') {
 		return error('unsupported fastc character literal')
 	}
-	return "'${value}'"
+	runes := value.runes()
+	if runes.len != 1 {
+		return error('unsupported fastc character literal')
+	}
+	return int(runes[0]).str()
 }
