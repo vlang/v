@@ -83,43 +83,7 @@ type X11NativeColormap = X11NativeULong
 type X11NativeCursor = X11NativeULong
 type X11NativeWindow = X11NativeULong
 
-struct C.Display {}
-
-@[typedef]
-struct C.VMultiwindowX11ServiceState {
-	mapped         int
-	focused        int
-	minimized      int
-	maximized      int
-	fullscreen     int
-	position_known int
-	x              int
-	y              int
-}
-
-@[typedef]
-struct C.VMultiwindowX11MonitorInfo {
-	name      X11NativeAtom
-	primary   int
-	x         int
-	y         int
-	width     int
-	height    int
-	width_mm  int
-	height_mm int
-}
-
-@[typedef]
-struct C.VMultiwindowX11WorkArea {
-	known  int
-	x      int
-	y      int
-	width  int
-	height int
-}
-
-@[typedef]
-struct C.VMultiwindowX11ReadbackProbe {
+struct X11ReadbackProbe {
 	attributes_available   int
 	map_state              int
 	actual_width           int
@@ -131,6 +95,53 @@ struct C.VMultiwindowX11ReadbackProbe {
 }
 
 $if linux && x_multiwindow_x11 ? {
+	struct C.Display {}
+
+	@[typedef]
+	struct C.VMultiwindowX11ServiceState {
+		mapped         int
+		focused        int
+		minimized      int
+		maximized      int
+		fullscreen     int
+		position_known int
+		x              int
+		y              int
+	}
+
+	@[typedef]
+	struct C.VMultiwindowX11MonitorInfo {
+		name      X11NativeAtom
+		primary   int
+		x         int
+		y         int
+		width     int
+		height    int
+		width_mm  int
+		height_mm int
+	}
+
+	@[typedef]
+	struct C.VMultiwindowX11WorkArea {
+		known  int
+		x      int
+		y      int
+		width  int
+		height int
+	}
+
+	@[typedef]
+	struct C.VMultiwindowX11ReadbackProbe {
+		attributes_available   int
+		map_state              int
+		actual_width           int
+		actual_height          int
+		requested_width        int
+		requested_height       int
+		pixels_length          usize
+		expected_pixels_length usize
+	}
+
 	@[typedef]
 	union C.XClientMessageData {
 	mut:
@@ -456,7 +467,7 @@ mut:
 struct X11Backend {
 mut:
 	native_operations                            &NativeOperationAuthority = unsafe { nil }
-	display                                      &C.Display                = unsafe { nil }
+	display                                      voidptr
 	checked_connection                           voidptr
 	screen                                       int
 	root                                         X11NativeWindow
@@ -1977,11 +1988,21 @@ fn (backend &X11Backend) service_paint_readback_pattern_for_test(id WindowId, x 
 	}
 }
 
-fn (backend &X11Backend) service_readback_probe_for_test(id WindowId, width int, height int) !C.VMultiwindowX11ReadbackProbe {
+fn (backend &X11Backend) service_readback_probe_for_test(id WindowId, width int, height int) !X11ReadbackProbe {
 	$if linux && x_multiwindow_x11 ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
-		return C.v_multiwindow_x11_readback_probe(backend.checked_connection,
+		probe := C.v_multiwindow_x11_readback_probe(backend.checked_connection,
 			backend.windows[index].window, width, height, usize(width * height * 4))
+		return X11ReadbackProbe{
+			attributes_available:   probe.attributes_available
+			map_state:              probe.map_state
+			actual_width:           probe.actual_width
+			actual_height:          probe.actual_height
+			requested_width:        probe.requested_width
+			requested_height:       probe.requested_height
+			pixels_length:          probe.pixels_length
+			expected_pixels_length: probe.expected_pixels_length
+		}
 	} $else {
 		_ = id
 		_ = width

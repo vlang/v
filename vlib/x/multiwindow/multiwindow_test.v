@@ -2173,6 +2173,11 @@ fn test_appkit_input_events_are_queued_and_capability_scoped_source_guard() {
 
 fn test_appkit_macos_cgen_emits_record_and_literal_input_mapping() {
 	c_source := multiwindow_emit_macos_multiwindow_test_c()
+	leaked_display_field := ['Dis', 'play* display;'].join('')
+	leaked_probe_type := ['VMultiwindowX11', 'ReadbackProbe'].join('')
+	assert !c_source.contains(leaked_display_field)
+	assert !c_source.contains('Optional_${leaked_probe_type}')
+	assert !c_source.contains('_option_C__${leaked_probe_type}')
 	v1_typedef := 'typedef struct x__multiwindow__AppKitWindowRecord x__multiwindow__AppKitWindowRecord;'
 	v1_struct := 'struct x__multiwindow__AppKitWindowRecord {'
 	v1_mapping := 'VV_LOC _option_x__multiwindow__QueuedEvent x__multiwindow__appkit_queued_event_from_native('
@@ -2441,6 +2446,19 @@ fn test_x11_backend_native_deps_are_flag_gated_source_guard() {
 	assert source.contains('$if gg_multiwindow ? || x_multiwindow_render ? {\n\timport sokol.gfx')
 	assert guarded_native_deps.contains('\t#flag linux -lX11-xcb\n\t#flag linux -lX11\n')
 	assert_source_order(guarded_native_deps, '#flag linux -lX11', '#include <X11/Xlib.h>')
+}
+
+fn test_x11_c_interop_types_are_native_flag_gated_source_guard() {
+	source := multiwindow_source_file('x11_backend.c.v')
+	native_declarations :=
+		source.all_after('struct X11ReadbackProbe {').all_after('$if linux && x_multiwindow_x11 ? {').all_before('\n}\n\nstruct X11WindowRecord')
+	assert source.count('struct C.Display {}') == 1
+	assert source.count('struct C.VMultiwindowX11ReadbackProbe {') == 1
+	assert native_declarations.contains('struct C.Display {}')
+	assert native_declarations.contains('struct C.VMultiwindowX11ReadbackProbe {')
+	assert source.contains('display                                      voidptr')
+	assert source.contains('!X11ReadbackProbe {')
+	assert !source.contains('!C.VMultiwindowX11ReadbackProbe {')
 }
 
 fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
