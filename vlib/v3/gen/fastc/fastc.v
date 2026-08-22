@@ -626,6 +626,23 @@ fn fastc_c_string(literal string) !string {
 	for i < raw.len - 1 {
 		c := raw[i]
 		if c == `\\` && !is_raw && i + 1 < raw.len - 1 {
+			if raw[i + 1] == `x` {
+				if i + 3 >= raw.len - 1 {
+					return error('invalid fastc hex escape')
+				}
+				high := fastc_hex_digit_value(raw[i + 2])!
+				low := fastc_hex_digit_value(raw[i + 3])!
+				value := (high << 4) | low
+				// V consumes exactly two hexadecimal digits. C consumes every
+				// following hex digit, so use a full three-digit octal escape to
+				// terminate the encoded byte unambiguously.
+				result.write_u8(`\\`)
+				result.write_u8(`0` + (value >> 6))
+				result.write_u8(`0` + ((value >> 3) & 7))
+				result.write_u8(`0` + (value & 7))
+				i += 4
+				continue
+			}
 			result.write_u8(c)
 			result.write_u8(raw[i + 1])
 			i += 2
@@ -641,6 +658,19 @@ fn fastc_c_string(literal string) !string {
 	}
 	result.write_u8(`"`)
 	return result.str()
+}
+
+fn fastc_hex_digit_value(c u8) !u8 {
+	if c >= `0` && c <= `9` {
+		return u8(c - `0`)
+	}
+	if c >= `a` && c <= `f` {
+		return u8(c - `a` + 10)
+	}
+	if c >= `A` && c <= `F` {
+		return u8(c - `A` + 10)
+	}
+	return error('invalid fastc hex digit `${c.ascii_str()}`')
 }
 
 fn fastc_string_contains_nul(content string, is_raw bool) bool {

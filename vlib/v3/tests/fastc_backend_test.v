@@ -247,6 +247,25 @@ fn main() {
 	assert literal_run.exit_code == 0, literal_run.output
 	assert literal_run.output.trim_space() == '123\n9733'
 
+	hex_escape_source := os.join_path(root, 'hex_escape.v')
+	os.write_file(hex_escape_source, "module main
+
+fn main() {
+	println('\\x61ardvark')
+}
+") or {
+		panic(err)
+	}
+	hex_escape_binary := os.join_path(root, 'hex_escape')
+	hex_escape_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', hex_escape_binary,
+		hex_escape_source])
+	assert hex_escape_compile.exit_code == 0, hex_escape_compile.output
+	hex_escape_c := os.read_file(hex_escape_binary + '.c') or { panic(err) }
+	assert hex_escape_c.contains(r'println("\141ardvark");')
+	hex_escape_run := cmdexec.run(hex_escape_binary, [])
+	assert hex_escape_run.exit_code == 0, hex_escape_run.output
+	assert hex_escape_run.output.trim_space() == 'aardvark'
+
 	nul_source := os.join_path(root, 'nul_string.v')
 	os.write_file(nul_source, 'module main
 

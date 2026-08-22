@@ -57,14 +57,7 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 }
 
 fn macos_v3_fastc_requested(prefs &pref.Preferences) bool {
-	mut selected_backend := ''
-	for option in prefs.build_options {
-		parts := option.fields()
-		if parts.len == 2 && parts[0] in ['-b', '-backend'] {
-			selected_backend = parts[1]
-		}
-	}
-	return selected_backend == 'fastc'
+	return prefs.is_fastc
 }
 
 // macos_v3_test_ownership_uses_v1 keeps ownership/autofree test binaries on

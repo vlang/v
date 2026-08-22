@@ -1576,6 +1576,7 @@ fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {
 		assert !macos_v3_executable_can_dispatch('/tmp/v2', &pref.Preferences{})
 		assert macos_v3_executable_can_dispatch('/tmp/v2', &pref.Preferences{
 			build_options: ['-b fastc']
+			is_fastc:      true
 		})
 	}
 }
@@ -1698,6 +1699,7 @@ fn test_macos_v3_fastc_routes_compiler_selfhost_targets() {
 			new_compiler:  true
 			path:          target
 			build_options: ['-b fastc']
+			is_fastc:      true
 		})
 		assert !macos_v3_force_requested('build', &pref.Preferences{
 			new_compiler:  true
@@ -1707,16 +1709,21 @@ fn test_macos_v3_fastc_routes_compiler_selfhost_targets() {
 	}
 	assert macos_v3_fastc_requested(&pref.Preferences{
 		build_options: ['-backend fastc']
+		is_fastc:      true
 	})
 	assert !macos_v3_fastc_requested(&pref.Preferences{
 		build_options: ['-b fastc', '-b c']
 	})
+	repeated_backends, _ := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-b', 'c', '-b',
+		'fastc', 'cmd/v'], false)
+	assert macos_v3_fastc_requested(repeated_backends)
 	assert macos_v3_force_requested('run', &pref.Preferences{
 		new_compiler:  true
 		autofree:      true
 		is_run:        true
 		path:          'main.v'
 		build_options: ['-b fastc']
+		is_fastc:      true
 	})
 }
 
@@ -1729,6 +1736,7 @@ fn test_macos_v3_vtest_ownership_modes_use_v1_except_fastc() {
 	prefs.autofree = false
 	assert macos_v3_test_ownership_uses_v1(prefs, ['-skip-running', '-ownership', 'main.v'])
 	prefs.build_options = ['-b fastc']
-	assert !macos_v3_test_ownership_uses_v1(prefs, ['-skip-running', '-ownership', '-b',
-		'fastc', 'main.v'])
+	prefs.is_fastc = true
+	assert !macos_v3_test_ownership_uses_v1(prefs, ['-skip-running', '-ownership', '-b', 'fastc',
+		'main.v'])
 }

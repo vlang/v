@@ -119,6 +119,13 @@ fn main() {
 	assert c_source.contains('println(9733);')
 }
 
+fn test_hex_string_escape_has_fixed_width_in_c() {
+	prefs := pref.new_preferences()
+	c_source := generate("module main\nfn main() { println('\\x61ardvark') }\n", 'hex_escape.v',
+		prefs) or { panic(err) }
+	assert c_source.contains(r'println("\141ardvark");')
+}
+
 fn test_runtime_sensitive_constructs_request_checked_lane() {
 	prefs := pref.new_preferences()
 	mut nul_failed := false
