@@ -57,6 +57,36 @@ fn test_preserved_header_trees_scan_shared_files_once() {
 	assert g.preserved_header_files_seen.len == 3
 }
 
+fn test_postinclude_header_does_not_suppress_earlier_c_prototype() {
+	root := os.join_path(os.vtmp_dir(), 'v3_postinclude_prototype_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(header, 'int postinclude_api(void);\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut postinclude_g := FlatGen.new()
+	postinclude_g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'postinclude'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
+	assert '#include "${header}"' in postinclude_g.postinclude_directives
+
+	mut preinclude_g := FlatGen.new()
+	preinclude_g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'preinclude'
+		typ:   '"${header}"'
+	}, source, false)
+	assert 'postinclude_api' in preinclude_g.inlined_c_declared_fns
+}
+
 fn test_preserved_header_collects_only_definitely_active_declarations() {
 	root := os.join_path(os.vtmp_dir(), 'v3_preserved_inactive_${os.getpid()}')
 	os.rmdir_all(root) or {}

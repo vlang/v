@@ -4244,9 +4244,9 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if include_arg.len == 0 {
 			return true
 		}
-		g.collect_preserved_include_metadata(include_arg, source_file)
 		directive := '#include ${include_arg}'
 		if node.value == 'preinclude' {
+			g.collect_preserved_include_metadata(include_arg, source_file)
 			if directive !in g.preinclude_directives {
 				g.preinclude_directives << directive
 			}
