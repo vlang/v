@@ -10363,7 +10363,8 @@ fn (mut t Transformer) validate_specialized_enum_from_call(call_id flat.NodeId, 
 	} else {
 		t.node_type(enum_id)
 	}
-	t.record_monomorph_error('cannot use `${actual}` as argument 1 to `${enum_name}.from`; expected string or integer')
+	actual_display := typeof_display_type_text(actual)
+	t.record_monomorph_error('cannot use `${actual_display}` as argument 1 to `${enum_name}.from`; expected string or integer')
 	return false
 }
 

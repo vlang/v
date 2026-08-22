@@ -1685,7 +1685,7 @@ fn input_is_legacy_diagnostic_fixture(input_file string) bool {
 fn default_bin_file_for_input(input_file string) string {
 	if os.is_dir(input_file) {
 		real_input := os.real_path(input_file)
-		return os.join_path_single(real_input, os.base(real_input))
+		return os.base(real_input)
 	}
 	resolved_input := if os.exists(input_file) { os.real_path(input_file) } else { input_file }
 	if !resolved_input.ends_with('.v') && !resolved_input.ends_with('.vv')

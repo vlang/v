@@ -419,7 +419,9 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	// the payload C type and attempts to initialize an interface with option fields.
 	if is_optional_init
 		&& (g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType) {
-		name = g.optional_type_name(g.expected_expr_type)
+		concrete_expected := g.cur_fn_is_specialized && g.cur_fn_ret_is_optional
+			&& g.type_names_match(g.expected_expr_type, g.cur_fn_ret)
+		name = g.optional_type_name_for_context(g.expected_expr_type, concrete_expected)
 	} else if init_value == 'Optional' && g.expected_expr_is_optional_struct() {
 		name = g.value_c_type(g.expected_expr_type)
 	} else if init_value == 'Optional'
@@ -444,7 +446,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		}
 	}
 	if is_optional_init && !has_expected_optional
-		&& g.name_uses_specialized_generic_abi(g.cur_fn_name) {
+		&& (g.cur_fn_is_specialized || g.name_uses_specialized_generic_abi(g.cur_fn_name)) {
 		name = g.fn_return_type_name(g.cur_fn_ret)
 	}
 	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
