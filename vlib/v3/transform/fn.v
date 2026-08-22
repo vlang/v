@@ -8387,8 +8387,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 	}
 	base_node := t.a.nodes[int(base_id)]
-	if (array_type_has_generic_placeholder(base_type) || base_type.contains('unknown'))
-		&& base_node.kind == .call {
+	if base_node.kind == .call {
 		concrete_base_type := t.concrete_generic_call_return_type(base_id, base_node)
 		if concrete_base_type.starts_with('[]') {
 			base_type = concrete_base_type

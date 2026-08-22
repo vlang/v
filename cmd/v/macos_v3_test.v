@@ -1044,7 +1044,8 @@ fn main() {
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
 	mut process := os.new_process(@VEXE)
-	process.set_args(['-ownership', '-d=ownership', '-gc', 'none', '-o', output, source])
+	process.set_args(['-ownership', '-no-parallel', '-d=ownership', '-gc', 'none', '-o', output,
+		source])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()

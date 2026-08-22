@@ -145,7 +145,9 @@ fn (mut g Gen) gen_embedded_data() {
 	*/
 	// Declare the index before any generated helper references it, to keep MSVC happy.
 	index_len := g.embedded_files.len + 1
-	g.embedded_data.writeln('static const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[${index_len}];')
+	if g.is_cc_msvc {
+		g.embedded_data.writeln('static const v__embed_file__EmbedFileIndexEntry _v_embed_file_index[${index_len}];')
+	}
 	for i, emfile in g.embedded_files {
 		g.embedded_data.write_string('static const unsigned char _v_embed_blob_${i}[${emfile.bytes.len}] = {\n    ')
 		for j := 0; j < emfile.bytes.len; j++ {

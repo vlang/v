@@ -4574,22 +4574,25 @@ fn (mut t Transformer) concrete_generic_call_return_type(id flat.NodeId, node fl
 		return ''
 	}
 	callee := t.a.child_node(&node, 0)
+	mut specialized_node_type := ''
 	if callee.kind == .ident
 		&& (t.generic_callee_is_specialization(callee.value) || callee.value.contains('_T_'))
 		&& generic_inference_arg_type_usable(node.typ) {
 		concrete_node_type := t.normalize_type_alias(node.typ)
 		if !t.generic_arg_is_unresolved(concrete_node_type) {
-			return concrete_node_type
+			specialized_node_type = concrete_node_type
 		}
 	}
 	decls := t.cached_generic_fn_decls()
 	if decls.len == 0 {
-		return ''
+		return specialized_node_type
 	}
-	decl_key := t.generic_call_decl_key(id, node, t.cur_module, decls) or { return '' }
-	decl := decls[decl_key] or { return '' }
+	decl_key := t.generic_call_decl_key(id, node, t.cur_module, decls) or {
+		return specialized_node_type
+	}
+	decl := decls[decl_key] or { return specialized_node_type }
 	if t.should_skip_generic_call_specialization(decl_key) {
-		return ''
+		return specialized_node_type
 	}
 	if callee.kind == .ident {
 		if exact := t.recorded_generic_specialization_args(callee.value) {
@@ -4598,6 +4601,9 @@ fn (mut t Transformer) concrete_generic_call_return_type(id flat.NodeId, node fl
 				return t.normalize_type_alias(ret)
 			}
 		}
+	}
+	if specialized_node_type.len > 0 {
+		return specialized_node_type
 	}
 	mut args := []string{}
 	if explicit := t.explicit_generic_call_args(node, t.cur_module) {

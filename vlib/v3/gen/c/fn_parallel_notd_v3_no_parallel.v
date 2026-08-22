@@ -16,64 +16,79 @@ const min_flat_cgen_parallel_items = 128
 const scoped_cgen_worker_batches = 32
 const flat_cgen_chunks_per_job = 12
 
+// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
+struct FlatCgenChunkArgs {
+	worker         voidptr
+	work_items_ptr voidptr
+	is_master      bool
+}
+
+struct FlatCgenCostArgs {
+	a         &flat.FlatAst
+	items_ptr voidptr
+	start     int
+	end       int
+	g         voidptr // &FlatGen, non-nil in fused prep mode (read-only access)
+mut:
+	refs  map[string]bool
+	cands []FlatCgenPrepCandidate
+}
+
+struct FlatCgenDynamicArgs {
+	dispatcher      voidptr
+	worker_id       int
+	work_chunks_ptr voidptr
+	chunk_queue     chan int
+	reserve_cost    i64
+mut:
+	worker      voidptr
+	setup_scope voidptr
+}
+
+struct CollectGenInfoFnPrepArgs {
+	g            voidptr // read-only &FlatGen master
+	node_ids_ptr voidptr // &[]int
+	preps_ptr    voidptr // &[]CollectGenFnPrep; shards fill disjoint positions
+	start        int
+	end          int
+	file         string
+	module_name  string
+}
+
+struct CollectGenInfoScanArgs {
+	g     voidptr // read-only &FlatGen master
+	start int
+	end   int
+mut:
+	counts         CollectGenInfoScanCounts
+	top_level_pos  int
+	string_pos     int
+	top_levels_ptr voidptr
+	strings_ptr    voidptr
+}
+
+struct FnSignatureRegistrationArgs {
+	g                 voidptr
+	registrations_ptr voidptr
+	group             int
+}
+
+struct FlatCgenSelectArgs {
+	g                       voidptr
+	nodes_ptr               voidptr
+	start                   int
+	end                     int
+	file                    string
+	module_name             string
+	direct_array_access_fns DirectArrayAccessFns
+	ignore_overflow_fns     DirectArrayAccessFns
+	program_modules         map[string]bool
+mut:
+	candidates []FlatFnGenCandidate
+	scope      voidptr
+}
+
 $if !windows {
-	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
-	struct FlatCgenChunkArgs {
-		worker         voidptr
-		work_items_ptr voidptr
-		is_master      bool
-	}
-
-	struct FlatCgenCostArgs {
-		a         &flat.FlatAst
-		items_ptr voidptr
-		start     int
-		end       int
-		g         voidptr // &FlatGen, non-nil in fused prep mode (read-only access)
-	mut:
-		refs  map[string]bool
-		cands []FlatCgenPrepCandidate
-	}
-
-	struct FlatCgenDynamicArgs {
-		dispatcher      voidptr
-		worker_id       int
-		work_chunks_ptr voidptr
-		chunk_queue     chan int
-		reserve_cost    i64
-	mut:
-		worker      voidptr
-		setup_scope voidptr
-	}
-
-	struct CollectGenInfoFnPrepArgs {
-		g            voidptr // read-only &FlatGen master
-		node_ids_ptr voidptr // &[]int
-		preps_ptr    voidptr // &[]CollectGenFnPrep; shards fill disjoint positions
-		start        int
-		end          int
-		file         string
-		module_name  string
-	}
-
-	struct CollectGenInfoScanArgs {
-		g     voidptr // read-only &FlatGen master
-		start int
-		end   int
-	mut:
-		counts         CollectGenInfoScanCounts
-		top_level_pos  int
-		string_pos     int
-		top_levels_ptr voidptr
-		strings_ptr    voidptr
-	}
-
-	struct FnSignatureRegistrationArgs {
-		g                 voidptr
-		registrations_ptr voidptr
-		group             int
-	}
-
 	fn fn_signature_registration_thread(arg voidptr) voidptr {
 		a := unsafe { &FnSignatureRegistrationArgs(arg) }
 		mut g := unsafe { &FlatGen(a.g) }
@@ -82,21 +97,6 @@ $if !windows {
 			g.apply_fn_signature_registration_group(registration, a.group)
 		}
 		return unsafe { nil }
-	}
-
-	struct FlatCgenSelectArgs {
-		g                       voidptr
-		nodes_ptr               voidptr
-		start                   int
-		end                     int
-		file                    string
-		module_name             string
-		direct_array_access_fns DirectArrayAccessFns
-		ignore_overflow_fns     DirectArrayAccessFns
-		program_modules         map[string]bool
-	mut:
-		candidates []FlatFnGenCandidate
-		scope      voidptr
 	}
 
 	fn flat_cgen_select_thread(arg voidptr) voidptr {

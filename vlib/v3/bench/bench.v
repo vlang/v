@@ -5,7 +5,7 @@ import runtime
 import sync
 import time
 
-const default_memory_limit_kb = i64(9) * 256 * 1024
+const default_memory_limit_kb = i64(10) * 256 * 1024
 const self_host_memory_limit_kb = i64(4) * 1024 * 1024
 const compiler_tree_memory_limit_kb = i64(6) * 1024 * 1024
 const memory_monitor_interval = 100 * time.millisecond

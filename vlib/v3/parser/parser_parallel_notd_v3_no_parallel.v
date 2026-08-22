@@ -39,21 +39,21 @@ mut:
 	decls []ComptimeConstPrepassDecl
 }
 
-$if !windows {
-	// ParseChunkArgs is the payload handed to each worker thread.
-	struct ParseChunkArgs {
-		worker        voidptr // &Parser
-		paths_ptr     voidptr // &[]string
-		starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
-		prepass_chunk voidptr // &ComptimeConstPrepassChunk
-		start         int
-		end           int
-		chunk_bytes   int
-		scope_enabled bool
-	mut:
-		scope voidptr
-	}
+// ParseChunkArgs is the payload handed to each worker thread.
+struct ParseChunkArgs {
+	worker        voidptr // &Parser
+	paths_ptr     voidptr // &[]string
+	starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
+	prepass_chunk voidptr // &ComptimeConstPrepassChunk
+	start         int
+	end           int
+	chunk_bytes   int
+	scope_enabled bool
+mut:
+	scope voidptr
+}
 
+$if !windows {
 	// parse_chunk_thread parses one worker's contiguous range of files into the
 	// worker's private FlatAst, recording each file's worker-local first node id
 	// into its own preallocated slot of the shared starts array.

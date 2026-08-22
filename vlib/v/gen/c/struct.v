@@ -1295,7 +1295,10 @@ fn (mut g Gen) struct_init_field_default(field_unwrap_typ ast.Type, sfield &ast.
 		g.write('/* autoref */&')
 	}
 
-	if (sfield.expected_type.has_flag(.option) && !field_unwrap_typ.has_flag(.option))
+	if sfield.expected_type.has_flag(.option) && field_unwrap_typ.has_flag(.option)
+		&& g.styp(sfield.expected_type) != g.styp(field_unwrap_typ) {
+		g.expr_opt_with_cast(sfield.expr, field_unwrap_typ, sfield.expected_type)
+	} else if (sfield.expected_type.has_flag(.option) && !field_unwrap_typ.has_flag(.option))
 		|| (sfield.expected_type.has_flag(.result) && !field_unwrap_typ.has_flag(.result)) {
 		g.expr_with_opt(sfield.expr, field_unwrap_typ, sfield.expected_type)
 	} else if sfield.expr is ast.LambdaExpr && sfield.expected_type.has_flag(.option) {
