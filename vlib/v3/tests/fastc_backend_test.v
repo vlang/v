@@ -200,6 +200,27 @@ fn main() {
 	assert narrow_run.exit_code == 0, narrow_run.output
 	assert narrow_run.output.trim_space() == '0'
 
+	shift_source := os.join_path(root, 'oversized_shift.v')
+	os.write_file(shift_source, 'module main
+
+fn show(x int, n int) {
+	println(x << n)
+}
+
+fn main() {
+	show(1, 32)
+}
+') or {
+		panic(err)
+	}
+	shift_binary := os.join_path(root, 'oversized_shift')
+	shift_compile := cmdexec.run(v3_bin,
+		['-silent', '-b', 'fastc', '-o', shift_binary, shift_source])
+	assert shift_compile.exit_code == 0, shift_compile.output
+	shift_run := cmdexec.run(shift_binary, [])
+	assert shift_run.exit_code == 0, shift_run.output
+	assert shift_run.output.trim_space() == '0'
+
 	string_index_source := os.join_path(root, 'string_index.v')
 	os.write_file(string_index_source, "module main
 

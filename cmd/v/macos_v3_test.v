@@ -1727,6 +1727,20 @@ fn test_macos_v3_fastc_routes_compiler_selfhost_targets() {
 	})
 }
 
+fn test_macos_v3_fastc_rejects_incompatible_preferences() {
+	fastc_boehm, _ := pref.parse_args_and_show_errors([],
+		['-b', 'fastc', '-gc', 'boehm', 'main.v'], false)
+	message := macos_v3_fastc_incompatibility(fastc_boehm) or {
+		assert false, 'expected explicit FastC with Boehm GC to be rejected'
+		return
+	}
+	assert message.contains('`-b fastc` only supports `-gc none`')
+
+	overridden, _ := pref.parse_args_and_show_errors([], ['-b', 'fastc', '-gc', 'boehm', '-b',
+		'c', 'main.v'], false)
+	assert macos_v3_fastc_incompatibility(overridden) == none
+}
+
 fn test_macos_v3_vtest_ownership_modes_use_v1_except_fastc() {
 	mut prefs := &pref.Preferences{
 		skip_running: true

@@ -109,11 +109,11 @@ the same language and ownership/autofree coverage as the C backend. A successful
 program keeps its exit status and is never retried.
 
 Integer-range bounds in the direct lane are evaluated once, from left to right. Float printing,
-embedded-NUL string literals, assertions, comparison/logical expressions, and functions with
-narrow integer signatures are promoted to the complete lane. Indexing expressions are promoted
-as well, preserving V element types and bounds checks. These promotions avoid C library
-approximations of V's formatting, byte-length, diagnostics, boolean typing, and integer-wrapping
-behavior.
+embedded-NUL string literals, assertions, comparison/logical and shift expressions, and functions
+with narrow integer signatures are promoted to the complete lane. Indexing expressions are
+promoted as well, preserving V element types and bounds checks. Together these promotions preserve
+V's formatting, byte-length, diagnostics, boolean typing, integer-wrapping, and safe-shift behavior
+instead of relying on incompatible raw C semantics.
 
 The direct path is limited to host-target, non-production, non-test, non-shared single-file builds.
 Compiler/self-host and other non-direct modes enter the complete lane before source scanning.

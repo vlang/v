@@ -517,13 +517,18 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 			// inferred locals observe 0/1 instead of false/true.
 			return g.unsupported('comparison or logical expressions')
 		}
+		if g.tok in [.left_shift, .right_shift, .right_shift_unsigned] {
+			// V defines oversized shifts to produce zero. Raw C shifts are
+			// undefined and may mask the count to the operand width instead.
+			return g.unsupported('shift expressions')
+		}
 		if g.tok in [.lsbr, .rsbr] {
 			// Indexing requires V element types and bounds checks. C pointer/array
 			// indexing cannot preserve either in this scanner-only lane.
 			return g.unsupported('expression token `${g.token_source()}`')
 		}
 		if g.tok in [.lcbr, .rcbr, .str_dollar, .key_match, .key_or, .key_as, .key_is, .not_is,
-			.key_in, .not_in, .arrow, .power, .right_shift_unsigned] {
+			.key_in, .not_in, .arrow, .power] {
 			return g.unsupported('expression token `${g.token_source()}`')
 		}
 		piece := g.expression_token()!

@@ -19,6 +19,10 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 		eprintln('`-new-compiler` requires a build that embeds the V3 compiler, which this one does not.')
 		exit(1)
 	}
+	if message := macos_v3_fastc_incompatibility(prefs) {
+		eprintln(message)
+		exit(1)
+	}
 	raw_args := util.join_env_vflags_and_os_args()[1..]
 	if macos_v3_has_v1_only_leading_option(raw_args, command) {
 		eprintln('`-new-compiler` cannot be combined with a V1-only option; drop `-new-compiler` or the option.')

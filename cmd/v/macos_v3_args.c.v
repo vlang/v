@@ -60,6 +60,21 @@ fn macos_v3_fastc_requested(prefs &pref.Preferences) bool {
 	return prefs.is_fastc
 }
 
+// macos_v3_fastc_incompatibility reports why an explicit FastC selection cannot
+// be honored, so dispatchers fail instead of silently continuing through V1.
+fn macos_v3_fastc_incompatibility(prefs &pref.Preferences) ?string {
+	if !prefs.is_fastc {
+		return none
+	}
+	if prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
+		return '`-b fastc` only supports `-gc none`; remove the explicit collector or select `-b c`.'
+	}
+	if v3_has_v1_only_preferences(prefs) {
+		return '`-b fastc` cannot be combined with an option that is only supported by the V1 compiler.'
+	}
+	return none
+}
+
 // macos_v3_test_ownership_uses_v1 keeps ownership/autofree test binaries on
 // V1. vtest marks its per-file compilations with `-skip-running`; compiling an
 // autofree test through the ownership-enabled V3 tool can consume far more
