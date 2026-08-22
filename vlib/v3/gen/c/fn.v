@@ -1402,7 +1402,7 @@ fn (mut g FlatGen) libc_compat_call_name(name string) ?string {
 
 fn (mut g FlatGen) preseed_libc_compat_fns() {
 	refs := g.c_extern_referenced_symbols()
-	if refs['C.gettid'] || refs['gettid'] {
+	if refs['C.gettid'] || refs['gettid'] || g.used_fn_contains_in_module('v_gettid', 'builtin') {
 		g.libc_compat_fns['gettid'] = true
 	}
 	if refs['C.v_filelock_lock'] || refs['C.v_filelock_unlock'] || refs['v_filelock_lock']

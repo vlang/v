@@ -72,6 +72,18 @@ fn test_windows_filelock_method_preseeds_parallel_compat_helpers() {
 	assert c_code.contains('static inline int v_filelock_unlock(HANDLE handle'), c_code
 }
 
+fn test_builtin_gettid_preseeds_parallel_compat_helper() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut used := {
+		'v_gettid': true
+	}
+	g.used_fns = &used
+	// Isolate used-function reachability from the later function-body reference scan.
+	g.c_extern_refs_ready = true
+	g.preseed_libc_compat_fns()
+	assert g.libc_compat_fns['gettid']
+}
+
 fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
 	mut g, _ := parallel_worker_test_gen(true)
 	g.const_runtime_inits = ['\tmoda__runtime_const = moda__make_const();']

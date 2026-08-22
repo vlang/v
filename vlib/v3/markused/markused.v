@@ -468,6 +468,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		for seed in ['strconv.format_int', 'string.free', 'string__free'] {
 			enqueue(seed, mut used, mut queue)
 		}
+		// Linux backtraces add strings.Builder to the otherwise minimal runtime.
+		// Its C bodies and map diagnostics contain calls lowered after markused.
+		if 'strings.Builder.str' in fn_decls || 'Builder.str' in fn_decls {
+			for seed in ['strconv.format_uint', 'u8.ascii_str', 'byteptr.vstring_with_len',
+				'array.push', 'array__push', 'array.free', 'array__free', 'int.str'] {
+				enqueue(seed, mut used, mut queue)
+			}
+		}
 	}
 	if !trivial_literal_output {
 		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
