@@ -533,6 +533,26 @@ fn main() {
 	assert hex_escape_run.exit_code == 0, hex_escape_run.output
 	assert hex_escape_run.output.trim_space() == 'aardvark'
 
+	continued_string_source := os.join_path(root, 'continued_string.v')
+	os.write_file(continued_string_source, r"module main
+
+fn main() {
+	println('left\
+	   right')
+}
+") or {
+		panic(err)
+	}
+	continued_string_binary := os.join_path(root, 'continued_string')
+	continued_string_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
+		continued_string_binary, continued_string_source])
+	assert continued_string_compile.exit_code == 0, continued_string_compile.output
+	continued_string_c := os.read_file(continued_string_binary + '.c') or { panic(err) }
+	assert continued_string_c.contains(r'println("leftright");')
+	continued_string_run := cmdexec.run(continued_string_binary, [])
+	assert continued_string_run.exit_code == 0, continued_string_run.output
+	assert continued_string_run.output.trim_space() == 'leftright'
+
 	nul_source := os.join_path(root, 'nul_string.v')
 	os.write_file(nul_source, 'module main
 

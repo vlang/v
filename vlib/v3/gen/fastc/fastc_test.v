@@ -126,6 +126,22 @@ fn test_hex_string_escape_has_fixed_width_in_c() {
 	assert c_source.contains(r'println("\141ardvark");')
 }
 
+fn test_string_line_continuations_match_v_unescaping() {
+	prefs := pref.new_preferences()
+	source := r"module main
+
+fn main() {
+	println('left\
+	   right')
+}
+"
+	c_source := generate(source, 'continued_string.v', prefs) or { panic(err) }
+	assert c_source.contains(r'println("leftright");')
+	crlf_literal := "'left\\" + '\r\n' + "\t  right'"
+	assert fastc_c_string(crlf_literal)! == '"leftright"'
+	assert fastc_c_string(r"'left\nright'")! == r'"left\nright"'
+}
+
 fn test_runtime_sensitive_constructs_request_checked_lane() {
 	prefs := pref.new_preferences()
 	for source in ['module main

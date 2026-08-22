@@ -675,6 +675,20 @@ fn fastc_c_string(literal string) !string {
 	for i < raw.len - 1 {
 		c := raw[i]
 		if c == `\\` && !is_raw && i + 1 < raw.len - 1 {
+			if raw[i + 1] == `\n` {
+				i += 2
+				for i < raw.len - 1 && raw[i] in [` `, `\t`, `\r`] {
+					i++
+				}
+				continue
+			}
+			if raw[i + 1] == `\r` && i + 2 < raw.len - 1 && raw[i + 2] == `\n` {
+				i += 3
+				for i < raw.len - 1 && raw[i] in [` `, `\t`] {
+					i++
+				}
+				continue
+			}
 			if raw[i + 1] == `x` {
 				if i + 3 >= raw.len - 1 {
 					return error('invalid fastc hex escape')
