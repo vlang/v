@@ -2343,6 +2343,10 @@ fn test_explicit_v3_rejects_structured_v1_only_preferences() {
 		new_compiler: true
 		path:         'main.v'
 	})
+	assert macos_v3_explicit_compilation_requested('build', &pref.Preferences{
+		new_compiler: true
+		path:         'fixture.vv'
+	})
 	assert !macos_v3_explicit_compilation_requested('fmt', &pref.Preferences{
 		new_compiler: true
 		is_quiet:     true
@@ -2369,6 +2373,33 @@ fn test_explicit_v3_rejects_structured_v1_only_preferences() {
 		sanitize:     true
 		path:         'main.v'
 	})
+}
+
+fn test_embedded_v3_explicit_vv_build_is_rejected() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_explicit_vv_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'fixture.vv')
+		os.write_file(source, 'fn main() {}\n')!
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-new-compiler', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 1, output
+		assert output.contains('options that require the established compiler'), output
+	}
 }
 
 fn test_explicit_v3_options_do_not_reject_external_tools() {

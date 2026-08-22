@@ -200,6 +200,10 @@ fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 		empty, empty, true, false, linux)
 	assert !known_external
 	assert active_external
+	known_external_defined, active_external_defined := c_preprocessor_condition_state('defined(HEADER_FEATURE)',
+		empty, empty, empty, true, false, linux)
+	assert !known_external_defined
+	assert active_external_defined
 	known_external_target, active_external_target := c_preprocessor_condition_state('__APPLE__',
 		empty, empty, empty, true, false, linux)
 	assert known_external_target

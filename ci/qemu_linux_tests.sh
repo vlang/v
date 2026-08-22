@@ -119,10 +119,24 @@ fi
 ssh_options=(
 	-i "$key_file"
 	-p "$ssh_port"
-	-o "UserKnownHostsFile=${known_hosts_file}"
+	-o "UserKnownHostsFile=\"${known_hosts_file}\""
 	-o StrictHostKeyChecking=yes
 	-o ConnectTimeout=5
 )
+if [[ ! "$ssh_port" =~ ^[0-9]+$ ]]; then
+	echo "Invalid SSH port: ${ssh_port}" >&2
+	exit 1
+fi
+if [[ "$key_file" == *"'"* || "$known_hosts_file" == *"'"* || "$known_hosts_file" == *'"'* ]]; then
+	echo 'The QEMU SSH key and known-hosts paths cannot contain quote characters.' >&2
+	exit 1
+fi
+# openrsync understands quoted arguments but treats Bash `%q` backslashes
+# literally. Preserve spaces with single-quoted arguments, and retain inner
+# quotes around the known-hosts value for OpenSSH's own option parser.
+printf -v rsync_ssh_command \
+	"ssh -i '%s' -p '%s' '-oUserKnownHostsFile=\"%s\"' -o StrictHostKeyChecking=yes" \
+	"$key_file" "$ssh_port" "$known_hosts_file"
 
 vm_is_running() {
 	[[ -s "$pid_file" ]] && kill -0 "$(<"$pid_file")" 2>/dev/null
@@ -235,7 +249,7 @@ EOF
 		--from0 \
 		--files-from=- \
 		--exclude '.detect_tcc*' \
-		-e "ssh -i ${key_file} -p ${ssh_port} -o UserKnownHostsFile=${known_hosts_file} -o StrictHostKeyChecking=yes" \
+		-e "$rsync_ssh_command" \
 		"${repo_root}/" "${guest}:${guest_repo}/"
 	# Record only untracked paths that the rsync exclusion above allows through.
 	git -C "$repo_root" ls-files -z --others --exclude-standard \

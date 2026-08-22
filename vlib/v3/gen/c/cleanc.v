@@ -4556,11 +4556,12 @@ fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []str
 	}
 	g.preserved_header_files_seen[real_path] = true
 	text := os.read_file(real_path) or { return }
-	g.collect_inlined_c_structs(text)
-	g.collect_inlined_c_fns(text)
-	g.collect_inlined_c_declared_fns(text)
+	possible_text := c_header_possible_active_text(text, g.c_flags, g.c99_mode, g.target)
+	g.collect_inlined_c_structs(possible_text)
+	g.collect_inlined_c_fns(possible_text)
+	g.collect_inlined_c_declared_fns(possible_text)
 	mut in_block_comment := false
-	for line in text.split_into_lines() {
+	for line in possible_text.split_into_lines() {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		if c_directive_name(clean) !in ['include', 'import'] {
@@ -4582,6 +4583,186 @@ fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []str
 			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 		}
 	}
+}
+
+// c_header_possible_active_text removes declarations from preprocessor branches
+// known to be inactive for the current target and C flags. Unknown branches stay
+// in the scan so a declaration that the real compiler may see remains authoritative.
+fn c_header_possible_active_text(text string, flags []string, c99_mode bool, target pref.Target) string {
+	mut defined := map[string]bool{}
+	mut undefined := map[string]bool{}
+	mut uncertain := map[string]bool{}
+	// A preserved header inherits macros from its including source and parent
+	// headers. That context is not carried through this lightweight recursive
+	// scan, so an otherwise unknown macro must keep both branches possible.
+	mut external_macros_possible := true
+	mut i := 0
+	for i < flags.len {
+		clean := trimmed_space(flags[i])
+		mut definition := ''
+		mut is_undef := false
+		if clean == '-D' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			i++
+		} else if clean.starts_with('-D') {
+			definition = clean[2..]
+		} else if clean == '-U' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			is_undef = true
+			i++
+		} else if clean.starts_with('-U') {
+			definition = clean[2..]
+			is_undef = true
+		}
+		name := definition.all_before('=').trim_space()
+		if name.len > 0 {
+			if is_undef {
+				defined.delete(name)
+				undefined[name] = true
+			} else {
+				undefined.delete(name)
+				defined[name] = true
+			}
+		}
+		i++
+	}
+	strict_iso_mode := c_effective_strict_iso_mode(flags, c99_mode)
+	mut condition_known := []bool{}
+	mut condition_active := []bool{}
+	mut condition_taken_known := []bool{}
+	mut condition_taken := []bool{}
+	mut output := strings.new_builder(text.len)
+	mut in_block_comment := false
+	for line in c_join_continued_lines(text) {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		name := c_directive_name(clean)
+		if name in ['ifdef', 'ifndef'] {
+			macro_name := c_directive_arg(clean).fields()[0] or { '' }
+			known, mut active := c_preprocessor_ifdef_macro_state(macro_name, defined, undefined,
+				uncertain, external_macros_possible, strict_iso_mode, target)
+			if name == 'ifndef' {
+				active = !active
+			}
+			condition_known << known
+			condition_active << (if known { active } else { true })
+			condition_taken_known << known
+			condition_taken << (if known { active } else { true })
+			output.writeln('')
+			continue
+		}
+		if name == 'if' {
+			known, active := c_preprocessor_condition_state(c_directive_arg(clean), defined,
+				undefined, uncertain, external_macros_possible, strict_iso_mode, target)
+			condition_known << known
+			condition_active << (if known { active } else { true })
+			condition_taken_known << known
+			condition_taken << (if known { active } else { true })
+			output.writeln('')
+			continue
+		}
+		if name == 'elif' && condition_known.len > 0 {
+			last := condition_known.len - 1
+			prior_known := condition_taken_known[last]
+			prior_taken := condition_taken[last]
+			known, active := c_preprocessor_condition_state(c_directive_arg(clean), defined,
+				undefined, uncertain, external_macros_possible, strict_iso_mode, target)
+			if (prior_known && prior_taken) || (known && !active) {
+				condition_known[last] = true
+				condition_active[last] = false
+			} else if prior_known && known {
+				condition_known[last] = true
+				condition_active[last] = true
+			} else {
+				condition_known[last] = false
+				condition_active[last] = true
+			}
+			if (prior_known && prior_taken) || (known && active) {
+				condition_taken_known[last] = true
+				condition_taken[last] = true
+			} else if prior_known && known {
+				condition_taken_known[last] = true
+				condition_taken[last] = false
+			} else {
+				condition_taken_known[last] = false
+				condition_taken[last] = true
+			}
+			output.writeln('')
+			continue
+		}
+		if name == 'else' && condition_known.len > 0 {
+			last := condition_known.len - 1
+			condition_known[last] = condition_taken_known[last]
+			condition_active[last] = if condition_taken_known[last] {
+				!condition_taken[last]
+			} else {
+				true
+			}
+			condition_taken_known[last] = true
+			condition_taken[last] = true
+			output.writeln('')
+			continue
+		}
+		if name == 'endif' && condition_known.len > 0 {
+			condition_known.delete_last()
+			condition_active.delete_last()
+			condition_taken_known.delete_last()
+			condition_taken.delete_last()
+			output.writeln('')
+			continue
+		}
+		mut possibly_active := true
+		mut definitely_active := true
+		for depth in 0 .. condition_known.len {
+			if condition_known[depth] && !condition_active[depth] {
+				possibly_active = false
+				definitely_active = false
+				break
+			}
+			if !condition_known[depth] {
+				definitely_active = false
+			}
+		}
+		if !possibly_active {
+			output.writeln('')
+			continue
+		}
+		if name in ['include', 'import'] {
+			c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+			external_macros_possible = true
+		} else if name in ['define', 'undef'] {
+			parts := c_directive_arg(clean).fields()
+			if parts.len > 0 {
+				macro_name := parts[0].all_before('(')
+				if definitely_active {
+					uncertain.delete(macro_name)
+					if name == 'define' {
+						undefined.delete(macro_name)
+						defined[macro_name] = true
+					} else {
+						defined.delete(macro_name)
+						undefined[macro_name] = true
+					}
+				} else {
+					defined.delete(macro_name)
+					undefined.delete(macro_name)
+					uncertain[macro_name] = true
+				}
+			}
+		}
+		output.writeln(line)
+	}
+	return output.str()
+}
+
+fn c_preprocessor_ifdef_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
+	if external_macros_possible && name !in defined && name !in undefined && name !in uncertain
+		&& name !in ['__linux__', '__linux', 'linux', 'unix', '__APPLE__', '__MACH__', '_WIN32', '_WIN64', '__FreeBSD__', '__OpenBSD__', '__NetBSD__'] {
+		// An earlier include can define an otherwise unknown macro. Keep both
+		// branches in that case so the declaration scan never drops active code.
+		return false, true
+	}
+	return c_preprocessor_macro_state(name, defined, undefined, uncertain, strict_iso_mode, target)
 }
 
 fn c_inline_header_text(include_arg string, vroot string, source_file string, include_dirs []string, translation_unit_uses_inttypes bool) ?CInlineHeader {
@@ -8404,8 +8585,8 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 			name := c_directive_name(clean)
 			if name in ['ifdef', 'ifndef'] {
 				macro_name := c_directive_arg(clean).fields()[0] or { '' }
-				known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined,
-					uncertain, strict_iso_mode, target)
+				known, mut active := c_preprocessor_ifdef_macro_state(macro_name, defined,
+					undefined, uncertain, external_macros_possible, strict_iso_mode, target)
 				if name == 'ifndef' {
 					active = !active
 				}
@@ -8650,8 +8831,8 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 	if macro_name.len == 0 || c_header_struct_tag(macro_name) != macro_name {
 		return false, true
 	}
-	known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined, uncertain,
-		strict_iso_mode, target)
+	known, mut active := c_preprocessor_ifdef_macro_state(macro_name, defined, undefined,
+		uncertain, external_macros_possible, strict_iso_mode, target)
 	if negated {
 		active = !active
 	}
