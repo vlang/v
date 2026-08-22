@@ -274,7 +274,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				c_val := g.value_c_type(clean_container_type.value_type)
 				// A mutable pointer-valued map element already permits mutation through
 				// the pointee; taking its address again would add a bogus pointer level.
-				map_value_by_ref := node.op == .amp
+				map_value_by_ref := (node.op == .amp || container_type is types.Pointer)
 					&& cgen_unalias_type(clean_container_type.value_type) !is types.Pointer
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))

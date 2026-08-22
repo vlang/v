@@ -276,6 +276,16 @@ fn main() {
 	mutable_interface_run := cmdexec.run(mutable_interface_binary, [])
 	assert mutable_interface_run.exit_code == 0, mutable_interface_run.output
 
+	for loop_test in ['for_in_ref_map_test', 'for_in_map_of_pointers_test'] {
+		loop_source := os.join_path(fastc_backend_vlib_dir, 'v', 'tests', 'loops', '${loop_test}.v')
+		loop_binary := os.join_path(root, loop_test)
+		loop_compile := cmdexec.run(v3_bin,
+			['-silent', '-b', 'fastc', '-o', loop_binary, loop_source])
+		assert loop_compile.exit_code == 0, loop_compile.output
+		loop_run := cmdexec.run(loop_binary, [])
+		assert loop_run.exit_code == 0, loop_run.output
+	}
+
 	literal_source := os.join_path(root, 'literal_values.v')
 	os.write_file(literal_source, 'module main
 
