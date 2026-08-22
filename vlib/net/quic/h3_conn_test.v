@@ -613,6 +613,47 @@ fn test_h3_conn_prunes_request_stream_state_on_failure_too() {
 	assert stream_id in h.dead_request_streams
 }
 
+// test_h3_conn_prunes_dead_request_stream_once_peer_side_fully_terminal is a
+// regression test for the third sibling of the SAME unbounded-growth bug
+// class the two tests above already cover: dead_request_streams itself was
+// never pruned (a repo-review miss caught externally, PR #28129 review
+// comment 2026-08-21 -- see code-review-misses.md), unlike request_streams/
+// request_decoders right next to it, on which fail_request_stream already
+// prunes above. Reproduces the growth first (the entry must still be
+// present immediately after failure, since the peer may legally keep
+// sending on that stream ID -- fail_request_stream's own doc comment),
+// then drives the underlying QUIC stream to ITS OWN terminal receive state
+// (an empty FIN-carrying continuation frame here; a RESET_STREAM would
+// work identically) and asserts the entry is gone on the next poll(), once
+// the transport itself guarantees no further frames can ever arrive.
+fn test_h3_conn_prunes_dead_request_stream_once_peer_side_fully_terminal() {
+	mut c, mut h, _, now := h3_test_conn()!
+	defer {
+		c.handshake.free()
+	}
+	stream_id := h.open_request_stream()!
+	h.poll(none, now)!
+	assert stream_id in h.request_streams
+
+	// Same framing error as the sibling test above: fails the stream at the
+	// H3 layer while leaving the underlying QUIC stream open (no FIN yet).
+	data_frame := encode_data_frame([u8(1), 2, 3])!
+	req_stream_frame := encode_stream_frame(stream_id, 0, data_frame, false, true)!
+	req_datagram := build_fake_one_rtt_packet(c.scid, 0, req_stream_frame, read_keys(mut c), false)!
+	fail_result := h.poll(req_datagram.bytes, now)!
+	assert fail_result.events.any(it.kind == .request_error)
+	assert stream_id in h.dead_request_streams, 'must still be tracked immediately after failure -- the peer may legally keep sending on this ID'
+
+	// The peer now finishes sending on the same stream -- its receive side
+	// reaches a terminal QUIC-layer state, so no further frames for this ID
+	// can ever legally arrive.
+	fin_frame := encode_stream_frame(stream_id, u64(data_frame.len), []u8{}, true, true)!
+	fin_datagram := build_fake_one_rtt_packet(c.scid, 1, fin_frame, read_keys(mut c), false)!
+	h.poll(fin_datagram.bytes, now)!
+
+	assert stream_id !in h.dead_request_streams, 'dead_request_streams must not grow unboundedly for the lifetime of a long-lived pooled connection -- once the QUIC layer confirms the peer can never send more on this stream ID, this bookkeeping entry must be pruned too'
+}
+
 // test_h3_conn_blocked_headers_retry_after_delayed_encoder_instruction is
 // the standout new-integration-behavior case (no direct Phase 10/11 test
 // precedent): a HEADERS frame referencing a dynamic-table entry arrives

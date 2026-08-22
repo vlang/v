@@ -262,6 +262,7 @@ fn (mut h H3Conn) drive(qc_result PollResult) !H3PollResult {
 		h.open_own_streams_if_ready()!
 		h.drain_known_peer_streams(mut result)!
 	}
+	h.prune_terminal_dead_streams()
 	return result
 }
 
@@ -761,14 +762,51 @@ fn (mut h H3Conn) fail_request_stream(stream_id u64, error_code u64, reason stri
 	// number of requests ever opened on a long-lived pooled connection, not
 	// the number currently in flight -- see the identical pruning (and this
 	// same reasoning) in finalize_request_stream_if_done's success path.
-	// dead_request_streams is deliberately left alone: it is a tiny,
-	// permanent bool marker (unlike these two, which hold buffered decoder
-	// state), and drain_known_peer_streams/retry_blocked_sections both
-	// still check membership in it as a defense-in-depth guard even though,
-	// after this deletion, `stream_id` no longer appears in request_
-	// streams.keys() for drain_known_peer_streams to iterate at all.
+	// dead_request_streams itself is NOT deleted here (unlike these two):
+	// the peer may still legally send more STREAM frames for `stream_id`
+	// after this call (this module has no per-stream RST_STREAM/
+	// STOP_SENDING send API yet, see this function's own doc comment), and
+	// drain_known_peer_streams/retry_blocked_sections/finalize_request_
+	// stream_if_done all rely on membership here to keep ignoring those --
+	// deleting it now would let a same-poll-cycle re-entry into
+	// finalize_request_stream_if_done (from dispatch_request_stream_frames
+	// falling through after this call, e.g. via decode_or_queue_headers)
+	// double-fail this same stream. prune_terminal_dead_streams() removes
+	// the entry once the QUIC layer confirms no further frames can ever
+	// arrive for it, bounding this map instead of leaving it permanent.
 	h.request_streams.delete(stream_id)
 	h.request_decoders.delete(stream_id)
+}
+
+// prune_terminal_dead_streams drops any dead_request_streams entry whose
+// underlying QUIC receive side has itself reached a terminal state
+// (reset_recvd/reset_read or size_known/data_recvd/data_read): once that
+// has happened, the transport guarantees no further STREAM frames for that
+// ID can ever arrive (RFC 9000 -- a stream ID is never reused within a
+// connection), so this layer no longer needs to remember it was locally
+// failed. Runs once per drive() cycle, strictly after drain_known_peer_
+// streams/retry_blocked_sections have both finished processing this
+// cycle's frames -- never mid-dispatch, so it cannot retire an ID out from
+// under fail_request_stream's own same-poll-cycle reentrancy guard in
+// finalize_request_stream_if_done. Bounds dead_request_streams to the
+// number of failed streams the peer hasn't finished draining yet, instead
+// of the total ever failed over the connection's lifetime (see fail_
+// request_stream's own doc comment for why the entry can't just be
+// deleted immediately on failure). If the QUIC layer has no record of the
+// ID at all (stream_recv_status returns none), the entry is left alone
+// rather than guessed at -- a rare, harmless conservative miss, not a
+// correctness risk.
+fn (mut h H3Conn) prune_terminal_dead_streams() {
+	mut terminal := []u64{}
+	for stream_id, _ in h.dead_request_streams {
+		status := h.qc.stream_recv_status(stream_id) or { continue }
+		if status.state == .reset_received || status.state == .fin_received {
+			terminal << stream_id
+		}
+	}
+	for stream_id in terminal {
+		h.dead_request_streams.delete(stream_id)
+	}
 }
 
 // has_blocked_section_for reports whether any queued blocked field
