@@ -1,5 +1,7 @@
 module driver
 
+import os
+
 fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('macos', 'arm64', false)
 	assert v3_tcc_backtrace_enabled('macos', 'amd64', false)
@@ -8,12 +10,18 @@ fn test_v3_tcc_backtrace_enabled() {
 }
 
 fn test_v3_explicit_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
+	vroot := os.join_path(os.temp_dir(), 'v3_tcc_flag_plan')
 	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
 		explicit_tcc: true
 		target_os:    'macos'
 		target_arch:  'arm64'
+		vroot:        vroot
 	})
 	assert '-bt25' !in plan.before_inputs
+	tcc_install_dir := os.join_path(vroot, 'thirdparty', 'tcc', 'lib')
+	assert '-B${tcc_install_dir}' in plan.before_inputs
+	assert '-I${os.join_path_single(tcc_install_dir, 'include')}' in plan.before_inputs
+	assert '-L${tcc_install_dir}' in plan.before_inputs
 }
 
 fn test_add_v3_tcc_compat_defines() {

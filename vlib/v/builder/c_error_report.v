@@ -18,6 +18,13 @@ const c_error_v_source_truncation_notice = '// ... v_source truncated for the bu
 const c_error_bug_report_max_body_bytes = 256 * 1024
 const c_error_bug_report_max_v_source_bytes = 64 * 1024
 const c_error_bug_report_truncation_notice = '\n... report truncated before upload ...\n'
+// The largest C diagnostic forwarded through a single V_MACOS_V3_REPORT_* environment
+// variable during the V3->V1 handoff. A single exec argument/environment string is capped
+// near 128 KiB on Linux (MAX_ARG_STRLEN), so a huge template/generated-code diagnostic
+// must be truncated here or the os.execvp retry fails with E2BIG and defeats the
+// compatibility fallback. The final upload is separately bounded by
+// c_error_bug_report_max_body_bytes.
+const c_error_bug_report_max_env_c_output_bytes = 64 * 1024
 
 struct CErrorReportLine {
 pub:
@@ -50,15 +57,38 @@ pub:
 	v_source       string // a small chunk of V source around the failing line (bounded), never the whole file
 }
 
-// ExternalCErrorBugReport describes a generated-C failure produced by another compiler
+// external_v3_compiler_error_kind marks an ExternalCErrorBugReport that describes a
+// V3 internal compiler error (parser/checker/codegen) rather than a generated-C
+// compilation error. It matches `macos_v3_compiler_error_fallback` in cmd/v.
+const external_v3_compiler_error_kind = 'compiler_error'
+
+// external_v3_notice_only_kind marks a fallback for a known, expected V3 limitation
+// (e.g. inline assembly) rather than a defect: the standard notice is printed once the
+// stable build succeeds, but no bug report is filed. It matches
+// `macos_v3_inline_asm_fallback` in cmd/v.
+const external_v3_notice_only_kind = 'inline_asm'
+
+// ExternalCErrorBugReport describes a failure produced by another compiler
 // implementation and confirmed by a successful build with the established compiler.
+// `kind` is empty for a generated-C compilation error (the default) or
+// `external_v3_compiler_error_kind` when V3 failed internally; in the latter case
+// `c_file` is the input V source and `c_output` is a short description.
 pub struct ExternalCErrorBugReport {
 pub:
+	kind        string
 	ccompiler   string
 	c_output    string
 	c_file      string
 	tag         string
 	cleanup_dir string
+	// The fields below carry a report to an external builder as self-contained CONTENT
+	// (see export_external_v3_report_to_env), instead of as a filesystem path to read or
+	// a directory to delete — both of which would be forgeable by an inherited or hostile
+	// environment. When source_inline is set, v_file/v_source are used verbatim and no
+	// path from the report is ever read or removed.
+	v_file        string // informational base filename of the failing source (no directory)
+	v_source      string // already-bounded source snippet; never a whole file
+	source_inline bool   // true: use v_file/v_source as-is and touch no filesystem path
 }
 
 @[unsafe]
@@ -103,7 +133,14 @@ fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) 
 }
 
 fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output string, tag string, retry_with_vlines bool) {
+	// A non-empty tag marks an external report: another compiler (V3) produced C
+	// that failed to build, and the stable compiler has since confirmed the program
+	// is buildable. That is exactly the V3->V1 fallback the user should be told about.
+	is_v3_fallback := tag != ''
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
+		if is_v3_fallback {
+			print_v3_fallback_notice('', false, false)
+		}
 		return
 	}
 	// Snapshot the user's real flags now: the vlines fallback below temporarily flips
@@ -118,29 +155,53 @@ fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output
 			raw_report = vlines_report
 		}
 	}
-	raw_report = CErrorBugReport{
+	v.send_prepared_c_error_bug_report(CErrorBugReport{
 		...raw_report
 		build_options: build_options
-	}
+	}, tag)
+}
+
+// send_prepared_c_error_bug_report bounds and submits an already-built C-compiler bug
+// report, then — for a V3 fallback (non-empty tag) — prints the fallback notice relative
+// to the send outcome. Callers must have already confirmed should_submit_c_error_bug_report.
+fn (mut v Builder) send_prepared_c_error_bug_report(raw_report CErrorBugReport, tag string) {
+	is_v3_fallback := tag != ''
 	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
 	tool_output := send_c_error_bug_report(report, report_url) or {
 		eprintln('C compiler bug report was not sent to ${report_url}: ${err}')
+		if is_v3_fallback {
+			print_v3_fallback_notice('', false, false)
+		}
 		return
 	}
-	println('================== C compiler bug report ==============')
-	if tool_output != '' {
-		println(tool_output)
+	// Report diagnostics go to stderr, never stdout: with `v -o - source.v` the generated
+	// C is already on stdout, so appending this banner there would corrupt the documented
+	// `-o -` output for exactly the programs that needed the fallback.
+	eprintln('================== C compiler bug report ==============')
+	if is_v3_fallback {
+		print_v3_fallback_notice(report_url, true, report_includes_v_source(report))
 	}
-	println('V ${report.v_version}, ${report.target_os}/${report.arch}, cc: ${report.ccompiler}, build options: ${report.build_options}')
+	if tool_output != '' {
+		eprintln(tool_output)
+	}
+	eprintln('V ${report.v_version}, ${report.target_os}/${report.arch}, cc: ${report.ccompiler}, build options: ${report.build_options}')
 	print_c_error_bug_report_context(report)
-	println('='.repeat('================== C compiler bug report =============='.len))
+	eprintln('='.repeat('================== C compiler bug report =============='.len))
 }
 
 // submit_external_c_error_bug_report submits C diagnostics and generated source produced by
 // another compiler implementation after the established compiler has confirmed the build.
 pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c_output string, c_file string, tag string) {
 	if !c_error_should_send_bug_report(c_output) {
+		// These diagnostics are not eligible for automatic submission (e.g. a
+		// missing library or missing libatomic), but V3 still fell back to the
+		// stable compiler, so the user must be told about the fallback regardless.
+		// `submit_c_error_bug_report_with_tag` would normally emit this, but the
+		// filter returns before reaching it. A non-empty tag marks the V3 fallback.
+		if tag != '' {
+			print_v3_fallback_notice('', false, false)
+		}
 		return
 	}
 	mut b := new_builder(prefs)
@@ -150,10 +211,396 @@ pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler str
 
 fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalCErrorBugReport) {
 	defer {
+		// Empty for an inline (content) report: it names no directory to delete, so a
+		// forged handoff can never trigger os.rmdir_all on a caller path.
 		cleanup_external_c_error_report(report.cleanup_dir)
+	}
+	if report.source_inline {
+		// The report carries its already-bounded source as content — so submission never
+		// reads a filesystem path or deletes a directory named by the (inheritable,
+		// forgeable) environment; a forged handoff can therefore at worst upload
+		// attacker-supplied text. Dispatch on kind so a generated-C fallback keeps its
+		// `v-c-compiler-error` classification and its missing-library filter instead of
+		// being reported as an internal V3 error.
+		if report.kind == external_v3_notice_only_kind {
+			// A known, expected V3 limitation (e.g. inline assembly): the stable build
+			// has just succeeded, so tell the user V3 fell back — matching the documented
+			// notice (doc/docs.md) — but file no bug report.
+			print_v3_fallback_notice('', false, false)
+			return
+		}
+		if report.kind == external_v3_compiler_error_kind {
+			submit_inline_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
+				report.v_file, report.v_source, report.tag)
+		} else {
+			submit_inline_c_error_bug_report(prefs, report.ccompiler, report.c_output,
+				report.v_file, report.v_source, report.tag)
+		}
+		return
+	}
+	// Trusted in-process path (the report never crossed the environment): read the files.
+	if report.kind == external_v3_compiler_error_kind {
+		submit_external_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
+			report.c_file, report.tag)
+		return
 	}
 	submit_external_c_error_bug_report(prefs, report.ccompiler, report.c_output, report.c_file,
 		report.tag)
+}
+
+// v3_report_env_prefix names the environment variables used to hand a staged V3->V1
+// fallback report to an external builder tool (e.g. the wasm builder) launched via
+// os.execvp, which replaces this process. The tool reads them back with
+// take_external_v3_report_from_env and, via compile_with_external_c_error_report,
+// submits the report and prints the notice only after its own build succeeds.
+const v3_report_env_prefix = 'V_MACOS_V3_REPORT_'
+
+// v3_report_env_suffixes lists every V_MACOS_V3_REPORT_* variable, so both the export
+// and the take paths agree on exactly what to set and clear. Every variable carries
+// CONTENT only — never a filesystem path the receiver would read or a directory it
+// would delete.
+const v3_report_env_suffixes = ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE']
+
+// export_external_v3_report_to_env hands `report` to the next external builder (launched
+// via os.execvp) as self-contained content. That builder cannot authenticate anything
+// passed to it: it inherits the environment, and VTMP plus every V_MACOS_V3_REPORT_*
+// value is caller-controlled, so a token or path validated against that same environment
+// establishes no provenance (an inherited or hostile environment could forge all of it).
+// The safe design therefore never gives the builder a capability it could be tricked
+// into misusing: this function bounds the source snippet here — in the trusted parent
+// that owns the staged directory — passes only that content, and then removes the staged
+// directory itself. The builder reads no path and deletes no directory, so a forged
+// handoff can at worst make it submit attacker-supplied text (harmless), never disclose
+// a victim's file or recursively delete a victim's directory.
+pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
+	// `report` is already content-only: its v_source was bounded by the process that owns
+	// the staged directory (bounded_v3_fallback_source), and that process deletes the
+	// directory itself. This function only forwards that content, so nothing here reads a
+	// path or deletes a directory named by the (inheritable, forgeable) environment.
+	os.setenv('${v3_report_env_prefix}PRESENT', '1', true)
+	os.setenv('${v3_report_env_prefix}KIND', report.kind, true)
+	os.setenv('${v3_report_env_prefix}CCOMPILER', report.ccompiler, true)
+	// The diagnostic is truncated so a single environment string cannot exceed the exec
+	// limit and make the retry's os.execvp fail with E2BIG (v_source is already bounded by
+	// bounded_v3_fallback_source). A missing-library/libatomic diagnostic is short and so
+	// is never truncated, keeping c_error_should_send_bug_report accurate on the far side.
+	os.setenv('${v3_report_env_prefix}COUTPUT', truncated_report_text(report.c_output,
+		c_error_bug_report_max_env_c_output_bytes), true)
+	os.setenv('${v3_report_env_prefix}TAG', report.tag, true)
+	os.setenv('${v3_report_env_prefix}VFILE', report.v_file, true)
+	os.setenv('${v3_report_env_prefix}VSOURCE', report.v_source, true)
+}
+
+// bounded_v3_fallback_source extracts the bounded V source snippet to upload for a V3->V1
+// fallback, reading ONLY files the caller already trusts — it must be invoked by the
+// process that staged the report, never by one that merely inherited a report path from
+// the environment. `c_file` is the user's V source for a V3 internal error, or the staged
+// generated C for a generated-C compilation error. The returned snippet is always a
+// bounded strict subset (never a whole file); ('', '') means no source is available
+// (e.g. a directory build), so the report stays metadata-only.
+pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string) (string, string) {
+	if c_file == '' || !os.is_file(c_file) {
+		return '', ''
+	}
+	if kind == external_v3_compiler_error_kind {
+		src := os.read_file(c_file) or { return '', '' }
+		return os.base(c_file), v3_report_v_source(src)
+	}
+	return bounded_v_source_for_generated_c(c_output, c_file)
+}
+
+// bounded_v_source_for_generated_c maps a generated-C compilation error back to the V
+// source line it came from (via the #line directives in the trusted staged C) and returns
+// a bounded window of that V file. Both files read here are trusted: the generated C was
+// staged by this process's own V3 run, and the V file it references is the user's real
+// source being compiled.
+fn bounded_v_source_for_generated_c(c_output string, generated_c_file string) (string, string) {
+	c_source := os.read_file(generated_c_file) or { return '', '' }
+	c_lines := c_source.split_into_lines()
+	mut v_file := ''
+	mut v_line := 0
+	if c_loc := c_error_location_for_generated_c(c_output, generated_c_file) {
+		if v_loc := v_source_location_for_c_line(c_lines, c_loc.line, generated_c_file) {
+			v_file = v_loc.file
+			v_line = v_loc.line
+		}
+	} else if source_loc := first_error_source_location(c_output) {
+		v_file = source_loc.file
+		v_line = source_loc.line
+	}
+	if v_file == '' || !os.is_file(v_file) {
+		return '', ''
+	}
+	mapped_source := os.read_file(v_file) or { return '', '' }
+	mapped_lines := mapped_source.split_into_lines()
+	chunk := selected_v_source(v_file, mapped_lines, v_line)
+	mut v_source := bounded_v_source(chunk.text, c_error_bug_report_max_v_source_bytes, chunk.focus)
+	if v_source_exposes_whole_file(v_source, mapped_source, mapped_lines) {
+		// Strict-subset rule (doc/docs.md): a short mapped file makes the window cover the
+		// whole file. Exact line-array equality misses a window that omits only
+		// whitespace-only lines yet still exposes every nonblank source line, so apply the
+		// nonblank-line coverage check as well and drop the excerpt rather than upload the
+		// whole program.
+		v_source = ''
+	}
+	return os.base(v_file), v_source
+}
+
+// take_external_v3_report_from_env returns the content-only fallback report exported by
+// export_external_v3_report_to_env, or none when none is present. It clears the variables
+// unconditionally so neither a nested build nor a stale/poisoned environment can leak
+// them into later work. The returned report carries source_inline = true and no c_file
+// or cleanup_dir, so consume_external_c_error_bug_report reads no path and deletes no
+// directory. Pass the result to compile_with_external_c_error_report so the notice and
+// submission happen relative to the tool's own build outcome (only on success).
+pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
+	present := os.getenv('${v3_report_env_prefix}PRESENT')
+	report := ExternalCErrorBugReport{
+		kind:          os.getenv('${v3_report_env_prefix}KIND')
+		ccompiler:     os.getenv('${v3_report_env_prefix}CCOMPILER')
+		c_output:      os.getenv('${v3_report_env_prefix}COUTPUT')
+		tag:           os.getenv('${v3_report_env_prefix}TAG')
+		v_file:        os.getenv('${v3_report_env_prefix}VFILE')
+		v_source:      os.getenv('${v3_report_env_prefix}VSOURCE')
+		source_inline: true
+		// c_file and cleanup_dir are intentionally left empty: the builder must not read
+		// a file or delete a directory named by the environment.
+	}
+	for suffix in v3_report_env_suffixes {
+		os.unsetenv('${v3_report_env_prefix}${suffix}')
+	}
+	if present != '1' {
+		return none
+	}
+	return report
+}
+
+// submit_external_v3_compiler_error_bug_report reports a V3 internal compiler error
+// after the stable compiler has confirmed the program is buildable. `v_file` is the path
+// to the user's input V source, which this reads and bounds into the uploaded snippet;
+// `v3_output` is a short description of the failure. This file-reading form is used only
+// on the trusted in-process build path, where `v_file` is not caller-forgeable.
+pub fn submit_external_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_stage string, v3_output string, v_file string, tag string) {
+	v_source := if v_file == '' { '' } else { v3_report_v_source(os.read_file(v_file) or { '' }) }
+	mut b := new_builder(prefs)
+	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, v_file, v_source, tag)
+}
+
+// submit_inline_v3_compiler_error_bug_report reports a V3 internal compiler error whose
+// bounded source snippet is already supplied as `v_source` content and whose failing
+// file is identified only by the base name `v_file_label`. It reads no filesystem path,
+// so it is safe to drive from the environment handoff, where every value is caller-
+// controlled (a forged handoff can therefore only submit attacker-supplied text).
+fn submit_inline_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_stage string, v3_output string, v_file_label string, v_source string, tag string) {
+	mut b := new_builder(prefs)
+	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, v_file_label, v_source, tag)
+}
+
+// build_inline_c_error_report constructs the generated-C fallback report to upload from
+// already-bounded content, or none when the diagnostic is not eligible for automatic
+// submission (an expected missing-library / missing-libatomic error). No generated C is
+// available inline, so there is no C context or C/V line mapping — only the bounded V
+// source snippet — but the `v-c-compiler-error` classification matches the in-process path.
+fn build_inline_c_error_report(prefs &pref.Preferences, ccompiler string, c_output string, v_file string, v_source string, tag string) ?CErrorBugReport {
+	if !c_error_should_send_bug_report(c_output) {
+		return none
+	}
+	return CErrorBugReport{
+		kind:           'v-c-compiler-error'
+		v_version:      version.full_v_version(true)
+		target_os:      prefs.os.str()
+		target_backend: prefs.backend.str()
+		arch:           prefs.arch.str()
+		ccompiler:      ccompiler
+		build_options:  c_error_report_build_options(prefs, tag)
+		c_error:        c_output
+		v_file:         v_file
+		v_source:       v_source
+	}
+}
+
+// submit_inline_c_error_bug_report reports a generated-C compilation error whose bounded V
+// source snippet is already supplied as `v_source` content. Unlike the internal-V3-error
+// submitter, it preserves the generated-C semantics of the trusted in-process path: the
+// c_error_should_send_bug_report filter (so expected missing-library / missing-libatomic
+// diagnostics are not uploaded) and the `v-c-compiler-error` classification. It reads no
+// filesystem path, so it is safe to drive from the environment handoff.
+fn submit_inline_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c_output string, v_file_label string, v_source string, tag string) {
+	is_v3_fallback := tag != ''
+	raw_report := build_inline_c_error_report(prefs, ccompiler, c_output, v_file_label, v_source, tag) or {
+		// Not eligible for automatic submission (e.g. a missing library), but V3 still
+		// fell back to the stable compiler, so the user is told about the fallback.
+		if is_v3_fallback {
+			print_v3_fallback_notice('', false, false)
+		}
+		return
+	}
+	mut b := new_builder(prefs)
+	if !should_submit_c_error_bug_report(b.pref.c_error_bug_report_url) {
+		if is_v3_fallback {
+			print_v3_fallback_notice('', false, false)
+		}
+		return
+	}
+	b.send_prepared_c_error_bug_report(raw_report, tag)
+}
+
+fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_output string, v_file string, v_source string, tag string) {
+	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
+		print_v3_fallback_notice('', false, false)
+		return
+	}
+	build_options := c_error_report_build_options(v.pref, tag)
+	// A V3 internal failure has no mapped failing line to center a window on, so
+	// only a bounded head+tail window of the source is uploaded (never the whole
+	// file, which could hold unrelated proprietary code or secrets), mirroring the
+	// C-error report path. A directory build (`v .`) stages an empty source and so
+	// contributes no source at all — but the version/target/build-option metadata is
+	// still reported rather than dropped entirely. See the privacy note in doc/docs.md.
+	raw_report := CErrorBugReport{
+		kind:           'v3-compiler-error'
+		v_version:      version.full_v_version(true)
+		target_os:      v.pref.os.str()
+		target_backend: v.pref.backend.str()
+		arch:           v.pref.arch.str()
+		ccompiler:      v3_stage
+		build_options:  build_options
+		c_error:        v3_output
+		v_file:         v_file
+		v_source:       v_source
+	}
+	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
+	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
+	tool_output := send_c_error_bug_report(report, report_url) or {
+		eprintln('V3 compiler bug report was not sent to ${report_url}: ${err}')
+		print_v3_fallback_notice('', false, false)
+		return
+	}
+	// Report diagnostics go to stderr, never stdout: with `v -o - source.v` the generated
+	// C is already on stdout, so appending this banner there would corrupt the documented
+	// `-o -` output for exactly the programs that needed the fallback.
+	eprintln('================== V3 compiler bug report ==============')
+	print_v3_fallback_notice(report_url, true, report.v_source != '')
+	if tool_output != '' {
+		eprintln(tool_output)
+	}
+	eprintln('V ${report.v_version}, ${report.target_os}/${report.arch}, build options: ${report.build_options}')
+	eprintln('='.repeat('================== V3 compiler bug report =============='.len))
+}
+
+// v3_report_v_source returns the bounded V source snippet uploaded for an internal
+// V3 failure. A C error maps to a failing line, so its window is centered there
+// (see selected_v_source); a V3 internal failure has no such line, so a bounded
+// head+tail window of whole lines is kept instead — the leading declarations plus
+// the trailing code, where the failure usually is. A program larger than the
+// window (2 * c_error_v_source_radius lines) is therefore never uploaded whole
+// (see the privacy note in doc/docs.md).
+fn v3_report_v_source(source string) string {
+	lines := source.split_into_lines()
+	if lines.len <= 2 * c_error_v_source_radius {
+		// A program this short cannot be reduced to a strict subset — any head+tail
+		// window would cover the whole file. The privacy guarantee in doc/docs.md is
+		// that the whole file is never auto-uploaded, so upload no source for it at
+		// all rather than disclose it in full. Larger programs still yield the
+		// bounded window below.
+		return ''
+	}
+	head := lines[..c_error_v_source_radius].join('\n')
+	tail := lines[lines.len - c_error_v_source_radius..].join('\n')
+	snippet := '${head}\n${c_error_v_source_truncation_notice}\n${tail}'
+	bounded := bounded_v_source(snippet, c_error_bug_report_max_v_source_bytes, 0)
+	if v_source_and_context_expose_whole_file(bounded, []CErrorReportLine{}, lines) {
+		// The dropped middle lines were all blank, so head+tail together still expose
+		// every nonblank source line and reconstruct the file. Apply the same
+		// nonblank-line coverage check as the combined C-error payload and send no
+		// source rather than the whole program (doc/docs.md).
+		return ''
+	}
+	return bounded
+}
+
+// v_source_is_whole_file reports whether the selected excerpt is the entire mapped
+// file rather than a strict subset. A short mapped file makes the C-error window (or
+// reproducer) cover everything, so this is used to enforce the doc/docs.md guarantee
+// that automatic reports never upload a whole source file.
+fn v_source_is_whole_file(selected string, full_source string) bool {
+	return selected != '' && selected.split_into_lines() == full_source.split_into_lines()
+}
+
+// v_source_exposes_whole_file reports whether v_source contains the entire mapped
+// file, including when the only omitted lines are blank and exact line-array
+// equality therefore misses the substantive whole-file coverage.
+fn v_source_exposes_whole_file(v_source string, mapped_source string, mapped_lines []string) bool {
+	return v_source_is_whole_file(v_source, mapped_source)
+		|| v_source_and_context_expose_whole_file(v_source, []CErrorReportLine{}, mapped_lines)
+}
+
+// v_context_covers_whole_file reports whether the numbered context window spans
+// every line of the mapped file. numbered_context_lines returns a contiguous
+// window, so covering the whole file means it holds as many lines as the file has.
+// Used to keep the v_context payload within the doc/docs.md strict-subset guarantee.
+fn v_context_covers_whole_file(context []CErrorReportLine, mapped_lines []string) bool {
+	return mapped_lines.len > 0 && context.len == mapped_lines.len
+}
+
+// v_source_and_context_expose_whole_file reports whether the union of the uploaded
+// v_source excerpt and the v_context window exposes every nonblank line of the
+// mapped file. Each can be a strict subset on its own while together they
+// reconstruct the complete source, so coverage must be checked across the combined
+// payload. Blank lines and indentation are ignored (the reproducer normalizes them).
+// Used to keep the combined upload within the doc/docs.md no-whole-file guarantee.
+fn v_source_and_context_expose_whole_file(v_source string, context []CErrorReportLine, mapped_lines []string) bool {
+	mut exposed := map[string]bool{}
+	for line in v_source.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed != '' {
+			exposed[trimmed] = true
+		}
+	}
+	for c in context {
+		trimmed := c.text.trim_space()
+		if trimmed != '' {
+			exposed[trimmed] = true
+		}
+	}
+	mut nonblank := 0
+	for line in mapped_lines {
+		trimmed := line.trim_space()
+		if trimmed == '' {
+			continue
+		}
+		nonblank++
+		if trimmed !in exposed {
+			return false
+		}
+	}
+	return nonblank > 0
+}
+
+// report_includes_v_source reports whether the uploaded report carries any of the
+// user's V source. That is the bounded `v_source` excerpt OR the `v_context` lines
+// around the failing line, since a short mapped file can have its whole-file
+// `v_source` dropped while `v_context` remains a strict subset that is still
+// uploaded. Used so the privacy notice describes what was actually sent; a
+// metadata-only report carries neither.
+fn report_includes_v_source(report CErrorBugReport) bool {
+	return report.v_source != '' || report.v_context.len > 0
+}
+
+// print_v3_fallback_notice explains, in plain language, that V3 could not build the
+// program so the stable compiler was used instead. `submitted` selects whether a bug
+// report was actually filed; `report_url` is where it went (empty when not filed).
+fn print_v3_fallback_notice(report_url string, submitted bool, source_uploaded bool) {
+	eprintln('note: the experimental V3 compiler could not build this program, so V used the stable compiler instead.')
+	if !submitted {
+		return
+	}
+	if source_uploaded {
+		eprintln('A bug report with a bounded excerpt of the failing V source was submitted to ${report_url} so this can be fixed.')
+	} else {
+		eprintln('A metadata-only bug report (no source) was submitted to ${report_url} so this can be fixed.')
+	}
+	eprintln('Set ${c_error_bug_report_disabled_env}=1 to opt out of these automatic reports.')
 }
 
 fn c_error_report_build_options(prefs &pref.Preferences, tag string) string {
@@ -192,15 +639,34 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// `v_context` shows the lines of whatever file the C error maps to (which can be an
 	// included header, not V source).
 	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
+	mapped_lines := mapped_source.split_into_lines()
 	// Prefer a self-contained reproducer (the failing declaration plus the closure of the user
 	// declarations it references). It already keeps itself within the byte budget, returning ''
 	// when it cannot, so it is uploaded verbatim; otherwise fall back to a plain source window.
 	repro := v.v_source_reproducer(v_file, v_line, c_error_bug_report_max_v_source_bytes)
-	v_source := if repro != '' {
+	mut v_source := if repro != '' {
 		repro
 	} else {
-		v_chunk := selected_v_source(v_file, mapped_source.split_into_lines(), v_line)
+		v_chunk := selected_v_source(v_file, mapped_lines, v_line)
 		bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes, v_chunk.focus)
+	}
+	if v_source_exposes_whole_file(v_source, mapped_source, mapped_lines) {
+		// Strict-subset rule (doc/docs.md): a short mapped file, or a window that
+		// omits only whitespace, exposes the entire substantive file. Drop the
+		// excerpt rather than upload it whole.
+		v_source = ''
+	}
+	// v_context is a separate uploaded payload; for a short mapped file its radius
+	// window can also span every line, so apply the same strict-subset rule to it.
+	mut v_context := numbered_context_lines(mapped_lines, v_line, c_error_context_radius)
+	if v_context_covers_whole_file(v_context, mapped_lines) {
+		v_context = []CErrorReportLine{}
+	}
+	if v_source_and_context_expose_whole_file(v_source, v_context, mapped_lines) {
+		// Neither field covers the file on its own, but their union exposes every
+		// nonblank source line and so reconstructs the whole file. Drop v_context (the
+		// wider window) so the remaining v_source stays a strict subset (doc/docs.md).
+		v_context = []CErrorReportLine{}
 	}
 	return CErrorBugReport{
 		kind:           'v-c-compiler-error'
@@ -216,8 +682,7 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		c_context:      numbered_context_lines(c_lines, c_line, c_error_context_radius)
 		v_file:         v_file
 		v_line:         v_line
-		v_context:      numbered_context_lines(mapped_source.split_into_lines(), v_line,
-			c_error_context_radius)
+		v_context:      v_context
 		v_source:       v_source
 	}
 }
@@ -791,25 +1256,27 @@ fn truncated_report_text(text string, max_bytes int) string {
 	return text[..head_bytes] + c_error_bug_report_truncation_notice + text[text.len - tail_bytes..]
 }
 
+// print_c_error_bug_report_context prints the uploaded C/V context to stderr — never
+// stdout — so it cannot corrupt a `v -o - source.v` generated-C stream.
 fn print_c_error_bug_report_context(report CErrorBugReport) {
-	println('Generated C lines sent from ${report.c_file}:${report.c_line}:')
+	eprintln('Generated C lines sent from ${report.c_file}:${report.c_line}:')
 	print_report_lines(report.c_context, report.c_line)
 	if report.v_file != '' {
-		println('Corresponding V lines sent from ${report.v_file}:${report.v_line}:')
+		eprintln('Corresponding V lines sent from ${report.v_file}:${report.v_line}:')
 		print_report_lines(report.v_context, report.v_line)
 	} else {
-		println('Corresponding V lines sent: no V source mapping was available.')
+		eprintln('Corresponding V lines sent: no V source mapping was available.')
 	}
 }
 
 fn print_report_lines(lines []CErrorReportLine, center int) {
 	if lines.len == 0 {
-		println('  (no source lines available)')
+		eprintln('  (no source lines available)')
 		return
 	}
 	for line in lines {
 		prefix := if line.line == center { '>' } else { ' ' }
-		println('${prefix} ${line.line:6} | ${line.text}')
+		eprintln('${prefix} ${line.line:6} | ${line.text}')
 	}
 }
 

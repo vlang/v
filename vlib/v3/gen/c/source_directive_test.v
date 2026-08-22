@@ -57,6 +57,42 @@ fn test_preserved_header_trees_scan_shared_files_once() {
 	assert g.preserved_header_files_seen.len == 3
 }
 
+fn test_preserved_header_collects_only_definitely_active_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_inactive_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	inactive_header := os.join_path(root, 'inactive.h')
+	macro_header := os.join_path(root, 'macro.h')
+	header := os.join_path(root, 'top.h')
+	os.write_file(inactive_header, 'int nested_inactive_fn(void);\n')!
+	os.write_file(macro_header,
+		'#if defined(PARENT_HEADER_FEATURE)\nint parent_enabled_fn(void);\n#endif\n#define PRESERVED_HEADER_FEATURE 1\n')!
+	os.write_file(header,
+		'#ifdef OPTIONAL_API\nint optional_fn(void);\n#endif\n#if 0\nint inactive_fn(void);\n#include "inactive.h"\n#else\nint active_fn(void);\n#endif\n#define PARENT_HEADER_FEATURE 1\n#include "macro.h"\n#if defined(PRESERVED_HEADER_FEATURE)\nint include_enabled_fn(void);\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(header, [root])
+
+	assert 'inactive_fn' !in g.inlined_c_declared_fns
+	assert 'nested_inactive_fn' !in g.inlined_c_declared_fns
+	assert 'active_fn' in g.inlined_c_declared_fns
+	assert 'optional_fn' !in g.inlined_c_declared_fns
+	// Macro changes in recursively scanned headers are not carried back into the
+	// parent scan, so those declarations cannot safely suppress prototypes either.
+	assert 'include_enabled_fn' !in g.inlined_c_declared_fns
+	assert 'parent_enabled_fn' !in g.inlined_c_declared_fns
+	assert os.real_path(inactive_header) !in g.preserved_header_files_seen
+	assert os.real_path(macro_header) in g.preserved_header_files_seen
+
+	mut enabled_g := FlatGen.new()
+	enabled_g.c_flags << '-DOPTIONAL_API'
+	enabled_g.collect_preserved_header_file(header, [root])
+	assert 'optional_fn' in enabled_g.inlined_c_declared_fns
+}
+
 fn collect_external_input_tree_status(root string, entry string, ambient_ambiguous bool) (bool, []string) {
 	mut active_paths := map[string]bool{}
 	mut collected_paths := map[string]bool{}

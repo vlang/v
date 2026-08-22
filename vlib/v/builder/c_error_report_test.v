@@ -250,6 +250,256 @@ fn test_v_source_for_report_is_empty_without_mapped_line() {
 	assert v_source_for_report(['a', 'b', 'c'], 0, 40).text == ''
 }
 
+fn test_v_source_is_whole_file_detects_full_coverage() {
+	// The strict-subset rule drops an excerpt that covers the whole mapped file, so a
+	// short C-error fallback does not auto-upload the whole file (PR #28131 review).
+	full := 'fn a() {}\nfn b() {}\nfn c() {}'
+	assert v_source_is_whole_file(full, full)
+	assert v_source_is_whole_file(full + '\n', full) // trailing newline tolerated
+	assert !v_source_is_whole_file('fn b() {}', full) // a strict subset is kept
+	assert !v_source_is_whole_file('', full) // an already-empty excerpt is not "whole"
+}
+
+fn test_v_source_exposes_whole_file_ignores_omitted_whitespace() {
+	// An 82-line file mapped at line 41 yields an 81-line window. When the omitted
+	// final line is whitespace-only, that window still exposes every substantive
+	// source line and must be discarded (PR #28131 review).
+	mut mapped := []string{}
+	for i in 1 .. 82 {
+		mapped << 'fn f${i}() {}'
+	}
+	mapped << '   '
+	mapped_source := mapped.join('\n')
+	excerpt := v_source_for_report(mapped, 41, c_error_v_source_radius).text
+	assert excerpt.split_into_lines().len == 81
+	assert !v_source_is_whole_file(excerpt, mapped_source)
+	assert v_source_exposes_whole_file(excerpt, mapped_source, mapped)
+	strict_subset := v_source_for_report(mapped, 41, 5).text
+	assert !v_source_exposes_whole_file(strict_subset, mapped_source, mapped)
+}
+
+fn test_report_includes_v_source_counts_v_context() {
+	// A report whose whole-file v_source was dropped can still upload v_context lines,
+	// so the notice must not call it metadata-only (PR #28131 review).
+	assert !report_includes_v_source(CErrorBugReport{})
+	assert report_includes_v_source(CErrorBugReport{
+		v_source: 'fn main() {}'
+	})
+	assert report_includes_v_source(CErrorBugReport{
+		v_context: [CErrorReportLine{
+			line: 6
+			text: 'x := 1'
+		}]
+	})
+	// c_error and c_context (generated C) are not the user's V source.
+	assert !report_includes_v_source(CErrorBugReport{
+		c_error:   'error: something'
+		c_context: [CErrorReportLine{
+			line: 3
+			text: 'int x;'
+		}]
+	})
+}
+
+fn test_external_v3_report_env_round_trip() {
+	// The fallback report is handed to the external builder as self-contained content
+	// through the environment: the owning process bounds the source (reading its own
+	// trusted file) with bounded_v3_fallback_source and forwards only that content with
+	// export_external_v3_report_to_env; take returns an inline, path-free report the
+	// builder submits on its own build success (PR #28131 review).
+	clear_v3_report_env()
+	dir := os.join_path(os.vtmp_dir(), 'v3_report_env_round_trip_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	c_file := os.join_path(dir, 'main.v')
+	// A program large enough to yield a bounded head+tail snippet (short files upload no
+	// source at all, per the no-whole-file guarantee).
+	mut lines := []string{}
+	for i in 0 .. 4 * c_error_v_source_radius {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	os.write_file(c_file, lines.join('\n'))!
+	// The owning process bounds the source into content...
+	v_file, v_source := bounded_v3_fallback_source(external_v3_compiler_error_kind,
+		'error: v3 failed', c_file)
+	assert v_file == 'main.v'
+	assert v_source != ''
+	assert v_source.contains(c_error_v_source_truncation_notice)
+	// ...then forwards only that content; export reads no path and deletes no directory.
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:          external_v3_compiler_error_kind
+		ccompiler:     'v3'
+		c_output:      'error: v3 failed'
+		v_file:        v_file
+		v_source:      v_source
+		source_inline: true
+		tag:           'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	assert got.kind == external_v3_compiler_error_kind
+	assert got.ccompiler == 'v3'
+	assert got.c_output == 'error: v3 failed'
+	assert got.tag == 'V3'
+	// The report is inline content only: no path to read, no directory to delete.
+	assert got.source_inline
+	assert got.c_file == ''
+	assert got.cleanup_dir == ''
+	assert got.v_file == 'main.v'
+	assert got.v_source == v_source
+	// the variables are cleared, so a second take finds nothing
+	if second := take_external_v3_report_from_env() {
+		assert false, 'variables were not cleared: ${second.kind}'
+	}
+}
+
+fn test_export_external_v3_report_bounds_c_output_for_exec() {
+	// A huge C diagnostic must be truncated before it goes into a single environment
+	// variable, or the retry's os.execvp fails with E2BIG on Linux (a single exec env
+	// string is capped near 128 KiB). v_source is already bounded (PR #28131 review).
+	clear_v3_report_env()
+	huge := 'error: ' + 'x'.repeat(4 * c_error_bug_report_max_env_c_output_bytes)
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:          '' // generated-C compilation error
+		ccompiler:     'clang'
+		c_output:      huge
+		v_file:        'main.v'
+		v_source:      'fn main() {}'
+		source_inline: true
+		tag:           'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	// The forwarded diagnostic now fits within the per-string exec limit.
+	assert got.c_output.len <= c_error_bug_report_max_env_c_output_bytes
+	assert got.c_output.len < huge.len
+	assert got.c_output.contains(c_error_bug_report_truncation_notice)
+}
+
+fn test_build_inline_c_error_report_classifies_and_filters() {
+	prefs := pref.Preferences{
+		gc_mode: .no_gc
+	}
+	// An ordinary generated-C diagnostic is classified as a generated-C
+	// (`v-c-compiler-error`) report carrying the bounded content — not misreported as an
+	// internal V3 error (which would emit `v3-compiler-error`) (PR #28131 review).
+	report := build_inline_c_error_report(&prefs, 'clang',
+		'main.tmp.c:3:9: error: use of undeclared identifier x', 'main.v', 'fn main() {}', 'V3') or {
+		assert false, 'an ordinary generated-C diagnostic must be reportable'
+		return
+	}
+	assert report.kind == 'v-c-compiler-error'
+	assert report.c_error.contains('undeclared identifier')
+	assert report.v_file == 'main.v'
+	assert report.v_source == 'fn main() {}'
+	assert report.build_options.split(' ').first() == 'V3'
+	// An expected missing-library diagnostic is filtered out (not uploaded), exactly as
+	// the in-process generated-C path already does.
+	if _ := build_inline_c_error_report(&prefs, 'clang', "ld: library 'macos_v3_absent' not found",
+		'main.v', 'fn main() {}', 'V3')
+	{
+		assert false, 'a missing-library diagnostic must not be reported'
+	}
+}
+
+fn test_v_context_covers_whole_file_detects_full_coverage() {
+	// A short mapped file: the radius window around a middle line spans every line,
+	// so v_context would leak the whole file and must be cleared (PR #28131 review).
+	short := ['a', 'b', 'c']
+	assert v_context_covers_whole_file(numbered_context_lines(short, 2, c_error_context_radius),
+		short)
+	// A larger file: the window is a strict subset and is kept.
+	mut long := []string{}
+	for i in 1 .. 40 {
+		long << 'line_${i}'
+	}
+	ctx := numbered_context_lines(long, 20, c_error_context_radius)
+	assert ctx.len < long.len
+	assert !v_context_covers_whole_file(ctx, long)
+	// An empty context (no mapped line) is not "whole file".
+	assert !v_context_covers_whole_file([]CErrorReportLine{}, short)
+}
+
+fn test_v_source_and_context_expose_whole_file_checks_the_union() {
+	// A 12-line file: v_source (reproducer) holds `main`, and the v_context window
+	// holds the unrelated declaration. Neither covers the file alone, but together
+	// they expose every nonblank line, reconstructing it (PR #28131 review).
+	mapped := ['module main', '', 'fn main() {', '\tx := 1', '\tprintln(x)', '}', '',
+		'fn unrelated() {', '\ty := 2', '\tprintln(y)', '}', '']
+	v_source := 'fn main() {\n\tx := 1\n\tprintln(x)\n}'
+	context := [
+		CErrorReportLine{
+			line: 1
+			text: 'module main'
+		},
+		CErrorReportLine{
+			line: 8
+			text: 'fn unrelated() {'
+		},
+		CErrorReportLine{
+			line: 9
+			text: '\ty := 2'
+		},
+		CErrorReportLine{
+			line: 10
+			text: '\tprintln(y)'
+		},
+		CErrorReportLine{
+			line: 11
+			text: '}'
+		},
+	]
+	assert v_source_and_context_expose_whole_file(v_source, context, mapped)
+	// A genuine strict subset: the context no longer reaches the unrelated body.
+	partial := [
+		CErrorReportLine{
+			line: 9
+			text: '\ty := 2'
+		},
+	]
+	assert !v_source_and_context_expose_whole_file(v_source, partial, mapped)
+	// An empty union exposes nothing.
+	assert !v_source_and_context_expose_whole_file('', [], mapped)
+}
+
+fn test_v3_report_v_source_bounds_large_files() {
+	// A program at or below the window (2 * c_error_v_source_radius lines) cannot be
+	// reduced to a strict subset, so no source is uploaded for it at all — the whole
+	// file is never sent.
+	small := 'fn main() {\n\tprintln(1)\n}\n'
+	assert v3_report_v_source(small) == ''
+	// A larger program is reduced to a bounded head+tail window; the middle (which
+	// could hold unrelated proprietary code) is dropped and never uploaded.
+	mut lines := []string{}
+	for i in 0 .. 4 * c_error_v_source_radius {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	big := lines.join('\n')
+	snippet := v3_report_v_source(big)
+	assert snippet != ''
+	assert snippet.len < big.len
+	assert snippet.contains(c_error_v_source_truncation_notice)
+	assert snippet.contains('fn f0() ') // head kept
+	assert snippet.contains('fn f${4 * c_error_v_source_radius - 1}() ') // tail kept
+	assert !snippet.contains('fn f${2 * c_error_v_source_radius}() ') // middle dropped
+	assert snippet.split_into_lines().len <= 2 * c_error_v_source_radius + 3
+	// A program just over the window whose only dropped (middle) line is blank still
+	// exposes every nonblank line via head+tail, so no source is uploaded even though
+	// the file is over 80 lines (PR #28131 review).
+	mut blank_middle := []string{}
+	for i in 0 .. 2 * c_error_v_source_radius + 1 {
+		blank_middle << if i == c_error_v_source_radius { '' } else { 'fn g${i}() {}' }
+	}
+	assert v3_report_v_source(blank_middle.join('\n')) == ''
+}
+
 fn test_selected_v_source_only_uploads_mapped_v_source_chunk() {
 	// a mapped V file yields a small chunk around the failing line
 	lines := ['module main', 'fn a() {}', 'fn b() {}', 'fn c() {}', 'fn bad() { x }']
@@ -352,6 +602,62 @@ fn test_v_source_location_mapping_from_line_directives() {
 		return
 	}
 	assert c_line == 3
+}
+
+fn test_bounded_v3_fallback_source_maps_generated_c_error() {
+	// A generated-C compilation error is mapped back to its V source line (via the #line
+	// directives in the trusted staged C) and a bounded window of that V file is returned
+	// — a strict subset, never the whole file (PR #28131 review).
+	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_map_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	v_path := os.join_path(dir, 'source.v')
+	mut lines := []string{}
+	for i in 0 .. 200 {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	whole := lines.join('\n')
+	os.write_file(v_path, whole)!
+	generated_c := os.join_path(dir, 'program.tmp.c')
+	os.write_file(generated_c, '#line 100 "${v_path}"\nint a = 1;\nint b = missing;\n')!
+	c_output := '${generated_c}:3:9: error: use of undeclared identifier missing'
+	// kind '' selects the generated-C mapping path.
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c)
+	assert v_file == 'source.v'
+	assert v_source != ''
+	// A bounded strict subset centered on the mapped V line (~100), never the whole file.
+	assert v_source.len < whole.len
+	assert v_source.contains('fn f100()')
+}
+
+fn test_bounded_v3_fallback_source_rejects_nonblank_whole_file_generated_c() {
+	// A generated-C error mapping near line 40 of an 81-line file whose omitted final line
+	// is only whitespace: the window (lines 1..80) covers every nonblank line, so exact
+	// line-array equality misses it but the nonblank coverage check must still drop the
+	// excerpt rather than upload the whole program (doc/docs.md, PR #28131 review).
+	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_nonblank_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	v_path := os.join_path(dir, 'source.v')
+	mut lines := []string{}
+	for i in 0 .. 80 {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	// 80 substantive lines plus a whitespace-only final line (81 lines total).
+	os.write_file(v_path, lines.join('\n') + '\n   ')!
+	generated_c := os.join_path(dir, 'program.tmp.c')
+	os.write_file(generated_c, '#line 40 "${v_path}"\nint b = missing;\n')!
+	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c)
+	assert v_file == 'source.v'
+	// The mapped window exposes every nonblank line, so no source is uploaded.
+	assert v_source == '', v_source
 }
 
 fn test_generated_c_reset_line_is_not_reported_as_v_source() {
@@ -557,4 +863,79 @@ fn test_new_c_error_bug_report_with_vlines_is_skipped_without_a_recorded_command
 	if _ := b.new_c_error_bug_report_with_vlines('cc') {
 		assert false, 'expected none when no C compiler command was recorded'
 	}
+}
+
+fn clear_v3_report_env() {
+	for suffix in v3_report_env_suffixes {
+		os.unsetenv('${v3_report_env_prefix}${suffix}')
+	}
+}
+
+fn test_external_v3_report_without_present_marker_is_ignored() {
+	// A poisoned environment that sets legacy path-style variables (a directory to
+	// delete, a file to upload) but no PRESENT marker yields no report, and take must
+	// touch nothing on disk. This is the `v -old-compiler -b wasm` poisoning case: the
+	// receiver trusts no path from the environment (PR #28131 review).
+	clear_v3_report_env()
+	victim := os.join_path(os.vtmp_dir(), 'v3_report_victim_${os.getpid()}')
+	os.rmdir_all(victim) or {}
+	os.mkdir_all(victim) or { panic(err) }
+	defer {
+		os.rmdir_all(victim) or {}
+	}
+	secret := os.join_path(victim, 'secret.txt')
+	os.write_file(secret, 'top secret')!
+	// Variables an earlier path-based design would have honored; the current take ignores
+	// them entirely (they are not even in v3_report_env_suffixes).
+	os.setenv('${v3_report_env_prefix}DIR', victim, true)
+	os.setenv('${v3_report_env_prefix}CFILE', secret, true)
+	defer {
+		os.unsetenv('${v3_report_env_prefix}DIR')
+		os.unsetenv('${v3_report_env_prefix}CFILE')
+	}
+	if _ := take_external_v3_report_from_env() {
+		assert false, 'no PRESENT marker was set, so no report may be returned'
+	}
+	// take reads no path and deletes no directory: the victim and its secret survive.
+	assert os.is_dir(victim)
+	assert os.is_file(secret)
+}
+
+fn test_external_v3_report_never_carries_a_path_or_directory() {
+	// Even a fully forged handoff (PRESENT set, plus legacy DIR/CFILE pointing at a
+	// victim) yields an inline, content-only report: c_file and cleanup_dir are empty, so
+	// consume can neither read the named file nor delete the named directory. The forged
+	// content is at worst attacker-supplied text (PR #28131 review).
+	clear_v3_report_env()
+	victim := os.join_path(os.vtmp_dir(), 'v3_report_forged_${os.getpid()}')
+	os.rmdir_all(victim) or {}
+	os.mkdir_all(victim) or { panic(err) }
+	defer {
+		os.rmdir_all(victim) or {}
+	}
+	secret := os.join_path(victim, 'secret.txt')
+	os.write_file(secret, 'top secret')!
+	os.setenv('${v3_report_env_prefix}PRESENT', '1', true)
+	os.setenv('${v3_report_env_prefix}KIND', external_v3_compiler_error_kind, true)
+	os.setenv('${v3_report_env_prefix}CCOMPILER', 'v3', true)
+	os.setenv('${v3_report_env_prefix}COUTPUT', 'error: forged', true)
+	os.setenv('${v3_report_env_prefix}VSOURCE', 'attacker supplied text', true)
+	os.setenv('${v3_report_env_prefix}DIR', victim, true)
+	os.setenv('${v3_report_env_prefix}CFILE', secret, true)
+	defer {
+		os.unsetenv('${v3_report_env_prefix}DIR')
+		os.unsetenv('${v3_report_env_prefix}CFILE')
+	}
+	got := take_external_v3_report_from_env() or {
+		assert false, 'a PRESENT handoff should return its content-only report'
+		return
+	}
+	// The dangerous capabilities are absent regardless of the forged DIR/CFILE.
+	assert got.source_inline
+	assert got.c_file == ''
+	assert got.cleanup_dir == ''
+	assert got.v_source == 'attacker supplied text'
+	// take never touched the victim.
+	assert os.is_dir(victim)
+	assert os.is_file(secret)
 }

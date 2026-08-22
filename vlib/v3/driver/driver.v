@@ -1809,6 +1809,31 @@ fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target
 	}
 }
 
+struct V3TccResourceFlags {
+	install_dir string
+	base_arg    string
+	include_arg string
+	library_arg string
+}
+
+fn v3_tcc_resource_flags(vroot string) V3TccResourceFlags {
+	tcc_root_dir := os.join_path(vroot, 'thirdparty', 'tcc')
+	tcc_lib_dir := os.join_path_single(tcc_root_dir, 'lib')
+	tcc_nested_dir := os.join_path_single(tcc_lib_dir, 'tcc')
+	install_dir := if os.is_dir(tcc_nested_dir) { tcc_nested_dir } else { tcc_lib_dir }
+	mut include_dir := os.join_path_single(install_dir, 'include')
+	tcc_root_include_dir := os.join_path_single(tcc_root_dir, 'include')
+	if !os.is_dir(include_dir) && os.is_dir(tcc_root_include_dir) {
+		include_dir = tcc_root_include_dir
+	}
+	return V3TccResourceFlags{
+		install_dir: install_dir
+		base_arg:    '-B${install_dir}'
+		include_arg: '-I${include_dir}'
+		library_arg: '-L${install_dir}'
+	}
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -1822,9 +1847,9 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	mut tcc_includes := ''
 	if options.explicit_tcc {
-		tcc_lib_dir := os.join_path(options.vroot, 'thirdparty', 'tcc', 'lib')
-		tcc_includes = '-I${os.join_path_single(tcc_lib_dir, 'include')}'
-		before_inputs << [tcc_includes, '-L${tcc_lib_dir}']
+		tcc_resources := v3_tcc_resource_flags(options.vroot)
+		tcc_includes = tcc_resources.include_arg
+		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
 		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
@@ -2259,6 +2284,12 @@ fn should_scope_prealloc_cgen() bool {
 }
 
 fn should_parallel_monomorphize() bool {
+	// Compiler executables built by TinyCC can corrupt their heap while several
+	// specialization workers merge their results. Keep that build serial until
+	// the parallel merge is safe under TinyCC as well as clang and GCC.
+	$if tinyc {
+		return false
+	}
 	return os.getenv('V3_DISABLE_PARALLEL_MONOMORPHIZE') != '1'
 }
 
@@ -5974,10 +6005,17 @@ fn record_user_define(mut defines []string, mut values map[string]string, define
 	values[name] = value
 }
 
-fn stage_macos_v3_compiler_error_fallback(fallback_file string) {
-	if fallback_file != '' {
-		os.write_file(fallback_file, macos_v3_compiler_error_fallback) or {}
+fn stage_macos_v3_compiler_error_fallback(fallback_file string, stage string) bool {
+	if fallback_file == '' {
+		return false
 	}
+	// The first line remains the machine-readable fallback reason. The second
+	// carries only a controlled stage name, so a successful compatibility build
+	// can report where V3 failed even when no source excerpt is available.
+	os.write_file(fallback_file, '${macos_v3_compiler_error_fallback}\n${stage}') or {
+		return false
+	}
+	return true
 }
 
 fn clear_macos_v3_compiler_error_fallback(fallback_file string) {
@@ -5986,8 +6024,18 @@ fn clear_macos_v3_compiler_error_fallback(fallback_file string) {
 	}
 }
 
+fn macos_v3_fallback_payload_is_valid(payload string) bool {
+	reason := payload.all_before('\n')
+	return reason in [macos_v3_inline_asm_fallback, macos_v3_compiler_error_fallback,
+		macos_v3_c_error_fallback]
+}
+
 fn macos_v3_fallback_suppresses_diagnostics(fallback_file string) bool {
-	return fallback_file != '' && os.getenv(macos_v3_no_fallback_env) != '1'
+	if fallback_file == '' || os.getenv(macos_v3_no_fallback_env) == '1' {
+		return false
+	}
+	payload := os.read_file(fallback_file) or { return false }
+	return macos_v3_fallback_payload_is_valid(payload)
 }
 
 fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {
@@ -6437,7 +6485,7 @@ pub fn run(args []string) {
 	// produced its output. Specialized failures overwrite it below. Successful
 	// run/test programs clear it before launch, so their exit status is never
 	// mistaken for a compiler failure by the macOS driver.
-	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'command-line processing')
 
 	mut input_file := ''
 	mut output_file := ''
@@ -7344,6 +7392,7 @@ pub fn run(args []string) {
 	// Cache markers and scoped output are stable across ordered worker chunks, so cached
 	// and preallocated builds use the same parallel function-body generator.
 	mut cache_no_parallel_cgen := current_no_parallel
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
@@ -7886,6 +7935,7 @@ pub fn run(args []string) {
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'semantic checking')
 	mut pre_tc := types.TypeChecker.new(a)
 	mut checker_notice_count := 0
 	mut checker_warning_count := 0
@@ -8268,6 +8318,7 @@ pub fn run(args []string) {
 		// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
 		// by default for compatible builds, and `-no-parallel` disables both threaded transform
 		// and cgen.
+		stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'AST transformation')
 		mut transform_was_parallel := false
 		mut transform_errors := []string{}
 		mut incremental_synthesized_helpers := []string{}
@@ -8688,6 +8739,7 @@ pub fn run(args []string) {
 	// Monomorphization only adds specialized generic instantiations to `used_fns`.
 	// Markused and Cgen already exclude unreachable generic templates, so builds
 	// with no reachable generic use need no generic cleanup pass at all.
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'type specialization')
 	if cgen_cache_hit {
 		// The cached C plan and metadata are the only consumers of the specialized
 		// AST and checker state on this path.
@@ -8845,6 +8897,7 @@ pub fn run(args []string) {
 	} else {
 		b.step('finalize')
 	}
+	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'backend code generation')
 	if backend == 'wasm' {
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			eprintln(msg)
@@ -9666,11 +9719,9 @@ pub fn run(args []string) {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
-			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
-			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
-			tcc_lib := '-L${tcc_lib_dir}'
-			mut tcc_args := [c_standard, tcc_includes, tcc_lib, '-w',
-				'-Werror=implicit-function-declaration']
+			tcc_resources := v3_tcc_resource_flags(prefs.vroot)
+			mut tcc_args := [c_standard, tcc_resources.base_arg, tcc_resources.include_arg,
+				tcc_resources.library_arg, '-w', '-Werror=implicit-function-declaration']
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
 				prefs.normalized_target_arch(), is_shared)
 			{
@@ -9681,7 +9732,7 @@ pub fn run(args []string) {
 			}
 			tcc_args << tcc_cached_main_flags(resolved_c_flags)
 			tcc_args << ['-o', 'out', os.base(tcc_main_file)]
-			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_includes)
+			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
 			if atomic_s.len > 0 {
 				tcc_args << atomic_s
 			}
@@ -9698,7 +9749,7 @@ pub fn run(args []string) {
 			}}'
 			tcc_cached_executable := v3_cached_tcc_executable_path(&cache_state.manager,
 				program_source_identity, c_object_cache_stats.link_plan_signature, tcc_path,
-				tcc_lib_dir, tcc_args)
+				tcc_resources.install_dir, tcc_args)
 			if os.is_file(tcc_cached_executable) {
 				os.cp(tcc_cached_executable, cc_out) or {}
 				tcc_cache_hit = os.is_file(cc_out)
@@ -9741,9 +9792,7 @@ pub fn run(args []string) {
 			} else {
 				bundled_tcc_path
 			}
-			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
-			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
-			tcc_lib := '-L${tcc_lib_dir}'
+			tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 			mut tcc_args := environment_c_flags.clone()
 			if link_c_standard.len > 0 {
 				tcc_args << link_c_standard
@@ -9751,7 +9800,7 @@ pub fn run(args []string) {
 			if pic_flag.len > 0 {
 				tcc_args << pic_flag
 			}
-			tcc_args << [tcc_includes, tcc_lib]
+			tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
 				prefs.normalized_target_arch(), is_shared)
 			{
@@ -9769,7 +9818,7 @@ pub fn run(args []string) {
 				'src.c'
 			}
 			tcc_args << ['-o', 'out', tcc_source]
-			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_includes)
+			atomic_s := tcc_atomic_arg(prefs, tcc_path, tcc_resources.include_arg)
 			if atomic_s.len > 0 {
 				tcc_args << atomic_s
 			}

@@ -1402,6 +1402,9 @@ fn (mut g FlatGen) libc_compat_call_name(name string) ?string {
 
 fn (mut g FlatGen) preseed_libc_compat_fns() {
 	refs := g.c_extern_referenced_symbols()
+	if refs['C.syscall'] || refs['syscall'] {
+		g.libc_compat_fns[c_libc_compat_syscall_decl_key] = true
+	}
 	if refs['C.gettid'] || refs['gettid'] {
 		g.libc_compat_fns['gettid'] = true
 	}
@@ -12965,6 +12968,10 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			if g.gen_c_va_list_macro_arg_direct(arg_idx, arg_id, fn_name, callee_name, '', '') {
 				continue
 			}
+			if arg_idx < typed_param_count
+				&& g.gen_c_alias_pointer_voidptr_arg(arg_node, param_types[arg_idx]) {
+				continue
+			}
 			if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count > 0 {
 				inner := g.a.child_node(&arg_node, 0)
 				if inner.kind == .int_literal && inner.value in ['', '0'] {
@@ -13165,6 +13172,24 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			emitted_defaults++
 		}
 	}
+}
+
+fn (mut g FlatGen) gen_c_alias_pointer_voidptr_arg(arg_node flat.Node, expected types.Type) bool {
+	if arg_node.kind != .cast_expr || arg_node.children_count != 1 || expected !is types.Pointer {
+		return false
+	}
+	expected_name := expected.name()
+	if !expected_name.starts_with('&C.') {
+		return false
+	}
+	inner_id := g.a.child(&arg_node, 0)
+	inner := g.a.nodes[int(inner_id)]
+	if inner.kind != .cast_expr || inner.value != 'voidptr' {
+		return false
+	}
+	g.write('(${expected_name[3..]}*)')
+	g.gen_expr(inner_id)
+	return true
 }
 
 fn (mut g FlatGen) gen_variadic_array_args(node flat.Node, start int, elem_type types.Type) {
@@ -15047,6 +15072,7 @@ const c_preamble_declared_extern_symbols = {
 	'clock':                         true
 	'fprintf':                       true
 	'fflush':                        true
+	'qsort':                         true
 	'qsort_r':                       true
 	'mktime':                        true
 	'localtime':                     true

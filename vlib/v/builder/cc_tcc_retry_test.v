@@ -6,7 +6,9 @@ import v.pref
 fn execute_tcc_retry_test_command(cmd string) os.Result {
 	old_vflags := os.getenv_opt('VFLAGS')
 	old_vosargs := os.getenv_opt('VOSARGS')
-	os.unsetenv('VFLAGS')
+	// These tests exercise the established C builder's TinyCC retry path. Linux
+	// now defaults to V3, so select V1 explicitly after isolating ambient flags.
+	os.setenv('VFLAGS', '-old-compiler', true)
 	os.unsetenv('VOSARGS')
 	defer {
 		if vflags := old_vflags {

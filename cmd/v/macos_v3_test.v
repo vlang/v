@@ -2,6 +2,7 @@ module main
 
 import os
 import v.pref
+import v.builder
 
 fn test_macos_v3_embedded_driver_matches_cross_source_selection() {
 	$if cross ? {
@@ -24,6 +25,29 @@ fn test_macos_v3_driver_source_selection_matches_cross_define() {
 	}
 	cross_files := cross_prefs.should_compile_filtered_files('cmd/v', driver_files).map(os.base(it))
 	assert cross_files == ['macos_v3_driver_d_cross.v']
+}
+
+fn test_macos_v3_keeps_established_compiler_sources_on_v1() {
+	vroot := os.real_path(os.dir(@VEXE))
+	for path in ['vlib/v/checker/pkgconfig_static_mode_test.v',
+		os.join_path(vroot, 'vlib/v/builder/c_error_report_test.v'), 'vlib/v/compiler_errors_test.v'] {
+		assert is_macos_v3_v1_compiler_source(path)
+		assert !is_macos_v3_relevant_command(path, &pref.Preferences{
+			path: path
+		})
+	}
+	for path in ['vlib/v/tests/array_test.v', '/workspace/v/vlib/v/slow_tests/example_test.v',
+		'vlib/v3/tests/driver_cli_test.v', 'examples/hello_world.v'] {
+		assert !is_macos_v3_v1_compiler_source(path)
+		assert is_macos_v3_relevant_command(path, &pref.Preferences{
+			path: path
+		})
+	}
+	user_path := os.join_path(os.vtmp_dir(), 'project/vlib/v/app/main.v')
+	assert !is_macos_v3_v1_compiler_source(user_path)
+	assert is_macos_v3_relevant_command(user_path, &pref.Preferences{
+		path: user_path
+	})
 }
 
 fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
@@ -193,7 +217,9 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert !is_macos_v3_relevant_command('build-module', prefs)
 		prefs.is_script = true
 		prefs.path = 'script.vsh'
-		assert is_macos_v3_relevant_command('script.vsh', prefs)
+		prefs.is_vsh = true
+		assert !is_macos_v3_relevant_command('script.vsh', prefs)
+		prefs.is_vsh = false
 		assert !is_macos_v3_relevant_command('crun', prefs)
 		for path in ['foo.c.v', 'foo.js.v', 'foo.wasm.v', '.v'] {
 			prefs.path = path
@@ -1306,13 +1332,14 @@ fn test_autofree_delegation_detects_and_forwards_vflags() {
 }
 
 fn test_macos_v3_child_environment_forwards_compiler_hashes() {
-	$if macos {
+	$if macos || linux {
 		caller_environment := {
 			'PATH':                     '/usr/bin'
 			'CFLAGS':                   '-I/caller/include -DCALLER_FLAG=1'
 			'LDFLAGS':                  '-L/caller/lib -lcaller'
 			'VEXE':                     'caller-vexe'
 			'VCHILD':                   'caller-vchild'
+			'V_MACOS_V3_NO_FALLBACK':   'caller-no-fallback'
 			'V_MACOS_V3_FALLBACK_FILE': '/tmp/stale-fallback'
 			'V_MACOS_V3_C_ERROR_DIR':   '/tmp/stale-c-error'
 			'V_MACOS_V3_RETRY':         '1'
@@ -1332,6 +1359,8 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 		assert environment[macos_v3_caller_vexe_env] == 'caller-vexe'
 		assert environment[macos_v3_caller_vchild_present_env] == '1'
 		assert environment[macos_v3_caller_vchild_env] == 'caller-vchild'
+		assert environment[macos_v3_caller_no_fallback_present_env] == '1'
+		assert environment[macos_v3_caller_no_fallback_env] == 'caller-no-fallback'
 
 		unset_environment := macos_v3_child_environment(@VEXE, '/tmp/macos_v3_fallback', {
 			'PATH': '/usr/bin'
@@ -1340,6 +1369,111 @@ fn test_macos_v3_child_environment_forwards_compiler_hashes() {
 		assert unset_environment[macos_v3_caller_vexe_env] == ''
 		assert unset_environment[macos_v3_caller_vchild_present_env] == '0'
 		assert unset_environment[macos_v3_caller_vchild_env] == ''
+		assert unset_environment[macos_v3_caller_no_fallback_present_env] == '0'
+		assert unset_environment[macos_v3_caller_no_fallback_env] == ''
+	}
+}
+
+fn test_macos_v3_redispatch_preserves_original_caller_environment() {
+	dispatch_environment := {
+		'PATH':                                  '/usr/bin'
+		'VEXE':                                  '/internal/v'
+		'VCHILD':                                'true'
+		'V_MACOS_V3_FALLBACK_FILE':              '/tmp/old-fallback'
+		'V_MACOS_V3_C_ERROR_DIR':                '/tmp/old-c-error'
+		'V_MACOS_V3_VHASH':                      'internal-hash'
+		'V_MACOS_V3_VCURRENT_HASH':              'internal-current-hash'
+		'V_MACOS_V3_EMBEDDED':                   '1'
+		'V_MACOS_V3_NO_FALLBACK':                '1'
+		'V3_CRUN_BUILD_IDENTITY':                'restart-identity'
+		'V3_INTERNAL_RESTART':                   '1'
+		macos_v3_caller_vexe_env:                'caller-vexe'
+		macos_v3_caller_vexe_present_env:        '1'
+		macos_v3_caller_vchild_env:              'caller-vchild'
+		macos_v3_caller_vchild_present_env:      '1'
+		macos_v3_caller_no_fallback_env:         'caller-no-fallback'
+		macos_v3_caller_no_fallback_present_env: '1'
+	}
+	caller_environment := macos_v3_original_caller_environment(dispatch_environment)
+	assert caller_environment['PATH'] == '/usr/bin'
+	assert caller_environment['VEXE'] == 'caller-vexe'
+	assert caller_environment['VCHILD'] == 'caller-vchild'
+	assert caller_environment[macos_v3_no_fallback_env] == 'caller-no-fallback'
+	assert macos_v3_fallback_file_env !in caller_environment
+	assert macos_v3_c_error_dir_env !in caller_environment
+	assert macos_v3_vhash_env !in caller_environment
+	assert macos_v3_vcurrent_hash_env !in caller_environment
+	assert macos_v3_embedded_env !in caller_environment
+	assert 'V3_CRUN_BUILD_IDENTITY' !in caller_environment
+	assert 'V3_INTERNAL_RESTART' !in caller_environment
+	assert macos_v3_caller_vexe_env !in caller_environment
+	assert macos_v3_caller_vchild_env !in caller_environment
+
+	child_environment := macos_v3_child_environment(@VEXE, '/tmp/new-fallback',
+		dispatch_environment)
+	assert child_environment['VEXE'] == os.real_path(@VEXE)
+	assert child_environment['VCHILD'] == 'true'
+	assert child_environment[macos_v3_caller_vexe_env] == 'caller-vexe'
+	assert child_environment[macos_v3_caller_vexe_present_env] == '1'
+	assert child_environment[macos_v3_caller_vchild_env] == 'caller-vchild'
+	assert child_environment[macos_v3_caller_vchild_present_env] == '1'
+	assert child_environment[macos_v3_caller_no_fallback_env] == 'caller-no-fallback'
+	assert child_environment[macos_v3_caller_no_fallback_present_env] == '1'
+	// Internal restart state remains available to the next V3 pass.
+	assert child_environment['V3_CRUN_BUILD_IDENTITY'] == 'restart-identity'
+	assert child_environment['V3_INTERNAL_RESTART'] == '1'
+
+	mut unset_dispatch_environment := dispatch_environment.clone()
+	unset_dispatch_environment[macos_v3_caller_vexe_env] = ''
+	unset_dispatch_environment[macos_v3_caller_vexe_present_env] = '0'
+	unset_dispatch_environment[macos_v3_caller_vchild_env] = ''
+	unset_dispatch_environment[macos_v3_caller_vchild_present_env] = '0'
+	unset_dispatch_environment[macos_v3_caller_no_fallback_env] = ''
+	unset_dispatch_environment[macos_v3_caller_no_fallback_present_env] = '0'
+	unset_caller_environment := macos_v3_original_caller_environment(unset_dispatch_environment)
+	assert 'VEXE' !in unset_caller_environment
+	assert 'VCHILD' !in unset_caller_environment
+	assert macos_v3_no_fallback_env !in unset_caller_environment
+}
+
+fn test_macos_v3_redispatch_run_observes_original_caller_environment() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_redispatch_env_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source,
+			"module main\n\nimport os\n\nconst compile_vexe = \$env('VEXE')\nconst compile_vchild = \$env('VCHILD')\nconst compile_no_fallback = \$env('V_MACOS_V3_NO_FALLBACK')\n\nfn main() {\n\truntime_vexe := os.getenv('VEXE')\n\truntime_vchild := os.getenv('VCHILD')\n\truntime_no_fallback := os.getenv('V_MACOS_V3_NO_FALLBACK')\n\tprintln('\${compile_vexe}|\${compile_vchild}|\${runtime_vexe}|\${runtime_vchild}|\${compile_no_fallback}|\${runtime_no_fallback}')\n}\n")!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['VEXE'] = os.real_path(@VEXE)
+		environment['VCHILD'] = 'true'
+		environment[macos_v3_caller_vexe_env] = 'caller-vexe'
+		environment[macos_v3_caller_vexe_present_env] = '1'
+		environment[macos_v3_caller_vchild_env] = 'caller-vchild'
+		environment[macos_v3_caller_vchild_present_env] = '1'
+		environment[macos_v3_no_fallback_env] = '1'
+		environment[macos_v3_caller_no_fallback_env] = 'caller-no-fallback'
+		environment[macos_v3_caller_no_fallback_present_env] = '1'
+		environment[macos_v3_embedded_env] = '1'
+		environment['V3_INTERNAL_RESTART'] = '1'
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-new-compiler', '-gc', 'none', 'run', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, output
+		assert output.contains('caller-vexe|caller-vchild|caller-vexe|caller-vchild|caller-no-fallback|caller-no-fallback'), output
 	}
 }
 
@@ -1453,6 +1587,10 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 }
 ')!
 		mut environment := os.environ()
+		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
+		// guard that CI sets for eligible V3 builds — otherwise V3 exits at the failure
+		// instead of retrying and the fallback never happens (PR #28131 review).
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['GITHUB_ACTIONS'] = 'true'
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
 		environment['VFLAGS'] = ''
@@ -1470,6 +1608,10 @@ fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 		assert compiler_output.contains('Running macOS V3 compiler in process:'), compiler_output
 		assert !compiler_output.contains('Launching macOS V3 compiler:'), compiler_output
 		assert compiler_output.contains('compatibility compiler for inline assembly'), compiler_output
+		// An inline-assembly fallback is a known limitation, not a bug (so no report is
+		// filed), but the standard fallback notice must still be printed once the stable
+		// build succeeds, matching doc/docs.md (PR #28131 review).
+		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0
@@ -1497,6 +1639,443 @@ fn main() {}
 		failing_report_dir := os.join_path(os.vtmp_dir(),
 			'macos_v3_fallback_${failing_compiler_pid}.c_error')
 		assert !os.exists(failing_report_dir), 'failed compatibility build left staged report directory: ${failing_report_dir}'
+	}
+}
+
+// The compiler-error fallback bounds the input V source into content in the trusted
+// process, uploading a bounded strict subset for a single source file and nothing (a
+// metadata-only report) for a directory build or a non-V / missing input. Runs wherever
+// the dispatcher is embedded (macOS and Linux) without triggering a real V3 failure
+// (PR #28131 review).
+fn test_macos_v3_compiler_error_content_extraction() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_ce_content_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		// A single V source file is uploaded as a bounded snippet.
+		source := os.join_path(root, 'prog.v')
+		mut lines := []string{}
+		for i in 0 .. 200 {
+			lines << 'fn f${i}() { println(${i}) }'
+		}
+		whole := lines.join('\n')
+		os.write_file(source, whole)!
+		compiler_error := macos_v3_compiler_error_message('source parsing')
+		v_file, v_source := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
+			compiler_error, macos_v3_compiler_error_input_source(source))
+		assert v_file == 'prog.v'
+		assert v_source != ''
+		assert compiler_error.contains('during source parsing')
+		// A bounded strict subset — never the whole file.
+		assert v_source.len < whole.len
+		// A directory build, a non-V file, or a missing input yields no source, so the
+		// report stays metadata-only.
+		note := os.join_path(root, 'note.txt')
+		os.write_file(note, 'not v source')!
+		for empty in [root, note, os.join_path(root, 'missing.v'), ''] {
+			resolved := macos_v3_compiler_error_input_source(empty)
+			ef, es := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
+				compiler_error, resolved)
+			assert ef == '', empty
+			assert es == '', empty
+		}
+		legacy_reason, legacy_stage := macos_v3_fallback_reason_and_stage('compiler_error')
+		assert legacy_reason == macos_v3_compiler_error_fallback
+		assert legacy_stage == ''
+		reason, stage := macos_v3_fallback_reason_and_stage('compiler_error\nsemantic checking')
+		assert reason == macos_v3_compiler_error_fallback
+		assert stage == 'semantic checking'
+	}
+}
+
+// End-to-end: a construct V3 cannot build yet (a generic method on a generic
+// struct) must fall back to the stable compiler, print the user-facing notice, and
+// still produce a working program. The bug endpoint is pointed at an unroutable
+// address so the report path runs without ever touching the network.
+fn test_macos_v3_compiler_error_falls_back_and_notifies() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_compiler_error_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'generic_method.v')
+		output := os.join_path(root, 'generic_method')
+		os.write_file(source, 'struct Opt[T] {
+	val  T
+	some bool
+}
+
+fn some[T](val T) Opt[T] {
+	return Opt[T]{
+		val:  val
+		some: true
+	}
+}
+
+fn (f Opt[T]) map[U](op fn (T) U) Opt[U] {
+	if f.some {
+		return some[U](op(f.val))
+	}
+	return Opt[U]{}
+}
+
+fn main() {
+	result := some("hello").map(|s| s.len)
+	assert result.some && result.val == 5
+	println("generic ok")
+}
+')!
+		mut environment := os.environ()
+		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
+		// guard that CI sets for eligible V3 builds — otherwise V3 exits at the failure
+		// instead of retrying and the fallback never happens (PR #28131 review).
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
+		// Unroutable endpoint: the submission attempt fails fast, so the test never
+		// contacts the real bug server while still exercising the report path.
+		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-gc', 'none', '-o', output, source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0, run.output
+		assert run.output.contains('generic ok'), run.output
+	}
+}
+
+// End-to-end (directory build): the same V3-incompatible program built as a
+// directory (`v <dir>`), so `input_path` is a directory and no source reproducer
+// can be staged. The fallback must still print the notice instead of going silent
+// (PR #28131 review feedback).
+fn test_macos_v3_compiler_error_directory_build_notifies() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_compiler_error_dir_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		app_dir := os.join_path(root, 'app')
+		os.mkdir_all(app_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(app_dir, 'main.v'), 'struct Opt[T] {
+	val  T
+	some bool
+}
+
+fn some[T](val T) Opt[T] {
+	return Opt[T]{
+		val:  val
+		some: true
+	}
+}
+
+fn (f Opt[T]) map[U](op fn (T) U) Opt[U] {
+	if f.some {
+		return some[U](op(f.val))
+	}
+	return Opt[U]{}
+}
+
+fn main() {
+	result := some("hello").map(|s| s.len)
+	assert result.some && result.val == 5
+	println("generic dir ok")
+}
+')!
+		output := os.join_path(root, 'app_bin')
+		mut environment := os.environ()
+		// This test exercises a real V3->V1 fallback, so clear the job-level no-fallback
+		// guard that CI sets for eligible V3 builds — otherwise V3 exits at the failure
+		// instead of retrying and the fallback never happens (PR #28131 review).
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
+		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-gc', 'none', '-o', output, app_dir])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		// The notice must appear even though no single source file could be staged.
+		assert compiler_output.contains('the experimental V3 compiler could not build this program'), compiler_output
+		// A metadata-only report is still submitted (not dropped): the attempt to the
+		// unroutable endpoint is what fails here, proving a report was constructed.
+		assert compiler_output.contains('V3 compiler bug report was not sent'), compiler_output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0, run.output
+		assert run.output.contains('generic dir ok'), run.output
+	}
+}
+
+// End-to-end (PR #28131 review): a V3 internal-error fallback for `v -o - source.v` must
+// keep stdout as pure generated C. V1 has already written the C to stdout, so the report
+// banner, its context, and the fallback notice all go to stderr — never stdout — or the
+// documented `-o -` output would be invalid C for exactly the programs that needed the
+// fallback.
+fn test_macos_v3_fallback_report_stays_off_generated_c_stdout() {
+	$if macos {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_stdout_c_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'gen.v')
+		os.write_file(source, 'struct Opt[T] {
+	val  T
+	some bool
+}
+
+fn some[T](val T) Opt[T] {
+	return Opt[T]{
+		val:  val
+		some: true
+	}
+}
+
+fn (f Opt[T]) map[U](op fn (T) U) Opt[U] {
+	if f.some {
+		return some[U](op(f.val))
+	}
+	return Opt[U]{}
+}
+
+fn main() {
+	result := some("hello").map(|s| s.len)
+	assert result.some && result.val == 5
+}
+')!
+		mut environment := os.environ()
+		// Exercise a real fallback; clear the job-level no-fallback guard CI may set.
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
+		// Unroutable endpoint: the send fails fast, exercising the report-diagnostic
+		// output (the notice and "was not sent") without contacting a real server.
+		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-gc', 'none', '-o', '-', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		stdout := process.stdout_slurp()
+		stderr := process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, stdout + stderr
+		// The fallback happened and its diagnostics went to stderr.
+		assert stderr.contains('the experimental V3 compiler could not build this program'), stderr
+		assert stderr.contains('bug report was not sent'), stderr
+		// stdout is the generated C only — valid C, with no report text of any kind.
+		assert stdout.contains('typedef') || stdout.contains('#define'), 'stdout is not generated C'
+		for leaked in ['could not build this program', 'compiler bug report',
+			'bug report was not sent', 'so this can be fixed', 'opt out of these automatic'] {
+			assert !stdout.contains(leaked), 'report text leaked onto `-o -` stdout: `${leaked}`'
+		}
+	}
+}
+
+fn test_macos_v3_inline_asm_trace_stays_off_generated_c_stdout() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_inline_asm_stdout_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'gen.v')
+		asm_body := $if arm64 {
+			'asm arm64 {
+		mov output, 1
+		; +r (output)
+	}'
+		} $else {
+			'asm amd64 {
+		mov eax, 1
+		mov output, eax
+		; =r (output)
+		; ; eax
+	}'
+		}
+		os.write_file(source, 'fn main() {
+	mut output := 0
+	${asm_body}
+	assert output == 1
+}
+')!
+		mut environment := os.environ()
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
+		environment['V3_CACHE_TRACE'] = '1'
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		stdout_path := os.join_path(root, 'stdout.c')
+		stderr_path := os.join_path(root, 'stderr.txt')
+		environment['V_TEST_STDOUT'] = stdout_path
+		environment['V_TEST_STDERR'] = stderr_path
+		mut process := os.new_process('/bin/sh')
+		process.set_args([
+			'-c',
+			'exec "\$@" > "\$V_TEST_STDOUT" 2> "\$V_TEST_STDERR"',
+			'sh',
+			@VEXE,
+			'-gc',
+			'none',
+			'-o',
+			'-',
+			source,
+		])
+		process.set_environment(environment)
+		process.run()
+		process.wait()
+		exit_code := process.code
+		process.close()
+		stdout := os.read_file(stdout_path) or { '' }
+		stderr := os.read_file(stderr_path) or { '' }
+		assert exit_code == 0, stdout + stderr
+		assert stderr.contains('compatibility compiler for inline assembly'), stderr
+		assert stderr.contains('the experimental V3 compiler could not build this program'), stderr
+		assert stdout.contains('typedef') || stdout.contains('#define'), 'stdout is not generated C'
+		for leaked in ['compatibility compiler for inline assembly',
+			'the experimental V3 compiler could not build this program'] {
+			assert !stdout.contains(leaked), 'fallback trace leaked onto `-o -` stdout: `${leaked}`'
+		}
+	}
+}
+
+fn clear_macos_v3_report_env() {
+	for suffix in ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE'] {
+		os.unsetenv('V_MACOS_V3_REPORT_${suffix}')
+	}
+}
+
+// Unit-level content handoff (PR #28131 review): the retry consumes only the bounded
+// content the owning process forwarded through V_MACOS_V3_REPORT_*, and the returned
+// report carries no directory path — there is no c_file to read or report_dir to delete.
+// A caller-supplied V_MACOS_V3_C_ERROR_DIR is not read here at all, so it cannot make the
+// retry open or remove anything. Authentication is therefore unnecessary, which is what
+// makes the handoff robust against an exec wrapper that can predict the pid and control
+// VTMP (a path handoff cannot be authenticated across such an execvp).
+fn test_take_macos_v3_report_content_carries_no_path() {
+	$if macos || linux {
+		clear_macos_v3_report_env()
+		// A directory env var alone yields no report: only V_MACOS_V3_REPORT_* content is
+		// read, and it is absent here.
+		os.setenv(macos_v3_c_error_dir_env, '/some/victim/dir', true)
+		if _ := take_macos_v3_report_content() {
+			assert false, 'no V_MACOS_V3_REPORT_* content was set, so no report may be returned'
+		}
+		os.unsetenv(macos_v3_c_error_dir_env)
+		// A forwarded content report round-trips as content only.
+		compiler_error := macos_v3_compiler_error_message('type specialization')
+		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3', compiler_error, '')
+		report := take_macos_v3_report_content() or {
+			assert false, 'the forwarded content report must be returned'
+			return
+		}
+		assert report.kind == macos_v3_compiler_error_fallback
+		assert report.ccompiler == 'v3'
+		assert report.c_output == compiler_error
+		// The variables are cleared, so a second take finds nothing.
+		if _ := take_macos_v3_report_content() {
+			assert false, 'the content variables must be cleared after a take'
+		}
+	}
+}
+
+// End-to-end (PR #28131 review): the retry no longer reads any directory named by the
+// environment. A caller-supplied V_MACOS_V3_C_ERROR_DIR — via an explicit `-old-compiler`
+// or an inherited `V_MACOS_V3_RETRY=1`, even holding a perfectly well-formed report — is
+// ignored, so a successful build neither uploads a file from nor deletes that directory.
+fn test_macos_v3_c_error_report_rejects_unowned_directory() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_unowned_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, 'fn main() { println(21 * 2) }\n')!
+		// A directory the dispatcher never staged, holding a well-formed compiler-error
+		// report (so only provenance, not a parse failure, can reject it) plus an
+		// unrelated file that must survive.
+		victim := os.join_path(root, 'victim')
+		os.mkdir_all(victim) or { panic(err) }
+		secret := os.join_path(victim, 'secret.txt')
+		os.write_file(secret, 'top secret')!
+		os.cp(source, os.join_path(victim, 'main.v'))!
+		os.write_file(os.join_path(victim, 'compiler'), 'v3')!
+		os.write_file(os.join_path(victim, 'output'),
+			'error: the experimental V3 compiler hit an internal compiler error building this program')!
+		os.write_file(os.join_path(victim, 'kind'), 'compiler_error')!
+		os.write_file(os.join_path(victim, 'source_name'), 'main.v')!
+		// Both consuming entry points must reject the caller-named directory.
+		entry_points := [
+			['-old-compiler', '-gc', 'none'], // the `-old-compiler` path
+			['-gc', 'none'], // reached with an inherited V_MACOS_V3_RETRY=1
+		]
+		for i, leading in entry_points {
+			output := os.join_path(root, 'main_bin_${i}')
+			os.rm(output) or {}
+			mut environment := os.environ()
+			environment['V_MACOS_V3_C_ERROR_DIR'] = victim
+			environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
+			environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
+			environment['VFLAGS'] = ''
+			environment['VOSARGS'] = ''
+			if i == 1 {
+				environment['V_MACOS_V3_RETRY'] = '1'
+			} else {
+				environment.delete('V_MACOS_V3_RETRY')
+			}
+			mut args := leading.clone()
+			args << ['-o', output, source]
+			mut process := os.new_process(@VEXE)
+			process.set_args(args)
+			process.set_environment(environment)
+			process.set_redirect_stdio()
+			process.run()
+			process.wait()
+			out := process.stdout_slurp() + process.stderr_slurp()
+			exit_code := process.code
+			process.close()
+			// The build succeeds on the established compiler, but the injected report is
+			// not consumed: no fallback notice, no bug report submission attempt.
+			assert exit_code == 0, out
+			assert !out.contains('could not build this program'), out
+			assert !out.contains('bug report'), out
+			// The caller-named directory and its unrelated file are left untouched.
+			assert os.is_dir(victim), out
+			assert os.is_file(secret), out
+			assert os.is_file(os.join_path(victim, 'main.v')), out
+		}
 	}
 }
 
@@ -1619,11 +2198,24 @@ fn test_macos_v3_default_executable_excludes_temporary_self_hosted_compilers() {
 }
 
 fn test_macos_v3_forwarded_args_strip_new_compiler_flag() {
-	$if macos {
+	$if macos || linux {
 		prefs := &pref.Preferences{}
 		forwarded := macos_v3_forwarded_args(prefs, ['-new-compiler', 'main.v'])
 		assert '-new-compiler' !in forwarded
 		assert 'main.v' in forwarded
+
+		run_prefs := &pref.Preferences{
+			is_run:   true
+			run_args: ['-new-compiler']
+		}
+		run_forwarded := macos_v3_forwarded_args(run_prefs, [
+			'-new-compiler',
+			'run',
+			'main.v',
+			'-new-compiler',
+		])
+		assert run_forwarded.count(it == '-new-compiler') == 1
+		assert run_forwarded.last() == '-new-compiler'
 	}
 }
 
@@ -1665,6 +2257,235 @@ fn test_macos_v3_force_requested_respects_hard_limits() {
 			path:           'main.v'
 			use_coroutines: true
 		})
+	}
+}
+
+// Autofree builds must never reach the ordinary embedded V3, which lacks
+// `ownership` support and would exit with "ownership support is not compiled into
+// this v3 executable". On macOS a direct autofree build is delegated to the
+// ownership compiler earlier; on Linux it is not, so implicit dispatch stays on
+// V1 while an explicit `-new-compiler` request is rejected. Unguarded: these gates
+// are shared by every platform's dispatcher (PR #28131 review).
+fn test_macos_v3_keeps_autofree_builds_off_non_ownership_v3() {
+	assert !is_macos_v3_relevant_command('build', &pref.Preferences{
+		autofree: true
+		path:     'main.v'
+	})
+	assert !is_macos_v3_relevant_command('run', &pref.Preferences{
+		autofree: true
+		is_run:   true
+		path:     'main.v'
+	})
+	assert !macos_v3_force_requested('build', &pref.Preferences{
+		new_compiler: true
+		autofree:     true
+		path:         'main.v'
+	})
+	assert !macos_v3_force_requested('run', &pref.Preferences{
+		new_compiler: true
+		autofree:     true
+		path:         'main.v'
+	})
+	assert macos_v3_explicit_autofree_is_unsupported(&pref.Preferences{
+		new_compiler: true
+		autofree:     true
+		path:         'main.v'
+	})
+	assert !macos_v3_explicit_autofree_is_unsupported(&pref.Preferences{
+		autofree: true
+		path:     'main.v'
+	})
+	assert !macos_v3_explicit_autofree_is_unsupported(&pref.Preferences{
+		new_compiler: true
+		old_compiler: true
+		autofree:     true
+		path:         'main.v'
+	})
+	// A plain build (no autofree) is still taken over by V3.
+	assert is_macos_v3_relevant_command('build', &pref.Preferences{
+		path: 'main.v'
+	})
+	assert macos_v3_force_requested('build', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+}
+
+fn test_linux_explicit_v3_autofree_build_is_rejected() {
+	$if linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_explicit_autofree_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, 'fn main() {}\n')!
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-new-compiler', '-autofree', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 1, output
+		assert output.contains('`-new-compiler` cannot be combined with `-autofree`'), output
+	}
+}
+
+fn test_explicit_v3_rejects_structured_v1_only_preferences() {
+	assert macos_v3_explicit_compilation_requested('build', &pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert macos_v3_explicit_compilation_requested('build', &pref.Preferences{
+		new_compiler: true
+		path:         'fixture.vv'
+	})
+	assert !macos_v3_explicit_compilation_requested('fmt', &pref.Preferences{
+		new_compiler: true
+		is_quiet:     true
+		path:         'main.v'
+	})
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler: true
+		sanitize:     true
+		path:         'main.v'
+	})
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler:   true
+		gc_set_by_flag: true
+		gc_mode:        .boehm_full_opt
+		path:           'main.v'
+	})
+	assert !macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler: true
+		path:         'main.v'
+	})
+	assert !macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler: true
+		old_compiler: true
+		sanitize:     true
+		path:         'main.v'
+	})
+}
+
+fn test_embedded_v3_explicit_vv_build_is_rejected() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_explicit_vv_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'fixture.vv')
+		os.write_file(source, 'fn main() {}\n')!
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-new-compiler', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 1, output
+		assert output.contains('options that require the established compiler'), output
+	}
+}
+
+fn test_explicit_v3_options_do_not_reject_external_tools() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_external_tool_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'formatted.v')
+	os.write_file(source, 'fn main() {}\n')!
+	mut environment := os.environ()
+	environment['VFLAGS'] = ''
+	environment['VOSARGS'] = ''
+	mut process := os.new_process(@VEXE)
+	process.set_args(['-new-compiler', '-q', 'fmt', '-verify', source])
+	process.set_environment(environment)
+	process.set_redirect_stdio()
+	process.run()
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	exit_code := process.code
+	process.close()
+	assert exit_code == 0, output
+	assert !output.contains('`-new-compiler` cannot be combined'), output
+}
+
+fn test_embedded_v3_explicit_sanitize_build_is_rejected() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_explicit_sanitize_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, 'fn main() {}\n')!
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-new-compiler', '-sanitize', source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 1, output
+		assert output.contains('options that require the established compiler'), output
+	}
+}
+
+// The executable-name gate is for implicit default dispatch only; an explicit
+// `-new-compiler` must still run V3 in-process even when the binary is installed or
+// copied under a name other than v/vnew, e.g. `vlang` (PR #28131 review).
+fn test_macos_v3_new_compiler_honored_for_renamed_executable() {
+	$if macos {
+		vroot := os.dir(@VEXE) // has vlib adjacent, so the renamed copy resolves vroot
+		renamed := os.join_path(vroot, 'vlang_renamed_${os.getpid()}')
+		os.cp(@VEXE, renamed) or { panic(err) }
+		os.chmod(renamed, 0o755) or {}
+		defer {
+			os.rm(renamed) or {}
+		}
+		src := os.join_path(os.real_path(os.vtmp_dir()), 'renamed_exe_${os.getpid()}.v')
+		os.write_file(src, 'fn main() {\n\tprintln(6 * 7)\n}\n')!
+		defer {
+			os.rm(src) or {}
+		}
+		mut environment := os.environ()
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(renamed)
+		process.set_args(['-v', '-new-compiler', 'run', src])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		out := process.stdout_slurp() + process.stderr_slurp()
+		code := process.code
+		process.close()
+		assert code == 0, out
+		assert out.contains('Running macOS V3 compiler in process:'), out
+		assert out.contains('42'), out
 	}
 }
 
