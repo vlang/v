@@ -13365,6 +13365,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				} else if inferred := t.building_v_math_generic_call_type(rhs) {
 					typ = inferred
 				}
+				if t.generic_arg_is_unresolved(typ) {
+					checker_typ := t.checker_node_type(rhs_id)
+					if decl_type_is_usable(checker_typ) && !t.generic_arg_is_unresolved(checker_typ) {
+						typ = checker_typ
+					}
+				}
 			}
 			if rhs.kind == .call && t.is_strings_builder_new_call(rhs_id, rhs) {
 				typ = 'strings.Builder'

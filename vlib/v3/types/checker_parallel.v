@@ -987,7 +987,10 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					continue
 				}
 				node_id := flat.NodeId(i)
-				if node.kind == .type_decl && tc.type_declaration_exists_before(node_id, node.value) {
+				is_c_alias := node.kind == .type_decl && node.value.starts_with('C.')
+					&& node.children_count == 0 && split_sum_variant_texts(node.typ).len <= 1
+				if node.kind == .type_decl && !is_c_alias
+					&& tc.type_declaration_exists_before(node_id, node.value) {
 					kind := if node.children_count > 0 || split_sum_variant_texts(node.typ).len > 1 {
 						'sum type'
 					} else {

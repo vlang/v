@@ -9487,9 +9487,6 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []str
 		}
 	}
 	target := t.generic_comptime_base_type(child_id, args) or { return none }
-	if child.kind == .ident && t.mut_param_values[child.value] && !target.starts_with('&') {
-		return '&${target}'
-	}
 	return target
 }
 

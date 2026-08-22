@@ -8281,7 +8281,9 @@ pub fn (mut tc TypeChecker) check_semantics() {
 						tc.check_pascal_case_name(node_id, node.value, type_kind, tc.declaration_keyword_name_pos(node_id,
 							'type'))
 					}
-					if tc.type_declaration_exists_before(node_id, node.value) {
+					is_c_alias := node.value.starts_with('C.') && node.children_count == 0
+						&& split_sum_variant_texts(node.typ).len <= 1
+					if !is_c_alias && tc.type_declaration_exists_before(node_id, node.value) {
 						kind := if node.children_count > 0
 							|| split_sum_variant_texts(node.typ).len > 1 {
 							'sum type'

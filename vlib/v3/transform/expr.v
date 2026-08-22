@@ -832,7 +832,8 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 			lhs_type = t.smartcast_target_type(sc)
 		}
 	}
-	if lhs_type.len == 0 {
+	if lhs_type.len == 0
+		|| (t.generic_arg_is_unresolved(lhs_type) && !t.generic_arg_is_unresolved(checker_lhs_type)) {
 		lhs_type = checker_lhs_type
 	}
 	lhs_node := t.a.nodes[int(lhs_id)]
@@ -1204,6 +1205,12 @@ fn (t &Transformer) raw_checker_node_type(id flat.NodeId) string {
 }
 
 fn (t &Transformer) raw_alias_type_for_expr(id flat.NodeId) string {
+	if raw_var_type := t.raw_var_type_for_expr(id) {
+		clean_var_type := t.trim_pointer_type(raw_var_type)
+		if t.is_type_alias_name(clean_var_type) {
+			return raw_var_type
+		}
+	}
 	raw_type := t.raw_checker_node_type(id)
 	if raw_type.len == 0 {
 		return ''
@@ -1212,6 +1219,17 @@ fn (t &Transformer) raw_alias_type_for_expr(id flat.NodeId) string {
 	clean := t.trim_pointer_type(raw_type)
 	if t.is_type_alias_name(clean) {
 		return raw_type
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .infix && node.children_count > 0 {
+		lhs_id := t.a.child(&node, 0)
+		if lhs_type := t.raw_var_type_for_expr(lhs_id) {
+			clean_lhs_type := t.trim_pointer_type(lhs_type)
+			if t.is_type_alias_name(clean_lhs_type)
+				&& t.normalize_type_alias(clean_lhs_type) == t.normalize_type_alias(clean) {
+				return lhs_type
+			}
+		}
 	}
 	if is_ptr {
 		return ''

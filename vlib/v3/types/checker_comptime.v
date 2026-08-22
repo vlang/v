@@ -3595,7 +3595,7 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	}
 	if node.op == .amp && address_child.kind == .index && address_child.children_count > 0 {
 		base_id := tc.a.child(&address_child, 0)
-		base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(base_id))
+		base_type := unwrap_pointer(tc.resolve_type(base_id))
 		if base_type is Map && tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
 			tc.record_error_at(.assignment_mismatch,
 				'cannot take the address of map values outside `unsafe`', child_id,
