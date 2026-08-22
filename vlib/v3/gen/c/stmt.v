@@ -672,8 +672,38 @@ fn (mut g FlatGen) gen_return_cleanup_with_result(tmp string) {
 	g.defer_return_tmp_var = old_tmp
 }
 
+// ownership_drop_target_in_scope reports whether a drop entry names a variable bound at
+// the current emission point. Compiler-generated temporaries carry no source binding and
+// are always emittable; only source locals are checked.
+fn (g &FlatGen) ownership_drop_target_in_scope(name string) bool {
+	if name.len == 0 || name.contains('.') || name.contains('[') {
+		return true
+	}
+	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
+		return true
+	}
+	if _ := g.tc.cur_scope.lookup_owner(name) {
+		return true
+	}
+	return false
+}
+
 fn (mut g FlatGen) gen_current_return_ownership_drops() {
 	g.gen_ownership_drops(g.cur_return_drops)
+}
+
+// take_return_ownership_drops_for_node keeps the positional counter in step for the
+// paths that still rely on it, but answers from the node-keyed list whenever the
+// checker recorded one for this return. The positional index counts returns as the
+// transformer left them, so a lowered construct that adds or removes one shifts every
+// later return; the node id does not move.
+fn (mut g FlatGen) take_return_ownership_drops_for_node(id flat.NodeId) []types.OwnershipDropEntry {
+	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
+	positional := g.take_return_ownership_drops()
+	if g.tc.ownership_has_return_node(fn_name, id) {
+		return g.take_return_node_ownership_drops(id)
+	}
+	return positional
 }
 
 fn (mut g FlatGen) take_return_ownership_drops() []types.OwnershipDropEntry {
@@ -732,18 +762,18 @@ fn (mut g FlatGen) take_propagation_ownership_drops() []types.OwnershipDropEntry
 	return entries
 }
 
-fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node) []types.OwnershipDropEntry {
+fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node, id flat.NodeId) []types.OwnershipDropEntry {
 	mut entries := []types.OwnershipDropEntry{}
 	if source_id := transformed_return_source_id(node.value) {
 		entries = g.take_transformed_return_ownership_drops(source_id)
 	} else if node.typ.len == 0 {
-		entries = g.take_return_ownership_drops()
+		entries = g.take_return_ownership_drops_for_node(id)
 	} else if node.typ[0] !in [`!`, `?`] {
 		entries = []types.OwnershipDropEntry{}
 	} else if return_node_is_direct_optional_forward(node.value)
 		|| node.value == optional_success_return_value
 		|| g.return_stmt_is_explicit_optional_failure(node) {
-		entries = g.take_return_ownership_drops()
+		entries = g.take_return_ownership_drops_for_node(id)
 	} else {
 		entries = g.take_propagation_ownership_drops()
 	}
@@ -756,6 +786,17 @@ fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node) []types.Owne
 	}
 	g.pending_return_scope_drops = []types.OwnershipDropEntry{}
 	return combined
+}
+
+// call_is_optional_failure_constructor reports whether a call node builds an optional
+// failure value (`error`, `error_with_code`), which cgen wraps in the enclosing
+// function's optional return type.
+fn (g &FlatGen) call_is_optional_failure_constructor(node flat.Node) bool {
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	fn_n := g.a.child_node(&node, 0)
+	return fn_n.value == 'error' || fn_n.value == 'error_with_code'
 }
 
 fn (g &FlatGen) return_stmt_is_explicit_optional_failure(node flat.Node) bool {
@@ -819,6 +860,15 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
 
 fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 	for entry in entries {
+		if !g.ownership_drop_target_in_scope(entry.name) {
+			// The drop lists are matched to emission sites by ordinal, so a lowering that
+			// adds or removes a block hands one site another site's list. Emitting it
+			// produces C naming an identifier that is not in scope, which the C compiler
+			// then resolves against libc. Skip rather than emit unbuildable C, and leave
+			// a marker so the miss is greppable in the generated source.
+			g.writeln('/* v3: ownership drop for `${entry.name}` skipped, not in scope here */')
+			continue
+		}
 		cname := g.cname(entry.name)
 		typ := g.tc.parse_type(entry.type_name)
 		mut expr := cname
@@ -891,13 +941,36 @@ fn (g &FlatGen) ownership_recursive_drop_helper_types() map[string]string {
 	return representatives
 }
 
+// ownership_live_drop_value_type_names narrows the destructor set to the types reachable
+// from functions that survived dead-code elimination. The checker records cleanup sites
+// for every function it saw, including ones markused later removed, so without this a
+// program gets destructors it can never call. The liveness test is the same one that
+// decides whether the function body is emitted at all, so it cannot disagree with it.
+fn (g &FlatGen) ownership_live_drop_value_type_names() []string {
+	if !g.has_used_fn_filter() {
+		return g.tc.ownership_drop_value_type_names()
+	}
+	mut names := map[string]bool{}
+	for fn_name, type_names in g.tc.ownership_drop_value_type_names_by_fn() {
+		if fn_name.len > 0 && !g.used_fn_contains_in_module(fn_name, '') {
+			continue
+		}
+		for type_name in type_names {
+			names[type_name] = true
+		}
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
 fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 	g.recursive_drop_helpers.clear()
 	$if !ownership ? {
 		return
 	}
 	mut drop_struct_names := map[string]bool{}
-	for type_name in g.tc.ownership_drop_value_type_names() {
+	for type_name in g.ownership_live_drop_value_type_names() {
 		mut seen := map[string]bool{}
 		g.ownership_collect_drop_struct_names(g.tc.parse_type(type_name), 0, mut drop_struct_names, mut
 			seen)
@@ -2501,7 +2574,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			old_return_node_id := g.cur_return_node_id
 			old_return_drops := g.cur_return_drops.clone()
 			g.cur_return_node_id = int(id)
-			g.cur_return_drops = g.take_return_stmt_ownership_drops(node)
+			g.cur_return_drops = g.take_return_stmt_ownership_drops(node, id)
 			defer {
 				g.cur_return_node_id = old_return_node_id
 				g.cur_return_drops = old_return_drops
@@ -4507,6 +4580,13 @@ fn (mut g FlatGen) gen_autofree_discarded_owned_call(id flat.NodeId, node flat.N
 	}
 	typ := g.usable_expr_type(id)
 	if typ is types.Void || typ is types.Unknown || !g.tc.ownership_type_requires_destruction(typ) {
+		return false
+	}
+	if g.call_is_optional_failure_constructor(node) && g.cur_fn_ret_is_optional {
+		// `error(...)` as a bare expression statement inside a function returning an
+		// optional: gen_expr wraps the call in the function's `Optional_T`, so a temp
+		// declared as the call's own type would be initialised from the wrapper. Leave
+		// the statement alone rather than emit C that cannot compile.
 		return false
 	}
 	tmp := '__discarded_owned_${g.tmp_count}'

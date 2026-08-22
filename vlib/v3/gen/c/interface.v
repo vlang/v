@@ -1724,7 +1724,10 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 					'*(${g.cname(concrete)}*)i->_object'
 				}
 				g.write('\t\tcase ${id}: ')
-				mut call := '${g.cname(concrete)}__${method}(${recv}'
+				concrete_key := g.tc.concrete_method_signature_key(concrete, method) or {
+					'${concrete}.${method}'
+				}
+				mut call := '${g.interface_method_call_cname(concrete_key)}(${recv}'
 				for ai, an in arg_names {
 					arg_idx := ai + 1
 					concrete_param := if arg_idx < concrete_params.len {
@@ -1782,7 +1785,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
 			recv := g.interface_dispatch_receiver_expr(concrete, concrete_params, recv_is_ptr)
 			g.write('\t\tcase ${id}: ')
-			mut call := '${g.cname(method_key)}(${recv}'
+			mut call := '${g.interface_method_call_cname(method_key)}(${recv}'
 			for ai, an in arg_names {
 				arg_idx := ai + 1
 				concrete_param := if arg_idx < concrete_params.len {
@@ -2289,6 +2292,24 @@ fn (g &FlatGen) interface_unaliased_type(typ types.Type) types.Type {
 	return clean
 }
 
+// interface_method_call_cname resolves a concrete implementer's method to the symbol its
+// definition is emitted under. In autofree mode a `main` module method is emitted as
+// `main__Recv_method` rather than `Recv__method`, so a dispatch switch built from the
+// plain name calls a symbol that does not exist. Resolve it the same way the rest of
+// cgen resolves such a legacy name: build the candidate and keep it only if it is a
+// symbol that was actually emitted.
+fn (g &FlatGen) interface_method_call_cname(method_key string) string {
+	plain := g.cname(method_key)
+	if !g.tc.autofree_mode {
+		return plain
+	}
+	candidate := g.qualified_fn_name_in_module_c('main', method_key.trim_string_left('main.'))
+	if candidate != plain && g.c_fn_symbol_exists(candidate) {
+		return candidate
+	}
+	return plain
+}
+
 fn (mut g FlatGen) interface_custom_str_expr(type_name string, typ types.Type, expr string) ?string {
 	method_key := g.tc.concrete_method_signature_key(type_name, 'str') or { return none }
 	if typ is types.Alias {
@@ -2308,7 +2329,7 @@ fn (mut g FlatGen) interface_custom_str_expr(type_name string, typ types.Type, e
 	} else {
 		if typ is types.Pointer { '*(${expr})' } else { expr }
 	}
-	return '${g.cname(method_key)}(${arg})'
+	return '${g.interface_method_call_cname(method_key)}(${arg})'
 }
 
 fn (mut g FlatGen) interface_pointer_str_expr(base_type types.Type, expr string, prefix_pointer bool, mut stack []string) ?string {

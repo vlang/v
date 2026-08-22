@@ -9366,9 +9366,12 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 	entries := tc.ownership_live_drop_entries()
 	return_index := st.drop_return_counts[st.cur_fn] or { 0 }
 	st.drop_return_counts[st.cur_fn] = return_index + 1
+	// Record the node-keyed list for every return, empty or not. Its presence is what
+	// lets cgen tell "no drops here" from "this return is not one the checker saw", so
+	// a return never has to fall back to the positional index.
+	st.drop_at_return_nodes['${st.cur_fn}\x01${int(id)}'] = entries
 	if entries.len > 0 {
 		st.drop_at_returns['${st.cur_fn}\x01${return_index}'] = entries
-		st.drop_at_return_nodes['${st.cur_fn}\x01${int(id)}'] = entries
 		tc.ownership_note_drop_types(st.cur_fn, entries)
 	}
 	tc.ownership_check_return_defers()
@@ -11331,6 +11334,16 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_return(fn_name string, index 
 
 // ownership_drop_entries_at_return_node returns the destructor snapshot recorded
 // for the original return node, used by transformer-expanded return paths.
+// ownership_has_return_node reports whether the checker recorded a drop list for this
+// return node. An empty list is still a recorded answer, so callers can use the
+// node-keyed lookup instead of a positional index.
+pub fn (tc &TypeChecker) ownership_has_return_node(fn_name string, id flat.NodeId) bool {
+	if tc.ownership == unsafe { nil } {
+		return false
+	}
+	return '${fn_name}\x01${int(id)}' in tc.ownership.drop_at_return_nodes
+}
+
 pub fn (tc &TypeChecker) ownership_drop_entries_at_return_node(fn_name string, id flat.NodeId) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
@@ -11409,6 +11422,48 @@ fn ownership_collect_drop_value_type_names(entries []OwnershipDropEntry, mut nam
 
 // ownership_drop_value_type_names returns the types of values referenced by
 // compiler-generated ownership cleanup sites.
+// ownership_drop_value_type_names_by_fn groups the same type names by the function whose
+// cleanup sites reference them, so a caller that knows which functions survived dead-code
+// elimination can skip the destructors only the eliminated ones needed.
+pub fn (tc &TypeChecker) ownership_drop_value_type_names_by_fn() map[string][]string {
+	mut result := map[string][]string{}
+	if tc.ownership == unsafe { nil } {
+		return result
+	}
+	mut per_fn := map[string]map[string]bool{}
+	for key, entries in tc.ownership.drop_at_fn_exit {
+		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
+	}
+	for key, entries in tc.ownership.drop_at_returns {
+		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
+	}
+	for key, entries in tc.ownership.drop_at_return_nodes {
+		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
+	}
+	for key, entries in tc.ownership.drop_at_propagations {
+		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
+	}
+	for key, entries in tc.ownership.drop_at_loop_controls {
+		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
+	}
+	for key, entries in tc.ownership.drop_at_loop_iterations {
+		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
+	}
+	for key, entries in tc.ownership.drop_at_scope_exit {
+		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
+	}
+	for fn_name, names in per_fn {
+		mut sorted := names.keys()
+		sorted.sort()
+		result[fn_name] = sorted
+	}
+	return result
+}
+
+fn ownership_drop_key_fn(key string) string {
+	return key.all_before('\x01')
+}
+
 pub fn (tc &TypeChecker) ownership_drop_value_type_names() []string {
 	if tc.ownership == unsafe { nil } {
 		return []string{}
