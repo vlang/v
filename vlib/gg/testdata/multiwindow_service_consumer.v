@@ -36,7 +36,8 @@ fn consume_service_surface(mut app gg.App, id gg.WindowId, monitor gg.WindowMoni
 		owner: id
 		modal: true
 	}
-	_ = app.window_state(id)!
+	state := app.window_state(id)!
+	_ = state.monitor_membership_observed
 	_ = app.monitor_ids()!
 	_ = app.monitor_info(monitor)!
 	for operation in [gg.WindowOperation.native_borrow, .image_readback, .window_capture] {

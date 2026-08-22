@@ -161,7 +161,10 @@ pub:
 	mouse_locked WindowObservedBool
 	position     WindowPosition
 	monitor_ids  []WindowMonitorId
-	sequence     u64
+	// monitor_membership_observed distinguishes an observed empty membership
+	// from a partial state observation which did not report monitors.
+	monitor_membership_observed bool
+	sequence                    u64
 }
 
 // ClipboardRequestId identifies one accepted asynchronous clipboard request.

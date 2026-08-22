@@ -2428,15 +2428,18 @@ fn test_x11_backend_native_deps_are_flag_gated_source_guard() {
 	source := multiwindow_source_file('x11_backend.c.v')
 	guarded_native_deps :=
 		source.all_after('$if linux && x_multiwindow_x11 ? {').all_before('\n}\n\nconst x11_client_message')
-	assert guarded_native_deps.contains('#flag linux -lX11')
+	assert guarded_native_deps.contains('#flag linux -lX11-xcb')
+	assert guarded_native_deps.split_into_lines().count(it == '\t#flag linux -lX11') == 1
 	assert guarded_native_deps.contains('#flag linux -lxcb')
 	assert guarded_native_deps.contains('#flag linux -lEGL')
 	assert guarded_native_deps.contains('#flag linux -lGL')
-	assert source.count('#flag linux -lX11') == 1
+	assert source.count('#flag linux -lX11-xcb') == 1
+	assert source.split_into_lines().count(it == '\t#flag linux -lX11') == 1
 	assert source.count('#flag linux -lxcb') == 1
 	assert source.count('#flag linux -lEGL') == 1
 	assert source.count('#flag linux -lGL') == 1
 	assert source.contains('$if gg_multiwindow ? || x_multiwindow_render ? {\n\timport sokol.gfx')
+	assert guarded_native_deps.contains('\t#flag linux -lX11-xcb\n\t#flag linux -lX11\n')
 	assert_source_order(guarded_native_deps, '#flag linux -lX11', '#include <X11/Xlib.h>')
 }
 
@@ -2480,6 +2483,9 @@ fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
 	assert x11_backend_source.contains('C.XSendEvent')
 	assert x11_backend_source.contains('#flag linux -lxcb')
 	assert x11_helper_source.contains('#include <xcb/xcb.h>')
+	assert x11_helper_source.contains('#include <X11/Xlib-xcb.h>')
+	assert x11_helper_source.contains('XGetXCBConnection(display)')
+	assert !x11_helper_source.contains('XSetEventQueueOwner')
 	assert x11_helper_source.contains('xcb_connect(display_name, NULL)')
 	assert x11_helper_source.contains('xcb_send_event_checked')
 	assert x11_helper_source.contains('xcb_request_check')
@@ -2821,6 +2827,11 @@ fn test_x11_config_hints_are_applied_before_mapping() {
 
 fn test_x11_stale_window_snapshots_use_only_checked_xcb_requests() {
 	helpers := multiwindow_source_file('x11_egl_backend_helpers.h')
+	shared_connection_body :=
+		helpers.all_after('v_multiwindow_x11_shared_connection(Display *display)').all_before('static inline int v_multiwindow_x11_shared_connection_usable')
+	assert shared_connection_body.contains('XGetXCBConnection(display)')
+	assert shared_connection_body.contains('xcb_connection_has_error(connection)')
+	assert !helpers.contains('XSetEventQueueOwner')
 	snapshot :=
 		helpers.all_after('v_multiwindow_x11_checked_window_snapshot').all_before('static inline int v_multiwindow_x11_send_event_checked')
 	for required in ['xcb_get_window_attributes_reply', 'xcb_get_geometry_reply',
@@ -2861,6 +2872,31 @@ fn test_x11_stale_window_snapshots_use_only_checked_xcb_requests() {
 	for body in [probe, size, render] {
 		assert body.contains('v_multiwindow_x11_checked_window_snapshot')
 		assert !body.contains('XGetWindowAttributes')
+	}
+	mouse_lock :=
+		helpers.all_after('v_multiwindow_x11_acquire_mouse_lock_checked').all_before('static inline int v_multiwindow_x11_center_pointer_checked')
+	for required in ['v_multiwindow_x11_shared_connection', 'xcb_grab_pointer_reply',
+		'v_multiwindow_x11_checked_window_snapshot', 'xcb_warp_pointer_checked',
+		'xcb_ungrab_pointer_checked', 'v_multiwindow_x11_checked_void_request_ok'] {
+		assert mouse_lock.contains(required), 'missing checked same-client mouse-lock `${required}`'
+	}
+	for forbidden in ['XGrabPointer', 'XGetWindowAttributes', 'XWarpPointer', 'XSetErrorHandler'] {
+		assert !mouse_lock.contains(forbidden), 'unsafe Xlib mouse-lock call `${forbidden}` remains'
+	}
+	recenter :=
+		helpers.all_after('v_multiwindow_x11_center_pointer_checked').all_before('static inline int v_multiwindow_x11_set_selection_owner_checked')
+	for required in ['v_multiwindow_x11_checked_window_snapshot', 'xcb_warp_pointer_checked',
+		'v_multiwindow_x11_checked_void_request_ok'] {
+		assert recenter.contains(required), 'missing checked same-client recenter `${required}`'
+	}
+	clipboard_owner :=
+		helpers.all_after('v_multiwindow_x11_set_selection_owner_checked').all_before('#ifdef V_MULTIWINDOW_NATIVE_PROOF_TEST')
+	for required in ['xcb_set_selection_owner_checked', 'v_multiwindow_x11_checked_void_request_ok',
+		'xcb_get_selection_owner_reply'] {
+		assert clipboard_owner.contains(required), 'missing checked same-client clipboard owner `${required}`'
+	}
+	for forbidden in ['XSetSelectionOwner', 'XGetSelectionOwner', 'XSetErrorHandler'] {
+		assert !clipboard_owner.contains(forbidden), 'unsafe Xlib clipboard-owner call `${forbidden}` remains'
 	}
 	x11_backend := multiwindow_source_file('x11_backend.c.v')
 	window_state :=

@@ -481,9 +481,10 @@ only after renderer and window cleanup completes.
 
 - X11 support is compiled only with `-d x_multiwindow_x11`; without that flag,
   the X11 backend is unsupported and X11/EGL/OpenGL libraries are not linked by
-  low-level lifecycle or `.mock` imports. Enabled X11 builds link both Xlib and
-  XCB; on Debian-family systems `libx11-dev` supplies the `libxcb1-dev`
-  dependency.
+  low-level lifecycle or `.mock` imports. Enabled X11 builds link Xlib, XCB,
+  and the same-client Xlib/XCB bridge; on Debian-family systems install
+  `libx11-dev` and `libx11-xcb-dev` (which supply the XCB development
+  dependency).
 - Wayland support is compiled only with `-d sokol_wayland`; without that flag,
   the Wayland backend is unsupported and Wayland libraries are not linked.
 - Wayland programmatic resize is currently unsupported.

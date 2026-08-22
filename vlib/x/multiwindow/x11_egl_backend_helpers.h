@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <X11/Xlib.h>
+#include <X11/Xlib-xcb.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
@@ -20,6 +21,19 @@ typedef struct {
 	int width;
 	int height;
 } VMultiwindowX11CheckedWindowSnapshot;
+
+static inline xcb_connection_t *v_multiwindow_x11_shared_connection(Display *display) {
+	if (display == NULL) {
+		return NULL;
+	}
+	xcb_connection_t *connection = XGetXCBConnection(display);
+	return connection != NULL && xcb_connection_has_error(connection) == 0
+		? connection : NULL;
+}
+
+static inline int v_multiwindow_x11_shared_connection_usable(Display *display) {
+	return v_multiwindow_x11_shared_connection(display) != NULL;
+}
 
 static inline void *v_multiwindow_x11_open_checked_connection(Display *display) {
 	if (display == NULL) {
@@ -1557,35 +1571,154 @@ static inline unsigned long v_multiwindow_x11_create_clipboard_requestor(
 		InputOnly, CopyFromParent, CWEventMask, &attributes);
 }
 
-static inline int v_multiwindow_x11_set_mouse_lock(Display *display, unsigned long window, int enabled) {
-	if (display == NULL || window == 0) {
-		return 0;
+static inline void v_multiwindow_x11_release_mouse_lock(Display *display) {
+	if (display == NULL) {
+		return;
 	}
-	if (!enabled) {
-		XUngrabPointer(display, CurrentTime);
-		return 1;
+	XLockDisplay(display);
+	XFlush(display);
+	xcb_connection_t *connection = v_multiwindow_x11_shared_connection(display);
+	if (connection != NULL) {
+		xcb_void_cookie_t cookie = xcb_ungrab_pointer_checked(connection, XCB_CURRENT_TIME);
+		(void)v_multiwindow_x11_checked_void_request_ok(connection, cookie);
+		xcb_flush(connection);
 	}
-	int status = XGrabPointer(display, (Window)window, True,
-		ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
-		GrabModeAsync, GrabModeAsync, (Window)window, None, CurrentTime);
-	return status == GrabSuccess;
+	XUnlockDisplay(display);
 }
 
-static inline int v_multiwindow_x11_center_pointer(Display *display, unsigned long window,
+#ifdef V_MULTIWINDOW_NATIVE_PROOF_TEST
+static int v_multiwindow_x11_destroy_mouse_lock_target_after_grab_for_test;
+
+static inline void v_multiwindow_x11_destroy_mouse_lock_target_after_grab_once_for_test(void) {
+	v_multiwindow_x11_destroy_mouse_lock_target_after_grab_for_test = 1;
+}
+#endif
+
+static inline int v_multiwindow_x11_acquire_mouse_lock_checked(Display *display,
+		unsigned long window, int *center_x, int *center_y) {
+	if (display == NULL || window == 0 || center_x == NULL || center_y == NULL) {
+		return 0;
+	}
+	XLockDisplay(display);
+	XFlush(display);
+	xcb_connection_t *connection = v_multiwindow_x11_shared_connection(display);
+	int next_center_x = 0;
+	int next_center_y = 0;
+	int grabbed = 0;
+	int ok = 0;
+	if (connection != NULL) {
+		xcb_grab_pointer_cookie_t cookie = xcb_grab_pointer(connection, 1,
+			(xcb_window_t)window,
+			XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE
+				| XCB_EVENT_MASK_POINTER_MOTION,
+			XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, (xcb_window_t)window,
+			XCB_NONE, XCB_CURRENT_TIME);
+		xcb_generic_error_t *error = NULL;
+		xcb_grab_pointer_reply_t *reply = xcb_grab_pointer_reply(connection, cookie, &error);
+		grabbed = reply != NULL && error == NULL
+			&& reply->status == XCB_GRAB_STATUS_SUCCESS
+			&& xcb_connection_has_error(connection) == 0;
+		free(reply);
+		free(error);
+	}
+	if (grabbed) {
+#ifdef V_MULTIWINDOW_NATIVE_PROOF_TEST
+		if (v_multiwindow_x11_destroy_mouse_lock_target_after_grab_for_test) {
+			v_multiwindow_x11_destroy_mouse_lock_target_after_grab_for_test = 0;
+			xcb_destroy_window(connection, (xcb_window_t)window);
+		}
+#endif
+		VMultiwindowX11CheckedWindowSnapshot snapshot;
+		if (v_multiwindow_x11_checked_window_snapshot(connection, window, &snapshot)
+				&& snapshot.map_state == XCB_MAP_STATE_VIEWABLE
+				&& snapshot.width > 0 && snapshot.height > 0) {
+			next_center_x = snapshot.width / 2;
+			next_center_y = snapshot.height / 2;
+			xcb_void_cookie_t warp_cookie = xcb_warp_pointer_checked(connection, XCB_NONE,
+				(xcb_window_t)window, 0, 0, 0, 0, (int16_t)next_center_x,
+				(int16_t)next_center_y);
+			ok = v_multiwindow_x11_checked_void_request_ok(connection, warp_cookie);
+		}
+	}
+	if (!ok && grabbed) {
+		xcb_void_cookie_t ungrab_cookie = xcb_ungrab_pointer_checked(connection,
+			XCB_CURRENT_TIME);
+		(void)v_multiwindow_x11_checked_void_request_ok(connection, ungrab_cookie);
+	}
+	if (connection != NULL) {
+		xcb_flush(connection);
+	}
+	XUnlockDisplay(display);
+	if (!ok) {
+		return 0;
+	}
+	*center_x = next_center_x;
+	*center_y = next_center_y;
+	return 1;
+}
+
+static inline int v_multiwindow_x11_center_pointer_checked(Display *display, unsigned long window,
 		int *center_x, int *center_y) {
 	if (display == NULL || window == 0 || center_x == NULL || center_y == NULL) {
 		return 0;
 	}
-	XWindowAttributes attrs;
-	if (!XGetWindowAttributes(display, (Window)window, &attrs)
-		|| attrs.map_state != IsViewable || attrs.width <= 0 || attrs.height <= 0) {
+	XLockDisplay(display);
+	XFlush(display);
+	xcb_connection_t *connection = v_multiwindow_x11_shared_connection(display);
+	int next_center_x = 0;
+	int next_center_y = 0;
+	int ok = 0;
+	VMultiwindowX11CheckedWindowSnapshot snapshot;
+	if (v_multiwindow_x11_checked_window_snapshot(connection, window, &snapshot)
+			&& snapshot.map_state == XCB_MAP_STATE_VIEWABLE
+			&& snapshot.width > 0 && snapshot.height > 0) {
+		next_center_x = snapshot.width / 2;
+		next_center_y = snapshot.height / 2;
+		xcb_void_cookie_t cookie = xcb_warp_pointer_checked(connection, XCB_NONE,
+			(xcb_window_t)window, 0, 0, 0, 0, (int16_t)next_center_x,
+			(int16_t)next_center_y);
+		ok = v_multiwindow_x11_checked_void_request_ok(connection, cookie);
+	}
+	if (connection != NULL) {
+		xcb_flush(connection);
+	}
+	XUnlockDisplay(display);
+	if (!ok) {
 		return 0;
 	}
-	*center_x = attrs.width / 2;
-	*center_y = attrs.height / 2;
-	XWarpPointer(display, None, (Window)window, 0, 0, 0, 0, *center_x, *center_y);
-	XFlush(display);
+	*center_x = next_center_x;
+	*center_y = next_center_y;
 	return 1;
+}
+
+static inline int v_multiwindow_x11_set_selection_owner_checked(Display *display,
+		unsigned long selection, unsigned long owner, unsigned long time) {
+	if (display == NULL || selection == 0 || owner == 0) {
+		return 0;
+	}
+	XLockDisplay(display);
+	XFlush(display);
+	xcb_connection_t *connection = v_multiwindow_x11_shared_connection(display);
+	int ok = 0;
+	if (connection != NULL) {
+		xcb_void_cookie_t set_cookie = xcb_set_selection_owner_checked(connection,
+			(xcb_window_t)owner, (xcb_atom_t)selection, (xcb_timestamp_t)time);
+		if (v_multiwindow_x11_checked_void_request_ok(connection, set_cookie)) {
+			xcb_get_selection_owner_cookie_t owner_cookie =
+				xcb_get_selection_owner(connection, (xcb_atom_t)selection);
+			xcb_generic_error_t *error = NULL;
+			xcb_get_selection_owner_reply_t *reply =
+				xcb_get_selection_owner_reply(connection, owner_cookie, &error);
+			ok = reply != NULL && error == NULL
+				&& reply->owner == (xcb_window_t)owner
+				&& xcb_connection_has_error(connection) == 0;
+			free(reply);
+			free(error);
+		}
+		xcb_flush(connection);
+	}
+	XUnlockDisplay(display);
+	return ok;
 }
 
 #ifdef V_MULTIWINDOW_NATIVE_PROOF_TEST

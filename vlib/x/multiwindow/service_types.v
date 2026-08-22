@@ -197,11 +197,10 @@ pub:
 	mouse_locked ServiceObservedBool
 	position     ServicePosition
 	monitor_ids  []ServiceMonitorId
-	sequence     u64
-mut:
 	// monitor_membership_observed distinguishes an observed empty membership
 	// from a partial state observation which did not report monitors.
 	monitor_membership_observed bool
+	sequence                    u64
 }
 
 // ServiceRequestId identifies one accepted asynchronous service request.

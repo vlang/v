@@ -152,9 +152,16 @@ fn x11_run_stale_xid_child_for_test(mode string) ! {
 			return error(err_window_not_found)
 		}
 		native := app.backend.x11.windows[index].window
+		if mode == 'clipboard_owner' {
+			sentinel := app.service_set_clipboard_text(live_window, 'checked-owner-sentinel')!
+			sentinel_events := app.drain_queued_events()!
+			assert sentinel_events.len == 1
+			assert sentinel_events[0].service.clipboard.id == sentinel
+			assert sentinel_events[0].service.clipboard.status == .ready
+		}
 		if mode == 'property' {
 			app.backend.x11.service_queue_wm_state_then_destroy_for_test(window)!
-		} else if mode != 'readback' {
+		} else if mode !in ['readback', 'mouse_lock_after_grab'] {
 			app.backend.x11.service_destroy_native_window_retaining_record_for_test(window)!
 		}
 		retained_index := app.backend.x11.window_record_index(window) or {
@@ -192,6 +199,63 @@ fn x11_run_stale_xid_child_for_test(mode string) ! {
 					position_error = err.msg()
 				}
 				assert position_error == err_capability_unsupported
+			}
+			'mouse_lock' {
+				mut mouse_lock_error := ''
+				app.backend.x11.service_set_mouse_lock(window, true) or {
+					mouse_lock_error = err.msg()
+				}
+				assert mouse_lock_error == err_capability_unsupported
+				assert !app.backend.x11.windows[index].mouse_locked
+				_ = app.backend.x11.service_set_mouse_lock(live_window, true)!
+				live_index := app.backend.x11.window_record_index(live_window) or {
+					return error(err_window_not_found)
+				}
+				assert app.backend.x11.windows[live_index].mouse_locked
+				_ = app.backend.x11.service_set_mouse_lock(live_window, false)!
+				assert !app.backend.x11.windows[live_index].mouse_locked
+			}
+			'mouse_lock_after_grab' {
+				C.v_multiwindow_x11_destroy_mouse_lock_target_after_grab_once_for_test()
+				mut mouse_lock_error := ''
+				app.backend.x11.service_set_mouse_lock(window, true) or {
+					mouse_lock_error = err.msg()
+				}
+				assert mouse_lock_error == err_capability_unsupported
+				assert !app.backend.x11.windows[index].mouse_locked
+				_ = app.backend.x11.service_set_mouse_lock(live_window, true)!
+				live_index := app.backend.x11.window_record_index(live_window) or {
+					return error(err_window_not_found)
+				}
+				assert app.backend.x11.windows[live_index].mouse_locked
+				_ = app.backend.x11.service_set_mouse_lock(live_window, false)!
+			}
+			'clipboard_owner' {
+				live_index := app.backend.x11.window_record_index(live_window) or {
+					return error(err_window_not_found)
+				}
+				live_native := app.backend.x11.windows[live_index].window
+				assert app.backend.x11.clipboard_owner_window == live_native
+				assert app.backend.x11.clipboard_owner_id == live_window
+				assert app.backend.x11.clipboard_text == 'checked-owner-sentinel'
+				mut clipboard_error := ''
+				app.service_set_clipboard_text(window, 'must-not-commit') or {
+					clipboard_error = err.msg()
+				}
+				assert clipboard_error == err_capability_unsupported
+				assert app.backend.x11.clipboard_owner_window == live_native
+				assert app.backend.x11.clipboard_owner_id == live_window
+				assert app.backend.x11.clipboard_text == 'checked-owner-sentinel'
+				utf8, legacy := app.backend.x11.service_clipboard_targets_for_test(live_window,
+					live_window)!
+				assert utf8
+				assert !legacy
+				live_write := app.service_set_clipboard_text(live_window,
+					'checked-owner-live-retry')!
+				live_events := app.drain_queued_events()!
+				assert live_events.len == 1
+				assert live_events[0].service.clipboard.id == live_write
+				assert live_events[0].service.clipboard.status == .ready
 			}
 			'restore' {
 				mut restore_error := ''
@@ -238,6 +302,7 @@ fn x11_run_stale_xid_child_for_test(mode string) ! {
 			}
 		}
 		assert app.backend.x11.service_checked_connection_usable_for_test()
+		assert app.backend.x11.service_shared_connection_usable_for_test()
 		_ = app.backend.x11.service_window_state(live_window)!
 		assert app.service_operation_capability(live_window, .window_capture)!.support == .available
 		if !already_polled {
@@ -263,8 +328,9 @@ fn test_x11_checked_queries_survive_retained_destroyed_window() {
 		if os.getenv('DISPLAY') == '' {
 			return
 		}
-		mut modes := ['show', 'hide', 'focus', 'raise', 'position', 'restore', 'state', 'probe',
-			'size', 'readback', 'property', 'requestor', 'requestor_bad_atom', 'requestor_incr',
+		mut modes := ['show', 'hide', 'focus', 'raise', 'position', 'mouse_lock',
+			'mouse_lock_after_grab', 'clipboard_owner', 'restore', 'state', 'probe', 'size',
+			'readback', 'property', 'requestor', 'requestor_bad_atom', 'requestor_incr',
 			'requestor_supersede', 'requestor_destroy_before_chunk']
 		$if gg_multiwindow ? || x_multiwindow_render ? {
 			modes << 'render'

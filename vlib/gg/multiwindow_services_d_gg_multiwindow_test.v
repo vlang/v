@@ -3,6 +3,17 @@ module gg
 
 import x.multiwindow
 
+fn test_multiwindow_service_window_state_preserves_observed_empty_monitor_membership() {
+	unknown := window_state_from_core(multiwindow.ServiceWindowState{})
+	assert unknown.monitor_ids.len == 0
+	assert !unknown.monitor_membership_observed
+	observed_empty := window_state_from_core(multiwindow.ServiceWindowState{
+		monitor_membership_observed: true
+	})
+	assert observed_empty.monitor_ids.len == 0
+	assert observed_empty.monitor_membership_observed
+}
+
 fn test_multiwindow_service_config_converts_identity_and_owner() {
 	mut app := new_app(backend: .mock, app_id: 'org.vlang.multiwindow.test')!
 	owner := app.create_window(title: 'owner')!

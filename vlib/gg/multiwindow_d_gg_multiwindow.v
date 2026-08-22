@@ -444,8 +444,13 @@ pub fn (app &App) window_operation_capability(id WindowId, operation WindowOpera
 	core_capability := app.core.service_operation_capability(id.core,
 		window_operation_to_core(operation))!
 	if operation == .window_capture && app.capabilities().backend == .wayland {
-		available := app.core.renderer_device_available_for_gg()
+		mut available := app.core.renderer_device_available_for_gg()
 			&& gfx.query_backend() in [.glcore33, .gles3]
+		if available {
+			snapshot := app.core.render_window_snapshot(id.core)!
+			producer := app.render_runtime.window_capture_producer(id)!
+			available = managed_window_capture_has_producer(producer, snapshot)
+		}
 		return WindowOperationCapability{
 			support:      if available { .available } else { .unsupported }
 			asynchronous: available
@@ -1540,21 +1545,22 @@ fn window_state_from_core(state multiwindow.ServiceWindowState) WindowState {
 		monitors << window_monitor_id_from_core(id)
 	}
 	return WindowState{
-		mapping:      window_mapping_from_core(state.mapping)
-		visibility:   window_visibility_from_core(state.visibility)
-		active:       window_observed_bool_from_core(state.active)
-		focused:      window_observed_bool_from_core(state.focused)
-		minimized:    window_observed_bool_from_core(state.minimized)
-		maximized:    window_observed_bool_from_core(state.maximized)
-		fullscreen:   window_observed_bool_from_core(state.fullscreen)
-		mouse_locked: window_observed_bool_from_core(state.mouse_locked)
-		position:     WindowPosition{
+		mapping:                     window_mapping_from_core(state.mapping)
+		visibility:                  window_visibility_from_core(state.visibility)
+		active:                      window_observed_bool_from_core(state.active)
+		focused:                     window_observed_bool_from_core(state.focused)
+		minimized:                   window_observed_bool_from_core(state.minimized)
+		maximized:                   window_observed_bool_from_core(state.maximized)
+		fullscreen:                  window_observed_bool_from_core(state.fullscreen)
+		mouse_locked:                window_observed_bool_from_core(state.mouse_locked)
+		position:                    WindowPosition{
 			known: state.position.known
 			x:     state.position.x
 			y:     state.position.y
 		}
-		monitor_ids:  monitors
-		sequence:     state.sequence
+		monitor_ids:                 monitors
+		monitor_membership_observed: state.monitor_membership_observed
+		sequence:                    state.sequence
 	}
 }
 

@@ -17,6 +17,7 @@ struct WaylandWindowCaptureTestState {
 mut:
 	frames                   int
 	readback                 WindowReadbackId
+	no_producer              WindowId
 	expected_submitted_frame u64
 }
 
@@ -56,6 +57,19 @@ fn test_multiwindow_wayland_public_window_capture_delivers_submitted_frame() {
 				state.frames++
 				if state.frames == 2 {
 					mut app := context.app
+					assert app.window_operation_capability(context.window_id(), .window_capture)!.support == .available
+					assert app.window_readback_capabilities(context.window_id())!.window_capture
+					assert app.window_operation_capability(state.no_producer, .window_capture)!.support == .unsupported
+					assert !app.window_readback_capabilities(state.no_producer)!.window_capture
+					pending_before_rejection := app.pending_window_captures.len
+					mut rejected_without_producer := false
+					_ = app.request_window_capture(state.no_producer, WindowReadbackConfig{}) or {
+						rejected_without_producer = true
+						assert err.msg() == err_multiwindow_render_readback_unsupported
+						WindowReadbackId{}
+					}
+					assert rejected_without_producer
+					assert app.pending_window_captures.len == pending_before_rejection
 					metrics := app.window_metrics(context.window_id())!
 					state.expected_submitted_frame = metrics.submitted_frame + 1
 					state.readback = app.request_window_capture(context.window_id(), WindowReadbackConfig{
@@ -93,8 +107,17 @@ fn test_multiwindow_wayland_public_window_capture_delivers_submitted_frame() {
 				})!
 			}
 		)!
-		assert app.window_operation_capability(window, .window_capture)!.support == .available
-		assert app.window_readback_capabilities(window)!.window_capture
+		no_producer := app.create_window(
+			title:    'V gg.App Wayland capture without a frame producer'
+			width:    64
+			height:   48
+			high_dpi: false
+		)!
+		state.no_producer = no_producer
+		assert app.window_operation_capability(no_producer, .window_capture)!.support == .unsupported
+		assert !app.window_readback_capabilities(no_producer)!.window_capture
+		assert app.window_operation_capability(window, .window_capture)!.support == .unsupported
+		assert !app.window_readback_capabilities(window)!.window_capture
 		app.run(
 			readback_fn: fn [results] (result WindowReadbackResult, mut app App) ! {
 				results <- result

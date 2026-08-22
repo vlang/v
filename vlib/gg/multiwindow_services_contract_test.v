@@ -12,6 +12,7 @@ fn test_multiwindow_service_public_types_are_available_without_opt_in() {
 	assert WindowTitlebarAppearance.system.str() == 'system'
 	assert WindowMappingState.unknown.str() == 'unknown'
 	assert WindowState{}.mapping == .unknown
+	assert !WindowState{}.monitor_membership_observed
 	assert WindowOperationCapability{}.support == .unsupported
 	assert WindowMonitorId{}.str() == 'WindowMonitorId(0:0:0)'
 	assert ClipboardRequestId{}.str() == 'ClipboardRequestId(0:0)'

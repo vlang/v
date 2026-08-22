@@ -55,10 +55,11 @@ jobs:
           # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
           # libx11-dev               : X11 headers for opt-in x.multiwindow X11/Xvfb coverage
+          # libx11-xcb-dev           : shared Xlib/XCB connection for checked same-client requests
           # libwayland-dev           : Wayland headers for x.multiwindow Wayland compile/probe tests
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install imagemagick openimageio-tools libgl1-mesa-dev libgl1-mesa-dri xvfb libxcursor-dev libxi-dev libxrandr-dev freeglut3-dev xsel xclip libx11-dev libegl-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev wayland-protocols
+          ./v retry -- sudo apt install imagemagick openimageio-tools libgl1-mesa-dev libgl1-mesa-dri xvfb libxcursor-dev libxi-dev libxrandr-dev freeglut3-dev xsel xclip libx11-dev libx11-xcb-dev libegl-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev wayland-protocols
           ./v retry -- ./v download https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
           ./v retry -- git clone https://github.com/Larpon/gg-regression-images gg-regression-images
           chmod +x ./imgur.sh

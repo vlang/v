@@ -12,6 +12,7 @@ $if linux && x_multiwindow_x11 ? {
 	$if test {
 		#flag linux -DV_MULTIWINDOW_NATIVE_PROOF_TEST
 	}
+	#flag linux -lX11-xcb
 	#flag linux -lX11
 	#flag linux -lxcb
 	#flag linux -lXrandr
@@ -316,6 +317,7 @@ $if linux && x_multiwindow_x11 ? {
 	fn C.v_multiwindow_x11_apply_config_hints(display &C.Display, window X11NativeWindow, width int, height int, min_width int, min_height int, resizable int, borderless int, fullscreen int) int
 	fn C.v_multiwindow_x11_apply_owner_modal(display &C.Display, window X11NativeWindow, owner X11NativeWindow, modal int) int
 	fn C.v_multiwindow_x11_open_checked_connection(display &C.Display) voidptr
+	fn C.v_multiwindow_x11_shared_connection_usable(display &C.Display) int
 	fn C.v_multiwindow_x11_close_checked_connection(connection voidptr)
 	fn C.v_multiwindow_x11_checked_connection_usable(connection voidptr) int
 	fn C.v_multiwindow_x11_checked_barrier(connection voidptr) int
@@ -338,10 +340,13 @@ $if linux && x_multiwindow_x11 ? {
 	fn C.v_multiwindow_x11_select_property_changes(display &C.Display, window X11NativeWindow) int
 	fn C.v_multiwindow_x11_has_property_changes(display &C.Display, window X11NativeWindow) int
 	fn C.v_multiwindow_x11_create_clipboard_requestor(display &C.Display, root X11NativeWindow) X11NativeWindow
-	fn C.v_multiwindow_x11_set_mouse_lock(display &C.Display, window X11NativeWindow, enabled int) int
-	fn C.v_multiwindow_x11_center_pointer(display &C.Display, window X11NativeWindow, center_x &int, center_y &int) int
+	fn C.v_multiwindow_x11_release_mouse_lock(display &C.Display)
+	fn C.v_multiwindow_x11_acquire_mouse_lock_checked(display &C.Display, window X11NativeWindow, center_x &int, center_y &int) int
+	fn C.v_multiwindow_x11_center_pointer_checked(display &C.Display, window X11NativeWindow, center_x &int, center_y &int) int
+	fn C.v_multiwindow_x11_set_selection_owner_checked(display &C.Display, selection X11NativeAtom, owner X11NativeWindow, time X11NativeULong) int
 
 	$if test {
+		fn C.v_multiwindow_x11_destroy_mouse_lock_target_after_grab_once_for_test()
 		fn C.v_multiwindow_x11_send_focus_out_for_test(display &C.Display, window X11NativeWindow) int
 		fn C.v_multiwindow_x11_warp_pointer_offset_for_test(display &C.Display, window X11NativeWindow, center_x int, center_y int, dx int, dy int) int
 		fn C.v_multiwindow_x11_pointer_position_for_test(display &C.Display, window X11NativeWindow, x &int, y &int) int
@@ -655,6 +660,9 @@ fn (mut backend X11Backend) probe_renderer_capabilities() !Capabilities {
 		if backend.render_health.blocks_graphics() || backend.native_operations == unsafe { nil } {
 			return error(err_render_native_renderer_unavailable)
 		}
+		if C.XInitThreads() == 0 {
+			return error(err_x11_open_display_failed)
+		}
 		display := C.XOpenDisplay(unsafe { nil })
 		if display == unsafe { nil } {
 			return error(err_x11_open_display_failed)
@@ -704,7 +712,9 @@ fn (mut backend X11Backend) start(require_renderer bool) ! {
 		if backend.render_health.blocks_graphics() {
 			return error(err_render_native_renderer_unavailable)
 		}
-		C.XInitThreads()
+		if C.XInitThreads() == 0 {
+			return error(err_x11_open_display_failed)
+		}
 		display := C.XOpenDisplay(unsafe { nil })
 		if display == unsafe { nil } {
 			return error(err_x11_open_display_failed)
@@ -1446,14 +1456,20 @@ fn (mut backend X11Backend) service_set_mouse_lock(id WindowId, enabled bool) !S
 	$if linux && x_multiwindow_x11 ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
 		if enabled {
-			if C.v_multiwindow_x11_set_mouse_lock(backend.display, backend.windows[index].window, 1) == 0 {
+			mut center_x := 0
+			mut center_y := 0
+			if C.v_multiwindow_x11_acquire_mouse_lock_checked(backend.display,
+				backend.windows[index].window, &center_x, &center_y) == 0 {
 				return error(err_capability_unsupported)
 			}
 			backend.windows[index].mouse_locked = true
-			if !backend.recenter_locked_pointer(index, true) {
-				backend.release_mouse_lock(index)
-				return error(err_capability_unsupported)
-			}
+			backend.windows[index].mouse_lock_center_x = center_x
+			backend.windows[index].mouse_lock_center_y = center_y
+			backend.windows[index].mouse_x = f32(center_x)
+			backend.windows[index].mouse_y = f32(center_y)
+			backend.windows[index].mouse_pos_valid = true
+			backend.windows[index].mouse_dx = 0
+			backend.windows[index].mouse_dy = 0
 		} else {
 			backend.release_mouse_lock(index)
 		}
@@ -1474,8 +1490,8 @@ fn (mut backend X11Backend) recenter_locked_pointer(index int, clear_delta bool)
 		}
 		mut center_x := 0
 		mut center_y := 0
-		if C.v_multiwindow_x11_center_pointer(backend.display, backend.windows[index].window,
-			&center_x, &center_y) == 0 {
+		if C.v_multiwindow_x11_center_pointer_checked(backend.display,
+			backend.windows[index].window, &center_x, &center_y) == 0 {
 			return false
 		}
 		backend.windows[index].mouse_lock_center_x = center_x
@@ -1499,7 +1515,7 @@ fn (mut backend X11Backend) release_mouse_lock(index int) {
 		if index < 0 || index >= backend.windows.len || !backend.windows[index].mouse_locked {
 			return
 		}
-		C.v_multiwindow_x11_set_mouse_lock(backend.display, backend.windows[index].window, 0)
+		C.v_multiwindow_x11_release_mouse_lock(backend.display)
 		backend.windows[index].mouse_locked = false
 		backend.windows[index].mouse_lock_center_x = 0
 		backend.windows[index].mouse_lock_center_y = 0
@@ -1813,9 +1829,8 @@ fn (mut backend X11Backend) service_set_clipboard_text(id WindowId, request Serv
 			}
 		}
 		window := backend.windows[index].window
-		C.XSetSelectionOwner(backend.display, backend.clipboard, window, X11NativeULong(0))
-		C.XSync(backend.display, 0)
-		if C.XGetSelectionOwner(backend.display, backend.clipboard) != window {
+		if C.v_multiwindow_x11_set_selection_owner_checked(backend.display, backend.clipboard,
+			window, X11NativeULong(0)) == 0 {
 			return error(err_capability_unsupported)
 		}
 		backend.clipboard_owner_window = window
@@ -2026,6 +2041,13 @@ fn (mut backend X11Backend) service_destroy_readback_after_probe_for_test() {
 fn (backend &X11Backend) service_checked_connection_usable_for_test() bool {
 	$if linux && x_multiwindow_x11 ? {
 		return C.v_multiwindow_x11_checked_connection_usable(backend.checked_connection) != 0
+	}
+	return false
+}
+
+fn (backend &X11Backend) service_shared_connection_usable_for_test() bool {
+	$if linux && x_multiwindow_x11 ? {
+		return C.v_multiwindow_x11_shared_connection_usable(backend.display) != 0
 	}
 	return false
 }
