@@ -3563,3 +3563,28 @@ fn main() {
 ')
 	assert ok.exit_code == 0, ok.output
 }
+
+// A program whose body is only literal `println` calls takes markused's
+// trivial-literal-output fast path, which skips the ownership destructor seeds.
+// Cgen still emits the `_result` destructor there, and in `-autofree` mode that
+// helper calls `MessageError.free`, so the fast path has to root the IError
+// implementers' destructors too. Without that, `hello world` fails to build with
+// `use of undeclared identifier 'MessageError__free'`.
+fn test_autofree_literal_only_program_keeps_ierror_destructors() {
+	v3_bin := ownership_build_v3()
+	ok := run_autofree_check(v3_bin, 'literal_only_println', "
+fn main() {
+	println('hello')
+}
+")
+	assert ok.exit_code == 0, ok.output
+
+	ok_multi := run_autofree_check(v3_bin, 'literal_only_mixed_output', "
+fn main() {
+	print('a')
+	eprintln('b')
+	println('c')
+}
+")
+	assert ok_multi.exit_code == 0, ok_multi.output
+}

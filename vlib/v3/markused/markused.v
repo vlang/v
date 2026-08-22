@@ -445,6 +445,20 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		for seed in ['builtin.none__', 'builtin.error_sentinel'] {
 			enqueue(seed, mut used, mut queue)
 		}
+		// The synthesized `_result` destructor releases the concrete object behind a
+		// failed result's IError, so it names the destructor of every IError
+		// implementer. Cgen emits that helper for every ownership build, and those
+		// calls have no source-AST call site either, so root them beside the
+		// sentinels. This must stay outside the `trivial_literal_output` fast path
+		// below: the helper is emitted there too, and `MessageError.free` is what a
+		// `-autofree` build of a literal-only program would otherwise call without a
+		// definition.
+		ierror_destructor := if tc.autofree_mode { 'free' } else { 'drop' }
+		for impl in tc.ierror_impl_names() {
+			for alias in interface_implementer_method_aliases(impl, ierror_destructor, tc) {
+				enqueue(alias, mut used, mut queue)
+			}
+		}
 	}
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
 	if use_prepared {

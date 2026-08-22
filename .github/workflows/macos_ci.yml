@@ -206,6 +206,8 @@ jobs:
         run: v run ci/macos_ci.vsh self_tests
       - name: Build examples
         run: v run ci/macos_ci.vsh build_examples
+      - name: Build hello_world with -autofree
+        run: v run ci/macos_ci.vsh build_hello_world_autofree
       - name: Build tetris with -autofree
         run: v run ci/macos_ci.vsh build_tetris_autofree
       - name: Build blog tutorial with -autofree
