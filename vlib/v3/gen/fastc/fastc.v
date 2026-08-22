@@ -740,6 +740,20 @@ fn fastc_string_contains_nul(content string, is_raw bool) bool {
 			i += 2
 			continue
 		}
+		if escape >= `0` && escape <= `7` && i + 3 < content.len && content[i + 2] >= `0`
+			&& content[i + 2] <= `7` && content[i + 3] >= `0` && content[i + 3] <= `7` {
+			high := int(escape - `0`)
+			middle := int(content[i + 2] - `0`)
+			low := int(content[i + 3] - `0`)
+			value := high * 64 + middle * 8 + low
+			// V stores three-digit octal escapes in a byte, including wrapping
+			// values such as \400 to NUL.
+			if u8(value) == 0 {
+				return true
+			}
+			i += 4
+			continue
+		}
 		if escape == `0`
 			|| (escape == `x` && i + 3 < content.len && content[i + 2..i + 4] == '00')
 			|| (escape == `u` && i + 5 < content.len && content[i + 2..i + 6] == '0000')

@@ -128,17 +128,25 @@ fn test_hex_string_escape_has_fixed_width_in_c() {
 
 fn test_runtime_sensitive_constructs_request_checked_lane() {
 	prefs := pref.new_preferences()
-	mut nul_failed := false
-	_ := generate('module main
+	for source in ['module main
 
 fn main() {
 	println("a\\0b")
 }
-', 'nul_string.v', prefs) or {
-		nul_failed = true
-		''
+',
+		"module main\nfn main() { println('\\400tail') }\n"] {
+		mut nul_failed := false
+		_ := generate(source, 'nul_string.v', prefs) or {
+			nul_failed = true
+			''
+		}
+		assert nul_failed
 	}
-	assert nul_failed
+	assert fastc_string_contains_nul(r'\400tail', false)
+	assert !fastc_string_contains_nul(r'\401tail', false)
+	non_nul_octal_c := generate("module main\nfn main() { println('\\401tail') }\n",
+		'non_nul_octal_string.v', prefs) or { panic(err) }
+	assert non_nul_octal_c.contains(r'println("\401tail");')
 
 	mut assert_failed := false
 	_ := generate('module main

@@ -547,6 +547,25 @@ fn main() {
 	assert nul_run.exit_code == 0, nul_run.output.bytes().str()
 	assert nul_run.output == 'a\0b\n', nul_run.output.bytes().str()
 
+	wrapped_nul_source := os.join_path(root, 'wrapped_nul_string.v')
+	os.write_file(wrapped_nul_source, "module main
+
+fn main() {
+	println('\\400tail')
+}
+") or {
+		panic(err)
+	}
+	wrapped_nul_binary := os.join_path(root, 'wrapped_nul_string')
+	wrapped_nul_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', wrapped_nul_binary,
+		wrapped_nul_source])
+	assert wrapped_nul_compile.exit_code == 0, wrapped_nul_compile.output
+	wrapped_nul_c := os.read_file(wrapped_nul_binary + '.c') or { panic(err) }
+	assert !wrapped_nul_c.contains('V_FASTC_PRINT_SELECT')
+	wrapped_nul_run := cmdexec.run(wrapped_nul_binary, [])
+	assert wrapped_nul_run.exit_code == 0, wrapped_nul_run.output.bytes().str()
+	assert wrapped_nul_run.output == '\0tail\n', wrapped_nul_run.output.bytes().str()
+
 	assert_source := os.join_path(root, 'assert_failure.v')
 	os.write_file(assert_source, 'module main
 
