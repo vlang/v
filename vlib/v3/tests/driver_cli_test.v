@@ -820,6 +820,7 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, "fn unused_value() int { return 42 }\n\nfn main() { println('ok') }\n")!
 	mut environment := os.environ()
+	environment['VTMP'] = os.join_path(root, 'vtmp')
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 
 	cold_output := os.join_path(root, 'cold')
