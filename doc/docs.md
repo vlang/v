@@ -79,9 +79,10 @@ On macOS and Linux, `v` compiles your program with the experimental **V3**
 compiler (a newer implementation of the V compiler, whose source lives in
 `vlib/v3`) by default. On other platforms, and for C builds that select a
 target OS different from the host, the established compiler in `vlib/v` is
-used. V scripts (`.vsh`, including `v run script.vsh`) and debug builds selected
-with `-g`/`-debug` also remain on the established compiler. Same-OS
-cross-architecture builds can still use V3 when the target is supported.
+used. V scripts (`.vsh`, including `v run script.vsh`), the `crun` and
+`build-module` commands, and debug builds selected with `-g`/`-debug` also
+remain on the established compiler. Same-OS cross-architecture builds can still
+use V3 when the target is supported.
 
 You normally do not need to do anything: when V3 cannot yet build an eligible
 program, `v` automatically falls back to the established compiler, so your build
@@ -118,9 +119,11 @@ An internal V3 compiler error on a short program (and any directory build such a
 file, so it can still upload a strict-subset excerpt of that file plus a few lines
 of context around the failing line, even when the file is short. Inline-assembly
 fallbacks are notice-only and do not submit a report; reporting is also skipped
-for test compilations and to the default endpoint in GitHub CI. A custom endpoint
-set with `-bug-report-url` or `V_C_ERROR_BUG_REPORT_URL` remains active in CI. You
-can turn reporting off entirely by setting `V_C_ERROR_BUG_REPORT_DISABLED=1`.
+for test compilations and to the default endpoint in GitHub CI. A custom fallback
+endpoint set with `V_C_ERROR_BUG_REPORT_URL` remains active in CI. The
+`-bug-report-url` option selects the established compiler and configures only its
+reports. You can turn reporting off entirely by setting
+`V_C_ERROR_BUG_REPORT_DISABLED=1`.
 
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .

@@ -79,6 +79,7 @@ fn macos_v3_explicit_compilation_requested(command string, prefs &pref.Preferenc
 	}
 	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
+		|| normalized_path.ends_with('.vv')
 }
 
 @[markused]
