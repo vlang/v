@@ -217,6 +217,30 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 	}
 }
 
+fn test_macos_v3_compiler_bootstrap_is_detected_from_any_cwd() {
+	// Repo-relative and absolute spellings are recognized directly.
+	assert is_macos_v3_compiler_bootstrap('vlib/v3/v3.v')
+	assert is_macos_v3_compiler_bootstrap('/home/user/v/vlib/v3/v3.v')
+	// Non-bootstrap targets stay on the V3 path.
+	assert !is_macos_v3_compiler_bootstrap('main.v')
+	assert !is_macos_v3_compiler_bootstrap('cmd/v')
+	assert !is_macos_v3_compiler_bootstrap('some/other/place/v3.v')
+
+	// A bare `v3.v` invoked from inside vlib/v3 must resolve to the bootstrap so
+	// it builds with the compatibility compiler instead of the embedded V3 driver.
+	repo_root := os.dir(os.dir(os.real_path(@FILE)))
+	v3_dir := os.join_path(repo_root, 'vlib', 'v3')
+	if os.exists(os.join_path(v3_dir, 'v3.v')) {
+		saved := os.getwd()
+		os.chdir(v3_dir) or { return }
+		bare := is_macos_v3_compiler_bootstrap('v3.v')
+		dotted := is_macos_v3_compiler_bootstrap('./v3.v')
+		os.chdir(saved) or {}
+		assert bare
+		assert dotted
+	}
+}
+
 fn test_macos_v3_dispatch_allows_the_implicit_gc_default() {
 	$if macos {
 		implicit_gc, _ := pref.parse_args_and_show_errors([], ['', 'main.v'], false)
