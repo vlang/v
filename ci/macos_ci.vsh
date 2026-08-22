@@ -77,6 +77,14 @@ fn build_examples_v_compiled_with_tcc() {
 	}
 }
 
+fn build_hello_world_autofree() {
+	// The smallest possible program. Its body is only literal `println` calls, which
+	// is its own code path through markused, so the larger `-autofree` builds below
+	// do not cover it.
+	exec('v -autofree -o hello_world examples/hello_world.v')
+	exec('./hello_world')
+}
+
 fn build_tetris_autofree() {
 	exec('v -autofree -o tetris examples/tetris/tetris.v')
 }
@@ -149,6 +157,7 @@ const all_tasks = {
 	'test_pure_v_math_module':            Task{test_pure_v_math_module, 'Test pure V math module'}
 	'self_tests':                         Task{self_tests, 'Self tests'}
 	'build_examples':                     Task{build_examples, 'Build examples'}
+	'build_hello_world_autofree':         Task{build_hello_world_autofree, 'Build hello_world with -autofree'}
 	'build_tetris_autofree':              Task{build_tetris_autofree, 'Build tetris with -autofree'}
 	'build_blog_autofree':                Task{build_blog_autofree, 'Build blog tutorial with -autofree'}
 	'build_examples_prod':                Task{build_examples_prod, 'Build examples with -prod'}
