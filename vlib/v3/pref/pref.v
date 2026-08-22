@@ -959,10 +959,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'test' {
 			return p.is_test
 		}
-		'native' {
-			return p.backend == 'arm64'
-		}
-		'builtin_write_buf_to_fd_should_use_c_write' {
+		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
 			return p.backend == 'arm64'
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
