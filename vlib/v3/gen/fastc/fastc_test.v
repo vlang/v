@@ -121,6 +121,39 @@ fn main() {
 	assert c_source.contains('if (((bool)true)) {\n\t\treturn 0;\n\t}')
 }
 
+fn test_non_void_functions_must_return_on_every_path() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn value() int {}\nfn main() { println(value()) }\n',
+		'module main\nfn value() int { if true { return 1 } }\nfn main() { println(value()) }\n',
+		'module main\nfn value() int { return }\nfn main() { println(value()) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'non_void_fallthrough.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('fastc parser does not support'), message
+	}
+	c_source := generate('module main
+
+fn value(flag bool) int {
+	if flag {
+		return 1
+	} else {
+		return 2
+	}
+}
+
+fn main() {
+	println(value(true))
+}
+',
+		'non_void_returns.v', prefs) or { panic(err) }
+	assert c_source.contains('return 1;')
+	assert c_source.contains('return 2;')
+}
+
 fn test_integer_range_caches_bounds() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main
@@ -157,6 +190,27 @@ fn main() {
 		panic(err)
 	}
 	assert c_source.contains('println(123);')
+}
+
+fn test_v_octal_literals_are_translated_to_gnu_c() {
+	assert fastc_c_number('0o17')! == '017'
+	assert fastc_c_number('0O7_1')! == '071'
+	mut oversized_message := ''
+	_ := fastc_c_number('0o20000000000') or {
+		oversized_message = err.msg()
+		''
+	}
+	assert oversized_message.contains('high-bit nondecimal literals')
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn main() {
+	println(0o17)
+}
+', 'octal_literal.v', prefs) or {
+		panic(err)
+	}
+	assert c_source.contains('println(017);')
 }
 
 fn test_hex_string_escape_has_fixed_width_in_c() {

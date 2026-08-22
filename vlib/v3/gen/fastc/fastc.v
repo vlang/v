@@ -55,17 +55,18 @@ static void v_fastc_println_unsigned(unsigned long long value) { printf("%llu\n"
 struct Parser {
 	path string
 mut:
-	s         scanner.Scanner
-	tok       token.Token
-	lit       string
-	out       strings.Builder
-	protos    strings.Builder
-	indent    int
-	in_main   bool
-	has_main  bool
-	temp_id   int
-	locals    map[string]bool
-	functions map[string]bool
+	s           scanner.Scanner
+	tok         token.Token
+	lit         string
+	out         strings.Builder
+	protos      strings.Builder
+	indent      int
+	in_main     bool
+	has_main    bool
+	temp_id     int
+	locals      map[string]bool
+	functions   map[string]bool
+	return_type string
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
@@ -235,9 +236,15 @@ fn (mut g Parser) parse_function() ! {
 		g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
 	}
 	previous_in_main := g.in_main
+	previous_return_type := g.return_type
 	g.in_main = is_main
-	g.parse_block_body()!
+	g.return_type = return_type
+	terminates := g.parse_block_body()!
 	g.in_main = previous_in_main
+	g.return_type = previous_return_type
+	if return_type != 'void' && !terminates {
+		return g.unsupported('non-void function `${name}` that can fall through')
+	}
 	if is_main {
 		g.write_line('return 0;')
 	}
@@ -259,7 +266,7 @@ fn (mut g Parser) parse_script() ! {
 		if g.tok in [.key_module, .key_pub, .key_static, .key_fn] {
 			return g.unsupported('declaration after top-level statements')
 		}
-		g.parse_statement()!
+		_ = g.parse_statement()!
 		g.skip_semicolons()
 	}
 	g.write_line('return 0;')
@@ -356,21 +363,26 @@ fn fastc_parameter_has_narrow_integer_type(parameter string) bool {
 	return fields.len > 0 && fastc_has_narrow_integer_type(fields[0])
 }
 
-fn (mut g Parser) parse_block_body() ! {
+fn (mut g Parser) parse_block_body() !bool {
+	mut terminates := false
 	g.skip_semicolons()
 	for g.tok != .rcbr {
 		if g.tok == .eof {
 			return g.unsupported('unfinished block')
 		}
-		g.parse_statement()!
+		statement_terminates := g.parse_statement()!
+		if statement_terminates {
+			terminates = true
+		}
 		g.skip_semicolons()
 	}
 	g.next()
 	g.skip_semicolons()
+	return terminates
 }
 
-fn (mut g Parser) parse_statement() ! {
-	match g.tok {
+fn (mut g Parser) parse_statement() !bool {
+	return match g.tok {
 		.key_if {
 			g.parse_if()!
 		}
@@ -384,14 +396,17 @@ fn (mut g Parser) parse_statement() ! {
 			g.next()
 			g.consume_statement_end()
 			g.write_line('break;')
+			false
 		}
 		.key_continue {
 			g.next()
 			g.consume_statement_end()
 			g.write_line('continue;')
+			false
 		}
 		.key_mut {
 			g.parse_mutable_declaration()!
+			false
 		}
 		.key_unsafe {
 			g.next()
@@ -400,11 +415,12 @@ fn (mut g Parser) parse_statement() ! {
 		}
 		else {
 			g.parse_simple_statement()!
+			false
 		}
 	}
 }
 
-fn (mut g Parser) parse_if() ! {
+fn (mut g Parser) parse_if() !bool {
 	g.next()
 	condition := g.read_expression([token.Token.lcbr])!
 	if condition.len == 0 {
@@ -413,39 +429,40 @@ fn (mut g Parser) parse_if() ! {
 	g.expect(.lcbr)!
 	g.write_line('if (${condition}) {')
 	g.indent++
-	g.parse_block_body()!
+	then_terminates := g.parse_block_body()!
 	g.indent--
 	if g.tok != .key_else {
 		g.write_line('}')
-		return
+		return false
 	}
 	g.next()
 	if g.tok == .key_if {
 		g.write_line('} else {')
 		g.indent++
-		g.parse_if()!
+		else_terminates := g.parse_if()!
 		g.indent--
 		g.write_line('}')
-		return
+		return then_terminates && else_terminates
 	}
 	g.expect(.lcbr)!
 	g.write_line('} else {')
 	g.indent++
-	g.parse_block_body()!
+	else_terminates := g.parse_block_body()!
 	g.indent--
 	g.write_line('}')
+	return then_terminates && else_terminates
 }
 
-fn (mut g Parser) parse_for() ! {
+fn (mut g Parser) parse_for() !bool {
 	g.next()
 	if g.tok == .lcbr {
 		g.next()
 		g.write_line('for (;;) {')
 		g.indent++
-		g.parse_block_body()!
+		_ = g.parse_block_body()!
 		g.indent--
 		g.write_line('}')
-		return
+		return false
 	}
 	if g.tok == .name {
 		name := g.lit
@@ -467,11 +484,11 @@ fn (mut g Parser) parse_for() ! {
 			g.write_line('for (__typeof__((${start_name})) ${name} = (${start_name}); ${name} < (${end_name}); ${name}++) {')
 			g.locals[name] = false
 			g.indent++
-			g.parse_block_body()!
+			_ = g.parse_block_body()!
 			g.indent--
 			g.locals.delete(name)
 			g.write_line('}')
-			return
+			return false
 		}
 		if g.tok == .decl_assign {
 			if name in g.locals {
@@ -487,41 +504,49 @@ fn (mut g Parser) parse_for() ! {
 			g.expect(.lcbr)!
 			g.write_line('for (__typeof__((${initial})) ${name} = (${initial}); ${condition}; ${update}) {')
 			g.indent++
-			g.parse_block_body()!
+			_ = g.parse_block_body()!
 			g.indent--
 			g.locals.delete(name)
 			g.write_line('}')
-			return
+			return false
 		}
 		g.validate_expression_name(name, .unknown)!
 		condition := g.read_expression_with_prefix(name, [token.Token.lcbr])!
 		g.expect(.lcbr)!
 		g.write_line('while (${condition}) {')
 		g.indent++
-		g.parse_block_body()!
+		_ = g.parse_block_body()!
 		g.indent--
 		g.write_line('}')
-		return
+		return false
 	}
 	condition := g.read_expression([token.Token.lcbr])!
 	g.expect(.lcbr)!
 	g.write_line('while (${condition}) {')
 	g.indent++
-	g.parse_block_body()!
+	_ = g.parse_block_body()!
 	g.indent--
 	g.write_line('}')
+	return false
 }
 
-fn (mut g Parser) parse_return() ! {
+fn (mut g Parser) parse_return() !bool {
 	g.next()
 	if g.tok == .semicolon || g.tok == .rcbr {
+		if !g.in_main && g.return_type != 'void' {
+			return g.unsupported('bare return in non-void function')
+		}
 		g.consume_statement_end()
 		g.write_line(if g.in_main { 'return 0;' } else { 'return;' })
-		return
+		return true
+	}
+	if g.return_type == 'void' {
+		return g.unsupported('value return in void function')
 	}
 	expression := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 	g.consume_statement_end()
 	g.write_line('return ${expression};')
+	return true
 }
 
 fn (mut g Parser) parse_mutable_declaration() ! {
@@ -755,6 +780,9 @@ fn fastc_nondecimal_literal_is_type_sensitive(literal string) bool {
 	if clean[1] in [`b`, `B`] {
 		return digits.len >= 32
 	}
+	if clean[1] in [`o`, `O`] {
+		return digits.len > 11 || (digits.len == 11 && digits[0] >= `2`)
+	}
 	return false
 }
 
@@ -790,6 +818,11 @@ fn fastc_c_number(literal string) !string {
 	}
 	if fastc_nondecimal_literal_is_type_sensitive(literal) {
 		return error('fastc parser does not support high-bit nondecimal literals')
+	}
+	if clean.len > 2 && clean[0] == `0` && clean[1] in [`o`, `O`] {
+		// V spells octal integers with an explicit 0o prefix. GNU C uses a
+		// leading zero, so translate the prefix before emitting the token.
+		return '0' + clean[2..]
 	}
 	if clean.len < 2 || clean[0] != `0` || !clean[1].is_digit() || clean.contains_any('.eE') {
 		return clean

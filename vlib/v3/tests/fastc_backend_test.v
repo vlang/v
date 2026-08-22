@@ -36,6 +36,7 @@ fn twice(value int) int {
 fn main() {
 	value := twice(21)
 	println(value)
+	println(0o17)
 }
 ')
 	valid_binary := os.join_path(root, 'valid')
@@ -48,11 +49,12 @@ fn main() {
 	assert !valid_compile.output.contains('markused'), valid_compile.output
 	retained_c := os.read_file(valid_binary + '.c') or { panic(err) }
 	assert retained_c.contains('__typeof__((twice(21))) value = (twice(21));')
+	assert retained_c.contains('println(017);')
 	assert retained_c.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 	assert !retained_c.contains('builtin__builtin_init')
 	valid_run := cmdexec.run(valid_binary, [])
 	assert valid_run.exit_code == 0, valid_run.output
-	assert valid_run.output.trim_space() == '42'
+	assert valid_run.output.trim_space() == '42\n15'
 
 	cross_c := os.join_path(root, 'cross_linux.c')
 	cross_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-os', 'linux', '-o', cross_c,
@@ -138,6 +140,24 @@ fn main() {
 	assert !os.exists(preamble_name_binary)
 	assert !os.exists(preamble_name_binary + '.c')
 
+	fallthrough_source := os.join_path(root, 'fallthrough.v')
+	write_fastc_test_source(fallthrough_source, 'module main
+
+fn value() int {}
+
+fn main() {
+	println(value())
+}
+')
+	fallthrough_binary := os.join_path(root, 'fallthrough')
+	fallthrough_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', fallthrough_binary,
+		fallthrough_source])
+	assert fallthrough_compile.exit_code != 0
+	assert fallthrough_compile.output.contains('non-void function `value` that can fall through'), fallthrough_compile.output
+
+	assert !os.exists(fallthrough_binary)
+	assert !os.exists(fallthrough_binary + '.c')
+
 	for invocation in [
 		UnsupportedFastCInvocation{
 			args:     ['-silent', '-prod', '-b', 'fastc', '-o', os.join_path(root, 'prod'),
@@ -150,9 +170,8 @@ fn main() {
 			expected: 'fastc parser does not support compiler self-hosting'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
-				'no_main.c'),
-				valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
+				os.join_path(root, 'no_main.c'), valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{
