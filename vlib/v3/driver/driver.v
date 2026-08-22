@@ -7349,11 +7349,12 @@ pub fn run(args []string) {
 		fastc_eligible := input_file.ends_with('.v') && os.is_file(input_file) && file_list.len == 0
 			&& target.os == fastc_host.os && target.arch == fastc_host.arch && !is_test_command
 			&& !building_v && !is_selfhost && !is_checker_fixture && !is_prod && !is_shared
-			&& !is_livemain && !is_liveshared && !is_o && !is_prof && coverage_dir.len == 0
-			&& !ownership_mode && !only_check_syntax && !check_only && print_fn_names.len == 0
-			&& !print_v_files && !print_watched_files && dump_c_flags.len == 0
-			&& generate_c_project.len == 0 && !c99_explicit && !c_compiler_explicit && !no_builtin
-			&& !no_preludes && !check_overflow && !translated_mode && !is_repl && !is_strict
+			&& !is_livemain && !is_liveshared && !is_o && !is_prof && !is_debug
+			&& coverage_dir.len == 0 && !ownership_mode && !only_check_syntax && !check_only
+			&& print_fn_names.len == 0 && !print_v_files && !print_watched_files
+			&& dump_c_flags.len == 0 && generate_c_project.len == 0 && !c99_explicit
+			&& !c_compiler_explicit && !no_builtin && !no_preludes && !check_overflow
+			&& !translated_mode && !is_repl && !is_strict
 		mut generated_fastc := false
 		mut fastc_source := ''
 		if fastc_eligible {

@@ -174,6 +174,7 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		'module main\nfn main() { for i := -2_147_483_648; true; i-- { println(i); break } }\n',
 		'module main\nfn main() { mut x := -2_147_483_648 - 1; println(x) }\n',
 		'module main\nfn main() { x := 0xffff_ffff | 0; println(x) }\n',
+		'module main\nfn main() { x := 0b11111111111111111111111111111111 | 0; println(x) }\n',
 		'module main\nfn main() { mut a := 1; mut b := 2; a, b = b, a; println(a); println(b) }\n',
 	] {
 		mut failed := false
@@ -191,6 +192,9 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 	low_hex_c := generate('module main\nfn main() { x := 0x7fff_ffff | 0; println(x) }\n',
 		'low_hex_literal.v', prefs) or { panic(err) }
 	assert low_hex_c.contains('__typeof__((0x7fffffff|0)) x = (0x7fffffff|0);')
+	low_binary_c := generate('module main\nfn main() { x := 0b01111111111111111111111111111111 | 0; println(x) }\n',
+		'low_binary_literal.v', prefs) or { panic(err) }
+	assert low_binary_c.contains('__typeof__((0b01111111111111111111111111111111|0))')
 	max_int_c := generate('module main\nfn main() { x := 2_147_483_647 - 1; println(x) }\n',
 		'max_int_expression.v', prefs) or { panic(err) }
 	assert max_int_c.contains('__typeof__((2147483647-1)) x = (2147483647-1);')

@@ -589,18 +589,24 @@ fn (g &DirectGen) expression_token() !string {
 	}
 }
 
-fn fastc_hex_literal_requires_checked_type(literal string) bool {
+fn fastc_nondecimal_literal_requires_checked_type(literal string) bool {
 	clean := literal.replace('_', '')
-	if clean.len <= 2 || clean[0] != `0` || clean[1] !in [`x`, `X`] {
+	if clean.len <= 2 || clean[0] != `0` {
 		return false
 	}
 	digits := clean[2..].trim_left('0')
-	if digits.len > 8 {
-		return true
+	if clean[1] in [`x`, `X`] {
+		if digits.len > 8 {
+			return true
+		}
+		return digits.len == 8 && ((digits[0] >= `8` && digits[0] <= `9`)
+			|| (digits[0] >= `a` && digits[0] <= `f`)
+			|| (digits[0] >= `A` && digits[0] <= `F`))
 	}
-	return digits.len == 8 && ((digits[0] >= `8` && digits[0] <= `9`)
-		|| (digits[0] >= `a` && digits[0] <= `f`)
-		|| (digits[0] >= `A` && digits[0] <= `F`))
+	if clean[1] in [`b`, `B`] {
+		return digits.len >= 32
+	}
+	return false
 }
 
 fn fastc_c_number(literal string) !string {
@@ -611,8 +617,8 @@ fn fastc_c_number(literal string) !string {
 		// int, so only the checked lane can preserve its inferred type and wrapping.
 		return error('minimum int literal expressions require checked fastc')
 	}
-	if fastc_hex_literal_requires_checked_type(literal) {
-		return error('high-bit hexadecimal literals require checked fastc')
+	if fastc_nondecimal_literal_requires_checked_type(literal) {
+		return error('high-bit nondecimal literals require checked fastc')
 	}
 	if clean.len < 2 || clean[0] != `0` || !clean[1].is_digit() || clean.contains_any('.eE') {
 		return clean

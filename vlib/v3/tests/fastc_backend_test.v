@@ -55,6 +55,17 @@ fn main() {
 	assert strict_run.exit_code == 0, strict_run.output
 	assert strict_run.output.trim_space() == '42'
 
+	debug_binary := os.join_path(root, 'debug')
+	debug_compile := cmdexec.run(v3_bin, ['-silent', '-g', '-b', 'fastc', '-o', debug_binary,
+		valid_source])
+	assert debug_compile.exit_code == 0, debug_compile.output
+	debug_c := os.read_file(debug_binary + '.c') or { panic(err) }
+	assert !debug_c.contains('__typeof__((twice(21))) value = (twice(21));')
+	assert !debug_c.contains('V_FASTC_PRINT_SELECT')
+	debug_run := cmdexec.run(debug_binary, [])
+	assert debug_run.exit_code == 0, debug_run.output
+	assert debug_run.output.trim_space() == '42'
+
 	invalid_source := os.join_path(root, 'invalid.v')
 	os.write_file(invalid_source, 'module main
 
@@ -297,6 +308,26 @@ fn main() {
 	high_hex_run := cmdexec.run(high_hex_binary, [])
 	assert high_hex_run.exit_code == 0, high_hex_run.output
 	assert high_hex_run.output.trim_space() == '-1'
+
+	high_binary_source := os.join_path(root, 'inferred_high_binary.v')
+	os.write_file(high_binary_source, 'module main
+
+fn main() {
+	x := 0b11111111111111111111111111111111 | 0
+	println(x)
+}
+') or {
+		panic(err)
+	}
+	high_binary_binary := os.join_path(root, 'inferred_high_binary')
+	high_binary_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', high_binary_binary,
+		high_binary_source])
+	assert high_binary_compile.exit_code == 0, high_binary_compile.output
+	high_binary_c := os.read_file(high_binary_binary + '.c') or { panic(err) }
+	assert !high_binary_c.contains('V_FASTC_PRINT_SELECT')
+	high_binary_run := cmdexec.run(high_binary_binary, [])
+	assert high_binary_run.exit_code == 0, high_binary_run.output
+	assert high_binary_run.output.trim_space() == '-1'
 
 	parallel_assign_source := os.join_path(root, 'parallel_assign.v')
 	os.write_file(parallel_assign_source, 'module main
