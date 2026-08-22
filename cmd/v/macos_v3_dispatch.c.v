@@ -308,7 +308,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		export_macos_v3_report_content(macos_v3_inline_asm_fallback, 'v3', '', '')
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
-			println('V3 requested the compatibility compiler for inline assembly')
+			eprintln('V3 requested the compatibility compiler for inline assembly')
 		}
 	}
 	os.setenv(macos_v3_retry_env, '1', true)
