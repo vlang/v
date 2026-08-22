@@ -3806,6 +3806,12 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 						field_id, tc.struct_init_field_deprecation_pos(field))
 					continue
 				}
+				if tc.fn_storage_voidptr_mismatch(value_id, source_actual, expected) {
+					tc.record_error_at(.assignment_mismatch,
+						'cannot assign to field `${field.value}`: expected `${expected.name()}`, not `${source_actual.name()}`',
+						field_id, tc.struct_init_field_value_pos(field, value_id))
+					continue
+				}
 				if clean_expected is FnType {
 					expected_fn_text, expected_alias := tc.struct_field_diagnostic_fn_type(init_name,
 						field.value, i) or { '', '' }

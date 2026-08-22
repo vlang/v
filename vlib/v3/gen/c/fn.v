@@ -5579,6 +5579,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		fn_node.value
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
+	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
 	if trace_name := g.trace_call_name(fn_node, fn_name, target_name, resolved_target_name) {
 		if g.gen_traced_call(id, trace_name) {
 			return
@@ -5691,11 +5692,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	// Ownership lowering appends calls after checking, while a generic builtin
 	// drop specialized inside another module can retain its original source
 	// position. Recognize both forms by their resolved/synthetic names.
-	is_ownership_drop := (!node.pos.is_valid() && ownership_synthetic_drop_name(fn_name))
-		|| g.ownership_drop_intrinsic_name(fn_name)
-		|| (target_name.len > 0 && g.ownership_drop_intrinsic_name(target_name))
-		|| (g.tc.cur_module == 'builtin' && ownership_synthetic_drop_name(fn_name))
-		|| (resolved_target_name.len > 0 && g.ownership_drop_intrinsic_name(resolved_target_name))
+	mut is_ownership_drop := false
+	if !callee_is_fn_value {
+		is_ownership_drop = (!node.pos.is_valid() && ownership_synthetic_drop_name(fn_name))
+			|| g.ownership_drop_intrinsic_name(fn_name)
+			|| (target_name.len > 0 && g.ownership_drop_intrinsic_name(target_name))
+			|| (g.tc.cur_module == 'builtin' && ownership_synthetic_drop_name(fn_name))
+			|| (resolved_target_name.len > 0
+			&& g.ownership_drop_intrinsic_name(resolved_target_name))
+	}
 	if node.children_count == 2 && is_ownership_drop {
 		arg_id := g.a.child(&node, 1)
 		arg_type := g.usable_expr_type(arg_id)
@@ -5961,7 +5966,6 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		g.write(')')
 		return
 	}
-	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
 	// Monomorphization's concrete callee is authoritative. A transformed clone can
 	// retain the template's resolved-call entry, whose alias-erased specialization
 	// (`Bar`) must not replace an explicit alias specialization (`BarAlias`).

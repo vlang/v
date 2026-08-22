@@ -467,6 +467,9 @@ fn assignment_op_reads_lhs(op flat.Op) bool {
 }
 
 fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Type, expected_type Type, op flat.Op) bool {
+	if op == .assign && tc.fn_storage_voidptr_mismatch(rhs_id, rhs_type, expected_type) {
+		return false
+	}
 	if op == .assign && tc.translated_files[tc.cur_file] && rhs_type is ArrayFixed
 		&& expected_type is Pointer && tc.a.node(rhs_id).kind == .ident {
 		return tc.type_compatible(rhs_type.elem_type, expected_type.base_type)
@@ -508,6 +511,11 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	return tc.expr_compatible(rhs_id, rhs_type, expected_type)
 		|| tc.pointer_value_compatible(rhs_type, expected_type)
 		|| tc.pointer_arithmetic_assign_compatible(op, rhs_type, expected_type)
+}
+
+fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Type, expected Type) bool {
+	return is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual)
+		&& !tc.expr_is_unsafe_nil(expr_id)
 }
 
 fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected SumType) bool {
