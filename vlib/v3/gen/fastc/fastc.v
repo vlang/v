@@ -588,7 +588,7 @@ fn (mut g DirectGen) read_expression_with_prefix(prefix string, stops []token.To
 fn (g &DirectGen) expression_token() !string {
 	return match g.tok {
 		.name { g.lit }
-		.number { fastc_c_number(g.lit) }
+		.number { fastc_c_number(g.lit)! }
 		.string { fastc_c_string(g.lit)! }
 		.char { fastc_c_char(g.lit)! }
 		// stdbool's true/false macros have C type int. Cast them so _Generic
@@ -602,7 +602,24 @@ fn (g &DirectGen) expression_token() !string {
 	}
 }
 
-fn fastc_c_number(literal string) string {
+fn fastc_hex_literal_requires_checked_type(literal string) bool {
+	clean := literal.replace('_', '')
+	if clean.len <= 2 || clean[0] != `0` || clean[1] !in [`x`, `X`] {
+		return false
+	}
+	digits := clean[2..].trim_left('0')
+	if digits.len > 8 {
+		return true
+	}
+	return digits.len == 8 && ((digits[0] >= `8` && digits[0] <= `9`)
+		|| (digits[0] >= `a` && digits[0] <= `f`)
+		|| (digits[0] >= `A` && digits[0] <= `F`))
+}
+
+fn fastc_c_number(literal string) !string {
+	if fastc_hex_literal_requires_checked_type(literal) {
+		return error('high-bit hexadecimal literals require checked fastc')
+	}
 	clean := literal.replace('_', '')
 	if clean.len < 2 || clean[0] != `0` || !clean[1].is_digit() || clean.contains_any('.eE') {
 		return clean

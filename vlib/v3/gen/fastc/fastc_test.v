@@ -172,6 +172,7 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		"module main\nfn main() { println(c'a') }\n",
 		'module main\nfn main() { mut x := -2_147_483_648; x--; println(x) }\n',
 		'module main\nfn main() { for i := -2_147_483_648; true; i-- { println(i); break } }\n',
+		'module main\nfn main() { x := 0xffff_ffff | 0; println(x) }\n',
 	] {
 		mut failed := false
 		_ := generate(source, 'typed_expression.v', prefs) or {
@@ -185,4 +186,7 @@ fn test_type_sensitive_expressions_request_checked_lane() {
 		panic(err)
 	}
 	assert bool_c.contains('println(((bool)true));')
+	low_hex_c := generate('module main\nfn main() { x := 0x7fff_ffff | 0; println(x) }\n',
+		'low_hex_literal.v', prefs) or { panic(err) }
+	assert low_hex_c.contains('__typeof__((0x7fffffff|0)) x = (0x7fffffff|0);')
 }

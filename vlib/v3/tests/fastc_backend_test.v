@@ -258,6 +258,26 @@ fn main() {
 	assert min_int_loop_run.exit_code == 0, min_int_loop_run.output
 	assert min_int_loop_run.output.trim_space() == '-2147483648\n2147483647'
 
+	high_hex_source := os.join_path(root, 'inferred_high_hex.v')
+	os.write_file(high_hex_source, 'module main
+
+fn main() {
+	x := 0xffffffff | 0
+	println(x)
+}
+') or {
+		panic(err)
+	}
+	high_hex_binary := os.join_path(root, 'inferred_high_hex')
+	high_hex_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', high_hex_binary,
+		high_hex_source])
+	assert high_hex_compile.exit_code == 0, high_hex_compile.output
+	high_hex_c := os.read_file(high_hex_binary + '.c') or { panic(err) }
+	assert !high_hex_c.contains('V_FASTC_PRINT_SELECT')
+	high_hex_run := cmdexec.run(high_hex_binary, [])
+	assert high_hex_run.exit_code == 0, high_hex_run.output
+	assert high_hex_run.output.trim_space() == '-1'
+
 	shift_source := os.join_path(root, 'oversized_shift.v')
 	os.write_file(shift_source, 'module main
 
