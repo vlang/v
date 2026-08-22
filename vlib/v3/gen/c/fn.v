@@ -1630,6 +1630,13 @@ fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 	return ' __attribute__((${c_attrs.join(', ')}))'
 }
 
+fn (g &FlatGen) fn_decl_noreturn_prefix(node_id flat.NodeId) string {
+	if int(node_id) >= 0 && g.tc.declaration_has_attribute(node_id, 'noreturn') {
+		return 'VNORETURN '
+	}
+	return ''
+}
+
 fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_name string) {
 	call_name := g.method_call_name_for_call(id, node, method_name)
 	if node.children_count > 0 {
@@ -4396,6 +4403,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 				is_direct_no_main_export = g.needs_no_main_runtime_init_caller()
 			}
 		}
+		g.write(g.fn_decl_noreturn_prefix(node_id))
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(generated_fn_name)
