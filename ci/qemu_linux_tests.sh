@@ -230,13 +230,14 @@ printf -v test_command '%q ' ./vnew "$@"
 
 remote_command="cd ${guest_repo_q}"
 remote_command+=" && export PATH=${guest_repo_q}:\$PATH VFLAGS=${vflags_q}"
+remote_command+=" V_C_ERROR_BUG_REPORT_DISABLED=1"
 remote_command+=" && if [ ! -f thirdparty/tcc/lib/libgc.a ]; then make; fi"
-remote_command+=" && V_C_ERROR_BUG_REPORT_DISABLED=1 ./v -old-compiler -o ./vnew cmd/v"
+remote_command+=" && ./v -old-compiler -o ./vnew cmd/v"
 if ((provision)); then
 	remote_command+=" && ./vnew retry -- ./vnew install markdown"
 	remote_command+=" && if [ ! -f thirdparty/sqlite/sqlite3.c ]; then ./vnew -old-compiler run vlib/db/sqlite/install_thirdparty_sqlite.vsh; fi"
 fi
 remote_command+=" && ./vnew wipe-cache"
-remote_command+=" && VJOBS=${jobs_q} V_C_ERROR_BUG_REPORT_DISABLED=1"
+remote_command+=" && VJOBS=${jobs_q}"
 remote_command+=" V_MACOS_V3_NO_FALLBACK=${no_fallback_q} ${test_command}"
 ssh "${ssh_options[@]}" "$guest" "$remote_command"
