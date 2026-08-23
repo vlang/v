@@ -78,11 +78,13 @@ mut:
 	indent               int
 	in_main              bool
 	has_main             bool
+	unsafe_depth         int
 	temp_id              int
 	locals               map[string]FastcLocal
 	functions            map[string]FastcFunctionSignature
 	return_type          string
 	last_expression_type string
+	last_expression      []FastcExpressionToken
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
@@ -304,11 +306,16 @@ fn (mut g Parser) parse_function() ! {
 		// result type. Reject them until the direct parser tracks the required type.
 		return g.unsupported('narrow integer function types')
 	}
-	if name == 'main' && params.len == 0 && return_type != 'void' {
-		return g.unsupported('main function returning `${return_type}`')
+	if name == 'main' {
+		if params.len > 0 {
+			return g.unsupported('main function with parameters')
+		}
+		if return_type != 'void' {
+			return g.unsupported('main function returning `${return_type}`')
+		}
 	}
 	g.expect(.lcbr)!
-	is_main := name == 'main' && params.len == 0
+	is_main := name == 'main'
 	if is_main {
 		g.has_main = true
 	}
@@ -504,7 +511,10 @@ fn (mut g Parser) parse_statement() !bool {
 		.key_unsafe {
 			g.next()
 			g.expect(.lcbr)!
-			g.parse_block_body()!
+			g.unsafe_depth++
+			terminates := g.parse_block_body()!
+			g.unsafe_depth--
+			terminates
 		}
 		else {
 			g.parse_simple_statement()!
@@ -734,6 +744,9 @@ fn (mut g Parser) parse_simple_statement() ! {
 		}
 		expression :=
 			g.read_expression_with_prefix(name, [token.Token.semicolon, token.Token.rcbr])!
+		if !g.last_expression_is_statement() {
+			return g.unsupported('value-only expression statement')
+		}
 		g.consume_statement_end()
 		g.write_line('${expression};')
 		return
@@ -742,8 +755,23 @@ fn (mut g Parser) parse_simple_statement() ! {
 	if expression.len == 0 {
 		return g.unsupported('statement `${g.token_source()}`')
 	}
-	g.consume_statement_end()
-	g.write_line('${expression};')
+	return g.unsupported('value-only expression statement')
+}
+
+fn (g &Parser) last_expression_is_statement() bool {
+	tokens := g.last_expression
+	if tokens.len == 2 && tokens[0].tok == .name && tokens[1].tok in [.inc, .dec] {
+		return true
+	}
+	if tokens.len < 3 || tokens[0].tok != .name || tokens[1].tok != .lpar {
+		return false
+	}
+	call_close := fastc_matching_rpar(tokens, 1) or { return false }
+	if call_close != tokens.len - 1 {
+		return false
+	}
+	name := tokens[0].lit
+	return name in g.functions || name in ['print', 'println']
 }
 
 fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool) ! {
@@ -900,6 +928,7 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 	}
 	g.validate_expression_calls(expression_tokens)!
 	g.last_expression_type = g.infer_expression_type(expression_tokens)!
+	g.last_expression = expression_tokens
 	return result.str().trim_space()
 }
 
@@ -913,11 +942,18 @@ fn (g &Parser) expression_token(previous token.Token) !string {
 		// dispatch preserves V's bool type when no operator requires promotion.
 		.key_true { '((bool)true)' }
 		.key_false { '((bool)false)' }
-		.key_nil { 'NULL' }
+		.key_nil { g.nil_expression()! }
 		.key_likely, .key_unlikely { '' }
 		.semicolon { ';' }
 		else { g.tok.str() }
 	}
+}
+
+fn (g &Parser) nil_expression() !string {
+	if g.unsafe_depth == 0 {
+		return g.unsupported('`nil` outside an `unsafe` block')
+	}
+	return 'NULL'
 }
 
 fn (g &Parser) expression_name(previous token.Token) !string {
@@ -1106,6 +1142,13 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		operand_type := g.infer_expression_type(tokens[start + 1..end])!
 		if !fastc_is_numeric_expression_type(operand_type) {
 			return g.unsupported('arithmetic `${tokens[start].tok.str()}` on non-numeric type `${operand_type}`')
+		}
+		return operand_type
+	}
+	if tokens[start].tok == .bit_not {
+		operand_type := g.infer_expression_type(tokens[start + 1..end])!
+		if !fastc_is_integer_expression_type(operand_type) {
+			return g.unsupported('bitwise negation of non-integer type `${operand_type}`')
 		}
 		return operand_type
 	}

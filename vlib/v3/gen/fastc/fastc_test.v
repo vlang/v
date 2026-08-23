@@ -312,6 +312,21 @@ fn test_main_must_not_return_a_value() {
 	assert message.contains('main function returning `int`'), message
 }
 
+fn test_main_must_not_have_parameters() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main(code int) {}\n',
+		'module main\nfn main(code int) int { return code }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'parameterized_main.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('main function with parameters'), message
+	}
+}
+
 fn test_range_bounds_must_be_integers() {
 	prefs := pref.new_preferences()
 	for source in [
@@ -344,6 +359,58 @@ fn test_arithmetic_operands_must_be_numeric() {
 		assert message.contains('arithmetic'), message
 		assert message.contains('non-numeric') || message.contains('operands of types'), message
 	}
+}
+
+fn test_nil_requires_an_unsafe_block() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main\nfn show(p &int) { println(*p) }\nfn main() { show(nil) }\n',
+		'nil_outside_unsafe.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('`nil` outside an `unsafe` block'), message
+
+	c_source := generate('module main\nfn accept(p &int) {}\nfn main() { unsafe { accept(nil) } }\n',
+		'nil_inside_unsafe.v', prefs) or { panic(err) }
+	assert c_source.contains('accept(NULL);')
+}
+
+fn test_bitwise_negation_requires_an_integer() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main\nfn main() { println(~true) }\n', 'bool_bit_not.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('bitwise negation of non-integer type `bool`'), message
+
+	c_source := generate('module main\nfn main() { println(~1) }\n', 'integer_bit_not.v', prefs) or {
+		panic(err)
+	}
+	assert c_source.contains('println(~1);')
+}
+
+fn test_value_only_expression_statements_are_rejected() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { 1 }\n',
+		'module main\nfn main() { true }\n',
+		'module main\nfn main() { value := 1; value }\n',
+		'module main\nfn main() { int(1) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'value_expression_statement.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('value-only expression statement'), message
+	}
+
+	c_source := generate('module main\nfn touch() {}\nfn main() { mut count := 0; touch(); count++ }\n',
+		'valid_expression_statements.v', prefs) or { panic(err) }
+	assert c_source.contains('touch();')
+	assert c_source.contains('count++;')
 }
 
 fn test_bare_return_from_main_emits_zero() {
