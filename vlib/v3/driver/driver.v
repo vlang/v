@@ -2497,10 +2497,47 @@ fn register_native_source_typedefs(mut tc types.TypeChecker, state &V3ModuleCach
 				if c_name !in tc.structs {
 					tc.structs[c_name] = []types.StructField{}
 				}
-				tc.c_typedef_structs[c_name] = true
+				if !c_typedef_is_function_pointer(source, name) {
+					tc.c_typedef_structs[c_name] = true
+				}
 			}
 		}
 	}
+}
+
+fn register_headerless_c_types(mut tc types.TypeChecker) {
+	// The C backend always supplies this platform-specific declaration in its
+	// headerless preamble, even when the program does not import `os`.
+	if 'C.stat' !in tc.structs {
+		tc.structs['C.stat'] = []types.StructField{}
+	}
+}
+
+fn c_typedef_is_function_pointer(source string, name string) bool {
+	mut offset := 0
+	for offset < source.len {
+		relative := source[offset..].index(name) or { return false }
+		start := offset + relative
+		end := start + name.len
+		if (start == 0 || (!source[start - 1].is_alnum() && source[start - 1] != `_`))
+			&& (end == source.len || (!source[end].is_alnum() && source[end] != `_`)) {
+			mut i := start - 1
+			for i >= 0 && source[i].is_space() {
+				i--
+			}
+			if i >= 0 && source[i] == `*` {
+				i--
+				for i >= 0 && source[i].is_space() {
+					i--
+				}
+				if i >= 0 && source[i] == `(` {
+					return true
+				}
+			}
+		}
+		offset = end
+	}
+	return false
 }
 
 fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target, native_inputs_language string) (map[string]string, bool) {
@@ -4858,7 +4895,7 @@ fn incremental_changed_functions(snapshot V3IncrementalSnapshot, old map[string]
 	return keys, names
 }
 
-fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, tc &types.TypeChecker, changed_names map[string]bool, cached map[string]bool, user_files []string) bool {
+fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, tc &types.TypeChecker, mut changed_names map[string]bool, mut used map[string]bool, user_files []string) bool {
 	if changed_names.len == 0 {
 		return false
 	}
@@ -4891,7 +4928,17 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 				if !aliases.any(current[it]) {
 					continue
 				}
-				if !aliases.any(cached[it]) {
+				if !aliases.any(used[it]) {
+					// A newly reached stringifier can be added to the incremental body without
+					// invalidating unchanged functions or the cached support prefix.
+					if name.ends_with('.str') {
+						changed_names[node.value] = true
+						changed_names[name] = true
+						for alias in aliases {
+							used[alias] = true
+						}
+						continue
+					}
 					return true
 				}
 			}
@@ -7967,6 +8014,7 @@ pub fn run(args []string) {
 		}
 		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
+		register_headerless_c_types(mut pre_tc)
 		register_native_source_typedefs(mut pre_tc, &cache_state)
 		if translated_mode {
 			for file in user_files {
@@ -8204,7 +8252,7 @@ pub fn run(args []string) {
 			used_fns = clone_string_bool_map(cached_program_used_fns)
 			uses_generics = true
 			if incremental_cache_hit
-				&& incremental_changed_functions_require_reachability_rebuild(a, markused_tc, incremental_changed_names, cached_program_used_fns, user_files) {
+				&& incremental_changed_functions_require_reachability_rebuild(a, markused_tc, mut incremental_changed_names, mut used_fns, user_files) {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
 				restart_v3_after_cache_invalidation()
 			}
@@ -8757,8 +8805,8 @@ pub fn run(args []string) {
 			base_specialized_fns := a.specialized_fn_nodes.len
 			monomorph_scope := prealloc_scope_begin_for_v3()
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
-				&pre_tc, monomorph_input_used, should_parallel_monomorphize(), monomorph_scope,
-				cached_monomorph_specs)
+				&pre_tc, monomorph_input_used, !current_no_parallel
+				&& should_parallel_monomorphize(), monomorph_scope, cached_monomorph_specs)
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			prealloc_scope_leave_for_v3(monomorph_scope)
 			// Specialization can rewrite payload text on pre-existing nodes as
@@ -8798,8 +8846,9 @@ pub fn run(args []string) {
 			prealloc_scope_free_for_v3(monomorph_scope)
 		} else {
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
-				&pre_tc, monomorph_input_used, should_parallel_monomorphize()
-				&& !incremental_cache_hit, unsafe { nil }, cached_monomorph_specs)
+				&pre_tc, monomorph_input_used, !current_no_parallel
+				&& should_parallel_monomorphize() && !incremental_cache_hit, unsafe { nil },
+				cached_monomorph_specs)
 		}
 		// Monomorphization publishes every synthesized or rewritten AST string
 		// after its final worker merge, including the serial/no-worker path.
@@ -11630,7 +11679,9 @@ fn vmod_subdirs(dir string) ![]string {
 	if os.read_file(vmod_path)!.trim_space().len == 0 {
 		return []string{}
 	}
-	manifest := vmod.from_file(vmod_path)!
+	// An invalid v.mod does not make the source directory invalid. This matches
+	// the legacy builder, while still honoring `subdirs` in valid manifests.
+	manifest := vmod.from_file(vmod_path) or { return []string{} }
 	return manifest.unknown['subdirs'] or { []string{} }
 }
 
@@ -11747,8 +11798,7 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	if module_name.len > 0 {
 		for file in all_files {
 			declared_module := declared_module_in_file(file)
-			if declared_module != module_name && !(declared_module in ['', 'main']
-				&& module_name in ['', 'main']) {
+			if declared_module != module_name {
 				continue
 			}
 			files << file

@@ -409,7 +409,7 @@ fn test_one() {
 	println('lonely')
 }
 ")
-	assert !ordinary_c.contains('int main('), ordinary_c
+	assert ordinary_c.contains('int main('), ordinary_c
 	assert !ordinary_c.contains('test_lonely();'), ordinary_c
 }
 

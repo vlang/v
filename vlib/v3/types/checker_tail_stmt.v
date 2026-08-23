@@ -2641,11 +2641,10 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 			tc.record_notice_at(.condition_mismatch,
 				'smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 				expr_id, expr_node.pos)
-		} else {
-			tc.record_error_at(.condition_mismatch,
-				'smart casting a mutable interface value requires `if mut ${tc.source_text_for_node(expr_id)} is ...`',
-				expr_id, expr_node.pos)
 		}
+		tc.record_error_at(.condition_mismatch,
+			'smart casting a mutable interface value requires `if mut ${tc.source_text_for_node(expr_id)} is ...`',
+			expr_id, expr_node.pos)
 	}
 	// A previous branch can narrow a variable to one variant and then assign it
 	// another value. A later `is` still applies to the variable's declared sum
@@ -3281,6 +3280,32 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	}
 	is_optional_init := node.value.starts_with('?')
 	init_type_text := if is_optional_init { node.value[1..] } else { node.value }
+	raw_source_type_text := tc.source_text_for_node(id).all_before('{').trim_space().trim_left('?')
+	// Struct literals in select send conditions can start their span one byte after the
+	// qualified type. Repair that narrow parser offset without treating synthesized
+	// qualified types (for example `$embed_file`) as source module references.
+	source_type_text := if raw_source_type_text.len > 0
+		&& init_type_text.len == raw_source_type_text.len + 1
+		&& init_type_text.ends_with(raw_source_type_text) {
+		init_type_text
+	} else {
+		raw_source_type_text
+	}
+	if source_type_text.contains('.') && !source_type_text.starts_with('C.') {
+		module_alias := source_type_text.all_before('.')
+		if module_alias.len > 0 && module_alias[0] >= `a` && module_alias[0] <= `z`
+			&& module_alias.bytes().all(it.is_letter() || it.is_digit() || it == `_`)
+			&& module_alias != tc.cur_module
+			&& tc.current_file_import_path_for_alias(module_alias) == none {
+			tc.record_error_at(.unknown_type, 'unknown module `${module_alias}`', id, tc.type_diagnostic_pos(id,
+				module_alias))
+			for i in 0 .. node.children_count {
+				tc.check_node(tc.a.child(&node, i))
+			}
+			tc.register_synth_type(id, Type(void_))
+			return
+		}
+	}
 	parsed_init_type := tc.parse_type(init_type_text)
 	clean_parsed_init_type := unalias_type(parsed_init_type)
 	if clean_parsed_init_type is FnType {
@@ -4719,6 +4744,9 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 		field_type := unalias_type(tc.parse_type(field_type_text))
 		is_embed := source_field_decl_is_embed(field, field_type_text)
 		if field_type is Pointer {
+			if tc.struct_field_has_shared_elements(clean_name, field.value) {
+				continue
+			}
 			if field_type_text in ['charptr', 'byteptr', 'voidptr'] {
 				continue
 			}
@@ -5813,6 +5841,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if tc.expr_is_method_value(id) && !tc.ident_is_call_callee_or_generic_base(id) {
+		tc.check_pointer_receiver_method_value_safety(id, node, base_type)
 		receiver := unwrap_pointer(base_type)
 		mut generic_method_key := ''
 		if receiver is Alias {

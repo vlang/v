@@ -97,7 +97,7 @@ fn test_sizeof_selector_qualifies_global_without_rewriting_locals_or_types() {
 	assert compact.contains('moda__Stateglobal_sizeof_state=(moda__State){.event=3};return(int)(sizeof(global_sizeof_state.event));'), c_code
 
 	assert compact.count('sizeof(global_sizeof_state.event)') == 2, c_code
-	assert compact.contains('sizeof(State)'), c_code
+	assert compact.contains('sizeof(main__State)'), c_code
 	assert compact.contains('sizeof(moda__State)'), c_code
 	assert !compact.contains('sizeof(moda.State)'), c_code
 	assert !compact.contains('global_sizeof_state__event'), c_code

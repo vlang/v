@@ -2801,10 +2801,18 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 	if node.children_count == 0 {
 		if node.typ.len == 0 {
 			if expected := tc.expected_context_for_expr(id) {
-				context_type := contextual_payload_type(expected) or { expected }
-				if array_like_elem_type(context_type) != none {
+				context_type := unalias_type(contextual_payload_type(expected) or { expected })
+				if context_type is Array {
 					tc.register_synth_type(id, context_type)
 					return
+				}
+				if context_type is ArrayFixed {
+					if expected_len := tc.fixed_array_len_value(context_type) {
+						if expected_len == 0 {
+							tc.register_synth_type(id, context_type)
+							return
+						}
+					}
 				}
 			}
 			tc.record_error_at(.assignment_mismatch,
@@ -2835,9 +2843,16 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 	if node.typ.len == 0 {
 		if expected := tc.expected_context_for_expr(id) {
 			context_type := unalias_type(contextual_payload_type(expected) or { expected })
-			if context_type is Array || context_type is ArrayFixed {
+			if context_type is Array && context_type.elem_type !is Void {
 				array_type = context_type
 				tc.register_synth_type(id, context_type)
+			} else if context_type is ArrayFixed {
+				array_type = context_type
+				if expected_len := tc.fixed_array_len_value(context_type) {
+					if expected_len == node.children_count {
+						tc.register_synth_type(id, context_type)
+					}
+				}
 			}
 		}
 	}
@@ -5959,8 +5974,10 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 	// A deferred `$if` can itself be the value-producing tail of an outer
 	// `if`/`match` branch. Preserve that context when checking the selected
 	// branch so its last expression is not diagnosed as an unused statement.
+	tc.comptime_static_depth++
 	tc.check_branch_node(tc.a.child(&node, branch_index), !tc.is_statement_node(id)
 		&& tc.expression_node_used_as_value(id))
+	tc.comptime_static_depth--
 }
 
 fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node flat.Node) bool {
@@ -13194,7 +13211,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				rhs_node.pos)
 		}
 		if tc.unsafe_depth == 0 && lhs_is_mut && unalias_type(rhs_type) is Array
-			&& rhs_node.kind == .selector && tc.expr_root_is_mutable_lvalue(rhs_id) {
+			&& rhs_node.kind == .selector && tc.expr_can_take_address(rhs_id) {
 			tc.record_error_at(.assignment_mismatch,
 				'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)',
 				id, tc.assignment_operator_pos(node, lhs_id, rhs_id))

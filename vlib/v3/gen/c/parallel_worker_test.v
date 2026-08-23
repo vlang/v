@@ -278,6 +278,19 @@ fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
 	assert 'Shared[string]' !in frozen.entries
 }
 
+fn test_open_generic_receiver_template_bypasses_stale_generic_app_cache() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut cache := g.generic_app_cache
+	cache.entries['AtomicVal[T]'] = GenericAppInfo{}
+	node := flat.Node{
+		kind:  .fn_decl
+		value: 'AtomicVal[T].load'
+	}
+	assert g.fn_node_is_open_generic_template(node, 'stdatomic')
+	assert !g.should_emit_fn_node_in_module_known(node, 'stdatomic', 'atomic.v',
+		'stdatomic__AtomicVal_T__load', true)
+}
+
 fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 	mut g, _ := parallel_worker_test_gen(true)
 	g.parallel_type_decls = '/* precomputed type declarations */\n'.clone()

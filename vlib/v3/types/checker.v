@@ -3451,7 +3451,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 					if param_type_text_is_shared(field_typ) {
 						shared_field_names << f.value
 					}
-					if field_typ.trim_space().starts_with('[]shared ') {
+					if field_typ.trim_space().trim_left('&').trim_space().starts_with('[]shared ') {
 						shared_element_field_names << f.value
 					}
 					fields << StructField{
@@ -12086,6 +12086,7 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 		variant_name := trimmed_space(raw_variant)
 		variant_id := variant_ids[i]
 		variant_type := tc.parse_type(variant_name)
+		clean_variant_type := unalias_type(variant_type)
 		semantic_name := variant_type.name()
 		variant_key := if variant_type is Unknown { variant_name } else { semantic_name }
 		if seen[variant_key] {
@@ -12097,7 +12098,7 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 		seen[variant_key] = true
 		is_builtin_pointer := variant_name in ['voidptr', 'byteptr', 'charptr']
 			|| variant_type.name() in ['voidptr', 'byteptr', 'charptr']
-		if variant_type is Pointer && !is_builtin_pointer && !pointer_reported {
+		if clean_variant_type is Pointer && !is_builtin_pointer && !pointer_reported {
 			display_variant := variant_name.trim_left('&').trim_space()
 			display_type := tc.parse_type(display_variant)
 			left, right := if unalias_type(display_type) is Struct {

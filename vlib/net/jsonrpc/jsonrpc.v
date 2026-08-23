@@ -56,15 +56,42 @@ pub fn error_with_code(message string, code int) ResponseError {
 
 // JSON-RPC standard-ish errors :contentReference[oaicite:3]{index=3}
 
-pub const parse_error = error_with_code('Invalid JSON.', -32700)
-pub const invalid_request = error_with_code('Invalid request.', -32600)
-pub const method_not_found = error_with_code('Method not found.', -32601)
-pub const invalid_params = error_with_code('Invalid params', -32602)
-pub const internal_error = error_with_code('Internal error.', -32693)
-pub const server_error_start = error_with_code('Error occurred when starting server.', -32099)
-pub const server_not_initialized = error_with_code('Server not initialized.', -32002)
-pub const unknown_error = error_with_code('Unknown error.', -32001)
-pub const server_error_end = error_with_code('Error occurred when stopping the server.', -32000)
+pub const parse_error = ResponseError{
+	code:    -32700
+	message: 'Invalid JSON.'
+}
+pub const invalid_request = ResponseError{
+	code:    -32600
+	message: 'Invalid request.'
+}
+pub const method_not_found = ResponseError{
+	code:    -32601
+	message: 'Method not found.'
+}
+pub const invalid_params = ResponseError{
+	code:    -32602
+	message: 'Invalid params'
+}
+pub const internal_error = ResponseError{
+	code:    -32693
+	message: 'Internal error.'
+}
+pub const server_error_start = ResponseError{
+	code:    -32099
+	message: 'Error occurred when starting server.'
+}
+pub const server_not_initialized = ResponseError{
+	code:    -32002
+	message: 'Server not initialized.'
+}
+pub const unknown_error = ResponseError{
+	code:    -32001
+	message: 'Unknown error.'
+}
+pub const server_error_end = ResponseError{
+	code:    -32000
+	message: 'Error occurred when stopping the server.'
+}
 pub const error_codes = [
 	parse_error.code(),
 	invalid_request.code(),

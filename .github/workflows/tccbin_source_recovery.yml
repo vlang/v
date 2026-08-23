@@ -38,7 +38,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           HANDOFF_ID: ${{ inputs.resume_handoff_id || '' }}
-          UPSTREAM_NAME: ${{ github.event.workflow_run.name || '' }}
+          UPSTREAM_PATH: ${{ github.event.workflow_run.path || '' }}
         run: |
           set -euo pipefail
           case "$EVENT_NAME" in
@@ -55,8 +55,8 @@ jobs:
               echo 'handoff_id=' >> "$GITHUB_OUTPUT"
               ;;
             workflow_run)
-              case "$UPSTREAM_NAME" in
-                'Update tccbin'|'TCC bundle revalidation') ;;
+              case "$UPSTREAM_PATH" in
+                '.github/workflows/update_tccbin.yml'|'.github/workflows/tccbin_revalidate.yml') ;;
                 *) exit 1 ;;
               esac
               echo 'mode=workflow_run' >> "$GITHUB_OUTPUT"

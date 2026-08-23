@@ -772,13 +772,16 @@ fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, module_na
 	if g.should_emit_ierror_method(node.value, qfn) {
 		return true
 	}
-	// Every specialization materialized from the combined program/module-cache
-	// graph is a concrete body needed by either main or one of the cached objects.
-	if is_program_specialization {
-		return true
-	}
 	if g.fn_node_is_open_generic_template(node, module_name) {
 		return false
+	}
+	// Every concrete specialization materialized from the combined
+	// program/module-cache graph is needed by either main or a cached object.
+	// Check for an open template first: cache-wide reachability can retain a raw
+	// generic receiver declaration in `specialized_generic_fns`, but it still has
+	// no valid C ABI until monomorphization replaces its type parameters.
+	if is_program_specialization {
+		return true
 	}
 	if g.has_used_fn_filter() {
 		if g.used_fn_contains_in_module(node.value, module_name) {
@@ -799,9 +802,22 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name str
 		return false
 	}
 	receiver := node.value.all_before_last('.')
-	base, args, ok := g.shared_generic_app_parts(receiver)
+	// This declaration gate must inspect the source spelling authoritatively. The
+	// shared expression cache can already contain a negative result for the same
+	// string from a different resolution context during cache-wide generation.
+	base, args, ok := parse_shared_generic_app_parts(receiver)
 	if !ok || args.len == 0 {
 		return false
+	}
+	// Receiver declarations encode their own generic parameters in the receiver
+	// text. During cache-wide self-host generation the declaration can outlive
+	// the short-name generic-struct index, so recognize the canonical V generic
+	// parameter spelling directly as well.
+	for arg in args {
+		clean := arg.trim_space()
+		if clean.len == 1 && clean[0] >= `A` && clean[0] <= `Z` {
+			return true
+		}
 	}
 	mut candidates := [base]
 	if !base.contains('.') && module_name.len > 0 && module_name !in ['main', 'builtin'] {
@@ -10188,6 +10204,10 @@ fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
 		}
 	}
 	if resolved := g.tc.resolved_call_name(id) {
+		if resolved == name && !name.contains('.')
+			&& (name in g.tc.fn_param_types || name in g.tc.fn_ret_types) {
+			return name
+		}
 		if resolved_call_matches_target(resolved, name) {
 			return g.normalize_call_key(resolved)
 		}
@@ -10239,10 +10259,13 @@ fn (g &FlatGen) normalize_call_key_uncached(name string) string {
 			return local
 		}
 	}
+	if !name.contains('.') && g.non_generic_fn_decl_exists_in_module(name, g.tc.cur_module)
+		&& (name in g.tc.fn_param_types || name in g.tc.fn_ret_types) {
+		return name
+	}
 	// A selected import belongs to the current source file and must win over a
-	// same-spelled short signature retained from an imported module. The checker
-	// can omit per-node resolution data when the program unit is emitted from the
-	// module cache, so recover the file-local declaration before accepting `name`.
+	// same-spelled short signature retained from another imported module. A real
+	// declaration in the current module still has normal lexical priority.
 	if imported := g.selective_import_call_key_in_file(name, g.tc.cur_file) {
 		return imported
 	}

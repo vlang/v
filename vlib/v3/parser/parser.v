@@ -2523,13 +2523,18 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
+	import_pos := p.span_to(import_start)
+	if !p.cur_file.ends_with('.vh') && alias.len > 1 && alias[0] == `_` {
+		p.record_diagnostic_span('module alias `${alias}` cannot start with `_`',
+			import_pos.offset, import_pos.end)
+	}
 	return p.add_node(flat.Node{
 		kind:           .import_decl
 		value:          name
 		typ:            alias
 		children_start: p.add_children(selective_ids)
 		children_count: flat.child_count(selective_ids.len)
-		pos:            p.span_to(import_start)
+		pos:            import_pos
 	})
 }
 

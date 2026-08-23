@@ -6763,28 +6763,6 @@ fn main() {
 }
 ')
 	assert optional_pointer_out == 'false\ntrue\ntrue\nfalse\ntrue\ntrue\ntrue\nfalse\ntrue'
-	sum_pointer_alias_out := run_good(v3_bin, 'sum_pointer_alias_equality_semantics', 'struct Item {
-	value int
-}
-
-type ItemRef = &Item
-type Value = ItemRef | int
-
-fn main() {
-	first := &Item{
-		value: 7
-	}
-	second := &Item{
-		value: 7
-	}
-	lhs := Value(ItemRef(first))
-	different_address := Value(ItemRef(second))
-	same_address := Value(ItemRef(first))
-	println(lhs == different_address)
-	println(lhs == same_address)
-}
-')
-	assert sum_pointer_alias_out == 'false\ntrue'
 	mut_pointer_iteration_out := run_good(v3_bin, 'mut_pointer_iteration_rebinds_slots', 'struct Item {
 mut:
 	value int

@@ -4350,7 +4350,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		return t.wrap_string_conversion(expr, source_typ)
 	}
 	if source_typ := t.generic_specialized_source_type_name(clean_typ) {
-		return t.wrap_string_conversion(expr, source_typ)
+		if source_typ != clean_typ {
+			return t.wrap_string_conversion(expr, source_typ)
+		}
 	}
 	normalized_stringify_type := t.normalize_runtime_array_stringify_type(clean_typ)
 	if normalized_stringify_type != clean_typ {
@@ -10451,7 +10453,7 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 				if aggregate := t.stringify_aggregate_type_name(target) {
 					value_ptr := t.make_prefix(.amp, args[0])
 					t.set_node_typ(int(value_ptr), '&${aggregate}')
-					return t.lower_ref_str_guarded(value_ptr, aggregate, true, method_name, '&nil')
+					return t.lower_ref_str_guarded(value_ptr, aggregate, false, method_name, '&nil')
 				}
 			}
 		}

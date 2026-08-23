@@ -857,7 +857,7 @@ fn main() {
 	mut selector_count := 0
 	for i in 0 .. main_fn.children_count {
 		child_id := a.child(&main_fn, i)
-		direct_count += count_call_name(a, child_id, 'array.pointers')
+		direct_count += count_call_name(a, child_id, '__v3_fixed_array_pointers')
 		copy_count += count_call_name(a, child_id, 'new_array_from_c_array')
 		selector_count += count_selector_value(a, child_id, 'pointers')
 	}

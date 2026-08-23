@@ -399,6 +399,11 @@ fn test_standard_v3_excludes_ownership_checker() {
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'no ownership\n'
+	c_stat_source := os.join_path(root, 'c_stat.v')
+	os.write_file(c_stat_source, 'fn main() {\n\t_ := C.stat{}\n}\n')!
+	c_stat_output := os.join_path(root, 'c_stat')
+	c_stat_compile := cmdexec.run(v3_bin, ['-o', c_stat_output, c_stat_source])
+	assert c_stat_compile.exit_code == 0, c_stat_compile.output
 	assert_driver_cli_failure(v3_bin, ['-ownership', source],
 		'ownership support is not compiled into this v3 executable')
 	assert_driver_cli_failure(v3_bin, ['-d', 'ownership', source],

@@ -526,6 +526,10 @@ fn (mut t Transformer) explicit_generic_fn_value_specialization(id flat.NodeId, 
 fn (t &Transformer) explicit_generic_fn_value_decl_candidates(id flat.NodeId, base_id flat.NodeId, base flat.Node, module_name string) []string {
 	if base.kind == .ident {
 		mut candidates := []string{}
+		local := transform_qualified_fn_name(module_name, base.value)
+		if local != base.value {
+			candidates << local
+		}
 		if !isnil(t.tc) {
 			if resolved := t.tc.resolved_fn_value_name(id) {
 				candidates << resolved
@@ -12010,6 +12014,25 @@ fn generic_type_args_short(args []string) string {
 
 fn generic_type_arg_short(type_arg string) string {
 	clean := type_arg.trim_space()
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		if params, ret := fn_type_text_parts(clean) {
+			mut normalized_params := []string{cap: params.len}
+			for param in params {
+				trimmed := param.trim_space()
+				mut payload := generic_fn_type_param_payload(trimmed)
+				if trimmed.starts_with('mut ') && !payload.starts_with('&') {
+					payload = '&${payload}'
+				}
+				normalized_params << payload
+			}
+			normalized := if ret.len > 0 {
+				'fn (${normalized_params.join(', ')}) ${ret}'
+			} else {
+				'fn (${normalized_params.join(', ')})'
+			}
+			return sanitize_full_type_name_fragment(normalized)
+		}
+	}
 	if clean.starts_with('[]') {
 		return 'Array_${generic_type_arg_short(clean[2..])}'
 	}

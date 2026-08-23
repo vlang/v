@@ -73,6 +73,7 @@ fn main() {
 	os.chdir(cfg.repo_root) or { fail('failed to enter ${cfg.repo_root}: ${err}') }
 
 	v3_bin := temp_path(cfg, 'v3')
+	v3_ownership_bin := temp_path(cfg, 'v3_ownership')
 	hello_c_bin := temp_path(cfg, 'hello_c')
 	hello_arm_bin := temp_path(cfg, 'hello_arm64')
 	v4_arm_bin := temp_path(cfg, 'v4_arm64')
@@ -82,6 +83,7 @@ fn main() {
 	v6_bin := temp_path(cfg, 'v6_chain')
 	cleanup_files([
 		v3_bin,
+		v3_ownership_bin,
 		hello_c_bin,
 		hello_c_bin + '.c',
 		hello_arm_bin,
@@ -101,6 +103,9 @@ fn main() {
 
 	section(2, 'Build v3')
 	run('${host_v_cmd(cfg)} -o ${q(v3_bin)} ${q(cfg.v3_src)}')
+	// The unlocked example oracle includes an `-autofree` case. Keep its optional
+	// ownership checker out of the compiler used by ordinary compatibility cases.
+	run('${host_v_cmd(cfg)} -d ownership -o ${q(v3_ownership_bin)} ${q(cfg.v3_src)}')
 
 	section(3, 'Requested vlib tests')
 	for rel_path in requested_vlib_tests {
@@ -118,7 +123,7 @@ fn main() {
 	cleanup_files([hello_c_bin, hello_c_bin + '.c'])
 
 	section(5, 'Unlocked examples C oracle')
-	run_unlocked_examples(cfg, v3_bin)
+	run_unlocked_examples(cfg, v3_bin, v3_ownership_bin)
 
 	section(6, 'ARM64 self-host hello world')
 	if cfg.c99 {
@@ -139,6 +144,9 @@ fn main() {
 	run('${q(v4_bin)} ${cfg.c99_flag} -selfhost -o ${q(v5_bin)} ${q(cfg.v3_src)}')
 	println('  Building v6 from v5...')
 	run('${q(v5_bin)} ${cfg.c99_flag} -selfhost -o ${q(v6_bin)} ${q(cfg.v3_src)}')
+	println('  Comparing generated C output from v4 and v5...')
+	run('${q(v4_bin)} ${cfg.c99_flag} -selfhost -b c -o ${q(v5_bin + '.c')} ${q(cfg.v3_src)}')
+	run('${q(v5_bin)} ${cfg.c99_flag} -selfhost -b c -o ${q(v6_bin + '.c')} ${q(cfg.v3_src)}')
 	converged_size := assert_same_file_bytes('v5/v6 generated C output', v5_bin + '.c', v6_bin +
 		'.c')
 	println('  v5.c=v6.c (${converged_size} bytes) - chain converged')
@@ -153,7 +161,7 @@ fn main() {
 	assert_same_text('language feature output', v3_c_out, expected_out)
 	println('  v3 C OK (${v3_c_out.split_into_lines().len} lines)')
 	println('  ARM64 coverage is the one-generation macOS self-host smoke test in the ARM64 step')
-	cleanup_files([v3_bin, v3_lang_bin, v3_lang_bin + '.c'])
+	cleanup_files([v3_bin, v3_ownership_bin, v3_lang_bin, v3_lang_bin + '.c'])
 
 	println('')
 	println('=== ALL TESTS PASSED ===')
@@ -524,11 +532,12 @@ fn example_gui(path string, timeout_seconds int) ExampleCase {
 	}
 }
 
-fn run_unlocked_examples(cfg Config, v3_bin string) {
+fn run_unlocked_examples(cfg Config, v3_bin string, v3_ownership_bin string) {
 	examples := unlocked_examples()
 	mut ran := 0
 	for i, example_case in examples {
-		if run_unlocked_example(cfg, v3_bin, example_case, i) {
+		compiler := if '-autofree' in example_case.compile_flags { v3_ownership_bin } else { v3_bin }
+		if run_unlocked_example(cfg, compiler, example_case, i) {
 			ran++
 		}
 	}
