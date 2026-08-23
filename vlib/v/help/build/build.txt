@@ -30,8 +30,9 @@ The default compiler:
   it parsed the same bytes for every captured project input; otherwise no fallback
   report is submitted. An unchanged input mapped from a generated-C error can still
   upload a strict-subset excerpt of it, even for a short file.
-  Inline-assembly fallbacks are notice-only; test compilations and GitHub CI also
-  submit no report to the default endpoint. A custom fallback URL set with
+  Inline-assembly fallbacks and reports that cannot fit safely through the retry
+  environment are notice-only; test compilations and GitHub CI also submit no
+  report to the default endpoint. A custom fallback URL set with
   V_C_ERROR_BUG_REPORT_URL remains active in CI. The -bug-report-url option
   selects the established compiler and configures only its reports. Pass
   `-old-compiler` (see `v help build-c`) to always use the established compiler

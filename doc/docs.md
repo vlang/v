@@ -123,10 +123,11 @@ did not parse. Before submitting any report, the stable compiler also verifies
 that it parsed the same bytes for every captured project input; if it did not, no
 fallback report is submitted. An unchanged input mapped from a generated-C error
 can still upload a strict-subset excerpt of that file plus a few lines of context
-around the failing line, even when the file is short. Inline-assembly
-fallbacks are notice-only and do not submit a report; reporting is also skipped
-for test compilations and to the default endpoint in GitHub CI. A custom fallback
-endpoint set with `V_C_ERROR_BUG_REPORT_URL` remains active in CI. The
+around the failing line, even when the file is short. Inline-assembly fallbacks
+and reports that cannot fit safely through the retry's process environment are
+notice-only and do not submit a report. Reporting is also skipped for test
+compilations and to the default endpoint in GitHub CI. A custom fallback endpoint
+set with `V_C_ERROR_BUG_REPORT_URL` remains active in CI. The
 `-bug-report-url` option selects the established compiler and configures only its
 reports. You can turn reporting off entirely by setting
 `V_C_ERROR_BUG_REPORT_DISABLED=1`.

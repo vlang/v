@@ -460,6 +460,69 @@ fn test_export_external_v3_report_bounds_c_output_for_exec() {
 	assert got.c_output.contains(c_error_bug_report_truncation_notice)
 }
 
+fn test_export_external_v3_report_bounds_combined_exec_payload() {
+	clear_v3_report_env()
+	mut digests := map[string]string{}
+	for i in 0 .. 128 {
+		digests['/project/${i}/${'p'.repeat(128)}.v'] = sha256.hexhash('source ${i}')
+	}
+	huge_output := 'error: ' + 'c'.repeat(c_error_bug_report_max_env_c_output_bytes)
+	huge_source := 'fn generated() {\n' + 'v'.repeat(c_error_bug_report_max_v_source_bytes) + '\n}'
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		ccompiler:              'clang'
+		c_output:               huge_output
+		v_file:                 'main.v'
+		v_source:               huge_source
+		source_inline:          true
+		input_digests:          digests
+		input_digests_complete: true
+		tag:                    'V3'
+	})
+	environment := os.environ()
+	mut payload := map[string]string{}
+	for suffix in v3_report_env_suffixes {
+		name := '${v3_report_env_prefix}${suffix}'
+		if name in environment {
+			payload[suffix] = environment[name]
+		}
+	}
+	assert v3_report_env_payload_bytes(payload) <= v3_report_env_budget(environment, os.args)
+	assert v3_report_env_payload_bytes(payload) <= v3_report_max_env_payload_bytes
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no aggregate-bounded report round-tripped'
+		return
+	}
+	assert got.input_digests_complete
+	assert got.input_digests == digests
+	assert got.c_output.len < huge_output.len
+	assert got.v_source.len < huge_source.len
+	assert got.c_output.contains(c_error_bug_report_truncation_notice)
+	assert got.v_source.contains(c_error_v_source_truncation_notice)
+}
+
+fn test_v3_report_env_budget_reserves_existing_argv_and_environment() {
+	assert v3_report_env_budget({
+		'EXISTING': 'x'.repeat(v3_report_conservative_exec_bytes)
+	}, ['v', 'main.v']) == 0
+}
+
+fn test_export_external_v3_report_uses_notice_only_when_metadata_cannot_fit() {
+	clear_v3_report_env()
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:     external_v3_compiler_error_kind
+		v_file:   'f'.repeat(v3_report_max_env_payload_bytes)
+		c_output: 'error: V3 failed'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no transport-limited notice round-tripped'
+		return
+	}
+	assert got.kind == external_v3_transport_limited_kind
+	assert got.c_output == ''
+	assert got.v_source == ''
+	assert !got.input_digests_complete
+}
+
 fn test_build_inline_c_error_report_classifies_and_filters() {
 	prefs := pref.Preferences{
 		gc_mode: .no_gc

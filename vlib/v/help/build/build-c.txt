@@ -28,10 +28,11 @@ see also `v help build`.
       stable compiler verifies that it parsed the same bytes for every captured
       project input; otherwise no fallback report is submitted. An unchanged input
       mapped from a generated-C error can still include a strict-subset excerpt.
-      Inline-assembly fallbacks
-      are notice-only; test compilations and GitHub CI also submit no report to
-      the default endpoint. An explicitly configured custom bug report URL remains
-      active in CI. See `v help build` for the full description of the default.
+      Inline-assembly fallbacks and reports that cannot fit safely through the
+      retry environment are notice-only; test compilations and GitHub CI also
+      submit no report to the default endpoint. An explicitly configured custom
+      bug report URL remains active in CI. See `v help build` for the full
+      description of the default.
 
    -cflags <flag>
       Pass the provided flag as is to the C compiler.

@@ -32,6 +32,12 @@ const c_error_bug_report_max_env_c_output_bytes = 64 * 1024
 // but its fallback report is conservatively suppressed because exact equivalence
 // cannot be proved.
 const v3_report_max_env_input_digests_bytes = 64 * 1024
+// Bound the complete handoff, not just each value. Linux guarantees at least 128 KiB
+// for argv+environment and macOS allows more, so use that lower bound while accounting
+// for the caller's existing argv/environment and retaining extra implementation slack.
+const v3_report_conservative_exec_bytes = 128 * 1024
+const v3_report_exec_reserve_bytes = 16 * 1024
+const v3_report_max_env_payload_bytes = 64 * 1024
 
 struct CErrorReportLine {
 pub:
@@ -75,11 +81,15 @@ const external_v3_compiler_error_kind = 'compiler_error'
 // `macos_v3_inline_asm_fallback` in cmd/v.
 const external_v3_notice_only_kind = 'inline_asm'
 
+// external_v3_transport_limited_kind preserves the successful-fallback notice when the
+// complete report cannot fit safely through execve. No report is filed in this case.
+const external_v3_transport_limited_kind = 'transport_limit'
+
 // ExternalCErrorBugReport describes a failure produced by another compiler
 // implementation and confirmed by a successful build with the established compiler.
-// `kind` is empty for a generated-C compilation error (the default) or
-// `external_v3_compiler_error_kind` when V3 failed internally; in the latter case
-// `c_file` is the input V source and `c_output` is a short description.
+// `kind` is empty for a generated-C compilation error (the default), identifies an
+// internal V3 failure, or marks a notice-only fallback; for internal failures `c_file`
+// is the input V source and `c_output` is a short description.
 pub struct ExternalCErrorBugReport {
 pub:
 	kind        string
@@ -234,10 +244,10 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 		// attacker-supplied text. Dispatch on kind so a generated-C fallback keeps its
 		// `v-c-compiler-error` classification and its missing-library filter instead of
 		// being reported as an internal V3 error.
-		if report.kind == external_v3_notice_only_kind {
-			// A known, expected V3 limitation (e.g. inline assembly): the stable build
-			// has just succeeded, so tell the user V3 fell back — matching the documented
-			// notice (doc/docs.md) — but file no bug report.
+		if report.kind in [external_v3_notice_only_kind, external_v3_transport_limited_kind] {
+			// A known V3 limitation or a report omitted to keep the retry transport safe:
+			// the stable build has just succeeded, so tell the user V3 fell back — matching
+			// the documented notice (doc/docs.md) — but file no bug report.
 			print_v3_fallback_notice('', false, false)
 			return
 		}
@@ -315,6 +325,62 @@ fn decode_v3_report_input_digests(encoded string) ?map[string]string {
 	return input_digests
 }
 
+fn v3_report_env_entry_bytes(suffix string, value string) int {
+	// NAME=VALUE\0 plus the environment-vector pointer used by execve.
+	return v3_report_env_prefix.len + suffix.len + 1 + value.len + 1 + int(sizeof(voidptr))
+}
+
+fn v3_report_env_payload_bytes(payload map[string]string) int {
+	mut total := 0
+	for suffix, value in payload {
+		total += v3_report_env_entry_bytes(suffix, value)
+	}
+	return total
+}
+
+fn v3_report_env_budget(environment map[string]string, args []string) int {
+	mut used := v3_report_exec_reserve_bytes
+	mut base_environment_entries := 0
+	for name, value in environment {
+		// Existing handoff values are replaced below, so they consume no additional
+		// capacity in the next process.
+		if name.starts_with(v3_report_env_prefix) {
+			continue
+		}
+		used += name.len + 1 + value.len + 1
+		base_environment_entries++
+	}
+	for arg in args {
+		used += arg.len + 1
+	}
+	used += (base_environment_entries + args.len + 2) * int(sizeof(voidptr))
+	remaining := v3_report_conservative_exec_bytes - used
+	if remaining <= 0 {
+		return 0
+	}
+	return if remaining < v3_report_max_env_payload_bytes {
+		remaining
+	} else {
+		v3_report_max_env_payload_bytes
+	}
+}
+
+fn set_v3_report_env_payload(payload map[string]string) {
+	for suffix in v3_report_env_suffixes {
+		os.unsetenv('${v3_report_env_prefix}${suffix}')
+	}
+	for suffix, value in payload {
+		os.setenv('${v3_report_env_prefix}${suffix}', value, true)
+	}
+}
+
+fn v3_transport_limited_notice_payload() map[string]string {
+	return {
+		'PRESENT': '1'
+		'KIND':    external_v3_transport_limited_kind
+	}
+}
+
 // export_external_v3_report_to_env hands `report` to the next external builder (launched
 // via os.execvp) as self-contained content. That builder cannot authenticate anything
 // passed to it: it inherits the environment, and VTMP plus every V_MACOS_V3_REPORT_*
@@ -331,29 +397,49 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	// the staged directory (bounded_v3_fallback_source), and that process deletes the
 	// directory itself. This function only forwards that content, so nothing here reads a
 	// path or deletes a directory named by the (inheritable, forgeable) environment.
-	os.setenv('${v3_report_env_prefix}PRESENT', '1', true)
-	os.setenv('${v3_report_env_prefix}KIND', report.kind, true)
-	os.setenv('${v3_report_env_prefix}CCOMPILER', report.ccompiler, true)
-	// The diagnostic is truncated so a single environment string cannot exceed the exec
-	// limit and make the retry's os.execvp fail with E2BIG (v_source is already bounded by
-	// bounded_v3_fallback_source). A missing-library/libatomic diagnostic is short and so
-	// is never truncated, keeping c_error_should_send_bug_report accurate on the far side.
-	os.setenv('${v3_report_env_prefix}COUTPUT', truncated_report_text(report.c_output,
-		c_error_bug_report_max_env_c_output_bytes), true)
-	os.setenv('${v3_report_env_prefix}TAG', report.tag, true)
-	os.setenv('${v3_report_env_prefix}VFILE', report.v_file, true)
-	os.setenv('${v3_report_env_prefix}VSOURCE', report.v_source, true)
+	mut encoded_digests := ''
+	mut input_digests_complete := false
 	if encoded := encode_v3_report_input_digests(report.input_digests) {
-		os.setenv('${v3_report_env_prefix}INPUT_DIGESTS', encoded, true)
-		os.setenv('${v3_report_env_prefix}INPUT_DIGESTS_COMPLETE', if report.input_digests_complete {
-			'1'
-		} else {
-			'0'
-		}, true)
-	} else {
-		os.setenv('${v3_report_env_prefix}INPUT_DIGESTS', '', true)
-		os.setenv('${v3_report_env_prefix}INPUT_DIGESTS_COMPLETE', '0', true)
+		encoded_digests = encoded
+		input_digests_complete = report.input_digests_complete
 	}
+	mut payload := {
+		'PRESENT':                '1'
+		'KIND':                   report.kind
+		'CCOMPILER':              report.ccompiler
+		'COUTPUT':                ''
+		'TAG':                    report.tag
+		'VFILE':                  report.v_file
+		'VSOURCE':                ''
+		'INPUT_DIGESTS':          encoded_digests
+		'INPUT_DIGESTS_COMPLETE': if input_digests_complete { '1' } else { '0' }
+	}
+	budget := v3_report_env_budget(os.environ(), os.args)
+	if v3_report_env_payload_bytes(payload) > budget {
+		// The exact-input manifest and metadata are indivisible. Preserve compatibility
+		// and the post-success notice, but omit the report rather than risk E2BIG.
+		payload = v3_transport_limited_notice_payload()
+		if v3_report_env_payload_bytes(payload) > budget {
+			payload = map[string]string{}
+		}
+		set_v3_report_env_payload(payload)
+		return
+	}
+	mut content_budget := budget - v3_report_env_payload_bytes(payload)
+	// Share the remaining aggregate capacity when both fields are present. A short
+	// missing-library/libatomic diagnostic remains intact, keeping the receiver's filter
+	// accurate, while large diagnostics and excerpts are both bounded.
+	mut c_output_budget := content_budget
+	if report.v_source != '' {
+		c_output_budget /= 2
+	}
+	if c_output_budget > c_error_bug_report_max_env_c_output_bytes {
+		c_output_budget = c_error_bug_report_max_env_c_output_bytes
+	}
+	payload['COUTPUT'] = truncated_report_text(report.c_output, c_output_budget)
+	content_budget = budget - v3_report_env_payload_bytes(payload)
+	payload['VSOURCE'] = bounded_v_source(report.v_source, content_budget, 0)
+	set_v3_report_env_payload(payload)
 }
 
 // bounded_v3_fallback_source extracts the bounded V source snippet to upload for a V3->V1
@@ -479,7 +565,7 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 // they are compared only with canonical paths belonging to the stable parser's own AST
 // files.
 fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool {
-	if report.kind == external_v3_notice_only_kind {
+	if report.kind in [external_v3_notice_only_kind, external_v3_transport_limited_kind] {
 		return true
 	}
 	if !report.input_digests_complete || report.input_digests.len == 0 {
