@@ -4439,14 +4439,27 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	}
 	mut inferred := map[string]string{}
 	mut first_param_idx := 0
+	mut receiver_unresolved := false
 	mut callee := tc.a.child_node(&node, 0)
 	if callee.kind == .index && callee.children_count > 0 {
 		callee = tc.a.child_node(callee, 0)
 	}
 	if callee.kind == .selector && callee.children_count > 0 && param_texts.len > 0 {
 		receiver_id := tc.a.child(callee, 0)
-		tc.infer_generic_type_text_from_type(param_texts[0], tc.resolve_type(receiver_id),
-			generic_params, mut inferred)
+		mut receiver_type := tc.resolve_type(receiver_id)
+		if type_contains_unknown(receiver_type) {
+			// A nested receiver can be visited before its selector has recorded a
+			// contextual type. Give it a chance to resolve, but do not diagnose failed
+			// generic inference solely from a still-pending receiver.
+			tc.check_node(receiver_id)
+			receiver_type = tc.resolve_type(receiver_id)
+		}
+		if type_contains_unknown(receiver_type) {
+			receiver_unresolved = true
+		} else {
+			tc.infer_generic_type_text_from_type(param_texts[0], receiver_type, generic_params, mut
+				inferred)
+		}
 		first_param_idx = 1
 	}
 	for param_idx in first_param_idx .. param_texts.len {
@@ -4497,7 +4510,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 			break
 		}
 	}
-	if missing.len == 0 || callee.kind != .selector {
+	if missing.len == 0 || callee.kind != .selector || receiver_unresolved {
 		return
 	}
 	name_pos := tc.method_call_name_pos(node, callee)

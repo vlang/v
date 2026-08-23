@@ -8430,6 +8430,39 @@ fn unrelated() {
 	assert inference_errors[0].pos.offset > unrelated_start, tc.errors.str()
 }
 
+fn test_nested_generic_receiver_call_waits_for_receiver_type() {
+	check_good('nested_generic_receiver_inference', 'struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) min[T]() T {
+	return match tree {
+		Empty { panic("empty tree") }
+		Node[T] { tree.value }
+	}
+}
+
+fn (tree Tree[T]) delete[T](value T) Tree[T] {
+	return match tree {
+		Empty { tree }
+		Node[T] {
+			Node[T]{
+				...tree
+				value: tree.right.min()
+				right: tree.right.delete(tree.right.min())
+			}
+		}
+	}
+}
+')
+}
+
 fn test_template_include_diagnostics_use_partial_source() {
 	v3_bin := build_v3()
 	root := '${tmp_test_path('template_include_diagnostic_source')}_project'
