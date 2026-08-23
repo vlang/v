@@ -336,6 +336,7 @@ mut:
 	inlined_c_typedef_names        map[string]bool
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
+	possibly_active_c_macros       map[string]bool
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
 	preserved_header_files_seen    map[string]bool
@@ -1028,6 +1029,7 @@ pub fn FlatGen.new() FlatGen {
 		inlined_c_structs:               map[string]bool{}
 		inlined_c_fns:                   map[string]bool{}
 		inlined_c_declared_fns:          map[string]bool{}
+		possibly_active_c_macros:        map[string]bool{}
 		inlined_c_static_fns:            map[string]bool{}
 		cache_omitted_c_fns:             map[string]bool{}
 		preserved_header_files_seen:     map[string]bool{}
@@ -2613,6 +2615,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.inlined_c_structs.clear()
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
+	g.possibly_active_c_macros.clear()
 	g.inlined_c_static_fns.clear()
 	g.cache_omitted_c_fns.clear()
 	g.preserved_header_files_seen.clear()
@@ -4672,7 +4675,9 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 		g.collect_inlined_c_declared_fns(final_scan.text)
 	}
 	for macro_name in final_scan.possibly_active_macro_names {
-		g.inlined_c_declared_fns[macro_name] = true
+		if macro_name !in g.inlined_c_declared_fns {
+			g.possibly_active_c_macros[macro_name] = true
+		}
 	}
 	result := c_header_macro_state_clone(final_scan.final_state)
 	g.preserved_header_scan_results[visit_key] = c_header_macro_state_clone(result)
@@ -4815,7 +4820,7 @@ fn (mut g FlatGen) collect_possibly_active_header_macros(path string, include_di
 	scan := c_header_definitely_active_scan(text, state, c_effective_strict_iso_mode(g.c_flags,
 		g.c99_mode), g.target)
 	for macro_name in scan.possibly_active_macro_names {
-		g.inlined_c_declared_fns[macro_name] = true
+		g.possibly_active_c_macros[macro_name] = true
 	}
 	for raw_include_arg in scan.include_args {
 		include_arg := c_include_arg(raw_include_arg, g.compiler_vroot, real_path)

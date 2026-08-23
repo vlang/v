@@ -233,7 +233,7 @@ fn test_preserved_header_keeps_conditional_macro_mutations_uncertain() {
 	assert 'always_active' in g.inlined_c_declared_fns
 }
 
-fn test_preserved_header_collects_possibly_active_function_macros() {
+fn test_preserved_header_guards_externs_for_possibly_active_function_macros() {
 	root := os.join_path(os.vtmp_dir(), 'v3_preserved_possible_macro_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
@@ -242,7 +242,7 @@ fn test_preserved_header_collects_possibly_active_function_macros() {
 	}
 	header := os.join_path(root, 'api.h')
 	os.write_file(header,
-		'#ifdef __GNUC__\n#define compiler_api(x) ((x) + 1)\n#endif\n#if 0\n#define inactive_api(x) (x)\n#endif\n')!
+		'#ifdef __MSVC_ONLY__\n#define compiler_api(x) ((x) + 1)\n#endif\n#if 0\n#define inactive_api(x) (x)\n#endif\n')!
 
 	mut g := FlatGen.new()
 	g.collect_preserved_header_file_with_state(header, [root], CHeaderMacroState{
@@ -252,8 +252,12 @@ fn test_preserved_header_collects_possibly_active_function_macros() {
 		external_macros_possible: true
 	})
 
-	assert 'compiler_api' in g.inlined_c_declared_fns
+	assert 'compiler_api' !in g.inlined_c_declared_fns
+	assert 'compiler_api' in g.possibly_active_c_macros
+	assert g.should_emit_c_extern_decl('compiler_api')
+	assert g.c_possibly_active_macro_extern_decl('compiler_api', 'int compiler_api(int x);') == '#ifndef compiler_api\nint compiler_api(int x);\n#endif'
 	assert 'inactive_api' !in g.inlined_c_declared_fns
+	assert 'inactive_api' !in g.possibly_active_c_macros
 }
 
 fn test_preserved_header_scans_includes_in_possibly_active_branches_for_macros() {
@@ -273,7 +277,8 @@ fn test_preserved_header_scans_includes_in_possibly_active_branches_for_macros()
 	mut g := FlatGen.new()
 	g.collect_preserved_header_file(parent, [root])
 
-	assert 'compiler_api' in g.inlined_c_declared_fns
+	assert 'compiler_api' !in g.inlined_c_declared_fns
+	assert 'compiler_api' in g.possibly_active_c_macros
 	assert 'conditionally_declared_api' !in g.inlined_c_declared_fns
 	assert 'always_declared_api' in g.inlined_c_declared_fns
 	assert os.real_path(child) in g.preserved_header_files_seen

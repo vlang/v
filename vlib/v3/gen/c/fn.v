@@ -14868,7 +14868,8 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		}
 		specificity := program_decl_priority + c_extern_decl_specificity(g.a, node)
 		if cfn !in decls || specificity > decl_specificity[cfn] {
-			decls[cfn] = c_macro_safe_extern_decl(cfn, g.c_extern_decl_line(node, cfn))
+			decls[cfn] = g.c_possibly_active_macro_extern_decl(cfn, c_macro_safe_extern_decl(cfn,
+				g.c_extern_decl_line(node, cfn)))
 			decl_specificity[cfn] = specificity
 		}
 	}
@@ -15067,6 +15068,17 @@ fn c_macro_safe_extern_decl(cfn string, declaration string) string {
 		return declaration
 	}
 	return declaration.replace_once('${cfn}(', '(${cfn})(')
+}
+
+// c_possibly_active_macro_extern_decl keeps a prototype available when a lightweight
+// preinclude scan saw a same-named macro only inside an unresolved preprocessor branch.
+// The real C preprocessor selects exactly one safe form: the macro when it exists, or the
+// declaration when it does not.
+fn (g &FlatGen) c_possibly_active_macro_extern_decl(cfn string, declaration string) string {
+	if cfn !in g.possibly_active_c_macros {
+		return declaration
+	}
+	return '#ifndef ${cfn}\n${declaration}\n#endif'
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
