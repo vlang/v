@@ -87,6 +87,37 @@ fn test_postinclude_header_does_not_suppress_earlier_c_prototype() {
 	assert 'postinclude_api' in preinclude_g.inlined_c_declared_fns
 }
 
+fn test_preinclude_carries_macro_state_to_later_preincludes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preinclude_macro_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	config_header := os.join_path(root, 'config.h')
+	api_header := os.join_path(root, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(config_header, '#define ENABLE_CHAINED_API 1\n')!
+	os.write_file(api_header,
+		'#ifdef ENABLE_CHAINED_API\n#define chained_api(x) ((x) + 1)\n#endif\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'preinclude'
+		typ:   '"${config_header}"'
+	}, source, false)
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'preinclude'
+		typ:   '"${api_header}"'
+	}, source, false)
+
+	assert 'chained_api' in g.inlined_c_declared_fns
+	assert g.preinclude_directives == ['#include "${config_header}"', '#include "${api_header}"']
+}
+
 fn test_preserved_header_collects_only_definitely_active_declarations() {
 	root := os.join_path(os.vtmp_dir(), 'v3_preserved_inactive_${os.getpid()}')
 	os.rmdir_all(root) or {}

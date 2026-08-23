@@ -341,6 +341,8 @@ mut:
 	preserved_header_files_seen    map[string]bool
 	preserved_header_scan_results  map[string]CHeaderMacroState
 	preserved_header_scans_active  map[string]bool
+	preinclude_macro_state         CHeaderMacroState
+	preinclude_state_initialized   bool
 	initial_c_flags                []string
 	c_flags                        []string
 	use_system_stdint              bool
@@ -2614,6 +2616,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.preserved_header_files_seen.clear()
 	g.preserved_header_scan_results.clear()
 	g.preserved_header_scans_active.clear()
+	g.preinclude_macro_state = CHeaderMacroState{}
+	g.preinclude_state_initialized = false
 	g.inlined_c_typedef_names.clear()
 	g.c_flags = []string{}
 	g.use_system_stdint = false
@@ -4252,8 +4256,13 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		}
 		directive := '#include ${include_arg}'
 		if node.value == 'preinclude' {
-			g.collect_preserved_include_metadata(include_arg, source_file)
 			if directive !in g.preinclude_directives {
+				if !g.preinclude_state_initialized {
+					g.preinclude_macro_state = c_header_macro_state_for_flags(g.c_flags)
+					g.preinclude_state_initialized = true
+				}
+				g.preinclude_macro_state = g.collect_preserved_include_metadata_with_state(include_arg,
+					source_file, g.preinclude_macro_state)
 				g.preinclude_directives << directive
 			}
 		} else if directive !in g.postinclude_directives {
@@ -4497,16 +4506,21 @@ fn (mut g FlatGen) emit_postinclude_directives() {
 }
 
 fn (mut g FlatGen) collect_preserved_include_metadata(include_arg string, source_file string) {
+	state := c_header_macro_state_for_flags(g.c_flags)
+	g.collect_preserved_include_metadata_with_state(include_arg, source_file, state)
+}
+
+fn (mut g FlatGen) collect_preserved_include_metadata_with_state(include_arg string, source_file string, state CHeaderMacroState) CHeaderMacroState {
 	g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 	g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
 	g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 	include_dirs := c_flag_include_dirs(g.c_flags)
 	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
 		if os.is_file(path) {
-			g.collect_preserved_header_file(path, include_dirs)
-			return
+			return g.collect_preserved_header_file_with_state(path, include_dirs, state)
 		}
 	}
+	return c_header_macro_state_after_unknown_include(state)
 }
 
 fn (mut g FlatGen) collect_preserved_header_tree(include_arg string, source_file string, include_dirs []string) bool {
