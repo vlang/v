@@ -221,7 +221,7 @@ if ((sync_checkout)); then
 	# Remove every untracked path copied by the previous sync before restoring the
 	# current set. This keeps a locally deleted untracked source from lingering in
 	# guest module discovery without cleaning unrelated guest build artifacts.
-	ssh "${ssh_options[@]}" "$guest" bash -s -- "$guest_repo" <<'EOF'
+	ssh "${ssh_options[@]}" "$guest" "bash -s -- ${guest_repo_q}" <<'EOF'
 set -Eeuo pipefail
 guest_repo=$1
 git_dir=$(git -C "$guest_repo" rev-parse --absolute-git-dir)
