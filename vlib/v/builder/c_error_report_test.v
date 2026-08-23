@@ -375,13 +375,23 @@ fn test_external_v3_report_env_round_trip() {
 }
 
 fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
-	path := os.real_path(@FILE)
+	vroot := os.real_path(@VEXEROOT)
+	path := os.real_path(os.join_path(os.temp_dir(), 'v3_retry_input_main.v'))
 	parsed_digest := sha256.hexhash('the exact stable parser bytes')
 	b := &Builder{
+		pref:         &pref.Preferences{
+			vroot: vroot
+		}
 		parsed_files: [
 			&ast.File{
 				path:          path
 				source_digest: parsed_digest
+			},
+			// Bundled vlib support files intentionally differ between V1 and V3 and are
+			// excluded from both input sets.
+			&ast.File{
+				path:          os.join_path(vroot, 'vlib', 'builtin', 'builtin.v')
+				source_digest: sha256.hexhash('stable compiler builtin')
 			},
 		]
 	}
@@ -404,6 +414,17 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 			os.join_path(os.dir(path), 'not-parsed.v'): parsed_digest
 		}
 	})
+	mut b_with_extra_input := &Builder{
+		pref:         &pref.Preferences{
+			vroot: vroot
+		}
+		parsed_files: b.parsed_files.clone()
+	}
+	b_with_extra_input.parsed_files << &ast.File{
+		path:          os.join_path(os.dir(path), 'added-after-v3-failed.v')
+		source_digest: sha256.hexhash('new stable-only input')
+	}
+	assert !b_with_extra_input.matches_v3_fallback_inputs(matching)
 	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
 		...matching
 		input_digests_complete: false

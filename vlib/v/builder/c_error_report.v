@@ -474,9 +474,10 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 	return report
 }
 
-// matches_v3_fallback_inputs confirms that every source V3 recorded was parsed from the
-// same bytes by the stable compiler. Report paths are never opened: they are compared
-// only with canonical paths belonging to the stable parser's own AST files.
+// matches_v3_fallback_inputs confirms that the stable compiler parsed the same set of
+// project sources from the same bytes that V3 recorded. Report paths are never opened:
+// they are compared only with canonical paths belonging to the stable parser's own AST
+// files.
 fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool {
 	if report.kind == external_v3_notice_only_kind {
 		return true
@@ -485,11 +486,27 @@ fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool 
 		return false
 	}
 	mut stable_digests := map[string]string{}
+	vlib_root := os.real_path(os.join_path(b.pref.vroot, 'vlib')).trim_right(os.path_separator)
 	for file in b.parsed_files {
 		if file.path == '' || file.source_digest == '' {
 			continue
 		}
-		stable_digests[os.real_path(file.path)] = file.source_digest
+		path := os.real_path(file.path)
+		// Mirror macos_v3_fallback_report_sources: V1 and V3 intentionally parse
+		// different bundled compiler-support files, so compare only caller/project and
+		// installed-module inputs.
+		if path == vlib_root || path.starts_with(vlib_root + os.path_separator) {
+			continue
+		}
+		if previous := stable_digests[path] {
+			if previous != file.source_digest {
+				return false
+			}
+		}
+		stable_digests[path] = file.source_digest
+	}
+	if stable_digests.len != report.input_digests.len {
+		return false
 	}
 	for path, v3_digest in report.input_digests {
 		if stable_digests[path] != v3_digest {
