@@ -202,6 +202,29 @@ fn test_preserved_header_keeps_conditional_macro_mutations_uncertain() {
 	assert 'always_active' in g.inlined_c_declared_fns
 }
 
+fn test_preserved_header_collects_possibly_active_function_macros() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_possible_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'api.h')
+	os.write_file(header,
+		'#ifdef __GNUC__\n#define compiler_api(x) ((x) + 1)\n#endif\n#if 0\n#define inactive_api(x) (x)\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file_with_state(header, [root], CHeaderMacroState{
+		defined:                  map[string]bool{}
+		undefined:                map[string]bool{}
+		uncertain:                map[string]bool{}
+		external_macros_possible: true
+	})
+
+	assert 'compiler_api' in g.inlined_c_declared_fns
+	assert 'inactive_api' !in g.inlined_c_declared_fns
+}
+
 fn collect_external_input_tree_status(root string, entry string, ambient_ambiguous bool) (bool, []string) {
 	mut active_paths := map[string]bool{}
 	mut collected_paths := map[string]bool{}
