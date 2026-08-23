@@ -4725,6 +4725,21 @@ fn (tc &TypeChecker) missing_reference_struct_fields(struct_name string, supplie
 			if unalias_type(field_type.base_type) is Void {
 				continue
 			}
+			if is_embed {
+				base_type := unalias_type(field_type.base_type)
+				if base_type is Struct {
+					mut promoted_field_supplied := false
+					for promoted_field in tc.struct_fields_for_init(base_type.name) {
+						if promoted_field.name in supplied {
+							promoted_field_supplied = true
+							break
+						}
+					}
+					if promoted_field_supplied {
+						continue
+					}
+				}
+			}
 			if field.children_count == 0 && field.value !in supplied {
 				missing << MissingReferenceField{
 					path:  '${display_name}.${field.value}'
@@ -5764,7 +5779,9 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		return
 	}
 	tc.check_storage_path_base_node(base_id)
-	mut base_type := tc.smartcast_type(base_id) or { tc.resolve_type(base_id) }
+	mut base_type := tc.smartcast_type(base_id) or {
+		tc.lexical_match_smartcast_type(base_id) or { tc.resolve_type(base_id) }
+	}
 	if base.kind == .ident {
 		if mut_base := tc.mut_param_base_for_current_ident(base.value, base_type) {
 			base_type = mut_base
@@ -6271,6 +6288,9 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 	mut has_smartcast := false
 	mut base_type := tc.resolve_type(base_id)
 	if smartcast := tc.smartcast_type(base_id) {
+		base_type = smartcast
+		has_smartcast = true
+	} else if smartcast := tc.lexical_match_smartcast_type(base_id) {
 		base_type = smartcast
 		has_smartcast = true
 	}
@@ -8591,7 +8611,9 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	}
 	if expected is OptionType {
 		if actual is OptionType {
-			return tc.type_compatible(actual.base_type, expected.base_type)
+			actual_base := option_alias_payload_type(actual.base_type)
+			expected_base := option_alias_payload_type(expected.base_type)
+			return tc.type_compatible(actual_base, expected_base)
 		}
 		return tc.type_compatible(actual, expected.base_type)
 	}
@@ -8726,6 +8748,16 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		}
 	}
 	return false
+}
+
+fn option_alias_payload_type(typ Type) Type {
+	if typ is Alias {
+		clean := unalias_type(typ)
+		if clean is OptionType {
+			return clean.base_type
+		}
+	}
+	return typ
 }
 
 fn (tc &TypeChecker) alias_type_is_shared(alias Alias) bool {
@@ -11219,7 +11251,16 @@ pub fn (tc &TypeChecker) struct_field_type_name(struct_name string, field_name s
 @[direct_array_access]
 fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name string, mut seen map[string]bool) ?Type {
 	base_name, generic_args, is_generic := generic_type_application_parts(struct_name)
-	lookup_name := if is_generic { base_name } else { struct_name }
+	raw_lookup_name := if is_generic { base_name } else { struct_name }
+	lookup_name := if raw_lookup_name in tc.structs {
+		raw_lookup_name
+	} else if raw_lookup_name.all_after_last('.') in tc.structs {
+		raw_lookup_name.all_after_last('.')
+	} else if canonical := tc.canonical_qualified_type_name(raw_lookup_name) {
+		canonical
+	} else {
+		raw_lookup_name
+	}
 	if lookup_name in seen {
 		return none
 	}
@@ -12819,41 +12860,50 @@ fn (tc &TypeChecker) lexical_match_smartcast_candidate(id flat.NodeId, key strin
 			branch_id = parent_id
 		} else if parent.kind == .match_stmt && tc.valid_node_id(branch_id) {
 			branch := tc.a.node(branch_id)
-			if branch.value == 'else' || branch.value.int() != 1 || branch.children_count == 0
-				|| parent.children_count == 0 {
-				return none
+			if typ := tc.lexical_match_branch_smartcast_type(parent, branch, key) {
+				return LexicalSmartcastCandidate{
+					typ:   typ
+					depth: depth
+				}
 			}
-			subject_id := tc.a.child(parent, 0)
-			if tc.expr_key(subject_id) != key {
-				return none
-			}
-			subject_type := unalias_and_unwrap_pointer_type(tc.resolve_type(subject_id))
-			cond := tc.a.child_node(branch, 0)
-			pattern := tc.match_type_pattern(cond) or { return none }
-			name := if subject_type is SumType {
-				tc.sum_variant_type_for_pattern(subject_type.name, pattern) or { return none }
-			} else if is_ierror_type(subject_type) {
-				tc.resolve_ierror_match_pattern(pattern) or { return none }
-			} else if subject_type is Interface {
-				tc.resolve_interface_match_pattern(pattern) or { return none }
-			} else if short_type_name(subject_type.name()) == short_type_name(pattern) {
-				// During the branch check, the dynamic smartcast already exposes the
-				// matched variant. Keep recognizing the lexical match so declarations
-				// inside nested sum matches infer that concrete variant.
-				subject_type.name()
-			} else {
-				return none
-			}
-			return LexicalSmartcastCandidate{
-				typ:   tc.parse_type(name)
-				depth: depth
-			}
+			// An unrelated nested match does not cancel a narrowing established by
+			// an enclosing match on the same expression.
+			branch_id = flat.empty_node
 		} else if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
 			return none
 		}
 		current = parent_id
 	}
 	return none
+}
+
+fn (tc &TypeChecker) lexical_match_branch_smartcast_type(parent &flat.Node, branch &flat.Node, key string) ?Type {
+	if branch.value == 'else' || branch.value.int() != 1 || branch.children_count == 0
+		|| parent.children_count == 0 {
+		return none
+	}
+	subject_id := tc.a.child(parent, 0)
+	if tc.expr_key(subject_id) != key {
+		return none
+	}
+	subject_type := unalias_and_unwrap_pointer_type(tc.resolve_type(subject_id))
+	cond := tc.a.child_node(branch, 0)
+	pattern := tc.match_type_pattern(cond) or { return none }
+	name := if subject_type is SumType {
+		tc.sum_variant_type_for_pattern(subject_type.name, pattern) or { return none }
+	} else if is_ierror_type(subject_type) {
+		tc.resolve_ierror_match_pattern(pattern) or { return none }
+	} else if subject_type is Interface {
+		tc.resolve_interface_match_pattern(pattern) or { return none }
+	} else if short_type_name(subject_type.name()) == short_type_name(pattern) {
+		// During the branch check, the dynamic smartcast already exposes the
+		// matched variant. Keep recognizing the lexical match so declarations
+		// inside nested sum matches infer that concrete variant.
+		subject_type.name()
+	} else {
+		return none
+	}
+	return tc.parse_type(name)
 }
 
 fn (tc &TypeChecker) smartcast_target_type_for_is_expr(expr_id flat.NodeId, pattern string) Type {
@@ -13105,8 +13155,12 @@ pub fn (tc &TypeChecker) parse_canonical_type(typ string) Type {
 		return result
 	}
 	if clean.starts_with('?') {
+		base_type := tc.parse_canonical_type(clean[1..])
+		if base_type is Alias && unalias_type(base_type) is OptionType {
+			return base_type
+		}
 		_, result := tc.intern_type(Type(OptionType{
-			base_type: tc.parse_canonical_type(clean[1..])
+			base_type: base_type
 		}))
 		return result
 	}
@@ -13639,8 +13693,12 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		return tc.parse_type(typ[7..])
 	}
 	if typ.starts_with('?') {
+		base_type := tc.parse_type(typ[1..])
+		if base_type is Alias && unalias_type(base_type) is OptionType {
+			return base_type
+		}
 		return Type(OptionType{
-			base_type: tc.parse_type(typ[1..])
+			base_type: base_type
 		})
 	}
 	if typ.starts_with('!') {
@@ -14244,10 +14302,24 @@ fn (tc &TypeChecker) is_untyped_float_literal_expr(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, depth int) (bool, bool) {
-	if !tc.valid_node_id(id) || depth > 16 {
+	mut current_id := id
+	for {
+		if !tc.valid_node_id(current_id) {
+			return false, false
+		}
+		current := tc.a.node(current_id)
+		if current.kind !in [.paren, .expr_stmt] {
+			break
+		}
+		if current.children_count == 0 {
+			return false, false
+		}
+		current_id = tc.a.child(current, 0)
+	}
+	if depth > 16 {
 		return false, false
 	}
-	node := tc.a.node(id)
+	node := tc.a.node(current_id)
 	match node.kind {
 		.float_literal {
 			return true, true
@@ -14257,12 +14329,6 @@ fn (tc &TypeChecker) untyped_numeric_literal_expr_info(id flat.NodeId, depth int
 		}
 		.prefix {
 			if node.op !in [.plus, .minus] || node.children_count == 0 {
-				return false, false
-			}
-			return tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), depth + 1)
-		}
-		.paren, .expr_stmt {
-			if node.children_count == 0 {
 				return false, false
 			}
 			return tc.untyped_numeric_literal_expr_info(tc.a.child(node, 0), depth + 1)

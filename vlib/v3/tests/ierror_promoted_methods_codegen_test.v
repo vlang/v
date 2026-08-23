@@ -68,7 +68,7 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('BaseErr__msg(((WrapErr*)i->_object)->BaseErr)'), c_code
+	assert c_code.contains('BaseErr__msg(((main__WrapErr*)i->_object)->BaseErr)'), c_code
 	assert c_code.contains('helper_msg'), c_code
 
 	run := os.execute(bin)
@@ -157,8 +157,8 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('PtrErr__msg(&(((PointerWrapErr*)i->_object)->PtrErr))'), c_code
-	assert c_code.contains('InnerErr__msg((((NestedWrapErr*)i->_object)->PointerInner).InnerErr)'), c_code
+	assert c_code.contains('PtrErr__msg(&(((main__PointerWrapErr*)i->_object)->PtrErr))'), c_code
+	assert c_code.contains('InnerErr__msg((((main__NestedWrapErr*)i->_object)->PointerInner).InnerErr)'), c_code
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
@@ -219,7 +219,7 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('Inner__m((((Outer*)i->_object)->Mid).Inner)'), c_code
+	assert c_code.contains('Inner__m((((main__Outer*)i->_object)->Mid).Inner)'), c_code
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
@@ -390,10 +390,10 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
-	assert c_code.contains('BaseErr__msg(((WrapErr*)i->_object)->BaseErr)'), c_code
-	assert c_code.contains('BaseErr__code(((WrapErr*)i->_object)->BaseErr)'), c_code
-	assert !c_code.contains('return WrapErr__msg(*(WrapErr*)i->_object)'), c_code
-	assert !c_code.contains('return WrapErr__code(*(WrapErr*)i->_object)'), c_code
+	assert c_code.contains('BaseErr__msg(((main__WrapErr*)i->_object)->BaseErr)'), c_code
+	assert c_code.contains('BaseErr__code(((main__WrapErr*)i->_object)->BaseErr)'), c_code
+	assert !c_code.contains('return WrapErr__msg(*(main__WrapErr*)i->_object)'), c_code
+	assert !c_code.contains('return WrapErr__code(*(main__WrapErr*)i->_object)'), c_code
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

@@ -5302,18 +5302,25 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	p.next() // skip $
 	match p.tok {
 		.key_typeof {
+			p.record_diagnostic('`$typeof` is not supported; use `typeof(...)` instead', dollar_pos)
 			return p.typeof_expr()
 		}
 		.key_sizeof {
+			p.record_diagnostic('`$sizeof` is not supported; use `sizeof(...)` instead', dollar_pos)
 			return p.sizeof_expr()
 		}
 		.key_isreftype {
+			p.record_diagnostic('`$isreftype` is not supported; use `isreftype(...)` instead',
+				dollar_pos)
 			return p.isreftype_expr()
 		}
 		.key_offsetof {
+			p.record_diagnostic('`$__offsetof` is not supported; use `__offsetof(...)` instead',
+				dollar_pos)
 			return p.offsetof_expr()
 		}
 		.key_dump {
+			p.record_diagnostic('`$dump` is not supported; use `dump(...)` instead', dollar_pos)
 			return p.dump_expr()
 		}
 		else {}
@@ -7835,7 +7842,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
-	if !p.prefs.supports_inline_asm && has_unsupported_content {
+	if !p.prefs.supports_inline_asm && (has_memory_clobber || has_unsupported_content) {
 		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
 	}
 	return p.add_node(flat.Node{
@@ -9491,9 +9498,6 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return p.if_stmt()
 		}
 		.key_match {
-			if p.peek() in [.lpar, .lsbr] {
-				return p.keyword_ident_expr()
-			}
 			return p.match_stmt()
 		}
 		.key_fn {
@@ -11416,7 +11420,7 @@ fn (mut p Parser) typeof_expr() flat.NodeId {
 	p.check(.lpar)
 	inner := p.expr(.lowest)
 	p.check(.rpar)
-	if !p.inside_array_init_type_expr && p.tok != .dot
+	if !p.inside_array_init_type_expr && p.tok != .dot && (start == 0 || p.s.src[start - 1] != `$`)
 		&& p.line_nr_for_pos(start) == p.line_nr_for_pos(p.tok_pos) {
 		p.record_warning_span('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
 			start, start + 'typeof'.len)

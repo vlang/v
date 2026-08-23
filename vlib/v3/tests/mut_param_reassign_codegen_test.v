@@ -8,7 +8,9 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn mut_param_reassign_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_mut_param_reassign_codegen_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
@@ -461,8 +463,8 @@ fn main() {
 }
 ')
 	assert out == '62'
-	assert c_source.contains('int read_field(Item** item) {'), 'missing Item** signature'
-	assert !c_source.contains('int read_field(Item*** item) {'), 'found over-indirected Item*** signature'
+	assert c_source.contains('int read_field(main__Item** item) {'), 'missing main__Item** signature'
+	assert !c_source.contains('int read_field(main__Item*** item) {'), 'found over-indirected main__Item*** signature'
 	assert c_source.contains('return ((*item))->value;'), 'missing single slot dereference'
 	assert c_source.contains('return (*(*item));'), 'missing source dereference after slot dereference'
 	assert c_source.contains('copied_value = (*(*item));'), 'missing standalone assignment dereference'

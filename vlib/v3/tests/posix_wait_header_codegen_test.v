@@ -26,7 +26,9 @@ fn wait_header_execute_without_vflags(command string) os.Result {
 fn wait_header_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_wait_header_test_${pid}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${wait_header_vexe} -gc none -path "${wait_header_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${wait_header_v3_src}')
 	assert build.exit_code == 0, build.output

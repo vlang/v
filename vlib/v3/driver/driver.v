@@ -2471,6 +2471,38 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	return !has_untracked_c_include && can_scope_static_inputs && can_extract_native_types
 }
 
+fn ast_has_native_source_include(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind != .directive
+			|| node.value !in ['include', 'insert', 'preinclude', 'postinclude'] {
+			continue
+		}
+		path := node.typ.trim_space().trim('"')
+		if path.ends_with('.c') || path.ends_with('.m') || path.ends_with('.mm') {
+			return true
+		}
+	}
+	return false
+}
+
+fn register_native_source_typedefs(mut tc types.TypeChecker, state &V3ModuleCacheState) {
+	for roots in state.module_native_roots.values() {
+		for path in roots {
+			source := os.read_file(path) or { continue }
+			for name, present in modulecache.c_source_typedef_identifiers(source) {
+				if !present || name.len == 0 {
+					continue
+				}
+				c_name := 'C.${name}'
+				if c_name !in tc.structs {
+					tc.structs[c_name] = []types.StructField{}
+				}
+				tc.c_typedef_structs[c_name] = true
+			}
+		}
+	}
+}
+
 fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target, native_inputs_language string) (map[string]string, bool) {
 	path := os.join_path(os.vtmp_dir(), 'v3_compiler_macros_${tempname.unique_token()}.c')
 	defer {
@@ -7882,6 +7914,12 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
+	// Source includes can introduce typedef structs used by V declarations and
+	// literals before Cgen sees the included translation unit. Resolve those rare
+	// inputs before checking so the type is available to semantic lookup.
+	if !cache_state.external_inputs_ready && ast_has_native_source_include(a) {
+		_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files, cache_c_flags)
+	}
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
@@ -7929,6 +7967,7 @@ pub fn run(args []string) {
 		}
 		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
+		register_native_source_typedefs(mut pre_tc, &cache_state)
 		if translated_mode {
 			for file in user_files {
 				pre_tc.translated_files[file] = true

@@ -131,6 +131,11 @@ fn is_anonymous_struct_type_name(name string) bool {
 }
 
 fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) string {
+	if node.typ == node.value && node.typ.contains('[') && node.typ.contains('.') {
+		// A specialized clone's explicit type annotation is newer than the
+		// checker's expression cache and can retain nested main-module locks.
+		return node.typ
+	}
 	if node.value.starts_with('main.') && !node.value['main.'.len..].contains('.') {
 		// Monomorphization pins a caller-owned program type with `main.` when the
 		// generic declaration's module has a same-named type. The expression type
@@ -447,7 +452,12 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	if is_optional_init && !has_expected_optional
 		&& (g.cur_fn_is_specialized || g.name_uses_specialized_generic_abi(g.cur_fn_name)) {
-		name = g.fn_return_type_name(g.cur_fn_ret)
+		concrete_type := if node_type is types.OptionType || node_type is types.ResultType {
+			node_type
+		} else {
+			g.cur_fn_ret
+		}
+		name = g.concrete_optional_type_name(concrete_type)
 	}
 	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
 	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
@@ -800,6 +810,15 @@ fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node, type_name s
 			}
 		}
 	}
+	if fields := g.struct_fields_for_type(type_name) {
+		for field in fields {
+			if fixed := array_fixed_type(field.typ) {
+				if g.field_needs_default_init(fixed.elem_type) {
+					return true
+				}
+			}
+		}
+	}
 	return false
 }
 
@@ -956,6 +975,23 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		g.write(' memcpy(${tmp}.${cfield}, ')
 		g.gen_fixed_array_copy_source(fixed_values[i], fixed_field_types[i])
 		g.write(', sizeof(${tmp}.${cfield}));')
+	}
+	if fields := g.struct_fields_for_type(lookup_name) {
+		for field in fields {
+			if field.name in set_fields {
+				continue
+			}
+			if fixed := array_fixed_type(field.typ) {
+				if g.field_needs_default_init(fixed.elem_type) {
+					cfield := c_field_name(field.name)
+					for idx in 0 .. fixed.len {
+						g.write(' ${tmp}.${cfield}[${idx}] = ')
+						g.gen_default_value_for_type(fixed.elem_type)
+						g.write(';')
+					}
+				}
+			}
+		}
 	}
 	if heap {
 		if align := g.struct_decl_alignment_for_init_names(node.value, name) {
@@ -3842,6 +3878,37 @@ fn struct_decl_alignment_memdup_arg(align StructDeclAlignment, c_type string) st
 	return '__alignof__(${c_type})'
 }
 
+fn (g &FlatGen) struct_decl_alignment_c_type(type_name string, fallback string) string {
+	resolved_name := g.struct_init_resolved_decl_name(type_name)
+	if resolved_name.len == 0 {
+		return fallback
+	}
+	ct := g.tc.c_type(g.tc.parse_type(resolved_name))
+	if ct.len == 0 || ct == 'void' {
+		return fallback
+	}
+	if fallback != ct && fallback.ends_with('__${ct}') {
+		return fallback
+	}
+	if qualified_ct := g.unique_qualified_struct_c_type(ct) {
+		return qualified_ct
+	}
+	// Main-module declarations are bare-keyed in the semantic tables, while C
+	// emits their typedefs with the `main__` namespace.
+	if !resolved_name.contains('.') && resolved_name in g.tc.structs {
+		decl_module := g.tc.struct_modules[resolved_name] or { '' }
+		if decl_module in ['', 'main'] {
+			return 'main__${g.cname(resolved_name)}'
+		}
+	}
+	if info := g.find_struct_decl(resolved_name) {
+		if !resolved_name.contains('.') && info.module in ['', 'main'] {
+			return 'main__${g.cname(resolved_name)}'
+		}
+	}
+	return ct
+}
+
 fn (g &FlatGen) struct_type_alias_target(type_name string) ?string {
 	qname := g.tc.qualify_name(type_name)
 	if target := g.tc.type_aliases[qname] {
@@ -4386,7 +4453,8 @@ fn (mut g FlatGen) gen_heap_assoc_expr(node flat.Node) {
 		}
 	}
 	if align := g.heap_assoc_struct_alignment(node, target_type, target_name, ct) {
-		align_arg := struct_decl_alignment_memdup_arg(align, ct)
+		align_ct := g.struct_decl_alignment_c_type(target_name, ct)
+		align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
 		g.write(' (${ct}*)v3_aligned_memdup(&${tmp}, sizeof(${ct}), ${align_arg});})')
 	} else {
 		g.write(' (${ct}*)memdup(&${tmp}, sizeof(${ct}));})')

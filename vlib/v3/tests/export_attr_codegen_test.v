@@ -8,7 +8,9 @@ const export_attr_v3_src = os.join_path(export_attr_v3_dir, 'v3.v')
 
 fn export_attr_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_export_attr_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${export_attr_vexe} -gc none -path "${export_attr_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${export_attr_v3_src}')
 	assert build.exit_code == 0, build.output
