@@ -110,9 +110,7 @@ fn test_preserved_header_collects_only_definitely_active_declarations() {
 	assert 'nested_inactive_fn' !in g.inlined_c_declared_fns
 	assert 'active_fn' in g.inlined_c_declared_fns
 	assert 'optional_fn' !in g.inlined_c_declared_fns
-	// Macro changes in recursively scanned headers are not carried back into the
-	// parent scan, so that declaration cannot safely suppress a prototype.
-	assert 'include_enabled_fn' !in g.inlined_c_declared_fns
+	assert 'include_enabled_fn' in g.inlined_c_declared_fns
 	assert 'parent_enabled_fn' in g.inlined_c_declared_fns
 	assert os.real_path(inactive_header) !in g.preserved_header_files_seen
 	assert os.real_path(macro_header) in g.preserved_header_files_seen
@@ -121,6 +119,45 @@ fn test_preserved_header_collects_only_definitely_active_declarations() {
 	enabled_g.c_flags << '-DOPTIONAL_API'
 	enabled_g.collect_preserved_header_file(header, [root])
 	assert 'optional_fn' in enabled_g.inlined_c_declared_fns
+}
+
+fn test_preserved_header_carries_child_macros_into_parent_remainder() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_child_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	child := os.join_path(root, 'config.h')
+	parent := os.join_path(root, 'parent.h')
+	os.write_file(child, '#define ENABLE_API 1\n')!
+	os.write_file(parent,
+		'#include "config.h"\n#ifdef ENABLE_API\n#define enabled_api(x) ((x) + 1)\n#endif\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(parent, [root])
+
+	assert 'enabled_api' in g.inlined_c_declared_fns
+}
+
+fn test_preserved_unguarded_header_is_rescanned_under_new_macro_state() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_unguarded_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	child := os.join_path(root, 'api.h')
+	parent := os.join_path(root, 'parent.h')
+	os.write_file(child, '#ifdef ENABLE_API\n#define enabled_api(x) ((x) + 1)\n#endif\n')!
+	os.write_file(parent, '#include "api.h"\n#define ENABLE_API 1\n#include "api.h"\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(parent, [root])
+
+	assert 'enabled_api' in g.inlined_c_declared_fns
+	child_prefix := os.real_path(child) + '\n'
+	assert g.preserved_header_scan_results.keys().filter(it.starts_with(child_prefix)).len >= 2
 }
 
 fn test_preserved_header_passes_definite_parent_macro_state_to_children() {

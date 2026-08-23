@@ -339,6 +339,8 @@ mut:
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
 	preserved_header_files_seen    map[string]bool
+	preserved_header_scan_results  map[string]CHeaderMacroState
+	preserved_header_scans_active  map[string]bool
 	initial_c_flags                []string
 	c_flags                        []string
 	use_system_stdint              bool
@@ -1026,6 +1028,8 @@ pub fn FlatGen.new() FlatGen {
 		inlined_c_static_fns:            map[string]bool{}
 		cache_omitted_c_fns:             map[string]bool{}
 		preserved_header_files_seen:     map[string]bool{}
+		preserved_header_scan_results:   map[string]CHeaderMacroState{}
+		preserved_header_scans_active:   map[string]bool{}
 		inlined_c_typedef_names:         map[string]bool{}
 		initial_c_flags:                 []string{}
 		c_flags:                         []string{}
@@ -2608,6 +2612,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.inlined_c_static_fns.clear()
 	g.cache_omitted_c_fns.clear()
 	g.preserved_header_files_seen.clear()
+	g.preserved_header_scan_results.clear()
+	g.preserved_header_scans_active.clear()
 	g.inlined_c_typedef_names.clear()
 	g.c_flags = []string{}
 	g.use_system_stdint = false
@@ -4554,45 +4560,89 @@ fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []str
 	g.collect_preserved_header_file_with_state(path, include_dirs, state)
 }
 
-fn (mut g FlatGen) collect_preserved_header_file_with_state(path string, include_dirs []string, state CHeaderMacroState) {
+fn (mut g FlatGen) collect_preserved_header_file_with_state(path string, include_dirs []string, state CHeaderMacroState) CHeaderMacroState {
 	real_path := os.real_path(path)
-	if real_path.len == 0 || g.preserved_header_files_seen[real_path] {
-		return
+	if real_path.len == 0 {
+		return c_header_macro_state_clone(state)
 	}
+	visit_key := real_path + '\n' + c_header_macro_state_signature(state)
+	if visit_key in g.preserved_header_scan_results {
+		return c_header_macro_state_clone(g.preserved_header_scan_results[visit_key])
+	}
+	if g.preserved_header_scans_active[visit_key] {
+		return c_header_macro_state_after_unknown_include(state)
+	}
+	g.preserved_header_scans_active[visit_key] = true
 	g.preserved_header_files_seen[real_path] = true
-	text := os.read_file(real_path) or { return }
-	scan := c_header_definitely_active_scan(text, state, c_effective_strict_iso_mode(g.c_flags,
-		g.c99_mode), g.target)
-	active_text := scan.text
-	g.collect_inlined_c_structs(active_text)
-	g.collect_inlined_c_fns(active_text)
-	g.collect_inlined_c_declared_fns(active_text)
-	mut in_block_comment := false
-	mut include_index := 0
-	for line in active_text.split_into_lines() {
-		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
-		in_block_comment = next_in_block_comment
-		if c_directive_name(clean) !in ['include', 'import'] {
-			continue
-		}
-		include_state := scan.include_states[include_index]
-		include_index++
-		include_arg := c_include_arg(c_directive_arg(clean), g.compiler_vroot, real_path)
-		mut found := false
-		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
-			include_dirs) {
-			if os.is_file(nested_path) {
-				g.collect_preserved_header_file_with_state(nested_path, include_dirs, include_state)
-				found = true
-				break
+	text := os.read_file(real_path) or {
+		g.preserved_header_scans_active.delete(visit_key)
+		return c_header_macro_state_clone(state)
+	}
+	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
+	mut include_results := map[string]CHeaderIncludeResult{}
+	mut final_scan := CHeaderActiveScan{}
+	mut stable := false
+	// Each pass can make later branches and includes definite after the macro state
+	// returned by an earlier child becomes known. The line-keyed results also let a
+	// legal unguarded header be scanned again under a different macro state.
+	for _ in 0 .. c_join_continued_lines(text).len + 2 {
+		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
+			g.target, include_results)
+		mut next_results := map[string]CHeaderIncludeResult{}
+		mut in_block_comment := false
+		mut include_index := 0
+		for line in scan.text.split_into_lines() {
+			clean, next_in_block_comment := c_preprocessor_directive_scan_line(line,
+				in_block_comment)
+			in_block_comment = next_in_block_comment
+			if c_directive_name(clean) !in ['include', 'import'] {
+				continue
+			}
+			include_state := scan.include_states[include_index]
+			include_key := scan.include_keys[include_index]
+			include_index++
+			include_arg := c_include_arg(c_directive_arg(clean), g.compiler_vroot, real_path)
+			mut found := false
+			mut result_state := CHeaderMacroState{}
+			for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
+				include_dirs) {
+				if os.is_file(nested_path) {
+					result_state = g.collect_preserved_header_file_with_state(nested_path,
+						include_dirs, include_state)
+					found = true
+					break
+				}
+			}
+			if !found {
+				g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+				g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+				g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
+				result_state = c_header_macro_state_after_unknown_include(include_state)
+			}
+			next_results[include_key] = CHeaderIncludeResult{
+				input_signature: c_header_macro_state_signature(include_state)
+				output_state:    result_state
 			}
 		}
-		if !found {
-			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
-			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
-			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
+		final_scan = scan
+		if c_header_include_results_signature(next_results) == c_header_include_results_signature(include_results) {
+			stable = true
+			break
 		}
+		include_results = next_results.clone()
 	}
+	if !stable {
+		// A pathological include cycle should never let uncertain metadata suppress a
+		// generated prototype. Fall back to the conservative, pre-propagation scan.
+		final_scan = c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
+	}
+	g.collect_inlined_c_structs(final_scan.text)
+	g.collect_inlined_c_fns(final_scan.text)
+	g.collect_inlined_c_declared_fns(final_scan.text)
+	result := c_header_macro_state_clone(final_scan.final_state)
+	g.preserved_header_scan_results[visit_key] = c_header_macro_state_clone(result)
+	g.preserved_header_scans_active.delete(visit_key)
+	return result
 }
 
 struct CHeaderMacroState {
@@ -4605,6 +4655,59 @@ struct CHeaderMacroState {
 struct CHeaderActiveScan {
 	text           string
 	include_states []CHeaderMacroState
+	include_keys   []string
+	final_state    CHeaderMacroState
+}
+
+struct CHeaderIncludeResult {
+	input_signature string
+	output_state    CHeaderMacroState
+}
+
+fn c_header_macro_state_clone(state CHeaderMacroState) CHeaderMacroState {
+	return CHeaderMacroState{
+		defined:                  state.defined.clone()
+		undefined:                state.undefined.clone()
+		uncertain:                state.uncertain.clone()
+		external_macros_possible: state.external_macros_possible
+	}
+}
+
+fn c_header_macro_state_after_unknown_include(state CHeaderMacroState) CHeaderMacroState {
+	mut defined := state.defined.clone()
+	mut undefined := state.undefined.clone()
+	mut uncertain := state.uncertain.clone()
+	c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+	return CHeaderMacroState{
+		defined:                  defined
+		undefined:                undefined
+		uncertain:                uncertain
+		external_macros_possible: true
+	}
+}
+
+fn c_header_macro_state_signature(state CHeaderMacroState) string {
+	mut parts := []string{cap: state.defined.len + state.undefined.len + state.uncertain.len + 1}
+	for name in state.defined.keys().sorted() {
+		parts << 'd:${name}'
+	}
+	for name in state.undefined.keys().sorted() {
+		parts << 'u:${name}'
+	}
+	for name in state.uncertain.keys().sorted() {
+		parts << '?:${name}'
+	}
+	parts << if state.external_macros_possible { 'e:1' } else { 'e:0' }
+	return parts.join('\x1f')
+}
+
+fn c_header_include_results_signature(results map[string]CHeaderIncludeResult) string {
+	mut parts := []string{cap: results.len}
+	for key in results.keys().sorted() {
+		result := results[key]
+		parts << '${key}\x1e${result.input_signature}\x1e${c_header_macro_state_signature(result.output_state)}'
+	}
+	return parts.join('\x1d')
 }
 
 fn c_header_macro_state_for_flags(flags []string) CHeaderMacroState {
@@ -4657,6 +4760,11 @@ fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, t
 }
 
 fn c_header_definitely_active_scan(text string, state CHeaderMacroState, strict_iso_mode bool, target pref.Target) CHeaderActiveScan {
+	return c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
+		target, map[string]CHeaderIncludeResult{})
+}
+
+fn c_header_definitely_active_scan_with_include_results(text string, state CHeaderMacroState, strict_iso_mode bool, target pref.Target, include_results map[string]CHeaderIncludeResult) CHeaderActiveScan {
 	mut defined := state.defined.clone()
 	mut undefined := state.undefined.clone()
 	mut uncertain := state.uncertain.clone()
@@ -4669,9 +4777,10 @@ fn c_header_definitely_active_scan(text string, state CHeaderMacroState, strict_
 	mut condition_taken_known := []bool{}
 	mut condition_taken := []bool{}
 	mut include_states := []CHeaderMacroState{}
+	mut include_keys := []string{}
 	mut output := strings.new_builder(text.len)
 	mut in_block_comment := false
-	for line in c_join_continued_lines(text) {
+	for line_index, line in c_join_continued_lines(text) {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
@@ -4786,20 +4895,39 @@ fn c_header_definitely_active_scan(text string, state CHeaderMacroState, strict_
 			continue
 		}
 		if name in ['include', 'import'] {
-			include_states << CHeaderMacroState{
+			include_state := CHeaderMacroState{
 				defined:                  defined.clone()
 				undefined:                undefined.clone()
 				uncertain:                uncertain.clone()
 				external_macros_possible: external_macros_possible
 			}
-			c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
-			external_macros_possible = true
+			include_key := '${line_index}:${clean}'
+			include_states << include_state
+			include_keys << include_key
+			if include_key in include_results
+				&& include_results[include_key].input_signature == c_header_macro_state_signature(include_state) {
+				result_state := include_results[include_key].output_state
+				defined = result_state.defined.clone()
+				undefined = result_state.undefined.clone()
+				uncertain = result_state.uncertain.clone()
+				external_macros_possible = result_state.external_macros_possible
+			} else {
+				c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+				external_macros_possible = true
+			}
 		}
 		output.writeln(line)
 	}
 	return CHeaderActiveScan{
 		text:           output.str()
 		include_states: include_states
+		include_keys:   include_keys
+		final_state:    CHeaderMacroState{
+			defined:                  defined
+			undefined:                undefined
+			uncertain:                uncertain
+			external_macros_possible: external_macros_possible
+		}
 	}
 }
 
