@@ -18,7 +18,9 @@ fn selective_import_setup_v3_cache() {
 fn selective_import_build_v3() string {
 	selective_import_setup_v3_cache()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${selective_import_vexe} -gc none -path "${selective_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${selective_import_v3_src}')
 	assert build.exit_code == 0, build.output

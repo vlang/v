@@ -13,6 +13,10 @@ fn module_cache_v3_bin_path() string {
 }
 
 fn testsuite_begin() {
+	vtmp := os.join_path(os.temp_dir(), 'v3_module_cache_vtmp_${os.getpid()}')
+	os.rmdir_all(vtmp) or {}
+	os.mkdir_all(vtmp) or { panic(err) }
+	os.setenv('VTMP', vtmp, true)
 	v3_bin := module_cache_v3_bin_path()
 	os.rm(v3_bin) or {}
 	_ = build_module_cache_v3()

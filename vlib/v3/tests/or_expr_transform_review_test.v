@@ -151,7 +151,7 @@ fn test_backed_enum_map_key_uses_backing_storage_size() {
 fn test_pointer_channel_try_call_derefs_receiver() {
 	v3_bin := build_v3_or_review()
 	c_source := or_review_gen_c(v3_bin, 'pointer_channel_try_receiver',
-		'fn push(ch &chan int) bool {\n\treturn ch.try_push(7) == .success\n}\n\nfn pop(ch &chan int, out &int) bool {\n\treturn ch.try_pop(out) == .success\n}\n\nfn main() {\n\tch := chan int{cap: 1}\n\tmut out := 0\n\tprintln(push(&ch))\n\tprintln(pop(&ch, &out))\n\tprintln(int_str(out))\n}\n')
+		'fn push(ch &chan int) bool {\n\treturn ch.try_push(7) == .success\n}\n\nfn pop(ch &chan int, out &int) bool {\n\treturn ch.try_pop(mut *out) == .success\n}\n\nfn main() {\n\tch := chan int{cap: 1}\n\tmut out := 0\n\tprintln(push(&ch))\n\tprintln(pop(&ch, &out))\n\tprintln(int_str(out))\n}\n')
 	assert c_source.contains('sync__Channel__try_push(*(ch),'), 'try_push on pointer channel receiver does not dereference the channel handle'
 	assert c_source.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }

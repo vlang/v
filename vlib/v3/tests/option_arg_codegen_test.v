@@ -8,8 +8,10 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_option_arg_codegen_test')
-	os.rm(v3_bin) or {}
+	v3_bin := os.join_path(os.temp_dir(), 'v3_option_arg_codegen_test_${os.getpid()}')
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output

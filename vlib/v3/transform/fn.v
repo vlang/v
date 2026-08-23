@@ -7091,9 +7091,39 @@ fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ string) ?
 	if t.semantic_type_name(info.return_type) != 'string' {
 		return none
 	}
-	method_name := '${clean_typ}.str'
+	// String interpolation synthesizes this call after the source-context maps
+	// have been built. Encode the exact receiver specialization in the callee and
+	// call metadata so a later monomorphizer instance can materialize its body.
+	receiver_base, receiver_args, is_generic := generic_app_parts(clean_typ)
+	mut concrete_receiver := clean_typ
+	mut concrete_args := []string{}
+	if is_generic && receiver_args.len > 0 {
+		decl_module := t.tc.struct_modules[receiver_base] or {
+			if receiver_base.contains('.') {
+				receiver_base.all_before_last('.')
+			} else {
+				t.cur_module
+			}
+		}
+		concrete_args = []string{cap: receiver_args.len}
+		for arg in receiver_args {
+			concrete_args << t.generic_arg_for_call_and_decl_module(arg, t.cur_module, decl_module)
+		}
+		concrete_args = t.canonical_generic_specialization_args(concrete_args)
+		concrete_receiver = '${receiver_base}[${concrete_args.join(', ')}]'
+	}
+	method_name := if concrete_args.len > 0 {
+		specialized_generic_fn_value(info.name, concrete_args)
+	} else {
+		'${concrete_receiver}.str'
+	}
 	t.mark_fn_used_name(method_name)
-	return t.make_call_typed(method_name, [expr], 'string')
+	t.tc.specialized_generic_fns[method_name] = true
+	call := t.make_call_typed(method_name, [expr], 'string')
+	if concrete_args.len > 0 {
+		t.set_node_value(int(call), concrete_args.join(', '))
+	}
+	return call
 }
 
 // append_string builds `result = result + piece` using the runtime string concat helper.
@@ -8540,12 +8570,19 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		if dynamic_method := t.resolve_fixed_array_dynamic_receiver_method(clean_base_type,
 			fn_node.value)
 		{
-			return t.lower_fixed_array_dynamic_receiver_method_call(node, base_id, clean_base_type,
-				dynamic_method)
+			if dynamic_method != array_builtin_method {
+				return t.lower_fixed_array_dynamic_receiver_method_call(node, base_id,
+					clean_base_type, dynamic_method)
+			}
 		}
-		args := t.transform_receiver_method_args(node, base_id, array_builtin_method)
+		// Keep the fixed receiver as a fixed-array expression. Adapting it through
+		// the builtin `array` parameter makes `.pointers()` point into a dynamic copy
+		// instead of the receiver's original storage.
+		args := [t.transform_expr(base_id)]
 		ret_type := t.receiver_method_return_type(array_builtin_method, node.typ)
-		return t.make_call_typed(array_builtin_method, args, ret_type)
+		// Use an internal target so call type propagation does not adapt the fixed
+		// receiver to the builtin method's dynamic `array` parameter.
+		return t.make_call_typed('__v3_fixed_array_pointers', args, ret_type)
 	}
 	if t.is_fixed_array_type(clean_base_type) {
 		if fn_node.value == 'str' {
@@ -10644,6 +10681,12 @@ fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?f
 		return none
 	}
 	fn_id := t.a.child(&node, 0)
+	fn_node := t.a.node(fn_id)
+	// A monomorphized method callee such as `Tree[int].size` contains a generic
+	// type spelling, but it is a function name rather than a named-type cast.
+	if fn_node.kind == .ident && !fn_node.value.trim_space().ends_with(']') {
+		return none
+	}
 	target := t.generic_call_type_arg_name(fn_id)
 	base, _, is_generic := generic_app_parts(target)
 	if !is_generic || !target.ends_with(']') || !t.is_known_type_name(base) {
@@ -10670,6 +10713,10 @@ fn (t &Transformer) generic_sum_constructor_call_type(node flat.Node) ?string {
 		return none
 	}
 	fn_node := t.a.nodes[int(fn_id)]
+	if fn_node.kind == .ident && fn_node.value.contains(']')
+		&& !fn_node.value.trim_space().ends_with(']') {
+		return none
+	}
 	mut target := ''
 	if node.value.len > 0 && fn_node.kind in [.ident, .selector] {
 		base := t.generic_call_type_arg_name(fn_id)

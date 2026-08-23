@@ -842,7 +842,7 @@ fn (mut g FlatGen) gen_array_method_call_fallback(node flat.Node, mname string, 
 // gen_array_pointers_expr emits `array.pointers()` without compiling the erased
 // raw `array` builtin body, which has no concrete element type in v3 Cgen.
 fn (mut g FlatGen) gen_array_pointers_expr(base_id flat.NodeId, is_ptr bool) {
-	base_type := types.unwrap_pointer(g.tc.resolve_type(base_id))
+	base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
 	if fixed := array_fixed_type(base_type) {
 		g.gen_fixed_array_pointers_expr(base_id, is_ptr, fixed)
 		return

@@ -9,7 +9,9 @@ const mini_calc_repo_root = os.dir(mini_calc_vlib_dir)
 
 fn mini_calc_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_mini_calc_markused_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${mini_calc_vexe} -gc none -path "${mini_calc_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${mini_calc_v3_src}')
 	assert build.exit_code == 0, build.output

@@ -7,7 +7,10 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_compat_test')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_payload_compat_test_${os.getpid()}')
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
@@ -262,7 +265,7 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
-fn test_bare_ierror_payload_is_not_call_argument_result_value() {
+fn test_bare_ierror_payload_is_not_call_argument_value() {
 	v3_bin := build_v3()
 	run_bad_ierror_payload(v3_bin, 'bad_call_arg', "struct CustomError {
 	text string
@@ -276,7 +279,7 @@ fn (err CustomError) code() int {
 	return 77
 }
 
-fn takes(x !int) {
+fn takes(x int) {
 	_ = x
 }
 
@@ -287,7 +290,7 @@ fn main() {
 }
 ",
 		'cannot use', 'CustomError')
-	run_bad_ierror_payload(v3_bin, 'bad_ierror_call_arg', "fn takes(x !int) {
+	run_bad_ierror_payload(v3_bin, 'bad_ierror_call_arg', "fn takes(x int) {
 	_ = x
 }
 
@@ -299,7 +302,7 @@ fn main() {
 		'cannot use', 'IError')
 }
 
-fn test_bare_ierror_payload_is_not_assigned_to_result_value() {
+fn test_bare_ierror_payload_is_not_assigned_to_unwrapped_result_value() {
 	v3_bin := build_v3()
 	run_bad_ierror_payload(v3_bin, 'bad_assignment', "struct CustomError {
 	text string
@@ -318,7 +321,7 @@ fn ok() !int {
 }
 
 fn main() {
-	mut value := ok()
+	mut value := ok() or { return }
 	value = CustomError{
 		text: 'payload'
 	}

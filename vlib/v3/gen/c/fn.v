@@ -5637,10 +5637,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if target_name == 'array.pointers' || fn_name == 'array.pointers' {
+	if target_name in ['array.pointers', '__v3_fixed_array_pointers']
+		|| fn_name in ['array.pointers', '__v3_fixed_array_pointers'] {
 		if node.children_count > 1 {
 			arg_id := g.a.child(&node, 1)
-			g.gen_array_pointers_expr(arg_id, g.tc.resolve_type(arg_id) is types.Pointer)
+			g.gen_array_pointers_expr(arg_id, g.usable_expr_type(arg_id) is types.Pointer)
 		} else {
 			g.write('array_new(sizeof(voidptr), 0, 0)')
 		}
@@ -9988,6 +9989,9 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node := g.a.nodes[int(id)]
+		if g.cur_fn_is_specialized && node.kind == .struct_init && type_is_optional_result(typ) {
+			return g.concrete_optional_type_name(typ)
+		}
 		if node.kind == .ident {
 			if local_ct := g.local_storage_c_type(node.value) {
 				if local_ct == 'Optional' || local_ct.starts_with('Optional_') {
@@ -14084,7 +14088,15 @@ fn (mut g FlatGen) gen_lowered_mut_value_storage_arg(arg_id flat.NodeId, arg_nod
 	if g.tc.c_type(g.usable_expr_type(arg_id)) != g.tc.c_type(expected) {
 		return false
 	}
-	g.gen_expr(child_id)
+	local_ct := g.local_storage_c_type(child.value) or { '' }
+	expected_ct := g.tc.c_type(expected)
+	if local_ct == '${expected_ct}*' {
+		// `for mut item in []&T` stores the binding as `T**`. The lowered
+		// `*item` is already the `T*` expected by a `mut T` parameter.
+		g.gen_expr(arg_id)
+	} else {
+		g.gen_expr(child_id)
+	}
 	return true
 }
 
@@ -15739,6 +15751,15 @@ fn (mut g FlatGen) implicit_veb_ctx_type() types.Type {
 }
 
 fn (mut g FlatGen) fn_node_return_type(node flat.Node, module_name string) types.Type {
+	// Runtime helpers in `builtin` can share their bare name with a user function
+	// in `main`. The global bare-name signature table is ambiguous in that case;
+	// the declaration annotation remains module-local and authoritative.
+	if module_name in ['', 'main', 'builtin'] && c_main_runtime_shadow_fn_names[node.value] {
+		declared := g.tc.parse_resolution_type(node.typ)
+		if declared !is types.Unknown {
+			return declared
+		}
+	}
 	if g.tc.autofree_mode && module_name in ['', 'main'] {
 		for key in [node.value, dotted_fn_name_in_module(module_name, node.value)] {
 			if raw_return := g.tc.fn_ret_type_texts[key] {

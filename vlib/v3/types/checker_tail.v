@@ -520,9 +520,6 @@ fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Typ
 
 fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected SumType) bool {
 	clean_actual := unalias_type(actual)
-	if clean_actual is Pointer && actual.name() !in ['voidptr', 'charptr', 'byteptr'] {
-		return tc.direct_sum_assignment_variant_matches(clean_actual.base_type, expected)
-	}
 	if tc.generic_type_name_matches(actual.name(), expected.name)
 		|| tc.generic_type_name_matches(clean_actual.name(), expected.name) {
 		return true
@@ -541,6 +538,12 @@ fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected
 		if tc.nested_sum_variant_assignment_matches(actual, tc.parse_type(concrete)) {
 			return true
 		}
+	}
+	// Preserve a pointer alias's nominal identity long enough to match a sum
+	// variant declared with that alias. A direct `&T` can still use the existing
+	// pointer-to-value fallback after nominal variants have been considered.
+	if clean_actual is Pointer && actual.name() !in ['voidptr', 'charptr', 'byteptr'] {
+		return tc.direct_sum_assignment_variant_matches(clean_actual.base_type, expected)
 	}
 	return false
 }
@@ -2542,6 +2545,12 @@ fn (tc &TypeChecker) tuple_tail_return_error(expr_id flat.NodeId, expected []Typ
 }
 
 fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+	if expected is Pointer && actual !is Pointer {
+		clean_expected := fn_param_unalias_type(expected.base_type)
+		if clean_expected is Interface || clean_expected is SumType {
+			return false
+		}
+	}
 	if tc.expr_compatible(expr_id, actual, expected) {
 		return true
 	}
@@ -2615,7 +2624,7 @@ fn (tc &TypeChecker) bare_value_pointer_return_compatible(expr_id flat.NodeId, a
 	}
 	clean_actual := fn_param_unalias_type(actual)
 	clean_expected := fn_param_unalias_type(expected_base)
-	if clean_actual is Pointer {
+	if clean_actual is Pointer || clean_expected is Interface || clean_expected is SumType {
 		return false
 	}
 	return
@@ -14416,7 +14425,8 @@ fn (tc &TypeChecker) expr_can_be_implicit_ref_arg(expr_id flat.NodeId) bool {
 	// V materializes non-addressable value expressions into stable temporaries
 	// when they are passed to non-mut reference parameters.
 	return node.kind in [.struct_init, .call, .or_expr, .cast_expr, .if_expr, .match_stmt, .index,
-		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .string_interp]
+		.selector, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.string_interp]
 }
 
 fn type_pointer_depth_and_base(typ Type) (int, Type) {
@@ -15071,11 +15081,11 @@ fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if is_ierror_type(actual) {
-		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
+		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if tc.type_compatible_with_ierror_payload(actual) {
-		return expected is OptionType || expected is ResultType || is_ierror_type(expected)
+		return expected is ResultType || is_ierror_type(expected)
 	}
 	if expected is OptionType && tc.type_compatible(actual, expected.base_type) {
 		return true
@@ -15717,7 +15727,11 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			then_tail := tc.branch_tail_expr_id(then_id)
 			else_tail := tc.branch_tail_expr_id(else_id)
 			if tc.if_branch_none_has_option_context(then_type, then_tail, else_type, else_tail) {
-				return
+				if expected := tc.expected_context_for_expr(id) {
+					if expected is OptionType || is_ierror_type(expected) {
+						return
+					}
+				}
 			}
 			if tc.if_branch_error_has_result_context(then_type, else_type) {
 				if expected := tc.expected_context_for_expr(id) {

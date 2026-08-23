@@ -65,7 +65,7 @@ fn lock_codegen_fn_fragment(c_code string, name string) string {
 }
 
 fn lock_codegen_counter_fn_fragment(c_code string, name string, return_type string) string {
-	start := c_code.index('\n${return_type} ${name}(Counter* c) {') or { return '' }
+	start := c_code.index('\n${return_type} ${name}(main__Counter* c) {') or { return '' }
 	rest := c_code[start + 1..]
 	body_start := rest.index(') {') or { return rest }
 	after_body_start := rest[body_start + 3..]
@@ -430,9 +430,8 @@ fn main() {
 ')
 	assert c_code.contains('struct __shared__int {'), c_code
 	assert c_code.contains('\tint val;'), c_code
-	assert c_code.contains('struct Box_int {'), c_code
-	assert c_code.contains('\t__shared__int* item;'), c_code
-	assert !c_code.contains('\tint item;'), c_code
+	assert c_code.contains('struct main__Box_int {\n\t__shared__int* item;'), c_code
+	assert !c_code.contains('struct main__Box_int {\n\tint item;'), c_code
 	assert !c_code.contains('__shared__T'), c_code
 	assert c_code.contains('b->item->val'), c_code
 }

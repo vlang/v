@@ -4015,7 +4015,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if target is Alias && target.base_type is OptionType {
+	if target is Alias && target.base_type is OptionType && !node.value.starts_with('?') {
 		tc.record_error(.assignment_mismatch,
 			'alias to Option type requires to be used as Option type (?${node.value}(...))', id)
 		return
@@ -9475,6 +9475,15 @@ fn (tc &TypeChecker) or_expr_source_can_fail(id flat.NodeId) bool {
 	// expression whose evaluation can fail.
 	if node.kind == .none_expr {
 		return false
+	}
+	if node.kind == .ident {
+		if declared := tc.cur_scope.lookup(node.value) {
+			key := tc.expr_key(id)
+			if type_is_option_or_result(declared)
+				&& (key.len == 0 || tc.lexical_smartcast_type(id, key) == none) {
+				return true
+			}
+		}
 	}
 	if node.kind == .selector {
 		if declared := tc.selector_declared_value_type(*node) {
@@ -16856,6 +16865,7 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 			rhs_is_literal := rhs.kind in [.int_literal, .float_literal, .char_literal,
 				.string_literal, .bool_literal]
 			operand_matches := rhs_type.name() == signature.param_type.name()
+				|| (type_is_string_like(lhs_type) && type_is_string_like(rhs_type))
 				|| (rhs_is_literal && tc.type_compatible(rhs_type, signature.param_type))
 			if operand_matches {
 				if !tc.type_compatible(signature.return_type, lhs_type) {
@@ -16959,7 +16969,7 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 	rhs_supports := match op {
 		.plus_assign {
 			if lhs_name == 'string' || lhs_is_string {
-				rhs_name in ['string', 'rune', 'char']
+				rhs_name in ['string', 'rune', 'char'] || clean_rhs_type is String
 			} else {
 				infix_power_type_is_numeric(rhs_type) || rhs_is_primitive_alias
 			}

@@ -12095,31 +12095,20 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 			continue
 		}
 		seen[variant_key] = true
-		is_alias_pointer := variant_type is Alias && unalias_type(variant_type) is Pointer
 		is_builtin_pointer := variant_name in ['voidptr', 'byteptr', 'charptr']
 			|| variant_type.name() in ['voidptr', 'byteptr', 'charptr']
-		if ((variant_type is Pointer && !is_builtin_pointer) || is_alias_pointer)
-			&& !pointer_reported {
-			display_variant := if variant_type is Pointer {
-				variant_name.trim_left('&').trim_space()
-			} else {
-				variant_name
-			}
+		if variant_type is Pointer && !is_builtin_pointer && !pointer_reported {
+			display_variant := variant_name.trim_left('&').trim_space()
 			display_type := tc.parse_type(display_variant)
 			left, right := if unalias_type(display_type) is Struct {
 				'{', '}'
 			} else {
 				'(', ')'
 			}
-			message := if is_alias_pointer {
-				'alias as non-reference type'
-			} else {
-				'the sum type with non-reference types'
-			}
 			tc.record_error_with_details_at(.assignment_mismatch,
 				'sum type cannot hold a reference type', variant_id, tc.type_diagnostic_pos(variant_id,
 				variant_name), [
-				'declare ${message}: `${node.value} = ${display_variant} | ...`\nand use a reference to the sum type instead: `var := &${node.value}(${display_variant}${left}val${right})`',
+				'declare the sum type with non-reference types: `${node.value} = ${display_variant} | ...`\nand use a reference to the sum type instead: `var := &${node.value}(${display_variant}${left}val${right})`',
 			])
 			pointer_reported = true
 		}

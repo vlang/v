@@ -355,10 +355,11 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			}
 			match node.kind {
 				.call {
-					if t.node_file_or(i, '').len == 0 {
+					if t.node_file_or(i, '').len == 0 && i !in t.generic_call_spec_cache
+						&& !t.synthetic_generic_call_has_exact_callee(node) {
 						continue
 					}
-					if !t.call_name_can_target_generic(node) {
+					if !t.call_name_can_target_generic(node) && i !in t.generic_call_spec_cache {
 						continue
 					}
 					if t.call_is_recorded_struct_operator(node)
@@ -742,7 +743,8 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_str
 		if node.kind != .call {
 			continue
 		}
-		if t.node_file_or(i, '').len == 0 {
+		if t.node_file_or(i, '').len == 0 && i !in t.generic_call_spec_cache
+			&& !t.synthetic_generic_call_has_exact_callee(node) {
 			continue
 		}
 		if t.call_is_recorded_struct_operator(node)
@@ -3725,7 +3727,6 @@ fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat
 	qname := transform_qualified_fn_name(decl.module, clone.value)
 	mut names := [clone.value, qname, c_name(clone.value), c_name(qname)]
 	names << specialized_generic_fn_signature_aliases(decl, args)
-	t.record_generic_specialization_args_for_names(names, args)
 	old_module := t.cur_module
 	old_file := t.cur_file
 	old_specialization_args := t.active_specialization_args
@@ -3734,6 +3735,10 @@ fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat
 	t.cur_file = decl.file
 	t.active_specialization_args = args
 	t.active_specialization_main_types = t.specialization_main_type_closure(args)
+	// Keep a caller-owned main type bare while recording the generated callee.
+	// Without this live provenance, a same-named type in the declaring module can
+	// rebind the specialization name and queue a duplicate body for the wrong type.
+	t.record_generic_specialization_args_for_names(names, args)
 	names << t.generated_fn_body_call_names(clone_id)
 	for name in names {
 		t.mark_fn_used_name(name)
@@ -5118,6 +5123,14 @@ fn (t &Transformer) generic_callee_is_specialization(name string) bool {
 	return false
 }
 
+fn (t &Transformer) synthetic_generic_call_has_exact_callee(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	callee := t.a.child_node(&node, 0)
+	return callee.kind == .ident && t.generic_callee_is_specialization(callee.value)
+}
+
 fn (t &Transformer) concrete_fn_return_known(name string) bool {
 	ret := t.tc.fn_ret_types[name] or { return false }
 	return ret !is types.Unknown
@@ -5776,8 +5789,14 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 			// therefore does not prove that its body was emitted. Recover its exact
 			// arguments (including return-type-only generics with no value argument)
 			// and queue the missing body before applying the usual stale-callee checks.
-			exact_args := t.exact_generic_specialization_args_from_callee(callee.value) or {
-				t.specialized_plain_generic_call_args(node, decl, module_name) or { []string{} }
+			mut exact_args := []string{}
+			if t.node_file_or(idx, '').len == 0 && node.value.len > 0 {
+				exact_args = t.canonical_generic_specialization_args(split_generic_args(node.value))
+			}
+			if exact_args.len == 0 {
+				exact_args = t.exact_generic_specialization_args_from_callee(callee.value) or {
+					t.specialized_plain_generic_call_args(node, decl, module_name) or { []string{} }
+				}
 			}
 			if exact_args.len > 0 && !t.generic_args_have_placeholders(exact_args)
 				&& !t.generic_specialization_registered(decl, exact_args) {
@@ -7452,7 +7471,9 @@ fn (t &Transformer) generic_arg_for_call_and_decl_module(arg string, call_module
 	// caller's own type: rebasing it into the callee module would merge the two into one
 	// specialization, so `veb.filter_html` could no longer tell user data from trusted
 	// `veb.RawHtml` and would skip escaping it. Only same-named collisions are preserved.
-	if call_module in ['', 'main'] && !arg.contains('.') && !isnil(t.tc) && arg in t.tc.type_aliases {
+	if call_module in ['', 'main'] && !arg.contains('.') && !isnil(t.tc)
+		&& (arg in t.tc.type_aliases || arg in t.tc.structs || arg in t.tc.sum_types
+		|| arg in t.tc.enum_names || arg in t.tc.interface_names) {
 		qname := '${decl_module}.${arg}'
 		if qname in t.tc.type_aliases || qname in t.tc.structs || qname in t.tc.sum_types
 			|| qname in t.tc.enum_names || qname in t.tc.interface_names {
@@ -12184,7 +12205,11 @@ fn (mut t Transformer) record_generic_specialization_args_for_names(names []stri
 	if args.len == 0 || t.generic_args_have_placeholders(args) {
 		return
 	}
-	recorded_args := t.canonical_generic_specialization_args(args)
+	// Every caller supplies the canonical arguments used to form `names`. Do not
+	// canonicalize them again after switching to the declaration module: a bare
+	// main type can share its short name with an imported type and would then be
+	// rebound even though the generated callee still encodes the main type.
+	recorded_args := args.clone()
 	for name in names {
 		if name.len > 0 && !t.has_recorded_generic_specialization_args(name) {
 			t.generic_specialization_args[name] = recorded_args.clone()
