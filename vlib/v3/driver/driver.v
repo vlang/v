@@ -6287,7 +6287,7 @@ fn v3_impure_v_diagnostics(a &flat.FlatAst) []parser.Diagnostic {
 	return diagnostics
 }
 
-fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, ccompiler string, c_output string, c_source string, a &flat.FlatAst) bool {
+fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, ccompiler string, c_output string, c_source string, v_sources []string) bool {
 	if fallback_file == '' || report_dir == '' || !os.is_file(c_source) {
 		return false
 	}
@@ -6311,8 +6311,7 @@ fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, cc
 		os.rmdir_all(report_dir) or {}
 		return false
 	}
-	os.write_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file),
-		macos_v3_fallback_report_sources(a).join('\x00')) or {
+	os.write_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file), v_sources.join('\x00')) or {
 		os.rmdir_all(report_dir) or {}
 		return false
 	}
@@ -6323,7 +6322,7 @@ fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, cc
 	return true
 }
 
-fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_dir string, ccompiler string, message string, c_sources []string, a &flat.FlatAst) bool {
+fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_dir string, ccompiler string, message string, c_sources []string, v_sources []string) bool {
 	is_c_error := message.starts_with('failed to build C object ')
 		|| message.starts_with('failed to build cached module object ')
 		|| message.starts_with('failed to build cached program prefix:')
@@ -6334,7 +6333,7 @@ fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_d
 	for c_source in c_sources {
 		if os.is_file(c_source) {
 			return request_macos_v3_c_error_fallback(fallback_file, report_dir, ccompiler, message,
-				c_source, a)
+				c_source, v_sources)
 		}
 	}
 	return false
@@ -7766,6 +7765,7 @@ pub fn run(args []string) {
 	}
 	// Parsing workers canonicalize source-backed node text before their buffers
 	// are released. Metadata keys are finalized here before semantic phases begin.
+	fallback_report_sources := macos_v3_fallback_report_sources(a)
 	p.release_source_storage()
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)
@@ -9337,7 +9337,7 @@ pub fn run(args []string) {
 				message := err.msg()
 				if request_macos_v3_c_error_fallback_from_message(macos_v3_fallback_file,
 					macos_v3_c_error_dir, c_compiler, message, [published_c_source, cache_plan_file,
-					cc_src], a)
+					cc_src], fallback_report_sources)
 				{
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
@@ -9522,7 +9522,7 @@ pub fn run(args []string) {
 								cache_plan_file,
 								published_c_source,
 								cc_src,
-							], a)
+							], fallback_report_sources)
 							{
 								cleanup_c_build_dir(cc_dir)
 								exit(1)
@@ -9557,7 +9557,7 @@ pub fn run(args []string) {
 								cache_plan_file,
 								published_c_source,
 								cc_src,
-							], a)
+							], fallback_report_sources)
 							{
 								cleanup_c_build_dir(cc_dir)
 								exit(1)
@@ -9578,7 +9578,7 @@ pub fn run(args []string) {
 							cache_plan_file,
 							published_c_source,
 							cc_src,
-						], a)
+						], fallback_report_sources)
 						{
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
@@ -9737,7 +9737,7 @@ pub fn run(args []string) {
 						published_c_source,
 						cache_plan_file,
 						cc_src,
-					], a)
+					], fallback_report_sources)
 					{
 						cleanup_c_build_dir(cc_dir)
 						exit(1)
@@ -9755,7 +9755,7 @@ pub fn run(args []string) {
 						published_c_source,
 						cache_plan_file,
 						cc_src,
-					], a)
+					], fallback_report_sources)
 					{
 						cleanup_c_build_dir(cc_dir)
 						exit(1)
@@ -9815,7 +9815,7 @@ pub fn run(args []string) {
 					published_c_source,
 					cache_plan_file,
 					cc_src,
-				], a)
+				], fallback_report_sources)
 				{
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
@@ -10026,7 +10026,8 @@ pub fn run(args []string) {
 					return
 				}
 				if request_macos_v3_c_error_fallback(macos_v3_fallback_file, macos_v3_c_error_dir,
-					c_compiler, result.output, os.join_path_single(cc_dir, fallback_source), a)
+					c_compiler, result.output, os.join_path_single(cc_dir, fallback_source),
+					fallback_report_sources)
 				{
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
