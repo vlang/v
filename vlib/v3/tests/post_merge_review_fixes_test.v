@@ -210,6 +210,15 @@ fn test_compiler_vexe_env_uses_running_executable() {
 	assert c_source.contains('setenv("VEXE", v3_vexe, 1);')
 }
 
+fn test_c_bool_parameter_accepts_integer_argument() {
+	check_good('c_bool_integer_argument', 'fn C.bool_probe(bool) int
+
+fn main() {
+	_ = C.bool_probe(0)
+}
+')
+}
+
 fn test_filelock_helpers_are_inlined_in_generated_c() {
 	v3_bin := build_v3()
 	c_source := gen_c(v3_bin, 'filelock_helpers_inline',

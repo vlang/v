@@ -67,3 +67,11 @@ fn test_manual_stdlib_headers_define_l_tmpnam_for_glibc() {
 	assert headers.contains('#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)'), headers#[-500..]
 	assert headers.contains('#ifndef L_tmpnam\n#define L_tmpnam 20\n#endif'), headers#[-500..]
 }
+
+fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
+	mut g := FlatGen.new()
+	g.atomic_thread_fence_compat_decls()
+	c_code := g.sb.str()
+	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
+	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
+}

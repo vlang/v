@@ -41,7 +41,9 @@ fn self_tests() {
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v -W build-examples')
+		// The exhaustive CI matrix includes a few deliberately large examples.
+		// Keep the user-facing V3 memory guard while allowing CI to validate them.
+		exec('v -no-memory-limit -W build-examples')
 	} else {
 		exec('v -progress build-examples')
 	}

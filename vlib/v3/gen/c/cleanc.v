@@ -19667,6 +19667,29 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('#endif')
 }
 
+fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
+	g.writeln('#ifndef memory_order_relaxed')
+	g.writeln('#define memory_order_relaxed 0')
+	g.writeln('#define memory_order_acquire 2')
+	g.writeln('#define memory_order_release 3')
+	g.writeln('#define memory_order_acq_rel 4')
+	g.writeln('#define memory_order_seq_cst 5')
+	g.writeln('#endif')
+	// tcc has no `__atomic_thread_fence` builtin. On the architectures where
+	// thirdparty/stdatomic/nix/atomic.S provides `_V_atomic_thread_fence`, route to
+	// that shim; on x86_64 Unix TCC's <stdatomic.h> already declares
+	// `atomic_thread_fence` and maps `__atomic_thread_fence` to it. Redeclaring the
+	// mapped name with `int` conflicts with TCC's `memory_order` enum parameter.
+	// clang/gcc keep the builtin.
+	g.writeln('#if defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(_WIN32)))')
+	g.writeln('extern void _V_atomic_thread_fence(int order);')
+	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
+	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
+	g.writeln('#else')
+	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
+	g.writeln('#endif')
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -19690,27 +19713,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#ifndef V_COMMIT_HASH')
 	g.writeln('#define V_COMMIT_HASH ""')
 	g.writeln('#endif')
-	g.writeln('#ifndef memory_order_relaxed')
-	g.writeln('#define memory_order_relaxed 0')
-	g.writeln('#define memory_order_acquire 2')
-	g.writeln('#define memory_order_release 3')
-	g.writeln('#define memory_order_acq_rel 4')
-	g.writeln('#define memory_order_seq_cst 5')
-	g.writeln('#endif')
-	// tcc has no `__atomic_thread_fence` builtin. On the architectures where
-	// thirdparty/stdatomic/nix/atomic.S provides `_V_atomic_thread_fence`, route to
-	// that shim; on x86_64 Unix the assembly file provides `__atomic_thread_fence`
-	// directly, so keep the normal name there. clang/gcc keep the builtin.
-	g.writeln('#if defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(_WIN32)))')
-	g.writeln('extern void _V_atomic_thread_fence(int order);')
-	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
-	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
-	g.writeln('#else')
-	g.writeln('#if defined(__TINYC__) && defined(__x86_64__) && !defined(_WIN32)')
-	g.writeln('extern void __atomic_thread_fence(int order);')
-	g.writeln('#endif')
-	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
-	g.writeln('#endif')
+	g.atomic_thread_fence_compat_decls()
 	// Weak fallbacks for the heap-tracking hooks. A program that provides real
 	// implementations (e.g. a `vheap_alloc`/`vheap_free` from a linked C file, as
 	// some projects do) overrides these without a redefinition/static-vs-non-static

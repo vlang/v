@@ -12772,11 +12772,16 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		return true
 	}
 	clean := fn_param_unalias_type(expected)
+	actual_clean := fn_param_unalias_type(actual)
 	if clean.is_integer() {
-		actual_clean := fn_param_unalias_type(actual)
 		return actual_clean.is_integer()
 			|| (actual_clean is Primitive && actual_clean.props.has(.boolean))
 			|| tc.c_scalar_byte_literal_arg(arg_id)
+	}
+	// Match V1's C-call compatibility: C APIs commonly expose boolean
+	// parameters while callers use C's conventional integer representation.
+	if clean is Primitive && clean.props.has(.boolean) {
+		return actual_clean.name() in ['int', 'i32']
 	}
 	if clean is Pointer {
 		base := fn_param_unalias_type(clean.base_type)
