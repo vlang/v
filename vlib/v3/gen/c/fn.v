@@ -1053,7 +1053,9 @@ const c_main_runtime_shadow_fn_names = {
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
-	if !c_main_runtime_shadow_fn_names[name] && !g.inlined_c_typedef_names[name] {
+	c_type_name := !isnil(g.tc)
+		&& ('C.${name}' in g.tc.structs || 'C.${name}' in g.tc.c_typedef_structs)
+	if !c_main_runtime_shadow_fn_names[name] && !g.inlined_c_typedef_names[name] && !c_type_name {
 		return none
 	}
 	if module_name.len == 0 || module_name == 'main' {
@@ -15229,6 +15231,9 @@ fn (g &FlatGen) c_extern_decl_is_cached_object_fallback(cfn string) bool {
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string) bool {
+	if g.unscanned_c_header_files[source_file] {
+		return false
+	}
 	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
 	// A user C.request declaration is unrelated and still needs an extern prototype.
 	if cfn == 'request' && source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {

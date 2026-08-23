@@ -337,6 +337,7 @@ mut:
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
 	possibly_active_c_macros       map[string]bool
+	unscanned_c_header_files       map[string]bool
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
 	preserved_header_files_seen    map[string]bool
@@ -1030,6 +1031,7 @@ pub fn FlatGen.new() FlatGen {
 		inlined_c_fns:                   map[string]bool{}
 		inlined_c_declared_fns:          map[string]bool{}
 		possibly_active_c_macros:        map[string]bool{}
+		unscanned_c_header_files:        map[string]bool{}
 		inlined_c_static_fns:            map[string]bool{}
 		cache_omitted_c_fns:             map[string]bool{}
 		preserved_header_files_seen:     map[string]bool{}
@@ -2616,6 +2618,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
 	g.possibly_active_c_macros.clear()
+	g.unscanned_c_header_files.clear()
 	g.inlined_c_static_fns.clear()
 	g.cache_omitted_c_fns.clear()
 	g.preserved_header_files_seen.clear()
@@ -4421,6 +4424,10 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			}
 		} else if c_should_preserve_uninlined_include(include_arg) || (g.cache_split
 			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>']) {
+			// The preserved header is emitted before generated externs. When V cannot
+			// inspect it, avoid guessing prototypes that may differ in const qualifiers
+			// or other ABI details from the real declaration.
+			g.unscanned_c_header_files[source_file] = true
 			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
 			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))

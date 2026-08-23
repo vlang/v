@@ -111,6 +111,19 @@ fn test_main_function_is_prefixed_when_preserved_c_header_owns_typedef_name() {
 	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
 }
 
+fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.structs['C.sqlite3'] = []types.StructField{}
+
+	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
+	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
+	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
+}
+
 fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

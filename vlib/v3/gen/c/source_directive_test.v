@@ -77,6 +77,7 @@ fn test_postinclude_header_does_not_suppress_earlier_c_prototype() {
 	}, source, false)
 	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
 	assert '#include "${header}"' in postinclude_g.postinclude_directives
+	assert postinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source)
 
 	mut preinclude_g := FlatGen.new()
 	preinclude_g.collect_c_directive('main', flat.Node{
@@ -85,6 +86,23 @@ fn test_postinclude_header_does_not_suppress_earlier_c_prototype() {
 		typ:   '"${header}"'
 	}, source, false)
 	assert 'postinclude_api' in preinclude_g.inlined_c_declared_fns
+}
+
+fn test_unscanned_preserved_header_suppresses_guessed_externs_from_its_source_file() {
+	root := os.join_path(os.vtmp_dir(), 'v3_unscanned_header_${os.getpid()}')
+	source := os.join_path(root, 'main.v')
+	missing_header := os.join_path(root, 'compiler-search-only', 'api.h')
+
+	mut g := FlatGen.new()
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   '"${missing_header}"'
+	}, source, false)
+
+	assert source in g.unscanned_c_header_files
+	assert !g.should_emit_c_extern_decl_from_file('header_api', source)
+	assert g.should_emit_c_extern_decl_from_file('header_api', os.join_path(root, 'other.v'))
 }
 
 fn test_preinclude_carries_macro_state_to_later_preincludes() {
