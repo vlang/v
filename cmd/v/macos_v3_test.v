@@ -1,6 +1,7 @@
 module main
 
 import os
+import crypto.sha256
 import v.pref
 import v.builder
 
@@ -1545,7 +1546,10 @@ fn test_macos_v3_reads_c_error_fallback_report() {
 		os.write_file(os.join_path(root, macos_v3_c_error_compiler_file), 'clang')!
 		os.write_file(os.join_path(root, macos_v3_c_error_output_file),
 			'src.c:2:1: error: generated failure')!
-		os.write_file(os.join_path(root, macos_v3_c_error_v_sources_file), '')!
+		parsed_source := os.join_path(root, 'parsed.v')
+		parsed_digest := 'a'.repeat(sha256.size * 2)
+		os.write_file(os.join_path(root, macos_v3_c_error_v_sources_file), parsed_source)!
+		os.write_file(os.join_path(root, macos_v3_c_error_v_source_digests_file), parsed_digest)!
 		os.write_file(os.join_path(root, 'src.c'), 'int main(void) { return missing; }\n')!
 		report := read_macos_v3_c_error_report(root) or {
 			assert false
@@ -1554,6 +1558,7 @@ fn test_macos_v3_reads_c_error_fallback_report() {
 		assert report.ccompiler == 'clang'
 		assert report.c_output.contains('generated failure')
 		assert report.c_file == os.join_path(root, 'src.c')
+		assert report.v_sources[parsed_source] == parsed_digest
 		assert report.report_dir == root
 	}
 }
@@ -2014,7 +2019,7 @@ fn test_take_macos_v3_report_content_carries_no_path() {
 		// A forwarded content report round-trips as content only.
 		compiler_error := macos_v3_compiler_error_message('type specialization')
 		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3', compiler_error, '',
-			[])
+			map[string]string{})
 		report := take_macos_v3_report_content() or {
 			assert false, 'the forwarded content report must be returned'
 			return

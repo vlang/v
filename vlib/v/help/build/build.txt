@@ -24,10 +24,10 @@ The default compiler:
   https://bugs.vlang.io, plus a bounded snippet of the failing V source when one
   is available. Any snippet is a strict subset and the whole file is never
   uploaded. An internal V3 compiler error on a short program or a directory build
-  such as `v .` submits metadata only. A single-file input changed while V3 is
-  compiling also submits metadata only, rather than source V3 did not parse. A
-  generated-C error maps to a V file and can still upload a strict-subset excerpt
-  of it, even for a short file.
+  such as `v .` submits metadata only. If the input selected for a source excerpt
+  changes after V3 parses it, that report also submits metadata only, rather than
+  source V3 did not parse. An unchanged input mapped from a generated-C error can
+  still upload a strict-subset excerpt of it, even for a short file.
   Inline-assembly fallbacks are notice-only; test compilations and GitHub CI also
   submit no report to the default endpoint. A custom fallback URL set with
   V_C_ERROR_BUG_REPORT_URL remains active in CI. The -bug-report-url option

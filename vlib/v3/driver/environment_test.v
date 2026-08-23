@@ -1,6 +1,7 @@
 module driver
 
 import os
+import crypto.sha256
 import v3.ansi
 import v3.flat
 import v3.parser
@@ -88,6 +89,28 @@ fn test_macos_v3_fallback_payload_validation() {
 	assert !macos_v3_fallback_payload_is_valid('')
 	assert !macos_v3_fallback_payload_is_valid('compiler')
 	assert !macos_v3_fallback_payload_is_valid('compiler_error_partial')
+}
+
+fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
+	root := os.join_path(os.temp_dir(), 'v3_fallback_source_digest_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	path := os.join_path(root, 'main.v')
+	parsed_source := 'module main\nfn main() { println(42) }\n'
+	os.write_file(path, parsed_source)!
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	// Replacing the file after parsing must not change the staged digest.
+	os.write_file(path, parsed_source.replace('42', 'private_value'))!
+	sources := macos_v3_fallback_report_sources(p.a)
+	real_path := os.real_path(path)
+	assert sources[real_path] == sha256.hexhash(parsed_source)
+	assert sources[real_path] != sha256.hexhash(os.read_file(path)!)
 }
 
 fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {

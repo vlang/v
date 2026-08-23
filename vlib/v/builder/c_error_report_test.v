@@ -1,6 +1,7 @@
 module builder
 
 import os
+import crypto.sha256
 import v.pref
 
 fn restore_env_var(name string, old_value ?string) {
@@ -329,7 +330,7 @@ fn test_external_v3_report_env_round_trip() {
 	assert v_source.contains(c_error_v_source_truncation_notice)
 	// The path-based extractor must never reopen an internal-error input after V3 fails.
 	late_file, late_source := bounded_v3_fallback_source(external_v3_compiler_error_kind,
-		'error: v3 failed', c_file, [])
+		'error: v3 failed', c_file, map[string]string{})
 	assert late_file == ''
 	assert late_source == ''
 	// ...then forwards only that content; export reads no path and deletes no directory.
@@ -629,7 +630,9 @@ fn test_bounded_v3_fallback_source_maps_generated_c_error() {
 	os.write_file(generated_c, '#line 100 "${v_path}"\nint a = 1;\nint b = missing;\n')!
 	c_output := '${generated_c}:3:9: error: use of undeclared identifier missing'
 	// kind '' selects the generated-C mapping path.
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, [v_path])
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+		v_path: sha256.hexhash(whole)
+	})
 	assert v_file == 'source.v'
 	assert v_source != ''
 	// A bounded strict subset centered on the mapped V line (~100), never the whole file.
@@ -654,11 +657,14 @@ fn test_bounded_v3_fallback_source_rejects_nonblank_whole_file_generated_c() {
 		lines << 'fn f${i}() { println(${i}) }'
 	}
 	// 80 substantive lines plus a whitespace-only final line (81 lines total).
-	os.write_file(v_path, lines.join('\n') + '\n   ')!
+	whole := lines.join('\n') + '\n   '
+	os.write_file(v_path, whole)!
 	generated_c := os.join_path(dir, 'program.tmp.c')
 	os.write_file(generated_c, '#line 40 "${v_path}"\nint b = missing;\n')!
 	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, [v_path])
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+		v_path: sha256.hexhash(whole)
+	})
 	assert v_file == 'source.v'
 	// The mapped window exposes every nonblank line, so no source is uploaded.
 	assert v_source == '', v_source
@@ -681,10 +687,37 @@ fn test_bounded_v3_fallback_source_rejects_unparsed_mapped_file() {
 	generated_c := os.join_path(dir, 'program.tmp.c')
 	os.write_file(generated_c, '#line 1 "${unrelated_path}"\nint exposed = missing;\n')!
 	c_output := '${generated_c}:2:15: error: use of undeclared identifier missing'
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, [
-		parsed_path,
-	])
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+		parsed_path: sha256.hexhash(os.read_file(parsed_path)!)
+	})
 	assert v_file == ''
+	assert v_source == ''
+}
+
+fn test_bounded_v3_fallback_source_rejects_changed_parsed_source() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_changed_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	v_path := os.join_path(dir, 'source.v')
+	mut original_lines := []string{}
+	for i in 0 .. 200 {
+		original_lines << 'fn original_${i}() { println(${i}) }'
+	}
+	original := original_lines.join('\n')
+	os.write_file(v_path, original)!
+	parsed_digest := sha256.hexhash(original)
+	generated_c := os.join_path(dir, 'program.tmp.c')
+	os.write_file(generated_c, '#line 100 "${v_path}"\nint b = missing;\n')!
+	// Simulate an editor/build watcher replacing the mapped input after V3 parsed it.
+	os.write_file(v_path, original.replace('original_', 'new_private_'))!
+	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
+	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+		v_path: parsed_digest
+	})
+	assert v_file == 'source.v'
 	assert v_source == ''
 }
 

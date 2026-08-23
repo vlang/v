@@ -117,10 +117,10 @@ source excerpt is included it is always a **bounded strict subset** of the faili
 file — a window around the failure, or a head+tail window — and the whole file is
 never uploaded.
 An internal V3 compiler error on a short program (and any directory build such as
-`v .`) submits metadata only. If a single-file input changes while V3 is compiling
-it, the fallback also submits metadata only rather than source V3 did not parse. A
-generated-C error, however, maps to a specific V file, so it can still upload a
-strict-subset excerpt of that file plus a few lines of context around the failing
+`v .`) submits metadata only. If the input selected for a source excerpt changes
+after V3 parses it, that report also submits metadata only rather than source V3
+did not parse. An unchanged input mapped from a generated-C error can still upload
+a strict-subset excerpt of that file plus a few lines of context around the failing
 line, even when the file is short. Inline-assembly
 fallbacks are notice-only and do not submit a report; reporting is also skipped
 for test compilations and to the default endpoint in GitHub CI. A custom fallback

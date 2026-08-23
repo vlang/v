@@ -37,6 +37,7 @@ const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
 const macos_v3_c_error_source_name_file = 'source_name'
 const macos_v3_c_error_v_sources_file = 'v_sources'
+const macos_v3_c_error_v_source_digests_file = 'v_source_digests'
 // optional marker file inside a staged report dir; when it holds
 // `macos_v3_compiler_error_fallback` the report describes a V3 internal compiler
 // error (V source only) instead of a generated-C compilation error.
@@ -314,7 +315,8 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		// filing a report. Still forward a notice-only marker so that once the stable
 		// build succeeds the user sees the documented fallback notice (doc/docs.md) rather
 		// than a silent switch that is indistinguishable from a direct V3 success.
-		export_macos_v3_report_content(macos_v3_inline_asm_fallback, 'v3', '', '', [])
+		export_macos_v3_report_content(macos_v3_inline_asm_fallback, 'v3', '', '',
+			map[string]string{})
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 requested the compatibility compiler for inline assembly')
@@ -349,7 +351,7 @@ fn take_macos_v3_report_content() ?MacosV3CErrorReport {
 // export_macos_v3_report_content bounds the fallback source in THIS process — which staged
 // the report and therefore trusts `c_file` — and forwards only that content to the V1
 // retry through the environment.
-fn export_macos_v3_report_content(kind string, ccompiler string, c_output string, c_file string, v_sources []string) {
+fn export_macos_v3_report_content(kind string, ccompiler string, c_output string, c_file string, v_sources map[string]string) {
 	v_file, v_source := builder.bounded_v3_fallback_source(kind, c_output, c_file, v_sources)
 	export_macos_v3_bounded_report_content(kind, ccompiler, c_output, v_file, v_source)
 }
@@ -426,7 +428,7 @@ struct MacosV3StagedReport {
 	ccompiler  string
 	c_output   string
 	c_file     string
-	v_sources  []string
+	v_sources  map[string]string
 	report_dir string
 }
 
@@ -462,7 +464,21 @@ fn read_macos_v3_c_error_report(report_dir string) ?MacosV3StagedReport {
 	v_sources_text := os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file)) or {
 		return none
 	}
-	v_sources := v_sources_text.split('\x00').filter(it != '')
+	v_source_digests_text := os.read_file(os.join_path(report_dir,
+		macos_v3_c_error_v_source_digests_file)) or { return none }
+	v_source_paths := v_sources_text.split('\x00').filter(it != '')
+	v_source_digests := v_source_digests_text.split('\x00').filter(it != '')
+	if v_source_paths.len != v_source_digests.len {
+		return none
+	}
+	mut v_sources := map[string]string{}
+	for i, path in v_source_paths {
+		digest := v_source_digests[i]
+		if digest.len != sha256.size * 2 {
+			return none
+		}
+		v_sources[path] = digest
+	}
 	return MacosV3StagedReport{
 		kind:       kind
 		ccompiler:  ccompiler.trim_space()

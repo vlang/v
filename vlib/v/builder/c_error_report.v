@@ -2,6 +2,7 @@ module builder
 
 import os
 import strings
+import crypto.sha256
 import v.pref
 import v.gen.c as cgen
 import v.util.version
@@ -298,11 +299,12 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 // error. Internal compiler errors deliberately return no source here: their input must
 // be snapshotted before V3 starts and passed to bounded_v3_internal_fallback_source, so
 // a later editor/build-watcher rewrite cannot be uploaded as if V3 had parsed it.
-// `allowed_v_sources` is the set of source files that V3 actually parsed; generated-C
-// mappings outside that set are rejected before their contents are read. The returned
-// snippet is always a bounded strict subset (never a whole file); ('', '') means no
-// source is available, so the report stays metadata-only.
-pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string, allowed_v_sources []string) (string, string) {
+// `allowed_v_sources` maps every source file V3 actually parsed to the SHA-256 digest
+// captured from those exact parser bytes. Generated-C mappings outside that set, or
+// files whose current contents no longer match the captured digest, contribute no
+// source. The returned snippet is always a bounded strict subset (never a whole file);
+// ('', '') means no source is available, so the report stays metadata-only.
+pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string, allowed_v_sources map[string]string) (string, string) {
 	if kind == external_v3_compiler_error_kind {
 		return '', ''
 	}
@@ -326,7 +328,7 @@ pub fn bounded_v3_internal_fallback_source(source_name string, source string) (s
 // source line it came from (via the #line directives in the trusted staged C) and returns
 // a bounded window of that V file. The generated C was staged by this process's own V3
 // run, while its mapped V path is trusted only when it matches a parsed compiler input.
-fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, allowed_v_sources []string) (string, string) {
+fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, allowed_v_sources map[string]string) (string, string) {
 	c_source := os.read_file(generated_c_file) or { return '', '' }
 	c_lines := c_source.split_into_lines()
 	mut v_file := ''
@@ -340,10 +342,25 @@ fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, al
 		v_file = source_loc.file
 		v_line = source_loc.line
 	}
-	if v_file == '' || !allowed_v_sources.any(same_path(it, v_file)) || !os.is_file(v_file) {
+	if v_file == '' || !os.is_file(v_file) {
+		return '', ''
+	}
+	mut parsed_digest := ''
+	for parsed_file, digest in allowed_v_sources {
+		if same_path(parsed_file, v_file) {
+			parsed_digest = digest
+			break
+		}
+	}
+	if parsed_digest == '' {
 		return '', ''
 	}
 	mapped_source := os.read_file(v_file) or { return '', '' }
+	if sha256.hexhash(mapped_source) != parsed_digest {
+		// An editor/build watcher rewrote this input after V3 parsed it. Keep the
+		// report metadata-only rather than uploading bytes unrelated to the failure.
+		return os.base(v_file), ''
+	}
 	mapped_lines := mapped_source.split_into_lines()
 	chunk := selected_v_source(v_file, mapped_lines, v_line)
 	mut v_source := bounded_v_source(chunk.text, c_error_bug_report_max_v_source_bytes, chunk.focus)

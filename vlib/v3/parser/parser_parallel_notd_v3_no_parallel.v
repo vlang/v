@@ -1049,6 +1049,9 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 fn clone_parser_source_file(file &token.File) &token.File {
 	mut file_set := token.FileSet.new()
 	mut stored_file := file_set.add_file(file.name.clone(), file.size)
+	if file.has_source_sha256() {
+		stored_file.set_source_sha256(file.source_sha256())
+	}
 	for line in 2 .. file.line_count() + 1 {
 		stored_file.add_line(file.line_start(line))
 	}

@@ -5,6 +5,7 @@ import runtime
 import strconv
 import strings
 import time
+import crypto.sha256
 import v3.ansi
 import v3.bench
 import v3.cmdexec
@@ -52,6 +53,7 @@ const macos_v3_c_error_compiler_file = 'compiler'
 const macos_v3_c_error_output_file = 'output'
 const macos_v3_c_error_source_name_file = 'source_name'
 const macos_v3_c_error_v_sources_file = 'v_sources'
+const macos_v3_c_error_v_source_digests_file = 'v_source_digests'
 
 fn configure_selfhost_parallelism(building_v bool) {
 	if !building_v || os.getenv('VJOBS') != '' || os.getenv('V3_NO_SELFHOST_JOB_OVERCOMMIT') != '' {
@@ -6287,7 +6289,7 @@ fn v3_impure_v_diagnostics(a &flat.FlatAst) []parser.Diagnostic {
 	return diagnostics
 }
 
-fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, ccompiler string, c_output string, c_source string, v_sources []string) bool {
+fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, ccompiler string, c_output string, c_source string, v_sources map[string]string) bool {
 	if fallback_file == '' || report_dir == '' || !os.is_file(c_source) {
 		return false
 	}
@@ -6311,7 +6313,25 @@ fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, cc
 		os.rmdir_all(report_dir) or {}
 		return false
 	}
-	os.write_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file), v_sources.join('\x00')) or {
+	mut v_source_paths := v_sources.keys()
+	v_source_paths.sort()
+	mut v_source_paths_text := strings.new_builder(v_source_paths.len * 64)
+	mut v_source_digests_text := strings.new_builder(v_source_paths.len * (sha256.size * 2 + 1))
+	for i, path in v_source_paths {
+		if i > 0 {
+			v_source_paths_text.write_u8(0)
+			v_source_digests_text.write_u8(0)
+		}
+		v_source_paths_text.write_string(path)
+		v_source_digests_text.write_string(v_sources[path])
+	}
+	os.write_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file),
+		v_source_paths_text.str()) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file),
+		v_source_digests_text.str()) or {
 		os.rmdir_all(report_dir) or {}
 		return false
 	}
@@ -6322,7 +6342,7 @@ fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, cc
 	return true
 }
 
-fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_dir string, ccompiler string, message string, c_sources []string, v_sources []string) bool {
+fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_dir string, ccompiler string, message string, c_sources []string, v_sources map[string]string) bool {
 	is_c_error := message.starts_with('failed to build C object ')
 		|| message.starts_with('failed to build cached module object ')
 		|| message.starts_with('failed to build cached program prefix:')
@@ -6339,16 +6359,28 @@ fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_d
 	return false
 }
 
-fn macos_v3_fallback_report_sources(a &flat.FlatAst) []string {
-	mut sources := map[string]bool{}
+fn macos_v3_fallback_report_sources(a &flat.FlatAst) map[string]string {
+	mut sources := map[string]string{}
+	mut ambiguous := map[string]bool{}
 	for _, file in a.source_files {
-		if file.name.ends_with('.v') || file.name.ends_with('.vv') || file.name.ends_with('.vsh') {
-			sources[os.real_path(file.name)] = true
+		if (file.name.ends_with('.v') || file.name.ends_with('.vv')
+			|| file.name.ends_with('.vsh')) && file.has_source_sha256() {
+			path := os.real_path(file.name)
+			source_digest := file.source_sha256()
+			digest := source_digest[..].hex()
+			if old_digest := sources[path] {
+				if old_digest != digest {
+					ambiguous[path] = true
+				}
+			} else {
+				sources[path] = digest
+			}
 		}
 	}
-	mut paths := sources.keys()
-	paths.sort()
-	return paths
+	for path, _ in ambiguous {
+		sources.delete(path)
+	}
+	return sources
 }
 
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
