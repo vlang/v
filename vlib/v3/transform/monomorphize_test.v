@@ -202,6 +202,9 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	}
 	t.active_specialization_main_types['Event'] = true
 	assert t.lock_colliding_main_generic_type_text('Event', 'callee') == 'main.Event'
+	t.active_specialization_main_types['Context'] = true
+	assert t.lock_colliding_main_substitution_type_text('fn (mut T) bool', 'fn (mut Context) bool',
+		'callee', ['T']) == 'fn (mut main.Context) bool'
 	assert t.canonical_generic_specialization_arg('[]main.Event') == '[]Event'
 	assert t.specialization_main_type_closure(['map[string]Event']) == {
 		'Event': true

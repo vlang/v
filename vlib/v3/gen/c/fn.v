@@ -1053,7 +1053,7 @@ const c_main_runtime_shadow_fn_names = {
 }
 
 fn (g &FlatGen) main_runtime_shadow_fn_c_name(module_name string, name string) ?string {
-	if !c_main_runtime_shadow_fn_names[name] {
+	if !c_main_runtime_shadow_fn_names[name] && !g.inlined_c_typedef_names[name] {
 		return none
 	}
 	if module_name.len == 0 || module_name == 'main' {
@@ -6768,10 +6768,16 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				receiver_type_name := g.type_lookup_name(base_type)
 				method_short := method_name.all_after_last('.').all_after_last('__')
 				base_method_name := '${receiver_type_name}.${method_short}'
+				base_local_method_name := if receiver_type_name.starts_with('main.') {
+					'${receiver_type_name['main.'.len..]}.${method_short}'
+				} else {
+					base_method_name
+				}
 				base_declares_method := base_method_name in g.tc.fn_param_types
 					|| base_method_name in g.tc.fn_ret_types
-					|| (emitted_callee_name.len > 0
-					&& g.cname(base_method_name) == emitted_callee_name)
+					|| base_local_method_name in g.tc.fn_param_types
+					|| base_local_method_name in g.tc.fn_ret_types
+					|| g.emitted_method_belongs_to_receiver(base_type, method_short, emitted_callee_name)
 				atomic_receiver_wants_ptr := method_name.starts_with('stdatomic.AtomicVal_')
 					|| method_name.starts_with('stdatomic.AtomicVal.')
 					|| method_name.starts_with('AtomicVal_')
@@ -6781,6 +6787,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				receiver_wants_ptr := wants_ptr || atomic_receiver_wants_ptr
 					|| g.method_receiver_is_mut(method_name)
 					|| g.fn_first_param_is_mut_receiver(base_method_name)
+					|| g.fn_first_param_is_mut_receiver(base_local_method_name)
 				receiver_wants_shared :=
 					g.fn_param_is_shared_for_call(0, actual_fn, emitted_callee_name, method_name, fn_name)
 					|| g.fn_param_is_shared_for_call(0, base_method_name, g.cname(base_method_name), '', '')
@@ -7021,7 +7028,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					&& g.gen_c_va_list_macro_arg_direct(arg_idx, arg_id, target_name, actual_fn, fn_name, emitted_callee_name) {
 					continue
 				}
-				if arg_idx < typed_param_count
+				if !is_c_call && arg_idx < typed_param_count
 					&& g.gen_callback_fn_value_for_expected_type(arg_id, param_types[arg_idx]) {
 					continue
 				}
@@ -9855,8 +9862,26 @@ fn (g &FlatGen) embedded_receiver_path_for_expected(base_type types.Type, expect
 	if base_name.len == 0 || expected_name.len == 0 {
 		return none
 	}
+	if base_name == expected_name
+		|| base_name.all_after_last('.') == expected_name.all_after_last('.') {
+		return none
+	}
 	mut seen := map[string]bool{}
 	return g.embedded_receiver_path_for_expected_name(base_name, expected_name, mut seen)
+}
+
+fn (g &FlatGen) emitted_method_belongs_to_receiver(receiver_type types.Type, method string, emitted_name string) bool {
+	if method.len == 0 || emitted_name.len == 0 {
+		return false
+	}
+	receiver_name := g.type_lookup_name(types.unwrap_pointer(receiver_type))
+	qualified_method := '${receiver_name}.${method}'
+	local_method := if receiver_name.starts_with('main.') {
+		'${receiver_name['main.'.len..]}.${method}'
+	} else {
+		qualified_method
+	}
+	return g.cname(qualified_method) == emitted_name || g.cname(local_method) == emitted_name
 }
 
 fn (g &FlatGen) embedded_receiver_expected_name(expected_type types.Type) string {
@@ -10938,12 +10963,31 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_type(arg_id flat.NodeId, e
 fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, expected types.Type, expected_c_abi string) bool {
 	expected_fn := fn_type_from(expected) or { return false }
 	actual_name := g.callback_fn_value_name(arg_id, expected) or {
-		g.direct_callback_ident_name(arg_id) or { return false }
+		g.direct_callback_ident_name(arg_id) or { '' }
 	}
-	actual_fn := g.callback_fn_value_type(actual_name) or { return false }
-	wrapper := g.ensure_callback_userdata_wrapper(actual_name, actual_fn, expected_fn,
-		expected_c_abi) or { return false }
-	g.write(wrapper)
+	if actual_name.len > 0 {
+		actual_fn := g.callback_fn_value_type(actual_name) or { return false }
+		if wrapper := g.ensure_callback_userdata_wrapper(actual_name, actual_fn, expected_fn,
+			expected_c_abi)
+		{
+			g.write(wrapper)
+			return true
+		}
+	}
+	actual_fn := fn_type_from(g.usable_expr_type(arg_id)) or { return false }
+	if !g.callback_fn_types_cast_compatible(actual_fn, expected_fn, expected_c_abi) {
+		return false
+	}
+	mut expected_ct := if expected_c_abi.len > 0 {
+		expected_c_abi
+	} else {
+		g.tc.c_type(expected)
+	}
+	if expected_ct.starts_with('fn_ptr:') {
+		expected_ct = g.resolve_fn_ptr_type(expected_ct)
+	}
+	g.write('(${expected_ct})')
+	g.gen_expr(arg_id)
 	return true
 }
 
@@ -11068,13 +11112,14 @@ fn (mut g FlatGen) ident_fn_value_c_name(id flat.NodeId, node flat.Node) ?string
 }
 
 fn (mut g FlatGen) callback_fn_value_type(name string) ?types.FnType {
-	params := if p := g.tc.fn_param_types[name] {
+	semantic_params := if p := g.tc.fn_param_types[name] {
 		p
 	} else if p := g.fn_decl_param_types[name] {
 		p
 	} else {
 		return none
 	}
+	params := g.callback_fn_emitted_param_types(name, semantic_params)
 	ret := if r := g.tc.fn_ret_types[name] {
 		r
 	} else if r := g.fn_decl_ret_types[name] {
@@ -11086,6 +11131,38 @@ fn (mut g FlatGen) callback_fn_value_type(name string) ?types.FnType {
 		params:      params.clone()
 		return_type: ret
 	}
+}
+
+fn (mut g FlatGen) callback_fn_emitted_param_types(name string, semantic []types.Type) []types.Type {
+	actual_c_name := g.callback_c_fn_name(name)
+	for item in g.ensure_fn_gen_items() {
+		if item.c_name != actual_c_name {
+			continue
+		}
+		node := g.a.nodes[int(item.node_id)]
+		typed := g.fn_node_param_types(node, item.module)
+		if typed.len != semantic.len {
+			return semantic
+		}
+		mut result := []types.Type{cap: typed.len}
+		mut param_idx := 0
+		for i in 0 .. node.children_count {
+			param := g.a.child_node(&node, i)
+			if param.kind != .param {
+				if g.prefix_param_scan {
+					break
+				}
+				continue
+			}
+			result << g.fn_node_effective_param_type(param, typed[param_idx])
+			param_idx++
+		}
+		if result.len == semantic.len {
+			return result
+		}
+		return semantic
+	}
+	return semantic
 }
 
 fn (mut g FlatGen) callback_fn_types_direct_compatible(actual types.FnType, expected types.FnType, expected_c_abi string) bool {
@@ -11105,6 +11182,26 @@ fn (mut g FlatGen) callback_fn_types_direct_compatible(actual types.FnType, expe
 	return true
 }
 
+fn (mut g FlatGen) callback_fn_types_cast_compatible(actual types.FnType, expected types.FnType, expected_c_abi string) bool {
+	if actual.params.len != expected.params.len
+		|| g.callback_c_type(actual.return_type) != g.callback_expected_return_c_type(expected.return_type, expected_c_abi) {
+		return false
+	}
+	for i in 0 .. expected.params.len {
+		actual_param := fn_type_param(actual, i)
+		expected_param := fn_type_param(expected, i)
+		actual_ct := g.callback_c_type(actual_param)
+		expected_ct := g.callback_expected_param_c_type(expected, i, expected_c_abi)
+		if actual_ct == expected_ct
+			|| g.callback_can_cast_userdata_param(actual_param, expected_param)
+			|| callback_can_cast_const_abi_param(actual_ct, expected_ct) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual types.FnType, expected types.FnType, expected_c_abi string) ?string {
 	if actual.params.len != expected.params.len {
 		return none
@@ -11117,6 +11214,7 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	mut needs_wrapper := false
 	mut param_decls := []string{}
 	mut call_args := []string{}
+	mut setup_lines := []string{}
 	for i in 0 .. expected.params.len {
 		expected_param := fn_type_param(expected, i)
 		actual_param := fn_type_param(actual, i)
@@ -11134,6 +11232,12 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 		}
 		if callback_can_cast_const_abi_param(actual_ct, expected_ct) {
 			call_args << '(${actual_ct})arg${i}'
+			needs_wrapper = true
+			continue
+		}
+		if slot_ct := callback_mut_pointer_slot_value_c_type(actual_ct, expected_ct) {
+			setup_lines << '${slot_ct} arg${i}_slot = (${slot_ct})arg${i};'
+			call_args << '&arg${i}_slot'
 			needs_wrapper = true
 			continue
 		}
@@ -11156,10 +11260,11 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	g.callback_wrapper_names[key] = name
 	params := if param_decls.len == 0 { 'void' } else { param_decls.join(', ') }
 	call := '${actual_c_name}(${call_args.join(', ')})'
+	setup := if setup_lines.len == 0 { '' } else { setup_lines.join(' ') + ' ' }
 	body := if expected_ret_ct == 'void' {
-		'static void ${name}(${params}) { ${call}; }'
+		'static void ${name}(${params}) { ${setup}${call}; }'
 	} else {
-		'static ${expected_ret_ct} ${name}(${params}) { return ${call}; }'
+		'static ${expected_ret_ct} ${name}(${params}) { ${setup}return ${call}; }'
 	}
 	g.add_callback_wrapper_def(body)
 	return name
@@ -11203,6 +11308,19 @@ fn callback_can_cast_const_abi_param(actual_ct string, expected_ct string) bool 
 		return false
 	}
 	return actual == expected['const '.len..].trim_space()
+}
+
+fn callback_mut_pointer_slot_value_c_type(actual_ct string, expected_ct string) ?string {
+	actual := trimmed_space(actual_ct)
+	expected := trimmed_space(expected_ct)
+	if !actual.ends_with('*') {
+		return none
+	}
+	value_ct := trimmed_space(actual[..actual.len - 1])
+	if value_ct != expected || !expected.ends_with('*') {
+		return none
+	}
+	return value_ct
 }
 
 fn (mut g FlatGen) callback_c_type(typ types.Type) string {
@@ -13022,7 +13140,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			g.gen_expr(arg_id)
 			continue
 		}
-		if arg_idx < typed_param_count
+		if !is_c_call && arg_idx < typed_param_count
 			&& g.gen_callback_fn_value_for_expected_type(arg_id, param_types[arg_idx]) {
 			continue
 		}
@@ -13621,8 +13739,9 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 			return false
 		}
 	}
-	receiver_id := g.a.child(&node, 1)
+	mut receiver_id := g.a.child(&node, 1)
 	emitted_name := g.direct_call_name_for_call_node(id, node, fn_node.value)
+	method_short := fn_node.value.all_after_last('.')
 	mut params := g.param_types_for(emitted_name, emitted_name)
 	if params.len == 0 {
 		params = g.param_types_for(fn_node.value, fn_node.value.all_after_last('.'))
@@ -13636,6 +13755,18 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	if receiver_owner.len == 0 || expected_receiver_name != receiver_owner {
 		return false
 	}
+	// Reflected method selection can retain an embedded-field selector from the
+	// checker even after the concrete call target resolves to a method on the
+	// complete program context. Recover that outer receiver from the selector;
+	// otherwise CGen would pass `&ctx->Embedded` to `ProgramContext__method`.
+	selected_receiver := g.a.nodes[int(receiver_id)]
+	if selected_receiver.kind == .selector && selected_receiver.children_count > 0 {
+		outer_id := g.a.child(&selected_receiver, 0)
+		outer_type := g.receiver_base_type(outer_id)
+		if g.emitted_method_belongs_to_receiver(outer_type, method_short, emitted_name) {
+			receiver_id = outer_id
+		}
+	}
 	receiver_wants_ptr := params[0] is types.Pointer
 		|| g.mut_receiver_arg_wants_addr(fn_node.value, receiver_id)
 		|| g.mut_receiver_arg_wants_addr(emitted_name, receiver_id)
@@ -13643,6 +13774,8 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 		g.cname(fn_node.value), g.cname(emitted_name))
 	receiver := g.a.nodes[int(receiver_id)]
 	receiver_type := g.receiver_base_type(receiver_id)
+	receiver_declares_method := g.emitted_method_belongs_to_receiver(receiver_type, method_short,
+		emitted_name)
 	receiver_is_shared_payload := g.shared_local_arg_c_expr(receiver_id) != none
 		|| g.shared_payload_deref_storage_c_expr(receiver_id) != none
 	receiver_is_ptr := !receiver_is_shared_payload
@@ -13662,9 +13795,8 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	if receiver_wants_shared
 		&& (g.gen_shared_local_receiver_arg(receiver_id) || g.gen_shared_storage_expr(receiver_id)) {
 		// handled
-	} else if g.gen_embedded_method_receiver(receiver_id, receiver_type, params[0],
-		receiver_wants_ptr)
-	{
+	} else if !receiver_declares_method
+		&& g.gen_embedded_method_receiver(receiver_id, receiver_type, params[0], receiver_wants_ptr) {
 		// handled
 	} else if receiver_wants_ptr && g.gen_deref_method_receiver(receiver_id, params[0]) {
 		// handled
@@ -13708,14 +13840,12 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 		}
 		next_param_idx = param_idx + 1
 	}
-	if callee_has_implicit_ctx {
-		// Dynamic veb method calls are checked before their concrete method is
-		// selected. A branch that omits route parameters still has to be valid C even
-		// when a surrounding reflected condition makes it unreachable at runtime.
-		for param_idx in next_param_idx .. params.len {
-			g.write(', ')
-			g.gen_default_value_for_type(params[param_idx])
-		}
+	// Dynamic reflected method calls are checked before their concrete method is
+	// selected. A branch that omits route parameters still has to be valid C even
+	// when a surrounding reflected condition makes it unreachable at runtime.
+	for param_idx in next_param_idx .. params.len {
+		g.write(', ')
+		g.gen_default_value_for_type(params[param_idx])
 	}
 	g.write(')')
 	return true
@@ -15147,6 +15277,7 @@ const c_system_libc_preamble_declared_fns = {
 	'getgid':                        true
 	'gethostname':                   true
 	'getpid':                        true
+	'getsockname':                   true
 	'gettimeofday':                  true
 	'getuid':                        true
 	'gmtime_r':                      true
@@ -15169,6 +15300,7 @@ const c_system_libc_preamble_declared_fns = {
 	'pthread_key_delete':            true
 	'pthread_setspecific':           true
 	'pthread_mutex_trylock':         true
+	'pthread_sigmask':               true
 	'pthread_cond_timedwait':        true
 	'pthread_rwlock_init':           true
 	'pthread_rwlock_rdlock':         true
@@ -15193,6 +15325,7 @@ const c_system_libc_preamble_declared_fns = {
 	'sigaddset':                     true
 	'sigemptyset':                   true
 	'sigprocmask':                   true
+	'sigtimedwait':                  true
 	'sin':                           true
 	'sinf':                          true
 	'socket':                        true

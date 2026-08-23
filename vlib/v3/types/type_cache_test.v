@@ -37,6 +37,35 @@ fn test_parse_resolution_type_prefers_file_import_over_known_short_symbol() {
 	assert tc.parse_resolution_type('Box[token.Pos]').name() == 'Box[v.token.Pos]'
 }
 
+fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.structs['Context'] = []StructField{}
+	tc.structs['veb.Context'] = []StructField{}
+	tc.cur_file = 'veb/middleware.v'
+	tc.cur_module = 'veb'
+
+	locked := tc.parse_resolution_type('fn (mut main.Context) bool')
+	assert locked is FnType
+	assert locked.params.len == 1
+	locked_param := locked.params[0]
+	if locked_param is Pointer {
+		assert locked_param.base_type.name() == 'Context'
+	} else {
+		assert false, locked_param.name()
+	}
+	assert locked.params_mut == [true]
+
+	local := tc.parse_resolution_type('fn (mut Context) bool')
+	assert local is FnType
+	local_param := local.params[0]
+	if local_param is Pointer {
+		assert local_param.base_type.name() == 'veb.Context'
+	} else {
+		assert false, local_param.name()
+	}
+}
+
 fn test_type_cache_overlay_rebinds_resolution_type_views() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

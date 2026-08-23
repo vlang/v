@@ -97,7 +97,7 @@ fn C.WSAAddressToStringA(lpsaAddress voidptr, dwAddressLength u32, lpProtocolInf
 	lpdwAddressStringLength &u32) i32
 
 // fn C.getsockname(sockfd int, addr &C.sockaddr, addrlen &C.socklen_t) int
-fn C.getsockname(sockfd i32, addr &C.sockaddr, addrlen &u32) i32
+fn C.getsockname(sockfd i32, addr voidptr, addrlen &u32) i32
 
 fn C.getsockopt(sockfd i32, level i32, optname i32, optval voidptr, optlen &u32) i32
 

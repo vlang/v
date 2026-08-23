@@ -12472,8 +12472,7 @@ fn (mut tc TypeChecker) check_loop_var_const_conflict(id flat.NodeId) bool {
 	} else {
 		'${tc.cur_module}.${node.value}'
 	}
-	if qname in tc.const_types || node.value in tc.const_types
-		|| tc.const_key_for_name(node.value) != none {
+	if qname in tc.const_types || tc.local_name_conflicts_with_current_module_const(node.value) {
 		message := 'duplicate of a const name `${node.value}`'
 		pos := tc.node_value_diagnostic_pos(id)
 		if !tc.errors.any(it.msg == message && it.pos == pos) {
@@ -12969,7 +12968,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				tc.node_value_diagnostic_pos(lhs_id))
 		}
 		if lhs_node.value != '_' {
-			if _ := tc.const_key_for_name(lhs_node.value) {
+			if tc.local_name_conflicts_with_current_module_const(lhs_node.value) {
 				tc.record_warning_at(.duplicate_decl,
 					'duplicate of a const name `${tc.qualify_name(lhs_node.value)}`', lhs_id,
 					tc.node_value_diagnostic_pos(lhs_id))

@@ -2427,6 +2427,7 @@ fn main() {
 	mut pointer_items := [first]
 	for mut pointer_item in pointer_items {
 		pointer_item.bump()
+		bump_item(mut pointer_item)
 	}
 	{
 		mut item := Counter{}
@@ -2444,7 +2445,7 @@ fn main() {
 }
 '
 	out := run_good(v3_bin, 'for_mut_item_receiver_run', item_src)
-	assert out == '3\n4\n4\n2'
+	assert out == '3\n4\n5\n2'
 	item_c := gen_c(v3_bin, 'for_mut_item_receiver_c', item_src)
 	item_main := c_fn_body(item_c, 'int main(')
 	assert item_main.len > 0, item_c
@@ -2455,6 +2456,8 @@ fn main() {
 	assert !item_main.contains('bump_item(&item);'), item_main
 	assert item_main.contains('Item** pointer_item ='), item_main
 	assert item_main.contains('__bump(*pointer_item);'), item_main
+	assert item_main.contains('bump_item(*pointer_item);'), item_main
+	assert !item_main.contains('bump_item(pointer_item);'), item_main
 	assert !item_main.contains('__bump(pointer_item);'), item_main
 	assert item_main.contains('inc_counter(&item);'), item_main
 	assert !item_main.contains('inc_counter(item);'), item_main
@@ -10413,6 +10416,20 @@ fn test_comptime_define_field_default_is_not_fixed_array_initializer() {
 		'cannot initialize a fixed size array field that uses `$d()` as size quantifier')
 }
 
+fn test_comptime_define_call_is_not_parenthesized_condition_warning() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'comptime_define_if_warning', '-W',
+		'fn main() {\n\tif \$d("enabled", true) {\n\t\tprintln("ok")\n\t}\n}\n')
+	assert out == 'ok'
+}
+
+fn test_pointer_map_assignment_does_not_require_or_block() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'pointer_map_assignment_warning', '-W',
+		'struct Item {}\n\nfn main() {\n\tmut items := map[string]&Item{}\n\titems["one"] = &Item{}\n\tprintln(items.len)\n}\n')
+	assert out == '1'
+}
+
 fn test_params_struct_fields_use_callback_and_userdata_compatibility() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'params_struct_callback_userdata_compatibility', 'type Callback = fn (voidptr)
@@ -10509,4 +10526,50 @@ fn test_imported_generic_preserves_main_embedded_context_type() {
 		'main.v':                'module main\n\nimport ctxhelper\n\nstruct Context {\n\tctxhelper.Context\n}\n\nfn main() {\n\tprintln(ctxhelper.read[Context]())\n}\n'
 	}, 'main.v')
 	assert out == '14'
+}
+
+fn test_imported_generic_closure_preserves_main_embedded_context_type() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_generic_closure_main_embedded_context', {
+		'v.mod':                 "Module { name: 'imported_generic_closure_main_embedded_context' }\n"
+		'ctxhelper/ctxhelper.v': 'module ctxhelper
+
+pub struct Context {
+pub:
+	value int
+}
+
+pub struct Options[T] {
+pub:
+	handler fn (mut T) bool
+}
+
+pub fn make[T]() Options[T] {
+	return Options[T]{
+		handler: fn [T](mut ctx T) bool {
+			return ctx.Context.value == 7
+		}
+	}
+}
+'
+		'main.v':                'module main
+
+import ctxhelper
+
+struct Context {
+	ctxhelper.Context
+}
+
+fn main() {
+	mut ctx := Context{
+		Context: ctxhelper.Context{
+			value: 7
+		}
+	}
+	options := ctxhelper.make[Context]()
+	println(options.handler(mut ctx))
+}
+'
+	}, 'main.v')
+	assert out == 'true'
 }

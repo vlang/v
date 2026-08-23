@@ -1,5 +1,8 @@
 module mysql
 
+type C.v_mysql_ulong = usize
+type C.v_mysql_bool = i8
+
 @[typedef]
 pub struct C.MYSQL_STMT {
 	mysql   &C.MYSQL
@@ -11,9 +14,9 @@ pub struct C.MYSQL_BIND {
 mut:
 	buffer_type   int
 	buffer        voidptr
-	buffer_length u32
-	length        &u32
-	is_null       &bool
+	buffer_length C.v_mysql_ulong
+	length        &C.v_mysql_ulong
+	is_null       &C.v_mysql_bool
 }
 
 const mysql_type_decimal = C.MYSQL_TYPE_DECIMAL
@@ -69,8 +72,8 @@ pub struct Stmt {
 mut:
 	binds            []C.MYSQL_BIND
 	res              []C.MYSQL_BIND
-	auto_res_lengths []u32
-	auto_res_is_null []bool
+	auto_res_lengths []C.v_mysql_ulong
+	auto_res_is_null []C.v_mysql_bool
 }
 
 // str returns a text representation of the given mysql statement `s`.
@@ -275,16 +278,16 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 	stmt.binds << C.MYSQL_BIND{
 		buffer_type:   typ
 		buffer:        buffer
-		buffer_length: buf_len
+		buffer_length: usize(buf_len)
 		length:        0
 		is_null:       0
 	}
 }
 
 // bind_res will store one result in the statement `stmt`
-pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, is_null []bool, num_fields int) {
-	stmt.auto_res_lengths = []u32{}
-	stmt.auto_res_is_null = []bool{}
+pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []C.v_mysql_ulong, is_null []C.v_mysql_bool, num_fields int) {
+	stmt.auto_res_lengths = []C.v_mysql_ulong{}
+	stmt.auto_res_is_null = []C.v_mysql_bool{}
 	if num_fields <= 0 {
 		stmt.res = []C.MYSQL_BIND{}
 		return
@@ -308,8 +311,8 @@ fn (mut stmt Stmt) ensure_default_result_binds() {
 	if num_fields <= 0 {
 		return
 	}
-	stmt.auto_res_lengths = []u32{len: num_fields}
-	stmt.auto_res_is_null = []bool{len: num_fields}
+	stmt.auto_res_lengths = []C.v_mysql_ulong{len: num_fields}
+	stmt.auto_res_is_null = []C.v_mysql_bool{len: num_fields}
 	stmt.res = []C.MYSQL_BIND{cap: num_fields}
 	for i in 0 .. num_fields {
 		stmt.res << C.MYSQL_BIND{

@@ -6880,7 +6880,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 					'`@[strict_map_index]` requires handling missing map keys with `or {}` or `if value := map[key] {}`',
 					id, tc.index_brackets_pos(node))
 			}
-			if tc.unsafe_depth == 0 && !tc.index_is_handled_by_guard_or_or_block(id) {
+			if tc.unsafe_depth == 0 && !tc.index_is_handled_by_guard_or_or_block(id)
+				&& !tc.index_is_assignment_target(id) {
 				value_type := unalias_type(base_type.value_type)
 				index_pos := token.new_span(node.pos.id, tc.a.node(base_id).pos.end, node.pos.end)
 				if value_type is Pointer {

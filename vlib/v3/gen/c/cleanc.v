@@ -5269,7 +5269,8 @@ fn c_should_preserve_uninlined_include(include_arg string) bool {
 		return false
 	}
 	if clean[0] == `<` {
-		return clean in ['<dlfcn.h>', '<limits.h>', '<math.h>', '<sys/ptrace.h>', '<ucontext.h>']
+		return
+			clean in ['<dlfcn.h>', '<limits.h>', '<math.h>', '<sys/ptrace.h>', '<sys/sendfile.h>', '<ucontext.h>']
 			|| c_is_apple_framework_include(clean)
 	}
 	return true
@@ -7085,18 +7086,22 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 	}
 	if include_arg == '<X11/Xlib.h>' {
 		return [
+			'BlackPixel',
 			'ConnectionNumber',
+			'DefaultScreen',
 			'XChangeProperty',
 			'XCheckTypedWindowEvent',
 			'XCloseDisplay',
 			'XConvertSelection',
 			'XCreateColormap',
 			'XCreateFontCursor',
+			'XCreateSimpleWindow',
 			'XCreateWindow',
 			'XDefaultDepth',
 			'XDefaultRootWindow',
 			'XDefaultScreen',
 			'XDefaultVisual',
+			'XDeleteProperty',
 			'XDefineCursor',
 			'XDestroyWindow',
 			'XDisplayHeight',
@@ -7123,6 +7128,7 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 			'XQueryExtension',
 			'XRaiseWindow',
 			'XResourceManagerString',
+			'RootWindow',
 			'XSendEvent',
 			'XSetErrorHandler',
 			'XSetSelectionOwner',
@@ -7132,6 +7138,7 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 			'XUngrabPointer',
 			'XUnmapWindow',
 			'XWarpPointer',
+			'WhitePixel',
 		]
 	}
 	if include_arg == '<X11/Xutil.h>' {
@@ -7197,6 +7204,11 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 	}
 	if include_arg in ['<openssl/ssl.h>', '<openssl/x509.h>'] {
 		return ['X509_free']
+	}
+	if include_arg == '<openssl/ec.h>' {
+		// OpenSSL exposes these through const-qualified declarations and macros that
+		// the lightweight preserved-header scanner cannot model reliably.
+		return ['EC_POINT_mul', 'EC_POINT_new', 'EC_POINT_point2buf', 'OPENSSL_free']
 	}
 	if include_arg == '<objc/message.h>' {
 		return ['objc_msgSend']
@@ -17112,6 +17124,14 @@ fn (mut g FlatGen) preamble() {
 }
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
+	for directive in g.preinclude_directives {
+		for line in directive.split_into_lines() {
+			clean := trimmed_space(line)
+			if c_directive_name(clean) in ['include', 'import'] && c_directive_arg(clean).len > 0 {
+				return true
+			}
+		}
+	}
 	for directive in g.c_directives {
 		for line in directive.text.split_into_lines() {
 			clean := trimmed_space(line)
@@ -18140,6 +18160,7 @@ fn (mut g FlatGen) headerless_signal_constants() {
 	g.writeln('#define SIGKILL 9')
 	g.writeln('#define SIGTERM 15')
 	g.writeln('#define SIGPIPE 13')
+	g.writeln('#define SIGTTOU 22')
 	g.writeln('#define SIG_IGN ((void*)1)')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#define SIGSTOP 19')

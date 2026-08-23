@@ -11766,6 +11766,11 @@ fn (mut t Transformer) compound_assign_operator_type(lhs_id flat.NodeId, lhs_typ
 	if isnil(t.tc) || lhs_type.len == 0 {
 		return none
 	}
+	clean_lhs_type := t.trim_pointer_type(lhs_type.trim_space())
+	if is_numeric_type_name(clean_lhs_type)
+		|| clean_lhs_type in ['bool', 'char', 'string', 'voidptr', 'byteptr', 'charptr'] {
+		return none
+	}
 	normalized_lhs := t.normalize_type_alias(lhs_type)
 	for alias, target in t.tc.type_aliases {
 		if t.normalize_type_alias(target) != normalized_lhs {
@@ -11787,6 +11792,10 @@ fn (mut t Transformer) compound_assign_operator_type(lhs_id flat.NodeId, lhs_typ
 fn (t &Transformer) compound_assign_operator_type_candidate(candidate string, op_name string) ?string {
 	clean := t.trim_pointer_type(candidate.trim_space())
 	if clean.len == 0 {
+		return none
+	}
+	if is_numeric_type_name(clean)
+		|| clean in ['bool', 'char', 'string', 'voidptr', 'byteptr', 'charptr'] {
 		return none
 	}
 	// Prefer an operator declared on the alias itself before resolving the alias

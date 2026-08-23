@@ -98,6 +98,19 @@ fn test_direct_call_does_not_prefix_synthetic_helper_with_owner_module() {
 	assert g.fn_c_name_in_module('main', '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
 }
 
+fn test_main_function_is_prefixed_when_preserved_c_header_owns_typedef_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.inlined_c_typedef_names['sqlite3'] = true
+
+	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
+	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
+	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
+}
+
 fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -111,6 +124,35 @@ fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 		})
 	})
 	assert !g.voidptr_method_value_arg(flat.empty_node, alias_to_voidptr)
+}
+
+fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.cur_module = 'veb'
+	tc.structs['main.Context'] = [
+		types.StructField{
+			name:     'veb.Context'
+			typ:      types.Type(types.Struct{
+				name: 'veb.Context'
+			})
+			is_embed: true
+		},
+	]
+
+	base := types.Type(types.Struct{
+		name: 'main.Context'
+	})
+	expected := types.Type(types.Struct{
+		name: 'Context'
+	})
+	assert g.embedded_receiver_path_for_expected(base, expected) == none
+	assert g.emitted_method_belongs_to_receiver(base, 'before_request', 'Context__before_request')
+	assert !g.emitted_method_belongs_to_receiver(base, 'before_request',
+		'veb__Context__before_request')
 }
 
 fn test_array_receiver_method_is_not_reselected_as_generic() {
@@ -258,9 +300,15 @@ fn test_guarded_preamble_externs_keep_explicit_declarations() {
 		text: '#include <math.h>'
 	}
 	for name in ['accept', 'accept4', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl',
-		'pthread_rwlockattr_destroy', 'rmdir', 'syscall'] {
+		'pthread_rwlockattr_destroy', 'pthread_sigmask', 'rmdir', 'sigtimedwait', 'syscall'] {
 		assert !g.should_emit_c_extern_decl(name)
 	}
+}
+
+fn test_preinclude_uses_system_libc_preamble() {
+	mut g := FlatGen.new()
+	g.preinclude_directives << '#include <X11/Xlib.h>'
+	assert g.c_directives_use_system_libc()
 }
 
 fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations() {
@@ -287,6 +335,8 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_declared_fns('<openssl/x509.h>') == [
 		'X509_free',
 	]
+	assert 'EC_POINT_mul' in c_preserved_system_include_declared_fns('<openssl/ec.h>')
+	assert 'OPENSSL_free' in c_preserved_system_include_declared_fns('<openssl/ec.h>')
 	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
 		'objc_msgSend',
 	]
@@ -454,6 +504,8 @@ fn test_sokol_header_does_not_select_objective_c_on_linux() {
 
 fn test_x11_system_headers_preserve_external_structs() {
 	assert 'XGetWindowAttributes' in c_preserved_system_include_declared_fns('<X11/Xlib.h>')
+	assert 'XCreateSimpleWindow' in c_preserved_system_include_declared_fns('<X11/Xlib.h>')
+	assert 'WhitePixel' in c_preserved_system_include_declared_fns('<X11/Xlib.h>')
 	assert 'XSetWMNormalHints' in c_preserved_system_include_declared_fns('<X11/Xutil.h>')
 	assert 'XrmGetResource' in c_preserved_system_include_declared_fns('<X11/Xresource.h>')
 	assert 'XkbGetMap' in c_preserved_system_include_declared_fns('<X11/XKBlib.h>')
@@ -461,6 +513,7 @@ fn test_x11_system_headers_preserve_external_structs() {
 	assert 'XcursorImageCreate' in c_preserved_system_include_declared_fns('<X11/Xcursor/Xcursor.h>')
 	assert 'accept4' in c_preserved_system_include_declared_fns('<sys/socket.h>')
 	assert 'sendfile' in c_preserved_system_include_declared_fns('<sys/sendfile.h>')
+	assert c_should_preserve_uninlined_include('<sys/sendfile.h>')
 	assert 'pthread_sigmask' in c_preserved_system_include_declared_fns('<pthread.h>')
 	assert 'sigtimedwait' in c_preserved_system_include_declared_fns('<signal.h>')
 	assert 'Display' in c_preserved_system_include_struct_names('<X11/Xlib.h>')

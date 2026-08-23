@@ -55,8 +55,8 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		}
 	}
 
-	mut lengths := []u32{len: int(num_fields), init: 0}
-	mut is_null := []bool{len: int(num_fields)}
+	mut lengths := []C.v_mysql_ulong{len: int(num_fields), init: 0}
+	mut is_null := []C.v_mysql_bool{len: int(num_fields)}
 	stmt.bind_res(fields, data_pointers, lengths, is_null, num_fields)
 
 	mut types := config.types.clone()
@@ -88,7 +88,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 			.type_time, .type_date, .type_datetime, .type_timestamp {
 				// FIXME: Allocate memory for blobs dynamically.
 				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
-				mysql_bind.buffer_length = FieldType.type_blob.get_len()
+				mysql_bind.buffer_length = usize(FieldType.type_blob.get_len())
 			}
 			else {}
 		}
@@ -385,12 +385,12 @@ fn stmt_bind_primitive(mut stmt Stmt, data orm.Primitive) {
 
 // data_pointers_to_primitives returns an array of `Primitive`
 // cast from `data_pointers` using `types`.
-fn data_pointers_to_primitives(is_null []bool, data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
+fn data_pointers_to_primitives(is_null []C.v_mysql_bool, data_pointers []&u8, types []int, field_types []FieldType) ![]orm.Primitive {
 	mut result := []orm.Primitive{}
 
 	for i, data in data_pointers {
 		mut primitive := orm.Primitive(0)
-		if !is_null[i] {
+		if is_null[i] == 0 {
 			if field_types[i] in [.type_decimal, .type_newdecimal] {
 				decimal_value := unsafe { cstring_to_vstring(&char(data)) }
 				primitive = decimal_string_to_primitive(decimal_value, types[i])!
