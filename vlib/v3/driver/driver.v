@@ -2253,7 +2253,7 @@ fn cli_usage() string {
 		'  -profile [file]              write V1-compatible function profile data\n' +
 		'  -profile-fns <names>         profile only named functions and their callees\n' +
 		'  -profile-no-inline           omit @[inline] functions from the profile\n' +
-		'  -no-memory-limit             disable the 2.25 GiB memory safety limit\n' +
+		'  -no-memory-limit             disable the 2.5 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
 

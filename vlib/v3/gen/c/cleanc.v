@@ -340,6 +340,7 @@ mut:
 	cache_omitted_c_fns            map[string]bool
 	preserved_header_files_seen    map[string]bool
 	preserved_header_scan_results  map[string]CHeaderMacroState
+	preserved_macro_files_seen     map[string]bool
 	preserved_header_scans_active  map[string]bool
 	preinclude_macro_state         CHeaderMacroState
 	preinclude_state_initialized   bool
@@ -1031,6 +1032,7 @@ pub fn FlatGen.new() FlatGen {
 		cache_omitted_c_fns:             map[string]bool{}
 		preserved_header_files_seen:     map[string]bool{}
 		preserved_header_scan_results:   map[string]CHeaderMacroState{}
+		preserved_macro_files_seen:      map[string]bool{}
 		preserved_header_scans_active:   map[string]bool{}
 		inlined_c_typedef_names:         map[string]bool{}
 		initial_c_flags:                 []string{}
@@ -2615,6 +2617,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cache_omitted_c_fns.clear()
 	g.preserved_header_files_seen.clear()
 	g.preserved_header_scan_results.clear()
+	g.preserved_macro_files_seen.clear()
 	g.preserved_header_scans_active.clear()
 	g.preinclude_macro_state = CHeaderMacroState{}
 	g.preinclude_state_initialized = false
@@ -4634,9 +4637,13 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
 			include_dirs) {
 			if os.is_file(nested_path) {
-				result_state = g.collect_preserved_header_file_with_state_and_scope(nested_path,
-					include_dirs, include_state, collect_declarations
-					&& include_is_definitely_active)
+				if include_is_definitely_active {
+					result_state = g.collect_preserved_header_file_with_state_and_scope(nested_path,
+						include_dirs, include_state, collect_declarations)
+				} else {
+					g.collect_possibly_active_header_macros(nested_path, include_dirs)
+					result_state = c_header_macro_state_after_unknown_include(include_state)
+				}
 				found = true
 				break
 			}
@@ -4784,6 +4791,42 @@ fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, t
 fn c_header_definitely_active_scan(text string, state CHeaderMacroState, strict_iso_mode bool, target pref.Target) CHeaderActiveScan {
 	return c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
 		target, map[string]CHeaderIncludeResult{})
+}
+
+// collect_possibly_active_header_macros conservatively follows an include from
+// an unresolved branch. Its macro effects cannot be applied to the surrounding
+// state, so scanning with a small independent state avoids copying the complete
+// macro environment for every branch in a large third-party header tree.
+fn (mut g FlatGen) collect_possibly_active_header_macros(path string, include_dirs []string) {
+	real_path := os.real_path(path)
+	if real_path.len == 0 || g.preserved_macro_files_seen[real_path] {
+		return
+	}
+	g.preserved_macro_files_seen[real_path] = true
+	g.preserved_header_files_seen[real_path] = true
+	text := os.read_file(real_path) or { return }
+	flag_state := c_header_macro_state_for_flags(g.c_flags)
+	state := CHeaderMacroState{
+		defined:                  flag_state.defined
+		undefined:                flag_state.undefined
+		uncertain:                flag_state.uncertain
+		external_macros_possible: true
+	}
+	scan := c_header_definitely_active_scan(text, state, c_effective_strict_iso_mode(g.c_flags,
+		g.c99_mode), g.target)
+	for macro_name in scan.possibly_active_macro_names {
+		g.inlined_c_declared_fns[macro_name] = true
+	}
+	for raw_include_arg in scan.include_args {
+		include_arg := c_include_arg(raw_include_arg, g.compiler_vroot, real_path)
+		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
+			include_dirs) {
+			if os.is_file(nested_path) {
+				g.collect_possibly_active_header_macros(nested_path, include_dirs)
+				break
+			}
+		}
+	}
 }
 
 fn c_header_definitely_active_scan_with_include_results(text string, state CHeaderMacroState, strict_iso_mode bool, target pref.Target, include_results map[string]CHeaderIncludeResult) CHeaderActiveScan {
