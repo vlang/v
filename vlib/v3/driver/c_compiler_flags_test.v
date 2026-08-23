@@ -24,6 +24,23 @@ fn test_v3_explicit_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-L${tcc_install_dir}' in plan.before_inputs
 }
 
+fn test_v3_explicit_tcc_flag_plan_restores_native_local_prefix() {
+	host_os := os.user_os()
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		explicit_tcc: true
+		target_os:    host_os
+		target_arch:  'amd64'
+		vroot:        os.join_path(os.temp_dir(), 'v3_tcc_native_flag_plan')
+	})
+	if host_os == 'windows' {
+		assert '-I/usr/local/include' !in plan.before_inputs
+		assert '-L/usr/local/lib' !in plan.before_inputs
+	} else {
+		assert '-I/usr/local/include' in plan.before_inputs
+		assert '-L/usr/local/lib' in plan.before_inputs
+	}
+}
+
 fn test_add_v3_tcc_compat_defines() {
 	mut macos_arm64 := []string{}
 	add_v3_tcc_compat_defines(mut macos_arm64, 'macos', 'arm64', false, true)

@@ -1859,6 +1859,15 @@ fn v3_tcc_resource_flags(vroot string) V3TccResourceFlags {
 	}
 }
 
+fn v3_tcc_host_system_flags(target_os string) []string {
+	if target_os != os.user_os() || target_os == 'windows' {
+		return []
+	}
+	// The bundled TCC resource root replaces its configured search root. Restore
+	// the standard local prefix used by native packages such as wkhtmltox.
+	return ['-I/usr/local/include', '-L/usr/local/lib']
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -1875,6 +1884,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		tcc_resources := v3_tcc_resource_flags(options.vroot)
 		tcc_includes = tcc_resources.include_arg
 		before_inputs << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
+		before_inputs << v3_tcc_host_system_flags(options.target_os)
 		if v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
