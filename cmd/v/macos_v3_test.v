@@ -1994,7 +1994,8 @@ fn test_macos_v3_inline_asm_trace_stays_off_generated_c_stdout() {
 }
 
 fn clear_macos_v3_report_env() {
-	for suffix in ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE'] {
+	for suffix in ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE',
+		'INPUT_DIGESTS', 'INPUT_DIGESTS_COMPLETE'] {
 		os.unsetenv('V_MACOS_V3_REPORT_${suffix}')
 	}
 }
@@ -2019,7 +2020,7 @@ fn test_take_macos_v3_report_content_carries_no_path() {
 		// A forwarded content report round-trips as content only.
 		compiler_error := macos_v3_compiler_error_message('type specialization')
 		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3', compiler_error, '',
-			map[string]string{})
+			map[string]string{}, false)
 		report := take_macos_v3_report_content() or {
 			assert false, 'the forwarded content report must be returned'
 			return

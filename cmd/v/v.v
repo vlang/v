@@ -73,8 +73,10 @@ struct MacosV3CErrorReport {
 	// Content only. The process that owned the staged report already bounded the source
 	// and deleted the directory, so the retry never reads a path or deletes a directory
 	// named by the (inheritable, forgeable) environment.
-	v_file   string // informational base filename (no directory)
-	v_source string // already-bounded source snippet; never a whole file
+	v_file                 string // informational base filename (no directory)
+	v_source               string // already-bounded source snippet; never a whole file
+	input_digests          map[string]string
+	input_digests_complete bool
 }
 
 @[unsafe]
@@ -407,13 +409,15 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 			}
 			if failed := macos_v3_c_error_report {
 				builder.compile_with_external_c_error_report('build', prefs, cbuilder.compile_c, builder.ExternalCErrorBugReport{
-					kind:          failed.kind
-					ccompiler:     failed.ccompiler
-					c_output:      failed.c_output
-					v_file:        failed.v_file
-					v_source:      failed.v_source
-					source_inline: true
-					tag:           'V3'
+					kind:                   failed.kind
+					ccompiler:              failed.ccompiler
+					c_output:               failed.c_output
+					v_file:                 failed.v_file
+					v_source:               failed.v_source
+					source_inline:          true
+					input_digests:          failed.input_digests
+					input_digests_complete: failed.input_digests_complete
+					tag:                    'V3'
 				})
 			} else {
 				builder.compile('build', prefs, cbuilder.compile_c)
@@ -438,13 +442,15 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 				// success without ever reading a path or deleting a directory named by the
 				// (inheritable, forgeable) environment.
 				builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
-					kind:          failed.kind
-					ccompiler:     failed.ccompiler
-					c_output:      failed.c_output
-					v_file:        failed.v_file
-					v_source:      failed.v_source
-					source_inline: true
-					tag:           'V3'
+					kind:                   failed.kind
+					ccompiler:              failed.ccompiler
+					c_output:               failed.c_output
+					v_file:                 failed.v_file
+					v_source:               failed.v_source
+					source_inline:          true
+					input_digests:          failed.input_digests
+					input_digests_complete: failed.input_digests_complete
+					tag:                    'V3'
 				})
 			}
 			util.launch_tool(prefs.is_verbose, 'builders/wasm_builder', os.args[1..])

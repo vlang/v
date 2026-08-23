@@ -2,6 +2,7 @@ module builder
 
 import os
 import crypto.sha256
+import v.ast
 import v.pref
 
 fn restore_env_var(name string, old_value ?string) {
@@ -333,15 +334,21 @@ fn test_external_v3_report_env_round_trip() {
 		'error: v3 failed', c_file, map[string]string{})
 	assert late_file == ''
 	assert late_source == ''
+	parsed_path := os.real_path(c_file) + '\nwith-separator'
+	parsed_digest := sha256.hexhash(lines.join('\n'))
 	// ...then forwards only that content; export reads no path and deletes no directory.
 	export_external_v3_report_to_env(ExternalCErrorBugReport{
-		kind:          external_v3_compiler_error_kind
-		ccompiler:     'v3'
-		c_output:      'error: v3 failed'
-		v_file:        v_file
-		v_source:      v_source
-		source_inline: true
-		tag:           'V3'
+		kind:                   external_v3_compiler_error_kind
+		ccompiler:              'v3'
+		c_output:               'error: v3 failed'
+		v_file:                 v_file
+		v_source:               v_source
+		source_inline:          true
+		input_digests:          {
+			parsed_path: parsed_digest
+		}
+		input_digests_complete: true
+		tag:                    'V3'
 	})
 	got := take_external_v3_report_from_env() or {
 		assert false, 'no report round-tripped'
@@ -357,10 +364,54 @@ fn test_external_v3_report_env_round_trip() {
 	assert got.cleanup_dir == ''
 	assert got.v_file == 'main.v'
 	assert got.v_source == v_source
+	assert got.input_digests_complete
+	assert got.input_digests == {
+		parsed_path: parsed_digest
+	}
 	// the variables are cleared, so a second take finds nothing
 	if second := take_external_v3_report_from_env() {
 		assert false, 'variables were not cleared: ${second.kind}'
 	}
+}
+
+fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
+	path := os.real_path(@FILE)
+	parsed_digest := sha256.hexhash('the exact stable parser bytes')
+	b := &Builder{
+		parsed_files: [
+			&ast.File{
+				path:          path
+				source_digest: parsed_digest
+			},
+		]
+	}
+	matching := ExternalCErrorBugReport{
+		input_digests:          {
+			path: parsed_digest
+		}
+		input_digests_complete: true
+	}
+	assert b.matches_v3_fallback_inputs(matching)
+	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
+		...matching
+		input_digests: {
+			path: sha256.hexhash('rewritten after V3')
+		}
+	})
+	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
+		...matching
+		input_digests: {
+			os.join_path(os.dir(path), 'not-parsed.v'): parsed_digest
+		}
+	})
+	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
+		...matching
+		input_digests_complete: false
+	})
+	// Notice-only fallbacks do not claim or submit a V3-only failure report.
+	assert b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
+		kind: external_v3_notice_only_kind
+	})
 }
 
 fn test_export_external_v3_report_bounds_c_output_for_exec() {

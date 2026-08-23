@@ -119,9 +119,11 @@ never uploaded.
 An internal V3 compiler error on a short program (and any directory build such as
 `v .`) submits metadata only. If the input selected for a source excerpt changes
 after V3 parses it, that report also submits metadata only rather than source V3
-did not parse. An unchanged input mapped from a generated-C error can still upload
-a strict-subset excerpt of that file plus a few lines of context around the failing
-line, even when the file is short. Inline-assembly
+did not parse. Before submitting any report, the stable compiler also verifies
+that it parsed the same bytes for every captured project input; if it did not, no
+fallback report is submitted. An unchanged input mapped from a generated-C error
+can still upload a strict-subset excerpt of that file plus a few lines of context
+around the failing line, even when the file is short. Inline-assembly
 fallbacks are notice-only and do not submit a report; reporting is also skipped
 for test compilations and to the default endpoint in GitHub CI. A custom fallback
 endpoint set with `V_C_ERROR_BUG_REPORT_URL` remains active in CI. The

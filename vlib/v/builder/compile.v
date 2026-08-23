@@ -51,6 +51,11 @@ fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backen
 		}
 	}
 	mut pref_ref := unsafe { pref_ }
+	if failed := report {
+		// Hash only retry inputs, from the scanner's exact bytes. This lets the stable
+		// build prove it compiled the same sources before reporting a V3-only failure.
+		pref_ref.capture_source_digests = failed.input_digests_complete
+	}
 	resolve_ccompiler_type_and_pkgconfig_mode(mut pref_ref)
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref_)
@@ -67,7 +72,13 @@ fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backen
 	if failed := report {
 		// Do this before run_compiled_executable_and_exit: successful builds and run
 		// commands exit there, so the caller cannot reliably submit the report later.
-		consume_external_c_error_bug_report(pref_, failed)
+		if b.matches_v3_fallback_inputs(failed) {
+			consume_external_c_error_bug_report(pref_, failed)
+		} else {
+			// The stable compiler succeeded, but not from the exact source snapshot V3
+			// parsed. Do not classify or upload this as a V3-only failure.
+			discard_unverified_v3_fallback_report()
+		}
 	}
 	// running does not require the parsers anymore
 	unsafe { b.myfree() }

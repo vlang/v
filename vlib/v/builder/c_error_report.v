@@ -3,6 +3,7 @@ module builder
 import os
 import strings
 import crypto.sha256
+import encoding.base64
 import v.pref
 import v.gen.c as cgen
 import v.util.version
@@ -26,6 +27,11 @@ const c_error_bug_report_truncation_notice = '\n... report truncated before uplo
 // compatibility fallback. The final upload is separately bounded by
 // c_error_bug_report_max_body_bytes.
 const c_error_bug_report_max_env_c_output_bytes = 64 * 1024
+// Keep the complete parsed-input manifest below Linux's per-environment-string
+// exec limit. If a very large project exceeds this bound, the retry still runs,
+// but its fallback report is conservatively suppressed because exact equivalence
+// cannot be proved.
+const v3_report_max_env_input_digests_bytes = 64 * 1024
 
 struct CErrorReportLine {
 pub:
@@ -90,6 +96,11 @@ pub:
 	v_file        string // informational base filename of the failing source (no directory)
 	v_source      string // already-bounded source snippet; never a whole file
 	source_inline bool   // true: use v_file/v_source as-is and touch no filesystem path
+	// Every path/digest pair below describes source bytes V3 actually parsed. The
+	// stable parser compares these values only with its own trusted parsed-file
+	// paths and scanner digests; it never opens a path supplied by this report.
+	input_digests          map[string]string
+	input_digests_complete bool
 }
 
 @[unsafe]
@@ -260,7 +271,49 @@ const v3_report_env_prefix = 'V_MACOS_V3_REPORT_'
 // and the take paths agree on exactly what to set and clear. Every variable carries
 // CONTENT only — never a filesystem path the receiver would read or a directory it
 // would delete.
-const v3_report_env_suffixes = ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE']
+const v3_report_env_suffixes = ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE',
+	'INPUT_DIGESTS', 'INPUT_DIGESTS_COMPLETE']
+
+// encode_v3_report_input_digests serializes arbitrary source paths without allowing a
+// newline or separator in a filename to corrupt the manifest. Paths are content used
+// only for equality checks against files the stable parser already opened itself.
+fn encode_v3_report_input_digests(input_digests map[string]string) ?string {
+	mut paths := input_digests.keys()
+	paths.sort()
+	mut encoded := strings.new_builder(paths.len * 128)
+	for path in paths {
+		digest := input_digests[path]
+		if digest.len != sha256.size * 2 {
+			return none
+		}
+		encoded.write_string(base64.encode_str(path))
+		encoded.write_u8(` `)
+		encoded.write_string(digest)
+		encoded.write_u8(`\n`)
+		if encoded.len > v3_report_max_env_input_digests_bytes {
+			return none
+		}
+	}
+	return encoded.str()
+}
+
+fn decode_v3_report_input_digests(encoded string) ?map[string]string {
+	mut input_digests := map[string]string{}
+	for line in encoded.split_into_lines() {
+		separator := line.index_u8(` `)
+		if separator <= 0 || separator + 1 >= line.len {
+			return none
+		}
+		encoded_path := line[..separator]
+		path := base64.decode_str(encoded_path)
+		digest := line[separator + 1..]
+		if path == '' || base64.encode_str(path) != encoded_path || digest.len != sha256.size * 2 {
+			return none
+		}
+		input_digests[path] = digest
+	}
+	return input_digests
+}
 
 // export_external_v3_report_to_env hands `report` to the next external builder (launched
 // via os.execvp) as self-contained content. That builder cannot authenticate anything
@@ -290,6 +343,17 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	os.setenv('${v3_report_env_prefix}TAG', report.tag, true)
 	os.setenv('${v3_report_env_prefix}VFILE', report.v_file, true)
 	os.setenv('${v3_report_env_prefix}VSOURCE', report.v_source, true)
+	if encoded := encode_v3_report_input_digests(report.input_digests) {
+		os.setenv('${v3_report_env_prefix}INPUT_DIGESTS', encoded, true)
+		os.setenv('${v3_report_env_prefix}INPUT_DIGESTS_COMPLETE', if report.input_digests_complete {
+			'1'
+		} else {
+			'0'
+		}, true)
+	} else {
+		os.setenv('${v3_report_env_prefix}INPUT_DIGESTS', '', true)
+		os.setenv('${v3_report_env_prefix}INPUT_DIGESTS_COMPLETE', '0', true)
+	}
 }
 
 // bounded_v3_fallback_source extracts the bounded V source snippet to upload for a V3->V1
@@ -384,14 +448,20 @@ fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, al
 // submission happen relative to the tool's own build outcome (only on success).
 pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 	present := os.getenv('${v3_report_env_prefix}PRESENT')
+	input_digests := decode_v3_report_input_digests(os.getenv('${v3_report_env_prefix}INPUT_DIGESTS')) or {
+		map[string]string{}
+	}
 	report := ExternalCErrorBugReport{
-		kind:          os.getenv('${v3_report_env_prefix}KIND')
-		ccompiler:     os.getenv('${v3_report_env_prefix}CCOMPILER')
-		c_output:      os.getenv('${v3_report_env_prefix}COUTPUT')
-		tag:           os.getenv('${v3_report_env_prefix}TAG')
-		v_file:        os.getenv('${v3_report_env_prefix}VFILE')
-		v_source:      os.getenv('${v3_report_env_prefix}VSOURCE')
-		source_inline: true
+		kind:                   os.getenv('${v3_report_env_prefix}KIND')
+		ccompiler:              os.getenv('${v3_report_env_prefix}CCOMPILER')
+		c_output:               os.getenv('${v3_report_env_prefix}COUTPUT')
+		tag:                    os.getenv('${v3_report_env_prefix}TAG')
+		v_file:                 os.getenv('${v3_report_env_prefix}VFILE')
+		v_source:               os.getenv('${v3_report_env_prefix}VSOURCE')
+		source_inline:          true
+		input_digests:          input_digests
+		input_digests_complete: os.getenv('${v3_report_env_prefix}INPUT_DIGESTS_COMPLETE') == '1'
+			&& input_digests.len > 0
 		// c_file and cleanup_dir are intentionally left empty: the builder must not read
 		// a file or delete a directory named by the environment.
 	}
@@ -402,6 +472,35 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 		return none
 	}
 	return report
+}
+
+// matches_v3_fallback_inputs confirms that every source V3 recorded was parsed from the
+// same bytes by the stable compiler. Report paths are never opened: they are compared
+// only with canonical paths belonging to the stable parser's own AST files.
+fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool {
+	if report.kind == external_v3_notice_only_kind {
+		return true
+	}
+	if !report.input_digests_complete || report.input_digests.len == 0 {
+		return false
+	}
+	mut stable_digests := map[string]string{}
+	for file in b.parsed_files {
+		if file.path == '' || file.source_digest == '' {
+			continue
+		}
+		stable_digests[os.real_path(file.path)] = file.source_digest
+	}
+	for path, v3_digest in report.input_digests {
+		if stable_digests[path] != v3_digest {
+			return false
+		}
+	}
+	return true
+}
+
+fn discard_unverified_v3_fallback_report() {
+	eprintln('note: source inputs changed before the stable compiler retry completed; the V3 fallback report was not submitted.')
 }
 
 // submit_external_v3_compiler_error_bug_report reports metadata for a V3 internal

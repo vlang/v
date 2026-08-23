@@ -24,8 +24,10 @@ see also `v help build`.
       never the whole file). An internal V3 error on a short program or a
       directory build such as `v .` submits metadata only. If the input selected
       for a source excerpt changes after V3 parses it, that report also submits
-      metadata only, rather than source V3 did not parse. An unchanged input mapped
-      from a generated-C error can still include a strict-subset excerpt.
+      metadata only, rather than source V3 did not parse. Before submitting, the
+      stable compiler verifies that it parsed the same bytes for every captured
+      project input; otherwise no fallback report is submitted. An unchanged input
+      mapped from a generated-C error can still include a strict-subset excerpt.
       Inline-assembly fallbacks
       are notice-only; test compilations and GitHub CI also submit no report to
       the default endpoint. An explicitly configured custom bug report URL remains

@@ -6323,6 +6323,18 @@ fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, cc
 		os.rmdir_all(report_dir) or {}
 		return false
 	}
+	if !write_macos_v3_fallback_source_digests(report_dir, v_sources) {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	os.write_file(fallback_file, macos_v3_c_error_fallback) or {
+		os.rmdir_all(report_dir) or {}
+		return false
+	}
+	return true
+}
+
+fn write_macos_v3_fallback_source_digests(report_dir string, v_sources map[string]string) bool {
 	mut v_source_paths := v_sources.keys()
 	v_source_paths.sort()
 	mut v_source_paths_text := strings.new_builder(v_source_paths.len * 64)
@@ -6336,20 +6348,21 @@ fn request_macos_v3_c_error_fallback(fallback_file string, report_dir string, cc
 		v_source_digests_text.write_string(v_sources[path])
 	}
 	os.write_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file),
-		v_source_paths_text.str()) or {
-		os.rmdir_all(report_dir) or {}
-		return false
-	}
+		v_source_paths_text.str()) or { return false }
 	os.write_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file),
-		v_source_digests_text.str()) or {
-		os.rmdir_all(report_dir) or {}
-		return false
-	}
-	os.write_file(fallback_file, macos_v3_c_error_fallback) or {
-		os.rmdir_all(report_dir) or {}
-		return false
-	}
+		v_source_digests_text.str()) or { return false }
 	return true
+}
+
+// stage_macos_v3_fallback_source_digests snapshots every source V3 parsed once parsing
+// completes. Later internal failures can then be reported only when the stable retry's
+// parser confirms the exact same complete input set.
+fn stage_macos_v3_fallback_source_digests(report_dir string, v_sources map[string]string) bool {
+	if report_dir == '' || v_sources.len == 0 {
+		return false
+	}
+	os.mkdir_all(report_dir) or { return false }
+	return write_macos_v3_fallback_source_digests(report_dir, v_sources)
 }
 
 fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_dir string, ccompiler string, message string, c_sources []string, v_sources map[string]string) bool {
@@ -6369,13 +6382,21 @@ fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_d
 	return false
 }
 
-fn macos_v3_fallback_report_sources(a &flat.FlatAst) map[string]string {
+fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string) map[string]string {
 	mut sources := map[string]string{}
 	mut ambiguous := map[string]bool{}
+	vlib_root := os.real_path(os.join_path(vroot, 'vlib')).trim_right(os.path_separator)
 	for _, file in a.source_files {
 		if (file.name.ends_with('.v') || file.name.ends_with('.vv')
 			|| file.name.ends_with('.vsh')) && file.has_source_sha256() {
 			path := os.real_path(file.name)
+			// V1 and V3 deliberately select different compiler-support implementations
+			// below the bundled vlib (for example V3's preallocated builtin). They are not
+			// caller inputs and cannot be required to appear in both ASTs. Project and
+			// installed-module sources remain covered, including directory builds.
+			if path == vlib_root || path.starts_with(vlib_root + os.path_separator) {
+				continue
+			}
 			source_digest := file.source_sha256()
 			digest := source_digest[..].hex()
 			if old_digest := sources[path] {
@@ -7727,6 +7748,11 @@ pub fn run(args []string) {
 	if warn_impure_v {
 		p.diagnostics << v3_impure_v_diagnostics(a)
 	}
+	// Preserve the digest of every exact source buffer V3 parsed before any parser or
+	// later compiler error can request the compatibility compiler. The dispatcher owns
+	// this staging directory and forwards only content plus verification metadata.
+	fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot)
+	_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
 	if print_v_files || print_watched_files {
 		mut watched := map[string]bool{}
 		for _, file in a.source_files {
@@ -7805,9 +7831,6 @@ pub fn run(args []string) {
 			current_parallel_transform = false
 		}
 	}
-	// Parsing workers canonicalize source-backed node text before their buffers
-	// are released. Metadata keys are finalized here before semantic phases begin.
-	fallback_report_sources := macos_v3_fallback_report_sources(a)
 	p.release_source_storage()
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)

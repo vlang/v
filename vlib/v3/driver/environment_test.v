@@ -99,18 +99,29 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 		os.rmdir_all(root) or {}
 	}
 	path := os.join_path(root, 'main.v')
+	vlib_path := os.join_path(root, 'vlib', 'builtin', 'internal.v')
+	os.mkdir_all(os.dir(vlib_path))!
 	parsed_source := 'module main\nfn main() { println(42) }\n'
 	os.write_file(path, parsed_source)!
+	os.write_file(vlib_path, 'module builtin\nfn internal_only() {}\n')!
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
 	p.parse_into(path)
+	p.parse_into(vlib_path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	// Replacing the file after parsing must not change the staged digest.
 	os.write_file(path, parsed_source.replace('42', 'private_value'))!
-	sources := macos_v3_fallback_report_sources(p.a)
+	sources := macos_v3_fallback_report_sources(p.a, root)
 	real_path := os.real_path(path)
 	assert sources[real_path] == sha256.hexhash(parsed_source)
 	assert sources[real_path] != sha256.hexhash(os.read_file(path)!)
+	// Bundled compiler-support sources deliberately differ between V1 and V3 and are
+	// not caller inputs, so they do not make every exact-source verification fail.
+	assert os.real_path(vlib_path) !in sources
+	report_dir := os.join_path(root, 'report')
+	assert stage_macos_v3_fallback_source_digests(report_dir, sources)
+	assert os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file))! == real_path
+	assert os.read_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file))! == sha256.hexhash(parsed_source)
 }
 
 fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
