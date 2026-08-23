@@ -4561,11 +4561,19 @@ fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []str
 }
 
 fn (mut g FlatGen) collect_preserved_header_file_with_state(path string, include_dirs []string, state CHeaderMacroState) CHeaderMacroState {
+	return g.collect_preserved_header_file_with_state_and_scope(path, include_dirs, state, true)
+}
+
+fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path string, include_dirs []string, state CHeaderMacroState, collect_declarations bool) CHeaderMacroState {
 	real_path := os.real_path(path)
 	if real_path.len == 0 {
 		return c_header_macro_state_clone(state)
 	}
-	visit_key := real_path + '\n' + c_header_macro_state_signature(state)
+	visit_key := real_path + '\n' + c_header_macro_state_signature(state) + '\n' + if collect_declarations {
+		'declarations'
+	} else {
+		'macros'
+	}
 	if visit_key in g.preserved_header_scan_results {
 		return c_header_macro_state_clone(g.preserved_header_scan_results[visit_key])
 	}
@@ -4604,6 +4612,7 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state(path string, include
 		}
 		include_state := scan.include_states[unresolved_include]
 		include_key := scan.include_keys[unresolved_include]
+		include_is_definitely_active := scan.include_definitely_active[unresolved_include]
 		include_arg := c_include_arg(scan.include_args[unresolved_include], g.compiler_vroot,
 			real_path)
 		mut found := false
@@ -4611,16 +4620,19 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state(path string, include
 		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
 			include_dirs) {
 			if os.is_file(nested_path) {
-				result_state = g.collect_preserved_header_file_with_state(nested_path,
-					include_dirs, include_state)
+				result_state = g.collect_preserved_header_file_with_state_and_scope(nested_path,
+					include_dirs, include_state, collect_declarations
+					&& include_is_definitely_active)
 				found = true
 				break
 			}
 		}
 		if !found {
-			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
-			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
-			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
+			if collect_declarations && include_is_definitely_active {
+				g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+				g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+				g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
+			}
 			result_state = c_header_macro_state_after_unknown_include(include_state)
 		}
 		include_results[include_key] = CHeaderIncludeResult{
@@ -4633,9 +4645,11 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state(path string, include
 		// generated prototype. Fall back to the conservative, pre-propagation scan.
 		final_scan = c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
 	}
-	g.collect_inlined_c_structs(final_scan.text)
-	g.collect_inlined_c_fns(final_scan.text)
-	g.collect_inlined_c_declared_fns(final_scan.text)
+	if collect_declarations {
+		g.collect_inlined_c_structs(final_scan.text)
+		g.collect_inlined_c_fns(final_scan.text)
+		g.collect_inlined_c_declared_fns(final_scan.text)
+	}
 	for macro_name in final_scan.possibly_active_macro_names {
 		g.inlined_c_declared_fns[macro_name] = true
 	}
@@ -4657,6 +4671,7 @@ struct CHeaderActiveScan {
 	include_states              []CHeaderMacroState
 	include_keys                []string
 	include_args                []string
+	include_definitely_active   []bool
 	possibly_active_macro_names []string
 	final_state                 CHeaderMacroState
 }
@@ -4772,6 +4787,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	mut include_states := []CHeaderMacroState{}
 	mut include_keys := []string{}
 	mut include_args := []string{}
+	mut include_definitely_active := []bool{}
 	mut possibly_active_macro_names := map[string]bool{}
 	mut output := strings.new_builder(text.len)
 	mut in_block_comment := false
@@ -4888,11 +4904,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 				}
 			}
 		}
-		if !definitely_active {
-			output.writeln('')
-			continue
-		}
-		if name in ['include', 'import'] {
+		if name in ['include', 'import'] && possibly_active {
 			include_state := CHeaderMacroState{
 				defined:                  defined.clone()
 				undefined:                undefined.clone()
@@ -4903,25 +4915,36 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			include_states << include_state
 			include_keys << include_key
 			include_args << c_directive_arg(clean)
+			include_definitely_active << definitely_active
 			if include_key in include_results
 				&& include_results[include_key].input_signature == c_header_macro_state_signature(include_state) {
-				result_state := include_results[include_key].output_state
-				defined = result_state.defined.clone()
-				undefined = result_state.undefined.clone()
-				uncertain = result_state.uncertain.clone()
-				external_macros_possible = result_state.external_macros_possible
+				if definitely_active {
+					result_state := include_results[include_key].output_state
+					defined = result_state.defined.clone()
+					undefined = result_state.undefined.clone()
+					uncertain = result_state.uncertain.clone()
+					external_macros_possible = result_state.external_macros_possible
+				} else {
+					c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+					external_macros_possible = true
+				}
 			} else {
 				c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
 				external_macros_possible = true
 			}
 		}
-		output.writeln(line)
+		if definitely_active {
+			output.writeln(line)
+		} else {
+			output.writeln('')
+		}
 	}
 	return CHeaderActiveScan{
 		text:                        output.str()
 		include_states:              include_states
 		include_keys:                include_keys
 		include_args:                include_args
+		include_definitely_active:   include_definitely_active
 		possibly_active_macro_names: possibly_active_macro_names.keys()
 		final_state:                 CHeaderMacroState{
 			defined:                  defined

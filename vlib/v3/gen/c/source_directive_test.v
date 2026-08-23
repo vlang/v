@@ -225,6 +225,29 @@ fn test_preserved_header_collects_possibly_active_function_macros() {
 	assert 'inactive_api' !in g.inlined_c_declared_fns
 }
 
+fn test_preserved_header_scans_includes_in_possibly_active_branches_for_macros() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_possible_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	child := os.join_path(root, 'compiler_api.h')
+	parent := os.join_path(root, 'parent.h')
+	os.write_file(child,
+		'#define compiler_api(x) ((x) + 1)\nint conditionally_declared_api(void);\n')!
+	os.write_file(parent,
+		'#ifdef __GNUC__\n#include "compiler_api.h"\n#endif\nint always_declared_api(void);\n')!
+
+	mut g := FlatGen.new()
+	g.collect_preserved_header_file(parent, [root])
+
+	assert 'compiler_api' in g.inlined_c_declared_fns
+	assert 'conditionally_declared_api' !in g.inlined_c_declared_fns
+	assert 'always_declared_api' in g.inlined_c_declared_fns
+	assert os.real_path(child) in g.preserved_header_files_seen
+}
+
 fn collect_external_input_tree_status(root string, entry string, ambient_ambiguous bool) (bool, []string) {
 	mut active_paths := map[string]bool{}
 	mut collected_paths := map[string]bool{}
