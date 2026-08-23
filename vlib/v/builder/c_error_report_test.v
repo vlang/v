@@ -323,11 +323,15 @@ fn test_external_v3_report_env_round_trip() {
 	}
 	os.write_file(c_file, lines.join('\n'))!
 	// The owning process bounds the source into content...
-	v_file, v_source := bounded_v3_fallback_source(external_v3_compiler_error_kind,
-		'error: v3 failed', c_file, [])
+	v_file, v_source := bounded_v3_internal_fallback_source(c_file, lines.join('\n'))
 	assert v_file == 'main.v'
 	assert v_source != ''
 	assert v_source.contains(c_error_v_source_truncation_notice)
+	// The path-based extractor must never reopen an internal-error input after V3 fails.
+	late_file, late_source := bounded_v3_fallback_source(external_v3_compiler_error_kind,
+		'error: v3 failed', c_file, [])
+	assert late_file == ''
+	assert late_source == ''
 	// ...then forwards only that content; export reads no path and deletes no directory.
 	export_external_v3_report_to_env(ExternalCErrorBugReport{
 		kind:          external_v3_compiler_error_kind

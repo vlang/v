@@ -1665,21 +1665,26 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		whole := lines.join('\n')
 		os.write_file(source, whole)!
 		compiler_error := macos_v3_compiler_error_message('source parsing')
-		v_file, v_source := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
-			compiler_error, macos_v3_compiler_error_input_source(source), [])
+		snapshot := macos_v3_compiler_error_input_snapshot(source)
+		v_file, v_source := snapshot.current_report_source()
 		assert v_file == 'prog.v'
 		assert v_source != ''
 		assert compiler_error.contains('during source parsing')
 		// A bounded strict subset — never the whole file.
 		assert v_source.len < whole.len
+		// Rewriting the file after the pre-V3 snapshot suppresses source completely: the
+		// fallback must not upload bytes that V3 never parsed.
+		os.write_file(source, whole + '\nfn changed_after_snapshot() {}')!
+		changed_file, changed_source := snapshot.current_report_source()
+		assert changed_file == ''
+		assert changed_source == ''
 		// A directory build, a non-V file, or a missing input yields no source, so the
 		// report stays metadata-only.
 		note := os.join_path(root, 'note.txt')
 		os.write_file(note, 'not v source')!
 		for empty in [root, note, os.join_path(root, 'missing.v'), ''] {
-			resolved := macos_v3_compiler_error_input_source(empty)
-			ef, es := builder.bounded_v3_fallback_source(macos_v3_compiler_error_fallback,
-				compiler_error, resolved, [])
+			empty_snapshot := macos_v3_compiler_error_input_snapshot(empty)
+			ef, es := empty_snapshot.current_report_source()
 			assert ef == '', empty
 			assert es == '', empty
 		}

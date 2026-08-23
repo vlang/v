@@ -294,21 +294,32 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 // bounded_v3_fallback_source extracts the bounded V source snippet to upload for a V3->V1
 // fallback, reading ONLY files the caller already trusts — it must be invoked by the
 // process that staged the report, never by one that merely inherited a report path from
-// the environment. `c_file` is the user's V source for a V3 internal error, or the staged
-// generated C for a generated-C compilation error. `allowed_v_sources` is the set of
-// source files that V3 actually parsed; generated-C mappings outside that set are
-// rejected before their contents are read. The returned snippet is always a bounded
-// strict subset (never a whole file); ('', '') means no source is available (e.g. a
-// directory build), so the report stays metadata-only.
+// the environment. `c_file` is the staged generated C for a generated-C compilation
+// error. Internal compiler errors deliberately return no source here: their input must
+// be snapshotted before V3 starts and passed to bounded_v3_internal_fallback_source, so
+// a later editor/build-watcher rewrite cannot be uploaded as if V3 had parsed it.
+// `allowed_v_sources` is the set of source files that V3 actually parsed; generated-C
+// mappings outside that set are rejected before their contents are read. The returned
+// snippet is always a bounded strict subset (never a whole file); ('', '') means no
+// source is available, so the report stays metadata-only.
 pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string, allowed_v_sources []string) (string, string) {
+	if kind == external_v3_compiler_error_kind {
+		return '', ''
+	}
 	if c_file == '' || !os.is_file(c_file) {
 		return '', ''
 	}
-	if kind == external_v3_compiler_error_kind {
-		src := os.read_file(c_file) or { return '', '' }
-		return os.base(c_file), v3_report_v_source(src)
-	}
 	return bounded_v_source_for_generated_c(c_output, c_file, allowed_v_sources)
+}
+
+// bounded_v3_internal_fallback_source bounds source CONTENT captured before V3 starts.
+// It never opens `source_name`; the dispatcher separately verifies that the input still
+// has the captured digest before forwarding this snippet to the stable retry.
+pub fn bounded_v3_internal_fallback_source(source_name string, source string) (string, string) {
+	if source_name == '' {
+		return '', ''
+	}
+	return os.base(source_name), v3_report_v_source(source)
 }
 
 // bounded_v_source_for_generated_c maps a generated-C compilation error back to the V
@@ -376,15 +387,17 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 	return report
 }
 
-// submit_external_v3_compiler_error_bug_report reports a V3 internal compiler error
-// after the stable compiler has confirmed the program is buildable. `v_file` is the path
-// to the user's input V source, which this reads and bounds into the uploaded snippet;
-// `v3_output` is a short description of the failure. This file-reading form is used only
-// on the trusted in-process build path, where `v_file` is not caller-forgeable.
+// submit_external_v3_compiler_error_bug_report reports metadata for a V3 internal
+// compiler error after the stable compiler has confirmed the program is buildable.
+// Source may only be supplied through the pre-V3 snapshot/content path, so this legacy
+// path form deliberately does not reopen `v_file` after the failure.
 pub fn submit_external_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_stage string, v3_output string, v_file string, tag string) {
-	v_source := if v_file == '' { '' } else { v3_report_v_source(os.read_file(v_file) or { '' }) }
 	mut b := new_builder(prefs)
-	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, v_file, v_source, tag)
+	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, if v_file == '' {
+		''
+	} else {
+		os.base(v_file)
+	}, '', tag)
 }
 
 // submit_inline_v3_compiler_error_bug_report reports a V3 internal compiler error whose

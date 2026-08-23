@@ -22,8 +22,10 @@ see also `v help build`.
       be fixed: the V version, target and build options, plus a bounded snippet
       of the failing V source when one is available (always a strict subset,
       never the whole file). An internal V3 error on a short program or a
-      directory build such as `v .` submits metadata only, while a generated-C
-      error can still include a strict-subset excerpt. Inline-assembly fallbacks
+      directory build such as `v .` submits metadata only. A single-file input
+      changed while V3 is compiling also submits metadata only, rather than source
+      V3 did not parse. A generated-C error can still include a strict-subset
+      excerpt. Inline-assembly fallbacks
       are notice-only; test compilations and GitHub CI also submit no report to
       the default endpoint. An explicitly configured custom bug report URL remains
       active in CI. See `v help build` for the full description of the default.

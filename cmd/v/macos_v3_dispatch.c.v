@@ -12,6 +12,7 @@ module main
 // the way. The `macos_v3_` name is kept for continuity with the original macOS
 // rollout even though the behavior now also covers Linux.
 import os
+import crypto.sha256
 import v.pref
 import v.util
 import v.builder
@@ -43,6 +44,13 @@ const macos_v3_c_error_kind_file = 'kind'
 // the base diagnostic uploaded for a V3 internal compiler error (starts with `error:` so
 // the receiver's c_error_string parser stores a nonempty, groupable diagnostic).
 const macos_v3_compiler_error_message_base = 'error: the experimental V3 compiler hit an internal compiler error building this program'
+
+struct MacosV3InputSnapshot {
+	path     string
+	digest   string
+	v_file   string
+	v_source string
+}
 
 fn macos_v3_compiler_error_message(stage string) string {
 	stage_suffix := if stage == '' { '' } else { ' during ${stage}' }
@@ -217,13 +225,14 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	}
 	replace_macos_v3_process_environment(environment)
 	is_verbose := prefs.is_verbose
-	// The input path is captured before V3 runs so the compatibility fallback can
-	// stage it for a bug report if V3 fails with an internal compiler error.
-	input_path := prefs.path
+	// Capture and bound the source before V3 runs. If an editor or build watcher rewrites
+	// the input while V3 is compiling, the fallback will detect the changed digest and
+	// submit metadata only instead of reading/uploading bytes V3 never parsed.
+	input_snapshot := macos_v3_compiler_error_input_snapshot(prefs.path)
 	retry_args := os.args[1..].clone()
-	at_exit(fn [caller_environment, fallback_file, c_error_dir, retry_args, is_verbose, input_path] () {
+	at_exit(fn [caller_environment, fallback_file, c_error_dir, retry_args, is_verbose, input_snapshot] () {
 		retry_macos_v3_with_old_compiler(caller_environment, fallback_file, c_error_dir,
-			retry_args, is_verbose, input_path)
+			retry_args, is_verbose, input_snapshot)
 	}) or {
 		eprintln('cannot register the V3 compatibility fallback: ${err}')
 		exit(1)
@@ -246,7 +255,7 @@ fn replace_macos_v3_process_environment(environment map[string]string) {
 	}
 }
 
-fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallback_file string, c_error_dir string, retry_args []string, is_verbose bool, input_path string) {
+fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallback_file string, c_error_dir string, retry_args []string, is_verbose bool, input_snapshot MacosV3InputSnapshot) {
 	fallback_payload := os.read_file(fallback_file) or { return }
 	fallback_reason, fallback_stage := macos_v3_fallback_reason_and_stage(fallback_payload)
 	os.rm(fallback_file) or {}
@@ -289,14 +298,13 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		}
 	} else if fallback_reason == macos_v3_compiler_error_fallback {
 		// V3 hit an internal compiler error (parser/checker/codegen) that V1 may still
-		// handle. Bound the input V source HERE (trusted) and forward it to the retry as
-		// content, so once the retry's build succeeds it prints the fallback notice and
-		// (for a single-file build) files a bug with the source. A directory build (`v .`)
-		// or non-V input yields no source, so the report stays metadata-only but the
-		// fallback is never silent.
-		export_macos_v3_report_content(macos_v3_compiler_error_fallback, 'v3',
-			macos_v3_compiler_error_message(fallback_stage),
-			macos_v3_compiler_error_input_source(input_path), [])
+		// handle. Forward the pre-V3 source snapshot only if the input still has the same
+		// digest; otherwise send metadata only, never bytes that V3 did not parse. Once the
+		// retry succeeds it prints the fallback notice and files the report. A directory
+		// build (`v .`) or non-V input also remains metadata-only, but never silent.
+		v_file, v_source := input_snapshot.current_report_source()
+		export_macos_v3_bounded_report_content(macos_v3_compiler_error_fallback, 'v3',
+			macos_v3_compiler_error_message(fallback_stage), v_file, v_source)
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
@@ -343,6 +351,10 @@ fn take_macos_v3_report_content() ?MacosV3CErrorReport {
 // retry through the environment.
 fn export_macos_v3_report_content(kind string, ccompiler string, c_output string, c_file string, v_sources []string) {
 	v_file, v_source := builder.bounded_v3_fallback_source(kind, c_output, c_file, v_sources)
+	export_macos_v3_bounded_report_content(kind, ccompiler, c_output, v_file, v_source)
+}
+
+fn export_macos_v3_bounded_report_content(kind string, ccompiler string, c_output string, v_file string, v_source string) {
 	builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
 		kind:          kind
 		ccompiler:     ccompiler
@@ -352,6 +364,35 @@ fn export_macos_v3_report_content(kind string, ccompiler string, c_output string
 		source_inline: true
 		tag:           'V3'
 	})
+}
+
+fn macos_v3_compiler_error_input_snapshot(input_path string) MacosV3InputSnapshot {
+	candidate := macos_v3_compiler_error_input_source(input_path)
+	if candidate == '' {
+		return MacosV3InputSnapshot{}
+	}
+	// Preserve the caller's symlink semantics while making the path independent of any
+	// working-directory changes inside V3.
+	v_path := os.abs_path(candidate)
+	source := os.read_file(v_path) or { return MacosV3InputSnapshot{} }
+	v_file, v_source := builder.bounded_v3_internal_fallback_source(v_path, source)
+	return MacosV3InputSnapshot{
+		path:     v_path
+		digest:   sha256.hexhash(source)
+		v_file:   v_file
+		v_source: v_source
+	}
+}
+
+fn (snapshot MacosV3InputSnapshot) current_report_source() (string, string) {
+	if snapshot.path == '' || snapshot.digest == '' {
+		return '', ''
+	}
+	current := os.read_file(snapshot.path) or { return '', '' }
+	if sha256.hexhash(current) != snapshot.digest {
+		return '', ''
+	}
+	return snapshot.v_file, snapshot.v_source
 }
 
 // macos_v3_compiler_error_input_source returns `input_path` when it is a single V source
