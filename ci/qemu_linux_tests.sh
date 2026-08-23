@@ -24,7 +24,7 @@ Environment overrides:
   V_QEMU_JOBS          V test jobs (default: virtual CPU count)
   V_QEMU_VFLAGS        Flags inherited by V subprocesses (default: -cc clang)
   V_QEMU_NO_FALLBACK   Set V_MACOS_V3_NO_FALLBACK (default: 1)
-  V_QEMU_TMPDIR        Guest disk-backed temporary root (default: /var/tmp/v-qemu-tests)
+  V_QEMU_TMPDIR        Guest disk-backed V temporary root (default: /var/tmp/v-qemu-tests)
   V_QEMU_STOP_AFTER    Power off the guest after the run when set to 1
   V_QEMU_FIRMWARE      AArch64 UEFI firmware path
   V_QEMU_RSYNC         Host rsync executable (only needed when syncing)
@@ -205,7 +205,7 @@ wait_for_ssh
 if ((provision)); then
 	# A fresh Debian guest does not necessarily have the remote half of rsync yet.
 	# Install it before attempting to transfer the checkout.
-	ssh "${ssh_options[@]}" "$guest" "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential clang git lld rsync pkg-config libssl-dev sqlite3 libsqlite3-dev valgrind libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev libwayland-dev libxkbcommon-dev libwayland-egl1 libxkbcommon-x11-dev wayland-protocols libx11-dev libgl1-mesa-dri xauth xvfb"
+	ssh "${ssh_options[@]}" "$guest" "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential clang git lld rsync pkg-config libssl-dev sqlite3 libsqlite3-dev default-libmysqlclient-dev libpq-dev postgresql valgrind libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev libwayland-dev libxkbcommon-dev libwayland-egl1 libxkbcommon-x11-dev wayland-protocols libx11-dev libgl1-mesa-dri xauth xvfb"
 fi
 
 host_head=$(git -C "$repo_root" rev-parse HEAD)
@@ -285,16 +285,19 @@ remote_command="cd ${guest_repo_q}"
 remote_command+=" && mkdir -p ${guest_tmp_root_q}"
 remote_command+=" && qemu_tmp=\$(mktemp -d ${guest_tmp_template_q})"
 remote_command+=" && trap 'rm -rf -- \"\$qemu_tmp\"' EXIT"
-remote_command+=" && export PATH=${guest_repo_q}:\$PATH VFLAGS=${vflags_q}"
-remote_command+=" TMPDIR=\$qemu_tmp"
+remote_command+=" && export PATH=${guest_repo_q}:\$PATH"
+remote_command+=" TMPDIR=/tmp VTMP=\$qemu_tmp"
 remote_command+=" V_C_ERROR_BUG_REPORT_DISABLED=1"
-remote_command+=" && if [ ! -f thirdparty/tcc/lib/libgc.a ]; then make; fi"
+remote_command+=" && if [ ! -x thirdparty/tcc/tcc.exe ] || [ ! -f thirdparty/tcc/lib/libgc.a ]; then make; fi"
 remote_command+=" && ./v -old-compiler -o ./vnew cmd/v"
 if ((provision)); then
 	remote_command+=" && ./vnew retry -- ./vnew install markdown"
 	remote_command+=" && if [ ! -f thirdparty/sqlite/sqlite3.c ]; then ./vnew -old-compiler run vlib/db/sqlite/install_thirdparty_sqlite.vsh; fi"
 fi
 remote_command+=" && ./vnew wipe-cache"
-remote_command+=" && VJOBS=${jobs_q}"
+remote_command+=" && mkdir -p \"\$qemu_tmp/bin\""
+remote_command+=" && ln -sf ${guest_repo_q}/vnew \"\$qemu_tmp/bin/v\""
+remote_command+=" && export PATH=\"\$qemu_tmp/bin:\$PATH\""
+remote_command+=" && VFLAGS=${vflags_q} VJOBS=${jobs_q}"
 remote_command+=" V_MACOS_V3_NO_FALLBACK=${no_fallback_q} ${test_command}"
 ssh "${ssh_options[@]}" "$guest" "$remote_command"
