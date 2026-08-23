@@ -9908,6 +9908,7 @@ pub fn run(args []string) {
 			tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 			mut tcc_args := [c_standard, tcc_resources.base_arg, tcc_resources.include_arg,
 				tcc_resources.library_arg, '-w', '-Werror=implicit-function-declaration']
+			tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os())
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
 				prefs.normalized_target_arch(), is_shared)
 			{
@@ -9985,6 +9986,7 @@ pub fn run(args []string) {
 				tcc_args << pic_flag
 			}
 			tcc_args << [tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
+			tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os())
 			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(),
 				prefs.normalized_target_arch(), is_shared)
 			{
