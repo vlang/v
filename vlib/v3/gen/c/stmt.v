@@ -6947,6 +6947,10 @@ fn (g &FlatGen) assign_struct_operator_method(lhs_type types.Type, op flat.Op) ?
 	if clean !is types.Struct && clean !is types.Alias {
 		return none
 	}
+	if clean is types.Struct
+		&& g.tc.c_type(clean) in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'isize', 'usize', 'voidptr'] {
+		return none
+	}
 	op_symbol := assign_struct_operator_symbol(op) or { return none }
 	mut type_names := [clean.name()]
 	if clean is types.Alias {

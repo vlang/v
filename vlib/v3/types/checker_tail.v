@@ -4439,14 +4439,27 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	}
 	mut inferred := map[string]string{}
 	mut first_param_idx := 0
+	mut receiver_unresolved := false
 	mut callee := tc.a.child_node(&node, 0)
 	if callee.kind == .index && callee.children_count > 0 {
 		callee = tc.a.child_node(callee, 0)
 	}
 	if callee.kind == .selector && callee.children_count > 0 && param_texts.len > 0 {
 		receiver_id := tc.a.child(callee, 0)
-		tc.infer_generic_type_text_from_type(param_texts[0], tc.resolve_type(receiver_id),
-			generic_params, mut inferred)
+		mut receiver_type := tc.resolve_type(receiver_id)
+		if type_contains_unknown(receiver_type) {
+			// A nested receiver can be visited before its selector has recorded a
+			// contextual type. Give it a chance to resolve, but do not diagnose failed
+			// generic inference solely from a still-pending receiver.
+			tc.check_node(receiver_id)
+			receiver_type = tc.resolve_type(receiver_id)
+		}
+		if type_contains_unknown(receiver_type) {
+			receiver_unresolved = true
+		} else {
+			tc.infer_generic_type_text_from_type(param_texts[0], receiver_type, generic_params, mut
+				inferred)
+		}
 		first_param_idx = 1
 	}
 	for param_idx in first_param_idx .. param_texts.len {
@@ -4497,7 +4510,7 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 			break
 		}
 	}
-	if missing.len == 0 || callee.kind != .selector {
+	if missing.len == 0 || callee.kind != .selector || receiver_unresolved {
 		return
 	}
 	name_pos := tc.method_call_name_pos(node, callee)
@@ -6183,7 +6196,12 @@ fn (tc &TypeChecker) imported_fn_key(module_name string, fn_name string) ?string
 fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallInfo {
 	idx := int(id)
 	mut memo := tc.body_resolve_memo
-	if tc.memo_call_info && !isnil(memo) && memo.active && idx >= memo.lo && idx <= memo.hi {
+	// A grouped type-pattern match checks the same branch body once for each
+	// smartcast variant. Receiver call resolution is therefore contextual for
+	// calls on that subject and must not reuse the first variant's CallInfo.
+	context_stable := !tc.call_has_smartcast_receiver(node)
+	if context_stable && tc.memo_call_info && !isnil(memo) && memo.active && idx >= memo.lo
+		&& idx <= memo.hi {
 		slot := idx & 2047
 		if memo.call_generations[slot] == memo.call_generation && memo.call_ids[slot] == idx {
 			return memo.call_infos[slot]
@@ -6206,6 +6224,17 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		return info
 	}
 	return tc.resolve_call_info_uncached(id, node)
+}
+
+fn (tc &TypeChecker) call_has_smartcast_receiver(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return false
+	}
+	return tc.smartcast_type(tc.a.child(fn_node, 0)) != none
 }
 
 @[direct_array_access]
@@ -12743,11 +12772,16 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		return true
 	}
 	clean := fn_param_unalias_type(expected)
+	actual_clean := fn_param_unalias_type(actual)
 	if clean.is_integer() {
-		actual_clean := fn_param_unalias_type(actual)
 		return actual_clean.is_integer()
 			|| (actual_clean is Primitive && actual_clean.props.has(.boolean))
 			|| tc.c_scalar_byte_literal_arg(arg_id)
+	}
+	// Match V1's C-call compatibility: C APIs commonly expose boolean
+	// parameters while callers use C's conventional integer representation.
+	if clean is Primitive && clean.props.has(.boolean) {
+		return actual_clean.name() in ['int', 'i32']
 	}
 	if clean is Pointer {
 		base := fn_param_unalias_type(clean.base_type)
@@ -14787,6 +14821,22 @@ fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeI
 		if receiver.kind == .struct_init {
 			return
 		}
+		if receiver.kind == .prefix && receiver.op == .amp && receiver.children_count > 0 {
+			receiver = tc.a.child_node(receiver, 0)
+			if receiver.kind == .struct_init {
+				return
+			}
+		}
+		if receiver.kind == .ident {
+			if owner := tc.cur_scope.lookup_owner(receiver.value) {
+				values := tc.pointer_binding_ident_values(owner,
+					tc.fn_context.pointer_binding_value_keys)
+				if values.len > 0
+					&& values.all(it.starts_with(pointer_binding_literal_value_prefix)) {
+					return
+				}
+			}
+		}
 	}
 	clean := unalias_type(unwrap_pointer(base_type))
 	if clean !is Struct || tc.type_has_declaration_attribute(clean, 'heap') {
@@ -15646,7 +15696,7 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	value_context := !tc.is_statement_node(id) && tc.expression_node_used_as_value(id)
 	cond_id := tc.a.child(&node, 0)
 	condition := tc.a.node(cond_id)
-	if condition.kind == .paren {
+	if condition.kind == .paren && condition.value != '__v3_comptime_d' {
 		tc.record_warning_at(.condition_mismatch,
 			'unnecessary `()` in `if` condition, use `if expr {` instead of `if (expr) {`.',
 			cond_id, tc.if_parenthesized_condition_pos(condition))

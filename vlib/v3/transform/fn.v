@@ -9828,6 +9828,7 @@ fn (mut t Transformer) try_lower_move_method_call(call_id flat.NodeId, node flat
 fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.NodeId {
 	name := t.new_fn_literal_name()
 	mut param_types := []types.Type{}
+	mut param_type_texts := []string{}
 	mut param_ids := []flat.NodeId{}
 	mut param_names := []string{}
 	mut capture_names := []string{}
@@ -9841,6 +9842,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		child := t.a.nodes[int(child_id)]
 		if child.kind == .param {
 			param_ids << child_id
+			param_type_texts << child.typ
 			if child.value.len > 0 {
 				param_names << child.value
 			}
@@ -10068,7 +10070,16 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	// declarations. Root the generated declaration explicitly so module-local
 	// callbacks are not referenced without a prototype/body in the C output.
 	t.mark_fn_used_name(name)
-	fn_value_type := fn_literal_value_type_text(param_types, ret_type)
+	mut fn_value_param_type_texts := []string{cap: param_types.len}
+	for i, param_type in param_types {
+		raw_type := if i < param_type_texts.len { param_type_texts[i] } else { '' }
+		fn_value_param_type_texts << if raw_type.contains('main.') {
+			raw_type
+		} else {
+			param_type.name()
+		}
+	}
+	fn_value_type := fn_literal_value_type_text_from_text(fn_value_param_type_texts, ret_type)
 	mut ident := flat.empty_node
 	if file_module.len > 0 && file_module != 'main' && file_module != 'builtin' {
 		ident = t.make_ident('${file_module}.${name}')
@@ -10120,11 +10131,15 @@ fn fn_literal_value_type_text(params []types.Type, ret_type string) string {
 	for param in params {
 		parts << param.name()
 	}
+	return fn_literal_value_type_text_from_text(parts, ret_type)
+}
+
+fn fn_literal_value_type_text_from_text(params []string, ret_type string) string {
 	ret := ret_type.trim_space()
 	if ret.len == 0 || ret == 'void' {
-		return 'fn(${parts.join(', ')})'
+		return 'fn(${params.join(', ')})'
 	}
-	return 'fn(${parts.join(', ')}) ${ret}'
+	return 'fn(${params.join(', ')}) ${ret}'
 }
 
 fn (t &Transformer) current_source_module() string {
@@ -10430,13 +10445,13 @@ fn (mut t Transformer) validate_specialized_enum_from_call(call_id flat.NodeId, 
 		|| t.is_integer_type_name(actual) {
 		return true
 	}
+	actual_display := typeof_display_type_text(actual)
 	enum_node := t.a.nodes[int(enum_id)]
 	enum_name := if enum_node.kind == .ident && enum_node.value.len > 0 {
 		enum_node.value
 	} else {
 		t.node_type(enum_id)
 	}
-	actual_display := typeof_display_type_text(actual)
 	t.record_monomorph_error('cannot use `${actual_display}` as argument 1 to `${enum_name}.from`; expected string or integer')
 	return false
 }
@@ -11922,8 +11937,7 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		a_app = a_app[1..]
 		e_app = e_app[1..]
 	}
-	if !isnil(t.tc) && a_app.contains('[') && e_app.contains('[')
-		&& t.tc.generic_type_name_matches(a_app, e_app) {
+	if !isnil(t.tc) && t.tc.generic_type_name_matches(a_app, e_app) {
 		return true
 	}
 	return false

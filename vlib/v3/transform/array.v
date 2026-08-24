@@ -94,9 +94,9 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 	return t.make_call_expr_typed(selector, [count, t.make_int_literal(depth)], node.typ)
 }
 
-// make_plain_array_repeat_value preserves the repeated result before destroying a
-// non-addressable source array whose backing storage was materialized after ownership
-// analysis.
+// make_plain_array_repeat_value preserves the repeated result before freeing the backing
+// storage of a non-addressable source array materialized after ownership analysis. The
+// repeated result owns the shallow-copied elements, so the source elements must not be dropped.
 fn (mut t Transformer) make_plain_array_repeat_value(base_id flat.NodeId, count_id flat.NodeId, array_type string) flat.NodeId {
 	source := t.transform_expr(base_id)
 	stable_source := t.stable_transformed_expr_for_reuse(source, array_type,
@@ -108,9 +108,7 @@ fn (mut t Transformer) make_plain_array_repeat_value(base_id flat.NodeId, count_
 		array_type)
 	out_name := t.new_temp('plain_array_repeat')
 	t.pending_stmts << t.make_decl_assign_typed(out_name, repeated, array_type)
-	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
-		stable_source,
-	], 'void'))
+	t.pending_stmts << t.make_expr_stmt(t.make_method_call(stable_source, 'free', []flat.NodeId{}))
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), array_type)
 	return result
@@ -1605,7 +1603,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	short_struct_value := if value_node.kind == .field_init {
 		t.transform_trailing_field_init_struct_arg(node, 1, elem_type)
 	} else {
-		none
+		?flat.NodeId(none)
 	}
 	value_id := short_struct_value or { raw_value_id }
 	raw_rhs_type := if short_struct_value != none { elem_type } else { t.node_type(value_id) }
@@ -1657,7 +1655,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	short_struct_value := if value_node.kind == .field_init {
 		t.transform_trailing_field_init_struct_arg(node, 2, elem_type)
 	} else {
-		none
+		?flat.NodeId(none)
 	}
 	value_id := short_struct_value or { raw_value_id }
 	raw_rhs_type := if short_struct_value != none { elem_type } else { t.node_type(value_id) }

@@ -6880,7 +6880,8 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 					'`@[strict_map_index]` requires handling missing map keys with `or {}` or `if value := map[key] {}`',
 					id, tc.index_brackets_pos(node))
 			}
-			if tc.unsafe_depth == 0 && !tc.index_is_handled_by_guard_or_or_block(id) {
+			if tc.unsafe_depth == 0 && !tc.index_is_handled_by_guard_or_or_block(id)
+				&& !tc.index_is_assignment_target(id) {
 				value_type := unalias_type(base_type.value_type)
 				index_pos := token.new_span(node.pos.id, tc.a.node(base_id).pos.end, node.pos.end)
 				if value_type is Pointer {
@@ -13747,10 +13748,20 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			elem_type: Type(void_)
 		})
 	}
-	if typ.starts_with('thread ') || typ == 'thread' {
+	if typ.starts_with('thread ') {
 		// A thread handle. The element type (the spawned fn's return type) is kept
 		// in the struct name (`thread T`) so `array_of_threads.wait()` can recover
-		// `[]T`. The handle itself lowers to `void*` in C (see c_type).
+		// `[]T`. Canonicalize concrete payload names just like spawn return types do,
+		// while preserving unresolved generic placeholders for later substitution.
+		payload_text := typ[7..]
+		payload_type := tc.parse_type(payload_text)
+		payload_name := if payload_type is Unknown { payload_text } else { payload_type.name() }
+		return Type(Struct{
+			name: 'thread ${payload_name}'
+		})
+	}
+	if typ == 'thread' {
+		// The handle itself lowers to `void*` in C (see c_type).
 		return Type(Struct{
 			name: typ
 		})

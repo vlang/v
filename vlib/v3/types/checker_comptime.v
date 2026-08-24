@@ -10,6 +10,7 @@ import v3.util
 const pointer_binding_unknown_value_prefix = '@unknown:'
 const pointer_binding_parameter_value_prefix = '@parameter:'
 const pointer_binding_global_value_prefix = '@global:'
+const pointer_binding_literal_value_prefix = '@value:'
 const locked_shared_storage_key_prefix = '@storage:'
 
 fn pointer_binding_unknown_value(storage_key string) string {
@@ -3610,7 +3611,7 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 	}
 	if node.op == .amp && address_child.kind == .index && address_child.children_count > 0 {
 		base_id := tc.a.child(&address_child, 0)
-		base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(base_id))
+		base_pointer_depth, base_type := type_pointer_depth_and_base(tc.resolve_type(base_id))
 		if base_type is Map && tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
 			tc.record_error_at(.assignment_mismatch,
 				'cannot take the address of map values outside `unsafe`', child_id,
@@ -3619,8 +3620,9 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 		}
 		base := tc.a.node(base_id)
 		if base_type is Array && unalias_type(base_type.elem_type) !is Pointer
-			&& base.kind == .ident && tc.ident_is_mutable_lvalue(base.value) && tc.unsafe_depth == 0
-			&& !tc.expr_is_inside_unsafe_block(id) {
+			&& base.kind == .ident
+			&& (base_pointer_depth > 0 || tc.ident_is_mutable_lvalue(base.value))
+			&& tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id) {
 			tc.record_error_at(.assignment_mismatch,
 				'cannot take the address of mutable array elements outside unsafe blocks',
 				child_id, tc.index_brackets_pos(address_child))
@@ -12471,8 +12473,7 @@ fn (mut tc TypeChecker) check_loop_var_const_conflict(id flat.NodeId) bool {
 	} else {
 		'${tc.cur_module}.${node.value}'
 	}
-	if qname in tc.const_types || node.value in tc.const_types
-		|| tc.const_key_for_name(node.value) != none {
+	if qname in tc.const_types || tc.local_name_conflicts_with_current_module_const(node.value) {
 		message := 'duplicate of a const name `${node.value}`'
 		pos := tc.node_value_diagnostic_pos(id)
 		if !tc.errors.any(it.msg == message && it.pos == pos) {
@@ -12968,7 +12969,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				tc.node_value_diagnostic_pos(lhs_id))
 		}
 		if lhs_node.value != '_' {
-			if _ := tc.const_key_for_name(lhs_node.value) {
+			if tc.local_name_conflicts_with_current_module_const(lhs_node.value) {
 				tc.record_warning_at(.duplicate_decl,
 					'duplicate of a const name `${tc.qualify_name(lhs_node.value)}`', lhs_id,
 					tc.node_value_diagnostic_pos(lhs_id))
@@ -16311,7 +16312,7 @@ fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.N
 		}
 		if target.kind == .struct_init {
 			return [
-				'@value:${int(clean_rhs_id)}',
+				'${pointer_binding_literal_value_prefix}${int(clean_rhs_id)}',
 			]
 		}
 		return [pointer_binding_unknown_value(left_key)]
@@ -16325,7 +16326,7 @@ fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.N
 	}
 	if rhs.kind == .nil_literal {
 		return [
-			'@value:${int(clean_rhs_id)}',
+			'${pointer_binding_literal_value_prefix}${int(clean_rhs_id)}',
 		]
 	}
 	// Any other pointer-producing expression may return or select an existing pointer.

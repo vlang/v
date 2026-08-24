@@ -296,6 +296,34 @@ fn make() fn () int {
 fn main() {}
 ',
 		'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks')
+	run_bad(v3_bin, 'stack_pointer_alias_receiver_method_value', 'struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn make() fn () int {
+	foo := Foo{}
+	p := &foo
+	return p.ref
+}
+
+fn main() {}
+',
+		'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks')
+	heap_method_value := run_good(v3_bin, 'heap_pointer_receiver_method_value', 'struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn main() {
+	foo := &Foo{}
+	callback := foo.ref
+	println(callback())
+}
+')
+	assert heap_method_value == '1'
 	run_bad(v3_bin, 'direct_option_alias_cast', 'type MaybeInt = ?int
 
 fn main() {
@@ -495,6 +523,19 @@ fn main() {
 	run_bad(v3_bin, 'bad_address_mutable_array_element',
 		'fn main() {\n\tmut values := [1]\n\t_ := &values[0]\n}\n',
 		'cannot take the address of mutable array elements outside unsafe blocks')
+}
+
+fn test_reject_address_of_mutable_array_alias_element() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_address_mutable_array_alias_element',
+		'type Numbers = []int\n\nfn main() {\n\tmut values := Numbers([1])\n\t_ := &values[0]\n}\n',
+		'cannot take the address of mutable array elements outside unsafe blocks')
+	run_bad(v3_bin, 'bad_address_nested_mutable_array_alias_element',
+		'type Numbers = []int\ntype NumbersRef = &Numbers\n\nfn main() {\n\tmut values := Numbers([1])\n\tvalues_ref := NumbersRef(&values)\n\t_ := &values_ref[0]\n}\n',
+		'cannot take the address of mutable array elements outside unsafe blocks')
+	run_bad(v3_bin, 'bad_address_nested_map_alias_value',
+		"type Scores = map[string]int\ntype ScoresRef = &Scores\n\nfn main() {\n\tmut scores := Scores({'key': 1})\n\tscores_ref := ScoresRef(&scores)\n\t_ := &scores_ref['key']\n}\n",
+		'cannot take the address of map values outside `unsafe`')
 }
 
 fn test_reject_cross_wrapper_option_result_returns() {

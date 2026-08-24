@@ -210,6 +210,15 @@ fn test_compiler_vexe_env_uses_running_executable() {
 	assert c_source.contains('setenv("VEXE", v3_vexe, 1);')
 }
 
+fn test_c_bool_parameter_accepts_integer_argument() {
+	check_good('c_bool_integer_argument', 'fn C.bool_probe(bool) int
+
+fn main() {
+	_ = C.bool_probe(0)
+}
+')
+}
+
 fn test_filelock_helpers_are_inlined_in_generated_c() {
 	v3_bin := build_v3()
 	c_source := gen_c(v3_bin, 'filelock_helpers_inline',
@@ -2427,6 +2436,7 @@ fn main() {
 	mut pointer_items := [first]
 	for mut pointer_item in pointer_items {
 		pointer_item.bump()
+		bump_item(mut pointer_item)
 	}
 	{
 		mut item := Counter{}
@@ -2444,7 +2454,7 @@ fn main() {
 }
 '
 	out := run_good(v3_bin, 'for_mut_item_receiver_run', item_src)
-	assert out == '3\n4\n4\n2'
+	assert out == '3\n4\n5\n2'
 	item_c := gen_c(v3_bin, 'for_mut_item_receiver_c', item_src)
 	item_main := c_fn_body(item_c, 'int main(')
 	assert item_main.len > 0, item_c
@@ -2455,6 +2465,8 @@ fn main() {
 	assert !item_main.contains('bump_item(&item);'), item_main
 	assert item_main.contains('Item** pointer_item ='), item_main
 	assert item_main.contains('__bump(*pointer_item);'), item_main
+	assert item_main.contains('bump_item(*pointer_item);'), item_main
+	assert !item_main.contains('bump_item(pointer_item);'), item_main
 	assert !item_main.contains('__bump(pointer_item);'), item_main
 	assert item_main.contains('inc_counter(&item);'), item_main
 	assert !item_main.contains('inc_counter(item);'), item_main
@@ -6509,7 +6521,7 @@ fn main() {
 		'disabled.mm':    '#error disabled Objective-C++ source must not be compiled\n'
 		'defs.h':         'typedef int v3_intervening_header_type;\n'
 		'macro_value.mm': '#ifndef V3_OBJECTIVE_CPP_VALUE\n#error missing include macro context\n#endif\nextern "C" int answer_from_macro_objective_cpp(void) { auto answer = []() { return V3_OBJECTIVE_CPP_VALUE; }; return answer(); }\n'
-		'main.v':         'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.mm"\n#endif\n\n#define V3_OBJECTIVE_CPP_VALUE 47\n#include "defs.h"\n#include "macro_value.mm"\n#undef V3_OBJECTIVE_CPP_VALUE\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error generated V translation unit must remain C\n#endif\n\nfn C.answer_from_macro_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_macro_objective_cpp()))\n}\n'
+		'main.v':         'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.mm"\n#endif\n\n#define V3_OBJECTIVE_CPP_VALUE 47\n#include "defs.h"\n#include "macro_value.mm"\n#undef V3_OBJECTIVE_CPP_VALUE\n\n#undef V3_NEVER_DEFINED\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error generated V translation unit must remain C\n#endif\n\nfn C.answer_from_macro_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_macro_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert guarded_objective_cpp_out == '47'
 	inactive_objective_c_out := run_good_project(v3_bin, 'inactive_objective_c_source', {
@@ -8425,6 +8437,39 @@ fn unrelated() {
 	assert inference_errors.len == 1, tc.errors.str()
 	unrelated_start := source.index('fn unrelated') or { panic('missing unrelated function') }
 	assert inference_errors[0].pos.offset > unrelated_start, tc.errors.str()
+}
+
+fn test_nested_generic_receiver_call_waits_for_receiver_type() {
+	check_good('nested_generic_receiver_inference', 'struct Empty {}
+
+struct Node[T] {
+	value T
+	left  Tree[T]
+	right Tree[T]
+}
+
+type Tree[T] = Empty | Node[T]
+
+fn (tree Tree[T]) min[T]() T {
+	return match tree {
+		Empty { panic("empty tree") }
+		Node[T] { tree.value }
+	}
+}
+
+fn (tree Tree[T]) delete[T](value T) Tree[T] {
+	return match tree {
+		Empty { tree }
+		Node[T] {
+			Node[T]{
+				...tree
+				value: tree.right.min()
+				right: tree.right.delete(tree.right.min())
+			}
+		}
+	}
+}
+')
 }
 
 fn test_template_include_diagnostics_use_partial_source() {
@@ -10413,6 +10458,20 @@ fn test_comptime_define_field_default_is_not_fixed_array_initializer() {
 		'cannot initialize a fixed size array field that uses `$d()` as size quantifier')
 }
 
+fn test_comptime_define_call_is_not_parenthesized_condition_warning() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'comptime_define_if_warning', '-W',
+		'fn main() {\n\tif \$d("enabled", true) {\n\t\tprintln("ok")\n\t}\n}\n')
+	assert out == 'ok'
+}
+
+fn test_pointer_map_assignment_does_not_require_or_block() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'pointer_map_assignment_warning', '-W',
+		'struct Item {}\n\nfn main() {\n\tmut items := map[string]&Item{}\n\titems["one"] = &Item{}\n\tprintln(items.len)\n}\n')
+	assert out == '1'
+}
+
 fn test_params_struct_fields_use_callback_and_userdata_compatibility() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'params_struct_callback_userdata_compatibility', 'type Callback = fn (voidptr)
@@ -10509,4 +10568,50 @@ fn test_imported_generic_preserves_main_embedded_context_type() {
 		'main.v':                'module main\n\nimport ctxhelper\n\nstruct Context {\n\tctxhelper.Context\n}\n\nfn main() {\n\tprintln(ctxhelper.read[Context]())\n}\n'
 	}, 'main.v')
 	assert out == '14'
+}
+
+fn test_imported_generic_closure_preserves_main_embedded_context_type() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'imported_generic_closure_main_embedded_context', {
+		'v.mod':                 "Module { name: 'imported_generic_closure_main_embedded_context' }\n"
+		'ctxhelper/ctxhelper.v': 'module ctxhelper
+
+pub struct Context {
+pub:
+	value int
+}
+
+pub struct Options[T] {
+pub:
+	handler fn (mut T) bool
+}
+
+pub fn make[T]() Options[T] {
+	return Options[T]{
+		handler: fn [T](mut ctx T) bool {
+			return ctx.Context.value == 7
+		}
+	}
+}
+'
+		'main.v':                'module main
+
+import ctxhelper
+
+struct Context {
+	ctxhelper.Context
+}
+
+fn main() {
+	mut ctx := Context{
+		Context: ctxhelper.Context{
+			value: 7
+		}
+	}
+	options := ctxhelper.make[Context]()
+	println(options.handler(mut ctx))
+}
+'
+	}, 'main.v')
+	assert out == 'true'
 }

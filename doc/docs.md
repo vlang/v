@@ -73,6 +73,65 @@ Both `0.4.12` and `v0.4.12` are accepted. The special aliases `latest` and
 V searches for `.vvmrc` from the target path upward and stops at repository and
 project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
+## The default compiler
+
+On macOS and Linux, `v` compiles your program with the experimental **V3**
+compiler (a newer implementation of the V compiler, whose source lives in
+`vlib/v3`) by default. On other platforms, and for C builds that select a
+target OS different from the host, the established compiler in `vlib/v` is
+used. V scripts (`.vsh`, including `v run script.vsh`), the `crun` and
+`build-module` commands, and debug builds selected with `-g`/`-debug` also
+remain on the established compiler. Same-OS cross-architecture builds can still
+use V3 when the target is supported. Copies or symlinks whose resolved compiler
+executable is not named `v` or `vnew` also remain on the established compiler by
+default; pass `-new-compiler` to select V3 explicitly in those installations.
+
+You normally do not need to do anything: when V3 cannot yet build an eligible
+program, `v` automatically falls back to the established compiler, so your build
+keeps working. A fallback also prints a short notice, for example:
+
+```text
+note: V3 could not build this program, so V used the stable compiler instead.
+```
+
+### Opting out with `-old-compiler`
+
+Pass `-old-compiler` to skip V3 entirely and compile with the established
+compiler:
+
+```shell
+v -old-compiler run main.v
+```
+
+This is a temporary compatibility workaround for when a build behaves differently
+under V3. On platforms where the established compiler is the default,
+`-new-compiler` opts into V3 for a single build (only where the V3 compiler is
+embedded in your `v`).
+
+### Automatic bug reports
+
+To help close the remaining gaps, a successful fallback (V3 fails to build a
+program that the established compiler then builds) normally submits the V
+version, target OS/arch, and build options to `https://bugs.vlang.io`. When a
+source excerpt is included it is always a **bounded strict subset** of the failing
+file — a window around the failure, or a head+tail window — and the whole file is
+never uploaded.
+An internal V3 compiler error on a short program (and any directory build such as
+`v .`) submits metadata only. If the input selected for a source excerpt changes
+after V3 parses it, that report also submits metadata only rather than source V3
+did not parse. Before submitting any report, the stable compiler also verifies
+that it parsed the same bytes for every captured project input; if it did not, no
+fallback report is submitted. An unchanged input mapped from a generated-C error
+can still upload a strict-subset excerpt of that file plus a few lines of context
+around the failing line, even when the file is short. Inline-assembly fallbacks
+and reports that cannot fit safely through the retry's process environment are
+notice-only and do not submit a report. Reporting is also skipped for test
+compilations and to the default endpoint in GitHub CI. A custom fallback endpoint
+set with `V_C_ERROR_BUG_REPORT_URL` remains active in CI. The
+`-bug-report-url` option selects the established compiler and configures only its
+reports. You can turn reporting off entirely by setting
+`V_C_ERROR_BUG_REPORT_DISABLED=1`.
+
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
 

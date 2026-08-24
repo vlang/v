@@ -1,6 +1,7 @@
 module modulecache
 
 import os
+import crypto.sha256
 import strings
 import v3.flat
 import v3.pref
@@ -22,7 +23,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-3'
+const source_signature_cache_format = 'v3-source-signature-cache-4'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -39,11 +40,12 @@ pub struct Entry {
 	source_bodies       bool
 	source_bodies_known bool
 pub:
-	header       string
-	object       string
-	header_stamp string
-	object_stamp string
-	c_source     string
+	header         string
+	object         string
+	header_stamp   string
+	object_stamp   string
+	c_source       string
+	source_digests map[string]string
 }
 
 // CgenEntry contains the persistent whole-program C generation artifacts.
@@ -235,8 +237,9 @@ pub fn source_files_use_build_time_pseudo(source_files []string) bool {
 }
 
 struct SourceSignatureDetails {
-	signature  string
-	validation []string
+	signature      string
+	validation     []string
+	source_digests []string
 }
 
 fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
@@ -248,11 +251,14 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	mut uses_build_pseudo := false
 	mut uses_version_pseudo := false
 	mut validation := []string{}
+	mut source_digests := []string{cap: files.len}
 	for file in files {
 		path := os.real_path(file)
 		hash = hash_bytes(hash, path.bytes())
 		hash = hash_bytes(hash, [u8(0)])
 		content := os.read_bytes(file) or { return SourceSignatureDetails{} }
+		digest := sha256.sum(content)
+		source_digests << digest[..].hex()
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
@@ -339,8 +345,9 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	return SourceSignatureDetails{
-		signature:  hash.hex()
-		validation: validation
+		signature:      hash.hex()
+		validation:     validation
+		source_digests: source_digests
 	}
 }
 
@@ -558,17 +565,22 @@ fn quoted_text_mentions_pseudo(source string, from int, to int, names []string) 
 }
 
 fn (m &Manager) source_signature(source_files []string) string {
-	return cached_source_signature_with_build_values(m.dir, 'module', source_files,
+	return m.source_signature_details(source_files).signature
+}
+
+fn (m &Manager) source_signature_details(source_files []string) SourceSignatureDetails {
+	return cached_source_signature_details_with_build_values(m.dir, 'module', source_files,
 		m.build_pseudo_values, m.version_pseudo_values)
 }
 
 // cached_source_signature returns a content signature while using precise file
 // metadata to avoid rereading unchanged inputs on subsequent compiler runs.
 pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
-	return cached_source_signature_with_build_values(cache_dir, namespace, source_files, '', '')
+	return cached_source_signature_details_with_build_values(cache_dir, namespace, source_files,
+		'', '').signature
 }
 
-fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) string {
+fn cached_source_signature_details_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
 	mut paths := source_files.map(os.real_path(it))
 	paths.sort()
 	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
@@ -576,15 +588,15 @@ fn cached_source_signature_with_build_values(cache_dir string, namespace string,
 	metadata := source_files_metadata_signature(paths)
 	if metadata.len > 0 {
 		cached := os.read_file(cache_path) or { '' }
-		if signature := valid_cached_source_signature(cached, metadata, build_pseudo_values,
-			version_pseudo_values)
+		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values,
+			version_pseudo_values, paths.len)
 		{
-			return signature
+			return details
 		}
 	}
 	details := source_signature_details(paths, build_pseudo_values, version_pseudo_values)
 	if details.signature.len == 0 {
-		return ''
+		return details
 	}
 	fresh_metadata := source_files_metadata_signature(paths)
 	if content := source_signature_cache_content(metadata, fresh_metadata, details) {
@@ -593,18 +605,22 @@ fn cached_source_signature_with_build_values(cache_dir string, namespace string,
 			write_atomic(cache_path, content) or {}
 		}
 	}
-	return details.signature
+	return details
 }
 
 fn source_signature_cache_content(metadata string, fresh_metadata string, details SourceSignatureDetails) ?string {
 	if metadata.len == 0 || fresh_metadata != metadata {
 		return none
 	}
-	mut out := strings.new_builder(192 + details.validation.len * 96)
+	mut out := strings.new_builder(192 + details.validation.len * 96 +
+		details.source_digests.len * 72)
 	out.writeln('format=${source_signature_cache_format}')
 	out.writeln('metadata=${metadata}')
 	for input in details.validation {
 		out.writeln(input)
+	}
+	for digest in details.source_digests {
+		out.writeln('digest=${digest}')
 	}
 	out.writeln('source=${details.signature}')
 	out.writeln('complete=1')
@@ -626,19 +642,28 @@ fn source_files_metadata_signature(paths []string) string {
 	return hash.hex()
 }
 
-fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string) ?string {
+fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string, source_count int) ?SourceSignatureDetails {
 	lines := content.split_into_lines()
 	if lines.len < 4 || lines[0] != 'format=${source_signature_cache_format}'
 		|| lines[1] != 'metadata=${metadata}' || lines.last() != 'complete=1' {
 		return none
 	}
 	mut signature := ''
+	mut source_digests := []string{cap: source_count}
 	for line in lines[2..lines.len - 1] {
 		if line.starts_with('source=') {
 			if signature.len > 0 {
 				return none
 			}
 			signature = line.all_after('source=')
+			continue
+		}
+		if line.starts_with('digest=') {
+			digest := line.all_after('digest=')
+			if !is_sha256_hex_digest(digest) {
+				return none
+			}
+			source_digests << digest
 			continue
 		}
 		if line.starts_with('build=') {
@@ -706,10 +731,38 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 		}
 		return none
 	}
-	if signature.len == 0 {
+	if signature.len == 0 || source_digests.len != source_count {
 		return none
 	}
-	return signature
+	return SourceSignatureDetails{
+		signature:      signature
+		source_digests: source_digests
+	}
+}
+
+fn is_sha256_hex_digest(digest string) bool {
+	if digest.len != sha256.size * 2 {
+		return false
+	}
+	for c in digest.bytes() {
+		if !(c >= `0` && c <= `9`) && !(c >= `a` && c <= `f`) {
+			return false
+		}
+	}
+	return true
+}
+
+fn source_digest_map(source_files []string, digests []string) map[string]string {
+	if source_files.len != digests.len {
+		return {}
+	}
+	mut paths := source_files.map(os.real_path(it))
+	paths.sort()
+	mut result := map[string]string{}
+	for i, path in paths {
+		result[path] = digests[i]
+	}
+	return result
 }
 
 fn signature_vmod_root(source_file string) (string, string) {
@@ -947,7 +1000,8 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		cache_trace_module_miss(module_name, 'header stamp is missing')
 		return none
 	}
-	expected := entry_stamp(m.salt, m.source_signature(source_files))
+	source_details := m.source_signature_details(source_files)
+	expected := entry_stamp(m.salt, source_details.signature)
 	source_bodies := header_stamp_source_bodies(stamp, expected) or {
 		cache_trace_module_miss(module_name, 'source signature changed')
 		return none
@@ -964,6 +1018,7 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		...entry
 		source_bodies:       source_bodies
 		source_bodies_known: true
+		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
 
@@ -983,12 +1038,14 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 		return none
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
-	expected := entry_stamp(m.salt, m.source_signature(source_files))
+	source_details := m.source_signature_details(source_files)
+	expected := entry_stamp(m.salt, source_details.signature)
 	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
 	return Entry{
 		...entry
 		source_bodies:       source_bodies
 		source_bodies_known: true
+		source_digests:      source_digest_map(source_files, source_details.source_digests)
 	}
 }
 

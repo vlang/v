@@ -34,6 +34,10 @@ fn export_attr_compile(v3_bin string, main_file string, output string) os.Result
 	return os.execute('${v3_bin} ${main_file} -b c -o ${output}')
 }
 
+fn export_attr_compile_without_memory_limit(v3_bin string, main_file string, output string) os.Result {
+	return os.execute('${v3_bin} -no-memory-limit ${main_file} -b c -o ${output}')
+}
+
 fn test_exported_imported_function_is_rooted_and_emitted_as_raw_symbol() {
 	v3_bin := export_attr_build_v3()
 	root := export_attr_project('imported_link', {
@@ -499,7 +503,8 @@ fn main() {}
 "
 	})
 	c_path := os.join_path(root, 'app.c')
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), c_path)
+	compile := export_attr_compile_without_memory_limit(v3_bin, os.join_path(root, 'main.v'),
+		c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
 	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, int id);'), c_code
@@ -529,7 +534,8 @@ fn main() {}
 "
 	})
 	c_path := os.join_path(root, 'app.c')
-	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), c_path)
+	compile := export_attr_compile_without_memory_limit(v3_bin, os.join_path(root, 'main.v'),
+		c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
 	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, int _2);'), c_code
