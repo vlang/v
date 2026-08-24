@@ -37,6 +37,18 @@ fn test_parse_resolution_type_prefers_file_import_over_known_short_symbol() {
 	assert tc.parse_resolution_type('Box[token.Pos]').name() == 'Box[v.token.Pos]'
 }
 
+fn test_parse_thread_type_qualifies_concrete_payloads() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_file = 'fixturetest.v'
+	tc.cur_module = 'fixturetest'
+	tc.structs['fixturetest.FixtureResult'] = []StructField{}
+
+	assert tc.parse_type('thread FixtureResult').name() == 'thread fixturetest.FixtureResult'
+	assert tc.parse_type('thread ?FixtureResult').name() == 'thread ?fixturetest.FixtureResult'
+	assert tc.parse_type('thread T').name() == 'thread T'
+}
+
 fn test_parse_resolution_fn_type_preserves_nested_main_type_lock() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
