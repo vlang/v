@@ -8,6 +8,7 @@ import sokol.sgl
 #flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/logo.png@/assets/logo.png
 #flag wasm32_emscripten --embed-file @VEXEROOT/examples/assets/fonts/RobotoMono-Regular.ttf@/assets/RobotoMono-Regular.ttf
 
+@[heap]
 pub struct Window {
 pub mut:
 	ctx &gg.Context = unsafe { nil }

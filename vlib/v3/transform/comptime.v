@@ -2175,7 +2175,14 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 }
 
 fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut children []flat.NodeId, fm FieldMeta) string {
-	if node.kind != .call || node.value.len > 0 || children.len < 2 {
+	if node.kind != .call || children.len < 2 {
+		return node.value
+	}
+	// `Call.value` also stores checker-inferred generic arguments. A reflected
+	// field loop must infer those again for each unrolled field; otherwise the
+	// first field's specialization can leak into later fields. Preserve only a
+	// source-level `fn[Type](...)` selection here.
+	if t.call_has_source_generic_args(node) {
 		return node.value
 	}
 	callee := t.a.nodes[int(children[0])]
@@ -2191,6 +2198,21 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 				decl = got
 				found = true
 				break
+			}
+		}
+		// The checker can already lower an inferred generic receiver call to a
+		// concrete plain callee (`Decoder_string.decode_value`). The reflected
+		// clone still has to recover the receiver-method template so each field
+		// can select its own specialization.
+		if !found && t.generic_callee_is_specialization(callee.value) {
+			method_name := callee.value.all_after_last('.').all_after_last('__')
+			for key in t.generic_receiver_methods_by_name[method_name] {
+				candidate := decls[key] or { continue }
+				if candidate.module == t.cur_module {
+					decl = candidate
+					found = true
+					break
+				}
 			}
 		}
 	} else {
@@ -3879,7 +3901,16 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 		}
 	}
 	if node.kind == .decl_assign && children.len >= 2 {
-		rhs_typ := t.node_type(children[1])
+		rhs := t.a.nodes[int(children[1])]
+		// A reflected selector carries the field's qualified type on the cloned
+		// node. Keep that spelling so a bare user type is not mistaken for an
+		// unresolved generic placeholder during a later call in this branch.
+		rhs_typ := if rhs.typ.len > 0 && rhs.typ !in ['unknown', 'generic']
+			&& !t.generic_arg_is_unresolved(rhs.typ) {
+			rhs.typ
+		} else {
+			t.node_type(children[1])
+		}
 		if rhs_typ.len > 0 && rhs_typ !in ['unknown', 'generic'] {
 			typ = rhs_typ
 			t.set_node_typ(int(children[0]), typ)

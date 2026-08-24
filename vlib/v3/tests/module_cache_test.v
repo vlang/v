@@ -399,7 +399,9 @@ fn test_cached_source_signatures_revalidate_changed_inputs() {
 		assert false, 'an unchanged source should retain its cached header'
 		return
 	}
-	write_module_cache_file(root, 'foo.v', 'module foo\n\npub fn value() int { return 2 }\n')
+	// Change the size as well as the contents so this exercises metadata
+	// revalidation on filesystems whose timestamp precision is coarse.
+	write_module_cache_file(root, 'foo.v', 'module foo\n\npub fn value() int { return 22 }\n')
 	if _ := manager.valid_header('foo', [source]) {
 		assert false, 'source metadata changes must trigger full content revalidation'
 	}
@@ -1078,6 +1080,52 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
+fn test_program_wrappers_do_not_contaminate_shared_module_objects() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_program_wrappers_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first_main := os.join_path(root, 'first_main.v')
+	write_module_cache_file(root, 'first_main.v', 'module main
+
+struct Worker {}
+
+fn (w Worker) value() int {
+	return 42
+}
+
+fn main() {
+	w := Worker{}
+	callback := w.value
+	println(callback())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, first_main, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	first_builtin_objects :=
+		module_cache_object_hashes(cache_dir).keys().filter(it.starts_with('builtin_'))
+	assert first_builtin_objects.len > 0
+
+	second_main := os.join_path(root, 'second_main.v')
+	write_module_cache_file(root, 'second_main.v', 'module main
+
+fn main() {
+	println(42)
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, second_main, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+	second_builtin_objects :=
+		module_cache_object_hashes(cache_dir).keys().filter(it.starts_with('builtin_'))
+	assert second_builtin_objects.len > first_builtin_objects.len
+}
+
 fn test_module_cache_static_inline_attributes_are_not_storage() {
 	source := 'static __inline void atomic_fence(int order __attribute__((unused))) {\n\t(void)order;\n}\n'
 	assert !modulecache.c_source_has_static_storage(source)
@@ -1655,6 +1703,53 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 	// The header defines an external symbol with no implementation switch to gate
 	// it, so the cache falls back to a monolithic build instead of splitting it.
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
+}
+
+fn test_transitive_unconditional_native_definition_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(),
+		'v3_module_cache_transitive_unconditional_native_definition_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/implementation.h', 'int v3_transitive_external_value(void) {
+	return 42;
+}
+')
+	write_module_cache_file(root, 'owner/api.h', '#include "implementation.h"
+static inline int v3_transitive_api_value(void) {
+	return v3_transitive_external_value();
+}
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#insert "@DIR/api.h"
+
+fn C.v3_transitive_api_value() int
+
+pub fn value() int {
+	return C.v3_transitive_api_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import owner
+
+fn main() {
+	println(owner.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
 	assert module_cache_artifact(cache_dir, 'owner_', '.o').len == 0
 }
 
@@ -2474,7 +2569,11 @@ fn main() {
 	assert output == '41\n', output
 	assert os.read_lines(side_effect_file)! == ['run']
 	assert !os.exists(fallback_file), 'cache restart left a stale fallback marker'
-	assert !os.exists(report_dir), 'cache restart exposed or staged a C error report'
+	// A standalone V3 process retains the parser digest manifest for its caller to
+	// consume. A successful restart must not turn that manifest into an error report.
+	mut staged_files := os.ls(report_dir)!
+	staged_files.sort()
+	assert staged_files == ['v_source_digests', 'v_sources'], staged_files.str()
 }
 
 fn test_cached_objects_receive_forced_include_flags() {

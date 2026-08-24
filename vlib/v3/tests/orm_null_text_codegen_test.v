@@ -226,8 +226,7 @@ fn main() {
 	_ = rows
 }
 ')
-	assert c_code.contains('i64 sqlite3_column_int64('), c_code
-	assert c_code.contains('i32 sqlite3_bind_int64('), c_code
+	assert c_code.contains('#include "sqlite3.h"'), c_code
 	assert c_code.contains('sqlite3_bind_int('), c_code
 	assert c_code.contains('sqlite3_bind_int64('), c_code
 	assert c_code.contains('sqlite3_column_int('), c_code

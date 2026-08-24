@@ -1,5 +1,7 @@
 module token
 
+import crypto.sha256
+
 // Pos represents pos data used by token.
 pub struct Pos {
 pub:
@@ -106,6 +108,9 @@ pub:
 	size int
 mut:
 	line_offsets []int = [0]
+	// Keep the digest inline: stored files can outlive parser-worker preallocation scopes.
+	source_digest     [sha256.size]u8
+	has_source_digest bool
 }
 
 // FileSet represents file set data used by token.
@@ -143,11 +148,32 @@ pub fn (mut f File) add_line(offset int) {
 // index_lines records every source-line start for logarithmic position lookup.
 pub fn (mut f File) index_lines(src string) {
 	f.line_offsets = [0]
+	digest := sha256.sum(src.bytes())
+	for i in 0 .. sha256.size {
+		f.source_digest[i] = digest[i]
+	}
+	f.has_source_digest = true
 	for i, ch in src {
 		if ch == `\n` {
 			f.line_offsets << i + 1
 		}
 	}
+}
+
+// source_sha256 returns the digest bytes of the exact source indexed for this file.
+pub fn (f &File) source_sha256() [sha256.size]u8 {
+	return f.source_digest
+}
+
+// has_source_sha256 reports whether this file index was built from source bytes.
+pub fn (f &File) has_source_sha256() bool {
+	return f.has_source_digest
+}
+
+// set_source_sha256 preserves a source digest when a parser worker clones a file index.
+pub fn (mut f File) set_source_sha256(digest [sha256.size]u8) {
+	f.source_digest = digest
+	f.has_source_digest = true
 }
 
 // line_count supports line count handling for File.

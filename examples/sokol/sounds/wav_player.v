@@ -125,7 +125,7 @@ fn read_wav_file_samples(fpath string) ![]f32 {
 	mut res := []f32{}
 	// eprintln('> read_wav_file_samples: ${fpath} -------------------------------------------------')
 	mut bytes := os.read_bytes(fpath)!
-	mut pbytes := &u8(bytes.data)
+	mut pbytes := unsafe { &u8(bytes.data) }
 	mut offset := u32(0)
 	rh := unsafe { &RIFFHeader(pbytes) }
 	// eprintln('rh: ${rh}')

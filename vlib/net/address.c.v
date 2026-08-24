@@ -313,7 +313,7 @@ pub fn addr_from_socket_handle(handle int) Addr {
 			Ip6: Ip6{}
 		}
 	}
-	mut size := sizeof(addr)
+	mut size := u32(sizeof(addr))
 	C.getsockname(handle, voidptr(&addr), &size)
 	return addr
 }
@@ -325,7 +325,7 @@ pub fn peer_addr_from_socket_handle(handle int) !Addr {
 			Ip6: Ip6{}
 		}
 	}
-	mut size := sizeof(Addr)
+	mut size := u32(sizeof(Addr))
 	socket_error_message(C.getpeername(handle, voidptr(&addr), &size),
 		'peer_addr_from_socket_handle failed')!
 	return addr

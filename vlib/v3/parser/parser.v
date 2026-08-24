@@ -4197,7 +4197,7 @@ fn (p &Parser) eval_comptime_cond_with_target_override(cond string, disable_targ
 	if c == 'false' {
 		return false
 	}
-	if c.starts_with('pkgconfig') {
+	if c.starts_with('pkgconfig') || c.starts_with('$pkgconfig') {
 		return eval_pkgconfig_cond(c)
 	}
 	if value := eval_comptime_define_cond(p.prefs, c) {

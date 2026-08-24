@@ -887,8 +887,8 @@ pub fn (stmt &StmtHandle) execute_result(params []string) !RowSet {
 		unsafe { metadata.free() }
 	}
 	num_cols := C.mysql_num_fields(query_metadata)
-	mut length := []u32{len: num_cols}
-	mut is_null := []bool{len: num_cols}
+	mut length := []C.v_mysql_ulong{len: num_cols}
+	mut is_null := []C.v_mysql_bool{len: num_cols}
 
 	mut binds := []C.MYSQL_BIND{}
 	for i in 0 .. num_cols {
@@ -917,7 +917,7 @@ pub fn (stmt &StmtHandle) execute_result(params []string) !RowSet {
 			binds[i].buffer = data
 			binds[i].buffer_length = l
 			code = C.mysql_stmt_fetch_column(stmt.stmt, unsafe { &binds[i] }, i, 0)
-			if *(binds[i].is_null) {
+			if is_null[i] != 0 {
 				row.vals << ''
 			} else {
 				row.vals << unsafe { data.vstring() }

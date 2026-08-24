@@ -4240,11 +4240,14 @@ fn (mut g Gen) refresh_current_generic_local_scope_vars(scope &ast.Scope) {
 						var.is_unwrapped = parent_var.is_unwrapped
 					}
 				} else if var.expr !is ast.EmptyExpr {
-					should_resolve_expr_type := var.typ == 0
-						|| var.typ == ast.void_type || var.typ.has_flag(.generic)
-						|| g.type_has_unresolved_generic_parts(var.typ)
-						|| (var.expr is ast.StructInit && var.expr.typ_str.len > 0
-						&& g.current_fn_generic_names().index(var.expr.typ_str.all_after_last('.')) >= 0)
+					mut is_generic_struct_init := false
+					if var.expr is ast.StructInit && var.expr.typ_str.len > 0 {
+						struct_name := var.expr.typ_str.all_after_last('.')
+						is_generic_struct_init = g.current_fn_generic_names().index(struct_name) >= 0
+					}
+					should_resolve_expr_type := var.typ == 0 || var.typ == ast.void_type
+						|| var.typ.has_flag(.generic)
+						|| g.type_has_unresolved_generic_parts(var.typ) || is_generic_struct_init
 					if should_resolve_expr_type && !(var.expr is ast.Ident && var.expr.name == name) {
 						mut resolved_type := g.resolved_expr_type(var.expr, var.typ)
 						if resolved_type != 0 {

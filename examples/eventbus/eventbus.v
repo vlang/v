@@ -9,8 +9,8 @@ mut:
 
 fn main() {
 	mut sub := some_module.get_subscriber()
-	r := Receiver{}
-	sub.subscribe_method('event_foo', on_foo, r)
+	mut r := Receiver{}
+	sub.subscribe_method('event_foo', on_foo, &r)
 	sub.subscribe('event_bar', on_bar)
 	sub.subscribe('event_baz', on_baz)
 

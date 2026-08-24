@@ -130,16 +130,37 @@ fn is_anonymous_struct_type_name(name string) bool {
 	return name.all_after_last('.').starts_with('AnonStruct_')
 }
 
+fn struct_init_has_main_type_lock(type_name string) bool {
+	mut offset := 0
+	for offset < type_name.len {
+		relative := type_name[offset..].index('main.') or { return false }
+		index := offset + relative
+		if index == 0 {
+			return true
+		}
+		previous := type_name[index - 1]
+		if !((previous >= `a` && previous <= `z`)
+			|| (previous >= `A` && previous <= `Z`)
+			|| (previous >= `0` && previous <= `9`) || previous == `_`
+			|| previous == `.`) {
+			return true
+		}
+		offset = index + 'main.'.len
+	}
+	return false
+}
+
 fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Node) string {
 	if node.typ == node.value && node.typ.contains('[') && node.typ.contains('.') {
 		// A specialized clone's explicit type annotation is newer than the
 		// checker's expression cache and can retain nested main-module locks.
 		return node.typ
 	}
-	if node.value.starts_with('main.') && !node.value['main.'.len..].contains('.') {
+	if struct_init_has_main_type_lock(node.value) {
 		// Monomorphization pins a caller-owned program type with `main.` when the
-		// generic declaration's module has a same-named type. The expression type
-		// predates that clone and must not replace the explicit lock.
+		// generic declaration's module has a same-named type. The lock can be nested
+		// in a container (`Box[map[Key]main.Context]`), and the expression type predates
+		// that clone, so it must not replace the explicit spelling.
 		return node.value
 	}
 	if node.value == 'struct' {

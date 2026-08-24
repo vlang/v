@@ -4775,6 +4775,20 @@ fn test_json2_reflected_map_alias_infers_value_type() {
 	assert out == '42'
 }
 
+fn test_json2_reflected_fields_keep_independent_decoder_specializations() {
+	v3_bin := build_v3_review_transform()
+	src_file := os.join_path(os.temp_dir(), 'v3_json2_reflected_independent_field_decoders.v')
+	c_file := os.join_path(os.temp_dir(), 'v3_json2_reflected_independent_field_decoders.c')
+	os.write_file(src_file,
+		'import x.json2\n\nstruct Result {\n\tvalue int\n}\n\nstruct Weather {\n\tlang string\n\tresult Result\n}\n\nfn main() {\n\t_ := json2.decode[Weather](r\'{"lang":"en","result":{"value":42}}\')!\n}\n') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} -nocache ${src_file} -b c -o ${c_file}')
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(c_file) or { '' }
+	assert c_code.contains('json2__Decoder_Result__decode_value(decoder, &decoded_field_value)'), c_code
+}
+
 fn test_json2_reflected_main_type_does_not_use_imported_homonym() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'json2_reflected_main_type_collision', {

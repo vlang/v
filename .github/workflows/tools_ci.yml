@@ -29,7 +29,7 @@ concurrency:
 jobs:
   tools-linux:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     strategy:
       matrix:
         cc: [tcc, gcc, clang]

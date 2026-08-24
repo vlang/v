@@ -4392,6 +4392,14 @@ fn (tc &TypeChecker) const_key_for_name(name string) ?string {
 	return none
 }
 
+fn (tc &TypeChecker) local_name_conflicts_with_current_module_const(name string) bool {
+	key := tc.const_key_for_name(name) or { return false }
+	owner := tc.const_modules[key] or { return true }
+	current := if tc.cur_module.len == 0 { 'main' } else { tc.cur_module }
+	normalized_owner := if owner.len == 0 { 'main' } else { owner }
+	return normalized_owner == current
+}
+
 fn (tc &TypeChecker) const_type_for_selector(node flat.Node) ?Type {
 	if node.kind != .selector || node.children_count == 0 {
 		return none
@@ -4951,7 +4959,7 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic
 		return '(' + parts.join(', ') + ')'
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		return tc.qualify_fn_type_text(clean, generic_params)
+		return tc.qualify_fn_type_text(clean, resolution, generic_params)
 	}
 	bracket := clean.index_u8(`[`)
 	if bracket > 0 {
@@ -4996,7 +5004,7 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic
 }
 
 // qualify_fn_type_text supports qualify fn type text handling for TypeChecker.
-fn (tc &TypeChecker) qualify_fn_type_text(typ string, generic_params []string) string {
+fn (tc &TypeChecker) qualify_fn_type_text(typ string, resolution bool, generic_params []string) string {
 	params_start := typ.index_u8(`(`) + 1
 	mut depth := 1
 	mut params_end := params_start
@@ -5018,14 +5026,15 @@ fn (tc &TypeChecker) qualify_fn_type_text(typ string, generic_params []string) s
 			clean_part := trimmed_space(part)
 			is_mut := clean_part.starts_with('mut ')
 			param_text := if is_mut { trimmed_space(clean_part[4..]) } else { clean_part }
-			qualified := tc.qualify_type_text_impl(normalize_fn_type_param_text(param_text), false,
-				generic_params)
+			qualified := tc.qualify_type_text_impl(normalize_fn_type_param_text(param_text),
+				resolution, generic_params)
 			params << if is_mut { 'mut ${qualified}' } else { qualified }
 		}
 	}
 	ret_str := trimmed_space(typ[params_end + 1..])
 	if ret_str.len > 0 {
-		return 'fn(${params.join(', ')}) ${tc.qualify_type_text_impl(ret_str, false, generic_params)}'
+		return 'fn(${params.join(', ')}) ${tc.qualify_type_text_impl(ret_str, resolution,
+			generic_params)}'
 	}
 	return 'fn(${params.join(', ')})'
 }
@@ -8309,7 +8318,9 @@ pub fn (mut tc TypeChecker) check_semantics() {
 						tc.check_pascal_case_name(node_id, node.value, type_kind, tc.declaration_keyword_name_pos(node_id,
 							'type'))
 					}
-					if tc.type_declaration_exists_before(node_id, node.value) {
+					is_c_alias := node.value.starts_with('C.') && node.children_count == 0
+						&& split_sum_variant_texts(node.typ).len <= 1
+					if !is_c_alias && tc.type_declaration_exists_before(node_id, node.value) {
 						kind := if node.children_count > 0
 							|| split_sum_variant_texts(node.typ).len > 1 {
 							'sum type'

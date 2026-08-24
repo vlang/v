@@ -336,9 +336,16 @@ mut:
 	inlined_c_typedef_names        map[string]bool
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
+	inlined_c_active_macros        map[string]bool
+	possibly_active_c_macros       map[string]bool
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
 	preserved_header_files_seen    map[string]bool
+	preserved_header_scan_results  map[string]CHeaderMacroState
+	preserved_macro_files_seen     map[string]bool
+	preserved_header_scans_active  map[string]bool
+	preinclude_macro_state         CHeaderMacroState
+	preinclude_state_initialized   bool
 	initial_c_flags                []string
 	c_flags                        []string
 	use_system_stdint              bool
@@ -585,11 +592,12 @@ struct ObjectiveCppSourceRequest {
 }
 
 struct CInlineHeader {
-	text                 string
-	preserved_directives []string
-	preserved_c_fns      []string
-	preserved_c_structs  []string
-	preserved_headers    []CPreservedHeader
+	text                      string
+	preserved_directives      []string
+	preserved_c_fns           []string
+	preserved_c_structs       []string
+	preserved_c_typedef_names []string
+	preserved_headers         []CPreservedHeader
 }
 
 struct CPreservedHeader {
@@ -1022,9 +1030,14 @@ pub fn FlatGen.new() FlatGen {
 		inlined_c_structs:               map[string]bool{}
 		inlined_c_fns:                   map[string]bool{}
 		inlined_c_declared_fns:          map[string]bool{}
+		inlined_c_active_macros:         map[string]bool{}
+		possibly_active_c_macros:        map[string]bool{}
 		inlined_c_static_fns:            map[string]bool{}
 		cache_omitted_c_fns:             map[string]bool{}
 		preserved_header_files_seen:     map[string]bool{}
+		preserved_header_scan_results:   map[string]CHeaderMacroState{}
+		preserved_macro_files_seen:      map[string]bool{}
+		preserved_header_scans_active:   map[string]bool{}
 		inlined_c_typedef_names:         map[string]bool{}
 		initial_c_flags:                 []string{}
 		c_flags:                         []string{}
@@ -2604,9 +2617,16 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.inlined_c_structs.clear()
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
+	g.inlined_c_active_macros.clear()
+	g.possibly_active_c_macros.clear()
 	g.inlined_c_static_fns.clear()
 	g.cache_omitted_c_fns.clear()
 	g.preserved_header_files_seen.clear()
+	g.preserved_header_scan_results.clear()
+	g.preserved_macro_files_seen.clear()
+	g.preserved_header_scans_active.clear()
+	g.preinclude_macro_state = CHeaderMacroState{}
+	g.preinclude_state_initialized = false
 	g.inlined_c_typedef_names.clear()
 	g.c_flags = []string{}
 	g.use_system_stdint = false
@@ -2852,6 +2872,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		''
 	} else {
 		g.precompute_consts()
+	}
+	if defer_parallel_support {
+		// The declaration worker emits builtin ABI helpers concurrently with the
+		// function-body workers. Seed compatibility helpers before it starts; body
+		// workers still merge any lowering-only discoveries below.
+		g.preseed_libc_compat_fns()
 	}
 	g.timing_profile('  [ttime] cg precompute      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
@@ -3352,6 +3378,9 @@ fn (mut g FlatGen) cache_user_c_string_symbols() map[string]bool {
 		collect_cache_numbered_string_symbols(name, mut symbols)
 	}
 	for name in g.inlined_c_declared_fns.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	for name in g.inlined_c_active_macros.keys() {
 		collect_cache_numbered_string_symbols(name, mut symbols)
 	}
 	referenced_symbols := g.c_extern_referenced_symbols()
@@ -4240,6 +4269,12 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		directive := '#include ${include_arg}'
 		if node.value == 'preinclude' {
 			if directive !in g.preinclude_directives {
+				if !g.preinclude_state_initialized {
+					g.preinclude_macro_state = c_header_macro_state_for_flags(g.c_flags)
+					g.preinclude_state_initialized = true
+				}
+				g.preinclude_macro_state = g.collect_preserved_include_metadata_with_state(include_arg,
+					source_file, g.preinclude_macro_state)
 				g.preinclude_directives << directive
 			}
 		} else if directive !in g.postinclude_directives {
@@ -4326,6 +4361,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if trimmed_space(include_arg) == '<objc/message.h>' {
 			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 			return true
 		}
@@ -4362,6 +4398,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			g.collect_inlined_c_declared_fns(header_text)
 			g.collect_preserved_c_fns(header.preserved_c_fns)
 			g.collect_preserved_c_structs(header.preserved_c_structs)
+			g.collect_preserved_c_typedef_names(header.preserved_c_typedef_names)
 			for preserved_header in header.preserved_headers {
 				g.collect_preserved_header_tree(preserved_header.include_arg,
 					preserved_header.source_file, include_dirs)
@@ -4390,8 +4427,12 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			}
 		} else if c_should_preserve_uninlined_include(include_arg) || (g.cache_split
 			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>']) {
+			// The preserved header is emitted before generated externs. Suppress known
+			// declarations from it by symbol; unrelated C declarations from the same V
+			// file still need generated extern prototypes.
 			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 		}
 		return true
@@ -4479,16 +4520,35 @@ fn (mut g FlatGen) emit_postinclude_directives() {
 	}
 }
 
-fn (mut g FlatGen) collect_preserved_header_tree(include_arg string, source_file string, include_dirs []string) bool {
-	// Some system APIs are declared through macros that the lightweight header
-	// declaration scanner cannot expand (for example OpenSSL's X509_free).
-	// Record the known declarations even when the resolved tree is scanned below.
+fn (mut g FlatGen) collect_preserved_include_metadata(include_arg string, source_file string) {
+	state := c_header_macro_state_for_flags(g.c_flags)
+	g.collect_preserved_include_metadata_with_state(include_arg, source_file, state)
+}
+
+fn (mut g FlatGen) collect_preserved_include_metadata_with_state(include_arg string, source_file string, state CHeaderMacroState) CHeaderMacroState {
 	g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 	g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+	g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
+	include_dirs := c_flag_include_dirs(g.c_flags)
+	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		if os.is_file(path) {
+			return g.collect_preserved_header_file_with_state(path, include_dirs, state)
+		}
+	}
+	return c_header_macro_state_after_unknown_include(state)
+}
+
+fn (mut g FlatGen) collect_preserved_header_tree(include_arg string, source_file string, include_dirs []string) bool {
 	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
 		mut tree_size := CHeaderTreeSize{}
 		if os.is_file(path)
 			&& c_header_tree_exceeds_inline_limit(path, g.compiler_vroot, include_dirs, mut tree_size) {
+			// Some system APIs are declared through macros that the lightweight header
+			// declaration scanner cannot expand (for example OpenSSL's X509_free).
+			// Record the known declarations only when the header will be preserved.
+			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
 			g.collect_preserved_header_file(path, include_dirs)
 			return true
 		}
@@ -4525,37 +4585,474 @@ fn c_header_tree_exceeds_inline_limit(path string, vroot string, include_dirs []
 }
 
 fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []string) {
+	state := c_header_macro_state_for_flags(g.c_flags)
+	g.collect_preserved_header_file_with_state(path, include_dirs, state)
+}
+
+fn (mut g FlatGen) collect_preserved_header_file_with_state(path string, include_dirs []string, state CHeaderMacroState) CHeaderMacroState {
+	return g.collect_preserved_header_file_with_state_and_scope(path, include_dirs, state, true)
+}
+
+fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path string, include_dirs []string, state CHeaderMacroState, collect_declarations bool) CHeaderMacroState {
 	real_path := os.real_path(path)
-	if real_path.len == 0 || g.preserved_header_files_seen[real_path] {
-		return
+	if real_path.len == 0 {
+		return c_header_macro_state_clone(state)
 	}
+	visit_key := real_path + '\n' + c_header_macro_state_signature(state) + '\n' + if collect_declarations {
+		'declarations'
+	} else {
+		'macros'
+	}
+	if visit_key in g.preserved_header_scan_results {
+		return c_header_macro_state_clone(g.preserved_header_scan_results[visit_key])
+	}
+	if g.preserved_header_scans_active[visit_key] {
+		return c_header_macro_state_after_unknown_include(state)
+	}
+	g.preserved_header_scans_active[visit_key] = true
 	g.preserved_header_files_seen[real_path] = true
-	text := os.read_file(real_path) or { return }
-	g.collect_inlined_c_structs(text)
-	g.collect_inlined_c_fns(text)
-	g.collect_inlined_c_declared_fns(text)
-	mut in_block_comment := false
-	for line in text.split_into_lines() {
-		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
-		in_block_comment = next_in_block_comment
-		if c_directive_name(clean) !in ['include', 'import'] {
-			continue
+	text := os.read_file(real_path) or {
+		g.preserved_header_scans_active.delete(visit_key)
+		return c_header_macro_state_clone(state)
+	}
+	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
+	mut include_results := map[string]CHeaderIncludeResult{}
+	mut final_scan := CHeaderActiveScan{}
+	mut stable := false
+	// Resolve one include at a time, from left to right. Restarting the scan after
+	// each child applies its resulting macro state before any later include is
+	// visited, so metadata is never collected under a transient parent state.
+	for _ in 0 .. c_join_continued_lines(text).len + 2 {
+		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
+			g.target, include_results)
+		mut unresolved_include := -1
+		for i, include_key in scan.include_keys {
+			include_state_signature := c_header_macro_state_signature(scan.include_states[i])
+			if include_key !in include_results
+				|| include_results[include_key].input_signature != include_state_signature {
+				unresolved_include = i
+				break
+			}
 		}
-		include_arg := c_include_arg(c_directive_arg(clean), g.compiler_vroot, real_path)
+		final_scan = scan
+		if unresolved_include < 0 {
+			stable = true
+			break
+		}
+		include_state := scan.include_states[unresolved_include]
+		include_key := scan.include_keys[unresolved_include]
+		include_is_definitely_active := scan.include_definitely_active[unresolved_include]
+		include_arg := c_include_arg(scan.include_args[unresolved_include], g.compiler_vroot,
+			real_path)
 		mut found := false
+		mut result_state := CHeaderMacroState{}
 		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
 			include_dirs) {
 			if os.is_file(nested_path) {
-				g.collect_preserved_header_file(nested_path, include_dirs)
+				if include_is_definitely_active {
+					result_state = g.collect_preserved_header_file_with_state_and_scope(nested_path,
+						include_dirs, include_state, collect_declarations)
+				} else {
+					g.collect_possibly_active_header_macros(nested_path, include_dirs)
+					result_state = c_header_macro_state_after_unknown_include(include_state)
+				}
 				found = true
 				break
 			}
 		}
 		if !found {
-			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
-			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+			if collect_declarations && include_is_definitely_active {
+				g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+				g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+				g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
+			}
+			result_state = c_header_macro_state_after_unknown_include(include_state)
+		}
+		include_results[include_key] = CHeaderIncludeResult{
+			input_signature: c_header_macro_state_signature(include_state)
+			output_state:    result_state
 		}
 	}
+	if !stable {
+		// A pathological include cycle should never let uncertain metadata suppress a
+		// generated prototype. Fall back to the conservative, pre-propagation scan.
+		final_scan = c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
+	}
+	if collect_declarations {
+		g.collect_inlined_c_structs(final_scan.text)
+		g.collect_inlined_c_fns(final_scan.text)
+		g.collect_inlined_c_declarations(final_scan.text)
+		for macro_name in final_scan.macro_names {
+			if final_scan.final_state.defined[macro_name] {
+				g.inlined_c_active_macros[macro_name] = true
+				g.possibly_active_c_macros.delete(macro_name)
+			} else if final_scan.final_state.undefined[macro_name] {
+				g.inlined_c_active_macros.delete(macro_name)
+				g.possibly_active_c_macros.delete(macro_name)
+			} else {
+				g.inlined_c_active_macros.delete(macro_name)
+				g.possibly_active_c_macros[macro_name] = true
+			}
+		}
+	}
+	for macro_name in final_scan.possibly_active_macro_names {
+		if macro_name !in final_scan.final_state.undefined
+			&& macro_name !in g.inlined_c_active_macros && macro_name !in g.inlined_c_declared_fns {
+			g.possibly_active_c_macros[macro_name] = true
+		}
+	}
+	result := c_header_macro_state_clone(final_scan.final_state)
+	g.preserved_header_scan_results[visit_key] = c_header_macro_state_clone(result)
+	g.preserved_header_scans_active.delete(visit_key)
+	return result
+}
+
+struct CHeaderMacroState {
+	defined                  map[string]bool
+	undefined                map[string]bool
+	uncertain                map[string]bool
+	external_macros_possible bool
+}
+
+struct CHeaderActiveScan {
+	text                        string
+	include_states              []CHeaderMacroState
+	include_keys                []string
+	include_args                []string
+	include_definitely_active   []bool
+	macro_names                 []string
+	possibly_active_macro_names []string
+	final_state                 CHeaderMacroState
+}
+
+struct CHeaderIncludeResult {
+	input_signature string
+	output_state    CHeaderMacroState
+}
+
+fn c_header_macro_state_clone(state CHeaderMacroState) CHeaderMacroState {
+	return CHeaderMacroState{
+		defined:                  state.defined.clone()
+		undefined:                state.undefined.clone()
+		uncertain:                state.uncertain.clone()
+		external_macros_possible: state.external_macros_possible
+	}
+}
+
+fn c_header_macro_state_after_unknown_include(state CHeaderMacroState) CHeaderMacroState {
+	mut defined := state.defined.clone()
+	mut undefined := state.undefined.clone()
+	mut uncertain := state.uncertain.clone()
+	c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+	return CHeaderMacroState{
+		defined:                  defined
+		undefined:                undefined
+		uncertain:                uncertain
+		external_macros_possible: true
+	}
+}
+
+fn c_header_macro_state_signature(state CHeaderMacroState) string {
+	mut parts := []string{cap: state.defined.len + state.undefined.len + state.uncertain.len + 1}
+	for name in state.defined.keys().sorted() {
+		parts << 'd:${name}'
+	}
+	for name in state.undefined.keys().sorted() {
+		parts << 'u:${name}'
+	}
+	for name in state.uncertain.keys().sorted() {
+		parts << '?:${name}'
+	}
+	parts << if state.external_macros_possible { 'e:1' } else { 'e:0' }
+	return parts.join('\x1f')
+}
+
+fn c_header_macro_state_for_flags(flags []string) CHeaderMacroState {
+	mut defined := map[string]bool{}
+	mut undefined := map[string]bool{}
+	mut i := 0
+	for i < flags.len {
+		clean := trimmed_space(flags[i])
+		mut definition := ''
+		mut is_undef := false
+		if clean == '-D' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			i++
+		} else if clean.starts_with('-D') {
+			definition = clean[2..]
+		} else if clean == '-U' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			is_undef = true
+			i++
+		} else if clean.starts_with('-U') {
+			definition = clean[2..]
+			is_undef = true
+		}
+		name := definition.all_before('=').trim_space()
+		if name.len > 0 {
+			if is_undef {
+				defined.delete(name)
+				undefined[name] = true
+			} else {
+				undefined.delete(name)
+				defined[name] = true
+			}
+		}
+		i++
+	}
+	return CHeaderMacroState{
+		defined:   defined
+		undefined: undefined
+		uncertain: map[string]bool{}
+	}
+}
+
+// c_header_definitely_active_text retains declarations only from preprocessor
+// branches known to be active for the current target and C flags. A declaration
+// in an unresolved branch cannot safely suppress a generated C prototype.
+fn c_header_definitely_active_text(text string, flags []string, c99_mode bool, target pref.Target) string {
+	state := c_header_macro_state_for_flags(flags)
+	return c_header_definitely_active_scan(text, state,
+		c_effective_strict_iso_mode(flags, c99_mode), target).text
+}
+
+fn c_header_definitely_active_scan(text string, state CHeaderMacroState, strict_iso_mode bool, target pref.Target) CHeaderActiveScan {
+	return c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
+		target, map[string]CHeaderIncludeResult{})
+}
+
+// collect_possibly_active_header_macros conservatively follows an include from
+// an unresolved branch. Its macro effects cannot be applied to the surrounding
+// state, so scanning with a small independent state avoids copying the complete
+// macro environment for every branch in a large third-party header tree.
+fn (mut g FlatGen) collect_possibly_active_header_macros(path string, include_dirs []string) {
+	real_path := os.real_path(path)
+	if real_path.len == 0 || g.preserved_macro_files_seen[real_path] {
+		return
+	}
+	g.preserved_macro_files_seen[real_path] = true
+	g.preserved_header_files_seen[real_path] = true
+	text := os.read_file(real_path) or { return }
+	flag_state := c_header_macro_state_for_flags(g.c_flags)
+	state := CHeaderMacroState{
+		defined:                  flag_state.defined
+		undefined:                flag_state.undefined
+		uncertain:                flag_state.uncertain
+		external_macros_possible: true
+	}
+	scan := c_header_definitely_active_scan(text, state, c_effective_strict_iso_mode(g.c_flags,
+		g.c99_mode), g.target)
+	for macro_name in scan.possibly_active_macro_names {
+		g.possibly_active_c_macros[macro_name] = true
+	}
+	for raw_include_arg in scan.include_args {
+		include_arg := c_include_arg(raw_include_arg, g.compiler_vroot, real_path)
+		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
+			include_dirs) {
+			if os.is_file(nested_path) {
+				g.collect_possibly_active_header_macros(nested_path, include_dirs)
+				break
+			}
+		}
+	}
+}
+
+fn c_header_definitely_active_scan_with_include_results(text string, state CHeaderMacroState, strict_iso_mode bool, target pref.Target, include_results map[string]CHeaderIncludeResult) CHeaderActiveScan {
+	mut defined := state.defined.clone()
+	mut undefined := state.undefined.clone()
+	mut uncertain := state.uncertain.clone()
+	// Preinclude headers begin before generated source declarations. An earlier
+	// nested include can still introduce unknown macros, which makes later
+	// conditions unresolved and therefore unsuitable for prototype suppression.
+	mut external_macros_possible := state.external_macros_possible
+	mut condition_known := []bool{}
+	mut condition_active := []bool{}
+	mut condition_taken_known := []bool{}
+	mut condition_taken := []bool{}
+	mut include_states := []CHeaderMacroState{}
+	mut include_keys := []string{}
+	mut include_args := []string{}
+	mut include_definitely_active := []bool{}
+	mut macro_names := map[string]bool{}
+	mut possibly_active_macro_names := map[string]bool{}
+	mut output := strings.new_builder(text.len)
+	mut in_block_comment := false
+	for line_index, line in c_join_continued_lines(text) {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		name := c_directive_name(clean)
+		if name in ['ifdef', 'ifndef'] {
+			macro_name := c_directive_arg(clean).fields()[0] or { '' }
+			known, mut active := c_preprocessor_ifdef_macro_state(macro_name, defined, undefined,
+				uncertain, external_macros_possible, strict_iso_mode, target)
+			if name == 'ifndef' {
+				active = !active
+			}
+			condition_known << known
+			condition_active << (if known { active } else { true })
+			condition_taken_known << known
+			condition_taken << (if known { active } else { true })
+			output.writeln('')
+			continue
+		}
+		if name == 'if' {
+			known, active := c_preprocessor_condition_state(c_directive_arg(clean), defined,
+				undefined, uncertain, external_macros_possible, strict_iso_mode, target)
+			condition_known << known
+			condition_active << (if known { active } else { true })
+			condition_taken_known << known
+			condition_taken << (if known { active } else { true })
+			output.writeln('')
+			continue
+		}
+		if name == 'elif' && condition_known.len > 0 {
+			last := condition_known.len - 1
+			prior_known := condition_taken_known[last]
+			prior_taken := condition_taken[last]
+			known, active := c_preprocessor_condition_state(c_directive_arg(clean), defined,
+				undefined, uncertain, external_macros_possible, strict_iso_mode, target)
+			if (prior_known && prior_taken) || (known && !active) {
+				condition_known[last] = true
+				condition_active[last] = false
+			} else if prior_known && known {
+				condition_known[last] = true
+				condition_active[last] = true
+			} else {
+				condition_known[last] = false
+				condition_active[last] = true
+			}
+			if (prior_known && prior_taken) || (known && active) {
+				condition_taken_known[last] = true
+				condition_taken[last] = true
+			} else if prior_known && known {
+				condition_taken_known[last] = true
+				condition_taken[last] = false
+			} else {
+				condition_taken_known[last] = false
+				condition_taken[last] = true
+			}
+			output.writeln('')
+			continue
+		}
+		if name == 'else' && condition_known.len > 0 {
+			last := condition_known.len - 1
+			condition_known[last] = condition_taken_known[last]
+			condition_active[last] = if condition_taken_known[last] {
+				!condition_taken[last]
+			} else {
+				true
+			}
+			condition_taken_known[last] = true
+			condition_taken[last] = true
+			output.writeln('')
+			continue
+		}
+		if name == 'endif' && condition_known.len > 0 {
+			condition_known.delete_last()
+			condition_active.delete_last()
+			condition_taken_known.delete_last()
+			condition_taken.delete_last()
+			output.writeln('')
+			continue
+		}
+		mut definitely_active := true
+		mut possibly_active := true
+		for depth in 0 .. condition_known.len {
+			if condition_known[depth] && !condition_active[depth] {
+				definitely_active = false
+				possibly_active = false
+				break
+			}
+			if !condition_known[depth] {
+				definitely_active = false
+			}
+		}
+		if name in ['define', 'undef'] {
+			parts := c_directive_arg(clean).fields()
+			if parts.len > 0 {
+				macro_name := parts[0].all_before('(')
+				if possibly_active && macro_name.len > 0 {
+					macro_names[macro_name] = true
+				}
+				if name == 'define' && possibly_active && macro_name.len > 0 {
+					possibly_active_macro_names[macro_name] = true
+				}
+				if definitely_active {
+					uncertain.delete(macro_name)
+					if name == 'define' {
+						undefined.delete(macro_name)
+						defined[macro_name] = true
+					} else {
+						defined.delete(macro_name)
+						undefined[macro_name] = true
+					}
+				} else if possibly_active {
+					defined.delete(macro_name)
+					undefined.delete(macro_name)
+					uncertain[macro_name] = true
+				}
+			}
+		}
+		if name in ['include', 'import'] && possibly_active {
+			include_state := CHeaderMacroState{
+				defined:                  defined.clone()
+				undefined:                undefined.clone()
+				uncertain:                uncertain.clone()
+				external_macros_possible: external_macros_possible
+			}
+			include_key := '${line_index}:${clean}'
+			include_states << include_state
+			include_keys << include_key
+			include_args << c_directive_arg(clean)
+			include_definitely_active << definitely_active
+			if include_key in include_results
+				&& include_results[include_key].input_signature == c_header_macro_state_signature(include_state) {
+				if definitely_active {
+					result_state := include_results[include_key].output_state
+					defined = result_state.defined.clone()
+					undefined = result_state.undefined.clone()
+					uncertain = result_state.uncertain.clone()
+					external_macros_possible = result_state.external_macros_possible
+				} else {
+					c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+					external_macros_possible = true
+				}
+			} else {
+				c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+				external_macros_possible = true
+			}
+		}
+		if definitely_active {
+			output.writeln(line)
+		} else {
+			output.writeln('')
+		}
+	}
+	return CHeaderActiveScan{
+		text:                        output.str()
+		include_states:              include_states
+		include_keys:                include_keys
+		include_args:                include_args
+		include_definitely_active:   include_definitely_active
+		macro_names:                 macro_names.keys()
+		possibly_active_macro_names: possibly_active_macro_names.keys()
+		final_state:                 CHeaderMacroState{
+			defined:                  defined
+			undefined:                undefined
+			uncertain:                uncertain
+			external_macros_possible: external_macros_possible
+		}
+	}
+}
+
+fn c_preprocessor_ifdef_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
+	if external_macros_possible && name !in defined && name !in undefined && name !in uncertain
+		&& name !in ['__linux__', '__linux', 'linux', 'unix', '__APPLE__', '__MACH__', '_WIN32', '_WIN64', '__FreeBSD__', '__OpenBSD__', '__NetBSD__'] {
+		// An earlier include can define an otherwise unknown macro, so its state
+		// cannot be inferred by this lightweight scan.
+		return false, true
+	}
+	return c_preprocessor_macro_state(name, defined, undefined, uncertain, strict_iso_mode, target)
 }
 
 fn c_inline_header_text(include_arg string, vroot string, source_file string, include_dirs []string, translation_unit_uses_inttypes bool) ?CInlineHeader {
@@ -4575,11 +5072,12 @@ fn c_inline_header_text(include_arg string, vroot string, source_file string, in
 			seen, mut inlining, mut output)
 		{
 			return CInlineHeader{
-				text:                 output.str()
-				preserved_directives: header.preserved_directives
-				preserved_c_fns:      header.preserved_c_fns
-				preserved_c_structs:  header.preserved_c_structs
-				preserved_headers:    header.preserved_headers
+				text:                      output.str()
+				preserved_directives:      header.preserved_directives
+				preserved_c_fns:           header.preserved_c_fns
+				preserved_c_structs:       header.preserved_c_structs
+				preserved_c_typedef_names: header.preserved_c_typedef_names
+				preserved_headers:         header.preserved_headers
 			}
 		}
 		unsafe { output.free() }
@@ -4614,6 +5112,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 	mut preserved_directives := []string{}
 	mut preserved_c_fns := []string{}
 	mut preserved_c_structs := []string{}
+	mut preserved_c_typedef_names := []string{}
 	mut preserved_headers := []CPreservedHeader{}
 	mut include_context := []string{}
 	mut include_prefix := []string{}
@@ -4655,6 +5154,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 						}
 						preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
 						preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
+						preserved_c_typedef_names << c_preserved_system_include_typedef_names(include_arg)
 						inlined = true
 						break
 					}
@@ -4673,6 +5173,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 					}
 					preserved_c_fns << nested.preserved_c_fns
 					preserved_c_structs << nested.preserved_c_structs
+					preserved_c_typedef_names << nested.preserved_c_typedef_names
 					preserved_headers << nested.preserved_headers
 					inlined = true
 					break
@@ -4683,11 +5184,13 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 				output.writeln('#include ${include_arg}')
 				preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
 				preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
+				preserved_c_typedef_names << c_preserved_system_include_typedef_names(include_arg)
 			} else if !inlined && c_should_preserve_uninlined_include(include_arg) {
 				preserved_directives << c_preserved_nested_include_directive(include_arg,
 					include_context, include_prefix)
 				preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
 				preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
+				preserved_c_typedef_names << c_preserved_system_include_typedef_names(include_arg)
 			}
 			continue
 		}
@@ -4696,10 +5199,11 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 		c_update_nested_include_prefix(clean, line, mut include_prefix)
 	}
 	return CInlineHeader{
-		preserved_directives: preserved_directives
-		preserved_c_fns:      preserved_c_fns
-		preserved_c_structs:  preserved_c_structs
-		preserved_headers:    preserved_headers
+		preserved_directives:      preserved_directives
+		preserved_c_fns:           preserved_c_fns
+		preserved_c_structs:       preserved_c_structs
+		preserved_c_typedef_names: preserved_c_typedef_names
+		preserved_headers:         preserved_headers
 	}
 }
 
@@ -5007,7 +5511,8 @@ fn c_should_preserve_uninlined_include(include_arg string) bool {
 		return false
 	}
 	if clean[0] == `<` {
-		return clean in ['<dlfcn.h>', '<limits.h>', '<math.h>', '<sys/ptrace.h>', '<ucontext.h>']
+		return
+			clean in ['<dlfcn.h>', '<limits.h>', '<math.h>', '<sys/ptrace.h>', '<sys/sendfile.h>', '<ucontext.h>']
 			|| c_is_apple_framework_include(clean)
 	}
 	return true
@@ -5194,6 +5699,20 @@ fn c_header_text_needs_objective_c_for_target(text string, flags []string, c99_m
 				&& condition_active[depth]
 		}
 		if !possibly_active {
+			// A macro introduced only by a known-inactive branch is not available to
+			// later guards. Remember that fact so private platform selectors such as
+			// sokol's `_SAPP_MACOS` do not make Linux translation units look like
+			// Objective-C. Command-line definitions were seeded above and retain
+			// precedence here.
+			if name == 'define' {
+				parts := c_directive_arg(clean).fields()
+				if parts.len > 0 {
+					macro_name := parts[0].all_before('(')
+					if macro_name.len > 0 && macro_name !in defined && macro_name !in uncertain {
+						undefined[macro_name] = true
+					}
+				}
+			}
 			possible_text.writeln('')
 			definite_text.writeln('')
 			continue
@@ -6704,11 +7223,214 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 }
 
 fn c_preserved_system_include_declared_fns(include_arg string) []string {
+	if include_arg in ['"sqlite3.h"', '<sqlite3.h>'] {
+		return [
+			'sqlite3_bind_double',
+			'sqlite3_bind_int',
+			'sqlite3_bind_int64',
+			'sqlite3_bind_null',
+			'sqlite3_bind_text',
+			'sqlite3_busy_timeout',
+			'sqlite3_changes',
+			'sqlite3_close',
+			'sqlite3_column_bytes',
+			'sqlite3_column_count',
+			'sqlite3_column_double',
+			'sqlite3_column_int',
+			'sqlite3_column_int64',
+			'sqlite3_column_name',
+			'sqlite3_column_text',
+			'sqlite3_column_type',
+			'sqlite3_errmsg',
+			'sqlite3_errstr',
+			'sqlite3_finalize',
+			'sqlite3_free',
+			'sqlite3_last_insert_rowid',
+			'sqlite3_memory_used',
+			'sqlite3_open',
+			'sqlite3_open_v2',
+			'sqlite3_prepare_v2',
+			'sqlite3_reset',
+			'sqlite3_step',
+			'sqlite3_vfs_find',
+			'sqlite3_vfs_register',
+			'sqlite3_vfs_unregister',
+		]
+	}
+	if include_arg == '<mbedtls/net_sockets.h>' {
+		return [
+			'mbedtls_net_accept',
+			'mbedtls_net_bind',
+			'mbedtls_net_connect',
+			'mbedtls_net_free',
+			'mbedtls_net_init',
+			'mbedtls_net_recv',
+			'mbedtls_net_recv_timeout',
+			'mbedtls_net_send',
+		]
+	}
+	if include_arg == '<mbedtls/entropy.h>' {
+		return ['mbedtls_entropy_free', 'mbedtls_entropy_func', 'mbedtls_entropy_init']
+	}
+	if include_arg == '<mbedtls/ctr_drbg.h>' {
+		return [
+			'mbedtls_ctr_drbg_free',
+			'mbedtls_ctr_drbg_init',
+			'mbedtls_ctr_drbg_random',
+			'mbedtls_ctr_drbg_seed',
+		]
+	}
+	if include_arg == '<mbedtls/error.h>' {
+		return ['mbedtls_high_level_strerr']
+	}
+	if include_arg == '<mbedtls/ssl.h>' {
+		return [
+			'mbedtls_debug_set_threshold',
+			'mbedtls_pk_free',
+			'mbedtls_pk_init',
+			'mbedtls_pk_parse_key',
+			'mbedtls_pk_parse_keyfile',
+			'mbedtls_pk_sign_ext',
+			'mbedtls_pk_verify',
+			'mbedtls_pk_verify_ext',
+			'mbedtls_ssl_conf_alpn_protocols',
+			'mbedtls_ssl_conf_authmode',
+			'mbedtls_ssl_conf_ca_chain',
+			'mbedtls_ssl_conf_own_cert',
+			'mbedtls_ssl_conf_read_timeout',
+			'mbedtls_ssl_conf_rng',
+			'mbedtls_ssl_conf_sni',
+			'mbedtls_ssl_config_defaults',
+			'mbedtls_ssl_config_free',
+			'mbedtls_ssl_config_init',
+			'mbedtls_ssl_free',
+			'mbedtls_ssl_get_alpn_protocol',
+			'mbedtls_ssl_handshake',
+			'mbedtls_ssl_init',
+			'mbedtls_ssl_read',
+			'mbedtls_ssl_session_reset',
+			'mbedtls_ssl_set_bio',
+			'mbedtls_ssl_set_hostname',
+			'mbedtls_ssl_set_hs_authmode',
+			'mbedtls_ssl_set_hs_ca_chain',
+			'mbedtls_ssl_set_hs_own_cert',
+			'mbedtls_ssl_setup',
+			'mbedtls_ssl_write',
+			'mbedtls_x509_crt_free',
+			'mbedtls_x509_crt_init',
+			'mbedtls_x509_crt_parse',
+			'mbedtls_x509_crt_parse_file',
+			'mbedtls_x509_crt_verify',
+		]
+	}
 	if include_arg == '<dlfcn.h>' {
 		return ['dlclose', 'dlerror', 'dlopen', 'dlsym']
 	}
+	if include_arg == '<X11/Xlib.h>' {
+		return [
+			'BlackPixel',
+			'ConnectionNumber',
+			'DefaultScreen',
+			'XChangeProperty',
+			'XCheckTypedWindowEvent',
+			'XCloseDisplay',
+			'XConvertSelection',
+			'XCreateColormap',
+			'XCreateFontCursor',
+			'XCreateSimpleWindow',
+			'XCreateWindow',
+			'XDefaultDepth',
+			'XDefaultRootWindow',
+			'XDefaultScreen',
+			'XDefaultVisual',
+			'XDeleteProperty',
+			'XDefineCursor',
+			'XDestroyWindow',
+			'XDisplayHeight',
+			'XDisplayWidth',
+			'XDisplayWidthMM',
+			'XFilterEvent',
+			'XFlush',
+			'XFree',
+			'XFreeColormap',
+			'XFreeCursor',
+			'XFreeEventData',
+			'XGetEventData',
+			'XGetKeyboardMapping',
+			'XGetSelectionOwner',
+			'XGetWindowAttributes',
+			'XGetWindowProperty',
+			'XGrabPointer',
+			'XInitThreads',
+			'XInternAtom',
+			'XMapWindow',
+			'XNextEvent',
+			'XOpenDisplay',
+			'XPending',
+			'XQueryExtension',
+			'XRaiseWindow',
+			'XResourceManagerString',
+			'RootWindow',
+			'XSendEvent',
+			'XSetErrorHandler',
+			'XSetSelectionOwner',
+			'XSetWMProtocols',
+			'XSync',
+			'XUndefineCursor',
+			'XUngrabPointer',
+			'XUnmapWindow',
+			'XWarpPointer',
+			'WhitePixel',
+		]
+	}
+	if include_arg == '<X11/Xutil.h>' {
+		return [
+			'XAllocSizeHints',
+			'XGetVisualInfo',
+			'XLookupString',
+			'XSetWMNormalHints',
+			'Xutf8SetWMProperties',
+		]
+	}
+	if include_arg == '<X11/Xresource.h>' {
+		return ['XrmDestroyDatabase', 'XrmGetResource', 'XrmGetStringDatabase', 'XrmInitialize']
+	}
+	if include_arg == '<X11/XKBlib.h>' {
+		return [
+			'XkbFreeKeyboard',
+			'XkbFreeNames',
+			'XkbGetMap',
+			'XkbGetNames',
+			'XkbSetDetectableAutoRepeat',
+		]
+	}
+	if include_arg == '<X11/extensions/XInput2.h>' {
+		return ['XIQueryVersion', 'XISelectEvents']
+	}
+	if include_arg == '<X11/Xcursor/Xcursor.h>' {
+		return [
+			'XcursorGetDefaultSize',
+			'XcursorGetTheme',
+			'XcursorImageCreate',
+			'XcursorImageDestroy',
+			'XcursorImageLoadCursor',
+			'XcursorLibraryLoadImage',
+		]
+	}
 	if include_arg == '<sys/ptrace.h>' {
 		return ['ptrace']
+	}
+	if include_arg == '<sys/socket.h>' {
+		return ['accept4', 'bind', 'listen', 'recv', 'send', 'setsockopt', 'socket']
+	}
+	if include_arg == '<sys/sendfile.h>' {
+		return ['sendfile']
+	}
+	if include_arg == '<pthread.h>' {
+		return ['pthread_sigmask']
+	}
+	if include_arg == '<signal.h>' {
+		return ['sigtimedwait']
 	}
 	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
 		return [
@@ -6725,6 +7447,11 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 	if include_arg in ['<openssl/ssl.h>', '<openssl/x509.h>'] {
 		return ['X509_free']
 	}
+	if include_arg == '<openssl/ec.h>' {
+		// OpenSSL exposes these through const-qualified declarations and macros that
+		// the lightweight preserved-header scanner cannot model reliably.
+		return ['EC_POINT_mul', 'EC_POINT_new', 'EC_POINT_point2buf', 'OPENSSL_free']
+	}
 	if include_arg == '<objc/message.h>' {
 		return ['objc_msgSend']
 	}
@@ -6735,6 +7462,47 @@ fn c_preserved_system_include_struct_names(include_arg string) []string {
 	if include_arg == '<poll.h>' {
 		return ['pollfd']
 	}
+	if include_arg == '<X11/Xlib.h>' {
+		return [
+			'Display',
+			'Screen',
+			'Visual',
+			'XButtonEvent',
+			'XClientMessageData',
+			'XClientMessageEvent',
+			'XCrossingEvent',
+			'XDestroyWindowEvent',
+			'XEvent',
+			'XFocusChangeEvent',
+			'XGenericEventCookie',
+			'XKeyEvent',
+			'XMotionEvent',
+			'XPropertyEvent',
+			'XSelectionClearEvent',
+			'XSelectionEvent',
+			'XSelectionRequestEvent',
+			'XSetWindowAttributes',
+			'XWindowAttributes',
+		]
+	}
+	if include_arg == '<X11/Xutil.h>' {
+		return ['XSizeHints', 'XVisualInfo']
+	}
+	if include_arg == '<X11/Xresource.h>' {
+		return ['XrmValue']
+	}
+	if include_arg == '<X11/XKBlib.h>' {
+		return ['XkbDescRec', 'XkbKeyAliasRec', 'XkbKeyNameRec', 'XkbNamesRec']
+	}
+	if include_arg == '<X11/extensions/XInput2.h>' {
+		return ['XIEventMask', 'XIRawEvent', 'XIValuatorState']
+	}
+	if include_arg == '<X11/Xcursor/Xcursor.h>' {
+		return ['XcursorImage']
+	}
+	if include_arg == '<X11/extensions/Xrandr.h>' {
+		return ['XRRCrtcInfo', 'XRROutputInfo', 'XRRScreenResources']
+	}
 	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
 		return [
 			'host_t',
@@ -6744,6 +7512,13 @@ fn c_preserved_system_include_struct_names(include_arg string) []string {
 			'vm_size_t',
 			'vm_statistics64_data_t',
 		]
+	}
+	return []string{}
+}
+
+fn c_preserved_system_include_typedef_names(include_arg string) []string {
+	if include_arg.starts_with('<X11/') {
+		return c_preserved_system_include_struct_names(include_arg)
 	}
 	return []string{}
 }
@@ -7353,6 +8128,27 @@ fn c_strip_comments(text string) string {
 }
 
 fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
+	g.collect_inlined_c_declarations(text)
+	// Inlined source text has not gone through the active-branch scanner. Keep
+	// every visible definition conservative, as before; only preserved headers
+	// can use their final preprocessor state to prove that a later #undef wins.
+	for line in c_strip_comments(text).split_into_lines() {
+		clean := line.trim_space()
+		if clean.len == 0 || clean[0] != `#` || c_directive_name(clean) != 'define' {
+			continue
+		}
+		arg := c_directive_arg(clean)
+		mut name_end := 0
+		for name_end < arg.len && c_ident_char(arg[name_end]) {
+			name_end++
+		}
+		if name_end > 0 {
+			g.inlined_c_active_macros[arg[..name_end]] = true
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_inlined_c_declarations(text string) {
 	// Header declarations often span several lines (one parameter per line);
 	// accumulate a pending declaration until its terminating `;` so those are
 	// collected too, not just single-line prototypes.
@@ -7361,19 +8157,6 @@ fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
 		clean := line.trim_space()
 		for name in c_macro_declared_fn_names(clean) {
 			g.inlined_c_declared_fns[name] = true
-		}
-		if clean.len > 0 && clean[0] == `#` && c_directive_name(clean) == 'define' {
-			// Any macro (object- or function-like) named like a `fn C.x` makes
-			// an emitted extern prototype wrong after preprocessing; the
-			// header's definition is authoritative.
-			arg := c_directive_arg(clean)
-			mut name_end := 0
-			for name_end < arg.len && c_ident_char(arg[name_end]) {
-				name_end++
-			}
-			if name_end > 0 {
-				g.inlined_c_declared_fns[arg[..name_end]] = true
-			}
 		}
 		if pending.len > 0 {
 			if clean.len == 0 || clean[0] == `#` || clean.contains('{') || clean.contains('}')
@@ -7476,6 +8259,12 @@ fn (mut g FlatGen) collect_preserved_c_fns(names []string) {
 fn (mut g FlatGen) collect_preserved_c_structs(names []string) {
 	for name in names {
 		g.inlined_c_structs[name] = true
+	}
+}
+
+fn (mut g FlatGen) collect_preserved_c_typedef_names(names []string) {
+	for name in names {
+		g.inlined_c_typedef_names[name] = true
 	}
 }
 
@@ -8206,8 +8995,8 @@ fn c_native_source_context_state(directives []string, flags []string, c99_mode b
 			name := c_directive_name(clean)
 			if name in ['ifdef', 'ifndef'] {
 				macro_name := c_directive_arg(clean).fields()[0] or { '' }
-				known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined,
-					uncertain, strict_iso_mode, target)
+				known, mut active := c_preprocessor_ifdef_macro_state(macro_name, defined,
+					undefined, uncertain, external_macros_possible, strict_iso_mode, target)
 				if name == 'ifndef' {
 					active = !active
 				}
@@ -8452,8 +9241,8 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 	if macro_name.len == 0 || c_header_struct_tag(macro_name) != macro_name {
 		return false, true
 	}
-	known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined, uncertain,
-		strict_iso_mode, target)
+	known, mut active := c_preprocessor_ifdef_macro_state(macro_name, defined, undefined,
+		uncertain, external_macros_possible, strict_iso_mode, target)
 	if negated {
 		active = !active
 	}
@@ -16526,6 +17315,18 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define false 0')
 	g.writeln('#endif')
 	g.writeln('#define _S(s) ((string){.str=(u8*)("" s), .len=(sizeof(s)-1), .is_lit=1})')
+	g.writeln('#if !defined(VNORETURN)')
+	g.writeln('#if defined(__TINYC__)')
+	g.writeln('#define VNORETURN __attribute__((noreturn))')
+	g.writeln('#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L')
+	g.writeln('#define VNORETURN _Noreturn')
+	g.writeln('#elif defined(__GNUC__) && __GNUC__ >= 2')
+	g.writeln('#define VNORETURN __attribute__((noreturn))')
+	g.writeln('#endif')
+	g.writeln('#ifndef VNORETURN')
+	g.writeln('#define VNORETURN')
+	g.writeln('#endif')
+	g.writeln('#endif')
 	if use_system_libc {
 		g.writeln('typedef ptrdiff_t isize;')
 		g.writeln('typedef size_t usize;')
@@ -16535,17 +17336,11 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('#ifndef VCALLCONV')
 		g.writeln('#define VCALLCONV(x)')
 		g.writeln('#endif')
-		g.writeln('#if !defined(VNORETURN)')
-		g.writeln('#if defined(__TINYC__)')
-		g.writeln('#define VNORETURN __attribute__((noreturn))')
-		g.writeln('#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L')
-		g.writeln('#define VNORETURN _Noreturn')
-		g.writeln('#elif defined(__GNUC__) && __GNUC__ >= 2')
-		g.writeln('#define VNORETURN __attribute__((noreturn))')
-		g.writeln('#endif')
-		g.writeln('#ifndef VNORETURN')
-		g.writeln('#define VNORETURN')
-		g.writeln('#endif')
+		// TCC does not predefine __GLIBC__. Let glibc's feature header identify the
+		// active libc before V1's compatible manual stdio declarations choose between
+		// the glibc and musl stream qualifiers.
+		g.writeln('#if defined(__linux__) && !defined(__ANDROID__)')
+		g.writeln('#include <features.h>')
 		g.writeln('#endif')
 		g.write(manual_stdlib_c_headers())
 		g.writeln('void abort(void);')
@@ -16579,6 +17374,14 @@ fn (mut g FlatGen) preamble() {
 }
 
 fn (g &FlatGen) c_directives_use_system_libc() bool {
+	for directive in g.preinclude_directives {
+		for line in directive.split_into_lines() {
+			clean := trimmed_space(line)
+			if c_directive_name(clean) in ['include', 'import'] && c_directive_arg(clean).len > 0 {
+				return true
+			}
+		}
+	}
 	for directive in g.c_directives {
 		for line in directive.text.split_into_lines() {
 			clean := trimmed_space(line)
@@ -16609,6 +17412,9 @@ fn (mut g FlatGen) system_libc_headers() {
 		'wchar.h'] {
 		g.writeln('#include <${header}>')
 	}
+	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
+	g.writeln('#include <sys/syscall.h>')
+	g.writeln('#endif')
 	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)')
 	g.writeln('#include <sys/event.h>')
 	g.writeln('#endif')
@@ -16815,6 +17621,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int strcmp(const char* s1, const char* s2);')
 	g.writeln('int strncmp(const char* s1, const char* s2, size_t n);')
 	g.writeln('char* strncpy(char* dest, const char* src, size_t n);')
+	g.writeln('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));')
 	g.writeln('double floor(double x);')
 	g.writeln('double ceil(double x);')
 	g.writeln('float floorf(float x);')
@@ -17183,6 +17990,7 @@ const c_headerless_libc_declared_fns = [
 	'__errno',
 	'__errno_location',
 	'_errno',
+	'mach_timebase_info',
 	'ptrace',
 	'sigaddset',
 	'sigprocmask',
@@ -17208,6 +18016,7 @@ const c_headerless_libc_declared_fns = [
 	'clock',
 	'fprintf',
 	'fflush',
+	'qsort',
 	'qsort_r',
 ]
 
@@ -17559,7 +18368,10 @@ fn (mut g FlatGen) headerless_platform_constants() {
 	g.writeln('#define LOCK_EX 2')
 	g.writeln('#define LOCK_NB 4')
 	g.writeln('#define LOCK_UN 8')
+	g.writeln('#define EPERM 1')
 	g.writeln('#define ENOENT 2')
+	g.writeln('#define ESRCH 3')
+	g.writeln('#define EACCES 13')
 	g.writeln('#define RUSAGE_SELF 0')
 	g.writeln('#ifdef __APPLE__')
 	g.headerless_darwin_constants()
@@ -17599,6 +18411,7 @@ fn (mut g FlatGen) headerless_signal_constants() {
 	g.writeln('#define SIGKILL 9')
 	g.writeln('#define SIGTERM 15')
 	g.writeln('#define SIGPIPE 13')
+	g.writeln('#define SIGTTOU 22')
 	g.writeln('#define SIG_IGN ((void*)1)')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#define SIGSTOP 19')
@@ -17741,7 +18554,6 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.writeln('#define F_RDLCK 1')
 	g.writeln('#define F_UNLCK 2')
 	g.writeln('#define F_WRLCK 3')
-	g.writeln('#define EACCES 13')
 	g.writeln('#define EFAULT 14')
 	g.writeln('#define EINTR 4')
 	g.writeln('#define EINVAL 22')
@@ -17862,7 +18674,6 @@ fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_
 	g.writeln('#define F_RDLCK 1')
 	g.writeln('#define F_UNLCK 2')
 	g.writeln('#define F_WRLCK 3')
-	g.writeln('#define EACCES 13')
 	g.writeln('#define EFAULT 14')
 	g.writeln('#define EINTR 4')
 	g.writeln('#define EINVAL 22')
@@ -18898,6 +19709,29 @@ fn (mut g FlatGen) atomic_builtin_compat_decls() {
 	g.writeln('#endif')
 }
 
+fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
+	g.writeln('#ifndef memory_order_relaxed')
+	g.writeln('#define memory_order_relaxed 0')
+	g.writeln('#define memory_order_acquire 2')
+	g.writeln('#define memory_order_release 3')
+	g.writeln('#define memory_order_acq_rel 4')
+	g.writeln('#define memory_order_seq_cst 5')
+	g.writeln('#endif')
+	// tcc has no `__atomic_thread_fence` builtin. On the architectures where
+	// thirdparty/stdatomic/nix/atomic.S provides `_V_atomic_thread_fence`, route to
+	// that shim; on x86_64 Unix TCC's <stdatomic.h> already declares
+	// `atomic_thread_fence` and maps `__atomic_thread_fence` to it. Redeclaring the
+	// mapped name with `int` conflicts with TCC's `memory_order` enum parameter.
+	// clang/gcc keep the builtin.
+	g.writeln('#if defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(_WIN32)))')
+	g.writeln('extern void _V_atomic_thread_fence(int order);')
+	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
+	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
+	g.writeln('#else')
+	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
+	g.writeln('#endif')
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -18921,27 +19755,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#ifndef V_COMMIT_HASH')
 	g.writeln('#define V_COMMIT_HASH ""')
 	g.writeln('#endif')
-	g.writeln('#ifndef memory_order_relaxed')
-	g.writeln('#define memory_order_relaxed 0')
-	g.writeln('#define memory_order_acquire 2')
-	g.writeln('#define memory_order_release 3')
-	g.writeln('#define memory_order_acq_rel 4')
-	g.writeln('#define memory_order_seq_cst 5')
-	g.writeln('#endif')
-	// tcc has no `__atomic_thread_fence` builtin. On the architectures where
-	// thirdparty/stdatomic/nix/atomic.S provides `_V_atomic_thread_fence`, route to
-	// that shim; on x86_64 Unix the assembly file provides `__atomic_thread_fence`
-	// directly, so keep the normal name there. clang/gcc keep the builtin.
-	g.writeln('#if defined(__TINYC__) && (defined(__i386__) || defined(__arm__) || defined(__aarch64__) || defined(__riscv) || (defined(__x86_64__) && defined(_WIN32)))')
-	g.writeln('extern void _V_atomic_thread_fence(int order);')
-	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
-	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
-	g.writeln('#else')
-	g.writeln('#if defined(__TINYC__) && defined(__x86_64__) && !defined(_WIN32)')
-	g.writeln('extern void __atomic_thread_fence(int order);')
-	g.writeln('#endif')
-	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
-	g.writeln('#endif')
+	g.atomic_thread_fence_compat_decls()
 	// Weak fallbacks for the heap-tracking hooks. A program that provides real
 	// implementations (e.g. a `vheap_alloc`/`vheap_free` from a linked C file, as
 	// some projects do) overrides these without a redefinition/static-vs-non-static
@@ -20774,6 +21588,9 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		type_id := g.ierror_type_id_for_pattern('MessageError')
 		object_name := '${qname}__object'
 		message := '{"error", 5, 1}'
+		// File-scope initializers need brace lists rather than compound-literal
+		// casts: GCC rejects the latter as non-constant when cached modules are
+		// linked separately.
 		g.writeln('MessageError ${object_name} = {.msg = ${message}};')
 		g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
 		g.tc.cur_module = old_module

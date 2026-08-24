@@ -68,17 +68,17 @@ fn test_merge_worker_shifts_private_specialization_metadata() {
 	base_nodes := master.a.nodes.len
 	base_children := master.a.children.len
 
-	worker_ast := master.clone_ast_base(base_nodes, base_children)
-	worker_tc := tc.fork_for_parallel_transform(worker_ast)
+	mut worker_ast := master.clone_ast_base(base_nodes, base_children)
+	mut worker_tc := tc.fork_for_parallel_transform(worker_ast)
 	mut worker := master.fork_worker(worker_ast, worker_tc)
 	assert worker.a.specialized_fn_modules[int(base_id)] == 'base_module'
-	worker_id := worker.a.add_node(flat.Node{
+	worker_id := worker_ast.add_node(flat.Node{
 		kind:  .fn_decl
 		value: 'worker_specialization'
 	})
-	worker.a.specialized_fn_nodes[int(worker_id)] = true
-	worker.a.specialized_fn_modules[int(worker_id)] = 'worker_module'
-	worker.a.specialized_fn_files[int(worker_id)] = 'worker.v'
+	worker_ast.specialized_fn_nodes[int(worker_id)] = true
+	worker_ast.specialized_fn_modules[int(worker_id)] = 'worker_module'
+	worker_ast.specialized_fn_files[int(worker_id)] = 'worker.v'
 	assert int(worker_id) == base_nodes
 	assert int(worker_id) !in master.a.specialized_fn_nodes
 
@@ -103,7 +103,7 @@ fn test_merge_worker_signatures_updates_checker_method_suffix_index() {
 	mut tc := types.TypeChecker.new(&a)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
 
-	worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
+	mut worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
 	mut worker_tc := tc.fork_for_parallel_transform(worker_ast)
 	worker_tc.ensure_private_transform_signatures()
 	worker_tc.fn_ret_types['widgets.Box.open'] = types.Type(types.bool_)
@@ -134,7 +134,7 @@ fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	}
 	tc.structs['main.Base'] = []types.StructField{}
 
-	worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
+	mut worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
 	worker_tc := tc.fork_for_parallel_transform(worker_ast)
 	worker := master.fork_worker(worker_ast, worker_tc)
 	master.mark_parallel_worker_maps_shared()
@@ -175,8 +175,8 @@ fn test_transform_worker_records_struct_operators_in_private_map() {
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
 	master.used_struct_operator_fns['main.Box.+'] = true
 
-	worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
-	worker_tc := tc.fork_for_parallel_transform(worker_ast)
+	mut worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
+	mut worker_tc := tc.fork_for_parallel_transform(worker_ast)
 	mut worker := master.fork_worker(worker_ast, worker_tc)
 	worker.mark_struct_operator_used_name('main.Point.==')
 

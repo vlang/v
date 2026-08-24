@@ -14,9 +14,25 @@ see also `v help build`.
       `clang`, `gcc`, `tcc` (also accepted as `tinyc`), `mingw-w64` and `msvc`.
 
    -old-compiler
-      On macOS, bypass the V3 compiler dispatcher and compile with the established
-      compiler in vlib/v. This is useful as a temporary compatibility workaround
-      when an eligible build behaves differently under V3.
+      On macOS and Linux the experimental V3 compiler (vlib/v3) is the default;
+      `-old-compiler` bypasses it and compiles with the established compiler in
+      vlib/v. V already falls back to this compiler automatically when V3 cannot
+      build an eligible program, and (unless V_C_ERROR_BUG_REPORT_DISABLED=1 is
+      set) normally reports the failure to https://bugs.vlang.io so the gap can
+      be fixed: the V version, target and build options, plus a bounded snippet
+      of the failing V source when one is available (always a strict subset,
+      never the whole file). An internal V3 error on a short program or a
+      directory build such as `v .` submits metadata only. If the input selected
+      for a source excerpt changes after V3 parses it, that report also submits
+      metadata only, rather than source V3 did not parse. Before submitting, the
+      stable compiler verifies that it parsed the same bytes for every captured
+      project input; otherwise no fallback report is submitted. An unchanged input
+      mapped from a generated-C error can still include a strict-subset excerpt.
+      Inline-assembly fallbacks and reports that cannot fit safely through the
+      retry environment are notice-only; test compilations and GitHub CI also
+      submit no report to the default endpoint. An explicitly configured custom
+      bug report URL remains active in CI. See `v help build` for the full
+      description of the default.
 
    -cflags <flag>
       Pass the provided flag as is to the C compiler.
@@ -350,7 +366,8 @@ see also `v help build`.
       Useful with `v bug-report --host localhost --port 8080` for local testing.
       The report includes both the failing generated C line and the V source line
       that produced it (V code is regenerated with `#line` info if needed to map it).
-      Automatic reports to bugs.vlang.io are skipped when running in GitHub CI.
+      Automatic reports to bugs.vlang.io are skipped when running in GitHub CI;
+      an explicitly configured custom endpoint remains active.
       Set V_C_ERROR_BUG_REPORT_DISABLED=1 to disable automatic report submission.
 
    -dump-c-flags file.txt
