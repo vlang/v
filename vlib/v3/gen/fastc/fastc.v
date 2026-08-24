@@ -290,6 +290,7 @@ struct Parser {
 	declared_kinds      map[string]FastcDeclaredTypeKind
 	struct_fields       map[string]map[string]string
 	constants           map[string]string
+	public_constants    map[string]bool
 	globals             map[string]string
 	used_function_names map[string]bool
 	selfhost            bool
@@ -356,6 +357,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
 	mut struct_fields := map[string]map[string]string{}
 	mut constants := map[string]string{}
+	mut public_constants := map[string]bool{}
 	mut globals := map[string]string{}
 	for source_file in sources {
 		collect_declared_types(source_file.source, source_file.path,
@@ -363,7 +365,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	}
 	for source_file in sources {
 		collect_constant_names(source_file.source, source_file.path,
-			source_file.header.module_name, prefs, mut constants)!
+			source_file.header.module_name, prefs, mut constants, mut public_constants)!
 		collect_global_names(source_file.source, source_file.path, source_file.header.module_name,
 			prefs, mut globals)!
 	}
@@ -392,11 +394,11 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		declared_kinds, mut struct_fields, mut composite_types)!
 	mut constant_types := map[string]string{}
 	constant_declarations := fastc_generate_constant_declarations(sources, prefs, declared_types,
-		declared_kinds, struct_fields, functions, constants, mut constant_types)!
+		declared_kinds, struct_fields, functions, constants, public_constants, mut constant_types)!
 	mut global_types := map[string]string{}
 	global_output := fastc_generate_global_declarations(sources, prefs, declared_types,
-		declared_kinds, struct_fields, functions, constants, constant_types, globals, mut
-		global_types)!
+		declared_kinds, struct_fields, functions, constants, public_constants, constant_types,
+		globals, mut global_types)!
 	for constant_type in constant_types.values() {
 		fastc_register_composite_type(constant_type, mut composite_types)
 	}
@@ -419,6 +421,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			declared_kinds:          declared_kinds
 			struct_fields:           struct_fields
 			constants:               constants
+			public_constants:        public_constants
 			globals:                 globals
 			used_function_names:     used_function_names
 			selfhost:                prefs.building_v
@@ -842,16 +845,18 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	}
 }
 
-fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, mut constants map[string]string) ! {
+fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, mut constants map[string]string, mut public_constants map[string]bool) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
+	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && tok == .key_const {
+			is_public := previous_tok == .key_pub
 			tok = scan.scan()
 			if tok == .lpar {
 				tok = scan.scan()
@@ -868,7 +873,8 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 						continue
 					}
 					if nested_depth == 0 && at_declaration_start && tok == .name {
-						fastc_register_constant(module_name, scan.lit, mut constants)
+						fastc_register_constant(module_name, scan.lit, is_public, mut constants, mut
+							public_constants)
 						at_declaration_start = false
 					}
 					if tok in [.lpar, .lsbr, .lcbr] {
@@ -883,7 +889,8 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 			if tok != .name {
 				return error('fastc parser does not support constant declaration in ${path}')
 			}
-			fastc_register_constant(module_name, scan.lit, mut constants)
+			fastc_register_constant(module_name, scan.lit, is_public, mut constants, mut
+				public_constants)
 			continue
 		}
 		if tok == .lcbr {
@@ -891,13 +898,17 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 		} else if tok == .rcbr && brace_depth > 0 {
 			brace_depth--
 		}
+		previous_tok = tok
 		tok = scan.scan()
 	}
 }
 
-fn fastc_register_constant(module_name string, name string, mut constants map[string]string) {
+fn fastc_register_constant(module_name string, name string, is_public bool, mut constants map[string]string, mut public_constants map[string]bool) {
 	key := fastc_constant_key(module_name, name)
 	constants[key] = fastc_c_constant_name(module_name, name)
+	if is_public {
+		public_constants[key] = true
+	}
 }
 
 fn collect_global_names(source string, path string, module_name string, prefs &pref.Preferences, mut globals map[string]string) ! {
@@ -941,7 +952,7 @@ fn collect_global_names(source string, path string, module_name string, prefs &p
 	}
 }
 
-fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, functions map[string]FastcFunctionSignature, constants map[string]string, constant_types map[string]string, globals map[string]string, mut global_types map[string]string) !FastcGlobalDeclarations {
+fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, mut global_types map[string]string) !FastcGlobalDeclarations {
 	mut out := strings.new_builder(1024)
 	mut initializers := strings.new_builder(1024)
 	for source_file in sources {
@@ -949,22 +960,23 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
 		file.index_lines(source_file.source)
 		mut gen := Parser{
-			prefs:          unsafe { prefs }
-			path:           source_file.path
-			module_name:    source_file.header.module_name
-			imports:        source_file.header.imports
-			declared_types: declared_types
-			declared_kinds: declared_kinds
-			struct_fields:  struct_fields
-			constants:      constants
-			globals:        globals
-			selfhost:       prefs.building_v
-			s:              scanner.new_scanner(prefs, .normal)
-			out:            strings.new_builder(0)
-			protos:         strings.new_builder(0)
-			functions:      functions
-			constant_types: constant_types
-			global_types:   global_types
+			prefs:            unsafe { prefs }
+			path:             source_file.path
+			module_name:      source_file.header.module_name
+			imports:          source_file.header.imports
+			declared_types:   declared_types
+			declared_kinds:   declared_kinds
+			struct_fields:    struct_fields
+			constants:        constants
+			public_constants: public_constants
+			globals:          globals
+			selfhost:         prefs.building_v
+			s:                scanner.new_scanner(prefs, .normal)
+			out:              strings.new_builder(0)
+			protos:           strings.new_builder(0)
+			functions:        functions
+			constant_types:   constant_types
+			global_types:     global_types
 		}
 		gen.s.init(file, source_file.source)
 		gen.next()
@@ -1053,27 +1065,28 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 	g.skip_semicolons()
 }
 
-fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, functions map[string]FastcFunctionSignature, constants map[string]string, mut constant_types map[string]string) !string {
+fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, mut constant_types map[string]string) !string {
 	mut out := strings.new_builder(4096)
 	for source_file in sources {
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
 		file.index_lines(source_file.source)
 		mut gen := Parser{
-			prefs:          unsafe { prefs }
-			path:           source_file.path
-			module_name:    source_file.header.module_name
-			imports:        source_file.header.imports
-			declared_types: declared_types
-			declared_kinds: declared_kinds
-			struct_fields:  struct_fields
-			constants:      constants
-			selfhost:       prefs.building_v
-			s:              scanner.new_scanner(prefs, .normal)
-			out:            strings.new_builder(256)
-			protos:         strings.new_builder(0)
-			functions:      functions
-			constant_types: constant_types
+			prefs:            unsafe { prefs }
+			path:             source_file.path
+			module_name:      source_file.header.module_name
+			imports:          source_file.header.imports
+			declared_types:   declared_types
+			declared_kinds:   declared_kinds
+			struct_fields:    struct_fields
+			constants:        constants
+			public_constants: public_constants
+			selfhost:         prefs.building_v
+			s:                scanner.new_scanner(prefs, .normal)
+			out:              strings.new_builder(256)
+			protos:           strings.new_builder(0)
+			functions:        functions
+			constant_types:   constant_types
 		}
 		gen.s.init(file, source_file.source)
 		gen.next()
@@ -3892,6 +3905,7 @@ fn (mut g Parser) parse_for() !bool {
 			g.next()
 			start := g.read_expression([token.Token.dotdot, token.Token.lcbr])!
 			start_expression_type := g.last_expression_type
+			start_expression := g.last_expression.clone()
 			if g.tok == .dotdot {
 				if item_is_mut || value_name != '' {
 					return g.unsupported('mutable or two-value range loop')
@@ -3899,9 +3913,17 @@ fn (mut g Parser) parse_for() !bool {
 				g.next()
 				end := g.read_expression([token.Token.lcbr])!
 				end_expression_type := g.last_expression_type
+				end_expression := g.last_expression.clone()
 				if !fastc_is_integer_expression_type(start_expression_type)
 					|| !fastc_is_integer_expression_type(end_expression_type) {
 					return g.unsupported('range bounds of types `${start_expression_type}` and `${end_expression_type}` must both be integers')
+				}
+				if start_value := fastc_integer_literal_value(start_expression) {
+					if end_value := fastc_integer_literal_value(end_expression) {
+						if start_value >= end_value {
+							return g.unsupported('empty range: `${start_expression[0].lit} .. ${end_expression[0].lit}` will never execute')
+						}
+					}
 				}
 				g.expect(.lcbr)!
 				start_name := g.temporary_name('range_start')
@@ -4015,6 +4037,7 @@ fn (mut g Parser) parse_for() !bool {
 		}
 		if g.tok in [.decl_assign, .assign] {
 			is_declaration := g.tok == .decl_assign
+			mut assignment_type := ''
 			if is_declaration && name in g.locals {
 				return g.unsupported('redeclaration of `${name}`')
 			}
@@ -4025,9 +4048,15 @@ fn (mut g Parser) parse_for() !bool {
 				if !local.is_mut {
 					return g.unsupported('assignment to immutable loop variable `${name}`')
 				}
+				assignment_type = if local.is_reference {
+					local.typ.trim_right('*')
+				} else {
+					local.typ
+				}
 			}
 			g.next()
 			initial := g.read_expression([token.Token.semicolon])!
+			initial_expression_type := g.last_expression_type
 			initial_type := fastc_normalize_inferred_type(g.last_expression_type)
 			g.expect(.semicolon)!
 			if is_declaration {
@@ -4035,6 +4064,12 @@ fn (mut g Parser) parse_for() !bool {
 					is_mut: true
 					typ:    initial_type
 				}
+			} else if initial_expression_type == '' || assignment_type == '' {
+				return g.unsupported('unverifiable assignment type for `${name}`')
+			} else if !fastc_call_types_are_compatible(initial_expression_type, assignment_type)
+				&& !(g.selfhost
+				&& g.selfhost_types_are_compatible(initial_expression_type, assignment_type)) {
+				return g.unsupported('assignment of type `${initial_expression_type}` to `${name}` of type `${assignment_type}`')
 			}
 			condition := g.read_expression([token.Token.semicolon])!
 			g.require_boolean_condition('for')!
@@ -5213,7 +5248,13 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 		module_separator := g.tok == .dot && previous_token == .name && (previous_lit in g.imports
 			|| previous_lit == 'C' || (g.selfhost && previous_lit !in g.locals
 			&& g.is_enum_type_name(previous_lit)))
-		mut piece := g.expression_token(previous_token, previous_lit)!
+		qualified_name_owner := if g.tok == .name && previous_token == .dot
+			&& expression_tokens.len >= 3 {
+			expression_tokens[expression_tokens.len - 3].lit
+		} else {
+			''
+		}
+		mut piece := g.expression_token(previous_token, previous_lit, qualified_name_owner)!
 		if g.tok == .name && previous_token == .dot {
 			mut method_lookahead := g.s
 			if method_lookahead.scan() == .lpar {
@@ -8892,10 +8933,10 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 	return result
 }
 
-fn (g &Parser) expression_token(previous token.Token, previous_lit string) !string {
+fn (g &Parser) expression_token(previous token.Token, previous_lit string, qualified_name_owner string) !string {
 	return match g.tok {
 		.name {
-			g.expression_name(previous)!
+			g.expression_name(previous, qualified_name_owner)!
 		}
 		.number {
 			if g.selfhost {
@@ -8978,7 +9019,15 @@ fn (g &Parser) nil_expression() !string {
 	return 'NULL'
 }
 
-fn (g &Parser) expression_name(previous token.Token) !string {
+fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string) !string {
+	if previous == .dot {
+		if imported_module := g.imports[qualified_name_owner] {
+			constant_key := fastc_constant_key(imported_module, g.lit)
+			if constant_key in g.constants && constant_key !in g.public_constants {
+				return g.unsupported('private constant `${g.lit}` from imported module `${imported_module}`')
+			}
+		}
+	}
 	g.validate_expression_name(g.lit, previous)!
 	return g.resolved_expression_name(g.lit, previous)
 }
@@ -9942,6 +9991,14 @@ fn fastc_number_expression_type(literal string) string {
 		return 'negative integer literal'
 	}
 	return 'integer literal'
+}
+
+fn fastc_integer_literal_value(tokens []FastcExpressionToken) ?i64 {
+	if tokens.len != 1 || tokens[0].tok != .number
+		|| fastc_number_expression_type(tokens[0].lit) != 'integer literal' {
+		return none
+	}
+	return tokens[0].lit.replace('_', '').i64()
 }
 
 fn fastc_common_arithmetic_type(left string, right string) string {
