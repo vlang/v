@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 45
     name: Build on ubuntu-22.04 s390x
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: uraimo/run-on-arch-action@v3
         name: Run commands
         id: runcmd
