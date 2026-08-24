@@ -1264,6 +1264,19 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && tok == .dollar {
+			mut lookahead := scan
+			if lookahead.scan() == .key_if {
+				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
+				if selected.source != '' {
+					collect_constant_names(selected.source, path, module_name, prefs, mut
+						constants, mut public_constants)!
+				}
+				tok = selected.tok
+				previous_tok = .unknown
+				continue
+			}
+		}
 		if brace_depth == 0 && tok == .key_const {
 			is_public := previous_tok == .key_pub
 			tok = scan.scan()
@@ -1601,17 +1614,7 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 		}
 		gen.s.init(file, source_file.source)
 		gen.next()
-		for gen.tok != .eof {
-			if gen.tok == .key_const {
-				gen.parse_constant_declaration(mut values)!
-				continue
-			}
-			if gen.tok == .lcbr {
-				gen.skip_balanced(.lcbr, .rcbr)!
-				continue
-			}
-			gen.next()
-		}
+		gen.parse_selected_constant_declarations(mut values, false)!
 		if gen.s.diagnostics.len > 0 {
 			diagnostic := gen.s.diagnostics[0]
 			return error('fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}')
@@ -1682,6 +1685,67 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 		declarations:        declarations.str()
 		module_initializers: module_initializers
 		compile_time_values: compile_time_values
+	}
+}
+
+fn (mut g Parser) parse_selected_constant_declarations(mut values []FastcConstantValue, stop_at_block_end bool) ! {
+	for g.tok != .eof {
+		g.skip_semicolons()
+		if stop_at_block_end && g.tok == .rcbr {
+			g.next()
+			g.skip_semicolons()
+			return
+		}
+		if g.tok == .eof {
+			break
+		}
+		if g.tok == .dollar {
+			g.parse_selected_comptime_constant_declarations(mut values)!
+			continue
+		}
+		if g.tok == .key_const {
+			g.parse_constant_declaration(mut values)!
+			continue
+		}
+		if g.tok == .lcbr {
+			g.skip_balanced(.lcbr, .rcbr)!
+			continue
+		}
+		g.next()
+	}
+	if stop_at_block_end {
+		return g.unsupported('unfinished top-level compile-time constant block')
+	}
+}
+
+fn (mut g Parser) parse_selected_comptime_constant_declarations(mut values []FastcConstantValue) ! {
+	g.expect(.dollar)!
+	g.expect(.key_if)!
+	condition := g.parse_comptime_or()!
+	g.expect(.lcbr)!
+	if condition {
+		g.parse_selected_constant_declarations(mut values, true)!
+	} else {
+		g.skip_open_block()!
+	}
+	if g.tok != .dollar || !g.dollar_keyword_is('else') {
+		return
+	}
+	g.next()
+	g.expect(.key_else)!
+	if g.tok == .dollar {
+		if condition {
+			g.skip_comptime_if_chain()!
+		} else {
+			g.parse_selected_comptime_constant_declarations(mut values)!
+		}
+		return
+	}
+	g.expect(.lcbr)!
+	if condition {
+		g.skip_open_block()!
+	} else {
+		g.parse_selected_constant_declarations(mut values, true)!
 	}
 }
 
@@ -2298,6 +2362,9 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 		field_names << field_name
 		tok = scan.scan()
 		if tok == .assign {
+			if is_flag {
+				return error('fastc parser does not support custom value for flag enum field `${name}.${field_name}` in ${source_file.path}')
+			}
 			value_tokens, next_token := fastc_scan_enum_value_tokens(mut scan, scan.scan())!
 			tok = next_token
 			if literal_value := fastc_enum_integer_literal(value_tokens) {
@@ -11052,6 +11119,17 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			}
 		} else if has_method_receiver && name in ['has', 'set', 'clear'] && call_args.len == 1
 			&& g.flag_enum_type_key(receiver_type) != none {
+			receiver_enum_key := g.flag_enum_type_key(receiver_type) or { '' }
+			argument_tokens := fastc_expression_tokens_with_enum_shorthand_type(call_args[0],
+				fastc_c_declared_type_name(receiver_enum_key))
+			argument_type :=
+				fastc_normalize_inferred_type(g.infer_expression_type(argument_tokens)!)
+			argument_enum_key := g.underlying_enum_type_key(g.semantic_type_key(argument_type)) or {
+				return g.unsupported('flag method `${name}` argument of type `${argument_type}` does not match receiver type `${receiver_type}`')
+			}
+			if argument_enum_key != receiver_enum_key {
+				return g.unsupported('flag method `${name}` argument of type `${argument_type}` does not match receiver type `${receiver_type}`')
+			}
 			if name in ['set', 'clear'] {
 				receiver_start := fastc_method_receiver_start(tokens, i - 1)
 				g.validate_mutating_method_receiver(tokens[receiver_start..i - 1], name)!
@@ -11338,6 +11416,20 @@ fn fastc_expression_is_c_qualified_name(tokens []FastcExpressionToken) bool {
 
 fn fastc_expression_is_enum_shorthand(tokens []FastcExpressionToken) bool {
 	return tokens.len == 2 && tokens[0].tok == .dot && tokens[1].tok == .name
+}
+
+fn fastc_expression_tokens_with_enum_shorthand_type(tokens []FastcExpressionToken, enum_type string) []FastcExpressionToken {
+	mut result := tokens.clone()
+	if result.len < 2 {
+		return result
+	}
+	for i in 0 .. result.len - 1 {
+		if result[i].tok == .dot && result[i + 1].tok == .name
+			&& fastc_token_is_prefix_operator(result, i) {
+			result[i + 1].typ = enum_type
+		}
+	}
+	return result
 }
 
 fn fastc_top_level_mutation_index(tokens []FastcExpressionToken) ?int {

@@ -1053,6 +1053,30 @@ fn main() {
 	assert c_source.contains('__typeof__(((Choice){.value=(42)})) choice'), c_source
 }
 
+fn test_selected_top_level_comptime_constants_are_collected_and_emitted() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.target = pref.target_from('linux', pref.host_arch()) or { panic(err) }
+	c_source := generate('module main
+
+$if windows {
+	const answer = "wrong"
+} $else $if linux {
+	const answer = 42
+} $else {
+	const answer = false
+}
+
+fn main() {
+	println(answer)
+}
+',
+		'top_level_comptime_constant.v', prefs) or { panic(err) }
+	assert c_source.contains('#define main__answer (42)'), c_source
+	assert c_source.contains('println(main__answer);'), c_source
+	assert !c_source.contains('wrong'), c_source
+}
+
 fn test_initialized_global_value_is_emitted() {
 	mut prefs := pref.new_preferences()
 	prefs.enable_globals = true
@@ -1524,6 +1548,25 @@ fn main() {}
 	assert message.contains('duplicate enum field `Item.value`'), message
 }
 
+fn test_flag_enum_custom_values_are_rejected() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main
+
+@[flag]
+enum Permissions {
+	read = 4
+}
+
+fn main() {}
+',
+		'flag_enum_custom_value.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('custom value for flag enum field `Permissions.read`'), message
+}
+
 fn test_flag_mutating_methods_require_mutable_receivers() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -1616,6 +1659,38 @@ fn main() {
 		'mutable_flag_receiver.v', prefs) or { panic(err) }
 	assert c_source.contains('flags) |= (Permissions__write)'), c_source
 	assert c_source.contains('flags) &= ~(Permissions__read)'), c_source
+}
+
+fn test_flag_methods_require_matching_enum_arguments() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for call in ['flags.set(1)', 'flags.has(Other.write)', 'flags.clear(Other.write)'] {
+		mut message := ''
+		_ := generate('module main
+
+@[flag]
+enum Permissions {
+	read
+	write
+}
+
+@[flag]
+enum Other {
+	read
+	write
+}
+
+fn main() {
+	mut flags := Permissions.read
+	${call}
+}
+',
+			'flag_enum_argument.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('does not match receiver type `Permissions`'), '${call}: ${message}'
+	}
 }
 
 fn test_large_flag_enums_use_unsigned_64_bit_values() {
