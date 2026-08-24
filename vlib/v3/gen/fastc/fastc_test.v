@@ -2774,6 +2774,26 @@ fn main() {
 	assert !c_source.contains('text.str[index]'), c_source
 }
 
+fn test_selfhost_array_slices_use_the_runtime_helper() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn middle(values []int, start int, end int) []int {
+	return values[start..end]
+}
+
+fn main() {
+	values := []int{}
+	result := middle(values, 0, 0)
+	println(result.len)
+}
+',
+		'array_slice.v', prefs) or { panic(err) }
+	assert c_source.contains('return builtin__array_slice(values, start, end);'), c_source
+	assert !c_source.contains('__v_slice.flags |= ArrayFlags__is_slice'), c_source
+}
+
 fn test_range_bounds_must_be_integers() {
 	prefs := pref.new_preferences()
 	for source in [

@@ -3277,6 +3277,7 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		'push':                   true
 		'push_many':              true
 		'array_slice':            true
+		'slice':                  true
 		'at':                     true
 		'keys':                   true
 		'get':                    true
@@ -10126,7 +10127,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 		array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
 		return FastcRenderedExpression{
-			source: '({ array __v_slice = (${array_value}); int __v_start = (${start}); int __v_end = (${end}); __v_slice.data = (byteptr)__v_slice.data + __v_start * __v_slice.element_size; __v_slice.offset += __v_start * __v_slice.element_size; __v_slice.len = __v_end - __v_start; __v_slice.cap = __v_slice.len; __v_slice.flags |= ArrayFlags__is_slice; __v_slice; })'
+			source: 'builtin__array_slice(${array_value}, ${start}, ${end})'
 			typ:    base_type.trim_right('*')
 		}
 	}
@@ -11097,8 +11098,7 @@ fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken
 	}
 	global_key := fastc_global_key(g.module_name, root_name)
 	if local := g.locals[root_name] {
-		unsafe_pointer := receiver[0].unsafe_depth > 0 && fastc_is_pointer_type(local.typ)
-		if !local.is_mut && !unsafe_pointer {
+		if !local.is_mut && receiver[0].unsafe_depth == 0 {
 			return g.unsupported('mutating method `${method_name}` receiver `${root_name}` is immutable')
 		}
 	} else if global_key !in g.globals {
