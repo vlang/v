@@ -542,6 +542,36 @@ fn main() {
 	assert c_source.contains('enabled compound condition')
 }
 
+fn test_selected_top_level_comptime_function_signatures_are_collected() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.target = pref.target_from('linux', pref.host_arch()) or { panic(err) }
+	c_source := generate('module main
+
+$if windows {
+	fn platform() string {
+		return "wrong"
+	}
+} $else $if linux {
+	fn platform() int {
+		return 42
+	}
+} $else {
+	fn platform() bool {
+		return false
+	}
+}
+
+fn main() {
+	println(platform())
+}
+',
+		'top_level_comptime_function.v', prefs) or { panic(err) }
+	assert c_source.contains('int platform(void)'), c_source
+	assert c_source.contains('println(platform());'), c_source
+	assert !c_source.contains('return "wrong";'), c_source
+}
+
 fn test_initialized_global_value_is_emitted() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main
@@ -564,14 +594,20 @@ fn test_script_main_initializes_globals_before_statements() {
 
 __global answer = 42
 
+fn init() {
+	answer = 43
+}
+
 println(answer)
 ',
 		'initialized_script_global.v', prefs) or { panic(err) }
 	main_source := c_source.all_after('int main(void) {')
 	initializer := main_source.index('v_fastc_init_globals();') or { -1 }
+	module_initializer := main_source.index('\n\tinit();') or { -1 }
 	statement := main_source.index('println(answer);') or { -1 }
 	assert initializer >= 0, c_source
-	assert statement > initializer, c_source
+	assert module_initializer > initializer, c_source
+	assert statement > module_initializer, c_source
 }
 
 fn test_runtime_constants_are_materialized_exactly_once() {
@@ -706,6 +742,84 @@ pub fn current() int {
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output.trim_space() == '42'
+}
+
+fn test_module_initializers_run_in_dependency_order_before_main() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_module_init_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'dep')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	dep_file := os.join_path(root, 'dep', 'dep.v')
+	os.write_file(main_file, 'module main
+
+import dep
+
+__global observed = 0
+
+fn init() {
+	observed = dep.value() + 1
+}
+
+fn main() {
+	println(observed)
+}
+') or {
+		panic(err)
+	}
+	os.write_file(dep_file, 'module dep
+
+__global state = 1
+
+fn init() {
+	state = 41
+}
+
+pub fn value() int {
+	return state
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	main_source := c_source.all_after('int main(void) {')
+	global_initializer := main_source.index('v_fastc_init_globals();') or { -1 }
+	dependency_init := main_source.index('\tdep__init();') or { -1 }
+	entry_init := main_source.index('\n\tinit();') or { -1 }
+	main_statement := main_source.index('println(observed);') or { -1 }
+	assert global_initializer >= 0, c_source
+	assert dependency_init > global_initializer, c_source
+	assert entry_init > dependency_init, c_source
+	assert main_statement > entry_init, c_source
+
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == '42'
+}
+
+fn test_module_initializer_signatures_are_validated() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn init(value int) {}\nfn main() {}\n',
+		'module main\nfn init() int { return 1 }\nfn main() {}\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'invalid_module_init.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('module `init` with parameters or a return value'), message
+	}
 }
 
 fn test_negative_enum_discriminants_are_preserved() {
@@ -1332,6 +1446,18 @@ fn main() {
 ',
 		'valid_loop_initializer.v', prefs) or { panic(err) }
 	assert c_source.contains('for (enabled = (((bool)true)); enabled; enabled=((bool)false)) {'), c_source
+
+	mut selfhost_prefs := pref.new_preferences()
+	selfhost_prefs.building_v = true
+	empty_initializer_source := generate('module main
+
+fn main() {
+	mut i := 0
+	for ; i < 2; i++ {}
+}
+',
+		'empty_loop_initializer.v', selfhost_prefs) or { panic(err) }
+	assert empty_initializer_source.contains('for (; i<2; i++) {'), empty_initializer_source
 }
 
 fn test_negative_integer_literals_are_rejected_for_unsigned_targets() {

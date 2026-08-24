@@ -310,6 +310,16 @@ struct FastcConstantValue {
 	is_runtime   bool
 }
 
+struct FastcComptimeCondition {
+	value bool
+	tok   token.Token
+}
+
+struct FastcComptimeBlock {
+	source string
+	tok    token.Token
+}
+
 struct Parser {
 	prefs               &pref.Preferences
 	path                string
@@ -323,6 +333,7 @@ struct Parser {
 	public_constants    map[string]bool
 	globals             map[string]string
 	used_function_names map[string]bool
+	module_init_calls   []string
 	selfhost            bool
 	has_runtime_inits   bool
 mut:
@@ -409,6 +420,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			source_file.header, prefs, declared_types, mut functions, mut interface_methods)!
 	}
 	used_function_names := fastc_collect_referenced_function_names(sources, prefs, functions)
+	module_init_calls := fastc_module_init_calls(sources, functions)!
 	mut composite_types := map[string]bool{}
 	if prefs.building_v {
 		// The OS exec helpers build their native argv arrays locally, so this
@@ -461,6 +473,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			public_constants:        public_constants
 			globals:                 globals
 			used_function_names:     used_function_names
+			module_init_calls:       module_init_calls
 			selfhost:                prefs.building_v
 			has_runtime_inits:       runtime_initializers.len > 0
 			s:                       scanner.new_scanner(prefs, .normal)
@@ -723,6 +736,27 @@ fn fastc_sources_in_dependency_order(sources []FastcSourceFile) ![]FastcSourceFi
 		fastc_append_module_sources(module_name, sources, mut visiting, mut visited, mut ordered)!
 	}
 	return ordered
+}
+
+fn fastc_module_init_calls(sources []FastcSourceFile, functions map[string]FastcFunctionSignature) ![]string {
+	ordered_sources := fastc_sources_in_dependency_order(sources)!
+	mut seen_modules := map[string]bool{}
+	mut calls := []string{}
+	for source_file in ordered_sources {
+		module_name := source_file.header.module_name
+		if seen_modules[module_name] {
+			continue
+		}
+		seen_modules[module_name] = true
+		function_key := fastc_function_key(module_name, 'init')
+		if signature := functions[function_key] {
+			if signature.parameter_types.len > 0 || signature.return_type != 'void' {
+				return error('fastc parser does not support module `init` with parameters or a return value in ${signature.path}')
+			}
+			calls << fastc_c_function_name(module_name, 'init')
+		}
+	}
+	return calls
 }
 
 fn fastc_append_module_sources(module_name string, sources []FastcSourceFile, mut visiting []string, mut visited []string, mut ordered []FastcSourceFile) ! {
@@ -2157,6 +2191,197 @@ fn fastc_skip_type_declaration(mut scan scanner.Scanner, first token.Token) !tok
 	return if tok == .semicolon { scan.scan() } else { tok }
 }
 
+fn fastc_scan_comptime_unary(mut scan scanner.Scanner, first token.Token, path string, prefs &pref.Preferences) !FastcComptimeCondition {
+	if first == .not {
+		result := fastc_scan_comptime_unary(mut scan, scan.scan(), path, prefs)!
+		return FastcComptimeCondition{
+			value: !result.value
+			tok:   result.tok
+		}
+	}
+	if first == .lpar {
+		result := fastc_scan_comptime_or(mut scan, scan.scan(), path, prefs)!
+		if result.tok != .rpar {
+			return error('fastc parser does not support compile-time condition in ${path}')
+		}
+		return FastcComptimeCondition{
+			value: result.value
+			tok:   scan.scan()
+		}
+	}
+	if first == .key_true {
+		return FastcComptimeCondition{
+			value: true
+			tok:   scan.scan()
+		}
+	}
+	if first == .key_false {
+		return FastcComptimeCondition{
+			value: false
+			tok:   scan.scan()
+		}
+	}
+	if first != .name {
+		return error('fastc parser does not support compile-time condition `${first.str()}` in ${path}')
+	}
+	name := scan.lit
+	mut tok := scan.scan()
+	is_optional := tok == .question
+	if is_optional {
+		tok = scan.scan()
+	}
+	value := if is_optional {
+		pref.comptime_optional_flag_value(prefs, name)
+	} else {
+		pref.comptime_flag_value(prefs, name)
+	}
+	return FastcComptimeCondition{
+		value: value
+		tok:   tok
+	}
+}
+
+fn fastc_scan_comptime_and(mut scan scanner.Scanner, first token.Token, path string, prefs &pref.Preferences) !FastcComptimeCondition {
+	first_result := fastc_scan_comptime_unary(mut scan, first, path, prefs)!
+	mut value := first_result.value
+	mut tok := first_result.tok
+	for tok == .and {
+		right := fastc_scan_comptime_unary(mut scan, scan.scan(), path, prefs)!
+		value = value && right.value
+		tok = right.tok
+	}
+	return FastcComptimeCondition{
+		value: value
+		tok:   tok
+	}
+}
+
+fn fastc_scan_comptime_or(mut scan scanner.Scanner, first token.Token, path string, prefs &pref.Preferences) !FastcComptimeCondition {
+	first_result := fastc_scan_comptime_and(mut scan, first, path, prefs)!
+	mut value := first_result.value
+	mut tok := first_result.tok
+	for tok == .logical_or {
+		right := fastc_scan_comptime_and(mut scan, scan.scan(), path, prefs)!
+		value = value || right.value
+		tok = right.tok
+	}
+	return FastcComptimeCondition{
+		value: value
+		tok:   tok
+	}
+}
+
+fn fastc_scan_comptime_block(mut scan scanner.Scanner, first token.Token, path string) !FastcComptimeBlock {
+	if first != .lcbr {
+		return error('fastc parser does not support compile-time branch without a block in ${path}')
+	}
+	start := scan.offset
+	mut depth := 1
+	mut tok := scan.scan()
+	for {
+		if tok == .eof {
+			return error('fastc parser does not support unfinished compile-time block in ${path}')
+		}
+		if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+			if depth == 0 {
+				return FastcComptimeBlock{
+					source: scan.src[start..scan.pos]
+					tok:    scan.scan()
+				}
+			}
+		}
+		tok = scan.scan()
+	}
+	return FastcComptimeBlock{}
+}
+
+fn fastc_scan_skip_semicolons(mut scan scanner.Scanner, first token.Token) token.Token {
+	mut tok := first
+	for tok == .semicolon {
+		tok = scan.scan()
+	}
+	return tok
+}
+
+fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Token, path string, prefs &pref.Preferences) !FastcComptimeBlock {
+	mut tok := first
+	mut selected := ''
+	mut branch_selected := false
+	for {
+		if tok != .key_if {
+			return error('fastc parser does not support compile-time branch `${tok.str()}` in ${path}')
+		}
+		condition := fastc_scan_comptime_or(mut scan, scan.scan(), path, prefs)!
+		block := fastc_scan_comptime_block(mut scan, condition.tok, path)!
+		if condition.value && !branch_selected {
+			selected = block.source
+			branch_selected = true
+		}
+		tok = fastc_scan_skip_semicolons(mut scan, block.tok)
+		if tok != .dollar {
+			return FastcComptimeBlock{
+				source: selected
+				tok:    tok
+			}
+		}
+		mut lookahead := scan
+		if lookahead.scan() != .key_else {
+			return FastcComptimeBlock{
+				source: selected
+				tok:    tok
+			}
+		}
+		_ = scan.scan()
+		tok = scan.scan()
+		if tok == .dollar {
+			tok = scan.scan()
+			continue
+		}
+		else_block := fastc_scan_comptime_block(mut scan, tok, path)!
+		if !branch_selected {
+			selected = else_block.source
+		}
+		return FastcComptimeBlock{
+			source: selected
+			tok:    fastc_scan_skip_semicolons(mut scan, else_block.tok)
+		}
+	}
+	return FastcComptimeBlock{}
+}
+
+fn fastc_collect_selected_comptime_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file(path, source.len)
+	file.index_lines(source)
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(file, source)
+	mut brace_depth := 0
+	mut tok := scan.scan()
+	for tok != .eof {
+		if brace_depth == 0 && tok == .dollar {
+			mut lookahead := scan
+			if lookahead.scan() == .key_if {
+				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
+				if selected.source != '' {
+					collect_function_signatures(selected.source, path, header, prefs,
+						declared_types, mut functions)!
+				}
+				tok = selected.tok
+				continue
+			}
+		}
+		if tok == .lcbr {
+			brace_depth++
+		} else if tok == .rcbr && brace_depth > 0 {
+			brace_depth--
+		}
+		tok = scan.scan()
+	}
+}
+
 fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
@@ -2403,6 +2628,8 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		previous_tok = tok
 		tok = scan.scan()
 	}
+	fastc_collect_selected_comptime_function_signatures(source, path, header, prefs,
+		declared_types, mut functions)!
 }
 
 fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pref.Preferences, functions map[string]FastcFunctionSignature) map[string]bool {
@@ -3439,6 +3666,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	}
 	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
 		&& name == 'main'
+	is_module_init := !is_static_method && receiver_type == '' && name == 'init'
 	if is_main {
 		if params.len > 0 {
 			return g.unsupported('main function with parameters')
@@ -3447,6 +3675,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return g.unsupported('main function returning `${return_type}`')
 		}
 	}
+	if is_module_init && (params.len > 0 || return_type != 'void') {
+		return g.unsupported('module `init` with parameters or a return value')
+	}
 	if g.tok == .semicolon {
 		g.next()
 		return
@@ -3454,7 +3685,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	is_fastc_source := name.starts_with('fastc_') || g.path.ends_with('/fastc/fastc.v')
 		|| g.module_name.ends_with('fastc')
 	if g.selfhost && name != 'fastc_collect_referenced_function_names' && !is_fastc_source
-		&& name != 'main' && name !in g.used_function_names && name.len > 0
+		&& name !in ['main', 'init'] && name !in g.used_function_names && name.len > 0
 		&& (name[0].is_letter() || name[0] == `_`) {
 		g.skip_balanced(.lcbr, .rcbr)!
 		return
@@ -3514,6 +3745,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 		if g.has_runtime_inits {
 			g.write_line('v_fastc_init_globals();')
+		}
+		for init_call in g.module_init_calls {
+			g.write_line('${init_call}();')
 		}
 	}
 	previous_in_main := g.in_main
@@ -3633,6 +3867,9 @@ fn (mut g Parser) parse_script() ! {
 	g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
 	if g.has_runtime_inits {
 		g.write_line('v_fastc_init_globals();')
+	}
+	for init_call in g.module_init_calls {
+		g.write_line('${init_call}();')
 	}
 	g.in_main = true
 	g.skip_semicolons()
@@ -4350,6 +4587,23 @@ fn (mut g Parser) parse_for() !bool {
 	if g.tok == .key_mut {
 		item_is_mut = true
 		g.next()
+	}
+	if g.tok == .semicolon {
+		g.next()
+		condition := g.read_condition_expression([token.Token.semicolon])!
+		g.require_boolean_condition('for')!
+		g.expect(.semicolon)!
+		update := g.read_statement_expression([token.Token.lcbr])!
+		if update == '' || !g.last_expression_is_statement() {
+			return g.unsupported('C-style for update expression')
+		}
+		g.expect(.lcbr)!
+		g.write_line('for (; ${condition}; ${update}) {')
+		g.indent++
+		_ = g.parse_loop_block_body()!
+		g.indent--
+		g.write_line('}')
+		return false
 	}
 	if g.tok == .name {
 		name := g.lit
