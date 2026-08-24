@@ -5460,7 +5460,7 @@ fn main() {
 	println(value.str())
 }
 ')
-	assert out == 'alpha'
+	assert out == '&alpha'
 }
 
 fn test_struct_literal_implicit_reference_and_option_or_mut_receiver() {
