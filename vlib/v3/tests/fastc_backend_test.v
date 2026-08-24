@@ -205,6 +205,16 @@ fn deferred_return() int {
 	return 0
 }
 
+fn deferred_value() int {
+	mut value := 1
+	defer { value = 2 }
+	return value
+}
+
+fn change(mut value int) {
+	value = 2
+}
+
 fn main() {
 	if true {
 		defer { println(1) }
@@ -223,6 +233,10 @@ fn main() {
 	}
 	value := deferred_return()
 	println(value)
+	println(deferred_value())
+	mut changed := 1
+	change(mut changed)
+	println(changed)
 	restrict := auto()
 	auto := restrict
 	println(auto)
@@ -235,7 +249,7 @@ fn main() {
 	assert scoped_compile.exit_code == 0, scoped_compile.output
 	scoped_run := cmdexec.run(scoped_binary, [])
 	assert scoped_run.exit_code == 0, scoped_run.output
-	assert scoped_run.output.trim_space() == '2\n1\n0\n1\n7\n5\n4\n6\n42\n3'
+	assert scoped_run.output.trim_space() == '2\n1\n0\n1\n7\n5\n4\n6\n1\n2\n42\n3'
 
 	selfhost_binary := os.join_path(root, 'selfhost')
 	selfhost_compile := cmdexec.run(v3_bin, ['-silent', '-selfhost', '-b', 'fastc', '-o',
@@ -254,6 +268,11 @@ fn main() {
 		'fastc', '-o', selfhost_fixed_options_output, valid_source])
 	assert selfhost_fixed_options.exit_code == 0, selfhost_fixed_options.output
 	for invocation in [
+		UnsupportedFastCInvocation{
+			args:     ['-b', 'fastc', '-o', os.join_path(root, 'multiple_sources'), valid_source,
+				scoped_source]
+			expected: 'accepts only one V source entry file'
+		},
 		UnsupportedFastCInvocation{
 			args:     ['-gc', 'boehm', '-b', 'fastc', valid_source]
 			expected: 'only supports `-gc none`'
@@ -279,9 +298,8 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
-				'no_main.c'),
-				valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
+				os.join_path(root, 'no_main.c'), valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{

@@ -390,6 +390,85 @@ fn main() {
 	assert deferred_one < print_three
 }
 
+fn test_return_expression_is_evaluated_before_deferred_blocks() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn value() int {
+	mut x := 1
+	defer { x = 2 }
+	return x
+}
+
+fn main() {
+	println(value())
+}
+',
+		'return_before_defer.v', prefs) or { panic(err) }
+	evaluation := c_source.index('__typeof__((x)) __v_fastc_return_') or { panic(c_source) }
+	deferred_assignment := c_source.index_after('x=2;', evaluation) or { panic(c_source) }
+	returned_temporary := c_source.index_after('return __v_fastc_return_', deferred_assignment) or {
+		panic(c_source)
+	}
+	assert evaluation < deferred_assignment
+	assert deferred_assignment < returned_temporary
+}
+
+fn test_mutable_function_parameters_require_mutable_arguments() {
+	prefs := pref.new_preferences()
+	mut pointer_message := ''
+	_ := generate('module main
+
+fn change(mut x int) {
+	x = 2
+}
+
+fn main() {
+	x := 1
+	change(&x)
+}
+',
+		'immutable_pointer_argument.v', prefs) or {
+		pointer_message = err.msg()
+		''
+	}
+	assert pointer_message.contains('requires a mutable argument written with `mut`'), pointer_message
+
+	mut immutable_message := ''
+	_ := generate('module main
+
+fn change(mut x int) {
+	x = 2
+}
+
+fn main() {
+	x := 1
+	change(mut x)
+}
+',
+		'immutable_mut_argument.v', prefs) or {
+		immutable_message = err.msg()
+		''
+	}
+	assert immutable_message.contains('mutable argument `x` to function `change` is immutable'), immutable_message
+
+	c_source := generate('module main
+
+fn change(mut x int) {
+	x = 2
+}
+
+fn main() {
+	mut x := 1
+	change(mut x)
+	println(x)
+}
+',
+		'mutable_argument.v', prefs) or { panic(err) }
+	assert c_source.contains('void change(int* x)'), c_source
+	assert c_source.contains('change(&x);'), c_source
+}
+
 fn test_match_expression_requires_else() {
 	prefs := pref.new_preferences()
 	mut message := ''

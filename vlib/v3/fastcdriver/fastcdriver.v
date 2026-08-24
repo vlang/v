@@ -52,6 +52,9 @@ fn parse_arguments(args []string) (string, string, bool) {
 		if arg == '-keepc' {
 			keep_c = true
 		} else if arg.ends_with('.v') {
+			if input != '' {
+				fail('fastc self-host compiler accepts only one V source entry file')
+			}
 			input = arg
 		} else if arg !in ['-silent', '-selfhost'] {
 			fail('fastc self-host compiler does not support `${arg}`')
