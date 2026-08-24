@@ -439,6 +439,90 @@ println(answer)
 	assert statement > initializer, c_source
 }
 
+fn test_runtime_constants_are_materialized_exactly_once() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_runtime_constants_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+__global calls int
+
+const value = next()
+const unused = next()
+
+fn next() int {
+	calls++
+	return calls
+}
+
+fn main() {
+	println(value)
+	println(value)
+	println(calls)
+}
+',
+		'runtime_constants.v', prefs) or { panic(err) }
+	assert c_source.contains('static int main__value;'), c_source
+	assert c_source.contains('static int main__unused;'), c_source
+	assert !c_source.contains('#define main__value'), c_source
+	assert c_source.count('main__value = next();') == 1, c_source
+	assert c_source.count('main__unused = next();') == 1, c_source
+
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == '1\n1\n2'
+}
+
+fn test_runtime_constant_initializers_follow_module_dependencies() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_constant_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'dep')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	dep_file := os.join_path(root, 'dep', 'dep.v')
+	os.write_file(main_file, 'module main
+
+import dep
+
+const copied = dep.original
+
+fn main() {
+	println(copied)
+}
+') or {
+		panic(err)
+	}
+	os.write_file(dep_file, 'module dep
+
+pub const original = next()
+
+pub fn next() int {
+	return 42
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	dependency_initializer := c_source.index('dep__original = dep__next();') or { -1 }
+	importer_initializer := c_source.index('copied = dep__original;') or { -1 }
+	assert dependency_initializer >= 0, c_source
+	assert importer_initializer > dependency_initializer, c_source
+}
+
 fn test_imported_global_initializers_run_before_importer_globals() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_global_order_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1123,6 +1207,46 @@ fn test_main_must_not_have_parameters() {
 		}
 		assert message.contains('main function with parameters'), message
 	}
+}
+
+fn test_mutable_iteration_requires_a_mutable_collection() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	mut message := ''
+	_ := generate('module main
+
+fn change(mut value int) {
+	value = 3
+}
+
+fn main() {
+	items := [1, 2]
+	for mut item in items {
+		change(mut item)
+	}
+}
+',
+		'immutable_mutable_iteration.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutable iteration over immutable collection `items`'), message
+
+	c_source := generate('module main
+
+fn change(mut value int) {
+	value = 3
+}
+
+fn main() {
+	mut items := [1, 2]
+	for mut item in items {
+		change(mut item)
+	}
+}
+',
+		'mutable_iteration.v', prefs) or { panic(err) }
+	assert c_source.contains('int *item = &(((int *)'), c_source
 }
 
 fn test_range_bounds_must_be_integers() {

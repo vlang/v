@@ -6400,6 +6400,21 @@ struct V3FastCCompileResult {
 	output  string
 }
 
+fn publish_v3_fastc_c_source(source string, output_file string, c_to_stdout bool) ! {
+	if c_to_stdout {
+		print(source)
+		return
+	}
+	staged_output := '${output_file}.stage.${tempname.unique_token()}'
+	os.write_file(staged_output, source) or {
+		return error('error writing fastc output ${output_file}: ${err.msg()}')
+	}
+	os.mv(staged_output, output_file) or {
+		os.rm(staged_output) or {}
+		return error('error finalizing fastc output ${output_file}: ${err.msg()}')
+	}
+}
+
 fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool) V3FastCCompileResult {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -7357,7 +7372,8 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		fastc_host := pref.host_target()
-		if !c_only && (target.os != fastc_host.os || target.arch != fastc_host.arch) {
+		fastc_cross_target := target.os != fastc_host.os || target.arch != fastc_host.arch
+		if !c_only && fastc_cross_target {
 			eprintln('fastc can only build executables for the host target; use `-o file.c` for cross-target C output')
 			exit(1)
 		}
@@ -7415,8 +7431,18 @@ pub fn run(args []string) {
 			''
 		}
 		b.step('fastc parse+gen')
-		// Validate generated C before publishing it. C-only builds use a throwaway
-		// executable; normal builds keep the binary produced by bundled TinyCC.
+		if c_only && fastc_cross_target {
+			b.metric('generated C size', fastc_source.len, 'bytes')
+			publish_v3_fastc_c_source(fastc_source, output_file, c_to_stdout) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.print_report()
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			return
+		}
+		// Validate same-target generated C before publishing it. C-only builds use a
+		// throwaway executable; normal builds keep the binary produced by bundled TinyCC.
 		fastc_bin_file := if c_only {
 			os.join_path_single(os.vtmp_dir(),
 				'v3_fastc_validate_${os.getpid()}_${tempname.unique_token()}')
@@ -7458,19 +7484,9 @@ pub fn run(args []string) {
 		b.step('tcc')
 		b.metric('generated C size', fastc_source.len, 'bytes')
 		if c_only {
-			if c_to_stdout {
-				print(fastc_source)
-			} else {
-				staged_output := '${output_file}.stage.${tempname.unique_token()}'
-				os.write_file(staged_output, fastc_source) or {
-					eprintln('error writing fastc output ${output_file}: ${err.msg()}')
-					exit(1)
-				}
-				os.mv(staged_output, output_file) or {
-					os.rm(staged_output) or {}
-					eprintln('error finalizing fastc output ${output_file}: ${err.msg()}')
-					exit(1)
-				}
+			publish_v3_fastc_c_source(fastc_source, output_file, c_to_stdout) or {
+				eprintln(err.msg())
+				exit(1)
 			}
 			b.print_report()
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)

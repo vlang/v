@@ -56,10 +56,12 @@ fn main() {
 	assert valid_run.exit_code == 0, valid_run.output
 	assert valid_run.output.trim_space() == '42\n15'
 
-	cross_c := os.join_path(root, 'cross_linux.c')
-	cross_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-os', 'linux', '-o', cross_c,
-		valid_source])
+	cross_target_os := $if windows { 'linux' } $else { 'windows' }
+	cross_c := os.join_path(root, 'cross_target.c')
+	cross_compile := cmdexec.run(v3_bin, ['-silent', '-showcc', '-b', 'fastc', '-os', cross_target_os,
+		'-o', cross_c, valid_source])
 	assert cross_compile.exit_code == 0, cross_compile.output
+	assert !cross_compile.output.contains('tcc.exe'), cross_compile.output
 	cross_source := os.read_file(cross_c) or { panic(err) }
 	assert cross_source.contains('V_FASTC_PRINT_SELECT')
 	assert !cross_source.contains('builtin__builtin_init')
@@ -168,6 +170,33 @@ println(answer)
 	script_global_run := cmdexec.run(script_global_binary, [])
 	assert script_global_run.exit_code == 0, script_global_run.output
 	assert script_global_run.output.trim_space() == '42'
+
+	runtime_constant_source := os.join_path(root, 'runtime_constant.v')
+	write_fastc_test_source(runtime_constant_source, 'module main
+
+__global calls int
+
+const value = next()
+const unused = next()
+
+fn next() int {
+	calls++
+	return calls
+}
+
+fn main() {
+	println(value)
+	println(value)
+	println(calls)
+}
+')
+	runtime_constant_binary := os.join_path(root, 'runtime_constant')
+	runtime_constant_compile := cmdexec.run(v3_bin, ['-silent', '-enable-globals', '-b', 'fastc',
+		'-o', runtime_constant_binary, runtime_constant_source])
+	assert runtime_constant_compile.exit_code == 0, runtime_constant_compile.output
+	runtime_constant_run := cmdexec.run(runtime_constant_binary, [])
+	assert runtime_constant_run.exit_code == 0, runtime_constant_run.output
+	assert runtime_constant_run.output.trim_space() == '1\n1\n2'
 
 	nested_mutation_source := os.join_path(root, 'nested_mutation.v')
 	write_fastc_test_source(nested_mutation_source, 'module main
@@ -366,9 +395,8 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
-				'no_main.c'),
-				valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
+				os.join_path(root, 'no_main.c'), valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{
