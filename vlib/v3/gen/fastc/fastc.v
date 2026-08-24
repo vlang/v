@@ -82,6 +82,48 @@ static string v_fastc_unsigned_str(unsigned long long value) {
 	snprintf(result, 32, "%llu", value);
 	return result;
 }
+static string v_fastc_integer_format(unsigned long long magnitude, bool negative, const char *format) {
+	size_t format_len = strlen(format);
+	char specifier = format_len > 0 ? format[format_len - 1] : 100;
+	bool left_align = format_len > 1 && format[0] == 45;
+	size_t width_start = left_align ? 1 : 0;
+	bool zero_pad = !left_align && width_start < format_len - 1 && format[width_start] == 48;
+	int width = 0;
+	for (size_t i = width_start; i + 1 < format_len; i++) width = width * 10 + format[i] - 48;
+	unsigned base = specifier == 120 || specifier == 88 ? 16 : specifier == 111 ? 8 : specifier == 98 ? 2 : 10;
+	char reversed[65];
+	int digit_count = 0;
+	if (specifier == 99) {
+		reversed[digit_count++] = (char)magnitude;
+		negative = false;
+	} else {
+		const char *digits = specifier == 88 ? "0123456789ABCDEF" : "0123456789abcdef";
+		do {
+			reversed[digit_count++] = digits[magnitude % base];
+			magnitude /= base;
+		} while (magnitude != 0);
+	}
+	int content_len = digit_count + (negative ? 1 : 0);
+	int result_len = width > content_len ? width : content_len;
+	char *result = malloc((size_t)result_len + 1);
+	if (result == NULL) return "";
+	int cursor = 0;
+	if (!left_align && !zero_pad) while (cursor < result_len - content_len) result[cursor++] = 32;
+	if (negative) result[cursor++] = 45;
+	if (!left_align && zero_pad) while (cursor < result_len - digit_count) result[cursor++] = 48;
+	while (digit_count > 0) result[cursor++] = reversed[--digit_count];
+	if (left_align) while (cursor < result_len) result[cursor++] = 32;
+	result[cursor] = 0;
+	return result;
+}
+static string v_fastc_signed_format(long long value, const char *format) {
+	bool negative = value < 0;
+	unsigned long long magnitude = negative ? (unsigned long long)(-(value + 1)) + 1 : (unsigned long long)value;
+	return v_fastc_integer_format(magnitude, negative, format);
+}
+static string v_fastc_unsigned_format(unsigned long long value, const char *format) {
+	return v_fastc_integer_format(value, false, format);
+}
 static string v_fastc_bool_str(bool value) { return value ? "true" : "false"; }
 static string v_fastc_char_str(char value) {
 	char *result = malloc(2);
@@ -97,6 +139,16 @@ static string v_fastc_char_str(char value) {
 #define V_FASTC_PRINT_SELECT(value, string_fn, bool_fn, char_fn, signed_fn, unsigned_fn) _Generic((value), char *: string_fn, const char *: string_fn, bool: bool_fn, char: char_fn, signed char: signed_fn, short: signed_fn, int: signed_fn, long: signed_fn, long long: signed_fn, unsigned char: unsigned_fn, unsigned short: unsigned_fn, unsigned int: unsigned_fn, unsigned long: unsigned_fn, unsigned long long: unsigned_fn)(value)
 #define print(value) V_FASTC_PRINT_SELECT(value, v_fastc_print_string, v_fastc_print_bool, v_fastc_print_char, v_fastc_print_signed, v_fastc_print_unsigned)
 #define println(value) V_FASTC_PRINT_SELECT(value, v_fastc_println_string, v_fastc_println_bool, v_fastc_println_char, v_fastc_println_signed, v_fastc_println_unsigned)
+
+'
+
+const c_integer_comparison_helpers = r'// signed/unsigned comparisons preserve mathematical ordering
+static inline bool v_fastc_us_eq(u64 a, i64 b) { return b >= 0 && a == (u64)b; }
+static inline bool v_fastc_us_ne(u64 a, i64 b) { return b < 0 || a != (u64)b; }
+static inline bool v_fastc_us_gt(u64 a, i64 b) { return b < 0 || a > (u64)b; }
+static inline bool v_fastc_us_lt(u64 a, i64 b) { return b > 0 && a < (u64)b; }
+static inline bool v_fastc_us_ge(u64 a, i64 b) { return b <= 0 || a >= (u64)b; }
+static inline bool v_fastc_us_le(u64 a, i64 b) { return b >= 0 && a <= (u64)b; }
 
 '
 
@@ -612,11 +664,12 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
 	hoisted_body := fastc_hoist_c_include_directives(body.str())
-	mut result := strings.new_builder(preamble.len + type_declarations.len +
-		type_output.enum_string_helpers.len + constant_output.macros.len +
+	mut result := strings.new_builder(preamble.len + c_integer_comparison_helpers.len +
+		type_declarations.len + type_output.enum_string_helpers.len + constant_output.macros.len +
 		constant_output.declarations.len + global_output.declarations.len + prototypes.len +
 		body.len + startup_initializers.len + 96)
 	result.write_string(preamble)
+	result.write_string(c_integer_comparison_helpers)
 	result.write_string(hoisted_body.directives)
 	result.write_string(constant_output.macros)
 	result.write_string(type_declarations)
@@ -7483,12 +7536,16 @@ fn (mut g Parser) read_interpolated_string() !string {
 		g.expect(.lcbr)!
 		value := g.read_expression([token.Token.rcbr, token.Token.colon])!
 		value_type := fastc_normalize_inferred_type(g.last_expression_type)
-		mut format_specifier := u8(0)
+		mut format_specifier := ''
 		if g.tok == .colon {
 			g.next()
 			for g.tok != .rcbr && g.tok != .eof {
-				if g.tok == .name && g.lit.len == 1 {
-					format_specifier = g.lit[0]
+				if g.tok in [.name, .number] {
+					format_specifier += g.lit
+				} else if g.tok == .minus {
+					format_specifier += '-'
+				} else {
+					return g.unsupported('interpolation format token `${g.token_source()}`')
 				}
 				g.next()
 			}
@@ -7497,7 +7554,14 @@ fn (mut g Parser) read_interpolated_string() !string {
 		if value_type == 'string' {
 			parts << value
 		} else if g.declared_kinds[g.semantic_type_key(value_type)] == .enum_ {
-			if format_specifier in [`d`, `u`, `x`, `X`, `o`, `c`, `b`] {
+			format_character := if format_specifier.len > 0 {
+				format_specifier[format_specifier.len - 1]
+			} else {
+				u8(0)
+			}
+			if format_character == `d` || format_character == `u` || format_character == `x`
+				|| format_character == `X` || format_character == `o` || format_character == `c`
+				|| format_character == `b` {
 				parts << if g.selfhost {
 					'builtin__int_str((int)(${value}))'
 				} else {
@@ -7511,10 +7575,12 @@ fn (mut g Parser) read_interpolated_string() !string {
 			mut converted_primitive := false
 			if !g.selfhost {
 				if primitive_conversion := fastc_primitive_interpolation_expression(value_type,
-					value)
+					value, format_specifier)
 				{
 					parts << primitive_conversion
 					converted_primitive = true
+				} else if fastc_is_primitive_interpolation_type(value_type) {
+					return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
 				}
 			}
 			if !converted_primitive {
@@ -7554,7 +7620,48 @@ fn (mut g Parser) read_interpolated_string() !string {
 	return 'builtin__string_plus_many(${parts.len}, (string[]){${parts.join(', ')}})'
 }
 
-fn fastc_primitive_interpolation_expression(value_type string, value string) ?string {
+fn fastc_is_primitive_interpolation_type(value_type string) bool {
+	return fastc_is_integer_expression_type(value_type) || value_type == 'bool'
+		|| value_type == 'char'
+}
+
+fn fastc_integer_interpolation_format_is_supported(format string, is_unsigned bool) bool {
+	if format == '' {
+		return true
+	}
+	specifier := format[format.len - 1]
+	supported := specifier == `d` || specifier == `x` || specifier == `X`
+		|| specifier == `o` || specifier == `c` || specifier == `b`
+		|| (is_unsigned && specifier == `u`)
+	if !supported {
+		return false
+	}
+	mut start := 0
+	if format[0] == `-` {
+		start = 1
+	}
+	for i in start .. format.len - 1 {
+		if format[i] < `0` || format[i] > `9` {
+			return false
+		}
+	}
+	return true
+}
+
+fn fastc_primitive_interpolation_expression(value_type string, value string, format string) ?string {
+	if fastc_is_integer_expression_type(value_type) {
+		is_unsigned := fastc_is_unsigned_integer_type(value_type)
+		if !fastc_integer_interpolation_format_is_supported(format, is_unsigned) {
+			return none
+		}
+		if format != '' {
+			return if is_unsigned {
+				'v_fastc_unsigned_format((unsigned long long)(${value}), "${format}")'
+			} else {
+				'v_fastc_signed_format((long long)(${value}), "${format}")'
+			}
+		}
+	}
 	return match value_type {
 		'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'integer literal', 'negative integer literal' {
 			'v_fastc_signed_str((long long)(${value}))'
@@ -7563,10 +7670,18 @@ fn fastc_primitive_interpolation_expression(value_type string, value string) ?st
 			'v_fastc_unsigned_str((unsigned long long)(${value}))'
 		}
 		'bool' {
-			'v_fastc_bool_str(${value})'
+			if format == '' {
+				'v_fastc_bool_str(${value})'
+			} else {
+				none
+			}
 		}
 		'char' {
-			'v_fastc_char_str(${value})'
+			if format == '' || format == 'c' {
+				'v_fastc_char_str(${value})'
+			} else {
+				none
+			}
 		}
 		else {
 			none
@@ -8205,6 +8320,9 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				}
 			}
 		}
+	}
+	if integer_comparison := g.render_mixed_integer_comparison_expression(tokens) {
+		return integer_comparison
 	}
 	if !g.selfhost {
 		if string_comparison := g.render_string_comparison_expression(tokens) {
@@ -9743,8 +9861,129 @@ fn (g &Parser) render_string_comparison_expression(tokens []FastcExpressionToken
 	return none
 }
 
+fn (g &Parser) render_mixed_integer_comparison_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if tokens.len >= 3 && tokens[0].tok == .lpar && tokens.last().tok == .rpar {
+		close := fastc_matching_rpar(tokens, 0) or { -1 }
+		if close == tokens.len - 1 {
+			inner := g.render_mixed_integer_comparison_expression(tokens[1..tokens.len - 1]) or {
+				return none
+			}
+			return FastcRenderedExpression{
+				source: '((${inner.source}))'
+				typ:    'bool'
+			}
+		}
+	}
+	if tokens.len > 1 && tokens[0].tok == .not {
+		inner := g.render_mixed_integer_comparison_expression(tokens[1..]) or { return none }
+		return FastcRenderedExpression{
+			source: '!(${inner.source})'
+			typ:    'bool'
+		}
+	}
+	mut depth := 0
+	for i, item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+			continue
+		}
+		if item.tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+			continue
+		}
+		if depth != 0 || item.tok !in [.and, .logical_or] || i == 0 || i + 1 >= tokens.len {
+			continue
+		}
+		left_tokens := tokens[..i]
+		right_tokens := tokens[i + 1..]
+		mut left_special := FastcRenderedExpression{}
+		if special := g.render_mixed_integer_comparison_expression(left_tokens) {
+			left_special = special
+		}
+		mut right_special := FastcRenderedExpression{}
+		if special := g.render_mixed_integer_comparison_expression(right_tokens) {
+			right_special = special
+		}
+		if left_special.source == '' && right_special.source == '' {
+			continue
+		}
+		left_source := if left_special.source != '' {
+			left_special.source
+		} else {
+			g.render_comparison_operand(left_tokens, 'bool') or { return none }
+		}
+		right_source := if right_special.source != '' {
+			right_special.source
+		} else {
+			g.render_comparison_operand(right_tokens, 'bool') or { return none }
+		}
+		return FastcRenderedExpression{
+			source: '((${left_source})${if item.tok == .and { '&&' } else { '||' }}(${right_source}))'
+			typ:    'bool'
+		}
+	}
+	depth = 0
+	for i, item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+			continue
+		}
+		if item.tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+			continue
+		}
+		if depth != 0 || item.tok !in [.eq, .ne, .lt, .gt, .le, .ge] || i == 0
+			|| i + 1 >= tokens.len {
+			continue
+		}
+		left_tokens := tokens[..i]
+		right_tokens := tokens[i + 1..]
+		left_inferred_type := g.infer_expression_type(left_tokens) or { return none }
+		right_inferred_type := g.infer_expression_type(right_tokens) or { return none }
+		left_type := g.underlying_alias_type(left_inferred_type)
+		right_type := g.underlying_alias_type(right_inferred_type)
+		left_is_unsigned := fastc_is_wide_unsigned_integer_type(left_type)
+		right_is_unsigned := fastc_is_wide_unsigned_integer_type(right_type)
+		left_is_signed := fastc_is_signed_integer_type(left_type)
+		right_is_signed := fastc_is_signed_integer_type(right_type)
+		if !(left_is_unsigned && right_is_signed) && !(right_is_unsigned && left_is_signed) {
+			return none
+		}
+		left_source := g.render_comparison_operand(left_tokens, left_type) or { return none }
+		right_source := g.render_comparison_operand(right_tokens, right_type) or { return none }
+		mut operation := match item.tok {
+			.eq { 'eq' }
+			.ne { 'ne' }
+			.gt { 'gt' }
+			.lt { 'lt' }
+			.ge { 'ge' }
+			.le { 'le' }
+			else { return none }
+		}
+		unsigned_source := if left_is_unsigned { left_source } else { right_source }
+		signed_source := if left_is_signed { left_source } else { right_source }
+		if right_is_unsigned {
+			operation = match operation {
+				'gt' { 'lt' }
+				'lt' { 'gt' }
+				'ge' { 'le' }
+				'le' { 'ge' }
+				else { operation }
+			}
+		}
+		return FastcRenderedExpression{
+			source: 'v_fastc_us_${operation}((u64)(${unsigned_source}), (i64)(${signed_source}))'
+			typ:    'bool'
+		}
+	}
+	return none
+}
+
 fn (g &Parser) render_comparison_operand(tokens []FastcExpressionToken, expected_type string) ?string {
 	raw := g.render_raw_expression_tokens(tokens) or { return none }
+	if integer_comparison := g.render_mixed_integer_comparison_expression(tokens) {
+		return integer_comparison.source
+	}
 	if concatenation := g.render_composed_string_concatenation(tokens) {
 		return concatenation.source
 	}
@@ -13070,6 +13309,14 @@ fn fastc_is_integer_type(typ string) bool {
 
 fn fastc_is_unsigned_integer_type(typ string) bool {
 	return typ in ['byte', 'u8', 'u16', 'u32', 'u64', 'unsigned int', 'usize']
+}
+
+fn fastc_is_wide_unsigned_integer_type(typ string) bool {
+	return typ in ['u32', 'u64', 'unsigned int', 'usize']
+}
+
+fn fastc_is_signed_integer_type(typ string) bool {
+	return typ in ['char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'rune']
 }
 
 fn fastc_nondecimal_literal_is_type_sensitive(literal string) bool {

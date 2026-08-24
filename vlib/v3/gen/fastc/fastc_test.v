@@ -95,6 +95,8 @@ fn main() {
 	large := u64(42)
 	enabled := true
 	println('value=${value}; negative=${negative}; large=${large}; enabled=${enabled}')
+	hex_value := 15
+	println('${hex_value:x}|${hex_value:04x}|${hex_value:X}|${hex_value:04d}|${hex_value:b}|${hex_value:o}')
 }
 ",
 		'ordinary_primitive_interpolation.v', prefs) or { panic(err) }
@@ -102,6 +104,8 @@ fn main() {
 	assert c_source.contains('v_fastc_signed_str((long long)(negative))'), c_source
 	assert c_source.contains('v_fastc_unsigned_str((unsigned long long)(large))'), c_source
 	assert c_source.contains('v_fastc_bool_str(enabled)'), c_source
+	assert c_source.contains('v_fastc_signed_format((long long)(hex_value), "x")'), c_source
+	assert c_source.contains('v_fastc_signed_format((long long)(hex_value), "04x")'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_primitive_interpolation_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -117,7 +121,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\n'
+	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n'
 }
 
 fn test_zero_value_strings_print_as_empty_strings() {
@@ -2425,6 +2429,42 @@ fn main() {
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output.trim_space() == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
+}
+
+fn test_mixed_integer_comparisons_preserve_signed_semantics() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn main() {
+	println(i64(-1) < u64(1))
+	println(u64(1) > i64(-1))
+	println(i64(-27) < u32(65463356))
+	println(u32(8543) > int(-7523))
+	println(i64(-89) <= u64(567))
+	println(int(-1) != u32(0) - u32(1))
+	println(i64(-1) < u64(1) && u64(2) >= i64(2))
+	println(!((u64(1) < i64(-1))))
+}
+',
+		'mixed_integer_comparisons.v', prefs) or { panic(err) }
+	assert c_source.contains('v_fastc_us_gt('), c_source
+	assert c_source.contains('v_fastc_us_ne('), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_mixed_integer_comparisons_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
 }
 
 fn test_match_branch_values_must_match_the_subject_type() {
