@@ -3447,6 +3447,9 @@ fn (mut g Parser) parse_script() ! {
 	g.write_line('int main(void) {')
 	g.indent++
 	g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
+	if g.has_global_inits {
+		g.write_line('v_fastc_init_globals();')
+	}
 	g.in_main = true
 	g.skip_semicolons()
 	for g.tok != .eof {
@@ -4074,7 +4077,7 @@ fn (g &Parser) or_block_has_statements() bool {
 
 fn (mut g Parser) parse_if() !bool {
 	g.next()
-	mut condition := g.read_expression([token.Token.semicolon, token.Token.lcbr])!
+	mut condition := g.read_condition_expression([token.Token.semicolon, token.Token.lcbr])!
 	if condition.len == 0 {
 		return g.unsupported('empty if condition')
 	}
@@ -4355,7 +4358,7 @@ fn (mut g Parser) parse_for() !bool {
 			condition := g.read_expression([token.Token.semicolon])!
 			g.require_boolean_condition('for')!
 			g.expect(.semicolon)!
-			update := g.read_expression([token.Token.lcbr])!
+			update := g.read_statement_expression([token.Token.lcbr])!
 			g.expect(.lcbr)!
 			initializer := if is_declaration {
 				'__typeof__((${initial})) ${fastc_c_identifier(name)} = (${initial})'
@@ -4728,8 +4731,8 @@ fn (mut g Parser) parse_simple_statement() ! {
 			g.write_line('${c_target}${c_operator}${value};')
 			return
 		}
-		expression :=
-			g.read_expression_with_prefix(name, [token.Token.semicolon, token.Token.rcbr])!
+		expression := g.read_statement_expression_with_prefix(name, [token.Token.semicolon,
+			token.Token.rcbr])!
 		if !g.last_expression_is_statement() {
 			return g.unsupported('value-only expression statement')
 		}
@@ -4737,7 +4740,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 		g.write_line('${expression};')
 		return
 	}
-	expression := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+	expression := g.read_statement_expression([token.Token.semicolon, token.Token.rcbr])!
 	if expression.len == 0 {
 		return g.unsupported('statement `${g.token_source()}`')
 	}
@@ -5011,10 +5014,26 @@ fn (mut g Parser) consume_statement_end() {
 }
 
 fn (mut g Parser) read_expression(stops []token.Token) !string {
-	return g.read_expression_with_prefix('', stops)
+	return g.read_expression_with_prefix_mode('', stops, false, false)
 }
 
 fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token) !string {
+	return g.read_expression_with_prefix_mode(prefix, stops, false, false)
+}
+
+fn (mut g Parser) read_condition_expression(stops []token.Token) !string {
+	return g.read_expression_with_prefix_mode('', stops, false, true)
+}
+
+fn (mut g Parser) read_statement_expression(stops []token.Token) !string {
+	return g.read_expression_with_prefix_mode('', stops, true, false)
+}
+
+fn (mut g Parser) read_statement_expression_with_prefix(prefix string, stops []token.Token) !string {
+	return g.read_expression_with_prefix_mode(prefix, stops, true, false)
+}
+
+fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool) !string {
 	if g.selfhost && prefix == '' && g.tok == .lcbr && token.Token.lcbr !in stops {
 		return g.read_inferred_map_literal()!
 	}
@@ -5059,6 +5078,9 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 	mut expected_struct_field_type := ''
 	mut enum_shorthand_type := ''
 	mut next_token_is_mut_argument := false
+	mut source_token_count := if prefix == '' { 0 } else { 1 }
+	mut mutation_operator := token.Token.unknown
+	mut tokens_before_mutation := 0
 	for g.tok != .eof {
 		if g.selfhost && g.tok == .semicolon && g.semicolon_continues_expression() {
 			g.next()
@@ -5519,6 +5541,33 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 			// levels and also orders + and - above &. Reject ambiguous token streams.
 			return g.unsupported('mixed operator precedence')
 		}
+		if g.tok.is_assignment() || g.tok in [.inc, .dec] {
+			is_declaration_guard := allow_declaration_guard && g.tok == .decl_assign
+				&& source_token_count == 1
+			if (!allow_mutation_statement && !is_declaration_guard)
+				|| paren_depth != 0 || bracket_depth != 0 || brace_depth != 0
+				|| unsafe_expression_depth != 0 {
+				return g.unsupported('mutation `${g.token_source()}` inside an expression')
+			}
+			if mutation_operator != .unknown {
+				return g.unsupported('multiple mutations in one expression')
+			}
+			mutation_operator = g.tok
+			tokens_before_mutation = source_token_count
+			mut mutation_lookahead := g.s
+			next_mutation_token := mutation_lookahead.scan()
+			mutation_ends_line := mutation_lookahead.pos >= g.s.offset
+				&& g.s.src[g.s.offset..mutation_lookahead.pos].contains('\n')
+			if mutation_operator in [.inc, .dec] && next_mutation_token !in stops
+				&& next_mutation_token != .eof && !mutation_ends_line {
+				return g.unsupported('postfix mutation used inside an expression')
+			}
+			if mutation_operator.is_assignment()
+				&& (next_mutation_token in stops || next_mutation_token == .eof) {
+				return g.unsupported('assignment without a value')
+			}
+		}
+		source_token_count++
 		expression_tokens << FastcExpressionToken{
 			tok:             g.tok
 			lit:             g.lit
@@ -5845,6 +5894,11 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 	if unsafe_expression_depth != 0 {
 		g.unsafe_depth -= unsafe_expression_depth
 		return g.unsupported('unbalanced unsafe expression `${fastc_expression_tokens_debug(expression_tokens)}`')
+	}
+	if mutation_operator != .unknown {
+		if tokens_before_mutation == 0 {
+			return g.unsupported('mutation without a target')
+		}
 	}
 	g.validate_expression_field_visibility(expression_tokens)!
 	g.validate_expression_calls(expression_tokens)!
@@ -6565,7 +6619,7 @@ fn (mut g Parser) read_if_expression() !string {
 	}
 	g.expect(.key_if)!
 	g.expected_expression_type = ''
-	mut condition := g.read_expression([token.Token.semicolon, token.Token.lcbr])!
+	mut condition := g.read_condition_expression([token.Token.semicolon, token.Token.lcbr])!
 	mut guard_name := ''
 	mut guard_type := ''
 	mut guard_option := ''

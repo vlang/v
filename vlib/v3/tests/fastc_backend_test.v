@@ -154,6 +154,34 @@ fn main() {
 	assert global_run.exit_code == 0, global_run.output
 	assert global_run.output.trim_space() == 'initializing\n42\n43'
 
+	script_global_source := os.join_path(root, 'initialized_script_global.v')
+	write_fastc_test_source(script_global_source, 'module main
+
+__global answer = 42
+
+println(answer)
+')
+	script_global_binary := os.join_path(root, 'initialized_script_global')
+	script_global_compile := cmdexec.run(v3_bin, ['-silent', '-enable-globals', '-b', 'fastc',
+		'-o', script_global_binary, script_global_source])
+	assert script_global_compile.exit_code == 0, script_global_compile.output
+	script_global_run := cmdexec.run(script_global_binary, [])
+	assert script_global_run.exit_code == 0, script_global_run.output
+	assert script_global_run.output.trim_space() == '42'
+
+	nested_mutation_source := os.join_path(root, 'nested_mutation.v')
+	write_fastc_test_source(nested_mutation_source, 'module main
+
+fn main() {
+	x := 1
+	println(x++)
+}
+')
+	nested_mutation_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o',
+		os.join_path(root, 'nested_mutation'), nested_mutation_source])
+	assert nested_mutation_compile.exit_code != 0
+	assert nested_mutation_compile.output.contains('mutation `++` inside an expression'), nested_mutation_compile.output
+
 	select_source := os.join_path(root, 'select.v')
 	write_fastc_test_source(select_source, 'module main
 
@@ -338,8 +366,9 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
-				os.join_path(root, 'no_main.c'), valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
+				'no_main.c'),
+				valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{

@@ -423,6 +423,22 @@ fn main() {
 	assert c_source.contains('v_fastc_init_globals();'), c_source
 }
 
+fn test_script_main_initializes_globals_before_statements() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+__global answer = 42
+
+println(answer)
+',
+		'initialized_script_global.v', prefs) or { panic(err) }
+	main_source := c_source.all_after('int main(void) {')
+	initializer := main_source.index('v_fastc_init_globals();') or { -1 }
+	statement := main_source.index('println(answer);') or { -1 }
+	assert initializer >= 0, c_source
+	assert statement > initializer, c_source
+}
+
 fn test_imported_global_initializers_run_before_importer_globals() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_global_order_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1233,6 +1249,28 @@ fn test_value_only_expression_statements_are_rejected() {
 		'valid_expression_statements.v', prefs) or { panic(err) }
 	assert c_source.contains('touch();')
 	assert c_source.contains('count++;')
+}
+
+fn test_nested_mutations_are_rejected() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { x := 1; println(x++) }\n',
+		'module main\nfn main() { mut x := 1; println(x = 2) }\n',
+		'module main\nfn main() { mut x := 1; y := x++; println(y) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'nested_mutation.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('mutation'), message
+		assert message.contains('inside an expression'), message
+	}
+
+	c_source := generate('module main\nfn main() { mut x := 1; x++; x += 2; println(x) }\n',
+		'mutation_statements.v', prefs) or { panic(err) }
+	assert c_source.contains('x++;')
+	assert c_source.contains('x+=2;')
 }
 
 fn test_bare_return_from_main_emits_zero() {
