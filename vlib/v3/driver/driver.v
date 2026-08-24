@@ -1685,7 +1685,7 @@ fn input_is_legacy_diagnostic_fixture(input_file string) bool {
 fn default_bin_file_for_input(input_file string) string {
 	if os.is_dir(input_file) {
 		real_input := os.real_path(input_file)
-		return os.base(real_input)
+		return os.join_path_single(real_input, os.file_name(real_input))
 	}
 	resolved_input := if os.exists(input_file) { os.real_path(input_file) } else { input_file }
 	if !resolved_input.ends_with('.v') && !resolved_input.ends_with('.vv')
@@ -1809,6 +1809,28 @@ fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target
 	}
 }
 
+fn v3_default_linker_flags(target_os string, is_o bool) []string {
+	if is_o {
+		return []
+	}
+	mut flags := ['-lm']
+	if target_os in ['linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku'] {
+		flags << '-lpthread'
+	}
+	if target_os in ['freebsd', 'netbsd'] {
+		flags << ['-lexecinfo', '-lelf']
+	}
+	return flags
+}
+
+fn add_v3_default_linker_flags(mut flags []string, target_os string, is_o bool) {
+	for flag in v3_default_linker_flags(target_os, is_o) {
+		if flag !in flags {
+			flags << flag
+		}
+	}
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -1850,7 +1872,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		before_inputs << ['-flat_namespace', '-undefined', 'dynamic_lookup']
 	}
 	mut after_inputs := options.dependencies.clone()
-	after_inputs << '-lm'
+	add_v3_default_linker_flags(mut after_inputs, options.target_os, options.is_o)
 	if !options.is_o {
 		after_inputs << options.environment_ld_flags
 	}
@@ -7321,6 +7343,19 @@ pub fn run(args []string) {
 		target.default_thread_stack_size()
 	}
 	prefs.backend = backend
+	prefs.vroot = if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
+		// The macOS dispatcher sets VEXE to the invoking compiler. Preserve that
+		// checkout instead of selecting another V checkout around the input.
+		os.real_path(os.dir(prefs.vexe))
+	} else {
+		resolve_vroot_for_input(prefs.vroot, input_file)
+	}
+	if !c_compiler_explicit && os.user_os() == 'windows' && target.os == 'windows' {
+		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		if os.is_executable(bundled_tcc) {
+			c_compiler = bundled_tcc
+		}
+	}
 	effective_c_compiler := if backend == 'arm64' {
 		'tinyc'
 	} else {
@@ -7333,13 +7368,6 @@ pub fn run(args []string) {
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
-	prefs.vroot = if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
-		// The macOS dispatcher sets VEXE to the invoking compiler. Preserve that
-		// checkout instead of selecting another V checkout around the input.
-		os.real_path(os.dir(prefs.vexe))
-	} else {
-		resolve_vroot_for_input(prefs.vroot, input_file)
-	}
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
 		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
@@ -7378,7 +7406,7 @@ pub fn run(args []string) {
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
 		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
-		&& target.os == host_target.os && target.arch == host_target.arch
+		&& c_compiler == 'cc' && target.os == host_target.os && target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
@@ -9776,9 +9804,7 @@ pub fn run(args []string) {
 			tcc_args << tcc_native_c_source_flags(resolved_c_flags)
 			tcc_args << cached_dev_dylib
 			tcc_args << tcc_dynamic_link_flags(resolved_c_flags)
-			if '-lm' !in tcc_args {
-				tcc_args << '-lm'
-			}
+			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
 			program_source_identity := '${prefix_source_identity}\n${modulecache.file_signature(tcc_main_file)}\n${if cached_program_body_source.len > 0 {
 				modulecache.file_signature(cached_program_body_source)
 			} else {
@@ -9862,7 +9888,7 @@ pub fn run(args []string) {
 				tcc_args << atomic_s
 			}
 			tcc_args << resolved_c_flags
-			tcc_args << '-lm'
+			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
 			if !is_o {
 				tcc_args << environment_ld_flags
 			}

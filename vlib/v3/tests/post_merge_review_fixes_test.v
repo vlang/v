@@ -3148,7 +3148,7 @@ fn main() {
 ')
 	omitempty_main := c_fn_body(omitempty_c, 'int main(int argc, char** argv)')
 	assert !omitempty_main.contains('json__encode(&(Payload)')
-	assert omitempty_main.contains('.omit) == 0')
+	assert omitempty_main.contains('.omit')
 
 	decoded := run_good(v3_bin, 'json_decode_composites_to_strings', 'import json
 
@@ -3252,6 +3252,57 @@ fn main() {
 	assert out == '{"age":3}\n{"name":"Ada","age":4}'
 }
 
+fn test_json_encode_sum_types_and_composite_omitempty_fields_use_fast_path() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_encode_sum_types_and_composite_omitempty', 'import json
+
+type Value = Payload | string
+
+struct Style {
+	width f64 = 2.0 @[omitempty]
+	dash string = "solid" @[omitempty]
+}
+
+struct Payload {
+	values []f64            @[omitempty]
+	lookup map[string]string @[omitempty]
+	style  Style            @[omitempty]
+}
+
+struct Envelope {
+	items  []Value
+	lookup map[string]Value
+}
+
+struct Holder {
+	value Value @[omitempty]
+}
+
+fn main() {
+	empty := Payload{}
+	filled := Payload{
+		values: [1.0, 2.0]
+		lookup: {"kind": "line"}
+		style: Style{
+			width: 4.0
+		}
+	}
+	println(json.encode(empty))
+	println(json.encode(filled))
+	println(json.encode([Value(filled), Value("trace")]))
+	println(json.encode(Envelope{
+		items: [Value(filled), Value("trace")]
+		lookup: {"trace": Value(filled)}
+	}))
+	println(json.encode(Holder{}))
+	println(json.encode(Holder{
+		value: Value(filled)
+	}))
+}
+')
+	assert out == '{}\n{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}}\n[{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}},"trace"]\n{"items":[{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}},"trace"],"lookup":{"trace":{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}}}}\n{}\n{"value":{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}}}'
+}
+
 fn test_json_encode_json_dash_label_skips_fast_path_field() {
 	v3_bin := build_v3()
 	source := 'import json
@@ -3299,9 +3350,9 @@ fn main() {
 	assert out == '{"a\\"b":"ok","line\\nbreak":2,"c\\\\d":true}'
 }
 
-fn test_json_encode_declines_unsupported_field_attrs() {
+fn test_json_encode_accepts_required_field_attr() {
 	v3_bin := build_v3()
-	c_source := gen_c(v3_bin, 'json_encode_unsupported_field_attr', 'import json
+	out := run_good(v3_bin, 'json_encode_required_field_attr', 'import json
 
 struct User {
 	name string @[required]
@@ -3315,9 +3366,7 @@ fn main() {
 	}))
 }
 ')
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert main_body.contains('json__encode(&')
-	assert !main_body.contains('v3_json_encode_string(')
+	assert out == '{"name":"Ada","age":4}'
 }
 
 fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
