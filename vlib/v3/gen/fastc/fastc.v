@@ -10034,6 +10034,30 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 	}
 	lvalue := tokens[..mutation_index]
 	if lvalue.len == 1 {
+		operator := tokens[mutation_index].tok
+		if operator !in [.inc, .dec] || lvalue[0].tok != .name {
+			return
+		}
+		name := lvalue[0].lit
+		mut operand_type := ''
+		if local := g.locals[name] {
+			operand_type = if local.is_reference { local.typ.trim_right('*') } else { local.typ }
+		} else {
+			operand_type = g.global_types[fastc_global_key(g.module_name, name)] or { '' }
+		}
+		if operand_type == '' {
+			if g.selfhost {
+				return
+			}
+			return g.unsupported('unverifiable arithmetic `${operator.str()}` target `${name}`')
+		}
+		unsafe_pointer := fastc_is_pointer_type(operand_type)
+			&& (lvalue[0].unsafe_depth > 0 || g.unsafe_depth > 0 || g.selfhost)
+		selfhost_alias := g.selfhost
+			&& g.declared_kinds[g.semantic_type_key(operand_type)] == .alias_
+		if !fastc_is_numeric_expression_type(operand_type) && !unsafe_pointer && !selfhost_alias {
+			return g.unsupported('arithmetic `${operator.str()}` on non-numeric type `${operand_type}`')
+		}
 		return
 	}
 	if lvalue[0].tok != .name {
@@ -10665,7 +10689,9 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		if g.selfhost && operand_type == '' {
 			return 'int'
 		}
-		if !fastc_is_numeric_expression_type(operand_type) {
+		unsafe_pointer := fastc_is_pointer_type(operand_type)
+			&& (tokens[start].unsafe_depth > 0 || g.unsafe_depth > 0 || g.selfhost)
+		if !fastc_is_numeric_expression_type(operand_type) && !unsafe_pointer {
 			return g.unsupported('arithmetic `${tokens[end - 1].tok.str()}` on non-numeric type `${operand_type}`')
 		}
 		return operand_type

@@ -1485,6 +1485,9 @@ fn test_arithmetic_operands_must_be_numeric() {
 		'module main\nfn main() { println(true + false) }\n',
 		'module main\nfn main() { value := true * false; println(value) }\n',
 		'module main\nfn main() { mut value := true; value += false; println(value) }\n',
+		"module main\nfn main() { mut value := 'abc'; value++; println(value) }\n",
+		"module main\nfn main() { mut value := 'abc'; value--; println(value) }\n",
+		'module main\nfn main() { mut value := 1; mut pointer := &value; pointer++ }\n',
 	] {
 		mut message := ''
 		_ := generate(source, 'non_numeric_arithmetic.v', prefs) or {
@@ -1494,6 +1497,21 @@ fn test_arithmetic_operands_must_be_numeric() {
 		assert message.contains('arithmetic'), message
 		assert message.contains('non-numeric') || message.contains('operands of types'), message
 	}
+
+	c_source := generate('module main
+
+fn main() {
+	mut value := 1
+	mut pointer := &value
+	value++
+	unsafe {
+		pointer--
+	}
+}
+',
+		'numeric_and_pointer_mutations.v', prefs) or { panic(err) }
+	assert c_source.contains('value++;'), c_source
+	assert c_source.contains('pointer--;'), c_source
 }
 
 fn test_nil_requires_an_unsafe_block() {
