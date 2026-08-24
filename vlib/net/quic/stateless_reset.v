@@ -1,5 +1,7 @@
 module quic
 
+import crypto.hmac
+import crypto.sha256
 import crypto.subtle
 
 // RFC 9000 §10.3 — Stateless Reset. A stateless reset packet is
@@ -57,4 +59,31 @@ pub fn (t &StatelessResetTracker) is_stateless_reset(connection_id []u8, datagra
 	token := t.known_tokens[connection_id.hex()] or { return false }
 	trailing := datagram[datagram.len - 16..]
 	return subtle.constant_time_compare(token, trailing) == 1
+}
+
+// generate_stateless_reset_token derives the stateless-reset token this
+// endpoint should advertise for `connection_id`, using RFC 9000 §10.3.2's
+// recommended construction: "A single static key can be used across all
+// connections to the same endpoint by generating the proof using a
+// pseudorandom function that takes a static key and the connection ID...
+// An endpoint could use HMAC... (for example, HMAC(static_key,
+// connection_id))... truncated to 16 bytes." Deriving the token this way
+// -- rather than randomly generating and storing one per connection -- is
+// the entire point of a stateless reset (§10.3: it must remain computable
+// after this endpoint has lost all per-connection state); `static_key` is
+// a server-instance-local secret generated once (e.g. via
+// crypto.rand.bytes) and never sent on the wire. HMAC-SHA-256 is an
+// arbitrary but fixed choice among the RFC's own listed examples (HMAC or
+// HKDF, with any hash) -- nothing about the wire format depends on which
+// PRF produced the token, since only this endpoint itself ever
+// recomputes it.
+pub fn generate_stateless_reset_token(static_key []u8, connection_id []u8) ![]u8 {
+	if connection_id.len == 0 {
+		// RFC 9000 §10.3.2: this construction "cannot provide a
+		// zero-length connection ID" -- there is no connection-ID
+		// material left to key the derivation on.
+		return error('quic: cannot generate a stateless reset token for a zero-length connection ID (RFC 9000 §10.3.2)')
+	}
+	mac := hmac.new(static_key, connection_id, sha256.sum256, sha256.block_size)
+	return mac[..16].clone()
 }

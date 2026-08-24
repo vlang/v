@@ -1029,6 +1029,24 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 				}
 			}
 		}
+		NewConnectionIdFrame, RetireConnectionIdFrame {
+			// Legal here (RFC 9000 §12.4 Table 3 marks both 1-RTT-only,
+			// consistent with dispatch_pre_confirm_frame's own rejection
+			// of them in the Initial/Handshake spaces), accepted, but not
+			// yet acted upon: driving an ACTIVE SET of usable connection
+			// IDs (issuing more as the peer retires them,
+			// active_connection_id_limit accounting, the §19.15/§19.16
+			// requirements that need that same state -- e.g. §19.16's
+			// "sequence number greater than any previously sent" check)
+			// is a deliberately deferred state machine, not yet built --
+			// see stateless_reset.v's doc comment and PROGRESS.md's Phase
+			// 13c scope note. The wire codec these frames now decode
+			// through (frame.v) exists so that state machine has
+			// something to consume once it lands; until then, a peer
+			// sending either is simply ignored, the same as this
+			// function's own CryptoFrame arm ignores post-handshake
+			// CRYPTO for an unimplemented feature.
+		}
 		else {
 			// DATA_BLOCKED/STREAM_DATA_BLOCKED/STREAMS_BLOCKED: purely
 			// informational hints (RFC 9000 §19.12-§19.14 impose no MUST

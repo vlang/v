@@ -1321,11 +1321,39 @@ stacked-PR convention as Phase 12's 12a-12d.
     instead (same API, OS-backed, already used elsewhere in this codebase).
     This is a real gap in already-merged code (Phase 9, PR #28129), not
     Phase 13 work — flagged as a separate follow-up task, not fixed inline.
-- [ ] **13c** — Connection ID lifecycle: `NEW_CONNECTION_ID`/
-      `RETIRE_CONNECTION_ID` frames (currently fall through `frame.v`'s
-      generic "not yet implemented" branch), stateless reset token
-      generation per issued CID (`StatelessResetTracker` currently only
-      checks incoming tokens).
+- [x] **13c** — Connection ID lifecycle:
+  - [x] `NewConnectionIdFrame`/`RetireConnectionIdFrame` wire codec
+        (`frame.v`) — `encode_new_connection_id_frame`/
+        `parse_new_connection_id_frame` and their RETIRE_CONNECTION_ID
+        counterparts, types 0x18/0x19, previously falling through
+        `parse_frame`'s generic "not yet implemented" branch. Enforces the
+        two frame-local RFC 9000 §19.15 requirements (`retire_prior_to` ≤
+        `sequence_number`; connection ID length in 1-20 bytes), on both the
+        encode and decode sides so a caller can't construct a frame this
+        module's own parser would then reject. Every OTHER §19.15/§19.16
+        requirement (zero-length-DCID prohibition, duplicate/conflicting
+        sequence numbers, a RETIRE_CONNECTION_ID referencing the current
+        packet's own DCID) needs connection state `parse_frame` doesn't
+        have — deferred to the caller, the same division already
+        established for `HandshakeDoneFrame`'s role check.
+  - [x] `generate_stateless_reset_token` (`stateless_reset.v`) — RFC 9000
+        §10.3.2's recommended construction, `HMAC-SHA-256(static_key,
+        connection_id)` truncated to 16 bytes: a server-instance-local
+        secret plus the connection ID deterministically reproduces the
+        SAME token, so an endpoint that has lost all per-connection state
+        (the entire premise of a stateless reset) can still recompute it.
+        Cross-checked against `StatelessResetTracker.is_stateless_reset`
+        (already-existing, independently-written matching logic) — proving
+        a token this function generates is actually recognized by the
+        exact code that would validate it in production.
+  - **Deliberately still out of scope** (per `stateless_reset.v`'s own
+    long-standing note, unchanged by 13c): driving an ACTIVE SET of usable
+    connection IDs — issuing more as the peer retires them,
+    `active_connection_id_limit` accounting, `CONNECTION_ID_LIMIT_ERROR`
+    enforcement. That full lifecycle exists to support connection
+    migration, which PROGRESS.md already lists as a separate, explicitly
+    deferrable follow-up below — 13c ships the wire codec and the token
+    primitive it depends on, not the state machine that would consume them.
 - [ ] **13d** — UDP listener + connection demux: one socket routing many
       concurrent connections by connection ID (not 4-tuple, since QUIC
       supports migration) — no analog in the client's transport today; the
