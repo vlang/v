@@ -1574,7 +1574,11 @@ fn test_comparison_and_logical_operands_are_validated() {
 		assert message.contains(expected), message
 	}
 
-	c_source := generate('module main
+	c_source := generate("module main
+
+fn same(left string, right string) bool {
+	return left == right
+}
 
 fn main() {
 	left := 1
@@ -1582,12 +1586,21 @@ fn main() {
 	ok := left < right && true
 	println(ok)
 	println(left < right)
+	println(same('same', 'same'))
+	println('alpha' < 'beta')
+	println('beta' > 'alpha')
+	println('alpha' <= 'alpha')
+	println('beta' >= 'beta')
+	println('alpha' != 'beta')
 }
-',
+",
 		'valid_boolean_operands.v', prefs) or { panic(err) }
 	assert c_source.contains('left<right'), c_source
 	assert c_source.contains('&&'), c_source
 	assert c_source.contains('v_fastc_println_bool'), c_source
+	assert c_source.contains('static bool builtin__string_eq'), c_source
+	assert c_source.contains('builtin__string_eq(left,right)'), c_source
+	assert c_source.contains('builtin__string_lt("alpha","beta")'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_boolean_operands_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1603,7 +1616,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output.trim_space() == 'true\ntrue'
+	assert run_result.output.trim_space() == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
 }
 
 fn test_match_branch_values_must_match_the_subject_type() {
@@ -2393,6 +2406,8 @@ fn test_non_void_functions_must_return_on_every_path() {
 		'module main\nfn value() int {}\nfn main() { println(value()) }\n',
 		'module main\nfn value() int { if true { return 1 } }\nfn main() { println(value()) }\n',
 		'module main\nfn value() int { return }\nfn main() { println(value()) }\n',
+		'module main\nfn value() int { for { break } }\nfn main() {}\n',
+		'module main\nfn value(flag bool) int { for { if flag { break } } }\nfn main() {}\n',
 	] {
 		mut message := ''
 		_ := generate(source, 'non_void_fallthrough.v', prefs) or {
@@ -2418,6 +2433,23 @@ fn main() {
 		'non_void_returns.v', prefs) or { panic(err) }
 	assert c_source.contains('return 1;')
 	assert c_source.contains('return 2;')
+	infinite_source := generate('module main
+
+fn wait_forever() int {
+	for {}
+}
+
+fn nested_wait() int {
+	for {
+		for {}
+		break
+	}
+}
+
+fn main() {}
+',
+		'infinite_loop_returns.v', prefs) or { panic(err) }
+	assert infinite_source.count('for (;;) {') == 3, infinite_source
 }
 
 fn test_integer_range_caches_bounds() {

@@ -51,6 +51,8 @@ static void v_fastc_println_bool(bool value) { puts(value ? "true" : "false"); }
 static void v_fastc_println_char(char value) { fputc(value, stdout); fputc(10, stdout); }
 static void v_fastc_println_signed(long long value) { printf("%lld\n", value); }
 static void v_fastc_println_unsigned(unsigned long long value) { printf("%llu\n", value); }
+static bool builtin__string_eq(const char *left, const char *right) { return strcmp(left ? left : "", right ? right : "") == 0; }
+static bool builtin__string_lt(const char *left, const char *right) { return strcmp(left ? left : "", right ? right : "") < 0; }
 
 /* Float formatting belongs to the V strconv routines. Leaving float and double
  * unmatched makes TinyCC reject unsupported printing instead of silently
@@ -323,6 +325,11 @@ struct FastcComptimeBlock {
 	tok    token.Token
 }
 
+struct FastcLoopBlockResult {
+	terminates          bool
+	has_reachable_break bool
+}
+
 struct Parser {
 	prefs               &pref.Preferences
 	path                string
@@ -366,6 +373,8 @@ mut:
 	deferred_lines           []string
 	deferred_block_starts    []int
 	loop_defer_block_starts  []int
+	loop_has_breaks          []bool
+	statement_reachable      bool
 	last_expression_type     string
 	last_expression          []FastcExpressionToken
 	last_multi_return_types  []string
@@ -496,6 +505,8 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			deferred_lines:          []string{}
 			deferred_block_starts:   []int{}
 			loop_defer_block_starts: []int{}
+			loop_has_breaks:         []bool{}
+			statement_reachable:     true
 		}
 		gen.s.init(file, source_file.source)
 		generated := gen.run()!
@@ -4151,6 +4162,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	previous_deferred_lines := g.deferred_lines.clone()
 	previous_deferred_block_starts := g.deferred_block_starts.clone()
 	previous_loop_defer_block_starts := g.loop_defer_block_starts.clone()
+	previous_loop_has_breaks := g.loop_has_breaks.clone()
+	previous_statement_reachable := g.statement_reachable
 	g.in_main = is_main
 	g.return_type = return_type
 	g.return_types = return_types.clone()
@@ -4160,6 +4173,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.deferred_lines.clear()
 	g.deferred_block_starts.clear()
 	g.loop_defer_block_starts.clear()
+	g.loop_has_breaks.clear()
+	g.statement_reachable = true
 	terminates := g.parse_block_body()!
 	g.in_main = previous_in_main
 	g.return_type = previous_return_type
@@ -4170,6 +4185,8 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.deferred_lines = previous_deferred_lines.clone()
 	g.deferred_block_starts = previous_deferred_block_starts.clone()
 	g.loop_defer_block_starts = previous_loop_defer_block_starts.clone()
+	g.loop_has_breaks = previous_loop_has_breaks.clone()
+	g.statement_reachable = previous_statement_reachable
 	if return_type != 'void' && !terminates {
 		if !g.selfhost {
 			return g.unsupported('non-void function `${name}` that can fall through')
@@ -4469,6 +4486,7 @@ fn fastc_all_true(values []bool) bool {
 
 fn (mut g Parser) parse_block_body() !bool {
 	outer_locals := g.locals.clone()
+	outer_statement_reachable := g.statement_reachable
 	deferred_line_start := g.deferred_lines.len
 	deferred_block_start := g.deferred_block_starts.len
 	mut terminates := false
@@ -4477,6 +4495,7 @@ fn (mut g Parser) parse_block_body() !bool {
 		if g.tok == .eof {
 			return g.unsupported('unfinished block')
 		}
+		g.statement_reachable = outer_statement_reachable && !terminates
 		statement_terminates := g.parse_statement()!
 		if statement_terminates {
 			terminates = true
@@ -4498,6 +4517,7 @@ fn (mut g Parser) parse_block_body() !bool {
 	g.deferred_lines.trim(deferred_line_start)
 	g.deferred_block_starts.trim(deferred_block_start)
 	g.locals = outer_locals.clone()
+	g.statement_reachable = outer_statement_reachable
 	return terminates
 }
 
@@ -4527,9 +4547,12 @@ fn (mut g Parser) parse_statement() !bool {
 			if g.loop_defer_block_starts.len == 0 {
 				return g.unsupported('`break` outside a loop')
 			}
+			if g.statement_reachable && g.loop_has_breaks.len > 0 {
+				g.loop_has_breaks[g.loop_has_breaks.len - 1] = true
+			}
 			g.write_deferred_blocks_from(g.loop_defer_block_starts.last())
 			g.write_line('break;')
-			false
+			true
 		}
 		.key_continue {
 			g.next()
@@ -4539,7 +4562,7 @@ fn (mut g Parser) parse_statement() !bool {
 			}
 			g.write_deferred_blocks_from(g.loop_defer_block_starts.last())
 			g.write_line('continue;')
-			false
+			true
 		}
 		.key_goto {
 			g.next()
@@ -4641,11 +4664,17 @@ fn (mut g Parser) write_all_deferred_scopes() {
 	}
 }
 
-fn (mut g Parser) parse_loop_block_body() !bool {
+fn (mut g Parser) parse_loop_block_body() !FastcLoopBlockResult {
 	g.loop_defer_block_starts << g.deferred_block_starts.len
+	g.loop_has_breaks << false
 	terminates := g.parse_block_body()!
+	has_reachable_break := g.loop_has_breaks.last()
+	g.loop_has_breaks.delete_last()
 	g.loop_defer_block_starts.delete_last()
-	return terminates
+	return FastcLoopBlockResult{
+		terminates:          terminates
+		has_reachable_break: has_reachable_break
+	}
 }
 
 fn (mut g Parser) parse_match_statement() !bool {
@@ -4982,10 +5011,10 @@ fn (mut g Parser) parse_for() !bool {
 		g.next()
 		g.write_line('for (;;) {')
 		g.indent++
-		_ = g.parse_loop_block_body()!
+		loop_result := g.parse_loop_block_body()!
 		g.indent--
 		g.write_line('}')
-		return false
+		return !loop_result.has_reachable_break
 	}
 	mut item_is_mut := false
 	if g.tok == .key_mut {
@@ -7672,6 +7701,11 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			}
 		}
 	}
+	if !g.selfhost {
+		if string_comparison := g.render_string_comparison_expression(tokens) {
+			return string_comparison
+		}
+	}
 	if g.selfhost {
 		if interface_cast := g.render_interface_cast_expression(tokens, rendered_expression) {
 			return interface_cast
@@ -10043,7 +10077,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 				piece = item.source
 			} else {
 				literal := fastc_c_string(item.lit) or { return none }
-				piece = '_S(${literal})'
+				piece = if g.selfhost { '_S(${literal})' } else { literal }
 			}
 		} else if item.tok == .char {
 			piece = if item.lit.starts_with('c:') {
