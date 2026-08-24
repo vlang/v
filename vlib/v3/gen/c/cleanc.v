@@ -17957,6 +17957,7 @@ const c_headerless_libc_declared_fns = [
 	'__errno',
 	'__errno_location',
 	'_errno',
+	'mach_timebase_info',
 	'ptrace',
 	'sigaddset',
 	'sigprocmask',
