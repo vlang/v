@@ -274,18 +274,22 @@ fn test_encode_certificate_rejects_entry_with_extensions() {
 
 // test_encode_certificate_verify_round_trips_through_parse_certificate_verify
 // verifies the WIRE FRAMING (algorithm field, signature length prefix) is
-// correct and that the signature this function produces is plausible ECDSA
-// DER output -- non-empty, and different for different transcript hashes
-// (a constant/garbage signature would fail this). It does NOT
-// cryptographically verify the signature against the public key: this
-// codebase has no PublicKey.verify() exposed by crypto.ecdsa and no EC
-// certificate fixture to build an mbedtls_pk_context from, the SAME
-// documented gap Phase 2c's own x509_standalone_signature_test.v already
-// states ("No EC private key exists anywhere in this repo, so the ECDSA
-// path is tested only via rejecting an incompatible key") -- not silently
-// skipped, stated here for the same reason.
+// correct AND cryptographically verifies the produced signature via
+// crypto.ecdsa's own PublicKey.verify() -- proving encode_certificate_verify
+// actually signs the right content (certificate_verify_signed_content's
+// output) with the right key, not just that it produces plausible-looking
+// bytes. This is a same-library round trip (OpenSSL signs, OpenSSL
+// verifies), not independent-library cross-verification the way this
+// module's client-side chain verification eventually gets from a real
+// peer's mbedTLS -- this repo has no EC certificate fixture to build an
+// mbedtls_pk_context from for that, the same gap Phase 2c's own
+// x509_standalone_signature_test.v documents for the identical reason. What
+// IS proven here: the signed content, the key, and the DER encoding all
+// actually agree -- the exact seam this function's own code introduces, as
+// opposed to crypto.ecdsa's sign/verify primitives themselves, which are
+// pre-existing and already used elsewhere in this codebase.
 fn test_encode_certificate_verify_round_trips_through_parse_certificate_verify() {
-	_, priv_key := ecdsa.generate_key()!
+	pub_key, priv_key := ecdsa.generate_key()!
 	transcript_hash := []u8{len: 32, init: 0x01}
 
 	msg := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256, priv_key, transcript_hash)!
@@ -297,6 +301,9 @@ fn test_encode_certificate_verify_round_trips_through_parse_certificate_verify()
 	assert result.algorithm == sig_scheme_ecdsa_secp256r1_sha256
 	assert result.signature.len > 0
 
+	signed_content := certificate_verify_signed_content(.server, transcript_hash)
+	assert pub_key.verify(signed_content, result.signature, hash_config: .with_recommended_hash)!
+
 	other_transcript_hash := []u8{len: 32, init: 0x02}
 	other_msg := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256, priv_key,
 		other_transcript_hash)!
@@ -305,6 +312,35 @@ fn test_encode_certificate_verify_round_trips_through_parse_certificate_verify()
 	other_result := parse_certificate_verify(other_parsed.body)!
 	assert other_consumed == other_msg.len
 	assert other_result.signature != result.signature
+
+	other_signed_content := certificate_verify_signed_content(.server, other_transcript_hash)
+	assert pub_key.verify(other_signed_content, other_result.signature,
+		hash_config: .with_recommended_hash
+	)!
+	// Cross-wired inputs must NOT verify -- confirms verify() is actually
+	// checking the content, not just the key/signature pair in isolation.
+	assert !pub_key.verify(signed_content, other_result.signature,
+		hash_config: .with_recommended_hash
+	)!
+}
+
+// test_encode_certificate_verify_signature_rejected_by_wrong_public_key
+// confirms a signature this function produces is rejected by a DIFFERENT
+// key's public half -- the negative-space complement to the positive
+// verification above, ruling out a verify() that accepts anything.
+fn test_encode_certificate_verify_signature_rejected_by_wrong_public_key() {
+	_, priv_key := ecdsa.generate_key()!
+	other_pub_key, _ := ecdsa.generate_key()!
+	transcript_hash := []u8{len: 32, init: 0x03}
+
+	msg := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256, priv_key, transcript_hash)!
+	parsed_msg, _ := parse_handshake_message(msg)!
+	result := parse_certificate_verify(parsed_msg.body)!
+
+	signed_content := certificate_verify_signed_content(.server, transcript_hash)
+	assert !other_pub_key.verify(signed_content, result.signature,
+		hash_config: .with_recommended_hash
+	)!
 }
 
 fn test_encode_certificate_verify_rejects_unimplemented_algorithm() {
