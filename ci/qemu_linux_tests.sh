@@ -22,6 +22,8 @@ Environment overrides:
   V_QEMU_CPUS          Virtual CPUs (default: 4)
   V_QEMU_MEMORY_MB     Guest memory in MiB (default: 16384)
   V_QEMU_JOBS          V test jobs (default: 1)
+  V_QEMU_CC            Guest compiler exposed as `cc` to nested V3 processes
+                       (default: clang)
   V_QEMU_VFLAGS        Flags inherited by V subprocesses
                        (default: -cc clang -no-memory-limit)
   V_QEMU_NO_FALLBACK   Set V_MACOS_V3_NO_FALLBACK (default: 1)
@@ -32,7 +34,9 @@ Environment overrides:
 
 Examples:
   ci/qemu_linux_tests.sh
-  ci/qemu_linux_tests.sh -- -cc gcc test vlib/v3/
+  ci/qemu_linux_tests.sh -- -cc clang test vlib/v3/
+  V_QEMU_CC=gcc V_QEMU_VFLAGS='-cc gcc -no-memory-limit' \
+    ci/qemu_linux_tests.sh -- -cc gcc test vlib/v3/
   V_QEMU_NO_FALLBACK=0 ci/qemu_linux_tests.sh -- -old-compiler test-all
 EOF
 }
@@ -74,6 +78,7 @@ memory_mb=${V_QEMU_MEMORY_MB:-16384}
 # reliable in the default 16 GiB guest; callers with larger guests can opt into
 # more parallelism explicitly.
 jobs=${V_QEMU_JOBS:-1}
+nested_cc=${V_QEMU_CC:-clang}
 vflags=${V_QEMU_VFLAGS:--cc clang -no-memory-limit}
 no_fallback=${V_QEMU_NO_FALLBACK:-1}
 guest_tmp_root=${V_QEMU_TMPDIR:-/var/tmp/v-qemu-tests}
@@ -279,6 +284,7 @@ if (($# == 0)); then
 fi
 
 printf -v jobs_q '%q' "$jobs"
+printf -v nested_cc_q '%q' "$nested_cc"
 printf -v vflags_q '%q' "$vflags"
 printf -v no_fallback_q '%q' "$no_fallback"
 printf -v guest_tmp_root_q '%q' "$guest_tmp_root"
@@ -301,6 +307,8 @@ fi
 remote_command+=" && ./vnew wipe-cache"
 remote_command+=" && mkdir -p \"\$qemu_tmp/bin\""
 remote_command+=" && ln -sf ${guest_repo_q}/vnew \"\$qemu_tmp/bin/v\""
+remote_command+=" && nested_cc_path=\$(command -v ${nested_cc_q})"
+remote_command+=" && ln -sf \"\$nested_cc_path\" \"\$qemu_tmp/bin/cc\""
 remote_command+=" && export PATH=\"\$qemu_tmp/bin:\$PATH\""
 remote_command+=" && VFLAGS=${vflags_q} VJOBS=${jobs_q}"
 remote_command+=" V_MACOS_V3_NO_FALLBACK=${no_fallback_q} ${test_command}"

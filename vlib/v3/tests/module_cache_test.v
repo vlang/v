@@ -399,7 +399,9 @@ fn test_cached_source_signatures_revalidate_changed_inputs() {
 		assert false, 'an unchanged source should retain its cached header'
 		return
 	}
-	write_module_cache_file(root, 'foo.v', 'module foo\n\npub fn value() int { return 2 }\n')
+	// Change the size as well as the contents so this exercises metadata
+	// revalidation on filesystems whose timestamp precision is coarse.
+	write_module_cache_file(root, 'foo.v', 'module foo\n\npub fn value() int { return 22 }\n')
 	if _ := manager.valid_header('foo', [source]) {
 		assert false, 'source metadata changes must trigger full content revalidation'
 	}
@@ -2474,7 +2476,11 @@ fn main() {
 	assert output == '41\n', output
 	assert os.read_lines(side_effect_file)! == ['run']
 	assert !os.exists(fallback_file), 'cache restart left a stale fallback marker'
-	assert !os.exists(report_dir), 'cache restart exposed or staged a C error report'
+	// A standalone V3 process retains the parser digest manifest for its caller to
+	// consume. A successful restart must not turn that manifest into an error report.
+	mut staged_files := os.ls(report_dir)!
+	staged_files.sort()
+	assert staged_files == ['v_source_digests', 'v_sources'], staged_files.str()
 }
 
 fn test_cached_objects_receive_forced_include_flags() {
