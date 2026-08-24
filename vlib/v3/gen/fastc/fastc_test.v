@@ -240,6 +240,94 @@ fn test_generate_files_restricts_unqualified_imported_type_lookup() {
 	assert message.contains('private type `Widget` from imported module `widgets`'), message
 }
 
+fn test_selfhost_struct_field_defaults_are_preserved() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn default_retries() int {
+	return 3
+}
+
+struct Config {
+	retries int = default_retries()
+}
+
+fn main() {
+	config := Config{}
+	println(config.retries)
+}
+',
+		'struct_field_default.v', prefs) or { panic(err) }
+	assert c_source.contains('int default_retries(void)'), c_source
+	assert c_source.contains('__v_fastc_struct_default.retries=(default_retries());'), c_source
+}
+
+fn test_generate_files_rejects_private_imported_struct_fields() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_private_fields_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'records')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'records', 'records.v')
+	module_source := 'module records
+
+pub struct Settings {
+	secret int
+pub:
+	visible int
+}
+
+pub fn make() Settings {
+	return Settings{secret: 1, visible: 2}
+}
+'
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.module_search_paths = [root]
+	for source in [
+		'module main\nimport records\nfn main() { value := records.make(); println(value.secret) }\n',
+		'module main\nimport records\nfn main() { value := records.Settings{secret: 1}; println(value.visible) }\n',
+	] {
+		mut message := ''
+		_ := generate_source_files([
+			FastcSourceFile{
+				path:   main_file
+				source: source
+				header: fastc_scan_source_header(source, main_file, prefs) or { panic(err) }
+			},
+			FastcSourceFile{
+				path:   module_file
+				source: module_source
+				header: fastc_scan_source_header(module_source, module_file, prefs) or {
+					panic(err)
+				}
+			},
+		], prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('private field `Settings.secret` from imported module `records`'), message
+	}
+
+	valid_source := 'module main\nimport records\nfn main() { value := records.Settings{visible: 2}; println(value.visible) }\n'
+	c_source := generate_source_files([
+		FastcSourceFile{
+			path:   main_file
+			source: valid_source
+			header: fastc_scan_source_header(valid_source, main_file, prefs) or { panic(err) }
+		},
+		FastcSourceFile{
+			path:   module_file
+			source: module_source
+			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
+		},
+	], prefs) or { panic(err) }
+	assert c_source.contains('.visible=(2)'), c_source
+}
+
 fn test_disabled_function_attributes_emit_empty_stubs() {
 	mut prefs := pref.new_preferences()
 	prefs.user_defines = []
