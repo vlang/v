@@ -879,7 +879,7 @@ int cached_apply(int (*cb)(int), int value)
 	assert header.contains('static int cached_apply(int (*cb)(int), int value)\n{'), header
 }
 
-fn test_cached_native_callback_definition_is_localized() {
+fn test_native_callback_definition_disables_module_cache_split() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_native_callback_definition_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -912,14 +912,13 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '42'
-	header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
-	assert header_path.len > 0
-	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains(os.real_path(os.join_path(root, 'wrapper/api.h'))), header
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == '42'
+	// Function-pointer syntax does not make an ungated external definition safe to
+	// localize. Keep the module monolithic instead of changing its C linkage.
+	assert module_cache_artifact(cache_dir, 'wrapper_', '.o').len == 0
 }
 
 fn test_cached_cgen_dependency_inputs_restore_only_allowed_groups() {
