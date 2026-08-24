@@ -98,11 +98,11 @@ C file or executable is published. Unsupported V syntax and same-target TinyCC e
 directly; FastC never retries through an AST-based backend.
 
 FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
-expressions including validated comparison and logical operators, `if`/`else`, and condition,
-C-style, infinite, and integer-range `for` loops. GNU `typeof` carries `:=` declarations into C
-without V type inference. Integer-range bounds are evaluated once, from left to right. The parser
-also rejects mutation of immutable or unknown local names instead of relying on C's weaker
-assignment rules.
+expressions including validated comparison and logical operators, string interpolation for strings
+and non-floating primitive values, `if`/`else`, and condition, C-style, infinite, and integer-range
+`for` loops. GNU `typeof` carries `:=` declarations into C without V type inference. Integer-range
+bounds are evaluated once, from left to right. The parser also rejects mutation of immutable or
+unknown local names instead of relying on C's weaker assignment rules.
 
 Syntax whose V semantics require type or runtime information is rejected until FastC can lower it
 directly. This includes float printing, C-string and embedded-NUL string literals, runes,
