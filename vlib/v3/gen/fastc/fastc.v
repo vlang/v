@@ -259,6 +259,7 @@ struct FastcStructField {
 	name           string
 	typ            string
 	is_public      bool
+	is_required    bool
 	module_name    string
 	path           string
 	imports        map[string]string
@@ -689,6 +690,56 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 	return sources
 }
 
+fn fastc_sources_in_dependency_order(sources []FastcSourceFile) ![]FastcSourceFile {
+	mut module_order := []string{}
+	for source_file in sources {
+		module_name := source_file.header.module_name
+		if module_name !in module_order {
+			module_order << module_name
+		}
+	}
+	mut visiting := []string{}
+	mut visited := []string{}
+	mut ordered := []FastcSourceFile{cap: sources.len}
+	for module_name in module_order {
+		fastc_append_module_sources(module_name, sources, mut visiting, mut visited, mut ordered)!
+	}
+	return ordered
+}
+
+fn fastc_append_module_sources(module_name string, sources []FastcSourceFile, mut visiting []string, mut visited []string, mut ordered []FastcSourceFile) ! {
+	if module_name in visited {
+		return
+	}
+	if module_name in visiting {
+		return error('fastc parser does not support cyclic module dependency involving `${module_name}`')
+	}
+	visiting << module_name
+	mut dependencies := []string{}
+	for source_file in sources {
+		if source_file.header.module_name != module_name {
+			continue
+		}
+		imports := source_file.header.imports.clone()
+		for dependency in imports.values() {
+			if dependency != module_name && dependency !in dependencies {
+				dependencies << dependency
+			}
+		}
+	}
+	dependencies.sort()
+	for dependency in dependencies {
+		fastc_append_module_sources(dependency, sources, mut visiting, mut visited, mut ordered)!
+	}
+	for source_file in sources {
+		if source_file.header.module_name == module_name {
+			ordered << source_file
+		}
+	}
+	visiting.delete(visiting.len - 1)
+	visited << module_name
+}
+
 fn fastc_source_file_matches_backend(path string) bool {
 	return !path.ends_with('.arm64.v') && !path.ends_with('.amd64.v')
 		&& !path.ends_with('.native.v') && !path.ends_with('.wasm.v') && !path.ends_with('.rv64.v')
@@ -1004,7 +1055,8 @@ fn collect_global_names(source string, path string, module_name string, prefs &p
 fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, mut global_types map[string]string) !FastcGlobalDeclarations {
 	mut out := strings.new_builder(1024)
 	mut initializers := strings.new_builder(1024)
-	for source_file in sources {
+	ordered_sources := fastc_sources_in_dependency_order(sources)!
+	for source_file in ordered_sources {
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
 		file.index_lines(source_file.source)
@@ -1543,6 +1595,12 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		}
 		tok = next_token
 		fastc_register_composite_type(field_type, mut composite_types)
+		mut is_required := false
+		for tok == .attribute {
+			mut attribute_is_required := false
+			tok, attribute_is_required = fastc_scan_struct_field_attribute(mut scan)!
+			is_required = is_required || attribute_is_required
+		}
 		mut default_source := ''
 		if tok == .assign {
 			first_default_token := scan.scan()
@@ -1569,6 +1627,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 				name:           field_name
 				typ:            field_type
 				is_public:      fields_are_public
+				is_required:    is_required
 				module_name:    source_file.header.module_name
 				path:           source_file.path
 				imports:        source_file.header.imports.clone()
@@ -1662,8 +1721,16 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 		tok = scan.scan()
 		if tok == .assign {
 			tok = scan.scan()
+			mut sign := 1
+			if tok in [.plus, .minus] {
+				sign = if tok == .minus { -1 } else { 1 }
+				tok = scan.scan()
+			}
 			if tok == .number {
 				value = scan.lit.int()
+				if sign < 0 {
+					value = -value
+				}
 				tok = scan.scan()
 			} else {
 				tok = fastc_skip_field_default_from_token(mut scan, tok)!
@@ -1830,6 +1897,27 @@ fn fastc_skip_attribute(mut scan scanner.Scanner) !token.Token {
 		tok = scan.scan()
 	}
 	return tok
+}
+
+fn fastc_scan_struct_field_attribute(mut scan scanner.Scanner) !(token.Token, bool) {
+	mut tok := scan.scan()
+	mut depth := 1
+	mut is_required := false
+	for depth > 0 {
+		if tok == .eof {
+			return error('fastc parser does not support unfinished struct field attribute')
+		}
+		if tok == .name && scan.lit == 'required' {
+			is_required = true
+		}
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+		}
+		tok = scan.scan()
+	}
+	return tok, is_required
 }
 
 fn fastc_skip_balanced_tokens(mut scan scanner.Scanner, first token.Token, open token.Token, close token.Token) !token.Token {
@@ -4107,6 +4195,9 @@ fn (mut g Parser) parse_for() !bool {
 				if !fastc_is_integer_expression_type(start_expression_type)
 					|| !fastc_is_integer_expression_type(end_expression_type) {
 					return g.unsupported('range bounds of types `${start_expression_type}` and `${end_expression_type}` must both be integers')
+				}
+				if !fastc_range_types_are_compatible(start_expression_type, end_expression_type) {
+					return g.unsupported('range bounds of types `${start_expression_type}` and `${end_expression_type}` must have compatible integer types')
 				}
 				if start_value := fastc_integer_literal_value(start_expression) {
 					if end_value := fastc_integer_literal_value(end_expression) {
@@ -9742,6 +9833,8 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	}
 	close := fastc_matching_delimiter(tokens, open, .lcbr, .rcbr) or { return }
 	mut index := open + 1
+	mut initialized_fields := map[string]bool{}
+	mut has_update := false
 	for index < close {
 		for index < close && tokens[index].tok in [.semicolon, .comma] {
 			index++
@@ -9750,6 +9843,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 			break
 		}
 		if tokens[index].tok == .ellipsis {
+			has_update = true
 			index++
 			for index < close && tokens[index].tok !in [.semicolon, .comma] {
 				index++
@@ -9761,6 +9855,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 		}
 		field_name := tokens[index].lit
 		field := g.struct_field_metadata(c_type, field_name) or { return }
+		initialized_fields[field_name] = true
 		if !g.struct_field_is_visible(field) {
 			type_name := g.semantic_type_key(c_type).all_after_last('.')
 			return g.unsupported('private field `${type_name}.${field.name}` from imported module `${field.module_name}`')
@@ -9800,6 +9895,14 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 				else {}
 			}
 			index++
+		}
+	}
+	if !has_update {
+		for field in g.struct_field_info[layout_type] {
+			if field.is_required && field.name !in initialized_fields {
+				type_name := g.semantic_type_key(c_type).all_after_last('.')
+				return g.unsupported('field `${type_name}.${field.name}` must be initialized')
+			}
 		}
 	}
 }
@@ -10424,11 +10527,40 @@ fn fastc_number_expression_type(literal string) string {
 }
 
 fn fastc_integer_literal_value(tokens []FastcExpressionToken) ?i64 {
-	if tokens.len != 1 || tokens[0].tok != .number
-		|| fastc_number_expression_type(tokens[0].lit) != 'integer literal' {
+	mut sign := i64(1)
+	mut number_index := 0
+	if tokens.len == 2 && tokens[0].tok in [.plus, .minus] {
+		sign = if tokens[0].tok == .minus { -1 } else { 1 }
+		number_index = 1
+	} else if tokens.len != 1 {
 		return none
 	}
-	return tokens[0].lit.replace('_', '').i64()
+	if tokens[number_index].tok != .number
+		|| fastc_number_expression_type(tokens[number_index].lit) != 'integer literal' {
+		return none
+	}
+	mut value := tokens[number_index].lit.replace('_', '').i64()
+	if sign < 0 {
+		value = -value
+	}
+	return value
+}
+
+fn fastc_range_types_are_compatible(left string, right string) bool {
+	if left == right {
+		return true
+	}
+	if fastc_is_integer_literal_expression_type(left)
+		&& fastc_is_integer_literal_expression_type(right) {
+		return true
+	}
+	if fastc_is_integer_literal_expression_type(left) {
+		return fastc_call_types_are_compatible(left, right)
+	}
+	if fastc_is_integer_literal_expression_type(right) {
+		return fastc_call_types_are_compatible(right, left)
+	}
+	return false
 }
 
 fn fastc_common_arithmetic_type(left string, right string) string {

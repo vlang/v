@@ -263,6 +263,40 @@ fn main() {
 	assert c_source.contains('__v_fastc_struct_default.retries=(default_retries());'), c_source
 }
 
+fn test_required_struct_fields_must_be_initialized() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	mut message := ''
+	_ := generate('module main
+
+struct Config {
+	name string @[required]
+}
+
+fn main() {
+	Config{}
+}
+',
+		'missing_required_struct_field.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('field `Config.name` must be initialized'), message
+
+	generate('module main
+
+struct Config {
+	name string @[required]
+}
+
+fn main() {
+	config := Config{name: "set"}
+	println(config.name)
+}
+',
+		'initialized_required_struct_field.v', prefs) or { panic(err) }
+}
+
 fn test_generate_files_rejects_private_imported_struct_fields() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_private_fields_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -387,6 +421,73 @@ fn main() {
 	assert c_source.contains('static int answer;'), c_source
 	assert c_source.contains('\tanswer = 42;'), c_source
 	assert c_source.contains('v_fastc_init_globals();'), c_source
+}
+
+fn test_imported_global_initializers_run_before_importer_globals() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_global_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'dep')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	dep_file := os.join_path(root, 'dep', 'dep.v')
+	os.write_file(main_file, 'module main
+
+import dep
+
+__global copied = dep.current()
+
+fn main() {
+	println(copied)
+}
+') or {
+		panic(err)
+	}
+	os.write_file(dep_file, 'module dep
+
+__global current_value = 42
+
+pub fn current() int {
+	return current_value
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	dependency_initializer := c_source.index('dep__current_value = 42;') or { -1 }
+	importer_initializer := c_source.index('copied = dep__current();') or { -1 }
+	assert dependency_initializer >= 0, c_source
+	assert importer_initializer > dependency_initializer, c_source
+
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == '42'
+}
+
+fn test_negative_enum_discriminants_are_preserved() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+enum Foo {
+	a = 1
+	d = -10
+	e
+}
+
+fn main() {}
+',
+		'negative_enum_discriminant.v', prefs) or { panic(err) }
+	assert c_source.contains('#define Foo__d ((Foo)-10)'), c_source
+	assert c_source.contains('#define Foo__e ((Foo)-9)'), c_source
 }
 
 fn test_select_statements_are_rejected() {
@@ -1025,11 +1126,31 @@ fn test_range_bounds_must_be_integers() {
 	}
 }
 
+fn test_range_bound_integer_types_must_be_compatible() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { for i in u64(0) .. -1 { println(i) } }\n',
+		'module main\nfn main() { for i in i64(0) .. u64(3) { println(i) } }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'incompatible_range_bounds.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('range bounds of types'), message
+		assert message.contains('must have compatible integer types'), message
+	}
+
+	generate('module main\nfn main() { for i in u64(0) .. 3 { println(i) } }\n',
+		'compatible_range_bound_literal.v', prefs) or { panic(err) }
+}
+
 fn test_literal_range_must_not_be_empty() {
 	prefs := pref.new_preferences()
 	for source in [
 		'module main\nfn main() { for i in 4 .. 2 { println(i) } }\n',
 		'module main\nfn main() { for i in 2 .. 2 { println(i) } }\n',
+		'module main\nfn main() { for i in 4 .. -2 { println(i) } }\n',
 	] {
 		mut message := ''
 		_ := generate(source, 'empty_literal_range.v', prefs) or {
