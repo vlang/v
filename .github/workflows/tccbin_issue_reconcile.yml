@@ -21,7 +21,7 @@ jobs:
         if: github.event_name == 'schedule' && github.ref != 'refs/heads/master'
         run: exit 1
       - name: Checkout the trusted workflow revision
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Project the persisted issue ledger and validate aggregation without issue access

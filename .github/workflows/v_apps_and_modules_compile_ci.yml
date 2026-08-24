@@ -39,7 +39,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Cache apt packages
         if: runner.os == 'Linux'
@@ -267,7 +267,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build V
         run: make && ./v symlink
       - name: Build vpm
@@ -293,7 +293,7 @@ jobs:
       # "gitly serves the expected HTML" checks, which do not need network/git.
       GITLY_TEST_SKIP_REMOTE_REPO: '1'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build V
         run: |
           .\makev.bat -gcc
