@@ -85,6 +85,40 @@ fn main() {
 	assert run_result.output == 'hello FastC!\n'
 }
 
+fn test_zero_value_strings_print_as_empty_strings() {
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
+	c_source := generate('module main
+
+__global name string
+
+fn main() {
+	print(name)
+	println(name)
+	println("done")
+}
+',
+		'zero_value_string.v', prefs) or { panic(err) }
+	assert c_source.contains('fputs(value ? value : "", stdout)'), c_source
+	assert c_source.contains('puts(value ? value : "")'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_zero_string_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '\ndone\n'
+}
+
 fn test_top_level_statements_emit_main_directly() {
 	prefs := pref.new_preferences()
 	c_source := generate("println('Hello, World!')\n", 'hello_world.v', prefs) or { panic(err) }

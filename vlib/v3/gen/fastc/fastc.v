@@ -41,12 +41,12 @@ typedef union { uintptr_t word; long double alignment; unsigned char data[64]; }
 typedef struct { MultiReturnValue values[8]; } MultiReturn;
 #define V_FASTC_MULTI_VALUE(expression) ({ __typeof__(expression) value = (expression); MultiReturnValue result = {0}; memcpy(result.data, &value, sizeof(value)); result; })
 
-static void v_fastc_print_string(const char *value) { fputs(value, stdout); }
+static void v_fastc_print_string(const char *value) { fputs(value ? value : "", stdout); }
 static void v_fastc_print_bool(bool value) { fputs(value ? "true" : "false", stdout); }
 static void v_fastc_print_char(char value) { fputc(value, stdout); }
 static void v_fastc_print_signed(long long value) { printf("%lld", value); }
 static void v_fastc_print_unsigned(unsigned long long value) { printf("%llu", value); }
-static void v_fastc_println_string(const char *value) { puts(value); }
+static void v_fastc_println_string(const char *value) { puts(value ? value : ""); }
 static void v_fastc_println_bool(bool value) { puts(value ? "true" : "false"); }
 static void v_fastc_println_char(char value) { fputc(value, stdout); fputc(10, stdout); }
 static void v_fastc_println_signed(long long value) { printf("%lld\n", value); }
