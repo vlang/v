@@ -1501,13 +1501,10 @@ fn (mut g Parser) parse_one_constant(mut values []FastcConstantValue, stops []to
 	}
 	name := g.lit
 	g.next()
-	for g.tok != .assign && g.tok != .eof {
-		if g.tok in stops {
-			return g.unsupported('constant `${name}` without a value')
-		}
-		g.next()
+	if g.tok !in [.assign, .decl_assign] {
+		return g.unsupported('constant `${name}` requires `=` or `:=` after its name, got `${g.token_source()}`')
 	}
-	g.expect(.assign)!
+	g.next()
 	value := g.read_expression(stops)!
 	if value.len == 0 {
 		return g.unsupported('empty constant `${name}`')
@@ -10419,6 +10416,7 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 					if !local.is_mut {
 						return g.unsupported('mutable argument `${argument_name}` to function `${name}` is immutable')
 					}
+					g.validate_mutable_argument_fields(argument, name, argument_index)!
 				}
 				if g.selfhost && !is_variadic_argument {
 					// The bootstrap compiler already checked this trusted source graph.
@@ -10514,6 +10512,35 @@ fn fastc_mut_argument_root_name(argument []FastcExpressionToken) string {
 		}
 	}
 	return ''
+}
+
+fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken, function_name string, argument_index int) ! {
+	mut selector_depth := 0
+	for i, item in argument {
+		match item.tok {
+			.lpar, .lsbr, .lcbr {
+				selector_depth++
+				continue
+			}
+			.rpar, .rsbr, .rcbr {
+				selector_depth--
+				continue
+			}
+			else {}
+		}
+		if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= argument.len
+			|| argument[i + 1].tok != .name || g.expression_dot_is_module_separator(argument, i) {
+			continue
+		}
+		receiver_start := fastc_method_receiver_start(argument, i)
+		receiver_type := g.infer_expression_type(argument[receiver_start..i]) or { continue }
+		field := g.struct_field_metadata(receiver_type, argument[i + 1].lit) or { continue }
+		if field.module_name !in ['', g.module_name] && !field.is_mutable {
+			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
+			return g.unsupported('mutable argument field `${type_name}.${field.name}` to function `${function_name}` parameter ${
+				argument_index + 1} is not `pub mut` in imported module `${field.module_name}`')
+		}
+	}
 }
 
 fn (g &Parser) validate_primitive_cast(target_type string, operand []FastcExpressionToken, in_unsafe bool) ! {

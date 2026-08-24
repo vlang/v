@@ -188,6 +188,23 @@ fn test_duplicate_constant_declarations_are_rejected() {
 	}
 }
 
+fn test_constant_declarations_require_an_assignment_after_the_name() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main\nconst answer nonsense = 42\nfn main() {}\n',
+		'invalid_constant_assignment.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('constant `answer` requires `=` or `:=` after its name'), message
+
+	for assignment in ['=', ':='] {
+		c_source := generate('module main\nconst answer ${assignment} 42\nfn main() { println(answer) }\n',
+			'valid_constant_assignment.v', prefs) or { panic(err) }
+		assert c_source.contains('main__answer'), c_source
+	}
+}
+
 fn test_duplicate_type_declarations_are_rejected() {
 	prefs := pref.new_preferences()
 	for source in [
@@ -1360,6 +1377,71 @@ fn main() {
 		'mutable_argument.v', prefs) or { panic(err) }
 	assert c_source.contains('void change(int* x)'), c_source
 	assert c_source.contains('change(&x);'), c_source
+}
+
+fn test_mutable_arguments_require_mutable_imported_fields() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_mut_argument_field_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'settings')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'settings', 'settings.v')
+	module_source := 'module settings
+
+pub struct Config {
+pub:
+	read_only int
+pub mut:
+	writable int
+}
+'
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	os.write_file(module_file, module_source) or { panic(err) }
+	os.write_file(main_file, 'module main
+
+import settings
+
+fn change(mut value int) {
+	value = 2
+}
+
+fn mutate(mut config settings.Config) {
+	change(mut config.read_only)
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+	mut message := ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutable argument field `Config.read_only`'), message
+	assert message.contains('is not `pub mut` in imported module `settings`'), message
+
+	os.write_file(main_file, 'module main
+
+import settings
+
+fn change(mut value int) {
+	value = 2
+}
+
+fn mutate(mut config settings.Config) {
+	change(mut config.writable)
+}
+
+fn main() {}
+') or {
+		panic(err)
+	}
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('change(&config.writable);'), c_source
 }
 
 fn test_match_expression_requires_else() {
