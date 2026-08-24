@@ -1020,17 +1020,101 @@ fn test_disabled_function_attributes_emit_empty_stubs() {
 	c_source := generate('module main
 
 @[if fastc_missing_define ?]
-fn traced() {
+fn traced(value int) {
 	println("must not run")
 }
 
+fn side_effect() int {
+	println(99)
+	return 1
+}
+
 fn main() {
-	traced()
+	traced(side_effect())
+	println(0)
 }
 ',
 		'disabled_function_attribute.v', prefs) or { panic(err) }
-	assert c_source.contains('void traced(void) {\n}')
+	assert c_source.contains('void traced(int value) {\n}')
 	assert !c_source.contains('must not run')
+	assert !c_source.contains('traced(side_effect())')
+	assert c_source.contains('((void)0);')
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_disabled_call_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '0\n'
+
+	module_dir := os.join_path(root, 'tracing')
+	os.mkdir_all(module_dir) or { panic(err) }
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(module_dir, 'tracing.v')
+	os.write_file(main_file, 'module main
+
+import tracing
+
+fn side_effect() int {
+	println(99)
+	return 1
+}
+
+fn main() {
+	tracing.trace(side_effect())
+	println(0)
+}
+') or {
+		panic(err)
+	}
+	os.write_file(module_file, 'module tracing
+
+@[if fastc_missing_define ?]
+pub fn trace(value int) {}
+') or {
+		panic(err)
+	}
+	prefs.module_search_paths = [root]
+	imported_source := generate_files([main_file], prefs) or { panic(err) }
+	assert !imported_source.contains('tracing__trace(side_effect())')
+	os.write_file(c_file, imported_source) or { panic(err) }
+	imported_compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert imported_compile_result.exit_code == 0, imported_compile_result.output
+	imported_run_result := cmdexec.run(bin_file, [])
+	assert imported_run_result.exit_code == 0, imported_run_result.output
+	assert imported_run_result.output == '0\n'
+
+	mut selfhost_prefs := pref.new_preferences()
+	selfhost_prefs.building_v = true
+	method_source := generate('module main
+
+struct Tracer {}
+
+@[if fastc_missing_define ?]
+fn (tracer Tracer) trace(value int) {}
+
+fn side_effect() int {
+	return 1
+}
+
+fn run(tracer Tracer) {
+	tracer.trace(side_effect())
+}
+
+fn main() {}
+',
+		'disabled_method_attribute.v', selfhost_prefs) or { panic(err) }
+	assert !method_source.contains('Tracer_trace(tracer,side_effect())')
+	assert method_source.contains('((void)0);')
 }
 
 fn test_compound_function_attributes_evaluate_the_complete_condition() {
@@ -1057,6 +1141,44 @@ fn main() {
 	assert c_source.contains('void impossible(void) {\n}')
 	assert !c_source.contains('disabled compound condition')
 	assert c_source.contains('enabled compound condition')
+}
+
+fn test_disabled_type_attributes_skip_collection_and_emission() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+@[if fastc_missing_define ?]
+struct DisabledStruct {
+	bad MissingDisabledType
+}
+
+@[if fastc_missing_define ?]
+union DisabledUnion {
+	bad MissingDisabledType
+}
+
+@[if fastc_missing_define ?]
+enum DisabledEnum {
+	value
+}
+
+@[if fastc_missing_define ?]
+interface DisabledInterface {
+	bad(value MissingDisabledType)
+}
+
+@[if fastc_missing_define ?]
+type DisabledAlias = MissingDisabledType
+
+fn main() {
+	println(7)
+}
+',
+		'disabled_type_attribute.v', prefs) or { panic(err) }
+	for disabled_name in ['DisabledStruct', 'DisabledUnion', 'DisabledEnum', 'DisabledInterface',
+		'DisabledAlias', 'MissingDisabledType'] {
+		assert !c_source.contains(disabled_name), c_source
+	}
 }
 
 fn test_selected_top_level_comptime_function_signatures_are_collected() {

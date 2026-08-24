@@ -245,6 +245,7 @@ struct FastcFunctionSignature {
 	option_type          string
 	is_variadic          bool
 	is_public            bool
+	is_disabled          bool
 	module_name          string
 	path                 string
 }
@@ -363,6 +364,13 @@ struct FastcComptimeCondition {
 struct FastcComptimeBlock {
 	source string
 	tok    token.Token
+}
+
+struct FastcDeclarationAttribute {
+	tok        token.Token
+	is_enabled bool
+	is_flag    bool
+	is_typedef bool
 }
 
 struct FastcEnumInfo {
@@ -1189,6 +1197,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	mut brace_depth := 0
 	mut next_c_struct_is_typedef := false
 	mut next_enum_is_flag := false
+	mut next_type_is_enabled := true
 	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
@@ -1206,27 +1215,17 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			}
 		}
 		if brace_depth == 0 && tok == .attribute {
-			mut attribute_depth := 1
-			mut is_typedef := false
-			mut is_flag := false
-			tok = scan.scan()
-			for attribute_depth > 0 && tok != .eof {
-				if tok == .name && scan.lit == 'typedef' {
-					is_typedef = true
-				}
-				if tok == .name && scan.lit == 'flag' {
-					is_flag = true
-				}
-				if tok == .lsbr {
-					attribute_depth++
-				} else if tok == .rsbr {
-					attribute_depth--
-				}
-				tok = scan.scan()
-			}
-			next_c_struct_is_typedef = next_c_struct_is_typedef || is_typedef
-			next_enum_is_flag = next_enum_is_flag || is_flag
+			attribute := fastc_scan_declaration_attribute(mut scan, path, prefs)!
+			tok = attribute.tok
+			next_c_struct_is_typedef = next_c_struct_is_typedef || attribute.is_typedef
+			next_enum_is_flag = next_enum_is_flag || attribute.is_flag
+			next_type_is_enabled = next_type_is_enabled && attribute.is_enabled
 			continue
+		}
+		if brace_depth == 0 && tok in [.key_fn, .key_const, .key_global] {
+			next_c_struct_is_typedef = false
+			next_enum_is_flag = false
+			next_type_is_enabled = true
 		}
 		if brace_depth == 0
 			&& tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union] {
@@ -1239,7 +1238,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 				else { FastcDeclaredTypeKind.struct_ }
 			}
 			tok = scan.scan()
-			if tok == .name {
+			if tok == .name && next_type_is_enabled {
 				name := scan.lit
 				tok = scan.scan()
 				if name == 'C' && tok == .dot {
@@ -1263,6 +1262,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			}
 			next_c_struct_is_typedef = false
 			next_enum_is_flag = false
+			next_type_is_enabled = true
 			continue
 		}
 		if tok == .lcbr {
@@ -2029,6 +2029,7 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 	scan.init(file, source_file.source)
 	mut depth := 0
 	mut next_enum_is_flag := false
+	mut next_type_is_enabled := true
 	mut tok := scan.scan()
 	for tok != .eof {
 		if depth == 0 && tok == .dollar {
@@ -2053,29 +2054,47 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 			}
 		}
 		if depth == 0 && tok == .attribute {
-			tok, next_enum_is_flag = fastc_scan_type_attribute(mut scan)!
+			attribute := fastc_scan_declaration_attribute(mut scan, source_file.path, prefs)!
+			tok = attribute.tok
+			next_enum_is_flag = next_enum_is_flag || attribute.is_flag
+			next_type_is_enabled = next_type_is_enabled && attribute.is_enabled
+			continue
+		}
+		if depth == 0 && tok in [.key_fn, .key_const, .key_global] {
+			next_enum_is_flag = false
+			next_type_is_enabled = true
+		}
+		if depth == 0 && !next_type_is_enabled
+			&& tok in [.key_struct, .key_union, .key_enum, .key_interface, .key_type] {
+			tok = fastc_skip_type_declaration(mut scan, tok)!
+			next_enum_is_flag = false
+			next_type_is_enabled = true
 			continue
 		}
 		if depth == 0 && tok in [.key_struct, .key_union] {
 			tok = fastc_emit_struct_declaration(mut scan, tok == .key_union, source_file,
 				declared_types, prefs.building_v, mut struct_fields, mut struct_field_info, mut
 				composite_types, mut out)!
+			next_type_is_enabled = true
 			continue
 		}
 		if depth == 0 && tok == .key_enum {
 			tok = fastc_emit_enum_declaration(mut scan, source_file, next_enum_is_flag,
 				declared_types, declared_kinds, constants, public_constants, mut enum_infos, mut out)!
 			next_enum_is_flag = false
+			next_type_is_enabled = true
 			continue
 		}
 		if depth == 0 && tok == .key_interface {
 			tok = fastc_emit_interface_declaration(mut scan, source_file, mut out)!
+			next_type_is_enabled = true
 			continue
 		}
 		if depth == 0 && tok == .key_type {
 			tok = fastc_emit_alias_declaration(mut scan, source_file, declared_types,
 				declared_kinds, prefs.building_v, mut struct_fields, mut struct_field_info, mut
 				alias_base_types, mut out)!
+			next_type_is_enabled = true
 			continue
 		}
 		if tok == .lcbr {
@@ -2087,16 +2106,36 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 	}
 }
 
-fn fastc_scan_type_attribute(mut scan scanner.Scanner) !(token.Token, bool) {
+fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs &pref.Preferences) !FastcDeclarationAttribute {
 	mut tok := scan.scan()
 	mut depth := 1
 	mut is_flag := false
+	mut is_typedef := false
+	mut is_enabled := true
+	mut at_item_start := true
 	for depth > 0 {
 		if tok == .eof {
-			return error('fastc parser does not support unfinished type attribute')
+			return error('fastc parser does not support unfinished declaration attribute in ${path}')
+		}
+		if depth == 1 && at_item_start && tok == .key_if {
+			condition := fastc_scan_comptime_or(mut scan, scan.scan(), path, prefs)!
+			is_enabled = is_enabled && condition.value
+			tok = condition.tok
+			if tok !in [.semicolon, .rsbr] {
+				return error('fastc parser does not support conditional attribute expression in ${path}')
+			}
+			continue
 		}
 		if tok == .name && scan.lit == 'flag' {
 			is_flag = true
+		}
+		if tok == .name && scan.lit == 'typedef' {
+			is_typedef = true
+		}
+		if depth == 1 && tok == .semicolon {
+			at_item_start = true
+		} else if depth == 1 {
+			at_item_start = false
 		}
 		if tok == .lsbr {
 			depth++
@@ -2105,7 +2144,12 @@ fn fastc_scan_type_attribute(mut scan scanner.Scanner) !(token.Token, bool) {
 		}
 		tok = scan.scan()
 	}
-	return tok, is_flag
+	return FastcDeclarationAttribute{
+		tok:        tok
+		is_enabled: is_enabled
+		is_flag:    is_flag
+		is_typedef: is_typedef
+	}
 }
 
 fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source_file FastcSourceFile, declared_types map[string]bool, allow_short_placeholders bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut out strings.Builder) !token.Token {
@@ -3065,9 +3109,16 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
+	mut next_declaration_is_enabled := true
 	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && tok == .attribute {
+			attribute := fastc_scan_declaration_attribute(mut scan, path, prefs)!
+			tok = attribute.tok
+			next_declaration_is_enabled = next_declaration_is_enabled && attribute.is_enabled
+			continue
+		}
 		if tok == .key_fn && brace_depth == 0 && previous_tok != .assign {
 			is_public := previous_tok == .key_pub
 			tok = scan.scan()
@@ -3276,6 +3327,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				option_type:          option_type
 				is_variadic:          is_variadic
 				is_public:            is_public || is_c_function
+				is_disabled:          !next_declaration_is_enabled
 				module_name:          header.module_name
 				path:                 path
 			}
@@ -3289,12 +3341,18 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 						return error('fastc parser does not support duplicate function `${name}` in ${path}')
 					}
 					if previous.path.ends_with('.c.v') {
+						next_declaration_is_enabled = true
 						continue
 					}
 				}
 			}
 			functions[function_key] = signature
+			next_declaration_is_enabled = true
 			continue
+		}
+		if brace_depth == 0
+			&& tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union, .key_const, .key_global] {
+			next_declaration_is_enabled = true
 		}
 		if tok == .lcbr {
 			brace_depth++
@@ -3479,6 +3537,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 	scan.init(file, source)
 	mut tok := scan.scan()
 	mut depth := 0
+	mut next_declaration_is_enabled := true
 	for tok != .eof {
 		if depth == 0 && tok == .dollar {
 			mut lookahead := scan
@@ -3492,7 +3551,22 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				continue
 			}
 		}
+		if depth == 0 && tok == .attribute {
+			attribute := fastc_scan_declaration_attribute(mut scan, path, prefs)!
+			tok = attribute.tok
+			next_declaration_is_enabled = next_declaration_is_enabled && attribute.is_enabled
+			continue
+		}
+		if depth == 0 && tok == .key_interface && !next_declaration_is_enabled {
+			tok = fastc_skip_type_declaration(mut scan, tok)!
+			next_declaration_is_enabled = true
+			continue
+		}
 		if depth != 0 || tok != .key_interface {
+			if depth == 0
+				&& tok in [.key_fn, .key_struct, .key_enum, .key_type, .key_union, .key_const, .key_global] {
+				next_declaration_is_enabled = true
+			}
 			if tok == .lcbr {
 				depth++
 			} else if tok == .rcbr && depth > 0 {
@@ -3597,6 +3671,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 		if tok == .rcbr {
 			tok = scan.scan()
 		}
+		next_declaration_is_enabled = true
 	}
 }
 
@@ -4002,6 +4077,13 @@ fn fastc_c_function_name_for_key(key string) string {
 		return fastc_c_identifier(key)
 	}
 	return fastc_c_identifier('${key.all_before_last('.').replace('.', '__')}__${key.all_after_last('.')}')
+}
+
+fn fastc_disabled_call_expression(return_type string) string {
+	if return_type in ['', 'void'] {
+		return '((void)0)'
+	}
+	return '((${return_type}){0})'
 }
 
 fn (mut g Parser) run() !string {
@@ -8105,6 +8187,9 @@ fn (g &Parser) expected_enum_shorthand_expression() ?string {
 }
 
 fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
+	if disabled_call := g.render_disabled_call_expression(tokens) {
+		return disabled_call
+	}
 	if enum_print := g.render_enum_print_expression(tokens) {
 		return enum_print
 	}
@@ -8462,6 +8547,43 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	return g.render_flag_method_expression(tokens, rendered_expression)
 }
 
+fn (g &Parser) render_disabled_call_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if tokens.len < 3 || tokens.last().tok != .rpar {
+		return none
+	}
+	mut name_index := 0
+	mut open_index := 1
+	if tokens.len >= 4 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name {
+		name_index = 2
+		open_index = 3
+	}
+	if tokens[name_index].tok != .name || tokens[open_index].tok != .lpar {
+		return none
+	}
+	close := fastc_matching_rpar(tokens, open_index) or { return none }
+	if close != tokens.len - 1 {
+		return none
+	}
+	function_key := if name_index == 2 && tokens[0].lit !in g.imports && tokens[0].lit != 'C' {
+		if static_key := g.static_function_key_for_call(tokens, name_index) {
+			static_key
+		} else {
+			receiver_type := g.infer_expression_type(tokens[..1]) or { return none }
+			g.method_function_key(receiver_type, tokens[name_index].lit)
+		}
+	} else {
+		g.function_key_for_call(tokens, name_index)
+	}
+	signature := g.functions[function_key] or { return none }
+	if !signature.is_disabled {
+		return none
+	}
+	return FastcRenderedExpression{
+		source: fastc_disabled_call_expression(signature.return_type)
+		typ:    signature.return_type
+	}
+}
+
 fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	mut open := -1
 	mut c_type := ''
@@ -8593,6 +8715,27 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 			continue
 		}
 		function_key := g.static_function_key_for_call(tokens, i) or { continue }
+		signature := g.functions[function_key] or { FastcFunctionSignature{} }
+		call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+		if signature.is_disabled {
+			disabled_call := fastc_disabled_call_expression(signature.return_type)
+			call_start := i - 2
+			if call_start == 0 && call_end == tokens.len - 1 {
+				return FastcRenderedExpression{
+					source: disabled_call
+					typ:    signature.return_type
+				}
+			}
+			raw_call := g.render_raw_expression_tokens(tokens[call_start..call_end + 1]) or {
+				continue
+			}
+			if rendered.contains(raw_call) {
+				rendered = rendered.replace(raw_call, disabled_call)
+				result_type = signature.return_type
+				changed = true
+			}
+			continue
+		}
 		type_key := function_key.all_before_last('.')
 		owner := fastc_c_declared_type_name(type_key)
 		mut needle := '${owner}.${tokens[i].lit}('
@@ -8604,7 +8747,6 @@ fn (g &Parser) render_static_call_expression(tokens []FastcExpressionToken, rend
 		}
 		rendered = rendered.replace(needle,
 			'${fastc_method_c_name_for_key(type_key, tokens[i].lit)}(')
-		signature := g.functions[function_key] or { FastcFunctionSignature{} }
 		result_type = signature.return_type
 		changed = true
 	}
@@ -9745,6 +9887,12 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken, rend
 	}
 	function_key := g.function_key_for_call(tokens, name_index)
 	signature := g.functions[function_key] or { return none }
+	if signature.is_disabled {
+		return FastcRenderedExpression{
+			source: fastc_disabled_call_expression(signature.return_type)
+			typ:    signature.return_type
+		}
+	}
 	call_args := fastc_call_arguments(tokens, open_index, close) or { return none }
 	mut named_start := -1
 	for i, argument in call_args {
@@ -9914,6 +10062,24 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		if signature.parameter_types.len == 0 {
 			continue
 		}
+		call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+		if signature.is_disabled {
+			disabled_call := fastc_disabled_call_expression(signature.return_type)
+			if receiver_start == 0 && call_end == tokens.len - 1 {
+				return FastcRenderedExpression{
+					source: disabled_call
+					typ:    signature.return_type
+				}
+			}
+			raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
+				continue
+			}
+			if rendered.contains(raw_call) {
+				rendered = rendered.replace(raw_call, disabled_call)
+				changed = true
+			}
+			continue
+		}
 		receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 		mut receiver_source := receiver.source
 		mut separator := if receiver_tokens.len == 1 && receiver_type.ends_with('*') {
@@ -9952,7 +10118,6 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		} else {
 			receiver_source
 		}
-		call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 		has_arguments := call_end > i + 2
 		method_c_name := fastc_method_c_name(signature.module_name, expected_receiver,
 			tokens[i].lit)
