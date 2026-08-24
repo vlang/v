@@ -3,7 +3,6 @@ module main
 import os
 import crypto.sha256
 import v.pref
-import v.builder
 
 fn test_macos_v3_embedded_driver_matches_cross_source_selection() {
 	$if cross ? {
