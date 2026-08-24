@@ -53,6 +53,23 @@ static void v_fastc_println_signed(long long value) { printf("%lld\n", value); }
 static void v_fastc_println_unsigned(unsigned long long value) { printf("%llu\n", value); }
 static bool builtin__string_eq(const char *left, const char *right) { return strcmp(left ? left : "", right ? right : "") == 0; }
 static bool builtin__string_lt(const char *left, const char *right) { return strcmp(left ? left : "", right ? right : "") < 0; }
+#define _S(value) ((string)(value))
+#define _SLIT0 ((string)"")
+static string builtin__string_plus_many(int count, string *parts) {
+	size_t total = 0;
+	for (int i = 0; i < count; i++) total += strlen(parts[i] ? parts[i] : "");
+	char *result = malloc(total + 1);
+	if (result == NULL) return "";
+	char *cursor = result;
+	for (int i = 0; i < count; i++) {
+		const char *part = parts[i] ? parts[i] : "";
+		size_t length = strlen(part);
+		memcpy(cursor, part, length);
+		cursor += length;
+	}
+	*cursor = 0;
+	return result;
+}
 
 /* Float formatting belongs to the V strconv routines. Leaving float and double
  * unmatched makes TinyCC reject unsupported printing instead of silently
@@ -304,6 +321,7 @@ struct FastcConstantDeclarations {
 	macros              string
 	declarations        string
 	module_initializers map[string]string
+	compile_time_values map[string]string
 }
 
 struct FastcConstantValue {
@@ -355,6 +373,7 @@ struct Parser {
 	struct_fields       map[string]map[string]string
 	struct_field_info   map[string][]FastcStructField
 	constants           map[string]string
+	constant_values     map[string]string
 	public_constants    map[string]bool
 	globals             map[string]string
 	public_globals      map[string]bool
@@ -477,7 +496,8 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		constants, public_constants, globals, public_globals, mut constant_types)!
 	global_output := fastc_generate_global_declarations(sources, prefs, declared_types,
 		declared_kinds, type_output.alias_base_types, struct_fields, struct_field_info, functions,
-		constants, public_constants, constant_types, globals, public_globals, mut global_types)!
+		constants, constant_output.compile_time_values, public_constants, constant_types, globals,
+		public_globals, mut global_types)!
 	for constant_type in constant_types.values() {
 		fastc_register_composite_type(constant_type, mut composite_types)
 	}
@@ -504,6 +524,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			struct_fields:           struct_fields
 			struct_field_info:       struct_field_info
 			constants:               constants
+			constant_values:         constant_output.compile_time_values
 			public_constants:        public_constants
 			globals:                 globals
 			public_globals:          public_globals
@@ -600,6 +621,28 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	return result.str()
 }
 
+fn fastc_interface_method_signatures_match(interface_signature FastcFunctionSignature, candidate_signature FastcFunctionSignature) bool {
+	if candidate_signature.return_type != interface_signature.return_type
+		|| !fastc_string_types_equal(candidate_signature.return_types, interface_signature.return_types)
+		|| candidate_signature.option_type != interface_signature.option_type
+		|| candidate_signature.parameter_types.len != interface_signature.parameter_types.len {
+		return false
+	}
+	for i in 1 .. interface_signature.parameter_types.len {
+		if candidate_signature.parameter_types[i] != interface_signature.parameter_types[i] {
+			return false
+		}
+		interface_parameter_is_mut := i < interface_signature.parameter_mutability.len
+			&& interface_signature.parameter_mutability[i]
+		candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len
+			&& candidate_signature.parameter_mutability[i]
+		if candidate_parameter_is_mut != interface_parameter_is_mut {
+			return false
+		}
+	}
+	return true
+}
+
 fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, interface_methods map[string]bool) string {
 	mut out := strings.new_builder(1024)
 	mut function_keys := functions.keys()
@@ -644,8 +687,8 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 					continue
 				}
 				candidate_signature := functions[candidate_key]
-				if candidate_signature.return_type != interface_signature.return_type
-					|| candidate_signature.parameter_types.len != interface_signature.parameter_types.len {
+				if !fastc_interface_method_signatures_match(interface_signature,
+					candidate_signature) {
 					continue
 				}
 				receiver_type := fastc_c_declared_type_name(receiver_key)
@@ -1325,7 +1368,7 @@ fn fastc_register_global(header FastcSourceHeader, name string, is_public bool, 
 	}
 }
 
-fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
+fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
@@ -1345,6 +1388,7 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 			struct_fields:     struct_fields
 			struct_field_info: struct_field_info
 			constants:         constants
+			constant_values:   constant_values
 			public_constants:  public_constants
 			globals:           globals
 			public_globals:    public_globals
@@ -1581,6 +1625,7 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 	}
 	mut macros := strings.new_builder(4096)
 	mut declarations := strings.new_builder(1024)
+	mut compile_time_values := map[string]string{}
 	for value in values {
 		if value.key in runtime_constants {
 			if value.typ == '' {
@@ -1589,6 +1634,7 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 			declarations.writeln('static ${value.typ} ${value.c_name};')
 		} else {
 			macros.writeln('#define ${value.c_name} (${value.value})')
+			compile_time_values[value.c_name] = value.value
 		}
 	}
 	mut initializer_order := []int{}
@@ -1616,6 +1662,7 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 		macros:              macros.str()
 		declarations:        declarations.str()
 		module_initializers: module_initializers
+		compile_time_values: compile_time_values
 	}
 }
 
@@ -3383,7 +3430,11 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				tok = scan.scan()
 				parameter_type, next_token := fastc_scan_type(mut scan, tok, path,
 					header.module_name, header.imports, declared_types, prefs.building_v)!
-				parameter_types << parameter_type
+				parameter_types << if parameter_is_mut && !parameter_type.ends_with('*') {
+					parameter_type + '*'
+				} else {
+					parameter_type
+				}
 				parameter_mutability << parameter_is_mut
 				tok = next_token
 				if tok == .comma {
@@ -3690,6 +3741,43 @@ fn fastc_fixed_array_element_type(typ string) ?string {
 		return none
 	}
 	return typ.all_after('_FASTC_ARRAY_OF_')
+}
+
+fn fastc_decimal_integer_value(source string) ?int {
+	value := source.trim(' \t\r\n()').replace('_', '')
+	if value == '' {
+		return none
+	}
+	mut start := 0
+	if value[0] in [`+`, `-`] {
+		start = 1
+	}
+	if start == value.len {
+		return none
+	}
+	for digit in value[start..] {
+		if !digit.is_digit() {
+			return none
+		}
+	}
+	return value.int()
+}
+
+fn (g &Parser) fixed_array_length_value(source string) ?int {
+	mut value := source
+	mut seen := map[string]bool{}
+	for {
+		if result := fastc_decimal_integer_value(value) {
+			return result
+		}
+		key := value.trim(' \t\r\n()')
+		if key in seen {
+			return none
+		}
+		seen[key] = true
+		value = g.constant_values[key] or { return none }
+	}
+	return none
 }
 
 fn fastc_array_c_type(element_type string) string {
@@ -11091,6 +11179,9 @@ fn (g &Parser) validate_primitive_cast(target_type string, operand []FastcExpres
 }
 
 fn (g &Parser) validate_declared_cast(type_key string, operand []FastcExpressionToken, in_unsafe bool) ! {
+	if g.declared_kinds[type_key] == .interface_ {
+		return g.validate_interface_cast(type_key, operand)
+	}
 	if g.selfhost {
 		return
 	}
@@ -11119,6 +11210,47 @@ fn (g &Parser) validate_declared_cast(type_key string, operand []FastcExpression
 			return g.validate_declared_enum_cast(target_type, actual_type, in_unsafe)
 		}
 		else {}
+	}
+}
+
+fn (g &Parser) validate_interface_cast(interface_key string, operand []FastcExpressionToken) ! {
+	actual_type := fastc_normalize_inferred_type(g.infer_expression_type(operand)!)
+	if actual_type == '' {
+		if g.selfhost {
+			return
+		}
+		return g.unsupported('unverifiable operand type for cast to interface `${fastc_c_declared_type_name(interface_key)}`')
+	}
+	actual_key := g.semantic_type_key(actual_type)
+	if actual_key == interface_key {
+		return
+	}
+	interface_type := fastc_c_declared_type_name(interface_key)
+	prefix := interface_key + '.'
+	mut interface_method_keys := g.functions.keys()
+	interface_method_keys.sort()
+	for interface_method_key in interface_method_keys {
+		if !interface_method_key.starts_with(prefix) {
+			continue
+		}
+		interface_signature := g.functions[interface_method_key]
+		if interface_signature.parameter_types.len == 0
+			|| interface_signature.parameter_types[0] != interface_type {
+			continue
+		}
+		method_name := interface_method_key.all_after_last('.')
+		candidate_key := '${actual_key}.${method_name}'
+		candidate_signature := g.functions[candidate_key] or {
+			if g.selfhost {
+				// The bootstrap checker supplies synthetic implementations for
+				// built-in interface values such as none/error sentinels.
+				continue
+			}
+			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}` method `${method_name}`')
+		}
+		if !fastc_interface_method_signatures_match(interface_signature, candidate_signature) {
+			return g.unsupported('type `${actual_type}` has an incompatible signature for interface `${interface_type}` method `${method_name}`')
+		}
 	}
 }
 
@@ -11504,15 +11636,7 @@ fn (g &Parser) validate_fixed_array_struct_field_initializer(c_type string, fiel
 	expected_length_source := fastc_fixed_array_length(field.typ) or {
 		return g.unsupported('unverifiable fixed-array length for struct field `${type_name}.${field.name}`')
 	}
-	mut has_literal_length := expected_length_source.len > 0
-	for digit in expected_length_source {
-		if !digit.is_digit() {
-			has_literal_length = false
-			break
-		}
-	}
-	if has_literal_length {
-		expected_length := expected_length_source.int()
+	if expected_length := g.fixed_array_length_value(expected_length_source) {
 		if items.len != expected_length {
 			return g.unsupported('fixed-array struct field `${type_name}.${field.name}` expects ${expected_length} elements, got ${items.len}')
 		}

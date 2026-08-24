@@ -52,6 +52,39 @@ fn twice(value int) int {
 	assert run_result.output.trim_space() == 'total=6'
 }
 
+fn test_ordinary_string_interpolation_has_runtime_support() {
+	prefs := pref.new_preferences()
+	c_source := generate(r"module main
+
+fn greeting(name string) string {
+	return 'hello ${name}!'
+}
+
+fn main() {
+	println(greeting('FastC'))
+}
+",
+		'ordinary_string_interpolation.v', prefs) or { panic(err) }
+	assert c_source.contains('static string builtin__string_plus_many'), c_source
+	assert c_source.contains('builtin__string_plus_many(3, (string[]){_S("hello "), name, _S("!")})'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_interpolation_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == 'hello FastC!\n'
+}
+
 fn test_top_level_statements_emit_main_directly() {
 	prefs := pref.new_preferences()
 	c_source := generate("println('Hello, World!')\n", 'hello_world.v', prefs) or { panic(err) }
@@ -767,10 +800,11 @@ fn test_struct_literal_fields_are_validated() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	for source, expected in {
-		'module main\nstruct Config { enabled bool }\nfn main() { config := Config{enabled: 2}; println(config.enabled) }\n':             'for struct field `Config.enabled` expecting `bool`'
-		'module main\nstruct Config { value int }\nfn main() { config := Config{value: 1, value: 2}; println(config.value) }\n':          'duplicate field `Config.value` in struct literal'
-		'module main\nstruct Config { values [2]int }\nfn main() { config := Config{values: [true, false]!}; println(config.values) }\n': 'element 1 has type `bool` instead of `int`'
-		'module main\nstruct Config { values [2]int }\nfn main() { config := Config{values: [1]!}; println(config.values) }\n':           'expects 2 elements, got 1'
+		'module main\nstruct Config { enabled bool }\nfn main() { config := Config{enabled: 2}; println(config.enabled) }\n':                            'for struct field `Config.enabled` expecting `bool`'
+		'module main\nstruct Config { value int }\nfn main() { config := Config{value: 1, value: 2}; println(config.value) }\n':                         'duplicate field `Config.value` in struct literal'
+		'module main\nstruct Config { values [2]int }\nfn main() { config := Config{values: [true, false]!}; println(config.values) }\n':                'element 1 has type `bool` instead of `int`'
+		'module main\nstruct Config { values [2]int }\nfn main() { config := Config{values: [1]!}; println(config.values) }\n':                          'expects 2 elements, got 1'
+		'module main\nconst size = 2\nstruct Config { values [size]int }\nfn main() { config := Config{values: [1, 2, 3]!}; println(config.values) }\n': 'expects 2 elements, got 3'
 	} {
 		mut message := ''
 		_ := generate(source, 'invalid_struct_literal.v', prefs) or {
@@ -796,6 +830,70 @@ fn main() {
 		'valid_struct_literal.v', prefs) or { panic(err) }
 	assert c_source.contains('.enabled=(enabled)'), c_source
 	assert c_source.contains('.value=(2)'), c_source
+}
+
+fn test_interface_dispatch_validates_every_method_parameter() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for declaration in [
+		'fn (wrong Wrong) work(value string) int { return 0 }',
+		'fn (wrong Wrong) work(value int) int { return value }',
+	] {
+		interface_parameter := if declaration.contains('value string') {
+			'value int'
+		} else {
+			'mut value int'
+		}
+		mut message := ''
+		_ := generate('module main
+
+interface Worker {
+	work(${interface_parameter}) int
+}
+
+struct Wrong {}
+
+${declaration}
+
+fn main() {
+	worker := Worker(Wrong{})
+	println(worker.work(1))
+}
+',
+			'invalid_interface_implementation.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('incompatible signature for interface `Worker` method `work`'), message
+	}
+
+	c_source := generate('module main
+
+interface Worker {
+	work(value int) int
+	update(mut value int)
+}
+
+struct Good {}
+
+fn (good Good) work(value int) int {
+	return value
+}
+
+fn (good Good) update(mut value int) {
+	value = 2
+}
+
+fn main() {
+	worker := Worker(Good{})
+	println(worker.work(1))
+	mut value := 1
+	worker.update(mut value)
+}
+',
+		'valid_interface_implementation.v', prefs) or { panic(err) }
+	assert c_source.contains('case __v_typeid_Good:'), c_source
+	assert c_source.contains('void builtin__Worker_update(Worker value, int* arg1)'), c_source
 }
 
 fn test_disabled_function_attributes_emit_empty_stubs() {
