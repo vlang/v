@@ -1240,7 +1240,7 @@ QUIC layer is already role-parameterized (`role QuicRole` on `QuicConn`;
 explicitly) — none of that foundation needs rework. Same one-sub-phase-per-
 stacked-PR convention as Phase 12's 12a-12d.
 
-- [ ] **13a** (in progress) — TLS 1.3 server handshake:
+- [x] **13a** — TLS 1.3 server handshake:
   - [x] Message construction, all five pieces (`tls13_server_hello.v`,
         `tls13_certificate.v`, `tls13_messages.v`): `build_server_hello`,
         `build_encrypted_extensions`, `encode_certificate`,
@@ -1255,13 +1255,39 @@ stacked-PR convention as Phase 12's 12a-12d.
         real bug this way before commit: a server's `key_share` is a bare
         `KeyShareEntry` (RFC 8446 §4.2.8), not the client's list-wrapped
         shape.
-  - [ ] Server-side state machine (mirroring `Tls13ClientHandshake` in
-        `tls13_handshake.v`) — orchestrating the above into an actual
-        handshake driver: deciding when to send Certificate vs. reuse
-        cached state, whether to send an HRR, deriving/tracking the
-        transcript hash across all these messages, discarding keys at the
-        right checkpoints. NOT started — none of the five functions above
-        are wired into anything yet.
+  - [x] Server-side state machine (`tls13_server_handshake.v`):
+        `Tls13ServerHandshake.respond_to_client_hello` — parses+validates a
+        ClientHello (cipher suite, TLS 1.3, secp256r1 key_share,
+        ecdsa_secp256r1_sha256 in signature_algorithms, ALPN common
+        protocol, RFC 9000 §7.3 transport-parameter role restrictions —
+        added `parse_client_hello`/`decode_alpn_offer`/
+        `parse_key_share_extension_client`/
+        `parse_signature_algorithms_extension_client`/
+        `parse_supported_versions_from_client` to `tls13_client_hello.v`
+        for this, none of which existed before), does real ECDH against
+        the client's offered key_share, then builds the ENTIRE response
+        flight (ServerHello through this server's own Finished) in one
+        call — RFC 8446 §7.1/Figure 3 lets application traffic secrets
+        derive right after the server's own Finished, no dependency on the
+        client's Finished arriving. `process_finished` verifies the
+        client's Finished and confirms the handshake. Simpler state
+        machine than the client's (2 states, not 6): a server never waits
+        on a peer message between ClientHello and its own Finished.
+        HelloRetryRequest is NOT wired in (group mismatch is a hard
+        failure) — the SAME deliberate-defer scope choice
+        `Tls13ClientHandshake.process_server_hello` already made for its
+        own first-HRR gap; `build_hello_retry_request` exists and is
+        unit-tested at the message layer but not yet driven by this state
+        machine. Verified via a REAL client-vs-server integration test
+        (`tls13_server_handshake_test.v`): fresh ECDHE keys on both
+        sides (not fixed RFC vectors), the client's own real
+        `process_server_hello`/`process_encrypted_extensions`/
+        `verify_finished` all independently accept this server's real
+        output, and this server's `process_finished` accepts a real client
+        Finished built the same way. Certificate/CertificateVerify chain
+        verification is NOT exercised end-to-end (no EC certificate
+        fixture in this repo — the same documented gap as
+        `encode_certificate_verify`'s own tests).
 - [ ] **13b** — Retry + address validation: Retry packet + opaque token
       minting/validation (`retry.v` currently only verifies), RFC 9000 §8.1
       anti-amplification 3x accounting (already flagged as a deferred,
