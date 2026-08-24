@@ -10,6 +10,7 @@ import v3.util
 const pointer_binding_unknown_value_prefix = '@unknown:'
 const pointer_binding_parameter_value_prefix = '@parameter:'
 const pointer_binding_global_value_prefix = '@global:'
+const pointer_binding_literal_value_prefix = '@value:'
 const locked_shared_storage_key_prefix = '@storage:'
 
 fn pointer_binding_unknown_value(storage_key string) string {
@@ -16311,7 +16312,7 @@ fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.N
 		}
 		if target.kind == .struct_init {
 			return [
-				'@value:${int(clean_rhs_id)}',
+				'${pointer_binding_literal_value_prefix}${int(clean_rhs_id)}',
 			]
 		}
 		return [pointer_binding_unknown_value(left_key)]
@@ -16325,7 +16326,7 @@ fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.N
 	}
 	if rhs.kind == .nil_literal {
 		return [
-			'@value:${int(clean_rhs_id)}',
+			'${pointer_binding_literal_value_prefix}${int(clean_rhs_id)}',
 		]
 	}
 	// Any other pointer-producing expression may return or select an existing pointer.

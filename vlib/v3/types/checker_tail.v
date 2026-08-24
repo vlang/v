@@ -14821,6 +14821,22 @@ fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeI
 		if receiver.kind == .struct_init {
 			return
 		}
+		if receiver.kind == .prefix && receiver.op == .amp && receiver.children_count > 0 {
+			receiver = tc.a.child_node(receiver, 0)
+			if receiver.kind == .struct_init {
+				return
+			}
+		}
+		if receiver.kind == .ident {
+			if owner := tc.cur_scope.lookup_owner(receiver.value) {
+				values := tc.pointer_binding_ident_values(owner,
+					tc.fn_context.pointer_binding_value_keys)
+				if values.len > 0
+					&& values.all(it.starts_with(pointer_binding_literal_value_prefix)) {
+					return
+				}
+			}
+		}
 	}
 	clean := unalias_type(unwrap_pointer(base_type))
 	if clean !is Struct || tc.type_has_declaration_attribute(clean, 'heap') {

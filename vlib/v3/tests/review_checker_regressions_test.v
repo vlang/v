@@ -296,6 +296,34 @@ fn make() fn () int {
 fn main() {}
 ',
 		'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks')
+	run_bad(v3_bin, 'stack_pointer_alias_receiver_method_value', 'struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn make() fn () int {
+	foo := Foo{}
+	p := &foo
+	return p.ref
+}
+
+fn main() {}
+',
+		'method `Foo.ref` cannot be used as a variable outside `unsafe` blocks')
+	heap_method_value := run_good(v3_bin, 'heap_pointer_receiver_method_value', 'struct Foo {}
+
+fn (foo &Foo) ref() int {
+	return 1
+}
+
+fn main() {
+	foo := &Foo{}
+	callback := foo.ref
+	println(callback())
+}
+')
+	assert heap_method_value == '1'
 	run_bad(v3_bin, 'direct_option_alias_cast', 'type MaybeInt = ?int
 
 fn main() {
