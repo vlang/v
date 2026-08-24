@@ -21,8 +21,9 @@ Environment overrides:
   V_QEMU_GUEST_REPO    Guest checkout (default: /home/v/v3)
   V_QEMU_CPUS          Virtual CPUs (default: 4)
   V_QEMU_MEMORY_MB     Guest memory in MiB (default: 16384)
-  V_QEMU_JOBS          V test jobs (default: virtual CPU count)
-  V_QEMU_VFLAGS        Flags inherited by V subprocesses (default: -cc clang)
+  V_QEMU_JOBS          V test jobs (default: 1)
+  V_QEMU_VFLAGS        Flags inherited by V subprocesses
+                       (default: -cc clang -no-memory-limit)
   V_QEMU_NO_FALLBACK   Set V_MACOS_V3_NO_FALLBACK (default: 1)
   V_QEMU_TMPDIR        Guest disk-backed V temporary root (default: /var/tmp/v-qemu-tests)
   V_QEMU_STOP_AFTER    Power off the guest after the run when set to 1
@@ -69,8 +70,11 @@ guest=${V_QEMU_GUEST:-v@127.0.0.1}
 guest_repo=${V_QEMU_GUEST_REPO:-/home/v/v3}
 cpus=${V_QEMU_CPUS:-4}
 memory_mb=${V_QEMU_MEMORY_MB:-16384}
-jobs=${V_QEMU_JOBS:-$cpus}
-vflags=${V_QEMU_VFLAGS:--cc clang}
+# A V3 compiler-tree test can exceed 6 GiB RSS on ARM64. One unbounded worker is
+# reliable in the default 16 GiB guest; callers with larger guests can opt into
+# more parallelism explicitly.
+jobs=${V_QEMU_JOBS:-1}
+vflags=${V_QEMU_VFLAGS:--cc clang -no-memory-limit}
 no_fallback=${V_QEMU_NO_FALLBACK:-1}
 guest_tmp_root=${V_QEMU_TMPDIR:-/var/tmp/v-qemu-tests}
 stop_after=${V_QEMU_STOP_AFTER:-0}
