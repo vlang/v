@@ -270,9 +270,10 @@ mut:
 }
 
 struct FastcSourceHeader {
-	module_name string
-	imports     map[string]string
-	has_globals bool
+	module_name   string
+	imports       map[string]string
+	blank_imports []string
+	has_globals   bool
 }
 
 struct FastcSourceFile {
@@ -377,7 +378,7 @@ mut:
 // error; FastC never retries through an AST-based backend.
 pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 	header := fastc_scan_source_header(source, path, prefs)!
-	if header.imports.len > 0 {
+	if header.imports.len > 0 || header.blank_imports.len > 0 {
 		return error('fastc parser does not support imports through the single-source API in ${path}')
 	}
 	return generate_source_files([
@@ -704,9 +705,10 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 		mut header := fastc_scan_source_header(source, path, prefs)!
 		if queued.module_name != '' {
 			header = FastcSourceHeader{
-				module_name: queued.module_name
-				imports:     header.imports
-				has_globals: header.has_globals
+				module_name:   queued.module_name
+				imports:       header.imports
+				blank_imports: header.blank_imports
+				has_globals:   header.has_globals
 			}
 		}
 		sources << FastcSourceFile{
@@ -715,7 +717,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 			header: header
 		}
 		mut discovered_imports := map[string]bool{}
-		for imported_module in header.imports.values() {
+		for imported_module in fastc_header_imported_modules(header) {
 			if discovered_imports[imported_module] {
 				continue
 			}
@@ -739,6 +741,12 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 		}
 	}
 	return sources
+}
+
+fn fastc_header_imported_modules(header FastcSourceHeader) []string {
+	mut modules := header.imports.values()
+	modules << header.blank_imports
+	return modules
 }
 
 fn fastc_sources_in_dependency_order(sources []FastcSourceFile) ![]FastcSourceFile {
@@ -827,8 +835,7 @@ fn fastc_append_module_sources(module_name string, sources []FastcSourceFile, mu
 		if source_file.header.module_name != module_name {
 			continue
 		}
-		imports := source_file.header.imports.clone()
-		for dependency in imports.values() {
+		for dependency in fastc_header_imported_modules(source_file.header) {
 			if dependency != module_name && dependency !in dependencies {
 				dependencies << dependency
 			}
@@ -861,6 +868,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	scan.init(file, source)
 	mut module_name := ''
 	mut imports := map[string]string{}
+	mut blank_imports := []string{}
 	mut has_globals := false
 	mut brace_depth := 0
 	mut tok := scan.scan()
@@ -913,7 +921,8 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 				}
 				import_path, alias, selected_names, next_token :=
 					fastc_scan_import(mut scan, tok, path)!
-				fastc_register_import_alias(import_path, alias, path, mut imports)!
+				fastc_register_import_alias(import_path, alias, path, mut imports, mut
+					blank_imports)!
 				fastc_register_selective_imports(import_path, selected_names, path, mut imports)!
 				tok = next_token
 			}
@@ -923,7 +932,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			continue
 		}
 		import_path, alias, selected_names, next_token := fastc_scan_import(mut scan, tok, path)!
-		fastc_register_import_alias(import_path, alias, path, mut imports)!
+		fastc_register_import_alias(import_path, alias, path, mut imports, mut blank_imports)!
 		fastc_register_selective_imports(import_path, selected_names, path, mut imports)!
 		tok = next_token
 	}
@@ -935,18 +944,21 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		imports['driver'] = imports['fastcdriver']
 	}
 	return FastcSourceHeader{
-		module_name: module_name
-		imports:     imports
-		has_globals: has_globals
+		module_name:   module_name
+		imports:       imports
+		blank_imports: blank_imports
+		has_globals:   has_globals
 	}
 }
 
-fn fastc_register_import_alias(import_path string, alias string, path string, mut imports map[string]string) ! {
-	if alias != '_' {
-		if existing_module := imports[alias] {
-			if existing_module != import_path {
-				return error('fastc parser cannot reuse import alias `${alias}` for `${import_path}` after `${existing_module}` in ${path}')
-			}
+fn fastc_register_import_alias(import_path string, alias string, path string, mut imports map[string]string, mut blank_imports []string) ! {
+	if alias == '_' {
+		blank_imports << import_path
+		return
+	}
+	if existing_module := imports[alias] {
+		if existing_module != import_path {
+			return error('fastc parser cannot reuse import alias `${alias}` for `${import_path}` after `${existing_module}` in ${path}')
 		}
 	}
 	imports[alias] = import_path
@@ -1024,6 +1036,19 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
+		if brace_depth == 0 && tok == .dollar {
+			mut lookahead := scan
+			if lookahead.scan() == .key_if {
+				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
+				if selected.source != '' {
+					collect_declared_types(selected.source, path, module_name, prefs, mut
+						declared_types, mut declared_kinds)!
+				}
+				tok = selected.tok
+				previous_tok = .unknown
+				continue
+			}
+		}
 		if brace_depth == 0 && tok == .attribute {
 			mut attribute_depth := 1
 			mut is_typedef := false
@@ -1760,6 +1785,26 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 	mut next_enum_is_flag := false
 	mut tok := scan.scan()
 	for tok != .eof {
+		if depth == 0 && tok == .dollar {
+			mut lookahead := scan
+			if lookahead.scan() == .key_if {
+				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(),
+					source_file.path, prefs)!
+				if selected.source != '' {
+					selected_source := FastcSourceFile{
+						path:   source_file.path
+						source: selected.source
+						header: source_file.header
+					}
+					fastc_emit_source_type_declarations(selected_source, prefs, declared_types,
+						declared_kinds, constants, public_constants, mut struct_fields, mut
+						struct_field_info, mut composite_types, mut out)!
+				}
+				tok = selected.tok
+				next_enum_is_flag = false
+				continue
+			}
+		}
 		if depth == 0 && tok == .attribute {
 			tok, next_enum_is_flag = fastc_scan_type_attribute(mut scan)!
 			continue
@@ -3128,6 +3173,18 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 	mut tok := scan.scan()
 	mut depth := 0
 	for tok != .eof {
+		if depth == 0 && tok == .dollar {
+			mut lookahead := scan
+			if lookahead.scan() == .key_if {
+				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
+				if selected.source != '' {
+					collect_interface_method_signatures(selected.source, path, header, prefs,
+						declared_types, mut functions, mut interface_methods)!
+				}
+				tok = selected.tok
+				continue
+			}
+		}
 		if depth != 0 || tok != .key_interface {
 			if tok == .lcbr {
 				depth++

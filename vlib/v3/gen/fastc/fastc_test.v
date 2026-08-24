@@ -118,6 +118,64 @@ fn test_generate_files_resolves_modules_without_an_ast() {
 	assert run_result.output.trim_space() == '42'
 }
 
+fn test_generate_files_preserves_all_blank_imports() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_blank_imports_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'alpha')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'beta')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, "module main
+
+import alpha as _
+import beta as _
+
+fn main() {
+	println('main')
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'alpha', 'alpha.v'), "module alpha
+
+fn init() {
+	println('alpha init')
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'beta', 'beta.v'), "module beta
+
+fn init() {
+	println('beta init')
+}
+") or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	header := fastc_scan_source_header(os.read_file(main_file) or { panic(err) }, main_file, prefs) or {
+		panic(err)
+	}
+	assert header.blank_imports == ['alpha', 'beta']
+	assert '_' !in header.imports
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('\talpha__init();'), c_source
+	assert c_source.contains('\tbeta__init();'), c_source
+
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == 'alpha init\nbeta init\nmain'
+}
+
 fn test_generate_files_rejects_private_imported_functions() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_private_import_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -677,6 +735,54 @@ fn main() {
 	assert c_source.contains('int platform(void)'), c_source
 	assert c_source.contains('println(platform());'), c_source
 	assert !c_source.contains('return "wrong";'), c_source
+}
+
+fn test_selected_top_level_comptime_types_are_collected_and_emitted() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.target = pref.target_from('linux', pref.host_arch()) or { panic(err) }
+	c_source := generate('module main
+
+$if windows {
+	struct Choice {
+		wrong bool
+	}
+} $else $if linux {
+	struct Choice {
+		value int
+	}
+
+	enum Mode {
+		selected
+	}
+
+	type ChoiceId = int
+
+	union Payload {
+		number int
+	}
+
+	interface Named {
+		name() string
+	}
+}
+
+fn main() {
+	choice := Choice{
+		value: 42
+	}
+	println(choice.value)
+}
+',
+		'top_level_comptime_types.v', prefs) or { panic(err) }
+	assert c_source.contains('struct Choice {\n\tint value;'), c_source
+	assert !c_source.contains('bool wrong;'), c_source
+	assert c_source.contains('#define Mode__selected ((Mode)0)'), c_source
+	assert c_source.contains('typedef int ChoiceId;'), c_source
+	assert c_source.contains('union Payload {\n\tint number;'), c_source
+	assert c_source.contains('struct Named { void *_object; u32 _typ; void *_methods; };'), c_source
+	assert c_source.contains('Named_name(Named value) {'), c_source
+	assert c_source.contains('__typeof__(((Choice){.value=(42)})) choice'), c_source
 }
 
 fn test_initialized_global_value_is_emitted() {
