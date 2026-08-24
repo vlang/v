@@ -272,6 +272,7 @@ mut:
 struct FastcSourceHeader {
 	module_name string
 	imports     map[string]string
+	has_globals bool
 }
 
 struct FastcSourceFile {
@@ -332,6 +333,7 @@ struct Parser {
 	constants           map[string]string
 	public_constants    map[string]bool
 	globals             map[string]string
+	public_globals      map[string]bool
 	used_function_names map[string]bool
 	module_init_calls   []string
 	selfhost            bool
@@ -401,6 +403,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	mut constants := map[string]string{}
 	mut public_constants := map[string]bool{}
 	mut globals := map[string]string{}
+	mut public_globals := map[string]bool{}
 	for source_file in sources {
 		collect_declared_types(source_file.source, source_file.path,
 			source_file.header.module_name, prefs, mut declared_types, mut declared_kinds)!
@@ -408,8 +411,8 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	for source_file in sources {
 		collect_constant_names(source_file.source, source_file.path,
 			source_file.header.module_name, prefs, mut constants, mut public_constants)!
-		collect_global_names(source_file.source, source_file.path, source_file.header.module_name,
-			prefs, mut globals)!
+		collect_global_names(source_file.source, source_file.path, source_file.header, prefs, mut
+			globals, mut public_globals)!
 	}
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
@@ -439,13 +442,13 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	mut global_types := map[string]string{}
 	fastc_render_struct_field_defaults(prefs, declared_types, declared_kinds, struct_fields, mut
 		struct_field_info, functions, constants, public_constants, constant_types, globals,
-		global_types)!
+		public_globals, global_types)!
 	constant_output := fastc_generate_constant_declarations(sources, prefs, declared_types,
-		declared_kinds, struct_fields, struct_field_info, functions, constants, public_constants, mut
-		constant_types)!
+		declared_kinds, struct_fields, struct_field_info, functions, constants, public_constants,
+		globals, public_globals, mut constant_types)!
 	global_output := fastc_generate_global_declarations(sources, prefs, declared_types,
 		declared_kinds, struct_fields, struct_field_info, functions, constants, public_constants,
-		constant_types, globals, mut global_types)!
+		constant_types, globals, public_globals, mut global_types)!
 	for constant_type in constant_types.values() {
 		fastc_register_composite_type(constant_type, mut composite_types)
 	}
@@ -472,6 +475,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			constants:               constants
 			public_constants:        public_constants
 			globals:                 globals
+			public_globals:          public_globals
 			used_function_names:     used_function_names
 			module_init_calls:       module_init_calls
 			selfhost:                prefs.building_v
@@ -687,6 +691,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 			header = FastcSourceHeader{
 				module_name: queued.module_name
 				imports:     header.imports
+				has_globals: header.has_globals
 			}
 		}
 		sources << FastcSourceFile{
@@ -806,9 +811,26 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	scan.init(file, source)
 	mut module_name := ''
 	mut imports := map[string]string{}
+	mut has_globals := false
 	mut brace_depth := 0
 	mut tok := scan.scan()
 	for tok != .eof {
+		if module_name == '' && tok == .attribute {
+			mut attribute_depth := 1
+			tok = scan.scan()
+			for attribute_depth > 0 && tok != .eof {
+				if tok == .name && scan.lit == 'has_globals' {
+					has_globals = true
+				}
+				if tok == .lsbr {
+					attribute_depth++
+				} else if tok == .rsbr {
+					attribute_depth--
+				}
+				tok = scan.scan()
+			}
+			continue
+		}
 		if module_name == '' && tok == .key_module {
 			tok = scan.scan()
 			if tok != .name {
@@ -865,6 +887,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	return FastcSourceHeader{
 		module_name: module_name
 		imports:     imports
+		has_globals: has_globals
 	}
 }
 
@@ -1077,16 +1100,18 @@ fn fastc_register_constant(module_name string, name string, is_public bool, path
 	}
 }
 
-fn collect_global_names(source string, path string, module_name string, prefs &pref.Preferences, mut globals map[string]string) ! {
+fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut depth := 0
+	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
 		if depth == 0 && tok == .key_global {
+			is_public := previous_tok == .key_pub
 			tok = scan.scan()
 			if tok == .lpar {
 				tok = scan.scan()
@@ -1094,9 +1119,11 @@ fn collect_global_names(source string, path string, module_name string, prefs &p
 				for tok != .rpar && tok != .eof {
 					if tok == .semicolon {
 						at_start = true
-					} else if at_start && tok == .name && scan.lit != 'C' {
-						key := fastc_global_key(module_name, scan.lit)
-						globals[key] = fastc_c_global_name(key)
+					} else if at_start && tok == .name {
+						if scan.lit != 'C' {
+							fastc_register_global(header, scan.lit, is_public, path, prefs, mut
+								globals, mut public_globals)!
+						}
 						at_start = false
 					}
 					tok = scan.scan()
@@ -1104,8 +1131,8 @@ fn collect_global_names(source string, path string, module_name string, prefs &p
 				continue
 			}
 			if tok == .name && scan.lit != 'C' {
-				key := fastc_global_key(module_name, scan.lit)
-				globals[key] = fastc_c_global_name(key)
+				fastc_register_global(header, scan.lit, is_public, path, prefs, mut globals, mut
+					public_globals)!
 			}
 			continue
 		}
@@ -1114,11 +1141,27 @@ fn collect_global_names(source string, path string, module_name string, prefs &p
 		} else if tok == .rcbr && depth > 0 {
 			depth--
 		}
+		previous_tok = tok
 		tok = scan.scan()
 	}
 }
 
-fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, mut global_types map[string]string) !FastcGlobalDeclarations {
+fn fastc_register_global(header FastcSourceHeader, name string, is_public bool, path string, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool) ! {
+	if !prefs.enable_globals && !prefs.building_v && header.module_name != 'builtin'
+		&& !header.has_globals {
+		return error('use `v -enable-globals ...` to enable globals in ${path}')
+	}
+	key := fastc_global_key(header.module_name, name)
+	if key in globals {
+		return error('fastc parser does not support duplicate global `${name}` in ${path}')
+	}
+	globals[key] = fastc_c_global_name(key)
+	if is_public {
+		public_globals[key] = true
+	}
+}
+
+fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
 	mut out := strings.new_builder(1024)
 	mut initializers := strings.new_builder(1024)
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
@@ -1138,6 +1181,7 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 			constants:         constants
 			public_constants:  public_constants
 			globals:           globals
+			public_globals:    public_globals
 			selfhost:          prefs.building_v
 			s:                 scanner.new_scanner(prefs, .normal)
 			out:               strings.new_builder(0)
@@ -1233,7 +1277,7 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 	g.skip_semicolons()
 }
 
-fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, global_types map[string]string) ! {
+fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string) ! {
 	mut type_names := struct_field_info.keys()
 	type_names.sort()
 	for type_name in type_names {
@@ -1258,6 +1302,7 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 				constants:         constants
 				public_constants:  public_constants
 				globals:           globals
+				public_globals:    public_globals
 				selfhost:          prefs.building_v
 				s:                 scanner.new_scanner(prefs, .normal)
 				out:               strings.new_builder(0)
@@ -1292,7 +1337,7 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 	}
 }
 
-fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
+fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
 	for source_file in ordered_sources {
@@ -1310,6 +1355,8 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 			struct_field_info: struct_field_info
 			constants:         constants
 			public_constants:  public_constants
+			globals:           globals
+			public_globals:    public_globals
 			selfhost:          prefs.building_v
 			s:                 scanner.new_scanner(prefs, .normal)
 			out:               strings.new_builder(256)
@@ -9931,10 +9978,18 @@ fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string
 			if constant_key in g.constants && constant_key !in g.public_constants {
 				return g.unsupported('private constant `${g.lit}` from imported module `${imported_module}`')
 			}
+			g.validate_imported_global_visibility(imported_module, g.lit)!
 		}
 	}
 	g.validate_expression_name(g.lit, previous)!
 	return g.resolved_expression_name(g.lit, previous)
+}
+
+fn (g &Parser) validate_imported_global_visibility(imported_module string, name string) ! {
+	global_key := fastc_global_key(imported_module, name)
+	if global_key in g.globals && global_key !in g.public_globals {
+		return g.unsupported('private global `${name}` from imported module `${imported_module}`')
+	}
 }
 
 fn (g &Parser) resolved_expression_name(name string, previous token.Token) string {
@@ -10823,9 +10878,9 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 			if fastc_constant_key(imported_module, tokens[start + 2].lit) in g.constants {
 				return 'integer literal'
 			}
-			if global_type := g.global_types[fastc_global_key(imported_module,
-				tokens[start + 2].lit)]
-			{
+			global_name := tokens[start + 2].lit
+			if global_type := g.global_types[fastc_global_key(imported_module, global_name)] {
+				g.validate_imported_global_visibility(imported_module, global_name)!
 				return global_type
 			}
 		}

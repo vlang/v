@@ -149,6 +149,10 @@ fn main() {
 }
 ')
 	global_binary := os.join_path(root, 'initialized_global')
+	global_without_flag := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', global_binary,
+		global_source])
+	assert global_without_flag.exit_code != 0
+	assert global_without_flag.output.contains('use `v -enable-globals ...` to enable globals'), global_without_flag.output
 	global_compile := cmdexec.run(v3_bin, ['-silent', '-enable-globals', '-b', 'fastc', '-o',
 		global_binary, global_source])
 	assert global_compile.exit_code == 0, global_compile.output
@@ -395,8 +399,9 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
-				os.join_path(root, 'no_main.c'), valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
+				'no_main.c'),
+				valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{

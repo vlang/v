@@ -35,6 +35,7 @@ pub mut:
 	ccompiler             string = 'gcc'
 	c99                   bool
 	force_bounds_checking bool
+	enable_globals        bool
 	vroot                 string = detect_vroot()
 	vexe                  string = detect_vexe()
 	vhash                 string

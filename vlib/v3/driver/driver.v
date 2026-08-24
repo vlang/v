@@ -7325,6 +7325,7 @@ pub fn run(args []string) {
 	prefs.ccompiler = effective_c_compiler
 	prefs.c99 = c99
 	prefs.force_bounds_checking = force_bounds_checking
+	prefs.enable_globals = enable_globals_compat
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
 	prefs.vroot = if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {

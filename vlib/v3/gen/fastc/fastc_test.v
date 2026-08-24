@@ -188,6 +188,79 @@ fn test_duplicate_constant_declarations_are_rejected() {
 	}
 }
 
+fn test_global_declarations_require_enable_globals_or_module_attribute() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main\n__global answer = 42\nfn main() {}\n', 'plain_global.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('use `v -enable-globals ...` to enable globals'), message
+
+	attributed_source := generate('@[has_globals]\nmodule main\n__global answer = 42\nfn main() {}\n',
+		'attributed_global.v', prefs) or { panic(err) }
+	assert attributed_source.contains('static int answer;'), attributed_source
+
+	mut enabled_prefs := pref.new_preferences()
+	enabled_prefs.enable_globals = true
+	enabled_source := generate('module main\n__global answer = 42\nfn main() {}\n',
+		'enabled_global.v', enabled_prefs) or { panic(err) }
+	assert enabled_source.contains('static int answer;'), enabled_source
+}
+
+fn test_duplicate_global_declarations_are_rejected() {
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
+	mut message := ''
+	_ := generate('module main\n__global answer = 1\n__global answer = 2\nfn main() {}\n',
+		'duplicate_global.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('duplicate global `answer`'), message
+}
+
+fn test_generate_files_rejects_private_imported_globals() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_private_global_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'secrets')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'secrets', 'secrets.v')
+	os.write_file(main_file, 'module main\nimport secrets\nfn main() { println(secrets.secret) }\n') or {
+		panic(err)
+	}
+	os.write_file(module_file, 'module secrets\n__global secret = 42\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
+	prefs.module_search_paths = [root]
+	mut message := ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('private global `secret` from imported module `secrets`'), message
+	os.write_file(main_file,
+		'module main\nimport secrets\nconst copied = secrets.secret\nfn main() { println(copied) }\n') or {
+		panic(err)
+	}
+	message = ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('private global `secret` from imported module `secrets`'), message
+
+	os.write_file(module_file, 'module secrets\npub __global secret = 42\n') or { panic(err) }
+	os.write_file(main_file, 'module main\nimport secrets\nfn main() { println(secrets.secret) }\n') or {
+		panic(err)
+	}
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('println(secrets__secret);'), c_source
+}
+
 fn test_generate_files_rejects_private_imported_types() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_private_types_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -573,7 +646,8 @@ fn main() {
 }
 
 fn test_initialized_global_value_is_emitted() {
-	prefs := pref.new_preferences()
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
 	c_source := generate('module main
 
 __global answer = 42
@@ -589,7 +663,8 @@ fn main() {
 }
 
 fn test_script_main_initializes_globals_before_statements() {
-	prefs := pref.new_preferences()
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
 	c_source := generate('module main
 
 __global answer = 42
@@ -617,7 +692,8 @@ fn test_runtime_constants_are_materialized_exactly_once() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	prefs := pref.new_preferences()
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
 	c_source := generate('module main
 
 __global calls int
@@ -726,6 +802,7 @@ pub fn current() int {
 		panic(err)
 	}
 	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
 	dependency_initializer := c_source.index('dep__current_value = 42;') or { -1 }
@@ -784,6 +861,7 @@ pub fn value() int {
 		panic(err)
 	}
 	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
 	main_source := c_source.all_after('int main(void) {')
