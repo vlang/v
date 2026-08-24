@@ -1327,6 +1327,49 @@ fn main() {
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output == '10\n12\ngreenred\n'
+
+	mut selfhost_prefs := pref.new_preferences()
+	selfhost_prefs.building_v = true
+	interpolation_source := generate(r"module main
+
+enum Color {
+	red
+	green
+}
+
+@[flag]
+enum Permissions {
+	read
+	write
+}
+
+fn color_label(color Color) string {
+	return '${color}'
+}
+
+fn color_number(color Color) string {
+	return '${color:d}'
+}
+
+fn permissions_label(permissions Permissions) string {
+	return '${permissions}'
+}
+
+fn main() {
+	println(color_label(Color.green))
+	println(color_number(Color.green))
+	println(permissions_label(Permissions.read))
+}
+",
+		'enum_interpolation.v', selfhost_prefs) or { panic(err) }
+	assert interpolation_source.contains('static string v_fastc_enum_str_Color(Color value)'), interpolation_source
+	assert interpolation_source.contains('if (value == Color__green) return _S("green");'), interpolation_source
+	assert interpolation_source.contains('return _S("unknown enum value");'), interpolation_source
+	assert interpolation_source.contains('v_fastc_enum_str_Color(color)'), interpolation_source
+	assert interpolation_source.contains('builtin__int_str((int)(color))'), interpolation_source
+	assert interpolation_source.contains('static string v_fastc_enum_str_Permissions(Permissions value)'), interpolation_source
+	assert interpolation_source.contains('_S("Permissions{")'), interpolation_source
+	assert interpolation_source.contains('v_fastc_enum_str_Permissions(permissions)'), interpolation_source
 }
 
 fn test_unresolved_enum_discriminants_are_rejected() {
@@ -2207,12 +2250,17 @@ fn change(mut value int) {
 fn main() {
 	mut items := [1, 2]
 	for mut item in items {
+		println(item)
+		item = 3
 		change(mut item)
 	}
 }
 ',
 		'mutable_iteration.v', prefs) or { panic(err) }
 	assert c_source.contains('int *item = &(((int *)'), c_source
+	assert c_source.contains('println((*(item)));'), c_source
+	assert c_source.contains('(*item)=3;'), c_source
+	assert c_source.contains('change(item);'), c_source
 }
 
 fn test_range_bounds_must_be_integers() {
