@@ -98,17 +98,18 @@ C file or executable is published. Unsupported V syntax and same-target TinyCC e
 directly; FastC never retries through an AST-based backend.
 
 FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
-expressions, `if`/`else`, and condition, C-style, infinite, and integer-range `for` loops. GNU
-`typeof` carries `:=` declarations into C without V type inference. Integer-range bounds are
-evaluated once, from left to right. The parser also rejects mutation of immutable or unknown local
-names instead of relying on C's weaker assignment rules.
+expressions including validated comparison and logical operators, `if`/`else`, and condition,
+C-style, infinite, and integer-range `for` loops. GNU `typeof` carries `:=` declarations into C
+without V type inference. Integer-range bounds are evaluated once, from left to right. The parser
+also rejects mutation of immutable or unknown local names instead of relying on C's weaker
+assignment rules.
 
 Syntax whose V semantics require type or runtime information is rejected until FastC can lower it
 directly. This includes float printing, C-string and embedded-NUL string literals, runes,
-assertions, `sizeof`, comparison/logical, shift, division, modulo, indexing, parallel assignment,
-mixed-precedence expressions, narrow integer signatures, oversized decimal literals, and
-high-bit hexadecimal or binary literals. Rejecting these constructs avoids silently applying
-incompatible C formatting, inference, wrapping, shift, bounds, and zero-divisor behavior.
+assertions, `sizeof`, shift, division, modulo, indexing, parallel assignment, mixed-precedence
+expressions, narrow integer signatures, oversized decimal literals, and high-bit hexadecimal or
+binary literals. Rejecting these constructs avoids silently applying incompatible C formatting,
+inference, wrapping, shift, bounds, and zero-divisor behavior.
 
 FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
 permits an explicit cross target and publishes its generated C without host TinyCC validation.
