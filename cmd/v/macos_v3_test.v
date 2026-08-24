@@ -1604,6 +1604,75 @@ fn test_macos_v3_reads_c_error_fallback_report() {
 	}
 }
 
+fn test_macos_v3_discards_fallback_report_when_native_input_changes() {
+	$if macos || linux {
+		real_cc := os.find_abs_path_of_executable('cc') or { return }
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_native_input_retry_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		header := os.join_path(root, 'project.h')
+		source := os.join_path(root, 'main.v')
+		compiler := os.join_path(root, 'cc-wrapper')
+		output := os.join_path(root, 'main')
+		os.write_file(header, 'static int project_value(void) { return 41; }\n')!
+		os.write_file(source, 'module main
+
+#include "@DIR/project.h"
+
+fn C.project_value() int
+
+fn main() {
+	assert C.project_value() == 42
+}
+')!
+		// Dependency discovery preprocesses native inputs before the snapshot. Delegate
+		// those probes unchanged, then rewrite the header only when V3 starts its real C
+		// compilation. The stable retry succeeds with the new bytes and must not report
+		// the old V3 failure as a V3-only compiler bug.
+		os.write_file(compiler, '#!/bin/sh
+for arg in "\$@"; do
+	if [ "\$arg" = "-E" ] || [ "\$arg" = "-dM" ]; then
+		exec "\$REAL_CC" "\$@"
+	fi
+done
+if [ "\$V_MACOS_V3_EMBEDDED" = "1" ]; then
+	printf "%s\\n" "static int project_value(void) { return 42; }" > "\$NATIVE_HEADER"
+	exit 1
+fi
+exec "\$REAL_CC" "\$@"
+')!
+		os.chmod(compiler, 0o700)!
+		mut environment := os.environ()
+		environment['CFLAGS'] = ''
+		environment['LDFLAGS'] = ''
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		environment['REAL_CC'] = real_cc
+		environment['NATIVE_HEADER'] = header
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-gc', 'none', '-nocache', '-cc', compiler, '-o', output, source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('source inputs changed'), compiler_output
+		assert !compiler_output.contains('V3 could not build this program'), compiler_output
+		assert os.is_executable(output)
+		run := os.execute(os.quoted_path(output))
+		assert run.exit_code == 0, run.output
+	}
+}
+
 fn test_macos_v3_compiler_failures_fall_back_to_old_compiler() {
 	$if macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_c_error_retry_${os.getpid()}')

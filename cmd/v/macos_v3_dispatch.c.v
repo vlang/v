@@ -284,8 +284,9 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		// compiler output), so it is trusted. Extract the bounded source snippet HERE,
 		// forward it to the V1 retry as content, and remove the staged directory. The
 		// retry files a bug once its build succeeds (see cmd/v rebuild ->
-		// compile_with_external_c_error_report) without reading any path or deleting any
-		// directory named by the (inheritable, forgeable) environment.
+		// compile_with_external_c_error_report) without reading report-named source or
+		// deleting any directory. Native digest paths are separately constrained to roots
+		// selected by the successful stable build.
 		report := read_macos_v3_c_error_report(c_error_dir) or {
 			os.rmdir_all(c_error_dir) or {}
 			eprintln('V3 requested a C-error fallback, but its diagnostics could not be read')
@@ -304,10 +305,10 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		// retry succeeds it prints the fallback notice and files the report. A directory
 		// build (`v .`) or non-V input also remains metadata-only, but never silent.
 		v_file, v_source := input_snapshot.current_report_source()
-		// A post-parse V3 stage writes every exact parser digest into its owned staging
-		// directory. If that manifest is unavailable (for example, an early parser
-		// crash), the retry still runs but its report is not submitted because the
-		// stable compiler cannot prove that it accepted the same complete input set.
+		// Post-parse V3 stages write exact parser and resolved-native digests into the
+		// owned staging directory. If that complete manifest is unavailable (for example,
+		// after an early parser crash), the retry still runs but its report is not submitted
+		// because the stable compiler cannot prove that it accepted the same inputs.
 		input_digests := read_macos_v3_source_digests(c_error_dir) or {
 			map[string]string{}
 		}
@@ -340,9 +341,10 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 
 // take_macos_v3_report_content reads the content-only fallback report the owning process
 // forwarded through the environment, or none when there is none. The report carries no
-// path to read and no directory to delete, so a stale, inherited, or hostile handoff can
-// at most make the retry upload attacker-supplied text — never disclose a file from, or
-// recursively delete, an arbitrary directory. That is what makes authentication
+// source path to read and no directory to delete, so a stale, inherited, or hostile
+// handoff can at most make the retry upload attacker-supplied text. Tagged native digest
+// paths are constrained to the successful build's own roots before hashing and are never
+// uploaded. That is what makes authentication
 // unnecessary here; across an execvp that an attacker can wrap (it retains the pid and
 // inherits VTMP and every env var), authenticating a path handoff is impossible anyway.
 fn take_macos_v3_report_content() ?MacosV3CErrorReport {

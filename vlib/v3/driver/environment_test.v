@@ -160,6 +160,44 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 		sha256.hexhash(shared_vlib_source)].join('\x00')
 }
 
+fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
+	root := os.join_path(os.temp_dir(), 'v3_fallback_native_digest_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header_candidate := os.join_path(root, 'project.h')
+	source_candidate := os.join_path(root, 'project.c')
+	header_source := '#define PROJECT_VALUE 41\n'
+	native_source := '#include "project.h"\nint project_value(void) { return PROJECT_VALUE; }\n'
+	os.write_file(header_candidate, header_source)!
+	os.write_file(source_candidate, native_source)!
+	header_path := os.real_path(header_candidate)
+	source_path := os.real_path(source_candidate)
+	state := V3ModuleCacheState{
+		module_external_inputs:   {
+			'main': [header_path, source_path]
+		}
+		module_native_roots:      {
+			'main': [source_path]
+		}
+		external_inputs_ready:    true
+		external_inputs_complete: true
+	}
+	inputs := macos_v3_fallback_report_inputs({
+		'/project/main.v': sha256.hexhash('module main')
+	}, &state)
+	assert inputs['/project/main.v'] == sha256.hexhash('module main')
+	assert inputs[v3_fallback_native_manifest_key] == sha256.hexhash(v3_fallback_native_manifest_value)
+	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] == sha256.hexhash(header_source)
+	assert inputs['${v3_fallback_native_input_prefix}${source_path}'] == sha256.hexhash(native_source)
+	// The snapshot remains tied to the bytes V3 resolved, even if a watcher rewrites a
+	// dependency before the compatibility compiler runs.
+	os.write_file(header_path, '#define PROJECT_VALUE 42\n')!
+	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] != sha256.hexhash(os.read_file(header_path)!)
+}
+
 fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
 	hash_source := os.real_path(os.join_path(os.vtmp_dir(), 'v3_fallback_hash.v'))
 	mut state := V3ModuleCacheState{

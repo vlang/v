@@ -54,6 +54,9 @@ const macos_v3_c_error_output_file = 'output'
 const macos_v3_c_error_source_name_file = 'source_name'
 const macos_v3_c_error_v_sources_file = 'v_sources'
 const macos_v3_c_error_v_source_digests_file = 'v_source_digests'
+const v3_fallback_native_input_prefix = '@native-input:'
+const v3_fallback_native_manifest_key = '@native-input-manifest:v1'
+const v3_fallback_native_manifest_value = 'v3-native-input-manifest-v1'
 
 fn configure_selfhost_parallelism(building_v bool) {
 	if !building_v || os.getenv('VJOBS') != '' || os.getenv('V3_NO_SELFHOST_JOB_OVERCOMMIT') != '' {
@@ -96,6 +99,7 @@ mut:
 	external_resolution_dirs  []string
 	external_missing_paths    []string
 	external_inputs_ready     bool
+	external_inputs_complete  bool
 	dependency_metadata       map[string]string
 	cached_source_digests     map[string]string
 	fallback_required_modules map[string]bool
@@ -2531,6 +2535,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	can_extract_native_types := prepare_v3_cache_native_type_declarations(mut state, user_c_flags,
 		prefs.ccompiler, prefs.target)
 	state.external_inputs_ready = true
+	state.external_inputs_complete = !has_untracked_c_include
 	if os.getenv('V3_CACHE_TRACE') != '' {
 		if has_untracked_c_include {
 			eprintln('  V3 module cache external input miss: reason=unresolved C include')
@@ -4353,6 +4358,7 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 	state.external_resolution_dirs = resolution_dirs.clone()
 	state.external_missing_paths = missing_resolution_paths.clone()
 	state.external_inputs_ready = true
+	state.external_inputs_complete = true
 	return true
 }
 
@@ -6367,9 +6373,10 @@ fn write_macos_v3_fallback_source_digests(report_dir string, v_sources map[strin
 	return true
 }
 
-// stage_macos_v3_fallback_source_digests snapshots every source V3 parsed once parsing
-// completes. Later internal failures can then be reported only when the stable retry's
-// parser confirms the exact same complete input set.
+// stage_macos_v3_fallback_source_digests first snapshots every source V3 parsed. Once
+// native dependency resolution completes, the same files are refreshed with tagged
+// #include/#insert digests and a completeness marker. The stable retry reports only when
+// it confirms that complete input snapshot.
 fn stage_macos_v3_fallback_source_digests(report_dir string, v_sources map[string]string) bool {
 	if report_dir == '' || v_sources.len == 0 {
 		return false
@@ -6447,6 +6454,37 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source
 		sources.delete(path)
 	}
 	return sources
+}
+
+// macos_v3_fallback_report_inputs adds the exact native files that V3's resolved
+// include/insert dependency tree can consume. Native keys are tagged so the report
+// source extractor never treats a header or C source as an uploadable V excerpt.
+fn macos_v3_fallback_report_inputs(v_sources map[string]string, state &V3ModuleCacheState) map[string]string {
+	mut inputs := v_sources.clone()
+	if !state.external_inputs_ready || !state.external_inputs_complete {
+		return inputs
+	}
+	mut native_paths := map[string]bool{}
+	for paths in state.module_external_inputs.values() {
+		for path in paths {
+			native_paths[os.real_path(path)] = true
+		}
+	}
+	for paths in state.module_native_roots.values() {
+		for path in paths {
+			native_paths[os.real_path(path)] = true
+		}
+	}
+	mut native_digests := map[string]string{}
+	for path in native_paths.keys() {
+		content := os.read_bytes(path) or { return inputs }
+		native_digests['${v3_fallback_native_input_prefix}${path}'] = sha256.sum(content).hex()
+	}
+	for key, digest in native_digests {
+		inputs[key] = digest
+	}
+	inputs[v3_fallback_native_manifest_key] = sha256.hexhash(v3_fallback_native_manifest_value)
+	return inputs
 }
 
 fn record_v3_fallback_module_use(mut cache_state V3ModuleCacheState, module_name string, is_warmup bool) {
@@ -7833,7 +7871,7 @@ pub fn run(args []string) {
 	// Preserve the digest of every exact source buffer V3 parsed before any parser or
 	// later compiler error can request the compatibility compiler. The dispatcher owns
 	// this staging directory and forwards only content plus verification metadata.
-	fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot,
+	mut fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot,
 		cache_state.cached_source_digests, v3_fallback_ignored_warmup_source_paths(cache_state))
 	_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
 	if print_v_files || print_watched_files {
@@ -8220,6 +8258,11 @@ pub fn run(args []string) {
 	if !cache_state.external_inputs_ready && ast_has_native_source_include(a) {
 		_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files, cache_c_flags)
 	}
+	if backend == 'c' && cache_state.external_inputs_ready {
+		fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources,
+			&cache_state)
+		_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
+	}
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
@@ -8605,6 +8648,20 @@ pub fn run(args []string) {
 		// (transform invalidates every id it rewrites).
 		if os.getenv('V3_NO_TRUST_CHECKED_TYPES').len == 0 {
 			pre_tc.trust_checked_expr_types = true
+		}
+		// Cache-disabled builds still need the same resolved native-input snapshot as
+		// cached builds before transformation or C generation can fail. If resolution is
+		// incomplete, leave the manifest without its completeness marker so the stable
+		// retry prints the fallback notice but does not submit an unverified report.
+		if backend == 'c' && !cache_state.external_inputs_ready {
+			_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files,
+				cache_c_flags)
+		}
+		if backend == 'c' && cache_state.external_inputs_ready {
+			fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources,
+				&cache_state)
+			_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir,
+				fallback_report_sources)
 		}
 		// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
 		// by default for compatible builds, and `-no-parallel` disables both threaded transform

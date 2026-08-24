@@ -27,7 +27,7 @@ const c_error_bug_report_truncation_notice = '\n... report truncated before uplo
 // compatibility fallback. The final upload is separately bounded by
 // c_error_bug_report_max_body_bytes.
 const c_error_bug_report_max_env_c_output_bytes = 64 * 1024
-// Keep the complete parsed-input manifest below Linux's per-environment-string
+// Keep the complete V/native input manifest below Linux's per-environment-string
 // exec limit. If a very large project exceeds this bound, the retry still runs,
 // but its fallback report is conservatively suppressed because exact equivalence
 // cannot be proved.
@@ -38,6 +38,9 @@ const v3_report_max_env_input_digests_bytes = 64 * 1024
 const v3_report_conservative_exec_bytes = 128 * 1024
 const v3_report_exec_reserve_bytes = 16 * 1024
 const v3_report_max_env_payload_bytes = 64 * 1024
+const v3_fallback_native_input_prefix = '@native-input:'
+const v3_fallback_native_manifest_key = '@native-input-manifest:v1'
+const v3_fallback_native_manifest_value = 'v3-native-input-manifest-v1'
 
 struct CErrorReportLine {
 pub:
@@ -106,9 +109,11 @@ pub:
 	v_file        string // informational base filename of the failing source (no directory)
 	v_source      string // already-bounded source snippet; never a whole file
 	source_inline bool   // true: use v_file/v_source as-is and touch no filesystem path
-	// Every path/digest pair below describes source bytes V3 actually parsed. The
-	// stable parser compares these values only with its own trusted parsed-file
-	// paths and scanner digests; it never opens a path supplied by this report.
+	// Untagged path/digest pairs below describe source bytes V3 actually parsed. The
+	// stable parser compares them only with its own parsed-file paths and scanner
+	// digests. Tagged native inputs describe resolved #include/#insert dependencies;
+	// after a successful build the stable compiler reopens those regular files only to
+	// verify their SHA-256 digests before it can submit the fallback report.
 	input_digests          map[string]string
 	input_digests_complete bool
 }
@@ -284,15 +289,15 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 const v3_report_env_prefix = 'V_MACOS_V3_REPORT_'
 
 // v3_report_env_suffixes lists every V_MACOS_V3_REPORT_* variable, so both the export
-// and the take paths agree on exactly what to set and clear. Every variable carries
-// CONTENT only — never a filesystem path the receiver would read or a directory it
-// would delete.
+// and the take paths agree on exactly what to set and clear. Source snippets are content
+// only and no directory path is accepted. Tagged native paths can only be hashed after
+// the receiver constrains them to roots selected by its own successful build.
 const v3_report_env_suffixes = ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE',
 	'INPUT_DIGESTS', 'INPUT_DIGESTS_COMPLETE']
 
-// encode_v3_report_input_digests serializes arbitrary source paths without allowing a
-// newline or separator in a filename to corrupt the manifest. Paths are content used
-// only for equality checks against files the stable parser already opened itself.
+// encode_v3_report_input_digests serializes arbitrary input paths without allowing a
+// newline or separator in a filename to corrupt the manifest. Untagged paths are matched
+// to stable-parser inputs; tagged native paths are constrained before digest verification.
 fn encode_v3_report_input_digests(input_digests map[string]string) ?string {
 	mut paths := input_digests.keys()
 	paths.sort()
@@ -395,9 +400,10 @@ fn v3_transport_limited_notice_payload() map[string]string {
 // The safe design therefore never gives the builder a capability it could be tricked
 // into misusing: this function bounds the source snippet here — in the trusted parent
 // that owns the staged directory — passes only that content, and then removes the staged
-// directory itself. The builder reads no path and deletes no directory, so a forged
-// handoff can at worst make it submit attacker-supplied text (harmless), never disclose
-// a victim's file or recursively delete a victim's directory.
+// directory itself. The builder never reads report-named source or deletes a directory;
+// it only hashes tagged native dependencies after constraining them to roots selected by
+// its own successful build. A forged handoff therefore cannot disclose a victim's file
+// or recursively delete a victim's directory.
 pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	// `report` is already content-only: its v_source was bounded by the process that owns
 	// the staged directory (bounded_v3_fallback_source), and that process deletes the
@@ -539,9 +545,10 @@ fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, al
 // export_external_v3_report_to_env, or none when none is present. It clears the variables
 // unconditionally so neither a nested build nor a stale/poisoned environment can leak
 // them into later work. The returned report carries source_inline = true and no c_file
-// or cleanup_dir, so consume_external_c_error_bug_report reads no path and deletes no
-// directory. Pass the result to compile_with_external_c_error_report so the notice and
-// submission happen relative to the tool's own build outcome (only on success).
+// or cleanup_dir, so consume_external_c_error_bug_report reads no source path and deletes
+// no directory. Tagged dependency paths are separately constrained and hashed after a
+// successful build. Pass the result to compile_with_external_c_error_report so the notice
+// and submission happen relative to the tool's own build outcome (only on success).
 pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 	present := os.getenv('${v3_report_env_prefix}PRESENT')
 	input_digests := decode_v3_report_input_digests(os.getenv('${v3_report_env_prefix}INPUT_DIGESTS')) or {
@@ -572,17 +579,26 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 
 // v3_fallback_input_status compares the stable compiler's exact parser inputs with V3's
 // staged manifest. An unavailable manifest means V3 failed before it could stage parser
-// digests; that is distinct from a complete manifest whose source set or bytes changed.
-// Report paths are never opened: they are compared only with canonical paths belonging
-// to the stable parser's own AST files.
-fn (b &Builder) v3_fallback_input_status(report ExternalCErrorBugReport) V3FallbackInputStatus {
+// and resolved-native digests; that is distinct from a complete manifest whose input set
+// or bytes changed. Untagged paths are compared only with canonical paths belonging to
+// the stable parser's own AST files. Tagged native paths are hashed only after the stable
+// build succeeded, so a changed header/source suppresses a false V3-only report.
+fn (mut b Builder) v3_fallback_input_status(report ExternalCErrorBugReport) V3FallbackInputStatus {
 	if report.kind in [external_v3_notice_only_kind, external_v3_transport_limited_kind] {
 		return .unchanged
 	}
 	if !report.input_digests_complete || report.input_digests.len == 0 {
 		return .unavailable
 	}
+	native_manifest_digest := report.input_digests[v3_fallback_native_manifest_key] or {
+		return .unavailable
+	}
+	if native_manifest_digest != sha256.hexhash(v3_fallback_native_manifest_value) {
+		return .changed
+	}
 	mut stable_digests := map[string]string{}
+	mut report_source_count := 0
+	trusted_native_roots := b.v3_fallback_trusted_native_roots()
 	builtin_root :=
 		os.real_path(os.join_path(b.pref.vroot, 'vlib', 'builtin')).trim_right(os.path_separator)
 	for file in b.parsed_files {
@@ -604,13 +620,30 @@ fn (b &Builder) v3_fallback_input_status(report ExternalCErrorBugReport) V3Fallb
 		}
 		stable_digests[path] = file.source_digest
 	}
-	if stable_digests.len != report.input_digests.len {
-		return .changed
-	}
 	for path, v3_digest in report.input_digests {
+		if path == v3_fallback_native_manifest_key {
+			continue
+		}
+		if path.starts_with(v3_fallback_native_input_prefix) {
+			native_path := path[v3_fallback_native_input_prefix.len..]
+			if native_path == '' || !os.is_abs_path(native_path)
+				|| os.real_path(native_path) != native_path || !os.is_file(native_path)
+				|| !v3_fallback_native_path_is_trusted(native_path, trusted_native_roots) {
+				return .changed
+			}
+			content := os.read_bytes(native_path) or { return .changed }
+			if sha256.sum(content).hex() != v3_digest {
+				return .changed
+			}
+			continue
+		}
+		report_source_count++
 		if stable_digests[path] != v3_digest {
 			return .changed
 		}
+	}
+	if stable_digests.len != report_source_count {
+		return .changed
 	}
 	return .unchanged
 }
@@ -618,8 +651,60 @@ fn (b &Builder) v3_fallback_input_status(report ExternalCErrorBugReport) V3Fallb
 // matches_v3_fallback_inputs reports whether V3 supplied a complete manifest and the
 // stable compiler parsed the same source bytes, or whether this is a notice-only fallback
 // that never submits a V3 bug report.
-fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool {
+fn (mut b Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool {
 	return b.v3_fallback_input_status(report) == .unchanged
+}
+
+// v3_fallback_trusted_native_roots derives an allowlist only from paths the stable
+// compiler selected itself. This keeps the content-only environment handoff from
+// becoming an arbitrary-file hashing oracle while still covering nested project/module
+// headers discovered by V3.
+fn (mut b Builder) v3_fallback_trusted_native_roots() []string {
+	mut roots := map[string]bool{}
+	for root in [b.compiled_dir, b.pref.vroot] {
+		if root != '' {
+			roots[os.real_path(root)] = true
+		}
+	}
+	for root in b.pref.lookup_path {
+		if root != '' {
+			roots[os.real_path(root)] = true
+		}
+	}
+	for root in b.module_search_paths {
+		if root != '' {
+			roots[os.real_path(root)] = true
+		}
+	}
+	for cflag in b.get_os_cflags() {
+		value := cflag.eval() or { continue }
+		if cflag.name == '-I' && os.is_dir(value) {
+			roots[os.real_path(value)] = true
+		} else if os.is_file(value) {
+			roots[os.real_path(os.dir(value))] = true
+		}
+	}
+	// crun_dependency_files walks the stable AST's active local include/insert
+	// directives and evaluated file-valued #flags. Only their containing trees become
+	// eligible for digest verification; no report-provided path contributes a root.
+	for path in b.crun_dependency_files() {
+		roots[os.real_path(os.dir(path))] = true
+	}
+	mut result := roots.keys()
+	result.sort()
+	return result
+}
+
+fn v3_fallback_native_path_is_trusted(path string, roots []string) bool {
+	normalized_path := path.replace('\\', '/').trim_right('/')
+	for root in roots {
+		normalized_root := root.replace('\\', '/').trim_right('/')
+		if normalized_root != '' && (normalized_path == normalized_root
+			|| normalized_path.starts_with(normalized_root + '/')) {
+			return true
+		}
+	}
+	return false
 }
 
 fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string) bool {

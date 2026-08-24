@@ -376,16 +376,28 @@ fn test_external_v3_report_env_round_trip() {
 
 fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 	vroot := os.real_path(@VEXEROOT)
-	path := os.real_path(os.join_path(os.temp_dir(), 'v3_retry_input_main.v'))
+	root := os.join_path(os.temp_dir(), 'v3_retry_inputs_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	path := os.real_path(os.join_path(root, 'main.v'))
+	native_candidate := os.join_path(root, 'native.h')
+	native_source := '#define V3_RETRY_NATIVE_VALUE 41\n'
+	os.write_file(native_candidate, native_source)!
+	native_path := os.real_path(native_candidate)
+	defer {
+		os.rmdir_all(root) or {}
+	}
 	parsed_digest := sha256.hexhash('the exact stable parser bytes')
 	shared_builtin_path := os.real_path(os.join_path(vroot, 'vlib', 'builtin', 'builtin.v'))
 	shared_builtin_digest := sha256.hexhash('shared builtin parser bytes')
 	shared_vlib_path := os.real_path(os.join_path(vroot, 'vlib', 'os', 'os.v'))
 	shared_vlib_digest := sha256.hexhash('shared vlib parser bytes')
-	b := &Builder{
+	mut b := &Builder{
+		compiled_dir: os.dir(native_path)
 		pref:         &pref.Preferences{
 			vroot: vroot
 		}
+		table:        ast.new_table()
 		parsed_files: [
 			&ast.File{
 				path:          path
@@ -421,20 +433,41 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 	}
 	matching := ExternalCErrorBugReport{
 		input_digests:          {
-			path:                parsed_digest
-			shared_builtin_path: shared_builtin_digest
-			shared_vlib_path:    shared_vlib_digest
+			path:                                               parsed_digest
+			shared_builtin_path:                                shared_builtin_digest
+			shared_vlib_path:                                   shared_vlib_digest
+			v3_fallback_native_manifest_key:                    sha256.hexhash(v3_fallback_native_manifest_value)
+			'${v3_fallback_native_input_prefix}${native_path}': sha256.hexhash(native_source)
 		}
 		input_digests_complete: true
 	}
 	assert b.v3_fallback_input_status(matching) == .unchanged
 	assert b.matches_v3_fallback_inputs(matching)
+	untrusted_candidate := os.join_path(os.temp_dir(), 'v3_retry_untrusted_${os.getpid()}.h')
+	os.write_file(untrusted_candidate, native_source)!
+	untrusted_path := os.real_path(untrusted_candidate)
+	defer {
+		os.rm(untrusted_path) or {}
+	}
+	mut untrusted_digests := matching.input_digests.clone()
+	untrusted_digests.delete('${v3_fallback_native_input_prefix}${native_path}')
+	untrusted_digests['${v3_fallback_native_input_prefix}${untrusted_path}'] =
+		sha256.hexhash(native_source)
+	assert b.v3_fallback_input_status(ExternalCErrorBugReport{
+		...matching
+		input_digests: untrusted_digests
+	}) == .changed
+	os.write_file(native_path, '#define V3_RETRY_NATIVE_VALUE 42\n')!
+	assert b.v3_fallback_input_status(matching) == .changed
+	os.write_file(native_path, native_source)!
 	changed := ExternalCErrorBugReport{
 		...matching
 		input_digests: {
-			path:                sha256.hexhash('rewritten after V3')
-			shared_builtin_path: shared_builtin_digest
-			shared_vlib_path:    shared_vlib_digest
+			path:                                               sha256.hexhash('rewritten after V3')
+			shared_builtin_path:                                shared_builtin_digest
+			shared_vlib_path:                                   shared_vlib_digest
+			v3_fallback_native_manifest_key:                    sha256.hexhash(v3_fallback_native_manifest_value)
+			'${v3_fallback_native_input_prefix}${native_path}': sha256.hexhash(native_source)
 		}
 	}
 	assert b.v3_fallback_input_status(changed) == .changed
@@ -442,17 +475,21 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
 		...matching
 		input_digests: {
-			path:                parsed_digest
-			shared_builtin_path: sha256.hexhash('rewritten shared builtin')
-			shared_vlib_path:    shared_vlib_digest
+			path:                                               parsed_digest
+			shared_builtin_path:                                sha256.hexhash('rewritten shared builtin')
+			shared_vlib_path:                                   shared_vlib_digest
+			v3_fallback_native_manifest_key:                    sha256.hexhash(v3_fallback_native_manifest_value)
+			'${v3_fallback_native_input_prefix}${native_path}': sha256.hexhash(native_source)
 		}
 	})
 	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
 		...matching
 		input_digests: {
-			path:                parsed_digest
-			shared_builtin_path: shared_builtin_digest
-			shared_vlib_path:    sha256.hexhash('rewritten shared vlib')
+			path:                                               parsed_digest
+			shared_builtin_path:                                shared_builtin_digest
+			shared_vlib_path:                                   sha256.hexhash('rewritten shared vlib')
+			v3_fallback_native_manifest_key:                    sha256.hexhash(v3_fallback_native_manifest_value)
+			'${v3_fallback_native_input_prefix}${native_path}': sha256.hexhash(native_source)
 		}
 	})
 	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
@@ -462,9 +499,11 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 		}
 	})
 	mut b_with_extra_input := &Builder{
+		compiled_dir: os.dir(native_path)
 		pref:         &pref.Preferences{
 			vroot: vroot
 		}
+		table:        ast.new_table()
 		parsed_files: b.parsed_files.clone()
 	}
 	b_with_extra_input.parsed_files << &ast.File{
