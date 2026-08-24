@@ -1619,8 +1619,14 @@ fn test_comparison_and_logical_operands_are_validated() {
 
 	c_source := generate("module main
 
+type Label = string
+
 fn same(left string, right string) bool {
 	return left == right
+}
+
+fn same_label(first Label, second Label) bool {
+	return first == second
 }
 
 fn main() {
@@ -1635,6 +1641,8 @@ fn main() {
 	println('alpha' <= 'alpha')
 	println('beta' >= 'beta')
 	println('alpha' != 'beta')
+	println(same_label(Label('same'), Label('same')))
+	println(Label('alpha') < Label('beta'))
 }
 ",
 		'valid_boolean_operands.v', prefs) or { panic(err) }
@@ -1643,6 +1651,7 @@ fn main() {
 	assert c_source.contains('v_fastc_println_bool'), c_source
 	assert c_source.contains('static bool builtin__string_eq'), c_source
 	assert c_source.contains('builtin__string_eq(left,right)'), c_source
+	assert c_source.contains('builtin__string_eq(first,second)'), c_source
 	assert c_source.contains('builtin__string_lt("alpha","beta")'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_boolean_operands_${os.getpid()}')
@@ -1659,7 +1668,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output.trim_space() == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
+	assert run_result.output.trim_space() == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
 }
 
 fn test_match_branch_values_must_match_the_subject_type() {
@@ -1766,6 +1775,24 @@ fn main() {
 	}
 	assert evaluation < deferred_assignment
 	assert deferred_assignment < returned_temporary
+}
+
+fn test_control_flow_is_rejected_inside_deferred_blocks() {
+	prefs := pref.new_preferences()
+	for source, expected in {
+		'module main\nfn value() int { defer { return 2 } return 1 }\n':     '`return` not allowed inside a `defer` block'
+		'module main\nfn main() { for { defer { break } break } }\n':        '`break` is not allowed in defer statements'
+		'module main\nfn main() { for { defer { continue } break } }\n':     '`continue` is not allowed in defer statements'
+		'module main\nfn main() { defer { goto done } done: println(1) }\n': 'goto is not allowed in defer statements'
+		'module main\nfn main() { defer { defer { println(1) } } }\n':       '`defer` blocks cannot be nested'
+	} {
+		mut message := ''
+		_ := generate(source, 'invalid_defer_control_flow.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains(expected), message
+	}
 }
 
 fn test_mutable_function_parameters_require_mutable_arguments() {
