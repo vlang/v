@@ -2843,30 +2843,28 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 				types_complete_for_module = false
 				break
 			}
-			if declarations.len > 0 {
-				if roots_with_function_declarations[real_root]
-					&& !c_flag_is_c_source_file(real_root) {
-					context := state.native_root_contexts[real_root] or { []string{} }
-					implementation_macros := cache_native_implementation_context_macros(real_root,
-						context, allowed_paths, c_flags, ccompiler, target)
-					// The public replay only strips implementation code that its
-					// undefined macros gate. If a file-scope external definition would
-					// survive, the owner object (full include) and the program unit's
-					// public replay both define the symbol, so the warm cached link
-					// fails with a duplicate symbol. Fail closed instead of splitting.
-					if cache_native_public_include_replays_external_definition(real_root, context,
-						implementation_macros, c_flags, ccompiler, target)
-					{
-						if os.getenv('V3_CACHE_TRACE') != '' {
-							eprintln('  V3 module cache ungated native definition: module=${module_name} path=${real_root}')
-						}
-						return false
+			if roots_with_function_declarations[real_root] && !c_flag_is_c_source_file(real_root) {
+				context := state.native_root_contexts[real_root] or { []string{} }
+				implementation_macros := cache_native_implementation_context_macros(real_root,
+					context, allowed_paths, c_flags, ccompiler, target)
+				// The public replay only strips implementation code that its undefined
+				// macros gate. If a file-scope external definition would survive, the
+				// owner object and every dependent replay would define the symbol, so the
+				// warm cached link fails with a duplicate symbol. Fail closed instead of
+				// splitting. Keep safe function-only headers even when they declare no
+				// types, since dependent cache units still need their static inline APIs.
+				if cache_native_public_include_replays_external_definition(real_root, context,
+					implementation_macros, c_flags, ccompiler, target)
+				{
+					if os.getenv('V3_CACHE_TRACE') != '' {
+						eprintln('  V3 module cache ungated native definition: module=${module_name} path=${real_root}')
 					}
-					state.native_type_declarations[real_root] = cache_native_public_include(real_root,
-						context, implementation_macros)
-				} else {
-					state.native_type_declarations[real_root] = declarations
+					return false
 				}
+				state.native_type_declarations[real_root] = cache_native_public_include(real_root,
+					context, implementation_macros)
+			} else if declarations.len > 0 {
+				state.native_type_declarations[real_root] = declarations
 			}
 		}
 		if !types_complete_for_module {
