@@ -1527,6 +1527,25 @@ fn main() {}
 fn test_flag_mutating_methods_require_mutable_receivers() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
+	mut ordinary_message := ''
+	_ := generate('module main
+
+enum Color {
+	red
+	green
+}
+
+fn main() {
+	mut color := Color.red
+	color.set(.green)
+}
+',
+		'ordinary_enum_flag_method.v', prefs) or {
+		ordinary_message = err.msg()
+		''
+	}
+	assert ordinary_message.contains('unresolved method call'), ordinary_message
+
 	for source, receiver_name in {
 		'module main\n@[flag]\nenum Permissions { read write }\nfn main() { flags := Permissions.read; flags.set(.write) }\n':                                                   'flags'
 		'module main\n@[flag]\nenum Permissions { read write }\nstruct Holder { permissions Permissions }\nfn main() { holder := Holder{}; holder.permissions.clear(.read) }\n': 'holder'
@@ -1597,6 +1616,47 @@ fn main() {
 		'mutable_flag_receiver.v', prefs) or { panic(err) }
 	assert c_source.contains('flags) |= (Permissions__write)'), c_source
 	assert c_source.contains('flags) &= ~(Permissions__read)'), c_source
+}
+
+fn test_large_flag_enums_use_unsigned_64_bit_values() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+@[flag]
+enum PawnsBoard as u64 {
+	a8 b8 c8 d8 e8 f8 g8 h8
+	a7 b7 c7 d7 e7 f7 g7 h7
+	a6 b6 c6 d6 e6 f6 g6 h6
+	a5 b5 c5 d5 e5 f5 g5 h5
+	a4 b4 c4 d4 e4 f4 g4 h4
+	a3 b3 c3 d3 e3 f3 g3 h3
+	a2 b2 c2 d2 e2 f2 g2 h2
+	a1 b1 c1 d1 e1 f1 g1 h1
+}
+
+fn main() {
+	println(u64(PawnsBoard.h1))
+}
+',
+		'flag_enum_64.v', prefs) or { panic(err) }
+	assert c_source.contains('typedef u64 PawnsBoard;'), c_source
+	assert c_source.contains('#define PawnsBoard__h1 ((PawnsBoard)(((u64)1) << (63)))'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_flag_enum_64_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '9223372036854775808\n'
 }
 
 fn test_mutable_receiver_methods_auto_address_mutable_values() {
@@ -1735,6 +1795,7 @@ fn main() {
 	a := MyEnumAlias.something
 	println(x == a)
 	println(MyEnumAlias.another)
+	println(MyEnumAlias(MyEnum.another))
 	println(int(MyEnumAlias.another))
 }
 ',
@@ -1744,6 +1805,7 @@ fn main() {
 	assert c_source.contains('MyEnum__another'), c_source
 	assert !c_source.contains('MyEnumAlias__something'), c_source
 	assert !c_source.contains('MyEnumAlias__another'), c_source
+	assert c_source.count('v_fastc_print_enum_MyEnum') == 3, c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_enum_alias_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1759,7 +1821,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == 'true\nanother\n1\n'
+	assert run_result.output == 'true\nanother\nanother\n1\n'
 }
 
 fn test_unresolved_enum_discriminants_are_rejected() {
