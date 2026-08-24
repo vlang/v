@@ -734,6 +734,10 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 		source := os.read_file(path)!
 		mut header := fastc_scan_source_header(source, path, prefs)!
 		if queued.module_name != '' {
+			expected_module_name := queued.module_name.all_after_last('.')
+			if header.module_name != expected_module_name {
+				return error('fastc imported source `${path}` declares module `${header.module_name}` instead of `${expected_module_name}`')
+			}
 			header = FastcSourceHeader{
 				module_name:   queued.module_name
 				imports:       header.imports
@@ -932,11 +936,25 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			tok = scan.scan()
 			continue
 		}
+		if brace_depth == 0 && tok == .dollar {
+			mut lookahead := scan
+			if lookahead.scan() == .key_if {
+				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
+				if selected.source != '' {
+					selected_header := fastc_scan_source_header(selected.source, path, prefs)!
+					fastc_merge_source_header_imports(selected_header, path, mut imports, mut
+						import_order, mut blank_imports)!
+					has_globals = has_globals || selected_header.has_globals
+				}
+				tok = selected.tok
+				continue
+			}
+		}
 		if brace_depth == 0
 			&& tok in [.key_fn, .key_struct, .key_enum, .key_interface, .key_type, .key_const, .key_global] {
 			break
 		}
-		if tok != .key_import || brace_depth > 1 {
+		if tok != .key_import || brace_depth > 0 {
 			if tok == .lcbr {
 				brace_depth++
 			} else if tok == .rcbr && brace_depth > 0 {
@@ -995,6 +1013,27 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		import_order:  import_order
 		blank_imports: blank_imports
 		has_globals:   has_globals
+	}
+}
+
+fn fastc_merge_source_header_imports(header FastcSourceHeader, path string, mut destination_imports map[string]string, mut destination_import_order []string, mut destination_blank_imports []string) ! {
+	for alias, imported_module in header.imports {
+		if alias.starts_with('#select#') {
+			fastc_register_selective_imports(imported_module, [alias['#select#'.len..]], path, mut
+				destination_imports)!
+		} else {
+			fastc_register_import_alias(imported_module, alias, path, mut destination_imports, mut
+				destination_blank_imports)!
+		}
+	}
+	for imported_module in header.blank_imports {
+		fastc_register_import_alias(imported_module, '_', path, mut destination_imports, mut
+			destination_blank_imports)!
+	}
+	for imported_module in header.import_order {
+		if imported_module !in destination_import_order {
+			destination_import_order << imported_module
+		}
 	}
 }
 

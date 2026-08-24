@@ -118,6 +118,105 @@ fn test_generate_files_resolves_modules_without_an_ast() {
 	assert run_result.output.trim_space() == '42'
 }
 
+fn test_header_discovers_imports_only_from_selected_comptime_branches() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_comptime_imports_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'alpha')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'beta')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'module main
+
+\$if linux {
+	import alpha as dep
+} \$else {
+	import beta as dep
+}
+
+fn main() {
+	dep.ping()
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'alpha', 'alpha.v'), "module alpha
+
+fn init() {
+	println('alpha init')
+}
+
+fn cleanup() {
+	println('alpha cleanup')
+}
+
+pub fn ping() {}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'beta', 'beta.v'), "module beta
+
+fn init() {
+	println('beta init')
+}
+
+fn cleanup() {
+	println('beta cleanup')
+}
+
+pub fn ping() {}
+") or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', pref.host_arch()) or { panic(err) }
+	prefs.module_search_paths = [root]
+	header := fastc_scan_source_header(os.read_file(main_file) or { panic(err) }, main_file, prefs) or {
+		panic(err)
+	}
+	assert header.import_order == ['alpha']
+	assert header.imports['dep'] == 'alpha'
+	assert 'beta' !in header.imports.values()
+	sources := fastc_resolve_source_files([main_file], prefs) or { panic(err) }
+	mut resolved_modules := []string{}
+	for source_file in sources {
+		if source_file.header.module_name !in resolved_modules {
+			resolved_modules << source_file.header.module_name
+		}
+	}
+	assert resolved_modules == ['main', 'alpha']
+	prefs.building_v = true
+	c_source := generate_source_files(sources, prefs) or { panic(err) }
+	assert c_source.contains('\talpha__init();'), c_source
+	assert c_source.contains('\talpha__cleanup();'), c_source
+	assert !c_source.contains('beta__init'), c_source
+	assert !c_source.contains('beta__cleanup'), c_source
+}
+
+fn test_generate_files_rejects_mismatched_imported_module_declarations() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_module_mismatch_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'foo')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'module main\nimport foo\nfn main() { println(foo.answer()) }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'foo', 'foo.v'),
+		'module bar\npub fn answer() int { return 42 }\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	mut message := ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('declares module `bar` instead of `foo`'), message
+}
+
 fn test_generate_files_preserves_all_blank_imports() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_blank_imports_${os.getpid()}')
 	os.rmdir_all(root) or {}
