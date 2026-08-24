@@ -2695,6 +2695,43 @@ fn main() {
 	assert c_source.contains('change(&x);'), c_source
 }
 
+fn test_globals_can_be_passed_to_mutable_parameters() {
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
+	c_source := generate('module main
+
+__global state = 1
+
+fn update(mut value int) {
+	value = 2
+}
+
+fn main() {
+	update(mut state)
+	println(state)
+}
+',
+		'mutable_global_argument.v', prefs) or { panic(err) }
+	assert c_source.contains('void update(int* value)'), c_source
+	assert c_source.contains('update(&state);'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_mut_global_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '2\n'
+}
+
 fn test_mutable_arguments_require_mutable_imported_fields() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_mut_argument_field_${os.getpid()}')
 	os.rmdir_all(root) or {}

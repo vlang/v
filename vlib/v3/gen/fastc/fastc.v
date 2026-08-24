@@ -11751,11 +11751,13 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				}
 				if parameter_is_mut && !g.selfhost {
 					argument_name := fastc_mut_argument_root_name(argument)
-					local := g.locals[argument_name] or {
+					global_key := fastc_global_key(g.module_name, argument_name)
+					if local := g.locals[argument_name] {
+						if !local.is_mut {
+							return g.unsupported('mutable argument `${argument_name}` to function `${name}` is immutable')
+						}
+					} else if global_key !in g.globals {
 						return g.unsupported('unverifiable mutable argument ${argument_index + 1} to function `${name}`')
-					}
-					if !local.is_mut {
-						return g.unsupported('mutable argument `${argument_name}` to function `${name}` is immutable')
 					}
 					g.validate_mutable_argument_fields(argument, name, argument_index)!
 				}
