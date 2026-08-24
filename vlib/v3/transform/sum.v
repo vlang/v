@@ -853,7 +853,7 @@ fn (mut t Transformer) smartcasted_sum_is_expr_check(expr_id flat.NodeId, patter
 		return none
 	}
 	sc := t.find_smartcast(key) or { return none }
-	raw_sum := t.trim_pointer_type(t.original_expr_type(expr_id))
+	raw_sum := t.trim_pointer_type(t.raw_expr_type_without_smartcast(expr_id))
 	resolved_sum := t.resolve_sum_name(raw_sum)
 	if resolved_sum.len == 0 || resolved_sum !in t.sum_types
 		|| t.resolve_sum_name(sc.sum_type_name) != resolved_sum {
