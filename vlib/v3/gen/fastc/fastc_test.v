@@ -157,6 +157,89 @@ fn test_generate_files_rejects_private_imported_constants() {
 	assert c_source.contains('println(secrets__secret);'), c_source
 }
 
+fn test_generate_files_rejects_private_imported_types() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_private_types_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'secrets')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'secrets', 'secrets.v')
+	os.write_file(module_file, 'module secrets
+
+struct SecretStruct {}
+enum SecretEnum { value }
+interface SecretInterface {}
+union SecretUnion { value int }
+type SecretAlias = int
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	for type_name in ['SecretStruct', 'SecretEnum', 'SecretInterface', 'SecretUnion', 'SecretAlias'] {
+		os.write_file(main_file,
+			'module main\nimport secrets\nfn consume(value secrets.${type_name}) {}\nfn main() {}\n') or {
+			panic(err)
+		}
+		mut message := ''
+		_ := generate_files([main_file], prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('private type `${type_name}` from imported module `secrets`'), message
+	}
+
+	os.write_file(module_file, 'module secrets\npub struct SecretStruct {}\n') or { panic(err) }
+	os.write_file(main_file,
+		'module main\nimport secrets\nfn consume(value secrets.SecretStruct) {}\nfn main() {}\n') or {
+		panic(err)
+	}
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('void consume(secrets__SecretStruct value);'), c_source
+}
+
+fn test_generate_files_restricts_unqualified_imported_type_lookup() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_type_scope_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'widgets')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'widgets', 'widgets.v')
+	os.write_file(module_file, 'module widgets\npub struct Widget {}\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+
+	os.write_file(main_file,
+		'module main\nimport widgets\nfn consume(value Widget) {}\nfn main() {}\n') or {
+		panic(err)
+	}
+	mut message := ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('undeclared type `Widget`'), message
+
+	os.write_file(main_file,
+		'module main\nimport widgets { Widget }\nfn consume(value Widget) {}\nfn main() {}\n') or {
+		panic(err)
+	}
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('void consume(widgets__Widget value);'), c_source
+
+	os.write_file(module_file, 'module widgets\nstruct Widget {}\n') or { panic(err) }
+	message = ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('private type `Widget` from imported module `widgets`'), message
+}
+
 fn test_disabled_function_attributes_emit_empty_stubs() {
 	mut prefs := pref.new_preferences()
 	prefs.user_defines = []

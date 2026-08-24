@@ -643,7 +643,12 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 			source: source
 			header: header
 		}
+		mut discovered_imports := map[string]bool{}
 		for imported_module in header.imports.values() {
+			if discovered_imports[imported_module] {
+				continue
+			}
+			discovered_imports[imported_module] = true
 			module_dir := prefs.get_module_path(imported_module, path)
 			if module_dir == '' {
 				return error('fastc cannot resolve imported module `${imported_module}` from `${path}`')
@@ -712,8 +717,10 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 					tok = scan.scan()
 					continue
 				}
-				import_path, alias, next_token := fastc_scan_import(mut scan, tok, path)!
+				import_path, alias, selected_names, next_token :=
+					fastc_scan_import(mut scan, tok, path)!
 				imports[alias] = import_path
+				fastc_register_selective_imports(import_path, selected_names, path, mut imports)!
 				tok = next_token
 			}
 			if tok == .rpar {
@@ -721,8 +728,9 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			}
 			continue
 		}
-		import_path, alias, next_token := fastc_scan_import(mut scan, tok, path)!
+		import_path, alias, selected_names, next_token := fastc_scan_import(mut scan, tok, path)!
 		imports[alias] = import_path
+		fastc_register_selective_imports(import_path, selected_names, path, mut imports)!
 		tok = next_token
 	}
 	if module_name == '' {
@@ -738,7 +746,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	}
 }
 
-fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !(string, string, token.Token) {
+fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !(string, string, []string, token.Token) {
 	mut tok := first
 	if tok != .name {
 		return error('fastc parser does not support import `${tok.str()}` in ${path}')
@@ -762,6 +770,7 @@ fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !
 		alias = scan.lit
 		tok = scan.scan()
 	}
+	mut selected_names := []string{}
 	if tok == .lcbr {
 		mut depth := 1
 		for depth > 0 {
@@ -773,11 +782,29 @@ fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !
 				depth++
 			} else if tok == .rcbr {
 				depth--
+			} else if depth == 1 && tok == .name {
+				selected_names << scan.lit
 			}
 		}
 		tok = scan.scan()
 	}
-	return parts.join('.'), alias, tok
+	return parts.join('.'), alias, selected_names, tok
+}
+
+fn fastc_selective_import_key(name string) string {
+	return '#select#${name}'
+}
+
+fn fastc_register_selective_imports(import_path string, selected_names []string, path string, mut imports map[string]string) ! {
+	for name in selected_names {
+		key := fastc_selective_import_key(name)
+		if existing_module := imports[key] {
+			if existing_module != import_path {
+				return error('fastc parser cannot resolve ambiguous selective import `${name}` in ${path}')
+			}
+		}
+		imports[key] = import_path
+	}
 }
 
 fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind) ! {
@@ -788,6 +815,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	scan.init(file, source)
 	mut brace_depth := 0
 	mut next_c_struct_is_typedef := false
+	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && tok == .attribute {
@@ -810,6 +838,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 		}
 		if brace_depth == 0
 			&& tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union] {
+			is_public := previous_tok == .key_pub
 			kind := match tok {
 				.key_enum { FastcDeclaredTypeKind.enum_ }
 				.key_interface { FastcDeclaredTypeKind.interface_ }
@@ -830,7 +859,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 					continue
 				}
 				key := fastc_type_key(module_name, name)
-				declared_types[key] = true
+				declared_types[key] = is_public
 				declared_kinds[key] = kind
 			}
 			next_c_struct_is_typedef = false
@@ -841,6 +870,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 		} else if tok == .rcbr && brace_depth > 0 {
 			brace_depth--
 		}
+		previous_tok = tok
 		tok = scan.scan()
 	}
 }
@@ -1390,7 +1420,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		}
 		if tok == .semicolon || tok == .rcbr {
 			embedded_key := fastc_resolve_declared_type_key(source_file.header.module_name,
-				field_names[0], declared_types) or {
+				field_names[0], source_file.header.imports, declared_types) or {
 				return error('fastc parser does not support embedded field `${field_names[0]}` in ${source_file.path}')
 			}
 			out.writeln('\t${fastc_c_declared_type_name(embedded_key)} __embedded_${embedded_id};')
@@ -1444,24 +1474,21 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 	return scan.scan()
 }
 
-fn fastc_resolve_declared_type_key(module_name string, raw_type string, declared_types map[string]bool) ?string {
+fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports map[string]string, declared_types map[string]bool) ?string {
 	local_key := fastc_type_key(module_name, raw_type)
 	if local_key in declared_types {
 		return local_key
 	}
+	if imported_module := imports[fastc_selective_import_key(raw_type)] {
+		imported_key := fastc_type_key(imported_module, raw_type)
+		if imported_key in declared_types && declared_types[imported_key] {
+			return imported_key
+		}
+	}
 	if raw_type in declared_types {
 		return raw_type
 	}
-	mut matching_key := ''
-	for candidate in declared_types.keys() {
-		if candidate.ends_with('.${raw_type}') {
-			if matching_key != '' {
-				return none
-			}
-			matching_key = candidate
-		}
-	}
-	return if matching_key == '' { none } else { matching_key }
+	return none
 }
 
 fn fastc_semantic_declared_type_key(c_type string, declared_types map[string]bool) string {
@@ -2388,21 +2415,39 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 		return base + '*'.repeat(pointers), tok
 	}
 	mut type_module := module_name
+	mut is_imported_type := false
 	if tok == .dot {
 		tok = scan.scan()
 		if tok != .name {
 			return error('fastc parser does not support qualified type `${raw_type}` in ${path}')
 		}
-		type_module = imports[raw_type] or { raw_type }
+		if raw_type == 'C' {
+			type_module = 'C'
+		} else {
+			type_module = imports[raw_type] or {
+				return error('fastc parser does not support unknown module qualifier `${raw_type}` in ${path}')
+			}
+			is_imported_type = type_module != module_name
+		}
 		raw_type = scan.lit
 		tok = scan.scan()
+	} else if imported_module := imports[fastc_selective_import_key(raw_type)] {
+		type_module = imported_module
+		is_imported_type = type_module != module_name
 	}
 	type_key := fastc_type_key(type_module, raw_type)
+	if is_imported_type && type_module != 'builtin' && type_key in declared_types
+		&& !declared_types[type_key] {
+		return error('fastc parser does not support private type `${raw_type}` from imported module `${type_module}` in ${path}')
+	}
 	mut base := ''
 	if type_module == 'C' {
 		base = if '#Cstruct#${raw_type}' in declared_types { 'struct ${raw_type}' } else { raw_type }
 	} else if type_key in declared_types {
 		base = fastc_c_declared_type_name(type_key)
+	} else if raw_type in declared_types {
+		// Builtin declarations use their unqualified spelling as the canonical key.
+		base = fastc_c_declared_type_name(raw_type)
 	} else {
 		base = fastc_primitive_c_type(raw_type) or { '' }
 	}
@@ -2412,19 +2457,7 @@ fn fastc_scan_type(mut scan scanner.Scanner, first token.Token, path string, mod
 				base = 'voidptr'
 			}
 			if base == '' {
-				mut matching_key := ''
-				for candidate in declared_types.keys() {
-					if candidate.ends_with('.${raw_type}') || candidate == raw_type {
-						if matching_key != '' {
-							return error('fastc parser cannot resolve ambiguous type `${raw_type}` in ${path}')
-						}
-						matching_key = candidate
-					}
-				}
-				if matching_key == '' {
-					return error('fastc parser does not support undeclared type `${raw_type}` before `${tok.str()}` at byte ${scan.pos} in ${path}')
-				}
-				base = fastc_c_declared_type_name(matching_key)
+				return error('fastc parser does not support undeclared type `${raw_type}` before `${tok.str()}` at byte ${scan.pos} in ${path}')
 			}
 		} else {
 			base = fastc_c_declared_type_name(type_key)
@@ -5245,9 +5278,8 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 			is_mut_argument: next_token_is_mut_argument
 		}
 		next_token_is_mut_argument = false
-		module_separator := g.tok == .dot && previous_token == .name && (previous_lit in g.imports
-			|| previous_lit == 'C' || (g.selfhost && previous_lit !in g.locals
-			&& g.is_enum_type_name(previous_lit)))
+		module_separator := g.expression_dot_is_module_separator(expression_tokens,
+			expression_tokens.len - 1)
 		qualified_name_owner := if g.tok == .name && previous_token == .dot
 			&& expression_tokens.len >= 3 {
 			expression_tokens[expression_tokens.len - 3].lit
@@ -5255,6 +5287,9 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 			''
 		}
 		mut piece := g.expression_token(previous_token, previous_lit, qualified_name_owner)!
+		if module_separator && piece == '.' {
+			piece = '__'
+		}
 		if g.tok == .name && previous_token == .dot {
 			mut method_lookahead := g.s
 			if method_lookahead.scan() == .lpar {
@@ -5333,7 +5368,7 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 					pointer_cast_depths << paren_depth + 1
 				}
 			} else if type_key := fastc_resolve_declared_type_key(g.module_name, previous_lit,
-				g.declared_types)
+				g.imports, g.declared_types)
 			{
 				cast_type := fastc_c_declared_type_name(type_key)
 				result.go_back(cast_type.len + pointer_prefix_len)
@@ -5386,9 +5421,28 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 				struct_depths << brace_depth
 				struct_paren_depths << paren_depth
 				is_struct_literal = true
+			} else if expression_tokens.len >= 4
+				&& expression_tokens[expression_tokens.len - 4].tok == .name
+				&& expression_tokens[expression_tokens.len - 3].tok == .dot
+				&& expression_tokens[expression_tokens.len - 2].tok == .name {
+				module_alias := expression_tokens[expression_tokens.len - 4].lit
+				if imported_module := g.imports[module_alias] {
+					raw_type := expression_tokens[expression_tokens.len - 2].lit
+					type_key := fastc_type_key(imported_module, raw_type)
+					if type_key in g.declared_types {
+						c_type := fastc_c_declared_type_name(type_key)
+						result.go_back(c_type.len)
+						piece = '(${c_type}){'
+						brace_depth++
+						struct_types << c_type
+						struct_depths << brace_depth
+						struct_paren_depths << paren_depth
+						is_struct_literal = true
+					}
+				}
 			} else if previous_token == .name {
 				if type_key := fastc_resolve_declared_type_key(g.module_name, previous_lit,
-					g.declared_types)
+					g.imports, g.declared_types)
 				{
 					c_type := fastc_c_declared_type_name(type_key)
 					result.go_back(c_type.len)
@@ -6646,9 +6700,8 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	if g.selfhost && tokens.len == 3 && tokens[0].tok == .name
 		&& tokens[1].tok in [.key_is, .not_is] && tokens[2].tok == .name {
 		lhs_type := g.infer_expression_type(tokens[..1]) or { return none }
-		type_key := fastc_resolve_declared_type_key(g.module_name, tokens[2].lit, g.declared_types) or {
-			return none
-		}
+		type_key := fastc_resolve_declared_type_key(g.module_name, tokens[2].lit, g.imports,
+			g.declared_types) or { return none }
 		access := if lhs_type.ends_with('*') { '->' } else { '.' }
 		operator := if tokens[1].tok == .key_is { '==' } else { '!=' }
 		return FastcRenderedExpression{
@@ -6996,9 +7049,8 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 		|| tokens.last().tok != .rpar {
 		return none
 	}
-	type_key := fastc_resolve_declared_type_key(g.module_name, tokens[0].lit, g.declared_types) or {
-		return none
-	}
+	type_key := fastc_resolve_declared_type_key(g.module_name, tokens[0].lit, g.imports,
+		g.declared_types) or { return none }
 	if g.declared_kinds[type_key] != .interface_ {
 		return none
 	}
@@ -8616,18 +8668,13 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 	mut cast_opens := map[int]bool{}
 	for i, item in tokens {
 		mut piece := item.lit
-		module_separator := item.tok == .dot && i > 0 && tokens[i - 1].tok == .name
-			&& (tokens[i - 1].lit in g.imports || tokens[i - 1].lit == 'C'
-			|| (tokens[i - 1].lit !in g.locals && g.is_enum_type_name(tokens[i - 1].lit)))
-		previous_module_separator := i > 1 && tokens[i - 1].tok == .dot
-			&& tokens[i - 2].tok == .name && (tokens[i - 2].lit in g.imports
-			|| tokens[i - 2].lit == 'C' || (tokens[i - 2].lit !in g.locals
-			&& g.is_enum_type_name(tokens[i - 2].lit)))
+		module_separator := g.expression_dot_is_module_separator(tokens, i)
+		previous_module_separator := g.expression_dot_is_module_separator(tokens, i - 1)
 		is_direct_pointer_cast := item.tok in [.amp, .and]
 			&& fastc_token_is_prefix_operator(tokens, i) && i + 2 < tokens.len
 			&& tokens[i + 1].tok == .name && tokens[i + 2].tok == .lpar
 			&& (fastc_primitive_c_type(tokens[i + 1].lit) != none
-			|| fastc_resolve_declared_type_key(g.module_name, tokens[i + 1].lit, g.declared_types) != none)
+			|| fastc_resolve_declared_type_key(g.module_name, tokens[i + 1].lit, g.imports, g.declared_types) != none)
 		is_c_pointer_cast := item.tok in [.amp, .and] && fastc_token_is_prefix_operator(tokens, i)
 			&& i + 4 < tokens.len && tokens[i + 1].tok == .name && tokens[i + 1].lit == 'C'
 			&& tokens[i + 2].tok == .dot && tokens[i + 3].tok == .name && tokens[i + 4].tok == .lpar
@@ -8642,7 +8689,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 				cast_type = item.lit
 			}
 			if cast_type == '' {
-				if type_key := fastc_resolve_declared_type_key(g.module_name, item.lit,
+				if type_key := fastc_resolve_declared_type_key(g.module_name, item.lit, g.imports,
 					g.declared_types)
 				{
 					cast_type = fastc_c_declared_type_name(type_key)
@@ -8723,6 +8770,8 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 		} else if item.tok == .dot && i > 0 && tokens[i - 1].tok == .name
 			&& tokens[i - 1].lit !in g.locals && g.is_enum_type_name(tokens[i - 1].lit) {
 			piece = '__'
+		} else if item.tok == .dot && module_separator {
+			piece = '__'
 		} else if piece == '' {
 			piece = item.tok.str()
 		}
@@ -8733,6 +8782,24 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 		result.write_string(piece)
 	}
 	return result.str()
+}
+
+fn (g &Parser) expression_dot_is_module_separator(tokens []FastcExpressionToken, index int) bool {
+	if index <= 0 || index >= tokens.len || tokens[index].tok != .dot
+		|| tokens[index - 1].tok != .name {
+		return false
+	}
+	previous_name := tokens[index - 1].lit
+	if previous_name in g.imports || previous_name == 'C'
+		|| (previous_name !in g.locals && g.is_enum_type_name(previous_name)) {
+		return true
+	}
+	if index < 3 || tokens[index - 2].tok != .dot || tokens[index - 3].tok != .name {
+		return false
+	}
+	imported_module := g.imports[tokens[index - 3].lit] or { return false }
+	type_key := fastc_type_key(imported_module, previous_name)
+	return g.declared_kinds[type_key] == .enum_
 }
 
 fn fastc_token_is_prefix_operator(tokens []FastcExpressionToken, index int) bool {
@@ -8775,7 +8842,7 @@ fn (g &Parser) array_initializer_type(tokens []FastcExpressionToken) ?string {
 	}
 	mut element_type := fastc_primitive_c_type(tokens[index].lit) or { '' }
 	if element_type == '' {
-		if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[index].lit,
+		if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[index].lit, g.imports,
 			g.declared_types)
 		{
 			element_type = fastc_c_declared_type_name(type_key)
@@ -8832,7 +8899,7 @@ fn (g &Parser) type_from_expression_tokens(tokens []FastcExpressionToken) ?strin
 	if remaining.len == 1 && remaining[0].tok == .name {
 		mut base := fastc_primitive_c_type(remaining[0].lit) or { '' }
 		if base == '' {
-			type_key := fastc_resolve_declared_type_key(g.module_name, remaining[0].lit,
+			type_key := fastc_resolve_declared_type_key(g.module_name, remaining[0].lit, g.imports,
 				g.declared_types) or { return none }
 			base = fastc_c_declared_type_name(type_key)
 		}
@@ -9022,6 +9089,10 @@ fn (g &Parser) nil_expression() !string {
 fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string) !string {
 	if previous == .dot {
 		if imported_module := g.imports[qualified_name_owner] {
+			type_key := fastc_type_key(imported_module, g.lit)
+			if type_key in g.declared_types && !g.declared_types[type_key] {
+				return g.unsupported('private type `${g.lit}` from imported module `${imported_module}`')
+			}
 			constant_key := fastc_constant_key(imported_module, g.lit)
 			if constant_key in g.constants && constant_key !in g.public_constants {
 				return g.unsupported('private constant `${g.lit}` from imported module `${imported_module}`')
@@ -9044,7 +9115,9 @@ fn (g &Parser) resolved_expression_name(name string, previous token.Token) strin
 		if function_key in g.functions {
 			return fastc_c_function_name_for_key(function_key)
 		}
-		if type_key := fastc_resolve_declared_type_key(g.module_name, name, g.declared_types) {
+		if type_key := fastc_resolve_declared_type_key(g.module_name, name, g.imports,
+			g.declared_types)
+		{
 			return fastc_c_declared_type_name(type_key)
 		}
 		if primitive := fastc_primitive_c_type(name) {
@@ -9089,7 +9162,7 @@ fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
 	if previous == .dot || (g.selfhost && name == 'C') || name in g.locals
 		|| name in g.imports || function_key in g.functions
 		|| constant_key in g.constants || global_key in g.globals
-		|| fastc_resolve_declared_type_key(g.module_name, name, g.declared_types) != none
+		|| fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) != none
 		|| name in ['print', 'println', 'bool', 'byte', 'char', 'f32', 'f64', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'uint', 'usize', 'voidptr', 'byteptr', 'charptr'] {
 		return
 	}
@@ -9127,9 +9200,8 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 		module_name := g.imports[tokens[name_index - 4].lit] or { return none }
 		type_key = fastc_type_key(module_name, owner_name)
 	} else {
-		type_key = fastc_resolve_declared_type_key(g.module_name, owner_name, g.declared_types) or {
-			return none
-		}
+		type_key = fastc_resolve_declared_type_key(g.module_name, owner_name, g.imports,
+			g.declared_types) or { return none }
 	}
 	function_key := '${type_key}.${tokens[name_index].lit}'
 	return if function_key in g.functions { function_key } else { none }
@@ -9141,7 +9213,7 @@ fn (g &Parser) local_is_pointer(name string) bool {
 }
 
 fn (g &Parser) is_enum_type_name(name string) bool {
-	type_key := fastc_resolve_declared_type_key(g.module_name, name, g.declared_types) or {
+	type_key := fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) or {
 		return false
 	}
 	return g.declared_kinds[type_key] == .enum_
@@ -9258,7 +9330,9 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				continue
 			}
 			if i == 0 || tokens[i - 1].tok != .dot {
-				if _ := fastc_resolve_declared_type_key(g.module_name, name, g.declared_types) {
+				if _ := fastc_resolve_declared_type_key(g.module_name, name, g.imports,
+					g.declared_types)
+				{
 					if call_args.len != 1 {
 						return g.unsupported('cast `${name}` with ${call_args.len} arguments')
 					}
@@ -9599,7 +9673,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 				return fastc_c_declared_type_name(type_key)
 			}
 		}
-		if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[start].lit,
+		if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[start].lit, g.imports,
 			g.declared_types)
 		{
 			if g.declared_kinds[type_key] == .enum_ {
@@ -9643,7 +9717,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		return fastc_array_c_type(element_type)
 	}
 	if start + 1 < end && tokens[start].tok == .name && tokens[start + 1].tok == .lcbr {
-		if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[start].lit,
+		if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[start].lit, g.imports,
 			g.declared_types)
 		{
 			return fastc_c_declared_type_name(type_key)
@@ -9670,7 +9744,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 					if primitive := fastc_primitive_c_type(name) {
 						return primitive
 					}
-					if type_key := fastc_resolve_declared_type_key(g.module_name, name,
+					if type_key := fastc_resolve_declared_type_key(g.module_name, name, g.imports,
 						g.declared_types)
 					{
 						return fastc_c_declared_type_name(type_key)
