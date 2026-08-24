@@ -113,6 +113,32 @@ fn main() {
 	assert run_stdout_result.output.contains('V_FASTC_PRINT_SELECT')
 	assert !run_stdout_result.output.ends_with('42\n15\n')
 
+	stdout_c := os.join_path(root, 'stdout.c')
+	stdout_diagnostics := os.join_path(root, 'stdout.stderr')
+	stdout_result :=
+		os.execute('${os.quoted_path(v3_bin)} -b fastc -o - ${os.quoted_path(valid_source)} > ${os.quoted_path(stdout_c)} 2> ${os.quoted_path(stdout_diagnostics)}')
+	assert stdout_result.exit_code == 0, stdout_result.output
+	stdout_source := os.read_file(stdout_c) or { panic(err) }
+	assert stdout_source.contains('V_FASTC_PRINT_SELECT')
+	assert !stdout_source.contains('=== v3 benchmark ===')
+	assert !stdout_source.contains('fastc parse+gen')
+	tcc_dir := os.join_path(os.dir(fastc_backend_vlib_dir), 'thirdparty', 'tcc')
+	stdout_binary := os.join_path(root, 'stdout')
+	stdout_compile := cmdexec.run(os.join_path(tcc_dir, 'tcc.exe'), ['-std=gnu11',
+		'-I${os.join_path(tcc_dir, 'lib', 'include')}', '-L${os.join_path(tcc_dir, 'lib')}', '-w',
+		'-o', stdout_binary, stdout_c, '-lm'])
+	assert stdout_compile.exit_code == 0, stdout_compile.output
+
+	cross_stdout_c := os.join_path(root, 'cross_stdout.c')
+	cross_stdout_diagnostics := os.join_path(root, 'cross_stdout.stderr')
+	cross_stdout_result :=
+		os.execute('${os.quoted_path(v3_bin)} -b fastc -os ${cross_target_os} -o - ${os.quoted_path(valid_source)} > ${os.quoted_path(cross_stdout_c)} 2> ${os.quoted_path(cross_stdout_diagnostics)}')
+	assert cross_stdout_result.exit_code == 0, cross_stdout_result.output
+	cross_stdout_source := os.read_file(cross_stdout_c) or { panic(err) }
+	assert cross_stdout_source.contains('V_FASTC_PRINT_SELECT')
+	assert !cross_stdout_source.contains('=== v3 benchmark ===')
+	assert !cross_stdout_source.contains('fastc parse+gen')
+
 	module_dir := os.join_path(root, 'mathutil')
 	os.mkdir_all(module_dir) or { panic(err) }
 	write_fastc_test_source(os.join_path(module_dir, 'mathutil.v'), 'module mathutil
@@ -437,8 +463,9 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
-				os.join_path(root, 'no_main.c'), valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
+				'no_main.c'),
+				valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{

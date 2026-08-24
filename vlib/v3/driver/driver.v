@@ -7298,7 +7298,7 @@ pub fn run(args []string) {
 	}
 
 	mut b := bench.new()
-	if silent {
+	if silent || c_to_stdout {
 		b.set_quiet()
 	}
 	if no_memory_limit {
@@ -7317,7 +7317,7 @@ pub fn run(args []string) {
 		b.stop_memory_monitor()
 	}
 	mut c_object_cache_stats := CObjectCacheStats{}
-	if !silent {
+	if !silent && !c_to_stdout {
 		println('=== v3 benchmark ===')
 	}
 
