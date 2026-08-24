@@ -175,9 +175,10 @@ struct FastcLocal {
 }
 
 struct FastcExpressionToken {
-	tok    token.Token
-	lit    string
-	source string
+	tok          token.Token
+	lit          string
+	source       string
+	unsafe_depth int
 mut:
 	typ string
 }
@@ -3378,6 +3379,17 @@ fn (mut g Parser) parse_match_statement() !bool {
 					if value == '' {
 						return g.unsupported('empty match branch value')
 					}
+					mut value_type := g.last_expression_type
+					if value_type == '' && g.selfhost {
+						value_type = subject_type
+					}
+					if value_type == '' {
+						return g.unsupported('unverifiable match branch value type')
+					}
+					if !fastc_call_types_are_compatible(value_type, subject_type) && !(g.selfhost
+						&& g.selfhost_types_are_compatible(value_type, subject_type)) {
+						return g.unsupported('match branch value of type `${value_type}` for subject of type `${subject_type}`')
+					}
 					values << value
 				}
 				if g.tok != .comma {
@@ -4487,8 +4499,9 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 	if prefix.len > 0 {
 		result.write_string(g.resolved_expression_name(prefix, .unknown))
 		expression_tokens << FastcExpressionToken{
-			tok: .name
-			lit: prefix
+			tok:          .name
+			lit:          prefix
+			unsafe_depth: g.unsafe_depth
 		}
 	}
 	mut paren_depth := 0
@@ -4970,8 +4983,9 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 			return g.unsupported('mixed operator precedence')
 		}
 		expression_tokens << FastcExpressionToken{
-			tok: g.tok
-			lit: g.lit
+			tok:          g.tok
+			lit:          g.lit
+			unsafe_depth: g.unsafe_depth
 		}
 		module_separator := g.tok == .dot && previous_token == .name && (previous_lit in g.imports
 			|| previous_lit == 'C' || (g.selfhost && previous_lit !in g.locals
@@ -4986,7 +5000,7 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 		if g.selfhost && g.tok == .dot && previous_was_pointer_cast {
 			piece = '->'
 		}
-		if g.selfhost && g.tok == .lpar && previous_token == .name {
+		if g.tok == .lpar && previous_token == .name {
 			pointer_token := if expression_tokens.len >= 3
 				&& fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 3) {
 				expression_tokens[expression_tokens.len - 3].tok
@@ -8930,10 +8944,12 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 					i = call_end + 1
 					continue
 				}
-				if _ := fastc_primitive_c_type(name) {
+				if primitive_type := fastc_primitive_c_type(name) {
 					if call_args.len != 1 {
 						return g.unsupported('cast `${name}` with ${call_args.len} arguments')
 					}
+					g.validate_primitive_cast(primitive_type, call_args[0],
+						tokens[i].unsafe_depth > 0)!
 					i = call_end + 1
 					continue
 				}
@@ -8952,6 +8968,52 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 		}
 		i = call_end + 1
 	}
+}
+
+fn (g &Parser) validate_primitive_cast(target_type string, operand []FastcExpressionToken, in_unsafe bool) ! {
+	if g.selfhost {
+		// The bootstrap compiler already validated the fixed V3 source graph. Its
+		// low-level runtime contains intentional function/pointer representation casts.
+		return
+	}
+	actual_type := g.infer_expression_type(operand)!
+	if actual_type == '' {
+		return g.unsupported('unverifiable operand type for cast to `${target_type}`')
+	}
+	if g.primitive_cast_types_are_compatible(actual_type, target_type, in_unsafe) {
+		return
+	}
+	if target_type == 'bool' && !in_unsafe {
+		return g.unsupported('cast to `bool` from `${actual_type}` outside an `unsafe` block')
+	}
+	return g.unsupported('cast from `${actual_type}` to `${target_type}`')
+}
+
+fn (g &Parser) primitive_cast_types_are_compatible(actual_type string, target_type string, in_unsafe bool) bool {
+	if actual_type == target_type {
+		return true
+	}
+	actual_is_numeric := fastc_is_numeric_expression_type(actual_type)
+	actual_is_pointer := fastc_is_pointer_type(actual_type)
+	actual_is_enum := g.declared_kinds[g.semantic_type_key(actual_type)] == .enum_
+	actual_is_alias := g.declared_kinds[g.semantic_type_key(actual_type)] == .alias_
+	if target_type == 'bool' {
+		return in_unsafe && (actual_is_numeric || actual_is_pointer || actual_is_enum)
+	}
+	if target_type == 'string' {
+		return false
+	}
+	if target_type in ['f32', 'f64'] {
+		return actual_is_numeric || actual_type == 'bool' || actual_is_alias
+	}
+	if fastc_is_integer_type(target_type) {
+		return actual_is_numeric || actual_type == 'bool' || actual_is_pointer || actual_is_enum
+			|| actual_is_alias
+	}
+	if target_type in ['voidptr', 'byteptr', 'charptr'] {
+		return actual_is_numeric || actual_is_pointer || actual_type == 'nil'
+	}
+	return g.selfhost
 }
 
 fn fastc_expression_is_zero(tokens []FastcExpressionToken) bool {

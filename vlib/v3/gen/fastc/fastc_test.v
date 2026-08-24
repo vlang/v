@@ -280,6 +280,68 @@ fn main() {
 	assert c_source.contains('; ready(); i++) {')
 }
 
+fn test_match_branch_values_must_match_the_subject_type() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { x := 1; match x { true { println(1) } else {} } }\n',
+		'module main\nfn main() { x := true; match x { 1 { println(1) } else {} } }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'invalid_match_branch_type.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('match branch value of type'), message
+		assert message.contains('subject of type'), message
+	}
+
+	c_source := generate('module main
+
+fn main() {
+	x := 1
+	match x {
+		0, 1 { println(1) }
+		else {}
+	}
+}
+',
+		'valid_match_branch_types.v', prefs) or { panic(err) }
+	assert c_source.contains('if (((__v_fastc_match_'), c_source
+	assert c_source.contains('== (0)) || '), c_source
+	assert c_source.contains('== (1))'), c_source
+}
+
+fn test_primitive_cast_operands_and_unsafe_context_are_validated() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { println(bool(2)) }\n',
+		"module main\nfn main() { println(int('2')) }\n",
+		'module main\nfn main() { println(string(2)) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'invalid_primitive_cast.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('cast'), message
+	}
+
+	c_source := generate('module main
+
+fn main() {
+	println(bool(true))
+	println(int(true))
+	unsafe {
+		println(bool(2))
+	}
+	println(unsafe { bool(0) })
+}
+',
+		'valid_primitive_casts.v', prefs) or { panic(err) }
+	assert c_source.contains('println(((bool)(2)));'), c_source
+	assert c_source.contains('println(((bool)(0)));'), c_source
+}
+
 fn test_return_expression_type_is_validated() {
 	prefs := pref.new_preferences()
 	for source in [

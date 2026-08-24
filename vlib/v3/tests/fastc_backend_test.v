@@ -79,23 +79,30 @@ fn main() {
 	assert run_stdout_result.output.contains('V_FASTC_PRINT_SELECT')
 	assert !run_stdout_result.output.ends_with('42\n15\n')
 
+	module_dir := os.join_path(root, 'mathutil')
+	os.mkdir_all(module_dir) or { panic(err) }
+	write_fastc_test_source(os.join_path(module_dir, 'mathutil.v'), 'module mathutil
+
+pub fn twice(value int) int {
+	return value * 2
+}
+')
 	import_source := os.join_path(root, 'import.v')
 	write_fastc_test_source(import_source, 'module main
 
-import os
+import mathutil
 
 fn main() {
-	println(os.args.len)
+	println(mathutil.twice(21))
 }
 ')
 	import_binary := os.join_path(root, 'import')
 	import_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', import_binary,
 		import_source])
-	assert import_compile.exit_code != 0
-	assert import_compile.output.contains('fastc parser does not support top-level `import`'), import_compile.output
-
-	assert !os.exists(import_binary)
-	assert !os.exists(import_binary + '.c')
+	assert import_compile.exit_code == 0, import_compile.output
+	import_run := cmdexec.run(import_binary, [])
+	assert import_run.exit_code == 0, import_run.output
+	assert import_run.output.trim_space() == '42'
 
 	typed_source := os.join_path(root, 'typed.v')
 	write_fastc_test_source(typed_source, 'module main
@@ -173,16 +180,23 @@ fn main() {
 	assert !os.exists(fallthrough_binary)
 	assert !os.exists(fallthrough_binary + '.c')
 
+	selfhost_binary := os.join_path(root, 'selfhost')
+	selfhost_compile := cmdexec.run(v3_bin, ['-silent', '-selfhost', '-b', 'fastc', '-o',
+		selfhost_binary, fastc_backend_v3_source])
+	assert selfhost_compile.exit_code == 0, selfhost_compile.output
+	selfhost_output := os.join_path(root, 'selfhost_output')
+	selfhost_program_compile := cmdexec.run(selfhost_binary, ['-b', 'fastc', '-o', selfhost_output,
+		valid_source])
+	assert selfhost_program_compile.exit_code == 0, selfhost_program_compile.output
+	selfhost_program_run := cmdexec.run(selfhost_output, [])
+	assert selfhost_program_run.exit_code == 0, selfhost_program_run.output
+	assert selfhost_program_run.output.trim_space() == '42\n15'
+
 	for invocation in [
 		UnsupportedFastCInvocation{
 			args:     ['-silent', '-prod', '-b', 'fastc', '-o', os.join_path(root, 'prod'),
 				valid_source]
 			expected: 'fastc parser does not support `-prod`'
-		},
-		UnsupportedFastCInvocation{
-			args:     ['-silent', '-selfhost', '-b', 'fastc', '-o', os.join_path(root, 'selfhost'),
-				fastc_backend_v3_source]
-			expected: 'fastc parser does not support compiler self-hosting'
 		},
 		UnsupportedFastCInvocation{
 			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,

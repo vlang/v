@@ -90,12 +90,12 @@ physical footprint immediately after RSS.
 
 ## Fast C backend
 
-`-b fastc` selects the embedded V3 driver and its AST-free single-file parser for the shortest
-edit-run cycle. FastC scans the source once and emits GNU C while consuming tokens. It never invokes
-the flat parser, semantic checker, transformer, mark-used pass, or conventional C generator.
-Bundled TinyCC validates the emitted translation unit before any C file or executable is published.
-Unsupported V syntax and TinyCC errors are reported directly; FastC never retries through an
-AST-based backend.
+`-b fastc` selects the embedded V3 driver and its AST-free parser for the shortest edit-run cycle.
+FastC resolves the entry file and imported modules, then emits GNU C while consuming scanner tokens.
+It never invokes the flat parser, semantic checker, transformer, mark-used pass, or conventional C
+generator. Bundled TinyCC validates the emitted translation unit before any C file or executable is
+published. Unsupported V syntax and TinyCC errors are reported directly; FastC never retries
+through an AST-based backend.
 
 FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
 expressions, `if`/`else`, and condition, C-style, infinite, and integer-range `for` loops. GNU
@@ -110,12 +110,15 @@ mixed-precedence expressions, narrow integer signatures, oversized decimal liter
 high-bit hexadecimal or binary literals. Rejecting these constructs avoids silently applying
 incompatible C formatting, inference, wrapping, shift, bounds, and zero-divisor behavior.
 
-FastC requires exactly one `.v` input. Executables are host-target only; `-o file.c` also permits an
-explicit cross target and publishes C after TinyCC validation. Production, test, shared/live,
-ownership/autofree, self-host, object-file, profiling/coverage, strict C, custom compiler,
-custom-builtin, `no_main`, translated, and REPL modes are currently rejected. Explicit FastC
-compiler builds still route to V3 so the FastC parser reports the unsupported input rather than
-silently selecting V1.
+FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
+permits an explicit cross target and publishes C after TinyCC validation. Production, test,
+shared/live, ownership/autofree, object-file, profiling/coverage, strict C, custom compiler,
+custom-builtin, `no_main`, translated, and REPL modes are currently rejected.
+
+`-selfhost -b fastc -o v4 vlib/v3/v3.v` builds V3 using only the scanner-to-C path. The generated
+compiler uses the small `v3.fastcdriver` entry point and can build further FastC generations without
+the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
+turn any attempted compatibility fallback into a hard failure.
 
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
 detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets

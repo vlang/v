@@ -58,8 +58,8 @@ pub fn run(args []string) {
 	}
 	prefs.backend = 'fastc'
 	prefs.ccompiler = 'tinyc'
-	prefs.selfhost = true
 	prefs.building_v = real_input.ends_with('/vlib/v3/v3.v')
+	prefs.selfhost = prefs.building_v
 	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_wasm', 'skip_eval']
 
 	c_source := fastc.generate_files([real_input], prefs) or { fail(err.msg()) }
