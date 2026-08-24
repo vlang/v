@@ -1551,6 +1551,49 @@ fn main() {
 	assert interpolation_source.contains('v_fastc_enum_str_Permissions(permissions)'), interpolation_source
 }
 
+fn test_enum_alias_member_access_uses_underlying_enum_symbols() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+enum MyEnum {
+	something
+	another
+}
+
+type MyEnumAlias = MyEnum
+
+fn main() {
+	x := MyEnum.something
+	a := MyEnumAlias.something
+	println(x == a)
+	println(MyEnumAlias.another)
+	println(int(MyEnumAlias.another))
+}
+',
+		'enum_alias_member.v', prefs) or { panic(err) }
+	assert c_source.contains('typedef MyEnum MyEnumAlias;'), c_source
+	assert c_source.contains('MyEnum__something'), c_source
+	assert c_source.contains('MyEnum__another'), c_source
+	assert !c_source.contains('MyEnumAlias__something'), c_source
+	assert !c_source.contains('MyEnumAlias__another'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_enum_alias_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == 'true\nanother\n1\n'
+}
+
 fn test_unresolved_enum_discriminants_are_rejected() {
 	prefs := pref.new_preferences()
 	mut message := ''

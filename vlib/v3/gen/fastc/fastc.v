@@ -6954,6 +6954,8 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 	g.validate_expression_calls(expression_tokens)!
 	g.validate_boolean_expression_operands(expression_tokens)!
 	mut rendered_expression := result.str().trim_space()
+	rendered_expression = g.render_enum_alias_member_references(expression_tokens,
+		rendered_expression)
 	rendered_expression = g.render_constant_references(expression_tokens, rendered_expression)
 	if special := g.render_special_expression(expression_tokens, rendered_expression) {
 		g.last_expression_type = special.typ
@@ -10296,7 +10298,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 		}
 		result.write_string(piece)
 	}
-	return result.str()
+	return g.render_enum_alias_member_references(tokens, result.str())
 }
 
 fn (g &Parser) expression_dot_is_module_separator(tokens []FastcExpressionToken, index int) bool {
@@ -10314,7 +10316,7 @@ fn (g &Parser) expression_dot_is_module_separator(tokens []FastcExpressionToken,
 	}
 	imported_module := g.imports[tokens[index - 3].lit] or { return false }
 	type_key := fastc_type_key(imported_module, previous_name)
-	return g.declared_kinds[type_key] == .enum_
+	return g.underlying_enum_type_key(type_key) != none
 }
 
 fn fastc_token_is_prefix_operator(tokens []FastcExpressionToken, index int) bool {
@@ -10739,7 +10741,55 @@ fn (g &Parser) is_enum_type_name(name string) bool {
 	type_key := fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) or {
 		return false
 	}
-	return g.declared_kinds[type_key] == .enum_
+	return g.underlying_enum_type_key(type_key) != none
+}
+
+fn (g &Parser) underlying_enum_type_key(type_key string) ?string {
+	if type_key == '' {
+		return none
+	}
+	resolved_type := g.underlying_alias_type(fastc_c_declared_type_name(type_key))
+	resolved_key := g.semantic_type_key(resolved_type)
+	return if g.declared_kinds[resolved_key] == .enum_ { resolved_key } else { none }
+}
+
+fn (g &Parser) enum_member_owner_type_key(tokens []FastcExpressionToken, owner_index int) ?string {
+	if owner_index < 0 || owner_index + 2 >= tokens.len || tokens[owner_index].tok != .name
+		|| tokens[owner_index + 1].tok != .dot || tokens[owner_index + 2].tok != .name {
+		return none
+	}
+	mut type_key := ''
+	if owner_index >= 2 && tokens[owner_index - 1].tok == .dot
+		&& tokens[owner_index - 2].tok == .name {
+		imported_module := g.imports[tokens[owner_index - 2].lit] or { return none }
+		type_key = fastc_type_key(imported_module, tokens[owner_index].lit)
+	} else if owner_index > 0 && tokens[owner_index - 1].tok == .dot {
+		return none
+	} else {
+		type_key = fastc_resolve_declared_type_key(g.module_name, tokens[owner_index].lit,
+			g.imports, g.declared_types) or { return none }
+	}
+	_ = g.underlying_enum_type_key(type_key) or { return none }
+	return type_key
+}
+
+fn (g &Parser) render_enum_alias_member_references(tokens []FastcExpressionToken, source string) string {
+	if tokens.len < 3 {
+		return source
+	}
+	mut rendered := source
+	for owner_index in 0 .. tokens.len - 2 {
+		type_key := g.enum_member_owner_type_key(tokens, owner_index) or { continue }
+		enum_type_key := g.underlying_enum_type_key(type_key) or { continue }
+		if enum_type_key == type_key {
+			continue
+		}
+		member := tokens[owner_index + 2].lit
+		alias_symbol := '${fastc_c_declared_type_name(type_key)}__${member}'
+		enum_symbol := '${fastc_c_declared_type_name(enum_type_key)}__${member}'
+		rendered = rendered.replace(alias_symbol, enum_symbol)
+	}
+	return rendered
 }
 
 fn (g &Parser) declared_cast_type_key(tokens []FastcExpressionToken, name_index int) ?string {
@@ -11891,8 +11941,8 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		&& tokens[start + 4].tok == .name {
 		if imported_module := g.imports[tokens[start].lit] {
 			type_key := fastc_type_key(imported_module, tokens[start + 2].lit)
-			if g.declared_kinds[type_key] == .enum_ {
-				return fastc_c_declared_type_name(type_key)
+			if enum_type_key := g.underlying_enum_type_key(type_key) {
+				return fastc_c_declared_type_name(enum_type_key)
 			}
 		}
 	}
@@ -11916,8 +11966,8 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[start].lit, g.imports,
 			g.declared_types)
 		{
-			if g.declared_kinds[type_key] == .enum_ {
-				return fastc_c_declared_type_name(type_key)
+			if enum_type_key := g.underlying_enum_type_key(type_key) {
+				return fastc_c_declared_type_name(enum_type_key)
 			}
 		}
 		if imported_module := g.imports[tokens[start].lit] {
