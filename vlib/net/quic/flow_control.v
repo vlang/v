@@ -164,11 +164,18 @@ pub fn initial_send_limit_for_stream(id StreamId, role QuicRole, peer_params Qui
 	if id.direction() == .unidirectional {
 		return peer_params.initial_max_stream_data_uni or { 0 }
 	}
-	return if locally_initiated {
-		peer_params.initial_max_stream_data_bidi_remote or { 0 }
+	// if/else STATEMENT with an explicit assignment in each branch, not
+	// `return if ... { A } else { B }` -- see conn.v's process_initial_or_
+	// handshake for the cgen-bug explanation this shape works around
+	// (an if/match-expression branch valued by an `or {}` block emits a
+	// malformed `#line` directive under CI's toolchain).
+	mut limit := u64(0)
+	if locally_initiated {
+		limit = peer_params.initial_max_stream_data_bidi_remote or { 0 }
 	} else {
-		peer_params.initial_max_stream_data_bidi_local or { 0 }
+		limit = peer_params.initial_max_stream_data_bidi_local or { 0 }
 	}
+	return limit
 }
 
 // initial_receive_limit_for_stream returns the initial flow-control limit
@@ -182,9 +189,14 @@ pub fn initial_receive_limit_for_stream(id StreamId, role QuicRole, own_params Q
 	if id.direction() == .unidirectional {
 		return own_params.initial_max_stream_data_uni or { 0 }
 	}
-	return if locally_initiated {
-		own_params.initial_max_stream_data_bidi_local or { 0 }
+	// See initial_send_limit_for_stream's own comment: if/else STATEMENT,
+	// not an if-EXPRESSION, to work around the same cgen `#line`-emission
+	// bug.
+	mut limit := u64(0)
+	if locally_initiated {
+		limit = own_params.initial_max_stream_data_bidi_local or { 0 }
 	} else {
-		own_params.initial_max_stream_data_bidi_remote or { 0 }
+		limit = own_params.initial_max_stream_data_bidi_remote or { 0 }
 	}
+	return limit
 }

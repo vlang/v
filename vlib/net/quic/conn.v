@@ -701,10 +701,22 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 	if c.peer_scid.len != 0 && header.scid != c.peer_scid {
 		return
 	}
-	keys := if space == .initial {
-		c.initial_keys_server
+	// Deliberately an if/else STATEMENT with an explicit assignment in each
+	// branch, not `keys := if ... { A } else { B }` -- that if-EXPRESSION
+	// form, with an `or {}`-block branch value, hits a cgen bug where the
+	// emitted `#line` directive glues onto the following line with no
+	// newline, so the C preprocessor swallows the expression as trailing
+	// directive tokens and gcc fails with "expected expression before '}'
+	// token" (same `#line`-emission family as vlang/v#27495, filed
+	// upstream as vlang/v#28163). Only reproduces under CI's exact
+	// toolchain (gcc-linux/Windows), not local clang -- keep this shape
+	// regardless, since the workaround is free and the bug can't be
+	// worked around at the call site once it's an if-expression.
+	mut keys := QuicPacketProtectionKeys{}
+	if space == .initial {
+		keys = c.initial_keys_server
 	} else {
-		c.handshake_keys_server or { return }
+		keys = c.handshake_keys_server or { return }
 	}
 	mut packet := raw.clone()
 	largest_pn := if space == .initial {
