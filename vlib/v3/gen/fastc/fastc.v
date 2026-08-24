@@ -4416,6 +4416,15 @@ fn fastc_expression_tokens_contain(tokens []FastcExpressionToken, wanted token.T
 	return false
 }
 
+fn fastc_expression_tokens_contain_boolean_operator(tokens []FastcExpressionToken) bool {
+	for item in tokens {
+		if item.tok in [.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .not] {
+			return true
+		}
+	}
+	return false
+}
+
 fn fastc_expression_tokens_contain_assignment_or_mutation(tokens []FastcExpressionToken) bool {
 	for item in tokens {
 		if item.tok.is_assignment() || item.tok in [.inc, .dec] {
@@ -6329,12 +6338,6 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 			g.next()
 			continue
 		}
-		if !g.selfhost && g.tok in [.eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .not] {
-			// C represents comparison and logical results as int. Without V type
-			// information, accepting them here would make generic printing and
-			// inferred locals observe 0/1 instead of false/true.
-			return g.unsupported('comparison or logical expressions')
-		}
 		if !g.selfhost
 			&& g.tok in [.left_shift, .right_shift, .right_shift_unsigned, .left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
 			// V defines oversized shifts to produce zero. Raw C shifts are
@@ -6767,6 +6770,12 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 	return_types := g.multi_return_types_for_expression(expression_tokens)
 	if return_types.len > 0 {
 		g.last_multi_return_types = return_types.clone()
+	}
+	if !g.selfhost && g.last_expression_type == 'bool'
+		&& fastc_expression_tokens_contain_boolean_operator(expression_tokens) {
+		// C comparison and logical operators produce int. Preserve V's bool
+		// expression type for inferred declarations and generic dispatch.
+		return '((bool)(${rendered_expression}))'
 	}
 	return rendered_expression
 }
@@ -7643,6 +7652,9 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	if enum_print := g.render_enum_print_expression(tokens) {
 		return enum_print
 	}
+	if bool_print := g.render_bool_print_expression(tokens) {
+		return bool_print
+	}
 	if tokens.len == 1 && tokens[0].tok == .name {
 		if local := g.locals[tokens[0].lit] {
 			if local.is_reference {
@@ -8331,6 +8343,39 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken, rendered_exp
 		}
 	}
 	return none
+}
+
+fn (g &Parser) render_bool_print_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if g.selfhost || tokens.len < 4 || tokens[0].tok != .name
+		|| tokens[0].lit !in ['print', 'println'] || tokens[1].tok != .lpar
+		|| tokens.last().tok != .rpar {
+		return none
+	}
+	call_end := fastc_matching_rpar(tokens, 1) or { return none }
+	if call_end != tokens.len - 1 {
+		return none
+	}
+	call_arguments := fastc_call_arguments(tokens, 1, call_end) or { return none }
+	if call_arguments.len != 1 {
+		return none
+	}
+	if !fastc_expression_tokens_contain_boolean_operator(call_arguments[0]) {
+		return none
+	}
+	argument_type := g.infer_expression_type(call_arguments[0]) or { return none }
+	if fastc_normalize_inferred_type(argument_type) != 'bool' {
+		return none
+	}
+	argument := g.render_call_argument_expression(call_arguments[0], 'bool') or { return none }
+	function_name := if tokens[0].lit == 'println' {
+		'v_fastc_println_bool'
+	} else {
+		'v_fastc_print_bool'
+	}
+	return FastcRenderedExpression{
+		source: '${function_name}((bool)(${argument}))'
+		typ:    'void'
+	}
 }
 
 fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {

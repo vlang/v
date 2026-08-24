@@ -1557,8 +1557,7 @@ fn main() {
 }
 
 fn test_comparison_and_logical_operands_are_validated() {
-	mut prefs := pref.new_preferences()
-	prefs.building_v = true
+	prefs := pref.new_preferences()
 	for source, expected in {
 		'module main\nfn main() { println(1 == true) }\n':          'comparison `==` operands of incompatible types'
 		'module main\nfn main() { println(true < false) }\n':       'comparison `<` operands of incompatible types'
@@ -1580,11 +1579,29 @@ fn main() {
 	right := 2
 	ok := left < right && true
 	println(ok)
+	println(left < right)
 }
 ',
 		'valid_boolean_operands.v', prefs) or { panic(err) }
 	assert c_source.contains('left<right'), c_source
 	assert c_source.contains('&&'), c_source
+	assert c_source.contains('v_fastc_println_bool'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_boolean_operands_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == 'true\ntrue'
 }
 
 fn test_match_branch_values_must_match_the_subject_type() {
@@ -2527,8 +2544,6 @@ fn main() {
 fn test_type_sensitive_expressions_are_rejected() {
 	prefs := pref.new_preferences()
 	for source in [
-		'module main\nfn main() { println(1 == 1) }\n',
-		'module main\nfn main() { println(!false) }\n',
 		'module main\nfn show(a u8, b u8) { println(a + b) }\nfn main() { show(255, 1) }\n',
 		'module main\nfn show(x int, n int) { println(x << n) }\nfn main() { show(1, 32) }\n',
 		'module main\nfn shift(n int) { mut x := 1; x <<= n; println(x) }\nfn main() { shift(32) }\n',
