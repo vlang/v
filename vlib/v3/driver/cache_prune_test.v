@@ -103,7 +103,9 @@ int v3_lib_value(void) { return 42; }
 	// A gated external definition is stripped, so splitting the root is safe.
 	assert !cache_native_public_include_replays_external_definition(real_header, [
 		'#define LIB_IMPL',
-	], implementation_macros, []string{}, 'cc', pref.host_target())
+	], implementation_macros, {
+		real_header: true
+	}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_native_public_include_replays_unconditional_external_definition() {
@@ -121,7 +123,9 @@ int v3_unconditional_helper(void) { return 7; }
 	// No context define gates the definition, so the declaration-only replay would
 	// still emit v3_unconditional_helper and duplicate the owner symbol.
 	assert cache_native_public_include_replays_external_definition(real_header, []string{},
-		map[string]bool{}, []string{}, 'cc', pref.host_target())
+		map[string]bool{}, {
+		real_header: true
+	}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_native_public_include_keeps_static_definition_private() {
@@ -139,7 +143,9 @@ static int v3_private_helper(void) { return 7; }
 	// A static definition has internal linkage, so replaying it in several units
 	// cannot collide; splitting stays safe.
 	assert !cache_native_public_include_replays_external_definition(real_header, []string{},
-		map[string]bool{}, []string{}, 'cc', pref.host_target())
+		map[string]bool{}, {
+		real_header: true
+	}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_native_public_include_sees_through_static_storage_macros() {
@@ -162,7 +168,9 @@ V3_LOCAL V3MacroStaticType v3_macro_static_make(void) {
 	// with V_CLOSURE_STATIC_INLINE. Preprocessing expands it to `static inline`, so
 	// the helper recognizes the internal linkage and keeps splitting enabled.
 	assert !cache_native_public_include_replays_external_definition(real_header, []string{},
-		map[string]bool{}, []string{}, 'cc', pref.host_target())
+		map[string]bool{}, {
+		real_header: true
+	}, []string{}, 'cc', pref.host_target())
 }
 
 fn test_cache_c_flags_without_forced_inputs_drops_forced_files() {
