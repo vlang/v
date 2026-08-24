@@ -70,10 +70,22 @@ fn parse_arguments(args []string) (string, string, bool) {
 	return input, output, keep_c
 }
 
+fn canonical_output_path(path string) string {
+	if os.exists(path) {
+		return os.real_path(path)
+	}
+	absolute_path := os.abs_path(path)
+	canonical_parent := os.real_path(os.dir(absolute_path))
+	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
+}
+
 // run builds a program using only FastC's scanner-to-C pipeline.
 pub fn run(args []string) {
 	input, output, keep_c := parse_arguments(args)
 	real_input := os.real_path(input)
+	if canonical_output_path(output) == real_input {
+		fail('fastc output path `${output}` aliases input source `${input}`')
+	}
 	mut prefs := pref.new_preferences()
 	if prefs.vroot == '' && real_input.ends_with('/vlib/v3/v3.v') {
 		prefs.vroot = os.dir(os.dir(os.dir(real_input)))

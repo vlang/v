@@ -388,6 +388,12 @@ fn main() {
 	selfhost_compile := cmdexec.run(v3_bin, ['-silent', '-selfhost', '-b', 'fastc', '-o',
 		selfhost_binary, fastc_backend_v3_source])
 	assert selfhost_compile.exit_code == 0, selfhost_compile.output
+	selfhost_collision := cmdexec.run(selfhost_binary, ['-b', 'fastc', '-o', collision_output,
+		collision_source])
+	assert selfhost_collision.exit_code != 0
+	assert selfhost_collision.output.contains('fastc output path'), selfhost_collision.output
+	assert selfhost_collision.output.contains('aliases input source'), selfhost_collision.output
+	assert os.read_file(collision_source) or { panic(err) } == collision_contents
 	selfhost_output := os.join_path(root, 'selfhost_output')
 	selfhost_program_compile := cmdexec.run(selfhost_binary, ['-b', 'fastc', '-o', selfhost_output,
 		valid_source])
@@ -431,9 +437,8 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
-				'no_main.c'),
-				valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
+				os.join_path(root, 'no_main.c'), valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{

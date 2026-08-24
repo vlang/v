@@ -306,6 +306,7 @@ struct FastcStructField {
 	default_source string
 mut:
 	default_value string
+	storage_path  []string
 }
 
 struct FastcSourceHeader {
@@ -9024,17 +9025,16 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		} else {
 			fields[field_name] or { '' }
 		}
-		if expected_type == '' {
-			for embedded_name, embedded_type in fields {
-				if !embedded_name.starts_with('__embedded_') || embedded_type !in g.struct_fields {
-					continue
+		if expected_type == '' && !is_c_struct_literal {
+			if field := g.struct_field_metadata(c_type, field_name) {
+				expected_type = field.typ
+				mut storage_path := field.storage_path.clone()
+				storage_path << field.name
+				mut c_storage_path := []string{}
+				for storage_name in storage_path {
+					c_storage_path << fastc_c_identifier(storage_name)
 				}
-				embedded_fields := g.struct_fields[embedded_type].clone()
-				if nested_type := embedded_fields[field_name] {
-					c_field_name = '${embedded_name}.${fastc_c_identifier(field_name)}'
-					expected_type = nested_type
-					break
-				}
+				c_field_name = c_storage_path.join('.')
 			}
 		}
 		if fixed_element_type := fastc_fixed_array_element_type(expected_type) {
@@ -10139,12 +10139,18 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 		if i + 1 >= tokens.len || tokens[i].tok != .dot || tokens[i + 1].tok != .name {
 			return none
 		}
-		separator := if current_type.ends_with('*') { '->' } else { '.' }
-		source += separator + fastc_c_identifier(tokens[i + 1].lit)
-		current_type = g.struct_member_type(current_type, tokens[i + 1].lit)
-		if current_type == '' {
-			return none
+		field := g.struct_field_metadata(current_type, tokens[i + 1].lit) or { return none }
+		for storage_name in field.storage_path {
+			separator := if current_type.ends_with('*') { '->' } else { '.' }
+			source += separator + fastc_c_identifier(storage_name)
+			current_type = g.struct_direct_member_type(current_type, storage_name)
+			if current_type == '' {
+				return none
+			}
 		}
+		separator := if current_type.ends_with('*') { '->' } else { '.' }
+		source += separator + fastc_c_identifier(field.name)
+		current_type = field.typ
 		i += 2
 	}
 	return source
@@ -11605,7 +11611,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 	}
 }
 
-fn (g &Parser) struct_member_type(receiver_type string, field_name string) string {
+fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string) string {
 	mut layout_type := receiver_type.trim_right('*')
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
@@ -11617,6 +11623,11 @@ fn (g &Parser) struct_member_type(receiver_type string, field_name string) strin
 	}
 	fields := g.struct_fields[layout_type].clone()
 	return fields[field_name] or { '' }
+}
+
+fn (g &Parser) struct_member_type(receiver_type string, field_name string) string {
+	field := g.struct_field_metadata(receiver_type, field_name) or { return '' }
+	return field.typ
 }
 
 fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?FastcStructField {
@@ -11631,12 +11642,25 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 			return field
 		}
 	}
+	direct_type := g.struct_direct_member_type(receiver_type, field_name)
+	if direct_type != '' {
+		return FastcStructField{
+			name:       field_name
+			typ:        direct_type
+			is_public:  true
+			is_mutable: true
+		}
+	}
 	for field in g.struct_field_info[layout_type] {
 		if !field.name.starts_with('__embedded_') {
 			continue
 		}
 		if embedded := g.struct_field_metadata(field.typ, field_name) {
-			return embedded
+			mut promoted := embedded
+			mut storage_path := [field.name]
+			storage_path << embedded.storage_path
+			promoted.storage_path = storage_path
+			return promoted
 		}
 	}
 	return none
@@ -12628,18 +12652,10 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken) ?string {
 		if index + 1 >= tokens.len || tokens[index].tok != .dot || tokens[index + 1].tok != .name {
 			return none
 		}
-		field_name := tokens[index + 1].lit
-		mut layout_type := current_type.trim_right('*')
-		if layout_type.starts_with('Array_') {
-			layout_type = 'array'
-		} else if layout_type.starts_with('Map_') {
-			layout_type = 'map'
-		}
-		if layout_type !in g.struct_fields {
+		current_type = g.struct_member_type(current_type, tokens[index + 1].lit)
+		if current_type == '' {
 			return none
 		}
-		fields := g.struct_fields[layout_type].clone()
-		current_type = fields[field_name] or { return none }
 		index += 2
 	}
 	if index != tokens.len {

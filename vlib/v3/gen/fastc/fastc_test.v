@@ -901,6 +901,55 @@ fn main() {
 	assert c_source.contains('.value=(2)'), c_source
 }
 
+fn test_embedded_struct_fields_use_storage_paths() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Child {
+	mut:
+	count int
+}
+
+struct Leaf {
+	mut:
+	number int
+}
+
+struct Inner {
+	Leaf
+
+	mut:
+	value int
+	child Child
+}
+
+struct Outer {
+	Inner
+}
+
+fn main() {
+	mut outer := Outer{value: 3, number: 7}
+	outer.child.count = 5
+	println(outer.value)
+	println(outer.child.count)
+	println(outer.number)
+	outer.value = 4
+	outer.child.count = 6
+	outer.number = 8
+	println(outer.value)
+	println(outer.child.count)
+	println(outer.number)
+}
+',
+		'embedded_struct_fields.v', prefs) or { panic(err) }
+	assert c_source.contains('.__embedded_0.value=(3)'), c_source
+	assert c_source.contains('.__embedded_0.__embedded_0.number=(7)'), c_source
+	assert c_source.contains('outer.__embedded_0.value'), c_source
+	assert c_source.contains('outer.__embedded_0.child.count'), c_source
+	assert c_source.contains('outer.__embedded_0.__embedded_0.number'), c_source
+}
+
 fn test_interface_dispatch_validates_every_method_parameter() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
