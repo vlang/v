@@ -362,6 +362,110 @@ pub fn make() Settings {
 	assert c_source.contains('.visible=(2)'), c_source
 }
 
+fn test_imported_public_field_mutability_is_preserved() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_field_mutability_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'settings')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'settings', 'settings.v')
+	module_source := 'module settings
+
+pub struct Config {
+pub:
+	read_only int
+pub mut:
+	writable int
+}
+'
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	invalid_source := 'module main
+
+import settings
+
+fn main() {
+	mut config := settings.Config{}
+	config.read_only = 2
+}
+'
+	mut message := ''
+	_ := generate_source_files([
+		FastcSourceFile{
+			path:   main_file
+			source: invalid_source
+			header: fastc_scan_source_header(invalid_source, main_file, prefs) or { panic(err) }
+		},
+		FastcSourceFile{
+			path:   module_file
+			source: module_source
+			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
+		},
+	], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutation of immutable field `Config.read_only`'), message
+
+	valid_source := 'module main
+
+import settings
+
+fn main() {
+	mut config := settings.Config{}
+	config.writable = 2
+}
+'
+	c_source := generate_source_files([
+		FastcSourceFile{
+			path:   main_file
+			source: valid_source
+			header: fastc_scan_source_header(valid_source, main_file, prefs) or { panic(err) }
+		},
+		FastcSourceFile{
+			path:   module_file
+			source: module_source
+			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
+		},
+	], prefs) or { panic(err) }
+	assert c_source.contains('config.writable=2;'), c_source
+}
+
+fn test_struct_literal_fields_are_validated() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for source, expected in {
+		'module main\nstruct Config { enabled bool }\nfn main() { config := Config{enabled: 2}; println(config.enabled) }\n':    'for struct field `Config.enabled` expecting `bool`'
+		'module main\nstruct Config { value int }\nfn main() { config := Config{value: 1, value: 2}; println(config.value) }\n': 'duplicate field `Config.value` in struct literal'
+	} {
+		mut message := ''
+		_ := generate(source, 'invalid_struct_literal.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains(expected), message
+	}
+
+	c_source := generate('module main
+
+struct Config {
+	enabled bool
+	value int
+}
+
+fn main() {
+	enabled := true
+	config := Config{enabled: enabled, value: 2}
+	println(config.value)
+}
+',
+		'valid_struct_literal.v', prefs) or { panic(err) }
+	assert c_source.contains('.enabled=(enabled)'), c_source
+	assert c_source.contains('.value=(2)'), c_source
+}
+
 fn test_disabled_function_attributes_emit_empty_stubs() {
 	mut prefs := pref.new_preferences()
 	prefs.user_defines = []
@@ -712,6 +816,37 @@ fn main() {
 		'valid_call_arguments.v', prefs) or { panic(err) }
 	assert c_source.contains('println(increment(value));')
 	assert c_source.contains('show(flag);')
+}
+
+fn test_variadic_call_argument_types_are_validated() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	mut message := ''
+	_ := generate('module main
+
+fn consume(values ...int) {}
+
+fn main() {
+	consume(true)
+}
+',
+		'invalid_variadic_argument.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('argument 1 of type `bool`'), message
+	assert message.contains('function `consume` expecting `int`'), message
+
+	c_source := generate('module main
+
+fn consume(values ...int) {}
+
+fn main() {
+	consume(1, 2)
+}
+',
+		'valid_variadic_arguments.v', prefs) or { panic(err) }
+	assert c_source.contains('sizeof(int), (int[]){1,2}'), c_source
 }
 
 fn test_scanner_diagnostics_are_rejected() {
@@ -1099,6 +1234,44 @@ fn main() {
 	assert c_source.contains('enabled=ready();')
 	assert c_source.contains('count=2;')
 	assert c_source.contains('count+=3;')
+}
+
+fn test_aggregate_lvalue_mutability_is_validated() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	mut message := ''
+	_ := generate('module main
+
+struct Holder {
+mut:
+	value int
+}
+
+fn main() {
+	holder := Holder{}
+	holder.value = 2
+}
+',
+		'immutable_aggregate_root.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutation of immutable or unknown name `holder`'), message
+
+	c_source := generate('module main
+
+struct Holder {
+mut:
+	value int
+}
+
+fn main() {
+	mut holder := Holder{}
+	holder.value = 2
+}
+',
+		'mutable_aggregate_root.v', prefs) or { panic(err) }
+	assert c_source.contains('holder.value=2;'), c_source
 }
 
 fn test_c_style_loop_initializer_type_is_validated() {

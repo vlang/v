@@ -259,6 +259,7 @@ struct FastcStructField {
 	name           string
 	typ            string
 	is_public      bool
+	is_mutable     bool
 	is_required    bool
 	module_name    string
 	path           string
@@ -1690,6 +1691,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 	mut fields := 0
 	mut embedded_id := 0
 	mut fields_are_public := false
+	mut fields_are_mutable := false
 	for tok != .rcbr && tok != .eof {
 		if tok in [.semicolon, .comma] {
 			tok = scan.scan()
@@ -1701,8 +1703,10 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		}
 		if tok == .key_pub {
 			fields_are_public = true
+			fields_are_mutable = false
 			tok = scan.scan()
 			if tok == .key_mut {
+				fields_are_mutable = true
 				tok = scan.scan()
 			}
 			if tok == .colon {
@@ -1712,6 +1716,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		}
 		if tok in [.key_mut, .key_global] {
 			fields_are_public = false
+			fields_are_mutable = true
 			tok = scan.scan()
 			if tok == .colon {
 				tok = scan.scan()
@@ -1791,6 +1796,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 				name:           field_name
 				typ:            field_type
 				is_public:      fields_are_public
+				is_mutable:     fields_are_mutable
 				is_required:    is_required
 				module_name:    source_file.header.module_name
 				path:           source_file.path
@@ -6086,6 +6092,7 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 			return g.unsupported('mutation without a target')
 		}
 	}
+	g.validate_expression_mutation_lvalue(expression_tokens)!
 	g.validate_expression_field_visibility(expression_tokens)!
 	g.validate_expression_calls(expression_tokens)!
 	mut rendered_expression := result.str().trim_space()
@@ -9833,10 +9840,16 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				return g.unsupported('method `${name}` receiver of type `${receiver_type}`')
 			}
 			for argument_index, argument in call_args {
-				if is_variadic && argument_index >= expected_arguments {
+				if is_variadic && argument_index >= expected_arguments
+					&& function_key.starts_with('C.') {
 					continue
 				}
-				parameter_index := argument_index + argument_offset
+				is_variadic_argument := is_variadic && argument_index >= expected_arguments
+				parameter_index := if is_variadic_argument {
+					signature.parameter_types.len - 1
+				} else {
+					argument_index + argument_offset
+				}
 				parameter_is_mut := parameter_index < signature.parameter_mutability.len
 					&& signature.parameter_mutability[parameter_index]
 				argument_is_mut := fastc_argument_is_marked_mut(argument)
@@ -9852,14 +9865,20 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 						return g.unsupported('mutable argument `${argument_name}` to function `${name}` is immutable')
 					}
 				}
-				if g.selfhost {
+				if g.selfhost && !is_variadic_argument {
 					// The bootstrap compiler already checked this trusted source graph.
 					// Signature metadata is still used to lower calls, but incomplete
-					// streaming scope inference must not reinterpret valid arguments.
+					// streaming scope inference must not reinterpret valid fixed arguments.
 					continue
 				}
 				actual_type := g.infer_expression_type(argument)!
-				expected_type := signature.parameter_types[parameter_index]
+				expected_type := if is_variadic_argument {
+					g.array_element_type(signature.parameter_types[parameter_index]) or {
+						return g.unsupported('unverifiable variadic parameter type for function `${name}`')
+					}
+				} else {
+					signature.parameter_types[parameter_index]
+				}
 				if actual_type.len == 0 {
 					if g.selfhost {
 						continue
@@ -9993,6 +10012,101 @@ fn fastc_expression_is_zero(tokens []FastcExpressionToken) bool {
 		&& tokens[0].lit.replace('_', '').trim_left('0') == ''
 }
 
+fn fastc_top_level_mutation_index(tokens []FastcExpressionToken) ?int {
+	mut depth := 0
+	for i, item in tokens {
+		if depth == 0 && (item.tok.is_assignment() || item.tok in [.inc, .dec]) {
+			return i
+		}
+		match item.tok {
+			.lpar, .lsbr, .lcbr { depth++ }
+			.rpar, .rsbr, .rcbr { depth-- }
+			else {}
+		}
+	}
+	return none
+}
+
+fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken) ! {
+	mutation_index := fastc_top_level_mutation_index(tokens) or { return }
+	if mutation_index == 0 {
+		return g.unsupported('mutation without a target')
+	}
+	lvalue := tokens[..mutation_index]
+	if lvalue.len == 1 {
+		return
+	}
+	if lvalue[0].tok != .name {
+		return
+	}
+	root_name := lvalue[0].lit
+	if root_name == 'C' {
+		return
+	}
+	global_key := fastc_global_key(g.module_name, root_name)
+	mut selfhost_pointer_root := false
+	if local := g.locals[root_name] {
+		selfhost_pointer_root = g.selfhost && fastc_is_pointer_type(local.typ)
+		if !local.is_mut && lvalue[0].unsafe_depth == 0 && !selfhost_pointer_root {
+			return g.unsupported('mutation of immutable or unknown name `${root_name}`')
+		}
+	} else if global_key !in g.globals {
+		return g.unsupported('mutation of immutable or unknown name `${root_name}`')
+	}
+	mut selector_depth := 0
+	for i, item in lvalue {
+		match item.tok {
+			.lpar, .lsbr, .lcbr {
+				selector_depth++
+				continue
+			}
+			.rpar, .rsbr, .rcbr {
+				selector_depth--
+				continue
+			}
+			else {}
+		}
+		if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= lvalue.len
+			|| lvalue[i + 1].tok != .name || g.expression_dot_is_module_separator(lvalue, i) {
+			continue
+		}
+		receiver_start := fastc_method_receiver_start(lvalue, i)
+		receiver_type := g.infer_expression_type(lvalue[receiver_start..i]) or { continue }
+		field := g.struct_field_metadata(receiver_type, lvalue[i + 1].lit) or { continue }
+		if !field.is_mutable && item.unsafe_depth == 0 && !selfhost_pointer_root {
+			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
+			return g.unsupported('mutation of immutable field `${type_name}.${field.name}`')
+		}
+	}
+	if lvalue[0].unsafe_depth > 0 {
+		return
+	}
+	if fastc_expression_tokens_contain(lvalue, .lsbr) {
+		return
+	}
+	operator := tokens[mutation_index].tok
+	if !operator.is_assignment() {
+		return
+	}
+	expected_type := fastc_normalize_inferred_type(g.infer_expression_type(lvalue)!)
+	actual_type :=
+		fastc_normalize_inferred_type(g.infer_expression_type(tokens[mutation_index + 1..])!)
+	if expected_type == '' || actual_type == '' {
+		if g.selfhost {
+			return
+		}
+		return g.unsupported('unverifiable aggregate assignment type')
+	}
+	if !fastc_call_types_are_compatible(actual_type, expected_type) && !(g.selfhost
+		&& g.selfhost_types_are_compatible(actual_type, expected_type)) {
+		return g.unsupported('assignment of type `${actual_type}` to aggregate field of type `${expected_type}`')
+	}
+	if operator != .assign && (!fastc_is_numeric_expression_type(actual_type)
+		|| !fastc_is_numeric_expression_type(expected_type)) {
+		return g.unsupported('arithmetic assignment `${operator.str()}` on non-numeric type `${expected_type}`')
+	}
+}
+
 fn (g &Parser) struct_member_type(receiver_type string, field_name string) string {
 	mut layout_type := receiver_type.trim_right('*')
 	if layout_type.starts_with('Array_') {
@@ -10093,7 +10207,12 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 		if tokens[index].tok != .name {
 			return
 		}
+		field_token := tokens[index]
 		field_name := tokens[index].lit
+		if field_name in initialized_fields {
+			type_name := g.semantic_type_key(c_type).all_after_last('.')
+			return g.unsupported('duplicate field `${type_name}.${field_name}` in struct literal')
+		}
 		field := g.struct_field_metadata(c_type, field_name) or { return }
 		initialized_fields[field_name] = true
 		if !g.struct_field_is_visible(field) {
@@ -10101,8 +10220,12 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 			return g.unsupported('private field `${type_name}.${field.name}` from imported module `${field.module_name}`')
 		}
 		index++
+		mut has_explicit_value := false
+		mut value_start := index - 1
 		if index < close && tokens[index].tok == .colon {
+			has_explicit_value = true
 			index++
+			value_start = index
 		}
 		mut parens := 0
 		mut brackets := 0
@@ -10135,6 +10258,26 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 				else {}
 			}
 			index++
+		}
+		if fastc_fixed_array_element_type(field.typ) == none {
+			value_tokens := if has_explicit_value {
+				tokens[value_start..index]
+			} else {
+				[field_token]
+			}
+			actual_type := fastc_normalize_inferred_type(g.infer_expression_type(value_tokens)!)
+			expected_type := fastc_normalize_inferred_type(field.typ)
+			if actual_type == '' || expected_type == '' {
+				if g.selfhost {
+					continue
+				}
+				return g.unsupported('unverifiable initializer type for struct field `${field_name}`')
+			}
+			if !fastc_call_types_are_compatible(actual_type, expected_type) && !(g.selfhost
+				&& g.selfhost_types_are_compatible(actual_type, expected_type)) {
+				type_name := g.semantic_type_key(c_type).all_after_last('.')
+				return g.unsupported('initializer of type `${actual_type}` for struct field `${type_name}.${field_name}` expecting `${expected_type}`')
+			}
 		}
 	}
 	if !has_update {
