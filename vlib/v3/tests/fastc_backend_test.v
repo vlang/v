@@ -180,6 +180,63 @@ fn main() {
 	assert !os.exists(fallthrough_binary)
 	assert !os.exists(fallthrough_binary + '.c')
 
+	scoped_source := os.join_path(root, 'scoped_and_reserved.v')
+	write_fastc_test_source(scoped_source, 'module main
+
+struct Holder {
+	auto int
+}
+
+fn calculate(holder Holder, register int) int {
+	restrict := register
+	return holder.auto + restrict
+}
+
+fn auto() int {
+	return 42
+}
+
+fn deferred_return() int {
+	defer { println(4) }
+	if true {
+		defer { println(5) }
+		return 6
+	}
+	return 0
+}
+
+fn main() {
+	if true {
+		defer { println(1) }
+		println(2)
+	}
+	if false {
+		defer { println(99) }
+	}
+	for i in 0 .. 2 {
+		defer { println(i) }
+		continue
+	}
+	for {
+		defer { println(7) }
+		break
+	}
+	value := deferred_return()
+	println(value)
+	restrict := auto()
+	auto := restrict
+	println(auto)
+	println(3)
+}
+')
+	scoped_binary := os.join_path(root, 'scoped_and_reserved')
+	scoped_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', scoped_binary,
+		scoped_source])
+	assert scoped_compile.exit_code == 0, scoped_compile.output
+	scoped_run := cmdexec.run(scoped_binary, [])
+	assert scoped_run.exit_code == 0, scoped_run.output
+	assert scoped_run.output.trim_space() == '2\n1\n0\n1\n7\n5\n4\n6\n42\n3'
+
 	selfhost_binary := os.join_path(root, 'selfhost')
 	selfhost_compile := cmdexec.run(v3_bin, ['-silent', '-selfhost', '-b', 'fastc', '-o',
 		selfhost_binary, fastc_backend_v3_source])
@@ -191,6 +248,29 @@ fn main() {
 	selfhost_program_run := cmdexec.run(selfhost_output, [])
 	assert selfhost_program_run.exit_code == 0, selfhost_program_run.output
 	assert selfhost_program_run.output.trim_space() == '42\n15'
+
+	selfhost_fixed_options_output := os.join_path(root, 'selfhost_fixed_options')
+	selfhost_fixed_options := cmdexec.run(selfhost_binary, ['-gc', 'none', '-cc', 'tinyc', '-b',
+		'fastc', '-o', selfhost_fixed_options_output, valid_source])
+	assert selfhost_fixed_options.exit_code == 0, selfhost_fixed_options.output
+	for invocation in [
+		UnsupportedFastCInvocation{
+			args:     ['-gc', 'boehm', '-b', 'fastc', valid_source]
+			expected: 'only supports `-gc none`'
+		},
+		UnsupportedFastCInvocation{
+			args:     ['-cc', 'clang', '-b', 'fastc', valid_source]
+			expected: 'only supports bundled TinyCC'
+		},
+		UnsupportedFastCInvocation{
+			args:     ['-d', 'no_main', '-b', 'fastc', valid_source]
+			expected: 'does not support custom `-d no_main` defines'
+		},
+	] {
+		result := cmdexec.run(selfhost_binary, invocation.args)
+		assert result.exit_code != 0
+		assert result.output.contains(invocation.expected), result.output
+	}
 
 	for invocation in [
 		UnsupportedFastCInvocation{

@@ -342,6 +342,87 @@ fn main() {
 	assert c_source.contains('println(((bool)(0)));'), c_source
 }
 
+fn test_defer_is_emitted_when_its_lexical_scope_exits() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn main() {
+	if true {
+		defer { println(1) }
+		println(2)
+	}
+	println(3)
+}
+',
+		'scoped_defer.v', prefs) or { panic(err) }
+	print_two := c_source.index('println(2);') or { panic(c_source) }
+	deferred_one := c_source.index_after('println(1);', print_two) or { panic(c_source) }
+	print_three := c_source.index_after('println(3);', deferred_one) or { panic(c_source) }
+	assert print_two < deferred_one
+	assert deferred_one < print_three
+}
+
+fn test_match_expression_requires_else() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main
+
+fn main() {
+	x := 2
+	y := match x { 1 { 7 } }
+	println(y)
+}
+',
+		'non_exhaustive_match_expression.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('non-exhaustive match expression without `else`'), message
+
+	c_source := generate('module main
+
+fn main() {
+	x := 2
+	y := match x { 1 { 7 } else { 9 } }
+	println(y)
+}
+',
+		'exhaustive_match_expression.v', prefs) or { panic(err) }
+	assert c_source.contains('? (7) : (9)')
+}
+
+fn test_c_reserved_identifiers_are_escaped_consistently() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+struct Holder {
+	auto int
+}
+
+fn calculate(holder Holder, register int) int {
+	restrict := register
+	return holder.auto + restrict
+}
+
+fn auto() int {
+	return 42
+}
+
+fn main() {
+	result := auto()
+	auto := result
+	println(auto)
+}
+',
+		'reserved_identifiers.v', prefs) or { panic(err) }
+	assert c_source.contains('int v_auto;'), c_source
+	assert c_source.contains('int calculate(Holder holder, int v_register)'), c_source
+	assert c_source.contains('__typeof__((v_register)) v_restrict = (v_register);'), c_source
+	assert c_source.contains('return holder.v_auto+v_restrict;'), c_source
+	assert c_source.contains('int v_auto(void)'), c_source
+	assert c_source.contains(' v_auto = (result);'), c_source
+}
+
 fn test_return_expression_type_is_validated() {
 	prefs := pref.new_preferences()
 	for source in [

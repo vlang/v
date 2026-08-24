@@ -61,6 +61,57 @@ static void v_fastc_println_unsigned(unsigned long long value) { printf("%llu\n"
 
 '
 
+// Keep source identifiers distinct from C keywords while preserving the same
+// spelling used by the conventional C generator.
+const fastc_c_reserved_identifiers = {
+	'asm':      true
+	'auto':     true
+	'break':    true
+	'case':     true
+	'char':     true
+	'const':    true
+	'continue': true
+	'default':  true
+	'do':       true
+	'double':   true
+	'else':     true
+	'enum':     true
+	'extern':   true
+	'false':    true
+	'float':    true
+	'for':      true
+	'goto':     true
+	'if':       true
+	'inline':   true
+	'int':      true
+	'long':     true
+	'register': true
+	'restrict': true
+	'return':   true
+	'short':    true
+	'signed':   true
+	'sizeof':   true
+	'static':   true
+	'stdin':    true
+	'stderr':   true
+	'stdout':   true
+	'struct':   true
+	'switch':   true
+	'true':     true
+	'typedef':  true
+	'typeof':   true
+	'union':    true
+	'unix':     true
+	'unsigned': true
+	'void':     true
+	'volatile': true
+	'while':    true
+}
+
+fn fastc_c_identifier(name string) string {
+	return if name in fastc_c_reserved_identifiers { 'v_${name}' } else { name }
+}
+
 const c_selfhost_preamble = r'#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -244,7 +295,9 @@ mut:
 	expected_expression_type string
 	capturing_defer          bool
 	captured_defer_lines     []string
-	deferred_blocks          [][]string
+	deferred_lines           []string
+	deferred_block_starts    []int
+	loop_defer_block_starts  []int
 	last_expression_type     string
 	last_expression          []FastcExpressionToken
 	last_multi_return_types  []string
@@ -336,25 +389,28 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
 		file.index_lines(source_file.source)
 		mut gen := Parser{
-			prefs:               unsafe { prefs }
-			path:                source_file.path
-			module_name:         source_file.header.module_name
-			imports:             source_file.header.imports
-			declared_types:      declared_types
-			declared_kinds:      declared_kinds
-			struct_fields:       struct_fields
-			constants:           constants
-			globals:             globals
-			used_function_names: used_function_names
-			selfhost:            prefs.building_v
-			s:                   scanner.new_scanner(prefs, .normal)
-			out:                 strings.new_builder(source_file.source.len)
-			protos:              strings.new_builder(256)
-			functions:           functions
-			constant_types:      constant_types
-			global_types:        global_types
-			fixed_array_types:   fixed_array_types
-			composite_types:     composite_types
+			prefs:                   unsafe { prefs }
+			path:                    source_file.path
+			module_name:             source_file.header.module_name
+			imports:                 source_file.header.imports
+			declared_types:          declared_types
+			declared_kinds:          declared_kinds
+			struct_fields:           struct_fields
+			constants:               constants
+			globals:                 globals
+			used_function_names:     used_function_names
+			selfhost:                prefs.building_v
+			s:                       scanner.new_scanner(prefs, .normal)
+			out:                     strings.new_builder(source_file.source.len)
+			protos:                  strings.new_builder(256)
+			functions:               functions
+			constant_types:          constant_types
+			global_types:            global_types
+			fixed_array_types:       fixed_array_types
+			composite_types:         composite_types
+			deferred_lines:          []string{}
+			deferred_block_starts:   []int{}
+			loop_defer_block_starts: []int{}
 		}
 		gen.s.init(file, source_file.source)
 		generated := gen.run()!
@@ -1288,13 +1344,14 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 		tok = next_token
 		fastc_register_composite_type(field_type, mut composite_types)
 		for field_name in field_names {
+			c_field_name := fastc_c_identifier(field_name)
 			if element_type := fastc_fixed_array_element_type(field_type) {
 				length := fastc_fixed_array_length(field_type) or {
 					return error('invalid fixed array type')
 				}
-				out.writeln('\t${element_type} ${field_name}[${length}];')
+				out.writeln('\t${element_type} ${c_field_name}[${length}];')
 			} else {
-				out.writeln('\t${field_type} ${field_name};')
+				out.writeln('\t${field_type} ${c_field_name};')
 			}
 			fields_by_name[field_name] = field_type
 			fields++
@@ -2398,14 +2455,16 @@ fn fastc_global_key(module_name string, name string) string {
 }
 
 fn fastc_c_global_name(key string) string {
-	return key.replace('.', '__')
+	return fastc_c_identifier(key.replace('.', '__'))
 }
 
 fn fastc_c_function_name(module_name string, name string) string {
-	if module_name in ['', 'main'] {
-		return name
+	full_name := if module_name in ['', 'main'] {
+		name
+	} else {
+		'${module_name.replace('.', '__')}__${name}'
 	}
-	return '${module_name.replace('.', '__')}__${name}'
+	return fastc_c_identifier(full_name)
 }
 
 fn (g &Parser) unqualified_function_key(name string) string {
@@ -2422,9 +2481,9 @@ fn (g &Parser) unqualified_function_key(name string) string {
 
 fn fastc_c_function_name_for_key(key string) string {
 	if !key.contains('.') {
-		return key
+		return fastc_c_identifier(key)
 	}
-	return '${key.all_before_last('.').replace('.', '__')}__${key.all_after_last('.')}'
+	return fastc_c_identifier('${key.all_before_last('.').replace('.', '__')}__${key.all_after_last('.')}')
 }
 
 fn (mut g Parser) run() !string {
@@ -2735,7 +2794,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else {
 			receiver_type
 		}
-		params << '${receiver_parameter_type} ${receiver_name}'
+		params << '${receiver_parameter_type} ${fastc_c_identifier(receiver_name)}'
 		g.locals[receiver_name] = FastcLocal{
 			is_mut:       receiver_is_mut
 			is_reference: receiver_is_reference
@@ -2888,23 +2947,28 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	previous_option_return_type := g.option_return_type
 	previous_function := g.current_function
 	previous_receiver := g.current_receiver
-	previous_deferred_blocks := g.deferred_blocks.clone()
+	previous_deferred_lines := g.deferred_lines.clone()
+	previous_deferred_block_starts := g.deferred_block_starts.clone()
+	previous_loop_defer_block_starts := g.loop_defer_block_starts.clone()
 	g.in_main = is_main
 	g.return_type = return_type
 	g.return_types = return_types.clone()
 	g.option_return_type = option_return_type
 	g.current_function = name
 	g.current_receiver = receiver_key
-	g.deferred_blocks = [][]string{}
+	g.deferred_lines.clear()
+	g.deferred_block_starts.clear()
+	g.loop_defer_block_starts.clear()
 	terminates := g.parse_block_body()!
-	g.write_deferred_blocks()
 	g.in_main = previous_in_main
 	g.return_type = previous_return_type
 	g.return_types = previous_return_types.clone()
 	g.option_return_type = previous_option_return_type
 	g.current_function = previous_function
 	g.current_receiver = previous_receiver
-	g.deferred_blocks = previous_deferred_blocks.clone()
+	g.deferred_lines = previous_deferred_lines.clone()
+	g.deferred_block_starts = previous_deferred_block_starts.clone()
+	g.loop_defer_block_starts = previous_loop_defer_block_starts.clone()
 	if return_type != 'void' && !terminates {
 		if !g.selfhost {
 			return g.unsupported('non-void function `${name}` that can fall through')
@@ -3036,7 +3100,7 @@ fn (mut g Parser) parse_parameters() ![]string {
 			type_name += '*'
 		}
 		for parameter_name in names {
-			params << '${type_name} ${parameter_name}'
+			params << '${type_name} ${fastc_c_identifier(parameter_name)}'
 			g.locals[parameter_name] = FastcLocal{
 				is_mut:       is_mut
 				is_reference: is_reference
@@ -3186,6 +3250,8 @@ fn fastc_all_true(values []bool) bool {
 
 fn (mut g Parser) parse_block_body() !bool {
 	outer_locals := g.locals.clone()
+	deferred_line_start := g.deferred_lines.len
+	deferred_block_start := g.deferred_block_starts.len
 	mut terminates := false
 	g.skip_semicolons()
 	for g.tok != .rcbr {
@@ -3209,6 +3275,9 @@ fn (mut g Parser) parse_block_body() !bool {
 	}
 	g.next()
 	g.skip_semicolons()
+	g.write_deferred_blocks_from(deferred_block_start)
+	g.deferred_lines.trim(deferred_line_start)
+	g.deferred_block_starts.trim(deferred_block_start)
 	g.locals = outer_locals.clone()
 	return terminates
 }
@@ -3236,12 +3305,20 @@ fn (mut g Parser) parse_statement() !bool {
 		.key_break {
 			g.next()
 			g.consume_statement_end()
+			if g.loop_defer_block_starts.len == 0 {
+				return g.unsupported('`break` outside a loop')
+			}
+			g.write_deferred_blocks_from(g.loop_defer_block_starts.last())
 			g.write_line('break;')
 			false
 		}
 		.key_continue {
 			g.next()
 			g.consume_statement_end()
+			if g.loop_defer_block_starts.len == 0 {
+				return g.unsupported('`continue` outside a loop')
+			}
+			g.write_deferred_blocks_from(g.loop_defer_block_starts.last())
 			g.write_line('continue;')
 			false
 		}
@@ -3250,7 +3327,7 @@ fn (mut g Parser) parse_statement() !bool {
 			if g.tok != .name {
 				return g.unsupported('goto without a label')
 			}
-			label := g.lit
+			label := fastc_c_identifier(g.lit)
 			g.next()
 			g.consume_statement_end()
 			g.write_line('goto ${label};')
@@ -3332,15 +3409,37 @@ fn (mut g Parser) parse_defer() ! {
 	block := g.captured_defer_lines.clone()
 	g.capturing_defer = previous_capture
 	g.captured_defer_lines = previous_lines.clone()
-	g.deferred_blocks << block
+	g.deferred_block_starts << g.deferred_lines.len
+	for line in block {
+		g.deferred_lines << line
+	}
 }
 
-fn (mut g Parser) write_deferred_blocks() {
-	for i := g.deferred_blocks.len - 1; i >= 0; i-- {
-		for line in g.deferred_blocks[i] {
-			g.out.writeln(line)
+fn (mut g Parser) write_deferred_blocks_from(first int) {
+	for block_index := g.deferred_block_starts.len - 1; block_index >= first; block_index-- {
+		line_start := g.deferred_block_starts[block_index]
+		line_end := if block_index + 1 < g.deferred_block_starts.len {
+			g.deferred_block_starts[block_index + 1]
+		} else {
+			g.deferred_lines.len
+		}
+		for line_index in line_start .. line_end {
+			g.out.writeln(g.deferred_lines[line_index])
 		}
 	}
+}
+
+fn (mut g Parser) write_all_deferred_scopes() {
+	if g.deferred_block_starts.len > 0 {
+		g.write_deferred_blocks_from(0)
+	}
+}
+
+fn (mut g Parser) parse_loop_block_body() !bool {
+	g.loop_defer_block_starts << g.deferred_block_starts.len
+	terminates := g.parse_block_body()!
+	g.loop_defer_block_starts.delete_last()
+	return terminates
 }
 
 fn (mut g Parser) parse_match_statement() !bool {
@@ -3633,7 +3732,7 @@ fn (mut g Parser) parse_if() !bool {
 	previous_guard := g.locals[guard_name] or { FastcLocal{} }
 	had_guard := guard_name in g.locals
 	if guard_name != '' {
-		g.write_line('${guard_type} ${guard_name} = *((${guard_type} *)${guard_option}.data);')
+		g.write_line('${guard_type} ${fastc_c_identifier(guard_name)} = *((${guard_type} *)${guard_option}.data);')
 		g.locals[guard_name] = FastcLocal{
 			typ: guard_type
 		}
@@ -3675,7 +3774,7 @@ fn (mut g Parser) parse_for() !bool {
 		g.next()
 		g.write_line('for (;;) {')
 		g.indent++
-		_ = g.parse_block_body()!
+		_ = g.parse_loop_block_body()!
 		g.indent--
 		g.write_line('}')
 		return false
@@ -3718,15 +3817,16 @@ fn (mut g Parser) parse_for() !bool {
 				g.expect(.lcbr)!
 				start_name := g.temporary_name('range_start')
 				end_name := g.temporary_name('range_end')
+				c_name := fastc_c_identifier(name)
 				// V evaluates both range bounds exactly once, from left to right.
 				g.write_line('__typeof__((${start})) ${start_name} = (${start});')
 				g.write_line('__typeof__((${end})) ${end_name} = (${end});')
-				g.write_line('for (__typeof__((${start_name})) ${name} = (${start_name}); ${name} < (${end_name}); ${name}++) {')
+				g.write_line('for (__typeof__((${start_name})) ${c_name} = (${start_name}); ${c_name} < (${end_name}); ${c_name}++) {')
 				g.locals[name] = FastcLocal{
 					typ: fastc_normalize_inferred_type(start_expression_type)
 				}
 				g.indent++
-				_ = g.parse_block_body()!
+				_ = g.parse_loop_block_body()!
 				g.indent--
 				g.locals.delete(name)
 				g.write_line('}')
@@ -3753,18 +3853,18 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('for (int ${index_name} = 0; ${index_name} < ${keys_name}.len; ${index_name}++) {')
 				g.indent++
 				if name != '_' {
-					g.write_line('${key_type} ${name} = ((${key_type} *)${keys_name}.data)[${index_name}];')
+					g.write_line('${key_type} ${fastc_c_identifier(name)} = ((${key_type} *)${keys_name}.data)[${index_name}];')
 					g.locals[name] = FastcLocal{
 						typ: key_type
 					}
 				}
 				if value_name != '' && value_name != '_' {
-					g.write_line('${map_value_type} ${value_name} = ((${map_value_type} *)${values_name}.data)[${index_name}];')
+					g.write_line('${map_value_type} ${fastc_c_identifier(value_name)} = ((${map_value_type} *)${values_name}.data)[${index_name}];')
 					g.locals[value_name] = FastcLocal{
 						typ: map_value_type
 					}
 				}
-				_ = g.parse_block_body()!
+				_ = g.parse_loop_block_body()!
 				g.indent--
 				g.locals.delete(name)
 				if value_name != '' {
@@ -3787,7 +3887,7 @@ fn (mut g Parser) parse_for() !bool {
 			} else if name == '_' {
 				g.temporary_name('index')
 			} else {
-				name
+				fastc_c_identifier(name)
 			}
 			access := if collection_type.ends_with('*') { '->' } else { '.' }
 			data_field := if collection_type.trim_right('*') == 'string' { 'str' } else { 'data' }
@@ -3796,14 +3896,15 @@ fn (mut g Parser) parse_for() !bool {
 			g.indent++
 			actual_value_name := if value_name == '' { name } else { value_name }
 			if actual_value_name != '_' {
+				c_value_name := fastc_c_identifier(actual_value_name)
 				if item_is_mut {
-					g.write_line('${element_type} *${actual_value_name} = &(((${element_type} *)${collection_name}${access}${data_field})[${index_name}]);')
+					g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_name}${access}${data_field})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
 						is_mut: true
 						typ:    element_type + '*'
 					}
 				} else {
-					g.write_line('${element_type} ${actual_value_name} = ((${element_type} *)${collection_name}${access}${data_field})[${index_name}];')
+					g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_name}${access}${data_field})[${index_name}];')
 					g.locals[actual_value_name] = FastcLocal{
 						typ: element_type
 					}
@@ -3814,7 +3915,7 @@ fn (mut g Parser) parse_for() !bool {
 					typ: 'int'
 				}
 			}
-			_ = g.parse_block_body()!
+			_ = g.parse_loop_block_body()!
 			g.indent--
 			g.locals.delete(name)
 			if value_name != '' {
@@ -3852,13 +3953,13 @@ fn (mut g Parser) parse_for() !bool {
 			update := g.read_expression([token.Token.lcbr])!
 			g.expect(.lcbr)!
 			initializer := if is_declaration {
-				'__typeof__((${initial})) ${name} = (${initial})'
+				'__typeof__((${initial})) ${fastc_c_identifier(name)} = (${initial})'
 			} else {
-				'${name} = (${initial})'
+				'${fastc_c_identifier(name)} = (${initial})'
 			}
 			g.write_line('for (${initializer}; ${condition}; ${update}) {')
 			g.indent++
-			_ = g.parse_block_body()!
+			_ = g.parse_loop_block_body()!
 			g.indent--
 			if is_declaration {
 				g.locals.delete(name)
@@ -3872,7 +3973,7 @@ fn (mut g Parser) parse_for() !bool {
 		g.expect(.lcbr)!
 		g.write_line('while (${condition}) {')
 		g.indent++
-		_ = g.parse_block_body()!
+		_ = g.parse_loop_block_body()!
 		g.indent--
 		g.write_line('}')
 		return false
@@ -3882,7 +3983,7 @@ fn (mut g Parser) parse_for() !bool {
 	g.expect(.lcbr)!
 	g.write_line('while (${condition}) {')
 	g.indent++
-	_ = g.parse_block_body()!
+	_ = g.parse_loop_block_body()!
 	g.indent--
 	g.write_line('}')
 	return false
@@ -3896,7 +3997,7 @@ fn (mut g Parser) parse_return() !bool {
 			return g.unsupported('bare return in non-void function')
 		}
 		g.consume_statement_end()
-		g.write_deferred_blocks()
+		g.write_all_deferred_scopes()
 		g.write_line(if g.in_main {
 			'return 0;'
 		} else if g.return_type == 'Option' {
@@ -3927,7 +4028,7 @@ fn (mut g Parser) parse_return() !bool {
 			g.next()
 		}
 		g.consume_statement_end()
-		g.write_deferred_blocks()
+		g.write_all_deferred_scopes()
 		if g.return_type == 'Option' && values.len == 1 && value_types[0] == 'Option' {
 			g.write_line('return ${values[0]};')
 			return true
@@ -3962,7 +4063,7 @@ fn (mut g Parser) parse_return() !bool {
 	mut actual_type := g.last_expression_type
 	if g.selfhost && g.return_type == '' {
 		g.consume_statement_end()
-		g.write_deferred_blocks()
+		g.write_all_deferred_scopes()
 		g.write_line('return ${expression};')
 		return true
 	}
@@ -4000,7 +4101,7 @@ fn (mut g Parser) parse_return() !bool {
 		return g.unsupported('return expression of type `${actual_type}` in function returning `${g.return_type}`')
 	}
 	g.consume_statement_end()
-	g.write_deferred_blocks()
+	g.write_all_deferred_scopes()
 	g.write_line('return ${expression};')
 	return true
 }
@@ -4058,15 +4159,19 @@ fn (mut g Parser) parse_simple_statement() ! {
 		c_target := if is_global {
 			g.globals[global_key]
 		} else if local := g.locals[name] {
-			if local.is_reference { '(*${name})' } else { name }
+			if local.is_reference {
+				'(*${fastc_c_identifier(name)})'
+			} else {
+				fastc_c_identifier(name)
+			}
 		} else {
-			name
+			fastc_c_identifier(name)
 		}
 		g.next()
 		if g.selfhost && g.tok == .colon {
 			g.next()
 			g.skip_semicolons()
-			g.write_line('${name}:')
+			g.write_line('${fastc_c_identifier(name)}:')
 			return
 		}
 		if g.selfhost && g.tok == .comma {
@@ -4094,10 +4199,11 @@ fn (mut g Parser) parse_simple_statement() ! {
 				return g.unsupported('append value of type `${value_type}` to `${local.typ}`')
 			}
 			g.consume_statement_end()
+			c_name := fastc_c_identifier(name)
 			array_target := if local.typ.ends_with('*') {
-				'(array *)${name}'
+				'(array *)${c_name}'
 			} else {
-				'(array *)&${name}'
+				'(array *)&${c_name}'
 			}
 			value_name := g.temporary_name('push_value')
 			g.write_line('__typeof__((${value})) ${value_name} = (${value});')
@@ -4277,7 +4383,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 					continue
 				}
 				value_type := if value_types[i] == '' { 'int' } else { value_types[i] }
-				g.write_line('${value_type} ${name} = ${temporaries[i]};')
+				g.write_line('${value_type} ${fastc_c_identifier(name)} = ${temporaries[i]};')
 				g.locals[name] = FastcLocal{
 					is_mut: mutability[i]
 					typ:    value_type
@@ -4288,7 +4394,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				if name == '_' {
 					continue
 				}
-				g.write_line('${name} = ${temporaries[i]};')
+				g.write_line('${fastc_c_identifier(name)} = ${temporaries[i]};')
 			}
 		}
 		return
@@ -4305,14 +4411,16 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 		}
 		if is_declaration {
 			component_type := if i < component_types.len { component_types[i] } else { 'usize' }
-			g.write_line('${component_type} ${name} = (${component_type}){0};')
-			g.write_line('memcpy(&${name}, ${temporary}.values[${i}].data, sizeof(${name}));')
+			c_name := fastc_c_identifier(name)
+			g.write_line('${component_type} ${c_name} = (${component_type}){0};')
+			g.write_line('memcpy(&${c_name}, ${temporary}.values[${i}].data, sizeof(${c_name}));')
 			g.locals[name] = FastcLocal{
 				is_mut: mutability[i]
 				typ:    component_type
 			}
 		} else {
-			g.write_line('memcpy(&${name}, ${temporary}.values[${i}].data, sizeof(${name}));')
+			c_name := fastc_c_identifier(name)
+			g.write_line('memcpy(&${c_name}, ${temporary}.values[${i}].data, sizeof(${c_name}));')
 		}
 	}
 }
@@ -4445,12 +4553,13 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool) ! {
 	g.consume_statement_end()
 	// GNU typeof is unevaluated and is supported by bundled TinyCC. It lets the
 	// direct path preserve V's `:=` without running any inference or type checker.
+	c_name := fastc_c_identifier(name)
 	if expression.starts_with('"') {
 		// C's typeof preserves a literal's array type instead of applying the usual
 		// pointer decay. The spelling alone is enough to lower this case.
-		g.write_line('string ${name} = (${expression});')
+		g.write_line('string ${c_name} = (${expression});')
 	} else {
-		g.write_line('__typeof__((${expression})) ${name} = (${expression});')
+		g.write_line('__typeof__((${expression})) ${c_name} = (${expression});')
 	}
 	g.locals[name] = FastcLocal{
 		is_mut: is_mut
@@ -4991,6 +5100,18 @@ fn (mut g Parser) read_expression_with_prefix(prefix string, stops []token.Token
 			|| previous_lit == 'C' || (g.selfhost && previous_lit !in g.locals
 			&& g.is_enum_type_name(previous_lit)))
 		mut piece := g.expression_token(previous_token, previous_lit)!
+		if g.tok == .name && previous_token == .dot {
+			mut method_lookahead := g.s
+			if method_lookahead.scan() == .lpar {
+				piece = g.lit
+			}
+		}
+		if g.tok == .name && expression_tokens.len >= 3
+			&& expression_tokens[expression_tokens.len - 2].tok == .dot
+			&& expression_tokens[expression_tokens.len - 3].tok == .name
+			&& expression_tokens[expression_tokens.len - 3].lit == 'C' {
+			piece = g.lit
+		}
 		if g.selfhost && brace_depth > 0 && g.tok == .name {
 			mut field_lookahead := g.s
 			if field_lookahead.scan() == .colon {
@@ -5710,6 +5831,7 @@ fn (mut g Parser) read_match_expression() !string {
 	mut values := []string{}
 	mut result_type := ''
 	mut fallback := ''
+	mut has_else := false
 	g.skip_semicolons()
 	for g.tok != .rcbr && g.tok != .eof {
 		mut is_else := false
@@ -5783,6 +5905,7 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 		if is_else {
 			fallback = value
+			has_else = true
 		} else {
 			conditions << '(${branch_conditions.join(' || ')})'
 			values << value
@@ -5790,7 +5913,10 @@ fn (mut g Parser) read_match_expression() !string {
 	}
 	g.expect(.rcbr)!
 	g.expected_expression_type = outer_expected_type
-	if fallback == '' {
+	if !has_else && !g.selfhost {
+		return g.unsupported('non-exhaustive match expression without `else`')
+	}
+	if !has_else {
 		fallback = '(${result_type}){0}'
 	}
 	mut expression := fallback
@@ -6024,7 +6150,7 @@ fn (mut g Parser) read_if_expression() !string {
 		g.read_block_expression_value()!
 	}
 	if guard_name != '' {
-		then_expression = '({ ${guard_type} ${guard_name} = *((${guard_type} *)${guard_option}.data); ${then_expression}; })'
+		then_expression = '({ ${guard_type} ${fastc_c_identifier(guard_name)} = *((${guard_type} *)${guard_option}.data); ${then_expression}; })'
 		if had_guard {
 			g.locals[guard_name] = previous_guard
 		} else {
@@ -6990,7 +7116,11 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				},
 			]
 		}
-		mut c_field_name := field_name
+		mut c_field_name := if is_c_struct_literal {
+			field_name
+		} else {
+			fastc_c_identifier(field_name)
+		}
 		mut expected_type := if layout_type == 'array' && field_name == 'init' {
 			g.array_element_type(c_type) or { '' }
 		} else {
@@ -7003,7 +7133,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				}
 				embedded_fields := g.struct_fields[embedded_type].clone()
 				if nested_type := embedded_fields[field_name] {
-					c_field_name = '${embedded_name}.${field_name}'
+					c_field_name = '${embedded_name}.${fastc_c_identifier(field_name)}'
 					expected_type = nested_type
 					break
 				}
@@ -7095,7 +7225,7 @@ fn (g &Parser) render_struct_literal_field_names(tokens []FastcExpressionToken, 
 			}
 			needle := '.${constant_name}='
 			if rendered.contains(needle) {
-				rendered = rendered.replace(needle, '.${field_name}=')
+				rendered = rendered.replace(needle, '.${fastc_c_identifier(field_name)}=')
 				changed = true
 			}
 		}
@@ -7676,7 +7806,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken, rend
 				return none
 			}
 			value := g.render_call_argument_expression(argument[2..], '') or { return none }
-			fields << '.${argument[0].lit}=${value}'
+			fields << '.${fastc_c_identifier(argument[0].lit)}=${value}'
 		}
 		rendered_arguments << '(${parameter_type}){${fields.join(',')}}'
 		return FastcRenderedExpression{
@@ -8035,7 +8165,7 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 	if tokens.len == 0 || tokens[0].tok != .name {
 		return none
 	}
-	mut source := tokens[0].lit
+	mut source := g.resolved_expression_name(tokens[0].lit, .unknown)
 	mut current_type := g.infer_expression_type(tokens[..1]) or { return none }
 	mut i := 1
 	for i < tokens.len {
@@ -8043,7 +8173,7 @@ fn (g &Parser) render_member_receiver(tokens []FastcExpressionToken) ?string {
 			return none
 		}
 		separator := if current_type.ends_with('*') { '->' } else { '.' }
-		source += separator + tokens[i + 1].lit
+		source += separator + fastc_c_identifier(tokens[i + 1].lit)
 		current_type = g.struct_member_type(current_type, tokens[i + 1].lit)
 		if current_type == '' {
 			return none
@@ -8418,7 +8548,14 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			piece = '(Option){.state=2}'
 		} else if item.tok == .name {
 			previous := if i == 0 { token.Token.unknown } else { tokens[i - 1].tok }
-			piece = g.resolved_expression_name(item.lit, previous)
+			piece = if previous == .dot && i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
+				item.lit
+			} else if i >= 2 && previous == .dot && tokens[i - 2].tok == .name
+				&& tokens[i - 2].lit == 'C' {
+				item.lit
+			} else {
+				g.resolved_expression_name(item.lit, previous)
+			}
 		} else if item.tok == .dot && i > 0 && tokens[i - 1].tok == .name
 			&& tokens[i - 1].lit in g.imports {
 			piece = '__'
@@ -8765,7 +8902,7 @@ fn (g &Parser) resolved_expression_name(name string, previous token.Token) strin
 			return c_name
 		}
 	}
-	return name
+	return fastc_c_identifier(name)
 }
 
 fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {

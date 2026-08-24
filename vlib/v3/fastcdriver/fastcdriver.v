@@ -22,10 +22,29 @@ fn parse_arguments(args []string) (string, string, bool) {
 				fail('fastc: missing value after `${arg}`')
 			}
 			value := args[index + 1]
-			if arg == '-o' {
-				output = value
-			} else if arg == '-b' && value != 'fastc' {
-				fail('fastc self-host compiler only supports `-b fastc`')
+			match arg {
+				'-o' {
+					output = value
+				}
+				'-b' {
+					if value != 'fastc' {
+						fail('fastc self-host compiler only supports `-b fastc`')
+					}
+				}
+				'-gc' {
+					if value != 'none' {
+						fail('fastc self-host compiler only supports `-gc none`')
+					}
+				}
+				'-cc' {
+					if value !in ['tinyc', 'tcc'] {
+						fail('fastc self-host compiler only supports bundled TinyCC')
+					}
+				}
+				'-d' {
+					fail('fastc self-host compiler does not support custom `-d ${value}` defines')
+				}
+				else {}
 			}
 			index += 2
 			continue
