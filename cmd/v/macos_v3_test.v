@@ -3,6 +3,7 @@ module main
 import os
 import crypto.sha256
 import v.pref
+import v.builder
 
 fn test_macos_v3_embedded_driver_matches_cross_source_selection() {
 	$if cross ? {
@@ -2033,6 +2034,54 @@ fn test_take_macos_v3_report_content_carries_no_path() {
 		if _ := take_macos_v3_report_content() {
 			assert false, 'the content variables must be cleared after a take'
 		}
+	}
+}
+
+// An early V3 parser failure can request the stable compiler before V3 has staged its
+// complete input-digest manifest. A successful stable retry must still print the normal
+// compatibility-fallback notice, while submitting no unverified V3 bug report.
+fn test_macos_v3_unavailable_input_manifest_preserves_fallback_notice() {
+	$if macos || linux {
+		root := os.join_path(os.real_path(os.vtmp_dir()),
+			'macos_v3_unavailable_manifest_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		output := os.join_path(root, 'main')
+		os.write_file(source, 'fn main() { println(42) }\n')!
+
+		clear_macos_v3_report_env()
+		builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
+			kind:                   macos_v3_compiler_error_fallback
+			ccompiler:              'v3'
+			c_output:               macos_v3_compiler_error_message('source parsing')
+			source_inline:          true
+			input_digests_complete: false
+			tag:                    'V3'
+		})
+		mut environment := os.environ()
+		clear_macos_v3_report_env()
+		environment[macos_v3_retry_env] = '1'
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
+		environment['VFLAGS'] = ''
+		environment['VOSARGS'] = ''
+		mut process := os.new_process(@VEXE)
+		process.set_args(['-gc', 'none', '-o', output, source])
+		process.set_environment(environment)
+		process.set_redirect_stdio()
+		process.run()
+		process.wait()
+		compiler_output := process.stdout_slurp() + process.stderr_slurp()
+		exit_code := process.code
+		process.close()
+		assert exit_code == 0, compiler_output
+		assert compiler_output.contains('V3 could not build this program, so V used the stable compiler instead.'), compiler_output
+
+		assert !compiler_output.contains('source inputs changed'), compiler_output
+		assert os.is_executable(output)
 	}
 }
 

@@ -72,12 +72,21 @@ fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backen
 	if failed := report {
 		// Do this before run_compiled_executable_and_exit: successful builds and run
 		// commands exit there, so the caller cannot reliably submit the report later.
-		if b.matches_v3_fallback_inputs(failed) {
-			consume_external_c_error_bug_report(pref_, failed)
-		} else {
-			// The stable compiler succeeded, but not from the exact source snapshot V3
-			// parsed. Do not classify or upload this as a V3-only failure.
-			discard_unverified_v3_fallback_report()
+		match b.v3_fallback_input_status(failed) {
+			.unchanged {
+				consume_external_c_error_bug_report(pref_, failed)
+			}
+			.unavailable {
+				// V3 failed before it could stage a complete parser manifest. The stable
+				// build succeeded, so preserve the documented fallback notice, but do not
+				// submit an unverified V3-only failure report.
+				print_v3_fallback_notice('', false, false)
+			}
+			.changed {
+				// The stable compiler succeeded, but not from the exact source snapshot V3
+				// parsed. Do not classify or upload this as a V3-only failure.
+				discard_unverified_v3_fallback_report()
+			}
 		}
 	}
 	// running does not require the parsers anymore

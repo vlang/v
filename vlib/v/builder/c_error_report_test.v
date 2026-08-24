@@ -415,15 +415,18 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 		}
 		input_digests_complete: true
 	}
+	assert b.v3_fallback_input_status(matching) == .unchanged
 	assert b.matches_v3_fallback_inputs(matching)
-	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
+	changed := ExternalCErrorBugReport{
 		...matching
 		input_digests: {
 			path:                sha256.hexhash('rewritten after V3')
 			shared_builtin_path: shared_builtin_digest
 			shared_vlib_path:    shared_vlib_digest
 		}
-	})
+	}
+	assert b.v3_fallback_input_status(changed) == .changed
+	assert !b.matches_v3_fallback_inputs(changed)
 	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
 		...matching
 		input_digests: {
@@ -457,14 +460,18 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 		source_digest: sha256.hexhash('new stable-only input')
 	}
 	assert !b_with_extra_input.matches_v3_fallback_inputs(matching)
-	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
+	unavailable := ExternalCErrorBugReport{
 		...matching
 		input_digests_complete: false
-	})
+	}
+	assert b.v3_fallback_input_status(unavailable) == .unavailable
+	assert !b.matches_v3_fallback_inputs(unavailable)
 	// Notice-only fallbacks do not claim or submit a V3-only failure report.
-	assert b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
+	notice_only := ExternalCErrorBugReport{
 		kind: external_v3_notice_only_kind
-	})
+	}
+	assert b.v3_fallback_input_status(notice_only) == .unchanged
+	assert b.matches_v3_fallback_inputs(notice_only)
 }
 
 fn test_export_external_v3_report_bounds_c_output_for_exec() {

@@ -113,6 +113,12 @@ pub:
 	input_digests_complete bool
 }
 
+enum V3FallbackInputStatus {
+	unavailable
+	unchanged
+	changed
+}
+
 @[unsafe]
 fn external_c_error_report_cleanup_dir(dir string, update bool) string {
 	mut static pending_dir := ''
@@ -564,16 +570,17 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 	return report
 }
 
-// matches_v3_fallback_inputs confirms that the stable compiler parsed the same set of
-// project sources from the same bytes that V3 recorded. Report paths are never opened:
-// they are compared only with canonical paths belonging to the stable parser's own AST
-// files.
-fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool {
+// v3_fallback_input_status compares the stable compiler's exact parser inputs with V3's
+// staged manifest. An unavailable manifest means V3 failed before it could stage parser
+// digests; that is distinct from a complete manifest whose source set or bytes changed.
+// Report paths are never opened: they are compared only with canonical paths belonging
+// to the stable parser's own AST files.
+fn (b &Builder) v3_fallback_input_status(report ExternalCErrorBugReport) V3FallbackInputStatus {
 	if report.kind in [external_v3_notice_only_kind, external_v3_transport_limited_kind] {
-		return true
+		return .unchanged
 	}
 	if !report.input_digests_complete || report.input_digests.len == 0 {
-		return false
+		return .unavailable
 	}
 	mut stable_digests := map[string]string{}
 	builtin_root :=
@@ -590,20 +597,27 @@ fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool 
 		}
 		if previous := stable_digests[path] {
 			if previous != file.source_digest {
-				return false
+				return .changed
 			}
 		}
 		stable_digests[path] = file.source_digest
 	}
 	if stable_digests.len != report.input_digests.len {
-		return false
+		return .changed
 	}
 	for path, v3_digest in report.input_digests {
 		if stable_digests[path] != v3_digest {
-			return false
+			return .changed
 		}
 	}
-	return true
+	return .unchanged
+}
+
+// matches_v3_fallback_inputs reports whether V3 supplied a complete manifest and the
+// stable compiler parsed the same source bytes, or whether this is a notice-only fallback
+// that never submits a V3 bug report.
+fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool {
+	return b.v3_fallback_input_status(report) == .unchanged
 }
 
 fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string) bool {
