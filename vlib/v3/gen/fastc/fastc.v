@@ -204,6 +204,8 @@ struct FastcFunctionSignature {
 	return_types    []string
 	option_type     string
 	is_variadic     bool
+	is_public       bool
+	module_name     string
 	path            string
 }
 
@@ -1670,6 +1672,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 	mut tok := scan.scan()
 	for tok != .eof {
 		if tok == .key_fn && brace_depth == 0 && previous_tok != .assign {
+			is_public := previous_tok == .key_pub
 			tok = scan.scan()
 			mut parameter_types := []string{}
 			mut receiver_type := ''
@@ -1868,6 +1871,8 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				return_types:    return_types
 				option_type:     option_type
 				is_variadic:     is_variadic
+				is_public:       is_public || is_c_function
+				module_name:     header.module_name
 				path:            path
 			}
 			if previous := functions[function_key] {
@@ -2117,6 +2122,8 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				return_type:     return_type
 				return_types:    return_types
 				option_type:     option_type
+				is_public:       true
+				module_name:     header.module_name
 				path:            path
 			}
 			interface_methods[interface_method_key] = true
@@ -3455,12 +3462,14 @@ fn (mut g Parser) parse_match_statement() !bool {
 	is_string := subject_type == 'string'
 	mut branch_index := 0
 	mut all_terminate := true
+	mut has_else := false
 	g.skip_semicolons()
 	for g.tok != .rcbr {
 		if g.tok == .eof {
 			return g.unsupported('unfinished match statement')
 		}
 		is_else := g.tok == .key_else
+		has_else = has_else || is_else
 		mut values := []string{}
 		if is_else {
 			g.next()
@@ -3523,7 +3532,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 	}
 	g.next()
 	g.skip_semicolons()
-	return all_terminate
+	return has_else && all_terminate
 }
 
 fn (mut g Parser) parse_comptime_if_statement() !bool {
@@ -9017,6 +9026,11 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			}
 		}
 		if signature := g.functions[function_key] {
+			if !signature.is_public && signature.module_name != ''
+				&& signature.module_name != g.module_name && signature.module_name != 'builtin'
+				&& signature.module_name in g.imports.values() {
+				return g.unsupported('private function `${name}` from imported module `${signature.module_name}`')
+			}
 			argument_offset := if is_method_call { 1 } else { 0 }
 			is_variadic := signature.is_variadic
 			expected_arguments := signature.parameter_types.len - argument_offset - if is_variadic {

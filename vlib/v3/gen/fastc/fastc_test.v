@@ -102,6 +102,34 @@ fn test_generate_files_resolves_modules_without_an_ast() {
 	assert run_result.output.trim_space() == '42'
 }
 
+fn test_generate_files_rejects_private_imported_functions() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_private_import_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'secrets')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'secrets', 'secrets.v')
+	os.write_file(main_file,
+		'module main\nimport secrets\nfn main() { println(secrets.secret()) }\n') or { panic(err) }
+	os.write_file(module_file, 'module secrets\nfn secret() int { return 42 }\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	mut message := ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('private function `secret` from imported module `secrets`'), message
+
+	os.write_file(module_file, 'module secrets\npub fn secret() int { return 42 }\n') or {
+		panic(err)
+	}
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('println(secrets__secret());'), c_source
+}
+
 fn test_disabled_function_attributes_emit_empty_stubs() {
 	mut prefs := pref.new_preferences()
 	prefs.user_defines = []
@@ -389,6 +417,44 @@ fn main() {
 ',
 		'exhaustive_match_expression.v', prefs) or { panic(err) }
 	assert c_source.contains('? (7) : (9)')
+}
+
+fn test_match_statement_without_else_does_not_terminate_function() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main
+
+fn value(x int) int {
+	match x {
+		1 { return 7 }
+	}
+}
+
+fn main() {
+	println(value(1))
+}
+',
+		'non_exhaustive_match_statement.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('non-void function `value` that can fall through'), message
+
+	c_source := generate('module main
+
+fn value(x int) int {
+	match x {
+		1 { return 7 }
+		else { return 9 }
+	}
+}
+
+fn main() {
+	println(value(1))
+}
+',
+		'exhaustive_match_statement.v', prefs) or { panic(err) }
+	assert c_source.contains('else {\n\t\treturn 9;'), c_source
 }
 
 fn test_c_reserved_identifiers_are_escaped_consistently() {
