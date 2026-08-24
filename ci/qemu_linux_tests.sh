@@ -18,7 +18,8 @@ Environment overrides:
   V_QEMU_VM_DIR        VM state directory (default: ~/.local/share/v3-qemu-debian13)
   V_QEMU_SSH_PORT      Forwarded SSH port (default: 2222)
   V_QEMU_GUEST         SSH target (default: v@127.0.0.1)
-  V_QEMU_GUEST_REPO    Guest checkout (default: /home/v/v3)
+  V_QEMU_GUEST_REPO    Guest checkout (default: /home/v/v3); absolute paths using
+                       only letters, digits, '.', '_', '-', and '/' are accepted
   V_QEMU_CPUS          Virtual CPUs (default: 4)
   V_QEMU_MEMORY_MB     Guest memory in MiB (default: 16384)
   V_QEMU_JOBS          V test jobs (default: 1)
@@ -83,6 +84,17 @@ vflags=${V_QEMU_VFLAGS:--cc clang -no-memory-limit}
 no_fallback=${V_QEMU_NO_FALLBACK:-1}
 guest_tmp_root=${V_QEMU_TMPDIR:-/var/tmp/v-qemu-tests}
 stop_after=${V_QEMU_STOP_AFTER:-0}
+
+if [[ ! "$guest_repo" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+	echo "V_QEMU_GUEST_REPO must be an absolute path containing only letters, digits, '.', '_', '-', and '/': ${guest_repo}" >&2
+	exit 1
+fi
+case "/${guest_repo#/}/" in
+	*"/../"*)
+		echo "V_QEMU_GUEST_REPO cannot contain '..' path segments: ${guest_repo}" >&2
+		exit 1
+		;;
+esac
 
 if [[ "$guest_tmp_root" != /* ]]; then
 	echo "V_QEMU_TMPDIR must be an absolute guest path: ${guest_tmp_root}" >&2

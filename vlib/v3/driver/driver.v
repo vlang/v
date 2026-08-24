@@ -2854,7 +2854,7 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 				// splitting. Keep safe function-only headers even when they declare no
 				// types, since dependent cache units still need their static inline APIs.
 				if cache_native_public_include_replays_external_definition(real_root, context,
-					implementation_macros, c_flags, ccompiler, target)
+					implementation_macros, allowed_paths, c_flags, ccompiler, target)
 				{
 					if os.getenv('V3_CACHE_TRACE') != '' {
 						eprintln('  V3 module cache ungated native definition: module=${module_name} path=${real_root}')
@@ -3012,9 +3012,10 @@ fn cache_native_implementation_macro(name string) bool {
 // other context defines kept) so storage-class macros such as a `static inline`
 // hidden behind a macro are expanded before linkage is classified; a textual scan
 // cannot see through them and would misread internal-linkage helpers as external.
-// Results are limited to identifiers the header itself declares so definitions
-// pulled in from system headers are ignored. Any failure to verify is unsafe.
-fn cache_native_public_include_replays_external_definition(path string, context []string, implementation_macros map[string]bool, c_flags []string, ccompiler string, target pref.Target) bool {
+// Results are limited to identifiers declared by the root or its active project
+// headers, so definitions pulled in from system headers are ignored. Any failure
+// to verify is unsafe.
+fn cache_native_public_include_replays_external_definition(path string, context []string, implementation_macros map[string]bool, allowed_paths map[string]bool, c_flags []string, ccompiler string, target pref.Target) bool {
 	mut replay_context := ['#undef SOKOL_IMPL']
 	for line in context {
 		directive, arg := cache_local_c_directive(line)
@@ -3029,8 +3030,19 @@ fn cache_native_public_include_replays_external_definition(path string, context 
 	}
 	preprocessed := cache_preprocessed_native_input(path, replay_context, c_flags, ccompiler,
 		target) or { return true }
-	source := os.read_file(os.real_path(path)) or { return true }
-	file_scope := c_source_file_scope_identifiers(source)
+	mut replay_macros := cache_local_c_compiler_macros(c_flags, ccompiler, target)
+	cache_apply_native_root_context(replay_context, mut replay_macros)
+	mut active_paths := map[string]bool{}
+	active_source, active_complete := cache_c_source_definitely_active_code_for_path_with_status(path,
+		allowed_paths, mut active_paths, mut replay_macros, false)
+	if !active_complete {
+		return true
+	}
+	// Include identifiers from active project headers reached transitively by the
+	// root. The preprocessor output contains their definitions too; filtering only
+	// against the raw root would miss an external definition in a child header and
+	// replay it into every cached dependent.
+	file_scope := c_source_file_scope_identifiers(active_source)
 	all_functions, functions_complete :=
 		modulecache.c_source_function_identifiers_with_status(preprocessed)
 	static_functions, static_complete :=

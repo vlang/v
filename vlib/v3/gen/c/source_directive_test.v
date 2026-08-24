@@ -88,7 +88,7 @@ fn test_postinclude_header_does_not_suppress_earlier_c_prototype() {
 	assert 'postinclude_api' in preinclude_g.inlined_c_declared_fns
 }
 
-fn test_unscanned_preserved_header_suppresses_guessed_externs_from_its_source_file() {
+fn test_unscanned_preserved_header_only_suppresses_known_symbols() {
 	root := os.join_path(os.vtmp_dir(), 'v3_unscanned_header_${os.getpid()}')
 	source := os.join_path(root, 'main.v')
 	missing_header := os.join_path(root, 'compiler-search-only', 'api.h')
@@ -100,9 +100,10 @@ fn test_unscanned_preserved_header_suppresses_guessed_externs_from_its_source_fi
 		typ:   '"${missing_header}"'
 	}, source, false)
 
-	assert source in g.unscanned_c_header_files
+	assert g.should_emit_c_extern_decl_from_file('unrelated_api', source)
+	g.collect_preserved_c_fns(['header_api'])
 	assert !g.should_emit_c_extern_decl_from_file('header_api', source)
-	assert g.should_emit_c_extern_decl_from_file('header_api', os.join_path(root, 'other.v'))
+	assert g.should_emit_c_extern_decl_from_file('unrelated_api', os.join_path(root, 'other.v'))
 }
 
 fn test_preinclude_carries_macro_state_to_later_preincludes() {

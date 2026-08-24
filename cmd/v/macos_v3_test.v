@@ -1028,15 +1028,17 @@ fn test_autofree_non_direct_commands_stay_on_the_standard_command_path() {
 }
 
 fn test_ownership_delegation_is_platform_scoped_and_honors_old_compiler() {
-	assert !ownership_delegation_is_requested(false, false, false, 'macos')
-	assert ownership_delegation_is_requested(true, false, false, 'linux')
-	assert ownership_delegation_is_requested(true, false, false, 'windows')
-	assert ownership_delegation_is_requested(true, true, false, 'linux')
-	assert ownership_delegation_is_requested(false, true, false, 'macos')
-	assert !ownership_delegation_is_requested(false, true, false, 'linux')
-	assert !ownership_delegation_is_requested(false, true, false, 'windows')
-	assert !ownership_delegation_is_requested(false, true, true, 'macos')
-	assert !ownership_delegation_is_requested(true, false, true, 'macos')
+	assert !ownership_delegation_is_requested(false, false, false, false, 'macos')
+	assert ownership_delegation_is_requested(true, false, false, false, 'linux')
+	assert ownership_delegation_is_requested(true, false, false, false, 'windows')
+	assert ownership_delegation_is_requested(true, true, false, false, 'linux')
+	assert ownership_delegation_is_requested(false, true, false, false, 'macos')
+	assert !ownership_delegation_is_requested(false, true, false, false, 'linux')
+	assert !ownership_delegation_is_requested(false, true, false, false, 'windows')
+	assert !ownership_delegation_is_requested(false, true, true, false, 'macos')
+	assert !ownership_delegation_is_requested(true, false, true, false, 'macos')
+	assert !ownership_delegation_is_requested(false, true, false, true, 'macos')
+	assert ownership_delegation_is_requested(true, true, false, true, 'macos')
 }
 
 fn test_ownership_forwarding_adds_the_compile_time_define_once() {
@@ -2337,8 +2339,8 @@ fn test_macos_v3_keeps_autofree_builds_off_non_ownership_v3() {
 	})
 }
 
-fn test_linux_explicit_v3_autofree_build_is_rejected() {
-	$if linux {
+fn test_explicit_v3_autofree_build_is_rejected_before_ownership_delegation() {
+	$if linux || macos {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_explicit_autofree_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root) or { panic(err) }

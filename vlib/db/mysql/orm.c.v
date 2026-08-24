@@ -57,7 +57,7 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 
 	mut lengths := []C.v_mysql_ulong{len: int(num_fields), init: 0}
 	mut is_null := []C.v_mysql_bool{len: int(num_fields)}
-	stmt.bind_res(fields, data_pointers, lengths, is_null, num_fields)
+	stmt.bind_res_abi(fields, data_pointers, lengths, is_null, num_fields)
 
 	mut types := config.types.clone()
 	mut field_types := []FieldType{}

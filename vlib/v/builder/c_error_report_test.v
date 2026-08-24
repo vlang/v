@@ -654,6 +654,7 @@ fn test_selected_v_source_only_uploads_mapped_v_source_chunk() {
 }
 
 fn test_bounded_v_source_truncates_on_line_boundaries_with_comment_marker() {
+	assert bounded_v_source('private source', 0, 0) == ''
 	mut lines := []string{}
 	for i in 0 .. 400 {
 		lines << 'line_${i} = some_value_here'

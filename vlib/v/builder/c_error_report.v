@@ -438,7 +438,11 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	}
 	payload['COUTPUT'] = truncated_report_text(report.c_output, c_output_budget)
 	content_budget = budget - v3_report_env_payload_bytes(payload)
-	payload['VSOURCE'] = bounded_v_source(report.v_source, content_budget, 0)
+	payload['VSOURCE'] = if content_budget > 0 {
+		bounded_v_source(report.v_source, content_budget, 0)
+	} else {
+		''
+	}
 	set_v3_report_env_payload(payload)
 }
 
@@ -1161,7 +1165,10 @@ fn v_source_for_report(lines []string, center int, radius int) VSourceChunk {
 // failing line is never dropped even inside a declaration larger than `max_bytes`. Otherwise it
 // keeps the start (declarations/imports) and the end (usually where the failing code lives).
 fn bounded_v_source(source string, max_bytes int, focus_line int) string {
-	if max_bytes <= 0 || source.len <= max_bytes {
+	if max_bytes <= 0 {
+		return ''
+	}
+	if source.len <= max_bytes {
 		return source
 	}
 	marker := '\n${c_error_v_source_truncation_notice}\n'

@@ -226,7 +226,7 @@ fn maybe_delegate_to_ownership(command string, prefs &pref.Preferences, merged_a
 	is_ownership := '-ownership' in merged_args
 	is_autofree := prefs.autofree
 	if !ownership_delegation_is_requested(is_ownership, is_autofree, prefs.old_compiler,
-		os.user_os()) {
+		prefs.new_compiler, os.user_os()) {
 		return
 	}
 	if is_autofree && !is_ownership && (autofree_requires_standard_compiler(prefs)
@@ -316,12 +316,17 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		|| (prefs.backend == .wasm && prefs.is_run) || prefs.path.ends_with('.vv')
 }
 
-fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, host_os string) bool {
+fn ownership_delegation_is_requested(is_ownership bool, is_autofree bool, old_compiler bool, new_compiler bool, host_os string) bool {
 	if old_compiler {
 		return false
 	}
 	if is_ownership {
 		return true
+	}
+	// Let the embedded dispatcher reject the unsupported explicit combination;
+	// ownership delegation would otherwise strip -new-compiler before it can do so.
+	if new_compiler {
+		return false
 	}
 	return is_autofree && host_os == 'macos'
 }

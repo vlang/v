@@ -74,6 +74,9 @@ mut:
 	res              []C.MYSQL_BIND
 	auto_res_lengths []C.v_mysql_ulong
 	auto_res_is_null []C.v_mysql_bool
+	compat_lengths   &u32  = unsafe { nil }
+	compat_is_null   &bool = unsafe { nil }
+	compat_res_count int
 }
 
 // str returns a text representation of the given mysql statement `s`.
@@ -148,12 +151,22 @@ pub fn (stmt Stmt) fetch_fields(res &C.MYSQL_RES) &C.MYSQL_FIELD {
 // See https://dev.mysql.com/doc/c-api/5.7/en/mysql-stmt-fetch.html
 pub fn (stmt Stmt) fetch_stmt() !int {
 	result := C.mysql_stmt_fetch(stmt.stmt)
+	stmt.copy_compat_result_values()
 
 	if result !in [0, 100] && stmt.get_error_msg() != '' {
 		return stmt.error(result)
 	}
 
 	return result
+}
+
+fn (stmt &Stmt) copy_compat_result_values() {
+	for i in 0 .. stmt.compat_res_count {
+		unsafe {
+			stmt.compat_lengths[i] = u32(stmt.auto_res_lengths[i])
+			stmt.compat_is_null[i] = stmt.auto_res_is_null[i] != 0
+		}
+	}
 }
 
 // close disposes the prepared `stmt`. The statement becomes invalid, and should not be used anymore after this call.
@@ -285,9 +298,31 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 }
 
 // bind_res will store one result in the statement `stmt`
-pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []C.v_mysql_ulong, is_null []C.v_mysql_bool, num_fields int) {
+pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []u32, is_null []bool, num_fields int) {
+	count := if num_fields > 0 { num_fields } else { 0 }
+	stmt.auto_res_lengths = []C.v_mysql_ulong{len: count}
+	stmt.auto_res_is_null = []C.v_mysql_bool{len: count}
+	stmt.compat_res_count = int_min(count, int_min(lengths.len, is_null.len))
+	stmt.compat_lengths = unsafe { nil }
+	stmt.compat_is_null = unsafe { nil }
+	if stmt.compat_res_count > 0 {
+		stmt.compat_lengths = unsafe { &lengths[0] }
+		stmt.compat_is_null = unsafe { &is_null[0] }
+	}
+	stmt.bind_res_abi_arrays(fields, dataptr, stmt.auto_res_lengths, stmt.auto_res_is_null,
+		num_fields)
+}
+
+fn (mut stmt Stmt) bind_res_abi(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []C.v_mysql_ulong, is_null []C.v_mysql_bool, num_fields int) {
 	stmt.auto_res_lengths = []C.v_mysql_ulong{}
 	stmt.auto_res_is_null = []C.v_mysql_bool{}
+	stmt.compat_lengths = unsafe { nil }
+	stmt.compat_is_null = unsafe { nil }
+	stmt.compat_res_count = 0
+	stmt.bind_res_abi_arrays(fields, dataptr, lengths, is_null, num_fields)
+}
+
+fn (mut stmt Stmt) bind_res_abi_arrays(fields &C.MYSQL_FIELD, dataptr []&u8, lengths []C.v_mysql_ulong, is_null []C.v_mysql_bool, num_fields int) {
 	if num_fields <= 0 {
 		stmt.res = []C.MYSQL_BIND{}
 		return
