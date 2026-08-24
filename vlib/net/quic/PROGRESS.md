@@ -1231,8 +1231,45 @@ way a closed TCP port does, so auto-racing every `https://` request
 against h3 would regress the common case; real happy-eyeballs-style
 fallback is deferred as a separate follow-up feature).
 
-13. Server support — explicitly out of committed scope, but Phases 1-9 are
-    designed to need no rework for it (`role` field already present).
+## Phase 13: Server support — IN PROGRESS (13a started)
+
+Opened following a scoping pass mapping the completed client against what
+server support needs (see tracking issue #27675 comment). Phases 1-9's core
+QUIC layer is already role-parameterized (`role QuicRole` on `QuicConn`;
+`is_locally_initiated`/`initial_*_limit_for_stream` already take a role
+explicitly) — none of that foundation needs rework. Same one-sub-phase-per-
+stacked-PR convention as Phase 12's 12a-12d.
+
+- [ ] **13a** (in progress) — TLS 1.3 server handshake: ServerHello +
+      EncryptedExtensions construction, Certificate presentation,
+      CertificateVerify **signing** (only verify exists today), server-side
+      Finished, HelloRetryRequest generation (cookie extension — the client
+      only ever rejects a second HRR, never sends one).
+- [ ] **13b** — Retry + address validation: Retry packet + opaque token
+      minting/validation (`retry.v` currently only verifies), RFC 9000 §8.1
+      anti-amplification 3x accounting (already flagged as a deferred,
+      server-only branch in `loss_detection.v`/`coalesce.v`).
+- [ ] **13c** — Connection ID lifecycle: `NEW_CONNECTION_ID`/
+      `RETIRE_CONNECTION_ID` frames (currently fall through `frame.v`'s
+      generic "not yet implemented" branch), stateless reset token
+      generation per issued CID (`StatelessResetTracker` currently only
+      checks incoming tokens).
+- [ ] **13d** — UDP listener + connection demux: one socket routing many
+      concurrent connections by connection ID (not 4-tuple, since QUIC
+      supports migration) — no analog in the client's transport today; the
+      new-connection acceptance path (unrecognized DCID → Retry-or-accept).
+- [ ] **13e** — `h3_server.v` wiring, mirroring `h2_server.v`'s established
+      shape (minimal/serial first, concurrency as an explicit follow-up),
+      plus server certificate/key loading.
+- [ ] *(optional, deferrable)* Connection migration (`PATH_CHALLENGE`/
+      `PATH_RESPONSE`) — both unimplemented today; a minimal v1 server can
+      ship without full migration support, same as the client structurally
+      deferred it.
+
+Still out of scope regardless: 0-RTT (Phase 14, separate); server push stays
+permanently disabled (RFC 9114 §7.2.7, a Phase 12 decision independent of
+server support existing at all).
+
 14. 0-RTT — explicitly out of committed scope.
 
 ## Scope decisions in effect (see tracking issue for rationale)
