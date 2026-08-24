@@ -10977,6 +10977,14 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, 
 		}
 	}
 	actual_fn := fn_type_from(g.usable_expr_type(arg_id)) or { return false }
+	if g.callback_fn_types_direct_compatible(actual_fn, expected_fn, expected_c_abi) {
+		if actual_name.len > 0 {
+			g.write(g.callback_c_fn_name(actual_name))
+		} else {
+			g.gen_expr(arg_id)
+		}
+		return true
+	}
 	if !g.callback_fn_types_cast_compatible(actual_fn, expected_fn, expected_c_abi) {
 		return false
 	}
@@ -10989,7 +10997,11 @@ fn (mut g FlatGen) gen_callback_fn_value_for_expected_c_abi(arg_id flat.NodeId, 
 		expected_ct = g.resolve_fn_ptr_type(expected_ct)
 	}
 	g.write('(${expected_ct})')
-	g.gen_expr(arg_id)
+	if actual_name.len > 0 {
+		g.write(g.callback_c_fn_name(actual_name))
+	} else {
+		g.gen_expr(arg_id)
+	}
 	return true
 }
 
