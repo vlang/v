@@ -485,3 +485,135 @@ fn test_parse_server_hello_hello_retry_request_rejects_unsolicited_extension() {
 	}
 	assert false, 'expected an error for an unsolicited alpn extension in HelloRetryRequest'
 }
+
+// build_server_hello / build_encrypted_extensions (Phase 13a, server-role
+// construction). Round-tripped through this same file's own parse
+// functions, which is a real cross-check: build_server_hello and
+// parse_server_hello are independently written against the RFC text, not
+// against each other, so a round trip that only ever validated the wire
+// shape it itself produced would prove nothing.
+
+fn test_build_server_hello_round_trips_through_parse_server_hello() {
+	random := []u8{len: 32, init: 0x11}
+	key := []u8{len: 65, init: 0x04}
+	msg := build_server_hello(random: random, ecdhe_public_key: key)!
+	parsed_msg, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	assert parsed_msg.typ == .server_hello
+	result := parse_server_hello(parsed_msg.body)!
+	match result {
+		ParsedServerHello {
+			assert result.random == random
+			assert result.cipher_suite == cipher_suite_tls_aes_128_gcm_sha256
+			assert result.selected_version == tls_version_1_3
+			assert result.key_share_group == named_group_secp256r1
+			assert result.key_share_key_exchange == key
+			assert result.extensions.len == 2
+		}
+		ParsedHelloRetryRequest {
+			assert false, 'expected a real ServerHello, not HRR'
+		}
+	}
+}
+
+fn test_build_server_hello_rejects_wrong_random_length() {
+	build_server_hello(random: []u8{len: 31}, ecdhe_public_key: []u8{len: 65}) or {
+		assert err.msg().contains('32 bytes')
+		return
+	}
+	assert false, 'expected an error for a 31-byte random'
+}
+
+// A real caller must never be able to accidentally produce a ServerHello
+// that a peer would interpret as a HelloRetryRequest -- the two share a
+// wire type, distinguished ONLY by this exact 32-byte value (RFC 8446
+// §4.1.3), so colliding with it by construction (e.g. a broken RNG, or a
+// test fixture reusing the constant) must be caught here rather than
+// silently producing an ambiguous message.
+fn test_build_server_hello_rejects_hello_retry_request_random_collision() {
+	build_server_hello(random: hello_retry_request_random[..].clone(), ecdhe_public_key: []u8{len: 65}) or {
+		assert err.msg().contains('HelloRetryRequest')
+		return
+	}
+	assert false, 'expected an error when random collides with the HelloRetryRequest magic value'
+}
+
+fn test_build_encrypted_extensions_round_trips_through_parse_encrypted_extensions() {
+	params := QuicTransportParameters{
+		initial_source_connection_id:       []u8{len: 8, init: 0xaa}
+		original_destination_connection_id: []u8{len: 8, init: 0xbb}
+	}
+	msg := build_encrypted_extensions(
+		transport_parameters:    params
+		selected_alpn:           'h3'
+		acknowledge_server_name: true
+	)!
+	parsed_msg, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	assert parsed_msg.typ == .encrypted_extensions
+	extensions := parse_encrypted_extensions(parsed_msg.body)!
+	assert extensions.len == 3
+
+	sn := find_extension(extensions, ext_server_name) or { panic('missing server_name') }
+	assert sn.data.len == 0
+
+	alpn_ext := find_extension(extensions, ext_alpn) or { panic('missing alpn') }
+	assert decode_alpn_response(alpn_ext.data)! == 'h3'
+
+	tp_ext := find_extension(extensions, ext_quic_transport_parameters) or {
+		panic('missing quic_transport_parameters')
+	}
+	decoded := decode_transport_parameters(tp_ext.data)!
+	assert decoded.initial_source_connection_id? == []u8{len: 8, init: 0xaa}
+	assert decoded.original_destination_connection_id? == []u8{len: 8, init: 0xbb}
+}
+
+fn test_build_encrypted_extensions_omits_server_name_when_not_acknowledging() {
+	params := QuicTransportParameters{
+		initial_source_connection_id:       []u8{len: 8, init: 0xaa}
+		original_destination_connection_id: []u8{len: 8, init: 0xbb}
+	}
+	msg := build_encrypted_extensions(transport_parameters: params, selected_alpn: 'h3')!
+	_, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	parsed_msg, _ := parse_handshake_message(msg)!
+	extensions := parse_encrypted_extensions(parsed_msg.body)!
+	assert extensions.len == 2
+	if _ := find_extension(extensions, ext_server_name) {
+		assert false, 'server_name must be absent when acknowledge_server_name is false'
+	}
+}
+
+fn test_build_encrypted_extensions_requires_selected_alpn() {
+	params := QuicTransportParameters{
+		initial_source_connection_id:       []u8{len: 8, init: 0xaa}
+		original_destination_connection_id: []u8{len: 8, init: 0xbb}
+	}
+	build_encrypted_extensions(transport_parameters: params, selected_alpn: '') or {
+		assert err.msg().contains('ALPN')
+		return
+	}
+	assert false, 'expected an error for an empty selected_alpn'
+}
+
+fn test_build_encrypted_extensions_requires_initial_source_connection_id() {
+	params := QuicTransportParameters{
+		original_destination_connection_id: []u8{len: 8, init: 0xbb}
+	}
+	build_encrypted_extensions(transport_parameters: params, selected_alpn: 'h3') or {
+		assert err.msg().contains('initial_source_connection_id')
+		return
+	}
+	assert false, 'expected an error for a missing initial_source_connection_id'
+}
+
+fn test_build_encrypted_extensions_requires_original_destination_connection_id() {
+	params := QuicTransportParameters{
+		initial_source_connection_id: []u8{len: 8, init: 0xaa}
+	}
+	build_encrypted_extensions(transport_parameters: params, selected_alpn: 'h3') or {
+		assert err.msg().contains('original_destination_connection_id')
+		return
+	}
+	assert false, 'expected an error for a missing original_destination_connection_id'
+}

@@ -302,6 +302,182 @@ pub fn parse_server_hello(body []u8) !ServerHelloMessage {
 	}
 }
 
+// encode_key_share_extension_server encodes the SERVER-side key_share
+// payload (RFC 8446 §4.2.8): a BARE KeyShareEntry (group(2) +
+// key_exchange_len(2) + key_exchange), with no outer list-length wrapper.
+// This is NOT the same shape as tls13_client_hello.v's
+// encode_key_share_extension, which wraps its entry in an extra
+// client_shares<0..2^16-1> list-length prefix -- the two directions share an
+// extension type but not a wire shape, the same asymmetry
+// encode_supported_versions_extension_server documents for
+// supported_versions. Confirmed against parse_server_hello's own parsing
+// (this file), which reads ks_ext.data[0..2] directly as the group with no
+// list-length prefix to skip first.
+fn encode_key_share_extension_server(group u16, key_exchange []u8) ![]u8 {
+	if key_exchange.len == 0 || key_exchange.len > 0xffff - 4 {
+		return error('quic: key_exchange length ${key_exchange.len} out of range')
+	}
+	mut data := []u8{}
+	data << u8(group >> 8)
+	data << u8(group)
+	data << u8(key_exchange.len >> 8)
+	data << u8(key_exchange.len)
+	data << key_exchange
+	return encode_extension(ext_key_share, data)
+}
+
+// encode_supported_versions_extension_server encodes the SERVER-side
+// supported_versions payload (RFC 8446 §4.2.1): a bare 2-byte
+// selected_version, not the ClientHello's length-prefixed version list --
+// see parse_supported_versions_from_server's identical distinction on the
+// parse side. v1 only ever selects TLS 1.3, matching the single version
+// build_client_hello offers.
+fn encode_supported_versions_extension_server() ![]u8 {
+	mut data := []u8{}
+	data << u8(tls_version_1_3 >> 8)
+	data << u8(tls_version_1_3)
+	return encode_extension(ext_supported_versions, data)
+}
+
+// ServerHelloParams is everything build_server_hello needs beyond what's
+// fixed by v1's scope decisions (single cipher suite, single selected
+// version, single named group).
+pub struct ServerHelloParams {
+pub:
+	// Exactly 32 bytes. Caller supplies so a real caller can use a genuine
+	// CSPRNG while tests stay deterministic -- same convention as
+	// ClientHelloParams.random. MUST NOT equal the RFC 8446 §4.1.3 magic
+	// HelloRetryRequest value; a caller that wants to send an HRR uses
+	// build_hello_retry_request (below) instead, never this function with a
+	// hand-picked random.
+	random []u8
+	// This SERVER's own ephemeral ECDHE public key for the selected group
+	// (Phase 1 PublicKey.uncompressed_bytes() output, 65 bytes for P-256).
+	// v1 only ever selects named_group_secp256r1, matching the single group
+	// build_client_hello offers -- a real caller has already confirmed the
+	// ClientHello's own key_share offered this group before calling here.
+	ecdhe_public_key []u8
+}
+
+// build_server_hello constructs a complete, real (non-HelloRetryRequest)
+// TLS 1.3 ServerHello handshake message (RFC 8446 §4.1.3), framed via
+// encode_handshake_message. Sends exactly two extensions: supported_versions
+// and key_share -- the full server_hello_allowed set this same file's
+// parse_server_hello enforces on the client side, kept in sync by
+// construction rather than duplicated as a separate list. legacy_session_id
+// is always echoed as empty: RFC 9001 §8.4 states a server "SHOULD treat the
+// receipt of a TLS ClientHello with a non-empty legacy_session_id field as a
+// connection error" -- a spec-compliant server that reached this point has
+// already rejected any handshake where the client sent a non-empty session
+// ID, so there is never a non-empty value to echo back.
+pub fn build_server_hello(p ServerHelloParams) ![]u8 {
+	if p.random.len != 32 {
+		return error('quic: ServerHello random must be exactly 32 bytes, got ${p.random.len}')
+	}
+	if p.random == hello_retry_request_random[..] {
+		return error('quic: ServerHello random must not equal the RFC 8446 §4.1.3 HelloRetryRequest magic value -- use build_hello_retry_request to send an HRR')
+	}
+
+	mut body := []u8{}
+	// legacy_version MUST be 0x0303 (RFC 8446 §4.1.3), matching
+	// build_client_hello's identical fixed value -- the real version is
+	// negotiated via supported_versions below.
+	body << u8(0x03)
+	body << u8(0x03)
+	body << p.random
+	// legacy_session_id_echo: always empty, see the doc comment above.
+	body << u8(0)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256 >> 8)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256)
+	// legacy_compression_method MUST be 0 (null), RFC 8446 §4.1.3.
+	body << u8(0)
+
+	mut extensions := []u8{}
+	extensions << encode_key_share_extension_server(named_group_secp256r1, p.ecdhe_public_key)!
+	extensions << encode_supported_versions_extension_server()!
+
+	if extensions.len > 0xffff {
+		return error('quic: ServerHello extensions block too large: ${extensions.len} bytes')
+	}
+	body << u8(extensions.len >> 8)
+	body << u8(extensions.len)
+	body << extensions
+
+	return encode_handshake_message(.server_hello, body)!
+}
+
+// EncryptedExtensionsParams is everything build_encrypted_extensions needs.
+pub struct EncryptedExtensionsParams {
+pub:
+	// This SERVER's own transport parameters (RFC 9001 §8.2). Every field is
+	// the server's own value, not the client's -- e.g.
+	// initial_max_stream_data_bidi_local/_remote here describe streams from
+	// THIS server's perspective, resolved the same way flow_control.v's
+	// initial_send_limit_for_stream/initial_receive_limit_for_stream already
+	// do for the connection's actual flow-control windows.
+	transport_parameters QuicTransportParameters
+	// The single protocol this server selected from the client's ALPN offer
+	// list (RFC 7301 §3.2: "the server SHALL include only one protocol name
+	// in the ProtocolNameList"). Never empty -- a server with no matching
+	// protocol MUST fail the handshake with no_application_protocol (RFC
+	// 9001 §8.1) rather than reach this function at all.
+	selected_alpn string
+	// True when the ClientHello carried a server_name extension this server
+	// wants to acknowledge. RFC 6066 §3: the acknowledgement's
+	// extension_data is always empty -- this server never echoes the
+	// hostname back, matching what parse_encrypted_extensions (this same
+	// file, client-role) already requires of a peer.
+	acknowledge_server_name bool
+}
+
+// build_encrypted_extensions constructs a complete EncryptedExtensions
+// handshake message (RFC 8446 §4.3.1: a length-prefixed extension list,
+// nothing else), framed via encode_handshake_message. Sends only extensions
+// this client's own parse_encrypted_extensions (this same file) actually
+// permits -- alpn and quic_transport_parameters unconditionally,
+// server_name only when acknowledging one. supported_groups is
+// deliberately never sent: v1 offers no session resumption or 0-RTT (Phase
+// 14, out of scope), so there is nothing for a future-connection group hint
+// to usefully inform.
+pub fn build_encrypted_extensions(p EncryptedExtensionsParams) ![]u8 {
+	if p.selected_alpn.len == 0 {
+		return error('quic: EncryptedExtensions must select exactly one ALPN protocol (RFC 7301 §3.2) -- a server with no match must fail the handshake before reaching here (RFC 9001 §8.1)')
+	}
+	// RFC 9000 §7.3 / §18.2: "An endpoint MUST treat the absence of the
+	// initial_source_connection_id transport parameter from either endpoint
+	// ... as a connection error of type TRANSPORT_PARAMETER_ERROR" -- this
+	// server's own SCID choice, mirroring build_client_hello's identical
+	// check for the client's own value.
+	if p.transport_parameters.initial_source_connection_id == none {
+		return error('quic: EncryptedExtensions transport parameters must include initial_source_connection_id (RFC 9000 §7.3)')
+	}
+	// RFC 9000 §7.3/§18.2: "...or the absence of the
+	// original_destination_connection_id transport parameter from the
+	// server as a connection error of type TRANSPORT_PARAMETER_ERROR" --
+	// unlike initial_source_connection_id, this one is server-only and has
+	// no client-side analog to mirror.
+	if p.transport_parameters.original_destination_connection_id == none {
+		return error('quic: EncryptedExtensions transport parameters must include original_destination_connection_id (RFC 9000 §7.3, server-only)')
+	}
+
+	mut extensions := []u8{}
+	if p.acknowledge_server_name {
+		extensions << encode_extension(ext_server_name, []u8{})!
+	}
+	extensions << encode_alpn_extension([p.selected_alpn])!
+	extensions << encode_quic_transport_parameters_extension(p.transport_parameters)!
+
+	if extensions.len > 0xffff {
+		return error('quic: EncryptedExtensions block too large: ${extensions.len} bytes')
+	}
+	mut body := []u8{}
+	body << u8(extensions.len >> 8)
+	body << u8(extensions.len)
+	body << extensions
+
+	return encode_handshake_message(.encrypted_extensions, body)!
+}
+
 // encrypted_extensions_allowed is the intersection of RFC 8446 §4.2's own
 // per-message applicability table (only server_name, max_fragment_length,
 // supported_groups, use_srtp, heartbeat, alpn, client_certificate_type,
