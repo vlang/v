@@ -10546,8 +10546,9 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		''
 	}
 	declarations := cache_source_without_cached_native_inputs(raw_declarations, state, false)
-	compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
-		warning_flags, generated_c_flags, objective_c, interface_impl_signature)
+	compile_signature := v3_cached_object_wrapper_compile_signature(v3_cached_object_compile_signature(c_standard,
+		opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, interface_impl_signature),
+		generated_source)
 	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()

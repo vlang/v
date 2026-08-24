@@ -1107,6 +1107,9 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, first_main, first_output)
 	assert run_module_cache_binary(first_output) == '42'
+	first_builtin_objects :=
+		module_cache_object_hashes(cache_dir).keys().filter(it.starts_with('builtin_'))
+	assert first_builtin_objects.len > 0
 
 	second_main := os.join_path(root, 'second_main.v')
 	write_module_cache_file(root, 'second_main.v', 'module main
@@ -1118,6 +1121,9 @@ fn main() {
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, second_main, second_output)
 	assert run_module_cache_binary(second_output) == '42'
+	second_builtin_objects :=
+		module_cache_object_hashes(cache_dir).keys().filter(it.starts_with('builtin_'))
+	assert second_builtin_objects.len > first_builtin_objects.len
 }
 
 fn test_module_cache_static_inline_attributes_are_not_storage() {
