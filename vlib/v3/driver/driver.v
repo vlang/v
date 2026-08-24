@@ -97,6 +97,9 @@ mut:
 	external_missing_paths    []string
 	external_inputs_ready     bool
 	dependency_metadata       map[string]string
+	cached_source_digests     map[string]string
+	fallback_required_modules map[string]bool
+	fallback_warmup_modules   map[string]bool
 	parsed_from_source        map[string]bool
 	source_body_modules       map[string]bool
 	native_source_modules     map[string]bool
@@ -6392,7 +6395,7 @@ fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_d
 	return false
 }
 
-fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string) map[string]string {
+fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string, cached_source_digests map[string]string, ignored_source_paths map[string]bool) map[string]string {
 	mut sources := map[string]string{}
 	mut ambiguous := map[string]bool{}
 	builtin_root :=
@@ -6401,8 +6404,11 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string) map[string]st
 		if (file.name.ends_with('.v') || file.name.ends_with('.vv')
 			|| file.name.ends_with('.vsh')) && file.has_source_sha256() {
 			path := os.real_path(file.name)
-			// V1 and V3 select opposite v3_backend ownership-interface files. All other
-			// bundled vlib sources are shared inputs and remain covered by verification.
+			if ignored_source_paths[path] {
+				continue
+			}
+			// V1 and V3 select different internal builtin support files. All other bundled
+			// vlib sources are shared inputs and remain covered by verification.
 			if v3_fallback_backend_specific_builtin_source(path, builtin_root) {
 				continue
 			}
@@ -6417,15 +6423,73 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string) map[string]st
 			}
 		}
 	}
+	for source_path, digest in cached_source_digests {
+		path := os.real_path(source_path)
+		if ignored_source_paths[path] {
+			continue
+		}
+		if digest == '' {
+			ambiguous[path] = true
+			continue
+		}
+		if v3_fallback_backend_specific_builtin_source(path, builtin_root) {
+			continue
+		}
+		if old_digest := sources[path] {
+			if old_digest != digest {
+				ambiguous[path] = true
+			}
+		} else {
+			sources[path] = digest
+		}
+	}
 	for path, _ in ambiguous {
 		sources.delete(path)
 	}
 	return sources
 }
 
+fn record_v3_fallback_module_use(mut cache_state V3ModuleCacheState, module_name string, is_warmup bool) {
+	if module_name == '' {
+		return
+	}
+	if is_warmup {
+		cache_state.fallback_warmup_modules[module_name] = true
+	} else {
+		cache_state.fallback_required_modules[module_name] = true
+	}
+}
+
+fn v3_fallback_ignored_warmup_source_paths(cache_state &V3ModuleCacheState) map[string]bool {
+	mut ignored := map[string]bool{}
+	for module_name, _ in cache_state.fallback_warmup_modules {
+		if cache_state.fallback_required_modules[module_name] {
+			continue
+		}
+		for path in cache_state.module_sources[module_name] {
+			ignored[os.real_path(path)] = true
+		}
+	}
+	return ignored
+}
+
+fn record_v3_cached_source_digests(mut cache_state V3ModuleCacheState, source_digests map[string]string) {
+	for path, digest in source_digests {
+		if path in cache_state.cached_source_digests {
+			if cache_state.cached_source_digests[path] != digest {
+				// Empty is an ambiguity marker. Never let a later cache lookup restore a
+				// path whose verified content changed during this compiler run.
+				cache_state.cached_source_digests[path] = ''
+			}
+			continue
+		}
+		cache_state.cached_source_digests[path] = digest
+	}
+}
+
 fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string) bool {
 	return (path == builtin_root || path.starts_with(builtin_root + os.path_separator))
-		&& os.file_name(path) in ['ownership_interface_d_v3_backend.v', 'ownership_interface_notd_v3_backend.v']
+		&& os.file_name(path) in ['ownership_interface_d_v3_backend.v', 'ownership_interface_notd_v3_backend.v', 'prealloc.c.v']
 }
 
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {
@@ -7644,6 +7708,9 @@ pub fn run(args []string) {
 		native_root_owners:        map[string]string{}
 		external_input_signatures: map[string]string{}
 		dependency_metadata:       map[string]string{}
+		cached_source_digests:     map[string]string{}
+		fallback_required_modules: map[string]bool{}
+		fallback_warmup_modules:   map[string]bool{}
 		parsed_from_source:        map[string]bool{}
 		source_body_modules:       map[string]bool{}
 		native_source_modules:     map[string]bool{}
@@ -7658,6 +7725,7 @@ pub fn run(args []string) {
 	if !force_cache_source {
 		if bundle_object := cache_manager.valid_object('builtin', bundle_sources) {
 			if builtin_header := cache_manager.valid_header('builtin', builtin_files) {
+				record_v3_cached_source_digests(mut cache_state, builtin_header.source_digests)
 				cache_state.bundle_valid = true
 				cache_state.objects['builtin'] = bundle_object.object
 				if modulecache.header_needs_source(builtin_header) {
@@ -7765,7 +7833,8 @@ pub fn run(args []string) {
 	// Preserve the digest of every exact source buffer V3 parsed before any parser or
 	// later compiler error can request the compatibility compiler. The dispatcher owns
 	// this staging directory and forwards only content plus verification metadata.
-	fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot)
+	fallback_report_sources := macos_v3_fallback_report_sources(a, prefs.vroot,
+		cache_state.cached_source_digests, v3_fallback_ignored_warmup_source_paths(cache_state))
 	_ = stage_macos_v3_fallback_source_digests(macos_v3_c_error_dir, fallback_report_sources)
 	if print_v_files || print_watched_files {
 		mut watched := map[string]bool{}
@@ -14373,11 +14442,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				if module_identity.len > 0 {
 					set_node_value_canonical(mut a, node_idx, module_identity)
 				}
+				record_v3_fallback_module_use(mut cache_state, module_identity,
+					is_bundle_warmup_import)
 				record_cache_module_dependency(mut cache_state, cur_module, module_identity)
 				node_idx++
 				continue
 			}
 			if mod_name in parsed_modules {
+				record_v3_fallback_module_use(mut cache_state, mod_name, is_bundle_warmup_import)
 				record_cache_module_dependency(mut cache_state, cur_module, mod_name)
 				node_idx++
 				continue
@@ -14411,6 +14483,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				set_node_value_canonical(mut a, node_idx, module_identity)
 			}
 			cache_module := if module_identity.len > 0 { module_identity } else { mod_name }
+			record_v3_fallback_module_use(mut cache_state, cache_module, is_bundle_warmup_import)
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			mod_files := if mod_dir_exists {
@@ -14472,6 +14545,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				if is_builtin_bundle {
 					if cache_state.bundle_valid {
 						if header := cache_state.manager.valid_header(cache_module, mod_files) {
+							record_v3_cached_source_digests(mut cache_state, header.source_digests)
 							if !modulecache.header_needs_source(header) {
 								parse_files = [header.header]
 								if mod_files.len > 0 {
@@ -14500,6 +14574,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 					if cached := cache_state.manager.valid_entry_with_metadata_cache(cache_module,
 						mod_files, mut cache_state.dependency_metadata)
 					{
+						record_v3_cached_source_digests(mut cache_state, cached.source_digests)
 						if !modulecache.header_needs_source(cached) {
 							parse_files = [cached.header]
 							if mod_files.len > 0 {

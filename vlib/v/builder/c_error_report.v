@@ -586,12 +586,14 @@ fn (b &Builder) v3_fallback_input_status(report ExternalCErrorBugReport) V3Fallb
 	builtin_root :=
 		os.real_path(os.join_path(b.pref.vroot, 'vlib', 'builtin')).trim_right(os.path_separator)
 	for file in b.parsed_files {
-		if file.path == '' || file.source_digest == '' {
+		// Parser-generated helper ASTs reuse their originating source path but contain
+		// synthesized text. They are derived inputs, not a second version of that file.
+		if file.path == '' || file.source_digest == '' || file.is_parse_text {
 			continue
 		}
 		path := os.real_path(file.path)
-		// Mirror macos_v3_fallback_report_sources: only the opposite v3_backend
-		// ownership-interface variants intentionally differ between the compilers.
+		// Mirror macos_v3_fallback_report_sources: internal builtin support selected
+		// differently by V1 and V3 is not part of their shared source set.
 		if v3_fallback_backend_specific_builtin_source(path, builtin_root) {
 			continue
 		}
@@ -622,7 +624,7 @@ fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool 
 
 fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string) bool {
 	return (path == builtin_root || path.starts_with(builtin_root + os.path_separator))
-		&& os.file_name(path) in ['ownership_interface_d_v3_backend.v', 'ownership_interface_notd_v3_backend.v']
+		&& os.file_name(path) in ['ownership_interface_d_v3_backend.v', 'ownership_interface_notd_v3_backend.v', 'prealloc.c.v']
 }
 
 fn discard_unverified_v3_fallback_report() {

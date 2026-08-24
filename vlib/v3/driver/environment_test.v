@@ -102,6 +102,7 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 	backend_builtin_path := os.join_path(root, 'vlib', 'builtin',
 		'ownership_interface_d_v3_backend.v')
 	shared_builtin_path := os.join_path(root, 'vlib', 'builtin', 'internal.v')
+	prealloc_builtin_path := os.join_path(root, 'vlib', 'builtin', 'prealloc.c.v')
 	shared_vlib_path := os.join_path(root, 'vlib', 'os', 'shared.v')
 	os.mkdir_all(os.dir(backend_builtin_path))!
 	os.mkdir_all(os.dir(shared_vlib_path))!
@@ -110,35 +111,71 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 	shared_vlib_source := 'module os\nfn shared_input() {}\n'
 	os.write_file(path, parsed_source)!
 	os.write_file(backend_builtin_path, 'module builtin\nfn v3_backend_only() {}\n')!
+	os.write_file(prealloc_builtin_path, 'module builtin\nfn prealloc_only() {}\n')!
 	os.write_file(shared_builtin_path, shared_builtin_source)!
 	os.write_file(shared_vlib_path, shared_vlib_source)!
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
 	p.parse_into(path)
 	p.parse_into(backend_builtin_path)
+	p.parse_into(prealloc_builtin_path)
 	p.parse_into(shared_builtin_path)
 	p.parse_into(shared_vlib_path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	// Replacing the file after parsing must not change the staged digest.
 	os.write_file(path, parsed_source.replace('42', 'private_value'))!
-	sources := macos_v3_fallback_report_sources(p.a, root)
+	cached_source := os.join_path(root, 'cached', 'module.v')
+	warmup_source := os.join_path(root, 'cached', 'warmup.v')
+	os.mkdir_all(os.dir(cached_source))!
+	cached_source_text := 'module cached\npub fn cached_input() {}\n'
+	warmup_source_text := 'module warmup\npub fn unused_warmup() {}\n'
+	os.write_file(cached_source, cached_source_text)!
+	os.write_file(warmup_source, warmup_source_text)!
+	sources := macos_v3_fallback_report_sources(p.a, root, {
+		os.real_path(cached_source): sha256.hexhash(cached_source_text)
+		os.real_path(warmup_source): sha256.hexhash(warmup_source_text)
+	}, {
+		os.real_path(warmup_source): true
+	})
 	real_path := os.real_path(path)
 	assert sources[real_path] == sha256.hexhash(parsed_source)
 	assert sources[real_path] != sha256.hexhash(os.read_file(path)!)
 	// Only the opposite v3_backend compiler-support variants are excluded. Shared
 	// builtin and other bundled vlib inputs remain protected by their parser digests.
 	assert os.real_path(backend_builtin_path) !in sources
+	assert os.real_path(prealloc_builtin_path) !in sources
 	assert sources[os.real_path(shared_builtin_path)] == sha256.hexhash(shared_builtin_source)
 	assert sources[os.real_path(shared_vlib_path)] == sha256.hexhash(shared_vlib_source)
+	assert sources[os.real_path(cached_source)] == sha256.hexhash(cached_source_text)
+	assert os.real_path(warmup_source) !in sources
 	report_dir := os.join_path(root, 'report')
 	assert stage_macos_v3_fallback_source_digests(report_dir, sources)
 	staged_paths := os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file))!
 	staged_digests :=
 		os.read_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file))!
-	assert staged_paths == [real_path, os.real_path(shared_builtin_path),
+	assert staged_paths == [os.real_path(cached_source), real_path, os.real_path(shared_builtin_path),
 		os.real_path(shared_vlib_path)].join('\x00')
-	assert staged_digests == [sha256.hexhash(parsed_source), sha256.hexhash(shared_builtin_source),
+	assert staged_digests == [sha256.hexhash(cached_source_text),
+		sha256.hexhash(parsed_source), sha256.hexhash(shared_builtin_source),
 		sha256.hexhash(shared_vlib_source)].join('\x00')
+}
+
+fn test_v3_fallback_ignores_only_warmup_only_module_sources() {
+	hash_source := os.real_path(os.join_path(os.vtmp_dir(), 'v3_fallback_hash.v'))
+	mut state := V3ModuleCacheState{
+		module_sources:            {
+			'hash': [hash_source]
+		}
+		fallback_required_modules: map[string]bool{}
+		fallback_warmup_modules:   {
+			'hash': true
+		}
+	}
+	assert v3_fallback_ignored_warmup_source_paths(state)[hash_source]
+	// A later real/transitive import of a module first seen through the synthetic
+	// warm-up makes its source set part of the shared V3/V1 manifest again.
+	record_v3_fallback_module_use(mut state, 'hash', false)
+	assert hash_source !in v3_fallback_ignored_warmup_source_paths(state)
 }
 
 fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {

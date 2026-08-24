@@ -1481,7 +1481,7 @@ fn test_macos_v3_redispatch_run_observes_original_caller_environment() {
 }
 
 fn test_macos_v3_embedded_driver_reuses_module_cache() {
-	$if macos {
+	$if macos || linux {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_embedded_cache_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(os.join_path(root, 'wrapper')) or { panic(err) }
@@ -1510,6 +1510,7 @@ fn main() {
 		environment['VOSARGS'] = ''
 		environment['V3CACHE'] = os.join_path(root, 'cache')
 		environment['V3_CACHE_TRACE'] = '1'
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		mut outputs := []string{}
 		for name in ['first', 'second'] {
 			output := os.join_path(root, name)
@@ -1533,6 +1534,44 @@ fn main() {
 		run := os.execute(os.quoted_path(os.join_path(root, 'second')))
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == '42'
+
+		// Keep the imported wrapper warm while changing only the program to one that
+		// V3 cannot compile yet. Its cached `.vh` must contribute the original wrapper
+		// source digest to the fallback manifest, or the stable retry will incorrectly
+		// report that the source inputs changed (PR #28131 review).
+		os.write_file(main_file, 'module main
+
+import wrapper
+
+struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) convert[U](value U) U {
+	return value
+}
+
+fn main() {
+	assert wrapper.value() == 42
+	result := Box[int]{42}.convert[i64](43)
+	assert result == 43
+	}
+')!
+		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = '1'
+		fallback_output := os.join_path(root, 'fallback')
+		mut fallback_process := os.new_process(@VEXE)
+		fallback_process.set_args(['-gc', 'none', '-o', fallback_output, main_file])
+		fallback_process.set_environment(environment)
+		fallback_process.set_redirect_stdio()
+		fallback_process.run()
+		fallback_process.wait()
+		fallback_text := fallback_process.stdout_slurp() + fallback_process.stderr_slurp()
+		fallback_exit_code := fallback_process.code
+		fallback_process.close()
+		assert fallback_exit_code == 0, fallback_text
+		assert fallback_text.contains('V3 could not build this program'), fallback_text
+		assert !fallback_text.contains('source inputs changed'), fallback_text
+		assert os.is_executable(fallback_output)
 	}
 }
 

@@ -391,6 +391,13 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 				path:          path
 				source_digest: parsed_digest
 			},
+			// Parser-generated declarations reuse the source path but contain derived
+			// text, so they must not appear as a conflicting retry input.
+			&ast.File{
+				path:          path
+				is_parse_text: true
+				source_digest: sha256.hexhash('generated declarations')
+			},
 			&ast.File{
 				path:          shared_builtin_path
 				source_digest: shared_builtin_digest
@@ -400,6 +407,11 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 				path:          os.join_path(vroot, 'vlib', 'builtin',
 					'ownership_interface_notd_v3_backend.v')
 				source_digest: sha256.hexhash('stable compiler interface')
+			},
+			// Internal preallocation support is not part of the shared fallback inputs.
+			&ast.File{
+				path:          os.join_path(vroot, 'vlib', 'builtin', 'prealloc.c.v')
+				source_digest: sha256.hexhash('stable prealloc support')
 			},
 			&ast.File{
 				path:          shared_vlib_path
