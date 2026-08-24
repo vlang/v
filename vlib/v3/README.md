@@ -93,9 +93,9 @@ physical footprint immediately after RSS.
 `-b fastc` selects the embedded V3 driver and its AST-free parser for the shortest edit-run cycle.
 FastC resolves the entry file and imported modules, then emits GNU C while consuming scanner tokens.
 It never invokes the flat parser, semantic checker, transformer, mark-used pass, or conventional C
-generator. Bundled TinyCC validates the emitted translation unit before any C file or executable is
-published. Unsupported V syntax and TinyCC errors are reported directly; FastC never retries
-through an AST-based backend.
+generator. For same-target builds, bundled TinyCC validates the emitted translation unit before any
+C file or executable is published. Unsupported V syntax and same-target TinyCC errors are reported
+directly; FastC never retries through an AST-based backend.
 
 FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
 expressions, `if`/`else`, and condition, C-style, infinite, and integer-range `for` loops. GNU
@@ -111,9 +111,9 @@ high-bit hexadecimal or binary literals. Rejecting these constructs avoids silen
 incompatible C formatting, inference, wrapping, shift, bounds, and zero-divisor behavior.
 
 FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
-permits an explicit cross target and publishes C after TinyCC validation. Production, test,
-shared/live, ownership/autofree, object-file, profiling/coverage, strict C, custom compiler,
-custom-builtin, `no_main`, translated, and REPL modes are currently rejected.
+permits an explicit cross target and publishes its generated C without host TinyCC validation.
+Production, test, shared/live, ownership/autofree, object-file, profiling/coverage, strict C,
+custom compiler, custom-builtin, `no_main`, translated, and REPL modes are currently rejected.
 
 `-selfhost -b fastc -o v4 vlib/v3/v3.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v3.fastcdriver` entry point and can build further FastC generations without
