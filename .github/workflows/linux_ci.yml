@@ -86,6 +86,11 @@ jobs:
       - name: Self tests
         run: v run ci/linux_ci.vsh self_tests_tcc
       - name: Build examples
+        # The examples corpus includes deliberate inline-assembly compatibility
+        # cases, so exercise the documented V3-to-V1 fallback in this lane. The
+        # canary and dedicated V3 suites above remain strict.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: v run ci/linux_ci.vsh build_examples_tcc
       - name: Run the submodule example, using a relative path
         run: v run ci/linux_ci.vsh run_submodule_example_tcc
@@ -647,6 +652,11 @@ jobs:
       - name: Self tests (-cstrict)
         run: v run ci/linux_ci.vsh self_tests_cstrict_gcc
       - name: Build examples
+        # The examples corpus includes deliberate inline-assembly compatibility
+        # cases, so exercise the documented V3-to-V1 fallback in this lane. The
+        # canary and dedicated V3 suites above remain strict.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: v run ci/linux_ci.vsh build_examples_gcc
       - name: Build tetris with -autofree
         run: v run ci/linux_ci.vsh build_tetris_autofree_gcc
@@ -731,6 +741,11 @@ jobs:
       - name: Self tests (-cstrict)
         run: v run ci/linux_ci.vsh self_tests_cstrict_clang
       - name: Build examples
+        # The examples corpus includes deliberate inline-assembly compatibility
+        # cases, so exercise the documented V3-to-V1 fallback in this lane. The
+        # canary and dedicated V3 suites above remain strict.
+        env:
+          V_MACOS_V3_NO_FALLBACK: 0
         run: v run ci/linux_ci.vsh build_examples_clang
       - name: Build examples with -autofree
         run: v run ci/linux_ci.vsh build_examples_autofree_clang

@@ -9510,8 +9510,9 @@ pub fn run(args []string) {
 			opt_flag := v3_prod_c_optimization_flags(is_prod, no_prod_options, is_shared,
 				parallel_cc, explicit_tcc).join(' ')
 			warning_flags := warn_args.join(' ')
-			compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
-				warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)
+			mut compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag,
+				pic_flag, warning_flags, resolved_c_flags, needs_objective_c,
+				interface_impl_signature)
 			mut prepared_plan_entry := cgen_cache_entry
 			mut prepared_cache := V3PreparedModuleCache{}
 			if cgen_prepared_hit {
@@ -9535,6 +9536,8 @@ pub fn run(args []string) {
 					cleanup_c_build_dir(cc_dir)
 					exit(1)
 				}
+				compile_signature = v3_cached_object_wrapper_compile_signature(compile_signature,
+					prefix_source)
 				objects := cache_state.manager.valid_cgen_prepared_objects(cgen_cache_entry,
 					compile_signature) or {
 					if resolve_flag_specific_cache_objects(mut cache_state, compile_signature) {
@@ -9556,6 +9559,8 @@ pub fn run(args []string) {
 					eprintln('error reading cache-marked C source ${cache_plan_file}: ${err.msg()}')
 					exit(1)
 				}
+				compile_signature = v3_cached_object_wrapper_compile_signature(compile_signature,
+					generated_source)
 				if generated_c_flags.len == 0 && !generic_cache_hit && !incremental_cache_hit
 					&& p.parsed_v_header_files == 0 {
 					cache_full_tcc_source = os.join_path_single(cc_dir, 'full.c')
@@ -11775,6 +11780,18 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 		'flags=${flags.join('\\n')}',
 		'inputs=${inputs.join('\\n')}',
 	].join('\n')
+}
+
+fn v3_cached_object_wrapper_compile_signature(base string, generated_source string) string {
+	if !generated_source.contains('/* V3CACHE_PROGRAM_WRAPPERS */') {
+		return base
+	}
+	// Static callback/thread/method-value wrappers are emitted in the shared C
+	// prefix and therefore become part of every cached module object. Their set is
+	// specific to the entry program, so include the complete prefix in the object
+	// key while leaving wrapper-free programs on the normal cross-project key.
+	prefix := generated_source.all_before('/* V3CACHE_BODY_BEGIN */')
+	return '${base}\nprogram_wrappers=${sha256.hexhash(prefix)}'
 }
 
 fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, compile_signature string) bool {

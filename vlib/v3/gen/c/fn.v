@@ -2924,6 +2924,12 @@ fn (mut g FlatGen) gen_special_c_callback_arg(fn_name string, arg_idx int, arg_i
 
 fn (mut g FlatGen) spawn_wrapper_decls() {
 	mut seen := map[string]bool{}
+	if g.cache_split && g.spawn_wrapper_defs.len > 0 {
+		// Cached module objects retain these static definitions. Mark the program-
+		// specific prefix so the driver does not reuse those objects for a program
+		// with a different wrapper set.
+		g.writeln('/* V3CACHE_PROGRAM_WRAPPERS */')
+	}
 	for def in g.spawn_wrapper_defs {
 		if def in seen {
 			continue
@@ -3329,6 +3335,9 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 }
 
 fn (mut g FlatGen) callback_wrapper_decls() {
+	if g.cache_split && g.callback_wrapper_defs.len > 0 {
+		g.writeln('/* V3CACHE_PROGRAM_WRAPPERS */')
+	}
 	for def in g.callback_wrapper_defs {
 		g.writeln(def)
 	}

@@ -1080,6 +1080,46 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
+fn test_program_wrappers_do_not_contaminate_shared_module_objects() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_program_wrappers_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first_main := os.join_path(root, 'first_main.v')
+	write_module_cache_file(root, 'first_main.v', 'module main
+
+struct Worker {}
+
+fn (w Worker) value() int {
+	return 42
+}
+
+fn main() {
+	w := Worker{}
+	callback := w.value
+	println(callback())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, first_main, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+
+	second_main := os.join_path(root, 'second_main.v')
+	write_module_cache_file(root, 'second_main.v', 'module main
+
+fn main() {
+	println(42)
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, second_main, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_module_cache_static_inline_attributes_are_not_storage() {
 	source := 'static __inline void atomic_fence(int order __attribute__((unused))) {\n\t(void)order;\n}\n'
 	assert !modulecache.c_source_has_static_storage(source)
