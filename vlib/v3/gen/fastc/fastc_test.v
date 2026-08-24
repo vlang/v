@@ -85,6 +85,41 @@ fn main() {
 	assert run_result.output == 'hello FastC!\n'
 }
 
+fn test_ordinary_primitive_interpolation_has_runtime_support() {
+	prefs := pref.new_preferences()
+	c_source := generate(r"module main
+
+fn main() {
+	value := 7
+	negative := -2
+	large := u64(42)
+	enabled := true
+	println('value=${value}; negative=${negative}; large=${large}; enabled=${enabled}')
+}
+",
+		'ordinary_primitive_interpolation.v', prefs) or { panic(err) }
+	assert c_source.contains('v_fastc_signed_str((long long)(value))'), c_source
+	assert c_source.contains('v_fastc_signed_str((long long)(negative))'), c_source
+	assert c_source.contains('v_fastc_unsigned_str((unsigned long long)(large))'), c_source
+	assert c_source.contains('v_fastc_bool_str(enabled)'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_primitive_interpolation_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\n'
+}
+
 fn test_zero_value_strings_print_as_empty_strings() {
 	mut prefs := pref.new_preferences()
 	prefs.enable_globals = true

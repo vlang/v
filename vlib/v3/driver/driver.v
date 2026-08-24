@@ -6415,6 +6415,18 @@ fn publish_v3_fastc_c_source(source string, output_file string, c_to_stdout bool
 	}
 }
 
+fn canonical_v3_fastc_output_path(path string) string {
+	if path == '' {
+		return ''
+	}
+	if os.exists(path) {
+		return os.real_path(path)
+	}
+	absolute_path := os.abs_path(path)
+	canonical_parent := os.real_path(os.dir(absolute_path))
+	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
+}
+
 fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool) V3FastCCompileResult {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -7373,6 +7385,16 @@ pub fn run(args []string) {
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		if !input_file.ends_with('.v') || !os.is_file(input_file) || file_list.len > 0 {
 			eprintln('fastc requires exactly one `.v` entry file')
+			exit(1)
+		}
+		fastc_artifact_file := if c_only {
+			if c_to_stdout { '' } else { output_file }
+		} else {
+			bin_file
+		}
+		if fastc_artifact_file != ''
+			&& canonical_v3_fastc_output_path(fastc_artifact_file) == os.real_path(input_file) {
+			eprintln('fastc output path `${fastc_artifact_file}` aliases input source `${input_file}`')
 			exit(1)
 		}
 		fastc_host := pref.host_target()

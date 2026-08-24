@@ -26,6 +26,19 @@ fn test_fastc_backend_parses_directly_to_c_without_ast_fallback() {
 		'-o', v3_bin, fastc_backend_v3_source])
 	assert build.exit_code == 0, build.output
 
+	collision_source := os.join_path(root, 'collision.v')
+	collision_contents := 'module main\nfn main() { println(42) }\n'
+	write_fastc_test_source(collision_source, collision_contents)
+	collision_dir := os.join_path(root, 'collision_path')
+	os.mkdir_all(collision_dir) or { panic(err) }
+	collision_output := os.join_path(collision_dir, '..', 'collision.v')
+	collision_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', collision_output,
+		collision_source])
+	assert collision_compile.exit_code != 0
+	assert collision_compile.output.contains('fastc output path'), collision_compile.output
+	assert collision_compile.output.contains('aliases input source'), collision_compile.output
+	assert os.read_file(collision_source) or { panic(err) } == collision_contents
+
 	valid_source := os.join_path(root, 'valid.v')
 	write_fastc_test_source(valid_source, 'module main
 
@@ -418,8 +431,9 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
-				os.join_path(root, 'no_main.c'), valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
+				'no_main.c'),
+				valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{

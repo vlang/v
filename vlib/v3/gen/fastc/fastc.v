@@ -70,6 +70,26 @@ static string builtin__string_plus_many(int count, string *parts) {
 	*cursor = 0;
 	return result;
 }
+static string v_fastc_signed_str(long long value) {
+	char *result = malloc(32);
+	if (result == NULL) return "";
+	snprintf(result, 32, "%lld", value);
+	return result;
+}
+static string v_fastc_unsigned_str(unsigned long long value) {
+	char *result = malloc(32);
+	if (result == NULL) return "";
+	snprintf(result, 32, "%llu", value);
+	return result;
+}
+static string v_fastc_bool_str(bool value) { return value ? "true" : "false"; }
+static string v_fastc_char_str(char value) {
+	char *result = malloc(2);
+	if (result == NULL) return "";
+	result[0] = value;
+	result[1] = 0;
+	return result;
+}
 
 /* Float formatting belongs to the V strconv routines. Leaving float and double
  * unmatched makes TinyCC reject unsupported printing instead of silently
@@ -7405,18 +7425,29 @@ fn (mut g Parser) read_interpolated_string() !string {
 				parts << 'v_fastc_enum_str_${enum_type}(${value})'
 			}
 		} else {
-			receiver_key := g.semantic_type_key(value_type)
-			method_key := '${receiver_key}.str'
-			if method_key !in g.functions {
-				local_type := if g.last_expression.len > 0 && g.last_expression[0].tok == .name {
-					local := g.locals[g.last_expression[0].lit] or { FastcLocal{} }
-					local.typ
-				} else {
-					''
+			mut converted_primitive := false
+			if !g.selfhost {
+				if primitive_conversion := fastc_primitive_interpolation_expression(value_type,
+					value)
+				{
+					parts << primitive_conversion
+					converted_primitive = true
 				}
-				return g.unsupported('interpolation of type `${value_type}` for `${fastc_expression_tokens_debug(g.last_expression)}` (local `${local_type}`)')
 			}
-			parts << '${fastc_method_c_name_for_key(receiver_key, 'str')}(${value})'
+			if !converted_primitive {
+				receiver_key := g.semantic_type_key(value_type)
+				method_key := '${receiver_key}.str'
+				if method_key !in g.functions {
+					local_type := if g.last_expression.len > 0 && g.last_expression[0].tok == .name {
+						local := g.locals[g.last_expression[0].lit] or { FastcLocal{} }
+						local.typ
+					} else {
+						''
+					}
+					return g.unsupported('interpolation of type `${value_type}` for `${fastc_expression_tokens_debug(g.last_expression)}` (local `${local_type}`)')
+				}
+				parts << '${fastc_method_c_name_for_key(receiver_key, 'str')}(${value})'
+			}
 		}
 		if g.tok == .string {
 			part := fastc_c_interpolation_segment(g.lit, false, quote)!
@@ -7438,6 +7469,26 @@ fn (mut g Parser) read_interpolated_string() !string {
 		return parts[0]
 	}
 	return 'builtin__string_plus_many(${parts.len}, (string[]){${parts.join(', ')}})'
+}
+
+fn fastc_primitive_interpolation_expression(value_type string, value string) ?string {
+	return match value_type {
+		'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'integer literal', 'negative integer literal' {
+			'v_fastc_signed_str((long long)(${value}))'
+		}
+		'byte', 'u8', 'u16', 'u32', 'u64', 'uint', 'unsigned int', 'usize' {
+			'v_fastc_unsigned_str((unsigned long long)(${value}))'
+		}
+		'bool' {
+			'v_fastc_bool_str(${value})'
+		}
+		'char' {
+			'v_fastc_char_str(${value})'
+		}
+		else {
+			none
+		}
+	}
 }
 
 fn fastc_string_literal_is_incomplete(literal string) bool {
