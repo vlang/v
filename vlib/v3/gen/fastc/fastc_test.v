@@ -1416,16 +1416,18 @@ fn main() {
 
 fn test_undeclared_function_signature_types_are_rejected() {
 	prefs := pref.new_preferences()
-	for source in [
-		'module main\nfn show(x size_t) { println(1) }\nfn main() { show(1) }\n',
-		'module main\nfn value() size_t { return 1 }\nfn main() { println(value()) }\n',
-	] {
+	for source, undeclared_type in {
+		'module main\nfn show(x size_t) { println(1) }\nfn main() { show(1) }\n':        'size_t'
+		'module main\nfn value() size_t { return 1 }\nfn main() { println(value()) }\n': 'size_t'
+		'module main\nfn consume(x Foo) {}\nfn main() {}\n':                             'Foo'
+		'module main\nfn value() ID { return unsafe { nil } }\nfn main() {}\n':          'ID'
+	} {
 		mut message := ''
 		_ := generate(source, 'undeclared_signature_type.v', prefs) or {
 			message = err.msg()
 			''
 		}
-		assert message.contains('undeclared type `size_t`'), message
+		assert message.contains('undeclared type `${undeclared_type}`'), message
 	}
 }
 
