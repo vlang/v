@@ -5037,6 +5037,40 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 	return t.make_ident(res_name)
 }
 
+fn (mut t Transformer) lower_interface_smartcast_ref_str(expr flat.NodeId, interface_expr flat.NodeId, aggregate string, str_fn string) flat.NodeId {
+	ptr_type := '&${aggregate}'
+	ptr_name := t.new_temp('ref_str_ptr')
+	boxed_name := t.new_temp('ref_str_boxed')
+	res_name := t.new_temp('ref_str_text')
+	t.pending_stmts << t.make_decl_assign_typed(ptr_name, expr, ptr_type)
+	t.set_var_type(ptr_name, ptr_type)
+	boxed := t.make_selector_op(interface_expr, '_object_is_boxed', 'bool', .dot)
+	t.pending_stmts << t.make_decl_assign_typed(boxed_name, boxed, 'bool')
+	t.pending_stmts << t.make_decl_assign_typed(res_name, t.make_string_literal('&nil'), 'string')
+	saved := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	value_str := if t.str_method_has_pointer_receiver(str_fn) {
+		t.make_call_typed(str_fn, [t.make_ident(ptr_name)], 'string')
+	} else {
+		value := t.make_prefix(.mul, t.make_ident(ptr_name))
+		t.set_node_typ(int(value), aggregate)
+		t.make_call_typed(str_fn, [value], 'string')
+	}
+	mut then_body := []flat.NodeId{}
+	t.drain_pending(mut then_body)
+	t.pending_stmts = saved
+	t.unset_var_type(ptr_name)
+	boxed_value := t.make_assign(t.make_ident(res_name), value_str)
+	pointer_value := t.make_assign(t.make_ident(res_name), t.string_plus(t.make_string_literal('&'),
+		value_str))
+	then_body << t.make_if(t.make_ident(boxed_name), t.make_block([boxed_value]), t.make_block([
+		pointer_value,
+	]))
+	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
+	return t.make_ident(res_name)
+}
+
 fn (mut t Transformer) lower_array_ref_str(expr flat.NodeId, typ string) flat.NodeId {
 	return t.lower_ref_value_str(expr, typ, 'nil')
 }
@@ -10453,7 +10487,9 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 				if aggregate := t.stringify_aggregate_type_name(target) {
 					value_ptr := t.make_prefix(.amp, args[0])
 					t.set_node_typ(int(value_ptr), '&${aggregate}')
-					return t.lower_ref_str_guarded(value_ptr, aggregate, false, method_name, '&nil')
+					interface_expr := t.make_plain_expr_for_smartcast(base_id)
+					return t.lower_interface_smartcast_ref_str(value_ptr, interface_expr,
+						aggregate, method_name)
 				}
 			}
 		}

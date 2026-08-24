@@ -5348,6 +5348,9 @@ fn (c &CallCollector) top_level_decl_rhs_type_name(rhs_id flat.NodeId, cur_modul
 		if struct_type.len > 0 {
 			return struct_type
 		}
+		if c.receiver_is_generic_struct_application(resolved, cur_module) {
+			return resolved
+		}
 		// An alias-to-struct literal (`Alias{...}` where `type Alias = Base`) is not
 		// itself a struct key; keep the alias name so a later method call on the var
 		// resolves `Alias.method` (methods are registered on the alias).

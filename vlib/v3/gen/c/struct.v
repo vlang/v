@@ -504,12 +504,15 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	mut promoted_roots := []PromotedStructInitField{}
 	mut seen_promoted_roots := map[string]bool{}
 	mut has_field := false
-	if g.is_interface_type_name(node.value) && !g.struct_init_has_named_field(node, '_typ') {
-		if tid := g.interface_init_typ_id(node) {
-			g.write('._typ = ${tid}')
-			has_field = true
+	if g.is_interface_type_name(node.value) {
+		if !g.struct_init_has_named_field(node, '_typ') {
+			if tid := g.interface_init_typ_id(node) {
+				g.write('._typ = ${tid}')
+				has_field = true
+			}
 		}
-		if g.interface_init_object_is_boxed(node) {
+		if !g.struct_init_has_named_field(node, '_object_is_boxed')
+			&& g.interface_init_object_is_boxed(node) {
 			if has_field {
 				g.write(', ')
 			}
@@ -1339,12 +1342,15 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	mut promoted_roots := []PromotedStructInitField{}
 	mut seen_promoted_roots := map[string]bool{}
 	mut has_field := false
-	if g.is_interface_type_name(node.value) && !g.struct_init_has_named_field(node, '_typ') {
-		if tid := g.interface_init_typ_id(node) {
-			g.write('._typ = ${tid}')
-			has_field = true
+	if g.is_interface_type_name(node.value) {
+		if !g.struct_init_has_named_field(node, '_typ') {
+			if tid := g.interface_init_typ_id(node) {
+				g.write('._typ = ${tid}')
+				has_field = true
+			}
 		}
-		if g.interface_init_object_is_boxed(node) {
+		if !g.struct_init_has_named_field(node, '_object_is_boxed')
+			&& g.interface_init_object_is_boxed(node) {
 			if has_field {
 				g.write(', ')
 			}
