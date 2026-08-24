@@ -7353,7 +7353,7 @@ pub fn run(args []string) {
 		// Never let an unsupported FastC input continue into the AST frontend below.
 		clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 		if !input_file.ends_with('.v') || !os.is_file(input_file) || file_list.len > 0 {
-			eprintln('fastc requires exactly one `.v` input file')
+			eprintln('fastc requires exactly one `.v` entry file')
 			exit(1)
 		}
 		fastc_host := pref.host_target()
@@ -7364,9 +7364,6 @@ pub fn run(args []string) {
 		mut unsupported_modes := []string{}
 		if is_test_command || is_checker_fixture {
 			unsupported_modes << 'test/checker mode'
-		}
-		if building_v || is_selfhost {
-			unsupported_modes << 'compiler self-hosting'
 		}
 		if is_prod {
 			unsupported_modes << '`-prod`'
@@ -7409,12 +7406,10 @@ pub fn run(args []string) {
 			eprintln('fastc parser does not support ${unsupported_modes.join(', ')}')
 			exit(1)
 		}
-		source := os.read_file(input_file) or {
-			eprintln('fastc could not read `${input_file}`: ${err.msg()}')
-			exit(1)
-			''
+		if 'v3_backend' !in prefs.user_defines {
+			prefs.user_defines << 'v3_backend'
 		}
-		fastc_source := fastc.generate(source, input_file, prefs) or {
+		fastc_source := fastc.generate_files([input_file], prefs) or {
 			eprintln(err.msg())
 			exit(1)
 			''

@@ -70,6 +70,57 @@ fn test_unsupported_import_is_rejected() {
 	assert failed
 }
 
+fn test_generate_files_resolves_modules_without_an_ast() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_modules_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'mathutil')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'mathutil', 'mathutil.v')
+	os.write_file(main_file,
+		'module main\nimport mathutil\nfn main() { println(mathutil.twice(21)) }\n') or {
+		panic(err)
+	}
+	os.write_file(module_file,
+		'module mathutil\npub fn twice(value int) int { return value * 2 }\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	assert c_source.contains('int mathutil__twice(int value);')
+	assert c_source.contains('println(mathutil__twice(21));'), c_source
+
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == '42'
+}
+
+fn test_disabled_function_attributes_emit_empty_stubs() {
+	mut prefs := pref.new_preferences()
+	prefs.user_defines = []
+	c_source := generate('module main
+
+@[if fastc_missing_define ?]
+fn traced() {
+	println("must not run")
+}
+
+fn main() {
+	traced()
+}
+',
+		'disabled_function_attribute.v', prefs) or { panic(err) }
+	assert c_source.contains('void traced(void) {\n}')
+	assert !c_source.contains('must not run')
+}
+
 fn test_unresolved_names_are_rejected_before_c_emission() {
 	prefs := pref.new_preferences()
 	for source in [
