@@ -3833,7 +3833,7 @@ fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
 			g.skip_import()!
 			continue
 		}
-		if g.selfhost && g.tok == .hash {
+		if g.tok == .hash {
 			g.parse_c_directive()!
 			continue
 		}
@@ -3901,10 +3901,14 @@ fn (mut g Parser) parse_top_level_comptime_if() ! {
 fn (mut g Parser) parse_c_directive() ! {
 	directive := g.lit.trim_space()
 	g.next()
-	if directive.starts_with('flag ') || directive.starts_with('pkgconfig ') {
+	if directive == 'flag' || directive.starts_with('flag ') || directive == 'pkgconfig'
+		|| directive.starts_with('pkgconfig ') {
 		// FastC's compiler invocation supplies its own target flags. The bootstrap
 		// dependency set only uses these directives for optional libraries.
-		return
+		if g.prefs.selfhost {
+			return
+		}
+		return g.unsupported('C build directive `#${directive}`')
 	}
 	mut c_directive := directive.replace('@VEXEROOT', g.prefs.vroot)
 	if c_directive.starts_with('insert ') {

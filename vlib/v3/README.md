@@ -110,6 +110,8 @@ assertions, `sizeof`, shift, division, modulo, indexing, parallel assignment, mi
 expressions, narrow integer signatures, oversized decimal literals, and high-bit hexadecimal or
 binary literals. Rejecting these constructs avoids silently applying incompatible C formatting,
 inference, wrapping, shift, bounds, and zero-divisor behavior.
+`#flag` and `#pkgconfig` are rejected because FastC does not yet transport source build options to
+its fixed TinyCC invocation.
 
 FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
 permits an explicit cross target and publishes its generated C without host TinyCC validation.

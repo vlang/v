@@ -70,6 +70,42 @@ fn test_unsupported_import_is_rejected() {
 	assert failed
 }
 
+fn test_c_build_directives_are_rejected_instead_of_discarded() {
+	mut prefs := pref.new_preferences()
+	for building_v in [false, true] {
+		prefs.building_v = building_v
+		for directive in ['#flag -D FEATURE=1', '#pkgconfig sqlite3'] {
+			mut message := ''
+			_ := generate('module main\n${directive}\nfn main() {}\n', 'c_build_directive.v', prefs) or {
+				message = err.msg()
+				''
+			}
+			assert message.contains('C build directive `${directive}`'), message
+		}
+	}
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_imported_c_flag_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'dependency')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'module main\nimport dependency\nfn main() { dependency.run() }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'dependency', 'dependency.v'),
+		'module dependency\n#flag -D FEATURE=1\npub fn run() {}\n') or { panic(err) }
+	prefs.building_v = false
+	prefs.module_search_paths = [root]
+	mut message := ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('C build directive `#flag -D FEATURE=1`'), message
+}
+
 fn test_colliding_import_aliases_are_rejected() {
 	prefs := pref.new_preferences()
 	for source in [
