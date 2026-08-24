@@ -437,7 +437,8 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		}
 	}
 	type_declarations := fastc_generate_type_declarations(sources, prefs, declared_types,
-		declared_kinds, mut struct_fields, mut struct_field_info, mut composite_types)!
+		declared_kinds, constants, public_constants, mut struct_fields, mut struct_field_info, mut
+		composite_types)!
 	mut constant_types := map[string]string{}
 	mut global_types := map[string]string{}
 	fastc_render_struct_field_defaults(prefs, declared_types, declared_kinds, struct_fields, mut
@@ -1578,7 +1579,7 @@ fn (g &Parser) constant_expression_requires_runtime_storage(tokens []FastcExpres
 	return false
 }
 
-fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool) !string {
+fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool) !string {
 	mut out := strings.new_builder(4096)
 	mut bodies := strings.new_builder(4096)
 	mut keys := declared_kinds.keys()
@@ -1595,8 +1596,9 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Prefe
 	}
 	out.writeln('')
 	for source_file in sources {
-		fastc_emit_source_type_declarations(source_file, prefs, declared_types, declared_kinds, mut
-			struct_fields, mut struct_field_info, mut composite_types, mut bodies)!
+		fastc_emit_source_type_declarations(source_file, prefs, declared_types, declared_kinds,
+			constants, public_constants, mut struct_fields, mut struct_field_info, mut
+			composite_types, mut bodies)!
 	}
 	mut composite_names := composite_types.keys()
 	composite_names.sort()
@@ -1692,7 +1694,7 @@ fn fastc_c_composite_definition_end(source string, start int) ?int {
 	return none
 }
 
-fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut out strings.Builder) ! {
+fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut out strings.Builder) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(source_file.path, source_file.source.len)
 	file.index_lines(source_file.source)
@@ -1712,7 +1714,8 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 			continue
 		}
 		if depth == 0 && tok == .key_enum {
-			tok = fastc_emit_enum_declaration(mut scan, source_file, next_enum_is_flag, mut out)!
+			tok = fastc_emit_enum_declaration(mut scan, source_file, next_enum_is_flag,
+				declared_types, declared_kinds, constants, public_constants, mut out)!
 			next_enum_is_flag = false
 			continue
 		}
@@ -1956,7 +1959,7 @@ fn fastc_semantic_declared_type_key(c_type string, declared_types map[string]boo
 	return base
 }
 
-fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, is_flag bool, mut out strings.Builder) !token.Token {
+fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, is_flag bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool, mut out strings.Builder) !token.Token {
 	mut tok := scan.scan()
 	if tok != .name {
 		return error('fastc parser does not support enum declaration in ${source_file.path}')
@@ -1970,6 +1973,10 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 	}
 	tok = scan.scan()
 	mut value := 0
+	mut symbolic_value := ''
+	mut symbolic_offset := 0
+	mut field_names := []string{}
+	mut fields := map[string]bool{}
 	for tok != .rcbr && tok != .eof {
 		if tok in [.semicolon, .comma] {
 			tok = scan.scan()
@@ -1983,33 +1990,222 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 			return error('fastc parser does not support enum `${name}` field in ${source_file.path}')
 		}
 		field_name := scan.lit
+		field_names << field_name
 		tok = scan.scan()
 		if tok == .assign {
-			tok = scan.scan()
-			mut sign := 1
-			if tok in [.plus, .minus] {
-				sign = if tok == .minus { -1 } else { 1 }
-				tok = scan.scan()
-			}
-			if tok == .number {
-				value = scan.lit.int()
-				if sign < 0 {
-					value = -value
-				}
-				tok = scan.scan()
+			value_tokens, next_token := fastc_scan_enum_value_tokens(mut scan, scan.scan())!
+			tok = next_token
+			if literal_value := fastc_enum_integer_literal(value_tokens) {
+				value = literal_value
+				symbolic_value = ''
+				symbolic_offset = 0
 			} else {
-				tok = fastc_skip_field_default_from_token(mut scan, tok)!
+				symbolic_value = fastc_render_enum_value_expression(value_tokens, source_file,
+					c_name, fields, declared_types, declared_kinds, constants, public_constants)!
+				symbolic_offset = 0
 			}
 		}
-		c_value := if is_flag { 1 << value } else { value }
+		value_expression := if symbolic_value == '' {
+			value.str()
+		} else if symbolic_offset == 0 {
+			symbolic_value
+		} else {
+			'(${symbolic_value} + ${symbolic_offset})'
+		}
+		c_value := if is_flag { '(1 << (${value_expression}))' } else { value_expression }
 		out.writeln('#define ${c_name}__${field_name} ((${c_name})${c_value})')
-		value++
+		fields[field_name] = true
+		if symbolic_value == '' {
+			value++
+		} else {
+			symbolic_offset++
+		}
 	}
 	if tok != .rcbr {
 		return error('fastc parser does not support unfinished enum `${name}` in ${source_file.path}')
 	}
+	fastc_emit_enum_print_function(c_name, name, field_names, is_flag, mut out)
 	out.writeln('')
 	return scan.scan()
+}
+
+fn fastc_scan_enum_value_tokens(mut scan scanner.Scanner, first token.Token) !([]FastcExpressionToken, token.Token) {
+	mut tokens := []FastcExpressionToken{}
+	mut tok := first
+	mut parens := 0
+	for tok != .eof {
+		if parens == 0 && tok in [.comma, .semicolon, .rcbr] {
+			if tokens.len == 0 {
+				return error('fastc parser does not support an empty enum discriminant')
+			}
+			return tokens, tok
+		}
+		if tok == .lpar {
+			parens++
+		} else if tok == .rpar {
+			parens--
+			if parens < 0 {
+				return error('fastc parser does not support an unbalanced enum discriminant')
+			}
+		}
+		tokens << FastcExpressionToken{
+			tok: tok
+			lit: scan.lit
+		}
+		tok = scan.scan()
+	}
+	return error('fastc parser does not support an unfinished enum discriminant')
+}
+
+fn fastc_enum_integer_literal(tokens []FastcExpressionToken) ?int {
+	if tokens.len == 1 && tokens[0].tok == .number {
+		return tokens[0].lit.int()
+	}
+	if tokens.len == 2 && tokens[0].tok in [.plus, .minus] && tokens[1].tok == .number {
+		value := tokens[1].lit.int()
+		return if tokens[0].tok == .minus { -value } else { value }
+	}
+	return none
+}
+
+fn fastc_render_enum_value_expression(tokens []FastcExpressionToken, source_file FastcSourceFile, enum_c_name string, fields map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool) !string {
+	value, next := fastc_render_enum_binary_expression(tokens, 0, 1, source_file, enum_c_name,
+		fields, declared_types, declared_kinds, constants, public_constants)!
+	if next != tokens.len {
+		return error('fastc parser does not support enum discriminant `${fastc_expression_tokens_debug(tokens)}` in ${source_file.path}')
+	}
+	return value
+}
+
+fn fastc_render_enum_binary_expression(tokens []FastcExpressionToken, start int, minimum_precedence int, source_file FastcSourceFile, enum_c_name string, fields map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool) !(string, int) {
+	mut left, mut next := fastc_render_enum_unary_expression(tokens, start, source_file,
+		enum_c_name, fields, declared_types, declared_kinds, constants, public_constants)!
+	for next < tokens.len {
+		operator := tokens[next].tok
+		precedence := int(operator.left_binding_power())
+		if precedence < minimum_precedence
+			|| operator !in [.plus, .minus, .mul, .div, .mod, .pipe, .xor, .amp, .left_shift, .right_shift] {
+			break
+		}
+		right, after_right := fastc_render_enum_binary_expression(tokens, next + 1,
+			int(operator.right_binding_power()), source_file, enum_c_name, fields, declared_types,
+			declared_kinds, constants, public_constants)!
+		left = '((${left}) ${operator.str()} (${right}))'
+		next = after_right
+	}
+	return left, next
+}
+
+fn fastc_render_enum_unary_expression(tokens []FastcExpressionToken, start int, source_file FastcSourceFile, enum_c_name string, fields map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool) !(string, int) {
+	if start >= tokens.len {
+		return error('fastc parser does not support an incomplete enum discriminant in ${source_file.path}')
+	}
+	if tokens[start].tok in [.plus, .minus, .bit_not] {
+		value, next := fastc_render_enum_unary_expression(tokens, start + 1, source_file,
+			enum_c_name, fields, declared_types, declared_kinds, constants, public_constants)!
+		return '(${tokens[start].tok.str()}(${value}))', next
+	}
+	if tokens[start].tok == .lpar {
+		value, next := fastc_render_enum_binary_expression(tokens, start + 1, 1, source_file,
+			enum_c_name, fields, declared_types, declared_kinds, constants, public_constants)!
+		if next >= tokens.len || tokens[next].tok != .rpar {
+			return error('fastc parser does not support an unbalanced enum discriminant in ${source_file.path}')
+		}
+		return '(${value})', next + 1
+	}
+	if tokens[start].tok == .number {
+		return fastc_c_number(tokens[start].lit)!, start + 1
+	}
+	return fastc_render_enum_symbol(tokens, start, source_file, enum_c_name, fields,
+		declared_types, declared_kinds, constants, public_constants)
+}
+
+fn fastc_render_enum_symbol(tokens []FastcExpressionToken, start int, source_file FastcSourceFile, enum_c_name string, fields map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool) !(string, int) {
+	if tokens[start].tok == .dot && start + 1 < tokens.len && tokens[start + 1].tok == .name
+		&& tokens[start + 1].lit in fields {
+		return '${enum_c_name}__${tokens[start + 1].lit}', start + 2
+	}
+	if tokens[start].tok != .name {
+		return error('fastc parser does not support enum discriminant token `${tokens[start].tok.str()}` in ${source_file.path}')
+	}
+	name := tokens[start].lit
+	if start + 4 < tokens.len && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name
+		&& tokens[start + 3].tok == .dot && tokens[start + 4].tok == .name {
+		if imported_module := source_file.header.imports[name] {
+			type_key := fastc_type_key(imported_module, tokens[start + 2].lit)
+			if declared_types[type_key] && declared_kinds[type_key] == .enum_ {
+				return '${fastc_c_declared_type_name(type_key)}__${tokens[start + 4].lit}', start +
+					5
+			}
+		}
+	}
+	if start + 2 < tokens.len && tokens[start + 1].tok == .dot && tokens[start + 2].tok == .name {
+		member := tokens[start + 2].lit
+		if name == 'C' {
+			return member, start + 3
+		}
+		if imported_module := source_file.header.imports[name] {
+			constant_key := fastc_constant_key(imported_module, member)
+			if c_name := constants[constant_key] {
+				if !public_constants[constant_key] {
+					return error('fastc parser does not support private imported constant `${name}.${member}` in enum discriminant in ${source_file.path}')
+				}
+				return c_name, start + 3
+			}
+		}
+		type_key := fastc_resolve_declared_type_key(source_file.header.module_name, name,
+			source_file.header.imports, declared_types) or { '' }
+		if type_key != '' && declared_kinds[type_key] == .enum_ {
+			return '${fastc_c_declared_type_name(type_key)}__${member}', start + 3
+		}
+	}
+	if name in fields {
+		return '${enum_c_name}__${name}', start + 1
+	}
+	local_key := fastc_constant_key(source_file.header.module_name, name)
+	builtin_key := fastc_constant_key('builtin', name)
+	if c_name := constants[local_key] {
+		return c_name, start + 1
+	}
+	if c_name := constants[builtin_key] {
+		return c_name, start + 1
+	}
+	if imported_module := source_file.header.imports[fastc_selective_import_key(name)] {
+		constant_key := fastc_constant_key(imported_module, name)
+		if c_name := constants[constant_key] {
+			if public_constants[constant_key] {
+				return c_name, start + 1
+			}
+		}
+	}
+	return error('fastc parser does not support unresolved enum discriminant name `${name}` in ${source_file.path}')
+}
+
+fn fastc_emit_enum_print_function(c_name string, name string, fields []string, is_flag bool, mut out strings.Builder) {
+	out.writeln('static void v_fastc_print_enum_${c_name}(${c_name} value, bool newline) {')
+	if is_flag {
+		out.writeln('\tfputs("${name}{", stdout);')
+		out.writeln('\tbool written = false;')
+		for field in fields {
+			out.writeln('\tif ((value & ${c_name}__${field}) == ${c_name}__${field}) {')
+			out.writeln('\t\tif (written) fputs(" | ", stdout);')
+			out.writeln('\t\tfputs(".${field}", stdout);')
+			out.writeln('\t\twritten = true;')
+			out.writeln('\t}')
+		}
+		out.writeln('\tfputc(125, stdout);')
+	} else {
+		if fields.len == 0 {
+			out.writeln('\tprintf("%d", (int)value);')
+		} else {
+			for i, field in fields {
+				out.writeln('\t${if i == 0 { 'if' } else { 'else if' }} (value == ${c_name}__${field}) fputs("${field}", stdout);')
+			}
+			out.writeln('\telse printf("%d", (int)value);')
+		}
+	}
+	out.writeln('\tif (newline) fputc(10, stdout);')
+	out.writeln('}')
 }
 
 fn fastc_emit_interface_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, mut out strings.Builder) !token.Token {
@@ -7295,6 +7491,9 @@ fn (g &Parser) expected_enum_shorthand_expression() ?string {
 }
 
 fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
+	if enum_print := g.render_enum_print_expression(tokens) {
+		return enum_print
+	}
 	if tokens.len == 1 && tokens[0].tok == .name {
 		if local := g.locals[tokens[0].lit] {
 			if local.is_reference {
@@ -7983,6 +8182,36 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken, rendered_exp
 		}
 	}
 	return none
+}
+
+fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if tokens.len < 4 || tokens[0].tok != .name || tokens[0].lit !in ['print', 'println']
+		|| tokens[1].tok != .lpar || tokens.last().tok != .rpar {
+		return none
+	}
+	call_end := fastc_matching_rpar(tokens, 1) or { return none }
+	if call_end != tokens.len - 1 {
+		return none
+	}
+	call_arguments := fastc_call_arguments(tokens, 1, call_end) or { return none }
+	if call_arguments.len != 1 {
+		return none
+	}
+	argument_type := g.infer_expression_type(call_arguments[0]) or { return none }
+	type_key := g.semantic_type_key(argument_type)
+	if g.declared_kinds[type_key] != .enum_ {
+		return none
+	}
+	c_type := fastc_c_declared_type_name(type_key)
+	argument := g.render_call_argument_expression(call_arguments[0], c_type) or { return none }
+	return FastcRenderedExpression{
+		source: 'v_fastc_print_enum_${c_type}(${argument}, ${if tokens[0].lit == 'println' {
+			'true'
+		} else {
+			'false'
+		}})'
+		typ:    'void'
+	}
 }
 
 fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {

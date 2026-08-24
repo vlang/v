@@ -917,6 +917,66 @@ fn main() {}
 	assert c_source.contains('#define Foo__e ((Foo)-9)'), c_source
 }
 
+fn test_symbolic_enum_discriminants_and_printing_are_preserved() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+const base = 10
+
+enum Color {
+	red = base
+	green
+	blue = base + 1 << 1
+}
+
+fn main() {
+	println(int(Color.red))
+	println(int(Color.blue))
+	print(Color.green)
+	println(Color.red)
+}
+',
+		'symbolic_enum_discriminant.v', prefs) or { panic(err) }
+	assert c_source.contains('#define Color__red ((Color)main__base)'), c_source
+	assert c_source.contains('#define Color__green ((Color)(main__base + 1))'), c_source
+	assert c_source.contains('v_fastc_print_enum_Color(Color__green, false);'), c_source
+	assert c_source.contains('v_fastc_print_enum_Color(Color__red, true);'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_symbolic_enum_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '10\n12\ngreenred\n'
+}
+
+fn test_unresolved_enum_discriminants_are_rejected() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main
+
+enum Color {
+	red = missing
+}
+
+fn main() {}
+',
+		'unresolved_enum_discriminant.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('unresolved enum discriminant name `missing`'), message
+}
+
 fn test_select_statements_are_rejected() {
 	prefs := pref.new_preferences()
 	mut message := ''
