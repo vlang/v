@@ -1016,6 +1016,9 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 					continue
 				}
 				key := fastc_type_key(module_name, name)
+				if key in declared_types {
+					return error('fastc parser does not support duplicate type declaration `${name}` in module `${module_name}` in ${path}')
+				}
 				declared_types[key] = is_public
 				declared_kinds[key] = kind
 			}

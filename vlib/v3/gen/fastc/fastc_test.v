@@ -188,6 +188,21 @@ fn test_duplicate_constant_declarations_are_rejected() {
 	}
 }
 
+fn test_duplicate_type_declarations_are_rejected() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\ntype UserId = int\ntype UserId = int\nfn main() {}\n',
+		'module main\nstruct Item {}\ntype Item = int\nfn main() {}\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'duplicate_type.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('duplicate type declaration'), message
+	}
+}
+
 fn test_global_declarations_require_enable_globals_or_module_attribute() {
 	prefs := pref.new_preferences()
 	mut message := ''
