@@ -130,6 +130,46 @@ fn main() {
 	assert immutable_compile.exit_code != 0
 	assert immutable_compile.output.contains('mutation of immutable or unknown name `value`'), immutable_compile.output
 
+	global_source := os.join_path(root, 'initialized_global.v')
+	write_fastc_test_source(global_source, 'module main
+
+__global answer = 42
+__global initialized = initialize()
+
+fn initialize() int {
+	println("initializing")
+	return answer + 1
+}
+
+fn main() {
+	println(answer)
+	println(initialized)
+}
+')
+	global_binary := os.join_path(root, 'initialized_global')
+	global_compile := cmdexec.run(v3_bin, ['-silent', '-enable-globals', '-b', 'fastc', '-o',
+		global_binary, global_source])
+	assert global_compile.exit_code == 0, global_compile.output
+	global_run := cmdexec.run(global_binary, [])
+	assert global_run.exit_code == 0, global_run.output
+	assert global_run.output.trim_space() == 'initializing\n42\n43'
+
+	select_source := os.join_path(root, 'select.v')
+	write_fastc_test_source(select_source, 'module main
+
+fn main() {
+	select {
+		value := <-messages { println(value) }
+		else { println(0) }
+	}
+}
+')
+	select_binary := os.join_path(root, 'select')
+	select_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', select_binary,
+		select_source])
+	assert select_compile.exit_code != 0
+	assert select_compile.output.contains('fastc parser does not support select statements'), select_compile.output
+
 	invalid_c_source := os.join_path(root, 'invalid_c.v')
 	write_fastc_test_source(invalid_c_source, 'module main
 

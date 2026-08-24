@@ -276,6 +276,11 @@ struct FastcHoistedCSource {
 	body       string
 }
 
+struct FastcGlobalDeclarations {
+	declarations string
+	initializers string
+}
+
 struct Parser {
 	prefs               &pref.Preferences
 	path                string
@@ -288,6 +293,7 @@ struct Parser {
 	globals             map[string]string
 	used_function_names map[string]bool
 	selfhost            bool
+	has_global_inits    bool
 mut:
 	s                        scanner.Scanner
 	tok                      token.Token
@@ -388,7 +394,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	constant_declarations := fastc_generate_constant_declarations(sources, prefs, declared_types,
 		declared_kinds, struct_fields, functions, constants, mut constant_types)!
 	mut global_types := map[string]string{}
-	global_declarations := fastc_generate_global_declarations(sources, prefs, declared_types,
+	global_output := fastc_generate_global_declarations(sources, prefs, declared_types,
 		declared_kinds, struct_fields, functions, constants, constant_types, globals, mut
 		global_types)!
 	for constant_type in constant_types.values() {
@@ -416,6 +422,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			globals:                 globals
 			used_function_names:     used_function_names
 			selfhost:                prefs.building_v
+			has_global_inits:        global_output.initializers.len > 0
 			s:                       scanner.new_scanner(prefs, .normal)
 			out:                     strings.new_builder(source_file.source.len)
 			protos:                  strings.new_builder(256)
@@ -461,20 +468,30 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
 	hoisted_body := fastc_hoist_c_include_directives(body.str())
 	mut result := strings.new_builder(preamble.len + type_declarations.len +
-		constant_declarations.len + global_declarations.len + prototypes.len + body.len + 2)
+		constant_declarations.len + global_output.declarations.len + prototypes.len + body.len +
+		global_output.initializers.len + 96)
 	result.write_string(preamble)
 	result.write_string(hoisted_body.directives)
 	result.write_string(constant_declarations)
 	result.write_string(type_declarations)
 	result.write_string(late_composite_declarations.str())
 	result.write_string(fixed_array_declarations)
-	result.write_string(global_declarations)
+	result.write_string(global_output.declarations)
 	result.write_string(prototypes.str())
+	if global_output.initializers.len > 0 {
+		result.writeln('static void v_fastc_init_globals(void);')
+	}
 	result.writeln('')
 	if prefs.building_v {
 		result.write_string(c_selfhost_runtime)
 	}
 	result.write_string(interface_dispatches)
+	if global_output.initializers.len > 0 {
+		result.writeln('static void v_fastc_init_globals(void) {')
+		result.write_string(global_output.initializers)
+		result.writeln('}')
+		result.writeln('')
+	}
 	result.write_string(hoisted_body.body)
 	return result.str()
 }
@@ -924,8 +941,9 @@ fn collect_global_names(source string, path string, module_name string, prefs &p
 	}
 }
 
-fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, functions map[string]FastcFunctionSignature, constants map[string]string, constant_types map[string]string, globals map[string]string, mut global_types map[string]string) !string {
+fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, struct_fields map[string]map[string]string, functions map[string]FastcFunctionSignature, constants map[string]string, constant_types map[string]string, globals map[string]string, mut global_types map[string]string) !FastcGlobalDeclarations {
 	mut out := strings.new_builder(1024)
+	mut initializers := strings.new_builder(1024)
 	for source_file in sources {
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
@@ -952,7 +970,7 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 		gen.next()
 		for gen.tok != .eof {
 			if gen.tok == .key_global {
-				gen.parse_global_declaration(mut out)!
+				gen.parse_global_declaration(mut out, mut initializers)!
 				continue
 			}
 			if gen.tok == .lcbr {
@@ -966,10 +984,13 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 	if out.len > 0 {
 		out.writeln('')
 	}
-	return out.str()
+	return FastcGlobalDeclarations{
+		declarations: out.str()
+		initializers: initializers.str()
+	}
 }
 
-fn (mut g Parser) parse_global_declaration(mut out strings.Builder) ! {
+fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initializers strings.Builder) ! {
 	g.expect(.key_global)!
 	if g.tok == .lpar {
 		return g.unsupported('grouped globals')
@@ -1001,12 +1022,15 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder) ! {
 			g.global_types[key] = 'FixedArray_${fastc_composite_type_part(element_type)}'
 			return
 		}
-		_ = g.read_expression([token.Token.semicolon])!
+		initializer := g.read_expression([token.Token.semicolon])!
 		typ := fastc_normalize_inferred_type(g.last_expression_type)
 		if typ == '' {
 			return g.unsupported('unverifiable global `${name}` type')
 		}
 		out.writeln('static ${typ} ${c_name};')
+		if !(g.selfhost && key in ['g_main_argc', 'g_main_argv']) {
+			initializers.writeln('\t${c_name} = ${initializer};')
+		}
 		g.global_types[key] = typ
 		g.skip_semicolons()
 		return
@@ -1014,6 +1038,18 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder) ! {
 	typ := g.parse_type()!
 	out.writeln('static ${typ} ${c_name};')
 	g.global_types[key] = typ
+	if g.tok == .assign {
+		g.next()
+		initializer := g.read_expression([token.Token.semicolon])!
+		actual_type := fastc_normalize_inferred_type(g.last_expression_type)
+		if actual_type == '' || (!fastc_call_types_are_compatible(actual_type, typ) && !(g.selfhost
+			&& g.selfhost_types_are_compatible(actual_type, typ))) {
+			return g.unsupported('global `${name}` initializer type `${actual_type}` for `${typ}`')
+		}
+		if !(g.selfhost && key in ['g_main_argc', 'g_main_argv']) {
+			initializers.writeln('\t${c_name} = ${initializer};')
+		}
+	}
 	g.skip_semicolons()
 }
 
@@ -1939,6 +1975,18 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		mut previous := token.Token.unknown
 		mut tok := scan.scan()
 		for tok != .eof {
+			if tok in [.key_struct, .key_union, .key_interface, .key_enum] {
+				// Field and interface-method names are declarations, not executable
+				// references that should make same-named functions reachable.
+				for tok !in [.lcbr, .eof] {
+					tok = scan.scan()
+				}
+				if tok == .lcbr {
+					tok = fastc_skip_balanced_tokens(mut scan, tok, .lcbr, .rcbr) or { break }
+				}
+				previous = .rcbr
+				continue
+			}
 			if tok != .key_fn || previous == .assign {
 				if tok == .name && scan.lit in available_names {
 					top_level_references[scan.lit] = true
@@ -2655,30 +2703,37 @@ fn (mut g Parser) skip_attribute() !bool {
 	g.next()
 	mut depth := 1
 	mut has_condition := false
-	mut negate_condition := false
-	mut condition_name := ''
+	mut condition_value := true
+	mut at_item_start := true
 	for depth > 0 {
 		if g.tok == .eof {
 			return g.unsupported('unfinished attribute')
 		}
-		if depth == 1 && g.tok == .key_if {
+		if depth == 1 && at_item_start && g.tok == .key_if {
+			if has_condition {
+				return g.unsupported('multiple conditional attributes')
+			}
 			has_condition = true
-		} else if depth == 1 && has_condition && condition_name == '' && g.tok == .not {
-			negate_condition = true
-		} else if depth == 1 && has_condition && condition_name == '' && g.tok == .name {
-			condition_name = g.lit
-		} else if g.tok == .lsbr {
+			g.next()
+			condition_value = g.parse_comptime_or()!
+			if g.tok !in [.semicolon, .rsbr] {
+				return g.unsupported('conditional attribute expression near `${g.token_source()}`')
+			}
+			continue
+		}
+		if depth == 1 && g.tok == .semicolon {
+			at_item_start = true
+		} else if depth == 1 {
+			at_item_start = false
+		}
+		if g.tok == .lsbr {
 			depth++
 		} else if g.tok == .rsbr {
 			depth--
 		}
 		g.next()
 	}
-	if !has_condition || condition_name == '' {
-		return true
-	}
-	value := pref.comptime_flag_value(g.prefs, condition_name)
-	return if negate_condition { !value } else { value }
+	return if has_condition { condition_value } else { true }
 }
 
 fn (mut g Parser) skip_top_level_declaration() ! {
@@ -2936,6 +2991,14 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return
 		}
 	}
+	if g.selfhost && g.open_block_contains_select_statement() {
+		// The self-host reachability prepass deliberately groups overloaded methods
+		// by name. Omit an unsupported overload that only became reachable through
+		// that conservative grouping. A real reference remains undefined and makes
+		// C validation fail instead of emitting select with changed semantics.
+		g.skip_balanced(.lcbr, .rcbr)!
+		return
+	}
 	c_name := if receiver_type == '' {
 		fastc_c_function_name(g.module_name, name)
 	} else {
@@ -2973,6 +3036,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		if g.selfhost {
 			g.write_line('g_main_argc = argc;')
 			g.write_line('g_main_argv = argv;')
+		}
+		if g.has_global_inits {
+			g.write_line('v_fastc_init_globals();')
 		}
 	}
 	previous_in_main := g.in_main
@@ -3391,45 +3457,32 @@ fn (mut g Parser) parse_statement() !bool {
 }
 
 fn (mut g Parser) parse_select_statement() !bool {
-	g.expect(.key_select)!
-	g.expect(.lcbr)!
-	g.skip_semicolons()
-	for g.tok != .rcbr {
-		if g.tok == .eof {
-			return g.unsupported('unfinished select statement')
-		}
-		is_last := g.select_branch_is_last()
-		for g.tok !in [.lcbr, .eof] {
-			g.next()
-		}
-		g.expect(.lcbr)!
-		if is_last {
-			terminates := g.parse_block_body()!
-			g.expect(.rcbr)!
-			return terminates
-		}
-		g.skip_open_block()!
-	}
-	g.next()
-	return false
+	return g.unsupported('select statements')
 }
 
-fn (g &Parser) select_branch_is_last() bool {
+fn (g &Parser) open_block_contains_select_statement() bool {
+	if g.tok != .lcbr {
+		return false
+	}
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)
 	lookahead.init(g.s.current_file(), g.s.src)
 	lookahead.offset = g.s.offset
-	mut tok := g.tok
-	for tok !in [.lcbr, .eof] {
+	mut depth := 1
+	mut previous := token.Token.lcbr
+	mut tok := lookahead.scan()
+	for depth > 0 && tok != .eof {
+		if tok == .key_select && previous != .dot {
+			return true
+		}
+		if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
+		}
+		previous = tok
 		tok = lookahead.scan()
 	}
-	if tok != .lcbr {
-		return false
-	}
-	tok = fastc_skip_balanced_tokens(mut lookahead, tok, .lcbr, .rcbr) or { return false }
-	for tok == .semicolon {
-		tok = lookahead.scan()
-	}
-	return tok == .rcbr
+	return false
 }
 
 fn (mut g Parser) parse_defer() ! {

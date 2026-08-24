@@ -149,6 +149,67 @@ fn main() {
 	assert !c_source.contains('must not run')
 }
 
+fn test_compound_function_attributes_evaluate_the_complete_condition() {
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', pref.host_arch()) or { panic(err) }
+	c_source := generate('module main
+
+@[if linux && windows]
+fn impossible() {
+	println("disabled compound condition")
+}
+
+@[if linux || windows]
+fn supported() {
+	println("enabled compound condition")
+}
+
+fn main() {
+	impossible()
+	supported()
+}
+',
+		'compound_function_attribute.v', prefs) or { panic(err) }
+	assert c_source.contains('void impossible(void) {\n}')
+	assert !c_source.contains('disabled compound condition')
+	assert c_source.contains('enabled compound condition')
+}
+
+fn test_initialized_global_value_is_emitted() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+__global answer = 42
+
+fn main() {
+	println(answer)
+}
+',
+		'initialized_global.v', prefs) or { panic(err) }
+	assert c_source.contains('static int answer;'), c_source
+	assert c_source.contains('\tanswer = 42;'), c_source
+	assert c_source.contains('v_fastc_init_globals();'), c_source
+}
+
+fn test_select_statements_are_rejected() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main
+
+fn main() {
+	select {
+		value := <-messages { println(value) }
+		else { println(0) }
+	}
+}
+',
+		'select_statement.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('fastc parser does not support select statements'), message
+}
+
 fn test_unresolved_names_are_rejected_before_c_emission() {
 	prefs := pref.new_preferences()
 	for source in [
