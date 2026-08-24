@@ -82,6 +82,35 @@ static string v_fastc_unsigned_str(unsigned long long value) {
 	snprintf(result, 32, "%llu", value);
 	return result;
 }
+static int v_fastc_utf8_display_width(const char *value) {
+	int width = 0;
+	for (const unsigned char *cursor = (const unsigned char *)(value ? value : ""); *cursor != 0; cursor++) {
+		if ((*cursor & 192) != 128) width++;
+	}
+	return width;
+}
+static string v_fastc_string_pad(const char *value, int width, bool left_align) {
+	const char *text = value ? value : "";
+	if (width < 0) {
+		left_align = true;
+		width = -width;
+	}
+	int visible = v_fastc_utf8_display_width(text);
+	if (visible >= width) return text;
+	size_t length = strlen(text);
+	int padding = width - visible;
+	char *result = malloc(length + (size_t)padding + 1);
+	if (result == NULL) return "";
+	if (left_align) {
+		memcpy(result, text, length);
+		memset(result + length, 32, (size_t)padding);
+	} else {
+		memset(result, 32, (size_t)padding);
+		memcpy(result + padding, text, length);
+	}
+	result[length + (size_t)padding] = 0;
+	return result;
+}
 static string v_fastc_integer_format(unsigned long long magnitude, bool negative, const char *format) {
 	size_t format_len = strlen(format);
 	char specifier = format_len > 0 ? format[format_len - 1] : 100;
@@ -93,9 +122,28 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 	unsigned base = specifier == 120 || specifier == 88 ? 16 : specifier == 111 ? 8 : specifier == 98 ? 2 : 10;
 	char reversed[65];
 	int digit_count = 0;
+	unsigned char encoded_rune[4];
+	int rune_byte_count = 0;
 	if (specifier == 99) {
-		reversed[digit_count++] = (char)magnitude;
+		unsigned codepoint = magnitude <= 1114111 ? (unsigned)magnitude : 65533;
+		if (codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
+		if (codepoint <= 127) {
+			encoded_rune[rune_byte_count++] = (unsigned char)codepoint;
+		} else if (codepoint <= 2047) {
+			encoded_rune[rune_byte_count++] = (unsigned char)(192 | (codepoint >> 6));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
+		} else if (codepoint <= 65535) {
+			encoded_rune[rune_byte_count++] = (unsigned char)(224 | (codepoint >> 12));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 6) & 63));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
+		} else {
+			encoded_rune[rune_byte_count++] = (unsigned char)(240 | (codepoint >> 18));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 12) & 63));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 6) & 63));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
+		}
 		negative = false;
+		zero_pad = false;
 	} else {
 		const char *digits = specifier == 88 ? "0123456789ABCDEF" : "0123456789abcdef";
 		do {
@@ -103,15 +151,21 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 			magnitude /= base;
 		} while (magnitude != 0);
 	}
-	int content_len = digit_count + (negative ? 1 : 0);
-	int result_len = width > content_len ? width : content_len;
+	int display_len = specifier == 99 ? 1 : digit_count + (negative ? 1 : 0);
+	int padding = width > display_len ? width - display_len : 0;
+	int content_bytes = specifier == 99 ? rune_byte_count : digit_count + (negative ? 1 : 0);
+	int result_len = content_bytes + padding;
 	char *result = malloc((size_t)result_len + 1);
 	if (result == NULL) return "";
 	int cursor = 0;
-	if (!left_align && !zero_pad) while (cursor < result_len - content_len) result[cursor++] = 32;
+	if (!left_align && !zero_pad) while (cursor < padding) result[cursor++] = 32;
 	if (negative) result[cursor++] = 45;
-	if (!left_align && zero_pad) while (cursor < result_len - digit_count) result[cursor++] = 48;
-	while (digit_count > 0) result[cursor++] = reversed[--digit_count];
+	if (!left_align && zero_pad) while (cursor < padding + (negative ? 1 : 0)) result[cursor++] = 48;
+	if (specifier == 99) {
+		for (int i = 0; i < rune_byte_count; i++) result[cursor++] = (char)encoded_rune[i];
+	} else {
+		while (digit_count > 0) result[cursor++] = reversed[--digit_count];
+	}
 	if (left_align) while (cursor < result_len) result[cursor++] = 32;
 	result[cursor] = 0;
 	return result;
@@ -256,6 +310,105 @@ static int v_fastc_string_compare(const string *left, const string *right) {
 	return (left->len > right->len) - (left->len < right->len);
 }
 
+static int v_fastc_string_display_width(string value) {
+	int width = 0;
+	for (int i = 0; i < value.len; i++) {
+		if ((value.str[i] & 192) != 128) width++;
+	}
+	return width;
+}
+
+static string v_fastc_string_pad(string value, int width, bool left_align) {
+	if (width < 0) {
+		left_align = true;
+		width = -width;
+	}
+	int visible = v_fastc_string_display_width(value);
+	if (visible >= width) return value;
+	int padding = width - visible;
+	byteptr result = malloc((size_t)value.len + (size_t)padding + 1);
+	if (result == NULL) return _SLIT0;
+	if (left_align) {
+		memcpy(result, value.str, (size_t)value.len);
+		memset(result + value.len, 32, (size_t)padding);
+	} else {
+		memset(result, 32, (size_t)padding);
+		memcpy(result + padding, value.str, (size_t)value.len);
+	}
+	result[value.len + padding] = 0;
+	return (string){.str = result, .len = value.len + padding, .is_lit = 0};
+}
+
+static string v_fastc_integer_format(unsigned long long magnitude, bool negative, const char *format) {
+	size_t format_len = strlen(format);
+	char specifier = format_len > 0 ? format[format_len - 1] : 100;
+	bool left_align = format_len > 1 && format[0] == 45;
+	size_t width_start = left_align ? 1 : 0;
+	bool zero_pad = !left_align && width_start < format_len - 1 && format[width_start] == 48;
+	int width = 0;
+	for (size_t i = width_start; i + 1 < format_len; i++) width = width * 10 + format[i] - 48;
+	unsigned base = specifier == 120 || specifier == 88 ? 16 : specifier == 111 ? 8 : specifier == 98 ? 2 : 10;
+	char reversed[65];
+	int digit_count = 0;
+	unsigned char encoded_rune[4];
+	int rune_byte_count = 0;
+	if (specifier == 99) {
+		unsigned codepoint = magnitude <= 1114111 ? (unsigned)magnitude : 65533;
+		if (codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
+		if (codepoint <= 127) {
+			encoded_rune[rune_byte_count++] = (unsigned char)codepoint;
+		} else if (codepoint <= 2047) {
+			encoded_rune[rune_byte_count++] = (unsigned char)(192 | (codepoint >> 6));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
+		} else if (codepoint <= 65535) {
+			encoded_rune[rune_byte_count++] = (unsigned char)(224 | (codepoint >> 12));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 6) & 63));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
+		} else {
+			encoded_rune[rune_byte_count++] = (unsigned char)(240 | (codepoint >> 18));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 12) & 63));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 6) & 63));
+			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
+		}
+		negative = false;
+		zero_pad = false;
+	} else {
+		const char *digits = specifier == 88 ? "0123456789ABCDEF" : "0123456789abcdef";
+		do {
+			reversed[digit_count++] = digits[magnitude % base];
+			magnitude /= base;
+		} while (magnitude != 0);
+	}
+	int display_len = specifier == 99 ? 1 : digit_count + (negative ? 1 : 0);
+	int padding = width > display_len ? width - display_len : 0;
+	int content_bytes = specifier == 99 ? rune_byte_count : digit_count + (negative ? 1 : 0);
+	int result_len = content_bytes + padding;
+	byteptr result = malloc((size_t)result_len + 1);
+	if (result == NULL) return _SLIT0;
+	int cursor = 0;
+	if (!left_align && !zero_pad) while (cursor < padding) result[cursor++] = 32;
+	if (negative) result[cursor++] = 45;
+	if (!left_align && zero_pad) while (cursor < padding + (negative ? 1 : 0)) result[cursor++] = 48;
+	if (specifier == 99) {
+		for (int i = 0; i < rune_byte_count; i++) result[cursor++] = encoded_rune[i];
+	} else {
+		while (digit_count > 0) result[cursor++] = reversed[--digit_count];
+	}
+	if (left_align) while (cursor < result_len) result[cursor++] = 32;
+	result[cursor] = 0;
+	return (string){.str = result, .len = result_len, .is_lit = 0};
+}
+
+static string v_fastc_signed_format(long long value, const char *format) {
+	bool negative = value < 0;
+	unsigned long long magnitude = negative ? (unsigned long long)(-(value + 1)) + 1 : (unsigned long long)value;
+	return v_fastc_integer_format(magnitude, negative, format);
+}
+
+static string v_fastc_unsigned_format(unsigned long long value, const char *format) {
+	return v_fastc_integer_format(value, false, format);
+}
+
 static int builtin__array_index(array values, voidptr value) {
 	for (int i = 0; i < values.len; i++) {
 		void *item = (u8 *)values.data + (size_t)i * (size_t)values.element_size;
@@ -345,6 +498,11 @@ mut:
 struct FastcRenderedExpression {
 	source string
 	typ    string
+}
+
+struct FastcInterpolationWidth {
+	width      int
+	left_align bool
 }
 
 struct FastcStructField {
@@ -7552,8 +7710,17 @@ fn (mut g Parser) read_interpolated_string() !string {
 		}
 		g.expect(.rcbr)!
 		if value_type == 'string' {
-			parts << value
+			width := fastc_string_interpolation_width(format_specifier) or {
+				return g.unsupported('interpolation format `${format_specifier}` for `string`')
+			}
+			parts << if width.width > 0 {
+				'v_fastc_string_pad(${value}, ${width.width}, ${width.left_align})'
+			} else {
+				value
+			}
 		} else if g.declared_kinds[g.semantic_type_key(value_type)] == .enum_ {
+			enum_key := g.semantic_type_key(value_type)
+			is_unsigned := g.enum_flags[enum_key]
 			format_character := if format_specifier.len > 0 {
 				format_specifier[format_specifier.len - 1]
 			} else {
@@ -7562,14 +7729,25 @@ fn (mut g Parser) read_interpolated_string() !string {
 			if format_character == `d` || format_character == `u` || format_character == `x`
 				|| format_character == `X` || format_character == `o` || format_character == `c`
 				|| format_character == `b` {
-				parts << if g.selfhost {
-					'builtin__int_str((int)(${value}))'
+				if !fastc_integer_interpolation_format_is_supported(format_specifier, is_unsigned) {
+					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
+				}
+				parts << if is_unsigned {
+					'v_fastc_unsigned_format((unsigned long long)(${value}), "${format_specifier}")'
 				} else {
-					'v_fastc_signed_str((long long)((int)(${value})))'
+					'v_fastc_signed_format((long long)(${value}), "${format_specifier}")'
 				}
 			} else {
-				enum_type := fastc_c_declared_type_name(g.semantic_type_key(value_type))
-				parts << 'v_fastc_enum_str_${enum_type}(${value})'
+				width := fastc_string_interpolation_width(format_specifier) or {
+					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
+				}
+				enum_type := fastc_c_declared_type_name(enum_key)
+				enum_name := 'v_fastc_enum_str_${enum_type}(${value})'
+				parts << if width.width > 0 {
+					'v_fastc_string_pad(${enum_name}, ${width.width}, ${width.left_align})'
+				} else {
+					enum_name
+				}
 			}
 		} else {
 			mut converted_primitive := false
@@ -7623,6 +7801,36 @@ fn (mut g Parser) read_interpolated_string() !string {
 fn fastc_is_primitive_interpolation_type(value_type string) bool {
 	return fastc_is_integer_expression_type(value_type) || value_type == 'bool'
 		|| value_type == 'char'
+}
+
+fn fastc_string_interpolation_width(format string) ?FastcInterpolationWidth {
+	if format == '' || format == 's' {
+		return FastcInterpolationWidth{}
+	}
+	mut end := format.len
+	if format[end - 1] == `s` {
+		end--
+	}
+	mut start := 0
+	mut left_align := false
+	if format[0] == `-` {
+		left_align = true
+		start = 1
+	}
+	if start >= end {
+		return none
+	}
+	mut width := 0
+	for i in start .. end {
+		if format[i] < `0` || format[i] > `9` {
+			return none
+		}
+		width = width * 10 + int(format[i] - `0`)
+	}
+	return FastcInterpolationWidth{
+		width:      width
+		left_align: left_align
+	}
 }
 
 fn fastc_integer_interpolation_format_is_supported(format string, is_unsigned bool) bool {

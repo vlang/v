@@ -57,7 +57,7 @@ fn test_ordinary_string_interpolation_has_runtime_support() {
 	c_source := generate(r"module main
 
 fn greeting(name string) string {
-	return 'hello ${name}!'
+	return '|${name:10}|${name:-10}|${name:10s}|'
 }
 
 fn main() {
@@ -66,7 +66,8 @@ fn main() {
 ",
 		'ordinary_string_interpolation.v', prefs) or { panic(err) }
 	assert c_source.contains('static string builtin__string_plus_many'), c_source
-	assert c_source.contains('builtin__string_plus_many(3, (string[]){_S("hello "), name, _S("!")})'), c_source
+	assert c_source.contains('v_fastc_string_pad(name, 10, false)'), c_source
+	assert c_source.contains('v_fastc_string_pad(name, 10, true)'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_interpolation_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -82,7 +83,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == 'hello FastC!\n'
+	assert run_result.output == '|     FastC|FastC     |     FastC|\n'
 }
 
 fn test_ordinary_primitive_interpolation_has_runtime_support() {
@@ -97,6 +98,8 @@ fn main() {
 	println('value=${value}; negative=${negative}; large=${large}; enabled=${enabled}')
 	hex_value := 15
 	println('${hex_value:x}|${hex_value:04x}|${hex_value:X}|${hex_value:04d}|${hex_value:b}|${hex_value:o}')
+	codepoint := 0x20ac
+	println('${codepoint:c}')
 }
 ",
 		'ordinary_primitive_interpolation.v', prefs) or { panic(err) }
@@ -106,6 +109,7 @@ fn main() {
 	assert c_source.contains('v_fastc_bool_str(enabled)'), c_source
 	assert c_source.contains('v_fastc_signed_format((long long)(hex_value), "x")'), c_source
 	assert c_source.contains('v_fastc_signed_format((long long)(hex_value), "04x")'), c_source
+	assert c_source.contains('v_fastc_signed_format((long long)(codepoint), "c")'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_primitive_interpolation_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -121,7 +125,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n'
+	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\n'
 }
 
 fn test_zero_value_strings_print_as_empty_strings() {
@@ -1905,7 +1909,7 @@ fn main() {
 
 fn test_large_flag_enums_use_unsigned_64_bit_values() {
 	prefs := pref.new_preferences()
-	c_source := generate('module main
+	c_source := generate(r"module main
 
 @[flag]
 enum PawnsBoard as u64 {
@@ -1921,11 +1925,13 @@ enum PawnsBoard as u64 {
 
 fn main() {
 	println(u64(PawnsBoard.h1))
+	println('${PawnsBoard.h1:020x}')
 }
-',
+",
 		'flag_enum_64.v', prefs) or { panic(err) }
 	assert c_source.contains('typedef u64 PawnsBoard;'), c_source
 	assert c_source.contains('#define PawnsBoard__h1 ((PawnsBoard)(((u64)1) << (63)))'), c_source
+	assert c_source.contains('v_fastc_unsigned_format((unsigned long long)(PawnsBoard__h1), "020x")'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_flag_enum_64_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1941,7 +1947,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == '9223372036854775808\n'
+	assert run_result.output == '9223372036854775808\n00008000000000000000\n'
 }
 
 fn test_mutable_receiver_methods_auto_address_mutable_values() {
@@ -2024,24 +2030,27 @@ fn main() {
 
 enum Color {
 	red
-	green
+	green = 15
 }
 
 fn main() {
 	println('${Color.red}')
-	println('${Color.green:d}')
+	println('|${Color.red:5}|${Color.red:-5}|')
+	println('${Color.green:04x}')
 }
 ",
 		'ordinary_enum_interpolation.v', prefs) or { panic(err) }
 	assert ordinary_interpolation_source.contains('static string v_fastc_enum_str_Color(Color value)'), ordinary_interpolation_source
 	assert ordinary_interpolation_source.contains('v_fastc_enum_str_Color(Color__red)'), ordinary_interpolation_source
-	assert ordinary_interpolation_source.contains('v_fastc_signed_str((long long)((int)(Color__green)))'), ordinary_interpolation_source
+	assert ordinary_interpolation_source.contains('v_fastc_string_pad(v_fastc_enum_str_Color(Color__red), 5, false)'), ordinary_interpolation_source
+	assert ordinary_interpolation_source.contains('v_fastc_string_pad(v_fastc_enum_str_Color(Color__red), 5, true)'), ordinary_interpolation_source
+	assert ordinary_interpolation_source.contains('v_fastc_signed_format((long long)(Color__green), "04x")'), ordinary_interpolation_source
 	os.write_file(c_file, ordinary_interpolation_source) or { panic(err) }
 	interpolation_compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
 	assert interpolation_compile_result.exit_code == 0, interpolation_compile_result.output
 	interpolation_run_result := cmdexec.run(bin_file, [])
 	assert interpolation_run_result.exit_code == 0, interpolation_run_result.output
-	assert interpolation_run_result.output == 'red\n1\n'
+	assert interpolation_run_result.output == 'red\n|  red|red  |\n000f\n'
 
 	mut selfhost_prefs := pref.new_preferences()
 	selfhost_prefs.building_v = true
@@ -2081,7 +2090,7 @@ fn main() {
 	assert interpolation_source.contains('if (value == Color__green) return _S("green");'), interpolation_source
 	assert interpolation_source.contains('return _S("unknown enum value");'), interpolation_source
 	assert interpolation_source.contains('v_fastc_enum_str_Color(color)'), interpolation_source
-	assert interpolation_source.contains('builtin__int_str((int)(color))'), interpolation_source
+	assert interpolation_source.contains('v_fastc_signed_format((long long)(color), "d")'), interpolation_source
 	assert interpolation_source.contains('static string v_fastc_enum_str_Permissions(Permissions value)'), interpolation_source
 	assert interpolation_source.contains('_S("Permissions{")'), interpolation_source
 	assert interpolation_source.contains('v_fastc_enum_str_Permissions(permissions)'), interpolation_source
