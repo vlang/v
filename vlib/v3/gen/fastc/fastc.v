@@ -274,6 +274,7 @@ mut:
 struct FastcSourceHeader {
 	module_name   string
 	imports       map[string]string
+	import_order  []string
 	blank_imports []string
 	has_globals   bool
 }
@@ -736,6 +737,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 			header = FastcSourceHeader{
 				module_name:   queued.module_name
 				imports:       header.imports
+				import_order:  header.import_order
 				blank_imports: header.blank_imports
 				has_globals:   header.has_globals
 			}
@@ -773,9 +775,12 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 }
 
 fn fastc_header_imported_modules(header FastcSourceHeader) []string {
-	mut modules := header.imports.values()
-	modules << header.blank_imports
-	return modules
+	if header.import_order.len > 0 {
+		return header.import_order.clone()
+	}
+	mut fallback := header.imports.values()
+	fallback << header.blank_imports
+	return fallback
 }
 
 fn fastc_sources_in_dependency_order(sources []FastcSourceFile) ![]FastcSourceFile {
@@ -870,7 +875,6 @@ fn fastc_append_module_sources(module_name string, sources []FastcSourceFile, mu
 			}
 		}
 	}
-	dependencies.sort()
 	for dependency in dependencies {
 		fastc_append_module_sources(dependency, sources, mut visiting, mut visited, mut ordered)!
 	}
@@ -897,6 +901,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	scan.init(file, source)
 	mut module_name := ''
 	mut imports := map[string]string{}
+	mut import_order := []string{}
 	mut blank_imports := []string{}
 	mut has_globals := false
 	mut brace_depth := 0
@@ -953,6 +958,9 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 				fastc_register_import_alias(import_path, alias, path, mut imports, mut
 					blank_imports)!
 				fastc_register_selective_imports(import_path, selected_names, path, mut imports)!
+				if import_path !in import_order {
+					import_order << import_path
+				}
 				tok = next_token
 			}
 			if tok == .rpar {
@@ -963,6 +971,9 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		import_path, alias, selected_names, next_token := fastc_scan_import(mut scan, tok, path)!
 		fastc_register_import_alias(import_path, alias, path, mut imports, mut blank_imports)!
 		fastc_register_selective_imports(import_path, selected_names, path, mut imports)!
+		if import_path !in import_order {
+			import_order << import_path
+		}
 		tok = next_token
 	}
 	if module_name == '' {
@@ -970,11 +981,18 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	}
 	if prefs.building_v && prefs.backend == 'fastc' && imports['driver'] == 'v3.driver'
 		&& 'fastcdriver' in imports {
-		imports['driver'] = imports['fastcdriver']
+		fastcdriver_module := imports['fastcdriver']
+		imports['driver'] = fastcdriver_module
+		for i, imported_module in import_order {
+			if imported_module == 'v3.driver' {
+				import_order[i] = fastcdriver_module
+			}
+		}
 	}
 	return FastcSourceHeader{
 		module_name:   module_name
 		imports:       imports
+		import_order:  import_order
 		blank_imports: blank_imports
 		has_globals:   has_globals
 	}
@@ -10685,6 +10703,19 @@ fn (g &Parser) is_enum_type_name(name string) bool {
 	return g.declared_kinds[type_key] == .enum_
 }
 
+fn (g &Parser) declared_cast_type_key(tokens []FastcExpressionToken, name_index int) ?string {
+	if name_index >= 2 && tokens[name_index - 1].tok == .dot && tokens[name_index - 2].tok == .name {
+		module_name := g.imports[tokens[name_index - 2].lit] or { return none }
+		type_key := fastc_type_key(module_name, tokens[name_index].lit)
+		return if type_key in g.declared_types { type_key } else { none }
+	}
+	if name_index > 0 && tokens[name_index - 1].tok == .dot {
+		return none
+	}
+	return fastc_resolve_declared_type_key(g.module_name, tokens[name_index].lit, g.imports,
+		g.declared_types)
+}
+
 fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 	mut i := 0
 	for i + 1 < tokens.len {
@@ -10824,16 +10855,15 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				i = call_end + 1
 				continue
 			}
-			if i == 0 || tokens[i - 1].tok != .dot {
-				if _ := fastc_resolve_declared_type_key(g.module_name, name, g.imports,
-					g.declared_types)
-				{
-					if call_args.len != 1 {
-						return g.unsupported('cast `${name}` with ${call_args.len} arguments')
-					}
-					i = call_end + 1
-					continue
+			if type_key := g.declared_cast_type_key(tokens, i) {
+				if call_args.len != 1 {
+					return g.unsupported('cast `${name}` with ${call_args.len} arguments')
 				}
+				g.validate_declared_cast(type_key, call_args[0], tokens[i].unsafe_depth > 0)!
+				i = call_end + 1
+				continue
+			}
+			if i == 0 || tokens[i - 1].tok != .dot {
 				if primitive_type := fastc_primitive_c_type(name) {
 					if call_args.len != 1 {
 						return g.unsupported('cast `${name}` with ${call_args.len} arguments')
@@ -10965,6 +10995,51 @@ fn (g &Parser) validate_primitive_cast(target_type string, operand []FastcExpres
 		return g.unsupported('cast to `bool` from `${actual_type}` outside an `unsafe` block')
 	}
 	return g.unsupported('cast from `${actual_type}` to `${target_type}`')
+}
+
+fn (g &Parser) validate_declared_cast(type_key string, operand []FastcExpressionToken, in_unsafe bool) ! {
+	if g.selfhost {
+		return
+	}
+	target_type := fastc_c_declared_type_name(type_key)
+	actual_type := fastc_normalize_inferred_type(g.infer_expression_type(operand)!)
+	if actual_type == '' {
+		return g.unsupported('unverifiable operand type for cast to `${target_type}`')
+	}
+	match g.declared_kinds[type_key] {
+		.alias_ {
+			target_base := g.underlying_alias_type(target_type)
+			if target_base == target_type {
+				return g.unsupported('unverifiable declared alias cast to `${target_type}`')
+			}
+			if g.declared_kinds[g.semantic_type_key(target_base)] == .enum_ {
+				return g.validate_declared_enum_cast(target_base, actual_type, in_unsafe)
+			}
+			actual_base := g.underlying_alias_type(actual_type)
+			if actual_type == target_type || actual_base == target_base
+				|| g.primitive_cast_types_are_compatible(actual_base, target_base, in_unsafe) {
+				return
+			}
+			return g.unsupported('cast from `${actual_type}` to `${target_type}` (alias to `${target_base}`)')
+		}
+		.enum_ {
+			return g.validate_declared_enum_cast(target_type, actual_type, in_unsafe)
+		}
+		else {}
+	}
+}
+
+fn (g &Parser) validate_declared_enum_cast(target_type string, actual_type string, in_unsafe bool) ! {
+	actual_base := g.underlying_alias_type(actual_type)
+	if g.semantic_type_key(actual_base) == g.semantic_type_key(target_type) {
+		return
+	}
+	if !fastc_is_integer_expression_type(actual_base) {
+		return g.unsupported('cast from `${actual_type}` to enum `${target_type}`')
+	}
+	if !in_unsafe {
+		return g.unsupported('cast from `${actual_type}` to enum `${target_type}` outside an `unsafe` block')
+	}
 }
 
 fn (g &Parser) primitive_cast_types_are_compatible(actual_type string, target_type string, in_unsafe bool) bool {

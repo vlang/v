@@ -160,6 +160,7 @@ fn init() {
 		panic(err)
 	}
 	assert header.blank_imports == ['alpha', 'beta']
+	assert header.import_order == ['alpha', 'beta']
 	assert '_' !in header.imports
 	c_source := generate_files([main_file], prefs) or { panic(err) }
 	assert c_source.contains('\talpha__init();'), c_source
@@ -1111,6 +1112,85 @@ pub fn ping() {}
 	assert run_result.output.trim_space() == 'dep init\nmain init\nmain\nmain defer\nmain cleanup\ndep cleanup'
 }
 
+fn test_module_lifecycle_preserves_source_import_order() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_import_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'zed')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'alpha')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, "module main
+
+import zed
+import alpha
+
+fn main() {
+	zed.ping()
+	alpha.ping()
+	println('main')
+}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'zed', 'zed.v'), "module zed
+
+fn init() {
+	println('zed init')
+}
+
+fn cleanup() {
+	println('zed cleanup')
+}
+
+pub fn ping() {}
+") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'alpha', 'alpha.v'), "module alpha
+
+fn init() {
+	println('alpha init')
+}
+
+fn cleanup() {
+	println('alpha cleanup')
+}
+
+pub fn ping() {}
+") or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	header := fastc_scan_source_header(os.read_file(main_file) or { panic(err) }, main_file, prefs) or {
+		panic(err)
+	}
+	assert header.import_order == ['zed', 'alpha']
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	startup_source := c_source.all_after('static void v_fastc_init_globals(void) {')
+	zed_init := startup_source.index('\tzed__init();') or { -1 }
+	alpha_init := startup_source.index('\talpha__init();') or { -1 }
+	assert zed_init >= 0, c_source
+	assert alpha_init > zed_init, c_source
+	cleanup_source := c_source.all_after('static void v_fastc_cleanup_modules(void) {')
+	alpha_cleanup := cleanup_source.index('\talpha__cleanup();') or { -1 }
+	zed_cleanup := cleanup_source.index('\tzed__cleanup();') or { -1 }
+	assert alpha_cleanup >= 0, c_source
+	assert zed_cleanup > alpha_cleanup, c_source
+
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == 'zed init\nalpha init\nmain\nalpha cleanup\nzed cleanup'
+}
+
 fn test_module_initializer_signatures_are_validated() {
 	prefs := pref.new_preferences()
 	for source in [
@@ -1731,6 +1811,46 @@ fn main() {
 		'valid_primitive_casts.v', prefs) or { panic(err) }
 	assert c_source.contains('println(((bool)(2)));'), c_source
 	assert c_source.contains('println(((bool)(0)));'), c_source
+}
+
+fn test_declared_cast_operands_are_validated() {
+	prefs := pref.new_preferences()
+	for source, expected in {
+		'module main\ntype MyType = string\nfn main() { println(MyType(5)) }\n':       'alias to `string`'
+		"module main\nenum Color { red blue }\nfn main() { println(Color('red')) }\n": 'to enum `Color`'
+		'module main\nenum Color { red blue }\nfn main() { println(Color(1)) }\n':     'outside an `unsafe` block'
+	} {
+		mut message := ''
+		_ := generate(source, 'invalid_declared_cast.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains(expected), message
+	}
+
+	c_source := generate("module main
+
+type Label = string
+type Count = int
+
+enum Color {
+	red
+	blue
+}
+
+fn main() {
+	label := Label('ok')
+	count := Count(2)
+	color := unsafe { Color(1) }
+	println(label == Label('ok'))
+	println(int(count))
+	println(color)
+}
+",
+		'valid_declared_casts.v', prefs) or { panic(err) }
+	assert c_source.contains('((Label)("ok"))'), c_source
+	assert c_source.contains('((Count)(2))'), c_source
+	assert c_source.contains('((Color)(1))'), c_source
 }
 
 fn test_defer_is_emitted_when_its_lexical_scope_exits() {
