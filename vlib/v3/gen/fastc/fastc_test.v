@@ -963,6 +963,135 @@ fn main() {}
 	assert c_source.contains('#define Foo__e ((Foo)-9)'), c_source
 }
 
+fn test_duplicate_enum_fields_are_rejected() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main
+
+enum Item {
+	value
+	value
+}
+
+fn main() {}
+',
+		'duplicate_enum_field.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('duplicate enum field `Item.value`'), message
+}
+
+fn test_flag_mutating_methods_require_mutable_receivers() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for source, receiver_name in {
+		'module main\n@[flag]\nenum Permissions { read write }\nfn main() { flags := Permissions.read; flags.set(.write) }\n':                                                   'flags'
+		'module main\n@[flag]\nenum Permissions { read write }\nstruct Holder { permissions Permissions }\nfn main() { holder := Holder{}; holder.permissions.clear(.read) }\n': 'holder'
+	} {
+		mut message := ''
+		_ := generate(source, 'immutable_flag_receiver.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('receiver `${receiver_name}` is immutable'), message
+	}
+	module_source := 'module settings
+
+@[flag]
+pub enum Permissions {
+	read
+	write
+}
+
+pub struct Config {
+pub:
+	permissions Permissions
+}
+'
+	main_source := 'module main
+
+import settings
+
+fn main() {
+	mut config := settings.Config{}
+	config.permissions.set(.write)
+}
+'
+	mut field_message := ''
+	_ := generate_source_files([
+		FastcSourceFile{
+			path:   'immutable_flag_field.v'
+			source: main_source
+			header: fastc_scan_source_header(main_source, 'immutable_flag_field.v', prefs) or {
+				panic(err)
+			}
+		},
+		FastcSourceFile{
+			path:   'settings.v'
+			source: module_source
+			header: fastc_scan_source_header(module_source, 'settings.v', prefs) or { panic(err) }
+		},
+	], prefs) or {
+		field_message = err.msg()
+		''
+	}
+	assert field_message.contains('receiver field `Config.permissions` is not `pub mut`'), field_message
+
+	c_source := generate('module main
+
+@[flag]
+enum Permissions {
+	read
+	write
+}
+
+fn main() {
+	mut flags := Permissions.read
+	flags.set(.write)
+	flags.clear(.read)
+}
+',
+		'mutable_flag_receiver.v', prefs) or { panic(err) }
+	assert c_source.contains('flags) |= (Permissions__write)'), c_source
+	assert c_source.contains('flags) &= ~(Permissions__read)'), c_source
+}
+
+fn test_mutable_receiver_methods_auto_address_mutable_values() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	declarations := 'module main
+
+struct Holder {
+	value int
+}
+
+fn (mut holder Holder) reset() {}
+'
+	mut message := ''
+	_ := generate(declarations + '
+fn main() {
+	holder := Holder{}
+	holder.reset()
+}
+',
+		'immutable_method_receiver.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('mutating method `reset` receiver `holder` is immutable'), message
+
+	c_source := generate(declarations + '
+fn main() {
+	mut holder := Holder{}
+	holder.reset()
+}
+',
+		'mutable_method_receiver.v', prefs) or { panic(err) }
+	assert c_source.contains('void Holder_reset(Holder* holder)'), c_source
+	assert c_source.contains('Holder_reset(&(holder))'), c_source
+}
+
 fn test_symbolic_enum_discriminants_and_printing_are_preserved() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main

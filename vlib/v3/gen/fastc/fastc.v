@@ -2044,6 +2044,9 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 			return error('fastc parser does not support enum `${name}` field in ${source_file.path}')
 		}
 		field_name := scan.lit
+		if field_name in fields {
+			return error('fastc parser does not support duplicate enum field `${name}.${field_name}` in ${source_file.path}')
+		}
 		field_names << field_name
 		tok = scan.scan()
 		if tok == .assign {
@@ -5679,7 +5682,7 @@ fn (g &Parser) last_expression_is_statement() bool {
 	if g.selfhost && fastc_expression_tokens_contain_statement_method(tokens) {
 		return true
 	}
-	if g.selfhost && tokens.len >= 4 {
+	if tokens.len >= 4 {
 		for i in 2 .. tokens.len - 1 {
 			if tokens[i].tok != .name || tokens[i - 1].tok != .dot || tokens[i + 1].tok != .lpar {
 				continue
@@ -9353,8 +9356,8 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		}
 		call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 		has_arguments := call_end > i + 2
-		method_receiver_key := method_key.all_before_last('.')
-		method_c_name := fastc_method_c_name_for_key(method_receiver_key, tokens[i].lit)
+		method_c_name := fastc_method_c_name(signature.module_name, expected_receiver,
+			tokens[i].lit)
 		mut direct_arguments := []string{}
 		if has_arguments {
 			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
@@ -10436,9 +10439,21 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				|| (is_variadic && call_args.len < expected_arguments) {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments instead of ${expected_arguments}')
 			}
-			if !g.selfhost && is_method_call && signature.parameter_types.len > 0
-				&& !fastc_call_types_are_compatible(receiver_type, signature.parameter_types[0]) {
-				return g.unsupported('method `${name}` receiver of type `${receiver_type}`')
+			if is_method_call && signature.parameter_types.len > 0 {
+				expected_receiver := signature.parameter_types[0]
+				receiver_auto_conversion :=
+					g.semantic_type_key(receiver_type) == g.semantic_type_key(expected_receiver)
+					&& receiver_type.ends_with('*') != expected_receiver.ends_with('*')
+				if !g.selfhost && !fastc_call_types_are_compatible(receiver_type, expected_receiver)
+					&& !receiver_auto_conversion {
+					return g.unsupported('method `${name}` receiver of type `${receiver_type}`')
+				}
+				receiver_is_mut := signature.parameter_mutability.len > 0
+					&& signature.parameter_mutability[0]
+				if receiver_is_mut {
+					receiver_start := fastc_method_receiver_start(tokens, i - 1)
+					g.validate_mutating_method_receiver(tokens[receiver_start..i - 1], name)!
+				}
 			}
 			for argument_index, argument in call_args {
 				if is_variadic && argument_index >= expected_arguments
@@ -10496,6 +10511,10 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			}
 		} else if has_method_receiver && name in ['has', 'set', 'clear'] && call_args.len == 1
 			&& g.declared_kinds[g.semantic_type_key(receiver_type)] == .enum_ {
+			if name in ['set', 'clear'] {
+				receiver_start := fastc_method_receiver_start(tokens, i - 1)
+				g.validate_mutating_method_receiver(tokens[receiver_start..i - 1], name)!
+			}
 			i = call_end + 1
 			continue
 		} else if i == 0 && name in ['print', 'println'] {
@@ -10561,6 +10580,47 @@ fn fastc_mut_argument_root_name(argument []FastcExpressionToken) string {
 		}
 	}
 	return ''
+}
+
+fn (g &Parser) validate_mutating_method_receiver(receiver []FastcExpressionToken, method_name string) ! {
+	root_name := fastc_mut_argument_root_name(receiver)
+	if root_name == '' || root_name == 'C' {
+		return g.unsupported('unverifiable mutating method `${method_name}` receiver')
+	}
+	global_key := fastc_global_key(g.module_name, root_name)
+	if local := g.locals[root_name] {
+		unsafe_pointer := receiver[0].unsafe_depth > 0 && fastc_is_pointer_type(local.typ)
+		if !local.is_mut && !unsafe_pointer {
+			return g.unsupported('mutating method `${method_name}` receiver `${root_name}` is immutable')
+		}
+	} else if global_key !in g.globals {
+		return g.unsupported('mutating method `${method_name}` receiver `${root_name}` is immutable or unknown')
+	}
+	mut selector_depth := 0
+	for i, item in receiver {
+		match item.tok {
+			.lpar, .lsbr, .lcbr {
+				selector_depth++
+				continue
+			}
+			.rpar, .rsbr, .rcbr {
+				selector_depth--
+				continue
+			}
+			else {}
+		}
+		if selector_depth != 0 || item.tok != .dot || i == 0 || i + 1 >= receiver.len
+			|| receiver[i + 1].tok != .name || g.expression_dot_is_module_separator(receiver, i) {
+			continue
+		}
+		receiver_start := fastc_method_receiver_start(receiver, i)
+		receiver_type := g.infer_expression_type(receiver[receiver_start..i]) or { continue }
+		field := g.struct_field_metadata(receiver_type, receiver[i + 1].lit) or { continue }
+		if field.module_name !in ['', g.module_name] && !field.is_mutable && item.unsafe_depth == 0 {
+			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
+			return g.unsupported('mutating method `${method_name}` receiver field `${type_name}.${field.name}` is not `pub mut` in imported module `${field.module_name}`')
+		}
+	}
 }
 
 fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken, function_name string, argument_index int) ! {
