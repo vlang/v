@@ -378,6 +378,10 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 	vroot := os.real_path(@VEXEROOT)
 	path := os.real_path(os.join_path(os.temp_dir(), 'v3_retry_input_main.v'))
 	parsed_digest := sha256.hexhash('the exact stable parser bytes')
+	shared_builtin_path := os.real_path(os.join_path(vroot, 'vlib', 'builtin', 'builtin.v'))
+	shared_builtin_digest := sha256.hexhash('shared builtin parser bytes')
+	shared_vlib_path := os.real_path(os.join_path(vroot, 'vlib', 'os', 'os.v'))
+	shared_vlib_digest := sha256.hexhash('shared vlib parser bytes')
 	b := &Builder{
 		pref:         &pref.Preferences{
 			vroot: vroot
@@ -387,17 +391,27 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 				path:          path
 				source_digest: parsed_digest
 			},
-			// Bundled vlib support files intentionally differ between V1 and V3 and are
-			// excluded from both input sets.
 			&ast.File{
-				path:          os.join_path(vroot, 'vlib', 'builtin', 'builtin.v')
-				source_digest: sha256.hexhash('stable compiler builtin')
+				path:          shared_builtin_path
+				source_digest: shared_builtin_digest
+			},
+			// V1 and V3 select opposite versions of this internal interface.
+			&ast.File{
+				path:          os.join_path(vroot, 'vlib', 'builtin',
+					'ownership_interface_notd_v3_backend.v')
+				source_digest: sha256.hexhash('stable compiler interface')
+			},
+			&ast.File{
+				path:          shared_vlib_path
+				source_digest: shared_vlib_digest
 			},
 		]
 	}
 	matching := ExternalCErrorBugReport{
 		input_digests:          {
-			path: parsed_digest
+			path:                parsed_digest
+			shared_builtin_path: shared_builtin_digest
+			shared_vlib_path:    shared_vlib_digest
 		}
 		input_digests_complete: true
 	}
@@ -405,7 +419,25 @@ fn test_v3_fallback_input_verification_uses_stable_parser_digests() {
 	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
 		...matching
 		input_digests: {
-			path: sha256.hexhash('rewritten after V3')
+			path:                sha256.hexhash('rewritten after V3')
+			shared_builtin_path: shared_builtin_digest
+			shared_vlib_path:    shared_vlib_digest
+		}
+	})
+	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
+		...matching
+		input_digests: {
+			path:                parsed_digest
+			shared_builtin_path: sha256.hexhash('rewritten shared builtin')
+			shared_vlib_path:    shared_vlib_digest
+		}
+	})
+	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{
+		...matching
+		input_digests: {
+			path:                parsed_digest
+			shared_builtin_path: shared_builtin_digest
+			shared_vlib_path:    sha256.hexhash('rewritten shared vlib')
 		}
 	})
 	assert !b.matches_v3_fallback_inputs(ExternalCErrorBugReport{

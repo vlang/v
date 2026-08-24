@@ -6395,16 +6395,15 @@ fn request_macos_v3_c_error_fallback_from_message(fallback_file string, report_d
 fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string) map[string]string {
 	mut sources := map[string]string{}
 	mut ambiguous := map[string]bool{}
-	vlib_root := os.real_path(os.join_path(vroot, 'vlib')).trim_right(os.path_separator)
+	builtin_root :=
+		os.real_path(os.join_path(vroot, 'vlib', 'builtin')).trim_right(os.path_separator)
 	for _, file in a.source_files {
 		if (file.name.ends_with('.v') || file.name.ends_with('.vv')
 			|| file.name.ends_with('.vsh')) && file.has_source_sha256() {
 			path := os.real_path(file.name)
-			// V1 and V3 deliberately select different compiler-support implementations
-			// below the bundled vlib (for example V3's preallocated builtin). They are not
-			// caller inputs and cannot be required to appear in both ASTs. Project and
-			// installed-module sources remain covered, including directory builds.
-			if path == vlib_root || path.starts_with(vlib_root + os.path_separator) {
+			// V1 and V3 select opposite v3_backend ownership-interface files. All other
+			// bundled vlib sources are shared inputs and remain covered by verification.
+			if v3_fallback_backend_specific_builtin_source(path, builtin_root) {
 				continue
 			}
 			source_digest := file.source_sha256()
@@ -6422,6 +6421,11 @@ fn macos_v3_fallback_report_sources(a &flat.FlatAst, vroot string) map[string]st
 		sources.delete(path)
 	}
 	return sources
+}
+
+fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string) bool {
+	return (path == builtin_root || path.starts_with(builtin_root + os.path_separator))
+		&& os.file_name(path) in ['ownership_interface_d_v3_backend.v', 'ownership_interface_notd_v3_backend.v']
 }
 
 fn input_uses_minimal_literal_output_builtin(input_file string, prefs &pref.Preferences, is_test_command bool, is_checker_fixture bool) bool {

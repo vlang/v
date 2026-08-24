@@ -576,16 +576,16 @@ fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool 
 		return false
 	}
 	mut stable_digests := map[string]string{}
-	vlib_root := os.real_path(os.join_path(b.pref.vroot, 'vlib')).trim_right(os.path_separator)
+	builtin_root :=
+		os.real_path(os.join_path(b.pref.vroot, 'vlib', 'builtin')).trim_right(os.path_separator)
 	for file in b.parsed_files {
 		if file.path == '' || file.source_digest == '' {
 			continue
 		}
 		path := os.real_path(file.path)
-		// Mirror macos_v3_fallback_report_sources: V1 and V3 intentionally parse
-		// different bundled compiler-support files, so compare only caller/project and
-		// installed-module inputs.
-		if path == vlib_root || path.starts_with(vlib_root + os.path_separator) {
+		// Mirror macos_v3_fallback_report_sources: only the opposite v3_backend
+		// ownership-interface variants intentionally differ between the compilers.
+		if v3_fallback_backend_specific_builtin_source(path, builtin_root) {
 			continue
 		}
 		if previous := stable_digests[path] {
@@ -604,6 +604,11 @@ fn (b &Builder) matches_v3_fallback_inputs(report ExternalCErrorBugReport) bool 
 		}
 	}
 	return true
+}
+
+fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string) bool {
+	return (path == builtin_root || path.starts_with(builtin_root + os.path_separator))
+		&& os.file_name(path) in ['ownership_interface_d_v3_backend.v', 'ownership_interface_notd_v3_backend.v']
 }
 
 fn discard_unverified_v3_fallback_report() {

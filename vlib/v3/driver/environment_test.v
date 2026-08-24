@@ -99,15 +99,25 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 		os.rmdir_all(root) or {}
 	}
 	path := os.join_path(root, 'main.v')
-	vlib_path := os.join_path(root, 'vlib', 'builtin', 'internal.v')
-	os.mkdir_all(os.dir(vlib_path))!
+	backend_builtin_path := os.join_path(root, 'vlib', 'builtin',
+		'ownership_interface_d_v3_backend.v')
+	shared_builtin_path := os.join_path(root, 'vlib', 'builtin', 'internal.v')
+	shared_vlib_path := os.join_path(root, 'vlib', 'os', 'shared.v')
+	os.mkdir_all(os.dir(backend_builtin_path))!
+	os.mkdir_all(os.dir(shared_vlib_path))!
 	parsed_source := 'module main\nfn main() { println(42) }\n'
+	shared_builtin_source := 'module builtin\nfn shared_builtin_input() {}\n'
+	shared_vlib_source := 'module os\nfn shared_input() {}\n'
 	os.write_file(path, parsed_source)!
-	os.write_file(vlib_path, 'module builtin\nfn internal_only() {}\n')!
+	os.write_file(backend_builtin_path, 'module builtin\nfn v3_backend_only() {}\n')!
+	os.write_file(shared_builtin_path, shared_builtin_source)!
+	os.write_file(shared_vlib_path, shared_vlib_source)!
 	prefs := pref.new_preferences()
 	mut p := parser.Parser.new(prefs)
 	p.parse_into(path)
-	p.parse_into(vlib_path)
+	p.parse_into(backend_builtin_path)
+	p.parse_into(shared_builtin_path)
+	p.parse_into(shared_vlib_path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	// Replacing the file after parsing must not change the staged digest.
 	os.write_file(path, parsed_source.replace('42', 'private_value'))!
@@ -115,13 +125,20 @@ fn test_macos_v3_fallback_report_sources_keep_parser_digests() {
 	real_path := os.real_path(path)
 	assert sources[real_path] == sha256.hexhash(parsed_source)
 	assert sources[real_path] != sha256.hexhash(os.read_file(path)!)
-	// Bundled compiler-support sources deliberately differ between V1 and V3 and are
-	// not caller inputs, so they do not make every exact-source verification fail.
-	assert os.real_path(vlib_path) !in sources
+	// Only the opposite v3_backend compiler-support variants are excluded. Shared
+	// builtin and other bundled vlib inputs remain protected by their parser digests.
+	assert os.real_path(backend_builtin_path) !in sources
+	assert sources[os.real_path(shared_builtin_path)] == sha256.hexhash(shared_builtin_source)
+	assert sources[os.real_path(shared_vlib_path)] == sha256.hexhash(shared_vlib_source)
 	report_dir := os.join_path(root, 'report')
 	assert stage_macos_v3_fallback_source_digests(report_dir, sources)
-	assert os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file))! == real_path
-	assert os.read_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file))! == sha256.hexhash(parsed_source)
+	staged_paths := os.read_file(os.join_path(report_dir, macos_v3_c_error_v_sources_file))!
+	staged_digests :=
+		os.read_file(os.join_path(report_dir, macos_v3_c_error_v_source_digests_file))!
+	assert staged_paths == [real_path, os.real_path(shared_builtin_path),
+		os.real_path(shared_vlib_path)].join('\x00')
+	assert staged_digests == [sha256.hexhash(parsed_source), sha256.hexhash(shared_builtin_source),
+		sha256.hexhash(shared_vlib_source)].join('\x00')
 }
 
 fn test_parallel_cc_external_definition_precheck_uses_active_ast_directives() {
