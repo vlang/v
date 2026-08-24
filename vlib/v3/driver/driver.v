@@ -6434,6 +6434,9 @@ fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferenc
 	mut cc_args := environment_c_flags.clone()
 	cc_args << ['-std=gnu11', '-I${os.join_path_single(tcc_lib_dir, 'include')}', '-L${tcc_lib_dir}',
 		'-w']
+	if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
+		cc_args << '-bt25'
+	}
 	if is_debug {
 		cc_args << '-g'
 	}
@@ -7425,6 +7428,12 @@ pub fn run(args []string) {
 		}
 		if 'v3_backend' !in prefs.user_defines {
 			prefs.user_defines << 'v3_backend'
+		}
+		if !fastc_cross_target {
+			// Same-target FastC output is compiled by bundled TinyCC regardless of
+			// the host default, so compile-time compiler branches must see TinyCC.
+			prefs.ccompiler = 'tinyc'
+			add_v3_tcc_compat_defines(mut prefs.user_defines, target.os, target.arch, false, true)
 		}
 		fastc_source := fastc.generate_files([input_file], prefs) or {
 			eprintln(err.msg())

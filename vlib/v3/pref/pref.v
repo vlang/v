@@ -970,7 +970,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend == 'arm64' || (p.backend == 'c' && p.ccompiler == 'tinyc')
+			return p.backend == 'arm64' || (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
 			return p.backend == 'arm64' || name in p.user_defines

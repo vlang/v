@@ -56,6 +56,25 @@ fn main() {
 	assert valid_run.exit_code == 0, valid_run.output
 	assert valid_run.output.trim_space() == '42\n15'
 
+	tinyc_source := os.join_path(root, 'tinyc_comptime.v')
+	write_fastc_test_source(tinyc_source, "module main
+
+fn main() {
+	\$if tinyc {
+		println('tinyc')
+	} \$else {
+		println('other')
+	}
+}
+")
+	tinyc_binary := os.join_path(root, 'tinyc_comptime')
+	tinyc_compile := cmdexec.run(v3_bin,
+		['-silent', '-b', 'fastc', '-o', tinyc_binary, tinyc_source])
+	assert tinyc_compile.exit_code == 0, tinyc_compile.output
+	tinyc_run := cmdexec.run(tinyc_binary, [])
+	assert tinyc_run.exit_code == 0, tinyc_run.output
+	assert tinyc_run.output.trim_space() == 'tinyc'
+
 	cross_target_os := $if windows { 'linux' } $else { 'windows' }
 	cross_c := os.join_path(root, 'cross_target.c')
 	cross_compile := cmdexec.run(v3_bin, ['-silent', '-showcc', '-b', 'fastc', '-os', cross_target_os,
@@ -399,9 +418,8 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
-				'no_main.c'),
-				valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
+				os.join_path(root, 'no_main.c'), valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{
