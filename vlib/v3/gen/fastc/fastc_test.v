@@ -573,8 +573,10 @@ fn test_struct_literal_fields_are_validated() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	for source, expected in {
-		'module main\nstruct Config { enabled bool }\nfn main() { config := Config{enabled: 2}; println(config.enabled) }\n':    'for struct field `Config.enabled` expecting `bool`'
-		'module main\nstruct Config { value int }\nfn main() { config := Config{value: 1, value: 2}; println(config.value) }\n': 'duplicate field `Config.value` in struct literal'
+		'module main\nstruct Config { enabled bool }\nfn main() { config := Config{enabled: 2}; println(config.enabled) }\n':             'for struct field `Config.enabled` expecting `bool`'
+		'module main\nstruct Config { value int }\nfn main() { config := Config{value: 1, value: 2}; println(config.value) }\n':          'duplicate field `Config.value` in struct literal'
+		'module main\nstruct Config { values [2]int }\nfn main() { config := Config{values: [true, false]!}; println(config.values) }\n': 'element 1 has type `bool` instead of `int`'
+		'module main\nstruct Config { values [2]int }\nfn main() { config := Config{values: [1]!}; println(config.values) }\n':           'expects 2 elements, got 1'
 	} {
 		mut message := ''
 		_ := generate(source, 'invalid_struct_literal.v', prefs) or {
@@ -709,12 +711,15 @@ println(answer)
 ',
 		'initialized_script_global.v', prefs) or { panic(err) }
 	main_source := c_source.all_after('int main(void) {')
-	initializer := main_source.index('v_fastc_init_globals();') or { -1 }
-	module_initializer := main_source.index('\n\tinit();') or { -1 }
+	startup_source := c_source.all_after('static void v_fastc_init_globals(void) {')
+	initializer := startup_source.index('answer = 42;') or { -1 }
+	module_initializer := startup_source.index('\n\tinit();') or { -1 }
+	startup_call := main_source.index('v_fastc_init_globals();') or { -1 }
 	statement := main_source.index('println(answer);') or { -1 }
 	assert initializer >= 0, c_source
 	assert module_initializer > initializer, c_source
-	assert statement > module_initializer, c_source
+	assert startup_call >= 0, c_source
+	assert statement > startup_call, c_source
 }
 
 fn test_runtime_constants_are_materialized_exactly_once() {
@@ -868,8 +873,10 @@ import dep
 
 __global observed = 0
 
+const copied = dep.value()
+
 fn init() {
-	observed = dep.value() + 1
+	observed = copied + 1
 }
 
 fn main() {
@@ -897,14 +904,21 @@ pub fn value() int {
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
 	main_source := c_source.all_after('int main(void) {')
-	global_initializer := main_source.index('v_fastc_init_globals();') or { -1 }
-	dependency_init := main_source.index('\tdep__init();') or { -1 }
-	entry_init := main_source.index('\n\tinit();') or { -1 }
+	startup_source := c_source.all_after('static void v_fastc_init_globals(void) {')
+	dependency_initializer := startup_source.index('dep__state = 1;') or { -1 }
+	dependency_init := startup_source.index('\tdep__init();') or { -1 }
+	importer_initializer := startup_source.index('main__copied = dep__value();') or { -1 }
+	entry_global_initializer := startup_source.index('observed = 0;') or { -1 }
+	entry_init := startup_source.index('\n\tinit();') or { -1 }
+	startup_call := main_source.index('v_fastc_init_globals();') or { -1 }
 	main_statement := main_source.index('println(observed);') or { -1 }
-	assert global_initializer >= 0, c_source
-	assert dependency_init > global_initializer, c_source
-	assert entry_init > dependency_init, c_source
-	assert main_statement > entry_init, c_source
+	assert dependency_initializer >= 0, c_source
+	assert dependency_init > dependency_initializer, c_source
+	assert importer_initializer > dependency_init, c_source
+	assert entry_global_initializer > importer_initializer, c_source
+	assert entry_init > entry_global_initializer, c_source
+	assert startup_call >= 0, c_source
+	assert main_statement > startup_call, c_source
 
 	c_file := os.join_path(root, 'program.c')
 	bin_file := os.join_path(root, 'program')
@@ -1216,6 +1230,37 @@ fn main() {
 	assert c_source.contains('if (flag) {')
 	assert c_source.contains('while (ready()) {')
 	assert c_source.contains('; ready(); i++) {')
+}
+
+fn test_comparison_and_logical_operands_are_validated() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for source, expected in {
+		'module main\nfn main() { println(1 == true) }\n':          'comparison `==` operands of incompatible types'
+		'module main\nfn main() { println(true < false) }\n':       'comparison `<` operands of incompatible types'
+		'module main\nfn main() { if true && 1 { println(1) } }\n': 'logical `&&` operands of types'
+		'module main\nfn main() { if !1 { println(1) } }\n':        'logical `!` operand of type'
+	} {
+		mut message := ''
+		_ := generate(source, 'invalid_boolean_operands.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains(expected), message
+	}
+
+	c_source := generate('module main
+
+fn main() {
+	left := 1
+	right := 2
+	ok := left < right && true
+	println(ok)
+}
+',
+		'valid_boolean_operands.v', prefs) or { panic(err) }
+	assert c_source.contains('left<right'), c_source
+	assert c_source.contains('&&'), c_source
 }
 
 fn test_match_branch_values_must_match_the_subject_type() {
