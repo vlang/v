@@ -931,6 +931,80 @@ pub fn value() int {
 	assert run_result.output.trim_space() == '42'
 }
 
+fn test_module_cleanup_hooks_run_in_reverse_order_on_main_return() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_module_cleanup_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'dep')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	dep_file := os.join_path(root, 'dep', 'dep.v')
+	os.write_file(main_file, "module main
+
+import dep
+
+fn init() {
+	println('main init')
+}
+
+fn cleanup() {
+	println('main cleanup')
+}
+
+fn main() {
+	dep.ping()
+	defer {
+		println('main defer')
+	}
+	println('main')
+	if true {
+		return
+	}
+	println('unreachable')
+}
+") or {
+		panic(err)
+	}
+	os.write_file(dep_file, "module dep
+
+fn init() {
+	println('dep init')
+}
+
+fn cleanup() {
+	println('dep cleanup')
+}
+
+pub fn ping() {}
+") or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	c_source := generate_files([main_file], prefs) or { panic(err) }
+	cleanup_source := c_source.all_after('static void v_fastc_cleanup_modules(void) {')
+	main_cleanup := cleanup_source.index('\n\tcleanup();') or { -1 }
+	dependency_cleanup := cleanup_source.index('\n\tdep__cleanup();') or { -1 }
+	assert main_cleanup >= 0, c_source
+	assert dependency_cleanup > main_cleanup, c_source
+	main_source := c_source.all_after('int main(void) {')
+	early_cleanup := main_source.index('v_fastc_cleanup_modules();') or { -1 }
+	early_return := main_source.index('return 0;') or { -1 }
+	assert early_cleanup >= 0, c_source
+	assert early_return > early_cleanup, c_source
+
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output.trim_space() == 'dep init\nmain init\nmain\nmain defer\nmain cleanup\ndep cleanup'
+}
+
 fn test_module_initializer_signatures_are_validated() {
 	prefs := pref.new_preferences()
 	for source in [
@@ -943,6 +1017,21 @@ fn test_module_initializer_signatures_are_validated() {
 			''
 		}
 		assert message.contains('module `init` with parameters or a return value'), message
+	}
+}
+
+fn test_module_cleanup_signatures_are_validated() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn cleanup(value int) {}\nfn main() {}\n',
+		'module main\nfn cleanup() int { return 1 }\nfn main() {}\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'invalid_module_cleanup.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('module `cleanup` with parameters or a return value'), message
 	}
 }
 

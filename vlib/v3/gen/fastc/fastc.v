@@ -338,6 +338,7 @@ struct Parser {
 	used_function_names map[string]bool
 	selfhost            bool
 	has_startup_inits   bool
+	has_cleanup_hooks   bool
 mut:
 	s                        scanner.Scanner
 	tok                      token.Token
@@ -424,6 +425,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	}
 	used_function_names := fastc_collect_referenced_function_names(sources, prefs, functions)
 	module_init_calls := fastc_module_init_calls(sources, functions)!
+	module_cleanup_calls := fastc_module_cleanup_calls(sources, functions)!
 	mut composite_types := map[string]bool{}
 	if prefs.building_v {
 		// The OS exec helpers build their native argv arrays locally, so this
@@ -481,6 +483,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			used_function_names:     used_function_names
 			selfhost:                prefs.building_v
 			has_startup_inits:       startup_initializers.len > 0
+			has_cleanup_hooks:       module_cleanup_calls.len > 0
 			s:                       scanner.new_scanner(prefs, .normal)
 			out:                     strings.new_builder(source_file.source.len)
 			protos:                  strings.new_builder(256)
@@ -540,6 +543,9 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	if startup_initializers.len > 0 {
 		result.writeln('static void v_fastc_init_globals(void);')
 	}
+	if module_cleanup_calls.len > 0 {
+		result.writeln('static void v_fastc_cleanup_modules(void);')
+	}
 	result.writeln('')
 	if prefs.building_v {
 		result.write_string(c_selfhost_runtime)
@@ -548,6 +554,14 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	if startup_initializers.len > 0 {
 		result.writeln('static void v_fastc_init_globals(void) {')
 		result.write_string(startup_initializers)
+		result.writeln('}')
+		result.writeln('')
+	}
+	if module_cleanup_calls.len > 0 {
+		result.writeln('static void v_fastc_cleanup_modules(void) {')
+		for cleanup_call in module_cleanup_calls {
+			result.writeln('\t${cleanup_call}();')
+		}
 		result.writeln('}')
 		result.writeln('')
 	}
@@ -745,21 +759,34 @@ fn fastc_sources_in_dependency_order(sources []FastcSourceFile) ![]FastcSourceFi
 }
 
 fn fastc_module_init_calls(sources []FastcSourceFile, functions map[string]FastcFunctionSignature) ![]string {
+	return fastc_module_lifecycle_calls(sources, functions, 'init', false)
+}
+
+fn fastc_module_cleanup_calls(sources []FastcSourceFile, functions map[string]FastcFunctionSignature) ![]string {
+	return fastc_module_lifecycle_calls(sources, functions, 'cleanup', true)
+}
+
+fn fastc_module_lifecycle_calls(sources []FastcSourceFile, functions map[string]FastcFunctionSignature, hook_name string, reverse bool) ![]string {
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
 	mut seen_modules := map[string]bool{}
-	mut calls := []string{}
+	mut ordered_modules := []string{}
 	for source_file in ordered_sources {
 		module_name := source_file.header.module_name
 		if seen_modules[module_name] {
 			continue
 		}
 		seen_modules[module_name] = true
-		function_key := fastc_function_key(module_name, 'init')
+		ordered_modules << module_name
+	}
+	modules := if reverse { ordered_modules.reverse() } else { ordered_modules }
+	mut calls := []string{}
+	for module_name in modules {
+		function_key := fastc_function_key(module_name, hook_name)
 		if signature := functions[function_key] {
 			if signature.parameter_types.len > 0 || signature.return_type != 'void' {
-				return error('fastc parser does not support module `init` with parameters or a return value in ${signature.path}')
+				return error('fastc parser does not support module `${hook_name}` with parameters or a return value in ${signature.path}')
 			}
-			calls << fastc_c_function_name(module_name, 'init')
+			calls << fastc_c_function_name(module_name, hook_name)
 		}
 	}
 	return calls
@@ -3967,6 +3994,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
 		&& name == 'main'
 	is_module_init := !is_static_method && receiver_type == '' && name == 'init'
+	is_module_cleanup := !is_static_method && receiver_type == '' && name == 'cleanup'
 	if is_main {
 		if params.len > 0 {
 			return g.unsupported('main function with parameters')
@@ -3978,6 +4006,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	if is_module_init && (params.len > 0 || return_type != 'void') {
 		return g.unsupported('module `init` with parameters or a return value')
 	}
+	if is_module_cleanup && (params.len > 0 || return_type != 'void') {
+		return g.unsupported('module `cleanup` with parameters or a return value')
+	}
 	if g.tok == .semicolon {
 		g.next()
 		return
@@ -3985,7 +4016,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	is_fastc_source := name.starts_with('fastc_') || g.path.ends_with('/fastc/fastc.v')
 		|| g.module_name.ends_with('fastc')
 	if g.selfhost && name != 'fastc_collect_referenced_function_names' && !is_fastc_source
-		&& name !in ['main', 'init'] && name !in g.used_function_names && name.len > 0
+		&& name !in ['main', 'init', 'cleanup'] && name !in g.used_function_names && name.len > 0
 		&& (name[0].is_letter() || name[0] == `_`) {
 		g.skip_balanced(.lcbr, .rcbr)!
 		return
@@ -4085,6 +4116,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.write_line('return (${return_type}){0};')
 	}
 	if is_main {
+		if g.has_cleanup_hooks {
+			g.write_line('v_fastc_cleanup_modules();')
+		}
 		g.write_line('return 0;')
 	}
 	g.indent--
@@ -4173,6 +4207,9 @@ fn (mut g Parser) parse_script() ! {
 		}
 		_ = g.parse_statement()!
 		g.skip_semicolons()
+	}
+	if g.has_cleanup_hooks {
+		g.write_line('v_fastc_cleanup_modules();')
 	}
 	g.write_line('return 0;')
 	g.indent--
@@ -5160,6 +5197,9 @@ fn (mut g Parser) parse_return() !bool {
 		}
 		g.consume_statement_end()
 		g.write_all_deferred_scopes()
+		if g.in_main && g.has_cleanup_hooks {
+			g.write_line('v_fastc_cleanup_modules();')
+		}
 		g.write_line(if g.in_main {
 			'return 0;'
 		} else if g.return_type == 'Option' {
