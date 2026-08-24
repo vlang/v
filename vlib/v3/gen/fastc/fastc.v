@@ -807,7 +807,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 				}
 				import_path, alias, selected_names, next_token :=
 					fastc_scan_import(mut scan, tok, path)!
-				imports[alias] = import_path
+				fastc_register_import_alias(import_path, alias, path, mut imports)!
 				fastc_register_selective_imports(import_path, selected_names, path, mut imports)!
 				tok = next_token
 			}
@@ -817,7 +817,7 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			continue
 		}
 		import_path, alias, selected_names, next_token := fastc_scan_import(mut scan, tok, path)!
-		imports[alias] = import_path
+		fastc_register_import_alias(import_path, alias, path, mut imports)!
 		fastc_register_selective_imports(import_path, selected_names, path, mut imports)!
 		tok = next_token
 	}
@@ -832,6 +832,17 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		module_name: module_name
 		imports:     imports
 	}
+}
+
+fn fastc_register_import_alias(import_path string, alias string, path string, mut imports map[string]string) ! {
+	if alias != '_' {
+		if existing_module := imports[alias] {
+			if existing_module != import_path {
+				return error('fastc parser cannot reuse import alias `${alias}` for `${import_path}` after `${existing_module}` in ${path}')
+			}
+		}
+	}
+	imports[alias] = import_path
 }
 
 fn fastc_scan_import(mut scan scanner.Scanner, first token.Token, path string) !(string, string, []string, token.Token) {
@@ -991,8 +1002,8 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 						continue
 					}
 					if nested_depth == 0 && at_declaration_start && tok == .name {
-						fastc_register_constant(module_name, scan.lit, is_public, mut constants, mut
-							public_constants)
+						fastc_register_constant(module_name, scan.lit, is_public, path, mut
+							constants, mut public_constants)!
 						at_declaration_start = false
 					}
 					if tok in [.lpar, .lsbr, .lcbr] {
@@ -1007,8 +1018,8 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 			if tok != .name {
 				return error('fastc parser does not support constant declaration in ${path}')
 			}
-			fastc_register_constant(module_name, scan.lit, is_public, mut constants, mut
-				public_constants)
+			fastc_register_constant(module_name, scan.lit, is_public, path, mut constants, mut
+				public_constants)!
 			continue
 		}
 		if tok == .lcbr {
@@ -1021,8 +1032,11 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 	}
 }
 
-fn fastc_register_constant(module_name string, name string, is_public bool, mut constants map[string]string, mut public_constants map[string]bool) {
+fn fastc_register_constant(module_name string, name string, is_public bool, path string, mut constants map[string]string, mut public_constants map[string]bool) ! {
 	key := fastc_constant_key(module_name, name)
+	if key in constants {
+		return error('fastc parser does not support duplicate constant `${name}` in ${path}')
+	}
 	constants[key] = fastc_c_constant_name(module_name, name)
 	if is_public {
 		public_constants[key] = true

@@ -70,6 +70,22 @@ fn test_unsupported_import_is_rejected() {
 	assert failed
 }
 
+fn test_colliding_import_aliases_are_rejected() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nimport alpha as dep\nimport beta as dep\n',
+		'module main\nimport (\nalpha as dep\nbeta as dep\n)\n',
+	] {
+		mut message := ''
+		_ := fastc_scan_source_header(source, 'colliding_import_alias.v', prefs) or {
+			message = err.msg()
+			FastcSourceHeader{}
+		}
+		assert message.contains('cannot reuse import alias `dep`'), message
+		assert message.contains('`alpha`') && message.contains('`beta`'), message
+	}
+}
+
 fn test_generate_files_resolves_modules_without_an_ast() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_modules_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -155,6 +171,21 @@ fn test_generate_files_rejects_private_imported_constants() {
 	os.write_file(module_file, 'module secrets\npub const secret = 42\n') or { panic(err) }
 	c_source := generate_files([main_file], prefs) or { panic(err) }
 	assert c_source.contains('println(secrets__secret);'), c_source
+}
+
+fn test_duplicate_constant_declarations_are_rejected() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nconst answer = 1\nconst answer = 2\nfn main() {}\n',
+		'module main\nconst (\nanswer = 1\nanswer = 2\n)\nfn main() {}\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'duplicate_constant.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('duplicate constant `answer`'), message
+	}
 }
 
 fn test_generate_files_rejects_private_imported_types() {
