@@ -626,8 +626,8 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	result.writeln('')
 	if prefs.building_v {
 		result.write_string(c_selfhost_runtime)
-		result.write_string(type_output.enum_string_helpers)
 	}
+	result.write_string(type_output.enum_string_helpers)
 	result.write_string(interface_dispatches)
 	if startup_initializers.len > 0 {
 		result.writeln('static void v_fastc_init_globals(void) {')
@@ -1938,11 +1938,7 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Prefe
 	out.write_string(type_bodies)
 	return FastcTypeDeclarations{
 		declarations:        out.str()
-		enum_string_helpers: if prefs.building_v {
-			fastc_generate_enum_string_helpers(enum_infos)
-		} else {
-			''
-		}
+		enum_string_helpers: fastc_generate_enum_string_helpers(enum_infos)
 		alias_base_types:    alias_base_types
 	}
 }
@@ -7420,7 +7416,11 @@ fn (mut g Parser) read_interpolated_string() !string {
 			parts << value
 		} else if g.declared_kinds[g.semantic_type_key(value_type)] == .enum_ {
 			if format_specifier in [`d`, `u`, `x`, `X`, `o`, `c`, `b`] {
-				parts << 'builtin__int_str((int)(${value}))'
+				parts << if g.selfhost {
+					'builtin__int_str((int)(${value}))'
+				} else {
+					'v_fastc_signed_str((long long)((int)(${value})))'
+				}
 			} else {
 				enum_type := fastc_c_declared_type_name(g.semantic_type_key(value_type))
 				parts << 'v_fastc_enum_str_${enum_type}(${value})'

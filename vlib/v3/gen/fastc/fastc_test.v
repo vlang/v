@@ -1894,6 +1894,29 @@ fn main() {
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output == '10\n12\ngreenred\n'
 
+	ordinary_interpolation_source := generate(r"module main
+
+enum Color {
+	red
+	green
+}
+
+fn main() {
+	println('${Color.red}')
+	println('${Color.green:d}')
+}
+",
+		'ordinary_enum_interpolation.v', prefs) or { panic(err) }
+	assert ordinary_interpolation_source.contains('static string v_fastc_enum_str_Color(Color value)'), ordinary_interpolation_source
+	assert ordinary_interpolation_source.contains('v_fastc_enum_str_Color(Color__red)'), ordinary_interpolation_source
+	assert ordinary_interpolation_source.contains('v_fastc_signed_str((long long)((int)(Color__green)))'), ordinary_interpolation_source
+	os.write_file(c_file, ordinary_interpolation_source) or { panic(err) }
+	interpolation_compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert interpolation_compile_result.exit_code == 0, interpolation_compile_result.output
+	interpolation_run_result := cmdexec.run(bin_file, [])
+	assert interpolation_run_result.exit_code == 0, interpolation_run_result.output
+	assert interpolation_run_result.output == 'red\n1\n'
+
 	mut selfhost_prefs := pref.new_preferences()
 	selfhost_prefs.building_v = true
 	interpolation_source := generate(r"module main
