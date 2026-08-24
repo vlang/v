@@ -3277,6 +3277,7 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		'push':                   true
 		'push_many':              true
 		'array_slice':            true
+		'at':                     true
 		'keys':                   true
 		'get':                    true
 		'get_check':              true
@@ -3302,6 +3303,7 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 		'map_clone_int_8':        true
 		'new_array_from_c_array': true
 		'string_plus_many':       true
+		'v_fixed_index':          true
 	}
 	for name in top_level_references.keys() {
 		used[name] = true
@@ -9240,18 +9242,18 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 		index_source := g.render_membership_candidate(tokens[open + 1..close], 'int') or {
 			continue
 		}
-		access := if base_type.ends_with('*') { '->' } else { '.' }
 		is_raw_fixed_array := base_type.trim_right('*').starts_with('FixedArray_')
 			&& (base_tokens.len > 1 || (base_tokens.len == 1
 			&& fastc_global_key(g.module_name, base_tokens[0].lit) in g.globals))
-		replacement := if base_type == 'string' {
-			'(${base_source}${access}str[${index_source}])'
+		replacement := if checked_access := g.render_array_access_expression(tokens[start..close + 1]) {
+			checked_access.source
 		} else if is_raw_fixed_array {
 			'((${base_source})[${index_source}])'
 		} else if base_type.ends_with('*') && !is_array_pointer {
 			'((${base_source})[${index_source}])'
 		} else {
-			'(((${element_type} *)${base_source}${access}data)[${index_source}])'
+			array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
+			'(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
 		}
 		mut needle := '${base_source}[${index_source}]'
 		if !rendered.contains(needle) {
@@ -10090,6 +10092,10 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	base_type := g.infer_expression_type(base_tokens) or { return none }
 	base_source := if base_tokens.len == 1 {
 		g.resolved_root_expression_name(tokens[0].lit)
+	} else if nested_base := g.render_array_access_expression(base_tokens) {
+		nested_base.source
+	} else if member_base := g.render_member_receiver(base_tokens) {
+		member_base
 	} else {
 		g.render_raw_expression_tokens(base_tokens) or { return none }
 	}
@@ -10136,15 +10142,28 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	}
 	index_source := g.render_membership_candidate(tokens[open + 1..close], 'int') or { return none }
 	if base_type == 'string' {
-		access := if base_type.ends_with('*') { '->' } else { '.' }
 		return FastcRenderedExpression{
-			source: '(${base_source}${access}str[${index_source}])'
+			source: 'builtin__string_at(${base_source}, ${index_source})'
 			typ:    element_type
 		}
 	}
 	is_raw_fixed_array := base_type.starts_with('FixedArray_') && (base_tokens.len > 1
 		|| (base_tokens.len == 1
 		&& fastc_global_key(g.module_name, base_tokens[0].lit) in g.globals))
+	if fixed_length := fastc_fixed_array_length(base_type.trim_right('*')) {
+		checked_index := 'builtin__v_fixed_index(${index_source}, ${fixed_length})'
+		if is_raw_fixed_array {
+			return FastcRenderedExpression{
+				source: '((${base_source})[${checked_index}])'
+				typ:    element_type
+			}
+		}
+		access := if base_type.ends_with('*') { '->' } else { '.' }
+		return FastcRenderedExpression{
+			source: '((${base_source})${access}data[${checked_index}])'
+			typ:    element_type
+		}
+	}
 	if is_raw_fixed_array {
 		return FastcRenderedExpression{
 			source: '((${base_source})[${index_source}])'
@@ -10157,9 +10176,9 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 			typ:    element_type
 		}
 	}
-	access := if base_type.ends_with('*') { '->' } else { '.' }
+	array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
 	return FastcRenderedExpression{
-		source: '(((${element_type} *)${base_source}${access}data)[${index_source}])'
+		source: '(*(${element_type} *)builtin__array_get(${array_value}, ${index_source}))'
 		typ:    element_type
 	}
 }
@@ -10184,35 +10203,12 @@ fn (g &Parser) render_nested_array_access_expression(tokens []FastcExpressionTok
 		if close <= i + 1 || fastc_expression_tokens_contain(tokens[i + 2..close], .dotdot) {
 			continue
 		}
-		base_type := g.infer_expression_type(tokens[i..i + 1]) or { continue }
-		is_string := base_type == 'string'
-		is_array_pointer := base_type.ends_with('*') && g.array_element_type(base_type) != none
-		element_type := if is_string {
-			'u8'
-		} else if is_array_pointer {
-			g.array_element_type(base_type) or { continue }
-		} else if base_type.ends_with('*') {
-			base_type.trim_right('*')
-		} else {
-			g.array_element_type(base_type) or { continue }
-		}
 		index_source := g.render_membership_candidate(tokens[i + 2..close], 'int') or { continue }
 		base_source := g.resolved_root_expression_name(tokens[i].lit)
 		needle := '${base_source}[${index_source}]'
-		access := if base_type.ends_with('*') { '->' } else { '.' }
-		is_raw_fixed_array := base_type.starts_with('FixedArray_')
-			&& fastc_global_key(g.module_name, tokens[i].lit) in g.globals
-		replacement := if is_raw_fixed_array {
-			'(${base_source}[${index_source}])'
-		} else if is_string {
-			'(${base_source}${access}str[${index_source}])'
-		} else if base_type.ends_with('*') && !is_array_pointer {
-			'((${base_source})[${index_source}])'
-		} else {
-			'(((${element_type} *)${base_source}${access}data)[${index_source}])'
-		}
+		replacement := g.render_array_access_expression(tokens[i..close + 1]) or { continue }
 		if rendered.contains(needle) {
-			rendered = rendered.replace(needle, replacement)
+			rendered = rendered.replace(needle, replacement.source)
 			changed = true
 		}
 	}

@@ -2714,6 +2714,32 @@ fn main() {
 	assert c_source.count('builtin__map_values((map *)__v_fastc_map_collection_') == 1, c_source
 }
 
+fn test_selfhost_array_and_string_indexing_uses_bounds_checked_helpers() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn checked(mut values []int, text string, nested [][]int, index int) int {
+	values[index] = values[index]
+	println(text[index])
+	return nested[index][index]
+}
+
+fn main() {
+	mut values := []int{}
+	checked(mut values, "x", [][]int{}, 0)
+}
+',
+		'checked_indexing.v', prefs) or { panic(err) }
+	assert c_source.count('builtin__array_get(*(values), index)') == 2, c_source
+	assert c_source.contains('builtin__string_at(text, index)'), c_source
+	assert c_source.contains('builtin__array_get(nested, index)'), c_source
+	assert c_source.contains('builtin__array_get((*(Array_int *)builtin__array_get(nested, index)), index)'), c_source
+
+	assert !c_source.contains('values.data)[index]'), c_source
+	assert !c_source.contains('text.str[index]'), c_source
+}
+
 fn test_range_bounds_must_be_integers() {
 	prefs := pref.new_preferences()
 	for source in [
