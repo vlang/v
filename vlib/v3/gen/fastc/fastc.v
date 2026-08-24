@@ -4452,7 +4452,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool) ! {
 
 fn fastc_normalize_inferred_type(typ string) string {
 	return match typ {
-		'integer literal' { 'int' }
+		'integer literal', 'negative integer literal' { 'int' }
 		'float literal' { 'f64' }
 		'nil' { 'voidptr' }
 		else { typ }
@@ -9311,6 +9311,9 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		if !fastc_is_numeric_expression_type(operand_type) {
 			return g.unsupported('arithmetic `${tokens[start].tok.str()}` on non-numeric type `${operand_type}`')
 		}
+		if tokens[start].tok == .minus && operand_type == 'integer literal' {
+			return 'negative integer literal'
+		}
 		return operand_type
 	}
 	if tokens[start].tok in [.amp, .and] {
@@ -9583,6 +9586,9 @@ fn fastc_number_expression_type(literal string) string {
 		&& clean.contains_any('eE')) {
 		return 'float literal'
 	}
+	if clean.starts_with('-') {
+		return 'negative integer literal'
+	}
 	return 'integer literal'
 }
 
@@ -9590,11 +9596,25 @@ fn fastc_common_arithmetic_type(left string, right string) string {
 	if left == right && fastc_is_numeric_expression_type(left) {
 		return left
 	}
-	if left == 'integer literal' && fastc_is_integer_type(right) {
+	if left == 'negative integer literal' && fastc_is_unsigned_integer_type(right) {
+		return ''
+	}
+	if right == 'negative integer literal' && fastc_is_unsigned_integer_type(left) {
+		return ''
+	}
+	if fastc_is_integer_literal_expression_type(left) && fastc_is_integer_type(right) {
 		return right
 	}
-	if right == 'integer literal' && fastc_is_integer_type(left) {
+	if fastc_is_integer_literal_expression_type(right) && fastc_is_integer_type(left) {
 		return left
+	}
+	if fastc_is_integer_literal_expression_type(left)
+		&& fastc_is_integer_literal_expression_type(right) {
+		return if left == 'negative integer literal' || right == 'negative integer literal' {
+			'negative integer literal'
+		} else {
+			'integer literal'
+		}
 	}
 	if left == 'float literal' && right in ['f32', 'f64'] {
 		return right
@@ -9606,11 +9626,16 @@ fn fastc_common_arithmetic_type(left string, right string) string {
 }
 
 fn fastc_is_numeric_expression_type(typ string) bool {
-	return typ in ['integer literal', 'float literal', 'f32', 'f64'] || fastc_is_integer_type(typ)
+	return fastc_is_integer_literal_expression_type(typ) || typ in ['float literal', 'f32', 'f64']
+		|| fastc_is_integer_type(typ)
 }
 
 fn fastc_is_integer_expression_type(typ string) bool {
-	return typ == 'integer literal' || fastc_is_integer_type(typ)
+	return fastc_is_integer_literal_expression_type(typ) || fastc_is_integer_type(typ)
+}
+
+fn fastc_is_integer_literal_expression_type(typ string) bool {
+	return typ in ['integer literal', 'negative integer literal']
 }
 
 fn fastc_call_types_are_compatible(actual string, expected string) bool {
@@ -9619,6 +9644,9 @@ fn fastc_call_types_are_compatible(actual string, expected string) bool {
 	}
 	if actual == 'integer literal' {
 		return fastc_is_integer_type(expected)
+	}
+	if actual == 'negative integer literal' {
+		return fastc_is_integer_type(expected) && !fastc_is_unsigned_integer_type(expected)
 	}
 	if actual == 'float literal' {
 		return expected in ['f32', 'f64']
@@ -9646,6 +9674,9 @@ fn fastc_selfhost_types_are_compatible(actual string, expected string) bool {
 		|| (actual_base == 'map' && expected_base.starts_with('Map_'))
 		|| (expected_base == 'map' && actual_base.starts_with('Map_')) {
 		return true
+	}
+	if actual == 'negative integer literal' && fastc_is_unsigned_integer_type(expected) {
+		return false
 	}
 	if fastc_is_integer_expression_type(actual) && fastc_is_integer_type(expected) {
 		return true
@@ -9709,6 +9740,10 @@ fn (g &Parser) array_element_type(typ string) ?string {
 fn fastc_is_integer_type(typ string) bool {
 	return typ in ['byte', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'rune', 'u8', 'u16',
 		'u32', 'u64', 'unsigned int', 'usize']
+}
+
+fn fastc_is_unsigned_integer_type(typ string) bool {
+	return typ in ['byte', 'u8', 'u16', 'u32', 'u64', 'unsigned int', 'usize']
 }
 
 fn fastc_nondecimal_literal_is_type_sensitive(literal string) bool {

@@ -353,6 +353,60 @@ fn main() {
 	assert c_source.contains('count+=3;')
 }
 
+fn test_negative_integer_literals_are_rejected_for_unsigned_targets() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn take(x u32) { println(x) }\nfn main() { take(-1) }\n',
+		'module main\nfn main() { mut value := u32(0); value = -1; println(value) }\n',
+		'module main\nfn value() u32 { return -1 }\nfn main() { println(value()) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'negative_unsigned_literal.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('negative integer literal'), message
+		assert message.contains('u32'), message
+	}
+
+	c_source := generate('module main
+
+fn take(x u32) {
+	println(x)
+}
+
+fn value() u32 {
+	return 1
+}
+
+fn take_signed(x int) {
+	println(x)
+}
+
+fn signed_value() int {
+	return -1
+}
+
+fn main() {
+	mut number := u32(0)
+	number = 1
+	take(1)
+	println(value())
+	mut signed := 0
+	signed = -1
+	take_signed(-1)
+	println(signed_value())
+}
+',
+		'positive_unsigned_literals.v', prefs) or { panic(err) }
+	assert c_source.contains('number=1;')
+	assert c_source.contains('take(1);')
+	assert c_source.contains('return 1;')
+	assert c_source.contains('signed=-1;')
+	assert c_source.contains('take_signed(-1);')
+	assert c_source.contains('return -1;')
+}
+
 fn test_main_must_not_return_a_value() {
 	prefs := pref.new_preferences()
 	mut message := ''
