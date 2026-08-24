@@ -1,5 +1,7 @@
 module quic
 
+import crypto.ecdsa
+
 // CertificateEntry is one X.509 certificate plus its per-certificate
 // extensions (RFC 8446 §4.4.2). v1 only speaks the X509 CertificateType —
 // RawPublicKey (RFC 7250) is never negotiated (v1's EncryptedExtensions
@@ -113,6 +115,66 @@ pub fn parse_certificate(body []u8) !ParsedCertificate {
 	}
 }
 
+// encode_certificate constructs a complete Certificate handshake message
+// (RFC 8446 §4.4.2), framed via encode_handshake_message. `certificate_list`
+// is this server's own certificate chain, leaf-first (RFC 8446 §4.4.2's own
+// implicit ordering -- the peer's chain-validation walk, mirrored by this
+// codebase's own verify_certificate_chain, always treats the first entry as
+// the leaf). certificate_request_context is always encoded as empty: RFC
+// 8446 §4.4.2 states it is only non-empty "if this message is in response
+// to a CertificateRequest" -- "Otherwise (in the case of server
+// authentication), this field SHALL be zero length" -- and v1 is
+// server-authentication-only (client-cert auth is out of scope), so this
+// function never takes a caller-supplied context, the same scope
+// restriction parse_certificate's own doc comment already states for the
+// parse side.
+pub fn encode_certificate(certificate_list []CertificateEntry) ![]u8 {
+	// RFC 8446 §4.4.2.4 (quoted in parse_certificate's own doc comment):
+	// "the server MUST always provide a non-empty certificate_list" --
+	// enforced here on the encode side too, not just checked on the way
+	// back in when a peer's Certificate is parsed.
+	if certificate_list.len == 0 {
+		return error('quic: Certificate certificate_list must not be empty (server certificate_list MUST always be non-empty, RFC 8446 §4.4.2.4)')
+	}
+
+	mut body := []u8{}
+	body << u8(0) // certificate_request_context: always empty, see doc comment above
+
+	mut list := []u8{}
+	for entry in certificate_list {
+		if entry.cert_data.len == 0 || entry.cert_data.len > 0xff_ffff {
+			return error('quic: CertificateEntry cert_data length ${entry.cert_data.len} out of range (opaque cert_data<1..2^24-1>)')
+		}
+		list << u8(entry.cert_data.len >> 16)
+		list << u8(entry.cert_data.len >> 8)
+		list << u8(entry.cert_data.len)
+		list << entry.cert_data
+		// parse_certificate's own doc comment establishes that this
+		// client's ClientHello offers neither status_request nor
+		// signed_certificate_timestamp, so the only RFC 8446 §4.2-legal
+		// CertificateEntry extensions for THIS codebase's peer are illegal
+		// to send here (RFC 8446 §4.4.2: "Extensions in the Certificate
+		// message from the server MUST correspond to ones from the
+		// ClientHello message") -- enforced here too, not just on the
+		// parse side, so a caller can never accidentally construct a
+		// message a compliant peer would reject.
+		if entry.extensions.len != 0 {
+			return error('quic: CertificateEntry.extensions must be empty -- this server never negotiates status_request or signed_certificate_timestamp (RFC 8446 §4.4.2)')
+		}
+		list << u8(0) // extensions length: always 0, see above
+		list << u8(0)
+	}
+	if list.len > 0xff_ffff {
+		return error('quic: Certificate certificate_list too large: ${list.len} bytes')
+	}
+	body << u8(list.len >> 16)
+	body << u8(list.len >> 8)
+	body << u8(list.len)
+	body << list
+
+	return encode_handshake_message(.certificate, body)!
+}
+
 pub struct ParsedCertificateVerify {
 pub:
 	algorithm u16
@@ -200,4 +262,57 @@ pub fn certificate_verify_signed_content(role CertificateVerifyRole, transcript_
 	out << u8(0)
 	out << transcript_hash
 	return out
+}
+
+// encode_certificate_verify constructs a complete CertificateVerify
+// handshake message (RFC 8446 §4.4.3) by SIGNING
+// certificate_verify_signed_content(.server, transcript_hash) with
+// `signing_key`, then framing the result via encode_handshake_message. v1
+// is server-authentication-only (client CertificateVerify is never sent),
+// so this function always signs the `.server` context -- see
+// certificate_verify_signed_content's own doc comment for why the `.client`
+// variant exists at all without a real caller.
+//
+// Only sig_scheme_ecdsa_secp256r1_sha256 is wired up so far: rejected with
+// a clear "not implemented yet" error for any other algorithm rather than
+// silently producing a signature under the wrong scheme -- RSA-PSS signing
+// needs a still-missing mbedtls_pk_sign_ext V wrapper (only the verify side,
+// verify_rsa_pss_signature in net.mbedtls, exists today), tracked as
+// follow-up work within 13a, not built here.
+//
+// `signing_key` MUST be a P-256 (prime256v1) key -- the only curve this
+// codebase's own key generation/loading ever produces (Phase 1's scope
+// decision, `crypto.ecdsa`'s CurveOptions defaults to prime256v1 and no v1
+// caller ever overrides it). crypto.ecdsa exposes no curve accessor to
+// verify this defensively at the V level; behavior for a caller-supplied
+// non-P-256 key is undefined by construction, not validated here -- the
+// same trust boundary this function's own signing_key parameter implies
+// for any local, non-peer-supplied cryptographic material.
+pub fn encode_certificate_verify(algorithm u16, signing_key ecdsa.PrivateKey, transcript_hash []u8) ![]u8 {
+	if algorithm != sig_scheme_ecdsa_secp256r1_sha256 {
+		return error('quic: CertificateVerify signing for algorithm 0x${algorithm:04x} is not implemented yet (only ecdsa_secp256r1_sha256 is wired up)')
+	}
+
+	content := certificate_verify_signed_content(.server, transcript_hash)
+	// PrivateKey.sign's default hash_config (.with_recommended_hash) picks
+	// SHA-256 for a 256-bit (P-256) key -- see default_digest in
+	// vlib/crypto/ecdsa/ecdsa.v, keyed off the key's own bit size, matching
+	// exactly what sig_scheme_ecdsa_secp256r1_sha256 requires. The
+	// resulting signature is OpenSSL's standard ASN.1 DER ECDSA-Sig-Value
+	// encoding, the same format net.mbedtls's verify_ecdsa_signature (used
+	// on the client-side verify path, tls13_certificate_chain.c.v) already
+	// parses -- no reformatting needed between the two libraries.
+	signature := signing_key.sign(content, hash_config: .with_recommended_hash)!
+
+	mut body := []u8{}
+	body << u8(algorithm >> 8)
+	body << u8(algorithm)
+	if signature.len > 0xffff {
+		return error('quic: CertificateVerify signature too large: ${signature.len} bytes')
+	}
+	body << u8(signature.len >> 8)
+	body << u8(signature.len)
+	body << signature
+
+	return encode_handshake_message(.certificate_verify, body)!
 }

@@ -531,7 +531,10 @@ fn test_build_server_hello_rejects_wrong_random_length() {
 // test fixture reusing the constant) must be caught here rather than
 // silently producing an ambiguous message.
 fn test_build_server_hello_rejects_hello_retry_request_random_collision() {
-	build_server_hello(random: hello_retry_request_random[..].clone(), ecdhe_public_key: []u8{len: 65}) or {
+	build_server_hello(
+		random:           hello_retry_request_random[..].clone()
+		ecdhe_public_key: []u8{len: 65}
+	) or {
 		assert err.msg().contains('HelloRetryRequest')
 		return
 	}
@@ -616,4 +619,58 @@ fn test_build_encrypted_extensions_requires_original_destination_connection_id()
 		return
 	}
 	assert false, 'expected an error for a missing original_destination_connection_id'
+}
+
+// build_hello_retry_request (Phase 13a, server-role construction).
+// Round-tripped through this same file's own parse_server_hello, which
+// dispatches to the HelloRetryRequest branch purely by matching the fixed
+// magic random value -- the same real cross-check discipline as
+// build_server_hello's own tests above.
+
+fn test_build_hello_retry_request_with_group_and_cookie_round_trips() {
+	msg := build_hello_retry_request(
+		selected_group: named_group_secp256r1
+		cookie:         [u8(1), 2, 3, 4]
+	)!
+	parsed_msg, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	assert parsed_msg.typ == .server_hello // HRR shares ServerHello's wire type
+	result := parse_server_hello(parsed_msg.body)!
+	match result {
+		ParsedHelloRetryRequest {
+			assert result.cipher_suite == cipher_suite_tls_aes_128_gcm_sha256
+			assert result.selected_version == tls_version_1_3
+			assert result.selected_group? == named_group_secp256r1
+			assert result.cookie? == [u8(1), 2, 3, 4]
+		}
+		ParsedServerHello {
+			assert false, 'expected a HelloRetryRequest, not a real ServerHello'
+		}
+	}
+}
+
+fn test_build_hello_retry_request_cookie_only_round_trips() {
+	// RFC 8446 §4.1.4: key_share is not mandatory in an HRR when the
+	// client's already-offered share is acceptable -- only
+	// supported_versions is mandatory.
+	msg := build_hello_retry_request(cookie: [u8(9), 9])!
+	parsed_msg, _ := parse_handshake_message(msg)!
+	result := parse_server_hello(parsed_msg.body)!
+	match result {
+		ParsedHelloRetryRequest {
+			assert result.selected_group == none
+			assert result.cookie? == [u8(9), 9]
+		}
+		ParsedServerHello {
+			assert false, 'expected a HelloRetryRequest, not a real ServerHello'
+		}
+	}
+}
+
+fn test_build_hello_retry_request_rejects_oversized_cookie() {
+	build_hello_retry_request(cookie: []u8{len: 0xffff}) or {
+		assert err.msg().contains('cookie length')
+		return
+	}
+	assert false, 'expected an error for an oversized cookie'
 }

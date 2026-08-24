@@ -174,3 +174,19 @@ fn test_verify_finished_rejects_stale_transcript_hash() {
 	peer_verify_data := hex.decode(rfc8448_server_verify_data)!
 	assert verify_finished(base_secret, stale_transcript_hash, peer_verify_data)! == false
 }
+
+// build_finished (Phase 13a, server-role construction) -- tested against
+// the SAME real RFC 8448 §3 vector the functions above already use, not
+// just round-tripped against this module's own code, since this function
+// is a thin wrapper around already-vector-verified
+// compute_finished_verify_data.
+fn test_build_finished_matches_rfc8448_vector() {
+	base_secret := hex.decode(rfc8448_server_hs_traffic_finished)!
+	transcript_hash := hex.decode(rfc8448_transcript_hash_ch_thru_certverify)!
+	msg := build_finished(base_secret, transcript_hash)!
+
+	parsed_msg, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	assert parsed_msg.typ == .finished
+	assert parsed_msg.body == hex.decode(rfc8448_server_verify_data)!
+}

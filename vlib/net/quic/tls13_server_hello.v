@@ -406,6 +406,87 @@ pub fn build_server_hello(p ServerHelloParams) ![]u8 {
 	return encode_handshake_message(.server_hello, body)!
 }
 
+// HelloRetryRequestParams is everything build_hello_retry_request needs.
+// Both fields are optional -- only supported_versions is mandatory in a
+// real HelloRetryRequest (RFC 8446 §4.1.4), mirroring exactly what this
+// same file's ParsedHelloRetryRequest.selected_group/cookie already model
+// on the parse side.
+pub struct HelloRetryRequestParams {
+pub:
+	// Present when this server is requesting a DIFFERENT group than the one
+	// the client's ClientHello key_share offered (RFC 8446 §4.1.4: "the
+	// server corrects the mismatch with a HelloRetryRequest"). None when
+	// the HRR is purely a cookie round-trip and the client's
+	// already-offered key_share is acceptable to this server.
+	selected_group ?u16
+	// Present when this server wants a stateless retry cookie round-trip
+	// (RFC 8446 §4.2.2) instead of holding per-connection state across the
+	// two ClientHellos this exchange produces.
+	cookie ?[]u8
+}
+
+// build_hello_retry_request constructs a complete HelloRetryRequest
+// handshake message (RFC 8446 §4.1.4), framed via encode_handshake_message.
+// A HelloRetryRequest shares ServerHello's wire TYPE but is distinguished
+// by the fixed hello_retry_request_random magic value (this same file) in
+// place of a genuine random -- callers must never call build_server_hello
+// to send one (that function explicitly rejects this exact value).
+// key_share, when present, carries only a bare NamedGroup (RFC 8446 §4.2.8's
+// KeyShareHelloRetryRequest), NOT a full KeyShareEntry -- a different, third
+// wire shape from both build_server_hello's real-ServerHello key_share
+// (encode_key_share_extension_server) and build_client_hello's
+// (encode_key_share_extension), matching what this file's own
+// parse_server_hello already expects for the HRR branch.
+pub fn build_hello_retry_request(p HelloRetryRequestParams) ![]u8 {
+	mut body := []u8{}
+	body << u8(0x03)
+	body << u8(0x03)
+	body << hello_retry_request_random[..].clone()
+	// legacy_session_id_echo: always empty, see build_server_hello's doc
+	// comment (RFC 9001 §8.4).
+	body << u8(0)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256 >> 8)
+	body << u8(cipher_suite_tls_aes_128_gcm_sha256)
+	body << u8(0) // legacy_compression_method
+
+	mut extensions := []u8{}
+	extensions << encode_supported_versions_extension_server()!
+	if group := p.selected_group {
+		mut data := []u8{}
+		data << u8(group >> 8)
+		data << u8(group)
+		extensions << encode_extension(ext_key_share, data)!
+	}
+	if cookie := p.cookie {
+		// RFC 8446 §4.2.2: `opaque cookie<1..2^16-1>` -- same overhead-aware
+		// bound style as encode_server_name_extension/
+		// encode_key_share_extension (this module), checked against the
+		// 2-byte length-prefix overhead this extension's own inner
+		// structure adds on top of the raw cookie bytes.
+		if cookie.len == 0 || cookie.len > 0xffff - 2 {
+			return error('quic: HelloRetryRequest cookie length ${cookie.len} out of range')
+		}
+		mut data := []u8{}
+		data << u8(cookie.len >> 8)
+		data << u8(cookie.len)
+		data << cookie
+		extensions << encode_extension(ext_cookie, data)!
+	}
+
+	if extensions.len > 0xffff {
+		return error('quic: HelloRetryRequest extensions block too large: ${extensions.len} bytes')
+	}
+	body << u8(extensions.len >> 8)
+	body << u8(extensions.len)
+	body << extensions
+
+	// HelloRetryRequest is wire-framed as a server_hello handshake message
+	// (RFC 8446 §4.1.4: "it is not a separate message from the perspective
+	// of the wire format"), same as parse_server_hello's own type
+	// dispatch above.
+	return encode_handshake_message(.server_hello, body)!
+}
+
 // EncryptedExtensionsParams is everything build_encrypted_extensions needs.
 pub struct EncryptedExtensionsParams {
 pub:

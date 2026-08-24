@@ -2,6 +2,7 @@
 module quic
 
 import encoding.hex
+import crypto.ecdsa
 
 // RFC 8446 §4.4.3's own worked example: transcript hash = 32 bytes of
 // 0x01, server context -> this exact 130-byte signed content. Extracted
@@ -219,4 +220,98 @@ fn test_parse_certificate_verify_rejects_truncated_header() {
 		return
 	}
 	assert false, 'expected an error for a header shorter than 4 bytes'
+}
+
+// encode_certificate / encode_certificate_verify (Phase 13a, server-role
+// construction). Round-tripped through this same file's own
+// parse_certificate/parse_certificate_verify, the same real cross-check
+// discipline as tls13_server_hello_test.v's build_server_hello tests.
+
+fn test_encode_certificate_round_trips_through_parse_certificate() {
+	entries := [
+		CertificateEntry{
+			cert_data: []u8{len: 300, init: 0x30}
+		},
+		CertificateEntry{
+			cert_data: []u8{len: 150, init: 0x31}
+		},
+	]
+	msg := encode_certificate(entries)!
+	parsed_msg, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	assert parsed_msg.typ == .certificate
+	result := parse_certificate(parsed_msg.body)!
+	assert result.certificate_request_context.len == 0
+	assert result.certificate_list.len == 2
+	assert result.certificate_list[0].cert_data == entries[0].cert_data
+	assert result.certificate_list[1].cert_data == entries[1].cert_data
+}
+
+fn test_encode_certificate_rejects_empty_list() {
+	encode_certificate([]CertificateEntry{}) or {
+		assert err.msg().contains('must not be empty')
+		return
+	}
+	assert false, 'expected an error for an empty certificate_list'
+}
+
+fn test_encode_certificate_rejects_entry_with_extensions() {
+	entries := [
+		CertificateEntry{
+			cert_data:  []u8{len: 10, init: 0x30}
+			extensions: [TlsExtension{
+				typ:  0x1234
+				data: []u8{}
+			}]
+		},
+	]
+	encode_certificate(entries) or {
+		assert err.msg().contains('extensions must be empty')
+		return
+	}
+	assert false, 'expected an error for a CertificateEntry carrying extensions'
+}
+
+// test_encode_certificate_verify_round_trips_through_parse_certificate_verify
+// verifies the WIRE FRAMING (algorithm field, signature length prefix) is
+// correct and that the signature this function produces is plausible ECDSA
+// DER output -- non-empty, and different for different transcript hashes
+// (a constant/garbage signature would fail this). It does NOT
+// cryptographically verify the signature against the public key: this
+// codebase has no PublicKey.verify() exposed by crypto.ecdsa and no EC
+// certificate fixture to build an mbedtls_pk_context from, the SAME
+// documented gap Phase 2c's own x509_standalone_signature_test.v already
+// states ("No EC private key exists anywhere in this repo, so the ECDSA
+// path is tested only via rejecting an incompatible key") -- not silently
+// skipped, stated here for the same reason.
+fn test_encode_certificate_verify_round_trips_through_parse_certificate_verify() {
+	_, priv_key := ecdsa.generate_key()!
+	transcript_hash := []u8{len: 32, init: 0x01}
+
+	msg := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256, priv_key, transcript_hash)!
+	parsed_msg, consumed := parse_handshake_message(msg)!
+	assert consumed == msg.len
+	assert parsed_msg.typ == .certificate_verify
+
+	result := parse_certificate_verify(parsed_msg.body)!
+	assert result.algorithm == sig_scheme_ecdsa_secp256r1_sha256
+	assert result.signature.len > 0
+
+	other_transcript_hash := []u8{len: 32, init: 0x02}
+	other_msg := encode_certificate_verify(sig_scheme_ecdsa_secp256r1_sha256, priv_key,
+		other_transcript_hash)!
+	_, other_consumed := parse_handshake_message(other_msg)!
+	other_parsed, _ := parse_handshake_message(other_msg)!
+	other_result := parse_certificate_verify(other_parsed.body)!
+	assert other_consumed == other_msg.len
+	assert other_result.signature != result.signature
+}
+
+fn test_encode_certificate_verify_rejects_unimplemented_algorithm() {
+	_, priv_key := ecdsa.generate_key()!
+	encode_certificate_verify(sig_scheme_rsa_pss_rsae_sha256, priv_key, []u8{len: 32}) or {
+		assert err.msg().contains('not implemented yet')
+		return
+	}
+	assert false, 'expected an error for an unimplemented signing algorithm'
 }

@@ -1240,11 +1240,28 @@ QUIC layer is already role-parameterized (`role QuicRole` on `QuicConn`;
 explicitly) — none of that foundation needs rework. Same one-sub-phase-per-
 stacked-PR convention as Phase 12's 12a-12d.
 
-- [ ] **13a** (in progress) — TLS 1.3 server handshake: ServerHello +
-      EncryptedExtensions construction, Certificate presentation,
-      CertificateVerify **signing** (only verify exists today), server-side
-      Finished, HelloRetryRequest generation (cookie extension — the client
-      only ever rejects a second HRR, never sends one).
+- [ ] **13a** (in progress) — TLS 1.3 server handshake:
+  - [x] Message construction, all five pieces (`tls13_server_hello.v`,
+        `tls13_certificate.v`, `tls13_messages.v`): `build_server_hello`,
+        `build_encrypted_extensions`, `encode_certificate`,
+        `encode_certificate_verify` (ECDSA P-256 signing only —
+        `sig_scheme_ecdsa_secp256r1_sha256`; RSA-PSS signing needs a
+        `mbedtls_pk_sign_ext` V wrapper that doesn't exist yet, only the
+        verify side does), `build_finished` (verified against the real RFC
+        8448 §3 vector, not just round-tripped against this module's own
+        parser), `build_hello_retry_request`. Every function round-trips
+        through its ALREADY-EXISTING, independently-written parse
+        counterpart — a real cross-check, not tautological. Caught one
+        real bug this way before commit: a server's `key_share` is a bare
+        `KeyShareEntry` (RFC 8446 §4.2.8), not the client's list-wrapped
+        shape.
+  - [ ] Server-side state machine (mirroring `Tls13ClientHandshake` in
+        `tls13_handshake.v`) — orchestrating the above into an actual
+        handshake driver: deciding when to send Certificate vs. reuse
+        cached state, whether to send an HRR, deriving/tracking the
+        transcript hash across all these messages, discarding keys at the
+        right checkpoints. NOT started — none of the five functions above
+        are wired into anything yet.
 - [ ] **13b** — Retry + address validation: Retry packet + opaque token
       minting/validation (`retry.v` currently only verifies), RFC 9000 §8.1
       anti-amplification 3x accounting (already flagged as a deferred,
