@@ -336,6 +336,7 @@ mut:
 	inlined_c_typedef_names        map[string]bool
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
+	inlined_c_active_macros        map[string]bool
 	possibly_active_c_macros       map[string]bool
 	inlined_c_static_fns           map[string]bool
 	cache_omitted_c_fns            map[string]bool
@@ -1029,6 +1030,7 @@ pub fn FlatGen.new() FlatGen {
 		inlined_c_structs:               map[string]bool{}
 		inlined_c_fns:                   map[string]bool{}
 		inlined_c_declared_fns:          map[string]bool{}
+		inlined_c_active_macros:         map[string]bool{}
 		possibly_active_c_macros:        map[string]bool{}
 		inlined_c_static_fns:            map[string]bool{}
 		cache_omitted_c_fns:             map[string]bool{}
@@ -2615,6 +2617,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.inlined_c_structs.clear()
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
+	g.inlined_c_active_macros.clear()
 	g.possibly_active_c_macros.clear()
 	g.inlined_c_static_fns.clear()
 	g.cache_omitted_c_fns.clear()
@@ -3375,6 +3378,9 @@ fn (mut g FlatGen) cache_user_c_string_symbols() map[string]bool {
 		collect_cache_numbered_string_symbols(name, mut symbols)
 	}
 	for name in g.inlined_c_declared_fns.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	for name in g.inlined_c_active_macros.keys() {
 		collect_cache_numbered_string_symbols(name, mut symbols)
 	}
 	referenced_symbols := g.c_extern_referenced_symbols()
@@ -4675,10 +4681,23 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 	if collect_declarations {
 		g.collect_inlined_c_structs(final_scan.text)
 		g.collect_inlined_c_fns(final_scan.text)
-		g.collect_inlined_c_declared_fns(final_scan.text)
+		g.collect_inlined_c_declarations(final_scan.text)
+		for macro_name in final_scan.macro_names {
+			if final_scan.final_state.defined[macro_name] {
+				g.inlined_c_active_macros[macro_name] = true
+				g.possibly_active_c_macros.delete(macro_name)
+			} else if final_scan.final_state.undefined[macro_name] {
+				g.inlined_c_active_macros.delete(macro_name)
+				g.possibly_active_c_macros.delete(macro_name)
+			} else {
+				g.inlined_c_active_macros.delete(macro_name)
+				g.possibly_active_c_macros[macro_name] = true
+			}
+		}
 	}
 	for macro_name in final_scan.possibly_active_macro_names {
-		if macro_name !in g.inlined_c_declared_fns {
+		if macro_name !in final_scan.final_state.undefined
+			&& macro_name !in g.inlined_c_active_macros && macro_name !in g.inlined_c_declared_fns {
 			g.possibly_active_c_macros[macro_name] = true
 		}
 	}
@@ -4701,6 +4720,7 @@ struct CHeaderActiveScan {
 	include_keys                []string
 	include_args                []string
 	include_definitely_active   []bool
+	macro_names                 []string
 	possibly_active_macro_names []string
 	final_state                 CHeaderMacroState
 }
@@ -4853,6 +4873,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	mut include_keys := []string{}
 	mut include_args := []string{}
 	mut include_definitely_active := []bool{}
+	mut macro_names := map[string]bool{}
 	mut possibly_active_macro_names := map[string]bool{}
 	mut output := strings.new_builder(text.len)
 	mut in_block_comment := false
@@ -4950,6 +4971,9 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			parts := c_directive_arg(clean).fields()
 			if parts.len > 0 {
 				macro_name := parts[0].all_before('(')
+				if possibly_active && macro_name.len > 0 {
+					macro_names[macro_name] = true
+				}
 				if name == 'define' && possibly_active && macro_name.len > 0 {
 					possibly_active_macro_names[macro_name] = true
 				}
@@ -5010,6 +5034,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 		include_keys:                include_keys
 		include_args:                include_args
 		include_definitely_active:   include_definitely_active
+		macro_names:                 macro_names.keys()
 		possibly_active_macro_names: possibly_active_macro_names.keys()
 		final_state:                 CHeaderMacroState{
 			defined:                  defined
@@ -8103,6 +8128,27 @@ fn c_strip_comments(text string) string {
 }
 
 fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
+	g.collect_inlined_c_declarations(text)
+	// Inlined source text has not gone through the active-branch scanner. Keep
+	// every visible definition conservative, as before; only preserved headers
+	// can use their final preprocessor state to prove that a later #undef wins.
+	for line in c_strip_comments(text).split_into_lines() {
+		clean := line.trim_space()
+		if clean.len == 0 || clean[0] != `#` || c_directive_name(clean) != 'define' {
+			continue
+		}
+		arg := c_directive_arg(clean)
+		mut name_end := 0
+		for name_end < arg.len && c_ident_char(arg[name_end]) {
+			name_end++
+		}
+		if name_end > 0 {
+			g.inlined_c_active_macros[arg[..name_end]] = true
+		}
+	}
+}
+
+fn (mut g FlatGen) collect_inlined_c_declarations(text string) {
 	// Header declarations often span several lines (one parameter per line);
 	// accumulate a pending declaration until its terminating `;` so those are
 	// collected too, not just single-line prototypes.
@@ -8111,19 +8157,6 @@ fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
 		clean := line.trim_space()
 		for name in c_macro_declared_fn_names(clean) {
 			g.inlined_c_declared_fns[name] = true
-		}
-		if clean.len > 0 && clean[0] == `#` && c_directive_name(clean) == 'define' {
-			// Any macro (object- or function-like) named like a `fn C.x` makes
-			// an emitted extern prototype wrong after preprocessing; the
-			// header's definition is authoritative.
-			arg := c_directive_arg(clean)
-			mut name_end := 0
-			for name_end < arg.len && c_ident_char(arg[name_end]) {
-				name_end++
-			}
-			if name_end > 0 {
-				g.inlined_c_declared_fns[arg[..name_end]] = true
-			}
 		}
 		if pending.len > 0 {
 			if clean.len == 0 || clean[0] == `#` || clean.contains('{') || clean.contains('}')

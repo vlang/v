@@ -133,7 +133,7 @@ fn test_preinclude_carries_macro_state_to_later_preincludes() {
 		typ:   '"${api_header}"'
 	}, source, false)
 
-	assert 'chained_api' in g.inlined_c_declared_fns
+	assert 'chained_api' in g.inlined_c_active_macros
 	assert g.preinclude_directives == ['#include "${config_header}"', '#include "${api_header}"']
 }
 
@@ -187,7 +187,7 @@ fn test_preserved_header_carries_child_macros_into_parent_remainder() {
 	mut g := FlatGen.new()
 	g.collect_preserved_header_file(parent, [root])
 
-	assert 'enabled_api' in g.inlined_c_declared_fns
+	assert 'enabled_api' in g.inlined_c_active_macros
 }
 
 fn test_preserved_unguarded_header_is_rescanned_under_new_macro_state() {
@@ -205,7 +205,7 @@ fn test_preserved_unguarded_header_is_rescanned_under_new_macro_state() {
 	mut g := FlatGen.new()
 	g.collect_preserved_header_file(parent, [root])
 
-	assert 'enabled_api' in g.inlined_c_declared_fns
+	assert 'enabled_api' in g.inlined_c_active_macros
 	child_prefix := os.real_path(child) + '\n'
 	assert g.preserved_header_scan_results.keys().filter(it.starts_with(child_prefix)).len >= 2
 }
@@ -226,7 +226,7 @@ fn test_preserved_header_passes_definite_parent_macro_state_to_children() {
 	mut g := FlatGen.new()
 	g.collect_preserved_header_file(parent, [root])
 
-	assert 'enabled_api' in g.inlined_c_declared_fns
+	assert 'enabled_api' in g.inlined_c_active_macros
 	assert 'omitted_api' !in g.inlined_c_declared_fns
 }
 
@@ -277,6 +277,33 @@ fn test_preserved_header_guards_externs_for_possibly_active_function_macros() {
 	assert g.c_possibly_active_macro_extern_decl('compiler_api', 'int compiler_api(int x);') == '#ifndef compiler_api\nint compiler_api(int x);\n#endif'
 	assert 'inactive_api' !in g.inlined_c_declared_fns
 	assert 'inactive_api' !in g.possibly_active_c_macros
+}
+
+fn test_preserved_headers_track_final_macro_state_for_externs() {
+	root := os.join_path(os.vtmp_dir(), 'v3_preserved_final_macro_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first := os.join_path(root, 'first.h')
+	second := os.join_path(root, 'second.h')
+	os.write_file(first,
+		'#define same_header_api(x) ((x) + 1)\n#undef same_header_api\n#define declared_api(x) ((x) + 2)\n#undef declared_api\nint declared_api(void);\n#define later_header_api(x) ((x) + 3)\n')!
+	os.write_file(second, '#undef later_header_api\n')!
+
+	mut g := FlatGen.new()
+	state := g.collect_preserved_header_file_with_state(first, [root], CHeaderMacroState{})
+	assert 'same_header_api' !in g.inlined_c_active_macros
+	assert 'later_header_api' in g.inlined_c_active_macros
+	assert 'declared_api' in g.inlined_c_declared_fns
+	assert g.should_emit_c_extern_decl('same_header_api')
+	assert !g.should_emit_c_extern_decl('later_header_api')
+	assert !g.should_emit_c_extern_decl('declared_api')
+	g.collect_preserved_header_file_with_state(second, [root], state)
+	assert 'later_header_api' !in g.inlined_c_active_macros
+	assert g.should_emit_c_extern_decl('later_header_api')
+	assert !g.should_emit_c_extern_decl('declared_api')
 }
 
 fn test_preserved_header_scans_includes_in_possibly_active_branches_for_macros() {
