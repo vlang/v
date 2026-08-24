@@ -37,7 +37,7 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build V
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Code in cmd/ is formatted
@@ -77,7 +77,7 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build V
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Check build-tools
@@ -97,7 +97,7 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build V
         run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
       - name: Install SQLite (needed by vsqlite tool)
@@ -123,7 +123,7 @@ jobs:
         - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
       - name: Build V
         run: make && ./v -cg -o v cmd/v && ./v symlink
       - name: Ensure git commands can be used with no prompts on modern Git versions
@@ -149,7 +149,7 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Start FreeBSD VM with ${{ matrix.cc }}
         uses: cross-platform-actions/action@v1.4.0
@@ -211,7 +211,7 @@ jobs:
     env:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Start OpenBSD VM with ${{ matrix.cc }}
         uses: cross-platform-actions/action@v1.4.0

@@ -6118,7 +6118,7 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 					// fixed storage there and disagrees with the cached object's source ABI.
 					// Preserve the checked element type too: the raw `array.clone` header
 					// signature cannot reconstruct it from every declaration-only literal.
-					value = '${cached_type_source_name(typ)}(${value}).clone()'
+					value = '${cached_array_literal_type_source_name(a, expr, typ)}(${value}).clone()'
 				}
 			}
 			if value.len > 0 {
@@ -6144,6 +6144,16 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 	}
 	out.write_string(')')
 	return out.str()
+}
+
+fn cached_array_literal_type_source_name(a &flat.FlatAst, expr flat.Node, typ types.Array) string {
+	if expr.children_count > 0 {
+		first := a.child_node(&expr, 0)
+		if first.kind == .struct_init && first.value.len > 0 {
+			return '[]${first.value.trim_left('?')}'
+		}
+	}
+	return cached_type_source_name(typ)
 }
 
 fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source_is_public bool) string {

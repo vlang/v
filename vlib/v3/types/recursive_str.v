@@ -804,7 +804,7 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 				if node.kind == .cast_expr && binding.can_recurse {
 					target := unwrap_all_pointers(tc.resolve_type(id))
 					receiver := unwrap_all_pointers(ctx.receiver_type)
-					if target !is Unknown && receiver !is Unknown
+					if target !is Unknown && target !is Interface && receiver !is Unknown
 						&& target.name() != receiver.name() {
 						binding.progressed = true
 						binding.nonreversible_progress = true

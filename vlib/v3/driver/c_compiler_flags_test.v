@@ -33,3 +33,17 @@ fn test_add_v3_tcc_compat_defines() {
 	add_v3_tcc_compat_defines(mut other_compiler, 'macos', 'arm64', false, false)
 	assert other_compiler.len == 0
 }
+
+fn test_v3_default_linker_flags() {
+	assert v3_default_linker_flags('windows', false) == ['-lm']
+	assert v3_default_linker_flags('linux', false) == ['-lm', '-lpthread']
+	assert v3_default_linker_flags('freebsd', false) == ['-lm', '-lpthread', '-lexecinfo', '-lelf']
+	assert v3_default_linker_flags('netbsd', false) == ['-lm', '-lpthread', '-lexecinfo', '-lelf']
+	assert v3_default_linker_flags('linux', true) == []
+}
+
+fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
+	mut flags := ['-lpthread', '-lm']
+	add_v3_default_linker_flags(mut flags, 'linux', false)
+	assert flags == ['-lpthread', '-lm']
+}

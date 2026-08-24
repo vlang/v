@@ -1371,13 +1371,13 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 	mut cur_file_is_program := false
 	mut context_directives := map[string][]string{}
 	mut conditional_context_mutations := map[string]bool{}
-	mut conditional_depth := 0
+	mut conditionals := []CCacheConditional{}
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
 			cur_file_is_program = program_files[cur_file] || program_files[os.real_path(cur_file)]
 			cur_module = ''
-			conditional_depth = 0
+			conditionals.clear()
 			continue
 		}
 		if node.kind == .module_decl {
@@ -1396,20 +1396,46 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 		}
 		if node.kind == .directive {
 			if node.value in ['if', 'ifdef', 'ifndef'] {
-				conditional_depth++
-			} else if node.value == 'endif' && conditional_depth > 0 {
-				conditional_depth--
+				parent_inactive := conditionals.any(it.inactive)
+				parent_ambiguous := conditionals.any(it.ambiguous)
+				condition := c_cache_known_condition(c_preprocessor_directive_line(node.value,
+					node.typ), include_macros, dynamic_include_macros,
+					compiler_macro_environment_complete)
+				conditionals << CCacheConditional{
+					parent_inactive: parent_inactive
+					condition:       condition
+					inactive:        parent_inactive || condition < 0
+					ambiguous:       parent_ambiguous || condition == 0
+				}
+			} else if node.value in ['else', 'elif'] && conditionals.len > 0 {
+				conditional_idx := conditionals.len - 1
+				mut conditional := conditionals[conditional_idx]
+				if node.value == 'else' {
+					conditional.inactive = conditional.parent_inactive || conditional.condition > 0
+				} else if conditional.condition > 0 {
+					conditional.inactive = true
+				} else {
+					next_condition := c_cache_known_condition(c_preprocessor_directive_line(node.value,
+						node.typ), include_macros, dynamic_include_macros,
+						compiler_macro_environment_complete)
+					conditional.condition = next_condition
+					conditional.ambiguous = conditional.ambiguous || next_condition == 0
+					conditional.inactive = conditional.parent_inactive || next_condition < 0
+				}
+				conditionals[conditional_idx] = conditional
+			} else if node.value == 'endif' && conditionals.len > 0 {
+				conditionals.delete_last()
 			}
 		}
 		if node.kind == .directive && node.value in ['define', 'undef'] {
 			directive := c_preprocessor_directive_line(node.value, node.typ)
-			is_conditional := conditional_depth > 0
-			c_record_include_macro_definition(directive, is_conditional, mut include_macros, mut
+			is_ambiguous := conditionals.any(it.inactive || it.ambiguous)
+			c_record_include_macro_definition(directive, is_ambiguous, mut include_macros, mut
 				dynamic_include_macros)
 			mut module_context := context_directives[owner_module]
 			module_context << directive
 			context_directives[owner_module] = module_context
-			if is_conditional {
+			if is_ambiguous {
 				conditional_context_mutations[owner_module] = true
 			}
 			continue
@@ -1430,7 +1456,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				has_untracked_include = true
 				continue
 			}
-			context_is_replayable := conditional_depth == 0
+			context_is_replayable := !conditionals.any(it.inactive || it.ambiguous)
 				&& !conditional_context_mutations[owner_module]
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
 				c_record_cache_resolution_path(path, mut resolution_dirs, mut

@@ -2801,10 +2801,18 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 	if node.children_count == 0 {
 		if node.typ.len == 0 {
 			if expected := tc.expected_context_for_expr(id) {
-				context_type := contextual_payload_type(expected) or { expected }
-				if array_like_elem_type(context_type) != none {
+				context_type := unalias_type(contextual_payload_type(expected) or { expected })
+				if context_type is Array {
 					tc.register_synth_type(id, context_type)
 					return
+				}
+				if context_type is ArrayFixed {
+					if expected_len := tc.fixed_array_len_value(context_type) {
+						if expected_len == 0 {
+							tc.register_synth_type(id, context_type)
+							return
+						}
+					}
 				}
 			}
 			tc.record_error_at(.assignment_mismatch,
@@ -2835,9 +2843,16 @@ fn (mut tc TypeChecker) check_array_literal_element_types(id flat.NodeId, node f
 	if node.typ.len == 0 {
 		if expected := tc.expected_context_for_expr(id) {
 			context_type := unalias_type(contextual_payload_type(expected) or { expected })
-			if context_type is Array || context_type is ArrayFixed {
+			if context_type is Array && context_type.elem_type !is Void {
 				array_type = context_type
 				tc.register_synth_type(id, context_type)
+			} else if context_type is ArrayFixed {
+				array_type = context_type
+				if expected_len := tc.fixed_array_len_value(context_type) {
+					if expected_len == node.children_count {
+						tc.register_synth_type(id, context_type)
+					}
+				}
 			}
 		}
 	}
@@ -4015,7 +4030,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if target is Alias && target.base_type is OptionType {
+	if target is Alias && target.base_type is OptionType && !node.value.starts_with('?') {
 		tc.record_error(.assignment_mismatch,
 			'alias to Option type requires to be used as Option type (?${node.value}(...))', id)
 		return
@@ -5959,8 +5974,10 @@ fn (mut tc TypeChecker) check_comptime_if(id flat.NodeId, node flat.Node) {
 	// A deferred `$if` can itself be the value-producing tail of an outer
 	// `if`/`match` branch. Preserve that context when checking the selected
 	// branch so its last expression is not diagnosed as an unused statement.
+	tc.comptime_static_depth++
 	tc.check_branch_node(tc.a.child(&node, branch_index), !tc.is_statement_node(id)
 		&& tc.expression_node_used_as_value(id))
+	tc.comptime_static_depth--
 }
 
 fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node flat.Node) bool {
@@ -9475,6 +9492,15 @@ fn (tc &TypeChecker) or_expr_source_can_fail(id flat.NodeId) bool {
 	// expression whose evaluation can fail.
 	if node.kind == .none_expr {
 		return false
+	}
+	if node.kind == .ident {
+		if declared := tc.cur_scope.lookup(node.value) {
+			key := tc.expr_key(id)
+			if type_is_option_or_result(declared)
+				&& (key.len == 0 || tc.lexical_smartcast_type(id, key) == none) {
+				return true
+			}
+		}
 	}
 	if node.kind == .selector {
 		if declared := tc.selector_declared_value_type(*node) {
@@ -13185,7 +13211,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 				rhs_node.pos)
 		}
 		if tc.unsafe_depth == 0 && lhs_is_mut && unalias_type(rhs_type) is Array
-			&& rhs_node.kind == .selector && tc.expr_root_is_mutable_lvalue(rhs_id) {
+			&& rhs_node.kind == .selector && tc.expr_can_take_address(rhs_id) {
 			tc.record_error_at(.assignment_mismatch,
 				'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)',
 				id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
@@ -16856,6 +16882,7 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 			rhs_is_literal := rhs.kind in [.int_literal, .float_literal, .char_literal,
 				.string_literal, .bool_literal]
 			operand_matches := rhs_type.name() == signature.param_type.name()
+				|| (type_is_string_like(lhs_type) && type_is_string_like(rhs_type))
 				|| (rhs_is_literal && tc.type_compatible(rhs_type, signature.param_type))
 			if operand_matches {
 				if !tc.type_compatible(signature.return_type, lhs_type) {
@@ -16959,7 +16986,7 @@ fn (mut tc TypeChecker) record_compound_assignment_operand_errors(op flat.Op, lh
 	rhs_supports := match op {
 		.plus_assign {
 			if lhs_name == 'string' || lhs_is_string {
-				rhs_name in ['string', 'rune', 'char']
+				rhs_name in ['string', 'rune', 'char'] || clean_rhs_type is String
 			} else {
 				infix_power_type_is_numeric(rhs_type) || rhs_is_primitive_alias
 			}

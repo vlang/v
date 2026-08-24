@@ -3648,7 +3648,8 @@ fn (g &FlatGen) heap_local_memdup_expr(source_expr string, base_type types.Type,
 	}
 	for name in names {
 		if align := g.struct_decl_alignment_for_name(name) {
-			align_arg := struct_decl_alignment_memdup_arg(align, base_ct)
+			align_ct := g.struct_decl_alignment_c_type(clean_base.name(), base_ct)
+			align_arg := struct_decl_alignment_memdup_arg(align, align_ct)
 			return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
 		}
 	}
@@ -5529,6 +5530,12 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			} else {
 				g.usable_expr_type(rhs_id)
 			}
+			if rhs.kind == .call && lhs.typ.starts_with('(') && lhs.typ.contains(',') {
+				declared_ret := g.declared_call_return_type(rhs_id)
+				if declared_ret is types.MultiReturn {
+					v_type = declared_ret
+				}
+			}
 			if rhs.kind == .call && rhs.children_count > 0 {
 				callee := g.a.child_node(&rhs, 0)
 				if callee.kind == .selector {
@@ -5567,6 +5574,12 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				rhs_type := g.usable_expr_type(rhs_id)
 				if rhs_type !is types.OptionType && rhs_type !is types.ResultType
 					&& rhs_type !is types.Unknown && rhs_type !is types.Void {
+					v_type = rhs_type
+				}
+			}
+			if rhs.kind == .struct_init && v_type is types.Struct && v_type.name == 'Optional' {
+				rhs_type := g.usable_expr_type(rhs_id)
+				if rhs_type is types.OptionType || rhs_type is types.ResultType {
 					v_type = rhs_type
 				}
 			}

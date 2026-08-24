@@ -587,23 +587,23 @@ fn (mut t Transformer) sql_update_query_builder(stmt SqlTransformStmt, db_expr f
 fn (mut t Transformer) sql_create_drop_table_call(stmt SqlTransformStmt, db_expr flat.NodeId, helper string) flat.NodeId {
 	spec_name := 'orm.${helper}_T_${sql_generic_type_suffix(stmt.table.name)}'
 	t.mark_fn_used_name(spec_name)
-	t.record_generic_specialization_args_for_names([spec_name], [stmt.table.name])
+	t.sql_record_generic_helper_specialization(spec_name, stmt.table.name)
 	t.sql_record_table_generic_spec(stmt.table.name)
-	callee := t.make_ident(spec_name)
-	return t.make_call_expr_typed(callee, [
+	call := t.make_call_typed(spec_name, [
 		t.sql_db_connection_arg(db_expr),
 		t.make_attribute_array_literal(t.sql_table_attributes(stmt.table.name)),
 	], '!int')
+	t.set_node_value(int(call), stmt.table.name)
+	return call
 }
 
 fn (mut t Transformer) sql_new_query_call(table_name string, db_expr flat.NodeId) flat.NodeId {
 	spec_name := 'orm.new_query_T_${sql_generic_type_suffix(table_name)}'
 	t.mark_fn_used_name(spec_name)
-	t.record_generic_specialization_args_for_names([spec_name], [table_name])
+	t.sql_record_generic_helper_specialization(spec_name, table_name)
 	t.sql_record_table_generic_spec(table_name)
-	callee := t.make_ident(spec_name)
 	qb_type := t.sql_query_builder_type(table_name)
-	mut qb := t.make_call_expr_typed(callee, [t.sql_db_connection_arg(db_expr)], qb_type)
+	mut qb := t.make_call_typed(spec_name, [t.sql_db_connection_arg(db_expr)], qb_type)
 	t.set_node_value(int(qb), table_name)
 	attrs := t.sql_table_attributes(table_name)
 	if attrs.len > 0 {
@@ -612,6 +612,16 @@ fn (mut t Transformer) sql_new_query_call(table_name string, db_expr flat.NodeId
 		], qb_type)
 	}
 	return qb
+}
+
+fn (mut t Transformer) sql_record_generic_helper_specialization(spec_name string, type_name string) {
+	t.record_generic_specialization_args_for_names([spec_name], [type_name])
+	if isnil(t.tc) {
+		return
+	}
+	t.tc.ensure_private_transform_signatures()
+	t.tc.specialized_generic_fns[spec_name] = true
+	t.tc_signature_names_log << spec_name
 }
 
 fn (mut t Transformer) sql_record_table_generic_spec(table_name string) {
@@ -1384,13 +1394,17 @@ fn (mut t Transformer) sql_relation_primary_primitive_expr(expr flat.NodeId, rel
 	if t.is_optional_type_name(expr_type) {
 		spec_name := 'orm.v_sql_optional_struct_primary_primitive_T_${sql_generic_type_suffix(relation_type)}'
 		t.mark_fn_used_name(spec_name)
-		t.record_generic_specialization_args_for_names([spec_name], [relation_type])
-		return t.make_call_typed(spec_name, [expr], 'orm.Primitive')
+		t.sql_record_generic_helper_specialization(spec_name, relation_type)
+		call := t.make_call_typed(spec_name, [expr], 'orm.Primitive')
+		t.set_node_value(int(call), relation_type)
+		return call
 	}
 	spec_name := 'orm.v_sql_struct_primary_primitive_T_${sql_generic_type_suffix(relation_type)}'
 	t.mark_fn_used_name(spec_name)
-	t.record_generic_specialization_args_for_names([spec_name], [relation_type])
-	return t.make_call_typed(spec_name, [expr], 'orm.Primitive')
+	t.sql_record_generic_helper_specialization(spec_name, relation_type)
+	call := t.make_call_typed(spec_name, [expr], 'orm.Primitive')
+	t.set_node_value(int(call), relation_type)
+	return call
 }
 
 fn (mut t Transformer) sql_null_primitive_expr() flat.NodeId {

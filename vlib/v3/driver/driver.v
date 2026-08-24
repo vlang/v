@@ -1685,7 +1685,7 @@ fn input_is_legacy_diagnostic_fixture(input_file string) bool {
 fn default_bin_file_for_input(input_file string) string {
 	if os.is_dir(input_file) {
 		real_input := os.real_path(input_file)
-		return os.join_path_single(real_input, os.base(real_input))
+		return os.join_path_single(real_input, os.file_name(real_input))
 	}
 	resolved_input := if os.exists(input_file) { os.real_path(input_file) } else { input_file }
 	if !resolved_input.ends_with('.v') && !resolved_input.ends_with('.vv')
@@ -1809,6 +1809,28 @@ fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target
 	}
 }
 
+fn v3_default_linker_flags(target_os string, is_o bool) []string {
+	if is_o {
+		return []
+	}
+	mut flags := ['-lm']
+	if target_os in ['linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'solaris', 'haiku'] {
+		flags << '-lpthread'
+	}
+	if target_os in ['freebsd', 'netbsd'] {
+		flags << ['-lexecinfo', '-lelf']
+	}
+	return flags
+}
+
+fn add_v3_default_linker_flags(mut flags []string, target_os string, is_o bool) {
+	for flag in v3_default_linker_flags(target_os, is_o) {
+		if flag !in flags {
+			flags << flag
+		}
+	}
+}
+
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	mut before_inputs := options.environment_c_flags.clone()
 	before_inputs << options.target_args
@@ -1850,7 +1872,7 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 		before_inputs << ['-flat_namespace', '-undefined', 'dynamic_lookup']
 	}
 	mut after_inputs := options.dependencies.clone()
-	after_inputs << '-lm'
+	add_v3_default_linker_flags(mut after_inputs, options.target_os, options.is_o)
 	if !options.is_o {
 		after_inputs << options.environment_ld_flags
 	}
@@ -2469,6 +2491,75 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		}
 	}
 	return !has_untracked_c_include && can_scope_static_inputs && can_extract_native_types
+}
+
+fn ast_has_native_source_include(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind != .directive
+			|| node.value !in ['include', 'insert', 'preinclude', 'postinclude'] {
+			continue
+		}
+		path := node.typ.trim_space().trim('"')
+		if path.ends_with('.c') || path.ends_with('.m') || path.ends_with('.mm') {
+			return true
+		}
+	}
+	return false
+}
+
+fn register_native_source_typedefs(mut tc types.TypeChecker, state &V3ModuleCacheState) {
+	for roots in state.module_native_roots.values() {
+		for path in roots {
+			source := os.read_file(path) or { continue }
+			for name, present in modulecache.c_source_typedef_identifiers(source) {
+				if !present || name.len == 0 {
+					continue
+				}
+				c_name := 'C.${name}'
+				if c_name !in tc.structs {
+					tc.structs[c_name] = []types.StructField{}
+				}
+				if !c_typedef_is_function_pointer(source, name) {
+					tc.c_typedef_structs[c_name] = true
+				}
+			}
+		}
+	}
+}
+
+fn register_headerless_c_types(mut tc types.TypeChecker) {
+	// The C backend always supplies this platform-specific declaration in its
+	// headerless preamble, even when the program does not import `os`.
+	if 'C.stat' !in tc.structs {
+		tc.structs['C.stat'] = []types.StructField{}
+	}
+}
+
+fn c_typedef_is_function_pointer(source string, name string) bool {
+	mut offset := 0
+	for offset < source.len {
+		relative := source[offset..].index(name) or { return false }
+		start := offset + relative
+		end := start + name.len
+		if (start == 0 || (!source[start - 1].is_alnum() && source[start - 1] != `_`))
+			&& (end == source.len || (!source[end].is_alnum() && source[end] != `_`)) {
+			mut i := start - 1
+			for i >= 0 && source[i].is_space() {
+				i--
+			}
+			if i >= 0 && source[i] == `*` {
+				i--
+				for i >= 0 && source[i].is_space() {
+					i--
+				}
+				if i >= 0 && source[i] == `(` {
+					return true
+				}
+			}
+		}
+		offset = end
+	}
+	return false
 }
 
 fn cache_c_compiler_predefined_macros(flags []string, ccompiler string, target pref.Target, native_inputs_language string) (map[string]string, bool) {
@@ -4826,7 +4917,7 @@ fn incremental_changed_functions(snapshot V3IncrementalSnapshot, old map[string]
 	return keys, names
 }
 
-fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, tc &types.TypeChecker, changed_names map[string]bool, cached map[string]bool, user_files []string) bool {
+fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, tc &types.TypeChecker, mut changed_names map[string]bool, mut used map[string]bool, user_files []string) bool {
 	if changed_names.len == 0 {
 		return false
 	}
@@ -4859,7 +4950,17 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 				if !aliases.any(current[it]) {
 					continue
 				}
-				if !aliases.any(cached[it]) {
+				if !aliases.any(used[it]) {
+					// A newly reached stringifier can be added to the incremental body without
+					// invalidating unchanged functions or the cached support prefix.
+					if name.ends_with('.str') {
+						changed_names[node.value] = true
+						changed_names[name] = true
+						for alias in aliases {
+							used[alias] = true
+						}
+						continue
+					}
 					return true
 				}
 			}
@@ -7242,6 +7343,19 @@ pub fn run(args []string) {
 		target.default_thread_stack_size()
 	}
 	prefs.backend = backend
+	prefs.vroot = if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
+		// The macOS dispatcher sets VEXE to the invoking compiler. Preserve that
+		// checkout instead of selecting another V checkout around the input.
+		os.real_path(os.dir(prefs.vexe))
+	} else {
+		resolve_vroot_for_input(prefs.vroot, input_file)
+	}
+	if !c_compiler_explicit && os.user_os() == 'windows' && target.os == 'windows' {
+		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+		if os.is_executable(bundled_tcc) {
+			c_compiler = bundled_tcc
+		}
+	}
 	effective_c_compiler := if backend == 'arm64' {
 		'tinyc'
 	} else {
@@ -7254,13 +7368,6 @@ pub fn run(args []string) {
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.user_defines = user_defines
 	prefs.compile_values = compile_values.clone()
-	prefs.vroot = if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
-		// The macOS dispatcher sets VEXE to the invoking compiler. Preserve that
-		// checkout instead of selecting another V checkout around the input.
-		os.real_path(os.dir(prefs.vexe))
-	} else {
-		resolve_vroot_for_input(prefs.vroot, input_file)
-	}
 	prefs.module_search_paths = expand_v3_module_search_paths(module_search_path_spec, prefs.vroot)
 	if explicit_tcc && c_compiler in ['tcc', 'tinyc'] {
 		bundled_tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
@@ -7299,7 +7406,7 @@ pub fn run(args []string) {
 	// builtin source set, which likewise must remain a monolithic translation unit.
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
 		&& !keep_c && !backend_explicit && !c_compiler_explicit && !minimal_literal_output
-		&& target.os == host_target.os && target.arch == host_target.arch
+		&& c_compiler == 'cc' && target.os == host_target.os && target.arch == host_target.arch
 		&& !input_owns_builtin_bundle_module(input_file, prefs.vroot)
 	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	compiler_signature := if cache_enabled { v3_cache_compiler_signature(prefs.vroot) } else { '' }
@@ -7882,6 +7989,12 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	}
+	// Source includes can introduce typedef structs used by V declarations and
+	// literals before Cgen sees the included translation unit. Resolve those rare
+	// inputs before checking so the type is available to semantic lookup.
+	if !cache_state.external_inputs_ready && ast_has_native_source_include(a) {
+		_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files, cache_c_flags)
+	}
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
@@ -7929,6 +8042,8 @@ pub fn run(args []string) {
 		}
 		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
+		register_headerless_c_types(mut pre_tc)
+		register_native_source_typedefs(mut pre_tc, &cache_state)
 		if translated_mode {
 			for file in user_files {
 				pre_tc.translated_files[file] = true
@@ -8165,7 +8280,7 @@ pub fn run(args []string) {
 			used_fns = clone_string_bool_map(cached_program_used_fns)
 			uses_generics = true
 			if incremental_cache_hit
-				&& incremental_changed_functions_require_reachability_rebuild(a, markused_tc, incremental_changed_names, cached_program_used_fns, user_files) {
+				&& incremental_changed_functions_require_reachability_rebuild(a, markused_tc, mut incremental_changed_names, mut used_fns, user_files) {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
 				restart_v3_after_cache_invalidation()
 			}
@@ -8718,8 +8833,8 @@ pub fn run(args []string) {
 			base_specialized_fns := a.specialized_fn_nodes.len
 			monomorph_scope := prealloc_scope_begin_for_v3()
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
-				&pre_tc, monomorph_input_used, should_parallel_monomorphize(), monomorph_scope,
-				cached_monomorph_specs)
+				&pre_tc, monomorph_input_used, !current_no_parallel
+				&& should_parallel_monomorphize(), monomorph_scope, cached_monomorph_specs)
 			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			prealloc_scope_leave_for_v3(monomorph_scope)
 			// Specialization can rewrite payload text on pre-existing nodes as
@@ -8759,8 +8874,9 @@ pub fn run(args []string) {
 			prealloc_scope_free_for_v3(monomorph_scope)
 		} else {
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
-				&pre_tc, monomorph_input_used, should_parallel_monomorphize()
-				&& !incremental_cache_hit, unsafe { nil }, cached_monomorph_specs)
+				&pre_tc, monomorph_input_used, !current_no_parallel
+				&& should_parallel_monomorphize() && !incremental_cache_hit, unsafe { nil },
+				cached_monomorph_specs)
 		}
 		// Monomorphization publishes every synthesized or rewritten AST string
 		// after its final worker merge, including the serial/no-worker path.
@@ -9688,9 +9804,7 @@ pub fn run(args []string) {
 			tcc_args << tcc_native_c_source_flags(resolved_c_flags)
 			tcc_args << cached_dev_dylib
 			tcc_args << tcc_dynamic_link_flags(resolved_c_flags)
-			if '-lm' !in tcc_args {
-				tcc_args << '-lm'
-			}
+			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
 			program_source_identity := '${prefix_source_identity}\n${modulecache.file_signature(tcc_main_file)}\n${if cached_program_body_source.len > 0 {
 				modulecache.file_signature(cached_program_body_source)
 			} else {
@@ -9774,7 +9888,7 @@ pub fn run(args []string) {
 				tcc_args << atomic_s
 			}
 			tcc_args << resolved_c_flags
-			tcc_args << '-lm'
+			add_v3_default_linker_flags(mut tcc_args, prefs.normalized_target_os(), is_o)
 			if !is_o {
 				tcc_args << environment_ld_flags
 			}
@@ -11591,7 +11705,9 @@ fn vmod_subdirs(dir string) ![]string {
 	if os.read_file(vmod_path)!.trim_space().len == 0 {
 		return []string{}
 	}
-	manifest := vmod.from_file(vmod_path)!
+	// An invalid v.mod does not make the source directory invalid. This matches
+	// the legacy builder, while still honoring `subdirs` in valid manifests.
+	manifest := vmod.from_file(vmod_path) or { return []string{} }
 	return manifest.unknown['subdirs'] or { []string{} }
 }
 
@@ -11708,8 +11824,7 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	if module_name.len > 0 {
 		for file in all_files {
 			declared_module := declared_module_in_file(file)
-			if declared_module != module_name && !(declared_module in ['', 'main']
-				&& module_name in ['', 'main']) {
+			if declared_module != module_name {
 				continue
 			}
 			files << file

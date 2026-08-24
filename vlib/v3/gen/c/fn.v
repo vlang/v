@@ -772,13 +772,16 @@ fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, module_na
 	if g.should_emit_ierror_method(node.value, qfn) {
 		return true
 	}
-	// Every specialization materialized from the combined program/module-cache
-	// graph is a concrete body needed by either main or one of the cached objects.
-	if is_program_specialization {
-		return true
-	}
 	if g.fn_node_is_open_generic_template(node, module_name) {
 		return false
+	}
+	// Every concrete specialization materialized from the combined
+	// program/module-cache graph is needed by either main or a cached object.
+	// Check for an open template first: cache-wide reachability can retain a raw
+	// generic receiver declaration in `specialized_generic_fns`, but it still has
+	// no valid C ABI until monomorphization replaces its type parameters.
+	if is_program_specialization {
+		return true
 	}
 	if g.has_used_fn_filter() {
 		if g.used_fn_contains_in_module(node.value, module_name) {
@@ -799,9 +802,22 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name str
 		return false
 	}
 	receiver := node.value.all_before_last('.')
-	base, args, ok := g.shared_generic_app_parts(receiver)
+	// This declaration gate must inspect the source spelling authoritatively. The
+	// shared expression cache can already contain a negative result for the same
+	// string from a different resolution context during cache-wide generation.
+	base, args, ok := parse_shared_generic_app_parts(receiver)
 	if !ok || args.len == 0 {
 		return false
+	}
+	// Receiver declarations encode their own generic parameters in the receiver
+	// text. During cache-wide self-host generation the declaration can outlive
+	// the short-name generic-struct index, so recognize the canonical V generic
+	// parameter spelling directly as well.
+	for arg in args {
+		clean := arg.trim_space()
+		if clean.len == 1 && clean[0] >= `A` && clean[0] <= `Z` {
+			return true
+		}
 	}
 	mut candidates := [base]
 	if !base.contains('.') && module_name.len > 0 && module_name !in ['main', 'builtin'] {
@@ -1402,7 +1418,7 @@ fn (mut g FlatGen) libc_compat_call_name(name string) ?string {
 
 fn (mut g FlatGen) preseed_libc_compat_fns() {
 	refs := g.c_extern_referenced_symbols()
-	if refs['C.gettid'] || refs['gettid'] {
+	if refs['C.gettid'] || refs['gettid'] || g.used_fn_contains_in_module('v_gettid', 'builtin') {
 		g.libc_compat_fns['gettid'] = true
 	}
 	if refs['C.v_filelock_lock'] || refs['C.v_filelock_unlock'] || refs['v_filelock_lock']
@@ -5579,6 +5595,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		fn_node.value
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
+	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
 	if trace_name := g.trace_call_name(fn_node, fn_name, target_name, resolved_target_name) {
 		if g.gen_traced_call(id, trace_name) {
 			return
@@ -5636,10 +5653,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if target_name == 'array.pointers' || fn_name == 'array.pointers' {
+	if target_name in ['array.pointers', '__v3_fixed_array_pointers']
+		|| fn_name in ['array.pointers', '__v3_fixed_array_pointers'] {
 		if node.children_count > 1 {
 			arg_id := g.a.child(&node, 1)
-			g.gen_array_pointers_expr(arg_id, g.tc.resolve_type(arg_id) is types.Pointer)
+			g.gen_array_pointers_expr(arg_id, g.usable_expr_type(arg_id) is types.Pointer)
 		} else {
 			g.write('array_new(sizeof(voidptr), 0, 0)')
 		}
@@ -5691,11 +5709,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	// Ownership lowering appends calls after checking, while a generic builtin
 	// drop specialized inside another module can retain its original source
 	// position. Recognize both forms by their resolved/synthetic names.
-	is_ownership_drop := (!node.pos.is_valid() && ownership_synthetic_drop_name(fn_name))
-		|| g.ownership_drop_intrinsic_name(fn_name)
-		|| (target_name.len > 0 && g.ownership_drop_intrinsic_name(target_name))
-		|| (g.tc.cur_module == 'builtin' && ownership_synthetic_drop_name(fn_name))
-		|| (resolved_target_name.len > 0 && g.ownership_drop_intrinsic_name(resolved_target_name))
+	mut is_ownership_drop := false
+	if !callee_is_fn_value {
+		is_ownership_drop = (!node.pos.is_valid() && ownership_synthetic_drop_name(fn_name))
+			|| g.ownership_drop_intrinsic_name(fn_name)
+			|| (target_name.len > 0 && g.ownership_drop_intrinsic_name(target_name))
+			|| (g.tc.cur_module == 'builtin' && ownership_synthetic_drop_name(fn_name))
+			|| (resolved_target_name.len > 0
+			&& g.ownership_drop_intrinsic_name(resolved_target_name))
+	}
 	if node.children_count == 2 && is_ownership_drop {
 		arg_id := g.a.child(&node, 1)
 		arg_type := g.usable_expr_type(arg_id)
@@ -5961,7 +5983,6 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		g.write(')')
 		return
 	}
-	callee_is_fn_value := g.fn_value_call_param_types(g.a.child(&node, 0)) != none
 	// Monomorphization's concrete callee is authoritative. A transformed clone can
 	// retain the template's resolved-call entry, whose alias-erased specialization
 	// (`Bar`) must not replace an explicit alias specialization (`BarAlias`).
@@ -8089,6 +8110,24 @@ fn (mut g FlatGen) preintern_json_encode_value_strings(typ types.Type, seen []st
 		g.preintern_json_encode_value_strings(clean.value_type, seen)
 		return
 	}
+	if clean is types.SumType {
+		sum_name := g.resolve_sum_name(clean.name)
+		if sum_name in seen {
+			return
+		}
+		mut next_seen := seen.clone()
+		next_seen << sum_name
+		g.intern_string('null')
+		for variant in g.tc.sum_types[sum_name] or { []string{} } {
+			variant_type := g.json_sum_variant_type(variant)
+			if variant_type is types.Pointer {
+				g.preintern_json_encode_value_strings(variant_type.base_type, next_seen)
+			} else {
+				g.preintern_json_encode_value_strings(variant_type, next_seen)
+			}
+		}
+		return
+	}
 	if clean is types.Primitive {
 		if clean.props.has(.boolean) {
 			g.intern_string('true')
@@ -8225,6 +8264,26 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 			return '({ double ${value_name} = (double)(${expr}); isfinite(${value_name}) ? f64__str(${value_name}) : _str_${null_sid}; })'
 		}
 		return none
+	}
+	if clean is types.SumType {
+		sum_name := g.resolve_sum_name(clean.name)
+		variants := g.tc.sum_types[sum_name] or { return none }
+		null_sid := g.intern_string('null')
+		mut result := '_str_${null_sid}'
+		for i := variants.len - 1; i >= 0; i-- {
+			variant := variants[i]
+			variant_type := g.json_sum_variant_type(variant)
+			if variant_type is types.Pointer {
+				return none
+			}
+			field := g.sum_field_name(variant)
+			encoded := g.json_encode_value_c_expr(variant_type, '(*(${expr}).${field})') or {
+				return none
+			}
+			index := g.sum_type_index(sum_name, variant)
+			result = '((${expr}).typ == ${index} ? ${encoded} : ${result})'
+		}
+		return result
 	}
 	if clean is types.Struct {
 		fields := g.json_encode_struct_field_exprs(clean.name, expr, []string{}) or { return none }
@@ -8370,7 +8429,8 @@ fn (g &FlatGen) json_struct_field_is_embedded(field types.StructField, type_name
 
 fn (g &FlatGen) json_encode_omitempty_supported(typ types.Type) bool {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
-	if clean is types.String || clean is types.Enum {
+	if clean is types.String || clean is types.Enum || clean is types.Array || clean is types.Map
+		|| clean is types.Struct || clean is types.SumType {
 		return true
 	}
 	if clean is types.Primitive {
@@ -8381,22 +8441,116 @@ fn (g &FlatGen) json_encode_omitempty_supported(typ types.Type) bool {
 
 fn (mut g FlatGen) json_encode_omitempty_expr(typ types.Type, expr string) ?string {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
+	ct := g.value_c_type(typ)
+	value_name := g.tmp_name()
+	default_name := g.tmp_name()
+	equal := g.json_encode_equal_c_expr(clean, value_name, default_name, []string{}) or {
+		return none
+	}
+	default_value := g.default_value_to_string(typ)
+	return '({ ${ct} ${value_name} = ${expr}; ${ct} ${default_name} = ${default_value}; ${equal}; })'
+}
+
+fn (mut g FlatGen) json_encode_equal_c_expr(typ types.Type, left string, right string, seen []string) ?string {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if clean is types.String {
-		return '((${expr}).len == 0)'
+		return '((${left}).len == (${right}).len && ((${left}).len == 0 || memcmp((${left}).str, (${right}).str, (${left}).len) == 0))'
 	}
 	if clean is types.Enum {
-		default_value := g.enum_default_value_expr_for_type(clean.name) or { '0' }
-		return '((${expr}) == ${default_value})'
+		return '((${left}) == (${right}))'
 	}
 	if clean is types.Primitive {
-		if clean.props.has(.boolean) {
-			return '(!((bool)(${expr})))'
+		if clean.props.has(.boolean) || clean.props.has(.integer) || clean.props.has(.float) {
+			return '((${left}) == (${right}))'
 		}
-		if clean.props.has(.integer) || clean.props.has(.float) {
-			return '((${expr}) == 0)'
+		return none
+	}
+	if clean is types.Array {
+		elem_ct := g.value_c_type(clean.elem_type)
+		left_name := g.tmp_name()
+		right_name := g.tmp_name()
+		equal_name := g.tmp_name()
+		index_name := g.tmp_name()
+		left_elem := g.tmp_name()
+		right_elem := g.tmp_name()
+		elem_equal := g.json_encode_equal_c_expr(clean.elem_type, '(*${left_elem})',
+			'(*${right_elem})', seen) or { return none }
+		return '({ Array ${left_name} = ${left}; Array ${right_name} = ${right}; bool ${equal_name} = ${left_name}.len == ${right_name}.len; for (int ${index_name} = 0; ${equal_name} && ${index_name} < ${left_name}.len; ++${index_name}) { ${elem_ct}* ${left_elem} = (${elem_ct}*)array_get(${left_name}, ${index_name}); ${elem_ct}* ${right_elem} = (${elem_ct}*)array_get(${right_name}, ${index_name}); if (!(${elem_equal})) ${equal_name} = false; } ${equal_name}; })'
+	}
+	if clean is types.Map {
+		key_clean := if clean.key_type is types.Alias {
+			clean.key_type.base_type
+		} else {
+			clean.key_type
 		}
+		if key_clean !is types.String {
+			return none
+		}
+		value_ct := g.value_c_type(clean.value_type)
+		left_name := g.tmp_name()
+		right_name := g.tmp_name()
+		equal_name := g.tmp_name()
+		index_name := g.tmp_name()
+		key_name := g.tmp_name()
+		left_value := g.tmp_name()
+		right_value := g.tmp_name()
+		value_equal := g.json_encode_equal_c_expr(clean.value_type, '(*${left_value})',
+			'(*${right_value})', seen) or { return none }
+		return '({ map ${left_name} = ${left}; map ${right_name} = ${right}; bool ${equal_name} = ${left_name}.len == ${right_name}.len; for (int ${index_name} = 0; ${equal_name} && ${index_name} < ${left_name}.key_values.len; ++${index_name}) { if (${left_name}.key_values.deletes != 0 && ${left_name}.key_values.all_deleted != 0 && ${left_name}.key_values.all_deleted[${index_name}] != 0) continue; string* ${key_name} = (string*)(${left_name}.key_values.keys + ${index_name} * ${left_name}.key_values.key_bytes); ${value_ct}* ${left_value} = (${value_ct}*)(${left_name}.key_values.values + ${index_name} * ${left_name}.key_values.value_bytes); if (!map__exists(&${right_name}, ${key_name})) { ${equal_name} = false; break; } ${value_ct}* ${right_value} = (${value_ct}*)map__get(&${right_name}, ${key_name}, ${left_value}); if (!(${value_equal})) ${equal_name} = false; } ${equal_name}; })'
+	}
+	if clean is types.Struct {
+		if clean.name in seen {
+			return none
+		}
+		mut next_seen := seen.clone()
+		next_seen << clean.name
+		fields := g.tc.structs[clean.name] or { return none }
+		mut conditions := []string{cap: fields.len}
+		for field in fields {
+			field_name := g.cname(field.name)
+			condition := g.json_encode_equal_c_expr(field.typ, '(${left}).${field_name}',
+				'(${right}).${field_name}', next_seen) or { return none }
+			conditions << condition
+		}
+		return if conditions.len == 0 { 'true' } else { conditions.join(' && ') }
+	}
+	if clean is types.SumType {
+		sum_name := g.resolve_sum_name(clean.name)
+		if sum_name in seen {
+			return none
+		}
+		variants := g.tc.sum_types[sum_name] or { return none }
+		mut next_seen := seen.clone()
+		next_seen << sum_name
+		mut active_equal := 'true'
+		for i := variants.len - 1; i >= 0; i-- {
+			variant := variants[i]
+			variant_type := g.json_sum_variant_type(variant)
+			if variant_type is types.Pointer {
+				return none
+			}
+			field := g.sum_field_name(variant)
+			variant_equal := g.json_encode_equal_c_expr(variant_type, '(*(${left}).${field})',
+				'(*(${right}).${field})', next_seen) or { return none }
+			index := g.sum_type_index(sum_name, variant)
+			active_equal = '((${left}).typ == ${index} ? ${variant_equal} : ${active_equal})'
+		}
+		return '((${left}).typ == (${right}).typ && ${active_equal})'
 	}
 	return none
+}
+
+fn (g &FlatGen) json_sum_variant_type(raw_type string) types.Type {
+	clean := raw_type.trim_space()
+	if types.is_builtin_type_name(clean) {
+		return types.builtin_type_value(clean)
+	}
+	if clean.starts_with('[]') {
+		return types.Type(types.Array{
+			elem_type: g.json_sum_variant_type(clean[2..])
+		})
+	}
+	return select_receive_unalias_type(g.tc.parse_canonical_type(clean))
 }
 
 fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
@@ -8839,7 +8993,9 @@ fn (g &FlatGen) json_struct_has_decode_field_attrs(struct_name string) bool {
 }
 
 fn (g &FlatGen) json_struct_has_encode_field_attrs(struct_name string) bool {
-	return g.json_struct_has_disallowed_field_attrs(struct_name, ['skip', 'json', 'omitempty'])
+	// `required` only constrains decoding. It does not change the encoded value.
+	return g.json_struct_has_disallowed_field_attrs(struct_name, ['skip', 'json', 'omitempty',
+		'required'])
 }
 
 fn (g &FlatGen) json_struct_has_disallowed_field_attrs(struct_name string, allowed []string) bool {
@@ -9984,6 +10140,9 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node := g.a.nodes[int(id)]
+		if g.cur_fn_is_specialized && node.kind == .struct_init && type_is_optional_result(typ) {
+			return g.concrete_optional_type_name(typ)
+		}
 		if node.kind == .ident {
 			if local_ct := g.local_storage_c_type(node.value) {
 				if local_ct == 'Optional' || local_ct.starts_with('Optional_') {
@@ -10180,6 +10339,10 @@ fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
 		}
 	}
 	if resolved := g.tc.resolved_call_name(id) {
+		if resolved == name && !name.contains('.')
+			&& (name in g.tc.fn_param_types || name in g.tc.fn_ret_types) {
+			return name
+		}
 		if resolved_call_matches_target(resolved, name) {
 			return g.normalize_call_key(resolved)
 		}
@@ -10231,10 +10394,13 @@ fn (g &FlatGen) normalize_call_key_uncached(name string) string {
 			return local
 		}
 	}
+	if !name.contains('.') && g.non_generic_fn_decl_exists_in_module(name, g.tc.cur_module)
+		&& (name in g.tc.fn_param_types || name in g.tc.fn_ret_types) {
+		return name
+	}
 	// A selected import belongs to the current source file and must win over a
-	// same-spelled short signature retained from an imported module. The checker
-	// can omit per-node resolution data when the program unit is emitted from the
-	// module cache, so recover the file-local declaration before accepting `name`.
+	// same-spelled short signature retained from another imported module. A real
+	// declaration in the current module still has normal lexical priority.
 	if imported := g.selective_import_call_key_in_file(name, g.tc.cur_file) {
 		return imported
 	}
@@ -13781,9 +13947,12 @@ fn (mut g FlatGen) gen_flag_enum_from_call(id flat.NodeId, fn_node flat.Node, no
 		is_flag: is_flag
 	}
 	enum_type := types.Type(enum_info)
-	ct := g.optional_type_name(types.Type(types.OptionType{
+	result_type := types.Type(types.OptionType{
 		base_type: enum_type
-	}))
+	})
+	concrete_result := g.cur_fn_is_specialized && g.cur_fn_ret_is_optional
+		&& g.type_names_match(g.cur_fn_ret_base, enum_type)
+	ct := g.optional_type_name_for_context(result_type, concrete_result)
 	value_ct := g.enum_value_c_type(enum_info)
 	storage_ct := g.enum_storage_c_type(enum_info)
 	arg := g.expr_to_string(g.a.child(&node, 1))
@@ -14077,7 +14246,15 @@ fn (mut g FlatGen) gen_lowered_mut_value_storage_arg(arg_id flat.NodeId, arg_nod
 	if g.tc.c_type(g.usable_expr_type(arg_id)) != g.tc.c_type(expected) {
 		return false
 	}
-	g.gen_expr(child_id)
+	local_ct := g.local_storage_c_type(child.value) or { '' }
+	expected_ct := g.tc.c_type(expected)
+	if local_ct == '${expected_ct}*' {
+		// `for mut item in []&T` stores the binding as `T**`. The lowered
+		// `*item` is already the `T*` expected by a `mut T` parameter.
+		g.gen_expr(arg_id)
+	} else {
+		g.gen_expr(child_id)
+	}
 	return true
 }
 
@@ -15732,6 +15909,15 @@ fn (mut g FlatGen) implicit_veb_ctx_type() types.Type {
 }
 
 fn (mut g FlatGen) fn_node_return_type(node flat.Node, module_name string) types.Type {
+	// Runtime helpers in `builtin` can share their bare name with a user function
+	// in `main`. The global bare-name signature table is ambiguous in that case;
+	// the declaration annotation remains module-local and authoritative.
+	if module_name in ['', 'main', 'builtin'] && c_main_runtime_shadow_fn_names[node.value] {
+		declared := g.tc.parse_resolution_type(node.typ)
+		if declared !is types.Unknown {
+			return declared
+		}
+	}
 	if g.tc.autofree_mode && module_name in ['', 'main'] {
 		for key in [node.value, dotted_fn_name_in_module(module_name, node.value)] {
 			if raw_return := g.tc.fn_ret_type_texts[key] {

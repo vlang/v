@@ -342,7 +342,9 @@ v_multiwindow_test_appkit_oracle_record_get(uint64_t index) {
 @class VMultiwindowAppKitWindowState;
 
 #if defined(SOKOL_METAL) && defined(V_SOKOL_MTL_END_PASS_HOOK)
-typedef NS_ENUM(NSInteger, VMultiwindowAppKitReadbackKind) {
+// Keep the typedef separate: V3's C scanner treats the final NS_ENUM member as an alias.
+typedef NSInteger VMultiwindowAppKitReadbackKind;
+enum {
 	VMultiwindowAppKitReadbackWindow = 1,
 	VMultiwindowAppKitReadbackImage = 2,
 };

@@ -8,7 +8,9 @@ const export_attr_v3_src = os.join_path(export_attr_v3_dir, 'v3.v')
 
 fn export_attr_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_export_attr_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${export_attr_vexe} -gc none -path "${export_attr_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${export_attr_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -500,8 +502,8 @@ fn main() {}
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
-	assert c_code.contains('veb__Result raw_show(App* app, Context* ctx, int id);'), c_code
-	assert c_code.contains('veb__Result raw_show(App* app, Context* ctx, int id) {'), c_code
+	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, int id);'), c_code
+	assert c_code.contains('veb__Result raw_show(main__App* app, main__Context* ctx, int id) {'), c_code
 	assert c_code.contains('return App__show(app, ctx, id);'), c_code
 }
 
@@ -530,8 +532,8 @@ fn main() {}
 	compile := export_attr_compile(v3_bin, os.join_path(root, 'main.v'), c_path)
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_path) or { panic(err) }
-	assert c_code.contains('veb__Result raw_show_underscore(App* app, Context* ctx, int _2);'), c_code
-	assert c_code.contains('veb__Result raw_show_underscore(App* app, Context* ctx, int _2) {'), c_code
+	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, int _2);'), c_code
+	assert c_code.contains('veb__Result raw_show_underscore(main__App* app, main__Context* ctx, int _2) {'), c_code
 	assert c_code.contains('return App__show(app, ctx, _2);'), c_code
 	assert !c_code.contains('return App__show(app, ctx, _1);'), c_code
 }

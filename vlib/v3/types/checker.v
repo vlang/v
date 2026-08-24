@@ -3451,7 +3451,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 					if param_type_text_is_shared(field_typ) {
 						shared_field_names << f.value
 					}
-					if field_typ.trim_space().starts_with('[]shared ') {
+					if field_typ.trim_space().trim_left('&').trim_space().starts_with('[]shared ') {
 						shared_element_field_names << f.value
 					}
 					fields << StructField{
@@ -12086,6 +12086,7 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 		variant_name := trimmed_space(raw_variant)
 		variant_id := variant_ids[i]
 		variant_type := tc.parse_type(variant_name)
+		clean_variant_type := unalias_type(variant_type)
 		semantic_name := variant_type.name()
 		variant_key := if variant_type is Unknown { variant_name } else { semantic_name }
 		if seen[variant_key] {
@@ -12095,31 +12096,20 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 			continue
 		}
 		seen[variant_key] = true
-		is_alias_pointer := variant_type is Alias && unalias_type(variant_type) is Pointer
 		is_builtin_pointer := variant_name in ['voidptr', 'byteptr', 'charptr']
 			|| variant_type.name() in ['voidptr', 'byteptr', 'charptr']
-		if ((variant_type is Pointer && !is_builtin_pointer) || is_alias_pointer)
-			&& !pointer_reported {
-			display_variant := if variant_type is Pointer {
-				variant_name.trim_left('&').trim_space()
-			} else {
-				variant_name
-			}
+		if clean_variant_type is Pointer && !is_builtin_pointer && !pointer_reported {
+			display_variant := variant_name.trim_left('&').trim_space()
 			display_type := tc.parse_type(display_variant)
 			left, right := if unalias_type(display_type) is Struct {
 				'{', '}'
 			} else {
 				'(', ')'
 			}
-			message := if is_alias_pointer {
-				'alias as non-reference type'
-			} else {
-				'the sum type with non-reference types'
-			}
 			tc.record_error_with_details_at(.assignment_mismatch,
 				'sum type cannot hold a reference type', variant_id, tc.type_diagnostic_pos(variant_id,
 				variant_name), [
-				'declare ${message}: `${node.value} = ${display_variant} | ...`\nand use a reference to the sum type instead: `var := &${node.value}(${display_variant}${left}val${right})`',
+				'declare the sum type with non-reference types: `${node.value} = ${display_variant} | ...`\nand use a reference to the sum type instead: `var := &${node.value}(${display_variant}${left}val${right})`',
 			])
 			pointer_reported = true
 		}

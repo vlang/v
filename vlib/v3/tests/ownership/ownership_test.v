@@ -325,7 +325,7 @@ fn main() {
 	')
 	assert ok_iclone_default_clone.exit_code == 0, ok_iclone_default_clone.output
 
-	fail_iclone_drop_temporary := run_ownership_check(v3_bin, 'iclone_drop_temporary', '
+	ok_iclone_drop_temporary := run_ownership_check(v3_bin, 'iclone_drop_temporary', '
 interface Drop {
 mut:
 	drop()
@@ -347,8 +347,7 @@ fn main() {
 	_ := make_resource().clone()
 }
 	')
-	assert fail_iclone_drop_temporary.exit_code != 0
-	assert fail_iclone_drop_temporary.output.contains('cannot generate default clone for `Resource`: `Resource` requires ownership destruction but has no `clone()` method'), fail_iclone_drop_temporary.output
+	assert ok_iclone_drop_temporary.exit_code == 0, ok_iclone_drop_temporary.output
 
 	ok_iclone_if_expr_clone := run_ownership_check(v3_bin, 'iclone_if_expr_clone', '
 struct Resource implements IClone {
@@ -905,7 +904,7 @@ fn main() {
 }
 ')
 	assert fail_conditional_blank_aggregate_sink.exit_code != 0
-	assert fail_conditional_blank_aggregate_sink.output.contains('use of moved value: `h.value`'), fail_conditional_blank_aggregate_sink.output
+	assert fail_conditional_blank_aggregate_sink.output.contains('use of moved value: `h`'), fail_conditional_blank_aggregate_sink.output
 
 	fail_blank_aggregate_sink := run_ownership_check(v3_bin, 'blank_aggregate_sink_move', '
 struct Holder {
@@ -920,7 +919,7 @@ fn main() {
 }
 ')
 	assert fail_blank_aggregate_sink.exit_code != 0
-	assert fail_blank_aggregate_sink.output.contains('use of moved value: `h.value`'), fail_blank_aggregate_sink.output
+	assert fail_blank_aggregate_sink.output.contains('use of moved value: `h`'), fail_blank_aggregate_sink.output
 
 	fail_conditional_assign_aggregate := run_ownership_check(v3_bin,
 		'conditional_assign_aggregate_descendant', '
@@ -966,7 +965,7 @@ fn main() {
 }
 ')
 	assert fail_channel_aggregate_send.exit_code != 0
-	assert fail_channel_aggregate_send.output.contains('use of moved value: `h.value`'), fail_channel_aggregate_send.output
+	assert fail_channel_aggregate_send.output.contains('use of moved value: `h`'), fail_channel_aggregate_send.output
 }
 
 fn test_ownership_fn_literal_uses_isolated_frame() {
@@ -2226,7 +2225,7 @@ fn main() {
 ')
 	assert fail_aggregate_copy.exit_code != 0
 	assert fail_aggregate_copy.output.contains('use of moved value: `h2.value`'), fail_aggregate_copy.output
-	assert fail_aggregate_copy.output.contains('use of moved value: `h.value`'), fail_aggregate_copy.output
+	assert fail_aggregate_copy.output.contains('use of moved value: `h`'), fail_aggregate_copy.output
 
 	fail_default_owned_field_read := run_ownership_check(v3_bin,
 		'default_owned_field_then_duplicate_read', '

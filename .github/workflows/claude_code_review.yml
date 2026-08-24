@@ -43,12 +43,12 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
 
       - name: Run Claude Code review
-        uses: anthropics/claude-code-action@v1.0.193
+        uses: anthropics/claude-code-action@v1.0.199
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'

@@ -1049,14 +1049,8 @@ fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []stri
 }
 
 fn (t &Transformer) interface_impl_type_ids(iface_name string, concrete_name string) []int {
-	mut ids := []int{}
-	for candidate in t.interface_alias_equivalent_names(concrete_name) {
-		id := t.interface_impl_type_id(iface_name, candidate) or { continue }
-		if id !in ids {
-			ids << id
-		}
-	}
-	return ids
+	id := t.interface_impl_type_id(iface_name, concrete_name) or { return []int{} }
+	return [id]
 }
 
 fn (t &Transformer) interface_alias_equivalent_names(name string) []string {

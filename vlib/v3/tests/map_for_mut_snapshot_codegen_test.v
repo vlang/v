@@ -8,7 +8,9 @@ const map_for_mut_v3_src = os.join_path(map_for_mut_v3_dir, 'v3.v')
 
 fn map_for_mut_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_map_for_mut_snapshot_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${map_for_mut_vexe} -gc none -path "${map_for_mut_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${map_for_mut_v3_src}')
 	assert build.exit_code == 0, build.output

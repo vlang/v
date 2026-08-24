@@ -179,7 +179,7 @@ fn main() {
 	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('array__set(_a0,_i0,&(int[]){((int)__v_pow_i64('), c_code
-	assert compact.contains('array__set(_a1,_i1,&(Exponent[]){Exponent__mul_(*(Exponent*)array_get(*_a1,_i1),'), c_code
+	assert compact.contains('array__set(_a1,_i1,&(main__Exponent[]){Exponent__mul_(*(main__Exponent*)array_get(*_a1,_i1),'), c_code
 	assert compact.contains('IntList__op_index_set('), c_code
 	assert compact.contains('ExponentList__op_index_set('), c_code
 	assert compact.contains('Exponent__mul_('), c_code
@@ -220,7 +220,7 @@ fn main() {
 		panic(err)
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('box.value=Exponent__mul_(box.value,(Exponent){.value=3});'), c_code
+	assert compact.contains('box.value=Exponent__mul_(box.value,(main__Exponent){.value=3});'), c_code
 }
 
 fn test_mut_parameter_power_assign_uses_scalar_type() {

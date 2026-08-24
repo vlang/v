@@ -4350,7 +4350,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		return t.wrap_string_conversion(expr, source_typ)
 	}
 	if source_typ := t.generic_specialized_source_type_name(clean_typ) {
-		return t.wrap_string_conversion(expr, source_typ)
+		if source_typ != clean_typ {
+			return t.wrap_string_conversion(expr, source_typ)
+		}
 	}
 	normalized_stringify_type := t.normalize_runtime_array_stringify_type(clean_typ)
 	if normalized_stringify_type != clean_typ {
@@ -5030,6 +5032,40 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 		value_str
 	}
 	then_body << t.make_assign(t.make_ident(res_name), non_nil)
+	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
+	return t.make_ident(res_name)
+}
+
+fn (mut t Transformer) lower_interface_smartcast_ref_str(expr flat.NodeId, interface_expr flat.NodeId, aggregate string, str_fn string) flat.NodeId {
+	ptr_type := '&${aggregate}'
+	ptr_name := t.new_temp('ref_str_ptr')
+	boxed_name := t.new_temp('ref_str_boxed')
+	res_name := t.new_temp('ref_str_text')
+	t.pending_stmts << t.make_decl_assign_typed(ptr_name, expr, ptr_type)
+	t.set_var_type(ptr_name, ptr_type)
+	boxed := t.make_selector_op(interface_expr, '_object_is_boxed', 'bool', .dot)
+	t.pending_stmts << t.make_decl_assign_typed(boxed_name, boxed, 'bool')
+	t.pending_stmts << t.make_decl_assign_typed(res_name, t.make_string_literal('&nil'), 'string')
+	saved := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	value_str := if t.str_method_has_pointer_receiver(str_fn) {
+		t.make_call_typed(str_fn, [t.make_ident(ptr_name)], 'string')
+	} else {
+		value := t.make_prefix(.mul, t.make_ident(ptr_name))
+		t.set_node_typ(int(value), aggregate)
+		t.make_call_typed(str_fn, [value], 'string')
+	}
+	mut then_body := []flat.NodeId{}
+	t.drain_pending(mut then_body)
+	t.pending_stmts = saved
+	t.unset_var_type(ptr_name)
+	boxed_value := t.make_assign(t.make_ident(res_name), value_str)
+	pointer_value := t.make_assign(t.make_ident(res_name), t.string_plus(t.make_string_literal('&'),
+		value_str))
+	then_body << t.make_if(t.make_ident(boxed_name), t.make_block([boxed_value]), t.make_block([
+		pointer_value,
+	]))
 	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
 	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
 	return t.make_ident(res_name)
@@ -7091,9 +7127,39 @@ fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ string) ?
 	if t.semantic_type_name(info.return_type) != 'string' {
 		return none
 	}
-	method_name := '${clean_typ}.str'
+	// String interpolation synthesizes this call after the source-context maps
+	// have been built. Encode the exact receiver specialization in the callee and
+	// call metadata so a later monomorphizer instance can materialize its body.
+	receiver_base, receiver_args, is_generic := generic_app_parts(clean_typ)
+	mut concrete_receiver := clean_typ
+	mut concrete_args := []string{}
+	if is_generic && receiver_args.len > 0 {
+		decl_module := t.tc.struct_modules[receiver_base] or {
+			if receiver_base.contains('.') {
+				receiver_base.all_before_last('.')
+			} else {
+				t.cur_module
+			}
+		}
+		concrete_args = []string{cap: receiver_args.len}
+		for arg in receiver_args {
+			concrete_args << t.generic_arg_for_call_and_decl_module(arg, t.cur_module, decl_module)
+		}
+		concrete_args = t.canonical_generic_specialization_args(concrete_args)
+		concrete_receiver = '${receiver_base}[${concrete_args.join(', ')}]'
+	}
+	method_name := if concrete_args.len > 0 {
+		specialized_generic_fn_value(info.name, concrete_args)
+	} else {
+		'${concrete_receiver}.str'
+	}
 	t.mark_fn_used_name(method_name)
-	return t.make_call_typed(method_name, [expr], 'string')
+	t.tc.specialized_generic_fns[method_name] = true
+	call := t.make_call_typed(method_name, [expr], 'string')
+	if concrete_args.len > 0 {
+		t.set_node_value(int(call), concrete_args.join(', '))
+	}
+	return call
 }
 
 // append_string builds `result = result + piece` using the runtime string concat helper.
@@ -8540,12 +8606,19 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		if dynamic_method := t.resolve_fixed_array_dynamic_receiver_method(clean_base_type,
 			fn_node.value)
 		{
-			return t.lower_fixed_array_dynamic_receiver_method_call(node, base_id, clean_base_type,
-				dynamic_method)
+			if dynamic_method != array_builtin_method {
+				return t.lower_fixed_array_dynamic_receiver_method_call(node, base_id,
+					clean_base_type, dynamic_method)
+			}
 		}
-		args := t.transform_receiver_method_args(node, base_id, array_builtin_method)
+		// Keep the fixed receiver as a fixed-array expression. Adapting it through
+		// the builtin `array` parameter makes `.pointers()` point into a dynamic copy
+		// instead of the receiver's original storage.
+		args := [t.transform_expr(base_id)]
 		ret_type := t.receiver_method_return_type(array_builtin_method, node.typ)
-		return t.make_call_typed(array_builtin_method, args, ret_type)
+		// Use an internal target so call type propagation does not adapt the fixed
+		// receiver to the builtin method's dynamic `array` parameter.
+		return t.make_call_typed('__v3_fixed_array_pointers', args, ret_type)
 	}
 	if t.is_fixed_array_type(clean_base_type) {
 		if fn_node.value == 'str' {
@@ -10363,7 +10436,8 @@ fn (mut t Transformer) validate_specialized_enum_from_call(call_id flat.NodeId, 
 	} else {
 		t.node_type(enum_id)
 	}
-	t.record_monomorph_error('cannot use `${actual}` as argument 1 to `${enum_name}.from`; expected string or integer')
+	actual_display := typeof_display_type_text(actual)
+	t.record_monomorph_error('cannot use `${actual_display}` as argument 1 to `${enum_name}.from`; expected string or integer')
 	return false
 }
 
@@ -10413,7 +10487,9 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 				if aggregate := t.stringify_aggregate_type_name(target) {
 					value_ptr := t.make_prefix(.amp, args[0])
 					t.set_node_typ(int(value_ptr), '&${aggregate}')
-					return t.lower_ref_str_guarded(value_ptr, aggregate, true, method_name, '&nil')
+					interface_expr := t.make_plain_expr_for_smartcast(base_id)
+					return t.lower_interface_smartcast_ref_str(value_ptr, interface_expr,
+						aggregate, method_name)
 				}
 			}
 		}
@@ -10643,6 +10719,12 @@ fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?f
 		return none
 	}
 	fn_id := t.a.child(&node, 0)
+	fn_node := t.a.node(fn_id)
+	// A monomorphized method callee such as `Tree[int].size` contains a generic
+	// type spelling, but it is a function name rather than a named-type cast.
+	if fn_node.kind == .ident && !fn_node.value.trim_space().ends_with(']') {
+		return none
+	}
 	target := t.generic_call_type_arg_name(fn_id)
 	base, _, is_generic := generic_app_parts(target)
 	if !is_generic || !target.ends_with(']') || !t.is_known_type_name(base) {
@@ -10669,6 +10751,10 @@ fn (t &Transformer) generic_sum_constructor_call_type(node flat.Node) ?string {
 		return none
 	}
 	fn_node := t.a.nodes[int(fn_id)]
+	if fn_node.kind == .ident && fn_node.value.contains(']')
+		&& !fn_node.value.trim_space().ends_with(']') {
+		return none
+	}
 	mut target := ''
 	if node.value.len > 0 && fn_node.kind in [.ident, .selector] {
 		base := t.generic_call_type_arg_name(fn_id)

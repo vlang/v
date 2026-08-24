@@ -467,6 +467,9 @@ fn assignment_op_reads_lhs(op flat.Op) bool {
 }
 
 fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Type, expected_type Type, op flat.Op) bool {
+	if op == .assign && tc.fn_storage_voidptr_mismatch(rhs_id, rhs_type, expected_type) {
+		return false
+	}
 	if op == .assign && tc.translated_files[tc.cur_file] && rhs_type is ArrayFixed
 		&& expected_type is Pointer && tc.a.node(rhs_id).kind == .ident {
 		return tc.type_compatible(rhs_type.elem_type, expected_type.base_type)
@@ -510,11 +513,13 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 		|| tc.pointer_arithmetic_assign_compatible(op, rhs_type, expected_type)
 }
 
+fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Type, expected Type) bool {
+	return is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual)
+		&& !tc.expr_is_unsafe_nil(expr_id)
+}
+
 fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected SumType) bool {
 	clean_actual := unalias_type(actual)
-	if clean_actual is Pointer && actual.name() !in ['voidptr', 'charptr', 'byteptr'] {
-		return tc.direct_sum_assignment_variant_matches(clean_actual.base_type, expected)
-	}
 	if tc.generic_type_name_matches(actual.name(), expected.name)
 		|| tc.generic_type_name_matches(clean_actual.name(), expected.name) {
 		return true
@@ -533,6 +538,12 @@ fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected
 		if tc.nested_sum_variant_assignment_matches(actual, tc.parse_type(concrete)) {
 			return true
 		}
+	}
+	// Preserve a pointer alias's nominal identity long enough to match a sum
+	// variant declared with that alias. A direct `&T` can still use the existing
+	// pointer-to-value fallback after nominal variants have been considered.
+	if clean_actual is Pointer && actual.name() !in ['voidptr', 'charptr', 'byteptr'] {
+		return tc.direct_sum_assignment_variant_matches(clean_actual.base_type, expected)
 	}
 	return false
 }
@@ -2534,6 +2545,12 @@ fn (tc &TypeChecker) tuple_tail_return_error(expr_id flat.NodeId, expected []Typ
 }
 
 fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+	if expected is Pointer && actual !is Pointer {
+		clean_expected := fn_param_unalias_type(expected.base_type)
+		if clean_expected is Interface || clean_expected is SumType {
+			return false
+		}
+	}
 	if tc.expr_compatible(expr_id, actual, expected) {
 		return true
 	}
@@ -2607,7 +2624,7 @@ fn (tc &TypeChecker) bare_value_pointer_return_compatible(expr_id flat.NodeId, a
 	}
 	clean_actual := fn_param_unalias_type(actual)
 	clean_expected := fn_param_unalias_type(expected_base)
-	if clean_actual is Pointer {
+	if clean_actual is Pointer || clean_expected is Interface || clean_expected is SumType {
 		return false
 	}
 	return
@@ -3847,6 +3864,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		tc.invalidate_smartcasts_after_call(node, info)
 		tc.check_os_file_raw_io_call(id, node, info)
 		tc.check_instantiated_generic_as_casts(node, info)
+		tc.check_instantiated_generic_noinit_structs(node, info)
 		tc.check_instantiated_generic_ordering_ops(node, info)
 		tc.check_instantiated_generic_compile_errors(id, node, info)
 		tc.check_instantiated_generic_compile_warnings(node, info)
@@ -4467,6 +4485,10 @@ fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, no
 	mut missing := ''
 	for param in generic_params {
 		arg := inferred[param] or {
+			if param in tc.fn_context.generic_params && param_texts.len > 0
+				&& type_text_mentions_any_generic_param(param_texts[0], [param]) {
+				continue
+			}
 			missing = param
 			break
 		}
@@ -4861,6 +4883,41 @@ fn (mut tc TypeChecker) check_instantiated_generic_as_casts(call flat.Node, info
 		}
 		if node.kind in [.fn_literal, .lambda_expr] {
 			continue
+		}
+		for i in 0 .. node.children_count {
+			stack << tc.a.child(node, i)
+		}
+	}
+}
+
+fn (mut tc TypeChecker) check_instantiated_generic_noinit_structs(call flat.Node, info CallInfo) {
+	instantiation := tc.generic_compile_error_instantiation(call, info) or { return }
+	fn_node := tc.a.node(instantiation.decl_id)
+	mut stack := []flat.NodeId{}
+	for i in 0 .. fn_node.children_count {
+		stack << tc.a.child(fn_node, i)
+	}
+	for stack.len > 0 {
+		node_id := stack.pop()
+		node := tc.a.node(node_id)
+		if node.kind in [.fn_literal, .lambda_expr] {
+			continue
+		}
+		if node.kind == .struct_init {
+			type_text := subst_generic_text(node.value, instantiation.concrete_args,
+				instantiation.generic_params)
+			if type_text == node.value {
+				continue
+			}
+			typ := tc.parse_type(type_text)
+			if struct_type_from_type(typ) != none
+				&& typ.name().all_before_last('.') != tc.cur_module
+				&& tc.type_has_declaration_attribute(typ, 'noinit') {
+				message := 'struct `${typ.name()}` is declared with a `@[noinit]` attribute, so it cannot be initialized with `${typ.name()}{}`'
+				if !tc.has_type_error(.assignment_mismatch, message, node_id) {
+					tc.record_error_at(.assignment_mismatch, message, node_id, node.pos)
+				}
+			}
 		}
 		for i in 0 .. node.children_count {
 			stack << tc.a.child(node, i)
@@ -9343,7 +9400,8 @@ fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, cal
 		if fn_node.kind == .selector && fn_node.children_count > 0 {
 			recv_vis := tc.receiver_expr_mutation_visibility(tc.a.child(fn_node, 0), root_name,
 				root_type, decl_mod)
-			if receiver_mutation_is_visible(recv_vis) && tc.mut_receiver_methods[called_name] {
+			if receiver_mutation_is_visible(recv_vis) && (tc.mut_receiver_methods[called_name]
+				|| checker_builtin_array_method_mutates(fn_node.value)) {
 				return true
 			}
 		}
@@ -9614,6 +9672,11 @@ fn checker_is_raw_collection_method_name(name string, prefix string) bool {
 	}
 	rest := name[prefix.len..]
 	return rest.len > 0 && !rest.contains('.')
+}
+
+fn checker_builtin_array_method_mutates(method string) bool {
+	return method in ['clear', 'delete', 'delete_last', 'insert', 'move', 'pop', 'pop_left',
+		'prepend', 'reverse_in_place', 'sort', 'sort_with_compare']
 }
 
 // is_print_style_fn_name reports whether is print style fn name applies in types.
@@ -10202,6 +10265,28 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 	}
 	min_count := tc.min_required_arg_count(info) - ctx_count
+	if actual_count < info.params.len {
+		callee := tc.a.child_node(&node, 0)
+		pos := if callee.kind == .selector {
+			tc.method_call_name_pos(node, callee)
+		} else {
+			node.pos
+		}
+		for param_idx in actual_count .. info.params.len {
+			param := info.params[param_idx]
+			if !tc.is_params_struct_type(param) {
+				continue
+			}
+			param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
+			if _ := tc.private_declaration(param_struct.name) {
+				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+				tc.record_error_at(.unknown_type,
+					'struct `${param_struct.name}` was declared as private to module `${param_struct.name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`',
+					id, pos)
+				tc.record_error_at(.unknown_type, 'type `${param_struct.name}` is private', id, pos)
+			}
+		}
+	}
 	if info.is_variadic {
 		for i in 1 + info.arg_offset .. node.children_count - 1 {
 			arg_id := tc.call_arg_value(tc.a.child(&node, i))
@@ -10382,9 +10467,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			} else {
 				receiver := tc.a.node(recv_id)
 				if receiver.kind == .ident {
-					tc.record_error_at(.call_arg_mismatch,
-						'method `${fn_node.value}` requires a mutable receiver; `${receiver.value}` is immutable, declare it with `mut` to make it mutable',
-						recv_id, tc.node_value_diagnostic_pos(recv_id))
+					message := if checker_builtin_array_method_mutates(fn_node.value) {
+						'`${receiver.value}` is immutable, declare it with `mut` to make it mutable'
+					} else {
+						'method `${fn_node.value}` requires a mutable receiver; `${receiver.value}` is immutable, declare it with `mut` to make it mutable'
+					}
+					tc.record_error_at(.call_arg_mismatch, message, recv_id,
+						tc.node_value_diagnostic_pos(recv_id))
 				} else {
 					tc.record_error_at(.call_arg_mismatch,
 						'method `${fn_node.value}` requires a mutable receiver; cannot pass expression as `mut`',
@@ -11056,6 +11145,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				arg_id, tc.call_argument_diagnostic_pos(arg_id))
 		}
 		clean_expected_for_interface := unalias_type(expected)
+		if clean_expected_for_interface is Interface && unalias_type(actual) !is Interface
+			&& tc.private_declaration(clean_expected_for_interface.name) != none {
+			actual_name := tc.diagnostic_expr_type_name(arg_id, actual)
+			tc.record_error_at(.call_arg_mismatch,
+				'`${actual_name}` cannot implement private interface `${clean_expected_for_interface.name}` of other module',
+				arg_id, tc.call_argument_diagnostic_pos(arg_id))
+			continue
+		}
 		if clean_expected_for_interface is Interface && unalias_type(actual) is FnType {
 			tc.record_error_at(.call_arg_mismatch,
 				'function does not implement interface `${clean_expected_for_interface.name}`; cannot implement interface `${clean_expected_for_interface.name}` using function',
@@ -11908,8 +12005,7 @@ fn (mut tc TypeChecker) check_builtin_array_call_args(id flat.NodeId, node flat.
 		index_is_valid := tc.expr_compatible(index_id, index_type, Type(int_))
 		if !index_is_valid {
 			tc.record_error(.call_arg_mismatch,
-				'cannot use `${index_type.name()}` as `int` in argument 1 to `array.insert()`',
-				index_id)
+				'the first argument of `array.insert()` should be integer', index_id)
 		}
 		value_id := tc.call_arg_value(tc.a.child(&node, 2))
 		mut value_type := array_type.elem_type
@@ -14408,7 +14504,8 @@ fn (tc &TypeChecker) expr_can_be_implicit_ref_arg(expr_id flat.NodeId) bool {
 	// V materializes non-addressable value expressions into stable temporaries
 	// when they are passed to non-mut reference parameters.
 	return node.kind in [.struct_init, .call, .or_expr, .cast_expr, .if_expr, .match_stmt, .index,
-		.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .string_interp]
+		.selector, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.string_interp]
 }
 
 fn type_pointer_depth_and_base(typ Type) (int, Type) {
@@ -15063,11 +15160,11 @@ fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if is_ierror_type(actual) {
-		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
+		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if tc.type_compatible_with_ierror_payload(actual) {
-		return expected is OptionType || expected is ResultType || is_ierror_type(expected)
+		return expected is ResultType || is_ierror_type(expected)
 	}
 	if expected is OptionType && tc.type_compatible(actual, expected.base_type) {
 		return true
@@ -15709,7 +15806,11 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			then_tail := tc.branch_tail_expr_id(then_id)
 			else_tail := tc.branch_tail_expr_id(else_id)
 			if tc.if_branch_none_has_option_context(then_type, then_tail, else_type, else_tail) {
-				return
+				if expected := tc.expected_context_for_expr(id) {
+					if expected is OptionType || is_ierror_type(expected) {
+						return
+					}
+				}
 			}
 			if tc.if_branch_error_has_result_context(then_type, else_type) {
 				if expected := tc.expected_context_for_expr(id) {

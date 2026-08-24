@@ -468,6 +468,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		for seed in ['strconv.format_int', 'string.free', 'string__free'] {
 			enqueue(seed, mut used, mut queue)
 		}
+		// Linux backtraces add strings.Builder to the otherwise minimal runtime.
+		// Its C bodies and map diagnostics contain calls lowered after markused.
+		if 'strings.Builder.str' in fn_decls || 'Builder.str' in fn_decls {
+			for seed in ['strconv.format_uint', 'u8.ascii_str', 'byteptr.vstring_with_len',
+				'array.push', 'array__push', 'array.free', 'array__free', 'int.str'] {
+				enqueue(seed, mut used, mut queue)
+			}
+		}
 	}
 	if !trivial_literal_output {
 		enqueue_veb_handler_roots(a, tc, mut used, mut queue)
@@ -2719,6 +2727,11 @@ fn markused_json_encode_fast_path_helpers_for_type(typ types.Type, a &flat.FlatA
 		types.String {
 			return true
 		}
+		types.Array {
+			helpers['string__plus'] = true
+			return markused_json_encode_fast_path_helpers_for_type(clean.elem_type, a, tc, mut
+				helpers, mut seen)
+		}
 		types.Primitive {
 			if clean.props.has(.boolean) {
 				return true
@@ -2758,6 +2771,20 @@ fn markused_json_encode_fast_path_helpers_for_type(typ types.Type, a &flat.FlatA
 			helpers['string__plus'] = true
 			return markused_json_encode_fast_path_helpers_for_type(clean.value_type, a, tc, mut
 				helpers, mut seen)
+		}
+		types.SumType {
+			sum_name := markused_json_resolve_sum_name(clean.name, tc)
+			for variant in tc.sum_types[sum_name] or { return false } {
+				variant_type := markused_json_sum_variant_type(variant, tc)
+				if variant_type is types.Pointer {
+					return false
+				}
+				if !markused_json_encode_fast_path_helpers_for_type(variant_type, a, tc, mut
+					helpers, mut seen) {
+					return false
+				}
+			}
+			return true
 		}
 		else {
 			return false
@@ -5321,6 +5348,9 @@ fn (c &CallCollector) top_level_decl_rhs_type_name(rhs_id flat.NodeId, cur_modul
 		if struct_type.len > 0 {
 			return struct_type
 		}
+		if c.receiver_is_generic_struct_application(resolved, cur_module) {
+			return resolved
+		}
 		// An alias-to-struct literal (`Alias{...}` where `type Alias = Base`) is not
 		// itself a struct key; keep the alias name so a later method call on the var
 		// resolves `Alias.method` (methods are registered on the alias).
@@ -7327,6 +7357,17 @@ fn (c &CallCollector) collect_json_encode_type_helpers(typ types.Type, cur_modul
 		helpers << 'v3_json_encode_string'
 		return c.collect_json_encode_type_helpers(clean.value_type, cur_module, mut helpers)
 	}
+	if clean is types.SumType {
+		sum_name := markused_json_resolve_sum_name(clean.name, c.tc)
+		for variant in c.tc.sum_types[sum_name] or { return false } {
+			variant_type := markused_json_sum_variant_type(variant, c.tc)
+			if variant_type is types.Pointer
+				|| !c.collect_json_encode_type_helpers(variant_type, cur_module, mut helpers) {
+				return false
+			}
+		}
+		return true
+	}
 	if clean is types.Primitive {
 		if clean.props.has(.boolean) {
 			return true
@@ -7381,7 +7422,7 @@ fn (c &CallCollector) json_struct_has_disallowed_encode_field_attrs(info StructD
 		}
 		for attr in field_params[1..] {
 			name := attr.all_before(':').trim_space()
-			if name !in ['skip', 'json', 'omitempty'] {
+			if name !in ['skip', 'json', 'omitempty', 'required'] {
 				return true
 			}
 		}
@@ -7577,13 +7618,48 @@ fn markused_json_attr_hex(value string, start int, count int) ?u32 {
 
 fn markused_json_encode_omitempty_supported(typ types.Type) bool {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
-	if clean is types.String || clean is types.Enum {
+	if clean is types.String || clean is types.Enum || clean is types.Array || clean is types.Map
+		|| clean is types.Struct || clean is types.SumType {
 		return true
 	}
 	if clean is types.Primitive {
 		return clean.props.has(.boolean) || clean.props.has(.integer) || clean.props.has(.float)
 	}
 	return false
+}
+
+fn markused_json_resolve_sum_name(name string, tc &types.TypeChecker) string {
+	if name in tc.sum_types {
+		return name
+	}
+	qualified := tc.qualify_name(name)
+	if qualified in tc.sum_types {
+		return qualified
+	}
+	mut match_name := ''
+	for candidate, _ in tc.sum_types {
+		if candidate.all_after_last('.') != name.all_after_last('.') {
+			continue
+		}
+		if match_name.len > 0 {
+			return name
+		}
+		match_name = candidate
+	}
+	return if match_name.len > 0 { match_name } else { name }
+}
+
+fn markused_json_sum_variant_type(raw_type string, tc &types.TypeChecker) types.Type {
+	clean := raw_type.trim_space()
+	if types.is_builtin_type_name(clean) {
+		return types.builtin_type_value(clean)
+	}
+	if clean.starts_with('[]') {
+		return types.Type(types.Array{
+			elem_type: markused_json_sum_variant_type(clean[2..], tc)
+		})
+	}
+	return tc.parse_canonical_type(clean)
 }
 
 fn markused_json_push_int_str_helpers(unsigned bool, mut helpers []string) {

@@ -72,6 +72,18 @@ fn test_windows_filelock_method_preseeds_parallel_compat_helpers() {
 	assert c_code.contains('static inline int v_filelock_unlock(HANDLE handle'), c_code
 }
 
+fn test_builtin_gettid_preseeds_parallel_compat_helper() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut used := {
+		'v_gettid': true
+	}
+	g.used_fns = &used
+	// Isolate used-function reachability from the later function-body reference scan.
+	g.c_extern_refs_ready = true
+	g.preseed_libc_compat_fns()
+	assert g.libc_compat_fns['gettid']
+}
+
 fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
 	mut g, _ := parallel_worker_test_gen(true)
 	g.const_runtime_inits = ['\tmoda__runtime_const = moda__make_const();']
@@ -264,6 +276,19 @@ fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
 	assert 'Shared[string]' in dispatcher.generic_app_cache.entries
 	assert 'Shared[string]' in batch.generic_app_cache.entries
 	assert 'Shared[string]' !in frozen.entries
+}
+
+fn test_open_generic_receiver_template_bypasses_stale_generic_app_cache() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut cache := g.generic_app_cache
+	cache.entries['AtomicVal[T]'] = GenericAppInfo{}
+	node := flat.Node{
+		kind:  .fn_decl
+		value: 'AtomicVal[T].load'
+	}
+	assert g.fn_node_is_open_generic_template(node, 'stdatomic')
+	assert !g.should_emit_fn_node_in_module_known(node, 'stdatomic', 'atomic.v',
+		'stdatomic__AtomicVal_T__load', true)
 }
 
 fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
