@@ -1605,7 +1605,7 @@ fn (mut t Transformer) lower_array_prepend_call(node flat.Node, fn_node flat.Nod
 	short_struct_value := if value_node.kind == .field_init {
 		t.transform_trailing_field_init_struct_arg(node, 1, elem_type)
 	} else {
-		none
+		?flat.NodeId(none)
 	}
 	value_id := short_struct_value or { raw_value_id }
 	raw_rhs_type := if short_struct_value != none { elem_type } else { t.node_type(value_id) }
@@ -1657,7 +1657,7 @@ fn (mut t Transformer) lower_array_insert_call(node flat.Node, fn_node flat.Node
 	short_struct_value := if value_node.kind == .field_init {
 		t.transform_trailing_field_init_struct_arg(node, 2, elem_type)
 	} else {
-		none
+		?flat.NodeId(none)
 	}
 	value_id := short_struct_value or { raw_value_id }
 	raw_rhs_type := if short_struct_value != none { elem_type } else { t.node_type(value_id) }
