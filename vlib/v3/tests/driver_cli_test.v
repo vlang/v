@@ -1921,8 +1921,9 @@ pub fn value() int {
 
 	compile := cmdexec.run_in(v3_bin, [project], work_dir)
 	assert compile.exit_code == 0, compile.output
-	output := os.join_path(work_dir, 'project.with.dots')
+	output := os.join_path(project, 'project.with.dots')
 	assert os.exists(output)
+	assert !os.exists(os.join_path(work_dir, 'project.with.dots'))
 	assert !os.exists(os.join_path(work_dir, 'project'))
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0
