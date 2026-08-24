@@ -1288,10 +1288,39 @@ stacked-PR convention as Phase 12's 12a-12d.
         verification is NOT exercised end-to-end (no EC certificate
         fixture in this repo — the same documented gap as
         `encode_certificate_verify`'s own tests).
-- [ ] **13b** — Retry + address validation: Retry packet + opaque token
-      minting/validation (`retry.v` currently only verifies), RFC 9000 §8.1
-      anti-amplification 3x accounting (already flagged as a deferred,
-      server-only branch in `loss_detection.v`/`coalesce.v`).
+- [x] **13b** — Retry + address validation:
+  - [x] `encode_retry_packet` (`retry.v`) — builds a complete Retry packet,
+        reusing `compute_retry_integrity_tag` directly (already
+        side-agnostic). Round-trips through the already-existing,
+        independently-written client-role `verify_retry_integrity_tag`/
+        `parse_retry_packet` — the strongest cross-check available: not
+        just "well-formed," but "the exact code that will receive this in
+        production accepts it."
+  - [x] `generate_retry_token`/`validate_retry_token`/
+        `validate_retry_token_for_attempt` (`retry_token.v`, new file) —
+        AEAD-sealed (AES-128-GCM), authenticated address-validation tokens
+        satisfying RFC 9000 §8.1.4's difficult-to-guess and integrity
+        requirements via the AEAD tag itself. NEW_TOKEN-frame issuance
+        (§8.1.3, tokens reusable across future connections) is explicitly
+        out of scope — v1 only issues tokens via Retry. Single-use replay
+        tracking beyond a short expiry window is deferred to 13d, once a
+        real listening socket exists to own a consumed-token cache's
+        lifetime; a short `max_age_ms` window satisfies §8.1.4's "prevented
+        OR limited" replay requirement in the interim.
+  - [x] `AntiAmplificationLimiter` (`anti_amplification.v`, new file) —
+        RFC 9000 §8.1's 3x pre-validation send limit, mirroring
+        `flow_control.v`'s `FlowControlWindow` shape deliberately. A
+        standalone, tested accounting primitive — not yet wired into any
+        connection/datagram-processing loop, since that loop doesn't exist
+        until 13d.
+  - **Found and flagged, not fixed here (out of scope for this PR)**: while
+    picking a CSPRNG for the token nonce, discovered `conn.v`'s `dial()`
+    uses V's general-purpose `rand` module (wyrand-backed, NOT
+    cryptographically secure) for `original_dcid`/`scid`/`client_random` —
+    all three are security-relevant values that should use `crypto.rand`
+    instead (same API, OS-backed, already used elsewhere in this codebase).
+    This is a real gap in already-merged code (Phase 9, PR #28129), not
+    Phase 13 work — flagged as a separate follow-up task, not fixed inline.
 - [ ] **13c** — Connection ID lifecycle: `NEW_CONNECTION_ID`/
       `RETIRE_CONNECTION_ID` frames (currently fall through `frame.v`'s
       generic "not yet implemented" branch), stateless reset token

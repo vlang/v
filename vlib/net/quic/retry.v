@@ -107,6 +107,84 @@ pub fn parse_retry_packet(buf []u8, original_dcid []u8, original_scid []u8) !Qui
 	}
 }
 
+// RetryPacketParams is everything encode_retry_packet needs.
+pub struct RetryPacketParams {
+pub:
+	// The Source Connection ID from the client's Initial packet that
+	// provoked this Retry -- becomes this Retry packet's OWN Destination
+	// Connection ID (an echo, not a new value; see parse_retry_packet's
+	// doc comment for the same field semantics on the parse side).
+	client_scid []u8
+	// This server's newly chosen connection ID for the retried connection
+	// attempt -- becomes this Retry packet's Source Connection ID. RFC
+	// 9000 §17.2.5.1: "This value MUST NOT be equal to the Destination
+	// Connection ID field of the packet sent by the client" -- checked
+	// below (against `original_dcid`, not `client_scid`; a Retry echoing
+	// the client's SCID back as its own new DCID is normal, expected
+	// behavior, not the degenerate case this MUST forbids).
+	server_scid []u8
+	// The Destination Connection ID from the client's Initial packet --
+	// required for BOTH compute_retry_integrity_tag's own AAD (RFC 9001
+	// §5.8) and as the address-validation token's own claim (see
+	// generate_retry_token, retry_token.v).
+	original_dcid []u8
+	// The AEAD key this server uses for its own address-validation
+	// tokens -- see retry_token.v's own key-length/rotation doc comments.
+	token_key []u8
+	// A caller-serialized identifier for the client's current source
+	// address (IP + port), bound into the token so a later Initial
+	// presenting it can be checked against the ADDRESS IT ARRIVES FROM --
+	// opaque to this function and retry_token.v alike; the caller decides
+	// the exact byte representation as long as it's used consistently
+	// between issuance and validation.
+	client_addr []u8
+	// A caller-supplied monotonic timestamp (matching this module's
+	// existing time.sys_mono_now()-sourced convention, e.g.
+	// idle_timeout.v's `now u64` parameters) recording when this token was
+	// issued, for the short-expiry check RFC 9000 §8.1.4 recommends
+	// ("SHOULD ensure that tokens sent in Retry packets are only accepted
+	// for a short time").
+	issued_at_ms u64
+}
+
+// encode_retry_packet constructs a complete Retry packet (RFC 9000
+// §17.2.5), including a fresh address-validation token (generate_retry_token,
+// retry_token.v) and the Retry Integrity Tag (compute_retry_integrity_tag,
+// this file -- already side-agnostic, reused directly rather than
+// duplicated). The header's Unused 4 bits (RFC 9000 §17.2.5, Figure 18) are
+// set to zero: "The value in the Unused field is set to an arbitrary value
+// by the server; a client MUST ignore these bits" -- zero is as arbitrary
+// as any other value and keeps the packet deterministic for testing.
+pub fn encode_retry_packet(p RetryPacketParams) ![]u8 {
+	// RFC 9000 §17.2.5.1: "This value MUST NOT be equal to the Destination
+	// Connection ID field of the packet sent by the client" -- a Retry
+	// violating this would be silently discarded by any compliant client
+	// (parse_retry_packet's own anti-loop check, this file), so refusing
+	// to construct one here catches a caller's CID-generation bug before
+	// it produces a packet that could never actually complete a handshake.
+	if p.server_scid == p.original_dcid {
+		return error("quic: Retry server_scid must not equal the client's original Initial dcid (RFC 9000 §17.2.5.1)")
+	}
+
+	token := generate_retry_token(p.token_key, RetryTokenClaims{
+		client_addr:   p.client_addr
+		original_dcid: p.original_dcid
+		issued_at_ms:  p.issued_at_ms
+	})!
+
+	header := QuicLongHeader{
+		typ:     .retry
+		version: quic_v1
+		dcid:    p.client_scid
+		scid:    p.server_scid
+	}
+	mut packet := encode_long_header(header, 0, 0)!
+	packet << token
+	tag := compute_retry_integrity_tag(p.original_dcid, packet)!
+	packet << tag
+	return packet
+}
+
 // compute_retry_integrity_tag computes the expected 16-byte Retry
 // Integrity Tag (RFC 9001 §5.8) given the ORIGINAL destination connection
 // ID the client used in the Initial packet that provoked this Retry
