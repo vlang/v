@@ -299,9 +299,17 @@ pub fn encode_certificate_verify(algorithm u16, signing_key ecdsa.PrivateKey, tr
 	// vlib/crypto/ecdsa/ecdsa.v, keyed off the key's own bit size, matching
 	// exactly what sig_scheme_ecdsa_secp256r1_sha256 requires. The
 	// resulting signature is OpenSSL's standard ASN.1 DER ECDSA-Sig-Value
-	// encoding, the same format net.mbedtls's verify_ecdsa_signature (used
-	// on the client-side verify path, tls13_certificate_chain.c.v) already
-	// parses -- no reformatting needed between the two libraries.
+	// encoding (sign_digest, vlib/crypto/ecdsa/ecdsa.v, sets no raw/compact
+	// signature option, so OpenSSL's EVP_PKEY_sign default applies) --
+	// the same format TLS/X.509 ECDSA signatures conventionally use, and
+	// what net.mbedtls's verify_ecdsa_signature (the client-side verify
+	// path, tls13_certificate_chain.c.v) is written to parse. This is
+	// confirmed by source inspection and this file's own same-library
+	// (OpenSSL signs, OpenSSL verifies) round-trip test
+	// (tls13_certificate_test.v), NOT by an actual cross-library
+	// OpenSSL-signs/mbedTLS-verifies test -- this repo has no EC
+	// certificate fixture to build an mbedtls_pk_context from for that
+	// (same gap verify_ecdsa_signature's own client-side tests document).
 	signature := signing_key.sign(content, hash_config: .with_recommended_hash)!
 
 	mut body := []u8{}
