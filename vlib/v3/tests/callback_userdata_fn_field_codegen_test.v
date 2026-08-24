@@ -63,6 +63,7 @@ struct Event {
 	value int
 }
 
+@[heap]
 struct App {
 mut:
 	value int
