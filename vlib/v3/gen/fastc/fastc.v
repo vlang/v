@@ -5358,9 +5358,14 @@ fn (mut g Parser) parse_for() !bool {
 				values_name := g.temporary_name('map_values')
 				index_name := g.temporary_name('map_index')
 				g.write_line('__typeof__((${start})) ${collection_name} = (${start});')
-				g.write_line('array ${keys_name} = builtin__map_keys((map *)&${collection_name});')
+				map_pointer := if collection_type.ends_with('*') {
+					collection_name
+				} else {
+					'&${collection_name}'
+				}
+				g.write_line('array ${keys_name} = builtin__map_keys((map *)${map_pointer});')
 				if value_name != '' {
-					g.write_line('array ${values_name} = builtin__map_values((map *)&${collection_name});')
+					g.write_line('array ${values_name} = builtin__map_values((map *)${map_pointer});')
 				}
 				g.write_line('for (int ${index_name} = 0; ${index_name} < ${keys_name}.len; ${index_name}++) {')
 				g.indent++

@@ -2686,6 +2686,34 @@ fn main() {
 	assert c_source.contains('change(item);'), c_source
 }
 
+fn test_map_pointer_iteration_passes_the_map_pointer_directly() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn iterate(source map[string]int) {
+	for key, value in source {
+		println(key)
+		println(value)
+	}
+	pointer := &source
+	for key, value in pointer {
+		println(key)
+		println(value)
+	}
+}
+
+fn main() {
+	iterate(map[string]int{})
+}
+',
+		'map_pointer_iteration.v', prefs) or { panic(err) }
+	assert c_source.count('builtin__map_keys((map *)&__v_fastc_map_collection_') == 1, c_source
+	assert c_source.count('builtin__map_values((map *)&__v_fastc_map_collection_') == 1, c_source
+	assert c_source.count('builtin__map_keys((map *)__v_fastc_map_collection_') == 1, c_source
+	assert c_source.count('builtin__map_values((map *)__v_fastc_map_collection_') == 1, c_source
+}
+
 fn test_range_bounds_must_be_integers() {
 	prefs := pref.new_preferences()
 	for source in [
