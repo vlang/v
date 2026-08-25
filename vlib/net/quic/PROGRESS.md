@@ -1371,12 +1371,31 @@ stacked-PR convention as Phase 12's 12a-12d.
       (needs cross-connection-attempt state only 13d-2's listener has) and
       does not fragment a large certificate chain's Handshake CRYPTO flight
       across multiple packets (both documented scope limits, not blockers).
-- [ ] **13d-2** — UDP listener + connection demux: one socket routing many
-      concurrent connections by connection ID (not 4-tuple, since QUIC
-      supports migration) — no analog in the client's transport today; the
+- [x] **13d-2** — `QuicListener` (`listener.v`): one caller-driven, transport-
+      agnostic socket-facing type routing many concurrent connections by
+      connection ID (not 4-tuple, since QUIC supports migration); the
       new-connection acceptance path (unrecognized DCID → Retry-or-accept,
-      wiring 13b's `AntiAmplificationLimiter`/Retry machinery before calling
-      13d-1's `accept()`).
+      wiring 13b's `AntiAmplificationLimiter`/Retry machinery — previously
+      dead code with zero production call sites — into `QuicConn` itself,
+      and into `13d-1`'s `accept()`). Two rounds of adversarial review before
+      commit found and fixed real bugs: RFC 9000 §8.1's 3x send limit was
+      unenforced (now wired into `QuicConn`'s own send path, including a
+      size-aware check for the one send — the Handshake CRYPTO flush — whose
+      size can dwarf the budget in one shot since large certificate chains
+      aren't fragmented across packets); `poll()`'s known-connection path
+      replied to whichever address the current call was invoked with instead
+      of the address recorded at accept() time (reflection/spoofing risk);
+      no dedup for new-attempt datagrams let a replayed Retry token or an
+      ordinary PTO retransmission spawn unbounded duplicate connections for
+      one logical attempt (closed via a stateless `pending_by_dcid` index);
+      `send_retry` was missing the RFC 9000 §14.1 1200-byte floor check.
+      Also found and fixed a PRE-EXISTING, previously-unreachable CLIENT-role
+      bug newly exposed by a real listener processing untrusted network
+      input: `process_one_packet`'s Retry/Version-Negotiation dispatch had no
+      role check, and `process_retry` incorrectly latched `peer_scid` to the
+      Retry's own one-time SCID, permanently discarding every subsequent real
+      server packet — found via this phase's own real dial()-through-Retry-
+      through-accept()-through-established-handshake integration test.
 - [ ] **13e** — `h3_server.v` wiring, mirroring `h2_server.v`'s established
       shape (minimal/serial first, concurrency as an explicit follow-up),
       plus server certificate/key loading.
