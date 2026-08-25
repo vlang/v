@@ -1343,6 +1343,25 @@ fn main() {
 ',
 		'valid_struct_update.v', prefs) or { panic(err) }
 	assert update_source.contains('__v_fastc_struct_update'), update_source
+
+	pointer_update_source := generate('module main
+
+struct Config {
+	value int
+}
+
+fn clone_config(base &Config) &Config {
+	return &Config{...base, value: 2}
+}
+
+fn main() {
+	base := &Config{}
+	_ := clone_config(base)
+}
+',
+		'valid_pointer_struct_update.v', prefs) or { panic(err) }
+	assert pointer_update_source.contains('Config __v_fastc_struct_update = *(base);'), pointer_update_source
+	assert pointer_update_source.contains('v_fastc_interface_box(&__v_fastc_struct_update, sizeof(Config))'), pointer_update_source
 }
 
 fn test_selfhost_struct_field_initializers_preserve_source_order() {
@@ -1490,6 +1509,57 @@ fn main() {
 		'valid_interface_implementation.v', prefs) or { panic(err) }
 	assert c_source.contains('case __v_typeid_Good:'), c_source
 	assert c_source.contains('void Worker_update(Worker value, int* arg1)'), c_source
+}
+
+fn test_selfhost_unused_interface_dispatches_do_not_reference_pruned_methods() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+interface Reader {
+	read() !int
+}
+
+struct File {}
+
+fn (file File) read() !int {
+	return 1
+}
+
+fn main() {}
+',
+		'unused_interface_dispatch.v', prefs) or { panic(err) }
+	assert c_source.contains('Option Reader_read('), c_source
+	assert !c_source.contains('Option File_read('), c_source
+}
+
+fn test_selfhost_constant_interface_cast_uses_interface_value() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate("module main
+
+interface Failure {
+	message() string
+}
+
+struct Message {
+	text string
+}
+
+fn (message Message) message() string {
+	return message.text
+}
+
+const sentinel = Failure(&Message{text: 'error'})
+
+fn main() {
+	println(sentinel.message())
+}
+",
+		'constant_interface_cast.v', prefs) or { panic(err) }
+	assert c_source.contains('main__sentinel = (Failure){._object=(void*)('), c_source
+	assert c_source.contains('._typ=__v_typeid_Message, ._methods=NULL};'), c_source
+	assert !c_source.contains('main__sentinel = ((Failure)('), c_source
 }
 
 fn test_interface_receiver_mutability_is_validated() {
@@ -3226,6 +3296,24 @@ fn main() {
 	assert run_result.output.trim_space() == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
 }
 
+fn test_selfhost_unary_not_does_not_capture_following_logical_expression() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate("module main
+
+fn rejects(selfhost bool, name string) bool {
+	return !selfhost && (name in ['charptr', 'rune'])
+}
+
+fn main() {
+	println(rejects(true, 'int'))
+}
+",
+		'logical_unary_not_precedence.v', prefs) or { panic(err) }
+	assert c_source.contains('((!(selfhost))&&('), c_source
+	assert !c_source.contains('!(((selfhost)&&('), c_source
+}
+
 fn test_struct_equality_is_lowered_field_by_field() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main
@@ -4167,6 +4255,90 @@ fn main() {
 	assert c_source.contains('memcpy(&second, __v_fastc_multi_return_'), c_source
 }
 
+fn test_selfhost_parallel_assignment_accepts_aggregate_targets() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Holder {
+mut:
+	values [2]u8
+}
+
+fn swap(mut holder Holder) {
+	holder.values[0], holder.values[1] = holder.values[1], holder.values[0]
+}
+
+fn main() {
+	mut holder := Holder{}
+	swap(mut holder)
+}
+',
+		'parallel_aggregate_assignment.v', prefs) or { panic(err) }
+	assert c_source.count('__v_fastc_parallel_') >= 4, c_source
+}
+
+fn test_selfhost_array_field_index_assignment_keeps_the_field_name() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct File {
+mut:
+	source_digest []u8
+}
+
+fn copy_byte(mut file File, digest []u8, index int) {
+	file.source_digest[index] = digest[index]
+}
+
+fn main() {
+	mut file := File{}
+	copy_byte(mut file, []u8{}, 0)
+}
+',
+		'array_field_index_assignment.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__array_get(file->source_digest, index)'), c_source
+	assert !c_source.contains('file->source_('), c_source
+}
+
+fn test_selfhost_qualified_constant_fixed_array_length_is_preserved() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	sizes_source := 'module sizes\npub const digest_size = 32\n'
+	main_source := 'module main
+import sizes
+
+struct File {
+mut:
+	source_digest [sizes.digest_size]u8
+}
+
+fn copy_byte(mut file File, digest []u8, index int) {
+	file.source_digest[index] = digest[index]
+}
+
+fn main() {
+	mut file := File{}
+	copy_byte(mut file, []u8{}, 0)
+}
+'
+	c_source := generate_source_files([
+		FastcSourceFile{
+			path:   'main.v'
+			source: main_source
+			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
+		},
+		FastcSourceFile{
+			path:   'sizes/sizes.v'
+			source: sizes_source
+			header: fastc_scan_source_header(sizes_source, 'sizes/sizes.v', prefs) or { panic(err) }
+		},
+	], prefs) or { panic(err) }
+	assert c_source.contains('u8 source_digest[sizes__digest_size];'), c_source
+	assert c_source.contains('(file->source_digest)[builtin__v_fixed_index(index, sizes__digest_size)]'), c_source
+}
+
 fn test_aggregate_lvalue_mutability_is_validated() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -4515,6 +4687,147 @@ fn main() {
 	assert !c_source.contains('text.str[index]'), c_source
 }
 
+fn test_selfhost_selector_assignment_accepts_array_initializer() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Holder {
+mut:
+	values []u32
+}
+
+fn reset(mut holder Holder) {
+	holder.values = []u32{len: 8}
+}
+
+fn main() {
+	mut holder := Holder{}
+	reset(mut holder)
+}
+',
+		'selector_array_initializer.v', prefs) or { panic(err) }
+	assert c_source.contains('holder->values='), c_source
+	assert c_source.contains('builtin____new_array('), c_source
+}
+
+fn test_selfhost_multiline_sum_type_declaration_is_skipped_completely() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Any = int
+	| bool
+	| string
+	| []Any
+
+fn main() {}
+',
+		'multiline_sum_type.v', prefs) or { panic(err) }
+	assert c_source.contains('typedef struct { void *_object; u32 _typ; } Any;'), c_source
+}
+
+fn test_selfhost_composite_ordering_moves_one_line_interfaces_before_fields() {
+	source := 'struct Holder {\n\tWriter wr;\n};\n\nstruct Writer { void *_object; };\n'
+	ordered := fastc_order_c_composite_definitions(source, {
+		'Holder': {
+			'wr': 'Writer'
+		}
+	}, {
+		fastc_type_key('main', 'Holder'): FastcDeclaredTypeKind.struct_
+		fastc_type_key('main', 'Writer'): FastcDeclaredTypeKind.interface_
+	})
+	writer_index := ordered.index('struct Writer {') or { -1 }
+	holder_index := ordered.index('struct Holder {') or { -1 }
+	assert writer_index >= 0 && writer_index < holder_index, ordered
+}
+
+fn test_selfhost_comptime_type_condition_accepts_disjunctions() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn fastc_size[T](value T) int {
+	$if T is bool || T is u8 || T is i8 {
+		return 1
+	} $else $if T is $array_fixed {
+		return value.len
+	} $else $if T is $struct {
+		return 2
+	} $else {
+		return -1
+	}
+}
+
+fn main() {}
+',
+		'comptime_type_disjunction.v', prefs) or { panic(err) }
+	assert c_source.contains('int fastc_size(voidptr value)'), c_source
+	assert c_source.contains('return -1;'), c_source
+	assert !c_source.contains('return 2;'), c_source
+}
+
+fn test_selfhost_typeof_name_interpolation_uses_the_inferred_type() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate("module main
+
+fn fastc_type_name[T](value T) string {
+	return '\${typeof(value).name}'
+}
+
+fn main() {}
+",
+		'typeof_name_interpolation.v', prefs) or { panic(err) }
+	assert c_source.contains('return _S("voidptr");'), c_source
+}
+
+fn test_selfhost_result_method_or_block_is_a_statement() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Writer {}
+
+interface IError {}
+
+fn panic(err IError) {}
+
+fn (mut writer Writer) write(values []u8) !int {
+	return values.len
+}
+
+fn pad(mut writer Writer) {
+	writer.write([]u8{}) or { panic(err) }
+}
+
+fn main() {
+	mut writer := Writer{}
+	pad(mut writer)
+}
+',
+		'result_method_or_statement.v', prefs) or { panic(err) }
+	assert c_source.contains('Option __v_fastc_option_'), c_source
+}
+
+fn test_selfhost_array_lookup_or_block_checks_bounds() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate("module main
+
+fn first(values []string) string {
+	return values[0] or { '' }
+}
+
+fn main() {
+	_ := first([]string{})
+}
+",
+		'array_lookup_or_block.v', prefs) or { panic(err) }
+	assert c_source.contains('bool __v_fastc_array_missing = __v_fastc_array_index < 0 || __v_fastc_array_index >= __v_fastc_array.len;'), c_source
+	assert c_source.contains('(Option){.data=__v_fastc_array_value, .state=__v_fastc_array_missing ? 2 : 0}'), c_source
+}
+
 fn test_selfhost_array_slices_use_the_runtime_helper() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -4550,6 +4863,19 @@ fn alias_tail(value Text) string {
 	return value[1..]
 }
 
+struct Buffer {
+mut:
+	bytes []u8
+}
+
+fn write_bytes(mut destination []u8, source []u8) int {
+	return source.len
+}
+
+fn write_tail(mut buffer Buffer, source []u8) int {
+	return write_bytes(mut buffer.bytes[1..], source)
+}
+
 fn main() {
 	values := []int{}
 	result := middle(values, 0, 0)
@@ -4558,6 +4884,8 @@ fn main() {
 	text_tail()
 	alias_middle(Text("abc"))
 	alias_tail(Text("abc"))
+	mut buffer := Buffer{}
+	write_tail(mut buffer, []u8{})
 }
 ',
 		'array_slice.v', prefs) or { panic(err) }
@@ -4570,6 +4898,8 @@ fn main() {
 	assert !c_source.contains('make_values().len'), c_source
 	assert !c_source.contains('make_text().len'), c_source
 	assert !c_source.contains('__v_slice.flags |= ArrayFlags__is_slice'), c_source
+	assert c_source.contains('__v_fastc_mut_argument = (({ __typeof__((buffer->bytes)) __v_fastc_slice_receiver'), c_source
+	assert c_source.contains('write_bytes(({ __typeof__(('), c_source
 }
 
 fn test_range_bound_types_are_not_validated() {
