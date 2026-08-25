@@ -591,6 +591,12 @@ mut:
 	storage_path  []string
 }
 
+struct FastcInterfaceField {
+	name       string
+	typ        string
+	is_mutable bool
+}
+
 struct FastcSourceHeader {
 	module_name   string
 	imports       map[string]string
@@ -683,6 +689,7 @@ struct Parser {
 	alias_base_types    map[string]string
 	struct_fields       map[string]map[string]string
 	struct_field_info   map[string][]FastcStructField
+	interface_fields    map[string]FastcInterfaceField
 	constants           map[string]string
 	constant_values     map[string]string
 	public_constants    map[string]bool
@@ -775,11 +782,13 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	}
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
+	mut interface_fields := map[string]FastcInterfaceField{}
 	for source_file in sources {
 		collect_function_signatures(source_file.source, source_file.path, source_file.header,
 			prefs, declared_types, mut functions)!
 		collect_interface_method_signatures(source_file.source, source_file.path,
-			source_file.header, prefs, declared_types, mut functions, mut interface_methods)!
+			source_file.header, prefs, declared_types, mut functions, mut interface_methods, mut
+			interface_fields)!
 	}
 	used_function_names := fastc_collect_referenced_function_names(sources, prefs, functions)
 	module_init_calls := fastc_module_init_calls(sources, functions)!
@@ -846,6 +855,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			alias_base_types:        type_output.alias_base_types
 			struct_fields:           struct_fields
 			struct_field_info:       struct_field_info
+			interface_fields:        interface_fields
 			constants:               constants
 			constant_values:         constant_output.compile_time_values
 			public_constants:        public_constants
@@ -983,8 +993,8 @@ fn fastc_interface_method_signatures_match(interface_signature FastcFunctionSign
 		|| candidate_signature.parameter_types.len != interface_signature.parameter_types.len {
 		return false
 	}
-	for i in 1 .. interface_signature.parameter_types.len {
-		if candidate_signature.parameter_types[i] != interface_signature.parameter_types[i] {
+	for i in 0 .. interface_signature.parameter_types.len {
+		if i > 0 && candidate_signature.parameter_types[i] != interface_signature.parameter_types[i] {
 			return false
 		}
 		interface_parameter_is_mut := i < interface_signature.parameter_mutability.len
@@ -1028,7 +1038,8 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				parameters << '${interface_signature.parameter_types[i]} arg${i}'
 				arguments << 'arg${i}'
 			}
-			c_name := fastc_method_c_name_for_key(interface_key, method_name)
+			c_name := fastc_method_c_name(interface_signature.module_name, interface_type,
+				method_name)
 			out.writeln('${interface_signature.return_type} ${c_name}(${parameters.join(', ')}) {')
 			out.writeln('\tswitch (value._typ) {')
 			for candidate_key in function_keys {
@@ -1058,7 +1069,8 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				} else {
 					''
 				}
-				call := '${fastc_method_c_name_for_key(receiver_key, method_name)}(${receiver_argument}${call_arguments})'
+				call := '${fastc_method_c_name(candidate_signature.module_name, receiver_type,
+					method_name)}(${receiver_argument}${call_arguments})'
 				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type == 'void' {
 					call + '; return;'
 				} else {
@@ -3887,7 +3899,7 @@ fn fastc_collect_type_default_references(mut scan scanner.Scanner, first token.T
 	return tok
 }
 
-fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool) ! {
+fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
@@ -3903,7 +3915,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
 					collect_interface_method_signatures(selected.source, path, header, prefs,
-						declared_types, mut functions, mut interface_methods)!
+						declared_types, mut functions, mut interface_methods, mut interface_fields)!
 				}
 				tok = selected.tok
 				continue
@@ -3947,25 +3959,77 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 			return error('fastc parser does not support interface body in ${path}')
 		}
 		tok = scan.scan()
+		mut members_are_mutable := false
 		for tok != .rcbr && tok != .eof {
-			if tok in [.semicolon, .comma, .key_pub, .key_mut] {
+			if tok in [.semicolon, .comma] {
 				tok = scan.scan()
+				continue
+			}
+			if tok == .key_mut {
+				members_are_mutable = true
+				tok = scan.scan()
+				if tok == .colon {
+					tok = scan.scan()
+				}
+				continue
+			}
+			if tok == .key_pub {
+				tok = scan.scan()
+				if tok == .key_mut {
+					members_are_mutable = true
+					tok = scan.scan()
+				}
+				if tok == .colon {
+					tok = scan.scan()
+				}
 				continue
 			}
 			if tok != .name {
 				tok = scan.scan()
 				continue
 			}
-			method_name := scan.lit
+			mut member_names := [scan.lit]
 			tok = scan.scan()
+			for tok == .comma {
+				tok = scan.scan()
+				if tok != .name {
+					return error('fastc parser does not support interface field declaration in ${path}')
+				}
+				member_names << scan.lit
+				tok = scan.scan()
+			}
 			if tok != .lpar {
-				for tok !in [.semicolon, .rcbr, .eof] {
+				if tok in [.semicolon, .rcbr] {
+					if tok == .semicolon {
+						tok = scan.scan()
+					}
+					continue
+				}
+				field_type, next_token := fastc_scan_type(mut scan, tok, path, header.module_name,
+					header.imports, declared_types, prefs.building_v)!
+				for field_name in member_names {
+					field_key := '${interface_key}.${field_name}'
+					if field_key in interface_fields {
+						return error('fastc parser does not support duplicate interface field `${field_name}` in ${path}')
+					}
+					interface_fields[field_key] = FastcInterfaceField{
+						name:       field_name
+						typ:        field_type
+						is_mutable: members_are_mutable
+					}
+				}
+				tok = next_token
+				if tok == .semicolon {
 					tok = scan.scan()
 				}
 				continue
 			}
+			if member_names.len != 1 {
+				return error('fastc parser does not support grouped interface methods in ${path}')
+			}
+			method_name := member_names[0]
 			mut parameter_types := [interface_type]
-			mut parameter_mutability := [false]
+			mut parameter_mutability := [members_are_mutable]
 			tok = scan.scan()
 			for tok != .rpar {
 				mut parameter_is_mut := false
@@ -12195,6 +12259,40 @@ fn (g &Parser) validate_interface_cast(interface_key string, operand []FastcExpr
 		if !fastc_interface_method_signatures_match(interface_signature, candidate_signature) {
 			return g.unsupported('type `${actual_type}` has an incompatible signature for interface `${interface_type}` method `${method_name}`')
 		}
+	}
+	if g.selfhost && actual_key !in g.declared_kinds {
+		// The bootstrap runtime casts synthetic sentinel values through interfaces.
+		return
+	}
+	mut interface_field_keys := g.interface_fields.keys()
+	interface_field_keys.sort()
+	for field_key in interface_field_keys {
+		if !field_key.starts_with(prefix) {
+			continue
+		}
+		required_field := g.interface_fields[field_key]
+		actual_field := g.interface_implementation_field(actual_type, actual_key,
+			required_field.name) or {
+			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}` field `${required_field.name}`')
+		}
+		if actual_field.typ != required_field.typ {
+			return g.unsupported('type `${actual_type}` has incompatible field `${required_field.name}` for interface `${interface_type}`: expected `${required_field.typ}`, got `${actual_field.typ}`')
+		}
+		if required_field.is_mutable && !actual_field.is_mutable {
+			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}`: field `${required_field.name}` must be mutable')
+		}
+	}
+}
+
+fn (g &Parser) interface_implementation_field(actual_type string, actual_key string, field_name string) ?FastcInterfaceField {
+	if g.declared_kinds[actual_key] == .interface_ {
+		return g.interface_fields['${actual_key}.${field_name}'] or { return none }
+	}
+	field := g.struct_field_metadata(actual_type, field_name) or { return none }
+	return FastcInterfaceField{
+		name:       field.name
+		typ:        field.typ
+		is_mutable: field.is_mutable
 	}
 }
 

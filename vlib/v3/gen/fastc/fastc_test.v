@@ -1124,7 +1124,180 @@ fn main() {
 ',
 		'valid_interface_implementation.v', prefs) or { panic(err) }
 	assert c_source.contains('case __v_typeid_Good:'), c_source
-	assert c_source.contains('void builtin__Worker_update(Worker value, int* arg1)'), c_source
+	assert c_source.contains('void Worker_update(Worker value, int* arg1)'), c_source
+}
+
+fn test_interface_receiver_mutability_is_validated() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for source in [
+		'module main
+
+interface Worker {
+	work()
+}
+
+struct Wrong {}
+
+fn (mut wrong Wrong) work() {}
+
+fn main() {
+	_ := Worker(Wrong{})
+}
+',
+		'module main
+
+interface Worker {
+mut:
+	work()
+}
+
+struct Wrong {}
+
+fn (wrong Wrong) work() {}
+
+fn main() {
+	_ := Worker(Wrong{})
+}
+',
+	] {
+		mut message := ''
+		_ := generate(source, 'invalid_interface_receiver_mutability.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('incompatible signature for interface `Worker` method `work`'), message
+	}
+
+	mut immutable_message := ''
+	_ := generate('module main
+
+interface Worker {
+mut:
+	work()
+}
+
+struct Good {}
+
+fn (mut good Good) work() {}
+
+fn main() {
+	worker := Worker(Good{})
+	worker.work()
+}
+',
+		'immutable_mutable_interface_receiver.v', prefs) or {
+		immutable_message = err.msg()
+		''
+	}
+	assert immutable_message.contains('mutating method `work` receiver `worker` is immutable'), immutable_message
+
+	c_source := generate('module main
+
+interface Worker {
+mut:
+	work()
+}
+
+struct Good {}
+
+fn (mut good Good) work() {}
+
+fn main() {
+	mut worker := Worker(Good{})
+	worker.work()
+}
+',
+		'mutable_interface_receiver.v', prefs) or { panic(err) }
+	assert c_source.contains('void Worker_work(Worker value)'), c_source
+	assert c_source.contains('Worker_work(worker);'), c_source
+}
+
+fn test_interface_cast_validates_required_fields() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	mut missing_message := ''
+	_ := generate('module main
+
+interface Named {
+	name string
+}
+
+struct Empty {}
+
+fn main() {
+	_ := Named(Empty{})
+}
+',
+		'interface_missing_field.v', prefs) or {
+		missing_message = err.msg()
+		''
+	}
+	assert missing_message.contains('does not implement interface `Named` field `name`'), missing_message
+
+	mut type_message := ''
+	_ := generate('module main
+
+interface Named {
+	name string
+}
+
+struct Wrong {
+	name bool
+}
+
+fn main() {
+	_ := Named(Wrong{})
+}
+',
+		'interface_wrong_field_type.v', prefs) or {
+		type_message = err.msg()
+		''
+	}
+	assert type_message.contains('incompatible field `name` for interface `Named`: expected `string`, got `bool`'), type_message
+
+	mut mutability_message := ''
+	_ := generate('module main
+
+interface Named {
+mut:
+	name string
+}
+
+struct Wrong {
+	name string
+}
+
+fn main() {
+	_ := Named(Wrong{})
+}
+',
+		'interface_immutable_field.v', prefs) or {
+		mutability_message = err.msg()
+		''
+	}
+	assert mutability_message.contains('field `name` must be mutable'), mutability_message
+
+	c_source := generate('module main
+
+interface Named {
+	name string
+mut:
+	count int
+}
+
+struct Good {
+	name string
+mut:
+	count int
+}
+
+fn main() {
+	_ := Named(Good{})
+}
+',
+		'valid_interface_fields.v', prefs) or { panic(err) }
+	assert c_source.contains('struct Named { void *_object; u32 _typ; void *_methods; };'), c_source
 }
 
 fn test_disabled_function_attributes_emit_empty_stubs() {
