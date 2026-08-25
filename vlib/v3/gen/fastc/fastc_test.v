@@ -3144,6 +3144,72 @@ fn main() {
 	assert run_result.output.trim_space() == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
 }
 
+fn test_struct_equality_is_lowered_field_by_field() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+struct Inner {
+	value int
+}
+
+struct Pair {
+	inner Inner
+	label string
+}
+
+fn equal(left Pair, right Pair) bool {
+	return left == right
+}
+
+fn different(left Pair, right Pair) bool {
+	return left != right
+}
+
+fn parenthesized(left Pair, right Pair) bool {
+	return !(left == right)
+}
+',
+		'struct_equality.v', prefs) or { panic(err) }
+	assert c_source.contains('Pair __v_fastc_eq_left = (left);'), c_source
+	assert c_source.contains('Pair __v_fastc_eq_right = (right);'), c_source
+	assert c_source.contains('((__v_fastc_eq_left).inner).value'), c_source
+	assert c_source.contains('builtin__string_eq((__v_fastc_eq_left).label, (__v_fastc_eq_right).label)'), c_source
+	assert c_source.contains('!('), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_struct_equality_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+}
+
+fn test_struct_equality_with_unsupported_fields_is_rejected() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate('module main
+
+struct Values {
+	items []int
+}
+
+fn equal(left Values, right Values) bool {
+	return left == right
+}
+',
+		'struct_array_equality.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('struct equality for `Values` with unsupported fields'), message
+}
+
 fn test_literal_membership_evaluates_subject_once() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -3161,6 +3227,36 @@ fn main() {
 			'membership_subject_once.v', prefs) or { panic(err) }
 		assert c_source.contains('__v_fastc_membership_item = (next());'), c_source
 		assert c_source.count('next()') == 1, c_source
+	}
+}
+
+fn test_array_membership_evaluates_candidate_before_collection() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for operator in ['in', '!in'] {
+		c_source := generate('module main
+
+fn candidate() int {
+	return 1
+}
+
+fn collection() []int {
+	return [1, 2]
+}
+
+fn main() {
+	if candidate() ${operator} collection() {}
+}
+',
+			'array_membership_order.v', prefs) or { panic(err) }
+		candidate_index := c_source.index('__v_fastc_membership_item = (candidate());') or { -1 }
+		collection_index := c_source.index('__v_fastc_membership_collection = (collection());') or {
+			-1
+		}
+		assert candidate_index >= 0, c_source
+		assert collection_index > candidate_index, c_source
+		assert c_source.count('candidate()') == 1, c_source
+		assert c_source.count('__v_fastc_membership_collection = (collection());') == 1, c_source
 	}
 }
 

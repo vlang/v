@@ -9041,6 +9041,9 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			}
 		}
 	}
+	if struct_comparison := g.render_struct_comparison_expression(tokens) {
+		return struct_comparison
+	}
 	if integer_comparison := g.render_mixed_integer_comparison_expression(tokens) {
 		return integer_comparison
 	}
@@ -9198,7 +9201,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 						'(__v_fastc_membership_item == ((${element_type} *)__v_fastc_membership_collection${access}data)[__v_fastc_membership_index])'
 					}
 					return FastcRenderedExpression{
-						source: '({ __typeof__((${collection})) __v_fastc_membership_collection = (${collection}); ${element_type} __v_fastc_membership_item = (${candidate}); bool __v_fastc_membership_found = false; for (int __v_fastc_membership_index = 0; __v_fastc_membership_index < __v_fastc_membership_collection${access}len; __v_fastc_membership_index++) { if (${comparison}) { __v_fastc_membership_found = true; break; } } ${if item.tok == .not_in {
+						source: '({ ${element_type} __v_fastc_membership_item = (${candidate}); __typeof__((${collection})) __v_fastc_membership_collection = (${collection}); bool __v_fastc_membership_found = false; for (int __v_fastc_membership_index = 0; __v_fastc_membership_index < __v_fastc_membership_collection${access}len; __v_fastc_membership_index++) { if (${comparison}) { __v_fastc_membership_found = true; break; } } ${if item.tok == .not_in {
 							'!__v_fastc_membership_found'
 						} else {
 							'__v_fastc_membership_found'
@@ -10473,6 +10476,179 @@ fn (g &Parser) render_logical_expression(tokens []FastcExpressionToken) ?FastcRe
 			right := g.render_call_argument_expression(tokens[i + 1..], 'bool') or { return none }
 			return FastcRenderedExpression{
 				source: '((${left})${if item.tok == .and { '&&' } else { '||' }}(${right}))'
+				typ:    'bool'
+			}
+		}
+	}
+	return none
+}
+
+fn (g &Parser) struct_equality_is_supported(typ string, seen []string) bool {
+	if fastc_is_pointer_type(typ) {
+		return true
+	}
+	layout_type := g.underlying_alias_type(typ).trim_right('*')
+	if layout_type == 'string' || layout_type == 'bool'
+		|| fastc_is_numeric_expression_type(layout_type) {
+		return true
+	}
+	if element_type := fastc_fixed_array_element_type(layout_type) {
+		length_source := fastc_fixed_array_length(layout_type) or { return false }
+		_ = g.fixed_array_length_value(length_source) or { return false }
+		return g.struct_equality_is_supported(element_type, seen)
+	}
+	if layout_type in ['Option', 'array', 'map'] || layout_type.starts_with('Array_')
+		|| layout_type.starts_with('Map_') {
+		return false
+	}
+	type_key := g.semantic_type_key(layout_type)
+	if type_key in g.declared_kinds && g.declared_kinds[type_key] == .enum_ {
+		return true
+	}
+	if type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_
+		|| layout_type !in g.struct_field_info {
+		return false
+	}
+	if layout_type in seen {
+		return true
+	}
+	mut nested_seen := seen.clone()
+	nested_seen << layout_type
+	for field in g.struct_field_info[layout_type] {
+		if !g.struct_equality_is_supported(field.typ, nested_seen) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (g &Parser) struct_equality_source(left string, right string, typ string, seen []string) string {
+	if fastc_is_pointer_type(typ) {
+		return '((${left}) == (${right}))'
+	}
+	layout_type := g.underlying_alias_type(typ).trim_right('*')
+	if layout_type == 'string' {
+		return 'builtin__string_eq(${left}, ${right})'
+	}
+	if layout_type == 'bool' || fastc_is_numeric_expression_type(layout_type) {
+		return '((${left}) == (${right}))'
+	}
+	if element_type := fastc_fixed_array_element_type(layout_type) {
+		length_source := fastc_fixed_array_length(layout_type) or { return 'false' }
+		length := g.fixed_array_length_value(length_source) or { return 'false' }
+		mut comparisons := []string{cap: length}
+		for index in 0 .. length {
+			comparisons << g.struct_equality_source('(${left})[${index}]', '(${right})[${index}]',
+				element_type, seen)
+		}
+		return if comparisons.len == 0 { 'true' } else { '(${comparisons.join(' && ')})' }
+	}
+	type_key := g.semantic_type_key(layout_type)
+	if type_key in g.declared_kinds && g.declared_kinds[type_key] == .enum_ {
+		return '((${left}) == (${right}))'
+	}
+	if type_key !in g.declared_kinds || g.declared_kinds[type_key] != .struct_
+		|| layout_type in seen {
+		return '((${left}) == (${right}))'
+	}
+	mut nested_seen := seen.clone()
+	nested_seen << layout_type
+	mut comparisons := []string{}
+	for field in g.struct_field_info[layout_type] {
+		field_name := fastc_c_identifier(field.name)
+		comparisons << g.struct_equality_source('(${left}).${field_name}',
+			'(${right}).${field_name}', field.typ, nested_seen)
+	}
+	return if comparisons.len == 0 { 'true' } else { '(${comparisons.join(' && ')})' }
+}
+
+fn (g &Parser) render_struct_comparison_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if tokens.len >= 3 && tokens[0].tok == .lpar && tokens.last().tok == .rpar {
+		close := fastc_matching_rpar(tokens, 0) or { -1 }
+		if close == tokens.len - 1 {
+			inner := g.render_struct_comparison_expression(tokens[1..tokens.len - 1]) or {
+				return none
+			}
+			return FastcRenderedExpression{
+				source: '((${inner.source}))'
+				typ:    'bool'
+			}
+		}
+	}
+	if tokens.len > 1 && tokens[0].tok == .not {
+		inner := g.render_struct_comparison_expression(tokens[1..]) or { return none }
+		return FastcRenderedExpression{
+			source: '!(${inner.source})'
+			typ:    'bool'
+		}
+	}
+	mut depth := 0
+	for i, item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if item.tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && item.tok in [.and, .logical_or] && i > 0 && i + 1 < tokens.len {
+			left_tokens := tokens[..i]
+			right_tokens := tokens[i + 1..]
+			mut left_comparison := FastcRenderedExpression{}
+			if comparison := g.render_struct_comparison_expression(left_tokens) {
+				left_comparison = comparison
+			}
+			mut right_comparison := FastcRenderedExpression{}
+			if comparison := g.render_struct_comparison_expression(right_tokens) {
+				right_comparison = comparison
+			}
+			if left_comparison.source == '' && right_comparison.source == '' {
+				continue
+			}
+			left := if left_comparison.source != '' {
+				left_comparison.source
+			} else {
+				g.render_call_argument_expression(left_tokens, 'bool') or { return none }
+			}
+			right := if right_comparison.source != '' {
+				right_comparison.source
+			} else {
+				g.render_call_argument_expression(right_tokens, 'bool') or { return none }
+			}
+			return FastcRenderedExpression{
+				source: '((${left}) ${if item.tok == .and { '&&' } else { '||' }} (${right}))'
+				typ:    'bool'
+			}
+		}
+	}
+	depth = 0
+	for i, item in tokens {
+		if item.tok in [.lpar, .lsbr, .lcbr] {
+			depth++
+		} else if item.tok in [.rpar, .rsbr, .rcbr] {
+			depth--
+		} else if depth == 0 && item.tok in [.eq, .ne] && i > 0 && i + 1 < tokens.len {
+			left_tokens := tokens[..i]
+			right_tokens := tokens[i + 1..]
+			left_inferred_type := g.infer_expression_type(left_tokens) or { return none }
+			right_inferred_type := g.infer_expression_type(right_tokens) or { return none }
+			left_type := fastc_normalize_inferred_type(left_inferred_type)
+			right_type := fastc_normalize_inferred_type(right_inferred_type)
+			if fastc_is_pointer_type(left_type) || fastc_is_pointer_type(right_type) {
+				return none
+			}
+			left_layout := g.underlying_alias_type(left_type).trim_right('*')
+			right_layout := g.underlying_alias_type(right_type).trim_right('*')
+			left_key := g.semantic_type_key(left_layout)
+			if left_layout != right_layout || left_key !in g.declared_kinds
+				|| g.declared_kinds[left_key] != .struct_
+				|| !g.struct_equality_is_supported(left_type, []string{}) {
+				return none
+			}
+			left := g.render_comparison_operand(left_tokens, left_type) or { return none }
+			right := g.render_comparison_operand(right_tokens, right_type) or { return none }
+			equality := g.struct_equality_source('__v_fastc_eq_left', '__v_fastc_eq_right',
+				left_type, []string{})
+			result := if item.tok == .ne { '!(${equality})' } else { equality }
+			return FastcRenderedExpression{
+				source: '({ ${left_type} __v_fastc_eq_left = (${left}); ${right_type} __v_fastc_eq_right = (${right}); ${result}; })'
 				typ:    'bool'
 			}
 		}
@@ -13416,6 +13592,16 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 		} else if g.declared_kinds[g.semantic_type_key(right_type)] == .enum_ && left_type == ''
 			&& fastc_expression_is_enum_shorthand(left_tokens) {
 			left_type = right_type
+		}
+		if !fastc_is_pointer_type(left_type) && !fastc_is_pointer_type(right_type) {
+			left_layout := g.underlying_alias_type(left_type).trim_right('*')
+			right_layout := g.underlying_alias_type(right_type).trim_right('*')
+			left_key := g.semantic_type_key(left_layout)
+			if left_layout == right_layout && left_layout !in ['Option', '_option', '_result']
+				&& left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
+				&& !g.struct_equality_is_supported(left_type, []string{}) {
+				return g.unsupported('struct equality for `${left_type}` with unsupported fields')
+			}
 		}
 	}
 	if g.selfhost && operator in [.eq, .ne]
