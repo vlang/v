@@ -126,6 +126,12 @@ type Str = string
 fn main() {
 	value := Str('' + '1')
 	println('a' + 'b')
+	mut combined := 'a'
+	combined += 'b'
+	println(combined)
+	mut alias_combined := Str('x')
+	alias_combined += Str('y')
+	println(alias_combined)
 	result := match value {
 		Str('1') { 'expression' }
 		else { 'bad' }
@@ -138,7 +144,9 @@ fn main() {
 }
 ",
 		'ordinary_string_concatenation.v', prefs) or { panic(err) }
-	assert c_source.count('builtin__string_plus_many(2, (string[]){') >= 2, c_source
+	assert c_source.count('builtin__string_plus_many(2, (string[]){') >= 4, c_source
+	assert c_source.contains('combined=builtin__string_plus_many(2, (string[]){combined,"b"});'), c_source
+	assert c_source.contains('alias_combined=builtin__string_plus_many(2, (string[]){alias_combined,((Str)("y"))});'), c_source
 	assert c_source.count('builtin__string_eq(__v_fastc_match_') >= 2, c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_string_concat_${os.getpid()}')
@@ -155,7 +163,21 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == 'ab\nexpression\nmatched\n'
+	assert run_result.output == 'ab\nab\nxy\nexpression\nmatched\n'
+
+	mut selfhost_prefs := pref.new_preferences()
+	selfhost_prefs.building_v = true
+	selfhost_c := generate("module main
+
+type Str = string
+
+fn main() {
+	mut value := Str('a')
+	value += Str('b')
+}
+",
+		'selfhost_string_alias_compound_assignment.v', selfhost_prefs) or { panic(err) }
+	assert selfhost_c.contains('value=builtin__string_plus(value,((Str)(_S("b"))));'), selfhost_c
 }
 
 fn test_c_directives_preserve_order_and_resolve_source_paths() {
@@ -3112,6 +3134,32 @@ fn main() {
 	assert c_source.contains('if (flag) {')
 	assert c_source.contains('while (ready()) {')
 	assert c_source.contains('; ready(); i++) {')
+
+	alias_c_source := generate('module main
+
+type BOOL = bool
+
+fn enabled() BOOL {
+	return true
+}
+
+fn main() {
+	flag := BOOL(true)
+	if flag {
+		println(1)
+	}
+	for enabled() {
+		break
+	}
+	for i := 0; BOOL(i < 1); i++ {
+		break
+	}
+}
+',
+		'boolean_alias_conditions.v', prefs) or { panic(err) }
+	assert alias_c_source.contains('if (flag) {'), alias_c_source
+	assert alias_c_source.contains('while (enabled()) {'), alias_c_source
+	assert alias_c_source.contains('; ((BOOL)(i<1)); i++) {'), alias_c_source
 }
 
 fn test_comparison_and_logical_operands_are_validated() {

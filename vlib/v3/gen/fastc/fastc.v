@@ -6484,7 +6484,9 @@ fn (mut g Parser) parse_return() !bool {
 		return g.unsupported('unverifiable return expression type')
 	}
 	zero_pointer := g.selfhost && expression == '0' && fastc_is_pointer_type(g.return_type)
-	if !zero_pointer && !fastc_call_types_are_compatible(actual_type, g.return_type) && !(g.selfhost
+	alias_compatible := g.underlying_alias_type(actual_type) == g.underlying_alias_type(g.return_type)
+	if !zero_pointer && !alias_compatible
+		&& !fastc_call_types_are_compatible(actual_type, g.return_type) && !(g.selfhost
 		&& g.selfhost_types_are_compatible(actual_type, g.return_type)) {
 		return g.unsupported('return expression of type `${actual_type}` in function returning `${g.return_type}`')
 	}
@@ -6522,7 +6524,7 @@ fn (g &Parser) require_boolean_condition(kind string) ! {
 		}
 		return g.unsupported('unverifiable ${kind} condition type')
 	}
-	if g.last_expression_type != 'bool' {
+	if g.underlying_alias_type(g.last_expression_type) != 'bool' {
 		return g.unsupported('${kind} condition of type `${g.last_expression_type}` instead of `bool`')
 	}
 }
@@ -6672,10 +6674,17 @@ fn (mut g Parser) parse_simple_statement() ! {
 			pointer_arithmetic := g.selfhost && operator in [.plus_assign, .minus_assign]
 				&& fastc_is_pointer_type(resolved_expected_type)
 				&& fastc_is_integer_expression_type(actual_type)
-			if g.selfhost && operator == .plus_assign && resolved_expected_type == 'string'
-				&& actual_type == 'string' {
+			expected_layout_type := g.underlying_alias_type(resolved_expected_type)
+			actual_layout_type := g.underlying_alias_type(actual_type)
+			if operator == .plus_assign && expected_layout_type == 'string'
+				&& actual_layout_type == 'string' {
 				g.consume_statement_end()
-				g.write_line('${c_target}=builtin__string_plus(${c_target},${value});')
+				concatenation := if g.selfhost {
+					'builtin__string_plus(${c_target},${value})'
+				} else {
+					'builtin__string_plus_many(2, (string[]){${c_target},${value}})'
+				}
+				g.write_line('${c_target}=${concatenation};')
 				return
 			}
 			if !pointer_arithmetic
@@ -10367,7 +10376,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 		return none
 	}
 	operator := tokens[assignment_index].tok
-	source := if operator == .plus_assign && left_type == 'string' {
+	source := if operator == .plus_assign && g.underlying_alias_type(left_type) == 'string' {
 		'${left}=builtin__string_plus(${left},${right})'
 	} else if operator == .right_shift_unsigned_assign {
 		g.render_unsigned_right_shift_assignment(left, right, left_type) or { return none }
