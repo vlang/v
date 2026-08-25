@@ -167,11 +167,13 @@ fn test_c_directive_conditional_scopes_include_generated_code() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main
 
-#if 0
-fn C.fastc_missing_optional() int
+struct Holder {
+	value int
+}
 
-fn optional() int {
-	return C.fastc_missing_optional()
+#if 1
+fn optional(value Holder) int {
+	return value.value
 }
 #endif
 
@@ -180,10 +182,12 @@ fn main() {
 }
 ',
 		'conditional_scope.c.v', prefs) or { panic(err) }
-	if_index := c_source.index('#if 0') or { -1 }
-	definition_index := c_source.index('int optional(void) {') or { -1 }
+	type_index := c_source.index('struct Holder {') or { -1 }
+	if_index := c_source.index('#if 1') or { -1 }
+	definition_index := c_source.index('int optional(Holder value) {') or { -1 }
 	endif_index := c_source.index_after('#endif', definition_index) or { -1 }
-	assert if_index >= 0
+	assert type_index >= 0
+	assert if_index > type_index
 	assert definition_index > if_index
 	assert endif_index > definition_index
 

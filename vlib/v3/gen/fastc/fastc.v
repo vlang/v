@@ -632,8 +632,9 @@ struct FastcQueuedSource {
 }
 
 struct FastcHoistedCSource {
-	directives string
-	body       string
+	directives       string
+	conditional_code string
+	body             string
 }
 
 // GenerationResult contains generated C and the complete resolved V source graph.
@@ -996,6 +997,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		result.writeln('')
 	}
 	result.write_string(synthesized_main)
+	result.write_string(hoisted_body.conditional_code)
 	result.write_string(hoisted_body.body)
 	return result.str()
 }
@@ -1127,19 +1129,20 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 
 fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 	mut directives := strings.new_builder(256)
+	mut conditional_code := strings.new_builder(256)
 	mut body := strings.new_builder(source.len)
 	mut conditional_depth := 0
 	for line in source.split('\n') {
 		directive_name := fastc_c_directive_name(line)
 		if conditional_depth > 0 {
-			directives.writeln(line)
+			conditional_code.writeln(line)
 			if directive_name in ['if', 'ifdef', 'ifndef'] {
 				conditional_depth++
 			} else if directive_name == 'endif' {
 				conditional_depth--
 			}
 		} else if directive_name in ['if', 'ifdef', 'ifndef'] {
-			directives.writeln(line)
+			conditional_code.writeln(line)
 			conditional_depth = 1
 		} else if directive_name != '' {
 			directives.writeln(line)
@@ -1150,9 +1153,13 @@ fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 	if directives.len > 0 {
 		directives.writeln('')
 	}
+	if conditional_code.len > 0 {
+		conditional_code.writeln('')
+	}
 	return FastcHoistedCSource{
-		directives: directives.str()
-		body:       body.str()
+		directives:       directives.str()
+		conditional_code: conditional_code.str()
+		body:             body.str()
 	}
 }
 
