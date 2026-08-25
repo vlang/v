@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      VFLAGS: -cc tcc
+      VFLAGS: -old-compiler -cc tcc
       DISPLAY: :99
       LIBGL_ALWAYS_SOFTWARE: true
       VTMP: /tmp

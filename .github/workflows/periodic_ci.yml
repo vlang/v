@@ -42,5 +42,13 @@ jobs:
       - name: Build V (Windows)
         if: runner.os == 'Windows'
         run: ./makev.bat -msvc && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v doctor
+      - name: Install OpenSSL (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install openssl -y --no-progress
+          $opensslBin = 'C:\Program Files\OpenSSL\bin'
+          $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+          Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
+          Copy-Item -Path (Join-Path $libDir 'libcrypto.lib') -Destination (Join-Path $libDir 'crypto.lib') -Force
       - name: Test
         run: ./v -d network -silent test-self vlib/net
