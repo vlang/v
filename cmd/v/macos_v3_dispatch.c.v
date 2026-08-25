@@ -218,6 +218,10 @@ fn is_macos_v3_v1_compiler_source(normalized_path string) bool {
 	if relative == 'v3' || relative.starts_with('v3/') {
 		return false
 	}
+	// C-output fixtures with this suffix explicitly verify the default V3 backend.
+	if relative.starts_with('gen/c/testdata/') && relative.ends_with('_v3.v') {
+		return false
+	}
 	// The established compiler's implementation modules still require V1 to compile.
 	// Keep the language-level regression suites on V3: their files are ordinary user
 	// programs even though they live below the compiler tree.

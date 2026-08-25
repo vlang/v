@@ -38,6 +38,7 @@ fn test_macos_v3_keeps_established_compiler_sources_on_v1() {
 		})
 	}
 	for path in ['vlib/v/tests/array_test.v', '/workspace/v/vlib/v/slow_tests/example_test.v',
+		'vlib/v/gen/c/testdata/backend_independent_struct_layout_v3.v',
 		'vlib/v3/tests/driver_cli_test.v', 'examples/hello_world.v'] {
 		assert !is_macos_v3_v1_compiler_source(path)
 		assert is_macos_v3_relevant_command(path, &pref.Preferences{
