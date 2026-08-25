@@ -2,6 +2,7 @@ module fastc
 
 import os
 import strings
+import v3.gen.c.naming
 import v3.pref
 import v3.scanner
 import v3.token
@@ -4561,12 +4562,11 @@ fn fastc_c_global_name(key string) string {
 }
 
 fn fastc_c_function_name(module_name string, name string) string {
-	full_name := if module_name in ['', 'main'] {
+	return naming.c_name(if module_name in ['', 'main'] {
 		name
 	} else {
-		'${module_name.replace('.', '__')}__${name}'
-	}
-	return fastc_c_identifier(full_name)
+		'${module_name}.${name}'
+	})
 }
 
 fn (g &Parser) unqualified_function_key(name string) string {
@@ -4582,10 +4582,7 @@ fn (g &Parser) unqualified_function_key(name string) string {
 }
 
 fn fastc_c_function_name_for_key(key string) string {
-	if !key.contains('.') {
-		return fastc_c_identifier(key)
-	}
-	return fastc_c_identifier('${key.all_before_last('.').replace('.', '__')}__${key.all_after_last('.')}')
+	return naming.c_name(key)
 }
 
 fn fastc_disabled_call_expression(return_type string) string {

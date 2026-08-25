@@ -3387,6 +3387,56 @@ fn main() {
 	assert c_source.contains(' v_auto = (result);'), c_source
 }
 
+fn test_main_module_libc_function_collisions_are_mangled() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+fn strlen() int {
+	return 42
+}
+
+fn printf() int {
+	return strlen()
+}
+
+fn open() int {
+	return printf()
+}
+
+fn close() int {
+	return open()
+}
+
+fn main() {
+	println(close())
+}
+',
+		'libc_function_collisions.v', prefs) or { panic(err) }
+	for name in ['strlen', 'printf', 'open', 'close'] {
+		assert c_source.contains('int v_${name}(void)'), c_source
+	}
+	assert c_source.contains('return v_strlen();'), c_source
+	assert c_source.contains('return v_printf();'), c_source
+	assert c_source.contains('return v_open();'), c_source
+	assert c_source.contains('println(v_close());'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_libc_names_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '42\n'
+}
+
 fn test_return_expression_type_is_validated() {
 	prefs := pref.new_preferences()
 	for source in [
