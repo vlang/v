@@ -2387,6 +2387,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			p.next() // skip (
 			mut params := []flat.NodeId{}
 			for p.tok != .rpar && p.tok != .eof {
+				param_start_offset := p.s.offset
 				mut param_is_mut := false
 				mut param_name := ''
 				mut param_pos := token.Pos{}
@@ -2395,19 +2396,23 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					p.next()
 				}
 				// Interface method params may be named (e.g. `seed_data []u32`,
-				// `node &ast.Node`) or type-only (`[]u32`). When the current token
-				// is a plain identifier and the next token starts a type, that
-				// identifier is the param name; consume it first so the array/pointer
-				// prefix of the real type is not mis-parsed onto the name
-				// (e.g. `seed_data[]`). `map`/`chan` are type heads, not names.
-				if p.tok == .name && p.lit != 'map' && p.lit != 'chan' {
-					nt := p.peek()
-					if nt == .name || nt == .amp || nt == .question || nt == .not
-						|| nt == .key_fn || nt == .ellipsis
-						|| (nt == .lsbr && p.peek_lbr_starts_array_type()) {
-						param_name = p.lit
+				// `module string`, `struct Foo`) or type-only (`[]u32`, `struct {}`).
+				// A token is a type head only when the following token can continue that
+				// specific syntax; otherwise it remains available as a declaration name,
+				// matching ordinary parameter parsing.
+				nt := p.peek()
+				current_starts_type := interface_param_token_continues_type(p.tok, p.lit, nt)
+				can_be_param_name := p.tok_can_be_decl_name() && !current_starts_type
+				if can_be_param_name {
+					next_starts_type := if nt == .lsbr {
+						p.peek_lbr_starts_array_type()
+					} else {
+						token_can_start_type_name(nt)
+							|| nt in [.and, .key_union, .key_nil, .key_none]
+					}
+					if next_starts_type {
 						param_pos = p.current_pos()
-						p.next()
+						param_name = p.expect_name_or_keyword()
 					}
 				}
 				mut ptype := p.parse_type_name()
@@ -2426,6 +2431,9 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					pos:    param_pos
 				})
 				if p.tok == .comma {
+					p.next()
+				}
+				if p.s.offset == param_start_offset && p.tok != .rpar && p.tok != .eof {
 					p.next()
 				}
 			}
@@ -11741,6 +11749,36 @@ fn token_can_start_type_name(tok token.Token) bool {
 	return tok == .name || tok == .amp || tok == .question || tok == .not || tok == .lsbr
 		|| tok == .lpar || tok == .key_fn || tok == .key_struct || tok == .ellipsis
 		|| tok == .key_mut || tok == .key_shared || tok == .key_atomic || tok == .key_typeof
+}
+
+fn interface_param_token_continues_type(tok token.Token, lit string, next token.Token) bool {
+	match tok {
+		.key_fn {
+			return next == .lpar
+		}
+		.key_typeof {
+			return next in [.lpar, .lsbr]
+		}
+		.key_struct, .key_union {
+			return next == .lcbr
+		}
+		.key_atomic, .key_shared {
+			return token_can_start_type_name(next) || next == .key_union
+		}
+		.name {
+			if lit == 'map' {
+				return next == .lsbr
+			}
+			if lit == 'chan' {
+				return next in [.name, .amp, .lsbr, .question, .not, .key_mut]
+			}
+			if lit == 'thread' {
+				return next in [.name, .amp, .lsbr, .lpar, .question, .not, .key_fn]
+			}
+		}
+		else {}
+	}
+	return false
 }
 
 // fn_type_param_with_mut supports fn type param with mut handling for parser.
