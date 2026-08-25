@@ -2997,12 +2997,12 @@ fn fastc_emit_enum_print_function(c_name string, name string, fields []string, i
 		out.writeln('\tfputc(125, stdout);')
 	} else {
 		if fields.len == 0 {
-			out.writeln('\tprintf("%d", (int)value);')
+			out.writeln('\tfputs("unknown enum value", stdout);')
 		} else {
 			for i, field in fields {
 				out.writeln('\t${if i == 0 { 'if' } else { 'else if' }} (value == ${c_name}__${field}) fputs("${field}", stdout);')
 			}
-			out.writeln('\telse printf("%d", (int)value);')
+			out.writeln('\telse fputs("unknown enum value", stdout);')
 		}
 	}
 	out.writeln('\tif (newline) fputc(10, stdout);')
@@ -11018,22 +11018,32 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		} else {
 			g.render_membership_candidate(tokens[open + 1..range_index], 'int') or { return none }
 		}
+		omitted_end := range_index + 1 == close
+		needs_receiver_temporary := omitted_end && base_tokens.len > 1
+		receiver_name := '__v_fastc_slice_receiver'
+		receiver_source := if needs_receiver_temporary { receiver_name } else { base_source }
 		access := if base_type.ends_with('*') { '->' } else { '.' }
-		end := if range_index + 1 == close {
-			'${base_source}${access}len'
+		end := if omitted_end {
+			'${receiver_source}${access}len'
 		} else {
 			g.render_membership_candidate(tokens[range_index + 1..close], 'int') or { return none }
 		}
-		if base_type == 'string' {
-			return FastcRenderedExpression{
-				source: 'builtin__string_substr(${if base_type.ends_with('*') { '*' } else { '' }}(${base_source}), ${start}, ${end})'
-				typ:    'string'
+		mut slice_source := if base_type == 'string' {
+			'builtin__string_substr(${if base_type.ends_with('*') { '*' } else { '' }}(${receiver_source}), ${start}, ${end})'
+		} else {
+			array_value := if base_type.ends_with('*') {
+				'*(${receiver_source})'
+			} else {
+				receiver_source
 			}
+			'builtin__array_slice(${array_value}, ${start}, ${end})'
 		}
-		array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
+		if needs_receiver_temporary {
+			slice_source = '({ __typeof__((${base_source})) ${receiver_name} = (${base_source}); ${slice_source}; })'
+		}
 		return FastcRenderedExpression{
-			source: 'builtin__array_slice(${array_value}, ${start}, ${end})'
-			typ:    base_type.trim_right('*')
+			source: slice_source
+			typ:    if base_type == 'string' { 'string' } else { base_type.trim_right('*') }
 		}
 	}
 	is_array_pointer := base_type.ends_with('*') && g.array_element_type(base_type) != none

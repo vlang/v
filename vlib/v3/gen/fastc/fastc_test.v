@@ -2244,6 +2244,42 @@ fn main() {
 	assert interpolation_source.contains('v_fastc_enum_str_Permissions(permissions)'), interpolation_source
 }
 
+fn test_invalid_enum_printing_matches_interpolation() {
+	prefs := pref.new_preferences()
+	c_source := generate(r"module main
+
+enum Color {
+	red
+	green
+}
+
+fn main() {
+	value := unsafe { Color(99) }
+	println(value)
+	println('${value}')
+}
+",
+		'invalid_enum_print.v', prefs) or { panic(err) }
+	assert c_source.contains('else fputs("unknown enum value", stdout);'), c_source
+	assert c_source.contains('return _S("unknown enum value");'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_invalid_enum_print_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == 'unknown enum value\nunknown enum value\n'
+}
+
 fn test_enum_alias_member_access_uses_underlying_enum_symbols() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main
@@ -3379,18 +3415,40 @@ fn test_selfhost_array_slices_use_the_runtime_helper() {
 	prefs.building_v = true
 	c_source := generate('module main
 
+fn make_values() []int {
+	return []int{}
+}
+
+fn make_text() string {
+	return "abc"
+}
+
 fn middle(values []int, start int, end int) []int {
 	return values[start..end]
+}
+
+fn values_tail() []int {
+	return make_values()[1..]
+}
+
+fn text_tail() string {
+	return make_text()[1..]
 }
 
 fn main() {
 	values := []int{}
 	result := middle(values, 0, 0)
 	println(result.len)
+	values_tail()
+	text_tail()
 }
 ',
 		'array_slice.v', prefs) or { panic(err) }
 	assert c_source.contains('return builtin__array_slice(values, start, end);'), c_source
+	assert c_source.contains('__typeof__((make_values())) __v_fastc_slice_receiver = (make_values()); builtin__array_slice(__v_fastc_slice_receiver, 1, __v_fastc_slice_receiver.len);'), c_source
+	assert c_source.contains('__typeof__((make_text())) __v_fastc_slice_receiver = (make_text()); builtin__string_substr((__v_fastc_slice_receiver), 1, __v_fastc_slice_receiver.len);'), c_source
+	assert !c_source.contains('make_values().len'), c_source
+	assert !c_source.contains('make_text().len'), c_source
 	assert !c_source.contains('__v_slice.flags |= ArrayFlags__is_slice'), c_source
 }
 
