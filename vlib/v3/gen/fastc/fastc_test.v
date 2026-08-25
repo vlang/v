@@ -2896,6 +2896,38 @@ fn main() {
 	assert c_source.contains('show(flag);')
 }
 
+fn test_selfhost_under_arity_calls_require_params_structs() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for source in [
+		'module main\nfn f(x int) {}\nfn main() { f() }\n',
+		'module main\n@[params]\nstruct Config {}\nfn f(x int, y int, config Config) {}\nfn main() { f(1) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'invalid_under_arity_call.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('function `f` call with'), message
+	}
+
+	c_source := generate('module main
+
+@[params]
+struct Config {
+	value int
+}
+
+fn with_config(value int, config Config) {}
+
+fn main() {
+	with_config(1)
+}
+',
+		'valid_omitted_params_struct.v', prefs) or { panic(err) }
+	assert c_source.contains('with_config(1,(Config){0});'), c_source
+}
+
 fn test_variadic_call_argument_types_are_validated() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -4024,6 +4056,38 @@ fn main() {
 	assert c_source.count('builtin__map_values((map *)&__v_fastc_map_collection_') == 1, c_source
 	assert c_source.count('builtin__map_keys((map *)__v_fastc_map_collection_') == 1, c_source
 	assert c_source.count('builtin__map_values((map *)__v_fastc_map_collection_') == 1, c_source
+}
+
+fn test_map_pointer_sized_callbacks_follow_target_width() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.target = pref.target_from('linux', 'x86') or { panic(err) }
+	source := 'module main
+
+fn main() {
+	values := map[usize]int{}
+	pointers := map[voidptr]int{}
+	println(values.len)
+	println(pointers.len)
+}
+'
+	c32 := generate(source, 'map_usize_32.v', prefs) or { panic(err) }
+	for key_type in ['usize', 'voidptr'] {
+		assert c32.contains('sizeof(${key_type}), sizeof(int), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c32
+	}
+
+	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	c64 := generate(source, 'map_usize_64.v', prefs) or { panic(err) }
+	for key_type in ['usize', 'voidptr'] {
+		assert c64.contains('sizeof(${key_type}), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c64
+	}
+
+	hash_fn, eq_fn, clone_fn, _ := fastc_map_runtime_functions('int*', 32)
+	assert hash_fn == 'builtin__map_hash_int_4'
+	assert eq_fn == 'builtin__map_eq_int_4'
+	assert clone_fn == 'builtin__map_clone_int_4'
+	i64_hash_fn, _, _, _ := fastc_map_runtime_functions('i64', 32)
+	assert i64_hash_fn == 'builtin__map_hash_int_8'
 }
 
 fn test_array_pointer_iteration_preserves_element_references() {

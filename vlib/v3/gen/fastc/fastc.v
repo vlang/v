@@ -529,16 +529,17 @@ enum FastcDeclaredTypeKind {
 }
 
 struct FastcFunctionSignature {
-	parameter_types      []string
-	parameter_mutability []bool
-	return_type          string
-	return_types         []string
-	option_type          string
-	is_variadic          bool
-	is_public            bool
-	is_disabled          bool
-	module_name          string
-	path                 string
+	parameter_types          []string
+	parameter_mutability     []bool
+	return_type              string
+	return_types             []string
+	option_type              string
+	is_variadic              bool
+	last_parameter_is_params bool
+	is_public                bool
+	is_disabled              bool
+	module_name              string
+	path                     string
 }
 
 fn fastc_string_types_equal(left []string, right []string) bool {
@@ -680,6 +681,7 @@ struct FastcDeclarationAttribute {
 	tok        token.Token
 	is_enabled bool
 	is_flag    bool
+	is_params  bool
 	is_typedef bool
 }
 
@@ -799,6 +801,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	mut declared_types := map[string]bool{}
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
 	mut enum_flags := map[string]bool{}
+	mut params_structs := map[string]bool{}
 	mut struct_fields := map[string]map[string]string{}
 	mut struct_field_info := map[string][]FastcStructField{}
 	mut constants := map[string]string{}
@@ -808,7 +811,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	for source_file in sources {
 		collect_declared_types(source_file.source, source_file.path,
 			source_file.header.module_name, prefs, mut declared_types, mut declared_kinds, mut
-			enum_flags)!
+			enum_flags, mut params_structs)!
 	}
 	for source_file in sources {
 		collect_constant_names(source_file.source, source_file.path,
@@ -821,7 +824,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	mut interface_fields := map[string]FastcInterfaceField{}
 	for source_file in sources {
 		collect_function_signatures(source_file.source, source_file.path, source_file.header,
-			prefs, declared_types, mut functions)!
+			prefs, declared_types, params_structs, mut functions)!
 		collect_interface_method_signatures(source_file.source, source_file.path,
 			source_file.header, prefs, declared_types, mut functions, mut interface_methods, mut
 			interface_fields)!
@@ -1619,7 +1622,7 @@ fn fastc_register_selective_imports(import_path string, selected_names []string,
 	}
 }
 
-fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool) ! {
+fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
@@ -1628,6 +1631,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	mut brace_depth := 0
 	mut next_c_struct_is_typedef := false
 	mut next_enum_is_flag := false
+	mut next_struct_is_params := false
 	mut next_type_is_enabled := true
 	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
@@ -1638,7 +1642,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
 					collect_declared_types(selected.source, path, module_name, prefs, mut
-						declared_types, mut declared_kinds, mut enum_flags)!
+						declared_types, mut declared_kinds, mut enum_flags, mut params_structs)!
 				}
 				tok = selected.tok
 				previous_tok = .unknown
@@ -1650,12 +1654,14 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			tok = attribute.tok
 			next_c_struct_is_typedef = next_c_struct_is_typedef || attribute.is_typedef
 			next_enum_is_flag = next_enum_is_flag || attribute.is_flag
+			next_struct_is_params = next_struct_is_params || attribute.is_params
 			next_type_is_enabled = next_type_is_enabled && attribute.is_enabled
 			continue
 		}
 		if brace_depth == 0 && tok in [.key_fn, .key_const, .key_global] {
 			next_c_struct_is_typedef = false
 			next_enum_is_flag = false
+			next_struct_is_params = false
 			next_type_is_enabled = true
 		}
 		if brace_depth == 0
@@ -1679,6 +1685,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 					}
 					next_c_struct_is_typedef = false
 					next_enum_is_flag = false
+					next_struct_is_params = false
 					continue
 				}
 				key := fastc_type_key(module_name, name)
@@ -1690,9 +1697,13 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 				if kind == .enum_ && next_enum_is_flag {
 					enum_flags[key] = true
 				}
+				if kind == .struct_ && next_struct_is_params {
+					params_structs[fastc_c_declared_type_name(key)] = true
+				}
 			}
 			next_c_struct_is_typedef = false
 			next_enum_is_flag = false
+			next_struct_is_params = false
 			next_type_is_enabled = true
 			continue
 		}
@@ -2605,6 +2616,7 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 	mut tok := scan.scan()
 	mut depth := 1
 	mut is_flag := false
+	mut is_params := false
 	mut is_typedef := false
 	mut is_enabled := true
 	mut at_item_start := true
@@ -2623,6 +2635,9 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		}
 		if tok == .name && scan.lit == 'flag' {
 			is_flag = true
+		}
+		if at_item_start && tok == .name && scan.lit == 'params' {
+			is_params = true
 		}
 		if tok == .name && scan.lit == 'typedef' {
 			is_typedef = true
@@ -2643,6 +2658,7 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		tok:        tok
 		is_enabled: is_enabled
 		is_flag:    is_flag
+		is_params:  is_params
 		is_typedef: is_typedef
 	}
 }
@@ -3567,7 +3583,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 	return FastcComptimeBlock{}
 }
 
-fn fastc_collect_selected_comptime_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn fastc_collect_selected_comptime_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
@@ -3582,7 +3598,7 @@ fn fastc_collect_selected_comptime_function_signatures(source string, path strin
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
 					collect_function_signatures(selected.source, path, header, prefs,
-						declared_types, mut functions)!
+						declared_types, params_structs, mut functions)!
 				}
 				tok = selected.tok
 				continue
@@ -3597,7 +3613,11 @@ fn fastc_collect_selected_comptime_function_signatures(source string, path strin
 	}
 }
 
-fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[string]bool) bool {
+	return params_structs[parameter_type.trim_right('*')]
+}
+
+fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines(source)
@@ -3814,17 +3834,20 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			if tok != .lcbr && tok != .semicolon {
 				return error('fastc parser does not support function `${name}` body in ${path}')
 			}
+			fixed_parameter_count := parameter_types.len - if receiver_type == '' { 0 } else { 1 }
 			signature := FastcFunctionSignature{
-				parameter_types:      parameter_types
-				parameter_mutability: parameter_mutability
-				return_type:          return_type
-				return_types:         return_types
-				option_type:          option_type
-				is_variadic:          is_variadic
-				is_public:            is_public || is_c_function
-				is_disabled:          !next_declaration_is_enabled
-				module_name:          header.module_name
-				path:                 path
+				parameter_types:          parameter_types
+				parameter_mutability:     parameter_mutability
+				return_type:              return_type
+				return_types:             return_types
+				option_type:              option_type
+				is_variadic:              is_variadic
+				last_parameter_is_params: fixed_parameter_count > 0
+					&& fastc_parameter_is_params_struct(parameter_types.last(), params_structs)
+				is_public:                is_public || is_c_function
+				is_disabled:              !next_declaration_is_enabled
+				module_name:              header.module_name
+				path:                     path
 			}
 			if previous := functions[function_key] {
 				if !is_c_function {
@@ -3832,6 +3855,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 					if previous.path == path || !is_c_override
 						|| !fastc_string_types_equal(previous.parameter_types, signature.parameter_types)
 						|| !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability)
+						|| previous.last_parameter_is_params != signature.last_parameter_is_params
 						|| previous.return_type != signature.return_type {
 						return error('fastc parser does not support duplicate function `${name}` in ${path}')
 					}
@@ -3858,7 +3882,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		tok = scan.scan()
 	}
 	fastc_collect_selected_comptime_function_signatures(source, path, header, prefs,
-		declared_types, mut functions)!
+		declared_types, params_structs, mut functions)!
 }
 
 fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pref.Preferences, functions map[string]FastcFunctionSignature) map[string]bool {
@@ -7358,7 +7382,8 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 				key_type, map_value_type := fastc_map_key_value_types(fallback_type) or {
 					return g.unsupported('map fallback type `${fallback_type}`')
 				}
-				hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(key_type)
+				hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(key_type,
+					g.prefs.target.pointer_bits)
 				fallback = '(builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(map_value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 			}
 			if had_err {
@@ -8021,7 +8046,8 @@ fn (mut g Parser) read_inferred_map_literal() !string {
 		return g.unsupported('empty inferred map literal')
 	}
 	map_type := fastc_map_c_type(key_type, value_type)
-	hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(key_type)
+	hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(key_type,
+		g.prefs.target.pointer_bits)
 	map_name := g.temporary_name('map_literal')
 	mut statements := [
 		'map ${map_name} = builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn});',
@@ -9674,7 +9700,8 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken, rendered_exp
 	if literal_open > 0 && literal_open + 1 == tokens.len - 1 && tokens.last().tok == .rcbr {
 		if map_type := g.map_initializer_type(tokens[..literal_open]) {
 			key_type, value_type := fastc_map_key_value_types(map_type) or { return none }
-			hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(key_type)
+			hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(key_type,
+				g.prefs.target.pointer_bits)
 			return FastcRenderedExpression{
 				source: '(builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 				typ:    map_type
@@ -10801,7 +10828,7 @@ fn (g &Parser) render_map_lookup_option_expression(tokens []FastcExpressionToken
 	}
 }
 
-fn fastc_map_runtime_functions(key_type string) (string, string, string, string) {
+fn fastc_map_runtime_functions(key_type string, pointer_bits int) (string, string, string, string) {
 	if key_type == 'string' {
 		return 'builtin__map_hash_string', 'builtin__map_eq_string', 'builtin__map_clone_string', 'builtin__map_free_string'
 	}
@@ -10809,8 +10836,10 @@ fn fastc_map_runtime_functions(key_type string) (string, string, string, string)
 		'1'
 	} else if key_type in ['i16', 'u16'] {
 		'2'
-	} else if key_type in ['i64', 'u64', 'isize', 'usize', 'voidptr', 'byteptr', 'charptr'] {
+	} else if key_type in ['i64', 'u64'] {
 		'8'
+	} else if key_type in ['isize', 'usize'] || fastc_is_pointer_type(key_type) {
+		if pointer_bits == 32 { '4' } else { '8' }
 	} else {
 		'4'
 	}
@@ -10910,6 +10939,10 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken, rend
 			source: '${fastc_c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
 			typ:    signature.return_type
 		}
+	}
+	if call_args.len < signature.parameter_types.len && (!signature.last_parameter_is_params
+		|| call_args.len + 1 != signature.parameter_types.len) {
+		return none
 	}
 	mut rendered_arguments := []string{cap: signature.parameter_types.len}
 	for argument_index, argument in call_args {
@@ -12233,8 +12266,11 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			} else {
 				0
 			}
-			if (!is_variadic && call_args.len != expected_arguments && !(g.selfhost
-				&& call_args.len < expected_arguments))
+			omits_params_struct := signature.last_parameter_is_params && expected_arguments > 0
+				&& call_args.len == expected_arguments - 1
+			uses_default_array_sort := function_key == 'array.sort' && call_args.len == 0
+			if (!is_variadic && call_args.len != expected_arguments && !omits_params_struct
+				&& !uses_default_array_sort)
 				|| (is_variadic && call_args.len < expected_arguments) {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments instead of ${expected_arguments}')
 			}
