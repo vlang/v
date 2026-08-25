@@ -3,6 +3,8 @@ module fastc
 import os
 import v3.cmdexec
 import v3.pref
+import v3.scanner
+import v3.token
 
 fn test_generate_and_compile_without_flat_ast() {
 	source := 'module main
@@ -3036,6 +3038,62 @@ fn main() {
 			'membership_subject_once.v', prefs) or { panic(err) }
 		assert c_source.contains('__v_fastc_membership_item = (next());'), c_source
 		assert c_source.count('next()') == 1, c_source
+	}
+}
+
+fn fastc_test_expression_token(tok token.Token, lit string) FastcExpressionToken {
+	return FastcExpressionToken{
+		tok: tok
+		lit: lit
+	}
+}
+
+fn test_literal_membership_materializes_candidates_before_comparison() {
+	prefs := pref.new_preferences()
+	g := Parser{
+		prefs:    &prefs
+		selfhost: true
+		s:        scanner.new_scanner(prefs, .normal)
+		locals:   {
+			'subject': FastcLocal{
+				typ: 'int'
+			}
+		}
+	}
+	mut tokens := [
+		fastc_test_expression_token(.name, 'subject'),
+		fastc_test_expression_token(.key_in, 'in'),
+		fastc_test_expression_token(.lsbr, '['),
+		fastc_test_expression_token(.name, 'candidate'),
+		fastc_test_expression_token(.lpar, '('),
+		fastc_test_expression_token(.number, '1'),
+		fastc_test_expression_token(.rpar, ')'),
+		fastc_test_expression_token(.comma, ','),
+		fastc_test_expression_token(.name, 'candidate'),
+		fastc_test_expression_token(.lpar, '('),
+		fastc_test_expression_token(.number, '2'),
+		fastc_test_expression_token(.rpar, ')'),
+		fastc_test_expression_token(.rsbr, ']'),
+	]
+	for operator in [
+		fastc_test_expression_token(.key_in, 'in'),
+		fastc_test_expression_token(.not_in, '!in'),
+	] {
+		tokens[1] = operator
+		rendered := g.render_special_expression(tokens, '') or {
+			panic('membership was not rendered')
+		}
+		first_assignment := '__v_fastc_membership_candidate_0 = (candidate(1));'
+		second_assignment := '__v_fastc_membership_candidate_1 = (candidate(2));'
+		comparison := '__v_fastc_membership_subject) == (__v_fastc_membership_candidate_0)'
+		first_index := rendered.source.index(first_assignment) or { -1 }
+		second_index := rendered.source.index(second_assignment) or { -1 }
+		comparison_index := rendered.source.index(comparison) or { -1 }
+		assert first_index >= 0, rendered.source
+		assert second_index > first_index, rendered.source
+		assert comparison_index > second_index, rendered.source
+		assert rendered.source.count('candidate(1)') == 1, rendered.source
+		assert rendered.source.count('candidate(2)') == 1, rendered.source
 	}
 }
 

@@ -9177,21 +9177,25 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					return none
 				}
 				lhs_name := '__v_fastc_membership_subject'
+				value_type := fastc_runtime_c_type(fastc_normalize_inferred_type(lhs_type))
+				mut initializers := []string{cap: items.len}
 				mut comparisons := []string{cap: items.len}
-				for candidate in items {
+				for candidate_index, candidate in items {
 					candidate_source := g.render_membership_candidate(candidate, lhs_type) or {
 						return none
 					}
+					candidate_name := '__v_fastc_membership_candidate_${candidate_index}'
+					initializers << '${value_type} ${candidate_name} = (${candidate_source});'
 					comparison := if lhs_type.trim_right('*') == 'string' {
-						'builtin__string_eq(${lhs_name}, ${candidate_source})'
+						'builtin__string_eq(${lhs_name}, ${candidate_name})'
 					} else {
-						'((${lhs_name}) == (${candidate_source}))'
+						'((${lhs_name}) == (${candidate_name}))'
 					}
 					comparisons << if item.tok == .key_in { comparison } else { '!${comparison}' }
 				}
 				joiner := if item.tok == .key_in { ' || ' } else { ' && ' }
 				return FastcRenderedExpression{
-					source: '({ ${fastc_runtime_c_type(fastc_normalize_inferred_type(lhs_type))} ${lhs_name} = (${lhs_source}); (${comparisons.join(joiner)}); })'
+					source: '({ ${value_type} ${lhs_name} = (${lhs_source}); ${initializers.join(' ')} (${comparisons.join(joiner)}); })'
 					typ:    'bool'
 				}
 			}
