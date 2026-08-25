@@ -3795,6 +3795,43 @@ fn main() {
 	assert run_result.output == '42\n'
 }
 
+fn test_fastc_runtime_function_collisions_are_mangled() {
+	prefs := pref.new_preferences()
+	c_source := generate("module main
+
+fn v_fastc_bool_str(value bool) string {
+	if value {
+		return 'user function'
+	}
+	return 'unexpected'
+}
+
+fn main() {
+	println(v_fastc_bool_str(true))
+}
+",
+		'fastc_runtime_function_collision.v', prefs) or { panic(err) }
+	assert c_source.contains('static string v_fastc_bool_str(bool value)'), c_source
+	assert c_source.contains('string v_v_fastc_bool_str(bool value)'), c_source
+	assert c_source.contains('println(v_v_fastc_bool_str(((bool)true)))'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_runtime_names_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == 'user function\n'
+}
+
 fn test_return_expression_type_is_validated() {
 	prefs := pref.new_preferences()
 	for source in [

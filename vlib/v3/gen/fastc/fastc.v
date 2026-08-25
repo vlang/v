@@ -4624,7 +4624,7 @@ fn fastc_c_global_name(key string) string {
 }
 
 fn fastc_c_function_name(module_name string, name string) string {
-	return naming.c_name(if module_name in ['', 'main'] {
+	return fastc_c_function_name_for_key(if module_name in ['', 'main'] {
 		name
 	} else {
 		'${module_name}.${name}'
@@ -4644,7 +4644,11 @@ fn (g &Parser) unqualified_function_key(name string) string {
 }
 
 fn fastc_c_function_name_for_key(key string) string {
-	return naming.c_name(key)
+	c_name := naming.c_name(key)
+	if !key.starts_with('C.') && c_name.starts_with('v_fastc_') {
+		return 'v_${c_name}'
+	}
+	return c_name
 }
 
 fn fastc_disabled_call_expression(return_type string) string {
