@@ -8182,6 +8182,14 @@ fn (mut g Parser) read_interpolated_string() !string {
 		value := g.read_expression([token.Token.rcbr, token.Token.colon])!
 		value_tokens := g.last_expression.clone()
 		value_type := fastc_normalize_inferred_type(g.last_expression_type)
+		value_key := g.semantic_type_key(value_type)
+		alias_has_str_method := g.declared_kinds[value_key] == .alias_
+			&& '${value_key}.str' in g.functions
+		interpolation_type := if alias_has_str_method {
+			value_type
+		} else {
+			g.underlying_alias_type(value_type)
+		}
 		mut format_specifier := ''
 		if g.tok == .colon {
 			g.next()
@@ -8197,11 +8205,11 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		}
 		g.expect(.rcbr)!
-		if value_type == 'char' {
+		if interpolation_type == 'char' {
 			return g.unsupported('expression returning type `char` cannot be used in string interpolation directly')
 		}
-		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(value_type)
-			&& !fastc_integer_interpolation_format_is_supported(format_specifier, value_type, fastc_is_unsigned_integer_type(value_type)) {
+		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(interpolation_type)
+			&& !fastc_integer_interpolation_format_is_supported(format_specifier, interpolation_type, fastc_is_unsigned_integer_type(interpolation_type)) {
 			return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
 		}
 		if !g.selfhost && format_specifier.ends_with('c') {
@@ -8213,7 +8221,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 				return g.unsupported('NUL code points in `:c` interpolation')
 			}
 		}
-		if value_type == 'string' {
+		if interpolation_type == 'string' {
 			width := fastc_string_interpolation_width(format_specifier) or {
 				return g.unsupported('interpolation format `${format_specifier}` for `string`')
 			}
@@ -8222,8 +8230,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 			} else {
 				value
 			}
-		} else if g.declared_kinds[g.semantic_type_key(value_type)] == .enum_ {
-			enum_key := g.semantic_type_key(value_type)
+		} else if g.declared_kinds[g.semantic_type_key(interpolation_type)] == .enum_ {
+			enum_key := g.semantic_type_key(interpolation_type)
 			is_unsigned := g.enum_flags[enum_key]
 			format_character := if format_specifier.len > 0 {
 				format_specifier[format_specifier.len - 1]
@@ -8233,8 +8241,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 			if format_character == `d` || format_character == `u` || format_character == `x`
 				|| format_character == `X` || format_character == `o` || format_character == `c`
 				|| format_character == `b` {
-				if !fastc_integer_interpolation_format_is_supported(format_specifier, value_type,
-					is_unsigned) {
+				if !fastc_integer_interpolation_format_is_supported(format_specifier,
+					interpolation_type, is_unsigned) {
 					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
 				}
 				parts << if is_unsigned {
@@ -8257,19 +8265,19 @@ fn (mut g Parser) read_interpolated_string() !string {
 		} else {
 			mut converted_primitive := false
 			if !g.selfhost {
-				if primitive_conversion := fastc_primitive_interpolation_expression(value_type,
+				if primitive_conversion := fastc_primitive_interpolation_expression(interpolation_type,
 					value, format_specifier)
 				{
 					parts << primitive_conversion
 					converted_primitive = true
-				} else if fastc_is_primitive_interpolation_type(value_type) {
+				} else if fastc_is_primitive_interpolation_type(interpolation_type) {
 					return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
 				}
 			}
 			if !converted_primitive {
-				receiver_key := g.semantic_type_key(value_type)
+				receiver_key := g.semantic_type_key(interpolation_type)
 				method_key := '${receiver_key}.str'
-				if method_key !in g.functions {
+				method_signature := g.functions[method_key] or {
 					local_type := if g.last_expression.len > 0 && g.last_expression[0].tok == .name {
 						local := g.locals[g.last_expression[0].lit] or { FastcLocal{} }
 						local.typ
@@ -8278,7 +8286,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 					}
 					return g.unsupported('interpolation of type `${value_type}` for `${fastc_expression_tokens_debug(g.last_expression)}` (local `${local_type}`)')
 				}
-				parts << '${fastc_method_c_name_for_key(receiver_key, 'str')}(${value})'
+				parts << '${fastc_method_c_name(method_signature.module_name,
+					fastc_c_declared_type_name(receiver_key), 'str')}(${value})'
 			}
 		}
 		if g.tok == .string {
@@ -11672,6 +11681,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	}
 	base_tokens := tokens[..open]
 	base_type := g.infer_expression_type(base_tokens) or { return none }
+	base_layout_type := g.underlying_alias_type(base_type)
 	base_source := if base_tokens.len == 1 {
 		g.resolved_root_expression_name(tokens[0].lit)
 	} else if nested_base := g.render_array_access_expression(base_tokens) {
@@ -11704,7 +11714,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		} else {
 			g.render_membership_candidate(tokens[range_index + 1..close], 'int') or { return none }
 		}
-		mut slice_source := if base_type == 'string' {
+		mut slice_source := if base_layout_type == 'string' {
 			'builtin__string_substr(${if base_type.ends_with('*') { '*' } else { '' }}(${receiver_source}), ${start}, ${end})'
 		} else {
 			array_value := if base_type.ends_with('*') {
@@ -11719,7 +11729,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 		return FastcRenderedExpression{
 			source: slice_source
-			typ:    if base_type == 'string' { 'string' } else { base_type.trim_right('*') }
+			typ:    if base_layout_type == 'string' { 'string' } else { base_type.trim_right('*') }
 		}
 	}
 	is_array_pointer := base_type.ends_with('*') && g.array_element_type(base_type) != none
@@ -11727,13 +11737,13 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		g.array_element_type(base_type) or { return none }
 	} else if base_type.ends_with('*') {
 		base_type.trim_right('*')
-	} else if base_type == 'string' {
+	} else if base_layout_type == 'string' {
 		'u8'
 	} else {
 		g.array_element_type(base_type) or { return none }
 	}
 	index_source := g.render_membership_candidate(tokens[open + 1..close], 'int') or { return none }
-	if base_type == 'string' {
+	if base_layout_type == 'string' {
 		return FastcRenderedExpression{
 			source: 'builtin__string_at(${base_source}, ${index_source})'
 			typ:    element_type

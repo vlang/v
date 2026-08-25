@@ -389,6 +389,46 @@ fn main() {
 	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\n  界\nxx'
 }
 
+fn test_primitive_alias_interpolation_uses_the_underlying_type() {
+	prefs := pref.new_preferences()
+	c_source := generate(r"module main
+
+type Count = int
+type Text = string
+type Custom = int
+
+fn (value Custom) str() string {
+	return 'custom'
+}
+
+fn main() {
+	println('${Count(1)}|${Text('ok')}|${Custom(2)}')
+	println('${Count(15):04x}|${Text('x'):3}')
+}
+",
+		'primitive_alias_interpolation.v', prefs) or { panic(err) }
+	assert c_source.contains('v_fastc_signed_str((long long)(((Count)(1))))'), c_source
+	assert c_source.contains('v_fastc_signed_format((long long)(((Count)(15))), "04x")'), c_source
+	assert c_source.contains('v_fastc_string_pad(((Text)("x")), 3, false)'), c_source
+	assert c_source.contains('Custom_str(((Custom)(2)))'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_alias_interpolation_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '1|ok|custom\n000f|  x\n'
+}
+
 fn test_direct_char_interpolation_is_rejected() {
 	mut prefs := pref.new_preferences()
 	prefs.enable_globals = true
@@ -4448,18 +4488,33 @@ fn text_tail() string {
 	return make_text()[1..]
 }
 
+type Text = string
+
+fn alias_middle(value Text) string {
+	return value[1..2]
+}
+
+fn alias_tail(value Text) string {
+	return value[1..]
+}
+
 fn main() {
 	values := []int{}
 	result := middle(values, 0, 0)
 	println(result.len)
 	values_tail()
 	text_tail()
+	alias_middle(Text("abc"))
+	alias_tail(Text("abc"))
 }
 ',
 		'array_slice.v', prefs) or { panic(err) }
 	assert c_source.contains('return builtin__array_slice(values, start, end);'), c_source
 	assert c_source.contains('__typeof__((make_values())) __v_fastc_slice_receiver = (make_values()); builtin__array_slice(__v_fastc_slice_receiver, 1, __v_fastc_slice_receiver.len);'), c_source
 	assert c_source.contains('__typeof__((make_text())) __v_fastc_slice_receiver = (make_text()); builtin__string_substr((__v_fastc_slice_receiver), 1, __v_fastc_slice_receiver.len);'), c_source
+	assert c_source.contains('return builtin__string_substr((value), 1, 2);'), c_source
+	assert c_source.contains('return builtin__string_substr((value), 1, value.len);'), c_source
+	assert !c_source.contains('builtin__array_slice(value, 1'), c_source
 	assert !c_source.contains('make_values().len'), c_source
 	assert !c_source.contains('make_text().len'), c_source
 	assert !c_source.contains('__v_slice.flags |= ArrayFlags__is_slice'), c_source
