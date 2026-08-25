@@ -7458,11 +7458,20 @@ pub fn run(args []string) {
 			prefs.ccompiler = 'tinyc'
 			add_v3_tcc_compat_defines(mut prefs.user_defines, target.os, target.arch, false, true)
 		}
-		fastc_source := fastc.generate_files([input_file], prefs) or {
+		fastc_generation := fastc.generate_files_with_source_paths([input_file], prefs) or {
 			eprintln(err.msg())
 			exit(1)
-			''
+			fastc.GenerationResult{}
 		}
+		fastc_artifact_path := canonical_v3_fastc_output_path(fastc_artifact_file)
+		for source_path in fastc_generation.source_paths {
+			if fastc_artifact_path != '' && fastc_artifact_path == source_path
+				&& source_path != os.real_path(input_file) {
+				eprintln('fastc output path `${fastc_artifact_file}` aliases imported source `${source_path}`')
+				exit(1)
+			}
+		}
+		fastc_source := fastc_generation.c_source
 		b.step('fastc parse+gen')
 		if c_only && fastc_cross_target {
 			b.metric('generated C size', fastc_source.len, 'bytes')

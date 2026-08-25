@@ -141,12 +141,14 @@ fn main() {
 
 	module_dir := os.join_path(root, 'mathutil')
 	os.mkdir_all(module_dir) or { panic(err) }
-	write_fastc_test_source(os.join_path(module_dir, 'mathutil.v'), 'module mathutil
+	module_source := os.join_path(module_dir, 'mathutil.v')
+	module_contents := 'module mathutil
 
 pub fn twice(value int) int {
 	return value * 2
 }
-')
+'
+	write_fastc_test_source(module_source, module_contents)
 	import_source := os.join_path(root, 'import.v')
 	write_fastc_test_source(import_source, 'module main
 
@@ -156,6 +158,11 @@ fn main() {
 	println(mathutil.twice(21))
 }
 ')
+	import_alias_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', module_source,
+		import_source])
+	assert import_alias_compile.exit_code != 0
+	assert import_alias_compile.output.contains('aliases imported source'), import_alias_compile.output
+	assert os.read_file(module_source) or { panic(err) } == module_contents
 	import_binary := os.join_path(root, 'import')
 	import_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-o', import_binary,
 		import_source])
@@ -427,6 +434,11 @@ fn main() {
 	selfhost_program_run := cmdexec.run(selfhost_output, [])
 	assert selfhost_program_run.exit_code == 0, selfhost_program_run.output
 	assert selfhost_program_run.output.trim_space() == '42\n15'
+	selfhost_import_alias := cmdexec.run(selfhost_binary, ['-b', 'fastc', '-o', module_source,
+		import_source])
+	assert selfhost_import_alias.exit_code != 0
+	assert selfhost_import_alias.output.contains('aliases imported source'), selfhost_import_alias.output
+	assert os.read_file(module_source) or { panic(err) } == module_contents
 
 	selfhost_fixed_options_output := os.join_path(root, 'selfhost_fixed_options')
 	selfhost_fixed_options := cmdexec.run(selfhost_binary, ['-gc', 'none', '-cc', 'tinyc', '-b',

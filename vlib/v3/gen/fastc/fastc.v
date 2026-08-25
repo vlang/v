@@ -621,6 +621,13 @@ struct FastcHoistedCSource {
 	body       string
 }
 
+// GenerationResult contains generated C and the complete resolved V source graph.
+pub struct GenerationResult {
+pub:
+	c_source     string
+	source_paths []string
+}
+
 struct FastcGlobalDeclarations {
 	declarations        string
 	module_initializers map[string]string
@@ -755,8 +762,21 @@ pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 // generate_files discovers imports from the input files and emits one C translation unit for
 // the complete source graph. Discovery and generation use scanner tokens only.
 pub fn generate_files(paths []string, prefs &pref.Preferences) !string {
+	generation := generate_files_with_source_paths(paths, prefs)!
+	return generation.c_source
+}
+
+// generate_files_with_source_paths emits C and reports every source read during import discovery.
+pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences) !GenerationResult {
 	sources := fastc_resolve_source_files(paths, prefs)!
-	return generate_source_files(sources, prefs)
+	mut source_paths := []string{cap: sources.len}
+	for source_file in sources {
+		source_paths << source_file.path
+	}
+	return GenerationResult{
+		c_source:     generate_source_files(sources, prefs)!
+		source_paths: source_paths
+	}
 }
 
 fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !string {
@@ -7982,17 +8002,18 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		}
 		g.expect(.rcbr)!
-		if !g.selfhost && format_specifier == 'c' {
-			if codepoint := fastc_integer_literal_value(value_tokens) {
-				if codepoint == 0 {
-					// Ordinary FastC strings use NUL-terminated C storage and cannot retain this byte.
-					return g.unsupported('NUL code points in `:c` interpolation')
-				}
-			}
-		}
 		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(value_type)
 			&& !fastc_integer_interpolation_format_is_supported(format_specifier, value_type, fastc_is_unsigned_integer_type(value_type)) {
 			return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
+		}
+		if !g.selfhost && format_specifier.ends_with('c') {
+			codepoint := fastc_integer_literal_value(value_tokens) or {
+				return g.unsupported('nonliteral `:c` interpolation')
+			}
+			if codepoint == 0 {
+				// Ordinary FastC strings use NUL-terminated C storage and cannot retain this byte.
+				return g.unsupported('NUL code points in `:c` interpolation')
+			}
 		}
 		if value_type == 'string' {
 			width := fastc_string_interpolation_width(format_specifier) or {

@@ -100,7 +100,14 @@ pub fn run(args []string) {
 	prefs.selfhost = prefs.building_v
 	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_wasm', 'skip_eval']
 
-	c_source := fastc.generate_files([real_input], prefs) or { fail(err.msg()) }
+	generation := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
+	canonical_output := canonical_output_path(output)
+	for source_path in generation.source_paths {
+		if canonical_output == source_path && source_path != real_input {
+			fail('fastc output path `${output}` aliases imported source `${source_path}`')
+		}
+	}
+	c_source := generation.c_source
 	build_prefix := '${output}.fastc-build-${os.getpid()}'
 	c_path := build_prefix + '.c'
 	staged_output := build_prefix + '.out'
