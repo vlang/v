@@ -205,6 +205,8 @@ fn main() {
 	println('${hex_value:x}|${hex_value:04x}|${hex_value:X}|${hex_value:04d}|${hex_value:b}|${hex_value:o}')
 	codepoint := 0x20ac
 	println('${codepoint:c}')
+	wide_codepoint := u64(65)
+	println('${wide_codepoint:c}')
 }
 ",
 		'ordinary_primitive_interpolation.v', prefs) or { panic(err) }
@@ -215,6 +217,7 @@ fn main() {
 	assert c_source.contains('v_fastc_signed_format((long long)(hex_value), "x")'), c_source
 	assert c_source.contains('v_fastc_signed_format((long long)(hex_value), "04x")'), c_source
 	assert c_source.contains('v_fastc_signed_format((long long)(codepoint), "c")'), c_source
+	assert c_source.contains('v_fastc_unsigned_format((unsigned long long)(wide_codepoint), "c")'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_primitive_interpolation_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -230,7 +233,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\n'
+	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\nA\n'
 }
 
 fn test_ordinary_nul_codepoint_interpolation_is_rejected() {
@@ -247,6 +250,26 @@ fn main() {
 		''
 	}
 	assert message.contains('NUL code points in `:c` interpolation'), message
+}
+
+fn test_i64_codepoint_interpolation_is_rejected() {
+	for building_v in [false, true] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = building_v
+		mut message := ''
+		_ := generate(r"module main
+
+fn main() {
+	value := i64(65)
+	println('${value:c}')
+}
+",
+			'i64_codepoint_interpolation.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('interpolation format `c` for `i64`'), message
+	}
 }
 
 fn test_zero_value_strings_print_as_empty_strings() {

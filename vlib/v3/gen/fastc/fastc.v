@@ -7990,6 +7990,10 @@ fn (mut g Parser) read_interpolated_string() !string {
 				}
 			}
 		}
+		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(value_type)
+			&& !fastc_integer_interpolation_format_is_supported(format_specifier, value_type, fastc_is_unsigned_integer_type(value_type)) {
+			return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
+		}
 		if value_type == 'string' {
 			width := fastc_string_interpolation_width(format_specifier) or {
 				return g.unsupported('interpolation format `${format_specifier}` for `string`')
@@ -8010,7 +8014,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 			if format_character == `d` || format_character == `u` || format_character == `x`
 				|| format_character == `X` || format_character == `o` || format_character == `c`
 				|| format_character == `b` {
-				if !fastc_integer_interpolation_format_is_supported(format_specifier, is_unsigned) {
+				if !fastc_integer_interpolation_format_is_supported(format_specifier, value_type,
+					is_unsigned) {
 					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
 				}
 				parts << if is_unsigned {
@@ -8114,11 +8119,14 @@ fn fastc_string_interpolation_width(format string) ?FastcInterpolationWidth {
 	}
 }
 
-fn fastc_integer_interpolation_format_is_supported(format string, is_unsigned bool) bool {
+fn fastc_integer_interpolation_format_is_supported(format string, value_type string, is_unsigned bool) bool {
 	if format == '' {
 		return true
 	}
 	specifier := format[format.len - 1]
+	if specifier == `c` && value_type == 'i64' {
+		return false
+	}
 	supported := specifier == `d` || specifier == `x` || specifier == `X`
 		|| specifier == `o` || specifier == `c` || specifier == `b`
 		|| (is_unsigned && specifier == `u`)
@@ -8140,7 +8148,7 @@ fn fastc_integer_interpolation_format_is_supported(format string, is_unsigned bo
 fn fastc_primitive_interpolation_expression(value_type string, value string, format string) ?string {
 	if fastc_is_integer_expression_type(value_type) {
 		is_unsigned := fastc_is_unsigned_integer_type(value_type)
-		if !fastc_integer_interpolation_format_is_supported(format, is_unsigned) {
+		if !fastc_integer_interpolation_format_is_supported(format, value_type, is_unsigned) {
 			return none
 		}
 		if format != '' {
