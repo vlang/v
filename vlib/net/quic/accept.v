@@ -52,6 +52,40 @@ pub:
 	// a future caller's job, same scope note that struct already states).
 	certificate_chain []CertificateEntry
 	signing_key       ecdsa.PrivateKey
+	// Set by a caller (13d-2's listener) when this connection attempt
+	// followed a Retry round-trip, to the SAME server-chosen connection ID
+	// that Retry packet used as its own Source Connection ID -- RFC 9000
+	// §7.3: "a server MUST include the retry_source_connection_id
+	// transport parameter" whenever it sent a Retry, echoing that exact
+	// value so the client can confirm it, not a fresh one. Left `none` for
+	// a direct accept with no preceding Retry. This is NOT optional
+	// decoration: `Tls13ClientHandshake.process_encrypted_extensions`
+	// (tls13_handshake.v) already enforces both halves of RFC 9000 §7.3 on
+	// the client side -- rejects the connection if this parameter is
+	// ABSENT after a Retry occurred, and equally rejects it if PRESENT
+	// when no Retry occurred -- so a caller that sent a Retry and then
+	// omits this field here would produce a connection this codebase's own
+	// dial()ed client can never actually complete.
+	retry_source_connection_id ?[]u8
+	// Set by a caller (13d-2's listener) alongside retry_source_connection_id
+	// when this connection attempt followed a Retry round-trip, to the
+	// TRUE Destination Connection ID the client used on its very FIRST
+	// (pre-Retry) Initial packet -- NOT `raw_datagram`'s own header.dcid,
+	// which by the time a retried Initial reaches accept() is instead the
+	// server's Retry-chosen connection ID (RFC 9000 §17.2.5.1: the client
+	// switches its outgoing DCID to the Retry's SCID). RFC 9000 §7.3
+	// requires the original_destination_connection_id transport parameter
+	// to echo that FIRST value regardless -- and
+	// `Tls13ClientHandshake.process_encrypted_extensions` (tls13_handshake.v
+	// line ~503) strictly validates it against the client's own
+	// `original_dcid`, which a Retry never changes (conn.v's
+	// `process_retry` updates `c.dcid`/`c.peer_scid`/`c.token` but
+	// deliberately leaves `c.original_dcid` untouched) -- so getting this
+	// wrong silently breaks every post-Retry handshake against this
+	// codebase's own client. Left `none` for a direct accept with no
+	// preceding Retry, in which case `header.dcid` (the packet's own,
+	// correct in that case) is used instead.
+	original_dcid_override ?[]u8
 }
 
 // accept constructs a new server-role QuicConn from `raw_datagram` -- the
@@ -107,20 +141,8 @@ pub fn accept(raw_datagram []u8, params AcceptParams, now u64) !(&QuicConn, Poll
 	if raw_datagram.len < min_initial_datagram_size {
 		return error('quic: accept: datagram (${raw_datagram.len} bytes) is smaller than the RFC 9000 §14.1 anti-amplification floor of ${min_initial_datagram_size} bytes')
 	}
-	packets := split_coalesced_datagram(raw_datagram)!
-	mut initial_header := ?QuicLongHeader(none)
-	for p in packets {
-		if p.form != .long {
-			continue
-		}
-		h, _ := parse_long_header(p.bytes) or { continue }
-		if h.typ == .initial {
-			initial_header = h
-			break
-		}
-	}
-	header := initial_header or {
-		return error('quic: accept: raw_datagram contains no Initial packet')
+	header := find_first_initial_header(raw_datagram) or {
+		return error('quic: accept: ${err.msg()}')
 	}
 
 	// header.dcid is the client's freshly-chosen original_dcid -- RFC 9001
@@ -141,11 +163,28 @@ pub fn accept(raw_datagram []u8, params AcceptParams, now u64) !(&QuicConn, Poll
 	mut own_params := params.transport_parameters
 	own_params.initial_source_connection_id = scid.clone()
 	// RFC 9000 §7.3: a server MUST send original_destination_connection_id,
-	// echoing the DCID the client's own Initial packet used -- the value
-	// ServerHandshakeParams' own doc comment names as this caller's
+	// echoing the DCID the client's own FIRST Initial packet used -- the
+	// value ServerHandshakeParams' own doc comment names as this caller's
 	// responsibility to set (build_encrypted_extensions itself validates
-	// it's present, but does not know what value to fill in).
-	own_params.original_destination_connection_id = header.dcid.clone()
+	// it's present, but does not know what value to fill in). Defaults to
+	// this packet's own header.dcid (correct for a direct accept with no
+	// preceding Retry); see original_dcid_override's own doc comment above
+	// for why a post-Retry acceptance needs a DIFFERENT value here.
+	mut original_dcid_for_tp := header.dcid.clone()
+	if override := params.original_dcid_override {
+		original_dcid_for_tp = override.clone()
+	}
+	own_params.original_destination_connection_id = original_dcid_for_tp
+	// Yes, this .clone()s a value listener.v's do_accept already cloned
+	// once itself -- a deliberately kept redundant allocation, not an
+	// oversight: this is a PUBLIC function's parameter handling, and
+	// accept() has no way to know whether some OTHER, less careful future
+	// caller passed a value here it still holds a live reference to.
+	// Defending against that is worth one extra small clone per accepted
+	// connection.
+	if retry_scid := params.retry_source_connection_id {
+		own_params.retry_source_connection_id = retry_scid.clone()
+	}
 
 	own_max_idle_timeout_ms := own_params.max_idle_timeout or { u64(0) }
 

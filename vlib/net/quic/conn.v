@@ -41,6 +41,22 @@ const local_cid_len = 8
 // same padding-size calculation this file's build_initial_packet mirrors.
 const aead_tag_len = 16
 
+// long_header_packet_overhead_estimate is a deliberately safe (never an
+// underestimate) upper bound on everything build_handshake_packet's own
+// encode_long_header + packet-number field + AEAD tag add on top of a raw
+// CRYPTO frame's own encoded length: 1 (flags) + 4 (version) + 1 (dcid
+// len) + up to 20 (dcid, RFC 9000 v1's own max, though this module only
+// ever uses local_cid_len=8 -- the extra headroom is intentional, not an
+// oversight) + 1 (scid len) + up to 20 (scid) + up to 4 (Length varint) +
+// up to 4 (packet number -- encode_packet_number always chooses the full
+// 4-byte encoding when largest_acked_by_peer is none, which it always is
+// for THIS connection's very first Handshake-space send) + aead_tag_len.
+// Used ONLY to gate a send BEFORE the real size is knowable (drain_outgoing's
+// Handshake-CRYPTO-flush amplification check) -- overestimating here means
+// occasionally deferring a send that would actually still have fit, never
+// the reverse (letting one through that doesn't).
+const long_header_packet_overhead_estimate = 1 + 4 + 1 + 20 + 1 + 20 + 4 + 4 + aead_tag_len
+
 // quic_error_protocol_violation is RFC 9000 §20.1's PROTOCOL_VIOLATION --
 // the fallback CONNECTION_CLOSE error code for an internal failure that
 // carries no more specific QUIC error code of its own (see close_with_error).
@@ -121,6 +137,23 @@ mut:
 	retry_accepted                bool
 	processed_first_server_packet bool
 	retry_scid                    ?[]u8
+
+	// amplification implements RFC 9000 §8.1's server-side 3x send cap
+	// prior to address validation -- meaningful only for role == .server;
+	// zero-valued (unvalidated, nothing received/sent yet) for the
+	// whole life of a client-role connection, where §8.1 never applies
+	// ("the anti-amplification limit does not apply to clients", RFC
+	// 9000 §21.1.1.1). process_datagram (below) counts every received
+	// datagram's payload toward it for a not-yet-validated server;
+	// process_initial_or_handshake's own server receive-trigger calls
+	// mark_validated() at the SAME RFC 9001 §4.9.1 event ("receipt of a
+	// packet protected with Handshake keys confirms the peer successfully
+	// processed an Initial packet", RFC 9000 §8.1) already used for the
+	// Initial-key-discard timing fix -- one event, two independent RFC
+	// requirements it happens to satisfy simultaneously. drain_outgoing
+	// gates every send this connection makes while unvalidated against
+	// available_to_send().
+	amplification AntiAmplificationLimiter
 
 	// handshake is populated for role == .client (by dial()), server_handshake
 	// for role == .server -- see dispatch_handshake_message's role branch
@@ -702,6 +735,20 @@ fn (mut c QuicConn) process_datagram(datagram []u8, now u64, mut result PollResu
 	if c.state == .draining {
 		return
 	}
+	// RFC 9000 §8.1: "servers MUST count all of the payload bytes received
+	// in datagrams that are uniquely attributed to a single connection.
+	// This includes datagrams that contain packets that are successfully
+	// processed and datagrams that contain packets that are all
+	// discarded." Counted here, unconditionally, before any parsing.
+	// note_received keeps accumulating even after mark_validated() fires
+	// (it has no validated-check of its own), but that's harmless --
+	// available_to_send() returns max_u64 once validated regardless of
+	// the accumulated received/sent counts, so this only actually bounds
+	// anything during the brief pre-validation window a server-role
+	// connection starts in.
+	if c.role == .server {
+		c.amplification.note_received(u64(datagram.len))
+	}
 	packets := split_coalesced_datagram(datagram) or { return }
 	for p in packets {
 		c.process_one_packet(p, now, mut result)!
@@ -731,13 +778,36 @@ fn (mut c QuicConn) process_one_packet(p CoalescedPacket, now u64, mut result Po
 		return
 	}
 	version := (u32(p.bytes[1]) << 24) | (u32(p.bytes[2]) << 16) | (u32(p.bytes[3]) << 8) | u32(p.bytes[4])
+	// Version Negotiation (RFC 9000 §6) and Retry (§17.2.5) are BOTH
+	// exclusively server-to-client on the wire -- a compliant peer never
+	// sends either to a server. process_retry/process_version_negotiation
+	// (below) are written purely from the CLIENT's own perspective (they
+	// mutate c.dcid/c.token/Initial keys unconditionally) with no role
+	// check of their own; before Phase 13d this dispatch was unreachable
+	// for a server-role connection simply because no server-role QuicConn
+	// existed to reach it. Now that 13d-2's listener exposes accept()ed
+	// connections to real, untrusted network input, an attacker could
+	// otherwise spoof either packet type at an in-progress server
+	// connection's own scid to corrupt its Initial-space key material and
+	// stall the handshake -- silently ignored here instead, matching
+	// retry.v's own "discarding is never a connection error" rationale for
+	// exactly this class of unauthenticated, pre-crypto packet type. Scoped
+	// to ONLY these two branches, not the whole function -- .initial/
+	// .handshake below are exactly what a server-role connection MUST keep
+	// processing.
 	if version == 0 {
+		if c.role == .server {
+			return
+		}
 		c.process_version_negotiation(p.bytes)!
 		return
 	}
 	header, offset := parse_long_header(p.bytes) or { return }
 	match header.typ {
 		.retry {
+			if c.role == .server {
+				return
+			}
 			c.process_retry(p.bytes)!
 		}
 		.initial {
@@ -770,7 +840,31 @@ fn (mut c QuicConn) process_retry(raw []u8) ! {
 	c.processed_first_server_packet = true
 	c.retry_scid = retry.scid.clone()
 	c.dcid = retry.scid.clone()
-	c.peer_scid = retry.scid.clone()
+	// Deliberately NOT c.peer_scid = retry.scid.clone(), even though a
+	// Retry's own SCID field genuinely is "a connection ID chosen by the
+	// server." RFC 9000 §7.2's peer_scid-latching rule ("once a client has
+	// received a valid Initial packet from the server, it MUST discard any
+	// subsequent packet... with a different Source Connection ID") is
+	// scoped to an actual INITIAL packet, not a Retry -- a DIFFERENT
+	// packet type carrying the SERVER's real, PERSISTENT scid (chosen
+	// independently of retry_scid, e.g. accept()'s own fresh
+	// rand.bytes(local_cid_len) call -- retry_scid is a one-time value
+	// used only to address the retried ClientHello, never reused as the
+	// connection's real scid). The natural "first real Initial from the
+	// server" latch a few lines below in process_initial_or_handshake
+	// (`if c.peer_scid.len == 0 { c.peer_scid = header.scid.clone()
+	// ... }`) already handles this correctly on its own -- but ONLY if
+	// peer_scid is still empty when that ServerHello actually arrives.
+	// Setting it here first would make that check a no-op forever,
+	// permanently wedging peer_scid on the transient retry value and then
+	// silently discarding every subsequent real packet from the server (a
+	// different scid) as a false SCID-injection match at line ~862 below.
+	// Found via 13d-2's own real dial()-through-Retry-through-accept()
+	// integration test (listener_test.v) -- no prior test in this module
+	// drove a client through BOTH a real Retry AND a full post-Retry
+	// handshake completion, so this pre-existing bug (present since Retry
+	// support was first added) was never actually exercised end-to-end
+	// until now.
 	c.token = retry.retry_token.clone()
 
 	// RFC 9001 §5.2: Initial secrets change to key off the new DCID. The
@@ -872,6 +966,18 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 	// comment for why the two roles need genuinely different triggers.
 	if c.role == .server && space == .handshake && !c.initial_keys_discarded {
 		c.discard_initial_keys()
+	}
+	// RFC 9000 §8.1: "receipt of a packet protected with Handshake keys
+	// confirms that the peer successfully processed an Initial packet...
+	// [the server] can consider the peer address to have been validated" --
+	// the SAME event as the Initial-key-discard trigger just above (this is
+	// deliberately not folded into that same `if`: the two conditions are
+	// independent RFC requirements that only happen to share a trigger, and
+	// mark_validated() is idempotent while discard_initial_keys() is
+	// explicitly guarded against re-firing, so keeping them as two
+	// statements avoids coupling one's guard condition to the other's).
+	if c.role == .server && space == .handshake {
+		c.amplification.mark_validated()
 	}
 
 	c.processed_first_server_packet = true
@@ -1608,12 +1714,60 @@ fn (mut c QuicConn) discard_handshake_keys() {
 // Outgoing packet construction
 // -------------------------------------------------------------------------
 
+// has_amplification_budget reports whether this connection may still send
+// right now under RFC 9000 §8.1's server-side 3x cap -- always true for a
+// client role (the limit is server-only, RFC 9000 §21.1.1.1) or once
+// mark_validated() has fired. A coarse, packet-granularity gate: checked
+// BEFORE building the next datagram (not against that datagram's actual
+// size, which isn't known until AFTER building -- protect_packet's AEAD tag
+// and padding aren't computed yet), so a connection sitting at exactly 1
+// byte of remaining budget can still emit one more full packet before this
+// next reports false. This mirrors how every other RFC 9000 §8.1
+// implementation reasons about the limit (it bounds AMPLIFICATION
+// MAGNITUDE across a connection's lifetime, not a byte-exact ceiling on any
+// single packet) and, more concretely, HAS to work this way here: the
+// alternative -- building the packet first, THEN deciding whether to keep
+// it -- would leave loss_detection/congestion_control's own
+// on_packet_sent() bookkeeping (already called unconditionally inside
+// build_initial_packet/build_handshake_packet by the time a caller could
+// inspect the built size) believing a packet was transmitted that was then
+// silently discarded, desyncing retransmission timers from what actually
+// went on the wire -- exactly the failure mode already documented on the
+// Initial-key-discard-timing fix earlier in this file.
+fn (c &QuicConn) has_amplification_budget() bool {
+	return c.role != .server || c.amplification.available_to_send() > 0
+}
+
+// record_amplification_sent updates the §8.1 send tally after a datagram
+// has ALREADY been built and queued -- a no-op for a client role. Never
+// itself vetoes the send (that already happened; see
+// has_amplification_budget's own doc comment for why the check must come
+// BEFORE building, not after). Uses note_sent_unconditional, not note_sent
+// -- this call site's whole reason for existing is the coarse-grained
+// overshoot has_amplification_budget's own doc comment describes (a send
+// whose exact size wasn't knowable until after building can end up
+// slightly over budget even though the pre-build check passed); recording
+// anything less than the ACTUAL bytes sent here (note_sent's own
+// behavior, which silently drops the update on its error path) would
+// leave available_to_send() reporting stale, too-generous budget for
+// every later send this same drain_outgoing call -- or a future one --
+// still checks against, turning one small overshoot into an unbounded,
+// compounding one (13d-2's own adversarial review, verify pass).
+fn (mut c QuicConn) record_amplification_sent(n int) {
+	if c.role == .server {
+		c.amplification.note_sent_unconditional(u64(n))
+	}
+}
+
 fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 	if data := c.pending_initial_crypto {
-		crypto_frame := encode_crypto_frame(0, data)!
-		datagram := c.build_initial_packet(crypto_frame, true, now)!
-		result.outgoing << datagram
-		c.pending_initial_crypto = none
+		if c.has_amplification_budget() {
+			crypto_frame := encode_crypto_frame(0, data)!
+			datagram := c.build_initial_packet(crypto_frame, true, now)!
+			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
+			c.pending_initial_crypto = none
+		}
 	}
 	// RFC 9000 §13.2.1: gated on *_ack_eliciting_pending, not just
 	// *_received_pns.len > 0 -- see frame_is_ack_eliciting's own doc
@@ -1622,29 +1776,66 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 	// reply; its packet number stays in *_received_pns to be included
 	// once an ack-eliciting packet DOES trigger one.
 	if !c.initial_keys_discarded && c.initial_received_pns.len > 0
-		&& c.initial_ack_eliciting_pending {
+		&& c.initial_ack_eliciting_pending && c.has_amplification_budget() {
 		ack_frame := c.build_ack_frame_for(.initial)!
 		datagram := c.build_initial_packet(ack_frame, false, now)!
 		result.outgoing << datagram
+		c.record_amplification_sent(datagram.bytes.len)
 		c.initial_received_pns = map[u64]bool{}
 		c.initial_ack_eliciting_pending = false
 	}
 
 	if data := c.pending_handshake_crypto {
+		// This flush -- the server's EncryptedExtensions+Certificate+
+		// CertificateVerify+Finished, sent as ONE unsplit CRYPTO frame in
+		// ONE Handshake packet (accept.v's own documented scope limit:
+		// this codebase does not yet fragment a large certificate chain's
+		// CRYPTO write across multiple packets) -- is the one send in
+		// this function whose size can genuinely dwarf a small client's
+		// starting amplification budget (3x of however many bytes it has
+		// sent so far, which could be as little as the RFC 9000 §14.1
+		// floor of 1200). The coarse has_amplification_budget() check
+		// used everywhere else in this function ("is there ANY budget at
+		// all") isn't precise enough here -- a single build could still
+		// blow through the whole budget in one shot. Checked instead
+		// against the ALREADY-ENCODED frame's own length (encode_crypto_frame
+		// has no loss-detection/congestion-control side effects of its
+		// own, unlike build_handshake_packet -- computing it first to
+		// learn the real size before deciding whether to build is safe),
+		// plus long_header_packet_overhead_estimate's own safe (never an
+		// underestimate) margin for the packet header/PN/AEAD-tag overhead
+		// this raw frame length doesn't yet include -- an earlier version
+		// of this check used a flat +32 margin that turned out to
+		// undercount the real ~45-byte overhead by up to 13 bytes (13d-2's
+		// own adversarial review, verify pass), letting a send slip
+		// through slightly over budget; a named, derived-from-real-field-
+		// widths constant closes that gap for good, rather than
+		// re-guessing a number here. If it doesn't fit, the flush stays
+		// queued for a LATER drain once more
+		// budget exists (RFC 9000 §8.1's own documented resolution for
+		// exactly this shape of deadlock: the client's own PTO-triggered
+		// Initial retransmissions keep raising `received` -- and
+		// therefore this budget -- every round trip until the flight
+		// finally fits).
 		crypto_frame := encode_crypto_frame(c.handshake_crypto_send_offset, data)!
-		c.handshake_crypto_send_offset += u64(data.len)
-		datagram := c.build_handshake_packet(crypto_frame, true, now)!
-		result.outgoing << datagram
-		c.pending_handshake_crypto = none
-		c.handshake_completion.mark_own_finished_sent()
+		estimated_packet_size := u64(crypto_frame.len) + u64(long_header_packet_overhead_estimate)
+		if c.role != .server || c.amplification.available_to_send() >= estimated_packet_size {
+			c.handshake_crypto_send_offset += u64(data.len)
+			datagram := c.build_handshake_packet(crypto_frame, true, now)!
+			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
+			c.pending_handshake_crypto = none
+			c.handshake_completion.mark_own_finished_sent()
+		}
 	}
 	if hs_keys := c.own_handshake_keys() {
 		_ := hs_keys
 		if !c.handshake_keys_discarded && c.handshake_received_pns.len > 0
-			&& c.handshake_ack_eliciting_pending {
+			&& c.handshake_ack_eliciting_pending && c.has_amplification_budget() {
 			ack_frame := c.build_ack_frame_for(.handshake)!
 			datagram := c.build_handshake_packet(ack_frame, false, now)!
 			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
 			c.handshake_received_pns = map[u64]bool{}
 			c.handshake_ack_eliciting_pending = false
 		}
@@ -1660,24 +1851,40 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		// (confirmation depends on this send, not the other way around).
 		// handshake_done_sent guards this to fire at most once, the same
 		// one-shot shape as streams_blocked_sent_bidi/uni.
-		if c.role == .server && c.handshake_completion.is_complete() && !c.handshake_done_sent {
+		if c.role == .server && c.handshake_completion.is_complete() && !c.handshake_done_sent
+			&& c.has_amplification_budget() {
 			frame := encode_handshake_done_frame()!
 			datagram := c.build_one_rtt_packet(frame, true, now)!
 			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
 			c.handshake_done_sent = true
 			c.on_handshake_confirmed(mut result)
 		}
-		if c.app_received_pns.len > 0 && c.app_ack_eliciting_pending {
+		if c.app_received_pns.len > 0 && c.app_ack_eliciting_pending && c.has_amplification_budget() {
 			ack_frame := c.build_ack_frame_for(.application_data)!
 			datagram := c.build_one_rtt_packet(ack_frame, false, now)!
 			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
 			c.app_received_pns = map[u64]bool{}
 			c.app_ack_eliciting_pending = false
 		}
-		c.drain_pending_stream_writes(now, mut result)!
-		c.drain_pending_stream_resets(now, mut result)!
-		c.drain_pending_streams_blocked(now, mut result)!
-		c.drain_flow_control_raises(now, mut result)!
+		if c.has_amplification_budget() {
+			c.drain_pending_stream_writes(now, mut result)!
+			c.drain_pending_stream_resets(now, mut result)!
+			c.drain_pending_streams_blocked(now, mut result)!
+			// Not reachable pre-validation with today's state machine (a
+			// server's own receive-window growth needs 1-RTT keys, which
+			// this connection only reaches after processing the client's
+			// Handshake-space Finished -- the SAME event that already
+			// fires mark_validated()) -- gated anyway, for the same
+			// reason every OTHER send in this block is: consistency with
+			// this function's own stated invariant ("every send this
+			// connection makes while unvalidated is gated"), and so a
+			// future codepath that lets app-space windows advance before
+			// validation (0-RTT, say) doesn't silently reintroduce this
+			// gap (13d-2's own adversarial review, verify pass).
+			c.drain_flow_control_raises(now, mut result)!
+		}
 	}
 }
 

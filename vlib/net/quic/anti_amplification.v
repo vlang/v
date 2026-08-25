@@ -79,3 +79,24 @@ pub fn (mut l AntiAmplificationLimiter) note_sent(n u64) ! {
 	}
 	l.sent += n
 }
+
+// note_sent_unconditional records `n` more bytes as sent, regardless of
+// whether that exceeds the current 3x limit -- for a caller that has
+// ALREADY sent the bytes and needs its own bookkeeping to reflect reality,
+// not note_sent's atomic check-then-reserve contract. This exists because
+// not every real caller can know a datagram's exact final size BEFORE
+// building it (packet framing/padding/AEAD overhead are only known
+// afterward) -- such a caller checks available_to_send() against its own
+// best PRE-build estimate, builds, and must then record what it actually
+// sent either way. Silently dropping that update on the rare occasion the
+// estimate undershoots (note_sent's own behavior, which never increments
+// l.sent on its error path) would leave available_to_send() reporting
+// stale, too-generous budget for every later send this poll()/
+// process_timeouts() call -- or a future one -- still needs to check
+// against, compounding one small estimation gap into an unbounded one.
+// Never fails: there is nothing left to prevent, the send already
+// happened: the only thing still at stake is whether FUTURE
+// available_to_send() calls correctly account for it.
+pub fn (mut l AntiAmplificationLimiter) note_sent_unconditional(n u64) {
+	l.sent += n
+}

@@ -63,3 +63,37 @@ fn test_anti_amplification_receiving_more_raises_the_budget_even_after_a_send() 
 	// New limit is 3*150=450, already sent 300 -> 150 more available.
 	assert lim.available_to_send() == 150
 }
+
+// note_sent_unconditional is a regression test for a real bug 13d-2's own
+// adversarial review found in the caller that motivated adding this
+// method: note_sent's own error path leaves `sent` unchanged, which is
+// correct for note_sent's own atomic check-then-reserve contract but
+// wrong for a caller recording bytes it has ALREADY sent (e.g. because
+// the exact size wasn't knowable until after building the datagram) --
+// silently dropping that update would leave available_to_send() reporting
+// stale, too-generous budget for every later check, letting a single
+// small overshoot compound into an unbounded one.
+fn test_anti_amplification_note_sent_unconditional_records_even_past_the_limit() {
+	mut lim := AntiAmplificationLimiter{}
+	lim.note_received(100)
+	// Budget is 300; deliberately record MORE than that, simulating a
+	// caller whose pre-build size estimate undershot the real built size.
+	lim.note_sent_unconditional(350)
+	// Reflects reality (350 sent, not silently capped/dropped) --
+	// available_to_send() clamps to 0 rather than underflowing.
+	assert lim.available_to_send() == 0
+
+	// Further receives still correctly raise the budget relative to the
+	// TRUE (350) sent figure, not a stale pre-overshoot one.
+	lim.note_received(100)
+	// New limit is 3*200=600, already sent 350 -> 250 more available.
+	assert lim.available_to_send() == 250
+}
+
+fn test_anti_amplification_note_sent_unconditional_never_fails() {
+	mut lim := AntiAmplificationLimiter{}
+	// No receives at all -- an ordinary note_sent(1) would fail here; the
+	// unconditional variant must not.
+	lim.note_sent_unconditional(1_000_000)
+	assert lim.available_to_send() == 0
+}
