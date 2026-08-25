@@ -3969,6 +3969,7 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	mut used := {
 		'main':                   true
 		'run':                    true
+		'panic_result_not_set':   true
 		'array_push':             true
 		'push':                   true
 		'push_many':              true
@@ -5684,6 +5685,22 @@ fn (mut g Parser) write_all_deferred_scopes() {
 	}
 }
 
+fn (g &Parser) deferred_scopes_source() string {
+	mut lines := []string{}
+	for block_index := g.deferred_block_starts.len - 1; block_index >= 0; block_index-- {
+		line_start := g.deferred_block_starts[block_index]
+		line_end := if block_index + 1 < g.deferred_block_starts.len {
+			g.deferred_block_starts[block_index + 1]
+		} else {
+			g.deferred_lines.len
+		}
+		for line_index in line_start .. line_end {
+			lines << g.deferred_lines[line_index]
+		}
+	}
+	return lines.join(' ')
+}
+
 fn (mut g Parser) parse_loop_block_body() !FastcLoopBlockResult {
 	g.loop_defer_block_starts << g.deferred_block_starts.len
 	g.loop_has_breaks << false
@@ -6672,12 +6689,15 @@ fn (mut g Parser) parse_simple_statement() ! {
 				return g.unsupported('arithmetic assignment `${operator.str()}` on non-numeric type `${resolved_expected_type}`')
 			}
 			g.consume_statement_end()
-			c_operator := if operator == .right_shift_unsigned_assign {
-				'>>='
-			} else {
-				operator.str()
+			if operator == .right_shift_unsigned_assign {
+				shift := g.render_unsigned_right_shift_assignment(c_target, value,
+					resolved_expected_type) or {
+					return g.unsupported('unsigned right shift assignment on type `${resolved_expected_type}`')
+				}
+				g.write_line('${shift};')
+				return
 			}
-			g.write_line('${c_target}${c_operator}${value};')
+			g.write_line('${c_target}${operator.str()}${value};')
 			return
 		}
 		expression := g.read_statement_expression_with_prefix(name, [token.Token.semicolon,
@@ -9131,7 +9151,10 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			}
 			value_type := g.option_value_type_for_expression(inner_tokens)
 			temporary := '__v_fastc_option_propagate'
-			failure := if g.return_type == 'Option' {
+			failure := if g.in_main {
+				deferred := g.deferred_scopes_source()
+				'${deferred} builtin__panic_result_not_set(builtin__IError_msg(${temporary}.err));'
+			} else if g.return_type == 'Option' {
 				'return ${temporary};'
 			} else {
 				'return 1;'
@@ -10280,13 +10303,14 @@ fn (g &Parser) render_array_assignment_expression(tokens []FastcExpressionToken)
 	right := g.render_call_argument_expression(tokens[assignment_index + 1..], left.typ) or {
 		return none
 	}
-	operator := if tokens[assignment_index].tok == .right_shift_unsigned_assign {
-		'>>='
+	operator := tokens[assignment_index].tok
+	source := if operator == .right_shift_unsigned_assign {
+		g.render_unsigned_right_shift_assignment(left.source, right, left.typ) or { return none }
 	} else {
-		tokens[assignment_index].tok.str()
+		'${left.source}${operator.str()}${right}'
 	}
 	return FastcRenderedExpression{
-		source: '${left.source}${operator}${right}'
+		source: source
 		typ:    left.typ
 	}
 }
@@ -10331,14 +10355,28 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 	operator := tokens[assignment_index].tok
 	source := if operator == .plus_assign && left_type == 'string' {
 		'${left}=builtin__string_plus(${left},${right})'
+	} else if operator == .right_shift_unsigned_assign {
+		g.render_unsigned_right_shift_assignment(left, right, left_type) or { return none }
 	} else {
-		c_operator := if operator == .right_shift_unsigned_assign { '>>=' } else { operator.str() }
-		'${left}${c_operator}${right}'
+		'${left}${operator.str()}${right}'
 	}
 	return FastcRenderedExpression{
 		source: source
 		typ:    left_type
 	}
+}
+
+fn (g &Parser) render_unsigned_right_shift_assignment(target string, value string, target_type string) ?string {
+	resolved_type := g.underlying_alias_type(target_type).trim_right('*')
+	unsigned_type, bits := match resolved_type {
+		'byte', 'char', 'i8', 'u8' { 'u8', '8' }
+		'i16', 'u16' { 'u16', '16' }
+		'i32', 'int', 'rune', 'u32', 'unsigned int' { 'u32', '32' }
+		'i64', 'u64' { 'u64', '64' }
+		'isize', 'usize' { 'usize', '${g.prefs.target.pointer_bits}' }
+		else { return none }
+	}
+	return '({ ${target_type} *__v_fastc_unsigned_shift_target = &(${target}); ${unsigned_type} __v_fastc_unsigned_shift_value = (${unsigned_type})(*__v_fastc_unsigned_shift_target); u64 __v_fastc_unsigned_shift_count = (u64)(${value}); *__v_fastc_unsigned_shift_target = (${target_type})(__v_fastc_unsigned_shift_count >= ${bits} ? (${unsigned_type})0 : (__v_fastc_unsigned_shift_value >> __v_fastc_unsigned_shift_count)); })'
 }
 
 fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {

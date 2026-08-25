@@ -4882,3 +4882,57 @@ fn test_type_sensitive_expressions_are_rejected() {
 		'call_comma.v', prefs) or { panic(err) }
 	assert call_c.contains('println(sum(1,2));')
 }
+
+fn test_selfhost_unsigned_right_shift_assignment_is_logical_and_guarded() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Holder {
+mut:
+	value i64
+}
+
+fn main() {
+	mut direct := i64(-5)
+	direct >>>= 1
+	mut holder := Holder{value: i64(-5)}
+	holder.value >>>= u64(64)
+	mut values := [i64(-5)]
+	values[0] >>>= 1
+	println(direct)
+	println(holder.value)
+	println(values[0])
+}
+',
+		'unsigned_right_shift_assignment.v', prefs) or { panic(err) }
+	assert !c_source.contains('>>>='), c_source
+	assert c_source.count('u64 __v_fastc_unsigned_shift_count =') == 3, c_source
+	assert c_source.count('u64 __v_fastc_unsigned_shift_value =') == 3, c_source
+	assert c_source.count('__v_fastc_unsigned_shift_count >= 64') == 3, c_source
+	assert c_source.count('__v_fastc_unsigned_shift_value >> __v_fastc_unsigned_shift_count') == 3, c_source
+}
+
+fn test_selfhost_main_result_propagation_panics_and_runs_defers() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate("module main
+
+fn fail() ! {}
+
+fn main() {
+	defer {
+		println('cleanup')
+	}
+	fail()!
+}
+",
+		'main_result_propagation.v', prefs) or { panic(err) }
+	panic_call := 'builtin__panic_result_not_set(builtin__IError_msg(__v_fastc_option_propagate.err));'
+	assert c_source.contains(panic_call), c_source
+	assert c_source.contains('if (__v_fastc_option_propagate.state) {'), c_source
+	assert c_source.count('println(_S("cleanup"));') == 2, c_source
+	assert !c_source.contains('if (__v_fastc_option_propagate.state) { return 1; }'), c_source
+	used := fastc_collect_referenced_function_names([], prefs, map[string]FastcFunctionSignature{})
+	assert used['panic_result_not_set']
+}
