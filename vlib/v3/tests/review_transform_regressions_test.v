@@ -1319,6 +1319,16 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_heap_attribute_does_not_promote_channel_with_imported_pointer_element() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'heap_attr_imported_pointer_channel', {
+		'v.mod':        "Module { name: 'heap_attr_imported_pointer_channel' }\n"
+		'items/item.v': 'module items\n\n@[heap]\npub struct Item {\npub:\n\tvalue int\n}\n'
+		'main.v':       'module main\n\nimport items\n\nfn main() {\n\tch := chan &items.Item{cap: 1}\n\tch <- &items.Item{\n\t\tvalue: 42\n\t}\n\titem := <-ch\n\tprintln(int_str(item.value))\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
 fn test_mut_pointer_capture_is_not_over_dereferenced() {
 	v3_bin := build_v3_review_transform()
 	// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a

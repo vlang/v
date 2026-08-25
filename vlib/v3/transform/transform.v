@@ -5828,7 +5828,11 @@ fn (t &Transformer) heap_attr_struct_type(typ string) bool {
 	if isnil(t.tc) || !t.heapable_value_type(typ) {
 		return false
 	}
-	return t.tc.type_has_declaration_attribute(t.tc.parse_type(typ), 'heap')
+	clean_type := types.unalias_type(t.tc.parse_type(typ))
+	if clean_type !is types.Struct {
+		return false
+	}
+	return t.tc.type_has_declaration_attribute(clean_type, 'heap')
 }
 
 fn (mut t Transformer) collect_exclusive_closure_return_fns() {
