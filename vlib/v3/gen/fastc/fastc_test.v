@@ -2909,6 +2909,26 @@ fn main() {
 	assert run_result.output.trim_space() == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
 }
 
+fn test_literal_membership_evaluates_subject_once() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for operator in ['in', '!in'] {
+		c_source := generate('module main
+
+fn next() int {
+	return 1
+}
+
+fn main() {
+	if next() ${operator} [0, 2] {}
+}
+',
+			'membership_subject_once.v', prefs) or { panic(err) }
+		assert c_source.contains('__v_fastc_membership_item = (next());'), c_source
+		assert c_source.count('next()') == 1, c_source
+	}
+}
+
 fn test_mixed_integer_comparisons_preserve_signed_semantics() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main

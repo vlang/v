@@ -9018,21 +9018,22 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				lhs_source := g.render_membership_candidate(tokens[..i], lhs_type) or {
 					return none
 				}
+				lhs_name := '__v_fastc_membership_subject'
 				mut comparisons := []string{cap: items.len}
 				for candidate in items {
 					candidate_source := g.render_membership_candidate(candidate, lhs_type) or {
 						return none
 					}
 					comparison := if lhs_type.trim_right('*') == 'string' {
-						'builtin__string_eq(${lhs_source}, ${candidate_source})'
+						'builtin__string_eq(${lhs_name}, ${candidate_source})'
 					} else {
-						'((${lhs_source}) == (${candidate_source}))'
+						'((${lhs_name}) == (${candidate_source}))'
 					}
 					comparisons << if item.tok == .key_in { comparison } else { '!${comparison}' }
 				}
 				joiner := if item.tok == .key_in { ' || ' } else { ' && ' }
 				return FastcRenderedExpression{
-					source: '(${comparisons.join(joiner)})'
+					source: '({ ${fastc_runtime_c_type(fastc_normalize_inferred_type(lhs_type))} ${lhs_name} = (${lhs_source}); (${comparisons.join(joiner)}); })'
 					typ:    'bool'
 				}
 			}
