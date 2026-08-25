@@ -1086,7 +1086,7 @@ pub fn make() Settings {
 			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
 		},
 	], prefs) or { panic(err) }
-	assert c_source.contains('.visible=(2)'), c_source
+	assert c_source.contains('.visible=(__v_fastc_struct_field_0)'), c_source
 }
 
 fn test_imported_public_field_mutability_is_preserved() {
@@ -1194,8 +1194,10 @@ fn main() {
 }
 ',
 		'valid_struct_literal.v', prefs) or { panic(err) }
-	assert c_source.contains('.enabled=(enabled)'), c_source
-	assert c_source.contains('.value=(2)'), c_source
+	assert c_source.contains('__v_fastc_struct_field_0 = (enabled);'), c_source
+	assert c_source.contains('__v_fastc_struct_field_1 = (2);'), c_source
+	assert c_source.contains('.enabled=(__v_fastc_struct_field_0)'), c_source
+	assert c_source.contains('.value=(__v_fastc_struct_field_1)'), c_source
 
 	update_source := generate('module main
 
@@ -1211,6 +1213,34 @@ fn main() {
 ',
 		'valid_struct_update.v', prefs) or { panic(err) }
 	assert update_source.contains('__v_fastc_struct_update'), update_source
+}
+
+fn test_selfhost_struct_field_initializers_preserve_source_order() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	source := 'module main
+
+struct Pair {
+	first int
+	second int
+}
+
+fn next(value int) int {
+	println(value)
+	return value
+}
+
+fn main() {
+	pair := Pair{second: next(2), first: next(1)}
+	println(pair.first)
+}
+'
+	c_source := generate(source, 'struct_field_initializer_order.v', prefs) or { panic(err) }
+	second_initializer := c_source.index('__v_fastc_struct_field_0 = (next(2));') or { -1 }
+	first_initializer := c_source.index('__v_fastc_struct_field_1 = (next(1));') or { -1 }
+	assert second_initializer >= 0, c_source
+	assert first_initializer > second_initializer, c_source
+	assert c_source.contains('(Pair){.first=(__v_fastc_struct_field_1),.second=(__v_fastc_struct_field_0)}'), c_source
 }
 
 fn test_embedded_struct_fields_use_storage_paths() {
@@ -1255,8 +1285,8 @@ fn main() {
 }
 ',
 		'embedded_struct_fields.v', prefs) or { panic(err) }
-	assert c_source.contains('.__embedded_0.value=(3)'), c_source
-	assert c_source.contains('.__embedded_0.__embedded_0.number=(7)'), c_source
+	assert c_source.contains('.__embedded_0.value=(__v_fastc_struct_field_0)'), c_source
+	assert c_source.contains('.__embedded_0.__embedded_0.number=(__v_fastc_struct_field_1)'), c_source
 	assert c_source.contains('outer.__embedded_0.value'), c_source
 	assert c_source.contains('outer.__embedded_0.child.count'), c_source
 	assert c_source.contains('outer.__embedded_0.__embedded_0.number'), c_source
@@ -1741,7 +1771,7 @@ fn main() {
 	assert c_source.contains('union Payload {\n\tint number;'), c_source
 	assert c_source.contains('struct Named { void *_object; u32 _typ; void *_methods; };'), c_source
 	assert c_source.contains('Named_name(Named value) {'), c_source
-	assert c_source.contains('__typeof__(((Choice){.value=(42)})) choice'), c_source
+	assert c_source.contains('__typeof__((({ __typeof__((42)) __v_fastc_struct_field_0 = (42); (Choice){.value=(__v_fastc_struct_field_0)}; }))) choice'), c_source
 }
 
 fn test_selected_top_level_comptime_constants_are_collected_and_emitted() {

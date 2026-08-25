@@ -9892,6 +9892,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	mut rendered_fields := []string{}
 	mut rendered_fields_by_name := map[string]string{}
 	mut field_values := map[string]string{}
+	mut explicit_initializers := []string{}
 	mut has_applied_defaults := false
 	mut update_source := ''
 	mut index := open + 1
@@ -10007,7 +10008,9 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 					rendered_item := g.render_call_argument_expression(item, fixed_element_type) or {
 						return none
 					}
-					values << rendered_item
+					temporary := '__v_fastc_struct_field_${explicit_initializers.len}'
+					explicit_initializers << '__typeof__((${rendered_item})) ${temporary} = (${rendered_item});'
+					values << temporary
 				}
 				rendered_field := '.${c_field_name}={${values.join(',')}}'
 				rendered_fields << rendered_field
@@ -10017,10 +10020,12 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			}
 		}
 		value := g.render_call_argument_expression(value_tokens, expected_type) or { return none }
-		rendered_field := '.${c_field_name}=(${value})'
+		temporary := '__v_fastc_struct_field_${explicit_initializers.len}'
+		explicit_initializers << '__typeof__((${value})) ${temporary} = (${value});'
+		rendered_field := '.${c_field_name}=(${temporary})'
 		rendered_fields << rendered_field
 		rendered_fields_by_name[field_name] = rendered_field
-		field_values[field_name] = value
+		field_values[field_name] = temporary
 	}
 	if update_source == '' {
 		for field in g.struct_field_info[layout_type] {
@@ -10058,7 +10063,13 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		base := '((${c_type})builtin____new_array(${length},${capacity},sizeof(${element_type})))'
 		if initial := field_values['init'] {
 			return FastcRenderedExpression{
-				source: '({ ${c_type} __v_fastc_array_init = ${base}; ${element_type} __v_fastc_array_default = (${initial}); for (int __v_fastc_array_index = 0; __v_fastc_array_index < __v_fastc_array_init.len; __v_fastc_array_index++) { ((${element_type} *)__v_fastc_array_init.data)[__v_fastc_array_index] = __v_fastc_array_default; } __v_fastc_array_init; })'
+				source: '({ ${explicit_initializers.join(' ')} ${c_type} __v_fastc_array_init = ${base}; ${element_type} __v_fastc_array_default = (${initial}); for (int __v_fastc_array_index = 0; __v_fastc_array_index < __v_fastc_array_init.len; __v_fastc_array_index++) { ((${element_type} *)__v_fastc_array_init.data)[__v_fastc_array_index] = __v_fastc_array_default; } __v_fastc_array_init; })'
+				typ:    c_type
+			}
+		}
+		if explicit_initializers.len > 0 {
+			return FastcRenderedExpression{
+				source: '({ ${explicit_initializers.join(' ')} ${base}; })'
 				typ:    c_type
 			}
 		}
@@ -10073,7 +10084,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			assignments << '__v_fastc_struct_update${field};'
 		}
 		return FastcRenderedExpression{
-			source: '({ ${c_type} __v_fastc_struct_update = (${update_source}); ${assignments.join(' ')} __v_fastc_struct_update; })'
+			source: '({ ${c_type} __v_fastc_struct_update = (${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} __v_fastc_struct_update; })'
 			typ:    c_type
 		}
 	}
@@ -10108,7 +10119,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			'__v_fastc_struct_default'
 		}
 		return FastcRenderedExpression{
-			source: '({ ${base_type} __v_fastc_struct_default = ${initializer}; ${assignments.join(' ')} ${result}; })'
+			source: '({ ${explicit_initializers.join(' ')} ${base_type} __v_fastc_struct_default = ${initializer}; ${assignments.join(' ')} ${result}; })'
 			typ:    c_type
 		}
 	}
@@ -10116,6 +10127,12 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		'(${c_type})v_fastc_interface_box(&(${c_type.trim_right('*')}){${rendered_fields.join(',')}}, sizeof(${c_type.trim_right('*')}))'
 	} else {
 		'(${c_type}){${rendered_fields.join(',')}}'
+	}
+	if explicit_initializers.len > 0 {
+		return FastcRenderedExpression{
+			source: '({ ${explicit_initializers.join(' ')} ${literal_source}; })'
+			typ:    c_type
+		}
 	}
 	return FastcRenderedExpression{
 		source: literal_source
