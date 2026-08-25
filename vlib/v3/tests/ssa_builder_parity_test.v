@@ -383,6 +383,59 @@ fn get_bytes(d &Digest) [32]u8 {
 	assert typ.len == 32
 }
 
+// test_c_environ_loads_external_global validates this v3 regression case.
+fn test_c_environ_loads_external_global() {
+	m := build_source('c_environ_external_global', '
+fn read_environ() voidptr {
+	return voidptr(C.environ)
+}
+')
+	mut found := false
+	for global in m.globals {
+		if global.name == 'environ' {
+			assert global.linkage == .external
+			found = true
+		}
+	}
+	assert found
+}
+
+// test_dereference_struct_assignment_emits_store validates this v3 regression case.
+fn test_dereference_struct_assignment_emits_store() {
+	m := build_source('dereference_struct_assignment', '
+struct Big {
+	a int
+	b int
+	c int
+}
+
+fn copy_into(dst &Big, value Big) {
+	unsafe {
+		*dst = value
+	}
+}
+')
+	f := find_func(m, 'copy_into')
+	mut struct_stores := 0
+	for block_id in f.blocks {
+		for value_id in m.blocks[block_id].instrs {
+			value := m.values[value_id]
+			if value.kind != .instruction {
+				continue
+			}
+			instr := m.instrs[value.index]
+			if instr.op != .store || instr.operands.len < 2 {
+				continue
+			}
+			src_type := m.values[instr.operands[0]].typ
+			if src_type > 0 && m.type_store.types[src_type].kind == .struct_t {
+				struct_stores++
+			}
+		}
+	}
+	assert struct_stores >= 2
+}
+
 // test_label_and_goto_lower_to_jump_blocks validates this v3 regression case.
 fn test_label_and_goto_lower_to_jump_blocks() {
 	m := build_source('label_goto', '

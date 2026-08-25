@@ -618,7 +618,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 		generic_type_bases:               generic_type_bases
 		detect_generics:                  detect_reachable_generics
-		body_checker_edges_authoritative: !detect_reachable_generics
+		body_checker_edges_authoritative: use_prepared && !detect_reachable_generics
 	}
 	// Precollect every body's call/initializer-ref lists up front (across
 	// threads when available): the BFS below then only does the cheap

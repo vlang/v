@@ -6624,9 +6624,12 @@ fn (mut b Builder) build_assign(node flat.Node) {
 					b.emit2(.store, b.void_type, result, addr)
 				}
 			}
-		} else if lhs.kind == .selector || lhs.kind == .index {
+		} else if lhs.kind == .selector || lhs.kind == .index
+			|| (lhs.kind == .prefix && lhs.op == .mul) {
 			addr := if lhs.kind == .selector {
 				b.build_selector_addr(lhs)
+			} else if lhs.kind == .prefix && lhs.children_count > 0 {
+				b.build_expr(b.a.child(&lhs, 0))
 			} else {
 				b.build_lvalue_addr(lhs_id)
 			}
@@ -10926,6 +10929,12 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 
 	if base.kind == .ident && base.value == 'C' {
 		match field_name {
+			'environ' {
+				ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+				environ_type := b.m.type_store.get_ptr(ptr_i8)
+				environ_addr := b.m.add_external_global('environ', environ_type)
+				return b.emit1(.load, environ_type, environ_addr)
+			}
 			'SEEK_SET' {
 				return b.m.get_or_add_const(b.i64_type, '0')
 			}

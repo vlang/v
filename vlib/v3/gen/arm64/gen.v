@@ -223,6 +223,9 @@ fn arm64_max_int(a int, b int) int {
 fn (mut g Gen) gen_pre_pass() {
 	mut data_offset := u64(0)
 	for gi in 0 .. g.m.globals.len {
+		if g.m.globals[gi].linkage == .external {
+			continue
+		}
 		data_offset = (data_offset + 7) & ~u64(7)
 		g.macho.add_symbol('_' + g.m.globals[gi].name, data_offset, true, 3)
 		size := g.m.type_size(g.m.globals[gi].typ)
@@ -233,6 +236,9 @@ fn (mut g Gen) gen_pre_pass() {
 // gen_post_pass emits post pass output for arm64.
 fn (mut g Gen) gen_post_pass() {
 	for gi in 0 .. g.m.globals.len {
+		if g.m.globals[gi].linkage == .external {
+			continue
+		}
 		for g.macho.data_data.len % 8 != 0 {
 			g.macho.data_data << 0
 		}
@@ -479,7 +485,7 @@ fn (mut g Gen) emit_zero_aggregate(ptr_reg int, typ_id ssa.TypeID, max_size int)
 	}
 	n_words := (size + 7) / 8
 	for wi in 0 .. n_words {
-		g.emit32(asm_str_imm(xzr, Reg(ptr_reg), u32(wi)))
+		g.emit_store_reg_offset(xzr, Reg(ptr_reg), wi * 8)
 	}
 }
 
@@ -650,29 +656,27 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit32(asm_str(Reg(8), Reg(ptr_reg)))
 				g.emit32(asm_str_imm(Reg(10), Reg(ptr_reg), 1))
 			} else {
+				ptr_reg := g.load_val(ptr_id, 9)
+				dest_type := g.ptr_elem_type(ptr_id)
+				if g.is_zero_const(src_id) && g.is_aggregate_type(dest_type) {
+					g.emit_zero_aggregate(ptr_reg, dest_type, g.aggregate_store_size(ptr_id,
+						dest_type))
+					return
+				}
 				src_size := g.m.type_size(src_val.typ)
 				if src_size > 8 && g.is_value_aggregate_type(src_val.typ) {
 					if src_off := g.stack_slot(src_id) {
-						ptr_reg := g.load_val(ptr_id, 9)
 						copy_size := g.aggregate_store_size(ptr_id, src_val.typ)
 						n_words := (copy_size + 7) / 8
 						for wi in 0 .. n_words {
 							g.emit_load_fp(8, src_off + wi * 8)
-							g.emit32(asm_str_imm(Reg(8), Reg(ptr_reg), u32(wi)))
+							g.emit_store_reg_offset(Reg(8), Reg(ptr_reg), wi * 8)
 						}
 					} else {
 						src_reg := g.load_val(src_id, 8)
-						ptr_reg := g.load_val(ptr_id, 9)
 						g.emit32(asm_str(Reg(src_reg), Reg(ptr_reg)))
 					}
 				} else {
-					ptr_reg := g.load_val(ptr_id, 9)
-					dest_type := g.ptr_elem_type(ptr_id)
-					if g.is_zero_const(src_id) && g.is_aggregate_type(dest_type) {
-						g.emit_zero_aggregate(ptr_reg, dest_type, g.aggregate_store_size(ptr_id,
-							dest_type))
-						return
-					}
 					src_reg := g.load_val(src_id, 8)
 					store_typ := if int(dest_type) > 0 { dest_type } else { src_val.typ }
 					g.emit_store_typed(src_reg, ptr_reg, store_typ)
@@ -723,7 +727,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 								copy_words := (copy_size + 7) / 8
 								total_words := (result_size + 7) / 8
 								for wi in 0 .. copy_words {
-									g.emit32(asm_ldr_imm(Reg(8), Reg(ptr_reg), u32(wi)))
+									g.emit_load_reg_offset(Reg(8), Reg(ptr_reg), wi * 8)
 									g.emit_store_fp(8, off + wi * 8)
 								}
 								if copy_words < total_words {
@@ -992,18 +996,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 					if off := g.stack_slot(ret_id) {
 						for wi in 0 .. n_words {
 							g.emit_load_fp(8, off + wi * 8)
-							g.emit32(asm_str_imm(Reg(8), Reg(9), u32(wi)))
+							g.emit_store_reg_offset(Reg(8), Reg(9), wi * 8)
 						}
 					} else {
 						g.emit_mov_imm(8, 0)
 						for wi in 0 .. n_words {
-							g.emit32(asm_str_imm(Reg(8), Reg(9), u32(wi)))
+							g.emit_store_reg_offset(Reg(8), Reg(9), wi * 8)
 						}
 					}
 				} else {
 					g.emit_mov_imm(8, 0)
 					for wi in 0 .. n_words {
-						g.emit32(asm_str_imm(Reg(8), Reg(9), u32(wi)))
+						g.emit_store_reg_offset(Reg(8), Reg(9), wi * 8)
 					}
 				}
 				if g.stack_size > 0 {
@@ -1434,7 +1438,7 @@ fn (mut g Gen) emit_copy_ptr_to_fp(src_ptr_reg int, dst_off int, size int) {
 	n_words := (size + 7) / 8
 	tmp_reg := if src_ptr_reg == 8 { 10 } else { 8 }
 	for wi in 0 .. n_words {
-		g.emit32(asm_ldr_imm(Reg(tmp_reg), Reg(src_ptr_reg), u32(wi)))
+		g.emit_load_reg_offset(Reg(tmp_reg), Reg(src_ptr_reg), wi * 8)
 		g.emit_store_fp(tmp_reg, dst_off + wi * 8)
 	}
 }
@@ -1564,10 +1568,26 @@ fn (mut g Gen) emit_global_addr(reg int, name string) {
 	} else {
 		sym_idx = g.macho.add_undefined(sym_name)
 	}
+	if g.is_external_global(name) {
+		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_got_load_page21, true)
+		g.emit32(asm_adrp(Reg(reg)))
+		g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_got_load_pageoff12, false)
+		g.emit32(asm_ldr_pageoff(Reg(reg)))
+		return
+	}
 	g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_page21, true)
 	g.emit32(asm_adrp(Reg(reg)))
 	g.macho.add_reloc(g.macho.text_data.len, sym_idx, arm64_reloc_pageoff12, false)
 	g.emit32(asm_add_pageoff(Reg(reg)))
+}
+
+fn (g &Gen) is_external_global(name string) bool {
+	for global in g.m.globals {
+		if global.name == name {
+			return global.linkage == .external
+		}
+	}
+	return false
 }
 
 // find_global_idx_by_name resolves find global idx by name information for arm64.
@@ -1760,19 +1780,13 @@ fn (mut g Gen) emit_store_fp(reg int, offset int) {
 		g.emit32(asm_add_reg(Reg(11), fp, Reg(11)))
 		g.emit32(asm_str(Reg(reg), Reg(11)))
 	} else {
-		g.emit32(asm_str_imm(Reg(reg), fp, u32(offset / 8)))
+		g.emit_store_reg_offset(Reg(reg), fp, offset)
 	}
 }
 
 // emit_store_sp emits emit store sp output for arm64.
 fn (mut g Gen) emit_store_sp(reg int, offset int) {
-	if offset >= 0 && offset < 32768 && offset % 8 == 0 {
-		g.emit32(asm_str_imm(Reg(reg), sp, u32(offset / 8)))
-	} else {
-		g.emit_mov_imm(11, i64(offset))
-		g.emit32(asm_add_reg(Reg(11), sp, Reg(11)))
-		g.emit32(asm_str(Reg(reg), Reg(11)))
-	}
+	g.emit_store_reg_offset(Reg(reg), sp, offset)
 }
 
 // emit_load_fp emits emit load fp output for arm64.
@@ -1784,8 +1798,42 @@ fn (mut g Gen) emit_load_fp(reg int, offset int) {
 		g.emit32(asm_add_reg(Reg(11), fp, Reg(11)))
 		g.emit32(asm_ldr(Reg(reg), Reg(11)))
 	} else {
-		g.emit32(asm_ldr_imm(Reg(reg), fp, u32(offset / 8)))
+		g.emit_load_reg_offset(Reg(reg), fp, offset)
 	}
+}
+
+fn (mut g Gen) emit_store_reg_offset(src Reg, base Reg, offset int) {
+	if offset >= 0 && offset < 32768 && offset % 8 == 0 {
+		g.emit32(asm_str_imm(src, base, u32(offset / 8)))
+		return
+	}
+	scratch := if int(src) != 11 && int(base) != 11 {
+		Reg(11)
+	} else if int(src) != 12 && int(base) != 12 {
+		Reg(12)
+	} else {
+		Reg(13)
+	}
+	g.emit_mov_imm(int(scratch), i64(offset))
+	g.emit32(asm_add_reg(scratch, base, scratch))
+	g.emit32(asm_str(src, scratch))
+}
+
+fn (mut g Gen) emit_load_reg_offset(dst Reg, base Reg, offset int) {
+	if offset >= 0 && offset < 32768 && offset % 8 == 0 {
+		g.emit32(asm_ldr_imm(dst, base, u32(offset / 8)))
+		return
+	}
+	scratch := if int(dst) != 11 && int(base) != 11 {
+		Reg(11)
+	} else if int(dst) != 12 && int(base) != 12 {
+		Reg(12)
+	} else {
+		Reg(13)
+	}
+	g.emit_mov_imm(int(scratch), i64(offset))
+	g.emit32(asm_add_reg(scratch, base, scratch))
+	g.emit32(asm_ldr(dst, scratch))
 }
 
 // emit_lea_fp emits emit lea fp output for arm64.

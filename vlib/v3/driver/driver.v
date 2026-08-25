@@ -8304,7 +8304,9 @@ pub fn run(args []string) {
 		pre_tc.reject_unsupported_generics = is_selfhost
 		mut ckpre_sw := time.new_stopwatch()
 		set_diagnostic_files(mut pre_tc, user_files)
-		trivial_literal_output = test_files.len == 0 && !is_checker_fixture
+		// The C generator has a dedicated literal-output path. The SSA/native backend
+		// still builds ordinary builtin bodies, so it needs their full dependency set.
+		trivial_literal_output = backend != 'arm64' && test_files.len == 0 && !is_checker_fixture
 			&& markused.is_trivial_literal_output_program(a, pre_tc.diagnostic_files)
 		if verbose {
 			eprintln('  [ttime]   ck trivial gate  ${f64(ckpre_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')

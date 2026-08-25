@@ -35,3 +35,26 @@ fn test_sparse_codegen_slots_only_store_current_function_ids() {
 	assert g.alloca_byte_size(6) == none
 	assert g.block_offset(0) == none
 }
+
+fn test_zero_aggregate_uses_address_fallback_past_immediate_range() {
+	mut m := ssa.Module.new()
+	i64_type := m.type_store.get_int(64)
+	large_array := m.type_store.get_array(i64_type, 4097)
+	mut g := Gen.new(m)
+	g.emit_zero_aggregate(9, large_array, 0)
+	assert g.macho.text_data.len == (4096 + 3) * 4
+	last := g.macho.text_data.len - 4
+	assert read_u32_le(g.macho.text_data, last) == asm_str(xzr, Reg(11))
+}
+
+fn test_external_global_address_uses_got_load_relocations() {
+	mut m := ssa.Module.new()
+	i8_type := m.type_store.get_int(8)
+	m.add_external_global('environ', m.type_store.get_ptr(m.type_store.get_ptr(i8_type)))
+	mut g := Gen.new(m)
+	g.emit_global_addr(8, 'environ')
+	assert g.macho.relocs.len == 2
+	assert g.macho.relocs[0].type_ == arm64_reloc_got_load_page21
+	assert g.macho.relocs[1].type_ == arm64_reloc_got_load_pageoff12
+	assert read_u32_le(g.macho.text_data, 4) == asm_ldr_pageoff(Reg(8))
+}
