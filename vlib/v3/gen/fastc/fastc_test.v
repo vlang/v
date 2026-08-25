@@ -232,6 +232,49 @@ fn main() {}
 	assert compile_result.exit_code == 0, compile_result.output
 }
 
+fn test_selfhost_module_pseudo_values_use_the_source_manifest() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_module_pseudo_${os.getpid()}')
+	compiler_root := os.join_path(root, 'compiler')
+	module_root := os.join_path(root, 'modules', 'dep')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(compiler_root) or { panic(err) }
+	os.mkdir_all(module_root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(compiler_root, 'v.mod'), "Module { name: 'compiler' }\n") or {
+		panic(err)
+	}
+	manifest := "Module { name: 'dep' }\r\n"
+	os.write_file(os.join_path(module_root, 'v.mod'), manifest) or { panic(err) }
+	source_path := os.join_path(module_root, 'dep.v')
+	source := 'module dep
+
+pub fn fastc_module_root() string {
+	return @VMODROOT
+}
+
+pub fn fastc_module_manifest() string {
+	return @VMOD_FILE
+}
+
+pub fn fastc_compiler_root() string {
+	return @VROOT
+}
+'
+	os.write_file(source_path, source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.vroot = compiler_root
+	c_source := generate(source, source_path, prefs) or { panic(err) }
+	module_root_literal := fastc_c_string_value(os.real_path(module_root))
+	manifest_literal := fastc_c_string_value(manifest.replace('\r\n', '\n'))
+	compiler_root_literal := fastc_c_string_value(compiler_root)
+	assert c_source.contains('return _S(${module_root_literal});'), c_source
+	assert c_source.contains('return _S(${manifest_literal});'), c_source
+	assert c_source.contains('return _S(${compiler_root_literal});'), c_source
+}
+
 fn test_ordinary_primitive_interpolation_has_runtime_support() {
 	prefs := pref.new_preferences()
 	c_source := generate(r"module main

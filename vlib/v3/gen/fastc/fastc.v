@@ -8384,14 +8384,19 @@ fn (g &Parser) comptime_pseudo_expression(name string) ?string {
 		'@LOCATION' {
 			'${g.path}:${line}, ${g.module_name}.${method_name}'
 		}
-		'@VEXEROOT', '@VROOT', '@VMODROOT' {
+		'@VEXEROOT', '@VROOT' {
 			g.prefs.vroot
+		}
+		'@VMODROOT' {
+			fastc_vmod_root_for_file(g.path)
 		}
 		'@VEXE' {
 			g.prefs.vexe
 		}
 		'@VMOD_FILE' {
-			os.join_path_single(g.prefs.vroot, 'v.mod')
+			vmod_file := os.join_path_single(fastc_vmod_root_for_file(g.path), 'v.mod')
+			content := os.read_file(vmod_file) or { return none }
+			content.replace('\r\n', '\n')
 		}
 		'@VHASH' {
 			g.prefs.vhash
