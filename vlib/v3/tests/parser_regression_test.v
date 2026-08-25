@@ -164,15 +164,28 @@ fn test_interface_method_keyword_named_param_makes_progress() {
 
 fn test_interface_method_type_head_keyword_param_name_is_disambiguated() {
 	a := parse_parser_regression_source('interface_type_head_keyword_param_name',
-		'struct Foo {}\ninterface Commands {\n\tuse(struct Foo)\n\tmerge(union Foo)\n\tinline_struct(struct { value int })\n\tinline_union(union { value int })\n}\n')
+		'struct Foo {}\ninterface Commands {\n\tuse(struct Foo)\n\tmerge(union Foo)\n\tcallback(fn string)\n\tinspect(typeof string)\n\tlookup(map string)\n\tinline_struct(struct { value int })\n\tinline_union(union { value int })\n\tfunction_type(fn (string) int)\n\treflected_type(typeof(string))\n\tmap_type(map[string]int)\n\tchannel_type(chan string)\n}\n')
 	assert fn_decl_param_pairs(a, .interface_field, 'use') == ['struct:Foo']
 	assert fn_decl_param_pairs(a, .interface_field, 'merge') == ['union:Foo']
+	assert fn_decl_param_pairs(a, .interface_field, 'callback') == ['fn:string']
+	assert fn_decl_param_pairs(a, .interface_field, 'inspect') == ['typeof:string']
+	assert fn_decl_param_pairs(a, .interface_field, 'lookup') == ['map:string']
 	struct_params := fn_decl_param_pairs(a, .interface_field, 'inline_struct')
 	assert struct_params.len == 1
 	assert struct_params[0].starts_with(':AnonStruct_')
 	union_params := fn_decl_param_pairs(a, .interface_field, 'inline_union')
 	assert union_params.len == 1
 	assert union_params[0].starts_with(':AnonUnion_')
+	assert fn_decl_param_pairs(a, .interface_field, 'function_type') == [
+		':fn(string) int',
+	]
+	assert fn_decl_param_pairs(a, .interface_field, 'reflected_type') == [
+		':typeof(string)',
+	]
+	assert fn_decl_param_pairs(a, .interface_field, 'map_type') == [':map[string]int']
+	assert fn_decl_param_pairs(a, .interface_field, 'channel_type') == [
+		':chan string',
+	]
 }
 
 fn test_lifetime_generic_suffixes_are_erased() {

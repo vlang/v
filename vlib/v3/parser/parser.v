@@ -2397,18 +2397,20 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				}
 				// Interface method params may be named (e.g. `seed_data []u32`,
 				// `module string`, `struct Foo`) or type-only (`[]u32`, `struct {}`).
-				// A `struct`/`union` token is an anonymous type head only before `{`;
-				// otherwise it remains available as a declaration name, matching ordinary
-				// parameter parsing. `map`/`chan` are type heads, not names.
+				// A token is a type head only when the following token can continue that
+				// specific syntax; otherwise it remains available as a declaration name,
+				// matching ordinary parameter parsing.
 				nt := p.peek()
-				is_anonymous_aggregate_type := p.tok in [.key_struct, .key_union] && nt == .lcbr
-				can_be_param_name := p.tok == .name || (p.tok_can_be_decl_name()
-					&& (!p.can_start_type_name()
-					|| (p.tok in [.key_struct, .key_union] && !is_anonymous_aggregate_type)))
-				if can_be_param_name && p.lit != 'map' && p.lit != 'chan' {
-					if nt == .name || nt == .amp || nt == .question || nt == .not
-						|| nt == .key_fn || nt == .ellipsis
-						|| (nt == .lsbr && p.peek_lbr_starts_array_type()) {
+				current_starts_type := interface_param_token_continues_type(p.tok, p.lit, nt)
+				can_be_param_name := p.tok_can_be_decl_name() && !current_starts_type
+				if can_be_param_name {
+					next_starts_type := if nt == .lsbr {
+						p.peek_lbr_starts_array_type()
+					} else {
+						token_can_start_type_name(nt)
+							|| nt in [.and, .key_union, .key_nil, .key_none]
+					}
+					if next_starts_type {
 						param_pos = p.current_pos()
 						param_name = p.expect_name_or_keyword()
 					}
@@ -11747,6 +11749,36 @@ fn token_can_start_type_name(tok token.Token) bool {
 	return tok == .name || tok == .amp || tok == .question || tok == .not || tok == .lsbr
 		|| tok == .lpar || tok == .key_fn || tok == .key_struct || tok == .ellipsis
 		|| tok == .key_mut || tok == .key_shared || tok == .key_atomic || tok == .key_typeof
+}
+
+fn interface_param_token_continues_type(tok token.Token, lit string, next token.Token) bool {
+	match tok {
+		.key_fn {
+			return next == .lpar
+		}
+		.key_typeof {
+			return next in [.lpar, .lsbr]
+		}
+		.key_struct, .key_union {
+			return next == .lcbr
+		}
+		.key_atomic, .key_shared {
+			return token_can_start_type_name(next) || next == .key_union
+		}
+		.name {
+			if lit == 'map' {
+				return next == .lsbr
+			}
+			if lit == 'chan' {
+				return next in [.name, .amp, .lsbr, .question, .not, .key_mut]
+			}
+			if lit == 'thread' {
+				return next in [.name, .amp, .lsbr, .lpar, .question, .not, .key_fn]
+			}
+		}
+		else {}
+	}
+	return false
 }
 
 // fn_type_param_with_mut supports fn type param with mut handling for parser.
