@@ -434,8 +434,7 @@ fn (mut g Gen) reserve_value_stack_slot(val_id int, current_offset int) int {
 	}
 	val := g.m.values[val_id]
 	result_size := g.m.type_size(val.typ)
-	alloc_size := if result_size > 8 && val.typ > 0 && val.typ < g.m.type_store.types.len
-		&& g.m.type_store.types[val.typ].kind == .struct_t {
+	alloc_size := if result_size > 8 && g.is_value_aggregate_type(val.typ) {
 		(result_size + 7) & ~7
 	} else {
 		8
@@ -445,22 +444,22 @@ fn (mut g Gen) reserve_value_stack_slot(val_id int, current_offset int) int {
 	return new_offset
 }
 
-// is_large_struct_type reports whether is large struct type applies in arm64.
+// is_large_struct_type reports whether an aggregate uses indirect argument/return passing.
 fn (g &Gen) is_large_struct_type(typ_id ssa.TypeID) bool {
-	if typ_id <= 0 || typ_id >= g.m.type_store.types.len {
-		return false
-	}
-	typ := g.m.type_store.types[typ_id]
-	return typ.kind == .struct_t && g.m.type_size(typ_id) > 16
+	return g.is_value_aggregate_type(typ_id) && g.m.type_size(typ_id) > 16
 }
 
-// is_aggregate_type reports whether is aggregate type applies in arm64.
+// is_aggregate_type reports whether an aggregate needs more than one register/word.
 fn (g &Gen) is_aggregate_type(typ_id ssa.TypeID) bool {
+	return g.is_value_aggregate_type(typ_id) && g.m.type_size(typ_id) > 8
+}
+
+fn (g &Gen) is_value_aggregate_type(typ_id ssa.TypeID) bool {
 	if typ_id <= 0 || typ_id >= g.m.type_store.types.len {
 		return false
 	}
 	typ := g.m.type_store.types[typ_id]
-	return typ.kind == .struct_t && g.m.type_size(typ_id) > 8
+	return typ.kind in [.struct_t, .array_t]
 }
 
 // is_zero_const reports whether is zero const applies in arm64.
@@ -652,8 +651,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit32(asm_str_imm(Reg(10), Reg(ptr_reg), 1))
 			} else {
 				src_size := g.m.type_size(src_val.typ)
-				if src_size > 8 && src_val.typ > 0 && src_val.typ < g.m.type_store.types.len
-					&& g.m.type_store.types[src_val.typ].kind == .struct_t {
+				if src_size > 8 && g.is_value_aggregate_type(src_val.typ) {
 					if src_off := g.stack_slot(src_id) {
 						ptr_reg := g.load_val(ptr_id, 9)
 						copy_size := g.aggregate_store_size(ptr_id, src_val.typ)
@@ -701,9 +699,8 @@ fn (mut g Gen) gen_instr(val_id int) {
 			} else {
 				ptr_reg := g.load_val(ptr_id, 9)
 				result_size := g.m.type_size(val.typ)
-				if result_size > 8 && val.typ > 0 && val.typ < g.m.type_store.types.len {
-					typ := g.m.type_store.types[val.typ]
-					if typ.kind == .struct_t {
+				if result_size > 8 && g.is_value_aggregate_type(val.typ) {
+					if val.typ > 0 && val.typ < g.m.type_store.types.len {
 						if off := g.stack_slot(val_id) {
 							if g.is_string_struct_type(val.typ) {
 								copy_size := g.aggregate_load_size(ptr_id, val.typ)
@@ -1041,8 +1038,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 					g.emit32(asm_mov_reg(Reg(1), Reg(10)))
 				} else {
 					ret_size := g.m.type_size(ret_val.typ)
-					if ret_size > 8 && ret_val.typ > 0 && ret_val.typ < g.m.type_store.types.len
-						&& g.m.type_store.types[ret_val.typ].kind == .struct_t {
+					if ret_size > 8 && g.is_value_aggregate_type(ret_val.typ) {
 						if off := g.stack_slot(ret_id) {
 							if g.is_string_struct_type(ret_val.typ) {
 								g.emit_load_string_regs_from_fp(off, 0, 1, ret_val.typ)
@@ -1159,9 +1155,8 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 		} else {
 			arg_type_id := arg_val.typ
 			arg_size := g.m.type_size(arg_type_id)
-			if arg_size > 8 && arg_type_id > 0 && arg_type_id < g.m.type_store.types.len {
-				typ := g.m.type_store.types[arg_type_id]
-				if typ.kind == .struct_t {
+			if arg_size > 8 && g.is_value_aggregate_type(arg_type_id) {
+				if arg_type_id > 0 && arg_type_id < g.m.type_store.types.len {
 					if g.is_large_struct_type(arg_type_id) {
 						if arg_reg < 8 {
 							if !g.emit_value_address(arg_id, arg_reg) {
@@ -1296,9 +1291,8 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 
 	if instr.typ != 0 {
 		ret_size := g.m.type_size(instr.typ)
-		if ret_size > 8 && instr.typ > 0 && instr.typ < g.m.type_store.types.len {
-			typ := g.m.type_store.types[instr.typ]
-			if typ.kind == .struct_t {
+		if ret_size > 8 && g.is_value_aggregate_type(instr.typ) {
+			if instr.typ > 0 && instr.typ < g.m.type_store.types.len {
 				if off := g.stack_slot(val_id) {
 					if g.is_string_struct_type(instr.typ) {
 						g.emit_store_fp(0, off)
@@ -1377,8 +1371,7 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 			n_words = 2
 		} else {
 			arg_size := g.m.type_size(arg_val.typ)
-			if arg_size > 8 && arg_val.typ > 0 && arg_val.typ < g.m.type_store.types.len
-				&& g.m.type_store.types[arg_val.typ].kind == .struct_t {
+			if arg_size > 8 && g.is_value_aggregate_type(arg_val.typ) {
 				n_words = if g.is_large_struct_type(arg_val.typ) { 1 } else { (arg_size + 7) / 8 }
 			}
 		}

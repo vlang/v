@@ -8564,7 +8564,7 @@ pub fn run(args []string) {
 		} else if is_checker_fixture {
 			used_fns, uses_generics = markused.mark_used_with_generic_usage_full_runtime(a,
 				markused_tc)
-		} else if building_v && current_parallel_transform {
+		} else if building_v {
 			if prepare_markused_overlap {
 				used_fns = markused.mark_used_without_generic_detection_prepared(a, markused_tc, mut
 					prepared_markused)
