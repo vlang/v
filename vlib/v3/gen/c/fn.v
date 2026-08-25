@@ -5248,7 +5248,19 @@ fn (mut g FlatGen) gen_all_defers() {
 	g.gen_all_defers_range(0, g.defers.len)
 }
 
+fn (mut g FlatGen) begin_defer_cleanup(id flat.NodeId) bool {
+	if id in g.defer_cleanup_stack {
+		return false
+	}
+	g.defer_cleanup_stack << id
+	return true
+}
+
 fn (mut g FlatGen) gen_all_defers_range(start int, end int) {
+	cleanup_start := g.defer_cleanup_stack.len
+	defer {
+		g.defer_cleanup_stack.trim(cleanup_start)
+	}
 	mut defer_start := start
 	if defer_start < 0 {
 		defer_start = 0
@@ -5258,12 +5270,18 @@ fn (mut g FlatGen) gen_all_defers_range(start int, end int) {
 	for defer_index > defer_start || fn_defer_index > 0 {
 		if defer_index <= defer_start {
 			fn_defer_index--
-			g.gen_fn_defer_at(fn_defer_index)
+			defer_id := g.fn_defers[fn_defer_index]
+			if g.begin_defer_cleanup(defer_id) {
+				g.gen_fn_defer_at(fn_defer_index)
+			}
 			continue
 		}
 		if fn_defer_index <= 0 {
 			defer_index--
-			g.gen_defer_at(defer_index)
+			defer_id := g.defers[defer_index]
+			if g.begin_defer_cleanup(defer_id) {
+				g.gen_defer_at(defer_index)
+			}
 			continue
 		}
 		defer_node := g.a.nodes[int(g.defers[defer_index - 1])]
@@ -5271,10 +5289,16 @@ fn (mut g FlatGen) gen_all_defers_range(start int, end int) {
 		if defer_node.pos.id == fn_defer_node.pos.id
 			&& defer_node.pos.offset > fn_defer_node.pos.offset {
 			defer_index--
-			g.gen_defer_at(defer_index)
+			defer_id := g.defers[defer_index]
+			if g.begin_defer_cleanup(defer_id) {
+				g.gen_defer_at(defer_index)
+			}
 		} else {
 			fn_defer_index--
-			g.gen_fn_defer_at(fn_defer_index)
+			defer_id := g.fn_defers[fn_defer_index]
+			if g.begin_defer_cleanup(defer_id) {
+				g.gen_fn_defer_at(fn_defer_index)
+			}
 		}
 	}
 }
@@ -5299,10 +5323,17 @@ fn (mut g FlatGen) gen_defers_range(start int, end int) {
 	if defer_start >= defer_end {
 		return
 	}
+	cleanup_start := g.defer_cleanup_stack.len
+	defer {
+		g.defer_cleanup_stack.trim(cleanup_start)
+	}
 	mut i := defer_end
 	for i > defer_start {
 		i--
-		g.gen_defer_at(i)
+		defer_id := g.defers[i]
+		if g.begin_defer_cleanup(defer_id) {
+			g.gen_defer_at(i)
+		}
 	}
 }
 
@@ -5322,10 +5353,17 @@ fn (mut g FlatGen) gen_fn_defers() {
 	if g.fn_defers.len == 0 {
 		return
 	}
+	cleanup_start := g.defer_cleanup_stack.len
+	defer {
+		g.defer_cleanup_stack.trim(cleanup_start)
+	}
 	mut i := g.fn_defers.len
 	for i > 0 {
 		i--
-		g.gen_fn_defer_at(i)
+		defer_id := g.fn_defers[i]
+		if g.begin_defer_cleanup(defer_id) {
+			g.gen_fn_defer_at(i)
+		}
 	}
 }
 

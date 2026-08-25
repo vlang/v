@@ -284,6 +284,7 @@ mut:
 	enum_vals                      map[string]int
 	enum_value_exprs               map[string]string
 	defers                         []flat.NodeId
+	defer_cleanup_stack            []flat.NodeId // already emitted by the active cleanup path
 	scope_defer_starts             []int
 	fn_defers                      []flat.NodeId
 	fn_defer_counts                map[int]string
@@ -5513,7 +5514,7 @@ fn c_should_preserve_uninlined_include(include_arg string) bool {
 	if clean[0] == `<` {
 		return
 			clean in ['<dlfcn.h>', '<limits.h>', '<math.h>', '<sys/ptrace.h>', '<sys/sendfile.h>', '<ucontext.h>']
-			|| c_is_apple_framework_include(clean)
+			|| clean.starts_with('<openssl/') || c_is_apple_framework_include(clean)
 	}
 	return true
 }
@@ -17408,10 +17409,19 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 
 fn (mut g FlatGen) system_libc_headers() {
 	for header in ['assert.h', 'ctype.h', 'errno.h', 'float.h', 'inttypes.h', 'limits.h', 'math.h',
-		'setjmp.h', 'signal.h', 'stdatomic.h', 'stdbool.h', 'stddef.h', 'stdint.h', 'time.h',
-		'wchar.h'] {
+		'setjmp.h', 'signal.h', 'stdbool.h', 'stddef.h', 'stdint.h', 'time.h', 'wchar.h'] {
 		g.writeln('#include <${header}>')
 	}
+	// GCC's Objective-C frontend does not implement the C11 `_Atomic` qualifier,
+	// but its stdatomic macros still work with volatile storage and __atomic builtins.
+	// Clang implements `_Atomic` in Objective-C and must retain the native qualifier.
+	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
+	g.writeln('#define _Atomic volatile')
+	g.writeln('#endif')
+	g.writeln('#include <stdatomic.h>')
+	g.writeln('#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)')
+	g.writeln('#undef _Atomic')
+	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/syscall.h>')
 	g.writeln('#endif')

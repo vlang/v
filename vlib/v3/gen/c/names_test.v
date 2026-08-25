@@ -356,6 +356,11 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
 }
 
+fn test_unresolved_openssl_headers_are_preserved() {
+	assert c_should_preserve_uninlined_include('<openssl/ecdsa.h>')
+	assert c_should_preserve_uninlined_include('<openssl/obj_mac.h>')
+}
+
 fn test_objective_c_message_header_remains_in_generated_source() {
 	assert c_include_should_remain_in_inlined_text('<objc/message.h>')
 }

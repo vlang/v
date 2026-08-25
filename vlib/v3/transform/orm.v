@@ -345,7 +345,10 @@ fn sql_aggregate_result_info(aggregate string, field_type string) SqlAggregateRe
 
 fn (mut t Transformer) make_stable_sql_db_expr(db_id flat.NodeId) flat.NodeId {
 	db_expr := t.transform_expr(db_id)
-	mut typ := t.raw_checker_node_type(db_id)
+	mut typ := t.node_type(db_expr)
+	if typ.len == 0 {
+		typ = t.raw_checker_node_type(db_id)
+	}
 	if typ.len == 0 {
 		typ = t.node_type(db_id)
 	}

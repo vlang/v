@@ -11966,10 +11966,17 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, compile_sig
 
 fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool) ! {
 	unique := tempname.unique_token()
-	tmp_source := '${entry.c_source}.tmp.${unique}.c'
+	// GCC records the input basename in otherwise-identical object files. Put the
+	// stable cache basename in a unique directory so recompiles remain byte-for-byte
+	// reproducible without sacrificing concurrent-writer isolation.
+	tmp_dir := '${entry.c_source}.tmp.${unique}'
+	os.mkdir_all(tmp_dir)!
+	tmp_source := os.join_path(tmp_dir, os.file_name(entry.c_source))
 	defer {
 		if os.getenv('V3_CACHE_TRACE') == '' {
-			os.rm(tmp_source) or {}
+			os.rmdir_all(tmp_dir) or {}
+		} else if !os.exists(tmp_source) {
+			os.rmdir_all(tmp_dir) or {}
 		}
 	}
 	os.write_file(tmp_source, source)!

@@ -81,3 +81,12 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
 }
+
+fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
+	mut g := FlatGen.new()
+	g.system_libc_headers()
+	c_code := g.sb.str()
+	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
+	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
+	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
+}

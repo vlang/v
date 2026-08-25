@@ -54,6 +54,13 @@ fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() 
 	assert w.c_extern_refs_ready
 }
 
+fn test_parallel_worker_preserves_test_assertion_stats_mode() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.show_test_stats = true
+	w := g.new_parallel_worker(1)
+	assert w.show_test_stats
+}
+
 fn test_windows_filelock_method_preseeds_parallel_compat_helpers() {
 	mut g, _ := parallel_worker_test_gen(true)
 	mut used := {

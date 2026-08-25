@@ -4878,7 +4878,12 @@ fn main() {
 	second :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} V3_CACHE_DISABLE_INCREMENTAL=1 ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
-	assert second.output.contains('monomorphize (dependency cache)'), second.output
+	$if macos {
+		// The generic-program development cache is currently enabled only on macOS.
+		assert second.output.contains('monomorphize (dependency cache)'), second.output
+	} $else {
+		assert !second.output.contains('monomorphize (dependency cache)'), second.output
+	}
 	assert run_module_cache_binary(second_output) == 'ok'
 }
 

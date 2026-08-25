@@ -168,6 +168,62 @@ fn test_runtime_assertion_count() {
 	assert status_line.contains('4 asserts |'), stats_run.output
 }
 
+fn test_v3_failing_assert_in_defer_emits_each_cleanup_once() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'assert_defer_cleanup_once', '_test.v', "fn test_deferred_assertion() {
+	defer {
+		println('earlier defer')
+	}
+	defer {
+		assert false, 'deferred failure'
+	}
+	defer {
+		println('later defer')
+	}
+}
+")
+	assert run.exit_code != 0
+	assert run.output.contains('deferred failure'), run.output
+	assert run.output.count('earlier defer') == 1, run.output
+	assert run.output.count('later defer') == 1, run.output
+}
+
+fn test_v3_failing_assert_in_function_defer_emits_each_cleanup_once() {
+	run_only := os.getenv('VTEST_ONLY_FN')
+	os.unsetenv('VTEST_ONLY_FN')
+	defer {
+		if run_only.len > 0 {
+			os.setenv('VTEST_ONLY_FN', run_only, true)
+		}
+	}
+	v3_bin := build_v3()
+	run := compile_and_run(v3_bin, 'assert_function_defer_cleanup_once', '_test.v', "fn test_deferred_assertion() {
+	{
+		defer(fn) {
+			println('earlier function defer')
+		}
+		defer(fn) {
+			assert false, 'function deferred failure'
+		}
+		defer(fn) {
+			println('later function defer')
+		}
+	}
+}
+")
+	assert run.exit_code != 0
+	assert run.output.contains('function deferred failure'), run.output
+	assert run.output.count('earlier function defer') == 1, run.output
+	assert run.output.count('later function defer') == 1, run.output
+}
+
 fn compile_project_and_run(v3_bin string, name string, files map[string]string) (os.Result, string) {
 	root := write_project(name, files)
 	return compile_project_root_and_run(v3_bin, name, root)

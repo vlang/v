@@ -174,6 +174,37 @@ fn main() {
 	assert !c_code.contains('(users).name'), c_code
 }
 
+fn test_multi_statement_sql_keeps_heap_promoted_db_pointer() {
+	v3_bin := orm_null_text_build_v3()
+	c_code := orm_null_text_gen_c(v3_bin, 'orm_heap_promoted_multi_statement_db', "import db.sqlite
+
+struct User {
+	id int @[primary]
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+	first := User{1}
+	second := User{2}
+	sql db {
+		insert first into User
+		insert second into User
+	}!
+}
+")
+	mut found_stable_db := false
+	for line in c_code.split_into_lines() {
+		assert !(line.contains('sqlite__DB* __sql_db_') && line.contains(' = *db;')), line
+		if line.contains('sqlite__DB __sql_db_') && line.contains(' = *db;') {
+			found_stable_db = true
+		}
+	}
+	assert found_stable_db, c_code
+}
+
 fn test_orm_insert_requires_qualified_value_type_match() {
 	v3_bin := orm_null_text_build_v3()
 	c_code := orm_null_text_gen_c_project(v3_bin, 'orm_insert_qualified_value_mismatch', {
