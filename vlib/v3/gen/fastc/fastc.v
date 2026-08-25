@@ -6148,16 +6148,17 @@ fn (mut g Parser) parse_for() !bool {
 				return g.unsupported('for-in collection')
 			}
 			collection_type := fastc_normalize_inferred_type(start_expression_type)
+			collection_layout_type := g.underlying_alias_type(collection_type)
 			if item_is_mut {
-				if g.array_element_type(collection_type) == none {
+				if g.array_element_type(collection_layout_type) == none {
 					return g.unsupported('mutable iteration over non-array collection `${start}`')
 				}
 				if !g.mutable_collection_expression(start_expression) {
 					return g.unsupported('mutable iteration over immutable collection `${start}`')
 				}
 			}
-			if collection_type.trim_right('*').starts_with('Map_') {
-				key_type, map_value_type := fastc_map_key_value_types(collection_type) or {
+			if collection_layout_type.trim_right('*').starts_with('Map_') {
+				key_type, map_value_type := fastc_map_key_value_types(collection_layout_type) or {
 					return g.unsupported('map iteration type `${collection_type}`')
 				}
 				g.next()
@@ -6166,7 +6167,7 @@ fn (mut g Parser) parse_for() !bool {
 				values_name := g.temporary_name('map_values')
 				index_name := g.temporary_name('map_index')
 				g.write_line('__typeof__((${start})) ${collection_name} = (${start});')
-				map_pointer := if collection_type.ends_with('*') {
+				map_pointer := if collection_layout_type.ends_with('*') {
 					collection_name
 				} else {
 					'&${collection_name}'
@@ -6198,16 +6199,16 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('}')
 				return false
 			}
-			element_type := if collection_type.trim_right('*') == 'string' {
+			element_type := if collection_layout_type.trim_right('*') == 'string' {
 				'u8'
 			} else {
-				g.array_element_type(collection_type) or {
+				g.array_element_type(collection_layout_type) or {
 					return g.unsupported('for-in collection `${start}` of type `${collection_type}`')
 				}
 			}
 			g.next()
 			collection_name := g.temporary_name('collection')
-			is_ordinary_string := !g.selfhost && collection_type == 'string'
+			is_ordinary_string := !g.selfhost && collection_layout_type == 'string'
 			index_name := if value_name == '' && name != '_' {
 				g.temporary_name('index')
 			} else if name == '_' {
@@ -6215,8 +6216,12 @@ fn (mut g Parser) parse_for() !bool {
 			} else {
 				fastc_c_identifier(name)
 			}
-			access := if collection_type.ends_with('*') { '->' } else { '.' }
-			data_field := if collection_type.trim_right('*') == 'string' { 'str' } else { 'data' }
+			access := if collection_layout_type.ends_with('*') { '->' } else { '.' }
+			data_field := if collection_layout_type.trim_right('*') == 'string' {
+				'str'
+			} else {
+				'data'
+			}
 			if is_ordinary_string {
 				g.write_line('string ${collection_name} = (${start});')
 			} else {
@@ -6244,8 +6249,8 @@ fn (mut g Parser) parse_for() !bool {
 					g.locals[actual_value_name] = FastcLocal{
 						typ: 'u8'
 					}
-				} else if collection_type.ends_with('*')
-					&& collection_type.trim_right('*') != 'string' {
+				} else if collection_layout_type.ends_with('*')
+					&& collection_layout_type.trim_right('*') != 'string' {
 					g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_name}${access}${data_field})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
 						typ: element_type + '*'

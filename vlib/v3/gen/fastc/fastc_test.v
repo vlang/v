@@ -4936,3 +4936,49 @@ fn main() {
 	used := fastc_collect_referenced_function_names([], prefs, map[string]FastcFunctionSignature{})
 	assert used['panic_result_not_set']
 }
+
+fn test_string_alias_for_in_uses_the_underlying_representation() {
+	source := "module main
+
+type Text = string
+
+fn main() {
+	value := Text('ab')
+	for ch in value {
+		println(ch)
+	}
+}
+"
+	ordinary_prefs := pref.new_preferences()
+	ordinary_c := generate(source, 'ordinary_string_alias_iteration.v', ordinary_prefs) or {
+		panic(err)
+	}
+	assert ordinary_c.contains('string __v_fastc_collection_'), ordinary_c
+	assert ordinary_c.contains('strlen(__v_fastc_collection_'), ordinary_c
+	assert ordinary_c.contains('((const unsigned char *)__v_fastc_collection_'), ordinary_c
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_string_alias_iteration_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, ordinary_c) or { panic(err) }
+	tcc := os.join_path(ordinary_prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '97\n98\n'
+
+	mut selfhost_prefs := pref.new_preferences()
+	selfhost_prefs.building_v = true
+	selfhost_c := generate(source, 'selfhost_string_alias_iteration.v', selfhost_prefs) or {
+		panic(err)
+	}
+	assert selfhost_c.contains('__typeof__((value)) __v_fastc_collection_'), selfhost_c
+	assert selfhost_c.contains('__v_fastc_collection_0.len'), selfhost_c
+	assert selfhost_c.contains('__v_fastc_collection_0.str'), selfhost_c
+}
