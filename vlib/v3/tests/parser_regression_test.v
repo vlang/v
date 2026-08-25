@@ -162,6 +162,19 @@ fn test_interface_method_keyword_named_param_makes_progress() {
 	assert fn_decl_param_pairs(a, .interface_field, 'after') == ['value:int']
 }
 
+fn test_interface_method_type_head_keyword_param_name_is_disambiguated() {
+	a := parse_parser_regression_source('interface_type_head_keyword_param_name',
+		'struct Foo {}\ninterface Commands {\n\tuse(struct Foo)\n\tmerge(union Foo)\n\tinline_struct(struct { value int })\n\tinline_union(union { value int })\n}\n')
+	assert fn_decl_param_pairs(a, .interface_field, 'use') == ['struct:Foo']
+	assert fn_decl_param_pairs(a, .interface_field, 'merge') == ['union:Foo']
+	struct_params := fn_decl_param_pairs(a, .interface_field, 'inline_struct')
+	assert struct_params.len == 1
+	assert struct_params[0].starts_with(':AnonStruct_')
+	union_params := fn_decl_param_pairs(a, .interface_field, 'inline_union')
+	assert union_params.len == 1
+	assert union_params[0].starts_with(':AnonUnion_')
+}
+
 fn test_lifetime_generic_suffixes_are_erased() {
 	a := parse_parser_regression_source('lifetime_generic_suffixes',
 		'struct IgnoreMatch {}\nstruct Match[T] {}\n\ninterface Matcher {\n\tmatched[^a](item Match[IgnoreMatch[^a]]) IgnoreMatch[^a]\n}\n\nfn use(item Match[IgnoreMatch[^a]]) {}\nfn after() int {\n\treturn 1\n}\n')

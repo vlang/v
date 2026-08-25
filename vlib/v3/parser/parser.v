@@ -2396,15 +2396,16 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					p.next()
 				}
 				// Interface method params may be named (e.g. `seed_data []u32`,
-				// `module string`) or type-only (`[]u32`). When the current token can
-				// be a declaration name and the next token starts a type, consume the
-				// name first so a keyword name or an array/pointer type is not
-				// mis-parsed (e.g. as `seed_data[]`). `map`/`chan` are type heads,
-				// not names.
-				can_be_param_name := p.tok == .name
-					|| (p.tok_can_be_decl_name() && !p.can_start_type_name())
+				// `module string`, `struct Foo`) or type-only (`[]u32`, `struct {}`).
+				// A `struct`/`union` token is an anonymous type head only before `{`;
+				// otherwise it remains available as a declaration name, matching ordinary
+				// parameter parsing. `map`/`chan` are type heads, not names.
+				nt := p.peek()
+				is_anonymous_aggregate_type := p.tok in [.key_struct, .key_union] && nt == .lcbr
+				can_be_param_name := p.tok == .name || (p.tok_can_be_decl_name()
+					&& (!p.can_start_type_name()
+					|| (p.tok in [.key_struct, .key_union] && !is_anonymous_aggregate_type)))
 				if can_be_param_name && p.lit != 'map' && p.lit != 'chan' {
-					nt := p.peek()
 					if nt == .name || nt == .amp || nt == .question || nt == .not
 						|| nt == .key_fn || nt == .ellipsis
 						|| (nt == .lsbr && p.peek_lbr_starts_array_type()) {
