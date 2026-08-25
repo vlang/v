@@ -62,6 +62,7 @@ fn greeting(name string) string {
 
 fn main() {
 	println(greeting('FastC'))
+	println('|${'界':4}|${'é':4}|${'👩🏽‍💻':4}|')
 }
 ",
 		'ordinary_string_interpolation.v', prefs) or { panic(err) }
@@ -83,7 +84,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == '|     FastC|FastC     |     FastC|\n'
+	assert run_result.output == '|     FastC|FastC     |     FastC|\n|  界|   é|  👩🏽‍💻|\n'
 }
 
 fn test_ordinary_primitive_interpolation_has_runtime_support() {

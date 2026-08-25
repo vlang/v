@@ -82,10 +82,46 @@ static string v_fastc_unsigned_str(unsigned long long value) {
 	snprintf(result, 32, "%llu", value);
 	return result;
 }
+static int v_fastc_utf8_next_cp(const unsigned char *value, size_t length, size_t *index) {
+	unsigned char first = value[*index];
+	if (first < 0x80) {
+		(*index)++;
+		return first;
+	}
+	size_t bytes = (first & 0xE0) == 0xC0 ? 2 : ((first & 0xF0) == 0xE0 ? 3 : ((first & 0xF8) == 0xF0 ? 4 : 1));
+	if (*index + bytes > length) {
+		(*index)++;
+		return first;
+	}
+	int codepoint = first & (bytes == 2 ? 0x1F : (bytes == 3 ? 0x0F : (bytes == 4 ? 0x07 : 0x7F)));
+	for (size_t offset = 1; offset < bytes; offset++) codepoint = (codepoint << 6) | (value[*index + offset] & 0x3F);
+	*index += bytes;
+	return codepoint;
+}
+static int v_fastc_codepoint_is_combining(int codepoint) {
+	return (codepoint >= 0x0300 && codepoint <= 0x036F) || (codepoint >= 0x1AB0 && codepoint <= 0x1AFF) || (codepoint >= 0x1DC0 && codepoint <= 0x1DFF) || (codepoint >= 0x20D0 && codepoint <= 0x20FF) || (codepoint >= 0xFE00 && codepoint <= 0xFE0F) || (codepoint >= 0xFE20 && codepoint <= 0xFE2F) || (codepoint >= 0x1F3FB && codepoint <= 0x1F3FF) || codepoint == 0x0E31 || (codepoint >= 0x0E34 && codepoint <= 0x0E3A) || (codepoint >= 0x0E47 && codepoint <= 0x0E4E);
+}
+static int v_fastc_codepoint_is_wide(int codepoint) {
+	return (codepoint >= 0x1100 && codepoint <= 0x115F) || (codepoint >= 0x2329 && codepoint <= 0x232A) || (codepoint >= 0x2E80 && codepoint <= 0xA4CF) || (codepoint >= 0xAC00 && codepoint <= 0xD7A3) || (codepoint >= 0xF900 && codepoint <= 0xFAFF) || (codepoint >= 0xFE10 && codepoint <= 0xFE19) || (codepoint >= 0xFE30 && codepoint <= 0xFE6F) || (codepoint >= 0xFF00 && codepoint <= 0xFF60) || (codepoint >= 0xFFE0 && codepoint <= 0xFFE6) || (codepoint >= 0x1F000 && codepoint <= 0x1FAFF);
+}
 static int v_fastc_utf8_display_width(const char *value) {
+	const unsigned char *text = (const unsigned char *)(value ? value : "");
+	size_t length = strlen((const char *)text);
+	size_t index = 0;
 	int width = 0;
-	for (const unsigned char *cursor = (const unsigned char *)(value ? value : ""); *cursor != 0; cursor++) {
-		if ((*cursor & 192) != 128) width++;
+	int joined = 0;
+	while (index < length) {
+		int codepoint = v_fastc_utf8_next_cp(text, length, &index);
+		if (codepoint == 0x200D) {
+			joined = 1;
+			continue;
+		}
+		if (v_fastc_codepoint_is_combining(codepoint)) continue;
+		if (joined) {
+			joined = 0;
+			continue;
+		}
+		width += v_fastc_codepoint_is_wide(codepoint) ? 2 : 1;
 	}
 	return width;
 }
@@ -310,10 +346,45 @@ static int v_fastc_string_compare(const string *left, const string *right) {
 	return (left->len > right->len) - (left->len < right->len);
 }
 
+static int v_fastc_utf8_next_cp(const unsigned char *value, size_t length, size_t *index) {
+	unsigned char first = value[*index];
+	if (first < 0x80) {
+		(*index)++;
+		return first;
+	}
+	size_t bytes = (first & 0xE0) == 0xC0 ? 2 : ((first & 0xF0) == 0xE0 ? 3 : ((first & 0xF8) == 0xF0 ? 4 : 1));
+	if (*index + bytes > length) {
+		(*index)++;
+		return first;
+	}
+	int codepoint = first & (bytes == 2 ? 0x1F : (bytes == 3 ? 0x0F : (bytes == 4 ? 0x07 : 0x7F)));
+	for (size_t offset = 1; offset < bytes; offset++) codepoint = (codepoint << 6) | (value[*index + offset] & 0x3F);
+	*index += bytes;
+	return codepoint;
+}
+static int v_fastc_codepoint_is_combining(int codepoint) {
+	return (codepoint >= 0x0300 && codepoint <= 0x036F) || (codepoint >= 0x1AB0 && codepoint <= 0x1AFF) || (codepoint >= 0x1DC0 && codepoint <= 0x1DFF) || (codepoint >= 0x20D0 && codepoint <= 0x20FF) || (codepoint >= 0xFE00 && codepoint <= 0xFE0F) || (codepoint >= 0xFE20 && codepoint <= 0xFE2F) || (codepoint >= 0x1F3FB && codepoint <= 0x1F3FF) || codepoint == 0x0E31 || (codepoint >= 0x0E34 && codepoint <= 0x0E3A) || (codepoint >= 0x0E47 && codepoint <= 0x0E4E);
+}
+static int v_fastc_codepoint_is_wide(int codepoint) {
+	return (codepoint >= 0x1100 && codepoint <= 0x115F) || (codepoint >= 0x2329 && codepoint <= 0x232A) || (codepoint >= 0x2E80 && codepoint <= 0xA4CF) || (codepoint >= 0xAC00 && codepoint <= 0xD7A3) || (codepoint >= 0xF900 && codepoint <= 0xFAFF) || (codepoint >= 0xFE10 && codepoint <= 0xFE19) || (codepoint >= 0xFE30 && codepoint <= 0xFE6F) || (codepoint >= 0xFF00 && codepoint <= 0xFF60) || (codepoint >= 0xFFE0 && codepoint <= 0xFFE6) || (codepoint >= 0x1F000 && codepoint <= 0x1FAFF);
+}
 static int v_fastc_string_display_width(string value) {
+	size_t length = (size_t)value.len;
+	size_t index = 0;
 	int width = 0;
-	for (int i = 0; i < value.len; i++) {
-		if ((value.str[i] & 192) != 128) width++;
+	int joined = 0;
+	while (index < length) {
+		int codepoint = v_fastc_utf8_next_cp(value.str, length, &index);
+		if (codepoint == 0x200D) {
+			joined = 1;
+			continue;
+		}
+		if (v_fastc_codepoint_is_combining(codepoint)) continue;
+		if (joined) {
+			joined = 0;
+			continue;
+		}
+		width += v_fastc_codepoint_is_wide(codepoint) ? 2 : 1;
 	}
 	return width;
 }
