@@ -345,6 +345,15 @@ static int v_fastc_string_compare(const string *left, const string *right) {
 	return (left->len > right->len) - (left->len < right->len);
 }
 
+static bool v_fastc_string_contains(string value, string substring) {
+	if (substring.len == 0) return true;
+	if (substring.len > value.len) return false;
+	for (int offset = 0; offset <= value.len - substring.len; offset++) {
+		if (memcmp(value.str + offset, substring.str, (size_t)substring.len) == 0) return true;
+	}
+	return false;
+}
+
 static int v_fastc_utf8_next_cp(const unsigned char *value, size_t length, size_t *index) {
 	unsigned char first = value[*index];
 	if (first < 0x80) {
@@ -9045,6 +9054,24 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			} else if depth == 0 && item.tok in [.key_in, .not_in] && i > 0 && i + 1 < tokens.len {
 				right_tokens := tokens[i + 1..]
 				right_type := g.infer_expression_type(right_tokens) or { return none }
+				if g.underlying_alias_type(right_type) == 'string' {
+					left_type := g.infer_expression_type(tokens[..i]) or { return none }
+					if g.underlying_alias_type(left_type) != 'string' {
+						return none
+					}
+					substring := g.render_membership_candidate(tokens[..i], 'string') or {
+						return none
+					}
+					value := g.render_call_argument_expression(right_tokens, right_type) or {
+						return none
+					}
+					found := 'v_fastc_string_contains(__v_fastc_membership_value, __v_fastc_membership_substring)'
+					predicate := if item.tok == .not_in { '!(${found})' } else { found }
+					return FastcRenderedExpression{
+						source: '({ string __v_fastc_membership_substring = (${substring}); string __v_fastc_membership_value = (${value}); ${predicate}; })'
+						typ:    'bool'
+					}
+				}
 				if right_type.trim_right('*').starts_with('Map_') {
 					key_type, _ := fastc_map_key_value_types(right_type) or { return none }
 					key_source := g.render_membership_candidate(tokens[..i], key_type) or {
@@ -9063,13 +9090,8 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 						typ:    'bool'
 					}
 				}
-				if right_type.trim_right('*').starts_with('Array_')
-					|| right_type.trim_right('*') == 'string' {
-					element_type := if right_type.trim_right('*') == 'string' {
-						'u8'
-					} else {
-						g.array_element_type(right_type) or { return none }
-					}
+				if right_type.trim_right('*').starts_with('Array_') {
+					element_type := g.array_element_type(right_type) or { return none }
 					candidate := g.render_membership_candidate(tokens[..i], element_type) or {
 						return none
 					}
@@ -9077,11 +9099,10 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 						return none
 					}
 					access := if right_type.ends_with('*') { '->' } else { '.' }
-					data_field := if right_type.trim_right('*') == 'string' { 'str' } else { 'data' }
 					comparison := if element_type == 'string' {
-						'builtin__string_eq(__v_fastc_membership_item, ((${element_type} *)__v_fastc_membership_collection${access}${data_field})[__v_fastc_membership_index])'
+						'builtin__string_eq(__v_fastc_membership_item, ((${element_type} *)__v_fastc_membership_collection${access}data)[__v_fastc_membership_index])'
 					} else {
-						'(__v_fastc_membership_item == ((${element_type} *)__v_fastc_membership_collection${access}${data_field})[__v_fastc_membership_index])'
+						'(__v_fastc_membership_item == ((${element_type} *)__v_fastc_membership_collection${access}data)[__v_fastc_membership_index])'
 					}
 					return FastcRenderedExpression{
 						source: '({ __typeof__((${collection})) __v_fastc_membership_collection = (${collection}); ${element_type} __v_fastc_membership_item = (${candidate}); bool __v_fastc_membership_found = false; for (int __v_fastc_membership_index = 0; __v_fastc_membership_index < __v_fastc_membership_collection${access}len; __v_fastc_membership_index++) { if (${comparison}) { __v_fastc_membership_found = true; break; } } ${if item.tok == .not_in {

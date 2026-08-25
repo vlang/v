@@ -3015,6 +3015,40 @@ fn main() {
 	}
 }
 
+fn test_selfhost_string_membership_uses_substring_semantics() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate("module main
+
+fn substring() string {
+	return 'ell'
+}
+
+fn value() string {
+	return 'hello'
+}
+
+fn main() {
+	if substring() in value() {}
+	if 'xyz' !in 'hello' {}
+}
+",
+		'string_membership.v', prefs) or { panic(err) }
+	substring_assignment := 'string __v_fastc_membership_substring = (substring());'
+	value_assignment := 'string __v_fastc_membership_value = (value());'
+	assert c_source.contains('static bool v_fastc_string_contains(string value, string substring)'), c_source
+	assert c_source.contains(substring_assignment), c_source
+	assert c_source.contains(value_assignment), c_source
+	substring_index := c_source.index(substring_assignment) or { -1 }
+	value_index := c_source.index(value_assignment) or { -1 }
+	assert substring_index < value_index, c_source
+	assert c_source.contains('v_fastc_string_contains(__v_fastc_membership_value, __v_fastc_membership_substring)'), c_source
+	assert c_source.contains('!(v_fastc_string_contains(__v_fastc_membership_value, __v_fastc_membership_substring))'), c_source
+	assert c_source.count('substring()') == 1, c_source
+	assert c_source.count('value()') == 1, c_source
+	assert !c_source.contains('u8 __v_fastc_membership_item'), c_source
+}
+
 fn test_mixed_integer_comparisons_preserve_signed_semantics() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main
