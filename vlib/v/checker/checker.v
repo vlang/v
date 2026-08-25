@@ -22,8 +22,6 @@ const type_level_cutoff_limit = 40 // it is very rarely deeper than 4
 const iface_level_cutoff_limit = 100
 const generic_fn_cutoff_limit_per_fn = 10_000 // how many times post_process_generic_fns, can visit the same function before bailing out
 
-const generic_fn_postprocess_iterations_cutoff_limit = 1_000_000
-
 fn has_ascii_upper(s string) bool {
 	for ch in s {
 		if ch >= `A` && ch <= `Z` {
@@ -771,7 +769,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// is needed when the generic type is auto inferred from the call argument.
 	// we may have to loop several times, if there were more concrete types found.
 	mut post_process_generic_fns_iterations := 0
-	post_process_iterations_loop: for post_process_generic_fns_iterations <= generic_fn_postprocess_iterations_cutoff_limit {
+	post_process_iterations_loop: for post_process_generic_fns_iterations <= c.pref.generic_fn_postprocess_iters {
 		$if trace_post_process_generic_fns_loop ? {
 			eprintln('>>>>>>>>> recheck_generic_fns loop iteration: ${post_process_generic_fns_iterations}')
 		}
@@ -802,6 +800,15 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			c.need_recheck_generic_fns = true
 		}
 		if !c.need_recheck_generic_fns {
+			break
+		}
+		if post_process_generic_fns_iterations == c.pref.generic_fn_postprocess_iters {
+			if c.file.generic_fns.len > 0 {
+				c.error('generic function post processing reached the cutoff limit of ${c.pref.generic_fn_postprocess_iters} iterations, probably due to an infinite generic instantiation loop',
+					c.file.generic_fns[0].pos)
+			} else {
+				c.error('generic function post processing reached the cutoff limit of ${c.pref.generic_fn_postprocess_iters} iterations, probably due to an infinite generic instantiation loop', token.Pos{})
+			}
 			break
 		}
 		c.need_recheck_generic_fns = false
@@ -1179,7 +1186,7 @@ fn (mut c Checker) fn_type_decl(mut node ast.FnTypeDecl) {
 fn (mut c Checker) sum_type_decl(mut node ast.SumTypeDecl) {
 	c.check_valid_pascal_case(node.name, 'sum type', node.pos)
 	if c.pref.is_vls && c.pref.linfo.method == .definition {
-		for variant in node.variants {
+		for mut variant in node.variants {
 			if c.vls_is_the_node(variant.pos) {
 				typ_str := c.table.type_to_str(variant.typ)
 				if np := c.name_pos_gotodef(typ_str) {
@@ -1192,7 +1199,7 @@ fn (mut c Checker) sum_type_decl(mut node ast.SumTypeDecl) {
 		}
 	}
 	mut names_used := []string{}
-	for variant in node.variants {
+	for mut variant in node.variants {
 		c.ensure_type_exists(variant.typ, variant.pos)
 		sym := c.table.sym(variant.typ)
 		if variant.typ.is_ptr() || (sym.info is ast.Alias && sym.info.parent_type.is_ptr()) {
@@ -1263,8 +1270,16 @@ and use a reference to the sum type instead: `var := &${node.name}(${variant_nam
 		}
 		c.check_any_type(variant.typ, sym, variant.pos)
 
-		if sym.name.trim_string_left(sym.mod + '.') == node.name {
+		mut clean_sym_name := sym.name.trim_string_left(sym.mod + '.')
+		if clean_sym_name.contains('[') {
+			clean_sym_name = clean_sym_name.all_before('[')
+		} else if clean_sym_name.contains('<') {
+			clean_sym_name = clean_sym_name.all_before('<')
+		}
+		if clean_sym_name == node.name && sym.mod == c.file.mod.name {
 			c.error('sum type cannot hold itself', variant.pos)
+			variant.typ = ast.void_type
+			continue
 		} else if sym.kind == .sum_type && sym.info is ast.SumType {
 			// Check for circular references through other sum types
 			mut visited := map[int]bool{}
