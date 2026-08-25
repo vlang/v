@@ -993,3 +993,13 @@ pub fn encode_connection_close_frame(is_application_error bool, error_code u64, 
 	out << reason_bytes
 	return out
 }
+
+// encode_handshake_done_frame serializes a HANDSHAKE_DONE frame (type
+// 0x1e, RFC 9000 §19.20) -- no fields, a bare frame-type varint. Only a
+// server ever sends one (see HandshakeDoneFrame's own doc comment on the
+// decode side); this encoder itself has no role awareness to enforce
+// that, matching this file's established division of labor (role checks
+// live on the caller, e.g. QuicConn).
+pub fn encode_handshake_done_frame() ![]u8 {
+	return encode_varint(frame_type_handshake_done)
+}

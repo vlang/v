@@ -29,9 +29,11 @@ import rand
 // exactly one local `scid` and one tracked peer `dcid`, no active CID set,
 // no NEW_CONNECTION_ID/RETIRE_CONNECTION_ID.
 
-// local_cid_len is this client's own chosen connection-ID length -- within
+// local_cid_len is this endpoint's own chosen connection-ID length -- within
 // RFC 9000 §17.2's 20-byte v1 limit, matching common real-world practice
-// (quiche and others typically use 8).
+// (quiche and others typically use 8). Shared by both roles: dial() (this
+// client's own scid) and accept() (this server's own scid, accept.v) --
+// nothing requires the two roles to pick different lengths.
 const local_cid_len = 8
 
 // aead_tag_len is AES-128-GCM's fixed authentication tag length (RFC 9001
@@ -120,9 +122,27 @@ mut:
 	processed_first_server_packet bool
 	retry_scid                    ?[]u8
 
-	handshake            &Tls13ClientHandshake
-	handshake_completion &HandshakeCompletionState
-	pn_spaces            &QuicPacketNumberSpaces
+	// handshake is populated for role == .client (by dial()), server_handshake
+	// for role == .server -- see dispatch_handshake_message's role branch
+	// and accept()'s own doc comment for why these can't share one field the
+	// way most other role-parameterized state on this struct does (their
+	// state-machine shapes are fundamentally different, not just their
+	// concrete type -- see Tls13ServerHandshake's own doc comment).
+	// server_accept_params/server_negotiated_alpn are likewise server-only:
+	// server_accept_params is consumed exactly once, by
+	// dispatch_handshake_message's "no server_handshake yet" branch, to
+	// call Tls13ServerHandshake.respond_to_client_hello with the
+	// certificate/key/ALPN material accept() was given; server_negotiated_alpn
+	// is set at that same moment from the returned flight, mirroring
+	// Tls13ClientHandshake's own negotiated_alpn field for the other role
+	// (see negotiated_alpn()'s own doc comment for why this isn't instead a
+	// method on Tls13ServerHandshake itself).
+	handshake              ?&Tls13ClientHandshake
+	server_handshake       ?&Tls13ServerHandshake
+	server_accept_params   ?ServerHandshakeParams
+	server_negotiated_alpn string
+	handshake_completion   &HandshakeCompletionState
+	pn_spaces              &QuicPacketNumberSpaces
 
 	initial_keys_client      QuicPacketProtectionKeys
 	initial_keys_server      QuicPacketProtectionKeys
@@ -224,6 +244,15 @@ mut:
 	pending_close      ?PendingClose
 	sent_close_payload ?[]u8
 	closing_deadline   ?u64
+
+	// handshake_done_sent guards drain_outgoing's server-role HANDSHAKE_DONE
+	// send (RFC 9001 §4.1.2: sent exactly once, "as soon as the handshake
+	// is complete") against re-sending on every later poll() call once the
+	// handshake stays complete -- the same one-shot-flag shape as
+	// streams_blocked_sent_bidi/uni above, RFC 9000 §19.20's decode-side
+	// mirror of the send-once requirement enforced there by construction
+	// (a server sends it, at most, the one time this flag transitions).
+	handshake_done_sent bool
 }
 
 // PendingStreamWrite accumulates data queued via write_stream() awaiting
@@ -253,8 +282,8 @@ pub fn (c &QuicConn) state() ConnectionState {
 	return c.state
 }
 
-// role reports which side of the connection this endpoint is. v1 is always
-// .client (see stream.v's QuicRole doc comment).
+// role reports which side of the connection this endpoint is -- .client for
+// a dial()ed connection, .server for an accept()ed one (Phase 13d).
 pub fn (c &QuicConn) role() QuicRole {
 	return c.role
 }
@@ -263,9 +292,103 @@ pub fn (c &QuicConn) role() QuicRole {
 // before EncryptedExtensions has been processed (i.e. before
 // handshake_confirmed can even fire -- ALPN is settled well before the
 // handshake completes, so a caller checking this after handshake_confirmed
-// always gets a value, never none).
+// always gets a value, never none). Symmetric across roles: a server knows
+// its own selection the moment it makes it (respond_to_client_hello), a
+// client only once it decodes the server's EncryptedExtensions.
 pub fn (c &QuicConn) negotiated_alpn() ?string {
-	return c.handshake.negotiated_alpn()
+	if h := c.handshake {
+		return h.negotiated_alpn()
+	}
+	if c.server_negotiated_alpn == '' {
+		return none
+	}
+	return c.server_negotiated_alpn
+}
+
+// peer_transport_parameters returns whichever handshake object is active
+// for this connection's role's own view of the PEER's transport
+// parameters -- Tls13ClientHandshake.peer_transport_parameters (populated
+// once EncryptedExtensions is processed) for a client, or
+// Tls13ServerHandshake.peer_transport_parameters (populated immediately by
+// respond_to_client_hello, straight from the ClientHello) for a server.
+// Returns a zero-value QuicTransportParameters{} in the brief window on a
+// server connection between accept() constructing it and the ClientHello's
+// CRYPTO frame actually being dispatched (dispatch_handshake_message's "no
+// server_handshake yet" branch) -- every field this zero value could be
+// read through (ensure_stream_windows, ack_delay_exponent, max_ack_delay,
+// max_idle_timeout) already treats "peer hasn't told us yet" as "assume
+// the conservative default," so this is a safe transient default, not a
+// correctness gap; that window closes on the very first poll() call, which
+// is exactly what dispatches the ClientHello that was already decrypted at
+// accept() time.
+fn (c &QuicConn) peer_transport_parameters() QuicTransportParameters {
+	if h := c.handshake {
+		return h.peer_transport_parameters
+	}
+	if h := c.server_handshake {
+		return h.peer_transport_parameters
+	}
+	return QuicTransportParameters{}
+}
+
+// own_initial_keys/peer_initial_keys and own_handshake_keys/peer_handshake_keys
+// resolve which of the two directional key sets (RFC 9001 §5.2: "client"
+// and "server" Initial/Handshake secrets are derived from the same shared
+// secret but are DIFFERENT keys) this connection's role uses for encrypting
+// its OWN outgoing packets vs. decrypting packets received FROM the peer.
+// Centralizing the swap here, rather than branching on c.role at each of
+// the several encrypt/decrypt call sites individually, is what makes
+// build_initial_packet/build_handshake_packet/process_initial_or_handshake
+// (all pre-existing, client-only code before Phase 13d) correct for a
+// server-role connection with a one-line change at each call site instead
+// of a role branch duplicated at every one of them.
+fn (c &QuicConn) own_initial_keys() QuicPacketProtectionKeys {
+	return if c.role == .client { c.initial_keys_client } else { c.initial_keys_server }
+}
+
+fn (c &QuicConn) peer_initial_keys() QuicPacketProtectionKeys {
+	return if c.role == .client { c.initial_keys_server } else { c.initial_keys_client }
+}
+
+fn (c &QuicConn) own_handshake_keys() ?QuicPacketProtectionKeys {
+	return if c.role == .client { c.handshake_keys_client } else { c.handshake_keys_server }
+}
+
+fn (c &QuicConn) peer_handshake_keys() ?QuicPacketProtectionKeys {
+	return if c.role == .client { c.handshake_keys_server } else { c.handshake_keys_client }
+}
+
+// is_handshake_confirmed reports RFC 9001 §4.1.2's "handshake confirmed"
+// checkpoint FOR THIS CONNECTION'S ROLE -- the two roles reach it
+// differently, per that section's own text: "the TLS handshake is
+// considered confirmed at the SERVER when the handshake completes... At
+// the CLIENT, the handshake is considered confirmed when a HANDSHAKE_DONE
+// frame is received." HandshakeCompletionState.is_confirmed() itself only
+// implements the client's half (see that struct's own, deliberately
+// client-perspective doc comment, unchanged by Phase 13d); a server's
+// confirmation is just is_complete() -- own Finished sent AND peer's
+// Finished verified, RFC 9001 §4.1.1 -- with no HANDSHAKE_DONE-received
+// dependency, since the server is the one that SENDS it (see
+// drain_outgoing's server HANDSHAKE_DONE block).
+fn (c &QuicConn) is_handshake_confirmed() bool {
+	if c.role == .client {
+		return c.handshake_completion.is_confirmed()
+	}
+	return c.handshake_completion.is_complete()
+}
+
+// client_handshake unwraps c.handshake, panicking if it is none. Only
+// meaningful on a role == .client connection (dial() always populates it;
+// accept() never does -- see the `handshake` field's own doc comment).
+// Exists so this package's own white-box tests (conn_test.v/h3_conn_test.v,
+// both same-module, reaching into Tls13ClientHandshake's internal fields
+// directly to drive/inspect handshake state step by step) don't need an
+// `or {}` unwrap repeated at every one of their many call sites -- every
+// production code path that needs role-safe access already goes through
+// peer_transport_parameters()/negotiated_alpn()/dispatch_handshake_message's
+// own role branch instead, none of which call this.
+fn (c &QuicConn) client_handshake() &Tls13ClientHandshake {
+	return c.handshake or { panic('quic: client_handshake() called on a non-client connection') }
 }
 
 // -------------------------------------------------------------------------
@@ -283,7 +406,7 @@ pub fn (c &QuicConn) negotiated_alpn() ?string {
 // has_send/has_recv distinction through every call site).
 fn (mut c QuicConn) ensure_stream_windows(id StreamId) {
 	if id.value !in c.stream_send_windows {
-		limit := initial_send_limit_for_stream(id, c.role, c.handshake.peer_transport_parameters)
+		limit := initial_send_limit_for_stream(id, c.role, c.peer_transport_parameters())
 		mut w := new_flow_control_window(limit)
 		c.stream_send_windows[id.value] = &w
 	}
@@ -550,7 +673,7 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 	c.drain_pending_close(now, mut result)
 
 	if c.state == .handshaking || c.state == .established {
-		handshake_confirmed := c.handshake_completion.is_confirmed()
+		handshake_confirmed := c.is_handshake_confirmed()
 		max_ack_delay := c.effective_max_ack_delay()
 		timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed,
 			max_ack_delay)
@@ -680,7 +803,22 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 	// well-encrypted Initial packet with an ARBITRARY destination CID and
 	// have it accepted as if it were a legitimate reply, redirecting the
 	// client's subsequent packets.
-	if header.dcid != c.scid {
+	//
+	// A server's Initial-space packets are the one exception to "always
+	// c.scid": §7.2 also says "Until a packet is received from the
+	// server, the client MUST use the same Destination Connection ID
+	// value on all packets in this connection" -- i.e. a client's Initial
+	// packet sent BEFORE it has processed any reply (the ClientHello
+	// itself, or a same-flight retransmission of it) still carries
+	// c.original_dcid, not c.scid, since the client cannot address a
+	// value (this server's freshly generated scid) it has not learned
+	// yet. Only ONCE the client has processed this server's first reply
+	// does it switch to c.scid for anything further it sends -- which is
+	// why this exception is scoped to space == .initial only; by
+	// Handshake space every legitimate client packet already uses c.scid.
+	is_servers_bootstrap_packet := c.role == .server && space == .initial
+		&& header.dcid == c.original_dcid
+	if header.dcid != c.scid && !is_servers_bootstrap_packet {
 		return
 	}
 	// RFC 9000 §7.2 (verbatim): "Once a client has received a valid Initial
@@ -714,9 +852,9 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 	// worked around at the call site once it's an if-expression.
 	mut keys := QuicPacketProtectionKeys{}
 	if space == .initial {
-		keys = c.initial_keys_server
+		keys = c.peer_initial_keys()
 	} else {
-		keys = c.handshake_keys_server or { return }
+		keys = c.peer_handshake_keys() or { return }
 	}
 	mut packet := raw.clone()
 	largest_pn := if space == .initial {
@@ -725,6 +863,16 @@ fn (mut c QuicConn) process_initial_or_handshake(space QuicPacketNumberSpace, ra
 		c.pn_spaces.handshake.largest_received
 	}
 	unprotected := unprotect_packet(mut packet, offset, .long, keys, largest_pn) or { return }
+
+	// RFC 9001 §4.9.1: the SERVER-side mirror of build_handshake_packet's
+	// client-only send-based discard -- a server discards Initial keys once
+	// it has successfully processed (here: successfully decrypted) its
+	// first Handshake-space packet from the client, independent of anything
+	// the server itself has sent. See build_handshake_packet's own doc
+	// comment for why the two roles need genuinely different triggers.
+	if c.role == .server && space == .handshake && !c.initial_keys_discarded {
+		c.discard_initial_keys()
+	}
 
 	c.processed_first_server_packet = true
 	// RFC 9000 §10.1: receiving and successfully processing ANY packet
@@ -983,10 +1131,12 @@ fn (mut c QuicConn) dispatch_one_rtt_frame(frame QuicFrame, now u64, mut result 
 			// RFC 9000 §19.20: "A HANDSHAKE_DONE frame can only be sent by
 			// the server... A server MUST treat receipt of a
 			// HANDSHAKE_DONE frame as a connection error of type
-			// PROTOCOL_VIOLATION." Currently unreachable in real use (v1
-			// only ever constructs clients, role is always .client) but
-			// kept so this dispatch code needs no rework when server
-			// support (Phase 13) lands -- see
+			// PROTOCOL_VIOLATION." A genuine, reachable defensive check as
+			// of Phase 13d: accept() (accept.v) now constructs real
+			// server-role connections, and the 1-RTT receive path has no
+			// role gate before dispatching frames here, so a malicious or
+			// buggy peer sending HANDSHAKE_DONE to a real server hits this
+			// branch in production -- not just in
 			// test_handshake_done_rejected_when_role_is_server.
 			if c.role == .server {
 				return error('quic: PROTOCOL_VIOLATION: server received HANDSHAKE_DONE (RFC 9000 §19.20)')
@@ -1229,14 +1379,14 @@ fn (mut c QuicConn) handle_stop_sending_frame(frame StopSendingFrame) {
 }
 
 fn (mut c QuicConn) handle_ack_frame(space QuicPacketNumberSpace, frame AckFrame, now u64) {
-	handshake_confirmed := c.handshake_completion.is_confirmed()
+	handshake_confirmed := c.is_handshake_confirmed()
 	max_ack_delay := c.effective_max_ack_delay()
 	// on_ack_received's own doc comment: "ack_delay_exponent is the PEER's
 	// own ack_delay_exponent transport parameter" -- this ACK frame's raw
 	// ack_delay field was encoded by the peer using ITS advertised value
 	// (RFC 9000 §18.2), not ours, and not the RFC's own default-if-absent
 	// value unconditionally.
-	peer_ack_delay_exponent := c.handshake.peer_transport_parameters.ack_delay_exponent or {
+	peer_ack_delay_exponent := c.peer_transport_parameters().ack_delay_exponent or {
 		default_ack_delay_exponent
 	}
 
@@ -1304,17 +1454,25 @@ fn (mut c QuicConn) pump_handshake_messages(space QuicPacketNumberSpace) ! {
 }
 
 fn (mut c QuicConn) dispatch_handshake_message(msg HandshakeMessage, framed []u8) ! {
-	state := c.handshake.state()
+	if c.role == .server {
+		c.dispatch_server_handshake_message(msg, framed)!
+		return
+	}
+	mut handshake := c.handshake or {
+		return error('quic: internal error: client connection has no handshake state')
+	}
+
+	state := handshake.state()
 	match state {
 		.wait_server_hello {
-			hs := c.handshake.process_server_hello(msg, framed)!
+			hs := handshake.process_server_hello(msg, framed)!
 			c.handshake_keys_client = derive_packet_protection_keys(hs.client_secret)!
 			c.handshake_keys_server = derive_packet_protection_keys(hs.server_secret)!
 		}
 		.wait_encrypted_extensions {
-			c.handshake.process_encrypted_extensions(msg, framed, c.peer_scid, c.original_dcid,
+			handshake.process_encrypted_extensions(msg, framed, c.peer_scid, c.original_dcid,
 				c.retry_scid)!
-			peer_params := c.handshake.peer_transport_parameters
+			peer_params := handshake.peer_transport_parameters
 			c.conn_send_window.raise_limit(peer_params.initial_max_data or { u64(0) })
 			c.peer_max_streams_bidi = peer_params.initial_max_streams_bidi or { u64(0) }
 			c.peer_max_streams_uni = peer_params.initial_max_streams_uni or { u64(0) }
@@ -1323,19 +1481,82 @@ fn (mut c QuicConn) dispatch_handshake_message(msg HandshakeMessage, framed []u8
 			}
 		}
 		.wait_certificate {
-			c.handshake.process_certificate_or_request(msg, framed)!
+			handshake.process_certificate_or_request(msg, framed)!
 		}
 		.wait_certificate_verify {
-			c.handshake.process_certificate_verify(msg, framed)!
+			handshake.process_certificate_verify(msg, framed)!
 		}
 		.wait_finished {
-			client_finished, app_secrets := c.handshake.process_finished(msg, framed)!
+			client_finished, app_secrets := handshake.process_finished(msg, framed)!
 			c.app_write_keys = derive_packet_protection_keys(app_secrets.client_secret)!
 			c.app_write_secret = app_secrets.client_secret.clone()
 			c.app_write_generation = 0
 			c.app_read_keys = new_key_update_state(app_secrets.server_secret)!
 			c.handshake_completion.mark_peer_finished_verified()
 			c.pending_handshake_crypto = client_finished
+		}
+		.connected {
+			return error('quic: unexpected handshake message after the handshake completed')
+		}
+	}
+}
+
+// dispatch_server_handshake_message is dispatch_handshake_message's
+// server-role counterpart. Unlike the client's 6-state dispatch above, a
+// server's FIRST handshake message (the ClientHello) is never routed
+// through a state-machine branch here at all -- Tls13ServerHandshake has
+// no wait_client_hello state, because respond_to_client_hello IS the act
+// of constructing the handshake object, not a transition on an existing
+// one (see that struct's own doc comment). So this function's real branch
+// is "do we have a server_handshake object yet": no means `msg` must be
+// the ClientHello and this is accept()'s deferred bootstrap step (accept()
+// itself only decrypts the Initial packet and constructs the connection;
+// it stashes server_accept_params and lets this function -- reached via
+// the ordinary process_initial_or_handshake -> handle_crypto_frame ->
+// pump_handshake_messages call chain every OTHER handshake message already
+// goes through -- do the actual respond_to_client_hello call, so accept()
+// doesn't need its own parallel decrypt/frame-dispatch path); yes means
+// `msg` is the client's Finished, the server's only OTHER expected message.
+fn (mut c QuicConn) dispatch_server_handshake_message(msg HandshakeMessage, framed []u8) ! {
+	mut sh := c.server_handshake or {
+		params := c.server_accept_params or {
+			return error('quic: internal error: server connection has no accept parameters to process a ClientHello with')
+		}
+
+		hs, flight := Tls13ServerHandshake.respond_to_client_hello(msg, framed, params)!
+		c.server_handshake = hs
+		c.server_accept_params = none
+		c.handshake_keys_client =
+			derive_packet_protection_keys(flight.handshake_secrets.client_secret)!
+		c.handshake_keys_server =
+			derive_packet_protection_keys(flight.handshake_secrets.server_secret)!
+		// RFC 8446 §7.1/Figure 3: a server derives application traffic
+		// secrets right after its own Finished, with no dependency on the
+		// client's Finished -- unlike the client's .wait_finished arm
+		// above, these are ready here, not deferred to process_finished.
+		c.app_write_keys = derive_packet_protection_keys(flight.application_secrets.server_secret)!
+		c.app_write_secret = flight.application_secrets.server_secret.clone()
+		c.app_write_generation = 0
+		c.app_read_keys = new_key_update_state(flight.application_secrets.client_secret)!
+		c.server_negotiated_alpn = flight.negotiated_alpn
+		c.pending_initial_crypto = flight.server_hello
+		c.pending_handshake_crypto = flight.handshake_messages
+		peer_params := hs.peer_transport_parameters
+		c.conn_send_window.raise_limit(peer_params.initial_max_data or { u64(0) })
+		c.peer_max_streams_bidi = peer_params.initial_max_streams_bidi or { u64(0) }
+		c.peer_max_streams_uni = peer_params.initial_max_streams_uni or { u64(0) }
+		// A ClientHello's transport parameters have no stateless_reset_token
+		// field (RFC 9000 §18.2 -- only a SERVER sends that one), unlike the
+		// client's .wait_encrypted_extensions arm's identical-looking block
+		// above; nothing to record here.
+		return
+	}
+
+	state := sh.state()
+	match state {
+		.wait_finished {
+			sh.process_finished(msg, framed)!
+			c.handshake_completion.mark_peer_finished_verified()
 		}
 		.connected {
 			return error('quic: unexpected handshake message after the handshake completed')
@@ -1417,7 +1638,7 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 		c.pending_handshake_crypto = none
 		c.handshake_completion.mark_own_finished_sent()
 	}
-	if hs_keys := c.handshake_keys_client {
+	if hs_keys := c.own_handshake_keys() {
 		_ := hs_keys
 		if !c.handshake_keys_discarded && c.handshake_received_pns.len > 0
 			&& c.handshake_ack_eliciting_pending {
@@ -1430,6 +1651,22 @@ fn (mut c QuicConn) drain_outgoing(now u64, mut result PollResult) ! {
 	}
 
 	if _ := c.app_write_keys {
+		// RFC 9001 §4.1.2: "The server MUST send a HANDSHAKE_DONE frame as
+		// soon as the handshake is complete" -- is_complete() rather than
+		// is_handshake_confirmed() deliberately: for a server, confirmed IS
+		// complete (see is_handshake_confirmed's own doc comment), so
+		// checking complete() here and calling on_handshake_confirmed
+		// immediately after sending is the correct, non-circular ordering
+		// (confirmation depends on this send, not the other way around).
+		// handshake_done_sent guards this to fire at most once, the same
+		// one-shot shape as streams_blocked_sent_bidi/uni.
+		if c.role == .server && c.handshake_completion.is_complete() && !c.handshake_done_sent {
+			frame := encode_handshake_done_frame()!
+			datagram := c.build_one_rtt_packet(frame, true, now)!
+			result.outgoing << datagram
+			c.handshake_done_sent = true
+			c.on_handshake_confirmed(mut result)
+		}
 		if c.app_received_pns.len > 0 && c.app_ack_eliciting_pending {
 			ack_frame := c.build_ack_frame_for(.application_data)!
 			datagram := c.build_one_rtt_packet(ack_frame, false, now)!
@@ -1600,8 +1837,7 @@ fn (mut c QuicConn) build_initial_packet(payload []u8, is_ack_eliciting bool, no
 	mut header := encode_long_header(h, 0, u8(pn_length - 1))!
 	header << pn_bytes
 
-	protected :=
-		protect_packet(header, .long, pn, pn_length, padded_payload, c.initial_keys_client)!
+	protected := protect_packet(header, .long, pn, pn_length, padded_payload, c.own_initial_keys())!
 
 	c.loss_detection.on_packet_sent(.initial, pn, u64(protected.len), is_ack_eliciting, true, now)
 	c.congestion_control.on_packet_sent_cc(u64(protected.len))
@@ -1612,7 +1848,7 @@ fn (mut c QuicConn) build_initial_packet(payload []u8, is_ack_eliciting bool, no
 }
 
 fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, now u64) !QuicDatagram {
-	keys := c.handshake_keys_client or {
+	keys := c.own_handshake_keys() or {
 		return error('quic: internal error: no Handshake write keys available yet')
 	}
 
@@ -1640,11 +1876,30 @@ fn (mut c QuicConn) build_handshake_packet(payload []u8, is_ack_eliciting bool, 
 	}
 	c.idle_timeout.note_packet_sent(now)
 
-	// RFC 9001 §4.9.1: discard Initial keys once the first Handshake-space
-	// packet has been sent.
-	c.handshake_completion.mark_sent_first_handshake_packet()
-	if c.handshake_completion.should_discard_initial_keys() && !c.initial_keys_discarded {
-		c.discard_initial_keys()
+	// RFC 9001 §4.9.1: "a client MUST discard Initial keys when it first
+	// sends a Handshake packet, and a server MUST discard Initial keys when
+	// it first successfully processes a Handshake packet" -- two DIFFERENT
+	// triggers per role, send vs. receive. Only the client's is send-based,
+	// so this is scoped to c.role == .client; the server's receive-based
+	// trigger lives in process_initial_or_handshake instead (right after a
+	// Handshake-space packet from the client successfully decrypts).
+	// Applying this send-based check to both roles (the diff's original
+	// shape) made a server discard its Initial keys within the very same
+	// accept()/poll() call that processed the ClientHello -- before the
+	// client had sent anything back -- which then silently dropped any
+	// ClientHello retransmission (RFC 9000 §7.2's own DCID exception is
+	// keyed off c.original_dcid, but process_initial_or_handshake's very
+	// first check already rejects the whole Initial space once
+	// initial_keys_discarded is true) and left the server unable to
+	// PTO-retransmit its own first flight, stalling the handshake on
+	// ordinary first-round-trip packet loss. Found by 13d-1's adversarial
+	// review (protocol lens); accept_test.v's own lossless, zero-loss
+	// integration test can't exercise this since nothing is ever lost.
+	if c.role == .client {
+		c.handshake_completion.mark_sent_first_handshake_packet()
+		if c.handshake_completion.should_discard_initial_keys() && !c.initial_keys_discarded {
+			c.discard_initial_keys()
+		}
 	}
 	return QuicDatagram{
 		bytes: protected
@@ -1705,7 +1960,7 @@ fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut res
 			if c.handshake_keys_discarded {
 				return
 			}
-			_ := c.handshake_keys_client or { return }
+			_ := c.own_handshake_keys() or { return }
 			datagram := c.build_handshake_packet(ping, true, now)!
 			result.outgoing << datagram
 		}
@@ -1823,7 +2078,7 @@ fn (mut c QuicConn) build_best_effort_close_packet(frame []u8, now u64) !QuicDat
 		return c.build_one_rtt_packet(frame, false, now)
 	}
 	if !c.handshake_keys_discarded {
-		if _ := c.handshake_keys_client {
+		if _ := c.own_handshake_keys() {
 			return c.build_handshake_packet(frame, false, now)
 		}
 	}
@@ -1841,7 +2096,7 @@ fn (c &QuicConn) effective_max_ack_delay() time.Duration {
 	if !c.handshake_completion.is_complete() {
 		return time.Duration(0)
 	}
-	v := c.handshake.peer_transport_parameters.max_ack_delay or { default_max_ack_delay_ms }
+	v := c.peer_transport_parameters().max_ack_delay or { default_max_ack_delay_ms }
 	return time.Duration(i64(v) * i64(time.millisecond))
 }
 
@@ -1860,14 +2115,14 @@ fn (c &QuicConn) effective_max_ack_delay() time.Duration {
 // `u64(timeout)` was correct all along; the real, adjacent bug was in
 // `closing_or_draining_deadline`, which had the identical mistake.)
 fn (c &QuicConn) idle_timeout_deadline() ?u64 {
-	peer_max := c.handshake.peer_transport_parameters.max_idle_timeout or { u64(0) }
+	peer_max := c.peer_transport_parameters().max_idle_timeout or { u64(0) }
 	timeout := effective_idle_timeout(c.own_max_idle_timeout_ms, peer_max) or { return none }
 	baseline := c.idle_timeout.last_reset or { c.connection_start }
 	return baseline + u64(timeout)
 }
 
 fn (mut c QuicConn) compute_next_timeout() ?u64 {
-	handshake_confirmed := c.handshake_completion.is_confirmed()
+	handshake_confirmed := c.is_handshake_confirmed()
 	max_ack_delay := c.effective_max_ack_delay()
 	mut deadline := ?u64(none)
 	if t, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay,
