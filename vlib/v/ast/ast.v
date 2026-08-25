@@ -1181,6 +1181,9 @@ pub mut:
 	//
 	is_parse_text    bool // true for files, produced by parse_text
 	is_template_text bool // true for files, produced by parse_comptime
+	// Set only for a V3->V1 retry. It is the SHA-256 digest of the exact scanner
+	// bytes, used to verify the retry before a fallback report is submitted.
+	source_digest string
 }
 
 @[unsafe]
@@ -1188,6 +1191,7 @@ pub fn (f &File) free() {
 	unsafe {
 		f.path.free()
 		f.path_base.free()
+		f.source_digest.free()
 		f.scope.free()
 		f.stmts.free()
 		f.imports.free()

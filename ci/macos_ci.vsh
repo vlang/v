@@ -52,11 +52,13 @@ fn test_pure_v_math_module() {
 }
 
 fn self_tests() {
+	// The broad compatibility suite still covers V1. The strict V3 canary and
+	// dedicated V3 suites in macos_ci.yml cover the default compiler separately.
 	if common.is_github_job {
-		exec('VJOBS=1 v -silent test-self vlib')
+		exec('VJOBS=1 v -old-compiler -silent test-self vlib')
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec('VJOBS=${vjobs} v -progress test-self vlib')
+		exec('VJOBS=${vjobs} v -old-compiler -progress test-self vlib')
 	}
 }
 

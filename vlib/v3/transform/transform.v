@@ -1456,6 +1456,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
 	t.materialize_generic_structs(true)
 	t.monomorph_profile('mono wrapper structs: ${time.ticks() - debug_started} ms')
+	t.run_auto_str_synthesis_rounds(base_node_count)
 	t.run_default_clone_synthesis_rounds(base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
 	t.monomorph_profile('mono wrapper sums: ${time.ticks() - debug_started} ms')
@@ -5643,6 +5644,14 @@ fn (t &Transformer) string_interp_needs_value_read(name string, typ string) bool
 	if t.mut_param_values[name] {
 		return true
 	}
+	// A name whose own tracked type is already `&T` is genuinely pointer-backed
+	// storage (mutable for-in bindings, `@[heap]`-promoted locals, ...). Those
+	// still read as a plain value everywhere else via `pointer_value_rvalues`
+	// (see e.g. `heap_escaping_source_decl`); string conversion must match, or a
+	// heap-promoted local prints as a nil-checked pointer instead of its value.
+	if t.pointer_value_rvalues[name] {
+		return true
+	}
 	source_type := t.var_type(name)
 	if source_type.len == 0 || source_type.starts_with('&') {
 		return false
@@ -5757,13 +5766,30 @@ fn (t &Transformer) struct_alignment_for_type(type_name string) ?string {
 	return none
 }
 
+fn (t &Transformer) struct_alignment_type_name(type_name string) string {
+	clean := t.trim_pointer_type(t.normalize_type_alias(type_name))
+	for candidate in [clean, type_name] {
+		info := t.structs[candidate] or { continue }
+		if info.module in ['', 'main'] {
+			return 'main.${info.name}'
+		}
+		if info.module != 'builtin' && !candidate.contains('.') {
+			return '${info.module}.${info.name}'
+		}
+		return candidate
+	}
+	return type_name
+}
+
 fn (mut t Transformer) make_memdup_call_for_type(addr flat.NodeId, type_name string) flat.NodeId {
 	size := t.make_sizeof_type(type_name)
 	if align := t.struct_alignment_for_type(type_name) {
 		align_arg := if align.len > 0 {
 			t.make_int_literal_typed(align, 'usize')
 		} else {
-			t.make_call_typed('__alignof__', [t.make_ident(type_name)], 'usize')
+			t.make_call_typed('__alignof__', [
+				t.make_ident(t.struct_alignment_type_name(type_name)),
+			], 'usize')
 		}
 		return t.make_non_aliasing_allocation_call('v3_aligned_memdup', [addr, size, align_arg],
 			'voidptr')
@@ -5793,6 +5819,20 @@ fn (t &Transformer) heapable_value_type(typ string) bool {
 	return typ.len > 0 && !typ.starts_with('&') && !typ.starts_with('[]')
 		&& !typ.starts_with('map[') && !typ.starts_with('?') && !typ.starts_with('!')
 		&& !typ.starts_with('[') && typ != 'unknown' && typ != 'void'
+}
+
+// heap_attr_struct_type reports whether `typ` is a plain (non-pointer) struct type
+// declared `@[heap]`. Such structs must always be heap-allocated at construction, not
+// only when escape analysis detects an address later leaving the stack frame.
+fn (t &Transformer) heap_attr_struct_type(typ string) bool {
+	if isnil(t.tc) || !t.heapable_value_type(typ) {
+		return false
+	}
+	clean_type := types.unalias_type(t.tc.parse_type(typ))
+	if clean_type !is types.Struct {
+		return false
+	}
+	return t.tc.type_has_declaration_attribute(clean_type, 'heap')
 }
 
 fn (mut t Transformer) collect_exclusive_closure_return_fns() {
@@ -11688,17 +11728,21 @@ fn (t &Transformer) optional_selector_lvalue_source(id flat.NodeId) bool {
 }
 
 fn (mut t Transformer) try_lower_struct_compound_assign(node flat.Node) ?[]flat.NodeId {
-	if node.kind != .assign || node.children_count != 2 {
+	if node.kind !in [.assign, .selector_assign] || node.children_count != 2 {
 		return none
 	}
 	op_name := compound_assign_struct_operator_symbol(node.op) or { return none }
 	lhs_id := t.a.child(&node, 0)
 	rhs_id := t.a.child(&node, 1)
 	lhs := t.a.nodes[int(lhs_id)]
-	if lhs.kind != .ident || lhs.value.len == 0 {
+	if lhs.kind == .ident && lhs.value.len == 0 {
 		return none
 	}
-	mut lhs_type := t.var_type(lhs.value)
+	if lhs.kind !in [.ident, .selector]
+		|| (lhs.kind == .selector && !t.optional_selector_lvalue_source(lhs_id)) {
+		return none
+	}
+	mut lhs_type := if lhs.kind == .ident { t.var_type(lhs.value) } else { t.lvalue_type(lhs_id) }
 	if lhs_type.len == 0 {
 		lhs_type = t.original_expr_type(lhs_id)
 	}
@@ -11709,8 +11753,18 @@ fn (mut t Transformer) try_lower_struct_compound_assign(node flat.Node) ?[]flat.
 	method_name := t.struct_operator_fn_name(operator_type, op_name) or { return none }
 	rhs := t.transform_expr_for_type(rhs_id, lhs_type)
 	t.mark_fn_used_name(method_name)
-	call := t.make_call_typed(method_name, [t.make_ident(lhs.value), rhs], lhs_type)
-	return [t.make_assign(t.make_ident(lhs.value), call)]
+	read_lhs := if lhs.kind == .ident {
+		t.make_ident(lhs.value)
+	} else {
+		t.transform_expr(lhs_id)
+	}
+	write_lhs := if lhs.kind == .ident {
+		t.make_ident(lhs.value)
+	} else {
+		t.transform_lvalue(lhs_id)
+	}
+	call := t.make_call_typed(method_name, [read_lhs, rhs], lhs_type)
+	return [t.make_assign(write_lhs, call)]
 }
 
 fn (mut t Transformer) compound_assign_operator_type(lhs_id flat.NodeId, lhs_type string, op_name string) ?string {
@@ -11732,6 +11786,11 @@ fn (mut t Transformer) compound_assign_operator_type(lhs_id flat.NodeId, lhs_typ
 		}
 	}
 	if isnil(t.tc) || lhs_type.len == 0 {
+		return none
+	}
+	clean_lhs_type := t.trim_pointer_type(lhs_type.trim_space())
+	if is_numeric_type_name(clean_lhs_type)
+		|| clean_lhs_type in ['bool', 'char', 'string', 'voidptr', 'byteptr', 'charptr'] {
 		return none
 	}
 	normalized_lhs := t.normalize_type_alias(lhs_type)
@@ -11757,11 +11816,36 @@ fn (t &Transformer) compound_assign_operator_type_candidate(candidate string, op
 	if clean.len == 0 {
 		return none
 	}
+	if is_numeric_type_name(clean)
+		|| clean in ['bool', 'char', 'string', 'voidptr', 'byteptr', 'charptr'] {
+		return none
+	}
 	// Prefer an operator declared on the alias itself before resolving the alias
 	// to its parent struct. `Color3 += value`, for example, must call `Color3.+`
 	// even when `Color3` aliases a `Vec3` that also declares `+`.
 	if _ := t.struct_operator_fn_name(clean, op_name) {
 		return clean
+	}
+	if !isnil(t.tc) {
+		for alias_name in [clean, t.tc.qualify_name(clean)] {
+			alias_target := t.tc.type_aliases[alias_name] or { continue }
+			target := t.trim_pointer_type(alias_target)
+			if _ := t.struct_operator_fn_name(target, op_name) {
+				return target
+			}
+		}
+	}
+	normalized := t.trim_pointer_type(t.normalize_type_alias(clean))
+	if normalized != clean {
+		if _ := t.struct_operator_fn_name(normalized, op_name) {
+			return normalized
+		}
+		normalized_struct := t.struct_lookup_name(normalized)
+		if normalized_struct.len > 0 {
+			if _ := t.struct_operator_fn_name(normalized_struct, op_name) {
+				return normalized_struct
+			}
+		}
 	}
 	struct_type := t.struct_lookup_name(clean)
 	if struct_type.len > 0 {
@@ -13340,6 +13424,12 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				} else if inferred := t.building_v_math_generic_call_type(rhs) {
 					typ = inferred
 				}
+				if t.generic_arg_is_unresolved(typ) {
+					checker_typ := t.checker_node_type(rhs_id)
+					if decl_type_is_usable(checker_typ) && !t.generic_arg_is_unresolved(checker_typ) {
+						typ = checker_typ
+					}
+				}
 			}
 			if rhs.kind == .call && t.is_strings_builder_new_call(rhs_id, rhs) {
 				typ = 'strings.Builder'
@@ -13497,6 +13587,13 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		}
 		if src.kind == .ident && src.value in t.escaping_amp_sources
 			&& src.value !in t.heaped_amp_locals && t.heapable_value_type(inferred_typ) {
+			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
+		}
+		// A struct declared `@[heap]` is always heap-allocated at its own declaration,
+		// regardless of whether its address is later taken (`@[heap]` is an unconditional
+		// promise, not an escape-analysis trigger).
+		if src.kind == .ident && src.value !in t.heaped_amp_locals
+			&& t.heap_attr_struct_type(inferred_typ) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 	}
@@ -21402,6 +21499,10 @@ fn (t &Transformer) sum_constructor_call_type(node flat.Node) string {
 		}
 	}
 	if name.len == 0 {
+		return ''
+	}
+	if callee.kind == .ident && callee.value.contains(']')
+		&& !callee.value.trim_space().ends_with(']') {
 		return ''
 	}
 	short_name := short_name_view(name)

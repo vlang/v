@@ -9,7 +9,9 @@ const generic_cross_v3_src = os.join_path(generic_cross_v3_dir, 'v3.v')
 fn generic_cross_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_cross_module_arg_test_${pid}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${generic_cross_vexe} -gc none -path "${generic_cross_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_cross_v3_src}')
 	assert build.exit_code == 0, build.output

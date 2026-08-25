@@ -161,14 +161,18 @@ fn (mut g FlatGen) interface_dispatch_def_string(iface_name string, cn string, m
 }
 
 fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_params []types.Type, wants_ptr bool) string {
-	cct := g.interface_concrete_storage_c_type(concrete)
+	concrete_cct := g.interface_concrete_storage_c_type(concrete)
 	if concrete_params.len == 0 {
-		return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
+		return if wants_ptr {
+			'(${concrete_cct}*)i->_object'
+		} else {
+			'*(${concrete_cct}*)i->_object'
+		}
 	}
 	concrete_type := g.interface_concrete_type(concrete)
 	expected_type := concrete_params[0]
 	if path := g.embedded_receiver_path_for_expected(concrete_type, expected_type) {
-		base := '(${cct}*)i->_object'
+		base := '(${concrete_cct}*)i->_object'
 		mut access := base
 		mut access_is_ptr := true
 		for field in path {
@@ -181,7 +185,20 @@ fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_param
 		}
 		return if wants_ptr { '&(${access})' } else { '*(${access})' }
 	}
-	return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
+	// Generic interface indexes retain the open receiver spelling (Box), while
+	// the selected method signature carries its materialized receiver
+	// (Box[Local]). The boxed object uses the latter storage type.
+	expected_value_type := types.unwrap_pointer(expected_type)
+	storage_cct := if expected_value_type is types.Unknown {
+		concrete_cct
+	} else {
+		g.interface_storage_c_type(expected_value_type)
+	}
+	return if wants_ptr {
+		'(${storage_cct}*)i->_object'
+	} else {
+		'*(${storage_cct}*)i->_object'
+	}
 }
 
 fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type types.Type, target_type types.Type) ?string {
@@ -2047,16 +2064,22 @@ fn (g &FlatGen) interface_dispatch_boxed_value_expr(concrete string) string {
 
 fn (g &FlatGen) interface_concrete_storage_c_type(concrete string) string {
 	concrete_type := g.interface_concrete_type(concrete)
-	ct := if concrete_type is types.Unknown {
-		g.cname(concrete)
-	} else {
-		g.tc.c_type(concrete_type)
+	if concrete_type is types.Unknown {
+		if concrete.starts_with('fn_ptr:') {
+			return naming.fn_ptr_type_name(concrete)
+		}
+		return g.cname(concrete)
 	}
+	return g.interface_storage_c_type(concrete_type)
+}
+
+fn (g &FlatGen) interface_storage_c_type(typ types.Type) string {
+	ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
 		return naming.fn_ptr_type_name(ct)
 	}
-	if concrete.starts_with('fn_ptr:') {
-		return naming.fn_ptr_type_name(concrete)
+	if typ.name().starts_with('fn_ptr:') {
+		return naming.fn_ptr_type_name(typ.name())
 	}
 	return ct
 }

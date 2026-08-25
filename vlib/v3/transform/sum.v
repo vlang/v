@@ -853,7 +853,7 @@ fn (mut t Transformer) smartcasted_sum_is_expr_check(expr_id flat.NodeId, patter
 		return none
 	}
 	sc := t.find_smartcast(key) or { return none }
-	raw_sum := t.trim_pointer_type(t.original_expr_type(expr_id))
+	raw_sum := t.trim_pointer_type(t.raw_expr_type_without_smartcast(expr_id))
 	resolved_sum := t.resolve_sum_name(raw_sum)
 	if resolved_sum.len == 0 || resolved_sum !in t.sum_types
 		|| t.resolve_sum_name(sc.sum_type_name) != resolved_sum {
@@ -1049,14 +1049,8 @@ fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []stri
 }
 
 fn (t &Transformer) interface_impl_type_ids(iface_name string, concrete_name string) []int {
-	mut ids := []int{}
-	for candidate in t.interface_alias_equivalent_names(concrete_name) {
-		id := t.interface_impl_type_id(iface_name, candidate) or { continue }
-		if id !in ids {
-			ids << id
-		}
-	}
-	return ids
+	id := t.interface_impl_type_id(iface_name, concrete_name) or { return []int{} }
+	return [id]
 }
 
 fn (t &Transformer) interface_alias_equivalent_names(name string) []string {
@@ -1349,7 +1343,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	}
 	clean_type0 := t.trim_pointer_type(expr_type)
 	if t.is_interface_type_name(clean_type0) {
-		if target_iface := t.resolve_interface_pattern_interface(node.value) {
+		target_is_pointer := node.value.starts_with('&')
+		target_pattern := t.trim_pointer_type(node.value)
+		if target_iface := t.resolve_interface_pattern_interface(target_pattern) {
 			// Use the raw interface expression here. Applying the active smartcast
 			// first would build the target interface once, then the explicit `as`
 			// conversion would incorrectly treat that value as the original source
@@ -1360,6 +1356,9 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 				t.transform_expr(expr_id)
 			}
 			if converted := t.convert_interface_expr_to_interface(child, expr_type, target_iface) {
+				if target_is_pointer {
+					return t.heap_copy_interface_expr(converted, target_iface, node.value)
+				}
 				return converted
 			}
 		}

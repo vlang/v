@@ -55,8 +55,10 @@ fn C._aligned_msize(voidptr, align isize, offset isize) isize
 fn C._aligned_recalloc(voidptr, num isize, size isize, align isize) voidptr
 
 $if windows {
+	type C.DWORD = u32
+
 	fn C.VirtualAlloc(voidptr, isize, u32, u32) voidptr
-	fn C.VirtualProtect(voidptr, isize, u32, &u32) bool
+	fn C.VirtualProtect(voidptr, isize, C.DWORD, &C.DWORD) bool
 }
 
 @[noreturn; trusted]

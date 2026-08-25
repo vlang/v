@@ -987,11 +987,21 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 	$if windows {
 		return false
 	} $else {
+		$if linux && arm64 {
+			// Shared append-only AST regions intermittently corrupt the heap on
+			// Linux/ARM64. Keep the safe serial monomorphizer on that target while
+			// retaining the other parallel compiler stages.
+			return false
+		}
 		if specs.len == 0 {
 			return false
 		}
 		if isnil(t.a.worker_pool) {
-			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
+			worker_count := runtime.nr_jobs() - 1
+			if worker_count <= 0 {
+				return false
+			}
+			t.a.worker_pool = workers.new(worker_count)
 		}
 		available_jobs := t.a.worker_pool.size() + 1
 		configured_jobs := os.getenv('V3_MONOMORPH_JOBS').int()

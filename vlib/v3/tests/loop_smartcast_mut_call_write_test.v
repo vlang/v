@@ -8,7 +8,9 @@ const loop_smartcast_v3_src = os.join_path(loop_smartcast_v3_dir, 'v3.v')
 
 fn loop_smartcast_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_loop_smartcast_mut_call_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${loop_smartcast_vexe} -gc none -path "${loop_smartcast_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${loop_smartcast_v3_src}')
 	assert build.exit_code == 0, build.output

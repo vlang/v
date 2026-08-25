@@ -8,7 +8,9 @@ const orm_null_text_v3_src = os.join_path(orm_null_text_v3_dir, 'v3.v')
 
 fn orm_null_text_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_orm_null_text_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${orm_null_text_vexe} -gc none -path "${orm_null_text_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${orm_null_text_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -172,6 +174,37 @@ fn main() {
 	assert !c_code.contains('(users).name'), c_code
 }
 
+fn test_multi_statement_sql_keeps_heap_promoted_db_pointer() {
+	v3_bin := orm_null_text_build_v3()
+	c_code := orm_null_text_gen_c(v3_bin, 'orm_heap_promoted_multi_statement_db', "import db.sqlite
+
+struct User {
+	id int @[primary]
+}
+
+fn main() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+	first := User{1}
+	second := User{2}
+	sql db {
+		insert first into User
+		insert second into User
+	}!
+}
+")
+	mut found_stable_db := false
+	for line in c_code.split_into_lines() {
+		assert !(line.contains('sqlite__DB* __sql_db_') && line.contains(' = *db;')), line
+		if line.contains('sqlite__DB __sql_db_') && line.contains(' = *db;') {
+			found_stable_db = true
+		}
+	}
+	assert found_stable_db, c_code
+}
+
 fn test_orm_insert_requires_qualified_value_type_match() {
 	v3_bin := orm_null_text_build_v3()
 	c_code := orm_null_text_gen_c_project(v3_bin, 'orm_insert_qualified_value_mismatch', {
@@ -224,8 +257,7 @@ fn main() {
 	_ = rows
 }
 ')
-	assert c_code.contains('i64 sqlite3_column_int64('), c_code
-	assert c_code.contains('i32 sqlite3_bind_int64('), c_code
+	assert c_code.contains('#include "sqlite3.h"'), c_code
 	assert c_code.contains('sqlite3_bind_int('), c_code
 	assert c_code.contains('sqlite3_bind_int64('), c_code
 	assert c_code.contains('sqlite3_column_int('), c_code

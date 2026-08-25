@@ -1,6 +1,7 @@
 module modulecache
 
 import os
+import crypto.sha256
 
 fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
 	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
@@ -301,9 +302,11 @@ fn test_macro_identifiers_referencing_static_helpers() {
 }
 
 fn test_source_signature_cache_content_requires_stable_metadata() {
+	expected_digest := 'a'.repeat(sha256.size * 2)
 	details := SourceSignatureDetails{
-		signature:  'content-signature'
-		validation: ['env=NAME\tvalue']
+		signature:      'content-signature'
+		validation:     ['env=NAME\tvalue']
+		source_digests: [expected_digest]
 	}
 	if _ := source_signature_cache_content('before', 'after', details) {
 		assert false, 'changed metadata must prevent source signature caching'
@@ -317,8 +320,40 @@ fn test_source_signature_cache_content_requires_stable_metadata() {
 		return
 	}
 	assert content.contains('metadata=stable\n')
+	assert content.contains('digest=${expected_digest}\n')
 	assert content.contains('source=content-signature\n')
 	assert content.ends_with('complete=1\n')
+}
+
+fn test_cached_source_signature_keeps_per_file_sha256_digests() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_source_digests_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first_path := os.join_path(root, 'first.v')
+	second_path := os.join_path(root, 'second.v')
+	first_source := 'module sample\n\npub fn first() {}\n'
+	second_source := 'module sample\n\npub fn second() {}\n'
+	os.write_file(first_path, first_source)!
+	os.write_file(second_path, second_source)!
+	cache_dir := os.join_path(root, 'cache')
+	details := cached_source_signature_details_with_build_values(cache_dir, 'digests', [
+		second_path,
+		first_path,
+	], '', '')
+	assert details.signature.len > 0
+	assert details.source_digests == [sha256.hexhash(first_source),
+		sha256.hexhash(second_source)]
+	// The metadata-valid fast path must restore the same per-file digests without
+	// dropping them from the cache validity result.
+	cached := cached_source_signature_details_with_build_values(cache_dir, 'digests', [
+		second_path,
+		first_path,
+	], '', '')
+	assert cached.signature == details.signature
+	assert cached.source_digests == details.source_digests
 }
 
 fn test_version_pseudo_signature_ignores_build_clock() {

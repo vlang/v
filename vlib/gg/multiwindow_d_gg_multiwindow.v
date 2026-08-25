@@ -16,6 +16,7 @@ const err_multiwindow_app_identity_mismatch = 'gg.multiwindow: handle belongs to
 const err_multiwindow_renderer_unsupported = 'gg.multiwindow: renderer is not supported by the selected backend'
 const err_multiwindow_app_not_initialized = 'gg.multiwindow: App is not initialized; use gg.new_app()'
 const err_multiwindow_owner_thread_required = 'multiwindow: operation requires the owner thread'
+const err_multiwindow_service_unavailable = 'gg.multiwindow: native window service is unavailable'
 const multiwindow_event_idle_sleep = 8 * time.millisecond
 
 // MultiWindowBackend selects the implementation behind gg.App.
@@ -68,6 +69,10 @@ pub enum WindowCursorShape {
 	nwse_resize
 	grab
 	grabbing
+	text
+	crosshair
+	not_allowed
+	resize_all
 }
 
 // WindowId identifies a window managed by gg.App.
@@ -81,16 +86,19 @@ pub fn (id WindowId) str() string {
 	return id.core.str()
 }
 
-// AppConfig configures a multi-window gg application facade.
+// AppConfig configures a multi-window gg application facade. app_id supplies
+// the native application identity where supported (currently Wayland xdg-shell).
 @[params]
 pub struct AppConfig {
 pub:
 	backend          MultiWindowBackend = .auto
 	queue_size       int                = 128
 	require_renderer bool
+	app_id           string
 }
 
-// WindowConfig describes one window at creation time.
+// WindowConfig describes one window at creation time. A modal window must name
+// a live same-app owner; ownerless modal configurations are rejected pre-allocation.
 @[params]
 pub struct WindowConfig {
 pub:
@@ -112,6 +120,8 @@ pub:
 	init_fn      WindowInitFn     = unsafe { nil }
 	frame_fn     WindowFrameFn    = unsafe { nil }
 	cleanup_fn   WindowCleanupFn  = unsafe { nil }
+	owner        ?WindowId
+	modal        bool
 }
 
 // WindowInfo is a snapshot of a live gg.App window.
@@ -131,7 +141,8 @@ pub:
 	native_decorations bool
 }
 
-// Capabilities reports the active gg.App backend contract.
+// Capabilities reports the active gg.App backend-wide contract. Optional
+// per-window service/readback queries remain authoritative for runtime state.
 pub struct Capabilities {
 pub:
 	backend                 MultiWindowBackend
@@ -194,14 +205,18 @@ pub type AppInputFn = fn (event WindowInputEvent, mut app App) !
 // WindowDrawFn records drawing commands for one WindowContext.
 pub type WindowDrawFn = fn (mut window WindowContext) !
 
-// RunConfig configures the gg.App loop. Use event_fn without frame_fn for
-// lifecycle-only loops that do not require a renderer.
+// RunConfig configures the gg.App loop. event_fn, input_fn, window_service_fn,
+// and readback_fn receive the four canonical queue families in global order.
+// An error from any of those callbacks reinserts the current event and untouched
+// suffix in the same order, so all four handlers must be idempotent.
+// Use event_fn without frame_fn for lifecycle-only loops without a renderer.
 @[params]
 pub struct RunConfig {
 pub:
 	frame_fn                AppFrameFn           = unsafe { nil }
 	event_fn                AppEventFn           = unsafe { nil }
 	input_fn                AppInputFn           = unsafe { nil }
+	window_service_fn       WindowServiceFn      = unsafe { nil }
 	app_resource_init_fn    AppResourceInitFn    = unsafe { nil }
 	app_resource_frame_fn   AppResourceFrameFn   = unsafe { nil }
 	app_resource_cleanup_fn AppResourceCleanupFn = unsafe { nil }
@@ -238,6 +253,8 @@ mut:
 	renderer_terminal_failure bool
 	terminal_error            string
 	failed_init_windows       []WindowId
+	pending_window_captures   []MultiWindowPendingWindowCapture
+	pending_image_readbacks   []MultiWindowPendingImageReadback
 }
 
 // new_app creates a gg multi-window application.
@@ -350,7 +367,8 @@ pub fn (app &App) window_infos() ![]WindowInfo {
 	return infos
 }
 
-// destroy_window destroys a live window.
+// destroy_window destroys a live window and its owned descendants child-first.
+// Destroying the final window does not stop the app; call stop explicitly.
 pub fn (mut app App) destroy_window(id WindowId) ! {
 	app.destroy_window_managed(id, .requested)!
 }
@@ -371,7 +389,7 @@ pub fn (app &App) capabilities() Capabilities {
 	return capabilities_from_core(app.core.capabilities())
 }
 
-// drain_events returns and clears pending window lifecycle events.
+// drain_events consumes only the contiguous lifecycle prefix of the ordered queue.
 pub fn (mut app App) drain_events() ![]WindowEvent {
 	app.ensure_initialized()!
 	core_events := app.core.drain_events()!
@@ -383,7 +401,7 @@ pub fn (mut app App) drain_events() ![]WindowEvent {
 	return events
 }
 
-// drain_input_events returns and clears pending window-scoped input events.
+// drain_input_events consumes only the contiguous input prefix of the ordered queue.
 pub fn (mut app App) drain_input_events() ![]WindowInputEvent {
 	app.ensure_initialized()!
 	core_events := app.core.drain_input_events()!
@@ -394,11 +412,280 @@ pub fn (mut app App) drain_input_events() ![]WindowInputEvent {
 	return events
 }
 
-// poll_events lets the backend route native lifecycle/input events into the gg.App queue.
+// window_state returns the latest native state observed for a live window.
+// Unknown fields were not reported by the running backend.
+pub fn (app &App) window_state(id WindowId) !WindowState {
+	app.ensure_initialized()!
+	return window_state_from_core(app.core.service_window_state(id.core)!)
+}
+
+// monitor_ids returns generation-checked ids for currently available monitors.
+pub fn (app &App) monitor_ids() ![]WindowMonitorId {
+	app.ensure_initialized()!
+	core_ids := app.core.service_monitor_ids()!
+	mut ids := []WindowMonitorId{cap: core_ids.len}
+	for id in core_ids {
+		ids << window_monitor_id_from_core(id)
+	}
+	return ids
+}
+
+// monitor_info returns the latest snapshot for a monitor generation. Names are
+// descriptive; the generation-checked id is the identity.
+pub fn (app &App) monitor_info(id WindowMonitorId) !WindowMonitorInfo {
+	app.ensure_initialized()!
+	return window_monitor_info_from_core(app.core.service_monitor_info(window_monitor_id_to_core(id))!)
+}
+
+// window_operation_capability reports authoritative runtime support for one
+// operation on one live window. Query it immediately before optional operations.
+pub fn (app &App) window_operation_capability(id WindowId, operation WindowOperation) !WindowOperationCapability {
+	app.ensure_initialized()!
+	core_capability := app.core.service_operation_capability(id.core,
+		window_operation_to_core(operation))!
+	backend := app.capabilities().backend
+	if operation == .window_capture {
+		renderer_active := app.core.renderer_device_available_for_gg()
+		if backend != .wayland && !(backend in [.x11, .appkit] && renderer_active) {
+			return window_operation_capability_from_core(core_capability)
+		}
+		mut available := renderer_active
+		if backend == .appkit {
+			available = available && gfx.query_backend() == .metal_macos
+		} else {
+			available = available && gfx.query_backend() in [.glcore33, .gles3]
+		}
+		if backend in [.x11, .appkit] {
+			available = available && core_capability.support == .available
+		}
+		if available {
+			snapshot := app.core.render_window_snapshot(id.core)!
+			producer := app.render_runtime.window_capture_producer(id)!
+			available = managed_window_capture_has_producer(producer, snapshot)
+		}
+		return WindowOperationCapability{
+			support:      if available { .available } else { .unsupported }
+			asynchronous: available
+		}
+	}
+	return window_operation_capability_from_core(core_capability)
+}
+
+// supports_window_cursor reports support for one native cursor shape.
+pub fn (app &App) supports_window_cursor(id WindowId, shape WindowCursorShape) !WindowSupportLevel {
+	app.ensure_initialized()!
+	return window_support_from_core(app.core.service_cursor_support(id.core,
+		window_cursor_shape_to_core(shape))!)
+}
+
+// with_native_window borrows a live native window only for the callback. The
+// lease and nested backend handles must not escape or be retained.
+pub fn (mut app App) with_native_window(id WindowId, f NativeWindowBorrowFn) ! {
+	app.ensure_initialized()!
+	app.assert_owner_thread()!
+	if f == unsafe { nil } {
+		return error(err_multiwindow_service_unavailable)
+	}
+	app_ptr := unsafe { voidptr(&app) }
+	callback := fn [app_ptr, f] (borrow multiwindow.NativeWindowBorrow) ! {
+		mut facade := unsafe { &App(app_ptr) }
+		mut lease := NativeWindowLease{
+			app:          facade
+			app_instance: borrow.app_instance_for_gg()
+			window:       window_id_from_core(borrow.window_for_gg())
+			lease_epoch:  borrow.epoch_for_gg()
+			backend:      native_backend_from_core(borrow.backend_for_gg())
+			primary:      borrow.primary_for_gg()
+			secondary:    borrow.secondary_for_gg()
+		}
+		facade.render_runtime.begin_user_callback()
+		mut callback_error := IError(none)
+		f(mut lease) or { callback_error = err }
+		facade.render_runtime.end_user_callback()
+		if callback_error !is none {
+			return callback_error
+		}
+	}
+	mut borrow_error := IError(none)
+	app.core.with_native_window_for_gg(id.core, callback) or { borrow_error = err }
+	app.flush_deferred_transitions()!
+	if borrow_error !is none {
+		return borrow_error
+	}
+}
+
+// show_window requests that a live window become mapped and visible.
+pub fn (mut app App) show_window(id WindowId) ! {
+	app.ensure_initialized()!
+	app.core.service_show_window(id.core)!
+}
+
+// hide_window requests that a live window become hidden or unmapped.
+pub fn (mut app App) hide_window(id WindowId) ! {
+	app.ensure_initialized()!
+	app.core.service_hide_window(id.core)!
+}
+
+// request_window_focus asks the platform to focus a live window.
+pub fn (mut app App) request_window_focus(id WindowId) ! {
+	app.ensure_initialized()!
+	app.core.service_request_focus(id.core)!
+}
+
+// raise_window asks the platform to raise a live window.
+pub fn (mut app App) raise_window(id WindowId) ! {
+	app.ensure_initialized()!
+	app.core.service_raise_window(id.core)!
+}
+
+// set_window_position requests a native top-level position when supported.
+pub fn (mut app App) set_window_position(id WindowId, x int, y int) ! {
+	app.ensure_initialized()!
+	app.core.service_set_position(id.core, x, y)!
+}
+
+// minimize_window requests native minimization.
+pub fn (mut app App) minimize_window(id WindowId) ! {
+	app.ensure_initialized()!
+	app.core.service_minimize_window(id.core)!
+}
+
+// maximize_window requests native maximization.
+pub fn (mut app App) maximize_window(id WindowId) ! {
+	app.ensure_initialized()!
+	app.core.service_maximize_window(id.core)!
+}
+
+// restore_window leaves the supported minimized, maximized, or fullscreen state.
+pub fn (mut app App) restore_window(id WindowId) ! {
+	app.ensure_initialized()!
+	app.core.service_restore_window(id.core)!
+}
+
+// set_window_fullscreen requests or leaves native fullscreen state.
+pub fn (mut app App) set_window_fullscreen(id WindowId, enabled bool) ! {
+	app.ensure_initialized()!
+	app.core.service_set_fullscreen(id.core, enabled)!
+}
+
+// request_clipboard_text starts an asynchronous clipboard read. Match the id
+// with a terminal clipboard WindowServiceEvent.
+pub fn (mut app App) request_clipboard_text(id WindowId) !ClipboardRequestId {
+	app.ensure_initialized()!
+	return clipboard_request_id_from_core(app.core.service_request_clipboard_text(id.core)!)
+}
+
+// set_clipboard_text starts an asynchronous clipboard write. Match the id with
+// a terminal clipboard WindowServiceEvent.
+pub fn (mut app App) set_clipboard_text(id WindowId, text string) !ClipboardRequestId {
+	app.ensure_initialized()!
+	return clipboard_request_id_from_core(app.core.service_set_clipboard_text(id.core, text)!)
+}
+
+// request_portal_parent starts an asynchronous native-parent export. A ready
+// event owns a lease that must be released explicitly.
+pub fn (mut app App) request_portal_parent(id WindowId) !PortalParentRequestId {
+	app.ensure_initialized()!
+	return portal_parent_request_id_from_core(app.core.service_request_portal_parent(id.core)!)
+}
+
+// release_portal_parent releases a ready portal-parent export lease.
+pub fn (mut app App) release_portal_parent(id PortalParentLeaseId) ! {
+	app.ensure_initialized()!
+	app.core.service_release_portal_parent(multiwindow.service_portal_lease_id_from_gg(id.app_instance,
+		id.serial))!
+}
+
+// set_window_mouse_lock requests or releases relative pointer confinement.
+pub fn (mut app App) set_window_mouse_lock(id WindowId, enabled bool) ! {
+	app.ensure_initialized()!
+	app.core.service_set_mouse_lock(id.core, enabled)!
+}
+
+// set_window_titlebar_appearance requests a supported native titlebar theme.
+pub fn (mut app App) set_window_titlebar_appearance(id WindowId, appearance WindowTitlebarAppearance) ! {
+	app.ensure_initialized()!
+	app.core.service_set_titlebar_appearance(id.core, window_titlebar_to_core(appearance))!
+}
+
+// drain_window_service_events consumes only the contiguous service prefix of
+// the ordered queue. It never skips lifecycle, input, or readback events.
+pub fn (mut app App) drain_window_service_events() ![]WindowServiceEvent {
+	app.ensure_initialized()!
+	core_events := app.core.drain_service_events()!
+	mut events := []WindowServiceEvent{cap: core_events.len}
+	for event in core_events {
+		events << window_service_event_from_core(event)
+	}
+	return events
+}
+
+// drain_window_queued_events consumes lifecycle, input, service, and readback
+// events in exact global admission order.
+pub fn (mut app App) drain_window_queued_events() ![]WindowQueuedEvent {
+	app.ensure_initialized()!
+	core_events := app.core.drain_queued_events()!
+	mut events := []WindowQueuedEvent{cap: core_events.len}
+	for event in core_events {
+		events << window_queued_event_from_core(event)
+	}
+	return events
+}
+
+// with_win32 exposes the borrowed HWND only during f.
+pub fn (mut lease NativeWindowLease) with_win32(f Win32NativeWindowFn) ! {
+	lease.validate_native_backend(.win32)!
+	if f == unsafe { nil } {
+		return error(err_multiwindow_service_unavailable)
+	}
+	f(lease.primary)!
+}
+
+// with_appkit exposes the borrowed NSWindow pointer only during f.
+pub fn (mut lease NativeWindowLease) with_appkit(f AppKitNativeWindowFn) ! {
+	lease.validate_native_backend(.appkit)!
+	if f == unsafe { nil } {
+		return error(err_multiwindow_service_unavailable)
+	}
+	f(lease.primary)!
+}
+
+// with_x11 exposes borrowed Display and Window handles only during f.
+pub fn (mut lease NativeWindowLease) with_x11(f X11NativeWindowFn) ! {
+	lease.validate_native_backend(.x11)!
+	if f == unsafe { nil } {
+		return error(err_multiwindow_service_unavailable)
+	}
+	f(lease.primary, lease.secondary)!
+}
+
+// with_wayland exposes borrowed wl_display and wl_surface pointers only during f.
+pub fn (mut lease NativeWindowLease) with_wayland(f WaylandNativeWindowFn) ! {
+	lease.validate_native_backend(.wayland)!
+	if f == unsafe { nil } {
+		return error(err_multiwindow_service_unavailable)
+	}
+	f(lease.primary, unsafe { voidptr(lease.secondary) })!
+}
+
+fn (mut lease NativeWindowLease) validate_native_backend(expected MultiWindowBackend) ! {
+	if lease.app == unsafe { nil } || lease.app_instance != lease.app.app_instance {
+		return error(err_multiwindow_service_unavailable)
+	}
+	backend := native_backend_from_core(lease.app.core.validate_native_borrow_for_gg(lease.window.core,
+		lease.lease_epoch)!)
+	if backend != expected || lease.backend != expected {
+		return error(err_multiwindow_service_unavailable)
+	}
+}
+
+// poll_events routes native lifecycle, input, service, and readback events into
+// the gg.App canonical queue.
 pub fn (mut app App) poll_events() !int {
 	app.ensure_initialized()!
 	count := app.core.poll_events()!
 	app.consume_backend_teardowns()!
+	app.reconcile_unbound_managed_window_captures()!
 	return count
 }
 
@@ -426,8 +713,10 @@ pub fn (mut app App) drain_pending(max_jobs int) !int {
 	return app.core.drain_pending(max_jobs)!
 }
 
-// run starts the multi-window owner loop. event_fn can drive lifecycle-only
-// apps without a renderer; frame_fn/draw_window require explicit swapchains.
+// run starts the owner loop and dispatches lifecycle, input, service, and
+// readback callbacks in canonical order. Rendering callbacks require swapchains.
+// A queue-callback error reinserts the current event and untouched suffix, so
+// event, input, service, and readback handlers must be idempotent.
 pub fn (mut app App) run(config RunConfig) ! {
 	app.run_managed(config)!
 }
@@ -916,6 +1205,7 @@ fn (config AppConfig) to_core() multiwindow.Config {
 		backend:          backend_to_core(config.backend)
 		queue_size:       config.queue_size
 		require_renderer: config.require_renderer
+		app_id:           config.app_id
 	}
 }
 
@@ -946,6 +1236,10 @@ fn (config WindowConfig) to_core() multiwindow.WindowConfig {
 }
 
 fn (config WindowConfig) to_core_with_workload(legacy_render_mode bool) multiwindow.WindowConfig {
+	mut owner := ?multiwindow.WindowId(none)
+	if configured_owner := config.owner {
+		owner = configured_owner.core
+	}
 	return multiwindow.WindowConfig{
 		title:           config.title
 		width:           config.width
@@ -959,6 +1253,8 @@ fn (config WindowConfig) to_core_with_workload(legacy_render_mode bool) multiwin
 		fullscreen:      config.fullscreen
 		sample_count:    config.sample_count
 		redraw_mode:     redraw_mode_to_core(config.redraw_mode)
+		owner:           owner
+		modal:           config.modal
 		render_workload: config.init_fn != unsafe { nil } || config.frame_fn != unsafe { nil }
 			|| legacy_render_mode
 	}
@@ -1117,6 +1413,334 @@ fn window_cursor_shape_to_core(shape WindowCursorShape) multiwindow.CursorShape 
 		.nwse_resize { .nwse_resize }
 		.grab { .grab }
 		.grabbing { .grabbing }
+		.text { .text }
+		.crosshair { .crosshair }
+		.not_allowed { .not_allowed }
+		.resize_all { .resize_all }
+	}
+}
+
+fn native_backend_from_core(backend multiwindow.NativeWindowBackend) MultiWindowBackend {
+	return match backend {
+		.mock { .mock }
+		.x11 { .x11 }
+		.wayland { .wayland }
+		.appkit { .appkit }
+		.win32 { .win32 }
+	}
+}
+
+fn window_operation_to_core(operation WindowOperation) multiwindow.ServiceOperation {
+	return match operation {
+		.show { .show }
+		.hide { .hide }
+		.focus { .focus }
+		.raise { .raise }
+		.position { .position }
+		.minimize { .minimize }
+		.maximize { .maximize }
+		.restore { .restore }
+		.fullscreen { .fullscreen }
+		.clipboard_read { .clipboard_read }
+		.clipboard_write { .clipboard_write }
+		.portal_parent { .portal_parent }
+		.native_borrow { .native_borrow }
+		.mouse_lock { .mouse_lock }
+		.titlebar_appearance { .titlebar_appearance }
+		.image_readback { .image_readback }
+		.window_capture { .window_capture }
+	}
+}
+
+fn window_operation_from_core(operation multiwindow.ServiceOperation) WindowOperation {
+	return match operation {
+		.show { .show }
+		.hide { .hide }
+		.focus { .focus }
+		.raise { .raise }
+		.position { .position }
+		.minimize { .minimize }
+		.maximize { .maximize }
+		.restore { .restore }
+		.fullscreen { .fullscreen }
+		.clipboard_read { .clipboard_read }
+		.clipboard_write { .clipboard_write }
+		.portal_parent { .portal_parent }
+		.native_borrow { .native_borrow }
+		.mouse_lock { .mouse_lock }
+		.titlebar_appearance { .titlebar_appearance }
+		.image_readback { .image_readback }
+		.window_capture { .window_capture }
+	}
+}
+
+fn window_support_from_core(support multiwindow.ServiceSupportLevel) WindowSupportLevel {
+	return match support {
+		.unsupported { .unsupported }
+		.available { .available }
+		.conditional { .conditional }
+	}
+}
+
+fn window_observed_bool_from_core(value multiwindow.ServiceObservedBool) WindowObservedBool {
+	return match value {
+		.unknown { .unknown }
+		.off { .off }
+		.on { .on }
+	}
+}
+
+fn window_mapping_from_core(value multiwindow.ServiceMappingState) WindowMappingState {
+	return match value {
+		.unknown { .unknown }
+		.unmapped { .unmapped }
+		.mapped { .mapped }
+	}
+}
+
+fn window_visibility_from_core(value multiwindow.ServiceVisibilityState) WindowVisibilityState {
+	return match value {
+		.unknown { .unknown }
+		.hidden { .hidden }
+		.visible { .visible }
+		.occluded { .occluded }
+	}
+}
+
+fn window_monitor_id_from_core(id multiwindow.ServiceMonitorId) WindowMonitorId {
+	return WindowMonitorId{
+		app_instance: id.app_instance_for_gg()
+		slot:         id.slot_for_gg()
+		generation:   id.generation_for_gg()
+	}
+}
+
+fn window_monitor_id_to_core(id WindowMonitorId) multiwindow.ServiceMonitorId {
+	return multiwindow.service_monitor_id_from_gg(id.app_instance, id.slot, id.generation)
+}
+
+fn window_monitor_info_from_core(info multiwindow.ServiceMonitorInfo) WindowMonitorInfo {
+	return WindowMonitorInfo{
+		id:        window_monitor_id_from_core(info.id)
+		name:      info.name
+		geometry:  WindowKnownRect{
+			known: info.geometry.known
+			value: WindowRect{
+				x:      info.geometry.value.x
+				y:      info.geometry.value.y
+				width:  info.geometry.value.width
+				height: info.geometry.value.height
+			}
+		}
+		work_area: WindowKnownRect{
+			known: info.work_area.known
+			value: WindowRect{
+				x:      info.work_area.value.x
+				y:      info.work_area.value.y
+				width:  info.work_area.value.width
+				height: info.work_area.value.height
+			}
+		}
+		scale:     WindowKnownScale{
+			known: info.scale.known
+			value: info.scale.value
+		}
+		primary:   window_observed_bool_from_core(info.primary)
+		available: info.available
+		sequence:  info.sequence
+	}
+}
+
+fn window_state_from_core(state multiwindow.ServiceWindowState) WindowState {
+	mut monitors := []WindowMonitorId{cap: state.monitor_ids.len}
+	for id in state.monitor_ids {
+		monitors << window_monitor_id_from_core(id)
+	}
+	return WindowState{
+		mapping:                     window_mapping_from_core(state.mapping)
+		visibility:                  window_visibility_from_core(state.visibility)
+		active:                      window_observed_bool_from_core(state.active)
+		focused:                     window_observed_bool_from_core(state.focused)
+		minimized:                   window_observed_bool_from_core(state.minimized)
+		maximized:                   window_observed_bool_from_core(state.maximized)
+		fullscreen:                  window_observed_bool_from_core(state.fullscreen)
+		mouse_locked:                window_observed_bool_from_core(state.mouse_locked)
+		position:                    WindowPosition{
+			known: state.position.known
+			x:     state.position.x
+			y:     state.position.y
+		}
+		monitor_ids:                 monitors
+		monitor_membership_observed: state.monitor_membership_observed
+		sequence:                    state.sequence
+	}
+}
+
+fn window_operation_capability_from_core(capability multiwindow.ServiceOperationCapability) WindowOperationCapability {
+	return WindowOperationCapability{
+		support:              window_support_from_core(capability.support)
+		asynchronous:         capability.asynchronous
+		requires_user_action: capability.requires_user_action
+		state_observable:     capability.state_observable
+	}
+}
+
+fn window_titlebar_to_core(appearance WindowTitlebarAppearance) multiwindow.ServiceTitlebarAppearance {
+	return match appearance {
+		.system { .system }
+		.light { .light }
+		.dark { .dark }
+	}
+}
+
+fn clipboard_request_id_from_core(id multiwindow.ServiceRequestId) ClipboardRequestId {
+	return ClipboardRequestId{
+		app_instance: id.app_instance_for_gg()
+		serial:       id.serial_for_gg()
+	}
+}
+
+fn portal_parent_request_id_from_core(id multiwindow.ServiceRequestId) PortalParentRequestId {
+	return PortalParentRequestId{
+		app_instance: id.app_instance_for_gg()
+		serial:       id.serial_for_gg()
+	}
+}
+
+fn portal_parent_lease_id_from_core(id multiwindow.ServicePortalLeaseId) PortalParentLeaseId {
+	return PortalParentLeaseId{
+		app_instance: id.app_instance_for_gg()
+		serial:       id.serial_for_gg()
+	}
+}
+
+fn window_service_status_from_core(status multiwindow.ServiceStatus) WindowServiceStatus {
+	return match status {
+		.ready { .ready }
+		.cancelled { .cancelled }
+		.failed { .failed }
+	}
+}
+
+fn window_service_event_kind_from_core(kind multiwindow.ServiceEventKind) WindowServiceEventKind {
+	return match kind {
+		.state { .state }
+		.metrics { .metrics }
+		.capability { .capability }
+		.monitor { .monitor }
+		.clipboard { .clipboard }
+		.portal_parent { .portal_parent }
+	}
+}
+
+fn window_readback_status_from_core(status multiwindow.ServiceReadbackStatus) WindowReadbackStatus {
+	return match status {
+		.ready { .ready }
+		.cancelled { .cancelled }
+		.failed { .failed }
+	}
+}
+
+fn window_service_metrics_from_core(metrics multiwindow.RenderMetricsSnapshot) WindowMetrics {
+	return WindowMetrics{
+		logical_size:     WindowLogicalSize{
+			width:  metrics.logical_width
+			height: metrics.logical_height
+		}
+		framebuffer_size: WindowPixelSize{
+			width:  metrics.framebuffer_width
+			height: metrics.framebuffer_height
+		}
+		dpi_scale:        metrics.dpi_scale
+		metrics_sequence: metrics.metrics_sequence
+	}
+}
+
+fn window_service_event_from_core(event multiwindow.ServiceEvent) WindowServiceEvent {
+	mut monitors := []WindowMonitorInfo{cap: event.monitors.len}
+	for monitor in event.monitors {
+		monitors << window_monitor_info_from_core(monitor)
+	}
+	return WindowServiceEvent{
+		kind:          window_service_event_kind_from_core(event.kind)
+		window:        window_id_from_core(event.window)
+		sequence:      event.sequence
+		state:         window_state_from_core(event.state)
+		metrics:       window_service_metrics_from_core(event.metrics)
+		operation:     window_operation_from_core(event.operation)
+		capability:    window_operation_capability_from_core(event.capability)
+		monitor:       window_monitor_info_from_core(event.monitor)
+		monitors:      monitors
+		clipboard:     ClipboardResult{
+			id:     clipboard_request_id_from_core(event.clipboard.id)
+			window: window_id_from_core(event.clipboard.window)
+			status: window_service_status_from_core(event.clipboard.status)
+			text:   event.clipboard.text
+			error:  event.clipboard.error
+		}
+		portal_parent: PortalParentResult{
+			id:         portal_parent_request_id_from_core(event.portal_parent.id)
+			window:     window_id_from_core(event.portal_parent.window)
+			status:     window_service_status_from_core(event.portal_parent.status)
+			lease:      portal_parent_lease_id_from_core(event.portal_parent.lease)
+			identifier: event.portal_parent.identifier
+			error:      event.portal_parent.error
+		}
+	}
+}
+
+fn window_readback_id_from_core(id multiwindow.ServiceReadbackId) WindowReadbackId {
+	return WindowReadbackId{
+		app_instance: id.app_instance_for_gg()
+		window:       window_id_from_core(id.window_for_gg())
+		serial:       id.serial_for_gg()
+	}
+}
+
+fn window_readback_result_from_core(result multiwindow.ServiceReadbackResult) WindowReadbackResult {
+	return WindowReadbackResult{
+		id:              window_readback_id_from_core(result.id)
+		window:          window_id_from_core(result.window)
+		status:          window_readback_status_from_core(result.status)
+		submitted_frame: result.submitted_frame
+		width:           result.width
+		height:          result.height
+		stride:          result.stride
+		pixels_rgba8:    result.pixels_rgba8.clone()
+		error:           result.error
+	}
+}
+
+fn window_queued_event_from_core(event multiwindow.QueuedEvent) WindowQueuedEvent {
+	return match event.kind {
+		.lifecycle {
+			WindowQueuedEvent{
+				kind:      .lifecycle
+				sequence:  event.sequence
+				lifecycle: window_event_from_core(event.lifecycle)
+			}
+		}
+		.input {
+			WindowQueuedEvent{
+				kind:     .input
+				sequence: event.sequence
+				input:    window_input_event_from_core(event.input)
+			}
+		}
+		.service {
+			WindowQueuedEvent{
+				kind:     .service
+				sequence: event.sequence
+				service:  window_service_event_from_core(event.service)
+			}
+		}
+		.readback {
+			WindowQueuedEvent{
+				kind:     .readback
+				sequence: event.sequence
+				readback: window_readback_result_from_core(event.readback)
+			}
+		}
 	}
 }
 

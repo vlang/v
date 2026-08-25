@@ -399,6 +399,11 @@ fn test_standard_v3_excludes_ownership_checker() {
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'no ownership\n'
+	c_stat_source := os.join_path(root, 'c_stat.v')
+	os.write_file(c_stat_source, 'fn main() {\n\t_ := C.stat{}\n}\n')!
+	c_stat_output := os.join_path(root, 'c_stat')
+	c_stat_compile := cmdexec.run(v3_bin, ['-o', c_stat_output, c_stat_source])
+	assert c_stat_compile.exit_code == 0, c_stat_compile.output
 	assert_driver_cli_failure(v3_bin, ['-ownership', source],
 		'ownership support is not compiled into this v3 executable')
 	assert_driver_cli_failure(v3_bin, ['-d', 'ownership', source],
@@ -820,6 +825,7 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 	source := os.join_path(root, 'main.v')
 	os.write_file(source, "fn unused_value() int { return 42 }\n\nfn main() { println('ok') }\n")!
 	mut environment := os.environ()
+	environment['VTMP'] = os.join_path(root, 'vtmp')
 	environment['V3CACHE'] = os.join_path(root, 'cache')
 
 	cold_output := os.join_path(root, 'cold')
@@ -933,6 +939,9 @@ fn test_driver_requests_macos_compatibility_for_inline_assembly() {
 ')!
 		fallback_file := os.join_path(root, 'fallback')
 		mut environment := os.environ()
+		// This test exercises the fallback transport itself, so clear CI's job-level
+		// no-fallback guard; otherwise the driver refuses the compatibility request.
+		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 		result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', source],
 			environment)
@@ -940,6 +949,14 @@ fn test_driver_requests_macos_compatibility_for_inline_assembly() {
 		assert result.output == '', result.output
 		assert os.read_file(fallback_file)! == 'inline_asm'
 		os.rm(fallback_file)!
+		// If the dispatcher-provided marker cannot be written, V3 must keep its
+		// diagnostic visible because no compatibility retry can be requested.
+		environment['V_MACOS_V3_FALLBACK_FILE'] = root
+		unstaged_result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', source],
+			environment)
+		assert unstaged_result.exit_code != 0
+		assert unstaged_result.output.contains('inline assembly is not supported'), unstaged_result.output
+		environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 		environment_source := os.join_path(root, 'fallback_environment.v')
 		os.write_file(environment_source, "import os
 
@@ -992,11 +1009,15 @@ fn main() {
 ')!
 	fallback_file := os.join_path(root, 'fallback')
 	mut environment := os.environ()
+	// Exercises the fallback transport, so clear CI's job-level no-fallback guard.
+	environment.delete('V_MACOS_V3_NO_FALLBACK')
 	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
 		'-no-memory-limit', source], environment)
 	assert result.exit_code != 0
-	assert os.read_file(fallback_file)! == 'compiler_error'
+	fallback_payload := os.read_file(fallback_file)!
+	assert fallback_payload.starts_with('compiler_error\n')
+	assert fallback_payload.all_after_first('\n').trim_space() != ''
 
 	compat_output := os.join_path(root, 'compat')
 	compat := cmdexec.run(@VEXE, ['-old-compiler', '-o', compat_output, source])
@@ -1034,6 +1055,8 @@ fn main() {
 	fallback_file := os.join_path(root, 'fallback')
 	report_dir := os.join_path(root, 'c_error')
 	mut environment := os.environ()
+	// Exercises the fallback transport, so clear CI's job-level no-fallback guard.
+	environment.delete('V_MACOS_V3_NO_FALLBACK')
 	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 	environment['V_MACOS_V3_C_ERROR_DIR'] = report_dir
 	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
@@ -1046,6 +1069,8 @@ fn main() {
 	source_name := os.read_file(os.join_path(report_dir, 'source_name'))!.trim_space()
 	assert source_name == 'src.c'
 	assert os.is_file(os.join_path(report_dir, source_name))
+	v_sources := os.read_file(os.join_path(report_dir, 'v_sources'))!.split('\x00')
+	assert os.real_path(source) in v_sources
 }
 
 fn test_driver_cg_selects_debug_module_files() {
@@ -1177,6 +1202,7 @@ fn test_driver_preserves_macos_launcher_caller_environment() {
 
 const compile_vexe = \$env('VEXE')
 const compile_vchild = \$env('VCHILD')
+const compile_no_fallback = \$env('V_MACOS_V3_NO_FALLBACK')
 const compile_private = \$env('V_MACOS_V3_CALLER_VEXE')
 const compile_c_error_dir = \$env('V_MACOS_V3_C_ERROR_DIR')
 const compile_crun_identity = \$env('V3_CRUN_BUILD_IDENTITY')
@@ -1188,6 +1214,7 @@ fn env_value(name string) string {
 
 fn main() {
 	println('compile:' + compile_vexe + '|' + compile_vchild)
+	println('no-fallback:' + compile_no_fallback + '|' + env_value('V_MACOS_V3_NO_FALLBACK'))
 	println('runtime:' + env_value('VEXE') + '|' + env_value('VCHILD'))
 	println('private:' + compile_private + '|' + env_value('V_MACOS_V3_CALLER_VEXE') + '|' +
 		env_value('V_MACOS_V3_CALLER_VCHILD'))
@@ -1204,6 +1231,9 @@ fn main() {
 	unset_environment['V_MACOS_V3_CALLER_VEXE_PRESENT'] = '0'
 	unset_environment['V_MACOS_V3_CALLER_VCHILD'] = ''
 	unset_environment['V_MACOS_V3_CALLER_VCHILD_PRESENT'] = '0'
+	unset_environment['V_MACOS_V3_NO_FALLBACK'] = '1'
+	unset_environment['V_MACOS_V3_CALLER_NO_FALLBACK'] = ''
+	unset_environment['V_MACOS_V3_CALLER_NO_FALLBACK_PRESENT'] = '0'
 	unset_environment['V_MACOS_V3_C_ERROR_DIR'] = os.join_path(root, 'private-c-error')
 	unset_environment['V3_CRUN_BUILD_IDENTITY'] = 'private-crun-identity'
 	unset_environment['V3_INTERNAL_RESTART'] = '1'
@@ -1212,18 +1242,20 @@ fn main() {
 	unset_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
 		'-o', unset_output, 'run', source], unset_environment)
 	assert unset_run.exit_code == 0, unset_run.output
-	assert unset_run.output == 'compile:|\nruntime:<unset>|<unset>\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\ncrun-private:||<unset>|<unset>\n', unset_run.output
+	assert unset_run.output == 'compile:|\nno-fallback:|<unset>\nruntime:<unset>|<unset>\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\ncrun-private:||<unset>|<unset>\n', unset_run.output
 
 	mut set_environment := unset_environment.clone()
 	set_environment['V_MACOS_V3_CALLER_VEXE'] = 'caller-vexe'
 	set_environment['V_MACOS_V3_CALLER_VEXE_PRESENT'] = '1'
 	set_environment['V_MACOS_V3_CALLER_VCHILD'] = 'caller-vchild'
 	set_environment['V_MACOS_V3_CALLER_VCHILD_PRESENT'] = '1'
+	set_environment['V_MACOS_V3_CALLER_NO_FALLBACK'] = 'caller-no-fallback'
+	set_environment['V_MACOS_V3_CALLER_NO_FALLBACK_PRESENT'] = '1'
 	set_output := os.join_path(root, 'caller_set')
 	set_run := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-no-memory-limit',
 		'-o', set_output, 'run', source], set_environment)
 	assert set_run.exit_code == 0, set_run.output
-	assert set_run.output == 'compile:caller-vexe|caller-vchild\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\ncrun-private:||<unset>|<unset>\n', set_run.output
+	assert set_run.output == 'compile:caller-vexe|caller-vchild\nno-fallback:caller-no-fallback|caller-no-fallback\nruntime:caller-vexe|caller-vchild\nprivate:|<unset>|<unset>\nc-error-dir:|<unset>\ncrun-private:||<unset>|<unset>\n', set_run.output
 }
 
 fn test_driver_resolves_boolean_d_and_documented_pseudos() {
@@ -1723,7 +1755,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
 	assert help.output.contains('-cc <compiler>')
-	assert help.output.contains('-no-memory-limit')
+	assert help.output.contains('-no-memory-limit             disable the 4 GiB memory safety limit')
 	c_output := os.join_path(root, 'hello.c')
 	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
 	assert c_compile.exit_code == 0, c_compile.output
@@ -1889,8 +1921,9 @@ pub fn value() int {
 
 	compile := cmdexec.run_in(v3_bin, [project], work_dir)
 	assert compile.exit_code == 0, compile.output
-	output := os.join_path(work_dir, 'project.with.dots')
+	output := os.join_path(project, 'project.with.dots')
 	assert os.exists(output)
+	assert !os.exists(os.join_path(work_dir, 'project.with.dots'))
 	assert !os.exists(os.join_path(work_dir, 'project'))
 	run := cmdexec.run(output, [])
 	assert run.exit_code == 0

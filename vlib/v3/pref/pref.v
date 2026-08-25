@@ -8,6 +8,8 @@ const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
+const macos_v3_caller_no_fallback_env = 'V_MACOS_V3_CALLER_NO_FALLBACK'
+const macos_v3_caller_no_fallback_present_env = 'V_MACOS_V3_CALLER_NO_FALLBACK_PRESENT'
 const macos_v3_private_environment_names = [
 	'V_MACOS_V3_FALLBACK_FILE',
 	'V_MACOS_V3_C_ERROR_DIR',
@@ -21,6 +23,8 @@ const macos_v3_private_environment_names = [
 	macos_v3_caller_vexe_present_env,
 	macos_v3_caller_vchild_env,
 	macos_v3_caller_vchild_present_env,
+	macos_v3_caller_no_fallback_env,
+	macos_v3_caller_no_fallback_present_env,
 ]
 
 // Preferences represents preferences data used by pref.
@@ -196,6 +200,14 @@ pub fn macos_v3_caller_env_value(name string) string {
 			''
 		}
 	}
+	if name == 'V_MACOS_V3_NO_FALLBACK'
+		&& os.getenv(macos_v3_caller_no_fallback_present_env) in ['0', '1'] {
+		return if os.getenv(macos_v3_caller_no_fallback_present_env) == '1' {
+			os.getenv(macos_v3_caller_no_fallback_env)
+		} else {
+			''
+		}
+	}
 	return os.getenv(name)
 }
 
@@ -207,6 +219,10 @@ pub fn macos_v3_caller_environment() map[string]string {
 			macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
 		restore_macos_v3_caller_environment_value(mut environment, 'VCHILD',
 			macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+	}
+	if os.getenv(macos_v3_caller_no_fallback_present_env) in ['0', '1'] {
+		restore_macos_v3_caller_environment_value(mut environment, 'V_MACOS_V3_NO_FALLBACK',
+			macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
 	}
 	for name in macos_v3_private_environment_names {
 		environment.delete(name)
@@ -960,10 +976,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'test' {
 			return p.is_test
 		}
-		'native' {
-			return p.backend == 'arm64'
-		}
-		'builtin_write_buf_to_fd_should_use_c_write' {
+		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
 			return p.backend == 'arm64'
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {

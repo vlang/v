@@ -2274,6 +2274,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		fn_gen_items:                   g.fn_gen_items
 		top_level_node_ids:             g.top_level_node_ids
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
+		show_test_stats:                g.show_test_stats
 		is_prod:                        g.is_prod
 		check_overflow:                 g.check_overflow
 		force_bounds_checking:          g.force_bounds_checking

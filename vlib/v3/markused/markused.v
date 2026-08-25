@@ -193,7 +193,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		a:  a
 		tc: tc.fork_for_parallel_transform(a)
 	}
-	rt_scan_parallel := par_markused_seeds_enabled() && !trivial_literal_output
+	markused_parallel_allowed := !isnil(a.worker_pool) || tc.scoped_parallel_workers_enabled()
+	rt_scan_parallel := markused_parallel_allowed && par_markused_seeds_enabled()
+		&& !trivial_literal_output
 	rt_scan.enabled = rt_scan_parallel
 	mut rt_scan_threads := []thread{cap: 1}
 	if rt_scan_parallel {
@@ -2727,6 +2729,11 @@ fn markused_json_encode_fast_path_helpers_for_type(typ types.Type, a &flat.FlatA
 		types.String {
 			return true
 		}
+		types.Array {
+			helpers['string__plus'] = true
+			return markused_json_encode_fast_path_helpers_for_type(clean.elem_type, a, tc, mut
+				helpers, mut seen)
+		}
 		types.Primitive {
 			if clean.props.has(.boolean) {
 				return true
@@ -2766,6 +2773,20 @@ fn markused_json_encode_fast_path_helpers_for_type(typ types.Type, a &flat.FlatA
 			helpers['string__plus'] = true
 			return markused_json_encode_fast_path_helpers_for_type(clean.value_type, a, tc, mut
 				helpers, mut seen)
+		}
+		types.SumType {
+			sum_name := markused_json_resolve_sum_name(clean.name, tc)
+			for variant in tc.sum_types[sum_name] or { return false } {
+				variant_type := markused_json_sum_variant_type(variant, tc)
+				if variant_type is types.Pointer {
+					return false
+				}
+				if !markused_json_encode_fast_path_helpers_for_type(variant_type, a, tc, mut
+					helpers, mut seen) {
+					return false
+				}
+			}
+			return true
 		}
 		else {
 			return false
@@ -4414,7 +4435,10 @@ mut:
 // worker threads against a forked TypeChecker.
 fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports map[string]string) BodyCalls {
 	receiver_name, receiver_struct := receiver_info(c.a, node)
-	local_values, local_types := c.local_value_info(node, cur_module, imports)
+	local_values, mut local_types := c.local_value_info(node, cur_module, imports)
+	if receiver_name.len > 0 && receiver_struct.len > 0 {
+		local_types[receiver_name] = receiver_struct
+	}
 	needs_visibility := c.local_values_need_visibility(local_values, cur_module, imports)
 	visible_local_idents := if needs_visibility {
 		markused_visible_local_idents(c.a, node, local_values)
@@ -5328,6 +5352,9 @@ fn (c &CallCollector) top_level_decl_rhs_type_name(rhs_id flat.NodeId, cur_modul
 		struct_type := c.struct_lookup_name(resolved, cur_module)
 		if struct_type.len > 0 {
 			return struct_type
+		}
+		if c.receiver_is_generic_struct_application(resolved, cur_module) {
+			return resolved
 		}
 		// An alias-to-struct literal (`Alias{...}` where `type Alias = Base`) is not
 		// itself a struct key; keep the alias name so a later method call on the var
@@ -6309,9 +6336,11 @@ fn (c &CallCollector) collect_top_level_typed_receiver_method(base_id flat.NodeI
 	if type_name.len == 0 {
 		return false
 	}
-	method_name := c.typed_receiver_method_name(type_name, method, cur_module) or { return false }
-	c.add_typed_receiver_method_name(method_name, mut calls)
-	return true
+	if method_name := c.typed_receiver_method_name(type_name, method, cur_module) {
+		c.add_typed_receiver_method_name(method_name, mut calls)
+		return true
+	}
+	return c.flag_enum_intrinsic_receiver_method(type_name, method, cur_module)
 }
 
 fn (c &CallCollector) top_level_receiver_type_name(base_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {
@@ -7335,6 +7364,17 @@ fn (c &CallCollector) collect_json_encode_type_helpers(typ types.Type, cur_modul
 		helpers << 'v3_json_encode_string'
 		return c.collect_json_encode_type_helpers(clean.value_type, cur_module, mut helpers)
 	}
+	if clean is types.SumType {
+		sum_name := markused_json_resolve_sum_name(clean.name, c.tc)
+		for variant in c.tc.sum_types[sum_name] or { return false } {
+			variant_type := markused_json_sum_variant_type(variant, c.tc)
+			if variant_type is types.Pointer
+				|| !c.collect_json_encode_type_helpers(variant_type, cur_module, mut helpers) {
+				return false
+			}
+		}
+		return true
+	}
 	if clean is types.Primitive {
 		if clean.props.has(.boolean) {
 			return true
@@ -7389,7 +7429,7 @@ fn (c &CallCollector) json_struct_has_disallowed_encode_field_attrs(info StructD
 		}
 		for attr in field_params[1..] {
 			name := attr.all_before(':').trim_space()
-			if name !in ['skip', 'json', 'omitempty'] {
+			if name !in ['skip', 'json', 'omitempty', 'required'] {
 				return true
 			}
 		}
@@ -7585,13 +7625,48 @@ fn markused_json_attr_hex(value string, start int, count int) ?u32 {
 
 fn markused_json_encode_omitempty_supported(typ types.Type) bool {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
-	if clean is types.String || clean is types.Enum {
+	if clean is types.String || clean is types.Enum || clean is types.Array || clean is types.Map
+		|| clean is types.Struct || clean is types.SumType {
 		return true
 	}
 	if clean is types.Primitive {
 		return clean.props.has(.boolean) || clean.props.has(.integer) || clean.props.has(.float)
 	}
 	return false
+}
+
+fn markused_json_resolve_sum_name(name string, tc &types.TypeChecker) string {
+	if name in tc.sum_types {
+		return name
+	}
+	qualified := tc.qualify_name(name)
+	if qualified in tc.sum_types {
+		return qualified
+	}
+	mut match_name := ''
+	for candidate, _ in tc.sum_types {
+		if candidate.all_after_last('.') != name.all_after_last('.') {
+			continue
+		}
+		if match_name.len > 0 {
+			return name
+		}
+		match_name = candidate
+	}
+	return if match_name.len > 0 { match_name } else { name }
+}
+
+fn markused_json_sum_variant_type(raw_type string, tc &types.TypeChecker) types.Type {
+	clean := raw_type.trim_space()
+	if types.is_builtin_type_name(clean) {
+		return types.builtin_type_value(clean)
+	}
+	if clean.starts_with('[]') {
+		return types.Type(types.Array{
+			elem_type: markused_json_sum_variant_type(clean[2..], tc)
+		})
+	}
+	return tc.parse_canonical_type(clean)
 }
 
 fn markused_json_push_int_str_helpers(unsigned bool, mut helpers []string) {
@@ -7609,9 +7684,33 @@ fn (c &CallCollector) collect_typed_receiver_method(base_id flat.NodeId, method 
 	if type_name.len == 0 {
 		return false
 	}
-	method_name := c.typed_receiver_method_name(type_name, method, cur_module) or { return false }
-	c.add_typed_receiver_method_name(method_name, mut calls)
-	return true
+	if method_name := c.typed_receiver_method_name(type_name, method, cur_module) {
+		c.add_typed_receiver_method_name(method_name, mut calls)
+		return true
+	}
+	return c.flag_enum_intrinsic_receiver_method(type_name, method, cur_module)
+}
+
+fn (c &CallCollector) flag_enum_intrinsic_receiver_method(type_name string, method string, cur_module string) bool {
+	if method !in ['has', 'all', 'set', 'clear', 'toggle', 'set_all', 'clear_all', 'is_empty'] {
+		return false
+	}
+	clean_type_name := markused_clean_receiver_type_name(type_name)
+	mut candidates := [clean_type_name]
+	qualified := qualify_fn(cur_module, clean_type_name)
+	if qualified != clean_type_name {
+		candidates << qualified
+	}
+	for candidate in candidates {
+		parsed := types.unalias_type(types.unwrap_pointer(c.tc.parse_type(candidate)))
+		if parsed is types.Enum && parsed.is_flag {
+			// Flag-enum receiver methods are lowered by the compiler and do not have a
+			// source declaration to retain. Treat the typed call as resolved so the
+			// same-name fallback cannot retain an unrelated method such as `map.set`.
+			return true
+		}
+	}
+	return false
 }
 
 fn (c &CallCollector) collect_sum_variant_receiver_methods(base_id flat.NodeId, method string, cur_module string, mut calls []string) bool {
@@ -7683,6 +7782,26 @@ fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string,
 			local_types, false)
 		if type_name.len > 0 {
 			return type_name
+		}
+	}
+	// Resolve a method receiver reached through a field selector (`a.flags.set()`)
+	// from the declared field type before consulting the checker's erased runtime
+	// type. Without this, an ArrayFlags field can look like `array`, and the suffix
+	// fallback can retain unrelated same-named methods such as `map.set`.
+	if base.kind == .selector && base.children_count > 0 {
+		inner_id := c.a.child(base, 0)
+		if int(inner_id) >= 0 {
+			inner_type := c.receiver_type_name(inner_id, cur_module, imports, local_values,
+				local_types)
+			if inner_type.len > 0 {
+				struct_name := c.struct_lookup_name(inner_type, cur_module)
+				lookup := if struct_name.len > 0 { struct_name } else { inner_type }
+				if field_type := c.tc.struct_field_type_name(lookup, base.value) {
+					if field_type.len > 0 {
+						return field_type
+					}
+				}
+			}
 		}
 	}
 	base_type := c.node_type(base_id)

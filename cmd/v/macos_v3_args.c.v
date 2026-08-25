@@ -51,30 +51,53 @@ fn is_macos_v3_compiler_bootstrap(normalized_path string) bool {
 // platform neutral.
 @[markused]
 fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
-	if !prefs.new_compiler || prefs.old_compiler {
+	if !macos_v3_explicit_compilation_requested(command, prefs) {
 		return false
 	}
 	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
 		return false
 	}
-	if prefs.autofree && prefs.is_run && !macos_v3_fastc_requested(prefs) {
-		// V1 still owns the established `v -autofree run ...` orchestration.
+	if prefs.autofree && !macos_v3_fastc_requested(prefs) {
+		// The ordinary embedded V3 has no `ownership` support, so autofree builds
+		// (like autofree `run`) stay on V1; on macOS a direct autofree build is
+		// delegated to the ownership compiler before reaching this dispatcher.
 		// Explicit FastC stays on V3 and reports this mode as unsupported.
 		return false
 	}
-	if prefs.path == '' || command == 'test' || macos_v3_non_compilation_command(command)
-		|| command in external_tools {
+	return true
+}
+
+// macos_v3_explicit_compilation_requested reports whether `-new-compiler` targets a command that
+// actually compiles V source. Compatibility validation must not reject unrelated external tools.
+@[markused]
+fn macos_v3_explicit_compilation_requested(command string, prefs &pref.Preferences) bool {
+	if !prefs.new_compiler || prefs.old_compiler || prefs.path == '' || command == 'test'
+		|| macos_v3_non_compilation_command(command) || command in external_tools {
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
-	compiler_bootstrap := normalized_path == 'cmd/v' || normalized_path.starts_with('cmd/v/')
-		|| normalized_path.contains('/cmd/v/') || normalized_path.ends_with('/cmd/v')
-		|| is_macos_v3_compiler_bootstrap(normalized_path)
+	compiler_bootstrap := is_macos_v3_vroot_path(normalized_path, 'cmd/v', true)
+		|| is_macos_v3_vroot_path(normalized_path, 'vlib/v3/v3.v', false)
 	if compiler_bootstrap && !macos_v3_fastc_requested(prefs) {
 		return false
 	}
 	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
 		|| normalized_path.ends_with('.v') || normalized_path.ends_with('.vsh')
+		|| normalized_path.ends_with('.vv')
+}
+
+@[markused]
+fn macos_v3_explicit_autofree_is_unsupported(prefs &pref.Preferences) bool {
+	return prefs.new_compiler && !prefs.old_compiler && prefs.autofree
+		&& !macos_v3_fastc_requested(prefs)
+}
+
+@[markused]
+fn macos_v3_explicit_v1_preferences_are_unsupported(prefs &pref.Preferences) bool {
+	if !prefs.new_compiler || prefs.old_compiler {
+		return false
+	}
+	return v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc)
 }
 
 fn macos_v3_fastc_requested(prefs &pref.Preferences) bool {
@@ -154,7 +177,19 @@ fn macos_v3_leading_option_consumes_value(option string) bool {
 fn macos_v3_forwarded_args(prefs &pref.Preferences, raw_args []string) []string {
 	// `-new-compiler` is consumed by cmd/v to select V3; it must not reach the V3
 	// driver, which is already running and would reject it as an unknown option.
-	mut forwarded_args := raw_args.filter(it != '-new-compiler')
+	// The parser keeps every argument after a `run` target in `run_args`; those
+	// belong to the program, so do not consume their compiler-like spellings.
+	mut compiler_args_len := raw_args.len
+	if prefs.run_args.len <= raw_args.len {
+		compiler_args_len -= prefs.run_args.len
+	}
+	mut forwarded_args := []string{cap: raw_args.len}
+	for i, arg in raw_args {
+		if arg == '-new-compiler' && i < compiler_args_len {
+			continue
+		}
+		forwarded_args << arg
+	}
 	if prefs.enable_globals {
 		for i, arg in forwarded_args {
 			if arg == '--enable-globals' {

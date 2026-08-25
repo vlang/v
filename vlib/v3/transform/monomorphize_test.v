@@ -143,6 +143,17 @@ fn test_flattened_generic_struct_arg_canonicalizes_to_source_application() {
 	assert t.canonical_generic_specialization_arg('StructType_time.Time') == 'StructType[time.Time]'
 }
 
+fn test_short_fixed_array_generic_arg_canonicalizes_to_source_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.canonical_generic_specialization_arg('int_2') == '[2]int'
+	assert t.canonical_generic_specialization_arg('int_3_2') == '[2][3]int'
+	tc.type_aliases['int_2'] = 'int'
+	assert t.canonical_generic_specialization_arg('int_2') == 'int_2'
+}
+
 fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -191,6 +202,9 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	}
 	t.active_specialization_main_types['Event'] = true
 	assert t.lock_colliding_main_generic_type_text('Event', 'callee') == 'main.Event'
+	t.active_specialization_main_types['Context'] = true
+	assert t.lock_colliding_main_substitution_type_text('fn (mut T) bool', 'fn (mut Context) bool',
+		'callee', ['T']) == 'fn (mut main.Context) bool'
 	assert t.canonical_generic_specialization_arg('[]main.Event') == '[]Event'
 	assert t.specialization_main_type_closure(['map[string]Event']) == {
 		'Event': true

@@ -3451,7 +3451,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 					if param_type_text_is_shared(field_typ) {
 						shared_field_names << f.value
 					}
-					if field_typ.trim_space().starts_with('[]shared ') {
+					if field_typ.trim_space().trim_left('&').trim_space().starts_with('[]shared ') {
 						shared_element_field_names << f.value
 					}
 					fields << StructField{
@@ -4392,6 +4392,14 @@ fn (tc &TypeChecker) const_key_for_name(name string) ?string {
 	return none
 }
 
+fn (tc &TypeChecker) local_name_conflicts_with_current_module_const(name string) bool {
+	key := tc.const_key_for_name(name) or { return false }
+	owner := tc.const_modules[key] or { return true }
+	current := if tc.cur_module.len == 0 { 'main' } else { tc.cur_module }
+	normalized_owner := if owner.len == 0 { 'main' } else { owner }
+	return normalized_owner == current
+}
+
 fn (tc &TypeChecker) const_type_for_selector(node flat.Node) ?Type {
 	if node.kind != .selector || node.children_count == 0 {
 		return none
@@ -4951,7 +4959,7 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic
 		return '(' + parts.join(', ') + ')'
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		return tc.qualify_fn_type_text(clean, generic_params)
+		return tc.qualify_fn_type_text(clean, resolution, generic_params)
 	}
 	bracket := clean.index_u8(`[`)
 	if bracket > 0 {
@@ -4996,7 +5004,7 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic
 }
 
 // qualify_fn_type_text supports qualify fn type text handling for TypeChecker.
-fn (tc &TypeChecker) qualify_fn_type_text(typ string, generic_params []string) string {
+fn (tc &TypeChecker) qualify_fn_type_text(typ string, resolution bool, generic_params []string) string {
 	params_start := typ.index_u8(`(`) + 1
 	mut depth := 1
 	mut params_end := params_start
@@ -5018,14 +5026,15 @@ fn (tc &TypeChecker) qualify_fn_type_text(typ string, generic_params []string) s
 			clean_part := trimmed_space(part)
 			is_mut := clean_part.starts_with('mut ')
 			param_text := if is_mut { trimmed_space(clean_part[4..]) } else { clean_part }
-			qualified := tc.qualify_type_text_impl(normalize_fn_type_param_text(param_text), false,
-				generic_params)
+			qualified := tc.qualify_type_text_impl(normalize_fn_type_param_text(param_text),
+				resolution, generic_params)
 			params << if is_mut { 'mut ${qualified}' } else { qualified }
 		}
 	}
 	ret_str := trimmed_space(typ[params_end + 1..])
 	if ret_str.len > 0 {
-		return 'fn(${params.join(', ')}) ${tc.qualify_type_text_impl(ret_str, false, generic_params)}'
+		return 'fn(${params.join(', ')}) ${tc.qualify_type_text_impl(ret_str, resolution,
+			generic_params)}'
 	}
 	return 'fn(${params.join(', ')})'
 }
@@ -8309,7 +8318,9 @@ pub fn (mut tc TypeChecker) check_semantics() {
 						tc.check_pascal_case_name(node_id, node.value, type_kind, tc.declaration_keyword_name_pos(node_id,
 							'type'))
 					}
-					if tc.type_declaration_exists_before(node_id, node.value) {
+					is_c_alias := node.value.starts_with('C.') && node.children_count == 0
+						&& split_sum_variant_texts(node.typ).len <= 1
+					if !is_c_alias && tc.type_declaration_exists_before(node_id, node.value) {
 						kind := if node.children_count > 0
 							|| split_sum_variant_texts(node.typ).len > 1 {
 							'sum type'
@@ -12086,6 +12097,7 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 		variant_name := trimmed_space(raw_variant)
 		variant_id := variant_ids[i]
 		variant_type := tc.parse_type(variant_name)
+		clean_variant_type := unalias_type(variant_type)
 		semantic_name := variant_type.name()
 		variant_key := if variant_type is Unknown { variant_name } else { semantic_name }
 		if seen[variant_key] {
@@ -12095,31 +12107,20 @@ fn (mut tc TypeChecker) check_sum_type_decl(node_id flat.NodeId, node flat.Node)
 			continue
 		}
 		seen[variant_key] = true
-		is_alias_pointer := variant_type is Alias && unalias_type(variant_type) is Pointer
 		is_builtin_pointer := variant_name in ['voidptr', 'byteptr', 'charptr']
 			|| variant_type.name() in ['voidptr', 'byteptr', 'charptr']
-		if ((variant_type is Pointer && !is_builtin_pointer) || is_alias_pointer)
-			&& !pointer_reported {
-			display_variant := if variant_type is Pointer {
-				variant_name.trim_left('&').trim_space()
-			} else {
-				variant_name
-			}
+		if clean_variant_type is Pointer && !is_builtin_pointer && !pointer_reported {
+			display_variant := variant_name.trim_left('&').trim_space()
 			display_type := tc.parse_type(display_variant)
 			left, right := if unalias_type(display_type) is Struct {
 				'{', '}'
 			} else {
 				'(', ')'
 			}
-			message := if is_alias_pointer {
-				'alias as non-reference type'
-			} else {
-				'the sum type with non-reference types'
-			}
 			tc.record_error_with_details_at(.assignment_mismatch,
 				'sum type cannot hold a reference type', variant_id, tc.type_diagnostic_pos(variant_id,
 				variant_name), [
-				'declare ${message}: `${node.value} = ${display_variant} | ...`\nand use a reference to the sum type instead: `var := &${node.value}(${display_variant}${left}val${right})`',
+				'declare the sum type with non-reference types: `${node.value} = ${display_variant} | ...`\nand use a reference to the sum type instead: `var := &${node.value}(${display_variant}${left}val${right})`',
 			])
 			pointer_reported = true
 		}
@@ -13945,7 +13946,7 @@ pub fn (tc &TypeChecker) struct_module_for_type(name string) string {
 	return ''
 }
 
-fn (tc &TypeChecker) type_has_declaration_attribute(typ Type, name string) bool {
+pub fn (tc &TypeChecker) type_has_declaration_attribute(typ Type, name string) bool {
 	clean := unalias_type(unwrap_pointer(typ))
 	type_name := strip_generic_args_name(clean.name())
 	if type_name.len == 0 {

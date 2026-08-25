@@ -26,7 +26,9 @@ fn wait_header_execute_without_vflags(command string) os.Result {
 fn wait_header_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_wait_header_test_${pid}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${wait_header_vexe} -gc none -path "${wait_header_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${wait_header_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -283,6 +285,22 @@ fn main() {
 }
 ")
 	assert !wait_header_has_include_directive(hello.c_code), hello.c_code
+}
+
+fn test_linux_system_preamble_provides_syscall_constants() {
+	$if !linux {
+		return
+	}
+	v3_bin := wait_header_build_v3()
+	with_rand := wait_header_compile(v3_bin, 'with_crypto_rand', 'module main
+
+import crypto.rand
+
+fn main() {
+	assert rand.bytes(1)!.len == 1
+}
+')
+	assert with_rand.c_code.contains('#include <sys/syscall.h>'), with_rand.c_code
 }
 
 fn test_user_c_decl_emits_extern_prototype_without_headers() {

@@ -372,7 +372,9 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 	mut scoped_imports := []ReproImport{}
 	mut bound := map[string]string{} // binding name -> the import source that provides it
 	for imp in imports {
-		if imp.file_id !in included_files {
+		// Side-effect imports affect the module even when their source file contributes no
+		// declaration, so keep them just like module-wide hash directives.
+		if imp.file_id !in included_files && !imp.side_effect {
 			continue
 		}
 		if !imp.side_effect && !imp.triggers.any('${imp.file_id}\x00${it}' in file_referenced) {
@@ -423,6 +425,13 @@ fn (v &Builder) v_source_reproducer(v_file string, v_line int, max_bytes int) st
 		if h.source !in scoped_hashes {
 			scoped_hashes << h.source
 		}
+	}
+	if repro_covers_any_whole_file(decls, imports, hashes, scoped_imports, ordered) {
+		// The payload includes every substantive item from at least one contributing
+		// file, so it would reconstruct that whole file (differing only by normalized
+		// blank lines). Give up and let the caller use the bounded source-window path,
+		// which enforces the same strict-subset guarantee.
+		return ''
 	}
 	// every declaration in the closure is required, so an over-budget reproducer is dropped whole
 	// (the caller then falls back to a source window) rather than emitting a partial program
@@ -634,6 +643,49 @@ fn repro_decl_source(lines []string, start int, end int) string {
 		return ''
 	}
 	return lines[start..e].join('\n')
+}
+
+// repro_covers_any_whole_file reports whether the selected declarations, emitted imports and
+// module-wide hash directives reconstruct every substantive item from at least one contributing
+// file. Coverage is tracked per file, not across the whole module, so a multi-file program cannot
+// expose one complete small companion while excluding an unrelated declaration elsewhere.
+fn repro_covers_any_whole_file(decls []ReproDecl, imports []ReproImport, hashes []ReproHash, emitted_imports []ReproImport, ordered []int) bool {
+	mut total_per_file := map[int]int{}
+	mut included_per_file := map[int]int{}
+	for d in decls {
+		total_per_file[d.file_id]++
+	}
+	for id in ordered {
+		included_per_file[decls[id].file_id]++
+	}
+	mut emitted_import_sources := map[string]bool{}
+	for imp in emitted_imports {
+		emitted_import_sources[imp.source] = true
+	}
+	for imp in imports {
+		total_per_file[imp.file_id]++
+		// Imports can be deduplicated while flattening. If an identical source line is
+		// emitted for another file, it still reveals this file's complete import line.
+		if imp.source in emitted_import_sources {
+			included_per_file[imp.file_id]++
+		}
+	}
+	// Hash directives (`#flag`/`#include`/...) are module-wide and are emitted for every
+	// parsed file whether or not any of that file's declarations are retained (see the
+	// scoped_hashes loop), so each file's hashes always count as fully included. A
+	// declaration-free `.c.v` companion (e.g. `module main` + `#flag -DSECRET=...`) is
+	// thus reconstructed whole and must count as whole-file coverage, even though it
+	// contributes no ReproDecl.
+	for h in hashes {
+		total_per_file[h.file_id]++
+		included_per_file[h.file_id]++
+	}
+	for file_id, total in total_per_file {
+		if total > 0 && included_per_file[file_id] == total {
+			return true
+		}
+	}
+	return false
 }
 
 // repro_closure returns the indices of declarations reachable from `seeds` by identifier reference.
