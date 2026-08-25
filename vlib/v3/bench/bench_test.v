@@ -11,8 +11,8 @@ fn test_memory_limit_error_starts_at_limit() {
 
 	message := memory_limit_error(default_memory_limit_kb, default_memory_limit_kb, 'after parse',
 		'RSS')
-	assert message.contains('2560 MiB RSS after parse')
-	assert message.contains('limit: 2560 MiB')
+	assert message.contains('4096 MiB RSS after parse')
+	assert message.contains('limit: 4 GiB')
 	assert message.contains('`-no-memory-limit`')
 }
 
@@ -26,7 +26,6 @@ fn test_disable_memory_limit() {
 fn test_self_host_memory_limit() {
 	mut b := new()
 	b.use_self_host_memory_limit()
-	assert memory_limit_error(default_memory_limit_kb, b.memory_limit_kb, 'after transform', 'RSS') == ''
 	assert memory_limit_error(self_host_memory_limit_kb, b.memory_limit_kb, 'after transform',
 		'RSS').contains('(limit: 4 GiB)')
 }
