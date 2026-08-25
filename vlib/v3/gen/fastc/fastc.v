@@ -6104,6 +6104,7 @@ fn (mut g Parser) parse_for() !bool {
 			}
 			g.next()
 			collection_name := g.temporary_name('collection')
+			is_ordinary_string := !g.selfhost && collection_type == 'string'
 			index_name := if value_name == '' && name != '_' {
 				g.temporary_name('index')
 			} else if name == '_' {
@@ -6113,8 +6114,17 @@ fn (mut g Parser) parse_for() !bool {
 			}
 			access := if collection_type.ends_with('*') { '->' } else { '.' }
 			data_field := if collection_type.trim_right('*') == 'string' { 'str' } else { 'data' }
-			g.write_line('__typeof__((${start})) ${collection_name} = (${start});')
-			g.write_line('for (int ${index_name} = 0; ${index_name} < ${collection_name}${access}len; ${index_name}++) {')
+			if is_ordinary_string {
+				g.write_line('string ${collection_name} = (${start});')
+			} else {
+				g.write_line('__typeof__((${start})) ${collection_name} = (${start});')
+			}
+			collection_length := if is_ordinary_string {
+				'strlen(${collection_name} ? ${collection_name} : "")'
+			} else {
+				'${collection_name}${access}len'
+			}
+			g.write_line('for (int ${index_name} = 0; ${index_name} < ${collection_length}; ${index_name}++) {')
 			g.indent++
 			actual_value_name := if value_name == '' { name } else { value_name }
 			if actual_value_name != '_' {
@@ -6125,6 +6135,11 @@ fn (mut g Parser) parse_for() !bool {
 						is_mut:       true
 						is_reference: true
 						typ:          element_type + '*'
+					}
+				} else if is_ordinary_string {
+					g.write_line('u8 ${c_value_name} = ((const unsigned char *)${collection_name})[${index_name}];')
+					g.locals[actual_value_name] = FastcLocal{
+						typ: 'u8'
 					}
 				} else if collection_type.ends_with('*')
 					&& collection_type.trim_right('*') != 'string' {

@@ -40,7 +40,7 @@ fn test_fastc_backend_parses_directly_to_c_without_ast_fallback() {
 	assert os.read_file(collision_source) or { panic(err) } == collision_contents
 
 	valid_source := os.join_path(root, 'valid.v')
-	write_fastc_test_source(valid_source, 'module main
+	write_fastc_test_source(valid_source, "module main
 
 fn twice(value int) int {
 	return value * 2
@@ -50,8 +50,11 @@ fn main() {
 	value := twice(21)
 	println(value)
 	println(0o17)
+	for ch in 'ab' {
+		println(ch)
+	}
 }
-')
+")
 	valid_binary := os.join_path(root, 'valid')
 	valid_compile := cmdexec.run(v3_bin, ['-macos-v3-compat-c99', '-b', 'fastc', '-o', valid_binary,
 		valid_source])
@@ -63,11 +66,13 @@ fn main() {
 	retained_c := os.read_file(valid_binary + '.c') or { panic(err) }
 	assert retained_c.contains('__typeof__((twice(21))) value = (twice(21));')
 	assert retained_c.contains('println(017);')
+	assert retained_c.contains('strlen(__v_fastc_collection_')
+	assert retained_c.contains('((const unsigned char *)__v_fastc_collection_')
 	assert retained_c.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 	assert !retained_c.contains('builtin__builtin_init')
 	valid_run := cmdexec.run(valid_binary, [])
 	assert valid_run.exit_code == 0, valid_run.output
-	assert valid_run.output.trim_space() == '42\n15'
+	assert valid_run.output.trim_space() == '42\n15\n97\n98'
 
 	tinyc_source := os.join_path(root, 'tinyc_comptime.v')
 	write_fastc_test_source(tinyc_source, "module main
@@ -96,6 +101,8 @@ fn main() {
 	assert !cross_compile.output.contains('tcc.exe'), cross_compile.output
 	cross_source := os.read_file(cross_c) or { panic(err) }
 	assert cross_source.contains('V_FASTC_PRINT_SELECT')
+	assert cross_source.contains('strlen(__v_fastc_collection_')
+	assert cross_source.contains('((const unsigned char *)__v_fastc_collection_')
 	assert !cross_source.contains('builtin__builtin_init')
 	unsupported_float_source := os.join_path(root, 'unsupported_float_print.v')
 	write_fastc_test_source(unsupported_float_source, 'module main
@@ -447,7 +454,7 @@ fn main() {
 	assert selfhost_program_compile.exit_code == 0, selfhost_program_compile.output
 	selfhost_program_run := cmdexec.run(selfhost_output, [])
 	assert selfhost_program_run.exit_code == 0, selfhost_program_run.output
-	assert selfhost_program_run.output.trim_space() == '42\n15'
+	assert selfhost_program_run.output.trim_space() == '42\n15\n97\n98'
 	selfhost_import_alias := cmdexec.run(selfhost_binary, ['-b', 'fastc', '-o', module_source,
 		import_source])
 	assert selfhost_import_alias.exit_code != 0
