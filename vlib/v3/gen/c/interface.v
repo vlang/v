@@ -1724,10 +1724,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 					'*(${g.cname(concrete)}*)i->_object'
 				}
 				g.write('\t\tcase ${id}: ')
-				concrete_key := g.tc.concrete_method_signature_key(concrete, method) or {
-					'${concrete}.${method}'
-				}
-				mut call := '${g.interface_method_call_cname(concrete_key)}(${recv}'
+				mut call := '${g.cname(concrete)}__${method}(${recv}'
 				for ai, an in arg_names {
 					arg_idx := ai + 1
 					concrete_param := if arg_idx < concrete_params.len {
@@ -2292,12 +2289,8 @@ fn (g &FlatGen) interface_unaliased_type(typ types.Type) types.Type {
 	return clean
 }
 
-// interface_method_call_cname resolves a concrete implementer's method to the symbol its
-// definition is emitted under. In autofree mode a `main` module method is emitted as
-// `main__Recv_method` rather than `Recv__method`, so a dispatch switch built from the
-// plain name calls a symbol that does not exist. Resolve it the same way the rest of
-// cgen resolves such a legacy name: build the candidate and keep it only if it is a
-// symbol that was actually emitted.
+// interface_method_call_cname resolves a method to the symbol its definition is emitted
+// under: autofree renames a `main` module method to `main__Recv_method`.
 fn (g &FlatGen) interface_method_call_cname(method_key string) string {
 	plain := g.cname(method_key)
 	if !g.tc.autofree_mode {

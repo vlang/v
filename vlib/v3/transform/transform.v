@@ -11579,7 +11579,7 @@ fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node)
 	t.drain_pending(mut result)
 	not_ok := t.make_prefix(.not, t.make_selector(guard_source, 'ok', 'bool'))
 	guard_stmts := t.optional_selector_lvalue_guard_stmts(guard_body, guard_mode, guard_source)
-	result << t.make_if(not_ok, t.make_block_skip_scope_drops(guard_stmts), t.make_empty())
+	result << t.make_if(not_ok, t.make_or_else_block(guard_mode, guard_stmts), t.make_empty())
 	lhs_type := t.lvalue_type(lhs_id)
 	sum_target := t.assignment_sum_target(lhs_id, rhs_id, lhs_type)
 	rhs := if node.op == .assign && sum_target.len > 0 {

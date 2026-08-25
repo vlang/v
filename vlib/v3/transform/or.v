@@ -1426,9 +1426,7 @@ fn (mut t Transformer) make_none_return_stmt_with_err_expr(err_expr flat.NodeId)
 }
 
 fn (mut t Transformer) make_or_else_block(mode string, stmts []flat.NodeId) flat.NodeId {
-	// `!` and `?` lower to a branch the source never wrote, so the ownership checker
-	// allocated no scope for it and cgen must not consume a scope-drop slot there.
-	// A real `or { }` body is a source block and keeps its slot.
+	// `!` and `?` lower to a branch the source never wrote, so it has no checker scope.
 	if mode == '!' || mode == '?' {
 		return t.make_block_skip_scope_drops(stmts)
 	}

@@ -1463,7 +1463,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	not_ok := t.make_prefix(.not, t.make_selector(source, 'ok', 'bool'))
 	guard_stmts := t.optional_selector_lvalue_guard_stmts(t.a.child(&lhs_node, 1), lhs_node.value,
 		source)
-	result << t.make_if(not_ok, t.make_block_skip_scope_drops(guard_stmts), t.make_empty())
+	result << t.make_if(not_ok, t.make_or_else_block(lhs_node.value, guard_stmts), t.make_empty())
 
 	mut rhs := flat.empty_node
 	if !push_many {

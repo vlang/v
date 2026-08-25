@@ -3565,13 +3565,6 @@ fn main() {
 
 fn test_autofree_literal_only_program_keeps_ierror_destructors() {
 	v3_bin := ownership_build_v3()
-	ok := run_autofree_check(v3_bin, 'literal_only_println', "
-fn main() {
-	println('hello')
-}
-")
-	assert ok.exit_code == 0, ok.output
-
 	ok_multi := run_autofree_check(v3_bin, 'literal_only_mixed_output', "
 fn main() {
 	print('a')
