@@ -917,7 +917,9 @@ fn (g &FlatGen) ownership_live_drop_value_type_names() []string {
 	filter := g.has_used_fn_filter()
 	mut names := map[string]bool{}
 	for fn_name, type_names in g.tc.ownership_drop_value_type_names_by_fn() {
-		if filter && fn_name.len > 0 && !g.used_fn_contains_in_module(fn_name, '') {
+		// A closure is emitted with its enclosing function, which is the name markused knows.
+		owner := fn_name.all_before('__fn_literal_').all_before('__lambda_')
+		if filter && owner.len > 0 && !g.used_fn_contains_in_module(owner, '') {
 			continue
 		}
 		for type_name in type_names {

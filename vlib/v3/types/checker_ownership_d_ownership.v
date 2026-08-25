@@ -11412,9 +11412,12 @@ pub fn (tc &TypeChecker) ownership_drop_type_names() []string {
 	return names
 }
 
-fn ownership_collect_drop_value_type_names(entries []OwnershipDropEntry, mut names map[string]bool) {
-	for entry in entries {
-		names[entry.type_name] = true
+fn ownership_group_drop_value_type_names(sites map[string][]OwnershipDropEntry, mut per_fn map[string]map[string]bool) {
+	for key, entries in sites {
+		fn_name := ownership_drop_key_fn(key)
+		for entry in entries {
+			per_fn[fn_name][entry.type_name] = true
+		}
 	}
 }
 
@@ -11426,27 +11429,13 @@ pub fn (tc &TypeChecker) ownership_drop_value_type_names_by_fn() map[string][]st
 		return result
 	}
 	mut per_fn := map[string]map[string]bool{}
-	for key, entries in tc.ownership.drop_at_fn_exit {
-		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
-	}
-	for key, entries in tc.ownership.drop_at_returns {
-		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
-	}
-	for key, entries in tc.ownership.drop_at_return_nodes {
-		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
-	}
-	for key, entries in tc.ownership.drop_at_propagations {
-		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
-	}
-	for key, entries in tc.ownership.drop_at_loop_controls {
-		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
-	}
-	for key, entries in tc.ownership.drop_at_loop_iterations {
-		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
-	}
-	for key, entries in tc.ownership.drop_at_scope_exit {
-		ownership_collect_drop_value_type_names(entries, mut per_fn[ownership_drop_key_fn(key)])
-	}
+	ownership_group_drop_value_type_names(tc.ownership.drop_at_fn_exit, mut per_fn)
+	ownership_group_drop_value_type_names(tc.ownership.drop_at_returns, mut per_fn)
+	ownership_group_drop_value_type_names(tc.ownership.drop_at_return_nodes, mut per_fn)
+	ownership_group_drop_value_type_names(tc.ownership.drop_at_propagations, mut per_fn)
+	ownership_group_drop_value_type_names(tc.ownership.drop_at_loop_controls, mut per_fn)
+	ownership_group_drop_value_type_names(tc.ownership.drop_at_loop_iterations, mut per_fn)
+	ownership_group_drop_value_type_names(tc.ownership.drop_at_scope_exit, mut per_fn)
 	for fn_name, names in per_fn {
 		result[fn_name] = names.keys()
 	}
