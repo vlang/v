@@ -160,9 +160,11 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 	int digit_count = 0;
 	unsigned char encoded_rune[4];
 	int rune_byte_count = 0;
+	int rune_display_width = 0;
 	if (specifier == 99) {
 		unsigned codepoint = magnitude <= 1114111 ? (unsigned)magnitude : 65533;
 		if (codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
+		rune_display_width = codepoint == 0x200D || v_fastc_codepoint_is_combining(codepoint) ? 0 : (v_fastc_codepoint_is_wide(codepoint) ? 2 : 1);
 		if (codepoint <= 127) {
 			encoded_rune[rune_byte_count++] = (unsigned char)codepoint;
 		} else if (codepoint <= 2047) {
@@ -187,7 +189,7 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 			magnitude /= base;
 		} while (magnitude != 0);
 	}
-	int display_len = specifier == 99 ? 1 : digit_count + (negative ? 1 : 0);
+	int display_len = specifier == 99 ? rune_display_width : digit_count + (negative ? 1 : 0);
 	int padding = width > display_len ? width - display_len : 0;
 	int content_bytes = specifier == 99 ? rune_byte_count : digit_count + (negative ? 1 : 0);
 	int result_len = content_bytes + padding;
@@ -423,9 +425,11 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 	int digit_count = 0;
 	unsigned char encoded_rune[4];
 	int rune_byte_count = 0;
+	int rune_display_width = 0;
 	if (specifier == 99) {
 		unsigned codepoint = magnitude <= 1114111 ? (unsigned)magnitude : 65533;
 		if (codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
+		rune_display_width = codepoint == 0x200D || v_fastc_codepoint_is_combining(codepoint) ? 0 : (v_fastc_codepoint_is_wide(codepoint) ? 2 : 1);
 		if (codepoint <= 127) {
 			encoded_rune[rune_byte_count++] = (unsigned char)codepoint;
 		} else if (codepoint <= 2047) {
@@ -450,7 +454,7 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 			magnitude /= base;
 		} while (magnitude != 0);
 	}
-	int display_len = specifier == 99 ? 1 : digit_count + (negative ? 1 : 0);
+	int display_len = specifier == 99 ? rune_display_width : digit_count + (negative ? 1 : 0);
 	int padding = width > display_len ? width - display_len : 0;
 	int content_bytes = specifier == 99 ? rune_byte_count : digit_count + (negative ? 1 : 0);
 	int result_len = content_bytes + padding;

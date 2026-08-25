@@ -204,6 +204,7 @@ fn main() {
 	hex_value := 15
 	println('${hex_value:x}|${hex_value:04x}|${hex_value:X}|${hex_value:04d}|${hex_value:b}|${hex_value:o}')
 	println('${8364:c}')
+	println('${0x754c:4c}')
 }
 ",
 		'ordinary_primitive_interpolation.v', prefs) or { panic(err) }
@@ -229,7 +230,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\n'
+	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\n  界\n'
 }
 
 fn test_ordinary_nul_codepoint_interpolation_is_rejected() {
