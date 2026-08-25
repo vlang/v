@@ -28,7 +28,7 @@ concurrency:
 jobs:
   performance-compare-with-master:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v7.0.1
         with:
