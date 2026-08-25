@@ -322,6 +322,26 @@ pub fn fastc_compiler_root() string {
 	assert c_source.contains('return _S(${compiler_root_literal});'), c_source
 }
 
+fn test_selfhost_location_preserves_method_receiver_kind() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct LocationOwner {}
+
+fn (receiver LocationOwner) fastc_instance_location() string {
+	return @LOCATION
+}
+
+fn LocationOwner.fastc_static_location() string {
+	return @LOCATION
+}
+',
+		'location_receiver_kind.v', prefs) or { panic(err) }
+	assert c_source.contains(', main.LocationOwner{}.fastc_instance_location")'), c_source
+	assert c_source.contains(', main.LocationOwner.fastc_static_location (static)")'), c_source
+}
+
 fn test_ordinary_primitive_interpolation_has_runtime_support() {
 	prefs := pref.new_preferences()
 	c_source := generate(r"module main

@@ -744,6 +744,7 @@ mut:
 	option_return_type       string
 	current_function         string
 	current_receiver         string
+	current_method_is_static bool
 	expected_expression_type string
 	capturing_defer          bool
 	defer_depth              int
@@ -5147,6 +5148,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	previous_option_return_type := g.option_return_type
 	previous_function := g.current_function
 	previous_receiver := g.current_receiver
+	previous_method_is_static := g.current_method_is_static
 	previous_deferred_lines := g.deferred_lines.clone()
 	previous_deferred_block_starts := g.deferred_block_starts.clone()
 	previous_loop_defer_block_starts := g.loop_defer_block_starts.clone()
@@ -5158,6 +5160,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.option_return_type = option_return_type
 	g.current_function = name
 	g.current_receiver = receiver_key
+	g.current_method_is_static = is_static_method
 	g.deferred_lines.clear()
 	g.deferred_block_starts.clear()
 	g.loop_defer_block_starts.clear()
@@ -5170,6 +5173,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.option_return_type = previous_option_return_type
 	g.current_function = previous_function
 	g.current_receiver = previous_receiver
+	g.current_method_is_static = previous_method_is_static
 	g.deferred_lines = previous_deferred_lines.clone()
 	g.deferred_block_starts = previous_deferred_block_starts.clone()
 	g.loop_defer_block_starts = previous_loop_defer_block_starts.clone()
@@ -8397,12 +8401,20 @@ fn fastc_method_c_name_for_key(receiver_key string, name string) string {
 
 fn (g &Parser) comptime_pseudo_expression(name string) ?string {
 	line, column := fastc_line_column(g.s.src, g.s.pos)
+	module_name := if g.module_name == '' { 'main' } else { g.module_name }
 	function_name := g.current_function
 	receiver_name := g.current_receiver.all_after_last('.')
 	method_name := if receiver_name != '' {
 		'${receiver_name}.${function_name}'
 	} else {
 		function_name
+	}
+	location_method := if receiver_name == '' {
+		'${module_name}.${function_name}'
+	} else if g.current_method_is_static {
+		'${module_name}.${receiver_name}.${function_name} (static)'
+	} else {
+		'${module_name}.${receiver_name}{}.${function_name}'
 	}
 	value := match name {
 		'@FN' {
@@ -8415,7 +8427,7 @@ fn (g &Parser) comptime_pseudo_expression(name string) ?string {
 			receiver_name
 		}
 		'@MOD' {
-			if g.module_name == '' { 'main' } else { g.module_name }
+			module_name
 		}
 		'@FILE' {
 			g.path
@@ -8433,7 +8445,7 @@ fn (g &Parser) comptime_pseudo_expression(name string) ?string {
 			'${os.file_name(g.path)}:${line}'
 		}
 		'@LOCATION' {
-			'${g.path}:${line}, ${g.module_name}.${method_name}'
+			'${g.path}:${line}, ${location_method}'
 		}
 		'@VEXEROOT', '@VROOT' {
 			g.prefs.vroot
