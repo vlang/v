@@ -175,6 +175,8 @@ fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
 	os.write_file(source_candidate, native_source)!
 	header_path := os.real_path(header_candidate)
 	source_path := os.real_path(source_candidate)
+	header_digest := sha256.hexhash(header_source)
+	source_digest := sha256.hexhash(native_source)
 	state := V3ModuleCacheState{
 		module_external_inputs:   {
 			'main': [header_path, source_path]
@@ -182,19 +184,23 @@ fn test_macos_v3_fallback_report_inputs_snapshot_native_dependencies() {
 		module_native_roots:      {
 			'main': [source_path]
 		}
+		external_input_digests:   {
+			header_path: header_digest
+			source_path: source_digest
+		}
 		external_inputs_ready:    true
 		external_inputs_complete: true
 	}
+	// A watcher can replace a root after traversal. The fallback manifest must retain
+	// the digest captured from the bytes that selected the original dependency tree.
+	os.write_file(header_path, '#include "late.h"\n#define PROJECT_VALUE 42\n')!
 	inputs := macos_v3_fallback_report_inputs({
 		'/project/main.v': sha256.hexhash('module main')
 	}, &state)
 	assert inputs['/project/main.v'] == sha256.hexhash('module main')
 	assert inputs[v3_fallback_native_manifest_key] == sha256.hexhash(v3_fallback_native_manifest_value)
-	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] == sha256.hexhash(header_source)
-	assert inputs['${v3_fallback_native_input_prefix}${source_path}'] == sha256.hexhash(native_source)
-	// The snapshot remains tied to the bytes V3 resolved, even if a watcher rewrites a
-	// dependency before the compatibility compiler runs.
-	os.write_file(header_path, '#define PROJECT_VALUE 42\n')!
+	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] == header_digest
+	assert inputs['${v3_fallback_native_input_prefix}${source_path}'] == source_digest
 	assert inputs['${v3_fallback_native_input_prefix}${header_path}'] != sha256.hexhash(os.read_file(header_path)!)
 }
 

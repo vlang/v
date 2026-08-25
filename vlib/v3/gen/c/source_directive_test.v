@@ -340,10 +340,13 @@ fn collect_external_input_tree_status(root string, entry string, ambient_ambiguo
 	mut resolution_dirs := map[string]bool{}
 	mut missing_resolution_paths := map[string]bool{}
 	mut active_static_storage_paths := map[string]bool{}
+	mut captured_input_texts := map[string]string{}
+	mut captured_input_digests := map[string]string{}
 	untracked := c_collect_external_input_tree(entry, '', [root], mut active_paths, mut
 		collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
 		dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut
-		active_static_storage_paths, 'main', ambient_ambiguous, false)
+		active_static_storage_paths, mut captured_input_texts, mut captured_input_digests, 'main',
+		ambient_ambiguous, false)
 	return untracked, files
 }
 

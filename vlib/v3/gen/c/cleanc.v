@@ -1,5 +1,6 @@
 module c
 
+import crypto.sha256
 import os
 import strings
 import time
@@ -1358,9 +1359,21 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 // are the first nonexistent path components searched. Directives from program_files
 // belong to the program translation unit even when a library test declares that module.
 pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot string, source_modules map[string]bool, c_flags []string, target pref.Target, program_files map[string]bool, compiler_macros map[string]string, compiler_macro_environment_complete bool) (map[string][]string, map[string][]string, map[string][]string, map[string][]string, map[string][]string, []string, []string, bool) {
+	inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, _, has_untracked_include := cache_external_input_snapshot_with_resolved_flags(a,
+		vroot, source_modules, c_flags, target, program_files, compiler_macros,
+		compiler_macro_environment_complete)
+	return inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, has_untracked_include
+}
+
+// cache_external_input_snapshot_with_resolved_flags also returns SHA-256 digests
+// of the exact native buffers used to resolve the dependency tree.
+pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot string, source_modules map[string]bool, c_flags []string, target pref.Target, program_files map[string]bool, compiler_macros map[string]string, compiler_macro_environment_complete bool) (map[string][]string, map[string][]string, map[string][]string, map[string][]string, map[string][]string, []string, []string, map[string]string, bool) {
 	include_dirs := c_flag_include_dirs(c_flags)
+	mut captured_input_texts := map[string]string{}
+	mut captured_input_digests := map[string]string{}
 	flag_inputs, flags_have_untracked_include, mut include_macros, mut dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths := cache_c_flag_input_files_with_status(c_flags,
-		compiler_macros, compiler_macro_environment_complete)
+		compiler_macros, compiler_macro_environment_complete, mut captured_input_texts, mut
+		captured_input_digests)
 	mut collect_modules := map[string]bool{}
 	for module_name, enabled in source_modules {
 		if enabled {
@@ -1492,7 +1505,8 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 				if c_collect_external_input_tree(path, vroot, include_dirs, mut active_paths, mut
 					collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
 					dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut
-					active_static_storage_paths, owner_module, false,
+					active_static_storage_paths, mut captured_input_texts, mut
+					captured_input_digests, owner_module, false,
 					compiler_macro_environment_complete)
 				{
 					has_untracked_include = true
@@ -1522,7 +1536,13 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 			continue
 		}
 		if path := c_embed_external_input_path(a, node) {
-			c_add_cache_external_input(mut inputs, owner_module, path)
+			if _ := c_captured_external_input_text(path, mut captured_input_texts, mut
+				captured_input_digests)
+			{
+				c_add_cache_external_input(mut inputs, owner_module, path)
+			} else {
+				has_untracked_include = true
+			}
 		}
 	}
 	if flags_have_untracked_include {
@@ -1550,7 +1570,7 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 	sorted_resolution_dirs.sort()
 	mut sorted_missing_resolution_paths := missing_resolution_paths.keys()
 	sorted_missing_resolution_paths.sort()
-	return inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, sorted_resolution_dirs, sorted_missing_resolution_paths, has_untracked_include
+	return inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, sorted_resolution_dirs, sorted_missing_resolution_paths, captured_input_digests, has_untracked_include
 }
 
 fn c_add_cache_native_source_root(mut native_source_roots map[string][]string, mut native_root_contexts map[string][]string, owner_module string, real_path string, context []string, context_is_replayable bool) bool {
@@ -1712,11 +1732,14 @@ fn c_native_language_from_features(need_objc bool, need_cpp bool) string {
 // cache_c_flag_input_files returns forced include/macro files whose contents
 // affect every cached object compiled with the supplied C flags.
 pub fn cache_c_flag_input_files(flags []string) []string {
-	files, _, _, _, _, _ := cache_c_flag_input_files_with_status(flags, map[string]string{}, false)
+	mut captured_input_texts := map[string]string{}
+	mut captured_input_digests := map[string]string{}
+	files, _, _, _, _, _ := cache_c_flag_input_files_with_status(flags, map[string]string{}, false, mut
+		captured_input_texts, mut captured_input_digests)
 	return files
 }
 
-fn cache_c_flag_input_files_with_status(flags []string, compiler_macros map[string]string, compiler_macro_environment_complete bool) ([]string, bool, map[string][]string, map[string]bool, map[string]bool, map[string]bool) {
+fn cache_c_flag_input_files_with_status(flags []string, compiler_macros map[string]string, compiler_macro_environment_complete bool, mut captured_input_texts map[string]string, mut captured_input_digests map[string]string) ([]string, bool, map[string][]string, map[string]bool, map[string]bool, map[string]bool) {
 	include_dirs := c_flag_include_dirs(flags)
 	mut active_paths := map[string]bool{}
 	mut collected_paths := map[string]bool{}
@@ -1737,8 +1760,8 @@ fn cache_c_flag_input_files_with_status(flags []string, compiler_macros map[stri
 			if c_collect_external_input_tree(path, '', include_dirs, mut active_paths, mut
 				collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
 				dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut
-				active_static_storage_paths, '__v3_c_flags__', false,
-				compiler_macro_environment_complete)
+				active_static_storage_paths, mut captured_input_texts, mut captured_input_digests,
+				'__v3_c_flags__', false, compiler_macro_environment_complete)
 			{
 				has_untracked_include = true
 			}
@@ -1778,7 +1801,7 @@ pub fn tokenize_c_flag(value string) []string {
 }
 
 fn c_add_cache_external_input(mut inputs map[string][]string, module_name string, path string) {
-	if module_name.len == 0 || path.len == 0 || !os.is_file(path) {
+	if module_name.len == 0 || path.len == 0 {
 		return
 	}
 	real_path := os.real_path(path)
@@ -1797,19 +1820,19 @@ mut:
 	ambiguous bool
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut ambiguous_collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool, mut active_static_storage_paths map[string]bool, collection_scope string, ambient_ambiguous bool, compiler_macro_environment_complete bool) bool {
-	if path.len == 0 || !os.is_file(path) {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut ambiguous_collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool, mut active_static_storage_paths map[string]bool, mut captured_input_texts map[string]string, mut captured_input_digests map[string]string, collection_scope string, ambient_ambiguous bool, compiler_macro_environment_complete bool) bool {
+	if path.len == 0 {
 		return false
 	}
 	real_path := os.real_path(path)
 	if active_paths[real_path] {
 		return false
 	}
+	text := c_captured_external_input_text(real_path, mut captured_input_texts, mut
+		captured_input_digests) or { return true }
 	collection_key := collection_scope + '\x00' + real_path
 	first_collection := !collected_paths[collection_key]
-	mut text := ''
 	if collected_paths[collection_key] {
-		text = os.read_file(real_path) or { return true }
 		if guard := c_whole_file_guard_macro(text) {
 			// The preprocessor skips a repeat include only while the guard is definitely
 			// still defined: `#pragma once` always is, and an `#ifndef NAME` guard is when
@@ -1838,9 +1861,6 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			ambiguous_collected_paths[collection_key] = true
 		}
 		files << real_path
-	}
-	if text.len == 0 {
-		text = os.read_file(real_path) or { return false }
 	}
 	if first_collection {
 		if guard := c_whole_file_guard_macro(text) {
@@ -1923,7 +1943,8 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			}
 			include_args = include_macros[macro_name].clone()
 			if include_args.len == 0 {
-				literal_values := c_literal_include_macro_values(files, macro_name)
+				literal_values := c_literal_include_macro_values(files, captured_input_texts,
+					macro_name)
 				if literal_values.len == 1 {
 					include_args = literal_values.clone()
 					include_macros[macro_name] = include_args.clone()
@@ -1949,7 +1970,8 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut
 					active_paths, mut collected_paths, mut ambiguous_collected_paths, mut files, mut
 					include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
-					missing_resolution_paths, mut active_static_storage_paths, collection_scope,
+					missing_resolution_paths, mut active_static_storage_paths, mut
+					captured_input_texts, mut captured_input_digests, collection_scope,
 					nested_ambiguous, compiler_macro_environment_complete)
 				{
 					has_untracked_include = true
@@ -1969,10 +1991,10 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	return has_untracked_include
 }
 
-fn c_literal_include_macro_values(paths []string, macro_name string) []string {
+fn c_literal_include_macro_values(paths []string, captured_input_texts map[string]string, macro_name string) []string {
 	mut values := []string{}
 	for path in paths {
-		text := os.read_file(path) or { continue }
+		text := captured_input_texts[os.real_path(path)] or { continue }
 		mut in_block_comment := false
 		for line in text.split_into_lines() {
 			clean, next_in_block_comment := c_preprocessor_directive_scan_line(line,
@@ -1994,6 +2016,17 @@ fn c_literal_include_macro_values(paths []string, macro_name string) []string {
 	}
 	values.sort()
 	return values
+}
+
+fn c_captured_external_input_text(path string, mut captured_input_texts map[string]string, mut captured_input_digests map[string]string) ?string {
+	real_path := os.real_path(path)
+	if real_path in captured_input_texts {
+		return captured_input_texts[real_path]
+	}
+	text := os.read_file(real_path) or { return none }
+	captured_input_texts[real_path] = text
+	captured_input_digests[real_path] = sha256.hexhash(text)
+	return text
 }
 
 // c_whole_file_guard_macro returns the include guard that gates a whole-file
