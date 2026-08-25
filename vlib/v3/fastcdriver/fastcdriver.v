@@ -83,6 +83,10 @@ fn canonical_output_path(path string) string {
 pub fn run(args []string) {
 	input, output, keep_c := parse_arguments(args)
 	real_input := os.real_path(input)
+	if pref.is_test_file_for_backend(real_input, 'fastc')
+		|| pref.is_test_file_for_backend(real_input, 'c') {
+		fail('fastc self-host compiler does not support test files')
+	}
 	if canonical_output_path(output) == real_input {
 		fail('fastc output path `${output}` aliases input source `${input}`')
 	}

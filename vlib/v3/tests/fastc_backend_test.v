@@ -437,6 +437,11 @@ fn main() {
 	assert false
 }
 ')
+	discovered_c_test_source := os.join_path(root, 'discovered_test.c.v')
+	write_fastc_test_source(discovered_c_test_source, 'fn test_must_run() {
+	assert false
+}
+')
 	for invocation in [
 		UnsupportedFastCInvocation{
 			args:     ['-b', 'fastc', '-o', os.join_path(root, 'multiple_sources'), valid_source,
@@ -454,6 +459,14 @@ fn main() {
 		UnsupportedFastCInvocation{
 			args:     ['-d', 'no_main', '-b', 'fastc', valid_source]
 			expected: 'does not support custom `-d no_main` defines'
+		},
+		UnsupportedFastCInvocation{
+			args:     ['-b', 'fastc', discovered_test_source]
+			expected: 'does not support test files'
+		},
+		UnsupportedFastCInvocation{
+			args:     ['-b', 'fastc', discovered_c_test_source]
+			expected: 'does not support test files'
 		},
 	] {
 		result := cmdexec.run(selfhost_binary, invocation.args)
@@ -480,6 +493,11 @@ fn main() {
 		UnsupportedFastCInvocation{
 			args:     ['-silent', '-skip-running', '-b', 'fastc', '-o',
 				os.join_path(root, 'discovered_test'), discovered_test_source]
+			expected: 'fastc parser does not support test/checker mode'
+		},
+		UnsupportedFastCInvocation{
+			args:     ['-silent', '-skip-running', '-b', 'fastc', '-o',
+				os.join_path(root, 'discovered_c_test'), discovered_c_test_source]
 			expected: 'fastc parser does not support test/checker mode'
 		},
 	] {
