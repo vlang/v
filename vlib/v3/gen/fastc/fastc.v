@@ -217,13 +217,6 @@ static string v_fastc_unsigned_format(unsigned long long value, const char *form
 	return v_fastc_integer_format(value, false, format);
 }
 static string v_fastc_bool_str(bool value) { return value ? "true" : "false"; }
-static string v_fastc_char_str(char value) {
-	char *result = malloc(2);
-	if (result == NULL) return "";
-	result[0] = value;
-	result[1] = 0;
-	return result;
-}
 
 /* Float formatting belongs to the V strconv routines. Leaving float and double
  * unmatched makes TinyCC reject unsupported printing instead of silently
@@ -8027,6 +8020,9 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		}
 		g.expect(.rcbr)!
+		if value_type == 'char' {
+			return g.unsupported('expression returning type `char` cannot be used in string interpolation directly')
+		}
 		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(value_type)
 			&& !fastc_integer_interpolation_format_is_supported(format_specifier, value_type, fastc_is_unsigned_integer_type(value_type)) {
 			return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
@@ -8132,7 +8128,6 @@ fn (mut g Parser) read_interpolated_string() !string {
 
 fn fastc_is_primitive_interpolation_type(value_type string) bool {
 	return fastc_is_integer_expression_type(value_type) || value_type == 'bool'
-		|| value_type == 'char'
 }
 
 fn fastc_string_interpolation_width(format string) ?FastcInterpolationWidth {
@@ -8215,13 +8210,6 @@ fn fastc_primitive_interpolation_expression(value_type string, value string, for
 		'bool' {
 			if format == '' {
 				'v_fastc_bool_str(${value})'
-			} else {
-				none
-			}
-		}
-		'char' {
-			if format == '' || format == 'c' {
-				'v_fastc_char_str(${value})'
 			} else {
 				none
 			}

@@ -233,6 +233,25 @@ fn main() {
 	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\n  界\n'
 }
 
+fn test_direct_char_interpolation_is_rejected() {
+	mut prefs := pref.new_preferences()
+	prefs.enable_globals = true
+	mut message := ''
+	_ := generate(r"module main
+
+__global ch char
+
+fn main() {
+	println('${ch}')
+}
+",
+		'direct_char_interpolation.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('expression returning type `char` cannot be used in string interpolation directly'), message
+}
+
 fn test_ordinary_nul_codepoint_interpolation_is_rejected() {
 	prefs := pref.new_preferences()
 	mut message := ''
