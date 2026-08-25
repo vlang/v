@@ -50,6 +50,7 @@ const optional_wrapper_access_marker = '__v3_optional_wrapper_access'
 const non_aliasing_allocation_call_marker = '__v3_non_aliasing_allocation_call'
 const source_deref_marker = '__v3_source_deref'
 const source_mut_pointer_deref_marker = '__v3_source_mut_pointer_deref'
+const stack_value_decl_marker = '__v3_stack_value_decl'
 
 // SumEqRequest records where a sum type's equality helper was first requested,
 // so the helper body is built under that module/file resolution context. The
@@ -5825,7 +5826,7 @@ fn (t &Transformer) heapable_value_type(typ string) bool {
 // declared `@[heap]`. Such structs must always be heap-allocated at construction, not
 // only when escape analysis detects an address later leaving the stack frame.
 fn (t &Transformer) heap_attr_struct_type(typ string) bool {
-	if isnil(t.tc) || !t.heapable_value_type(typ) {
+	if isnil(t.tc) || !t.heapable_value_type(typ) || typ.starts_with('thread ') {
 		return false
 	}
 	clean_type := types.unalias_type(t.tc.parse_type(typ))
@@ -6229,7 +6230,7 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 		heap_rhs = t.make_prefix(.amp, transformed_init)
 	} else {
 		tmp := t.new_temp('esc')
-		stmts << t.make_decl_assign_typed(tmp, transformed_init, elem_typ)
+		stmts << t.make_stack_value_decl_assign_typed(tmp, transformed_init, elem_typ)
 		addr := t.make_prefix(.amp, t.make_ident(tmp))
 		dup := t.make_memdup_call_for_type(addr, elem_typ)
 		heap_rhs = t.make_cast(ptr_typ, dup, ptr_typ)
@@ -13592,8 +13593,8 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 		// A struct declared `@[heap]` is always heap-allocated at its own declaration,
 		// regardless of whether its address is later taken (`@[heap]` is an unconditional
 		// promise, not an escape-analysis trigger).
-		if src.kind == .ident && src.value !in t.heaped_amp_locals
-			&& t.heap_attr_struct_type(inferred_typ) {
+		if src.kind == .ident && node.value != stack_value_decl_marker
+			&& src.value !in t.heaped_amp_locals && t.heap_attr_struct_type(inferred_typ) {
 			return t.heap_escaping_source_decl(node, src.value, inferred_typ)
 		}
 	}

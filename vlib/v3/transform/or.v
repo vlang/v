@@ -1345,6 +1345,14 @@ fn (mut t Transformer) make_decl_assign_typed(name string, rhs flat.NodeId, typ 
 	return decl
 }
 
+// make_stack_value_decl_assign_typed creates an internal value staging local that must not
+// itself inherit `@[heap]`. The source binding that consumes it performs the single heap copy.
+fn (mut t Transformer) make_stack_value_decl_assign_typed(name string, rhs flat.NodeId, typ string) flat.NodeId {
+	decl := t.make_decl_assign_typed(name, rhs, typ)
+	t.a.nodes[int(decl)].value = stack_value_decl_marker
+	return decl
+}
+
 // zero_value_for_type supports zero value for type handling for Transformer.
 fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	mut clean := typ
@@ -1508,8 +1516,8 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	} else {
 		t.shared_alias_storage_type(value_type)
 	}
-	prelude << t.make_decl_assign_typed(val_tmp, t.zero_value_for_type(storage_value_type),
-		storage_value_type)
+	prelude << t.make_stack_value_decl_assign_typed(val_tmp,
+		t.zero_value_for_type(storage_value_type), storage_value_type)
 
 	opt_ident := t.make_ident(opt_tmp)
 	ok_cond := t.make_selector(opt_ident, 'ok', 'bool')
