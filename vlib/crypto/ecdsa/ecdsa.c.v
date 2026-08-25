@@ -70,7 +70,7 @@ fn C.EVP_PKEY_eq(a &C.EVP_PKEY, b &C.EVP_PKEY) i32
 fn C.EVP_PKEY_check(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_public_check(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_dup(key &C.EVP_PKEY) &C.EVP_PKEY
-fn C.EVP_PKEY_set_bn_param(pkey &C.EVP_PKEY, key_name &char, bn &C.BIGNUM) i32
+fn C.EVP_PKEY_set_bn_param(pkey &C.EVP_PKEY, const_key_name &char, const_bn &C.BIGNUM) i32
 
 fn C.EVP_PKEY_get_group_name(pkey &C.EVP_PKEY, gname &u8, gname_sz u32, gname_len &usize) i32
 fn C.EVP_PKEY_get1_encoded_public_key(pkey &C.EVP_PKEY, ppub &&u8) usize
@@ -199,7 +199,7 @@ struct C.OSSL_PARAM_BLD {}
 fn C.OSSL_PARAM_free(params &C.OSSL_PARAM)
 fn C.OSSL_PARAM_BLD_free(param_bld &C.OSSL_PARAM_BLD)
 fn C.OSSL_PARAM_BLD_new() &C.OSSL_PARAM_BLD
-fn C.OSSL_PARAM_BLD_push_utf8_string(bld &C.OSSL_PARAM_BLD, key &char, buf &char, bsize usize) i32
-fn C.OSSL_PARAM_BLD_push_BN(bld &C.OSSL_PARAM_BLD, key &char, bn &C.BIGNUM) i32
-fn C.OSSL_PARAM_BLD_push_octet_string(bld &C.OSSL_PARAM_BLD, key &char, buf voidptr, bsize usize) i32
+fn C.OSSL_PARAM_BLD_push_utf8_string(bld &C.OSSL_PARAM_BLD, const_key &char, const_buf &char, bsize usize) i32
+fn C.OSSL_PARAM_BLD_push_BN(bld &C.OSSL_PARAM_BLD, const_key &char, const_bn &C.BIGNUM) i32
+fn C.OSSL_PARAM_BLD_push_octet_string(bld &C.OSSL_PARAM_BLD, const_key &char, const_buf voidptr, bsize usize) i32
 fn C.OSSL_PARAM_BLD_to_param(bld &C.OSSL_PARAM_BLD) &C.OSSL_PARAM
