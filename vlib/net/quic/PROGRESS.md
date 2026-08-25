@@ -1354,10 +1354,29 @@ stacked-PR convention as Phase 12's 12a-12d.
     migration, which PROGRESS.md already lists as a separate, explicitly
     deferrable follow-up below — 13c ships the wire codec and the token
     primitive it depends on, not the state machine that would consume them.
-- [ ] **13d** — UDP listener + connection demux: one socket routing many
+- [x] **13d-1** — Server-role handshake wiring: `QuicConn` gained real
+      `.server`-role support (role-aware directional key selection, a
+      role-branched handshake dispatch, RFC 9001 §4.1.2's role-asymmetric
+      handshake-confirmation semantics, server-side HANDSHAKE_DONE sending)
+      and a new `accept()` constructor (`accept.v`) mirroring `dial()`.
+      Found + fixed two RFC-conformance bugs via adversarial review before
+      commit: the RFC 9000 §7.2 bootstrap-DCID exception for a server's
+      first-received ClientHello, and RFC 9001 §4.9.1's send-vs-receive
+      Initial-key-discard trigger asymmetry between roles (a naive
+      client-shaped trigger applied to both roles discarded the server's
+      Initial keys before the client had sent anything back, stalling the
+      handshake on ordinary first-round-trip packet loss). Also closed a
+      missing RFC 9000 §14.1 anti-amplification floor check in `accept()`.
+      `accept()` deliberately does NOT decide Retry-vs-direct-accept policy
+      (needs cross-connection-attempt state only 13d-2's listener has) and
+      does not fragment a large certificate chain's Handshake CRYPTO flight
+      across multiple packets (both documented scope limits, not blockers).
+- [ ] **13d-2** — UDP listener + connection demux: one socket routing many
       concurrent connections by connection ID (not 4-tuple, since QUIC
       supports migration) — no analog in the client's transport today; the
-      new-connection acceptance path (unrecognized DCID → Retry-or-accept).
+      new-connection acceptance path (unrecognized DCID → Retry-or-accept,
+      wiring 13b's `AntiAmplificationLimiter`/Retry machinery before calling
+      13d-1's `accept()`).
 - [ ] **13e** — `h3_server.v` wiring, mirroring `h2_server.v`'s established
       shape (minimal/serial first, concurrency as an explicit follow-up),
       plus server certificate/key loading.
