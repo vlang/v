@@ -7404,7 +7404,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		mut unsupported_modes := []string{}
-		if is_test_command || is_checker_fixture {
+		if is_test_command || is_v3_test_file(input_file, backend, target) || is_checker_fixture {
 			unsupported_modes << 'test/checker mode'
 		}
 		if is_prod {

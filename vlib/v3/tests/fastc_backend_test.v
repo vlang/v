@@ -432,6 +432,11 @@ fn main() {
 	selfhost_fixed_options := cmdexec.run(selfhost_binary, ['-gc', 'none', '-cc', 'tinyc', '-b',
 		'fastc', '-o', selfhost_fixed_options_output, valid_source])
 	assert selfhost_fixed_options.exit_code == 0, selfhost_fixed_options.output
+	discovered_test_source := os.join_path(root, 'discovered_test.v')
+	write_fastc_test_source(discovered_test_source, 'fn test_must_run() {
+	assert false
+}
+')
 	for invocation in [
 		UnsupportedFastCInvocation{
 			args:     ['-b', 'fastc', '-o', os.join_path(root, 'multiple_sources'), valid_source,
@@ -463,15 +468,19 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', os.join_path(root,
-				'no_main.c'),
-				valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
+				os.join_path(root, 'no_main.c'), valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{
 			args:     ['-silent', '-autofree', '-b', 'fastc', '-o', os.join_path(root, 'autofree'),
 				valid_source]
 			expected: 'fastc parser does not support ownership/autofree'
+		},
+		UnsupportedFastCInvocation{
+			args:     ['-silent', '-skip-running', '-b', 'fastc', '-o',
+				os.join_path(root, 'discovered_test'), discovered_test_source]
+			expected: 'fastc parser does not support test/checker mode'
 		},
 	] {
 		result := cmdexec.run(v3_bin, invocation.args)
