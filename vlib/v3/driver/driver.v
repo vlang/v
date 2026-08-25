@@ -7296,6 +7296,11 @@ pub fn run(args []string) {
 	if !include_eval {
 		user_defines << 'skip_eval'
 	}
+	if backend == 'fastc' && is_selfhost {
+		// Select the scanner-to-C driver in the first generated compiler. Descendant
+		// FastC compilers preserve the same define in v3.fastcdriver.
+		record_user_define(mut user_defines, mut compile_values, 'fastc_selfhost')
+	}
 
 	mut b := bench.new()
 	if silent || c_to_stdout {

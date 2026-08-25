@@ -3404,6 +3404,22 @@ fn test_literal_membership_materializes_candidates_before_comparison() {
 	}
 }
 
+fn test_membership_temporaries_do_not_collide_with_user_names() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn main() {
+	__v_fastc_membership_candidate_0 := 1
+	if 1 in [__v_fastc_membership_candidate_0] {}
+}
+',
+		'membership_temporary_collision.v', prefs) or { panic(err) }
+	assert c_source.contains('int __v_fastc_membership_1_item = (1);'), c_source
+	assert c_source.contains('__v_fastc_membership_1_collection'), c_source
+	assert !c_source.contains('int __v_fastc_membership_item = (1);'), c_source
+}
+
 fn test_selfhost_string_membership_uses_substring_semantics() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

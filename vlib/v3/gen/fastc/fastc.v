@@ -4885,6 +4885,42 @@ fn (mut g Parser) temporary_name(kind string) string {
 	return name
 }
 
+fn (g &Parser) temporary_namespace(kind string) string {
+	mut index := 0
+	for {
+		namespace := '__v_fastc_${kind}' + if index == 0 { '' } else { '_${index}' }
+		prefix := namespace + '_'
+		mut collision := false
+		for local_name in g.locals.keys() {
+			if fastc_c_identifier(local_name).starts_with(prefix) {
+				collision = true
+				break
+			}
+		}
+		if !collision {
+			for c_name in g.globals.values() {
+				if c_name.starts_with(prefix) {
+					collision = true
+					break
+				}
+			}
+		}
+		if !collision {
+			for function_key in g.functions.keys() {
+				if fastc_c_function_name_for_key(function_key).starts_with(prefix) {
+					collision = true
+					break
+				}
+			}
+		}
+		if !collision {
+			return namespace
+		}
+		index++
+	}
+	return ''
+}
+
 fn (mut g Parser) skip_semicolons() {
 	for g.tok == .semicolon {
 		g.next()
@@ -9202,6 +9238,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			} else if item.tok in [.rpar, .rsbr, .rcbr] {
 				depth--
 			} else if depth == 0 && item.tok in [.key_in, .not_in] && i > 0 && i + 1 < tokens.len {
+				temporary_namespace := g.temporary_namespace('membership')
 				right_tokens := tokens[i + 1..]
 				right_type := g.infer_expression_type(right_tokens) or { return none }
 				if g.underlying_alias_type(right_type) == 'string' {
@@ -9215,10 +9252,12 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					value := g.render_call_argument_expression(right_tokens, right_type) or {
 						return none
 					}
-					found := 'v_fastc_string_contains(__v_fastc_membership_value, __v_fastc_membership_substring)'
+					substring_name := '${temporary_namespace}_substring'
+					value_name := '${temporary_namespace}_value'
+					found := 'v_fastc_string_contains(${value_name}, ${substring_name})'
 					predicate := if item.tok == .not_in { '!(${found})' } else { found }
 					return FastcRenderedExpression{
-						source: '({ string __v_fastc_membership_substring = (${substring}); string __v_fastc_membership_value = (${value}); ${predicate}; })'
+						source: '({ string ${substring_name} = (${substring}); string ${value_name} = (${value}); ${predicate}; })'
 						typ:    'bool'
 					}
 				}
@@ -9233,10 +9272,11 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					} else {
 						'&(${map_source})'
 					}
-					found := 'builtin__map_get_check((map *)${map_expression}, &__v_fastc_map_key) != NULL'
+					key_name := '${temporary_namespace}_map_key'
+					found := 'builtin__map_get_check((map *)${map_expression}, &${key_name}) != NULL'
 					predicate := if item.tok == .not_in { '!(${found})' } else { found }
 					return FastcRenderedExpression{
-						source: '({ ${fastc_runtime_c_type(key_type)} __v_fastc_map_key = (${key_source}); ${predicate}; })'
+						source: '({ ${fastc_runtime_c_type(key_type)} ${key_name} = (${key_source}); ${predicate}; })'
 						typ:    'bool'
 					}
 				}
@@ -9248,17 +9288,21 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					collection := g.render_call_argument_expression(right_tokens, right_type) or {
 						return none
 					}
+					item_name := '${temporary_namespace}_item'
+					collection_name := '${temporary_namespace}_collection'
+					found_name := '${temporary_namespace}_found'
+					index_name := '${temporary_namespace}_index'
 					access := if right_type.ends_with('*') { '->' } else { '.' }
 					comparison := if g.underlying_alias_type(element_type).trim_right('*') == 'string' {
-						'builtin__string_eq(__v_fastc_membership_item, ((${element_type} *)__v_fastc_membership_collection${access}data)[__v_fastc_membership_index])'
+						'builtin__string_eq(${item_name}, ((${element_type} *)${collection_name}${access}data)[${index_name}])'
 					} else {
-						'(__v_fastc_membership_item == ((${element_type} *)__v_fastc_membership_collection${access}data)[__v_fastc_membership_index])'
+						'(${item_name} == ((${element_type} *)${collection_name}${access}data)[${index_name}])'
 					}
 					return FastcRenderedExpression{
-						source: '({ ${element_type} __v_fastc_membership_item = (${candidate}); __typeof__((${collection})) __v_fastc_membership_collection = (${collection}); bool __v_fastc_membership_found = false; for (int __v_fastc_membership_index = 0; __v_fastc_membership_index < __v_fastc_membership_collection${access}len; __v_fastc_membership_index++) { if (${comparison}) { __v_fastc_membership_found = true; break; } } ${if item.tok == .not_in {
-							'!__v_fastc_membership_found'
+						source: '({ ${element_type} ${item_name} = (${candidate}); __typeof__((${collection})) ${collection_name} = (${collection}); bool ${found_name} = false; for (int ${index_name} = 0; ${index_name} < ${collection_name}${access}len; ${index_name}++) { if (${comparison}) { ${found_name} = true; break; } } ${if item.tok == .not_in {
+							'!${found_name}'
 						} else {
-							'__v_fastc_membership_found'
+							found_name
 						}}; })'
 						typ:    'bool'
 					}
@@ -9279,7 +9323,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				lhs_source := g.render_membership_candidate(tokens[..i], lhs_type) or {
 					return none
 				}
-				lhs_name := '__v_fastc_membership_subject'
+				lhs_name := '${temporary_namespace}_subject'
 				value_type := fastc_runtime_c_type(fastc_normalize_inferred_type(lhs_type))
 				mut initializers := []string{cap: items.len}
 				mut comparisons := []string{cap: items.len}
@@ -9287,7 +9331,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					candidate_source := g.render_membership_candidate(candidate, lhs_type) or {
 						return none
 					}
-					candidate_name := '__v_fastc_membership_candidate_${candidate_index}'
+					candidate_name := '${temporary_namespace}_candidate_${candidate_index}'
 					initializers << '${value_type} ${candidate_name} = (${candidate_source});'
 					comparison := if g.underlying_alias_type(lhs_type).trim_right('*') == 'string' {
 						'builtin__string_eq(${lhs_name}, ${candidate_name})'
