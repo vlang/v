@@ -87,6 +87,54 @@ fn main() {
 	assert run_result.output == '|     FastC|FastC     |     FastC|\n|  界|   é|  👩🏽‍💻|\n'
 }
 
+fn test_c_directives_preserve_order_and_resolve_source_paths() {
+	prefs := pref.new_preferences()
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_directives_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'src')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'fastc_directives' }\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'src', 'config.h'),
+		'#ifndef FEATURE\n#error "FEATURE must precede config.h"\n#endif\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'vmod_value.h'), '') or { panic(err) }
+	os.write_file(os.join_path(root, 'vroot_value.h'), '') or { panic(err) }
+	source_path := os.join_path(root, 'src', 'main.v')
+	source := 'module main
+
+#define FEATURE 1
+#include "@DIR/config.h"
+#include "@VMODROOT/vmod_value.h"
+#insert "@VROOT/vroot_value.h"
+
+fn main() {
+	println(42)
+}
+'
+	os.write_file(source_path, source) or { panic(err) }
+	c_source := generate(source, source_path, prefs) or { panic(err) }
+	define_index := c_source.index('#define FEATURE 1') or { -1 }
+	include_index := c_source.index('#include "${os.real_path(os.join_path(root, 'src'))}/config.h"') or {
+		-1
+	}
+	assert define_index >= 0
+	assert include_index > define_index
+	assert c_source.contains('#include "${os.real_path(root)}/vmod_value.h"'), c_source
+	assert c_source.contains('#include "${os.real_path(root)}/vroot_value.h"'), c_source
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '42\n'
+}
+
 fn test_ordinary_primitive_interpolation_has_runtime_support() {
 	prefs := pref.new_preferences()
 	c_source := generate(r"module main

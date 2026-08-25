@@ -892,7 +892,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		interface_methods)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
-	hoisted_body := fastc_hoist_c_include_directives(body.str())
+	hoisted_body := fastc_hoist_c_directives(body.str())
 	mut result := strings.new_builder(preamble.len + c_integer_comparison_helpers.len +
 		type_declarations.len + type_output.enum_string_helpers.len + constant_output.macros.len +
 		constant_output.declarations.len + global_output.declarations.len + prototypes.len +
@@ -1039,11 +1039,11 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 	return out.str()
 }
 
-fn fastc_hoist_c_include_directives(source string) FastcHoistedCSource {
+fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 	mut directives := strings.new_builder(256)
 	mut body := strings.new_builder(source.len)
 	for line in source.split('\n') {
-		if line.starts_with('#include ') {
+		if line.starts_with('#') {
 			directives.writeln(line)
 		} else {
 			body.writeln(line)
@@ -1056,6 +1056,48 @@ fn fastc_hoist_c_include_directives(source string) FastcHoistedCSource {
 		directives: directives.str()
 		body:       body.str()
 	}
+}
+
+fn fastc_vmod_root_for_file(source_file string) string {
+	mut dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
+	if dir.len == 0 {
+		dir = os.getwd()
+	}
+	for {
+		if os.exists(os.join_path(dir, 'v.mod')) {
+			return os.real_path(dir)
+		}
+		parent := os.dir(dir)
+		if parent == dir || parent.len == 0 {
+			return os.real_path(dir)
+		}
+		dir = parent
+	}
+	return os.real_path(dir)
+}
+
+fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) string {
+	mut result := raw
+	if result.contains('@VEXEROOT') && vroot.len > 0 {
+		result = result.replace('@VEXEROOT', vroot)
+	}
+	if result.contains('@VROOT') {
+		result = result.replace('@VROOT', '@VMODROOT')
+	}
+	if result.contains('@VMODROOT') {
+		vmod_result := result.replace('@VMODROOT', fastc_vmod_root_for_file(source_file))
+		local_result := result.replace('@VMODROOT', os.real_path(os.dir(source_file)))
+		result = if !os.exists(vmod_result) && os.exists(local_result) {
+			local_result
+		} else {
+			vmod_result
+		}
+	}
+	if result.contains('@DIR') {
+		dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
+		result = result.replace('@DIR', os.real_path(dir))
+	}
+	return result
 }
 
 fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcSourceFile {
@@ -4479,7 +4521,7 @@ fn (mut g Parser) parse_c_directive() ! {
 		}
 		return g.unsupported('C build directive `#${directive}`')
 	}
-	mut c_directive := directive.replace('@VEXEROOT', g.prefs.vroot)
+	mut c_directive := fastc_resolve_c_pseudo_paths(directive, g.prefs.vroot, g.path)
 	if c_directive.starts_with('insert ') {
 		c_directive = 'include ' + c_directive['insert '.len..]
 	}
