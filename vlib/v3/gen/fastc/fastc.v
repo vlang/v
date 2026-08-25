@@ -1345,8 +1345,8 @@ fn fastc_module_lifecycle_calls(sources []FastcSourceFile, functions map[string]
 	for module_name in modules {
 		function_key := fastc_function_key(module_name, hook_name)
 		if signature := functions[function_key] {
-			if signature.parameter_types.len > 0 || signature.return_type != 'void' {
-				return error('fastc parser does not support module `${hook_name}` with parameters or a return value in ${signature.path}')
+			if signature.parameter_types.len > 0 {
+				return error('fastc parser does not support module `${hook_name}` with parameters in ${signature.path}')
 			}
 			calls << fastc_c_function_name(module_name, hook_name)
 		}
@@ -2041,11 +2041,6 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 	if g.tok == .assign {
 		g.next()
 		initializer := g.read_expression([token.Token.semicolon])!
-		actual_type := fastc_normalize_inferred_type(g.last_expression_type)
-		if actual_type == '' || (!fastc_call_types_are_compatible(actual_type, typ) && !(g.selfhost
-			&& g.selfhost_types_are_compatible(actual_type, typ))) {
-			return g.unsupported('global `${name}` initializer type `${actual_type}` for `${typ}`')
-		}
 		if !(g.selfhost && key in ['g_main_argc', 'g_main_argv']) {
 			initializers.writeln('\t${c_name} = ${initializer};')
 		}
@@ -2104,11 +2099,6 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 			if gen.s.diagnostics.len > 0 {
 				diagnostic := gen.s.diagnostics[0]
 				return error('fastc scanner error at byte ${diagnostic.offset} in ${field.path}: ${diagnostic.message}')
-			}
-			actual_type := fastc_normalize_inferred_type(gen.last_expression_type)
-			if !gen.selfhost && actual_type != ''
-				&& !fastc_call_types_are_compatible(actual_type, field.typ) {
-				return error('fastc struct field `${type_name}.${field.name}` default type `${actual_type}` for `${field.typ}` in ${field.path}')
 			}
 		}
 		struct_field_info[type_name] = fields
@@ -5090,12 +5080,6 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return_type = g.parse_type()!
 		}
 	}
-	if !g.selfhost && (fastc_has_narrow_integer_type(return_type)
-		|| fastc_parameters_have_narrow_integer_type(params)) {
-		// C promotes narrow operands before arithmetic, while V retains the narrow
-		// result type. Reject them until the direct parser tracks the required type.
-		return g.unsupported('narrow integer function types')
-	}
 	function_key := if receiver_type == '' {
 		fastc_function_key(g.module_name, name)
 	} else {
@@ -5109,15 +5093,12 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		if params.len > 0 {
 			return g.unsupported('main function with parameters')
 		}
-		if return_type != 'void' {
-			return g.unsupported('main function returning `${return_type}`')
-		}
 	}
-	if is_module_init && (params.len > 0 || return_type != 'void') {
-		return g.unsupported('module `init` with parameters or a return value')
+	if is_module_init && params.len > 0 {
+		return g.unsupported('module `init` with parameters')
 	}
-	if is_module_cleanup && (params.len > 0 || return_type != 'void') {
-		return g.unsupported('module `cleanup` with parameters or a return value')
+	if is_module_cleanup && params.len > 0 {
+		return g.unsupported('module `cleanup` with parameters')
 	}
 	if g.tok == .semicolon {
 		g.next()
@@ -5451,24 +5432,6 @@ fn fastc_primitive_c_type(raw_type string) ?string {
 	}
 }
 
-fn fastc_has_narrow_integer_type(type_name string) bool {
-	return type_name.trim_right('*') in ['byte', 'char', 'i8', 'i16', 'u8', 'u16']
-}
-
-fn fastc_parameter_has_narrow_integer_type(parameter string) bool {
-	fields := parameter.fields()
-	return fields.len > 0 && fastc_has_narrow_integer_type(fields[0])
-}
-
-fn fastc_parameters_have_narrow_integer_type(parameters []string) bool {
-	for parameter in parameters {
-		if fastc_parameter_has_narrow_integer_type(parameter) {
-			return true
-		}
-	}
-	return false
-}
-
 fn fastc_expression_tokens_contain(tokens []FastcExpressionToken, wanted token.Token) bool {
 	for item in tokens {
 		if item.tok == wanted {
@@ -5792,17 +5755,6 @@ fn (mut g Parser) parse_match_statement() !bool {
 						return g.unsupported('empty match branch value')
 					}
 					value_tokens = g.last_expression.clone()
-					mut value_type := g.last_expression_type
-					if value_type == '' && g.selfhost {
-						value_type = subject_type
-					}
-					if value_type == '' {
-						return g.unsupported('unverifiable match branch value type')
-					}
-					if !fastc_call_types_are_compatible(value_type, subject_type) && !(g.selfhost
-						&& g.selfhost_types_are_compatible(value_type, subject_type)) {
-						return g.unsupported('match branch value of type `${value_type}` for subject of type `${subject_type}`')
-					}
 				}
 				case_key := g.normalized_match_case_key(value_tokens, value)
 				if case_key in handled_cases {
@@ -6044,7 +5996,6 @@ fn (mut g Parser) parse_if() !bool {
 		}
 	}
 	g.skip_semicolons()
-	g.require_boolean_condition('if')!
 	g.expect(.lcbr)!
 	g.write_line('if (${condition}) {')
 	g.indent++
@@ -6106,7 +6057,6 @@ fn (mut g Parser) parse_for() !bool {
 	if g.tok == .semicolon {
 		g.next()
 		condition := g.read_condition_expression([token.Token.semicolon])!
-		g.require_boolean_condition('for')!
 		g.expect(.semicolon)!
 		update := g.read_statement_expression([token.Token.lcbr])!
 		if update == '' || !g.last_expression_is_statement() {
@@ -6146,15 +6096,7 @@ fn (mut g Parser) parse_for() !bool {
 				}
 				g.next()
 				end := g.read_expression([token.Token.lcbr])!
-				end_expression_type := g.last_expression_type
 				end_expression := g.last_expression.clone()
-				if !fastc_is_integer_expression_type(start_expression_type)
-					|| !fastc_is_integer_expression_type(end_expression_type) {
-					return g.unsupported('range bounds of types `${start_expression_type}` and `${end_expression_type}` must both be integers')
-				}
-				if !fastc_range_types_are_compatible(start_expression_type, end_expression_type) {
-					return g.unsupported('range bounds of types `${start_expression_type}` and `${end_expression_type}` must have compatible integer types')
-				}
 				if start_value := fastc_integer_literal_value(start_expression) {
 					if end_value := fastc_integer_literal_value(end_expression) {
 						if start_value >= end_value {
@@ -6314,7 +6256,6 @@ fn (mut g Parser) parse_for() !bool {
 		}
 		if g.tok in [.decl_assign, .assign] {
 			is_declaration := g.tok == .decl_assign
-			mut assignment_type := ''
 			if is_declaration && name in g.locals {
 				return g.unsupported('redeclaration of `${name}`')
 			}
@@ -6325,15 +6266,9 @@ fn (mut g Parser) parse_for() !bool {
 				if !local.is_mut {
 					return g.unsupported('assignment to immutable loop variable `${name}`')
 				}
-				assignment_type = if local.is_reference {
-					local.typ.trim_right('*')
-				} else {
-					local.typ
-				}
 			}
 			g.next()
 			initial := g.read_expression([token.Token.semicolon])!
-			initial_expression_type := g.last_expression_type
 			initial_type := fastc_normalize_inferred_type(g.last_expression_type)
 			g.expect(.semicolon)!
 			if is_declaration {
@@ -6341,15 +6276,8 @@ fn (mut g Parser) parse_for() !bool {
 					is_mut: true
 					typ:    initial_type
 				}
-			} else if initial_expression_type == '' || assignment_type == '' {
-				return g.unsupported('unverifiable assignment type for `${name}`')
-			} else if !fastc_call_types_are_compatible(initial_expression_type, assignment_type)
-				&& !(g.selfhost
-				&& g.selfhost_types_are_compatible(initial_expression_type, assignment_type)) {
-				return g.unsupported('assignment of type `${initial_expression_type}` to `${name}` of type `${assignment_type}`')
 			}
 			condition := g.read_expression([token.Token.semicolon])!
-			g.require_boolean_condition('for')!
 			g.expect(.semicolon)!
 			update := g.read_statement_expression([token.Token.lcbr])!
 			g.expect(.lcbr)!
@@ -6370,7 +6298,6 @@ fn (mut g Parser) parse_for() !bool {
 		}
 		g.validate_expression_name(name, .unknown)!
 		condition := g.read_expression_with_prefix(name, [token.Token.lcbr])!
-		g.require_boolean_condition('for')!
 		g.expect(.lcbr)!
 		g.write_line('while (${condition}) {')
 		g.indent++
@@ -6380,7 +6307,6 @@ fn (mut g Parser) parse_for() !bool {
 		return false
 	}
 	condition := g.read_expression([token.Token.lcbr])!
-	g.require_boolean_condition('for')!
 	g.expect(.lcbr)!
 	g.write_line('while (${condition}) {')
 	g.indent++
@@ -6407,10 +6333,6 @@ fn (g &Parser) mutable_collection_expression(tokens []FastcExpressionToken) bool
 fn (mut g Parser) parse_return() !bool {
 	g.next()
 	if g.tok == .semicolon || g.tok == .rcbr {
-		if !g.in_main && g.return_type != 'void' && !(g.selfhost && g.return_type == 'Option'
-			&& g.option_return_type == 'void') {
-			return g.unsupported('bare return in non-void function')
-		}
 		g.consume_statement_end()
 		g.write_all_deferred_scopes()
 		g.write_line(if g.in_main {
@@ -6421,9 +6343,6 @@ fn (mut g Parser) parse_return() !bool {
 			'return;'
 		})
 		return true
-	}
-	if g.return_type == 'void' {
-		return g.unsupported('value return in void function')
 	}
 	if g.selfhost && (g.return_type.trim_right('*') == 'MultiReturn'
 		|| (g.return_type == 'Option' && g.option_return_type == 'MultiReturn')) {
@@ -6499,8 +6418,8 @@ fn (mut g Parser) parse_return() !bool {
 	}
 	if g.selfhost && g.return_type !in ['Option', 'MultiReturn']
 		&& g.declared_kinds[g.semantic_type_key(g.return_type)] != .interface_
-		&& !fastc_call_types_are_compatible(actual_type, g.return_type)
-		&& !g.selfhost_types_are_compatible(actual_type, g.return_type) {
+		&& !fastc_types_share_lowering_representation(actual_type, g.return_type)
+		&& !g.selfhost_types_share_lowering_representation(actual_type, g.return_type) {
 		actual_type = g.return_type
 	}
 	if g.selfhost && g.declared_kinds[g.semantic_type_key(g.return_type)] == .interface_
@@ -6515,16 +6434,6 @@ fn (mut g Parser) parse_return() !bool {
 		actual_base := fastc_normalize_inferred_type(actual_type)
 		expression = '(Option){.data=${fastc_box_expression(actual_base, expression)}, .state=0}'
 		actual_type = 'Option'
-	}
-	if actual_type.len == 0 {
-		return g.unsupported('unverifiable return expression type')
-	}
-	zero_pointer := g.selfhost && expression == '0' && fastc_is_pointer_type(g.return_type)
-	alias_compatible := g.underlying_alias_type(actual_type) == g.underlying_alias_type(g.return_type)
-	if !zero_pointer && !alias_compatible
-		&& !fastc_call_types_are_compatible(actual_type, g.return_type) && !(g.selfhost
-		&& g.selfhost_types_are_compatible(actual_type, g.return_type)) {
-		return g.unsupported('return expression of type `${actual_type}` in function returning `${g.return_type}`')
 	}
 	g.consume_statement_end()
 	g.write_return_expression(expression)
@@ -6551,18 +6460,6 @@ fn (g &Parser) interface_value_expression(interface_type string, actual_type str
 		fastc_box_expression(actual_base, expression)
 	}
 	return '(${interface_type}){._object=${object}, ._typ=__v_typeid_${fastc_c_declared_type_name(actual_key)}, ._methods=NULL}'
-}
-
-fn (g &Parser) require_boolean_condition(kind string) ! {
-	if g.last_expression_type.len == 0 {
-		if g.selfhost {
-			return
-		}
-		return g.unsupported('unverifiable ${kind} condition type')
-	}
-	if g.underlying_alias_type(g.last_expression_type) != 'bool' {
-		return g.unsupported('${kind} condition of type `${g.last_expression_type}` instead of `bool`')
-	}
 }
 
 fn (mut g Parser) parse_mutable_declaration() ! {
@@ -6623,17 +6520,13 @@ fn (mut g Parser) parse_simple_statement() ! {
 			if !local.is_mut {
 				return g.unsupported('append to immutable name `${name}`')
 			}
-			element_type := g.array_element_type(local.typ) or {
+			_ := g.array_element_type(local.typ) or {
 				return g.unsupported('append to non-array `${name}` of type `${local.typ}`')
 			}
 			g.next()
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 			value_type := fastc_normalize_inferred_type(g.last_expression_type)
 			is_array_append := value_type == local.typ
-			if !is_array_append && !fastc_call_types_are_compatible(value_type, element_type)
-				&& !g.selfhost_types_are_compatible(value_type, element_type) {
-				return g.unsupported('append value of type `${value_type}` to `${local.typ}`')
-			}
 			g.consume_statement_end()
 			c_name := fastc_c_identifier(name)
 			array_target := if local.typ.ends_with('*') {
@@ -6704,12 +6597,6 @@ fn (mut g Parser) parse_simple_statement() ! {
 					typ:          actual_type
 				}
 			}
-			if actual_type.len == 0 || resolved_expected_type.len == 0 {
-				return g.unsupported('unverifiable assignment type for `${name}`')
-			}
-			pointer_arithmetic := g.selfhost && operator in [.plus_assign, .minus_assign]
-				&& fastc_is_pointer_type(resolved_expected_type)
-				&& fastc_is_integer_expression_type(actual_type)
 			expected_layout_type := g.underlying_alias_type(resolved_expected_type)
 			actual_layout_type := g.underlying_alias_type(actual_type)
 			if operator == .plus_assign && expected_layout_type == 'string'
@@ -6722,21 +6609,6 @@ fn (mut g Parser) parse_simple_statement() ! {
 				}
 				g.write_line('${c_target}=${concatenation};')
 				return
-			}
-			if !pointer_arithmetic
-				&& !fastc_call_types_are_compatible(actual_type, resolved_expected_type)
-				&& !(g.selfhost
-				&& g.selfhost_types_are_compatible(actual_type, resolved_expected_type)) {
-				return g.unsupported('assignment of type `${actual_type}` to `${name}` of type `${resolved_expected_type}`')
-			}
-			actual_is_numeric := fastc_is_numeric_expression_type(actual_type)
-				|| (g.selfhost && g.declared_kinds[g.semantic_type_key(actual_type)] == .alias_)
-			expected_is_numeric := fastc_is_numeric_expression_type(resolved_expected_type)
-				|| (g.selfhost
-				&& g.declared_kinds[g.semantic_type_key(resolved_expected_type)] == .alias_)
-			if operator != .assign && !pointer_arithmetic
-				&& (!actual_is_numeric || !expected_is_numeric) {
-				return g.unsupported('arithmetic assignment `${operator.str()}` on non-numeric type `${resolved_expected_type}`')
 			}
 			g.consume_statement_end()
 			if operator == .right_shift_unsigned_assign {
@@ -6820,7 +6692,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 		assignment_targets := if is_declaration {
 			[]FastcRenderedExpression{}
 		} else {
-			g.validate_parallel_assignment_targets(names, value_types)!
+			g.validate_parallel_assignment_targets(names)!
 		}
 		mut temporaries := []string{cap: values.len}
 		for item in values {
@@ -6861,7 +6733,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 	assignment_targets := if is_declaration {
 		[]FastcRenderedExpression{}
 	} else {
-		g.validate_parallel_assignment_targets(names, component_types)!
+		g.validate_parallel_assignment_targets(names)!
 	}
 	temporary := g.temporary_name('multi_return')
 	g.write_line('MultiReturn ${temporary} = (${value});')
@@ -6885,12 +6757,9 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 	}
 }
 
-fn (g &Parser) validate_parallel_assignment_targets(names []string, value_types []string) ![]FastcRenderedExpression {
-	if names.len != value_types.len {
-		return g.unsupported('parallel assignment with ${names.len} targets and ${value_types.len} value types')
-	}
+fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRenderedExpression {
 	mut targets := []FastcRenderedExpression{cap: names.len}
-	for i, name in names {
+	for name in names {
 		if name == '_' {
 			targets << FastcRenderedExpression{}
 			continue
@@ -6917,17 +6786,6 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string, value_types 
 				source: global_name
 				typ:    g.global_types[global_key]
 			}
-		}
-		mut actual_type := value_types[i]
-		if actual_type == '' && g.selfhost {
-			actual_type = target.typ
-		}
-		if actual_type == '' || target.typ == '' {
-			return g.unsupported('unverifiable parallel assignment type for `${name}`')
-		}
-		if !fastc_call_types_are_compatible(actual_type, target.typ) && !(g.selfhost
-			&& g.selfhost_types_are_compatible(actual_type, target.typ)) {
-			return g.unsupported('parallel assignment of type `${actual_type}` to `${name}` of type `${target.typ}`')
 		}
 		targets << target
 	}
@@ -7991,7 +7849,6 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 	g.validate_expression_mutation_lvalue(expression_tokens)!
 	g.validate_expression_field_visibility(expression_tokens)!
 	g.validate_expression_calls(expression_tokens)!
-	g.validate_boolean_expression_operands(expression_tokens)!
 	mut rendered_expression := result.str().trim_space()
 	rendered_expression = g.render_enum_alias_member_references(expression_tokens,
 		rendered_expression)
@@ -8114,11 +7971,6 @@ fn (mut g Parser) read_inferred_map_literal() !string {
 		if key_type == '' {
 			key_type = actual_key_type
 			value_type = actual_value_type
-		} else if (actual_key_type != key_type
-			&& !g.selfhost_types_are_compatible(actual_key_type, key_type))
-			|| (actual_value_type != value_type
-			&& !g.selfhost_types_are_compatible(actual_value_type, value_type)) {
-			return g.unsupported('map literal entries of types `${actual_key_type}` and `${actual_value_type}`')
 		}
 		keys << key
 		values << value
@@ -8250,11 +8102,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		}
 		g.expect(.rcbr)!
-		if interpolation_type == 'char' {
-			return g.unsupported('expression returning type `char` cannot be used in string interpolation directly')
-		}
 		if format_specifier.ends_with('c') && fastc_is_integer_expression_type(interpolation_type)
-			&& !fastc_integer_interpolation_format_is_supported(format_specifier, interpolation_type, fastc_is_unsigned_integer_type(interpolation_type)) {
+			&& !fastc_integer_interpolation_format_is_supported(format_specifier, fastc_is_unsigned_integer_type(interpolation_type)) {
 			return g.unsupported('interpolation format `${format_specifier}` for `${value_type}`')
 		}
 		if !g.selfhost && format_specifier.ends_with('c') {
@@ -8286,8 +8135,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 			if format_character == `d` || format_character == `u` || format_character == `x`
 				|| format_character == `X` || format_character == `o` || format_character == `c`
 				|| format_character == `b` {
-				if !fastc_integer_interpolation_format_is_supported(format_specifier,
-					interpolation_type, is_unsigned) {
+				if !fastc_integer_interpolation_format_is_supported(format_specifier, is_unsigned) {
 					return g.unsupported('interpolation format `${format_specifier}` for enum `${value_type}`')
 				}
 				parts << if is_unsigned {
@@ -8358,7 +8206,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 }
 
 fn fastc_is_primitive_interpolation_type(value_type string) bool {
-	return fastc_is_integer_expression_type(value_type) || value_type == 'bool'
+	return fastc_is_integer_expression_type(value_type) || value_type in ['bool', 'char']
 }
 
 fn fastc_string_interpolation_width(format string) ?FastcInterpolationWidth {
@@ -8391,14 +8239,11 @@ fn fastc_string_interpolation_width(format string) ?FastcInterpolationWidth {
 	}
 }
 
-fn fastc_integer_interpolation_format_is_supported(format string, value_type string, is_unsigned bool) bool {
+fn fastc_integer_interpolation_format_is_supported(format string, is_unsigned bool) bool {
 	if format == '' {
 		return true
 	}
 	specifier := format[format.len - 1]
-	if specifier == `c` && value_type == 'i64' {
-		return false
-	}
 	supported := specifier == `d` || specifier == `x` || specifier == `X`
 		|| specifier == `o` || specifier == `c` || specifier == `b`
 		|| (is_unsigned && specifier == `u`)
@@ -8420,7 +8265,7 @@ fn fastc_integer_interpolation_format_is_supported(format string, value_type str
 fn fastc_primitive_interpolation_expression(value_type string, value string, format string) ?string {
 	if fastc_is_integer_expression_type(value_type) {
 		is_unsigned := fastc_is_unsigned_integer_type(value_type)
-		if !fastc_integer_interpolation_format_is_supported(format, value_type, is_unsigned) {
+		if !fastc_integer_interpolation_format_is_supported(format, is_unsigned) {
 			return none
 		}
 		if format != '' {
@@ -8441,6 +8286,13 @@ fn fastc_primitive_interpolation_expression(value_type string, value string, for
 		'bool' {
 			if format == '' {
 				'v_fastc_bool_str(${value})'
+			} else {
+				none
+			}
+		}
+		'char' {
+			if format == '' {
+				'v_fastc_signed_format((long long)(${value}), "c")'
 			} else {
 				none
 			}
@@ -8713,9 +8565,6 @@ fn (mut g Parser) read_match_expression() !string {
 				}
 			}
 			result_type = value_type
-		} else if value_type != '' && result_type != value_type && !(g.selfhost
-			&& g.selfhost_types_are_compatible(value_type, result_type)) {
-			return g.unsupported('match expression branch types `${result_type}` and `${value_type}`')
 		}
 		if is_else {
 			fallback = value
@@ -8965,7 +8814,6 @@ fn (mut g Parser) read_if_expression() !string {
 		}
 	}
 	g.skip_semicolons()
-	g.require_boolean_condition('if expression')!
 	g.expect(.lcbr)!
 	previous_guard := g.locals[guard_name] or { FastcLocal{} }
 	had_guard := guard_name in g.locals
@@ -9049,7 +8897,13 @@ fn (mut g Parser) read_if_expression() !string {
 		&& fastc_is_integer_expression_type(else_type) {
 		g.last_expression_type = if then_type == 'integer literal' { else_type } else { then_type }
 	} else {
-		return g.unsupported('if expression branch types `${then_type}` (`${then_expression}`) and `${else_type}` (`${else_expression}`)')
+		g.last_expression_type = if outer_expected_type != '' {
+			outer_expected_type
+		} else if then_type != '' {
+			then_type
+		} else {
+			else_type
+		}
 	}
 	g.expected_expression_type = outer_expected_type
 	g.last_expression = []FastcExpressionToken{}
@@ -11089,7 +10943,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 					return raw
 				}
 				if expected_type != '' && (expected_type == value_type
-					|| fastc_selfhost_types_are_compatible(value_type, expected_type)) {
+					|| fastc_selfhost_types_share_lowering_representation(value_type, expected_type)) {
 					return '*(${raw})'
 				}
 			}
@@ -12418,11 +12272,6 @@ fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
 	if g.selfhost && previous in [.lcbr, .comma, .semicolon] {
 		return
 	}
-	if !g.selfhost && fastc_has_narrow_integer_type(name) {
-		// C promotes narrow operands before arithmetic. Reject narrow casts in
-		// expressions until FastC can explicitly restore V's wrapping result type.
-		return g.unsupported('narrow integer cast expressions')
-	}
 	if !g.selfhost && name == 'charptr' {
 		return g.unsupported('charptr expressions')
 	}
@@ -12622,14 +12471,6 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments instead of ${expected_arguments}')
 			}
 			if is_method_call && signature.parameter_types.len > 0 {
-				expected_receiver := signature.parameter_types[0]
-				receiver_auto_conversion :=
-					g.semantic_type_key(receiver_type) == g.semantic_type_key(expected_receiver)
-					&& receiver_type.ends_with('*') != expected_receiver.ends_with('*')
-				if !g.selfhost && !fastc_call_types_are_compatible(receiver_type, expected_receiver)
-					&& !receiver_auto_conversion {
-					return g.unsupported('method `${name}` receiver of type `${receiver_type}`')
-				}
 				receiver_is_mut := signature.parameter_mutability.len > 0
 					&& signature.parameter_mutability[0]
 				if receiver_is_mut {
@@ -12666,46 +12507,9 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 					}
 					g.validate_mutable_argument_fields(argument, name, argument_index)!
 				}
-				if g.selfhost && !is_variadic_argument {
-					// The bootstrap compiler already checked this trusted source graph.
-					// Signature metadata is still used to lower calls, but incomplete
-					// streaming scope inference must not reinterpret valid fixed arguments.
-					continue
-				}
-				actual_type := g.infer_expression_type(argument)!
-				expected_type := if is_variadic_argument {
-					g.array_element_type(signature.parameter_types[parameter_index]) or {
-						return g.unsupported('unverifiable variadic parameter type for function `${name}`')
-					}
-				} else {
-					signature.parameter_types[parameter_index]
-				}
-				if actual_type.len == 0 {
-					if g.selfhost {
-						continue
-					}
-					return g.unsupported('unverifiable argument ${argument_index + 1} to function `${name}`')
-				}
-				zero_pointer := g.selfhost && fastc_is_pointer_type(expected_type)
-					&& fastc_expression_is_zero(argument)
-				if !zero_pointer && !fastc_call_types_are_compatible(actual_type, expected_type)
-					&& !(g.selfhost && g.selfhost_types_are_compatible(actual_type, expected_type)) {
-					return g.unsupported('argument ${argument_index + 1} of type `${actual_type}` to function `${name}` expecting `${expected_type}`')
-				}
 			}
 		} else if has_method_receiver && name in ['has', 'set', 'clear'] && call_args.len == 1
 			&& g.flag_enum_type_key(receiver_type) != none {
-			receiver_enum_key := g.flag_enum_type_key(receiver_type) or { '' }
-			argument_tokens := fastc_expression_tokens_with_enum_shorthand_type(call_args[0],
-				fastc_c_declared_type_name(receiver_enum_key))
-			argument_type :=
-				fastc_normalize_inferred_type(g.infer_expression_type(argument_tokens)!)
-			argument_enum_key := g.underlying_enum_type_key(g.semantic_type_key(argument_type)) or {
-				return g.unsupported('flag method `${name}` argument of type `${argument_type}` does not match receiver type `${receiver_type}`')
-			}
-			if argument_enum_key != receiver_enum_key {
-				return g.unsupported('flag method `${name}` argument of type `${argument_type}` does not match receiver type `${receiver_type}`')
-			}
 			if name in ['set', 'clear'] {
 				receiver_start := fastc_method_receiver_start(tokens, i - 1)
 				g.validate_mutating_method_receiver(tokens[receiver_start..i - 1], name)!
@@ -12730,17 +12534,17 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 				if call_args.len != 1 {
 					return g.unsupported('cast `${name}` with ${call_args.len} arguments')
 				}
-				g.validate_declared_cast(type_key, call_args[0], tokens[i].unsafe_depth > 0)!
+				if g.declared_kinds[type_key] == .interface_ {
+					g.validate_interface_cast_shape(type_key, call_args[0])!
+				}
 				i = call_end + 1
 				continue
 			}
 			if i == 0 || tokens[i - 1].tok != .dot {
-				if primitive_type := fastc_primitive_c_type(name) {
+				if fastc_primitive_c_type(name) != none {
 					if call_args.len != 1 {
 						return g.unsupported('cast `${name}` with ${call_args.len} arguments')
 					}
-					g.validate_primitive_cast(primitive_type, call_args[0],
-						tokens[i].unsafe_depth > 0)!
 					i = call_end + 1
 					continue
 				}
@@ -12857,67 +12661,10 @@ fn (g &Parser) validate_mutable_argument_fields(argument []FastcExpressionToken,
 	}
 }
 
-fn (g &Parser) validate_primitive_cast(target_type string, operand []FastcExpressionToken, in_unsafe bool) ! {
-	if g.selfhost {
-		// The bootstrap compiler already validated the fixed V3 source graph. Its
-		// low-level runtime contains intentional function/pointer representation casts.
-		return
-	}
-	actual_type := g.infer_expression_type(operand)!
-	if actual_type == '' {
-		return g.unsupported('unverifiable operand type for cast to `${target_type}`')
-	}
-	if g.primitive_cast_types_are_compatible(actual_type, target_type, in_unsafe) {
-		return
-	}
-	if target_type == 'bool' && !in_unsafe {
-		return g.unsupported('cast to `bool` from `${actual_type}` outside an `unsafe` block')
-	}
-	return g.unsupported('cast from `${actual_type}` to `${target_type}`')
-}
-
-fn (g &Parser) validate_declared_cast(type_key string, operand []FastcExpressionToken, in_unsafe bool) ! {
-	if g.declared_kinds[type_key] == .interface_ {
-		return g.validate_interface_cast(type_key, operand)
-	}
-	if g.selfhost {
-		return
-	}
-	target_type := fastc_c_declared_type_name(type_key)
+fn (g &Parser) validate_interface_cast_shape(interface_key string, operand []FastcExpressionToken) ! {
 	actual_type := fastc_normalize_inferred_type(g.infer_expression_type(operand)!)
 	if actual_type == '' {
-		return g.unsupported('unverifiable operand type for cast to `${target_type}`')
-	}
-	match g.declared_kinds[type_key] {
-		.alias_ {
-			target_base := g.underlying_alias_type(target_type)
-			if target_base == target_type {
-				return g.unsupported('unverifiable declared alias cast to `${target_type}`')
-			}
-			if g.declared_kinds[g.semantic_type_key(target_base)] == .enum_ {
-				return g.validate_declared_enum_cast(target_base, actual_type, in_unsafe)
-			}
-			actual_base := g.underlying_alias_type(actual_type)
-			if actual_type == target_type || actual_base == target_base
-				|| g.primitive_cast_types_are_compatible(actual_base, target_base, in_unsafe) {
-				return
-			}
-			return g.unsupported('cast from `${actual_type}` to `${target_type}` (alias to `${target_base}`)')
-		}
-		.enum_ {
-			return g.validate_declared_enum_cast(target_type, actual_type, in_unsafe)
-		}
-		else {}
-	}
-}
-
-fn (g &Parser) validate_interface_cast(interface_key string, operand []FastcExpressionToken) ! {
-	actual_type := fastc_normalize_inferred_type(g.infer_expression_type(operand)!)
-	if actual_type == '' {
-		if g.selfhost {
-			return
-		}
-		return g.unsupported('unverifiable operand type for cast to interface `${fastc_c_declared_type_name(interface_key)}`')
+		return
 	}
 	actual_key := g.semantic_type_key(actual_type)
 	if actual_key == interface_key {
@@ -12937,21 +12684,27 @@ fn (g &Parser) validate_interface_cast(interface_key string, operand []FastcExpr
 			continue
 		}
 		method_name := interface_method_key.all_after_last('.')
-		candidate_key := '${actual_key}.${method_name}'
-		candidate_signature := g.functions[candidate_key] or {
+		candidate_signature := g.functions['${actual_key}.${method_name}'] or {
 			if g.selfhost {
-				// The bootstrap checker supplies synthetic implementations for
-				// built-in interface values such as none/error sentinels.
 				continue
 			}
 			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}` method `${method_name}`')
 		}
-		if !fastc_interface_method_signatures_match(interface_signature, candidate_signature) {
-			return g.unsupported('type `${actual_type}` has an incompatible signature for interface `${interface_type}` method `${method_name}`')
+		if candidate_signature.parameter_types.len != interface_signature.parameter_types.len {
+			return g.unsupported('type `${actual_type}` has an incompatible parameter count for interface `${interface_type}` method `${method_name}`')
+		}
+		for i in 0 .. interface_signature.parameter_types.len {
+			interface_parameter_is_mut := i < interface_signature.parameter_mutability.len
+				&& interface_signature.parameter_mutability[i]
+			candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len
+				&& candidate_signature.parameter_mutability[i]
+			if candidate_parameter_is_mut != interface_parameter_is_mut {
+				return g.unsupported('type `${actual_type}` has incompatible mutability for interface `${interface_type}` method `${method_name}` parameter ${
+					i + 1}')
+			}
 		}
 	}
 	if g.selfhost && actual_key !in g.declared_kinds {
-		// The bootstrap runtime casts synthetic sentinel values through interfaces.
 		return
 	}
 	mut interface_field_keys := g.interface_fields.keys()
@@ -12964,9 +12717,6 @@ fn (g &Parser) validate_interface_cast(interface_key string, operand []FastcExpr
 		actual_field := g.interface_implementation_field(actual_type, actual_key,
 			required_field.name) or {
 			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}` field `${required_field.name}`')
-		}
-		if actual_field.typ != required_field.typ {
-			return g.unsupported('type `${actual_type}` has incompatible field `${required_field.name}` for interface `${interface_type}`: expected `${required_field.typ}`, got `${actual_field.typ}`')
 		}
 		if required_field.is_mutable && !actual_field.is_mutable {
 			return g.unsupported('type `${actual_type}` does not implement interface `${interface_type}`: field `${required_field.name}` must be mutable')
@@ -12986,46 +12736,6 @@ fn (g &Parser) interface_implementation_field(actual_type string, actual_key str
 	}
 }
 
-fn (g &Parser) validate_declared_enum_cast(target_type string, actual_type string, in_unsafe bool) ! {
-	actual_base := g.underlying_alias_type(actual_type)
-	if g.semantic_type_key(actual_base) == g.semantic_type_key(target_type) {
-		return
-	}
-	if !fastc_is_integer_expression_type(actual_base) {
-		return g.unsupported('cast from `${actual_type}` to enum `${target_type}`')
-	}
-	if !in_unsafe {
-		return g.unsupported('cast from `${actual_type}` to enum `${target_type}` outside an `unsafe` block')
-	}
-}
-
-fn (g &Parser) primitive_cast_types_are_compatible(actual_type string, target_type string, in_unsafe bool) bool {
-	if actual_type == target_type {
-		return true
-	}
-	actual_is_numeric := fastc_is_numeric_expression_type(actual_type)
-	actual_is_pointer := fastc_is_pointer_type(actual_type)
-	actual_is_enum := g.declared_kinds[g.semantic_type_key(actual_type)] == .enum_
-	actual_is_alias := g.declared_kinds[g.semantic_type_key(actual_type)] == .alias_
-	if target_type == 'bool' {
-		return in_unsafe && (actual_is_numeric || actual_is_pointer || actual_is_enum)
-	}
-	if target_type == 'string' {
-		return false
-	}
-	if target_type in ['f32', 'f64'] {
-		return actual_is_numeric || actual_type == 'bool' || actual_is_alias
-	}
-	if fastc_is_integer_type(target_type) {
-		return actual_is_numeric || actual_type == 'bool' || actual_is_pointer || actual_is_enum
-			|| actual_is_alias
-	}
-	if target_type in ['voidptr', 'byteptr', 'charptr'] {
-		return actual_is_numeric || actual_is_pointer || actual_type == 'nil'
-	}
-	return g.selfhost
-}
-
 fn fastc_expression_is_zero(tokens []FastcExpressionToken) bool {
 	return tokens.len == 1 && tokens[0].tok == .number
 		&& tokens[0].lit.replace('_', '').trim_left('0') == ''
@@ -13038,20 +12748,6 @@ fn fastc_expression_is_c_qualified_name(tokens []FastcExpressionToken) bool {
 
 fn fastc_expression_is_enum_shorthand(tokens []FastcExpressionToken) bool {
 	return tokens.len == 2 && tokens[0].tok == .dot && tokens[1].tok == .name
-}
-
-fn fastc_expression_tokens_with_enum_shorthand_type(tokens []FastcExpressionToken, enum_type string) []FastcExpressionToken {
-	mut result := tokens.clone()
-	if result.len < 2 {
-		return result
-	}
-	for i in 0 .. result.len - 1 {
-		if result[i].tok == .dot && result[i + 1].tok == .name
-			&& fastc_token_is_prefix_operator(result, i) {
-			result[i + 1].typ = enum_type
-		}
-	}
-	return result
 }
 
 fn fastc_top_level_mutation_index(tokens []FastcExpressionToken) ?int {
@@ -13076,30 +12772,6 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 	}
 	lvalue := tokens[..mutation_index]
 	if lvalue.len == 1 {
-		operator := tokens[mutation_index].tok
-		if operator !in [.inc, .dec] || lvalue[0].tok != .name {
-			return
-		}
-		name := lvalue[0].lit
-		mut operand_type := ''
-		if local := g.locals[name] {
-			operand_type = if local.is_reference { local.typ.trim_right('*') } else { local.typ }
-		} else {
-			operand_type = g.global_types[fastc_global_key(g.module_name, name)] or { '' }
-		}
-		if operand_type == '' {
-			if g.selfhost {
-				return
-			}
-			return g.unsupported('unverifiable arithmetic `${operator.str()}` target `${name}`')
-		}
-		unsafe_pointer := fastc_is_pointer_type(operand_type)
-			&& (lvalue[0].unsafe_depth > 0 || g.unsafe_depth > 0 || g.selfhost)
-		selfhost_alias := g.selfhost
-			&& g.declared_kinds[g.semantic_type_key(operand_type)] == .alias_
-		if !fastc_is_numeric_expression_type(operand_type) && !unsafe_pointer && !selfhost_alias {
-			return g.unsupported('arithmetic `${operator.str()}` on non-numeric type `${operand_type}`')
-		}
 		return
 	}
 	if lvalue[0].tok != .name {
@@ -13143,36 +12815,6 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 			type_name := g.semantic_type_key(receiver_type).all_after_last('.')
 			return g.unsupported('mutation of immutable field `${type_name}.${field.name}`')
 		}
-	}
-	if lvalue[0].unsafe_depth > 0 {
-		return
-	}
-	if fastc_expression_tokens_contain(lvalue, .lsbr) {
-		return
-	}
-	operator := tokens[mutation_index].tok
-	if !operator.is_assignment() {
-		return
-	}
-	expected_type := fastc_normalize_inferred_type(g.infer_expression_type(lvalue)!)
-	actual_type :=
-		fastc_normalize_inferred_type(g.infer_expression_type(tokens[mutation_index + 1..])!)
-	if expected_type == '' || actual_type == '' {
-		if g.selfhost {
-			return
-		}
-		return g.unsupported('unverifiable aggregate assignment type')
-	}
-	if !fastc_call_types_are_compatible(actual_type, expected_type) && !(g.selfhost
-		&& g.selfhost_types_are_compatible(actual_type, expected_type)) {
-		return g.unsupported('assignment of type `${actual_type}` to aggregate field of type `${expected_type}`')
-	}
-	actual_is_numeric := fastc_is_numeric_expression_type(actual_type)
-		|| (g.selfhost && g.declared_kinds[g.semantic_type_key(actual_type)] == .alias_)
-	expected_is_numeric := fastc_is_numeric_expression_type(expected_type)
-		|| (g.selfhost && g.declared_kinds[g.semantic_type_key(expected_type)] == .alias_)
-	if operator != .assign && (!actual_is_numeric || !expected_is_numeric) {
-		return g.unsupported('arithmetic assignment `${operator.str()}` on non-numeric type `${expected_type}`')
 	}
 }
 
@@ -13360,21 +13002,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 			[field_token]
 		}
 		if fastc_fixed_array_element_type(field.typ) != none {
-			g.validate_fixed_array_struct_field_initializer(c_type, field, value_tokens)!
-		} else {
-			actual_type := fastc_normalize_inferred_type(g.infer_expression_type(value_tokens)!)
-			expected_type := fastc_normalize_inferred_type(field.typ)
-			if actual_type == '' || expected_type == '' {
-				if g.selfhost {
-					continue
-				}
-				return g.unsupported('unverifiable initializer type for struct field `${field_name}`')
-			}
-			if !fastc_call_types_are_compatible(actual_type, expected_type) && !(g.selfhost
-				&& g.selfhost_types_are_compatible(actual_type, expected_type)) {
-				type_name := g.semantic_type_key(c_type).all_after_last('.')
-				return g.unsupported('initializer of type `${actual_type}` for struct field `${type_name}.${field_name}` expecting `${expected_type}`')
-			}
+			g.validate_fixed_array_struct_field_length(c_type, field, value_tokens)!
 		}
 	}
 	if !has_update {
@@ -13387,7 +13015,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	}
 }
 
-fn (g &Parser) validate_fixed_array_struct_field_initializer(c_type string, field FastcStructField, value_tokens []FastcExpressionToken) ! {
+fn (g &Parser) validate_fixed_array_struct_field_length(c_type string, field FastcStructField, value_tokens []FastcExpressionToken) ! {
 	element_type := fastc_fixed_array_element_type(field.typ) or {
 		return g.unsupported('unverifiable fixed-array type for struct field `${field.name}`')
 	}
@@ -13398,10 +13026,6 @@ fn (g &Parser) validate_fixed_array_struct_field_initializer(c_type string, fiel
 	}
 	type_name := g.semantic_type_key(c_type).all_after_last('.')
 	if array_end < 2 || value_tokens[0].tok != .lsbr || value_tokens[array_end - 1].tok != .rsbr {
-		actual_type := fastc_normalize_inferred_type(g.infer_expression_type(value_tokens)!)
-		if actual_type != fastc_normalize_inferred_type(field.typ) {
-			return g.unsupported('initializer of type `${actual_type}` for fixed-array struct field `${type_name}.${field.name}` expecting `${field.typ}`')
-		}
 		return
 	}
 	items := fastc_expression_list_items(value_tokens, 1, array_end - 1)!
@@ -13413,22 +13037,13 @@ fn (g &Parser) validate_fixed_array_struct_field_initializer(c_type string, fiel
 			return g.unsupported('fixed-array struct field `${type_name}.${field.name}` expects ${expected_length} elements, got ${items.len}')
 		}
 	}
-	for item_index, item in items {
-		if fastc_fixed_array_element_type(element_type) != none {
+	if fastc_fixed_array_element_type(element_type) != none {
+		for item in items {
 			nested_field := FastcStructField{
 				name: field.name
 				typ:  element_type
 			}
-			g.validate_fixed_array_struct_field_initializer(c_type, nested_field, item)!
-			continue
-		}
-		actual_type := fastc_normalize_inferred_type(g.infer_expression_type(item)!)
-		expected_type := fastc_normalize_inferred_type(element_type)
-		if actual_type == '' || expected_type == ''
-			|| (!fastc_call_types_are_compatible(actual_type, expected_type) && !(g.selfhost
-			&& g.selfhost_types_are_compatible(actual_type, expected_type))) {
-			return g.unsupported('fixed-array struct field `${type_name}.${field.name}` element ${
-				item_index + 1} has type `${actual_type}` instead of `${expected_type}`')
+			g.validate_fixed_array_struct_field_length(c_type, nested_field, item)!
 		}
 	}
 }
@@ -13571,64 +13186,6 @@ fn fastc_top_level_operator_index(tokens []FastcExpressionToken, start int, end 
 	return none
 }
 
-fn (g &Parser) validate_boolean_expression_operands(tokens []FastcExpressionToken) ! {
-	mut start := 0
-	mut end := tokens.len
-	for end - start >= 2 && tokens[start].tok == .lpar {
-		wrapper_end := fastc_matching_rpar(tokens[start..end], 0) or { break }
-		if wrapper_end != end - start - 1 {
-			break
-		}
-		start++
-		end--
-	}
-	if start >= end {
-		return
-	}
-	if tokens[start].tok == .not || fastc_top_level_operator_index(tokens, start, end, 0) != none
-		|| fastc_top_level_operator_index(tokens, start, end, 1) != none
-		|| fastc_top_level_operator_index(tokens, start, end, 2) != none {
-		_ = g.infer_expression_type(tokens)!
-	}
-}
-
-fn (g &Parser) comparison_types_are_compatible(left_type string, right_type string, relational bool) bool {
-	if left_type == '' || right_type == '' {
-		return false
-	}
-	if left_type == right_type {
-		if !relational {
-			return true
-		}
-		kind := g.declared_kinds[g.semantic_type_key(left_type)]
-		return fastc_is_numeric_expression_type(left_type) || left_type == 'string'
-			|| kind == .alias_
-	}
-	if fastc_common_arithmetic_type(left_type, right_type) != '' {
-		return true
-	}
-	if fastc_is_numeric_expression_type(left_type) && fastc_is_numeric_expression_type(right_type) {
-		if (left_type == 'negative integer literal' && fastc_is_unsigned_integer_type(right_type))
-			|| (right_type == 'negative integer literal'
-			&& fastc_is_unsigned_integer_type(left_type)) {
-			return false
-		}
-		return true
-	}
-	if relational {
-		left_numeric_alias := g.declared_kinds[g.semantic_type_key(left_type)] == .alias_
-		right_numeric_alias := g.declared_kinds[g.semantic_type_key(right_type)] == .alias_
-		return (fastc_is_numeric_expression_type(left_type) || left_numeric_alias)
-			&& (fastc_is_numeric_expression_type(right_type) || right_numeric_alias)
-			&& (g.selfhost_types_are_compatible(left_type, right_type)
-			|| g.selfhost_types_are_compatible(right_type, left_type))
-	}
-	return fastc_call_types_are_compatible(left_type, right_type)
-		|| fastc_call_types_are_compatible(right_type, left_type)
-		|| g.selfhost_types_are_compatible(left_type, right_type)
-		|| g.selfhost_types_are_compatible(right_type, left_type)
-}
-
 fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToken, start int, end int, operator_index int) !string {
 	operator := tokens[operator_index].tok
 	left_tokens := tokens[start..operator_index]
@@ -13638,9 +13195,6 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 		right_type := g.type_from_expression_tokens(right_tokens) or {
 			return g.unsupported('type test `${operator.str()}` with an undeclared target type')
 		}
-		if g.declared_kinds[g.semantic_type_key(left_type)] != .interface_ {
-			return g.unsupported('type test `${operator.str()}` on non-interface type `${left_type}`')
-		}
 		if g.semantic_type_key(right_type) !in g.declared_types {
 			return g.unsupported('type test `${operator.str()}` with undeclared type `${right_type}`')
 		}
@@ -13648,10 +13202,6 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 	}
 	mut right_type := fastc_normalize_inferred_type(g.infer_expression_type(right_tokens)!)
 	if operator in [.and, .logical_or] {
-		if (left_type != 'bool' && !(g.selfhost && left_type == ''))
-			|| (right_type != 'bool' && !(g.selfhost && right_type == '')) {
-			return g.unsupported('logical `${operator.str()}` operands of types `${left_type}` and `${right_type}` instead of `bool`')
-		}
 		return 'bool'
 	}
 	if operator in [.key_in, .not_in] {
@@ -13662,35 +13212,17 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 		}
 		if array_end >= 2 && right_tokens[0].tok == .lsbr
 			&& right_tokens[array_end - 1].tok == .rsbr {
-			items := fastc_expression_list_items(right_tokens, 1, array_end - 1)!
-			left_is_enum := g.declared_kinds[g.semantic_type_key(left_type)] == .enum_
-			for item in items {
-				if left_is_enum && item.len == 2 && item[0].tok == .dot && item[1].tok == .name {
-					continue
-				}
-				item_type := fastc_normalize_inferred_type(g.infer_expression_type(item)!)
-				if !g.comparison_types_are_compatible(left_type, item_type, false) {
-					return g.unsupported('membership `${operator.str()}` operand of type `${left_type}` with list item type `${item_type}`')
-				}
-			}
 			return 'bool'
 		}
-		mut expected_type := ''
 		if right_type.trim_right('*').starts_with('Map_') {
-			key_type, _ := fastc_map_key_value_types(right_type) or {
+			_, _ := fastc_map_key_value_types(right_type) or {
 				return g.unsupported('membership `${operator.str()}` with unverifiable map type `${right_type}`')
 			}
-			expected_type = key_type
 		} else if right_type.trim_right('*') == 'string' {
-			expected_type = 'string'
 		} else {
-			expected_type = g.array_element_type(right_type) or {
+			_ := g.array_element_type(right_type) or {
 				return g.unsupported('membership `${operator.str()}` in non-collection type `${right_type}`')
 			}
-		}
-		if !g.comparison_types_are_compatible(left_type,
-			fastc_normalize_inferred_type(expected_type), false) {
-			return g.unsupported('membership `${operator.str()}` operand of type `${left_type}` for collection element type `${expected_type}`')
 		}
 		return 'bool'
 	}
@@ -13727,22 +13259,6 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 		|| (right_type == '' && fastc_expression_is_c_qualified_name(right_tokens))) {
 		return 'bool'
 	}
-	relational := operator in [.gt, .lt, .ge, .le]
-	if relational && left_type == right_type && fastc_is_pointer_type(left_type) {
-		mut in_unsafe := g.unsafe_depth > 0
-		for item in tokens[start..end] {
-			if item.unsafe_depth > 0 {
-				in_unsafe = true
-				break
-			}
-		}
-		if in_unsafe {
-			return 'bool'
-		}
-	}
-	if !g.comparison_types_are_compatible(left_type, right_type, relational) {
-		return g.unsupported('comparison `${operator.str()}` operands of incompatible types `${left_type}` and `${right_type}`')
-	}
 	return 'bool'
 }
 
@@ -13768,14 +13284,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		return 'int'
 	}
 	if tokens[start].tok == .not {
-		operand_type :=
-			fastc_normalize_inferred_type(g.infer_expression_type(tokens[start + 1..end])!)
-		if operand_type == '' && g.selfhost {
-			return 'bool'
-		}
-		if operand_type != 'bool' {
-			return g.unsupported('logical `!` operand of type `${operand_type}` instead of `bool`')
-		}
+		_ = g.infer_expression_type(tokens[start + 1..end])!
 		return 'bool'
 	}
 	if operator_index := fastc_top_level_operator_index(tokens, start, end, 0) {
@@ -13992,9 +13501,6 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 	}
 	if tokens[start].tok in [.plus, .minus] {
 		operand_type := g.infer_expression_type(tokens[start + 1..end])!
-		if !fastc_is_numeric_expression_type(operand_type) {
-			return g.unsupported('arithmetic `${tokens[start].tok.str()}` on non-numeric type `${operand_type}`')
-		}
 		if tokens[start].tok == .minus && operand_type == 'integer literal' {
 			return 'negative integer literal'
 		}
@@ -14018,9 +13524,6 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 	}
 	if tokens[start].tok == .bit_not {
 		operand_type := g.infer_expression_type(tokens[start + 1..end])!
-		if !fastc_is_integer_expression_type(operand_type) {
-			return g.unsupported('bitwise negation of non-integer type `${operand_type}`')
-		}
 		return operand_type
 	}
 	if g.selfhost && tokens[end - 1].tok == .not {
@@ -14031,11 +13534,6 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		operand_type := g.infer_expression_type(tokens[start..end - 1])!
 		if g.selfhost && operand_type == '' {
 			return 'int'
-		}
-		unsafe_pointer := fastc_is_pointer_type(operand_type)
-			&& (tokens[start].unsafe_depth > 0 || g.unsafe_depth > 0 || g.selfhost)
-		if !fastc_is_numeric_expression_type(operand_type) && !unsafe_pointer {
-			return g.unsupported('arithmetic `${tokens[end - 1].tok.str()}` on non-numeric type `${operand_type}`')
 		}
 		return operand_type
 	}
@@ -14104,11 +13602,13 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 			if g.selfhost && left_type == '' && fastc_is_integer_expression_type(right_type) {
 				return 'int'
 			}
-			if !fastc_is_integer_expression_type(left_type)
-				|| !fastc_is_integer_expression_type(right_type) {
-				return g.unsupported('shift operands of types `${left_type}` and `${right_type}`')
+			return if left_type != '' {
+				left_type
+			} else if right_type != '' {
+				right_type
+			} else {
+				'int'
 			}
-			return left_type
 		}
 		if tokens[i].tok in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] && i > start {
 			left_tokens := tokens[start..i]
@@ -14179,7 +13679,13 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 			}
 			common_type := fastc_common_arithmetic_type(left_type, right_type)
 			if common_type.len == 0 {
-				return g.unsupported('arithmetic operands of types `${left_type}` and `${right_type}` for `${tokens[i].tok.str()}`')
+				return if left_type != '' {
+					left_type
+				} else if right_type != '' {
+					right_type
+				} else {
+					'int'
+				}
 			}
 			return common_type
 		}
@@ -14320,23 +13826,6 @@ fn fastc_integer_literal_value(tokens []FastcExpressionToken) ?i64 {
 	return value
 }
 
-fn fastc_range_types_are_compatible(left string, right string) bool {
-	if left == right {
-		return true
-	}
-	if fastc_is_integer_literal_expression_type(left)
-		&& fastc_is_integer_literal_expression_type(right) {
-		return true
-	}
-	if fastc_is_integer_literal_expression_type(left) {
-		return fastc_call_types_are_compatible(left, right)
-	}
-	if fastc_is_integer_literal_expression_type(right) {
-		return fastc_call_types_are_compatible(right, left)
-	}
-	return false
-}
-
 fn fastc_common_arithmetic_type(left string, right string) string {
 	if left == right && fastc_is_numeric_expression_type(left) {
 		return left
@@ -14383,7 +13872,7 @@ fn fastc_is_integer_literal_expression_type(typ string) bool {
 	return typ in ['integer literal', 'negative integer literal']
 }
 
-fn fastc_call_types_are_compatible(actual string, expected string) bool {
+fn fastc_types_share_lowering_representation(actual string, expected string) bool {
 	if actual == expected {
 		return true
 	}
@@ -14402,7 +13891,7 @@ fn fastc_call_types_are_compatible(actual string, expected string) bool {
 	return false
 }
 
-fn fastc_selfhost_types_are_compatible(actual string, expected string) bool {
+fn fastc_selfhost_types_share_lowering_representation(actual string, expected string) bool {
 	if (actual == 'byteptr' && expected == 'u8*')
 		|| (expected == 'byteptr' && actual == 'u8*')
 		|| (actual == 'charptr' && expected == 'char*')
@@ -14435,8 +13924,8 @@ fn fastc_selfhost_types_are_compatible(actual string, expected string) bool {
 	return false
 }
 
-fn (g &Parser) selfhost_types_are_compatible(actual string, expected string) bool {
-	if fastc_selfhost_types_are_compatible(actual, expected) {
+fn (g &Parser) selfhost_types_share_lowering_representation(actual string, expected string) bool {
+	if fastc_selfhost_types_share_lowering_representation(actual, expected) {
 		return true
 	}
 	if fastc_is_numeric_expression_type(actual)

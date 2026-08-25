@@ -94,22 +94,26 @@ physical footprint immediately after RSS.
 FastC resolves the entry file and imported modules, then emits GNU C while consuming scanner tokens.
 It never invokes the flat parser, semantic checker, transformer, mark-used pass, or conventional C
 generator. For same-target builds, bundled TinyCC validates the emitted translation unit before any
-C file or executable is published. Unsupported V syntax and same-target TinyCC errors are reported
-directly; FastC never retries through an AST-based backend.
+C file or executable is published. This validates C syntax and linkage, not V type semantics.
+Unsupported V syntax and same-target TinyCC errors are reported directly; FastC never retries
+through an AST-based backend.
 
 FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
-expressions including validated comparison and logical operators, string interpolation for strings
-and non-floating primitive values, `if`/`else`, and condition, C-style, infinite, and integer-range
-`for` loops. GNU `typeof` carries `:=` declarations into C without V type inference. Integer-range
-bounds are evaluated once, from left to right. The parser also rejects mutation of immutable or
-unknown local names instead of relying on C's weaker assignment rules.
+expressions including comparison and logical operators, string interpolation for strings and
+non-floating primitive values, `if`/`else`, and condition, C-style, infinite, and range `for` loops.
+GNU `typeof` carries `:=` declarations into C. FastC infers representation metadata only when it is
+needed to select a C spelling or runtime helper; it does not validate V type compatibility for
+calls, returns, assignments, conditions, casts, operators, matches, ranges, or literal elements.
+TinyCC may therefore accept source that the regular V checker rejects through C implicit
+conversions. Use the regular backend when semantic type validation is required. Range bounds are
+evaluated once, from left to right. The parser still rejects mutation of immutable or unknown local
+names instead of relying on C's weaker assignment rules.
 
-Syntax whose V semantics require type or runtime information is rejected until FastC can lower it
-directly. This includes float printing, C-string and embedded-NUL string literals, runes,
-assertions, `sizeof`, shift, division, modulo, indexing, parallel assignment, mixed-precedence
-expressions, narrow integer signatures, oversized decimal literals, and high-bit hexadecimal or
-binary literals. Rejecting these constructs avoids silently applying incompatible C formatting,
-inference, wrapping, shift, bounds, and zero-divisor behavior.
+Syntax without a direct FastC lowering is rejected. In ordinary non-selfhost builds this includes
+float printing, C-string and embedded-NUL string literals, runes, assertions, `sizeof`, shift,
+division, modulo, indexing, parallel assignment, mixed-precedence expressions, oversized decimal
+literals, and high-bit hexadecimal or binary literals. These restrictions avoid emitting C that
+cannot provide the required runtime behavior.
 `#flag` and `#pkgconfig` are rejected because FastC does not yet transport source build options to
 its fixed TinyCC invocation.
 
