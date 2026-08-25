@@ -290,7 +290,11 @@ const fastc_c_reserved_identifiers = {
 }
 
 fn fastc_c_identifier(name string) string {
-	return if name in fastc_c_reserved_identifiers { 'v_${name}' } else { name }
+	return if name in fastc_c_reserved_identifiers {
+		'__v_fastc_keyword_${name}'
+	} else {
+		name
+	}
 }
 
 const c_selfhost_preamble = r'#include <stdbool.h>
@@ -4644,9 +4648,13 @@ fn (g &Parser) unqualified_function_key(name string) string {
 }
 
 fn fastc_c_function_name_for_key(key string) string {
+	if key.starts_with('C.') {
+		return naming.c_name(key)
+	}
+	sanitized := naming.sanitize(key)
 	c_name := naming.c_name(key)
-	if !key.starts_with('C.') && c_name.starts_with('v_fastc_') {
-		return 'v_${c_name}'
+	if c_name != sanitized || sanitized.starts_with('v_fastc_') {
+		return '__v_fastc_function_${sanitized}'
 	}
 	return c_name
 }

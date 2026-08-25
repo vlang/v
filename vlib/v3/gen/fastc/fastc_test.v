@@ -3815,30 +3815,58 @@ fn test_c_reserved_identifiers_are_escaped_consistently() {
 
 struct Holder {
 	auto int
+	v_auto int
 }
 
-fn calculate(holder Holder, register int) int {
+fn calculate(holder Holder, register int, v_register int) int {
 	restrict := register
-	return holder.auto + restrict
+	v_restrict := v_register
+	return holder.auto + holder.v_auto + restrict + v_restrict
 }
 
 fn auto() int {
 	return 42
 }
 
+fn v_auto() int {
+	return 24
+}
+
 fn main() {
 	result := auto()
+	v_result := v_auto()
 	auto := result
-	println(auto)
+	v_auto := v_result
+	println(auto + v_auto)
 }
 ',
 		'reserved_identifiers.v', prefs) or { panic(err) }
+	assert c_source.contains('int __v_fastc_keyword_auto;'), c_source
 	assert c_source.contains('int v_auto;'), c_source
-	assert c_source.contains('int calculate(Holder holder, int v_register)'), c_source
+	assert c_source.contains('int calculate(Holder holder, int __v_fastc_keyword_register, int v_register)'), c_source
+	assert c_source.contains('__typeof__((__v_fastc_keyword_register)) __v_fastc_keyword_restrict = (__v_fastc_keyword_register);'), c_source
 	assert c_source.contains('__typeof__((v_register)) v_restrict = (v_register);'), c_source
-	assert c_source.contains('return holder.v_auto+v_restrict;'), c_source
+	assert c_source.contains('return holder.__v_fastc_keyword_auto+holder.v_auto+__v_fastc_keyword_restrict+v_restrict;'), c_source
+	assert c_source.contains('int __v_fastc_function_auto(void)'), c_source
 	assert c_source.contains('int v_auto(void)'), c_source
-	assert c_source.contains(' v_auto = (result);'), c_source
+	assert c_source.contains(' __v_fastc_keyword_auto = (result);'), c_source
+	assert c_source.contains(' v_auto = (v_result);'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_reserved_names_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '66\n'
 }
 
 fn test_main_module_libc_function_collisions_are_mangled() {
@@ -3867,12 +3895,12 @@ fn main() {
 ',
 		'libc_function_collisions.v', prefs) or { panic(err) }
 	for name in ['strlen', 'printf', 'open', 'close'] {
-		assert c_source.contains('int v_${name}(void)'), c_source
+		assert c_source.contains('int __v_fastc_function_${name}(void)'), c_source
 	}
-	assert c_source.contains('return v_strlen();'), c_source
-	assert c_source.contains('return v_printf();'), c_source
-	assert c_source.contains('return v_open();'), c_source
-	assert c_source.contains('println(v_close());'), c_source
+	assert c_source.contains('return __v_fastc_function_strlen();'), c_source
+	assert c_source.contains('return __v_fastc_function_printf();'), c_source
+	assert c_source.contains('return __v_fastc_function_open();'), c_source
+	assert c_source.contains('println(__v_fastc_function_close());'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_libc_names_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -3908,8 +3936,8 @@ fn main() {
 ",
 		'fastc_runtime_function_collision.v', prefs) or { panic(err) }
 	assert c_source.contains('static string v_fastc_bool_str(bool value)'), c_source
-	assert c_source.contains('string v_v_fastc_bool_str(bool value)'), c_source
-	assert c_source.contains('println(v_v_fastc_bool_str(((bool)true)))'), c_source
+	assert c_source.contains('string __v_fastc_function_v_fastc_bool_str(bool value)'), c_source
+	assert c_source.contains('println(__v_fastc_function_v_fastc_bool_str(((bool)true)))'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_runtime_names_${os.getpid()}')
 	os.rmdir_all(root) or {}
