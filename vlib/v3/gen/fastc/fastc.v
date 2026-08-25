@@ -6649,7 +6649,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			return g.unsupported('empty parallel assignment')
 		}
 		values << item
-		value_types << fastc_normalize_inferred_type(g.last_expression_type)
+		value_types << g.last_expression_type
 		if g.tok != .comma {
 			break
 		}
@@ -6664,6 +6664,11 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 		if values.len != names.len {
 			return g.unsupported('parallel assignment with ${names.len} targets and ${values.len} values')
 		}
+		assignment_targets := if is_declaration {
+			[]FastcRenderedExpression{}
+		} else {
+			g.validate_parallel_assignment_targets(names, value_types)!
+		}
 		mut temporaries := []string{cap: values.len}
 		for item in values {
 			temporary := g.temporary_name('parallel')
@@ -6675,7 +6680,11 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				if name == '_' {
 					continue
 				}
-				value_type := if value_types[i] == '' { 'int' } else { value_types[i] }
+				value_type := if value_types[i] == '' {
+					'int'
+				} else {
+					fastc_normalize_inferred_type(value_types[i])
+				}
 				g.write_line('${value_type} ${fastc_c_identifier(name)} = ${temporaries[i]};')
 				g.locals[name] = FastcLocal{
 					is_mut: mutability[i]
@@ -6687,7 +6696,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				if name == '_' {
 					continue
 				}
-				g.write_line('${fastc_c_identifier(name)} = ${temporaries[i]};')
+				g.write_line('${assignment_targets[i].source} = ${temporaries[i]};')
 			}
 		}
 		return
@@ -6695,6 +6704,11 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 	mut component_types := g.multi_return_types_for_expression(g.last_expression)
 	if component_types.len == 0 {
 		component_types = g.last_multi_return_types.clone()
+	}
+	assignment_targets := if is_declaration {
+		[]FastcRenderedExpression{}
+	} else {
+		g.validate_parallel_assignment_targets(names, component_types)!
 	}
 	temporary := g.temporary_name('multi_return')
 	g.write_line('MultiReturn ${temporary} = (${value});')
@@ -6712,10 +6726,59 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				typ:    component_type
 			}
 		} else {
-			c_name := fastc_c_identifier(name)
+			c_name := assignment_targets[i].source
 			g.write_line('memcpy(&${c_name}, ${temporary}.values[${i}].data, sizeof(${c_name}));')
 		}
 	}
+}
+
+fn (g &Parser) validate_parallel_assignment_targets(names []string, value_types []string) ![]FastcRenderedExpression {
+	if names.len != value_types.len {
+		return g.unsupported('parallel assignment with ${names.len} targets and ${value_types.len} value types')
+	}
+	mut targets := []FastcRenderedExpression{cap: names.len}
+	for i, name in names {
+		if name == '_' {
+			targets << FastcRenderedExpression{}
+			continue
+		}
+		mut target := FastcRenderedExpression{}
+		if local := g.locals[name] {
+			if !local.is_mut {
+				return g.unsupported('parallel assignment to immutable name `${name}`')
+			}
+			target = FastcRenderedExpression{
+				source: if local.is_reference {
+					'(*${fastc_c_identifier(name)})'
+				} else {
+					fastc_c_identifier(name)
+				}
+				typ:    if local.is_reference { local.typ.trim_right('*') } else { local.typ }
+			}
+		} else {
+			global_key := fastc_global_key(g.module_name, name)
+			global_name := g.globals[global_key] or {
+				return g.unsupported('parallel assignment to unknown name `${name}`')
+			}
+			target = FastcRenderedExpression{
+				source: global_name
+				typ:    g.global_types[global_key]
+			}
+		}
+		mut actual_type := value_types[i]
+		if actual_type == '' && g.selfhost {
+			actual_type = target.typ
+		}
+		if actual_type == '' || target.typ == '' {
+			return g.unsupported('unverifiable parallel assignment type for `${name}`')
+		}
+		if !fastc_call_types_are_compatible(actual_type, target.typ) && !(g.selfhost
+			&& g.selfhost_types_are_compatible(actual_type, target.typ)) {
+			return g.unsupported('parallel assignment of type `${actual_type}` to `${name}` of type `${target.typ}`')
+		}
+		targets << target
+	}
+	return targets
 }
 
 fn (g &Parser) multi_return_types_for_expression(tokens []FastcExpressionToken) []string {

@@ -3460,6 +3460,45 @@ fn main() {
 	assert c_source.contains('count+=3;')
 }
 
+fn test_parallel_assignment_targets_are_validated() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	for source, expected in {
+		'module main\nfn main() { a := 1; b := 2; a, b = b, a }\n':                                                                             'parallel assignment to immutable name `a`'
+		'module main\nfn main() { mut enabled := false; mut count := 1; enabled, count = count, enabled }\n':                                   'parallel assignment of type `int` to `enabled` of type `bool`'
+		'module main\nfn main() { mut value := 1; value, missing = 2, 3 }\n':                                                                   'parallel assignment to unknown name `missing`'
+		'module main\nfn pair() (int, bool) { return 1, true }\nfn main() { mut enabled := false; mut count := 1; enabled, count = pair() }\n': 'parallel assignment of type `int` to `enabled` of type `bool`'
+	} {
+		mut message := ''
+		_ := generate(source, 'invalid_parallel_assignment.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains(expected), message
+	}
+
+	c_source := generate('module main
+
+fn pair() (int, int) {
+	return 3, 4
+}
+
+fn main() {
+	mut first := 1
+	mut second := 2
+	first, second = second, first
+	first, second = pair()
+	println(first)
+	println(second)
+}
+',
+		'valid_parallel_assignment.v', prefs) or { panic(err) }
+	assert c_source.contains('first = __v_fastc_parallel_'), c_source
+	assert c_source.contains('second = __v_fastc_parallel_'), c_source
+	assert c_source.contains('memcpy(&first, __v_fastc_multi_return_'), c_source
+	assert c_source.contains('memcpy(&second, __v_fastc_multi_return_'), c_source
+}
+
 fn test_aggregate_lvalue_mutability_is_validated() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
