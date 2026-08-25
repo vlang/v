@@ -97,6 +97,20 @@ fn main() {
 	cross_source := os.read_file(cross_c) or { panic(err) }
 	assert cross_source.contains('V_FASTC_PRINT_SELECT')
 	assert !cross_source.contains('builtin__builtin_init')
+	unsupported_float_source := os.join_path(root, 'unsupported_float_print.v')
+	write_fastc_test_source(unsupported_float_source, 'module main
+
+fn main() {
+	println(1.5)
+}
+')
+	unsupported_cross_c := os.join_path(root, 'unsupported_float_print.c')
+	unsupported_cross_compile := cmdexec.run(v3_bin, ['-silent', '-b', 'fastc', '-os',
+		cross_target_os, '-o', unsupported_cross_c, unsupported_float_source])
+	assert unsupported_cross_compile.exit_code != 0
+	assert unsupported_cross_compile.output.contains('printing value of type `float literal`'), unsupported_cross_compile.output
+
+	assert !os.exists(unsupported_cross_c)
 
 	run_c := os.join_path(root, 'run_output.c')
 	run_c_result := cmdexec.run(v3_bin,

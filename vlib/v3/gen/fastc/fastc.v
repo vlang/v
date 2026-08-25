@@ -6126,6 +6126,12 @@ fn (mut g Parser) parse_for() !bool {
 						is_reference: true
 						typ:          element_type + '*'
 					}
+				} else if collection_type.ends_with('*')
+					&& collection_type.trim_right('*') != 'string' {
+					g.write_line('${element_type} *${c_value_name} = &(((${element_type} *)${collection_name}${access}${data_field})[${index_name}]);')
+					g.locals[actual_value_name] = FastcLocal{
+						typ: element_type + '*'
+					}
 				} else {
 					g.write_line('${element_type} ${c_value_name} = ((${element_type} *)${collection_name}${access}${data_field})[${index_name}];')
 					g.locals[actual_value_name] = FastcLocal{
@@ -12140,7 +12146,10 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			if call_args.len != 1 {
 				return g.unsupported('function `${name}` call with ${call_args.len} arguments')
 			}
-			_ = g.infer_expression_type(call_args[0])!
+			argument_type := g.infer_expression_type(call_args[0])!
+			if !g.selfhost && !g.ordinary_print_type_is_supported(argument_type) {
+				return g.unsupported('printing value of type `${argument_type}`')
+			}
 		} else {
 			if g.selfhost && i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C'
 				&& tokens[i - 1].tok == .dot {
@@ -12180,6 +12189,15 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 		}
 		i = call_end + 1
 	}
+}
+
+fn (g &Parser) ordinary_print_type_is_supported(typ string) bool {
+	normalized_type := fastc_normalize_inferred_type(typ)
+	underlying_type := g.underlying_alias_type(normalized_type)
+	if underlying_type in ['string', 'bool'] || fastc_is_integer_type(underlying_type) {
+		return true
+	}
+	return g.underlying_enum_type_key(g.semantic_type_key(normalized_type)) != none
 }
 
 fn fastc_argument_is_marked_mut(argument []FastcExpressionToken) bool {

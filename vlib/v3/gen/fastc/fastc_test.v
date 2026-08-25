@@ -319,6 +319,21 @@ fn main() {
 	assert run_result.output == '\ndone\n'
 }
 
+fn test_ordinary_print_rejects_types_without_runtime_support() {
+	prefs := pref.new_preferences()
+	for source in [
+		'module main\nfn main() { println(1.5) }\n',
+		'module main\nfn main() { value := f32(1.5); print(value) }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'unsupported_print_type.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('printing value of type'), message
+	}
+}
+
 fn test_top_level_statements_emit_main_directly() {
 	prefs := pref.new_preferences()
 	c_source := generate("println('Hello, World!')\n", 'hello_world.v', prefs) or { panic(err) }
@@ -3632,6 +3647,29 @@ fn main() {
 	assert c_source.count('builtin__map_values((map *)&__v_fastc_map_collection_') == 1, c_source
 	assert c_source.count('builtin__map_keys((map *)__v_fastc_map_collection_') == 1, c_source
 	assert c_source.count('builtin__map_values((map *)__v_fastc_map_collection_') == 1, c_source
+}
+
+fn test_array_pointer_iteration_preserves_element_references() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn take(value &int) {}
+
+fn main() {
+	values := [1, 2]
+	for value in &values {
+		take(value)
+	}
+	pointer := &values
+	for value in pointer {
+		take(value)
+	}
+}
+',
+		'array_pointer_iteration.v', prefs) or { panic(err) }
+	assert c_source.count('int *value = &(((int *)__v_fastc_collection_') == 2, c_source
+	assert c_source.count('take(value);') == 2, c_source
 }
 
 fn test_selfhost_array_and_string_indexing_uses_bounds_checked_helpers() {
