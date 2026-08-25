@@ -823,6 +823,14 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	mut prototypes := strings.new_builder(1024)
 	mut body := strings.new_builder(4096)
 	mut fixed_array_types := map[string]string{}
+	mut has_entry_module := false
+	for source_file in sources {
+		if source_file.header.module_name in ['', 'main'] {
+			has_entry_module = true
+			break
+		}
+	}
+	mut entry_has_main := false
 	for source_file in sources {
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
@@ -869,8 +877,17 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		}
 		prototypes.write_string(gen.protos.str())
 		body.write_string(generated)
+		if source_file.header.module_name in ['', 'main'] && gen.has_main {
+			entry_has_main = true
+		}
 		fixed_array_types = gen.fixed_array_types.clone()
 		composite_types = gen.composite_types.clone()
+	}
+	synthesized_main := if has_entry_module && !entry_has_main {
+		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0,
+			module_cleanup_calls.len > 0)
+	} else {
+		''
 	}
 	mut late_composite_declarations := strings.new_builder(256)
 	mut composite_names := composite_types.keys()
@@ -933,7 +950,29 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		result.writeln('}')
 		result.writeln('')
 	}
+	result.write_string(synthesized_main)
 	result.write_string(hoisted_body.body)
+	return result.str()
+}
+
+fn fastc_synthesized_main(selfhost bool, has_startup_inits bool, has_cleanup_hooks bool) string {
+	mut result := strings.new_builder(256)
+	parameters := if selfhost { 'int argc, char **argv' } else { 'void' }
+	result.writeln('int main(${parameters}) {')
+	result.writeln('\tsetvbuf(stdout, NULL, _IONBF, 0);')
+	if selfhost {
+		result.writeln('\tg_main_argc = argc;')
+		result.writeln('\tg_main_argv = argv;')
+	}
+	if has_startup_inits {
+		result.writeln('\tv_fastc_init_globals();')
+	}
+	if has_cleanup_hooks {
+		result.writeln('\tatexit(v_fastc_cleanup_modules);')
+	}
+	result.writeln('\treturn 0;')
+	result.writeln('}')
+	result.writeln('')
 	return result.str()
 }
 
@@ -1063,17 +1102,18 @@ fn fastc_vmod_root_for_file(source_file string) string {
 	if dir.len == 0 {
 		dir = os.getwd()
 	}
+	original_dir := dir
 	for {
 		if os.exists(os.join_path(dir, 'v.mod')) {
 			return os.real_path(dir)
 		}
 		parent := os.dir(dir)
 		if parent == dir || parent.len == 0 {
-			return os.real_path(dir)
+			return os.real_path(original_dir)
 		}
 		dir = parent
 	}
-	return os.real_path(dir)
+	return os.real_path(original_dir)
 }
 
 fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) string {
@@ -1085,13 +1125,7 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 		result = result.replace('@VROOT', '@VMODROOT')
 	}
 	if result.contains('@VMODROOT') {
-		vmod_result := result.replace('@VMODROOT', fastc_vmod_root_for_file(source_file))
-		local_result := result.replace('@VMODROOT', os.real_path(os.dir(source_file)))
-		result = if !os.exists(vmod_result) && os.exists(local_result) {
-			local_result
-		} else {
-			vmod_result
-		}
+		result = result.replace('@VMODROOT', fastc_vmod_root_for_file(source_file))
 	}
 	if result.contains('@DIR') {
 		dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
@@ -4894,6 +4928,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		if g.has_startup_inits {
 			g.write_line('v_fastc_init_globals();')
 		}
+		if g.has_cleanup_hooks {
+			g.write_line('atexit(v_fastc_cleanup_modules);')
+		}
 	}
 	previous_in_main := g.in_main
 	previous_return_type := g.return_type
@@ -4939,9 +4976,6 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.write_line('return (${return_type}){0};')
 	}
 	if is_main {
-		if g.has_cleanup_hooks {
-			g.write_line('v_fastc_cleanup_modules();')
-		}
 		g.write_line('return 0;')
 	}
 	g.indent--
@@ -5022,6 +5056,9 @@ fn (mut g Parser) parse_script() ! {
 	if g.has_startup_inits {
 		g.write_line('v_fastc_init_globals();')
 	}
+	if g.has_cleanup_hooks {
+		g.write_line('atexit(v_fastc_cleanup_modules);')
+	}
 	g.in_main = true
 	g.skip_semicolons()
 	for g.tok != .eof {
@@ -5030,9 +5067,6 @@ fn (mut g Parser) parse_script() ! {
 		}
 		_ = g.parse_statement()!
 		g.skip_semicolons()
-	}
-	if g.has_cleanup_hooks {
-		g.write_line('v_fastc_cleanup_modules();')
 	}
 	g.write_line('return 0;')
 	g.indent--
@@ -6066,9 +6100,6 @@ fn (mut g Parser) parse_return() !bool {
 		}
 		g.consume_statement_end()
 		g.write_all_deferred_scopes()
-		if g.in_main && g.has_cleanup_hooks {
-			g.write_line('v_fastc_cleanup_modules();')
-		}
 		g.write_line(if g.in_main {
 			'return 0;'
 		} else if g.return_type == 'Option' {
@@ -6614,7 +6645,7 @@ fn (g &Parser) last_expression_is_statement() bool {
 	mut name_index := 0
 	mut open_index := 1
 	if tokens.len >= 4 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name
-		&& (tokens[0].lit in g.imports || (g.selfhost && tokens[0].lit == 'C')) {
+		&& (tokens[0].lit in g.imports || (tokens[0].lit == 'C' && g.has_declared_c_function())) {
 		name_index = 2
 		open_index = 3
 	}
@@ -11652,8 +11683,8 @@ fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
 	function_key := g.unqualified_function_key(name)
 	constant_key := fastc_constant_key(g.module_name, name)
 	global_key := fastc_global_key(g.module_name, name)
-	if previous == .dot || (g.selfhost && name == 'C') || name in g.locals
-		|| name in g.imports || function_key in g.functions
+	if previous == .dot || (name == 'C' && g.has_declared_c_function())
+		|| name in g.locals || name in g.imports || function_key in g.functions
 		|| constant_key in g.constants || global_key in g.globals
 		|| fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) != none
 		|| name in ['print', 'println', 'bool', 'byte', 'char', 'f32', 'f64', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'uint', 'usize', 'voidptr', 'byteptr', 'charptr'] {
@@ -11666,6 +11697,15 @@ fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
 		return
 	}
 	return g.unsupported('unresolved name `${name}` (locals: ${g.locals.keys().join(', ')})')
+}
+
+fn (g &Parser) has_declared_c_function() bool {
+	for function_key in g.functions.keys() {
+		if function_key.starts_with('C.') {
+			return true
+		}
+	}
+	return false
 }
 
 fn (g &Parser) function_key_for_call(tokens []FastcExpressionToken, name_index int) string {

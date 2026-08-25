@@ -52,6 +52,34 @@ fn twice(value int) int {
 	assert run_result.output.trim_space() == 'total=6'
 }
 
+fn test_declaration_only_entry_synthesizes_main() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+pub fn answer() int {
+	return 42
+}
+',
+		'declaration_only_entry.v', prefs) or { panic(err) }
+	assert c_source.contains('int main(void) {'), c_source
+	assert c_source.contains('\tsetvbuf(stdout, NULL, _IONBF, 0);\n\treturn 0;'), c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_declaration_only_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+}
+
 fn test_ordinary_string_interpolation_has_runtime_support() {
 	prefs := pref.new_preferences()
 	c_source := generate(r"module main
@@ -133,6 +161,34 @@ fn main() {
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output == '42\n'
+}
+
+fn test_c_directive_vmodroot_falls_back_to_source_directory() {
+	prefs := pref.new_preferences()
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_manifestless_directive_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'header.h'), '') or { panic(err) }
+	source_path := os.join_path(root, 'main.v')
+	source := 'module main
+
+#include "@VMODROOT/header.h"
+
+fn main() {}
+'
+	os.write_file(source_path, source) or { panic(err) }
+	assert fastc_vmod_root_for_file(source_path) == os.real_path(root)
+	c_source := generate(source, source_path, prefs) or { panic(err) }
+	assert c_source.contains('#include "${os.real_path(root)}/header.h"'), c_source
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
 }
 
 fn test_ordinary_primitive_interpolation_has_runtime_support() {
@@ -1650,10 +1706,13 @@ pub fn ping() {}
 	assert main_cleanup >= 0, c_source
 	assert dependency_cleanup > main_cleanup, c_source
 	main_source := c_source.all_after('int main(void) {')
-	early_cleanup := main_source.index('v_fastc_cleanup_modules();') or { -1 }
+	startup_call := main_source.index('v_fastc_init_globals();') or { -1 }
+	cleanup_registration := main_source.index('atexit(v_fastc_cleanup_modules);') or { -1 }
 	early_return := main_source.index('return 0;') or { -1 }
-	assert early_cleanup >= 0, c_source
-	assert early_return > early_cleanup, c_source
+	assert startup_call >= 0, c_source
+	assert cleanup_registration > startup_call, c_source
+	assert early_return > cleanup_registration, c_source
+	assert !main_source.contains('v_fastc_cleanup_modules();'), c_source
 
 	c_file := os.join_path(root, 'program.c')
 	bin_file := os.join_path(root, 'program')
@@ -1664,6 +1723,46 @@ pub fn ping() {}
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
 	assert run_result.output.trim_space() == 'dep init\nmain init\nmain\nmain defer\nmain cleanup\ndep cleanup'
+}
+
+fn test_module_cleanup_runs_when_user_code_calls_exit() {
+	prefs := pref.new_preferences()
+	c_source := generate("module main
+
+fn C.exit(code int)
+
+fn cleanup() {
+	println('cleanup')
+}
+
+fn main() {
+	println('main')
+	C.exit(0)
+	println('unreachable')
+}
+",
+		'cleanup_after_exit.c.v', prefs) or { panic(err) }
+	main_source := c_source.all_after('int main(void) {')
+	registration := main_source.index('atexit(v_fastc_cleanup_modules);') or { -1 }
+	exit_call := main_source.index('exit(0);') or { -1 }
+	assert registration >= 0, c_source
+	assert exit_call > registration, c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_cleanup_exit_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == 'main\ncleanup\n'
 }
 
 fn test_module_lifecycle_preserves_source_import_order() {
