@@ -199,6 +199,37 @@ fn test_appkit_monitor_event_precedes_only_dependent_window_observations() {
 	assert !appkit_service_event_depends_on_monitor_snapshot(monitor)
 }
 
+fn test_appkit_duplicate_metrics_observations_are_coalesced_per_poll() {
+	window := WindowId{
+		app_instance: 7
+		slot:         2
+		generation:   1
+	}
+	metrics := queued_service_event(ServiceEvent{
+		kind:    .metrics
+		window:  window
+		metrics: RenderMetricsSnapshot{
+			logical_width:        320
+			logical_height:       200
+			framebuffer_width:    640
+			framebuffer_height:   400
+			dpi_scale:            2
+			metrics_available:    true
+			conversion_available: true
+		}
+	})
+	assert !appkit_service_metrics_event_already_queued([], metrics)
+	assert appkit_service_metrics_event_already_queued([metrics], metrics)
+	different := queued_service_event(ServiceEvent{
+		...metrics.service
+		metrics: RenderMetricsSnapshot{
+			...metrics.service.metrics
+			logical_width: 321
+		}
+	})
+	assert !appkit_service_metrics_event_already_queued([metrics], different)
+}
+
 fn test_appkit_focus_request_and_delegate_publish_once() {
 	api := appkit_nonreadback_source('service_api.v')
 	publish_body := appkit_nonreadback_body(api, 'fn (mut app App) publish_native_state')

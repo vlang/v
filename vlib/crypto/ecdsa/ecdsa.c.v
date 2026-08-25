@@ -12,16 +12,8 @@ module ecdsa
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 
-// -I points at the PARENT of the openssl/ header dir (matching the darwin
-// flags above), not at .../openssl itself -- #include <openssl/ecdsa.h>
-// below already spells out the openssl/ prefix, so an -I ending in
-// .../openssl would make the compiler look for .../openssl/openssl/ecdsa.h.
-// This was silently masked on every OTHER compiler by /usr/include being
-// implicitly on the default search path regardless of this flag being
-// wrong -- musl-gcc's -nostdinc removes that implicit fallback, and was the
-// first to surface it (confirmed via an actual CI failure: "Header file
-// <openssl/ecdsa.h> ... was not found" on docker-ubuntu-musl, even with
-// libssl-dev/openssl/ecdsa.h genuinely present on disk).
+// -I points at the parent of the openssl/ header directory. Do not add
+// /usr/include explicitly: musl-gcc would then mix glibc headers into a musl build.
 #flag linux -I/usr/local/include
 #flag linux -L/usr/local/lib64/
 
@@ -35,8 +27,6 @@ module ecdsa
 // Installed on the CI:
 #flag windows -IC:/Program Files/OpenSSL/include
 #flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
-
-#flag -I/usr/include
 
 #flag -lcrypto
 

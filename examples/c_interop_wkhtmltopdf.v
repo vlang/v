@@ -42,7 +42,7 @@ fn C.wkhtmltopdf_create_converter(global_settings &C.wkhtmltopdf_global_settings
 fn C.wkhtmltopdf_destroy_converter(converter &C.wkhtmltopdf_converter)
 
 fn C.wkhtmltopdf_add_object(converter &C.wkhtmltopdf_converter, object_settings &C.wkhtmltopdf_object_settings,
-	data &char)
+	const_data &char)
 
 fn C.wkhtmltopdf_convert(converter &C.wkhtmltopdf_converter) bool
 

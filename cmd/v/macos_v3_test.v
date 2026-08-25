@@ -1114,8 +1114,8 @@ fn main() {
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
 	mut process := os.new_process(@VEXE)
-	process.set_args(['-ownership', '-no-parallel', '-d=ownership', '-gc', 'none', '-o', output,
-		source])
+	process.set_args(['-ownership', '-no-parallel', '-d=ownership', '-cc', @CCOMPILER, '-gc', 'none',
+		'-o', output, source])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()
@@ -1941,9 +1941,9 @@ fn main() {
 		assert exit_code == 0, compiler_output
 		// The notice must appear even though no single source file could be staged.
 		assert compiler_output.contains('V3 could not build this program'), compiler_output
-		// A metadata-only report is still submitted (not dropped): the attempt to the
-		// unroutable endpoint is what fails here, proving a report was constructed.
-		assert compiler_output.contains('V3 compiler bug report was not sent'), compiler_output
+		// Without a complete parser-owned input manifest, the fallback deliberately
+		// suppresses report submission instead of uploading unverified inputs.
+		assert !compiler_output.contains('V3 compiler bug report'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
 		assert run.exit_code == 0, run.output
@@ -1993,8 +1993,8 @@ fn main() {
 		// Exercise a real fallback; clear the job-level no-fallback guard CI may set.
 		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['V_C_ERROR_BUG_REPORT_DISABLED'] = ''
-		// Unroutable endpoint: the send fails fast, exercising the report-diagnostic
-		// output (the notice and "was not sent") without contacting a real server.
+		// Keep an unroutable endpoint configured in case this fixture gains a complete
+		// parser-owned input manifest in the future.
 		environment['V_C_ERROR_BUG_REPORT_URL'] = 'http://127.0.0.1:1/bug-report'
 		environment['VFLAGS'] = ''
 		environment['VOSARGS'] = ''
@@ -2024,7 +2024,6 @@ fn main() {
 		assert exit_code == 0, stdout + stderr
 		// The fallback happened and its diagnostics went to stderr.
 		assert stderr.contains('V3 could not build this program'), stderr
-		assert stderr.contains('bug report was not sent'), stderr
 		// stdout is the generated C only — valid C, with no report text of any kind.
 		assert stdout.contains('typedef') || stdout.contains('#define'), 'stdout is not generated C'
 		for leaked in ['could not build this program', 'compiler bug report',

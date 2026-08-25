@@ -53,6 +53,33 @@ struct MacosV3InputSnapshot {
 	v_source string
 }
 
+struct MacosV3RetryState {
+	caller_environment map[string]string
+	fallback_file      string
+	c_error_dir        string
+	retry_args         []string
+	is_verbose         bool
+	input_snapshot     MacosV3InputSnapshot
+}
+
+@[unsafe]
+fn macos_v3_retry_state(state &MacosV3RetryState) &MacosV3RetryState {
+	mut static retry_state := unsafe { &MacosV3RetryState(nil) }
+	if state != unsafe { nil } {
+		retry_state = state
+	}
+	return retry_state
+}
+
+fn retry_macos_v3_at_exit() {
+	state := unsafe { macos_v3_retry_state(nil) }
+	if state == unsafe { nil } {
+		return
+	}
+	retry_macos_v3_with_old_compiler(state.caller_environment, state.fallback_file,
+		state.c_error_dir, state.retry_args, state.is_verbose, state.input_snapshot)
+}
+
 fn macos_v3_compiler_error_message(stage string) string {
 	stage_suffix := if stage == '' { '' } else { ' during ${stage}' }
 	return '${macos_v3_compiler_error_message_base}${stage_suffix} (the stable V compiler built it successfully)'
@@ -231,10 +258,16 @@ fn launch_macos_v3_compiler(prefs &pref.Preferences, raw_args []string) ?MacosV3
 	// submit metadata only instead of reading/uploading bytes V3 never parsed.
 	input_snapshot := macos_v3_compiler_error_input_snapshot(prefs.path)
 	retry_args := os.args[1..].clone()
-	at_exit(fn [caller_environment, fallback_file, c_error_dir, retry_args, is_verbose, input_snapshot] () {
-		retry_macos_v3_with_old_compiler(caller_environment, fallback_file, c_error_dir,
-			retry_args, is_verbose, input_snapshot)
-	}) or {
+	retry_state := &MacosV3RetryState{
+		caller_environment: caller_environment
+		fallback_file:      fallback_file
+		c_error_dir:        c_error_dir
+		retry_args:         retry_args
+		is_verbose:         is_verbose
+		input_snapshot:     input_snapshot
+	}
+	unsafe { macos_v3_retry_state(retry_state) }
+	at_exit(retry_macos_v3_at_exit) or {
 		eprintln('cannot register the V3 compatibility fallback: ${err}')
 		exit(1)
 	}

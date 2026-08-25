@@ -2221,6 +2221,9 @@ fn (mut backend AppKitBackend) poll_queued_events() ![]QueuedEvent {
 				monitor_emitted = true
 			}
 		}
+		if appkit_service_metrics_event_already_queued(events, native_event.event) {
+			continue
+		}
 		events << native_event.event
 	}
 	if !monitor_emitted && pending_monitor_events.len > 0 {
@@ -2277,6 +2280,21 @@ $if darwin {
 fn appkit_service_event_depends_on_monitor_snapshot(event QueuedEvent) bool {
 	return event.kind == .service && event.service.kind in [.state, .metrics]
 		&& service_window_state_observes_monitor_membership(event.service.state)
+}
+
+fn appkit_service_metrics_event_already_queued(events []QueuedEvent, candidate QueuedEvent) bool {
+	if candidate.kind != .service || candidate.service.kind != .metrics {
+		return false
+	}
+	for event in events {
+		if event.kind == .service && event.service.kind == .metrics
+			&& event.service.window == candidate.service.window
+			&& event.service.state == candidate.service.state
+			&& event.service.metrics == candidate.service.metrics {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut backend AppKitBackend) monitor_change_event() ![]QueuedEvent {

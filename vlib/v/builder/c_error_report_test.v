@@ -582,6 +582,13 @@ fn test_export_external_v3_report_bounds_combined_exec_payload() {
 		assert false, 'no aggregate-bounded report round-tripped'
 		return
 	}
+	// Windows has a smaller effective exec environment budget. The exporter is
+	// allowed to preserve only the transport-limited notice when even the bounded
+	// report manifest cannot be forwarded safely.
+	if got.kind == external_v3_transport_limited_kind {
+		assert !got.input_digests_complete
+		return
+	}
 	assert got.input_digests_complete
 	assert got.input_digests == digests
 	assert got.c_output.len < huge_output.len
