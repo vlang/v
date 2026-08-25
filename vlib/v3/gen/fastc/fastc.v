@@ -166,19 +166,20 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 		negative = false;
 		zero_pad = false;
 	} else if (specifier == 99) {
-		unsigned codepoint = magnitude <= 1114111 ? (unsigned)magnitude : 65533;
-		if (codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
-		rune_display_width = codepoint == 0x200D || v_fastc_codepoint_is_combining(codepoint) ? 0 : (v_fastc_codepoint_is_wide(codepoint) ? 2 : 1);
-		if (codepoint <= 127) {
+		bool valid_codepoint = magnitude <= 1114111;
+		unsigned codepoint = (unsigned)magnitude;
+		if (valid_codepoint && codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
+		rune_display_width = !valid_codepoint || codepoint == 0x200D || v_fastc_codepoint_is_combining(codepoint) ? 0 : (v_fastc_codepoint_is_wide(codepoint) ? 2 : 1);
+		if (valid_codepoint && codepoint <= 127) {
 			encoded_rune[rune_byte_count++] = (unsigned char)codepoint;
-		} else if (codepoint <= 2047) {
+		} else if (valid_codepoint && codepoint <= 2047) {
 			encoded_rune[rune_byte_count++] = (unsigned char)(192 | (codepoint >> 6));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
-		} else if (codepoint <= 65535) {
+		} else if (valid_codepoint && codepoint <= 65535) {
 			encoded_rune[rune_byte_count++] = (unsigned char)(224 | (codepoint >> 12));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 6) & 63));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
-		} else {
+		} else if (valid_codepoint) {
 			encoded_rune[rune_byte_count++] = (unsigned char)(240 | (codepoint >> 18));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 12) & 63));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 6) & 63));
@@ -436,19 +437,20 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 		negative = false;
 		zero_pad = false;
 	} else if (specifier == 99) {
-		unsigned codepoint = magnitude <= 1114111 ? (unsigned)magnitude : 65533;
-		if (codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
-		rune_display_width = codepoint == 0x200D || v_fastc_codepoint_is_combining(codepoint) ? 0 : (v_fastc_codepoint_is_wide(codepoint) ? 2 : 1);
-		if (codepoint <= 127) {
+		bool valid_codepoint = magnitude <= 1114111;
+		unsigned codepoint = (unsigned)magnitude;
+		if (valid_codepoint && codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
+		rune_display_width = !valid_codepoint || codepoint == 0x200D || v_fastc_codepoint_is_combining(codepoint) ? 0 : (v_fastc_codepoint_is_wide(codepoint) ? 2 : 1);
+		if (valid_codepoint && codepoint <= 127) {
 			encoded_rune[rune_byte_count++] = (unsigned char)codepoint;
-		} else if (codepoint <= 2047) {
+		} else if (valid_codepoint && codepoint <= 2047) {
 			encoded_rune[rune_byte_count++] = (unsigned char)(192 | (codepoint >> 6));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
-		} else if (codepoint <= 65535) {
+		} else if (valid_codepoint && codepoint <= 65535) {
 			encoded_rune[rune_byte_count++] = (unsigned char)(224 | (codepoint >> 12));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 6) & 63));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | (codepoint & 63));
-		} else {
+		} else if (valid_codepoint) {
 			encoded_rune[rune_byte_count++] = (unsigned char)(240 | (codepoint >> 18));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 12) & 63));
 			encoded_rune[rune_byte_count++] = (unsigned char)(128 | ((codepoint >> 6) & 63));
