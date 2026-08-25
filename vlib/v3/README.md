@@ -116,7 +116,8 @@ its fixed TinyCC invocation.
 FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
 permits an explicit cross target and publishes its generated C without host TinyCC validation.
 Production, test, shared/live, ownership/autofree, object-file, profiling/coverage, strict C,
-custom compiler, custom-builtin, `no_main`, translated, and REPL modes are currently rejected.
+custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL modes are currently
+rejected.
 
 `-selfhost -b fastc -o v4 vlib/v3/v3.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v3.fastcdriver` entry point and can build further FastC generations without

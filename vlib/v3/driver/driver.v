@@ -7426,6 +7426,9 @@ pub fn run(args []string) {
 		if only_check_syntax || check_only {
 			unsupported_modes << 'syntax/check-only mode'
 		}
+		if warn_impure_v {
+			unsupported_modes << '`-Wimpure-v`'
+		}
 		if print_fn_names.len > 0 || print_v_files || print_watched_files || dump_c_flags.len > 0
 			|| generate_c_project.len > 0 {
 			unsupported_modes << 'compiler inspection output'

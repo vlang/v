@@ -475,6 +475,15 @@ fn main() {
 	assert false
 }
 ')
+	impure_source := os.join_path(root, 'impure.v')
+	write_fastc_test_source(impure_source, 'module main
+
+fn C.exit(int)
+
+fn main() {
+	C.exit(0)
+}
+')
 	for invocation in [
 		UnsupportedFastCInvocation{
 			args:     ['-b', 'fastc', '-o', os.join_path(root, 'multiple_sources'), valid_source,
@@ -522,6 +531,11 @@ fn main() {
 			args:     ['-silent', '-autofree', '-b', 'fastc', '-o', os.join_path(root, 'autofree'),
 				valid_source]
 			expected: 'fastc parser does not support ownership/autofree'
+		},
+		UnsupportedFastCInvocation{
+			args:     ['-silent', '-Wimpure-v', '-b', 'fastc', '-o', os.join_path(root, 'impure'),
+				impure_source]
+			expected: 'fastc parser does not support `-Wimpure-v`'
 		},
 		UnsupportedFastCInvocation{
 			args:     ['-silent', '-skip-running', '-b', 'fastc', '-o',
