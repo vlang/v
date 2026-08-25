@@ -163,6 +163,47 @@ fn main() {
 	assert run_result.output == '42\n'
 }
 
+fn test_c_directive_conditional_scopes_include_generated_code() {
+	prefs := pref.new_preferences()
+	c_source := generate('module main
+
+#if 0
+fn C.fastc_missing_optional() int
+
+fn optional() int {
+	return C.fastc_missing_optional()
+}
+#endif
+
+fn main() {
+	println(42)
+}
+',
+		'conditional_scope.c.v', prefs) or { panic(err) }
+	if_index := c_source.index('#if 0') or { -1 }
+	definition_index := c_source.index('int optional(void) {') or { -1 }
+	endif_index := c_source.index_after('#endif', definition_index) or { -1 }
+	assert if_index >= 0
+	assert definition_index > if_index
+	assert endif_index > definition_index
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_conditional_scope_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == '42\n'
+}
+
 fn test_c_directive_vmodroot_falls_back_to_source_directory() {
 	prefs := pref.new_preferences()
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_manifestless_directive_${os.getpid()}')

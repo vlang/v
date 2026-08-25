@@ -1117,8 +1117,20 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 	mut directives := strings.new_builder(256)
 	mut body := strings.new_builder(source.len)
+	mut conditional_depth := 0
 	for line in source.split('\n') {
-		if line.starts_with('#') {
+		directive_name := fastc_c_directive_name(line)
+		if conditional_depth > 0 {
+			directives.writeln(line)
+			if directive_name in ['if', 'ifdef', 'ifndef'] {
+				conditional_depth++
+			} else if directive_name == 'endif' {
+				conditional_depth--
+			}
+		} else if directive_name in ['if', 'ifdef', 'ifndef'] {
+			directives.writeln(line)
+			conditional_depth = 1
+		} else if directive_name != '' {
 			directives.writeln(line)
 		} else {
 			body.writeln(line)
@@ -1131,6 +1143,13 @@ fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 		directives: directives.str()
 		body:       body.str()
 	}
+}
+
+fn fastc_c_directive_name(line string) string {
+	if !line.starts_with('#') {
+		return ''
+	}
+	return line[1..].trim_space().fields()[0] or { '' }
 }
 
 fn fastc_vmod_root_for_file(source_file string) string {
