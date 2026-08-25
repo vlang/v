@@ -58,6 +58,9 @@ pub const C.EVP_PKEY_PUBLIC_KEY int
 @[typedef]
 struct C.EVP_PKEY {}
 
+@[typedef]
+struct C.ENGINE {}
+
 fn C.EVP_PKEY_new() &C.EVP_PKEY
 fn C.EVP_PKEY_free(key &C.EVP_PKEY)
 fn C.EVP_PKEY_base_id(key &C.EVP_PKEY) i32
@@ -91,10 +94,10 @@ fn C.EVP_DigestUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
 fn C.EVP_DigestFinal(ctx &C.EVP_MD_CTX, md &u8, s &u32) i32
 
 // Recommended hashed signing/verifying routines
-fn C.EVP_DigestSignInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e voidptr, pkey &C.EVP_PKEY) i32
+fn C.EVP_DigestSignInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e &C.ENGINE, pkey &C.EVP_PKEY) i32
 fn C.EVP_DigestSignUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
 fn C.EVP_DigestSignFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize) i32
-fn C.EVP_DigestVerifyInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e voidptr, pkey &C.EVP_PKEY) i32
+fn C.EVP_DigestVerifyInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e &C.ENGINE, pkey &C.EVP_PKEY) i32
 fn C.EVP_DigestVerifyUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
 fn C.EVP_DigestVerifyFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen i32) i32
 
@@ -102,8 +105,8 @@ fn C.EVP_DigestVerifyFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen i32) i32
 @[typedef]
 struct C.EVP_PKEY_CTX {}
 
-fn C.EVP_PKEY_CTX_new(pkey &C.EVP_PKEY, e voidptr) &C.EVP_PKEY_CTX
-fn C.EVP_PKEY_CTX_new_id(id i32, e voidptr) &C.EVP_PKEY_CTX
+fn C.EVP_PKEY_CTX_new(pkey &C.EVP_PKEY, e &C.ENGINE) &C.EVP_PKEY_CTX
+fn C.EVP_PKEY_CTX_new_id(id i32, e &C.ENGINE) &C.EVP_PKEY_CTX
 fn C.EVP_PKEY_keygen_init(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_keygen(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY) i32
 fn C.EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx &C.EVP_PKEY_CTX, nid i32) i32
