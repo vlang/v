@@ -104,7 +104,7 @@ jobs:
           echo '967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99  /tmp/openssl-3.5.4.tar.gz' | sha256sum --check --strict
           tar -C /tmp -xf /tmp/openssl-3.5.4.tar.gz
           cd /tmp/openssl-3.5.4
-          CC=musl-gcc ./Configure linux-x86_64 no-shared no-tests --prefix=/usr/local --libdir=lib64 --openssldir=/usr/local/ssl
+          CC=musl-gcc ./Configure linux-x86_64 no-shared no-tests no-secure-memory no-afalgeng --prefix=/usr/local --libdir=lib64 --openssldir=/usr/local/ssl
           make -j"$(nproc)"
           make install_sw
       - name: All code is formatted
