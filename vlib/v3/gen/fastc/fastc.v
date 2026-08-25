@@ -7965,6 +7965,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 		g.next()
 		g.expect(.lcbr)!
 		value := g.read_expression([token.Token.rcbr, token.Token.colon])!
+		value_tokens := g.last_expression.clone()
 		value_type := fastc_normalize_inferred_type(g.last_expression_type)
 		mut format_specifier := ''
 		if g.tok == .colon {
@@ -7981,6 +7982,14 @@ fn (mut g Parser) read_interpolated_string() !string {
 			}
 		}
 		g.expect(.rcbr)!
+		if !g.selfhost && format_specifier == 'c' {
+			if codepoint := fastc_integer_literal_value(value_tokens) {
+				if codepoint == 0 {
+					// Ordinary FastC strings use NUL-terminated C storage and cannot retain this byte.
+					return g.unsupported('NUL code points in `:c` interpolation')
+				}
+			}
+		}
 		if value_type == 'string' {
 			width := fastc_string_interpolation_width(format_specifier) or {
 				return g.unsupported('interpolation format `${format_specifier}` for `string`')

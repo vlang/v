@@ -233,6 +233,22 @@ fn main() {
 	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\n'
 }
 
+fn test_ordinary_nul_codepoint_interpolation_is_rejected() {
+	prefs := pref.new_preferences()
+	mut message := ''
+	_ := generate(r"module main
+
+fn main() {
+	print('${0:c}x')
+}
+",
+		'ordinary_nul_codepoint_interpolation.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('NUL code points in `:c` interpolation'), message
+}
+
 fn test_zero_value_strings_print_as_empty_strings() {
 	mut prefs := pref.new_preferences()
 	prefs.enable_globals = true
