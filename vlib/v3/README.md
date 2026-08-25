@@ -3,11 +3,11 @@
 Clean rewrite of the V compiler. Reuses v2's scanner, uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
-markused pass for dead-code elimination, recursive import resolution, and three
-backends: a direct flat-AST-to-C backend, a native ARM64 backend via SSA IR with
-a built-in linker, and a direct flat-AST-to-WebAssembly backend. With `-prod`,
-the ARM64 backend runs SSA optimization, MIR lowering, and instruction
-selection.
+markused pass for dead-code elimination, recursive import resolution, and
+backends: a direct flat-AST-to-C backend, a scanner-to-C fast path, a native
+ARM64 backend via SSA IR with a built-in linker, and a direct
+flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
+optimization, MIR lowering, and instruction selection.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
@@ -91,6 +91,46 @@ Stage rows recorded at pipeline boundaries report sampled peak RSS and the proce
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.
 
+## Fast C backend
+
+`-b fastc` selects the embedded V3 driver and its AST-free parser for the shortest edit-run cycle.
+FastC resolves the entry file and imported modules, then emits GNU C while consuming scanner tokens.
+It never invokes the flat parser, semantic checker, transformer, mark-used pass, or conventional C
+generator. For same-target builds, bundled TinyCC validates the emitted translation unit before any
+C file or executable is published. This validates C syntax and linkage, not V type semantics.
+Unsupported V syntax and same-target TinyCC errors are reported directly; FastC never retries
+through an AST-based backend.
+
+FastC currently emits primitive functions and parameters, inferred local declarations, ordinary
+expressions including comparison and logical operators, string interpolation for strings and
+non-floating primitive values, `if`/`else`, and condition, C-style, infinite, and range `for` loops.
+GNU `typeof` carries `:=` declarations into C. FastC infers representation metadata only when it is
+needed to select a C spelling or runtime helper; it does not validate V type compatibility for
+calls, returns, assignments, conditions, casts, operators, matches, ranges, or literal elements.
+TinyCC may therefore accept source that the regular V checker rejects through C implicit
+conversions. Use the regular backend when semantic type validation is required. Range bounds are
+evaluated once, from left to right. The parser still rejects mutation of immutable or unknown local
+names instead of relying on C's weaker assignment rules.
+
+Syntax without a direct FastC lowering is rejected. In ordinary non-selfhost builds this includes
+float printing, C-string and embedded-NUL string literals, runes, assertions, `sizeof`, shift,
+division, modulo, indexing, parallel assignment, mixed-precedence expressions, oversized decimal
+literals, and high-bit hexadecimal or binary literals. These restrictions avoid emitting C that
+cannot provide the required runtime behavior.
+`#flag` and `#pkgconfig` are rejected because FastC does not yet transport source build options to
+its fixed TinyCC invocation.
+
+FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
+permits an explicit cross target and publishes its generated C without host TinyCC validation.
+Production, test, shared/live, ownership/autofree, object-file, profiling/coverage, strict C,
+custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL modes are currently
+rejected.
+
+`-selfhost -b fastc -o v4 vlib/v3/v3.v` builds V3 using only the scanner-to-C path. The generated
+compiler uses the small `v3.fastcdriver` entry point and can build further FastC generations without
+the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
+turn any attempted compatibility fallback into a hard failure.
+
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
 detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets
 and 2 MiB on 32-bit targets); `-thread-stack-size <bytes>` overrides it. Thread allocation,
@@ -172,6 +212,8 @@ the plan and run the complete diagnostic and generation pipeline normally.
 ## Architecture
 
 ```
+source -> scanner -> fastc parser/C emitter -> TinyCC
+
 source + vlib/builtin -> scanner -> flat parser -> flat AST -> imports
   -> check -> transform -> annotate types -> markused -> gen C -> cc
                                           \-> SSA build -> ARM64 gen -> link

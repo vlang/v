@@ -43,10 +43,12 @@ fn is_macos_v3_compiler_bootstrap(normalized_path string) bool {
 // macos_v3_force_requested reports whether `-new-compiler` should hand this
 // invocation to the embedded V3 compiler. It gates on `-old-compiler`
 // precedence, options/modes V3 cannot honor yet, and whether the command is an
-// actual compilation command (never `test`, external tools, or the `cmd/v` /
-// `vlib/v3/v3.v` bootstrap). Both the Darwin dispatcher (where it overrides the
-// default heuristic) and the non-macOS dispatcher (where it is the sole gate)
-// rely on it, so it must stay platform neutral.
+// actual compilation command (never `test` or external tools). Compiler bootstrap
+// targets normally stay on V1, but explicit `-b fastc` still routes to V3 so its
+// AST-free parser can report unsupported source instead of silently selecting V1.
+// Both the Darwin dispatcher (where it overrides the default heuristic) and the
+// non-macOS dispatcher (where it is the sole gate) rely on it, so it must stay
+// platform neutral.
 @[markused]
 fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 	if !macos_v3_explicit_compilation_requested(command, prefs) {
@@ -55,10 +57,11 @@ fn macos_v3_force_requested(command string, prefs &pref.Preferences) bool {
 	if v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc) {
 		return false
 	}
-	if prefs.autofree {
+	if prefs.autofree && !macos_v3_fastc_requested(prefs) {
 		// The ordinary embedded V3 has no `ownership` support, so autofree builds
 		// (like autofree `run`) stay on V1; on macOS a direct autofree build is
 		// delegated to the ownership compiler before reaching this dispatcher.
+		// Explicit FastC stays on V3 and reports this mode as unsupported.
 		return false
 	}
 	return true
@@ -73,8 +76,9 @@ fn macos_v3_explicit_compilation_requested(command string, prefs &pref.Preferenc
 		return false
 	}
 	normalized_path := prefs.path.replace('\\', '/').trim_right('/')
-	if is_macos_v3_vroot_path(normalized_path, 'cmd/v', true)
-		|| is_macos_v3_vroot_path(normalized_path, 'vlib/v3/v3.v', false) {
+	compiler_bootstrap := is_macos_v3_vroot_path(normalized_path, 'cmd/v', true)
+		|| is_macos_v3_vroot_path(normalized_path, 'vlib/v3/v3.v', false)
+	if compiler_bootstrap && !macos_v3_fastc_requested(prefs) {
 		return false
 	}
 	return command in ['run', 'build'] || prefs.is_script || os.is_dir(prefs.path)
@@ -85,6 +89,7 @@ fn macos_v3_explicit_compilation_requested(command string, prefs &pref.Preferenc
 @[markused]
 fn macos_v3_explicit_autofree_is_unsupported(prefs &pref.Preferences) bool {
 	return prefs.new_compiler && !prefs.old_compiler && prefs.autofree
+		&& !macos_v3_fastc_requested(prefs)
 }
 
 @[markused]
@@ -93,6 +98,35 @@ fn macos_v3_explicit_v1_preferences_are_unsupported(prefs &pref.Preferences) boo
 		return false
 	}
 	return v3_has_v1_only_preferences(prefs) || (prefs.gc_set_by_flag && prefs.gc_mode != .no_gc)
+}
+
+fn macos_v3_fastc_requested(prefs &pref.Preferences) bool {
+	return prefs.is_fastc
+}
+
+// macos_v3_fastc_incompatibility reports why an explicit FastC selection cannot
+// be honored, so dispatchers fail instead of silently continuing through V1.
+fn macos_v3_fastc_incompatibility(prefs &pref.Preferences) ?string {
+	if !prefs.is_fastc {
+		return none
+	}
+	if prefs.gc_set_by_flag && prefs.gc_mode != .no_gc {
+		return '`-b fastc` only supports `-gc none`; remove the explicit collector or select `-b c`.'
+	}
+	if v3_has_v1_only_preferences(prefs) {
+		return '`-b fastc` cannot be combined with an option that is only supported by the V1 compiler.'
+	}
+	return none
+}
+
+// macos_v3_test_ownership_uses_v1 keeps ownership/autofree test binaries on
+// V1. vtest marks its per-file compilations with `-skip-running`; compiling an
+// autofree test through the ownership-enabled V3 tool can consume far more
+// memory than the test itself. Explicit FastC is never diverted to an AST-based
+// ownership compiler; its parser reports the unsupported mode itself.
+fn macos_v3_test_ownership_uses_v1(prefs &pref.Preferences, args []string) bool {
+	return prefs.skip_running && !macos_v3_fastc_requested(prefs)
+		&& (prefs.autofree || '-ownership' in args)
 }
 
 // These helpers are shared by the native Darwin dispatcher and the default

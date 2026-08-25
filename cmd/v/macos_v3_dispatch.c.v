@@ -108,6 +108,10 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 		}
 		return take_macos_v3_report_content()
 	}
+	if message := macos_v3_fastc_incompatibility(prefs) {
+		eprintln(message)
+		exit(1)
+	}
 	if explicit_compilation && macos_v3_explicit_autofree_is_unsupported(prefs) {
 		eprintln('`-new-compiler` cannot be combined with `-autofree`: the embedded V3 compiler does not include ownership support. Remove `-new-compiler` to use the established compiler.')
 		exit(1)
@@ -118,6 +122,10 @@ fn maybe_delegate_to_macos_v3(command string, prefs &pref.Preferences) ?MacosV3C
 	}
 	all_args := util.join_env_vflags_and_os_args()
 	forwarded_args := all_args[1..]
+	if macos_v3_test_ownership_uses_v1(prefs, forwarded_args) {
+		trace_macos_v3_skip('vtest ownership/autofree compilation')
+		return take_macos_v3_report_content()
+	}
 	if macos_v3_has_v1_only_leading_option(forwarded_args, command) {
 		if explicit_compilation {
 			eprintln('`-new-compiler` cannot be combined with a V1-only option; remove it or drop `-new-compiler`.')
@@ -162,13 +170,14 @@ fn is_macos_v3_relevant_command(command string, prefs &pref.Preferences) bool {
 		// dispatch, but it must not prevent V3 from being the default compiler.
 		return false
 	}
-	if prefs.autofree {
+	if prefs.autofree && !macos_v3_fastc_requested(prefs) {
 		// V1 owns autofree here. On macOS a direct `v -autofree` build is delegated
 		// to the ownership-enabled compiler before this point (so only autofree
 		// `run` arrives). On Linux autofree is NOT delegated and the ordinary
 		// embedded V3 has no `ownership` support — it would exit with "ownership
 		// support is not compiled into this v3 executable" — so keep every autofree
 		// build and run on V1 rather than dispatching it to a V3 that cannot honor it.
+		// Explicit FastC stays on V3 and reports this mode as unsupported.
 		return false
 	}
 	if command == 'test' {
