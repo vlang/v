@@ -5691,7 +5691,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 	g.expect(.lcbr)!
 	subject_name := g.temporary_name('match')
 	g.write_line('__typeof__((${subject})) ${subject_name} = (${subject});')
-	is_string := subject_type == 'string'
+	is_string := g.underlying_alias_type(subject_type).trim_right('*') == 'string'
 	mut branch_index := 0
 	mut all_terminate := true
 	mut has_else := false
@@ -8556,7 +8556,7 @@ fn (mut g Parser) read_match_expression() !string {
 					case_source = '${start}..${finish}'
 					branch_conditions << '((${temporary}) >= (${start}) && (${temporary}) <= (${finish}))'
 				} else {
-					branch_conditions << if subject_type.trim_right('*') == 'string' {
+					branch_conditions << if g.underlying_alias_type(subject_type).trim_right('*') == 'string' {
 						'builtin__string_eq(${temporary}, ${start})'
 					} else {
 						'((${temporary}) == (${start}))'
@@ -9012,6 +9012,9 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	if bool_print := g.render_bool_print_expression(tokens) {
 		return bool_print
 	}
+	if string_print := g.render_ordinary_string_print_expression(tokens) {
+		return string_print
+	}
 	if tokens.len == 1 && tokens[0].tok == .name {
 		if local := g.locals[tokens[0].lit] {
 			if local.is_reference {
@@ -9029,18 +9032,21 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		if string_comparison := g.render_string_comparison_expression(tokens) {
 			return string_comparison
 		}
+		if concatenation := g.render_composed_string_concatenation(tokens) {
+			return concatenation
+		}
+	}
+	if cast_expression := g.render_cast_expression(tokens) {
+		if pointer_members := g.render_pointer_member_access_expression(tokens,
+			cast_expression.source)
+		{
+			return pointer_members
+		}
+		return cast_expression
 	}
 	if g.selfhost {
 		if interface_cast := g.render_interface_cast_expression(tokens, rendered_expression) {
 			return interface_cast
-		}
-		if cast_expression := g.render_cast_expression(tokens) {
-			if pointer_members := g.render_pointer_member_access_expression(tokens,
-				cast_expression.source)
-			{
-				return pointer_members
-			}
-			return cast_expression
 		}
 		if defaulted_call := g.render_missing_call_arguments(tokens, rendered_expression) {
 			return defaulted_call
@@ -9810,6 +9816,31 @@ fn (g &Parser) render_bool_print_expression(tokens []FastcExpressionToken) ?Fast
 	}
 	return FastcRenderedExpression{
 		source: '${function_name}((bool)(${argument}))'
+		typ:    'void'
+	}
+}
+
+fn (g &Parser) render_ordinary_string_print_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if g.selfhost || tokens.len < 4 || tokens[0].tok != .name
+		|| tokens[0].lit !in ['print', 'println'] || tokens[1].tok != .lpar
+		|| tokens.last().tok != .rpar {
+		return none
+	}
+	call_end := fastc_matching_rpar(tokens, 1) or { return none }
+	if call_end != tokens.len - 1 {
+		return none
+	}
+	call_arguments := fastc_call_arguments(tokens, 1, call_end) or { return none }
+	if call_arguments.len != 1 || !fastc_expression_tokens_contain(call_arguments[0], .plus) {
+		return none
+	}
+	argument_type := g.infer_expression_type(call_arguments[0]) or { return none }
+	if g.underlying_alias_type(argument_type).trim_right('*') != 'string' {
+		return none
+	}
+	argument := g.render_call_argument_expression(call_arguments[0], 'string') or { return none }
+	return FastcRenderedExpression{
+		source: '${tokens[0].lit}(${argument})'
 		typ:    'void'
 	}
 }
@@ -11202,7 +11233,7 @@ fn (g &Parser) render_composed_string_concatenation(tokens []FastcExpressionToke
 			.plus {
 				if depth == 0 {
 					operand_type := g.infer_expression_type(tokens[operand_start..i]) or { '' }
-					string_operands << operand_type == 'string'
+					string_operands << g.underlying_alias_type(operand_type).trim_right('*') == 'string'
 					operand_start = i + 1
 					plus_count++
 				}
@@ -11214,7 +11245,7 @@ fn (g &Parser) render_composed_string_concatenation(tokens []FastcExpressionToke
 		return none
 	}
 	last_operand_type := g.infer_expression_type(tokens[operand_start..]) or { '' }
-	string_operands << last_operand_type == 'string'
+	string_operands << g.underlying_alias_type(last_operand_type).trim_right('*') == 'string'
 	mut has_string_operand := false
 	for is_string in string_operands {
 		if is_string {
@@ -11243,9 +11274,14 @@ fn (g &Parser) render_composed_string_concatenation(tokens []FastcExpressionToke
 	}
 	last_part := g.render_comparison_operand(tokens[operand_start..], 'string') or { return none }
 	parts << last_part
-	mut combined := parts[0]
-	for part in parts[1..] {
-		combined = 'builtin__string_plus(${combined},${part})'
+	mut combined := ''
+	if g.selfhost {
+		combined = parts[0]
+		for part in parts[1..] {
+			combined = 'builtin__string_plus(${combined},${part})'
+		}
+	} else {
+		combined = 'builtin__string_plus_many(${parts.len}, (string[]){${parts.join(',')}})'
 	}
 	return FastcRenderedExpression{
 		source: combined
@@ -13769,8 +13805,9 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 			if right_element := g.indexed_array_operand_type(tokens[i + 1..end], right_type) {
 				right_type = right_element
 			}
-			if g.selfhost && tokens[i].tok == .plus && left_type == 'string'
-				&& right_type == 'string' {
+			if tokens[i].tok == .plus
+				&& g.underlying_alias_type(left_type).trim_right('*') == 'string'
+				&& g.underlying_alias_type(right_type).trim_right('*') == 'string' {
 				return 'string'
 			}
 			if g.selfhost && tokens[i].tok == .plus && ((left_type == 'string' && right_type == '')

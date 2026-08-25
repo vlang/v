@@ -117,6 +117,47 @@ fn main() {
 	assert run_result.output == '|     FastC|FastC     |     FastC|\n|  界|   é|  👩🏽‍💻|\n'
 }
 
+fn test_ordinary_string_concatenation_and_alias_matches() {
+	prefs := pref.new_preferences()
+	c_source := generate("module main
+
+type Str = string
+
+fn main() {
+	value := Str('' + '1')
+	println('a' + 'b')
+	result := match value {
+		Str('1') { 'expression' }
+		else { 'bad' }
+	}
+	println(result)
+	match value {
+		Str('1') { println('matched') }
+		else {}
+	}
+}
+",
+		'ordinary_string_concatenation.v', prefs) or { panic(err) }
+	assert c_source.count('builtin__string_plus_many(2, (string[]){') >= 2, c_source
+	assert c_source.count('builtin__string_eq(__v_fastc_match_') >= 2, c_source
+
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_string_concat_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	c_file := os.join_path(root, 'program.c')
+	bin_file := os.join_path(root, 'program')
+	os.write_file(c_file, c_source) or { panic(err) }
+	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	compile_result := cmdexec.run(tcc, ['-std=gnu11', '-o', bin_file, c_file])
+	assert compile_result.exit_code == 0, compile_result.output
+	run_result := cmdexec.run(bin_file, [])
+	assert run_result.exit_code == 0, run_result.output
+	assert run_result.output == 'ab\nexpression\nmatched\n'
+}
+
 fn test_c_directives_preserve_order_and_resolve_source_paths() {
 	prefs := pref.new_preferences()
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_directives_${os.getpid()}')
