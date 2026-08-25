@@ -161,7 +161,10 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 	unsigned char encoded_rune[4];
 	int rune_byte_count = 0;
 	int rune_display_width = 0;
-	if (specifier == 99) {
+	if (specifier == 99 && negative) {
+		negative = false;
+		zero_pad = false;
+	} else if (specifier == 99) {
 		unsigned codepoint = magnitude <= 1114111 ? (unsigned)magnitude : 65533;
 		if (codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
 		rune_display_width = codepoint == 0x200D || v_fastc_codepoint_is_combining(codepoint) ? 0 : (v_fastc_codepoint_is_wide(codepoint) ? 2 : 1);
@@ -419,7 +422,10 @@ static string v_fastc_integer_format(unsigned long long magnitude, bool negative
 	unsigned char encoded_rune[4];
 	int rune_byte_count = 0;
 	int rune_display_width = 0;
-	if (specifier == 99) {
+	if (specifier == 99 && negative) {
+		negative = false;
+		zero_pad = false;
+	} else if (specifier == 99) {
 		unsigned codepoint = magnitude <= 1114111 ? (unsigned)magnitude : 65533;
 		if (codepoint >= 55296 && codepoint <= 57343) codepoint = 65533;
 		rune_display_width = codepoint == 0x200D || v_fastc_codepoint_is_combining(codepoint) ? 0 : (v_fastc_codepoint_is_wide(codepoint) ? 2 : 1);

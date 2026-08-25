@@ -205,6 +205,7 @@ fn main() {
 	println('${hex_value:x}|${hex_value:04x}|${hex_value:X}|${hex_value:04d}|${hex_value:b}|${hex_value:o}')
 	println('${8364:c}')
 	println('${0x754c:4c}')
+	print('${-1:c}x')
 }
 ",
 		'ordinary_primitive_interpolation.v', prefs) or { panic(err) }
@@ -215,6 +216,7 @@ fn main() {
 	assert c_source.contains('v_fastc_signed_format((long long)(hex_value), "x")'), c_source
 	assert c_source.contains('v_fastc_signed_format((long long)(hex_value), "04x")'), c_source
 	assert c_source.contains('v_fastc_signed_format((long long)(8364), "c")'), c_source
+	assert c_source.contains('v_fastc_signed_format((long long)(-1), "c")'), c_source
 
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_primitive_interpolation_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -230,7 +232,7 @@ fn main() {
 	assert compile_result.exit_code == 0, compile_result.output
 	run_result := cmdexec.run(bin_file, [])
 	assert run_result.exit_code == 0, run_result.output
-	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\n  界\n'
+	assert run_result.output == 'value=7; negative=-2; large=42; enabled=true\nf|000f|F|0015|1111|17\n€\n  界\nx'
 }
 
 fn test_direct_char_interpolation_is_rejected() {
