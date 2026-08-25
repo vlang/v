@@ -1164,6 +1164,8 @@ fn test_struct_literal_fields_are_validated() {
 	for source, expected in {
 		'module main\nstruct Config { enabled bool }\nfn main() { config := Config{enabled: 2}; println(config.enabled) }\n':                            'for struct field `Config.enabled` expecting `bool`'
 		'module main\nstruct Config { value int }\nfn main() { config := Config{value: 1, value: 2}; println(config.value) }\n':                         'duplicate field `Config.value` in struct literal'
+		'module main\nstruct Config { value int }\nfn main() { base := Config{}; config := Config{value: 2, ...base}; println(config.value) }\n':        'struct update expression must be first'
+		'module main\nstruct Config { value int }\nfn main() { base := Config{}; config := Config{...base, ...base}; println(config.value) }\n':         'duplicate struct update expression'
 		'module main\nstruct Config { values [2]int }\nfn main() { config := Config{values: [true, false]!}; println(config.values) }\n':                'element 1 has type `bool` instead of `int`'
 		'module main\nstruct Config { values [2]int }\nfn main() { config := Config{values: [1]!}; println(config.values) }\n':                          'expects 2 elements, got 1'
 		'module main\nconst size = 2\nstruct Config { values [size]int }\nfn main() { config := Config{values: [1, 2, 3]!}; println(config.values) }\n': 'expects 2 elements, got 3'
@@ -1192,6 +1194,21 @@ fn main() {
 		'valid_struct_literal.v', prefs) or { panic(err) }
 	assert c_source.contains('.enabled=(enabled)'), c_source
 	assert c_source.contains('.value=(2)'), c_source
+
+	update_source := generate('module main
+
+struct Config {
+	value int
+}
+
+fn main() {
+	base := Config{}
+	config := Config{...base, value: 2}
+	println(config.value)
+}
+',
+		'valid_struct_update.v', prefs) or { panic(err) }
+	assert update_source.contains('__v_fastc_struct_update'), update_source
 }
 
 fn test_embedded_struct_fields_use_storage_paths() {
@@ -3121,6 +3138,22 @@ fn main() {
 	assert c_source.contains('if (((__v_fastc_match_'), c_source
 	assert c_source.contains('== (0)) || '), c_source
 	assert c_source.contains('== (1))'), c_source
+}
+
+fn test_duplicate_match_cases_are_rejected() {
+	prefs := pref.new_preferences()
+	for source in [
+		"module main\nfn main() { n := 1; match n { 1 { println('a') } 1 { println('b') } else {} } }\n",
+		'module main\nfn main() { n := 1; value := match n { 1 { 2 } 1 { 3 } else { 4 } }; println(value) }\n',
+		'module main\nfn main() { n := 10; match n { 10 {} 0xa {} else {} } }\n',
+	] {
+		mut message := ''
+		_ := generate(source, 'duplicate_match_case.v', prefs) or {
+			message = err.msg()
+			''
+		}
+		assert message.contains('duplicate match case'), message
+	}
 }
 
 fn test_primitive_cast_operands_and_unsafe_context_are_validated() {

@@ -5671,6 +5671,7 @@ fn (mut g Parser) parse_match_statement() !bool {
 	mut branch_index := 0
 	mut all_terminate := true
 	mut has_else := false
+	mut handled_cases := map[string]bool{}
 	g.skip_semicolons()
 	for g.tok != .rcbr {
 		if g.tok == .eof {
@@ -5683,18 +5684,21 @@ fn (mut g Parser) parse_match_statement() !bool {
 			g.next()
 		} else {
 			for {
+				mut value := ''
+				mut value_tokens := []FastcExpressionToken{}
 				if g.tok == .dot {
 					g.next()
 					if g.tok != .name {
 						return g.unsupported('match enum value')
 					}
-					values << '${subject_type.trim_right('*')}__${g.lit}'
+					value = '${subject_type.trim_right('*')}__${g.lit}'
 					g.next()
 				} else {
-					value := g.read_expression([token.Token.comma, token.Token.lcbr])!
+					value = g.read_expression([token.Token.comma, token.Token.lcbr])!
 					if value == '' {
 						return g.unsupported('empty match branch value')
 					}
+					value_tokens = g.last_expression.clone()
 					mut value_type := g.last_expression_type
 					if value_type == '' && g.selfhost {
 						value_type = subject_type
@@ -5706,8 +5710,13 @@ fn (mut g Parser) parse_match_statement() !bool {
 						&& g.selfhost_types_are_compatible(value_type, subject_type)) {
 						return g.unsupported('match branch value of type `${value_type}` for subject of type `${subject_type}`')
 					}
-					values << value
 				}
+				case_key := g.normalized_match_case_key(value_tokens, value)
+				if case_key in handled_cases {
+					return g.unsupported('duplicate match case `${value}`')
+				}
+				handled_cases[case_key] = true
+				values << value
 				if g.tok != .comma {
 					break
 				}
@@ -8498,6 +8507,7 @@ fn (mut g Parser) read_match_expression() !string {
 	mut result_type := ''
 	mut fallback := ''
 	mut has_else := false
+	mut handled_cases := map[string]bool{}
 	g.skip_semicolons()
 	for g.tok != .rcbr && g.tok != .eof {
 		mut is_else := false
@@ -8510,9 +8520,16 @@ fn (mut g Parser) read_match_expression() !string {
 				g.expected_expression_type = subject_type
 				start :=
 					g.read_expression([token.Token.comma, token.Token.lcbr, token.Token.dotdot])!
+				start_tokens := g.last_expression.clone()
+				mut case_key := g.normalized_match_case_key(start_tokens, start)
+				mut case_source := start
 				if g.tok == .dotdot {
 					g.next()
 					finish := g.read_expression([token.Token.comma, token.Token.lcbr])!
+					finish_tokens := g.last_expression.clone()
+					case_key = 'range:${case_key}..${g.normalized_match_case_key(finish_tokens,
+						finish)}'
+					case_source = '${start}..${finish}'
 					branch_conditions << '((${temporary}) >= (${start}) && (${temporary}) <= (${finish}))'
 				} else {
 					branch_conditions << if subject_type.trim_right('*') == 'string' {
@@ -8521,6 +8538,10 @@ fn (mut g Parser) read_match_expression() !string {
 						'((${temporary}) == (${start}))'
 					}
 				}
+				if case_key in handled_cases {
+					return g.unsupported('duplicate match case `${case_source}`')
+				}
+				handled_cases[case_key] = true
 				if g.tok != .comma {
 					break
 				}
@@ -8592,6 +8613,23 @@ fn (mut g Parser) read_match_expression() !string {
 	g.last_expression_type = if result_type == '' { outer_expected_type } else { result_type }
 	g.last_expression = []FastcExpressionToken{}
 	return '({ __typeof__((${subject})) ${temporary} = (${subject}); ${expression}; })'
+}
+
+fn (g &Parser) normalized_match_case_key(tokens []FastcExpressionToken, rendered string) string {
+	if value := fastc_integer_literal_value(tokens) {
+		return 'integer:${value}'
+	}
+	mut key := rendered.trim_space()
+	mut seen := map[string]bool{}
+	for key !in seen {
+		seen[key] = true
+		key = g.constant_values[key] or { break }
+		key = key.trim_space()
+	}
+	if value := fastc_decimal_integer_value(key) {
+		return 'integer:${value}'
+	}
+	return key
 }
 
 fn (mut g Parser) read_match_block_expression_value() !string {
@@ -12834,6 +12872,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 	mut index := open + 1
 	mut initialized_fields := map[string]bool{}
 	mut has_update := false
+	mut has_field := false
 	for index < close {
 		for index < close && tokens[index].tok in [.semicolon, .comma] {
 			index++
@@ -12842,6 +12881,12 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 			break
 		}
 		if tokens[index].tok == .ellipsis {
+			if has_update {
+				return g.unsupported('duplicate struct update expression')
+			}
+			if has_field {
+				return g.unsupported('struct update expression must be first')
+			}
 			has_update = true
 			index++
 			for index < close && tokens[index].tok !in [.semicolon, .comma] {
@@ -12854,6 +12899,7 @@ fn (g &Parser) validate_struct_literal_field_visibility(tokens []FastcExpression
 		}
 		field_token := tokens[index]
 		field_name := tokens[index].lit
+		has_field = true
 		if field_name in initialized_fields {
 			type_name := g.semantic_type_key(c_type).all_after_last('.')
 			return g.unsupported('duplicate field `${type_name}.${field_name}` in struct literal')
