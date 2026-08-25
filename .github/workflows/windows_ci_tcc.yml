@@ -41,15 +41,23 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - name: Install OpenSSL
         run: |
-          choco install openssl -y --no-progress
+          $opensslBin = 'C:\Program Files\OpenSSL\bin'
+          $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+          $cryptoLib = Join-Path $libDir 'libcrypto.lib'
+          $cryptoDef = Join-Path $libDir 'libcrypto.def'
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib) -or -not (Test-Path $cryptoDef)) {
+            choco install openssl --version=3.5.4 --allow-downgrade -y --no-progress
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chocolatey failed to install OpenSSL 3.5.4 (exit $LASTEXITCODE)"
+            }
+          }
           # choco's openssl package (Win64OpenSSL installer under the hood)
           # deploys to `C:\Program Files\OpenSSL\`, matching
           # ecdsa.c.v/rsa_pss.c.v's SECOND `#flag windows` fallback path --
           # NOT the first one (`...OpenSSL-Win64\...`), confirmed by an
           # actual CI run after guessing wrong the first time.
-          $opensslBin = 'C:\Program Files\OpenSSL\bin'
-          if (-not (Test-Path $opensslBin)) {
-            throw "OpenSSL bin directory not found at $opensslBin after choco install"
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib) -or -not (Test-Path $cryptoDef)) {
+            throw "OpenSSL installation is incomplete under C:\Program Files\OpenSSL"
           }
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
           Write-Host "OpenSSL install:"
@@ -88,7 +96,6 @@ jobs:
           # (`libcrypto-4-x64.dll`) already exists as a real file in bin\
           # (this package ships both v3 and v4 runtime DLLs side by side),
           # so no aliasing is needed once the .def itself is correct.
-          $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
           foreach ($name in @('libcrypto', 'libssl')) {
             $defPath = Join-Path $libDir "$name.def"
             if (-not (Test-Path $defPath)) {

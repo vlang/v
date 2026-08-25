@@ -103,11 +103,20 @@ jobs:
       - name: Install OpenSSL for MSVC
         if: ${{ matrix.cc == 'msvc' }}
         run: |
-          choco install openssl -y --no-progress
           $opensslBin = 'C:\Program Files\OpenSSL\bin'
           $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+          $cryptoLib = Join-Path $libDir 'libcrypto.lib'
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+            choco install openssl --version=3.5.4 --allow-downgrade -y --no-progress
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chocolatey failed to install OpenSSL 3.5.4 (exit $LASTEXITCODE)"
+            }
+          }
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+            throw "OpenSSL installation is incomplete under C:\Program Files\OpenSSL"
+          }
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
-          Copy-Item -Path (Join-Path $libDir 'libcrypto.lib') -Destination (Join-Path $libDir 'crypto.lib') -Force
+          Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
       - name: Install SQLite (needed by vsqlite tool)
         run: .\.github\workflows\windows-install-sqlite.bat
       - name: Check build tools
