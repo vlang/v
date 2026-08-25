@@ -1,5 +1,6 @@
 module c
 
+import crypto.sha256
 import os
 import v3.parser
 import v3.pref
@@ -971,8 +972,10 @@ fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 	nested_source := os.join_path(dir, 'nested.c')
 	direct_header := os.join_path(dir, 'direct.h')
 	nested_header := os.join_path(dir, 'nested.h')
-	os.write_file(root_source, '#include "nested.c"\n') or { panic(err) }
-	os.write_file(nested_source, 'static int nested_value(void) { return 42; }\n') or { panic(err) }
+	root_source_text := '#include "nested.c"\n'
+	nested_source_text := 'static int nested_value(void) { return 42; }\n'
+	os.write_file(root_source, root_source_text) or { panic(err) }
+	os.write_file(nested_source, nested_source_text) or { panic(err) }
 	os.write_file(direct_header, '#include "nested.h"\n') or { panic(err) }
 	os.write_file(nested_header, 'static int header_value(void) { return 1; }\n') or { panic(err) }
 	source := os.join_path(dir, 'sample.v')
@@ -983,7 +986,7 @@ fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, native_roots, _, unscoped_inputs, static_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+	inputs, native_roots, _, unscoped_inputs, static_inputs, _, _, captured_digests, has_untracked := cache_external_input_snapshot_with_resolved_flags(a,
 		'', {
 		'sample': true
 	}, [], prefs.target, map[string]bool{}, map[string]string{}, false)
@@ -1009,6 +1012,15 @@ fn test_cache_input_scan_tracks_native_source_roots_for_privacy_checks() {
 		os.real_path(direct_header)]
 	assert program_unscoped['main'] == expected_inputs
 	assert 'sample' !in program_inputs
+	late_source := os.join_path(dir, 'late.c')
+	os.write_file(late_source, 'static int late_value(void) { return 7; }\n')!
+	os.write_file(root_source, '#include "nested.c"\n#include "late.c"\n')!
+	os.write_file(nested_source, 'static int nested_value(void) { return 43; }\n')!
+	// The dependency set and digests describe one traversal snapshot. Reopening the
+	// paths here would combine the old tree with new root/child bytes.
+	assert os.real_path(late_source) !in inputs['sample']
+	assert captured_digests[os.real_path(root_source)] == sha256.hexhash(root_source_text)
+	assert captured_digests[os.real_path(nested_source)] == sha256.hexhash(nested_source_text)
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {

@@ -96,6 +96,7 @@ mut:
 	native_root_contexts      map[string][]string
 	native_root_owners        map[string]string
 	external_input_signatures map[string]string
+	external_input_digests    map[string]string
 	external_resolution_dirs  []string
 	external_missing_paths    []string
 	external_inputs_ready     bool
@@ -2436,12 +2437,15 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 			dependencies['external:${module_name}:${path}'] = state.external_input_signatures[key] or {
 				modulecache.file_signature(path)
 			}
+			if digest := state.external_input_digests[os.real_path(path)] {
+				dependencies['external-sha256:${module_name}:${path}'] = digest
+			}
 			dependencies['external-meta:${module_name}:${path}'] =
 				modulecache.file_metadata_signature(path)
 		}
 	}
 	if state.external_inputs_ready {
-		dependencies['external-state:manifest'] = 'v3-external-inputs-4'
+		dependencies['external-state:manifest'] = 'v3-external-inputs-5'
 		mut root_modules := state.module_native_roots.keys()
 		root_modules.sort()
 		for module_name in root_modules {
@@ -2500,7 +2504,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		prefs.c99, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags,
 		prefs.ccompiler, prefs.target, native_inputs_language)
-	external_inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, has_untracked_c_include := cgen.cache_external_input_files_with_resolved_flags(a,
+	external_inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a,
 		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
 		module_cache_source_path_set(user_files), compiler_macros,
 		compiler_macro_environment_complete)
@@ -2508,6 +2512,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	state.module_native_roots = native_source_roots.clone()
 	state.native_root_contexts = native_root_contexts.clone()
 	state.external_input_signatures = map[string]string{}
+	state.external_input_digests = external_input_digests.clone()
 	cache_dir := os.abs_path(state.manager.dir)
 	real_cache_dir := os.real_path(state.manager.dir)
 	state.external_resolution_dirs = resolution_dirs.filter(!v3_path_is_within(it, cache_dir)
@@ -2536,6 +2541,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		prefs.ccompiler, prefs.target)
 	state.external_inputs_ready = true
 	state.external_inputs_complete = !has_untracked_c_include
+		&& v3_external_input_digests_complete(state)
 	if os.getenv('V3_CACHE_TRACE') != '' {
 		if has_untracked_c_include {
 			eprintln('  V3 module cache external input miss: reason=unresolved C include')
@@ -4169,6 +4175,30 @@ fn v3_external_input_key(module_name string, path string) string {
 	return '${module_name}\x00${path}'
 }
 
+fn v3_sha256_hex_digest_is_valid(digest string) bool {
+	return digest.len == sha256.size * 2 && digest.bytes().all(it.is_hex_digit())
+}
+
+fn v3_external_input_digests_complete(state &V3ModuleCacheState) bool {
+	for paths in state.module_external_inputs.values() {
+		for path in paths {
+			digest := state.external_input_digests[os.real_path(path)] or { return false }
+			if !v3_sha256_hex_digest_is_valid(digest) {
+				return false
+			}
+		}
+	}
+	for paths in state.module_native_roots.values() {
+		for path in paths {
+			digest := state.external_input_digests[os.real_path(path)] or { return false }
+			if !v3_sha256_hex_digest_is_valid(digest) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 fn v3_external_cache_path(key string, prefix string) ?V3ExternalCachePath {
 	if !key.starts_with(prefix) {
 		return none
@@ -4186,9 +4216,9 @@ fn v3_external_cache_path(key string, prefix string) ?V3ExternalCachePath {
 
 fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []string, user_c_flags []string, ccompiler string, target pref.Target, incremental_declaration_signature string) bool {
 	base_input := v3_cgen_cache_input(state, user_files, user_c_flags)
-	prefixes := ['external:', 'external-meta:', 'external-root:', 'external-root-owner:',
-		'external-context:', 'external-owner:', 'external-dir:', 'external-missing:',
-		'external-state:']
+	prefixes := ['external:', 'external-sha256:', 'external-meta:', 'external-root:',
+		'external-root-owner:', 'external-context:', 'external-owner:', 'external-dir:',
+		'external-missing:', 'external-state:']
 	mut restored := map[string]string{}
 	if exact := state.manager.cached_cgen_dependency_inputs(base_input.source_files,
 		base_input.generation_signature, base_input.dependency_inputs, prefixes)
@@ -4202,17 +4232,31 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 			incremental_declaration_signature, base_input.generation_signature,
 			base_input.dependency_inputs, prefixes) or { return false }
 	}
-	if restored['external-state:manifest'] or { '' } != 'v3-external-inputs-4' {
+	if restored['external-state:manifest'] or { '' } != 'v3-external-inputs-5' {
 		return false
 	}
 	mut external_inputs := map[string][]string{}
 	mut external_signatures := map[string]string{}
+	mut external_digests := map[string]string{}
 	for key, signature in restored {
 		input := v3_external_cache_path(key, 'external:') or { continue }
 		metadata_key := 'external-meta:${input.module_name}:${input.path}'
 		metadata := restored[metadata_key] or { return false }
+		digest_key := 'external-sha256:${input.module_name}:${input.path}'
+		digest := restored[digest_key] or { return false }
 		if metadata.len == 0 || modulecache.file_metadata_signature(input.path) != metadata {
 			return false
+		}
+		if !v3_sha256_hex_digest_is_valid(digest) {
+			return false
+		}
+		real_path := os.real_path(input.path)
+		if old_digest := external_digests[real_path] {
+			if old_digest != digest {
+				return false
+			}
+		} else {
+			external_digests[real_path] = digest
 		}
 		mut paths := external_inputs[input.module_name]
 		paths << input.path
@@ -4221,6 +4265,11 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 	}
 	for key, _ in restored {
 		if input := v3_external_cache_path(key, 'external-meta:') {
+			if 'external:${input.module_name}:${input.path}' !in restored {
+				return false
+			}
+		}
+		if input := v3_external_cache_path(key, 'external-sha256:') {
 			if 'external:${input.module_name}:${input.path}' !in restored {
 				return false
 			}
@@ -4348,6 +4397,7 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 	missing_resolution_paths.sort()
 	state.module_external_inputs = external_inputs.clone()
 	state.external_input_signatures = external_signatures.clone()
+	state.external_input_digests = external_digests.clone()
 	state.module_native_roots = native_roots.clone()
 	state.native_root_contexts = native_root_contexts.clone()
 	state.native_root_owners = native_root_owners.clone()
@@ -4358,7 +4408,10 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 	state.external_resolution_dirs = resolution_dirs.clone()
 	state.external_missing_paths = missing_resolution_paths.clone()
 	state.external_inputs_ready = true
-	state.external_inputs_complete = true
+	state.external_inputs_complete = v3_external_input_digests_complete(state)
+	if !state.external_inputs_complete {
+		return false
+	}
 	return true
 }
 
@@ -6477,8 +6530,11 @@ fn macos_v3_fallback_report_inputs(v_sources map[string]string, state &V3ModuleC
 	}
 	mut native_digests := map[string]string{}
 	for path in native_paths.keys() {
-		content := os.read_bytes(path) or { return inputs }
-		native_digests['${v3_fallback_native_input_prefix}${path}'] = sha256.sum(content).hex()
+		digest := state.external_input_digests[path] or { return inputs }
+		if !v3_sha256_hex_digest_is_valid(digest) {
+			return inputs
+		}
+		native_digests['${v3_fallback_native_input_prefix}${path}'] = digest
 	}
 	for key, digest in native_digests {
 		inputs[key] = digest
@@ -7745,6 +7801,7 @@ pub fn run(args []string) {
 		native_root_contexts:      map[string][]string{}
 		native_root_owners:        map[string]string{}
 		external_input_signatures: map[string]string{}
+		external_input_digests:    map[string]string{}
 		dependency_metadata:       map[string]string{}
 		cached_source_digests:     map[string]string{}
 		fallback_required_modules: map[string]bool{}
