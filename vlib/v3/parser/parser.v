@@ -2387,6 +2387,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			p.next() // skip (
 			mut params := []flat.NodeId{}
 			for p.tok != .rpar && p.tok != .eof {
+				param_start_offset := p.s.offset
 				mut param_is_mut := false
 				mut param_name := ''
 				mut param_pos := token.Pos{}
@@ -2395,19 +2396,20 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					p.next()
 				}
 				// Interface method params may be named (e.g. `seed_data []u32`,
-				// `node &ast.Node`) or type-only (`[]u32`). When the current token
-				// is a plain identifier and the next token starts a type, that
-				// identifier is the param name; consume it first so the array/pointer
-				// prefix of the real type is not mis-parsed onto the name
-				// (e.g. `seed_data[]`). `map`/`chan` are type heads, not names.
-				if p.tok == .name && p.lit != 'map' && p.lit != 'chan' {
+				// `module string`) or type-only (`[]u32`). When the current token can
+				// be a declaration name and the next token starts a type, consume the
+				// name first so a keyword name or an array/pointer type is not
+				// mis-parsed (e.g. as `seed_data[]`). `map`/`chan` are type heads,
+				// not names.
+				can_be_param_name := p.tok == .name
+					|| (p.tok_can_be_decl_name() && !p.can_start_type_name())
+				if can_be_param_name && p.lit != 'map' && p.lit != 'chan' {
 					nt := p.peek()
 					if nt == .name || nt == .amp || nt == .question || nt == .not
 						|| nt == .key_fn || nt == .ellipsis
 						|| (nt == .lsbr && p.peek_lbr_starts_array_type()) {
-						param_name = p.lit
 						param_pos = p.current_pos()
-						p.next()
+						param_name = p.expect_name_or_keyword()
 					}
 				}
 				mut ptype := p.parse_type_name()
@@ -2426,6 +2428,9 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					pos:    param_pos
 				})
 				if p.tok == .comma {
+					p.next()
+				}
+				if p.s.offset == param_start_offset && p.tok != .rpar && p.tok != .eof {
 					p.next()
 				}
 			}

@@ -155,6 +155,13 @@ fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 	assert interface_method_param_types(a, 'Sink', 'read') == ['[max_len]u8']
 }
 
+fn test_interface_method_keyword_named_param_makes_progress() {
+	a := parse_parser_regression_source('interface_keyword_named_param',
+		'interface Commands {\n\tfilter(module string) string\n\tafter(value int) int\n}\n')
+	assert fn_decl_param_pairs(a, .interface_field, 'filter') == ['module:string']
+	assert fn_decl_param_pairs(a, .interface_field, 'after') == ['value:int']
+}
+
 fn test_lifetime_generic_suffixes_are_erased() {
 	a := parse_parser_regression_source('lifetime_generic_suffixes',
 		'struct IgnoreMatch {}\nstruct Match[T] {}\n\ninterface Matcher {\n\tmatched[^a](item Match[IgnoreMatch[^a]]) IgnoreMatch[^a]\n}\n\nfn use(item Match[IgnoreMatch[^a]]) {}\nfn after() int {\n\treturn 1\n}\n')
