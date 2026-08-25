@@ -2759,7 +2759,7 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_release_metal_device(void *devi
 			released_subject = V_MULTIWINDOW_APPKIT_SIDE_EFFECT_SUBJECT_DEVICE_ROOT;
 		}
 #endif
-		CFBridgingRelease(device);
+		CFRelease(device);
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 		v_multiwindow_appkit_side_effect_append(
 			V_MULTIWINDOW_APPKIT_SIDE_EFFECT_BRIDGE_RELEASE,
@@ -3177,7 +3177,7 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_release_window(void *state_ptr)
 		const uint64_t released_subject =
 			v_multiwindow_appkit_side_effect_root_subject(released_identity);
 #endif
-		CFBridgingRelease(state_ptr);
+		CFRelease(state_ptr);
 #if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
 		v_multiwindow_appkit_side_effect_append(
 			V_MULTIWINDOW_APPKIT_SIDE_EFFECT_BRIDGE_RELEASE,
