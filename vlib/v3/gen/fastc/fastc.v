@@ -1737,6 +1737,19 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
+		if depth == 0 && tok == .dollar {
+			mut lookahead := scan
+			if lookahead.scan() == .key_if {
+				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
+				if selected.source != '' {
+					collect_global_names(selected.source, path, header, prefs, mut globals, mut
+						public_globals)!
+				}
+				tok = selected.tok
+				previous_tok = .unknown
+				continue
+			}
+		}
 		if depth == 0 && tok == .key_global {
 			is_public := previous_tok == .key_pub
 			tok = scan.scan()
@@ -1823,17 +1836,7 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 		}
 		gen.s.init(file, source_file.source)
 		gen.next()
-		for gen.tok != .eof {
-			if gen.tok == .key_global {
-				gen.parse_global_declaration(mut out, mut initializers)!
-				continue
-			}
-			if gen.tok == .lcbr {
-				gen.skip_balanced(.lcbr, .rcbr)!
-				continue
-			}
-			gen.next()
-		}
+		gen.parse_selected_global_declarations(mut out, mut initializers, false)!
 		global_types = gen.global_types.clone()
 		if initializers.len > 0 {
 			previous := module_initializers[source_file.header.module_name] or { '' }
@@ -1846,6 +1849,67 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 	return FastcGlobalDeclarations{
 		declarations:        out.str()
 		module_initializers: module_initializers
+	}
+}
+
+fn (mut g Parser) parse_selected_global_declarations(mut out strings.Builder, mut initializers strings.Builder, stop_at_block_end bool) ! {
+	for g.tok != .eof {
+		g.skip_semicolons()
+		if stop_at_block_end && g.tok == .rcbr {
+			g.next()
+			g.skip_semicolons()
+			return
+		}
+		if g.tok == .eof {
+			break
+		}
+		if g.tok == .dollar {
+			g.parse_selected_comptime_global_declarations(mut out, mut initializers)!
+			continue
+		}
+		if g.tok == .key_global {
+			g.parse_global_declaration(mut out, mut initializers)!
+			continue
+		}
+		if g.tok == .lcbr {
+			g.skip_balanced(.lcbr, .rcbr)!
+			continue
+		}
+		g.next()
+	}
+	if stop_at_block_end {
+		return g.unsupported('unfinished top-level compile-time global block')
+	}
+}
+
+fn (mut g Parser) parse_selected_comptime_global_declarations(mut out strings.Builder, mut initializers strings.Builder) ! {
+	g.expect(.dollar)!
+	g.expect(.key_if)!
+	condition := g.parse_comptime_or()!
+	g.expect(.lcbr)!
+	if condition {
+		g.parse_selected_global_declarations(mut out, mut initializers, true)!
+	} else {
+		g.skip_open_block()!
+	}
+	if g.tok != .dollar || !g.dollar_keyword_is('else') {
+		return
+	}
+	g.next()
+	g.expect(.key_else)!
+	if g.tok == .dollar {
+		if condition {
+			g.skip_comptime_if_chain()!
+		} else {
+			g.parse_selected_comptime_global_declarations(mut out, mut initializers)!
+		}
+		return
+	}
+	g.expect(.lcbr)!
+	if condition {
+		g.skip_open_block()!
+	} else {
+		g.parse_selected_global_declarations(mut out, mut initializers, true)!
 	}
 }
 

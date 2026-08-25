@@ -1569,6 +1569,31 @@ fn main() {
 	assert !c_source.contains('wrong'), c_source
 }
 
+fn test_selected_top_level_comptime_globals_are_collected_and_emitted() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.target = pref.target_from('linux', pref.host_arch()) or { panic(err) }
+	c_source := generate('module main
+
+$if windows {
+	__global state = "wrong"
+} $else $if linux {
+	__global state = 42
+} $else {
+	__global state = false
+}
+
+fn main() {
+	println(state)
+}
+',
+		'top_level_comptime_global.v', prefs) or { panic(err) }
+	assert c_source.contains('static int state;'), c_source
+	assert c_source.contains('\tstate = 42;'), c_source
+	assert c_source.contains('println(state);'), c_source
+	assert !c_source.contains('wrong'), c_source
+}
+
 fn test_initialized_global_value_is_emitted() {
 	mut prefs := pref.new_preferences()
 	prefs.enable_globals = true
