@@ -7382,8 +7382,7 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 				key_type, map_value_type := fastc_map_key_value_types(fallback_type) or {
 					return g.unsupported('map fallback type `${fallback_type}`')
 				}
-				hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(key_type,
-					g.prefs.target.pointer_bits)
+				hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
 				fallback = '(builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(map_value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 			}
 			if had_err {
@@ -8046,8 +8045,7 @@ fn (mut g Parser) read_inferred_map_literal() !string {
 		return g.unsupported('empty inferred map literal')
 	}
 	map_type := fastc_map_c_type(key_type, value_type)
-	hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(key_type,
-		g.prefs.target.pointer_bits)
+	hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
 	map_name := g.temporary_name('map_literal')
 	mut statements := [
 		'map ${map_name} = builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn});',
@@ -9172,7 +9170,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 						return none
 					}
 					access := if right_type.ends_with('*') { '->' } else { '.' }
-					comparison := if element_type == 'string' {
+					comparison := if g.underlying_alias_type(element_type).trim_right('*') == 'string' {
 						'builtin__string_eq(__v_fastc_membership_item, ((${element_type} *)__v_fastc_membership_collection${access}data)[__v_fastc_membership_index])'
 					} else {
 						'(__v_fastc_membership_item == ((${element_type} *)__v_fastc_membership_collection${access}data)[__v_fastc_membership_index])'
@@ -9212,7 +9210,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					}
 					candidate_name := '__v_fastc_membership_candidate_${candidate_index}'
 					initializers << '${value_type} ${candidate_name} = (${candidate_source});'
-					comparison := if lhs_type.trim_right('*') == 'string' {
+					comparison := if g.underlying_alias_type(lhs_type).trim_right('*') == 'string' {
 						'builtin__string_eq(${lhs_name}, ${candidate_name})'
 					} else {
 						'((${lhs_name}) == (${candidate_name}))'
@@ -9700,8 +9698,7 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken, rendered_exp
 	if literal_open > 0 && literal_open + 1 == tokens.len - 1 && tokens.last().tok == .rcbr {
 		if map_type := g.map_initializer_type(tokens[..literal_open]) {
 			key_type, value_type := fastc_map_key_value_types(map_type) or { return none }
-			hash_fn, eq_fn, clone_fn, free_fn := fastc_map_runtime_functions(key_type,
-				g.prefs.target.pointer_bits)
+			hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
 			return FastcRenderedExpression{
 				source: '(builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 				typ:    map_type
@@ -10844,6 +10841,14 @@ fn fastc_map_runtime_functions(key_type string, pointer_bits int) (string, strin
 		'4'
 	}
 	return 'builtin__map_hash_int_${suffix}', 'builtin__map_eq_int_${suffix}', 'builtin__map_clone_int_${suffix}', 'builtin__map_free_nop'
+}
+
+fn (g &Parser) map_runtime_functions(key_type string) (string, string, string, string) {
+	mut resolved_type := g.underlying_alias_type(key_type)
+	if enum_key := g.underlying_enum_type_key(g.semantic_type_key(resolved_type)) {
+		resolved_type = if g.enum_flags[enum_key] { 'u64' } else { 'int' }
+	}
+	return fastc_map_runtime_functions(resolved_type, g.prefs.target.pointer_bits)
 }
 
 fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {

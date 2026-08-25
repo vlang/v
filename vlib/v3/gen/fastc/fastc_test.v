@@ -3193,6 +3193,25 @@ fn main() {
 	assert !c_source.contains('u8 __v_fastc_membership_item'), c_source
 }
 
+fn test_string_alias_membership_uses_string_equality() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate("module main
+
+type Str = string
+
+fn main() {
+	value := Str('same')
+	candidate := Str('same')
+	if value in [candidate] {}
+	values := [candidate]
+	if value in values {}
+}
+",
+		'string_alias_membership.v', prefs) or { panic(err) }
+	assert c_source.count('builtin__string_eq(__v_fastc_membership_item, ((Str *)__v_fastc_membership_collection.data)') == 2, c_source
+}
+
 fn test_mixed_integer_comparisons_preserve_signed_semantics() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main
@@ -4088,6 +4107,49 @@ fn main() {
 	assert clone_fn == 'builtin__map_clone_int_4'
 	i64_hash_fn, _, _, _ := fastc_map_runtime_functions('i64', 32)
 	assert i64_hash_fn == 'builtin__map_hash_int_8'
+}
+
+fn test_map_alias_key_callbacks_use_underlying_types() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.target = pref.target_from('linux', 'x86') or { panic(err) }
+	c_source := generate("module main
+
+type WideKey = u64
+type TextKey = string
+
+enum Kind {
+	first
+}
+
+type KindKey = Kind
+
+@[flag]
+enum Permissions {
+	read
+}
+
+type PermissionsKey = Permissions
+
+fn main() {
+	wide := {WideKey(1): 1}
+	text := {TextKey('one'): 1}
+	kinds := {KindKey(Kind.first): 1}
+	permissions := {PermissionsKey(Permissions.read): 1}
+	println(wide.len)
+	println(text.len)
+	println(kinds.len)
+	println(permissions.len)
+}
+",
+		'map_alias_callbacks.v', prefs) or { panic(err) }
+	assert c_source.contains('sizeof(WideKey), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
+
+	assert c_source.contains('sizeof(TextKey), sizeof(int), &builtin__map_hash_string, &builtin__map_eq_string, &builtin__map_clone_string'), c_source
+
+	assert c_source.contains('sizeof(KindKey), sizeof(int), &builtin__map_hash_int_4, &builtin__map_eq_int_4, &builtin__map_clone_int_4'), c_source
+
+	assert c_source.contains('sizeof(PermissionsKey), sizeof(int), &builtin__map_hash_int_8, &builtin__map_eq_int_8, &builtin__map_clone_int_8'), c_source
 }
 
 fn test_array_pointer_iteration_preserves_element_references() {
