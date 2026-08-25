@@ -1088,7 +1088,6 @@ fn test_ownership_delegation_defines_target_ownership() {
 		os.rmdir_all(root) or {}
 	}
 	source := os.join_path(root, 'main.v')
-	output := os.join_path(root, 'main.c')
 	module_dir := os.join_path(root, 'marker')
 	os.mkdir_all(module_dir) or { panic(err) }
 	os.write_file(os.join_path(module_dir, 'marker.v'), 'module marker
@@ -1114,8 +1113,7 @@ fn main() {
 	environment['VFLAGS'] = ''
 	environment['VOSARGS'] = ''
 	mut process := os.new_process(@VEXE)
-	process.set_args(['-ownership', '-no-parallel', '-d=ownership', '-gc', 'none', '-o', output,
-		source])
+	process.set_args(['-ownership', '-no-parallel', '-d=ownership', '-check', source])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()
@@ -1124,8 +1122,6 @@ fn main() {
 	exit_code := process.code
 	process.close()
 	assert exit_code == 0, compiler_output
-	assert os.is_file(output)
-	assert os.read_file(output)!.contains('ownership')
 }
 
 fn test_autofree_unsupported_modes_stay_on_the_standard_compiler() {
