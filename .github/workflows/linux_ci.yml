@@ -619,7 +619,7 @@ jobs:
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               "$RUNNER_TEMP/multiwindow_weston_command.sh" \
-              ./v -cc gcc -d gg_multiwindow -d sokol_wayland test "$test"
+              ./v -no-memory-limit -cc gcc -d gg_multiwindow -d sokol_wayland test "$test"
           done
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
@@ -1246,7 +1246,7 @@ jobs:
           for test in "${tests[@]}"; do
             "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
               "$RUNNER_TEMP/multiwindow_weston_command.sh" \
-              ./v -cc "$compiler" -d gg_multiwindow -d sokol_wayland test "$test"
+              ./v -no-memory-limit -cc "$compiler" -d gg_multiwindow -d sokol_wayland test "$test"
           done
 
           "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \

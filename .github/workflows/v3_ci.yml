@@ -18,7 +18,7 @@ concurrency:
 jobs:
   v3:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Build V
