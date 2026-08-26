@@ -303,6 +303,55 @@ fn main() {
 	assert !c_code.contains('\nFILE* stdout'), c_code
 }
 
+fn test_c_namespace_global_keeps_name_when_v_global_collides() {
+	c_code := gen_c_for_c_global_sources('c_namespace_global_collision', {
+		'main.v':      'module main
+
+import moda
+
+fn main() {
+	moda.set_both()
+}
+'
+		'moda/moda.v': 'module moda
+
+__global C.foo int
+__global foo int
+
+pub fn set_both() {
+	C.foo = 7
+	foo = 11
+}
+'
+	})
+	assert c_code.contains('foo = 7;'), c_code
+	assert c_code.contains('moda__foo = 11;'), c_code
+	assert !c_code.contains('moda__foo = 7;'), c_code
+}
+
+fn test_legacy_closure_c_global_uses_runtime_storage() {
+	c_code := gen_c_for_c_global_sources('legacy_closure_c_global', {
+		'main.v':            'module main
+
+__global C.g_closure int
+
+fn closure_value() int {
+	return C.g_closure
+}
+
+fn main() {
+	_ := closure_value()
+}
+'
+		'closure/closure.v': 'module closure
+
+__global g_closure int
+'
+	})
+	assert c_code.contains('return closure__g_closure;'), c_code
+	assert !c_code.contains('return g_closure;'), c_code
+}
+
 fn test_empty_c_struct_initializer_uses_portable_zero_value() {
 	c_code := gen_c_for_c_global_source('empty_c_struct_initializer', 'struct C.NativeDesc {
 	value int
