@@ -1396,9 +1396,62 @@ stacked-PR convention as Phase 12's 12a-12d.
       Retry's own one-time SCID, permanently discarding every subsequent real
       server packet — found via this phase's own real dial()-through-Retry-
       through-accept()-through-established-handshake integration test.
-- [ ] **13e** — `h3_server.v` wiring, mirroring `h2_server.v`'s established
-      shape (minimal/serial first, concurrency as an explicit follow-up),
-      plus server certificate/key loading.
+- [x] **13e** — `h3_server.v` (net.http): a caller-driven `H3Server` bridging
+      one real UDP socket to `quic.QuicListener`/`quic.H3Conn`'s poll()-based
+      surface, mirroring `h2_server.v`'s Handler dispatch and request/
+      response construction (pseudo-header validation, content-length
+      cross-check, trailer emission — reusing `h2_server.v`'s own
+      `h2_request_field_error`/`h2_conn_specific_headers`/`h2_field_value_
+      has_forbidden_octet` directly, since RFC 9114 §4.1.1/§4.2 mirror RFC
+      9113 §8.1.2.2/§8.2.2 verbatim). Deliberately NOT thread-per-connection
+      like `h2_server.v`'s own model — QUIC multiplexes many connections
+      behind one UDP socket via a single shared demux table, so `H3Server`
+      drives every connection from one loop instead, generalizing
+      `h3_mux_conn.v`'s own single-driver-thread client shape via
+      `QuicListener`.
+      Required making `quic.H3Conn` itself role-aware for the first time:
+      a server-role connection now treats a peer-(client-)opened bidi
+      stream as an incoming request (new `request_headers`/`request_data`/
+      `request_trailers`/`request_ended` H3Events) and answers via new
+      `send_response_headers`/`send_response_data`, reusing the identical
+      underlying per-stream message-framing state machine a client-role
+      connection already used for responses (RFC 9114 §4.1's grammar is
+      symmetric between a request and a response) — see `h3_conn.v`'s own
+      updated module doc comment.
+      Two rounds of adversarial testing (a real dial()/accept() pair driven
+      through a genuine end-to-end request/response exchange at the
+      `quic.H3Conn` level, then a REAL loopback-UDP `H3Server`/`serve()`
+      goroutine round trip) found and fixed three real, independently
+      significant bugs, none specific to 13e's own new code — all
+      pre-existing, and all invisible to every earlier phase's tests because
+      none had previously driven either "many `process_timeouts()` calls
+      while something stays unacked" or "a server-role connection with a
+      caller-omitted transport parameter" for long enough to trip them:
+      (1) `QuicConn.process_timeouts` called RFC 9002's
+      `on_loss_detection_timeout` **unconditionally on every call** instead
+      of only once the timer's own computed deadline had actually elapsed —
+      in a caller-driven poll loop (this whole stack's own architecture,
+      with no native per-connection timer thread) this fired a brand-new
+      PTO probe on every single call as long as anything was unacked,
+      advancing `pto_count`'s exponential backoff far faster than real time
+      without the backoff ever actually slowing the send rate — a real,
+      universally-reachable CPU-exhaustion hang for any deployment where a
+      peer stops responding without a clean close, not merely a 13e test
+      artifact. (2) `ReceiveWindow.should_advertise_more()` degenerated to
+      `0 >= 0` (permanently true) for a stream/connection configured with
+      `initial_limit == 0` — reachable the moment a caller's own
+      `transport_parameters` omits an Option field (e.g.
+      `initial_max_stream_data_uni`, which every real HTTP/3 connection
+      needs non-zero for its own control/QPACK streams to function at all),
+      spinning `drain_flow_control_raises` forever on a raise that could
+      never make progress. (3) `H3Server.absorb_and_dispatch` dropped its
+      own local `H3Conn` wrapper on an H3-level protocol violation without
+      closing the underlying `QuicConn`, leaving a still-alive connection to
+      silently get a brand-new blank `H3Conn` wrapper (re-opening a second
+      set of control/QPACK streams, losing all in-flight request state) on
+      its very next event instead of tearing the connection down — fixed by
+      calling `qc.close()`, mirroring how `h3_mux_conn.v`'s own client
+      driver answers the identical error via `fail_conn()`.
 - [ ] *(optional, deferrable)* Connection migration (`PATH_CHALLENGE`/
       `PATH_RESPONSE`) — both unimplemented today; a minimal v1 server can
       ship without full migration support, same as the client structurally
