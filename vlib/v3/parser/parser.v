@@ -7412,9 +7412,6 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 				p.next()
 				rhs_ids << p.expr(.lowest)
 			}
-			if p.tok == .semicolon {
-				p.next()
-			}
 			mut all_ids := []flat.NodeId{cap: lhs_ids.len * 2}
 			for i in 0 .. lhs_ids.len {
 				all_ids << lhs_ids[i]
@@ -7434,7 +7431,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 				}
 			}
 			istart := p.add_children(all_ids)
-			return p.add_node(flat.Node{
+			id := p.add_node(flat.Node{
 				kind:           if op_id == 12 {
 					flat.NodeKind.decl_assign
 				} else {
@@ -7445,6 +7442,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 				children_start: istart
 				children_count: flat.child_count(all_ids.len)
 			})
+			return p.finish_assignment_stmt(id)
 		}
 		if p.tok == .semicolon {
 			p.next()
@@ -7483,20 +7481,18 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		}
 		p.remember_comptime_decl_value(lhs, rhs)
 		p.declare_local_binding_node(lhs)
-		if p.tok == .semicolon {
-			p.next()
-		}
 		mut all_ids := []flat.NodeId{cap: rhs_ids.len + 1}
 		all_ids << lhs
 		all_ids << rhs_ids
 		istart := p.add_children(all_ids)
-		return p.add_node(flat.Node{
+		id := p.add_node(flat.Node{
 			kind:           .decl_assign
 			op:             .assign
 			value:          if rhs_ids.len > 1 { '1' } else { '' }
 			children_start: istart
 			children_count: flat.child_count(all_ids.len)
 		})
+		return p.finish_assignment_stmt(id)
 	}
 
 	if token_is_assignment(p.tok) {
@@ -7504,9 +7500,6 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		p.next()
 		rhs := p.expr(.lowest)
 		p.forget_comptime_lhs_value(lhs)
-		if p.tok == .semicolon {
-			p.next()
-		}
 		lhs_node := p.a.nodes[int(lhs)]
 		kind := if lhs_node.kind == .selector {
 			flat.NodeKind.selector_assign
@@ -7516,12 +7509,13 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			flat.NodeKind.assign
 		}
 		istart := p.add_children2(lhs, rhs)
-		return p.add_node(flat.Node{
+		id := p.add_node(flat.Node{
 			kind:           kind
 			op:             token_id_to_op(op_id)
 			children_start: istart
 			children_count: 2
 		})
+		return p.finish_assignment_stmt(id)
 	}
 
 	if p.tok == .semicolon {
@@ -7534,6 +7528,31 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		children_start: estart
 		children_count: 1
 	})
+}
+
+fn (mut p Parser) finish_assignment_stmt(id flat.NodeId) flat.NodeId {
+	if p.prefs.is_fmt && p.tok == .attribute && p.prev_tok_end > 0
+		&& p.line_nr_for_pos(p.prev_tok_end - 1) == p.line_nr_for_pos(p.tok_pos) {
+		attr_start := clamp_source_offset(p.tok_pos, p.s.src.len)
+		p.next() // skip `@[` token
+		mut depth := 1
+		for depth > 0 && p.tok != .eof {
+			if p.tok == .lsbr {
+				depth++
+			} else if p.tok == .rsbr {
+				depth--
+			}
+			p.next()
+		}
+		attr_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+		if attr_end >= attr_start {
+			p.a.formatter_sources[int(id)] = p.s.src[attr_start..attr_end].clone()
+		}
+	}
+	if p.tok == .semicolon {
+		p.next()
+	}
+	return id
 }
 
 fn (p &Parser) lhs_is_dynamic_sql_expr_alias(lhs flat.NodeId) bool {

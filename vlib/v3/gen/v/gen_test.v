@@ -513,6 +513,19 @@ fn test_formatter_preserves_multi_variable_c_style_loop_headers() {
 	assert vfmt('multi_variable_c_style_loop_twice', out) == out
 }
 
+fn test_formatter_preserves_postfix_assignment_attributes() {
+	source := 'fn f() {
+	x := [1, 2, 3] @[freed]
+	unsafe {
+		x.free()
+	}
+}
+'
+	out := vfmt('postfix_assignment_attribute', source)
+	assert out.contains('x := [1, 2, 3] @[freed]'), out
+	assert vfmt('postfix_assignment_attribute_twice', out) == out
+}
+
 fn test_formatter_preserves_js_string_prefixes() {
 	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"
 	out := vfmt('js_string_prefixes', source)

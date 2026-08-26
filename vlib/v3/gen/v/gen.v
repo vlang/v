@@ -1454,6 +1454,9 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 		g.write(' ${opstr} ')
 		g.expr_list(rhs, ', ')
 	}
+	if attr := g.a.formatter_sources[int(id)] {
+		g.write(' ${attr.trim_space()}')
+	}
 	if !g.in_init && !g.on_newline {
 		g.writeln('')
 	}
