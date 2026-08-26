@@ -136,6 +136,13 @@ fn test_formatter_preserves_or_block_layout_and_lock_comments() {
 	assert vfmt('or_layout_lock_comments_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_loop_comments_inside_body() {
+	source := "fn loop_comments(items []int) {\n\tfor {\n\t\tprintln('regular')\n\t\t// trailing regular\n\t}\n\tfor {\n\t\t// comment-only regular\n\t}\n\tfor i := 0; i < 1; i++ {\n\t\tprintln(i)\n\t\t// trailing C-style\n\t}\n\tfor item in items {\n\t\tprintln(item)\n\t\t// trailing for-in\n\t}\n\tfor _ in items {\n\t\t// comment-only for-in\n\t}\n}\n"
+	out := vfmt('trailing_loop_comments', source)
+	assert out == source, out
+	assert vfmt('trailing_loop_comments_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_interface_comments_inside_body() {
 	source := 'interface Speaker {
 	// first

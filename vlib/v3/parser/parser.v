@@ -6690,17 +6690,18 @@ fn (mut p Parser) if_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) for_stmt() flat.NodeId {
+	for_start := p.span_start()
 	p.next() // skip 'for'
 	if p.tok == .key_match {
 		condition := p.match_stmt()
 		init_empty := p.add(flat.NodeKind.empty)
 		post_empty := p.add(flat.NodeKind.empty)
 		start := p.add_children([init_empty, condition, post_empty])
-		return p.add_node(flat.Node{
+		return p.record_formatter_for_span(p.add_node(flat.Node{
 			kind:           .for_stmt
 			children_start: start
 			children_count: 3
-		})
+		}), for_start)
 	}
 	if p.tok == .lcbr {
 		// infinite loop: for { ... }
@@ -6716,11 +6717,11 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			ids << id
 		}
 		start := p.add_children(ids)
-		return p.add_node(flat.Node{
+		return p.record_formatter_for_span(p.add_node(flat.Node{
 			kind:           .for_stmt
 			children_start: start
 			children_count: flat.child_count(ids.len)
-		})
+		}), for_start)
 	}
 
 	// Check for for-in: `for x in ...` or `for mut x in ...`.
@@ -6728,7 +6729,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 	// (`for h, t := ...`), so handle it after parsing the first expression.
 	if p.tok_can_be_decl_name() && p.peek() == .key_in {
 		first_expr := p.expr(.sum)
-		return p.for_in(first_expr, false)
+		return p.record_formatter_for_span(p.for_in(first_expr, false), for_start)
 	}
 	if p.tok == .key_mut {
 		p.next()
@@ -6749,10 +6750,10 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			first_expr = p.expr(.lowest)
 		}
 		if p.tok == .key_in {
-			return p.for_in(first_expr, true)
+			return p.record_formatter_for_span(p.for_in(first_expr, true), for_start)
 		}
 		if p.tok == .comma {
-			return p.for_comma_header(first_expr, true)
+			return p.record_formatter_for_span(p.for_comma_header(first_expr, true), for_start)
 		}
 		if p.tok == .lcbr {
 			body_ids := p.parse_block_body()
@@ -6766,11 +6767,11 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 				ids << id
 			}
 			start := p.add_children(ids)
-			return p.add_node(flat.Node{
+			return p.record_formatter_for_span(p.add_node(flat.Node{
 				kind:           .for_stmt
 				children_start: start
 				children_count: flat.child_count(ids.len)
-			})
+			}), for_start)
 		}
 	}
 
@@ -6798,27 +6799,27 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			ids << id
 		}
 		start := p.add_children(ids)
-		return p.add_node(flat.Node{
+		return p.record_formatter_for_span(p.add_node(flat.Node{
 			kind:           .for_stmt
 			value:          'c_style'
 			children_start: start
 			children_count: flat.child_count(ids.len)
-		})
+		}), for_start)
 	}
 
 	first_expr := p.expr(.lowest)
 
 	// for-in: `for x in expr`
 	if p.tok == .key_in {
-		return p.for_in(first_expr, false)
+		return p.record_formatter_for_span(p.for_in(first_expr, false), for_start)
 	}
 	if p.tok == .comma {
-		return p.for_comma_header(first_expr, false)
+		return p.record_formatter_for_span(p.for_comma_header(first_expr, false), for_start)
 	}
 
 	// C-style: `for i := 0; ...`
 	if p.tok == .decl_assign || token_is_assignment(p.tok) {
-		return p.for_c_style(first_expr)
+		return p.record_formatter_for_span(p.for_c_style(first_expr), for_start)
 	}
 
 	if p.tok == .semicolon {
@@ -6856,12 +6857,12 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 				ids << id
 			}
 			start := p.add_children(ids)
-			return p.add_node(flat.Node{
+			return p.record_formatter_for_span(p.add_node(flat.Node{
 				kind:           .for_stmt
 				value:          'c_style'
 				children_start: start
 				children_count: flat.child_count(ids.len)
-			})
+			}), for_start)
 		}
 	}
 
@@ -6878,14 +6879,21 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			ids << id
 		}
 		start := p.add_children(ids)
-		return p.add_node(flat.Node{
+		return p.record_formatter_for_span(p.add_node(flat.Node{
 			kind:           .for_stmt
 			children_start: start
 			children_count: flat.child_count(ids.len)
-		})
+		}), for_start)
 	}
 
 	return flat.empty_node
+}
+
+fn (mut p Parser) record_formatter_for_span(id flat.NodeId, start int) flat.NodeId {
+	if p.prefs.is_fmt && int(id) >= 0 {
+		p.a.nodes[int(id)].pos = p.span_to(start)
+	}
+	return id
 }
 
 fn (mut p Parser) for_comma_header(first_expr flat.NodeId, first_is_mut bool) flat.NodeId {

@@ -226,6 +226,18 @@ fn test_fmt_preserves_or_block_layout_and_lock_comments_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_keeps_trailing_loop_comments_inside_body_with_v3() {
+	source := "fn loop_comments(items []int) {\n\tfor {\n\t\tprintln('regular')\n\t\t// trailing regular\n\t}\n\tfor {\n\t\t// comment-only regular\n\t}\n\tfor i := 0; i < 1; i++ {\n\t\tprintln(i)\n\t\t// trailing C-style\n\t}\n\tfor item in items {\n\t\tprintln(item)\n\t\t// trailing for-in\n\t}\n\tfor _ in items {\n\t\t// comment-only for-in\n\t}\n}\n"
+	res, formatted := run_vfmt_write('trailing_loop_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('trailing_loop_comments_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
 	source := 'struct Config {
 	one int

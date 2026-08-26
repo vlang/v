@@ -1972,6 +1972,10 @@ fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 	g.in_init = in_init
 	g.writeln('{')
 	g.stmt_list_ids(body)
+	g.indent++
+	g.advance_source_end_before_pending_comment(n.pos.end)
+	g.emit_comments_before(n.pos.end)
+	g.indent--
 	g.writeln('}')
 }
 
@@ -2048,6 +2052,10 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 	body := unsafe { children[body_start..] }
 	g.writeln(' {')
 	g.stmt_list_ids(body)
+	g.indent++
+	g.advance_source_end_before_pending_comment(n.pos.end)
+	g.emit_comments_before(n.pos.end)
+	g.indent--
 	g.writeln('}')
 }
 
