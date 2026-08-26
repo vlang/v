@@ -279,6 +279,23 @@ fn test_formatter_keeps_comments_before_grouped_const_fields() {
 	assert vfmt('grouped_const_comments_twice', out) == out
 }
 
+fn test_formatter_preserves_typed_map_entries_and_typeof_array_init() {
+	map_source := "fn f() {\n\tm := map[string]int{'a': 1}\n\tprintln(m)\n}\n"
+	map_out := vfmt('typed_map_entries', map_source)
+	assert map_out.contains("map[string]int{'a': 1}"), map_out
+	assert vfmt('typed_map_entries_twice', map_out) == map_out
+
+	array_source := 'fn f() {
+	fixed := [1, 2, 3]!
+	dyn := []typeof(fixed[0]){}
+	println(dyn)
+}
+'
+	array_out := vfmt('typeof_array_init', array_source)
+	assert array_out.contains('[]typeof(fixed[0]){}'), array_out
+	assert vfmt('typeof_array_init_twice', array_out) == array_out
+}
+
 fn test_formatter_preserves_sql_body() {
 	out := vfmt('sql_body',
 		'struct User {\n\tid int\n}\n\nfn f(db DB) {\n\t_ := sql db {\n\t\tselect from User where id == 1\n\t}\n}\n')

@@ -285,6 +285,19 @@ fn test_fmt_keeps_comments_before_grouped_const_fields_with_v3() {
 	assert !formatted.contains('pi =\n'), formatted
 }
 
+fn test_fmt_preserves_typed_map_entries_and_typeof_array_init_with_v3() {
+	source := "fn f() {\n\tm := map[string]int{'a': 1}\n\tfixed := [1, 2, 3]!\n\tdyn := []typeof(fixed[0]){}\n\tprintln(m)\n\tprintln(dyn)\n}\n"
+	res, formatted := run_vfmt_write('typed_map_and_typeof_array', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains("map[string]int{'a': 1}"), formatted
+	assert formatted.contains('[]typeof(fixed[0]){}'), formatted
+	second_res, formatted_twice := run_vfmt_write('typed_map_and_typeof_array', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')

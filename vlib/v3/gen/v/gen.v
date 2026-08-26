@@ -709,7 +709,11 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write(']')
 		}
 		.array_init {
-			g.write(n.typ)
+			if n.typ.len > 0 {
+				g.write(n.typ)
+			} else if n.value.len > 0 {
+				g.write('[]${n.value}')
+			}
 			g.write('{')
 			was_in_array_init := g.in_array_init
 			g.in_array_init = true
@@ -1033,8 +1037,6 @@ fn (mut g Gen) map_init(id flat.NodeId) {
 	n := g.a.node(id)
 	if n.value.len > 0 {
 		g.write(n.value)
-		g.write('{}')
-		return
 	}
 	children := g.a.children_of(n)
 	if children.len == 0 {
