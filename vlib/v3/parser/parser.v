@@ -104,6 +104,7 @@ mut:
 	pending_decl_pub                  bool
 	pending_decl_attrs                []string
 	pending_decl_attr_kinds           []int
+	pending_decl_attr_sources         []string
 	in_for_container                  bool
 	in_select_branch_condition        int
 	in_array_literal                  int
@@ -153,8 +154,9 @@ struct ComptimeValueUndo {
 }
 
 struct ParsedFieldAttrs {
-	attrs []string
-	kinds []int
+	attrs   []string
+	kinds   []int
+	sources []string
 }
 
 // new creates a Parser value for parser.
@@ -276,6 +278,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.pending_decl_pub = false
 	p.pending_decl_attrs.clear()
 	p.pending_decl_attr_kinds.clear()
+	p.pending_decl_attr_sources.clear()
 	p.in_map_value = 0
 	p.comptime_local_values.clear()
 	p.comptime_value_undos.clear()
@@ -961,6 +964,7 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 		p.skip_next_decl = false
 		p.pending_decl_attrs.clear()
 		p.pending_decl_attr_kinds.clear()
+		p.pending_decl_attr_sources.clear()
 		if p.cur_decl_is_fn() {
 			p.disable_fn_body = true
 			res := p.top_level_stmt()
@@ -1008,22 +1012,28 @@ fn (mut p Parser) parse_pending_decl_attrs() {
 	p.apply_decl_attr_flags(parsed.attrs)
 	p.pending_decl_attrs << parsed.attrs
 	p.pending_decl_attr_kinds << parsed.kinds
+	p.pending_decl_attr_sources << parsed.sources
 }
 
 fn (mut p Parser) apply_decl_attrs(id flat.NodeId) {
 	if p.pending_decl_attrs.len == 0 || int(id) < 0 || int(id) >= p.a.nodes.len {
 		p.pending_decl_attrs.clear()
 		p.pending_decl_attr_kinds.clear()
+		p.pending_decl_attr_sources.clear()
 		return
 	}
-	p.add_node(flat.Node{
+	attr_id := p.add_node(flat.Node{
 		kind:    .directive
 		value:   '@attributes:${int(id)}'
 		typ:     p.pending_decl_attr_kinds.map(it.str()).join(',')
 		payload: flat.node_payload(p.pending_decl_attrs.clone())
 	})
+	if p.prefs.is_fmt && p.pending_decl_attr_sources.len > 0 {
+		p.a.formatter_sources[int(attr_id)] = p.pending_decl_attr_sources.join('\n')
+	}
 	p.pending_decl_attrs.clear()
 	p.pending_decl_attr_kinds.clear()
+	p.pending_decl_attr_sources.clear()
 }
 
 fn (mut p Parser) apply_decl_attr_flags(attrs []string) {
@@ -2203,7 +2213,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 		op:             if is_pub { .arrow } else { .none }
 		children_start: start
 		children_count: flat.child_count(ids.len)
-		pos:            header_pos
+		pos:            if p.prefs.is_fmt { p.span_to(global_start) } else { header_pos }
 	})
 }
 
@@ -2914,8 +2924,10 @@ fn (mut p Parser) parse_field_attrs() []string {
 fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 	mut attrs := []string{}
 	mut kinds := []int{}
+	mut sources := []string{}
 	mut groups := 0
 	for p.tok == .attribute || p.tok == .lsbr {
+		group_start := p.span_start()
 		if groups > 0 {
 			p.record_diagnostic_span('multiple attributes should be in the same @[], with ; separators', int_max(0,
 				p.tok_pos - 1), p.tok_pos + 1)
@@ -2932,6 +2944,10 @@ fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 				p.skip_next_decl = true
 			}
 			p.check(.rsbr)
+			if p.prefs.is_fmt {
+				pos := p.span_to(group_start)
+				sources << p.s.src[pos.offset..pos.end].clone()
+			}
 			continue
 		}
 		for p.tok != .rsbr && p.tok != .eof {
@@ -2997,10 +3013,15 @@ fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 			}
 		}
 		p.check(.rsbr)
+		if p.prefs.is_fmt {
+			pos := p.span_to(group_start)
+			sources << p.s.src[pos.offset..pos.end].clone()
+		}
 	}
 	return ParsedFieldAttrs{
-		attrs: attrs
-		kinds: kinds
+		attrs:   attrs
+		kinds:   kinds
+		sources: sources
 	}
 }
 

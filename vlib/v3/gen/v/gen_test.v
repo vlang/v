@@ -196,6 +196,23 @@ fn test_formatter_preserves_compact_struct_updates() {
 	assert vfmt('compact_struct_updates_twice', out) == out
 }
 
+fn test_formatter_expands_grouped_consts_and_keeps_trailing_global_comments_inside() {
+	source := "const (\n\t// first docs\n\tfirst = 1\n\tsecond = 2\n)\n\npub const (\n\tthird = 3\n)\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n"
+	expected := "// first docs\nconst first = 1\nconst second = 2\n\npub const third = 3\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n"
+	out := vfmt('grouped_consts_trailing_global_comment', source)
+	assert out == expected, out
+	second := vfmt('grouped_consts_trailing_global_comment_twice', out)
+	assert second == out, second
+}
+
+fn test_formatter_preserves_declaration_attribute_groups() {
+	source := "@[deprecated: 'use bar() instead']\n@[foo: bar]\n@[if debug; inline]\nfn keep_attributes() {}\n\n@[deprecated(msg: 'use foo_v2() instead', after: '2026-06-01')]\n@[inline]\nfn call_syntax() {}\n\n@[inline]\n@[export: 'symbol']\n@[unsafe]\n@[tom: 'jerry']\nfn normalized() {}\n"
+	expected := "@[deprecated: 'use bar() instead']\n@[foo: bar]\n@[if debug; inline]\nfn keep_attributes() {}\n\n@[deprecated(msg: 'use foo_v2() instead', after: '2026-06-01')]\n@[inline]\nfn call_syntax() {}\n\n@[export: 'symbol']\n@[tom: 'jerry']\n@[inline; unsafe]\nfn normalized() {}\n"
+	out := vfmt('declaration_attribute_groups', source)
+	assert out == expected, out
+	assert vfmt('declaration_attribute_groups_twice', out) == out
+}
+
 fn test_formatter_keeps_comptime_branch_and_selective_import_comments_inside() {
 	source := "import sample {\n\tOne,\n\tTwo,\n\t// trailing import\n}\n\n\$if linux {\n\tprintln('first')\n\t// trailing first\n} \$else \$if windows {\n\t// comment-only second\n} \$else {\n\tprintln('last')\n\t// trailing last\n}\n"
 	out := vfmt('comptime_branch_selective_import_comments', source)
@@ -882,7 +899,7 @@ fn f() {
 	assert vfmt_with_json_migration('disabled_json_migration_twice', out) == out
 }
 
-fn test_formatter_keeps_comments_before_grouped_const_fields() {
+fn test_formatter_expands_grouped_const_fields_with_comments() {
 	source := 'const (
 	// pi documents pi
 	pi = 3.14
@@ -891,10 +908,12 @@ fn test_formatter_keeps_comments_before_grouped_const_fields() {
 )
 '
 	out := vfmt('grouped_const_comments', source)
-	assert out.contains('\t// pi documents pi\n\tpi = 3.14'), out
-	assert out.contains('\t// phi documents phi\n\tphi = 1.618'), out
+	assert out.contains('// pi documents pi\nconst pi = 3.14'), out
+	assert out.contains('// phi documents phi\nconst phi = 1.618'), out
+	assert !out.contains('const ('), out
 	assert !out.contains('pi =\n'), out
-	assert vfmt('grouped_const_comments_twice', out) == out
+	second := vfmt('grouped_const_comments_twice', out)
+	assert second == out, second
 }
 
 fn test_formatter_preserves_typed_map_entries_and_typeof_array_init() {

@@ -63,10 +63,11 @@ mut:
 	// suppress_mut skips the `mut ` prefix on an assignment (used for C-style
 	// `for` loop init clauses, whose variable the parser always marks mutable).
 	suppress_mut bool
-	// attrs maps a declaration node id to its `@[...]` attribute strings. The
-	// parser stores attributes on a separate floating `.directive` node rather
-	// than as a child, so they are collected up-front in collect_attrs.
-	attrs map[int][]string
+	// attrs maps a declaration node id to its `@[...]` attribute strings. The parser stores
+	// attributes on a separate floating `.directive` node rather than as a child, so they are
+	// collected up-front in collect_attrs. attr_sources retains formatter-only source groups.
+	attrs        map[int][]string
+	attr_sources map[int]string
 }
 
 // FormatOptions controls optional formatter output.
@@ -206,10 +207,14 @@ pub fn (mut g Gen) output_string() string {
 // node id it annotates.
 fn (mut g Gen) collect_attrs() {
 	g.attrs = map[int][]string{}
-	for n in g.a.nodes {
+	g.attr_sources = map[int]string{}
+	for i, n in g.a.nodes {
 		if n.kind == .directive && n.value.starts_with('@attributes:') {
 			decl_id := n.value.all_after('@attributes:').int()
 			g.attrs[decl_id] = n.generic_params()
+			if source := g.a.formatter_sources[i] {
+				g.attr_sources[decl_id] = source
+			}
 		}
 	}
 }
@@ -402,6 +407,7 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 	mut decls := []flat.NodeId{}
 	g.collect_top_level(ids, mut decls)
 	mut prev := flat.NodeKind.empty
+	mut previous := flat.empty_node
 	mut wrote_any := false
 	mut last_import := -1
 	for i, id in decls {
@@ -427,10 +433,14 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 			injected_now = true
 			wrote_any = true
 			prev = .import_decl
+			previous = flat.empty_node
 		}
 		if wrote_any {
+			adjacent_consts := prev == .const_decl && kind == .const_decl && int(previous) >= 0
+				&& !g.source_has_blank_line_between(g.a.node(previous).pos.end,
+					g.a.node(id).pos.offset)
 			if !injected_now && !(prev == .import_decl && kind == .import_decl) && !(prev == kind
-				&& kind in [.expr_stmt, .global_decl]) {
+				&& kind in [.expr_stmt, .global_decl]) && !adjacent_consts {
 				g.writeln('')
 			}
 		}
@@ -442,6 +452,7 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 			injected_imports = true
 		}
 		prev = kind
+		previous = id
 		wrote_any = true
 	}
 	if !injected_imports && g.implied_imports.len > 0 {
@@ -3190,17 +3201,19 @@ fn (mut g Gen) const_decl(id flat.NodeId) {
 		g.writeln('')
 		return
 	}
-	g.writeln('${pub_prefix}const (')
-	g.indent++
 	for fid in fields {
 		f := g.a.node(fid)
 		g.emit_comments_before(f.pos.offset)
-		g.write('${f.value} = ')
-		g.expr(g.a.child(f, 0))
+		g.write('${pub_prefix}const ${f.value}')
+		if f.children_count > 0 {
+			g.write(' = ')
+			g.expr(g.a.child(f, 0))
+		} else if f.typ.len > 0 {
+			g.write(' ${g.type_text(f.typ)}')
+		}
 		g.writeln('')
+		g.source_end = int_max(g.source_end, f.pos.end)
 	}
-	g.indent--
-	g.writeln(')')
 }
 
 fn (mut g Gen) global_decl(id flat.NodeId) {
@@ -3229,6 +3242,8 @@ fn (mut g Gen) global_decl(id flat.NodeId) {
 	for fid in fields {
 		g.global_field(fid, group_pub, field_width)
 	}
+	g.advance_source_end_before_pending_comment(n.pos.end)
+	g.emit_comments_before(n.pos.end)
 	g.indent--
 	g.writeln(')')
 }
@@ -3286,10 +3301,144 @@ fn (mut g Gen) directive_stmt(id flat.NodeId) {
 }
 
 fn (mut g Gen) emit_attrs(id flat.NodeId) {
+	if source := g.attr_sources[int(id)] {
+		groups := formatter_attribute_groups(source)
+		if groups.len > 0 {
+			mut argument_groups := []string{}
+			mut bare_attrs := []string{}
+			for group in groups {
+				parts := formatter_attribute_parts(group)
+				if parts.len == 0 {
+					continue
+				}
+				if parts.all(is_bare_formatter_attribute(it)) {
+					bare_attrs << parts
+				} else {
+					argument_groups << parts.join('; ')
+				}
+			}
+			bare_attrs.sort()
+			for group in argument_groups {
+				g.writeln('@[${group}]')
+			}
+			if bare_attrs.len > 0 {
+				g.writeln('@[${bare_attrs.join('; ')}]')
+			}
+			return
+		}
+	}
 	attrs := g.attrs[int(id)] or { []string{} }
 	if attrs.len > 0 {
 		g.writeln('@[${attrs.join('; ')}]')
 	}
+}
+
+fn formatter_attribute_groups(source string) []string {
+	mut groups := []string{}
+	mut start := -1
+	mut depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	for i := 0; i < source.len; i++ {
+		c := source[i]
+		if start < 0 {
+			if c == `[` {
+				start = if i > 0 && source[i - 1] == `@` { i - 1 } else { i }
+				depth = 1
+			}
+			continue
+		}
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c == `'` || c == `"` {
+			quote = c
+		} else if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+			if depth == 0 {
+				groups << source[start..i + 1].trim_space()
+				start = -1
+			}
+		}
+	}
+	return groups
+}
+
+fn formatter_attribute_parts(group string) []string {
+	open_index := group.index_u8(`[`)
+	if open_index < 0 {
+		return []
+	}
+	mut close_index := group.len
+	for close_index > open_index + 1 && group[close_index - 1].is_space() {
+		close_index--
+	}
+	if close_index <= open_index + 1 || group[close_index - 1] != `]` {
+		return []
+	}
+	content := group[open_index + 1..close_index - 1]
+	mut parts := []string{}
+	mut start := 0
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut quote := u8(0)
+	mut escaped := false
+	for i := 0; i < content.len; i++ {
+		c := content[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c == `'` || c == `"` {
+			quote = c
+		} else if c == `(` {
+			paren_depth++
+		} else if c == `)` {
+			paren_depth--
+		} else if c == `[` {
+			bracket_depth++
+		} else if c == `]` {
+			bracket_depth--
+		} else if (c == `;` || c == `,`) && paren_depth == 0 && bracket_depth == 0 {
+			piece := content[start..i].trim_space()
+			if piece.len > 0 {
+				parts << piece
+			}
+			start = i + 1
+		}
+	}
+	piece := content[start..].trim_space()
+	if piece.len > 0 {
+		parts << piece
+	}
+	return parts
+}
+
+fn is_bare_formatter_attribute(part string) bool {
+	if part.len == 0 {
+		return false
+	}
+	for c in part.bytes() {
+		if !c.is_alnum() && c != `_` {
+			return false
+		}
+	}
+	return true
 }
 
 // Helpers --------------------------------------------------------------------

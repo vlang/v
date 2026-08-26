@@ -313,6 +313,32 @@ fn test_fmt_preserves_compact_struct_updates_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_expands_grouped_consts_and_keeps_trailing_global_comments_inside_with_v3() {
+	source := "const (\n\t// first docs\n\tfirst = 1\n\tsecond = 2\n)\n\npub const (\n\tthird = 3\n)\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n"
+	expected := "// first docs\nconst first = 1\nconst second = 2\n\npub const third = 3\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n"
+	res, formatted := run_vfmt_write('grouped_consts_trailing_global_comment', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice := run_vfmt_write('grouped_consts_trailing_global_comment_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_declaration_attribute_groups_with_v3() {
+	source := "@[deprecated: 'use bar() instead']\n@[foo: bar]\n@[if debug; inline]\nfn keep_attributes() {}\n\n@[deprecated(msg: 'use foo_v2() instead', after: '2026-06-01')]\n@[inline]\nfn call_syntax() {}\n\n@[inline]\n@[export: 'symbol']\n@[unsafe]\n@[tom: 'jerry']\nfn normalized() {}\n"
+	expected := "@[deprecated: 'use bar() instead']\n@[foo: bar]\n@[if debug; inline]\nfn keep_attributes() {}\n\n@[deprecated(msg: 'use foo_v2() instead', after: '2026-06-01')]\n@[inline]\nfn call_syntax() {}\n\n@[export: 'symbol']\n@[tom: 'jerry']\n@[inline; unsafe]\nfn normalized() {}\n"
+	res, formatted := run_vfmt_write('declaration_attribute_groups', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice := run_vfmt_write('declaration_attribute_groups_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_keeps_comptime_branch_and_selective_import_comments_inside_with_v3() {
 	source := "import sample {\n\tOne,\n\tTwo,\n\t// trailing import\n}\n\n\$if linux {\n\tprintln('first')\n\t// trailing first\n} \$else \$if windows {\n\t// comment-only second\n} \$else {\n\tprintln('last')\n\t// trailing last\n}\n"
 	res, formatted := run_vfmt_write('comptime_branch_selective_import_comments', source, '')
