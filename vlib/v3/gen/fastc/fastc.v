@@ -770,6 +770,25 @@ mut:
 	last_multi_return_types  []string
 	fixed_array_types        map[string]string
 	composite_types          map[string]bool
+	expression_depth         int
+	// Comparison-handler results memoized per token subrange for the duration
+	// of one top-level expression (see fastc_comparison_memo_key). The boolean
+	// operator scans in those handlers re-recurse over shared subranges;
+	// without the memo that search re-renders the same ranges combinatorially.
+	comparison_memo map[i64]FastcRenderedExpression
+	has_c_functions bool
+}
+
+// fastc_comparison_memo_key identifies a token subrange within the current
+// expression. Every recursive slice shares the top array's backing storage, so
+// the data pointer plus length is exact; `tag` separates the two comparison
+// handlers. Token arrays are 8-byte aligned and prealloc never reuses a
+// buffer while the memo is live (it is cleared per top-level expression).
+fn fastc_comparison_memo_key(tokens []FastcExpressionToken, tag i64) i64 {
+	if tokens.len >= 32768 {
+		return 0
+	}
+	return (i64(tokens.data) >> 3 << 16) | (i64(tokens.len) & 0x7fff) | (tag << 62)
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
@@ -843,6 +862,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			interface_fields)!
 	}
 	used_function_names := fastc_collect_referenced_function_names(sources, prefs, functions)
+	has_c_functions := fastc_functions_declare_c(functions)
 	fastc_prefixed_c_names := fastc_reserved_temporary_c_names(functions, globals)
 	module_init_calls := fastc_module_init_calls(sources, functions)!
 	module_cleanup_calls := fastc_module_cleanup_calls(sources, functions)!
@@ -908,6 +928,8 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			declared_types:          declared_types
 			declared_type_c_names:   declared_type_c_names
 			fastc_prefixed_c_names:  fastc_prefixed_c_names
+			has_c_functions:         has_c_functions
+			comparison_memo:         map[i64]FastcRenderedExpression{}
 			declared_kinds:          declared_kinds
 			enum_flags:              enum_flags
 			alias_base_types:        type_output.alias_base_types
@@ -1898,6 +1920,7 @@ fn fastc_register_global(header FastcSourceHeader, name string, is_public bool, 
 fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
+	helper_has_c_functions := fastc_functions_declare_c(functions)
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
 	for source_file in ordered_sources {
 		mut initializers := strings.new_builder(256)
@@ -1912,6 +1935,8 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 			declared_types:         declared_types
 			declared_type_c_names:  declared_type_c_names
 			fastc_prefixed_c_names: fastc_prefixed_c_names
+			has_c_functions:        helper_has_c_functions
+			comparison_memo:        map[i64]FastcRenderedExpression{}
 			declared_kinds:         declared_kinds
 			enum_flags:             enum_flags
 			alias_base_types:       alias_base_types
@@ -2068,6 +2093,7 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 }
 
 fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, alias_base_types map[string]string, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string) ! {
+	helper_has_c_functions := fastc_functions_declare_c(functions)
 	mut type_names := struct_field_info.keys()
 	type_names.sort()
 	for type_name in type_names {
@@ -2088,6 +2114,8 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 				declared_types:         declared_types
 				declared_type_c_names:  declared_type_c_names
 				fastc_prefixed_c_names: fastc_prefixed_c_names
+				has_c_functions:        helper_has_c_functions
+				comparison_memo:        map[i64]FastcRenderedExpression{}
 				declared_kinds:         declared_kinds
 				enum_flags:             enum_flags
 				alias_base_types:       alias_base_types
@@ -2128,6 +2156,7 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 
 fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
+	helper_has_c_functions := fastc_functions_declare_c(functions)
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
 	for source_file in ordered_sources {
 		mut file_set := token.FileSet.new()
@@ -2141,6 +2170,8 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 			declared_types:         declared_types
 			declared_type_c_names:  declared_type_c_names
 			fastc_prefixed_c_names: fastc_prefixed_c_names
+			has_c_functions:        helper_has_c_functions
+			comparison_memo:        map[i64]FastcRenderedExpression{}
 			declared_kinds:         declared_kinds
 			enum_flags:             enum_flags
 			alias_base_types:       alias_base_types
@@ -7223,6 +7254,21 @@ fn (mut g Parser) read_statement_expression_with_prefix(prefix string, stops []t
 }
 
 fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool) !string {
+	g.expression_depth++
+	if g.expression_depth == 1 && g.comparison_memo.len > 0 {
+		// Memoized comparison renders are only valid while the expression's
+		// token buffers and locals are live and unchanged; a new top-level
+		// expression starts a fresh generation.
+		g.comparison_memo.clear()
+	}
+	defer {
+		g.expression_depth--
+	}
+	return g.read_expression_with_prefix_mode_impl(prefix, stops, allow_mutation_statement,
+		allow_declaration_guard)
+}
+
+fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool) !string {
 	if g.selfhost && prefix == '' && g.tok == .lcbr && token.Token.lcbr !in stops {
 		return g.read_inferred_map_literal()!
 	}
@@ -10859,6 +10905,30 @@ fn (g &Parser) struct_equality_source(left string, right string, typ string, see
 }
 
 fn (g &Parser) render_struct_comparison_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	memo_key := fastc_comparison_memo_key(tokens, 0)
+	if memo_key != 0 {
+		if cached := g.comparison_memo[memo_key] {
+			if cached.source == '' {
+				return none
+			}
+			return cached
+		}
+	}
+	mut result := FastcRenderedExpression{}
+	if rendered := g.render_struct_comparison_expression_impl(tokens) {
+		result = rendered
+	}
+	if memo_key != 0 {
+		mut w := unsafe { &Parser(g) }
+		w.comparison_memo[memo_key] = result
+	}
+	if result.source == '' {
+		return none
+	}
+	return result
+}
+
+fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	if tokens.len >= 3 && tokens[0].tok == .lpar && tokens.last().tok == .rpar {
 		close := fastc_matching_rpar(tokens, 0) or { -1 }
 		if close == tokens.len - 1 {
@@ -11116,6 +11186,30 @@ fn (g &Parser) render_string_comparison_expression(tokens []FastcExpressionToken
 }
 
 fn (g &Parser) render_mixed_integer_comparison_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	memo_key := fastc_comparison_memo_key(tokens, 1)
+	if memo_key != 0 {
+		if cached := g.comparison_memo[memo_key] {
+			if cached.source == '' {
+				return none
+			}
+			return cached
+		}
+	}
+	mut result := FastcRenderedExpression{}
+	if rendered := g.render_mixed_integer_comparison_expression_impl(tokens) {
+		result = rendered
+	}
+	if memo_key != 0 {
+		mut w := unsafe { &Parser(g) }
+		w.comparison_memo[memo_key] = result
+	}
+	if result.source == '' {
+		return none
+	}
+	return result
+}
+
+fn (g &Parser) render_mixed_integer_comparison_expression_impl(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	if tokens.len >= 3 && tokens[0].tok == .lpar && tokens.last().tok == .rpar {
 		close := fastc_matching_rpar(tokens, 0) or { -1 }
 		if close == tokens.len - 1 {
@@ -12692,7 +12786,14 @@ fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
 }
 
 fn (g &Parser) has_declared_c_function() bool {
-	for function_key in g.functions.keys() {
+	return g.has_c_functions
+}
+
+// fastc_functions_declare_c collects once whether any collected function key
+// names a `C.` function; has_declared_c_function previously cloned every
+// function key per name-resolution query to answer this fixed question.
+fn fastc_functions_declare_c(functions map[string]FastcFunctionSignature) bool {
+	for function_key, _ in functions {
 		if function_key.starts_with('C.') {
 			return true
 		}
