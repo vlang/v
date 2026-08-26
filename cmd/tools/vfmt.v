@@ -39,18 +39,20 @@ const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 const vtmp_folder = os.vtmp_dir()
 const term_colors = term.can_show_color_on_stderr()
 
-fn formatter_backend(args []string) string {
+fn formatter_backend(args []string) !string {
 	mut backend := 'c'
 	for i, arg in args {
 		if arg in ['-b', '-backend'] && i + 1 < args.len {
-			backend = args[i + 1]
+			backend = match args[i + 1] {
+				'c', 'fastc', 'wasm' { args[i + 1] }
+				'js', 'js_node', 'js_browser', 'js_freestanding' { 'js' }
+				else {
+					return error('Unknown V backend: ${args[i + 1]}\nValid -backend choices are: c, fastc, js, js_node, js_browser, js_freestanding, wasm')
+				}
+			}
 		}
 	}
-	return if backend in ['js', 'js_node', 'js_browser', 'js_freestanding'] {
-		'js'
-	} else {
-		backend
-	}
+	return backend
 }
 
 fn main() {
@@ -61,6 +63,10 @@ fn main() {
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := util.join_env_vflags_and_os_args()
+	backend := formatter_backend(args) or {
+		eprintln(err.msg())
+		exit(1)
+	}
 	mut foptions := FormatOptions{
 		is_c:             '-c' in args
 		is_l:             '-l' in args
@@ -75,7 +81,7 @@ fn main() {
 		in_process:       '-inprocess' in args
 		is_new_int:       '-new_int' in args
 		no_migrate_json2: '-no-migrate-json2' in args
-		backend:          formatter_backend(args)
+		backend:          backend
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)

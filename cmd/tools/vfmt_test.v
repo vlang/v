@@ -61,6 +61,18 @@ fn test_fmt_preferences_respect_vflags() {
 			assert !res.output.contains("x := c'abc'"), '${backend_flag} ${backend}: ${res.output}'
 		}
 	}
+
+	for backend_flag in ['-b', '-backend'] {
+		os.setenv('VFLAGS', '${backend_flag} jss', true)
+		vflags_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
+		assert vflags_res.exit_code != 0, '${backend_flag} jss: ${vflags_res.output}'
+		assert vflags_res.output.contains('Unknown V backend: jss'), vflags_res.output
+
+		os.unsetenv('VFLAGS')
+		cli_res := os.execute('${os.quoted_path(vexe)} fmt ${backend_flag} jss ${os.quoted_path(source_path)}')
+		assert cli_res.exit_code != 0, '${backend_flag} jss: ${cli_res.output}'
+		assert cli_res.output.contains('Unknown V backend: jss'), cli_res.output
+	}
 }
 
 fn test_fmt_uses_v3_formatter() {
