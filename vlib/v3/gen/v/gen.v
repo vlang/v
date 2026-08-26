@@ -1278,6 +1278,16 @@ fn (mut g Gen) block_expr(id flat.NodeId) {
 fn (mut g Gen) block_stmt(id flat.NodeId) {
 	n := g.a.node(id)
 	stmts := g.a.children_of(n)
+	if n.value == 'for_c_style_multi' && stmts.len == 2 {
+		// Compiler lowering scopes a multi-variable initializer through a synthetic
+		// block; source formatting puts it back in the loop header.
+		init := g.a.node(stmts[0])
+		loop := g.a.node(stmts[1])
+		if init.kind in [.assign, .decl_assign] && loop.kind == .for_stmt {
+			g.for_stmt_with_init(stmts[1], stmts[0])
+			return
+		}
+	}
 	prefix := if n.value == 'unsafe' { 'unsafe ' } else { '' }
 	g.writeln('${prefix}{')
 	g.stmt_list_ids(stmts)
@@ -1458,9 +1468,19 @@ fn (mut g Gen) flow_control(kw string, label string) {
 }
 
 fn (mut g Gen) for_stmt(id flat.NodeId) {
+	g.for_stmt_with_init(id, flat.empty_node)
+}
+
+fn (mut g Gen) for_stmt_with_init(id flat.NodeId, init_override flat.NodeId) {
 	n := g.a.node(id)
 	children := g.a.children_of(n)
-	init := if children.len > 0 { children[0] } else { flat.empty_node }
+	init := if init_override != flat.empty_node {
+		init_override
+	} else if children.len > 0 {
+		children[0]
+	} else {
+		flat.empty_node
+	}
 	cond := if children.len > 1 { children[1] } else { flat.empty_node }
 	post := if children.len > 2 { children[2] } else { flat.empty_node }
 	body := if children.len > 3 { children[3..] } else { []flat.NodeId{} }
@@ -1480,7 +1500,7 @@ fn (mut g Gen) for_stmt(id flat.NodeId) {
 		}
 		g.write('; ')
 		if !g.is_empty(post) {
-			g.stmt(post)
+			g.for_post_clause(post)
 		}
 		g.write(' ')
 	} else if !g.is_empty(cond) {
@@ -1494,6 +1514,26 @@ fn (mut g Gen) for_stmt(id flat.NodeId) {
 	g.writeln('{')
 	g.stmt_list_ids(body)
 	g.writeln('}')
+}
+
+fn (mut g Gen) for_post_clause(id flat.NodeId) {
+	n := g.a.node(id)
+	if n.kind != .block {
+		g.stmt(id)
+		return
+	}
+	// Comma-separated post expressions are represented as a synthetic block.
+	for i, stmt_id in g.a.children_of(n) {
+		stmt := g.a.node(stmt_id)
+		if stmt.kind == .expr_stmt && stmt.children_count > 0 {
+			g.expr(g.a.child(stmt, 0))
+		} else {
+			g.stmt(stmt_id)
+		}
+		if i < int(n.children_count) - 1 {
+			g.write(', ')
+		}
+	}
 }
 
 fn (mut g Gen) for_in_stmt(id flat.NodeId) {

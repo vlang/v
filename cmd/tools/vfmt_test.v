@@ -418,6 +418,27 @@ fn test_fmt_rewrites_legacy_it_only_in_array_init_expression_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_multi_variable_c_style_loop_headers_with_v3() {
+	source := 'fn f() {
+	L4: for a, b := 0, 10; a < 4; a++, b-- {
+		if a < 2 {
+			continue L4
+		}
+		break L4
+	}
+}
+'
+	res, formatted := run_vfmt_write('multi_variable_c_style_loop', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('L4:\n\tfor a, b := 0, 10; a < 4; a++, b-- {'), formatted
+	assert !formatted.contains('\n\t{\n\t\tmut a, b := 0, 10'), formatted
+	second_res, formatted_twice := run_vfmt_write('multi_variable_c_style_loop_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_js_string_prefixes_with_v3() {
 	source_path := os.join_path(vfmt_test_tdir, 'js_string_prefixes.js.v')
 	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"

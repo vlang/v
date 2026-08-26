@@ -497,6 +497,22 @@ fn test_formatter_rewrites_legacy_it_only_in_array_init_expression() {
 	assert vfmt('array_init_legacy_it_scope_twice', out) == out
 }
 
+fn test_formatter_preserves_multi_variable_c_style_loop_headers() {
+	source := 'fn f() {
+	L4: for a, b := 0, 10; a < 4; a++, b-- {
+		if a < 2 {
+			continue L4
+		}
+		break L4
+	}
+}
+'
+	out := vfmt('multi_variable_c_style_loop', source)
+	assert out.contains('L4:\n\tfor a, b := 0, 10; a < 4; a++, b-- {'), out
+	assert !out.contains('\n\t{\n\t\tmut a, b := 0, 10'), out
+	assert vfmt('multi_variable_c_style_loop_twice', out) == out
+}
+
 fn test_formatter_preserves_js_string_prefixes() {
 	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"
 	out := vfmt('js_string_prefixes', source)
