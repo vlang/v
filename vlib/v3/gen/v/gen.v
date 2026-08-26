@@ -214,6 +214,24 @@ fn (g &Gen) file_has_attr(fnode &flat.Node, name string) bool {
 	return false
 }
 
+fn (g &Gen) collect_json_migration_declarations(ids []flat.NodeId, mut declared_names map[string]bool) {
+	for id in ids {
+		n := g.a.node(id)
+		if n.kind in [.const_decl, .global_decl] {
+			for field_id in g.a.children_of(n) {
+				declared_names[g.a.node(field_id).value] = true
+			}
+		} else if n.kind == .fn_decl && !n.value.contains('.') {
+			declared_names[n.value] = true
+		} else if n.kind == .c_fn_decl && n.value.starts_with('V:')
+			&& !n.value[2..].contains('.') {
+			declared_names[n.value[2..]] = true
+		} else if n.kind in [.block, .comptime_if] {
+			g.collect_json_migration_declarations(g.a.children_of(n), mut declared_names)
+		}
+	}
+}
+
 // setup_json_migration enables the formatter's conservative json-to-json2 rewrite.
 // Migration is all-or-nothing for a file: if a qualifier can be shadowed, an import
 // lives in a conditional branch, a call is used as a value, or a comment would move,
@@ -234,17 +252,8 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		if n.kind == .module_decl && n.value == 'json2' {
 			return
 		}
-		if n.kind in [.const_decl, .global_decl] {
-			for field_id in g.a.children_of(n) {
-				declared_names[g.a.node(field_id).value] = true
-			}
-		} else if n.kind == .fn_decl && !n.value.contains('.') {
-			declared_names[n.value] = true
-		} else if n.kind == .c_fn_decl && n.value.starts_with('V:')
-			&& !n.value[2..].contains('.') {
-			declared_names[n.value[2..]] = true
-		}
 	}
+	g.collect_json_migration_declarations(direct_ids, mut declared_names)
 	mut legacy_imports := []flat.NodeId{}
 	mut json2_imports := []flat.NodeId{}
 	mut called := map[int]bool{}

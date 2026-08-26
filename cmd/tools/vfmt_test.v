@@ -350,6 +350,35 @@ fn f() {
 	assert !fn_formatted.contains('import json2'), fn_formatted
 }
 
+fn test_fmt_avoids_json2_declaration_collisions_in_comptime_branches_with_v3() {
+	declarations := {
+		'const':    'const json2 = 1'
+		'global':   '__global json2 = 1'
+		'function': 'fn json2() {}'
+	}
+	for name, declaration in declarations {
+		source := 'import json
+
+\$if custom ? {
+	${declaration}
+}
+
+fn f() {
+	println(json.encode(1))
+}
+'
+		res, formatted := run_vfmt_write('comptime_json2_${name}_collision', source, '')
+		assert res.exit_code == 0, res.output
+		assert formatted.contains('import json\n'), formatted
+		assert formatted.contains('json.encode('), formatted
+		assert !formatted.contains('import json2'), formatted
+		second_res, formatted_twice := run_vfmt_write('comptime_json2_${name}_collision_twice',
+			formatted, '')
+		assert second_res.exit_code == 0, second_res.output
+		assert formatted_twice == formatted
+	}
+}
+
 fn test_fmt_skips_json2_migration_in_vfmt_disabled_regions_with_v3() {
 	source := 'import json
 

@@ -436,6 +436,31 @@ fn f() {
 	assert !fn_out.contains('import json2'), fn_out
 }
 
+fn test_json_migration_rejects_declaration_collisions_in_comptime_branches() {
+	declarations := {
+		'const':    'const json2 = 1'
+		'global':   '__global json2 = 1'
+		'function': 'fn json2() {}'
+	}
+	for name, declaration in declarations {
+		source := 'import json
+
+\$if custom ? {
+	${declaration}
+}
+
+fn f() {
+	println(json.encode(1))
+}
+'
+		out := vfmt_with_json_migration('comptime_${name}_collision', source)
+		assert out.contains('import json\n'), out
+		assert out.contains('json.encode('), out
+		assert !out.contains('import json2'), out
+		assert vfmt_with_json_migration('comptime_${name}_collision_twice', out) == out
+	}
+}
+
 fn test_json_migration_rejects_aliased_qualifier_local_collisions() {
 	source := 'import json
 import json2 as j2
