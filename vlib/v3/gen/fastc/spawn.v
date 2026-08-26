@@ -103,9 +103,62 @@ fn (mut g Parser) read_spawn_expression() !string {
 	}
 	g.next()
 	mut arguments := []string{}
+	mut named_params := [][]FastcExpressionToken{}
+	mut named_param_names := map[string]bool{}
 	for g.tok != .rpar {
 		if g.tok == .eof {
 			return g.unsupported('unfinished spawn call')
+		}
+		mut is_named_param := false
+		if signature.last_parameter_is_params && g.tok == .name {
+			mut lookahead := g.s
+			is_named_param = lookahead.scan() == .colon
+		}
+		if is_named_param {
+			parameter_index := signature.parameter_types.len - 1
+			if arguments.len != parameter_index {
+				return g.unsupported('spawn named params fields before all positional arguments')
+			}
+			field_name := g.lit
+			if field_name in named_param_names {
+				return g.unsupported('duplicate spawn params field `${field_name}`')
+			}
+			parameter_type := signature.parameter_types.last()
+			field := g.struct_field_metadata(parameter_type, field_name) or {
+				return g.unsupported('unknown spawn params field `${field_name}`')
+			}
+			if !g.struct_field_is_visible(field) {
+				return g.unsupported('private spawn params field `${field_name}`')
+			}
+			g.next()
+			g.expect(.colon)!
+			if g.tok in [.comma, .rpar] {
+				return g.unsupported('empty spawn params field `${field_name}`')
+			}
+			previous_expected_type := g.expected_expression_type
+			g.expected_expression_type = field.typ
+			_ = g.read_expression([token.Token.comma, token.Token.rpar])!
+			g.expected_expression_type = previous_expected_type
+			mut named_tokens := [
+				FastcExpressionToken{
+					tok: .name
+					lit: field_name
+				},
+				FastcExpressionToken{
+					tok: .colon
+					lit: ':'
+				},
+			]
+			named_tokens << g.last_expression.clone()
+			named_params << named_tokens
+			named_param_names[field_name] = true
+			if g.tok == .comma {
+				g.next()
+			}
+			continue
+		}
+		if named_params.len > 0 {
+			return g.unsupported('positional spawn argument after named params fields')
 		}
 		if g.tok == .key_mut {
 			return g.unsupported('spawn with a `mut` argument')
@@ -133,7 +186,14 @@ fn (mut g Parser) read_spawn_expression() !string {
 		}
 	}
 	g.next()
-	if signature.last_parameter_is_params && arguments.len + 1 == signature.parameter_types.len {
+	if named_params.len > 0 {
+		parameter_type := signature.parameter_types.last()
+		named_initializer := g.render_named_struct_initializer(parameter_type, named_params) or {
+			return g.unsupported('spawn named params initializer for `${callee}`')
+		}
+		arguments << named_initializer
+	} else if signature.last_parameter_is_params
+		&& arguments.len + 1 == signature.parameter_types.len {
 		parameter_type := signature.parameter_types.last()
 		arguments << g.render_empty_struct_initializer(parameter_type)
 	}

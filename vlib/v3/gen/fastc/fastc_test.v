@@ -123,16 +123,31 @@ fn configured(base int, config Config) int {
 	return base + config.value
 }
 
+@[params]
+struct PointerConfig {
+	value int
+}
+
+fn configured_pointer(config &PointerConfig) int {
+	return config.value
+}
+
 fn main() {
 	explicit := spawn configured(1, Config{value: 2})
 	omitted := spawn configured(4)
+	named := spawn configured(5, value: 6)
+	pointer := spawn configured_pointer()
 	println(explicit.wait())
 	println(omitted.wait())
+	println(named.wait())
+	println(pointer.wait())
 }
 ',
 		'spawn_params_struct.v', prefs) or { panic(err) }
 	assert c_source.contains('args->result = configured(args->arg0, args->arg1);'), c_source
 	assert c_source.contains('__v_fastc_struct_default.value=(default_value());'), c_source
+	assert c_source.contains('.value=(__v_fastc_struct_field_0)'), c_source
+	assert c_source.contains('v_fastc_interface_box(&(PointerConfig){0}, sizeof(PointerConfig))'), c_source
 }
 
 fn test_generate_and_compile_without_flat_ast() {

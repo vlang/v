@@ -562,10 +562,42 @@ fn (g &Parser) render_empty_struct_initializer(c_type string) string {
 		rendered_fields_by_name[field.name] = rendered_field
 	}
 	if rendered_fields.len == 0 {
+		if c_type.ends_with('*') {
+			return '(${c_type})v_fastc_interface_box(&(${layout_type}){0}, sizeof(${layout_type}))'
+		}
 		return '(${c_type}){0}'
 	}
 	return g.render_struct_literal_with_defaults(c_type, layout_type, []string{}, rendered_fields,
 		rendered_fields_by_name).source
+}
+
+fn (g &Parser) render_named_struct_initializer(c_type string, fields [][]FastcExpressionToken) ?string {
+	mut tokens := [
+		FastcExpressionToken{
+			tok: .name
+			lit: c_type
+			typ: c_type
+		},
+		FastcExpressionToken{
+			tok: .lcbr
+			lit: '{'
+		},
+	]
+	for index, field in fields {
+		if index > 0 {
+			tokens << FastcExpressionToken{
+				tok: .comma
+				lit: ','
+			}
+		}
+		tokens << field
+	}
+	tokens << FastcExpressionToken{
+		tok: .rcbr
+		lit: '}'
+	}
+	rendered := g.render_struct_literal_expression(tokens) or { return none }
+	return rendered.source
 }
 
 fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
@@ -590,7 +622,11 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	}
 	is_c_struct_literal := open == 3 && tokens[0].tok == .name && tokens[0].lit == 'C'
 		&& tokens[1].tok == .dot && tokens[2].tok == .name
-	mut c_type := g.type_from_expression_tokens(tokens[..open]) or { '' }
+	mut c_type := if open == 1 && tokens[0].typ != '' {
+		tokens[0].typ
+	} else {
+		g.type_from_expression_tokens(tokens[..open]) or { '' }
+	}
 	if c_type == '' && is_c_struct_literal {
 		c_type = if '#Cstruct#${tokens[2].lit}' in g.declared_types {
 			'struct ${tokens[2].lit}'
@@ -1897,7 +1933,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			break
 		}
 	}
-	if named_start >= 0 && named_start < signature.parameter_types.len {
+	if signature.last_parameter_is_params && named_start == signature.parameter_types.len - 1 {
 		mut rendered_arguments := []string{}
 		for argument_index, argument in call_args[..named_start] {
 			expected_type := if argument_index < signature.parameter_types.len {
@@ -1911,15 +1947,9 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			rendered_arguments << rendered_argument
 		}
 		parameter_type := signature.parameter_types[named_start]
-		mut fields := []string{}
-		for argument in call_args[named_start..] {
-			if argument.len < 3 || argument[0].tok != .name || argument[1].tok != .colon {
-				return none
-			}
-			value := g.render_call_argument_expression(argument[2..], '') or { return none }
-			fields << '.${fastc_c_identifier(argument[0].lit)}=${value}'
-		}
-		rendered_arguments << '(${parameter_type}){${fields.join(',')}}'
+		named_initializer := g.render_named_struct_initializer(parameter_type,
+			call_args[named_start..]) or { return none }
+		rendered_arguments << named_initializer
 		return FastcRenderedExpression{
 			source: '${fastc_c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
 			typ:    signature.return_type
