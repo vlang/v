@@ -33,7 +33,7 @@ fn build_v3_for_heap_attr() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${heap_attr_vexe} -gc none -path "${heap_attr_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${heap_attr_v3_src}')
+		os.execute('${os.quoted_path(heap_attr_vexe)} -gc none -path "${heap_attr_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(heap_attr_v3_src)}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -46,10 +46,11 @@ fn heap_attr_run_good(v3_bin string, name string, src string) string {
 	out := heap_attr_temp_path(name)
 	src_path := out + '.v'
 	os.write_file(src_path, src) or { panic(err) }
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(out)
+	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -62,7 +63,8 @@ fn heap_attr_generated_c(v3_bin string, name string, src string) string {
 	src_path := base + '.v'
 	c_path := base + '.c'
 	os.write_file(src_path, src) or { panic(err) }
-	translate := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	translate :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(c_path)}')
 	assert translate.exit_code == 0, '${name}: translate to C failed\n${translate.output}'
 	return os.read_file(c_path) or { panic(err) }
 }
