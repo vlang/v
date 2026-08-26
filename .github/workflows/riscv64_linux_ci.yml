@@ -80,6 +80,10 @@ jobs:
             make
             file ./v
             ls -la ./v
+            # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,
+            # then make ordinary test compilation fail instead of silently retrying V1.
+            export V_MACOS_V3_NO_FALLBACK=1
             ./v test vlib/builtin vlib/os vlib/encoding/binary
-            ./v test vlib/v/slow_tests/assembly
+            # Inline assembly is an intentional V3 compatibility fallback.
+            V_MACOS_V3_NO_FALLBACK=0 ./v test vlib/v/slow_tests/assembly
             VTEST_ONLY=closure ./v test vlib/v/tests
