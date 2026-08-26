@@ -90,6 +90,64 @@ fn clone_cgen_string_list(values []string) []string {
 	return cloned
 }
 
+fn clone_cgen_string_bool_lookup(values map[string]bool) map[string]bool {
+	mut cloned := map[string]bool{}
+	cloned.reserve(u32(values.len))
+	for key, value in values {
+		cloned[key.clone()] = value
+	}
+	return cloned
+}
+
+fn clone_c_inline_header(header CInlineHeader) CInlineHeader {
+	mut preserved_headers := []CPreservedHeader{cap: header.preserved_headers.len}
+	for preserved_header in header.preserved_headers {
+		preserved_headers << CPreservedHeader{
+			include_arg: preserved_header.include_arg.clone()
+			source_file: preserved_header.source_file.clone()
+		}
+	}
+	return CInlineHeader{
+		text:                      header.text.clone()
+		preserved_directives:      clone_cgen_string_list(header.preserved_directives)
+		preserved_c_fns:           clone_cgen_string_list(header.preserved_c_fns)
+		preserved_c_structs:       clone_cgen_string_list(header.preserved_c_structs)
+		preserved_c_typedef_names: clone_cgen_string_list(header.preserved_c_typedef_names)
+		preserved_headers:         preserved_headers
+	}
+}
+
+struct CgenScopedAppend {
+	scope       voidptr
+	original_sb strings.Builder
+}
+
+fn (mut g FlatGen) begin_scoped_append() CgenScopedAppend {
+	original_sb := g.sb
+	scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	if scope != unsafe { nil } {
+		g.sb = strings.new_builder(4096)
+	}
+	return CgenScopedAppend{
+		scope:       scope
+		original_sb: original_sb
+	}
+}
+
+fn (mut g FlatGen) finish_scoped_append(state CgenScopedAppend) {
+	if state.scope == unsafe { nil } {
+		return
+	}
+	data := g.sb.data
+	len := g.sb.len
+	line_start := g.line_start
+	cgen_worker_scope_leave(state.scope)
+	g.sb = state.original_sb
+	g.line_start = line_start
+	unsafe { g.sb.write_ptr(data, len) }
+	cgen_worker_scope_free(state.scope)
+}
+
 struct ActiveLock {
 	mutexes_var string
 	modes_var   string
@@ -3179,15 +3237,27 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 	}
 	g.thread_stack_size_definition()
 	g.emit_preinclude_directives()
-	g.emit_preserved_c_directives()
+	g.emit_preserved_c_directives_scoped()
 	g.preamble()
 	if g.cache_split {
 		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */')
 	}
-	g.emit_c_directives(false)
+	g.emit_c_directives_scoped(false)
 	if g.cache_split {
 		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_END */')
 	}
+}
+
+fn (mut g FlatGen) emit_preserved_c_directives_scoped() {
+	state := g.begin_scoped_append()
+	g.emit_preserved_c_directives()
+	g.finish_scoped_append(state)
+}
+
+fn (mut g FlatGen) emit_c_directives_scoped(late bool) {
+	state := g.begin_scoped_append()
+	g.emit_c_directives(late)
+	g.finish_scoped_append(state)
 }
 
 fn (mut g FlatGen) gen_global_declaration_block() {
@@ -3671,7 +3741,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		g.collect_c_flags_from_directives()
 	}
 	g.c_flags << g.initial_c_flags
-	g.use_system_stdint = g.translation_unit_uses_inttypes()
+	inttypes_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	uses_system_stdint := g.translation_unit_uses_inttypes()
+	cgen_worker_scope_leave(inttypes_scope)
+	g.use_system_stdint = uses_system_stdint
+	cgen_worker_scope_free(inttypes_scope)
 	if profile {
 		g.timing_profile('  [ttime]   ci flags+stdint  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
@@ -4413,8 +4487,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 			return true
 		}
-		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs,
-			g.use_system_stdint)
+		if header := c_inline_header_text_scoped(include_arg, g.compiler_vroot, source_file,
+			include_dirs, g.use_system_stdint, g.scope_parallel_workers)
 		{
 			header_text := header.text
 			late_source := c_include_is_late_source(include_arg)
@@ -4579,21 +4653,71 @@ fn (mut g FlatGen) collect_preserved_include_metadata_with_state(include_arg str
 }
 
 fn (mut g FlatGen) collect_preserved_header_tree(include_arg string, source_file string, include_dirs []string) bool {
+	probe_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	mut preserved_path := ''
 	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
 		mut tree_size := CHeaderTreeSize{}
 		if os.is_file(path)
 			&& c_header_tree_exceeds_inline_limit(path, g.compiler_vroot, include_dirs, mut tree_size) {
-			// Some system APIs are declared through macros that the lightweight header
-			// declaration scanner cannot expand (for example OpenSSL's X509_free).
-			// Record the known declarations only when the header will be preserved.
-			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
-			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
-			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
-			g.collect_preserved_header_file(path, include_dirs)
-			return true
+			preserved_path = path
+			break
 		}
 	}
-	return false
+	cgen_worker_scope_leave(probe_scope)
+	if preserved_path.len == 0 {
+		cgen_worker_scope_free(probe_scope)
+		return false
+	}
+	owned_path := if probe_scope == unsafe { nil } {
+		preserved_path
+	} else {
+		preserved_path.clone()
+	}
+	cgen_worker_scope_free(probe_scope)
+	// Some system APIs are declared through macros that the lightweight header
+	// declaration scanner cannot expand (for example OpenSSL's X509_free).
+	// Record the known declarations only when the header will be preserved.
+	g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+	g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+	g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
+	g.collect_preserved_header_tree_file(owned_path, include_dirs)
+	return true
+}
+
+fn (mut g FlatGen) collect_preserved_header_tree_file(path string, include_dirs []string) {
+	scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	if scope == unsafe { nil } {
+		g.collect_preserved_header_file(path, include_dirs)
+		return
+	}
+	// Header macro-state snapshots can dwarf the declarations that C generation
+	// needs afterward. Keep a complete tree walk in a disposable arena, then copy
+	// only its compact declaration/name sets back to the parent arena.
+	g.inlined_c_structs = clone_cgen_string_bool_lookup(g.inlined_c_structs)
+	g.inlined_c_typedef_names = clone_cgen_string_bool_lookup(g.inlined_c_typedef_names)
+	g.inlined_c_fns = clone_cgen_string_bool_lookup(g.inlined_c_fns)
+	g.inlined_c_declared_fns = clone_cgen_string_bool_lookup(g.inlined_c_declared_fns)
+	g.inlined_c_active_macros = clone_cgen_string_bool_lookup(g.inlined_c_active_macros)
+	g.possibly_active_c_macros = clone_cgen_string_bool_lookup(g.possibly_active_c_macros)
+	g.inlined_c_static_fns = clone_cgen_string_bool_lookup(g.inlined_c_static_fns)
+	g.preserved_header_files_seen = clone_cgen_string_bool_lookup(g.preserved_header_files_seen)
+	g.preserved_macro_files_seen = clone_cgen_string_bool_lookup(g.preserved_macro_files_seen)
+	g.preserved_header_scan_results = map[string]CHeaderMacroState{}
+	g.preserved_header_scans_active = map[string]bool{}
+	g.collect_preserved_header_file(path, include_dirs)
+	cgen_worker_scope_leave(scope)
+	g.inlined_c_structs = clone_cgen_string_bool_lookup(g.inlined_c_structs)
+	g.inlined_c_typedef_names = clone_cgen_string_bool_lookup(g.inlined_c_typedef_names)
+	g.inlined_c_fns = clone_cgen_string_bool_lookup(g.inlined_c_fns)
+	g.inlined_c_declared_fns = clone_cgen_string_bool_lookup(g.inlined_c_declared_fns)
+	g.inlined_c_active_macros = clone_cgen_string_bool_lookup(g.inlined_c_active_macros)
+	g.possibly_active_c_macros = clone_cgen_string_bool_lookup(g.possibly_active_c_macros)
+	g.inlined_c_static_fns = clone_cgen_string_bool_lookup(g.inlined_c_static_fns)
+	g.preserved_header_files_seen = clone_cgen_string_bool_lookup(g.preserved_header_files_seen)
+	g.preserved_macro_files_seen = clone_cgen_string_bool_lookup(g.preserved_macro_files_seen)
+	g.preserved_header_scan_results = map[string]CHeaderMacroState{}
+	g.preserved_header_scans_active = map[string]bool{}
+	cgen_worker_scope_free(scope)
 }
 
 fn c_header_tree_exceeds_inline_limit(path string, vroot string, include_dirs []string, mut tree_size CHeaderTreeSize) bool {
@@ -4657,14 +4781,16 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 	}
 	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
 	mut include_results := map[string]CHeaderIncludeResult{}
-	mut final_scan := CHeaderActiveScan{}
-	mut stable := false
 	// Resolve one include at a time, from left to right. Restarting the scan after
 	// each child applies its resulting macro state before any later include is
-	// visited, so metadata is never collected under a transient parent state.
+	// visited, so metadata is never collected under a transient parent state. Each
+	// restart uses a disposable arena: large third-party header trees otherwise
+	// retain every superseded scan until the whole C generation stage finishes.
 	for _ in 0 .. c_join_continued_lines(text).len + 2 {
+		scan_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
 		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
 			g.target, include_results)
+		cgen_worker_scope_leave(scan_scope)
 		mut unresolved_include := -1
 		for i, include_key in scan.include_keys {
 			include_state_signature := c_header_macro_state_signature(scan.include_states[i])
@@ -4674,16 +4800,22 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 				break
 			}
 		}
-		final_scan = scan
 		if unresolved_include < 0 {
-			stable = true
-			break
+			result := g.finish_preserved_header_scan(scan, visit_key, collect_declarations)
+			cgen_worker_scope_free(scan_scope)
+			return result
 		}
-		include_state := scan.include_states[unresolved_include]
-		include_key := scan.include_keys[unresolved_include]
+		mut include_state := scan.include_states[unresolved_include]
+		mut include_key := scan.include_keys[unresolved_include]
 		include_is_definitely_active := scan.include_definitely_active[unresolved_include]
-		include_arg := c_include_arg(scan.include_args[unresolved_include], g.compiler_vroot,
-			real_path)
+		mut raw_include_arg := scan.include_args[unresolved_include]
+		if scan_scope != unsafe { nil } {
+			include_state = c_header_macro_state_clone(include_state)
+			include_key = include_key.clone()
+			raw_include_arg = raw_include_arg.clone()
+		}
+		cgen_worker_scope_free(scan_scope)
+		include_arg := c_include_arg(raw_include_arg, g.compiler_vroot, real_path)
 		mut found := false
 		mut result_state := CHeaderMacroState{}
 		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
@@ -4713,11 +4845,17 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 			output_state:    result_state
 		}
 	}
-	if !stable {
-		// A pathological include cycle should never let uncertain metadata suppress a
-		// generated prototype. Fall back to the conservative, pre-propagation scan.
-		final_scan = c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
-	}
+	// A pathological include cycle should never let uncertain metadata suppress a
+	// generated prototype. Fall back to the conservative, pre-propagation scan.
+	fallback_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	fallback_scan := c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
+	cgen_worker_scope_leave(fallback_scope)
+	result := g.finish_preserved_header_scan(fallback_scan, visit_key, collect_declarations)
+	cgen_worker_scope_free(fallback_scope)
+	return result
+}
+
+fn (mut g FlatGen) finish_preserved_header_scan(final_scan CHeaderActiveScan, visit_key string, collect_declarations bool) CHeaderMacroState {
 	if collect_declarations {
 		g.collect_inlined_c_structs(final_scan.text)
 		g.collect_inlined_c_fns(final_scan.text)
@@ -5123,6 +5261,24 @@ fn c_inline_header_text(include_arg string, vroot string, source_file string, in
 		unsafe { output.free() }
 	}
 	return none
+}
+
+fn c_inline_header_text_scoped(include_arg string, vroot string, source_file string, include_dirs []string, translation_unit_uses_inttypes bool, enabled bool) ?CInlineHeader {
+	scope := cgen_worker_scope_begin(enabled)
+	if scope == unsafe { nil } {
+		return c_inline_header_text(include_arg, vroot, source_file, include_dirs,
+			translation_unit_uses_inttypes)
+	}
+	header := c_inline_header_text(include_arg, vroot, source_file, include_dirs,
+		translation_unit_uses_inttypes) or {
+		cgen_worker_scope_leave(scope)
+		cgen_worker_scope_free(scope)
+		return none
+	}
+	cgen_worker_scope_leave(scope)
+	owned_header := clone_c_inline_header(header)
+	cgen_worker_scope_free(scope)
+	return owned_header
 }
 
 fn c_inline_header_file(path string, vroot string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool, mut output strings.Builder) ?CInlineHeader {
