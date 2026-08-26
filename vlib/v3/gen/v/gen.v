@@ -1225,10 +1225,12 @@ fn (g &Gen) call_args_expanded(id flat.NodeId, args []flat.NodeId) bool {
 			break
 		}
 	}
-	if has_named_args && source.contains('\n') {
-		return true
+	if !has_named_args {
+		return false
 	}
-	return false
+	// The opening parenthesis is already present in the output line and in source.
+	projected_width := g.output_line_len() + source.len - 1
+	return source.contains('\n') || projected_width > formatter_max_line_len
 }
 
 fn call_args_start_on_new_line(source string) bool {

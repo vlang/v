@@ -657,6 +657,14 @@ fn calls() {
 	assert vfmt('expanded_call_arguments_twice', out) == out
 }
 
+fn test_formatter_expands_long_single_line_named_call_arguments() {
+	source := "fn calls() {\n\tbar_func(x: 'a very long content should cause vfmt to use multiple lines instead of one.', y: 123456789)\n}\n"
+	expected := "fn calls() {\n\tbar_func(\n\t\tx: 'a very long content should cause vfmt to use multiple lines instead of one.'\n\t\ty: 123456789\n\t)\n}\n"
+	out := vfmt('long_single_line_named_call_arguments', source)
+	assert out == expected, out
+	assert vfmt('long_single_line_named_call_arguments_twice', out) == out
+}
+
 fn test_formatter_emits_hash_directive_attributes() {
 	source := '@[use_once] #include "header.h"
 @[custom_tag; use_once] #flag -I @VMODROOT/c

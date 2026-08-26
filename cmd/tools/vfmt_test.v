@@ -428,6 +428,19 @@ fn calls() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_expands_long_single_line_named_call_arguments_with_v3() {
+	source := "fn calls() {\n\tbar_func(x: 'a very long content should cause vfmt to use multiple lines instead of one.', y: 123456789)\n}\n"
+	expected := "fn calls() {\n\tbar_func(\n\t\tx: 'a very long content should cause vfmt to use multiple lines instead of one.'\n\t\ty: 123456789\n\t)\n}\n"
+	res, formatted := run_vfmt_write('long_single_line_named_call_arguments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice := run_vfmt_write('long_single_line_named_call_arguments_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_hash_directive_attributes_with_v3() {
 	source := '@[use_once] #include "header.h"
 @[custom_tag; use_once] #flag -I @VMODROOT/c
