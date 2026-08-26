@@ -455,6 +455,13 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		if receiver_type == '' {
 			continue
 		}
+		if tokens[i].lit == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
+			value_type := g.thread_value_types[receiver_type] or { '' }
+			if value_type == '' {
+				return 'void'
+			}
+			return value_type
+		}
 		function_key := g.method_function_key(receiver_type, tokens[i].lit)
 		if static_key := g.static_function_key_for_call(tokens, i) {
 			if signature := g.functions[static_key] {

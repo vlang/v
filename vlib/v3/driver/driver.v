@@ -6874,7 +6874,7 @@ fn canonical_v3_fastc_output_path(path string) string {
 	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 }
 
-fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool) V3FastCCompileResult {
+fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool, uses_threads bool) V3FastCCompileResult {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 	if !os.is_executable(tcc_path) {
@@ -6901,11 +6901,21 @@ fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferenc
 	}
 	cc_args << ['-o', 'out', 'src.c']
 	cc_args << user_c_flags
+	if uses_threads {
+		// The emitted spawn runtime calls pthread functions, which live
+		// outside libc on Linux with glibc before 2.34 and on the BSDs.
+		cc_args << '-lpthread'
+	}
 	cc_args << '-lm'
 	cc_args << environment_ld_flags
 	command := cmdexec.display(tcc_path, cc_args)
 	result := cmdexec.run_in(tcc_path, cc_args, build_dir)
 	if result.exit_code != 0 || !os.is_file(staged_binary) {
+		if keep_dir := os.getenv_opt('V3_FASTC_KEEP_FAILED_C') {
+			if keep_dir.len > 0 {
+				os.cp(source_file, keep_dir) or {}
+			}
+		}
 		return V3FastCCompileResult{
 			command: command
 			output:  result.output
@@ -7658,7 +7668,10 @@ pub fn run(args []string) {
 		// allocation-heavy phases) — so compiler builds default to it.
 		// -no-prealloc opts out (also restores tcc linking: tcc has no
 		// thread-local storage support, so prealloc builds link with cc).
-		if !no_prealloc && 'prealloc' !in user_defines {
+		// FastC output is always compiled by bundled TinyCC, where the arena
+		// pointer cannot be thread-local; a FastC compiler generation spawns
+		// worker threads, so it must use plain thread-safe malloc instead.
+		if !no_prealloc && 'prealloc' !in user_defines && backend != 'fastc' {
 			user_defines << 'prealloc'
 		}
 	}
@@ -7807,6 +7820,7 @@ pub fn run(args []string) {
 	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
 	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, explicit_tcc)
 	prefs.ccompiler = effective_c_compiler
+	prefs.no_parallel = current_no_parallel
 	prefs.c99 = c99
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.enable_globals = enable_globals_compat
@@ -7910,6 +7924,12 @@ pub fn run(args []string) {
 		if translated_mode || is_repl {
 			unsupported_modes << 'translated/REPL mode'
 		}
+		// Bundled TinyCC has no thread-local storage, so the prealloc arena
+		// pointer would become one shared global while FastC compiler
+		// generations spawn worker threads; concurrent bumps corrupt it.
+		if 'prealloc' in prefs.user_defines {
+			unsupported_modes << '`-prealloc` builds'
+		}
 		if unsupported_modes.len > 0 {
 			eprintln('fastc parser does not support ${unsupported_modes.join(', ')}')
 			exit(1)
@@ -7957,7 +7977,8 @@ pub fn run(args []string) {
 			bin_file
 		}
 		fastc_result := compile_v3_fastc_source(fastc_source, fastc_bin_file, prefs,
-			environment_c_flags, user_c_flags, environment_ld_flags, is_debug)
+			environment_c_flags, user_c_flags, environment_ld_flags, is_debug,
+			fastc_generation.uses_threads)
 		if (!silent || show_cc) && fastc_result.command.len > 0 {
 			if c_to_stdout {
 				eprintln('  > ${fastc_result.command}')

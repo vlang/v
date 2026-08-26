@@ -327,7 +327,7 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 	}
 }
 
-fn (g &Parser) render_map_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
+fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	if lookup := g.render_map_lookup_option_expression(tokens) {
 		return FastcRenderedExpression{
 			source: '({ Option lookup = (${lookup.source}); lookup.state ? (${lookup.typ}){0} : *((${lookup.typ} *)lookup.data); })'
@@ -656,7 +656,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			if value_start == index {
 				return none
 			}
-			value_tokens = tokens[value_start..index]
+			value_tokens = tokens[value_start..index].clone()
 		} else {
 			value_tokens = [
 				FastcExpressionToken{
@@ -1662,7 +1662,7 @@ fn (g &Parser) render_comparison_operand(tokens []FastcExpressionToken, expected
 	if method_call := g.render_method_call_expression(tokens, raw) {
 		return method_call.source
 	}
-	if call := g.render_missing_call_arguments(tokens, raw) {
+	if call := g.render_missing_call_arguments(tokens) {
 		return call.source
 	}
 	if pointer_members := g.render_pointer_member_access_expression(tokens, raw) {
@@ -1839,7 +1839,7 @@ fn (g &Parser) map_runtime_functions(key_type string) (string, string, string, s
 	return fastc_map_runtime_functions(resolved_type, g.prefs.target.pointer_bits)
 }
 
-fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
+fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	if tokens.len < 3 || tokens.last().tok != .rpar {
 		return none
 	}
@@ -1920,7 +1920,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken, rend
 			}
 			rendered_arguments << rendered_argument
 		}
-		variadic_arguments := rendered_arguments[fixed_arguments..]
+		variadic_arguments := rendered_arguments[fixed_arguments..].clone()
 		packed := if variadic_arguments.len == 0 {
 			'(${variadic_type}){0}'
 		} else {
@@ -2018,6 +2018,35 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
 		receiver_tokens := tokens[receiver_start..i - 1]
 		receiver_type := g.infer_expression_type(receiver_tokens) or { continue }
+		if tokens[i].lit == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
+			// `.wait()` joins a spawned thread (see spawn.v); it has no entry in
+			// the collected function signatures.
+			wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+			receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+			value_type := g.thread_value_types[receiver_type] or { '' }
+			wait_call := '${g.fastc_unclaimed_generated_name(fastc_thread_wait_name(receiver_type))}(${receiver.source})'
+			if receiver_start == 0 && wait_end == tokens.len - 1 {
+				return FastcRenderedExpression{
+					source: wait_call
+					typ:    if value_type == '' { 'void' } else { value_type }
+				}
+			}
+			// A wait nested in a larger expression replaces its raw call form,
+			// exactly like ordinary method calls.
+			mut wait_needle := '${receiver.source}.wait()'
+			if !rendered.contains(wait_needle) {
+				raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
+				raw_needle := '${raw_receiver}.wait()'
+				if raw_receiver != '' && rendered.contains(raw_needle) {
+					wait_needle = raw_needle
+				}
+			}
+			if rendered.contains(wait_needle) {
+				rendered = rendered.replace(wait_needle, wait_call)
+				changed = true
+			}
+			continue
+		}
 		method_key := g.method_function_key(receiver_type, tokens[i].lit)
 		if method_key !in g.functions {
 			if g.struct_member_type(receiver_type, tokens[i].lit) != '' {
@@ -2248,7 +2277,7 @@ fn (g &Parser) render_composed_string_concatenation(tokens []FastcExpressionToke
 
 fn (g &Parser) render_method_receiver_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	receiver_type := g.infer_expression_type(tokens) or { return none }
-	if source := g.render_map_expression(tokens, '') {
+	if source := g.render_map_expression(tokens) {
 		return source
 	}
 	if array_access := g.render_array_access_expression(tokens) {

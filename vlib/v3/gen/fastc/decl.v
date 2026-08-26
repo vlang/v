@@ -267,32 +267,36 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
 		file.index_lines_without_digest(source_file.source)
 		mut gen := Parser{
-			prefs:                  unsafe { prefs }
-			path:                   source_file.path
-			module_name:            source_file.header.module_name
-			imports:                source_file.header.imports
-			declared_types:         declared_types
-			declared_type_c_names:  declared_type_c_names
-			fastc_prefixed_c_names: fastc_prefixed_c_names
-			has_c_functions:        helper_has_c_functions
-			comparison_memo:        map[i64]FastcRenderedExpression{}
-			declared_kinds:         declared_kinds
-			enum_flags:             enum_flags
-			alias_base_types:       alias_base_types
-			struct_fields:          struct_fields
-			struct_field_info:      struct_field_info
-			constants:              constants
-			constant_values:        constant_values
-			public_constants:       public_constants
-			globals:                globals
-			public_globals:         public_globals
-			selfhost:               prefs.building_v
-			s:                      scanner.new_scanner(prefs, .normal)
-			out:                    strings.new_builder(0)
-			protos:                 strings.new_builder(0)
-			functions:              functions
-			constant_types:         constant_types
-			global_types:           global_types
+			prefs:                        unsafe { prefs }
+			path:                         source_file.path
+			module_name:                  source_file.header.module_name
+			imports:                      source_file.header.imports
+			declared_types:               declared_types
+			declared_type_c_names:        declared_type_c_names
+			fastc_prefixed_c_names:       fastc_prefixed_c_names
+			declaration_initializer_mode: true
+			has_c_functions:              helper_has_c_functions
+			comparison_memo:              map[i64]FastcRenderedExpression{}
+			spawn_typedefs:               map[string]string{}
+			spawn_helpers:                map[string]string{}
+			thread_value_types:           map[string]string{}
+			declared_kinds:               declared_kinds
+			enum_flags:                   enum_flags
+			alias_base_types:             alias_base_types
+			struct_fields:                struct_fields
+			struct_field_info:            struct_field_info
+			constants:                    constants
+			constant_values:              constant_values
+			public_constants:             public_constants
+			globals:                      globals
+			public_globals:               public_globals
+			selfhost:                     prefs.building_v
+			s:                            scanner.new_scanner(prefs, .normal)
+			out:                          strings.new_builder(0)
+			protos:                       strings.new_builder(0)
+			functions:                    functions
+			constant_types:               constant_types
+			global_types:                 global_types
 		}
 		gen.s.init(file, source_file.source)
 		gen.next()
@@ -446,33 +450,37 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 			mut file := file_set.add_file(default_path, field.default_source.len)
 			file.index_lines_without_digest(field.default_source)
 			mut gen := Parser{
-				prefs:                  unsafe { prefs }
-				path:                   default_path
-				module_name:            field.module_name
-				imports:                field.imports
-				declared_types:         declared_types
-				declared_type_c_names:  declared_type_c_names
-				fastc_prefixed_c_names: fastc_prefixed_c_names
-				has_c_functions:        helper_has_c_functions
-				comparison_memo:        map[i64]FastcRenderedExpression{}
-				declared_kinds:         declared_kinds
-				enum_flags:             enum_flags
-				alias_base_types:       alias_base_types
-				struct_fields:          struct_fields
-				struct_field_info:      struct_field_info
-				constants:              constants
-				public_constants:       public_constants
-				globals:                globals
-				public_globals:         public_globals
-				selfhost:               prefs.building_v
-				s:                      scanner.new_scanner(prefs, .normal)
-				out:                    strings.new_builder(0)
-				protos:                 strings.new_builder(0)
-				functions:              functions
-				constant_types:         constant_types
-				global_types:           global_types
-				fixed_array_types:      map[string]string{}
-				composite_types:        map[string]bool{}
+				prefs:                        unsafe { prefs }
+				path:                         default_path
+				module_name:                  field.module_name
+				imports:                      field.imports
+				declared_types:               declared_types
+				declared_type_c_names:        declared_type_c_names
+				fastc_prefixed_c_names:       fastc_prefixed_c_names
+				declaration_initializer_mode: true
+				has_c_functions:              helper_has_c_functions
+				comparison_memo:              map[i64]FastcRenderedExpression{}
+				spawn_typedefs:               map[string]string{}
+				spawn_helpers:                map[string]string{}
+				thread_value_types:           map[string]string{}
+				declared_kinds:               declared_kinds
+				enum_flags:                   enum_flags
+				alias_base_types:             alias_base_types
+				struct_fields:                struct_fields
+				struct_field_info:            struct_field_info
+				constants:                    constants
+				public_constants:             public_constants
+				globals:                      globals
+				public_globals:               public_globals
+				selfhost:                     prefs.building_v
+				s:                            scanner.new_scanner(prefs, .normal)
+				out:                          strings.new_builder(0)
+				protos:                       strings.new_builder(0)
+				functions:                    functions
+				constant_types:               constant_types
+				global_types:                 global_types
+				fixed_array_types:            map[string]string{}
+				composite_types:              map[string]bool{}
 			}
 			gen.s.init(file, field.default_source)
 			gen.next()
@@ -502,30 +510,34 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
 		file.index_lines_without_digest(source_file.source)
 		mut gen := Parser{
-			prefs:                  unsafe { prefs }
-			path:                   source_file.path
-			module_name:            source_file.header.module_name
-			imports:                source_file.header.imports
-			declared_types:         declared_types
-			declared_type_c_names:  declared_type_c_names
-			fastc_prefixed_c_names: fastc_prefixed_c_names
-			has_c_functions:        helper_has_c_functions
-			comparison_memo:        map[i64]FastcRenderedExpression{}
-			declared_kinds:         declared_kinds
-			enum_flags:             enum_flags
-			alias_base_types:       alias_base_types
-			struct_fields:          struct_fields
-			struct_field_info:      struct_field_info
-			constants:              constants
-			public_constants:       public_constants
-			globals:                globals
-			public_globals:         public_globals
-			selfhost:               prefs.building_v
-			s:                      scanner.new_scanner(prefs, .normal)
-			out:                    strings.new_builder(256)
-			protos:                 strings.new_builder(0)
-			functions:              functions
-			constant_types:         constant_types
+			prefs:                        unsafe { prefs }
+			path:                         source_file.path
+			module_name:                  source_file.header.module_name
+			imports:                      source_file.header.imports
+			declared_types:               declared_types
+			declared_type_c_names:        declared_type_c_names
+			fastc_prefixed_c_names:       fastc_prefixed_c_names
+			declaration_initializer_mode: true
+			has_c_functions:              helper_has_c_functions
+			comparison_memo:              map[i64]FastcRenderedExpression{}
+			spawn_typedefs:               map[string]string{}
+			spawn_helpers:                map[string]string{}
+			thread_value_types:           map[string]string{}
+			declared_kinds:               declared_kinds
+			enum_flags:                   enum_flags
+			alias_base_types:             alias_base_types
+			struct_fields:                struct_fields
+			struct_field_info:            struct_field_info
+			constants:                    constants
+			public_constants:             public_constants
+			globals:                      globals
+			public_globals:               public_globals
+			selfhost:                     prefs.building_v
+			s:                            scanner.new_scanner(prefs, .normal)
+			out:                          strings.new_builder(256)
+			protos:                       strings.new_builder(0)
+			functions:                    functions
+			constant_types:               constant_types
 		}
 		gen.s.init(file, source_file.source)
 		gen.next()

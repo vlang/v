@@ -51,6 +51,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	if prefix == '' && g.tok == .dollar {
 		return g.read_comptime_if_expression()!
 	}
+	if prefix == '' && g.tok == .key_spawn {
+		return g.read_spawn_expression()!
+	}
 	mut result := strings.new_builder(64)
 	mut expression_tokens := []FastcExpressionToken{}
 	if prefix.len > 0 {
@@ -272,7 +275,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 					assignment_depth--
 				} else if assignment_depth == 0 && assignment_token.tok.is_assignment() && i > 0
 					&& i + 1 < expression_tokens.len {
-					left_tokens := expression_tokens[..i]
+					left_tokens := expression_tokens[..i].clone()
 					left_type := g.infer_expression_type(left_tokens) or { '' }
 					if left_type != '' {
 						left_source := g.render_membership_candidate(left_tokens, left_type) or {
@@ -307,7 +310,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			{
 				option_expression = method_call.source
 				option_value_type = g.option_value_type_for_expression(option_tokens)
-			} else if call := g.render_missing_call_arguments(option_tokens, option_expression) {
+			} else if call := g.render_missing_call_arguments(option_tokens) {
 				option_expression = call.source
 				option_value_type = g.option_value_type_for_expression(option_tokens)
 			}
@@ -589,7 +592,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			''
 		}
 		mut piece := g.expression_token(previous_token, previous_lit, qualified_name_owner)!
-		if g.tok == .name {
+		if g.tok == .name && previous_token != .dot {
+			// A name after `.` is a field or method: never substitute a local
+			// (a mut parameter's deref form) that happens to share its name.
 			if local := g.locals[g.lit] {
 				mut lookahead := g.s
 				next_token := lookahead.scan()
@@ -1191,10 +1196,10 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		return cast_expression
 	}
 	if g.selfhost {
-		if defaulted_call := g.render_missing_call_arguments(tokens, rendered_expression) {
+		if defaulted_call := g.render_missing_call_arguments(tokens) {
 			return defaulted_call
 		}
-		if map_expression := g.render_map_expression(tokens, rendered_expression) {
+		if map_expression := g.render_map_expression(tokens) {
 			return map_expression
 		}
 		if struct_literal := g.render_struct_literal_expression(tokens) {
@@ -1245,7 +1250,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				inner_source = method_expression.source
 			} else if array_expression := g.render_array_access_expression(inner_tokens) {
 				inner_source = array_expression.source
-			} else if defaulted_call := g.render_missing_call_arguments(inner_tokens, inner_source) {
+			} else if defaulted_call := g.render_missing_call_arguments(inner_tokens) {
 				inner_source = defaulted_call.source
 			}
 			value_type := g.option_value_type_for_expression(inner_tokens)
@@ -1406,7 +1411,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			}
 			return method_expression
 		}
-		if defaulted_call := g.render_missing_call_arguments(tokens, rendered_expression) {
+		if defaulted_call := g.render_missing_call_arguments(tokens) {
 			return defaulted_call
 		}
 		if array_expression := g.render_nested_array_access_expression(tokens, rendered_expression) {

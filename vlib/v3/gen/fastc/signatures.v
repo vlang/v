@@ -374,75 +374,8 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	}
 	mut references := map[string]map[string]bool{}
 	mut top_level_references := map[string]bool{}
-	for source_file in sources {
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines_without_digest(source_file.source)
-		mut scan := scanner.new_scanner(prefs, .normal)
-		scan.init(file, source_file.source)
-		mut previous := token.Token.unknown
-		mut tok := scan.scan()
-		for tok != .eof {
-			if tok in [.key_struct, .key_union, .key_interface, .key_enum] {
-				tok = fastc_collect_type_default_references(mut scan, tok, available_names, mut
-					top_level_references)
-				previous = .rcbr
-				continue
-			}
-			if tok != .key_fn || previous == .assign {
-				if tok == .name && scan.lit in available_names {
-					top_level_references[scan.lit] = true
-				}
-				previous = tok
-				tok = scan.scan()
-				continue
-			}
-			tok = scan.scan()
-			if tok == .lpar {
-				tok = fastc_skip_balanced_tokens(mut scan, tok, .lpar, .rpar) or { break }
-			}
-			if tok != .name && !tok.is_overloadable() && !tok.is_keyword() {
-				previous = tok
-				tok = scan.scan()
-				continue
-			}
-			mut function_name := if tok == .name || tok.is_keyword() { scan.lit } else { tok.str() }
-			tok = scan.scan()
-			if tok == .dot {
-				tok = scan.scan()
-				if tok == .name {
-					function_name = scan.lit
-					tok = scan.scan()
-				}
-			}
-			for tok !in [.lcbr, .semicolon, .eof] {
-				tok = scan.scan()
-			}
-			if tok != .lcbr {
-				previous = tok
-				tok = scan.scan()
-				continue
-			}
-			mut function_references := map[string]bool{}
-			if function_name in references {
-				function_references = references[function_name].clone()
-			}
-			mut depth := 1
-			tok = scan.scan()
-			for depth > 0 && tok != .eof {
-				if tok == .lcbr {
-					depth++
-				} else if tok == .rcbr {
-					depth--
-				} else if tok == .name && scan.lit in available_names {
-					function_references[scan.lit] = true
-				}
-				tok = scan.scan()
-			}
-			references[function_name] = function_references.clone()
-			previous = .rcbr
-		}
-	}
+	fastc_collect_reference_partials(sources, prefs, available_names, mut references, mut
+		top_level_references)
 	mut used := {
 		'main':                   true
 		'run':                    true
@@ -1077,5 +1010,77 @@ fn fastc_register_composite_type(typ string, mut composite_types map[string]bool
 	base := typ.trim_right('*')
 	if base.starts_with('Array_') || base.starts_with('Map_') {
 		composite_types[base] = true
+	}
+}
+
+// fastc_collect_file_references scans one source file's function bodies and
+// top-level initializers for references to collected function names.
+fn fastc_collect_file_references(source_file FastcSourceFile, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]map[string]bool, mut top_level_references map[string]bool) {
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file(source_file.path, source_file.source.len)
+	file.index_lines_without_digest(source_file.source)
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(file, source_file.source)
+	mut previous := token.Token.unknown
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok in [.key_struct, .key_union, .key_interface, .key_enum] {
+			tok = fastc_collect_type_default_references(mut scan, tok, available_names, mut
+				top_level_references)
+			previous = .rcbr
+			continue
+		}
+		if tok != .key_fn || previous == .assign {
+			if tok == .name && scan.lit in available_names {
+				top_level_references[scan.lit] = true
+			}
+			previous = tok
+			tok = scan.scan()
+			continue
+		}
+		tok = scan.scan()
+		if tok == .lpar {
+			tok = fastc_skip_balanced_tokens(mut scan, tok, .lpar, .rpar) or { break }
+		}
+		if tok != .name && !tok.is_overloadable() && !tok.is_keyword() {
+			previous = tok
+			tok = scan.scan()
+			continue
+		}
+		mut function_name := if tok == .name || tok.is_keyword() { scan.lit } else { tok.str() }
+		tok = scan.scan()
+		if tok == .dot {
+			tok = scan.scan()
+			if tok == .name {
+				function_name = scan.lit
+				tok = scan.scan()
+			}
+		}
+		for tok !in [.lcbr, .semicolon, .eof] {
+			tok = scan.scan()
+		}
+		if tok != .lcbr {
+			previous = tok
+			tok = scan.scan()
+			continue
+		}
+		mut function_references := map[string]bool{}
+		if function_name in references {
+			function_references = references[function_name].clone()
+		}
+		mut depth := 1
+		tok = scan.scan()
+		for depth > 0 && tok != .eof {
+			if tok == .lcbr {
+				depth++
+			} else if tok == .rcbr {
+				depth--
+			} else if tok == .name && scan.lit in available_names {
+				function_references[scan.lit] = true
+			}
+			tok = scan.scan()
+		}
+		references[function_name] = function_references.clone()
+		previous = .rcbr
 	}
 }

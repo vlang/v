@@ -131,12 +131,17 @@ compiler uses the small `v3.fastcdriver` entry point and can build further FastC
 the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
 turn any attempted compatibility fallback into a hard failure.
 
-Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` and
-detached standard-library workers use the target's default thread stack (8 MiB on 64-bit targets
-and 2 MiB on 32-bit targets); `-thread-stack-size <bytes>` overrides it. Thread allocation,
+In selfhost mode, `t := spawn f(args)` and `t.wait()` lower to a generated pthread creator, run
+wrapper, and join helper per spawned function: `thread` values are a typed wrapper around
+`pthread_t` plus a heap block that packs the arguments and receives the result. Spawned threads
+use an 8 MiB stack; `-thread-stack-size` is not yet supported by FastC. Thread allocation,
 creation, and join failures are checked. Since V's `spawn` expression has no error return, these
 runtime failures print a diagnostic and abort; packed arguments are released if thread creation
-fails.
+fails. Variadic, option/result, multi-return, and `mut`-argument callees, Windows targets, and
+non-selfhost mode are rejected. Because bundled TinyCC has no thread-local storage, FastC compiler
+generations build without the `prealloc` bump arena and use plain thread-safe `malloc`; the
+FastC generation pipeline itself runs its per-file and reference-scan phases on spawned threads
+in every generation.
 
 The type system (`types/`) uses a `Type` sum type with 20 variants instead of
 string-based type checks. Primitive types use a `Properties` flag enum with

@@ -122,8 +122,14 @@ pub fn run(args []string) {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc := os.join_path_single(tcc_dir, 'tcc.exe')
 	tcc_lib := os.join_path_single(tcc_dir, 'lib')
+	// The emitted spawn runtime calls pthread functions, which live outside
+	// libc on Linux with glibc before 2.34 and on the BSDs.
+	mut thread_link_flag := ''
+	if generation.uses_threads {
+		thread_link_flag = '-lpthread '
+	}
 	command := '${os.quoted_path(tcc)} -std=gnu11 -I${os.quoted_path(os.join_path_single(tcc_lib,
-		'include'))} -L${os.quoted_path(tcc_lib)} -w -o ${os.quoted_path(staged_output)} ${os.quoted_path(c_path)} -lm'
+		'include'))} -L${os.quoted_path(tcc_lib)} -w -o ${os.quoted_path(staged_output)} ${os.quoted_path(c_path)} ${thread_link_flag}-lm'
 	result := os.execute(command)
 	if result.exit_code != 0 {
 		fail(result.output)

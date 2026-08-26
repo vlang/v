@@ -194,13 +194,13 @@ fn (g &Parser) render_membership_candidate(tokens []FastcExpressionToken, expect
 		return array_access.source
 	}
 	raw := g.render_raw_expression_tokens(tokens) or { return none }
-	if map_expression := g.render_map_expression(tokens, raw) {
+	if map_expression := g.render_map_expression(tokens) {
 		return map_expression.source
 	}
 	if method_expression := g.render_method_call_expression(tokens, raw) {
 		return method_expression.source
 	}
-	if call_expression := g.render_missing_call_arguments(tokens, raw) {
+	if call_expression := g.render_missing_call_arguments(tokens) {
 		return call_expression.source
 	}
 	if pointer_members := g.render_pointer_member_access_expression(tokens, raw) {
