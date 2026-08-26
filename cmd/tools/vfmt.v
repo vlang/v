@@ -7,6 +7,10 @@ import os
 import os.cmdline
 import rand
 import term
+import v.ast
+import v.fmt
+import v.parser
+import v.pref
 import v.util
 import v.util.diff
 import v.help
@@ -37,6 +41,8 @@ mut:
 const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 const vtmp_folder = os.vtmp_dir()
 const term_colors = term.can_show_color_on_stderr()
+const vfmt_only_flags = ['-backup', '-c', '-diff', '-inprocess', '-l', '-new_int',
+	'-no-migrate-json2', '-noerror', '-verbose', '--verbose', '-verify', '-w']
 
 fn main() {
 	// if os.getenv('VFMT_ENABLE') == '' {
@@ -182,7 +188,43 @@ fn (foptions &FormatOptions) vlog(msg string) {
 	}
 }
 
+fn setup_preferences(args []string) &pref.Preferences {
+	mut prefs, _ := pref.parse_args_and_show_errors(['fmt'], vfmt_args_for_preferences(args), false)
+	prefs.is_fmt = true
+	prefs.skip_warnings = true
+	return prefs
+}
+
+fn vfmt_args_for_preferences(args []string) []string {
+	mut res := []string{}
+	for i := 1; i < args.len; i++ {
+		arg := args[i]
+		if arg == '-worker' {
+			i++
+			continue
+		}
+		if arg in vfmt_only_flags {
+			continue
+		}
+		res << arg
+	}
+	return res
+}
+
+fn (foptions &FormatOptions) should_migrate_json2(file string) bool {
+	if foptions.no_migrate_json2 {
+		return false
+	}
+	return !file.ends_with('_test.v') && !file.ends_with('.vv')
+}
+
 fn (foptions &FormatOptions) formatted_content_from_file(file string) !string {
+	source := os.read_file(file)!
+	if foptions.should_use_legacy_formatter(file, source) {
+		foptions.vlog('vfmt running v.fmt over file: ${file}')
+		return foptions.legacy_formatted_content_from_file(file)
+	}
+	foptions.vlog('vfmt running v3.gen.v over file: ${file}')
 	prefs := v3pref.new_preferences()
 	mut p := v3parser.Parser.new(prefs)
 	a := p.parse_file(file)
@@ -190,6 +232,52 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string) !string {
 		return error('the file contains parser errors')
 	}
 	return v3fmt.format(a)
+}
+
+fn (foptions &FormatOptions) should_use_legacy_formatter(file string, source string) bool {
+	if foptions.is_new_int || foptions.is_debug {
+		return true
+	}
+	if source.contains('//') || source.contains('/*') || source.starts_with('#!') {
+		return true
+	}
+	if source.contains('$if') || source.contains("c'") || source.contains('c"')
+		|| source.contains("r'") || source.contains('r"') {
+		return true
+	}
+	if source_contains_identifier(source, 'asm') || source_contains_identifier(source, 'sql') {
+		return true
+	}
+	return foptions.should_migrate_json2(file) && source_contains_identifier(source, 'json')
+}
+
+fn source_contains_identifier(source string, identifier string) bool {
+	mut offset := 0
+	for offset < source.len {
+		index := source.index_after(identifier, offset) or { return false }
+		has_left_boundary := index == 0 || !util.is_func_char(source[index - 1])
+		right := index + identifier.len
+		has_right_boundary := right == source.len || !util.is_func_char(source[right])
+		if has_left_boundary && has_right_boundary {
+			return true
+		}
+		offset = right
+	}
+	return false
+}
+
+fn (foptions &FormatOptions) legacy_formatted_content_from_file(file string) !string {
+	args := util.join_env_vflags_and_os_args()
+	prefs := setup_preferences(args)
+	mut table := ast.new_table()
+	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
+	if file_ast.errors.len > 0 {
+		return error('the file contains parser errors')
+	}
+	table.new_int = foptions.is_new_int
+	return fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
+		migrate_json2: foptions.should_migrate_json2(file)
+	)
 }
 
 fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatAst) bool {
@@ -219,15 +307,13 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('${formatted_file_token}${vfmt_output_path}')
 		return
 	}
-	foptions.vlog('vfmt running v3.gen.v over file: ${file}')
 	formatted_content := foptions.formatted_content_from_file(file) or { exit(2) }
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
-	foptions.vlog('v3.gen.v wrote ${formatted_content.len} bytes to ${vfmt_output_path}.')
+	foptions.vlog('vfmt wrote ${formatted_content.len} bytes to ${vfmt_output_path}.')
 	eprintln('${formatted_file_token}${vfmt_output_path}')
 }
 
 fn (foptions &FormatOptions) format_pipe() {
-	foptions.vlog('vfmt running v3.gen.v over stdin')
 	input_text := os.get_raw_lines_joined()
 	stdin_path := os.join_path(vtmp_folder, 'vfmt_stdin_${rand.ulid()}.v')
 	os.write_file(stdin_path, input_text) or {
@@ -240,7 +326,7 @@ fn (foptions &FormatOptions) format_pipe() {
 	formatted_content := foptions.formatted_content_from_file(stdin_path) or { exit(1) }
 	print(formatted_content)
 	flush_stdout()
-	foptions.vlog('v3.gen.v wrote ${formatted_content.len} bytes to stdout.')
+	foptions.vlog('vfmt wrote ${formatted_content.len} bytes to stdout.')
 }
 
 fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ! {
