@@ -1935,6 +1935,8 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 	if children.len < 2 {
 		return
 	}
+	start_line_len := g.output_line_len()
+	is_compact := g.if_expr_is_compact(n, children, start_line_len)
 	cond := children[0]
 	cn := g.a.node(cond)
 	g.write('if ')
@@ -1948,19 +1950,26 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 	g.in_init = in_init
 	g.write(' ')
 	then_blk := g.a.node(children[1])
-	g.writeln('{')
-	g.source_end = int_max(g.source_end, then_blk.pos.offset)
-	g.stmt_list_ids(g.a.children_of(then_blk))
-	g.indent++
-	g.emit_comments_before(then_blk.pos.end)
-	g.indent--
-	g.write('}')
+	if is_compact {
+		g.compact_expr_block(children[1])
+	} else {
+		g.writeln('{')
+		g.source_end = int_max(g.source_end, then_blk.pos.offset)
+		g.stmt_list_ids(g.a.children_of(then_blk))
+		g.indent++
+		g.emit_comments_before(then_blk.pos.end)
+		g.indent--
+		g.write('}')
+	}
 	if children.len > 2 {
 		else_id := children[2]
 		en := g.a.node(else_id)
 		if en.kind == .if_expr {
 			g.write(' else ')
 			g.if_expr(else_id)
+		} else if is_compact {
+			g.write(' else ')
+			g.compact_expr_block(else_id)
 		} else {
 			g.writeln(' else {')
 			g.source_end = int_max(g.source_end, en.pos.offset)
@@ -1971,6 +1980,49 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 			g.write('}')
 		}
 	}
+}
+
+fn (g &Gen) if_expr_is_compact(n &flat.Node, children []flat.NodeId, start_line_len int) bool {
+	if children.len !in [2, 3] || g.has_comment_between(n.pos.offset, n.pos.end) {
+		return false
+	}
+	if source := g.source_span(n.pos.offset, n.pos.end) {
+		if source.contains('\n') || source.contains('\r')
+			|| start_line_len + source.trim_space().len > formatter_max_line_len {
+			return false
+		}
+	} else {
+		return false
+	}
+	if g.compact_block_expr_ids(children[1]) == none {
+		return false
+	}
+	return children.len == 2 || (g.a.node(children[2]).kind == .block
+		&& g.compact_block_expr_ids(children[2]) != none)
+}
+
+fn (g &Gen) compact_block_expr_ids(id flat.NodeId) ?[]flat.NodeId {
+	n := g.a.node(id)
+	if n.kind != .block {
+		return none
+	}
+	return g.compact_expr_ids(g.a.children_of(n))
+}
+
+fn (mut g Gen) compact_expr_block(id flat.NodeId) {
+	n := g.a.node(id)
+	expressions := g.compact_block_expr_ids(id) or { []flat.NodeId{} }
+	g.write('{')
+	if expressions.len > 0 {
+		g.write(' ')
+		in_init := g.in_init
+		g.in_init = true
+		g.expr_list(expressions, ', ')
+		g.in_init = in_init
+		g.write(' ')
+	}
+	g.write('}')
+	g.source_end = int_max(g.source_end, n.pos.end)
 }
 
 fn (mut g Gen) match_node(id flat.NodeId) {
@@ -1992,12 +2044,24 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 	g.indent++
 	for bid in children[1..] {
 		b := g.a.node(bid)
+		g.emit_comments_before(b.pos.offset)
+		g.source_end = int_max(g.source_end, b.pos.offset)
 		bchildren := g.a.children_of(b)
 		if b.value == 'else' {
-			g.write('else')
-			g.writeln(' {')
-			g.stmt_list_ids(bchildren)
-			g.writeln('}')
+			if g.match_branch_is_compact(b, bchildren) {
+				g.write('else ')
+				g.compact_match_branch(b, bchildren)
+				g.writeln('')
+			} else {
+				g.write('else')
+				g.writeln(' {')
+				g.stmt_list_ids(bchildren)
+				g.indent++
+				g.advance_source_end_before_pending_comment(b.pos.end)
+				g.emit_comments_before(b.pos.end)
+				g.indent--
+				g.writeln('}')
+			}
 		} else {
 			ncond := b.value.int()
 			conds := if ncond <= bchildren.len { bchildren[..ncond] } else { bchildren }
@@ -2008,13 +2072,78 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 				}
 				g.match_cond(c)
 			}
-			g.writeln(' {')
-			g.stmt_list_ids(rest)
-			g.writeln('}')
+			if g.match_branch_is_compact(b, rest) {
+				g.write(' ')
+				g.compact_match_branch(b, rest)
+				g.writeln('')
+			} else {
+				g.writeln(' {')
+				g.stmt_list_ids(rest)
+				g.indent++
+				g.advance_source_end_before_pending_comment(b.pos.end)
+				g.emit_comments_before(b.pos.end)
+				g.indent--
+				g.writeln('}')
+			}
 		}
 	}
 	g.indent--
 	g.write('}')
+}
+
+fn (g &Gen) match_branch_is_compact(branch &flat.Node, body []flat.NodeId) bool {
+	if g.has_comment_between(branch.pos.offset, branch.pos.end) {
+		return false
+	}
+	if source := g.source_span(branch.pos.offset, branch.pos.end) {
+		if source.contains('\n') || source.contains('\r')
+			|| g.indent * 4 + source.trim_space().len > formatter_max_line_len {
+			return false
+		}
+	} else {
+		return false
+	}
+	return g.compact_expr_ids(body) != none
+}
+
+fn (g &Gen) compact_expr_ids(ids []flat.NodeId) ?[]flat.NodeId {
+	if ids.len == 0 {
+		return []flat.NodeId{}
+	}
+	if ids.len != 1 {
+		return none
+	}
+	stmt := g.a.node(ids[0])
+	if stmt.kind == .expr_stmt && stmt.children_count == 1 {
+		return [g.a.child(stmt, 0)]
+	}
+	if stmt.kind != .block {
+		return none
+	}
+	mut expressions := []flat.NodeId{}
+	for stmt_id in g.a.children_of(stmt) {
+		child := g.a.node(stmt_id)
+		if child.kind != .expr_stmt || child.children_count != 1 {
+			return none
+		}
+		expressions << g.a.child(child, 0)
+	}
+	return expressions
+}
+
+fn (mut g Gen) compact_match_branch(branch &flat.Node, body []flat.NodeId) {
+	expressions := g.compact_expr_ids(body) or { []flat.NodeId{} }
+	g.write('{')
+	if expressions.len > 0 {
+		g.write(' ')
+		in_init := g.in_init
+		g.in_init = true
+		g.expr_list(expressions, ', ')
+		g.in_init = in_init
+		g.write(' ')
+	}
+	g.write('}')
+	g.source_end = int_max(g.source_end, branch.pos.end)
 }
 
 fn (mut g Gen) defer_stmt(id flat.NodeId) {
@@ -2301,12 +2430,34 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		g.writeln('')
 		return
 	}
+	formatter_end := g.a.formatter_node_ends[int(id)] or { n.pos.end }
+	if body.len == 0 && g.empty_fn_body_is_compact(n, formatter_end)
+		&& !g.has_comment_between(n.pos.offset, formatter_end) {
+		g.writeln(' {}')
+		return
+	}
 	g.writeln(' {')
 	g.stmt_list_ids(body)
 	g.indent++
-	g.emit_comments_before(g.a.formatter_node_ends[int(id)] or { n.pos.end })
+	g.emit_comments_before(formatter_end)
 	g.indent--
 	g.writeln('}')
+}
+
+fn (g &Gen) empty_fn_body_is_compact(n &flat.Node, end int) bool {
+	if source := g.source_span(n.pos.offset, end) {
+		close_pos := source.last_index_u8(`}`)
+		if close_pos < 0 {
+			return false
+		}
+		open_pos := source[..close_pos].last_index_u8(`{`)
+		if open_pos < 0 {
+			return false
+		}
+		body := source[open_pos + 1..close_pos]
+		return !body.contains('\n') && !body.contains('\r')
+	}
+	return false
 }
 
 fn (mut g Gen) params(parent_id flat.NodeId, ids []flat.NodeId) {
@@ -2584,6 +2735,19 @@ fn (g &Gen) has_comment_between(start int, end int) bool {
 		}
 	}
 	return false
+}
+
+fn (mut g Gen) advance_source_end_before_pending_comment(limit int) {
+	if g.comment_i >= g.comments.len || g.comments[g.comment_i].pos.offset >= limit {
+		return
+	}
+	mut previous := g.comments[g.comment_i].pos.offset
+	for previous > 0 && g.source[previous - 1].is_space() {
+		previous--
+	}
+	if previous > 0 {
+		g.source_end = previous - 1
+	}
 }
 
 fn (mut g Gen) interface_decl(id flat.NodeId) {

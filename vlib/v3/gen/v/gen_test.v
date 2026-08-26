@@ -87,6 +87,13 @@ fn test_formatter_preserves_blank_lines_between_statements() {
 	assert vfmt('statement_blank_lines_twice', out) == out
 }
 
+fn test_formatter_preserves_compact_function_and_expression_bodies() {
+	source := "fn empty() {}\n\nfn comment_only() {\n\t// keep inside\n}\n\nfn compact_expressions() {\n\t_ := if true { 1 } else { 2 }\n\t_ := match 10 {\n\t\t10 { 10 }\n\t\t5 {}\n\t\telse { 2 }\n\t}\n\tmatch 1 {\n\t\telse {\n\t\t\t// keep inside\n\t\t}\n\t}\n}\n"
+	out := vfmt('compact_bodies', source)
+	assert out == source, out
+	assert vfmt('compact_bodies_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_interface_comments_inside_body() {
 	source := 'interface Speaker {
 	// first

@@ -143,6 +143,17 @@ fn only_comments() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_compact_function_and_expression_bodies_with_v3() {
+	source := "fn empty() {}\n\nfn comment_only() {\n\t// keep inside\n}\n\nfn compact_expressions() {\n\t_ := if true { 1 } else { 2 }\n\t_ := match 10 {\n\t\t10 { 10 }\n\t\t5 {}\n\t\telse { 2 }\n\t}\n\tmatch 1 {\n\t\telse {\n\t\t\t// keep inside\n\t\t}\n\t}\n}\n"
+	res, formatted := run_vfmt_write('compact_bodies', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('compact_bodies_twice', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
 	source := 'struct Config {
 	one int
