@@ -6211,7 +6211,7 @@ fn (mut t Transformer) generic_call_specialization(id flat.NodeId, node flat.Nod
 	if t.should_skip_generic_call_specialization(decl_key) {
 		return none
 	}
-	if t.call_has_source_generic_args(node) {
+	if t.call_has_source_generic_args(node) || t.call_is_normalized_explicit_generic_call(node) {
 		if args := t.explicit_generic_call_args(node, module_name) {
 			scoped := t.infer_generic_call_args_with_explicit(decl, id, node, module_name, args) or {
 				[]string{}
@@ -6313,6 +6313,15 @@ fn (t &Transformer) call_has_source_generic_args(node flat.Node) bool {
 	fn_node := t.a.child_node(&node, 0)
 	return fn_node.kind == .index && fn_node.children_count >= 2 && fn_node.value != 'range'
 		&& !t.index_callee_is_value_index(fn_node)
+}
+
+fn (t &Transformer) call_is_normalized_explicit_generic_call(node flat.Node) bool {
+	if node.value.len == 0 || node.children_count == 0 {
+		return false
+	}
+	// normalize_generic_call_expr removes the source index node from
+	// `module.fn[T](...)`, but preserves `T` in the call payload.
+	return t.a.child_node(&node, 0).kind == .selector
 }
 
 fn (t &Transformer) should_skip_generic_call_specialization(decl_key string) bool {
