@@ -798,7 +798,7 @@ fn fastc_comparison_memo_key(tokens []FastcExpressionToken, tag i64) i64 {
 	if tokens.len >= 32768 {
 		return 0
 	}
-	return (i64(tokens.data) >> 3 << 16) | (i64(tokens.len) & 0x7fff) | (tag << 62)
+	return i64(((u64(tokens.data) >> 3) << 16) | (u64(tokens.len) & 0x7fff) | (u64(tag) << 62))
 }
 
 // generate scans V source and emits C as each declaration and statement is consumed. It does
@@ -835,6 +835,117 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	return GenerationResult{
 		c_source:     generate_source_files(sources, prefs)!
 		source_paths: source_paths
+	}
+}
+
+// FastcFileGenContext bundles the read-only program tables every per-file
+// code-generation Parser starts from. Workers share it across threads; the
+// two seed maps are cloned per file, never mutated through the context.
+struct FastcFileGenContext {
+	prefs                  &pref.Preferences = unsafe { nil }
+	declared_types         map[string]bool
+	declared_type_c_names  map[string]string
+	fastc_prefixed_c_names []string
+	has_c_functions        bool
+	declared_kinds         map[string]FastcDeclaredTypeKind
+	enum_flags             map[string]bool
+	alias_base_types       map[string]string
+	struct_fields          map[string]map[string]string
+	struct_field_info      map[string][]FastcStructField
+	interface_fields       map[string]FastcInterfaceField
+	constants              map[string]string
+	constant_values        map[string]string
+	public_constants       map[string]bool
+	globals                map[string]string
+	public_globals         map[string]bool
+	used_function_names    map[string]bool
+	has_startup_inits      bool
+	has_cleanup_hooks      bool
+	functions              map[string]FastcFunctionSignature
+	constant_types         map[string]string
+	global_types           map[string]string
+	fixed_array_types      map[string]string
+	composite_types        map[string]bool
+}
+
+// FastcFileGenOutput is one source file's generation result. The sequential
+// stitch loop consumes them in file order, so parallel workers never touch
+// the shared output builders or the merged registration maps.
+struct FastcFileGenOutput {
+mut:
+	prototypes        string
+	body              string
+	has_main_entry    bool
+	fixed_array_types map[string]string
+	composite_types   map[string]bool
+	failed            bool
+	error_message     string
+}
+
+fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceFile) FastcFileGenOutput {
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file(source_file.path, source_file.source.len)
+	file.index_lines_without_digest(source_file.source)
+	prefs := ctx.prefs
+	mut gen := Parser{
+		prefs:                   unsafe { prefs }
+		path:                    source_file.path
+		module_name:             source_file.header.module_name
+		imports:                 source_file.header.imports
+		declared_types:          ctx.declared_types
+		declared_type_c_names:   ctx.declared_type_c_names
+		fastc_prefixed_c_names:  ctx.fastc_prefixed_c_names
+		has_c_functions:         ctx.has_c_functions
+		comparison_memo:         map[i64]FastcRenderedExpression{}
+		declared_kinds:          ctx.declared_kinds
+		enum_flags:              ctx.enum_flags
+		alias_base_types:        ctx.alias_base_types
+		struct_fields:           ctx.struct_fields
+		struct_field_info:       ctx.struct_field_info
+		interface_fields:        ctx.interface_fields
+		constants:               ctx.constants
+		constant_values:         ctx.constant_values
+		public_constants:        ctx.public_constants
+		globals:                 ctx.globals
+		public_globals:          ctx.public_globals
+		used_function_names:     ctx.used_function_names
+		selfhost:                prefs.building_v
+		has_startup_inits:       ctx.has_startup_inits
+		has_cleanup_hooks:       ctx.has_cleanup_hooks
+		s:                       scanner.new_scanner(prefs, .normal)
+		out:                     strings.new_builder(source_file.source.len)
+		protos:                  strings.new_builder(256)
+		functions:               ctx.functions
+		constant_types:          ctx.constant_types
+		global_types:            ctx.global_types
+		fixed_array_types:       ctx.fixed_array_types.clone()
+		composite_types:         ctx.composite_types.clone()
+		deferred_lines:          []string{}
+		deferred_block_starts:   []int{}
+		loop_defer_block_starts: []int{}
+		loop_has_breaks:         []bool{}
+		statement_reachable:     true
+	}
+	gen.s.init(file, source_file.source)
+	generated := gen.run() or {
+		return FastcFileGenOutput{
+			failed:        true
+			error_message: err.msg()
+		}
+	}
+	if gen.s.diagnostics.len > 0 {
+		diagnostic := gen.s.diagnostics[0]
+		return FastcFileGenOutput{
+			failed:        true
+			error_message: 'fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}'
+		}
+	}
+	return FastcFileGenOutput{
+		prototypes:        gen.protos.str()
+		body:              generated
+		has_main_entry:    source_file.header.module_name in ['', 'main'] && gen.has_main
+		fixed_array_types: gen.fixed_array_types
+		composite_types:   gen.composite_types
 	}
 }
 
@@ -926,62 +1037,48 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		}
 	}
 	mut entry_has_main := false
-	for source_file in sources {
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines_without_digest(source_file.source)
-		mut gen := Parser{
-			prefs:                   unsafe { prefs }
-			path:                    source_file.path
-			module_name:             source_file.header.module_name
-			imports:                 source_file.header.imports
-			declared_types:          declared_types
-			declared_type_c_names:   declared_type_c_names
-			fastc_prefixed_c_names:  fastc_prefixed_c_names
-			has_c_functions:         has_c_functions
-			comparison_memo:         map[i64]FastcRenderedExpression{}
-			declared_kinds:          declared_kinds
-			enum_flags:              enum_flags
-			alias_base_types:        type_output.alias_base_types
-			struct_fields:           struct_fields
-			struct_field_info:       struct_field_info
-			interface_fields:        interface_fields
-			constants:               constants
-			constant_values:         constant_output.compile_time_values
-			public_constants:        public_constants
-			globals:                 globals
-			public_globals:          public_globals
-			used_function_names:     used_function_names
-			selfhost:                prefs.building_v
-			has_startup_inits:       startup_initializers.len > 0
-			has_cleanup_hooks:       module_cleanup_calls.len > 0
-			s:                       scanner.new_scanner(prefs, .normal)
-			out:                     strings.new_builder(source_file.source.len)
-			protos:                  strings.new_builder(256)
-			functions:               functions
-			constant_types:          constant_types
-			global_types:            global_types
-			fixed_array_types:       fixed_array_types
-			composite_types:         composite_types
-			deferred_lines:          []string{}
-			deferred_block_starts:   []int{}
-			loop_defer_block_starts: []int{}
-			loop_has_breaks:         []bool{}
-			statement_reachable:     true
+	ctx := FastcFileGenContext{
+		prefs:                  unsafe { prefs }
+		declared_types:         declared_types
+		declared_type_c_names:  declared_type_c_names
+		fastc_prefixed_c_names: fastc_prefixed_c_names
+		has_c_functions:        has_c_functions
+		declared_kinds:         declared_kinds
+		enum_flags:             enum_flags
+		alias_base_types:       type_output.alias_base_types
+		struct_fields:          struct_fields
+		struct_field_info:      struct_field_info
+		interface_fields:       interface_fields
+		constants:              constants
+		constant_values:        constant_output.compile_time_values
+		public_constants:       public_constants
+		globals:                globals
+		public_globals:         public_globals
+		used_function_names:    used_function_names
+		has_startup_inits:      startup_initializers.len > 0
+		has_cleanup_hooks:      module_cleanup_calls.len > 0
+		functions:              functions
+		constant_types:         constant_types
+		global_types:           global_types
+		fixed_array_types:      fixed_array_types
+		composite_types:        composite_types
+	}
+	outputs := fastc_generate_file_outputs(&ctx, sources)
+	for output in outputs {
+		if output.failed {
+			return error(output.error_message)
 		}
-		gen.s.init(file, source_file.source)
-		generated := gen.run()!
-		if gen.s.diagnostics.len > 0 {
-			diagnostic := gen.s.diagnostics[0]
-			return error('fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}')
-		}
-		prototypes.write_string(gen.protos.str())
-		body.write_string(generated)
-		if source_file.header.module_name in ['', 'main'] && gen.has_main {
+		prototypes.write_string(output.prototypes)
+		body.write_string(output.body)
+		if output.has_main_entry {
 			entry_has_main = true
 		}
-		fixed_array_types = gen.fixed_array_types.clone()
-		composite_types = gen.composite_types.clone()
+		for name, array_type in output.fixed_array_types {
+			fixed_array_types[name] = array_type
+		}
+		for name, _ in output.composite_types {
+			composite_types[name] = true
+		}
 	}
 	synthesized_main := if has_entry_module && !entry_has_main {
 		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0,
