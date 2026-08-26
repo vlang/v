@@ -780,6 +780,14 @@ fn (mut c H3MuxConn) dispatch_h3_event(ev quic.H3Event) {
 			}
 			s.mu.unlock()
 		}
+		.request_headers, .request_data, .request_trailers, .request_ended {
+			// SERVER-role-only H3Event kinds (quic.H3Conn's own module doc
+			// comment, added in Phase 13e for h3_server.v): the H3Conn this
+			// H3MuxConn wraps is always CLIENT-role (h3_dial_udp_and_open),
+			// so quic.h3_conn.v never actually emits one of these to a
+			// caller here -- an unreachable no-op branch, present only so
+			// this match stays exhaustive as H3EventKind grows.
+		}
 	}
 }
 

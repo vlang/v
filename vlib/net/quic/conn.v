@@ -321,6 +321,22 @@ pub fn (c &QuicConn) role() QuicRole {
 	return c.role
 }
 
+// connection_id returns a stable string identity for this connection,
+// derived from its own scid -- a package-private field with no other public
+// accessor (v1 never issues additional connection IDs beyond it, see this
+// file's own "no active CID set" scope note, so a single scid per
+// connection is the whole identity space here; nothing to enumerate).
+// Exists for an external caller managing MANY connections (e.g. a future
+// net.http h3_server.v layering its own per-connection HTTP/3 state on top
+// of a QuicListener-demuxed QuicConn, Phase 13e) that needs SOME key to
+// index its own side-table by -- QuicListener itself never needs this
+// accessor since it lives inside the same module and can read c.scid
+// directly (listener.v's own module doc comment explains that exact
+// reasoning for why it lives here at all).
+pub fn (c &QuicConn) connection_id() string {
+	return c.scid.bytestr()
+}
+
 // negotiated_alpn reports the ALPN protocol the server selected, or none
 // before EncryptedExtensions has been processed (i.e. before
 // handshake_confirmed can even fire -- ALPN is settled well before the
@@ -708,15 +724,44 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 	if c.state == .handshaking || c.state == .established {
 		handshake_confirmed := c.is_handshake_confirmed()
 		max_ack_delay := c.effective_max_ack_delay()
-		timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed,
-			max_ack_delay)
-		if timeout_result.pto_fired {
-			c.send_pto_probe(timeout_result.pto_space, now, mut result) or {
-				code := if err.code() != 0 { u64(err.code()) } else { quic_error_protocol_violation }
-				c.close_with_error(code, err.msg(), false, now, mut result)
+		// RFC 9002 Appendix A.9's OnLossDetectionTimeout is only ever
+		// invoked once "the loss detection timer expires" -- i.e. once
+		// `now` has actually reached the deadline the SAME loss_detection.
+		// next_timeout()/pto_time_and_space() computation (also what
+		// compute_next_timeout() below reports to the caller) already
+		// names. Calling on_loss_detection_timeout unconditionally on
+		// EVERY process_timeouts() call -- which is exactly what a caller-
+		// driven poll loop with no native per-connection timer thread does
+		// naturally, calling this on a fixed short interval (e.g.
+		// h3_driver_poll_interval) whenever nothing else is due -- fired a
+		// BRAND NEW PTO probe on every single call as long as anything was
+		// unacked, incrementing pto_count (and its 2^pto_count backoff)
+		// far faster than real time, without ever actually respecting that
+		// backoff: found via 13e's own real end-to-end server test, where
+		// a client that stops responding after its own exchange completes
+		// left the server's connection with something still unacked,
+		// spinning forever building a fresh (slow, AEAD-protected) probe
+		// packet on every ~1-50ms poll tick instead of correctly backing
+		// off toward the idle timeout. Gated the same way the two
+		// `now >= deadline` checks earlier in this SAME function already
+		// gate idle-timeout/closing-deadline firing.
+		mut loss_timer_due := false
+		if deadline, _ := c.loss_detection.next_timeout(handshake_confirmed, max_ack_delay,
+			c.congestion_control.bytes_in_flight)
+		{
+			loss_timer_due = now >= deadline
+		}
+		if loss_timer_due {
+			timeout_result := c.loss_detection.on_loss_detection_timeout(now, handshake_confirmed,
+				max_ack_delay)
+			if timeout_result.pto_fired {
+				c.send_pto_probe(timeout_result.pto_space, now, mut result) or {
+					code := if err.code() != 0 { u64(err.code()) } else { quic_error_protocol_violation }
+					c.close_with_error(code, err.msg(), false, now, mut result)
+				}
+			} else if timeout_result.lost.len > 0 {
+				c.congestion_control.on_packets_lost(timeout_result.lost, false, now)
 			}
-		} else if timeout_result.lost.len > 0 {
-			c.congestion_control.on_packets_lost(timeout_result.lost, false, now)
 		}
 
 		if c.state == .handshaking || c.state == .established {
@@ -1965,7 +2010,15 @@ fn (mut c QuicConn) drain_flow_control_raises(now u64, mut result PollResult) ! 
 		result.outgoing << datagram
 		c.conn_recv_window.mark_advertised(new_limit)
 	}
-	for stream_id, mut recv_window in c.stream_recv_windows {
+	// Deliberately `c.stream_recv_windows.keys()` + a per-key lookup, NOT
+	// `for stream_id, mut recv_window in c.stream_recv_windows` -- the
+	// established, proven-safe idiom this codebase already uses for a
+	// map[K]&V (matches listener.v's own documented fix for the identical
+	// shape, and this file's own other access sites for this exact map:
+	// process_max_stream_data_frame et al. already use `c.stream_recv_
+	// windows[id] or {...}`, never a for-mut-in-map loop).
+	for stream_id in c.stream_recv_windows.keys() {
+		mut recv_window := c.stream_recv_windows[stream_id] or { continue }
 		if recv_window.should_advertise_more() {
 			new_limit := recv_window.next_advertised_limit()
 			msd_frame := encode_max_stream_data_frame(stream_id, new_limit)!

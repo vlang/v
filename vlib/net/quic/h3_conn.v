@@ -8,13 +8,36 @@ module quic
 // blocked once more encoder-stream data arrives. This is the file every
 // "deferred to Phase 12" doc comment across h3_*.v/qpack_*.v pointed at.
 //
+// Role-aware since Phase 13e: a CLIENT-role H3Conn opens its own request
+// streams (open_request_stream/send_request_headers/send_request_data) and
+// treats every HEADERS/DATA/trailing-HEADERS sequence on one as the SERVER's
+// response (response_headers/response_data/response_trailers/response_ended
+// events); a SERVER-role H3Conn instead treats a PEER-opened (client-
+// initiated) bidirectional stream as an incoming REQUEST (request_headers/
+// request_data/request_trailers/request_ended events) and answers on that
+// SAME stream via send_response_headers/send_response_data -- it never
+// calls open_request_stream itself (HTTP/3 request streams are always
+// client-initiated, RFC 9114 §6.1, so a server has nothing of its own to
+// open). Both roles share the identical underlying per-stream message-
+// framing state machine (h3_request_stream.v) and QPACK encode/decode
+// path: RFC 9114 §4.1's HEADERS -> DATA* -> optional trailing HEADERS
+// grammar, and the field-section wire format, are symmetric between a
+// request and a response, so nothing about the state machine itself needed
+// to change -- only which EVENT KIND a decoded HEADERS/DATA block is
+// reported as, and whether a first HEADERS block is checked for an RFC
+// 9110 §15.2 1xx informational status (a response-only concept; a
+// request's :method/:path/:scheme/:authority pseudo-headers have no
+// analogous interim form, so a server-role connection never applies that
+// check -- see deliver_decoded_headers).
+//
 // Scope decision, documented here and in PROGRESS.md/the conformance
-// matrix: this v1 client role NEVER sends MAX_PUSH_ID, so RFC 9114
-// §7.2.7's push-authorization precondition is never satisfied -- any
+// matrix: NEITHER role ever sends MAX_PUSH_ID, so RFC 9114 §7.2.7's
+// push-authorization precondition is never satisfied for either -- any
 // PUSH_PROMISE/CANCEL_PUSH this connection receives is therefore always a
 // protocol violation (H3_ID_ERROR), and no push-ID/max-push-id tracking
 // state exists anywhere in this file. CONNECT is similarly out of scope --
-// nothing in H3ClientRequest (net.http, Phase 12d) ever constructs one.
+// nothing in H3ClientRequest (net.http, Phase 12d) or the Phase 13e server
+// path ever constructs or accepts one.
 
 // max_h3_control_plane_buffered_bytes bounds how many not-yet-decoded
 // bytes this connection will buffer for a CONTROL-PLANE stream (the HTTP/3
@@ -40,13 +63,23 @@ pub const max_h3_control_plane_buffered_bytes = u64(65536)
 const max_h3_uni_stream_header_buffered_bytes = 32
 
 // H3EventKind is one kind of thing an H3Conn.poll()/process_timeouts()
-// call can report.
+// call can report. The response_*/request_* pairs are mutually exclusive
+// per connection, not per event: a CLIENT-role H3Conn only ever produces
+// response_*, a SERVER-role one only ever produces request_* (see this
+// file's own module doc comment) -- both members exist rather than one
+// role-ambiguous name so a caller handling both roles (or just reading a
+// log) never has to cross-reference which role a given H3Conn was to know
+// what an event actually means.
 pub enum H3EventKind {
 	settings_received
 	response_headers
 	response_data
 	response_trailers
 	response_ended
+	request_headers
+	request_data
+	request_trailers
+	request_ended
 	request_error
 	goaway
 	connection_error
@@ -55,9 +88,11 @@ pub enum H3EventKind {
 // H3Event reports one thing that happened. Which fields are meaningful
 // depends on `kind`: `stream_id` is set for every per-request-stream kind
 // (response_headers/response_data/response_trailers/response_ended/
-// request_error); `headers` for response_headers/response_trailers;
-// `data` for response_data; `error_code`/`reason` for request_error/
-// connection_error; `goaway_id` for goaway.
+// request_headers/request_data/request_trailers/request_ended/
+// request_error); `headers` for response_headers/response_trailers/
+// request_headers/request_trailers; `data` for response_data/request_data;
+// `error_code`/`reason` for request_error/connection_error; `goaway_id`
+// for goaway.
 pub struct H3Event {
 pub:
 	kind       H3EventKind
@@ -233,6 +268,28 @@ pub fn (h &H3Conn) established() bool {
 	return h.qc.state() == .established
 }
 
+// closed reports whether this connection has already reported its own
+// .connection_closed event (handle_quic_events sets this the moment that
+// QuicEvent is seen). Exists for an external caller managing MANY H3Conns
+// side by side (e.g. a future net.http h3_server.v atop a QuicListener,
+// Phase 13e) to know when it is safe to drop its own reference and stop
+// driving this connection any further -- mirrors established()'s identical
+// "cheap derived-state accessor for an outside caller" role.
+pub fn (h &H3Conn) closed() bool {
+	return h.closed
+}
+
+// is_server_role reports whether the wrapped QuicConn is playing the
+// server role -- the one fact this file's request/response event-kind and
+// 1xx-informational-status branching (deliver_decoded_headers,
+// finalize_request_stream_if_done, dispatch_request_stream_frames) all key
+// off of. A tiny named helper rather than repeating `h.qc.role() ==
+// .server` at each call site, so the intent reads the same way at every
+// one of them.
+fn (h &H3Conn) is_server_role() bool {
+	return h.qc.role() == .server
+}
+
 // poll feeds one datagram (or none) through the wrapped QuicConn, then
 // drives every consequence: opening our own control/QPACK streams once
 // established, classifying/dispatching every newly peer_stream_opened
@@ -249,6 +306,32 @@ pub fn (mut h H3Conn) poll(incoming ?[]u8, now u64) !H3PollResult {
 pub fn (mut h H3Conn) process_timeouts(now u64) !H3PollResult {
 	qc_result := h.qc.process_timeouts(now)!
 	return h.drive(qc_result)!
+}
+
+// drive_events drives this connection's H3 layer from a set of QuicEvents
+// that some OTHER caller already obtained from the wrapped QuicConn's own
+// poll()/process_timeouts() -- for a caller that cannot let THIS H3Conn
+// call qc.poll()/qc.process_timeouts() itself, because something else
+// already did (a QuicListener demuxing many connections behind one socket,
+// Phase 13e's net.http h3_server.v, whose own QuicListener.poll() call
+// already drove the matched connection's QUIC layer as part of routing one
+// incoming datagram to it). The returned H3PollResult's `outgoing` and
+// `next_timeout` are always empty/none -- meaningless here, since this
+// call injects no new incoming bytes of its own for qc to have drained
+// anything against; the caller already has the real (correctly peer-
+// addressed) outgoing bytes and next_timeout from its own QuicListener
+// call and must use those instead. Only `events` carries real output.
+// Matches this file's own "queue-now-drain-later" contract throughout:
+// open_own_streams_if_ready/drain_known_peer_streams may still enqueue new
+// writes onto the underlying QuicConn (e.g. this connection's own control
+// stream, or a response the caller sends in reaction to one of the
+// returned events) -- those reach the wire whenever the caller's OWN next
+// QuicListener.poll()/process_timeouts() call for this connection next
+// drains it, not from this call.
+pub fn (mut h H3Conn) drive_events(events []QuicEvent) !H3PollResult {
+	return h.drive(PollResult{
+		events: events
+	})!
 }
 
 // drive is poll()/process_timeouts()' shared body.
@@ -289,9 +372,20 @@ fn (mut h H3Conn) handle_quic_events(events []QuicEvent, mut result H3PollResult
 				}
 				if id.direction() == .unidirectional {
 					h.pending_peer_uni_headers[stream_id] = []u8{}
+				} else if h.is_server_role() {
+					// A peer-initiated (client-initiated) bidirectional
+					// stream IS this server's defined use of one: RFC 9114
+					// §6.1 request streams are always client-initiated, so
+					// this is a new incoming request. Register it exactly
+					// like open_request_stream does for a CLIENT's own
+					// outgoing stream -- dispatch_request_stream_frames
+					// (below) then drives it identically regardless of
+					// which side actually opened it.
+					h.request_streams[stream_id] = new_h3_request_stream_state()
+					h.request_decoders[stream_id] = new_h3_frame_decoder()
 				}
 				// A peer-initiated BIDI stream has no defined use in HTTP/3's
-				// client role (request streams are always client-initiated,
+				// CLIENT role (request streams are always client-initiated,
 				// RFC 9114 §6.1) -- ignored rather than acted on, same
 				// tolerate-and-do-nothing posture as an unknown uni stream
 				// type, since Table 1 grants it no legal frame types either.
@@ -463,8 +557,15 @@ fn (mut h H3Conn) require_valid_frame_for_role(frame H3Frame, role H3StreamRole)
 // -----------------------------------------------------------------------
 
 // open_request_stream opens a new client-initiated bidirectional request
-// stream and begins tracking its response message-framing state.
+// stream and begins tracking its response message-framing state. CLIENT
+// role only -- RFC 9114 §6.1 request streams are always client-initiated,
+// so a server has no legal use for opening one of its own; it answers on
+// whichever stream ID the PEER opened instead (see this file's own module
+// doc comment and send_response_headers/send_response_data).
 pub fn (mut h H3Conn) open_request_stream() !u64 {
+	if h.is_server_role() {
+		return error('h3: open_request_stream is client-role only -- a server answers on the stream the peer opened (RFC 9114 §6.1)')
+	}
 	stream_id := h.qc.open_stream(true)!
 	h.request_streams[stream_id] = new_h3_request_stream_state()
 	h.request_decoders[stream_id] = new_h3_frame_decoder()
@@ -498,6 +599,24 @@ pub fn (mut h H3Conn) send_request_data(stream_id u64, data []u8, fin bool) ! {
 	h.qc.write_stream(stream_id, frame_bytes, fin)!
 }
 
+// send_response_headers is the SERVER-role counterpart of
+// send_request_headers, for `stream_id` a PEER opened (an incoming
+// request) rather than one this endpoint opened itself. Functionally
+// identical -- QPACK-encoding a field section and queuing it as a HEADERS
+// frame doesn't care which endpoint opened the stream it's writing to --
+// this exists as a separately named entry point purely so a server
+// caller's own code reads as "sending a response", not "sending a
+// request" onto a stream it never opened.
+pub fn (mut h H3Conn) send_response_headers(stream_id u64, lines []QpackFieldLine, fin bool) ! {
+	h.send_request_headers(stream_id, lines, fin)!
+}
+
+// send_response_data is send_request_data's identical server-role
+// counterpart -- see send_response_headers' own doc comment.
+pub fn (mut h H3Conn) send_response_data(stream_id u64, data []u8, fin bool) ! {
+	h.send_request_data(stream_id, data, fin)!
+}
+
 // -----------------------------------------------------------------------
 // Request-stream response dispatch
 // -----------------------------------------------------------------------
@@ -527,14 +646,15 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 		h.require_valid_frame_for_role(decoded.frame, .request)!
 		match decoded.frame {
 			PushPromiseFrame {
-				// Table-1-legal on a request stream, but v1 never authorizes
-				// push -- request-scoped here (tied to this one exchange),
-				// unlike the identical rejection on the control stream, which
-				// is connection-scoped (MAX_PUSH_ID there implies a peer that
+				// Table-1-legal on a request stream, but neither role ever
+				// authorizes push (this file's own module doc comment) --
+				// request-scoped here (tied to this one exchange), unlike the
+				// identical rejection on the control stream, which is
+				// connection-scoped (MAX_PUSH_ID there implies a peer that
 				// may be confused about push in general, not just this
 				// request).
 				h.fail_request_stream(stream_id, H3ErrorCode.id_error.code(),
-					'push is never authorized by this client', mut result)
+					'push is not authorized on this connection', mut result)
 				return
 			}
 			DataFrame {
@@ -544,7 +664,11 @@ fn (mut h H3Conn) dispatch_request_stream_frames(stream_id u64, mut result H3Pol
 					return
 				}
 				result.events << H3Event{
-					kind:      .response_data
+					kind:      if h.is_server_role() {
+						H3EventKind.request_data
+					} else {
+						H3EventKind.response_data
+					}
 					stream_id: stream_id
 					data:      decoded.frame.data
 				}
@@ -594,25 +718,35 @@ fn (mut h H3Conn) decode_or_queue_headers(stream_id u64, buf []u8, is_trailers b
 // QpackDecoder.decode_field_section's own doc comment for when one is
 // produced) and emits the matching H3Event.
 //
-// A `!is_trailers` block (a response-headers CANDIDATE -- the first HEADERS
-// this stream has seen, or another one arriving while still awaiting the
-// final response) is inspected for RFC 9110 §15.2's 1xx informational
-// range: a well-formed 1xx :status is discarded here entirely (this v1
-// client has no Expect:100-continue/early-hints support to hand it to) and
-// the stream's phase is left unchanged, so the NEXT HEADERS block -- final
-// or another interim one -- is still treated as a response-headers
-// candidate rather than trailers. Only once a non-1xx (or malformed/
-// missing, left for net.http's own :status validation to reject) status is
-// seen does this advance the phase and emit `.response_headers`. Mirrors
-// h2_mux_conn.v's identical "discard 1xx, keep waiting for the real
-// response" handling for HTTP/2.
+// A `!is_trailers` block on a CLIENT-role connection (a response-headers
+// CANDIDATE -- the first HEADERS this stream has seen, or another one
+// arriving while still awaiting the final response) is inspected for RFC
+// 9110 §15.2's 1xx informational range: a well-formed 1xx :status is
+// discarded here entirely (this v1 client has no Expect:100-continue/
+// early-hints support to hand it to) and the stream's phase is left
+// unchanged, so the NEXT HEADERS block -- final or another interim one --
+// is still treated as a response-headers candidate rather than trailers.
+// Only once a non-1xx (or malformed/missing, left for net.http's own
+// :status validation to reject) status is seen does this advance the phase
+// and emit `.response_headers`. Mirrors h2_mux_conn.v's identical "discard
+// 1xx, keep waiting for the real response" handling for HTTP/2.
+//
+// A SERVER-role connection skips the 1xx check entirely: a REQUEST's
+// :method/:path/:scheme/:authority pseudo-headers have no RFC 9110 §15.2
+// interim-response analog, so the FIRST (and only non-trailer) HEADERS
+// block on an incoming request stream is unconditionally the request
+// headers -- the phase always advances immediately, and net.http's own
+// h3_server.v (Phase 13e) owns validating the pseudo-headers this section
+// actually decoded to, exactly like it owns :status validation for the
+// client role (this function never itself rejects either).
 fn (mut h H3Conn) deliver_decoded_headers(stream_id u64, decoded QpackDecodeFieldSectionResult, is_trailers bool, mut result H3PollResult) ! {
 	if decoded.decoder_instructions.len > 0 {
 		if dec_id := h.own_qpack_decoder_stream_id {
 			h.qc.write_stream(dec_id, decoded.decoder_instructions, false)!
 		}
 	}
-	if !is_trailers && h3_status_is_informational(decoded.lines) {
+	is_server := h.is_server_role()
+	if !is_trailers && !is_server && h3_status_is_informational(decoded.lines) {
 		return
 	}
 	if !is_trailers {
@@ -621,9 +755,9 @@ fn (mut h H3Conn) deliver_decoded_headers(stream_id u64, decoded QpackDecodeFiel
 	}
 	result.events << H3Event{
 		kind:      if is_trailers {
-			H3EventKind.response_trailers
+			if is_server { H3EventKind.request_trailers } else { H3EventKind.response_trailers }
 		} else {
-			H3EventKind.response_headers
+			if is_server { H3EventKind.request_headers } else { H3EventKind.response_headers }
 		}
 		stream_id: stream_id
 		headers:   decoded.lines
@@ -720,7 +854,11 @@ fn (mut h H3Conn) finalize_request_stream_if_done(stream_id u64, mut result H3Po
 			}
 			state.note_fin()
 			result.events << H3Event{
-				kind:      .response_ended
+				kind:      if h.is_server_role() {
+					H3EventKind.request_ended
+				} else {
+					H3EventKind.response_ended
+				}
 				stream_id: stream_id
 			}
 			// This stream will never be dispatched to again (note_fin is
