@@ -16280,6 +16280,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 				'phase-B AppKit drawable lifetime')!
 			assert draw_app.backend.native_operations.arm_proof()
 			mut state := &NativeAppKitObservedDrawableState{}
+			observed_child_oracle_start := native_appkit_lifetime_oracle_snapshot_for_test().len
 			outcome := draw_app.with_scheduled_render_batch(fn [mut draw_app, draw_window, draw_side_generation, mut state] (batch RenderBatchLease, candidates []RenderWindowSnapshot) ! {
 				assert candidates.any(it.window == draw_window)
 				_ = native_appkit_assert_pool_ticket_context_for_test(&draw_app.backend.native_operations,
@@ -16339,6 +16340,7 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 					}
 				})!
 			})!
+			observed_child_oracle_end := native_appkit_lifetime_oracle_snapshot_for_test().len
 			assert outcome.error == ''
 			assert outcome.finalized_submissions == 1
 			assert state.observed_drawable != 0
@@ -16453,7 +16455,9 @@ $if gg_multiwindow ? || x_multiwindow_render ? {
 			mut observed_parent_release := -1
 			mut observed_parent_release_count := 0
 			for index, record in draw_oracle {
-				if record.kind in [u64(10), 11, 12] && record.identity == state.observed_drawable {
+				if index >= observed_child_oracle_start && index < observed_child_oracle_end
+					&& record.kind in [u64(10), 11, 12]
+					&& record.identity == state.observed_drawable {
 					observed_child_terminal = index
 					observed_child_terminal_count++
 				}
