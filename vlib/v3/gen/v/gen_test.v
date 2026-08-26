@@ -320,6 +320,27 @@ fn test_formatter_preserves_and_wraps_array_layout() {
 	assert vfmt('wrapped_array_layout_twice', wrapped) == wrapped
 }
 
+fn test_formatter_preserves_multiline_map_layout() {
+	source := "numbers := {'one': 1, 'twentytwo': 22}\n"
+	out := vfmt('multiline_map_layout', source)
+	assert out == "numbers := {\n\t'one':       1\n\t'twentytwo': 22\n}\n", out
+	assert vfmt('multiline_map_layout_twice', out) == out
+
+	unicode := vfmt('unicode_map_alignment', "values := {'ß': 1, 'abc': 2}\n")
+	assert unicode.contains("\t'ß':   1\n\t'abc': 2"), unicode
+
+	comments := 'fn f() {
+	values := {
+		\'a\': 1 // after
+		// between
+		\'b\': 2
+		// post
+	}
+}
+'
+	assert vfmt('map_comments', comments) == comments
+}
+
 fn test_formatter_preserves_capture_and_shared_parameter_qualifiers() {
 	out := vfmt('capture_and_shared_qualifiers',
 		'struct St {}\n\nfn (shared receiver St) use(shared value St) {}\n\nfn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut item, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n')
@@ -547,7 +568,7 @@ fn test_formatter_keeps_comments_before_grouped_const_fields() {
 fn test_formatter_preserves_typed_map_entries_and_typeof_array_init() {
 	map_source := "fn f() {\n\tm := map[string]int{'a': 1}\n\tprintln(m)\n}\n"
 	map_out := vfmt('typed_map_entries', map_source)
-	assert map_out.contains("map[string]int{'a': 1}"), map_out
+	assert map_out.contains("map[string]int{\n\t\t'a': 1\n\t}"), map_out
 	assert vfmt('typed_map_entries_twice', map_out) == map_out
 
 	array_source := 'fn f() {

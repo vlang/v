@@ -227,6 +227,18 @@ fn test_fmt_preserves_and_wraps_array_layout_with_v3() {
 	assert wrapped_twice == wrapped
 }
 
+fn test_fmt_preserves_multiline_map_layout_with_v3() {
+	source := "numbers := {'one': 1, 'twentytwo': 22}\n"
+	res, formatted := run_vfmt_write('multiline_map_layout', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == "numbers := {\n\t'one':       1\n\t'twentytwo': 22\n}\n", formatted
+	second_res, formatted_twice := run_vfmt_write('multiline_map_layout_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_closure_capture_qualifiers_with_v3() {
 	source := 'fn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut value, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n'
 	res, formatted := run_vfmt_write('closure_capture_qualifiers', source, '')
@@ -456,7 +468,7 @@ fn test_fmt_preserves_typed_map_entries_and_typeof_array_init_with_v3() {
 	res, formatted := run_vfmt_write('typed_map_and_typeof_array', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert formatted.contains("map[string]int{'a': 1}"), formatted
+	assert formatted.contains("map[string]int{\n\t\t'a': 1\n\t}"), formatted
 	assert formatted.contains('[]typeof(fixed[0]){}'), formatted
 	second_res, formatted_twice := run_vfmt_write('typed_map_and_typeof_array', formatted,
 		'')

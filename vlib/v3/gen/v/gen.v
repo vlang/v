@@ -1250,21 +1250,73 @@ fn (mut g Gen) map_init(id flat.NodeId) {
 	}
 	children := g.a.children_of(n)
 	if children.len == 0 {
-		g.write('{}')
+		g.write('{')
+		if g.source_line(n.pos.offset) < g.source_line(n.pos.end) {
+			g.writeln('')
+			g.indent++
+			g.emit_comments_before(n.pos.end)
+			g.indent--
+		}
+		g.write('}')
 		return
 	}
-	g.write('{')
+	g.writeln('{')
+	g.indent++
+	mut max_key_width := 0
 	mut i := 0
 	for i + 1 < children.len {
-		g.expr(children[i])
-		g.write(': ')
-		g.expr(children[i + 1])
-		if i + 2 < children.len {
-			g.write(', ')
+		width := g.map_key_width(children[i])
+		if width > max_key_width {
+			max_key_width = width
 		}
 		i += 2
 	}
+	i = 0
+	for i + 1 < children.len {
+		g.expr(children[i])
+		g.write(': ')
+		width := g.map_key_width(children[i])
+		if width < max_key_width {
+			g.write(' '.repeat(max_key_width - width))
+		}
+		g.expr(children[i + 1])
+		if !g.on_newline {
+			g.writeln('')
+		}
+		i += 2
+	}
+	g.emit_comments_before(n.pos.end)
+	g.indent--
 	g.write('}')
+}
+
+fn (g &Gen) map_key_width(id flat.NodeId) int {
+	n := g.a.node(id)
+	text := match n.kind {
+		.string_literal {
+			if n.typ.starts_with('raw:') {
+				quote := if n.typ.ends_with('"') { '"' } else { "'" }
+				'r${quote}${n.value}${quote}'
+			} else if n.typ.starts_with('js:') {
+				'js${quote_string(n.value)}'
+			} else {
+				quote_string(n.value)
+			}
+		}
+		.char_literal {
+			if n.value.starts_with('c:') { "c'${n.value[2..]}'" } else { g.rune_literal(n) }
+		}
+		.enum_val { '.${n.value}' }
+		.int_literal, .float_literal, .bool_literal, .ident { n.value }
+		else {
+			if source := g.source_span(n.pos.offset, n.pos.end) {
+				source.trim_space()
+			} else {
+				n.value
+			}
+		}
+	}
+	return utf8_str_visible_length(text)
 }
 
 fn (mut g Gen) fn_literal(id flat.NodeId) {
