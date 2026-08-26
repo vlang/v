@@ -34,8 +34,8 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, _ int, _ int) 
 
 // scan_late_call_names_dispatch falls back to the serial late-name scan when
 // v3 is built with the internal `v3_no_parallel` define.
-fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, used map[string]bool) []string {
-	return t.scan_late_call_names_range(cands, used, 0, cands.len)
+fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, used &map[string]bool, candidate_names &map[string]bool) []string {
+	return t.scan_late_call_names_range(cands, used, candidate_names, 0, cands.len)
 }
 
 pub fn promote_scoped_texts_parallel(mut _ flat.FlatAst, _ voidptr) bool {

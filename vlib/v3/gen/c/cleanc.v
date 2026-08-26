@@ -2929,7 +2929,15 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.timing_profile('  [ttime]   cg predispatch   ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
 		if !parallel_prep_done {
-			g.collect_fixed_storage_consts(false)
+			$if !v3_no_parallel ? {
+				if g.scope_parallel_workers {
+					g.collect_fixed_storage_consts_scoped()
+				} else {
+					g.collect_fixed_storage_consts(false)
+				}
+			} $else {
+				g.collect_fixed_storage_consts(false)
+			}
 			g.precompute_param_type_index()
 			g.precompute_concrete_optional_abi_fns()
 			if effective_no_parallel {
@@ -2955,7 +2963,15 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.preseed_fn_signature_fn_ptr_types()
 		g.timing_profile('  [ttime]     wr fn sigs     ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		cgsw.restart()
-		g.preseed_c_extern_fn_ptr_types()
+		$if !v3_no_parallel ? {
+			if g.scope_parallel_workers {
+				g.preseed_c_extern_fn_ptr_types_scoped()
+			} else {
+				g.preseed_c_extern_fn_ptr_types()
+			}
+		} $else {
+			g.preseed_c_extern_fn_ptr_types()
+		}
 		g.preseed_sig_type_seen = unsafe { nil }
 		g.timing_profile('  [ttime]   cg wrappers      ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms (sig+extern)')
 		cgsw.restart()
@@ -2998,7 +3014,15 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Function workers collect only the C symbols reached by emitted bodies.
 	// Finalize their declarations and function-pointer types after the merge.
 	g.c_extern_refs_ready = true
-	g.preseed_c_extern_fn_ptr_types()
+	$if !v3_no_parallel ? {
+		if g.scope_parallel_workers {
+			g.preseed_c_extern_fn_ptr_types_scoped()
+		} else {
+			g.preseed_c_extern_fn_ptr_types()
+		}
+	} $else {
+		g.preseed_c_extern_fn_ptr_types()
+	}
 	g.preseed_libc_compat_fns()
 	fn_code := g.sb.str()
 	// `.str()` copies out of the builder; free the emptied backing array under -gc none.
@@ -3067,11 +3091,19 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.cache_split {
 		g.writeln('/* V3CACHE_SOURCE_DIRECTIVES_BEGIN */')
 	}
-	g.emit_c_source_directives()
+	g.emit_c_source_directives_scoped()
 	if g.cache_split {
 		g.writeln('/* V3CACHE_SOURCE_DIRECTIVES_END */')
 	}
-	g.c_extern_forward_decls()
+	$if !v3_no_parallel ? {
+		if g.scope_parallel_workers {
+			g.c_extern_forward_decls_scoped()
+		} else {
+			g.c_extern_forward_decls()
+		}
+	} $else {
+		g.c_extern_forward_decls()
+	}
 	if g.parallel_global_decls.len > 0 {
 		g.sb.write_string(g.parallel_global_decls)
 		unsafe { g.parallel_global_decls.free() }
@@ -3257,6 +3289,12 @@ fn (mut g FlatGen) emit_preserved_c_directives_scoped() {
 fn (mut g FlatGen) emit_c_directives_scoped(late bool) {
 	state := g.begin_scoped_append()
 	g.emit_c_directives(late)
+	g.finish_scoped_append(state)
+}
+
+fn (mut g FlatGen) emit_c_source_directives_scoped() {
+	state := g.begin_scoped_append()
+	g.emit_c_source_directives()
 	g.finish_scoped_append(state)
 }
 

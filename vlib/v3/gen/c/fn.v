@@ -14868,11 +14868,17 @@ fn (mut g FlatGen) cached_header_forward_decls() {
 	}
 }
 
+struct CExternForwardDecl {
+	node_idx    int
+	file        string
+	module_name string
+	specificity int
+}
+
 fn (mut g FlatGen) c_extern_forward_decls() {
 	mut cur_module := ''
 	mut cur_file := ''
-	mut decls := map[string]string{}
-	mut decl_specificity := map[string]int{}
+	mut decls := map[string]CExternForwardDecl{}
 	mut names := []string{}
 	referenced_c_externs := g.c_extern_referenced_symbols()
 	// file/module/c_fn_decl nodes only occur at the top level: iterate the
@@ -14935,24 +14941,33 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			0
 		}
 		specificity := program_decl_priority + c_extern_decl_specificity(g.a, node)
-		if cfn !in decls || specificity > decl_specificity[cfn] {
-			decls[cfn] = g.c_possibly_active_macro_extern_decl(cfn, c_macro_safe_extern_decl(cfn,
-				g.c_extern_decl_line(node, cfn)))
-			decl_specificity[cfn] = specificity
+		if cfn !in decls || specificity > decls[cfn].specificity {
+			decls[cfn] = CExternForwardDecl{
+				node_idx:    i
+				file:        cur_file
+				module_name: cur_module
+				specificity: specificity
+			}
 		}
 	}
 	names.sort()
 	for name in names {
+		decl := decls[name]
+		g.tc.cur_file = decl.file
+		g.tc.cur_module = decl.module_name
+		node := g.a.nodes[decl.node_idx]
+		line := g.c_possibly_active_macro_extern_decl(name, c_macro_safe_extern_decl(name,
+			g.c_extern_decl_line(node, name)))
 		if g.c_extern_decl_is_cached_object_fallback(name) {
 			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
-			g.writeln(decls[name])
+			g.writeln(line)
 			g.writeln('#endif')
 		} else if name == 'task_info' || name == 'mach_task_self' {
 			g.writeln('#ifndef __APPLE__')
-			g.writeln(decls[name])
+			g.writeln(line)
 			g.writeln('#endif')
 		} else {
-			g.writeln(decls[name])
+			g.writeln(line)
 		}
 	}
 	if names.len > 0 {

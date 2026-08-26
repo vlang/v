@@ -1019,7 +1019,7 @@ fn configure_transformer(mut t Transformer, want_parallel bool, skip_generics bo
 	}
 }
 
-fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, used_fns map[string]bool, want_parallel bool, skip_generics bool) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
+fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[string]bool, want_parallel bool, skip_generics bool) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
 	mut impl_sw := time.new_stopwatch()
 	t.cache_comptime_param_reflection_metadata()
 	if want_parallel {
@@ -1032,6 +1032,9 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, used_fns map[s
 		t.scoped_base_nodes = base_node_count
 	}
 	t.transformed_fns = []bool{len: t.a.nodes.len}
+	used_log_was_active := t.used_fns_log_active
+	used_log_start := t.used_fns_log.len
+	t.used_fns_log_active = true
 	was_parallel := t.transform_all_dispatch(want_parallel)
 	impl_sw.restart()
 	t.retain_current_worker_scope_all()
@@ -1040,16 +1043,23 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, used_fns map[s
 	// resolve before narrowing and other type-aware lowering. This is needed for
 	// non-generic programs too: a call on a narrowed sum-type variant can become a
 	// concrete primitive method only after transform.
-	mut late_names := newly_used_fn_names(used_fns, t.used_fns)
+	used_log_end := t.used_fns_log.len
+	mut late_scan_names := []string{}
 	if !t.building_v {
 		// Interface implementers can become reachable while their interface calls
 		// are transformed. Include them in the type-aware call scan so dependencies
 		// from their already-transformed bodies are queued too.
-		late_names << t.new_call_names_from_used_fn_bodies(t.used_fns, t.a.nodes.len)
+		late_candidate_names := t.late_transform_candidate_name_filter(base_node_count)
+		late_scan_names = t.new_call_names_from_used_fn_bodies(unsafe { &t.used_fns },
+			&late_candidate_names, t.a.nodes.len)
 	}
-	t.timing_profile('  [ttime] late names         ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${late_names.len})')
+	t.timing_profile('  [ttime] late names         ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms (n: ${
+		used_log_end - used_log_start + late_scan_names.len})')
 	impl_sw.restart()
-	t.transform_late_used_fn_bodies(late_names, base_node_count)
+	t.transform_late_used_fn_bodies(&t.used_fns_log, used_log_start, used_log_end, base_node_count)
+	if late_scan_names.len > 0 {
+		t.transform_late_used_fn_bodies(&late_scan_names, 0, late_scan_names.len, base_node_count)
+	}
 	t.timing_profile('  [ttime] late bodies        ${f64(impl_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	impl_sw.restart()
 	t.run_auto_str_synthesis_rounds(base_node_count)
@@ -1065,6 +1075,7 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, used_fns map[s
 	if !isnil(t.tc) {
 		t.tc.reset_body_resolve_memo()
 	}
+	t.used_fns_log_active = used_log_was_active
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
 }
 
@@ -1245,7 +1256,7 @@ fn (mut t Transformer) run_sum_eq_synthesis_rounds(node_limit int) {
 		if new_names.len == 0 {
 			return
 		}
-		t.transform_late_used_fn_bodies(new_names, node_limit)
+		t.transform_late_used_fn_bodies(&new_names, 0, new_names.len, node_limit)
 	}
 }
 
@@ -1255,7 +1266,7 @@ fn (mut t Transformer) run_default_clone_synthesis_rounds(node_limit int) {
 		if new_names.len == 0 {
 			return
 		}
-		t.transform_late_used_fn_bodies(new_names, node_limit)
+		t.transform_late_used_fn_bodies(&new_names, 0, new_names.len, node_limit)
 	}
 }
 
@@ -1263,7 +1274,7 @@ fn (mut t Transformer) run_auto_str_synthesis_rounds(node_limit int) {
 	for _ in 0 .. 16 {
 		new_names := t.synthesize_auto_str_helpers()
 		if new_names.len > 0 {
-			t.transform_late_used_fn_bodies(new_names, node_limit)
+			t.transform_late_used_fn_bodies(&new_names, 0, new_names.len, node_limit)
 		}
 		if !t.has_pending_auto_str_helpers() {
 			return
@@ -1271,13 +1282,28 @@ fn (mut t Transformer) run_auto_str_synthesis_rounds(node_limit int) {
 	}
 }
 
-fn (mut t Transformer) new_call_names_from_used_fn_bodies(used map[string]bool, node_limit int) []string {
+fn (mut t Transformer) new_call_names_from_used_fn_bodies(used &map[string]bool, candidate_names &map[string]bool, node_limit int) []string {
 	if used.len == 0 || node_limit <= 0 {
 		return []string{}
 	}
 	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
 	cands := t.collect_late_scan_candidates(limit)
-	return t.scan_late_call_names_dispatch(cands, used)
+	return t.scan_late_call_names_dispatch(cands, used, candidate_names)
+}
+
+fn (mut t Transformer) late_transform_candidate_name_filter(node_limit int) map[string]bool {
+	mut names := map[string]bool{}
+	limit := if node_limit < t.a.nodes.len { node_limit } else { t.a.nodes.len }
+	for cand in t.collect_late_scan_candidates(limit) {
+		if (cand.idx < t.transformed_fns.len && t.transformed_fns[cand.idx])
+			|| t.fn_decl_has_unresolved_generics(t.a.nodes[cand.idx], cand.module) {
+			continue
+		}
+		for key in late_candidate_match_keys(t.a.nodes[cand.idx].value, cand.module) {
+			names[key] = true
+		}
+	}
+	return names
 }
 
 // collect_late_scan_candidates lists every fn_decl below `limit` with its
@@ -1313,9 +1339,8 @@ fn (t &Transformer) collect_late_scan_candidates(limit int) []LateFnCandidate {
 // transformer's private per-function context and checker caches), so disjoint
 // ranges can run on worker threads; concatenating the per-range results in
 // range order and deduplicating reproduces the serial scan exactly.
-fn (mut t Transformer) scan_late_call_names_range(cands []LateFnCandidate, used map[string]bool, start int, end int) []string {
+fn (mut t Transformer) scan_late_call_names_range(cands []LateFnCandidate, used &map[string]bool, candidate_names &map[string]bool, start int, end int) []string {
 	mut names := []string{}
-	mut seen := map[string]bool{}
 	old_module := t.cur_module
 	old_file := t.cur_file
 	for ci in start .. end {
@@ -1325,42 +1350,27 @@ fn (mut t Transformer) scan_late_call_names_range(cands []LateFnCandidate, used 
 			continue
 		}
 		if !transform_is_generated_fn_after_markused(node.value)
-			&& !late_used_fn_matches(used, node, cand.module) {
+			&& !late_used_fn_matches(*used, node, cand.module) {
 			continue
 		}
 		t.cur_file = cand.file
 		t.cur_module = cand.module
-		for call_name in t.generated_fn_body_call_names(flat.NodeId(cand.idx)) {
-			if call_name.len == 0 || seen[call_name] {
+		for call_name in t.generated_fn_body_candidate_call_names(flat.NodeId(cand.idx),
+			candidate_names) {
+			if call_name.len == 0 || (!(*candidate_names)[call_name]
+				&& !t.used_struct_operator_fns[call_name]
+				&& !t.late_name_may_expand_interface(call_name)) {
 				continue
 			}
-			if used[call_name] || used[c_name(call_name)]
-				|| late_used_fn_contains_in_module(used, call_name, cand.module) {
+			if (*used)[call_name] || (*used)[c_name(call_name)]
+				|| late_used_fn_contains_in_module(*used, call_name, cand.module) {
 				continue
 			}
-			seen[call_name] = true
 			names << call_name
 		}
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
-	return names
-}
-
-fn newly_used_fn_names(before map[string]bool, after map[string]bool) []string {
-	mut names := []string{}
-	for name, used in after {
-		if !used || name.len == 0 {
-			continue
-		}
-		if before[name] || before[c_name(name)] {
-			continue
-		}
-		if name.contains('.') && before[name.all_after_last('.')] {
-			continue
-		}
-		names << name
-	}
 	return names
 }
 
@@ -1407,8 +1417,7 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 // unchanged dependency body can remain in the persistent compiled prefix.
 pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
-	mut augmented_used_fns := used_fns.clone()
-	mut t := new_transformer(mut a, tc, augmented_used_fns)
+	mut t := new_transformer(mut a, tc, used_fns)
 	t.parallel_monomorphize = parallel
 	t.stage_scope = stage_scope
 	t.scoped_monomorphize = stage_scope != unsafe { nil }
@@ -1427,34 +1436,30 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	t.seed_cached_monomorph_specs(cached_specs)
 	t.monomorph_profile('mono wrapper prepare: ${time.ticks() - debug_started} ms')
 	base_node_count := t.a.nodes.len
+	used_log_start := t.used_fns_log.len
+	t.used_fns_log_active = true
 	generated_names := t.monomorphize_pass()
 	t.materialize_monomorph_signature_types(t.sorted_monomorph_cache_specs())
 	t.monomorph_profile('mono wrapper pass: ${time.ticks() - debug_started} ms')
-	mut late_names := []string{}
 	for name in generated_names {
-		was_used := used_fns[name] || used_fns[c_name(name)]
-		augmented_used_fns[name] = true
-		augmented_used_fns[c_name(name)] = true
-		t.used_fns[name] = true
-		t.used_fns[c_name(name)] = true
-		if !was_used {
-			late_names << name
-		}
+		t.mark_used_fn_key(name)
+		t.mark_used_fn_key(c_name(name))
 	}
 	t.materialize_generic_structs(false)
 	t.monomorph_profile('mono wrapper generated: ${time.ticks() - debug_started} ms')
 	// generated_fn_used_names records callees while each specialization is
 	// transformed. Seed the late-body queue from those new names; that queue
 	// follows further callees recursively as it transforms each body.
-	late_names << newly_used_fn_names(used_fns, t.used_fns)
 	t.monomorph_profile('mono wrapper calls: ${time.ticks() - debug_started} ms')
-	t.transform_late_used_fn_bodies(late_names, base_node_count)
+	used_log_end := t.used_fns_log.len
+	t.transform_late_used_fn_bodies(&t.used_fns_log, used_log_start, used_log_end, base_node_count)
 	t.monomorph_profile('mono wrapper late: ${time.ticks() - debug_started} ms')
-	used_before_remaining_matches := t.used_fns.clone()
+	remaining_match_log_start := t.used_fns_log.len
 	t.lower_remaining_matches_in_used_fns()
 	t.monomorph_profile('mono wrapper matches: ${time.ticks() - debug_started} ms')
-	remaining_match_names := newly_used_fn_names(used_before_remaining_matches, t.used_fns)
-	t.transform_late_used_fn_bodies(remaining_match_names, base_node_count)
+	remaining_match_log_end := t.used_fns_log.len
+	t.transform_late_used_fn_bodies(&t.used_fns_log, remaining_match_log_start,
+		remaining_match_log_end, base_node_count)
 	t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
 	t.materialize_generic_structs(true)
 	t.monomorph_profile('mono wrapper structs: ${time.ticks() - debug_started} ms')
@@ -3965,7 +3970,7 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	for name, used in w.used_fns {
 		if used {
 			owned_name := if scoped && !t.retain_worker_results { name.clone() } else { name }
-			t.used_fns[owned_name] = true
+			t.mark_used_fn_key(owned_name)
 		}
 	}
 	for name, used in w.used_struct_operator_fns {
@@ -4725,8 +4730,20 @@ fn transform_is_generated_fn_after_markused(name string) bool {
 	return name.starts_with('__anon_fn_') || name.contains('.__anon_fn_')
 }
 
-fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit int) {
-	if names.len == 0 || node_limit <= 0 {
+fn (t &Transformer) late_name_may_expand_interface(name string) bool {
+	dot := name.last_index('.') or { return false }
+	// The receiver is only probed while `name` owns its backing bytes.
+	receiver := unsafe { name[..dot] }
+	base_start := if receiver.len > 0 && receiver[0] == `&` { 1 } else { 0 }
+	generic_start := receiver.index_u8(`[`)
+	base_end := if generic_start > base_start { generic_start } else { receiver.len }
+	base := unsafe { receiver[base_start..base_end] }
+	return base in t.tc.interface_names || base in t.tc.type_aliases
+		|| t.type_alias_suffixes[base].len > 0 || base == 'IError' || base == 'builtin.IError'
+}
+
+fn (mut t Transformer) transform_late_used_fn_bodies(names &[]string, names_start int, names_end int, node_limit int) {
+	if names_end <= names_start || node_limit <= 0 {
 		return
 	}
 	mut late := map[string]bool{}
@@ -4736,20 +4753,28 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit 
 	old_file := t.cur_file
 	t.cur_module = ''
 	t.cur_file = ''
-	mut seed_names := names.clone()
-	for name in names {
-		if !name.contains('.') {
+	mut interface_seed_names := []string{}
+	for ni in names_start .. names_end {
+		name := (*names)[ni]
+		if !t.late_name_may_expand_interface(name) {
 			continue
 		}
-		method := name.all_after_last('.')
-		iface_name := t.resolve_interface_type_name(name.all_before_last('.'))
+		dot := name.last_index('.') or { continue }
+		// These non-owning slices are only used while `name` keeps their backing
+		// bytes alive. Avoid copying very large generic-instantiation spellings.
+		receiver := unsafe { name[..dot] }
+		method := unsafe { name[dot + 1..] }
+		iface_name := t.resolve_interface_type_name(receiver)
 		if iface_name.len > 0 {
-			seed_names << t.interface_method_implementer_names(iface_name, method)
+			interface_seed_names << t.interface_method_implementer_names(iface_name, method)
 		}
 	}
-	for name in seed_names {
+	for ni in names_start .. names_end {
+		name := (*names)[ni]
 		t.mark_fn_used_name(name)
-		add_late_used_fn_name(name, mut late, mut pending, mut queued)
+	}
+	for name in interface_seed_names {
+		t.mark_fn_used_name(name)
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
@@ -4803,6 +4828,24 @@ fn (mut t Transformer) transform_late_used_fn_bodies(names []string, node_limit 
 		for key in late_candidate_match_keys(t.a.nodes[cand.idx].value, cand.module) {
 			candidate_index[key] << ci
 		}
+	}
+	// `names` can contain very large generic-instantiation spellings. Only copy
+	// a name into the late-work maps when the index proves that it can match a
+	// body; unmatched names still remain marked used for later compiler stages.
+	for ni in names_start .. names_end {
+		name := (*names)[ni]
+		if name.len == 0
+			|| (candidate_index[name].len == 0 && candidate_index[c_name(name)].len == 0) {
+			continue
+		}
+		add_late_used_fn_name(name, mut late, mut pending, mut queued)
+	}
+	for name in interface_seed_names {
+		if name.len == 0
+			|| (candidate_index[name].len == 0 && candidate_index[c_name(name)].len == 0) {
+			continue
+		}
+		add_late_used_fn_name(name, mut late, mut pending, mut queued)
 	}
 	was_log_active := t.used_fns_log_active
 	t.used_fns_log_active = true

@@ -2237,6 +2237,85 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	return g.new_parallel_worker_config(worker_id, false)
 }
 
+// collect_fixed_storage_consts_scoped discards the full-AST scan's temporary
+// name-resolution state after copying its small result set to the master.
+fn (mut g FlatGen) collect_fixed_storage_consts_scoped() {
+	scope := cgen_worker_scope_begin(true)
+	mut worker := g.new_parallel_worker(6)
+	worker.fixed_storage_consts = g.fixed_storage_consts.clone()
+	worker.collect_fixed_storage_consts(false)
+	cgen_worker_scope_leave(scope)
+	for name, enabled in worker.fixed_storage_consts {
+		if enabled {
+			g.fixed_storage_consts[name.clone()] = true
+		}
+	}
+	cgen_worker_scope_free(scope)
+}
+
+// preseed_c_extern_fn_ptr_types_scoped keeps the C-declaration scan's large
+// resolution scratch out of the long-lived cgen arena.
+fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_scoped() {
+	scope := cgen_worker_scope_begin(true)
+	mut worker := g.new_parallel_worker(7)
+	g.configure_c_extern_scan_worker(mut worker)
+	worker.preseed_c_extern_fn_ptr_types()
+	cgen_worker_scope_leave(scope)
+	g.publish_c_extern_type_discoveries(worker)
+	cgen_worker_scope_free(scope)
+}
+
+// c_extern_forward_decls_scoped renders C prototypes in a disposable worker
+// and copies only their compact text and discovered ABI types to the master.
+fn (mut g FlatGen) c_extern_forward_decls_scoped() {
+	scope := cgen_worker_scope_begin(true)
+	mut worker := g.new_parallel_worker(8)
+	g.configure_c_extern_scan_worker(mut worker)
+	worker.c_extern_forward_decls()
+	mut output := unsafe { worker.sb.reuse_as_plain_u8_array() }
+	cgen_worker_scope_leave(scope)
+	g.publish_c_extern_type_discoveries(worker)
+	unsafe { g.sb.write_ptr(output.data, output.len) }
+	unsafe { output.free() }
+	cgen_worker_scope_free(scope)
+}
+
+fn (g &FlatGen) configure_c_extern_scan_worker(mut worker FlatGen) {
+	worker.target = g.target
+	worker.needs_shared_runtime = g.needs_shared_runtime
+	worker.preinclude_directives = g.preinclude_directives
+	worker.c_directives = g.c_directives
+	worker.inlined_c_fns = g.inlined_c_fns.clone()
+	worker.inlined_c_declared_fns = g.inlined_c_declared_fns.clone()
+	worker.inlined_c_active_macros = g.inlined_c_active_macros.clone()
+	worker.possibly_active_c_macros = g.possibly_active_c_macros.clone()
+	worker.inlined_c_static_fns = g.inlined_c_static_fns.clone()
+	worker.cache_omitted_c_fns = g.cache_omitted_c_fns.clone()
+}
+
+fn (mut g FlatGen) publish_c_extern_type_discoveries(worker &FlatGen) {
+	for opt_name, val_type in worker.needed_optional_types {
+		if opt_name !in g.needed_optional_types {
+			g.needed_optional_types[opt_name.clone()] = val_type.clone()
+		}
+	}
+	for encoded, name in worker.fn_ptr_types {
+		if encoded !in g.fn_ptr_types {
+			g.fn_ptr_types[encoded.clone()] = name.clone()
+		}
+	}
+	for encoded, used in worker.used_fn_ptr_types {
+		if used {
+			g.used_fn_ptr_types[encoded.clone()] = true
+		}
+	}
+	for name, enabled in worker.libc_compat_fns {
+		if enabled {
+			g.libc_compat_fns[name.clone()] = true
+		}
+	}
+}
+
 fn (g &FlatGen) new_parallel_tail_worker(worker_id int) &FlatGen {
 	mut w := g.new_parallel_worker(worker_id)
 	w.is_shared = g.is_shared
