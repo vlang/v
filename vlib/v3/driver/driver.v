@@ -74,6 +74,8 @@ fn configure_selfhost_parallelism(building_v bool) {
 }
 
 const embedded_parallel_transform_node_limit = 10_000_000
+const scoped_serial_user_check_node_threshold = 400_000
+const scoped_serial_user_cgen_node_threshold = 500_000
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
@@ -2274,7 +2276,7 @@ fn cli_usage() string {
 		'  -profile [file]              write V1-compatible function profile data\n' +
 		'  -profile-fns <names>         profile only named functions and their callees\n' +
 		'  -profile-no-inline           omit @[inline] functions from the profile\n' +
-		'  -no-memory-limit             disable the 4 GiB memory safety limit\n' +
+		'  -no-memory-limit             disable the 10 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
 
@@ -7758,8 +7760,8 @@ pub fn run(args []string) {
 	if no_memory_limit {
 		b.disable_memory_limit()
 	} else if v3_compiler_tree_input {
-		// A compiler-module test retains test-runner state in addition to the full
-		// compiler AST. Its measured peak is above the self-host-only limit.
+		// Compiler-module tests retain test-runner state in addition to the full
+		// compiler AST, so keep their guard separately configurable.
 		b.use_compiler_tree_memory_limit()
 	} else if building_v || cmd_v_module_input {
 		// Self-host transformation temporarily retains both the source and rewritten
@@ -8074,8 +8076,6 @@ pub fn run(args []string) {
 	program_cache_enabled := persistent_program_cache_enabled(cache_enabled, is_test_command
 		|| is_v3_test_file(input_file, backend, target), os.vtmp_dir())
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
-	// Cache markers and scoped output are stable across ordered worker chunks, so cached
-	// and preallocated builds use the same parallel function-body generator.
 	mut cache_no_parallel_cgen := current_no_parallel
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
@@ -8679,7 +8679,7 @@ pub fn run(args []string) {
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
-		if scope_prealloc_check && !current_no_parallel && a.missing_imports.len == 0 {
+		if scope_prealloc_check && a.missing_imports.len == 0 {
 			pre_tc.enable_scoped_parallel_workers()
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
@@ -8746,8 +8746,12 @@ pub fn run(args []string) {
 			pre_tc.check_semantics_selected(incremental_changed_names)
 		} else {
 			ck_stage_sw.restart()
-			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel
-				&& a.missing_imports.len == 0)
+			// On large user import graphs, scoped serial batches use less memory than
+			// retaining one semantic-check accumulator per worker.
+			parallel_semantic_check := !current_no_parallel && a.missing_imports.len == 0
+				&& (building_v || !scope_prealloc_check
+				|| a.nodes.len < scoped_serial_user_check_node_threshold)
+			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
 			if verbose {
 				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			}
@@ -9695,6 +9699,13 @@ pub fn run(args []string) {
 		}
 	} else {
 		// C backend (default)
+		// Large generic user programs retain their transformed AST through cgen.
+		// Bounded serial batches prevent worker snapshots from overlapping that live
+		// set at the memory-limit peak; smaller programs keep the parallel fast path.
+		if scope_prealloc_cgen && !building_v && !cmd_v_build
+			&& a.nodes.len >= scoped_serial_user_cgen_node_threshold {
+			cache_no_parallel_cgen = true
+		}
 		c_standard := c_standard_flag(prefs.c99)
 		use_cached_dev_dylib := cache_state.manager.enabled && remove_binary_after_run && !is_prod
 			&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
