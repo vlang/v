@@ -106,6 +106,14 @@ fn test_formatter_preserves_multiline_strings_and_trailing_struct_comments() {
 	assert vfmt('multiline_string_struct_comments_twice', out) == out
 }
 
+fn test_formatter_preserves_declaration_list_layout() {
+	input := "fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant | SecondVeryLongVariant | ThirdVeryLongVariant | FourthVeryLongVariant | FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta = 1\n\tlong_name = 2\n\t// trailing\n}\n"
+	expected := "fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant\n\t| SecondVeryLongVariant\n\t| ThirdVeryLongVariant\n\t| FourthVeryLongVariant\n\t| FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta         = 1\n\tlong_name = 2\n\t// trailing\n}\n"
+	out := vfmt('declaration_list_layout', input)
+	assert out == expected, out
+	assert vfmt('declaration_list_layout_twice', out) == out
+}
+
 fn test_formatter_keeps_comments_inside_fn_literals() {
 	source := "fn main() {\n\tcomment_only := fn () {\n\t\t// only comment\n\t}\n\twith_statement := fn () {\n\t\tprintln('inside')\n\t\t// trailing comment\n\t}\n\t_ = comment_only\n\t_ = with_statement\n}\n"
 	out := vfmt('fn_literal_comments', source)

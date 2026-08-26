@@ -1162,3 +1162,16 @@ fn test_fmt_preserves_multiline_strings_and_trailing_struct_comments_with_v3() {
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
+
+fn test_fmt_preserves_declaration_list_layout_with_v3() {
+	input := "fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant | SecondVeryLongVariant | ThirdVeryLongVariant | FourthVeryLongVariant | FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta = 1\n\tlong_name = 2\n\t// trailing\n}\n"
+	expected := "fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant\n\t| SecondVeryLongVariant\n\t| ThirdVeryLongVariant\n\t| FourthVeryLongVariant\n\t| FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta         = 1\n\tlong_name = 2\n\t// trailing\n}\n"
+	res, formatted := run_vfmt_write('declaration_list_layout', input, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice := run_vfmt_write('declaration_list_layout_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}

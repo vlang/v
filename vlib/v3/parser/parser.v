@@ -2357,6 +2357,7 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
+	enum_end := p.prev_tok_end
 	start := p.add_children(ids)
 	mut typ := ''
 	if p.pending_flag {
@@ -2381,7 +2382,11 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 	} else if enum_base_type.len > 0 {
 		enum_node.set_generic_params([enum_base_type])
 	}
-	return p.add_node(enum_node)
+	id := p.add_node(enum_node)
+	if p.prefs.is_fmt {
+		p.a.formatter_node_ends[int(id)] = enum_end
+	}
+	return id
 }
 
 fn (mut p Parser) type_decl() flat.NodeId {
@@ -2410,14 +2415,23 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	// skip auto-semicolon before pipe
 	if p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe)) {
 		mut variants := []flat.NodeId{}
-		variants << p.add_val(.ident, first_type)
+		variants << p.add_node(flat.Node{
+			kind:  .ident
+			value: first_type
+			pos:   p.span_to(type_start)
+		})
 		for p.tok == .pipe || (p.tok == .semicolon && p.peek_is(token.Token.pipe)) {
 			if p.tok == .semicolon {
 				p.next()
 			}
 			p.next() // skip |
+			variant_start := p.span_start()
 			variant_type := p.parse_type_name()
-			variants << p.add_val(.ident, variant_type)
+			variants << p.add_node(flat.Node{
+				kind:  .ident
+				value: variant_type
+				pos:   p.span_to(variant_start)
+			})
 		}
 		if p.tok == .semicolon {
 			p.next()

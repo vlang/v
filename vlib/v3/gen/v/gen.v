@@ -552,6 +552,13 @@ fn (g &Gen) source_has_blank_line_between(start int, end int) bool {
 	return false
 }
 
+fn (g &Gen) source_has_line_break_between(start int, end int) bool {
+	if gap := g.source_span(start, end) {
+		return gap.contains('\n') || gap.contains('\r')
+	}
+	return false
+}
+
 fn (mut g Gen) stmt(id flat.NodeId) {
 	if int(id) < 0 {
 		return
@@ -2305,11 +2312,18 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 fn (mut g Gen) params(parent_id flat.NodeId, ids []flat.NodeId) {
 	g.write('(')
 	g.indent++
+	parent := g.a.node(parent_id)
+	mut previous_end := parent.pos.offset
 	for i, pid in ids {
 		p := g.a.node(pid)
+		line_break := g.source_has_line_break_between(previous_end, p.pos.offset)
 		g.emit_comments_before(p.pos.offset)
-		if i > 0 && !g.on_newline {
-			g.write(' ')
+		if !g.on_newline {
+			if line_break {
+				g.writeln('')
+			} else if i > 0 {
+				g.write(' ')
+			}
 		}
 		mut typ := g.type_text(g.param_type(p))
 		if p.is_mut {
@@ -2334,8 +2348,13 @@ fn (mut g Gen) params(parent_id flat.NodeId, ids []flat.NodeId) {
 		param_end := g.a.formatter_node_ends[int(pid)] or { p.pos.end }
 		g.source_end = int_max(g.source_end, param_end)
 		g.emit_trailing_comments(param_end)
+		previous_end = param_end
 	}
-	g.emit_comments_before(g.a.formatter_param_list_end[int(parent_id)] or { 0 })
+	param_list_end := g.a.formatter_param_list_end[int(parent_id)] or { 0 }
+	g.emit_comments_before(param_list_end)
+	if !g.on_newline && g.source_has_line_break_between(previous_end, param_list_end) {
+		g.writeln('')
+	}
 	g.indent--
 	g.write(')')
 }
@@ -2454,12 +2473,21 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 	}
 	g.writeln(' {')
 	g.indent++
-	for fid in g.a.children_of(n) {
+	fields := g.a.children_of(n)
+	mut value_width := 0
+	for fid in fields {
+		f := g.a.node(fid)
+		if f.children_count > 0 && f.value.len > value_width {
+			value_width = f.value.len
+		}
+	}
+	for fid in fields {
 		f := g.a.node(fid)
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
 		g.write(f.value)
 		if f.children_count > 0 {
+			g.write(' '.repeat(value_width - f.value.len))
 			g.write(' = ')
 			g.expr(g.a.child(f, 0))
 		}
@@ -2473,6 +2501,7 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		}
 		g.source_end = int_max(g.source_end, f.pos.end)
 	}
+	g.emit_comments_before(g.a.formatter_node_ends[int(id)] or { n.pos.end })
 	g.indent--
 	g.writeln('}')
 }
@@ -2490,17 +2519,71 @@ fn (mut g Gen) type_decl(id flat.NodeId) {
 	}
 	variants := g.a.children_of(n)
 	if variants.len > 0 {
-		g.write(' = ')
-		for i, vid in variants {
-			g.write(g.a.node(vid).value)
-			if i < variants.len - 1 {
-				g.write(' | ')
-			}
-		}
+		g.sum_type_variants(variants)
 	} else if n.typ.len > 0 {
 		g.write(' = ${g.type_text(n.typ)}')
 	}
-	g.writeln('')
+	if !g.on_newline {
+		g.writeln('')
+	}
+}
+
+fn (mut g Gen) sum_type_variants(variants []flat.NodeId) {
+	multiline := g.sum_type_is_multiline(variants)
+	g.write(' = ')
+	for i, vid in variants {
+		variant := g.a.node(vid)
+		if i > 0 {
+			if multiline {
+				if !g.on_newline {
+					g.writeln('')
+				}
+				g.indent++
+				g.emit_comments_before(variant.pos.offset)
+				g.write('| ')
+			} else {
+				g.write(' | ')
+			}
+		} else {
+			g.emit_comments_before(variant.pos.offset)
+		}
+		g.write(variant.value)
+		g.source_end = int_max(g.source_end, variant.pos.end)
+		g.emit_trailing_comments(variant.pos.end)
+		if i > 0 && multiline {
+			g.indent--
+		}
+	}
+}
+
+fn (g &Gen) sum_type_is_multiline(variants []flat.NodeId) bool {
+	mut projected := g.output_line_len() + 3
+	for i, vid in variants {
+		variant := g.a.node(vid)
+		projected += variant.value.len
+		if i > 0 {
+			projected += 3
+			previous := g.a.node(variants[i - 1])
+			if g.source_has_line_break_between(previous.pos.end, variant.pos.offset)
+				|| g.has_comment_between(previous.pos.end, variant.pos.offset) {
+				return true
+			}
+		}
+	}
+	return projected > formatter_max_line_len
+}
+
+fn (g &Gen) has_comment_between(start int, end int) bool {
+	for i := g.comment_i; i < g.comments.len; i++ {
+		comment := g.comments[i]
+		if comment.pos.offset >= end {
+			return false
+		}
+		if comment.pos.offset >= start {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) interface_decl(id flat.NodeId) {
