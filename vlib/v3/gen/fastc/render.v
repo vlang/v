@@ -513,6 +513,93 @@ fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?Fast
 	}
 }
 
+fn (g &Parser) render_struct_literal_with_defaults(c_type string, layout_type string, explicit_initializers []string, rendered_fields []string, rendered_fields_by_name map[string]string) FastcRenderedExpression {
+	base_type := c_type.trim_right('*')
+	mut assignments := []string{cap: rendered_fields.len}
+	mut initializers := []string{}
+	mut initialized_fields := map[string]bool{}
+	for field in g.struct_field_info[layout_type] {
+		if fastc_fixed_array_element_type(field.typ) == none {
+			continue
+		}
+		if rendered_field := rendered_fields_by_name[field.name] {
+			initializers << rendered_field
+			initialized_fields[rendered_field] = true
+		}
+	}
+	for field in rendered_fields {
+		if field in initialized_fields {
+			continue
+		}
+		assignments << '__v_fastc_struct_default${field};'
+	}
+	initializer := if initializers.len > 0 {
+		'(${base_type}){${initializers.join(',')}}'
+	} else {
+		'(${base_type}){0}'
+	}
+	result := if c_type.ends_with('*') {
+		'(${c_type})v_fastc_interface_box(&__v_fastc_struct_default, sizeof(${base_type}))'
+	} else {
+		'__v_fastc_struct_default'
+	}
+	return FastcRenderedExpression{
+		source: '({ ${explicit_initializers.join(' ')} ${base_type} __v_fastc_struct_default = ${initializer}; ${assignments.join(' ')} ${result}; })'
+		typ:    c_type
+	}
+}
+
+fn (g &Parser) render_empty_struct_initializer(c_type string) string {
+	layout_type := c_type.trim_right('*')
+	mut rendered_fields := []string{}
+	mut rendered_fields_by_name := map[string]string{}
+	for field in g.struct_field_info[layout_type] {
+		if field.default_value == '' {
+			continue
+		}
+		rendered_field := '.${fastc_c_identifier(field.name)}=(${field.default_value})'
+		rendered_fields << rendered_field
+		rendered_fields_by_name[field.name] = rendered_field
+	}
+	if rendered_fields.len == 0 {
+		if c_type.ends_with('*') {
+			return '(${c_type})v_fastc_interface_box(&(${layout_type}){0}, sizeof(${layout_type}))'
+		}
+		return '(${c_type}){0}'
+	}
+	return g.render_struct_literal_with_defaults(c_type, layout_type, []string{}, rendered_fields,
+		rendered_fields_by_name).source
+}
+
+fn (g &Parser) render_named_struct_initializer(c_type string, fields [][]FastcExpressionToken) ?string {
+	mut tokens := [
+		FastcExpressionToken{
+			tok: .name
+			lit: c_type
+			typ: c_type
+		},
+		FastcExpressionToken{
+			tok: .lcbr
+			lit: '{'
+		},
+	]
+	for index, field in fields {
+		if index > 0 {
+			tokens << FastcExpressionToken{
+				tok: .comma
+				lit: ','
+			}
+		}
+		tokens << field
+	}
+	tokens << FastcExpressionToken{
+		tok: .rcbr
+		lit: '}'
+	}
+	rendered := g.render_struct_literal_expression(tokens) or { return none }
+	return rendered.source
+}
+
 fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	mut open := -1
 	mut delimiter_depth := 0
@@ -535,7 +622,11 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	}
 	is_c_struct_literal := open == 3 && tokens[0].tok == .name && tokens[0].lit == 'C'
 		&& tokens[1].tok == .dot && tokens[2].tok == .name
-	mut c_type := g.type_from_expression_tokens(tokens[..open]) or { '' }
+	mut c_type := if open == 1 && tokens[0].typ != '' {
+		tokens[0].typ
+	} else {
+		g.type_from_expression_tokens(tokens[..open]) or { '' }
+	}
 	if c_type == '' && is_c_struct_literal {
 		c_type = if '#Cstruct#${tokens[2].lit}' in g.declared_types {
 			'struct ${tokens[2].lit}'
@@ -791,39 +882,8 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 	}
 	if has_applied_defaults {
-		base_type := c_type.trim_right('*')
-		mut assignments := []string{cap: rendered_fields.len}
-		mut initializers := []string{}
-		mut initialized_fields := map[string]bool{}
-		for field in g.struct_field_info[layout_type] {
-			if fastc_fixed_array_element_type(field.typ) == none {
-				continue
-			}
-			if rendered_field := rendered_fields_by_name[field.name] {
-				initializers << rendered_field
-				initialized_fields[rendered_field] = true
-			}
-		}
-		for field in rendered_fields {
-			if field in initialized_fields {
-				continue
-			}
-			assignments << '__v_fastc_struct_default${field};'
-		}
-		initializer := if initializers.len > 0 {
-			'(${base_type}){${initializers.join(',')}}'
-		} else {
-			'(${base_type}){0}'
-		}
-		result := if c_type.ends_with('*') {
-			'(${c_type})v_fastc_interface_box(&__v_fastc_struct_default, sizeof(${base_type}))'
-		} else {
-			'__v_fastc_struct_default'
-		}
-		return FastcRenderedExpression{
-			source: '({ ${explicit_initializers.join(' ')} ${base_type} __v_fastc_struct_default = ${initializer}; ${assignments.join(' ')} ${result}; })'
-			typ:    c_type
-		}
+		return g.render_struct_literal_with_defaults(c_type, layout_type, explicit_initializers,
+			rendered_fields, rendered_fields_by_name)
 	}
 	literal_source := if c_type.ends_with('*') {
 		'(${c_type})v_fastc_interface_box(&(${c_type.trim_right('*')}){${rendered_fields.join(',')}}, sizeof(${c_type.trim_right('*')}))'
@@ -1873,7 +1933,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			break
 		}
 	}
-	if named_start >= 0 && named_start < signature.parameter_types.len {
+	if signature.last_parameter_is_params && named_start == signature.parameter_types.len - 1 {
 		mut rendered_arguments := []string{}
 		for argument_index, argument in call_args[..named_start] {
 			expected_type := if argument_index < signature.parameter_types.len {
@@ -1887,15 +1947,9 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			rendered_arguments << rendered_argument
 		}
 		parameter_type := signature.parameter_types[named_start]
-		mut fields := []string{}
-		for argument in call_args[named_start..] {
-			if argument.len < 3 || argument[0].tok != .name || argument[1].tok != .colon {
-				return none
-			}
-			value := g.render_call_argument_expression(argument[2..], '') or { return none }
-			fields << '.${fastc_c_identifier(argument[0].lit)}=${value}'
-		}
-		rendered_arguments << '(${parameter_type}){${fields.join(',')}}'
+		named_initializer := g.render_named_struct_initializer(parameter_type,
+			call_args[named_start..]) or { return none }
+		rendered_arguments << named_initializer
 		return FastcRenderedExpression{
 			source: '${fastc_c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
 			typ:    signature.return_type
@@ -1950,7 +2004,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		rendered_arguments << rendered_argument
 	}
 	for parameter_type in signature.parameter_types[call_args.len..] {
-		rendered_arguments << '(${parameter_type}){0}'
+		rendered_arguments << g.render_empty_struct_initializer(parameter_type)
 	}
 	call_name := if function_key.starts_with('C.') {
 		function_key.all_after_last('.')

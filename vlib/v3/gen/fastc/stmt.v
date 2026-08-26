@@ -962,6 +962,11 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 			}
 			receiver_start := fastc_method_receiver_start(tokens, i - 1)
 			receiver_type := g.infer_expression_type(tokens[receiver_start..i - 1]) or { continue }
+			if tokens[i].lit == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
+				// Generated thread waiters are absent from g.functions, but joining
+				// a void-returning spawn is still a valid standalone statement.
+				return true
+			}
 			if g.method_function_key(receiver_type, tokens[i].lit) in g.functions
 				|| g.struct_member_type(receiver_type, tokens[i].lit) != '' {
 				return true
