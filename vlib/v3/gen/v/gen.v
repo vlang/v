@@ -512,6 +512,7 @@ fn (mut g Gen) collect_top_level(ids []flat.NodeId, mut out []flat.NodeId) {
 
 // stmt_list_ids renders a list of statements, one indentation level deeper.
 fn (mut g Gen) stmt_list_ids(ids []flat.NodeId) {
+	mut previous := flat.empty_node
 	for id in ids {
 		if int(id) < 0 {
 			continue
@@ -519,10 +520,36 @@ fn (mut g Gen) stmt_list_ids(ids []flat.NodeId) {
 		if g.a.node(id).kind == .empty {
 			continue
 		}
+		if int(previous) >= 0 {
+			_, previous_end := g.stmt_source_span(g.a.node(previous))
+			current_start, _ := g.stmt_source_span(g.a.node(id))
+			if g.source_has_blank_line_between(previous_end, current_start) {
+				if !g.on_newline {
+					g.writeln('')
+				}
+				if g.out.len < 2 || g.out.last_n(2) != '\n\n' {
+					g.out.writeln('')
+					g.on_newline = true
+				}
+			}
+		}
 		g.indent++
 		g.stmt(id)
 		g.indent--
+		previous = id
 	}
+}
+
+fn (g &Gen) source_has_blank_line_between(start int, end int) bool {
+	if gap := g.source_span(start, end) {
+		lines := gap.replace('\r\n', '\n').split('\n')
+		for i in 1 .. lines.len - 1 {
+			if lines[i].trim_space().len == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) stmt(id flat.NodeId) {
@@ -2542,6 +2569,7 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 		}
 		g.source_end = int_max(g.source_end, f.pos.end)
 	}
+	g.emit_comments_before(n.pos.end)
 	g.indent--
 	g.writeln('}')
 }

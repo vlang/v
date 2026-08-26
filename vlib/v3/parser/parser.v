@@ -2448,6 +2448,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 }
 
 fn (mut p Parser) interface_decl() flat.NodeId {
+	interface_start := p.span_start()
 	is_pub := p.pending_decl_pub
 	p.pending_decl_pub = false
 	p.next() // skip 'interface'
@@ -2619,6 +2620,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 		payload:        flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(interface_start)
 	})
 }
 

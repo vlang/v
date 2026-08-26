@@ -1125,3 +1125,28 @@ fn enabled() bool {
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
+
+fn test_fmt_preserves_statement_gaps_and_interface_end_comments_with_v3() {
+	source := "interface Speaker {\n\t// first\n\tspeak() string\n\t// last\n}\n\nfn spaced() {\n\tprintln('a')\n\tprintln('b')\n\n\tprintln('c')\n\n\tif true {\n\t\tprintln('d')\n\t}\n\n\tdump('e')\n}\n"
+	res, formatted := run_vfmt_write('statement_gaps_and_interface_comment', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('statement_gaps_and_interface_comment_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_suppresses_parser_warnings_with_v3() {
+	source := 'fn main() {
+	value := []int
+	_ = value
+}
+'
+	res, formatted := run_vfmt_write('parser_warning', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert !res.output.contains('warning:'), res.output
+	assert formatted.contains('value := []int'), formatted
+}

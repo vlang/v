@@ -80,6 +80,25 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_preserves_blank_lines_between_statements() {
+	source := "fn spaced() {\n\tprintln('a')\n\tprintln('b')\n\n\tprintln('c')\n\n\tif true {\n\t\tprintln('d')\n\t}\n\n\tdump('e')\n}\n"
+	out := vfmt('statement_blank_lines', source)
+	assert out == source, out
+	assert vfmt('statement_blank_lines_twice', out) == out
+}
+
+fn test_formatter_keeps_trailing_interface_comments_inside_body() {
+	source := 'interface Speaker {
+	// first
+	speak() string
+	// last
+}
+'
+	out := vfmt('interface_trailing_comment', source)
+	assert out == source, out
+	assert vfmt('interface_trailing_comment_twice', out) == out
+}
+
 fn test_formatter_keeps_comments_inside_fn_literals() {
 	source := "fn main() {\n\tcomment_only := fn () {\n\t\t// only comment\n\t}\n\twith_statement := fn () {\n\t\tprintln('inside')\n\t\t// trailing comment\n\t}\n\t_ = comment_only\n\t_ = with_statement\n}\n"
 	out := vfmt('fn_literal_comments', source)

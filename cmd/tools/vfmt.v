@@ -211,9 +211,10 @@ fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatA
 	mut has_errors := false
 	for diagnostic in diagnostics {
 		severity := if diagnostic.severity == '' { 'error:' } else { diagnostic.severity }
-		if severity == 'error:' {
-			has_errors = true
+		if severity != 'error:' {
+			continue
 		}
+		has_errors = true
 		if diagnostic.pos.is_valid() && diagnostic.pos.id in a.source_files {
 			eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
 				diagnostic.pos))
