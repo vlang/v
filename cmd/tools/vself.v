@@ -30,6 +30,9 @@ fn main() {
 	os.setenv('VCOLORS', 'always', true)
 	repeat_count, mut args := extract_repeat_count(args_[1..].filter(it != 'self'))
 	fastc_self_build := uses_fastc_backend(args)
+	if fastc_self_build {
+		args = normalize_fastc_backend_args(args)
+	}
 	if !fastc_self_build
 		&& (args.len == 0 || ('-cc' !in args && '-prod' !in args && '-parallel-cc' !in args)) {
 		// compiling by default, i.e. `v self`:
@@ -39,7 +42,7 @@ fn main() {
 			// Apple silicon, like m1, m2 etc
 			// Use tcc by default for V, since tinycc is much faster and also
 			// it already supports compiling many programs like V itself, that do not depend on inlined objective-C code
-			args << '-cc tcc'
+			args << ['-cc', 'tcc']
 		} else if uos == 'linux' && uname.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
 			// prefer the system compiler for self-builds there.
@@ -49,18 +52,22 @@ fn main() {
 	if !has_gc_arg(args) {
 		args << ['-gc', 'none']
 	}
-	jargs := args.join(' ')
 	obinary := cmdline.option(args, '-o', '')
-	sargs := if obinary != '' { jargs } else { '${jargs} -o v2' }
-	options := if args.len > 0 { '(${sargs})' } else { '' }
+	mut compile_args := clone_args(args)
+	if obinary == '' {
+		compile_args << ['-o', 'v2']
+	}
+	if fastc_self_build {
+		compile_args << '-selfhost'
+	}
+	options := if args.len > 0 { '(${compile_args.join(' ')})' } else { '' }
 	final_binary := if obinary != '' { obinary } else { 'v2' }
 	pgo_cc_kind := if fastc_self_build { '' } else { pgo_compiler_kind(args) }
 	compilation_source := if fastc_self_build { 'vlib/v3/v3.v' } else { 'cmd/v' }
-	compile_args := if fastc_self_build { '${sargs} -selfhost' } else { sargs }
 	for run_idx in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
 		println('V self compiling${run_label} ${options}...')
-		cmd := '${os.quoted_path(vexe)} ${compile_args} ${os.quoted_path(compilation_source)}'
+		cmd := compose_v_cmd(vexe, compile_args, compilation_source)
 		mut used_pgo := false
 		if pgo_cc_kind != '' {
 			used_pgo = compile_with_pgo(vroot, vexe, args, final_binary, pgo_cc_kind)
@@ -103,6 +110,21 @@ fn uses_fastc_backend(args []string) bool {
 		i++
 	}
 	return backend == 'fastc'
+}
+
+fn normalize_fastc_backend_args(args []string) []string {
+	mut normalized := []string{cap: args.len}
+	mut i := 0
+	for i < args.len {
+		if args[i] in ['-b', '-backend'] && i + 1 < args.len {
+			i += 2
+			continue
+		}
+		normalized << args[i]
+		i++
+	}
+	normalized << ['-b', 'fastc']
+	return normalized
 }
 
 fn repeat_count_arg(arg string) int {

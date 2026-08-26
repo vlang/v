@@ -24,9 +24,13 @@ fn test_v_self_accepts_fastc_backend() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	selfhost_binary := os.join_path(root, 'vfastc')
-	self_build := cmdexec.run(@VEXE, ['self', '-silent', '-b', 'fastc', '-o', selfhost_binary])
+	selfhost_binary := os.join_path(root, 'v fastc')
+	self_build := cmdexec.run(@VEXE, ['self', '-silent', '-backend', 'fastc', 'x2', '-o',
+		selfhost_binary])
 	assert self_build.exit_code == 0, self_build.output
+	assert self_build.output.count('V self compiling') == 2, self_build.output
+	assert self_build.output.contains('-b fastc'), self_build.output
+	assert !self_build.output.contains('-backend fastc'), self_build.output
 	assert os.is_executable(selfhost_binary)
 	source := os.join_path(root, 'main.v')
 	write_fastc_test_source(source, 'module main\nfn main() { println(42) }\n')
