@@ -755,7 +755,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			}
 		}
 		.spawn_expr {
-			g.write('spawn ')
+			g.write(if n.value == 'go' { 'go ' } else { 'spawn ' })
 			g.expr(g.a.child(n, 0))
 		}
 		.lock_expr {
@@ -1652,6 +1652,10 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	} else if n.kind == .c_fn_decl {
 		if name.starts_with('JS:') {
 			g.write('JS.${name[3..]}')
+		} else if name.starts_with('C:') {
+			g.write('C.${name[2..]}')
+		} else if name.starts_with('V:') {
+			g.write(name[2..])
 		} else {
 			g.write('C.${name}')
 		}
@@ -2154,6 +2158,19 @@ fn line_after(source string, offset int) int {
 	return source.index_after('\n', offset) or { source.len - 1 } + 1
 }
 
+fn closing_lines_end(source string, offset int) int {
+	mut pos := offset
+	for pos < source.len {
+		line_end := source.index_after('\n', pos) or { source.len }
+		line := source[pos..line_end].trim_space()
+		if line.len == 0 || line.bytes().any(it !in [`}`, `]`, `)`, `,`, `;`]) {
+			break
+		}
+		pos = if line_end < source.len { line_end + 1 } else { source.len }
+	}
+	return pos
+}
+
 fn restore_vfmt_disabled_regions(formatted string, source string) string {
 	source_directives := vfmt_directives(source)
 	formatted_directives := vfmt_directives(formatted)
@@ -2176,6 +2193,8 @@ fn restore_vfmt_disabled_regions(formatted string, source string) string {
 		}
 		mut source_resume := line_after(source, source_on.offset)
 		mut formatted_resume := line_after(formatted, formatted_on.offset)
+		source_resume = closing_lines_end(source, source_resume)
+		formatted_resume = closing_lines_end(formatted, formatted_resume)
 		for source_resume < source.len && source[source_resume] == `\n` {
 			source_resume++
 		}

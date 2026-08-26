@@ -202,6 +202,38 @@ fn test_fmt_ignores_vfmt_directives_inside_strings_with_v3() {
 	assert formatted.contains("fn format_me() {\n\tprintln('yes')\n}"), formatted
 }
 
+fn test_fmt_preserves_go_and_spawn_keywords_with_v3() {
+	source := 'fn work() {}\n\nfn main() {\n\tgo work()\n\tspawn work()\n}\n'
+	res, formatted := run_vfmt_write('go_and_spawn', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('go work()'), formatted
+	assert formatted.contains('spawn work()'), formatted
+}
+
+fn test_fmt_preserves_legacy_dollar_builtins_with_v3() {
+	source := 'fn main() {\n\t// vfmt off\n\tn := 1\n\tassert \$typeof(n).name == \'int\'\n\tassert \$sizeof(n) > 0\n\tassert !\$isreftype[int]()\n\tassert \$dump(n) == n\n\t// vfmt on\n}\n'
+	res, formatted := run_vfmt_write('legacy_dollar_builtins', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('\$typeof(n).name'), formatted
+	assert formatted.contains('\$sizeof(n)'), formatted
+	assert formatted.contains('\$isreftype[int]()'), formatted
+	assert formatted.contains('\$dump(n)'), formatted
+	assert formatted.ends_with("\t// vfmt on\n}\n"), formatted
+}
+
+fn test_fmt_preserves_bodyless_function_prefixes_with_v3() {
+	source := 'fn plain(value usize) usize\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n'
+	res, formatted := run_vfmt_write('bodyless_function_prefixes', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('fn plain(value usize) usize'), formatted
+	assert formatted.contains('fn C.c_call(value int) int'), formatted
+	assert formatted.contains('fn JS.js_call(value int) int'), formatted
+	assert !formatted.contains('fn C.plain'), formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')

@@ -186,6 +186,31 @@ fn test_formatter_ignores_vfmt_directives_inside_strings() {
 	assert out.contains("fn format_me() {\n\tprintln('yes')\n}"), out
 }
 
+fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {
+	bodyless := vfmt('bodyless_functions',
+		'fn plain(value usize) usize\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n')
+	assert bodyless.contains('fn plain(value usize) usize'), bodyless
+	assert bodyless.contains('fn C.c_call(value int) int'), bodyless
+	assert bodyless.contains('fn JS.js_call(value int) int'), bodyless
+	assert !bodyless.contains('fn C.plain'), bodyless
+	assert vfmt('bodyless_functions_twice', bodyless) == bodyless
+
+	concurrency := vfmt('go_and_spawn',
+		'fn work() {}\n\nfn main() {\n\tgo work()\n\tspawn work()\n}\n')
+	assert concurrency.contains('go work()'), concurrency
+	assert concurrency.contains('spawn work()'), concurrency
+	assert vfmt('go_and_spawn_twice', concurrency) == concurrency
+
+	dollar := vfmt('legacy_dollar_builtins',
+		'fn main() {\n\t// vfmt off\n\tn := 1\n\tassert \$typeof(n).name == \'int\'\n\tassert \$sizeof(n) > 0\n\tassert !\$isreftype[int]()\n\tassert \$dump(n) == n\n\t// vfmt on\n}\n')
+	assert dollar.contains('\$typeof(n).name'), dollar
+	assert dollar.contains('\$sizeof(n)'), dollar
+	assert dollar.contains('\$isreftype[int]()'), dollar
+	assert dollar.contains('\$dump(n)'), dollar
+	assert dollar.ends_with("\t// vfmt on\n}\n"), dollar
+	assert vfmt('legacy_dollar_builtins_twice', dollar) == dollar
+}
+
 fn test_formatter_preserves_sql_body() {
 	out := vfmt('sql_body',
 		'struct User {\n\tid int\n}\n\nfn f(db DB) {\n\t_ := sql db {\n\t\tselect from User where id == 1\n\t}\n}\n')

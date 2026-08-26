@@ -1363,8 +1363,8 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		id := p.add_node(flat.Node{
 			kind:           if is_v_header_decl { .fn_decl } else { .c_fn_decl }
 			op:             if is_pub { .arrow } else { .none }
-			value:          if p.prefs.is_fmt && interop_prefix == 'JS' {
-				'JS:${name}'
+			value:          if p.prefs.is_fmt {
+				if interop_prefix.len > 0 { '${interop_prefix}:${name}' } else { 'V:${name}' }
 			} else {
 				name
 			}
@@ -5404,6 +5404,10 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	}
 	dollar_pos := p.tok_pos
 	p.next() // skip $
+	if p.prefs.is_fmt
+		&& p.tok in [.key_typeof, .key_sizeof, .key_isreftype, .key_offsetof, .key_dump] {
+		return p.parse_formatter_comptime_call(dollar_pos)
+	}
 	match p.tok {
 		.key_typeof {
 			p.record_diagnostic('`$typeof` is not supported; use `typeof(...)` instead', dollar_pos)
@@ -6161,6 +6165,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.goto_stmt()
 		}
 		.key_go, .key_spawn {
+			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
 			p.next()
 			inner := p.expr(.lowest)
 			if p.tok == .semicolon {
@@ -6169,6 +6174,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			spawn_start := p.add_child(inner)
 			spawn_expr := p.add_node(flat.Node{
 				kind:           .spawn_expr
+				value:          keyword
 				children_start: spawn_start
 				children_count: 1
 			})
@@ -9721,11 +9727,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return init_id
 		}
 		.key_go, .key_spawn {
+			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
 			p.next()
 			inner := p.expr(.lowest)
 			sstart := p.add_child(inner)
 			return p.add_node(flat.Node{
 				kind:           .spawn_expr
+				value:          keyword
 				children_start: sstart
 				children_count: 1
 			})
