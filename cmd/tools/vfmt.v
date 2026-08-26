@@ -39,6 +39,20 @@ const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 const vtmp_folder = os.vtmp_dir()
 const term_colors = term.can_show_color_on_stderr()
 
+fn formatter_backend(args []string) string {
+	mut backend := 'c'
+	for i, arg in args {
+		if arg in ['-b', '-backend'] && i + 1 < args.len {
+			backend = args[i + 1]
+		}
+	}
+	return if backend in ['js', 'js_node', 'js_browser', 'js_freestanding'] {
+		'js'
+	} else {
+		backend
+	}
+}
+
 fn main() {
 	// if os.getenv('VFMT_ENABLE') == '' {
 	// eprintln('v fmt is disabled for now')
@@ -61,7 +75,7 @@ fn main() {
 		in_process:       '-inprocess' in args
 		is_new_int:       '-new_int' in args
 		no_migrate_json2: '-no-migrate-json2' in args
-		backend:          cmdline.option(args, '-b', 'c')
+		backend:          formatter_backend(args)
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)

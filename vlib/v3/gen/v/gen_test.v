@@ -156,13 +156,15 @@ fn test_formatter_rewrites_c_string_selectors_by_backend() {
 	c_out := vfmt('c_string_selector', source)
 	assert c_out == c_expected, c_out
 	assert vfmt('c_string_selector_twice', c_out) == c_out
-	js_out := vfmt_with_options('js_string_selector', source, FormatOptions{
-		backend: 'js'
-	})
-	assert js_out == source, js_out
-	assert vfmt_with_options('js_string_selector_twice', js_out, FormatOptions{
-		backend: 'js'
-	}) == js_out
+	for backend in ['js', 'js_node', 'js_browser', 'js_freestanding'] {
+		js_out := vfmt_with_options('${backend}_string_selector', source, FormatOptions{
+			backend: backend
+		})
+		assert js_out == source, '${backend}: ${js_out}'
+		assert vfmt_with_options('${backend}_string_selector_twice', js_out, FormatOptions{
+			backend: backend
+		}) == js_out
+	}
 }
 
 fn test_formatter_keeps_trailing_interface_comments_inside_body() {

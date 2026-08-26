@@ -52,12 +52,15 @@ fn test_fmt_preferences_respect_vflags() {
 	assert special_res.output.contains("x := 'abc'.str"), special_res.output
 	assert !special_res.output.contains("x := c'abc'"), special_res.output
 
-	os.setenv('VFLAGS', '-b js', true)
-	res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
-
-	assert res.exit_code == 0, res.output
-	assert res.output.contains("x := 'abc'.str"), res.output
-	assert !res.output.contains("x := c'abc'"), res.output
+	for backend_flag in ['-b', '-backend'] {
+		for backend in ['js', 'js_node', 'js_browser', 'js_freestanding'] {
+			os.setenv('VFLAGS', '${backend_flag} ${backend}', true)
+			res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
+			assert res.exit_code == 0, '${backend_flag} ${backend}: ${res.output}'
+			assert res.output.contains("x := 'abc'.str"), '${backend_flag} ${backend}: ${res.output}'
+			assert !res.output.contains("x := c'abc'"), '${backend_flag} ${backend}: ${res.output}'
+		}
+	}
 }
 
 fn test_fmt_uses_v3_formatter() {

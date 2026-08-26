@@ -2411,12 +2411,17 @@ fn (mut g Gen) comptime_for(id flat.NodeId) {
 }
 
 fn (g &Gen) should_rewrite_c_string_selector(n &flat.Node, receiver flat.NodeId) bool {
-	if g.backend == 'js' || n.value != 'str' || g.a.node(receiver).kind != .string_literal {
+	if formatter_backend_is_js(g.backend) || n.value != 'str'
+		|| g.a.node(receiver).kind != .string_literal {
 		return false
 	}
 	file := g.a.source_files[g.file_id] or { return false }
 	return !file.name.ends_with('.js.v')
 		&& !file.name.ends_with(os.join_path('v', 'gen', 'js', 'tests', 'js.v'))
+}
+
+fn formatter_backend_is_js(backend string) bool {
+	return backend in ['js', 'js_node', 'js_browser', 'js_freestanding']
 }
 
 fn (mut g Gen) select_stmt(id flat.NodeId) {
