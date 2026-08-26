@@ -99,6 +99,13 @@ pub fn run(args []string) {
 	prefs.building_v = real_input.ends_with('/vlib/v3/v3.v')
 	prefs.selfhost = prefs.building_v
 	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_wasm', 'skip_eval']
+	// Mirror the driver's TinyCC compatibility plan (add_v3_tcc_compat_defines):
+	// TCC's backtrace runtime cannot be linked on macOS arm64, so builtin must
+	// not reference tcc_backtrace there. Descendant generations then compile
+	// builtin exactly like the first FastC generation did.
+	if prefs.normalized_target_os() == 'macos' && prefs.target.arch == 'arm64' {
+		prefs.user_defines << 'no_backtrace'
+	}
 
 	generation := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
 	canonical_output := canonical_output_path(output)

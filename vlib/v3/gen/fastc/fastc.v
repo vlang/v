@@ -709,26 +709,32 @@ struct FastcLoopBlockResult {
 }
 
 struct Parser {
-	prefs               &pref.Preferences
-	path                string
-	module_name         string
-	imports             map[string]string
-	declared_types      map[string]bool
-	declared_kinds      map[string]FastcDeclaredTypeKind
-	enum_flags          map[string]bool
-	alias_base_types    map[string]string
-	struct_fields       map[string]map[string]string
-	struct_field_info   map[string][]FastcStructField
-	interface_fields    map[string]FastcInterfaceField
-	constants           map[string]string
-	constant_values     map[string]string
-	public_constants    map[string]bool
-	globals             map[string]string
-	public_globals      map[string]bool
-	used_function_names map[string]bool
-	selfhost            bool
-	has_startup_inits   bool
-	has_cleanup_hooks   bool
+	prefs          &pref.Preferences
+	path           string
+	module_name    string
+	imports        map[string]string
+	declared_types map[string]bool
+	// Generated C spelling -> declared type key, precomputed once per program
+	// (see fastc_declared_type_c_names); semantic_type_key resolves through it.
+	declared_type_c_names map[string]string
+	// `__v_fastc_`-prefixed generated C names, the only possible collisions for
+	// temporary_namespace candidates (see fastc_reserved_temporary_c_names).
+	fastc_prefixed_c_names []string
+	declared_kinds         map[string]FastcDeclaredTypeKind
+	enum_flags             map[string]bool
+	alias_base_types       map[string]string
+	struct_fields          map[string]map[string]string
+	struct_field_info      map[string][]FastcStructField
+	interface_fields       map[string]FastcInterfaceField
+	constants              map[string]string
+	constant_values        map[string]string
+	public_constants       map[string]bool
+	globals                map[string]string
+	public_globals         map[string]bool
+	used_function_names    map[string]bool
+	selfhost               bool
+	has_startup_inits      bool
+	has_cleanup_hooks      bool
 mut:
 	s                        scanner.Scanner
 	tok                      token.Token
@@ -819,6 +825,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			source_file.header.module_name, prefs, mut declared_types, mut declared_kinds, mut
 			enum_flags, mut params_structs)!
 	}
+	declared_type_c_names := fastc_declared_type_c_names(declared_types)
 	for source_file in sources {
 		collect_constant_names(source_file.source, source_file.path,
 			source_file.header.module_name, prefs, mut constants, mut public_constants)!
@@ -836,6 +843,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			interface_fields)!
 	}
 	used_function_names := fastc_collect_referenced_function_names(sources, prefs, functions)
+	fastc_prefixed_c_names := fastc_reserved_temporary_c_names(functions, globals)
 	module_init_calls := fastc_module_init_calls(sources, functions)!
 	module_cleanup_calls := fastc_module_cleanup_calls(sources, functions)!
 	mut composite_types := map[string]bool{}
@@ -856,16 +864,19 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	type_declarations := type_output.declarations
 	mut constant_types := map[string]string{}
 	mut global_types := map[string]string{}
-	fastc_render_struct_field_defaults(prefs, declared_types, declared_kinds, enum_flags,
-		type_output.alias_base_types, struct_fields, mut struct_field_info, functions, constants,
-		public_constants, constant_types, globals, public_globals, global_types)!
+	fastc_render_struct_field_defaults(prefs, declared_types, declared_type_c_names,
+		fastc_prefixed_c_names, declared_kinds, enum_flags, type_output.alias_base_types,
+		struct_fields, mut struct_field_info, functions, constants, public_constants,
+		constant_types, globals, public_globals, global_types)!
 	constant_output := fastc_generate_constant_declarations(sources, prefs, declared_types,
-		declared_kinds, enum_flags, type_output.alias_base_types, struct_fields, struct_field_info,
-		functions, constants, public_constants, globals, public_globals, mut constant_types)!
+		declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags,
+		type_output.alias_base_types, struct_fields, struct_field_info, functions, constants,
+		public_constants, globals, public_globals, mut constant_types)!
 	global_output := fastc_generate_global_declarations(sources, prefs, declared_types,
-		declared_kinds, enum_flags, type_output.alias_base_types, struct_fields, struct_field_info,
-		functions, constants, constant_output.compile_time_values, public_constants,
-		constant_types, globals, public_globals, mut global_types)!
+		declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags,
+		type_output.alias_base_types, struct_fields, struct_field_info, functions, constants,
+		constant_output.compile_time_values, public_constants, constant_types, globals,
+		public_globals, mut global_types)!
 	for constant_type in constant_types.values() {
 		fastc_register_composite_type(constant_type, mut composite_types)
 	}
@@ -895,6 +906,8 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 			module_name:             source_file.header.module_name
 			imports:                 source_file.header.imports
 			declared_types:          declared_types
+			declared_type_c_names:   declared_type_c_names
+			fastc_prefixed_c_names:  fastc_prefixed_c_names
 			declared_kinds:          declared_kinds
 			enum_flags:              enum_flags
 			alias_base_types:        type_output.alias_base_types
@@ -1882,7 +1895,7 @@ fn fastc_register_global(header FastcSourceHeader, name string, is_public bool, 
 	}
 }
 
-fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
+fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
@@ -1892,28 +1905,30 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
 		file.index_lines(source_file.source)
 		mut gen := Parser{
-			prefs:             unsafe { prefs }
-			path:              source_file.path
-			module_name:       source_file.header.module_name
-			imports:           source_file.header.imports
-			declared_types:    declared_types
-			declared_kinds:    declared_kinds
-			enum_flags:        enum_flags
-			alias_base_types:  alias_base_types
-			struct_fields:     struct_fields
-			struct_field_info: struct_field_info
-			constants:         constants
-			constant_values:   constant_values
-			public_constants:  public_constants
-			globals:           globals
-			public_globals:    public_globals
-			selfhost:          prefs.building_v
-			s:                 scanner.new_scanner(prefs, .normal)
-			out:               strings.new_builder(0)
-			protos:            strings.new_builder(0)
-			functions:         functions
-			constant_types:    constant_types
-			global_types:      global_types
+			prefs:                  unsafe { prefs }
+			path:                   source_file.path
+			module_name:            source_file.header.module_name
+			imports:                source_file.header.imports
+			declared_types:         declared_types
+			declared_type_c_names:  declared_type_c_names
+			fastc_prefixed_c_names: fastc_prefixed_c_names
+			declared_kinds:         declared_kinds
+			enum_flags:             enum_flags
+			alias_base_types:       alias_base_types
+			struct_fields:          struct_fields
+			struct_field_info:      struct_field_info
+			constants:              constants
+			constant_values:        constant_values
+			public_constants:       public_constants
+			globals:                globals
+			public_globals:         public_globals
+			selfhost:               prefs.building_v
+			s:                      scanner.new_scanner(prefs, .normal)
+			out:                    strings.new_builder(0)
+			protos:                 strings.new_builder(0)
+			functions:              functions
+			constant_types:         constant_types
+			global_types:           global_types
 		}
 		gen.s.init(file, source_file.source)
 		gen.next()
@@ -2052,7 +2067,7 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 	g.skip_semicolons()
 }
 
-fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, alias_base_types map[string]string, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string) ! {
+fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, alias_base_types map[string]string, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string) ! {
 	mut type_names := struct_field_info.keys()
 	type_names.sort()
 	for type_name in type_names {
@@ -2066,29 +2081,31 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 			mut file := file_set.add_file(default_path, field.default_source.len)
 			file.index_lines(field.default_source)
 			mut gen := Parser{
-				prefs:             unsafe { prefs }
-				path:              default_path
-				module_name:       field.module_name
-				imports:           field.imports
-				declared_types:    declared_types
-				declared_kinds:    declared_kinds
-				enum_flags:        enum_flags
-				alias_base_types:  alias_base_types
-				struct_fields:     struct_fields
-				struct_field_info: struct_field_info
-				constants:         constants
-				public_constants:  public_constants
-				globals:           globals
-				public_globals:    public_globals
-				selfhost:          prefs.building_v
-				s:                 scanner.new_scanner(prefs, .normal)
-				out:               strings.new_builder(0)
-				protos:            strings.new_builder(0)
-				functions:         functions
-				constant_types:    constant_types
-				global_types:      global_types
-				fixed_array_types: map[string]string{}
-				composite_types:   map[string]bool{}
+				prefs:                  unsafe { prefs }
+				path:                   default_path
+				module_name:            field.module_name
+				imports:                field.imports
+				declared_types:         declared_types
+				declared_type_c_names:  declared_type_c_names
+				fastc_prefixed_c_names: fastc_prefixed_c_names
+				declared_kinds:         declared_kinds
+				enum_flags:             enum_flags
+				alias_base_types:       alias_base_types
+				struct_fields:          struct_fields
+				struct_field_info:      struct_field_info
+				constants:              constants
+				public_constants:       public_constants
+				globals:                globals
+				public_globals:         public_globals
+				selfhost:               prefs.building_v
+				s:                      scanner.new_scanner(prefs, .normal)
+				out:                    strings.new_builder(0)
+				protos:                 strings.new_builder(0)
+				functions:              functions
+				constant_types:         constant_types
+				global_types:           global_types
+				fixed_array_types:      map[string]string{}
+				composite_types:        map[string]bool{}
 			}
 			gen.s.init(file, field.default_source)
 			gen.next()
@@ -2109,7 +2126,7 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 	}
 }
 
-fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
+fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
 	for source_file in ordered_sources {
@@ -2117,26 +2134,28 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
 		file.index_lines(source_file.source)
 		mut gen := Parser{
-			prefs:             unsafe { prefs }
-			path:              source_file.path
-			module_name:       source_file.header.module_name
-			imports:           source_file.header.imports
-			declared_types:    declared_types
-			declared_kinds:    declared_kinds
-			enum_flags:        enum_flags
-			alias_base_types:  alias_base_types
-			struct_fields:     struct_fields
-			struct_field_info: struct_field_info
-			constants:         constants
-			public_constants:  public_constants
-			globals:           globals
-			public_globals:    public_globals
-			selfhost:          prefs.building_v
-			s:                 scanner.new_scanner(prefs, .normal)
-			out:               strings.new_builder(256)
-			protos:            strings.new_builder(0)
-			functions:         functions
-			constant_types:    constant_types
+			prefs:                  unsafe { prefs }
+			path:                   source_file.path
+			module_name:            source_file.header.module_name
+			imports:                source_file.header.imports
+			declared_types:         declared_types
+			declared_type_c_names:  declared_type_c_names
+			fastc_prefixed_c_names: fastc_prefixed_c_names
+			declared_kinds:         declared_kinds
+			enum_flags:             enum_flags
+			alias_base_types:       alias_base_types
+			struct_fields:          struct_fields
+			struct_field_info:      struct_field_info
+			constants:              constants
+			public_constants:       public_constants
+			globals:                globals
+			public_globals:         public_globals
+			selfhost:               prefs.building_v
+			s:                      scanner.new_scanner(prefs, .normal)
+			out:                    strings.new_builder(256)
+			protos:                 strings.new_builder(0)
+			functions:              functions
+			constant_types:         constant_types
 		}
 		gen.s.init(file, source_file.source)
 		gen.next()
@@ -4617,6 +4636,22 @@ fn fastc_c_declared_type_name(type_key string) string {
 	return type_key.replace('.', '__')
 }
 
+// fastc_declared_type_c_names indexes declared type keys by their generated C
+// spelling. semantic_type_key previously rescanned every declared type per
+// query, allocating each candidate's C spelling on the way; that scan dominated
+// selfhost code generation. The first key registered for a spelling wins,
+// matching the old first-match scan over the insertion-ordered key list.
+fn fastc_declared_type_c_names(declared_types map[string]bool) map[string]string {
+	mut index := map[string]string{}
+	for key in declared_types.keys() {
+		c_name := fastc_c_declared_type_name(key)
+		if c_name !in index {
+			index[c_name] = key
+		}
+	}
+	return index
+}
+
 fn fastc_function_key(module_name string, name string) string {
 	if module_name in ['', 'main'] {
 		return name
@@ -4921,16 +4956,12 @@ fn (g &Parser) temporary_namespace(kind string) string {
 			}
 		}
 		if !collision {
-			for c_name in g.globals.values() {
+			// Every candidate prefix starts with `__v_fastc_`, so only the
+			// program's few `__v_fastc_`-prefixed function and global C names
+			// can collide (see fastc_reserved_temporary_c_names); rescanning
+			// every function key here made each temporary O(program).
+			for c_name in g.fastc_prefixed_c_names {
 				if c_name.starts_with(prefix) {
-					collision = true
-					break
-				}
-			}
-		}
-		if !collision {
-			for function_key in g.functions.keys() {
-				if fastc_c_function_name_for_key(function_key).starts_with(prefix) {
 					collision = true
 					break
 				}
@@ -4942,6 +4973,25 @@ fn (g &Parser) temporary_namespace(kind string) string {
 		index++
 	}
 	return ''
+}
+
+// fastc_reserved_temporary_c_names collects the generated function and global
+// C names that begin with the `__v_fastc_` temporary namespace prefix. Only
+// these can collide with a temporary_namespace candidate.
+fn fastc_reserved_temporary_c_names(functions map[string]FastcFunctionSignature, globals map[string]string) []string {
+	mut names := []string{}
+	for function_key in functions.keys() {
+		function_c_name := fastc_c_function_name_for_key(function_key)
+		if function_c_name.starts_with('__v_fastc_') {
+			names << function_c_name
+		}
+	}
+	for c_name in globals.values() {
+		if c_name.starts_with('__v_fastc_') {
+			names << c_name
+		}
+	}
+	return names
 }
 
 fn (mut g Parser) skip_semicolons() {
@@ -5036,7 +5086,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 		receiver_type = g.parse_type()!
 		if receiver_key == '' {
-			receiver_key = fastc_semantic_declared_type_key(receiver_type, g.declared_types)
+			receiver_key = g.semantic_type_key(receiver_type)
 		}
 		g.expect(.rpar)!
 		receiver_is_reference := receiver_is_mut && !receiver_type.ends_with('*')
@@ -9377,12 +9427,12 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					} else {
 						'(${item_name} == ((${element_type} *)${collection_name}${access}data)[${index_name}])'
 					}
+					// A hoisted predicate keeps this interpolation flat: the FastC
+					// selfhost parser renders nested `${if ... { '${...}' }}` blocks
+					// literally, corrupting the emitted membership expression.
+					predicate := if item.tok == .not_in { '!${found_name}' } else { found_name }
 					return FastcRenderedExpression{
-						source: '({ ${element_type} ${item_name} = (${candidate}); __typeof__((${collection})) ${collection_name} = (${collection}); bool ${found_name} = false; for (int ${index_name} = 0; ${index_name} < ${collection_name}${access}len; ${index_name}++) { if (${comparison}) { ${found_name} = true; break; } } ${if item.tok == .not_in {
-							'!${found_name}'
-						} else {
-							found_name
-						}}; })'
+						source: '({ ${element_type} ${item_name} = (${candidate}); __typeof__((${collection})) ${collection_name} = (${collection}); bool ${found_name} = false; for (int ${index_name} = 0; ${index_name} < ${collection_name}${access}len; ${index_name}++) { if (${comparison}) { ${found_name} = true; break; } } ${predicate}; })'
 						typ:    'bool'
 					}
 				}
@@ -14118,10 +14168,8 @@ fn fastc_matching_delimiter(tokens []FastcExpressionToken, open_index int, open 
 
 fn (g &Parser) semantic_type_key(c_type string) string {
 	base := c_type.trim_right('*')
-	for key in g.declared_types.keys() {
-		if fastc_c_declared_type_name(key) == base {
-			return key
-		}
+	if key := g.declared_type_c_names[base] {
+		return key
 	}
 	return base
 }
