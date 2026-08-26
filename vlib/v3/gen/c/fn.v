@@ -15172,7 +15172,7 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return true
 	}
 	if cfn in c_libc_compat_extern_symbols {
-		return false
+		return cfn == 'sendfile' && !g.c_directives_use_system_libc()
 	}
 	if cfn in c_static_helper_symbols {
 		return false

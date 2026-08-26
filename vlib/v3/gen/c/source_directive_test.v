@@ -651,11 +651,13 @@ fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	mut headerless := FlatGen.new()
 	assert !headerless.c_directives_use_system_libc()
 	assert headerless.should_emit_c_extern_decl('puts')
+	assert headerless.should_emit_c_extern_decl('sendfile')
 
 	mut system_libc := FlatGen.new()
 	system_libc.add_c_directive('main', '#include <stdio.h>', false)
 	assert system_libc.c_directives_use_system_libc()
 	assert !system_libc.should_emit_c_extern_decl('puts')
+	assert !system_libc.should_emit_c_extern_decl('sendfile')
 }
 
 fn test_builtin_boehm_directives_use_system_libc() {

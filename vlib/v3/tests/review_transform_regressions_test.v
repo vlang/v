@@ -4072,7 +4072,26 @@ fn main() {
 	println(int_str(item.value))
 }
 ')
-	assert out == '0'
+	assert out == '7'
+}
+
+fn test_recursive_closure_assignment_refreshes_self_capture() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'recursive_closure_assignment', 'fn main() {
+	one := 1
+	mut factorial := fn (n int) int {
+		return 1
+	}
+	factorial = fn [one, factorial] (n int) int {
+		if n <= 1 {
+			return one
+		}
+		return n * factorial(n - 1)
+	}
+	println(int_str(factorial(5)))
+}
+')
+	assert out == '120'
 }
 
 fn test_typeof_function_fixed_array_types_keep_function_shape() {

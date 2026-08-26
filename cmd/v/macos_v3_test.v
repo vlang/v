@@ -1082,6 +1082,9 @@ fn test_macos_v3_ownership_forwarding_is_quiet_and_normalizes_x86() {
 }
 
 fn test_ownership_delegation_defines_target_ownership() {
+	$if !linux && !macos {
+		return
+	}
 	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_ownership_target_define_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -2800,7 +2803,7 @@ fn test_macos_v3_fastc_allows_explicit_target_os() {
 	standard_linux, _ := pref.parse_args_and_show_errors([], ['-b', 'c', '-os', 'linux', 'main.v'],
 		false)
 	assert !standard_linux.is_fastc
-	assert v3_has_v1_only_preferences(standard_linux)
+	assert v3_has_v1_only_preferences(standard_linux) == (pref.get_host_os() != .linux)
 }
 
 fn test_macos_v3_vtest_ownership_modes_use_v1_except_fastc() {

@@ -41,6 +41,8 @@ fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('int printf(const char* format, ...);'), c_code
+	assert c_code.contains('void perror(const char* message);'), c_code
+	assert c_code.contains('void* memchr(const void* s, int c, size_t n);'), c_code
 }
 
 fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {

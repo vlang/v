@@ -11388,11 +11388,38 @@ fn (mut t Transformer) fn_value_self_capture_refresh_stmt(node flat.Node, new_ch
 	if !t.fn_literal_captures_name(rhs_source_id, lhs.value) {
 		return none
 	}
-	rhs := t.a.nodes[int(new_children[1])]
-	if rhs.kind != .ident || !rhs.value.contains('__anon_fn_') {
+	context_type := t.runtime_closure_context_type(new_children[1]) or { return none }
+	fn_type := t.var_type(lhs.value)
+	if fn_type.len == 0 {
 		return none
 	}
-	return t.make_assign(t.make_ident('${rhs.value}_${lhs.value}'), t.make_ident(lhs.value))
+	closure_value := t.make_ident(lhs.value)
+	t.set_node_typ(int(closure_value), fn_type)
+	closure_ptr := t.make_cast('voidptr', closure_value, 'voidptr')
+	context_data := t.make_call_typed('closure.closure_data', [closure_ptr], 'voidptr')
+	t.mark_fn_used_name('closure.closure_data')
+	context_ptr_type := '&${context_type}'
+	context_ptr := t.make_cast(context_ptr_type, context_data, context_ptr_type)
+	context_field := t.make_selector_op(context_ptr, lhs.value, fn_type, .arrow)
+	refresh_value := t.make_ident(lhs.value)
+	t.set_node_typ(int(refresh_value), fn_type)
+	return t.make_assign(context_field, refresh_value)
+}
+
+fn (t &Transformer) runtime_closure_context_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .struct_init && node.value.ends_with('_Ctx') {
+		return node.value
+	}
+	for i in 0 .. node.children_count {
+		if context_type := t.runtime_closure_context_type(t.a.child(&node, i)) {
+			return context_type
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) fn_literal_captures_name(id flat.NodeId, name string) bool {
@@ -13430,6 +13457,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 					if decl_type_is_usable(checker_typ) && !t.generic_arg_is_unresolved(checker_typ) {
 						typ = checker_typ
 					}
+				}
+				if fn_value_type := t.checker_call_fn_value_return_type(rhs_id) {
+					typ = fn_value_type
+					t.set_node_typ(int(t.a.child(&node, 0)), fn_value_type)
 				}
 			}
 			if rhs.kind == .call && t.is_strings_builder_new_call(rhs_id, rhs) {
@@ -16746,6 +16777,9 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		if call_typ !in ['array', 'map', 'unknown'] {
 			resolved_typ = call_typ
 		}
+	}
+	if fn_value_type := t.checker_call_fn_value_return_type(call_id) {
+		resolved_typ = fn_value_type
 	}
 	if resolved_typ.len > 0 {
 		t.set_node_typ(int(call_id), resolved_typ)
