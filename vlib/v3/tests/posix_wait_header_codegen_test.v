@@ -180,6 +180,8 @@ fn main() {
 	assert with_os.c_code.contains('struct utsname { char sysname[65]; char nodename[65]; char release[65]; char version[65]; char machine[65]; char domainname[65]; };'), with_os.c_code
 	assert with_os.c_code.contains('#if defined(__x86_64__) && !defined(__ILP32__)'), with_os.c_code
 	assert with_os.c_code.contains('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __pad0; u64 st_rdev; i64 st_size; i64 st_blksize; i64 st_blocks; i64 st_atime; i64 st_atimensec; i64 st_mtime; i64 st_mtimensec; i64 st_ctime; i64 st_ctimensec; i64 __glibc_reserved[3]; };'), with_os.c_code
+	assert with_os.c_code.contains('#elif defined(__s390x__)'), with_os.c_code
+	assert with_os.c_code.contains('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __glibc_reserved0; u64 st_rdev; i64 st_size; i64 st_atime; unsigned long st_atimensec; i64 st_mtime; unsigned long st_mtimensec; i64 st_ctime; unsigned long st_ctimensec; i64 st_blksize; i64 st_blocks; i64 __glibc_reserved[3]; };'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64) || defined(__loongarch_lp64)'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__i386__) || defined(__arm__)'), with_os.c_code
 	assert with_os.c_code.contains('struct stat { u64 st_dev; unsigned short __pad1; unsigned long st_ino; u32 st_mode; unsigned long st_nlink;'), with_os.c_code
