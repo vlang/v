@@ -301,6 +301,18 @@ fn test_fmt_keeps_trailing_positional_struct_init_comments_inside_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_compact_struct_updates_with_v3() {
+	source := "struct Position {\n\tpos int\n\tlen int\n}\n\nfn compact(field Position, name_len int) {\n\t_ := Position{ ...field }\n\t_ := Position{ ...field, len: name_len }\n}\n"
+	res, formatted := run_vfmt_write('compact_struct_updates', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('compact_struct_updates_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_keeps_comptime_branch_and_selective_import_comments_inside_with_v3() {
 	source := "import sample {\n\tOne,\n\tTwo,\n\t// trailing import\n}\n\n\$if linux {\n\tprintln('first')\n\t// trailing first\n} \$else \$if windows {\n\t// comment-only second\n} \$else {\n\tprintln('last')\n\t// trailing last\n}\n"
 	res, formatted := run_vfmt_write('comptime_branch_selective_import_comments', source, '')

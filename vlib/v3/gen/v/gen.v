@@ -1448,6 +1448,20 @@ fn (mut g Gen) named_init_field(id flat.NodeId) {
 fn (mut g Gen) assoc(id flat.NodeId) {
 	n := g.a.node(id)
 	children := g.a.children_of(n)
+	if g.source_line(n.pos.offset) == g.source_line(n.pos.end)
+		&& !g.comments_inside(n.pos.offset, n.pos.end) {
+		g.write('${n.value}{ ...')
+		if children.len > 0 {
+			g.expr(children[0])
+		}
+		for fid in children[1..] {
+			f := g.a.node(fid)
+			g.write(', ${f.value}: ')
+			g.expr(g.a.child(f, 0))
+		}
+		g.write(' }')
+		return
+	}
 	g.write(n.value)
 	g.writeln('{')
 	g.indent++

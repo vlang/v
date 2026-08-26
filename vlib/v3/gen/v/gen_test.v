@@ -189,6 +189,13 @@ fn test_formatter_keeps_trailing_positional_struct_init_comments_inside() {
 	assert vfmt('trailing_positional_struct_init_comment_twice', out) == out
 }
 
+fn test_formatter_preserves_compact_struct_updates() {
+	source := "struct Position {\n\tpos int\n\tlen int\n}\n\nfn compact(field Position, name_len int) {\n\t_ := Position{ ...field }\n\t_ := Position{ ...field, len: name_len }\n}\n"
+	out := vfmt('compact_struct_updates', source)
+	assert out == source, out
+	assert vfmt('compact_struct_updates_twice', out) == out
+}
+
 fn test_formatter_keeps_comptime_branch_and_selective_import_comments_inside() {
 	source := "import sample {\n\tOne,\n\tTwo,\n\t// trailing import\n}\n\n\$if linux {\n\tprintln('first')\n\t// trailing first\n} \$else \$if windows {\n\t// comment-only second\n} \$else {\n\tprintln('last')\n\t// trailing last\n}\n"
 	out := vfmt('comptime_branch_selective_import_comments', source)
