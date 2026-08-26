@@ -22,6 +22,10 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+const formatter_array_first_break = 85
+const formatter_array_wrap_break = 93
+const formatter_max_line_len = 100
+
 struct FormatterTypeSource {
 	text  string
 	start int
@@ -53,6 +57,8 @@ mut:
 	is_translated   bool
 	in_c_function   bool
 	formatter_types map[string]FormatterTypeSource
+	array_breaks    []bool
+	array_depth     int
 	// suppress_mut skips the `mut ` prefix on an assignment (used for C-style
 	// `for` loop init clauses, whose variable the parser always marks mutable).
 	suppress_mut bool
@@ -98,6 +104,8 @@ pub fn (mut g Gen) reset() {
 	g.is_translated = false
 	g.in_c_function = false
 	g.formatter_types = map[string]FormatterTypeSource{}
+	g.array_breaks.clear()
+	g.array_depth = 0
 }
 
 // format_file parses-independent convenience: format the file whose trailing
@@ -687,8 +695,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			if n.value.starts_with('c:') {
 				g.write("c'${n.value[2..]}'")
 			} else {
-				// char values are stored verbatim (escapes not decoded)
-				g.write('`${n.value}`')
+				g.write(g.rune_literal(n))
 			}
 		}
 		.string_literal {
@@ -787,12 +794,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.assoc(id)
 		}
 		.array_literal {
-			if prefix := g.a.formatter_sources[int(id)] {
-				g.write(prefix.trim_space())
-			}
-			g.write('[')
-			g.expr_list(g.a.children_of(n), ', ')
-			g.write(']')
+			g.array_literal(id)
 		}
 		.array_init {
 			if n.typ.len > 0 {
@@ -906,6 +908,102 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		g.emit_trailing_comments(n.pos.end)
 	}
 	g.source_end = int_max(g.source_end, n.pos.end)
+}
+
+fn (g &Gen) rune_literal(n &flat.Node) string {
+	if source := g.source_span(n.pos.offset, n.pos.end) {
+		literal := source.trim_space()
+		if literal.len >= 2 && literal[0] == `\`` && literal[literal.len - 1] == `\`` {
+			return literal
+		}
+	}
+	return '`${escape_string(n.value, `\``)}`'
+}
+
+fn (mut g Gen) array_literal(id flat.NodeId) {
+	n := g.a.node(id)
+	if prefix := g.a.formatter_sources[int(id)] {
+		g.write(prefix.trim_space())
+	}
+	g.write('[')
+	children := g.a.children_of(n)
+	if children.len == 0 {
+		g.write(']')
+		return
+	}
+	g.array_depth++
+	if g.array_depth > g.array_breaks.len {
+		first := g.a.node(children[0])
+		first_width := g.array_expr_width(children[0])
+		g.array_breaks << g.source_line(first.pos.offset) > g.source_line(n.pos.offset)
+			|| (first_width > 0
+			&& g.output_line_len() + first_width > formatter_array_first_break)
+	}
+	line_break := g.array_breaks[g.array_depth - 1]
+	mut indented := false
+	for i, child in children {
+		if i == 0 {
+			if line_break {
+				g.writeln('')
+				g.indent++
+				indented = true
+			}
+		} else if line_break {
+			g.writeln(',')
+		} else {
+			width := g.array_expr_width(child)
+			current_len := g.output_line_len()
+			if current_len > formatter_array_wrap_break
+				|| (width > 0 && current_len + 2 + width > formatter_max_line_len) {
+				g.writeln(',')
+				if !indented {
+					g.indent++
+					indented = true
+				}
+			} else {
+				g.write(', ')
+			}
+		}
+		g.expr(child)
+	}
+	if line_break {
+		g.writeln(',')
+		g.indent--
+	} else if indented {
+		g.indent--
+	}
+	g.write(']')
+	g.array_depth--
+	if g.array_depth == 0 {
+		g.array_breaks.clear()
+	}
+}
+
+fn (g &Gen) array_expr_width(id flat.NodeId) int {
+	n := g.a.node(id)
+	if n.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.ident, .enum_val] {
+		return n.value.len
+	}
+	if source := g.source_span(n.pos.offset, n.pos.end) {
+		trimmed := source.trim_space()
+		if !trimmed.contains('\n') {
+			return trimmed.len
+		}
+	}
+	return 0
+}
+
+fn (g &Gen) output_line_len() int {
+	mut line_len := 0
+	for i := g.out.len - 1; i >= 0; i-- {
+		ch := g.out.byte_at(i)
+		if ch == `\n` {
+			break
+		}
+		line_len += if ch == `\t` { 4 } else { 1 }
+	}
+	return line_len
 }
 
 fn (mut g Gen) prefix_expr(id flat.NodeId) {

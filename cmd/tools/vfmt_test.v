@@ -193,6 +193,40 @@ fn test_fmt_preserves_fixed_array_literal_prefixes_with_v3() {
 	assert formatted.contains('b := [..]f32[1, 2, 3, 4]\n'), formatted
 }
 
+fn test_fmt_escapes_rune_literals_with_v3() {
+	source := "fn f() {\n\tprintln(`\\n`)\n\tprintln(`\\``)\n}\n"
+	res, formatted := run_vfmt_write('rune_literal_escaping', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('rune_literal_escaping_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_and_wraps_array_layout_with_v3() {
+	vertical := 'fn f() {
+	values := [
+		[1, 2],
+		[3, 4],
+	]
+	_ = values
+}
+'
+	vertical_res, vertical_formatted := run_vfmt_write('vertical_array_layout', vertical, '')
+	assert vertical_res.exit_code == 0, vertical_res.output
+	assert vertical_formatted == vertical, vertical_formatted
+
+	wrapped_source := "const supported_platforms = ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku']\n"
+	wrapped_res, wrapped := run_vfmt_write('wrapped_array_layout', wrapped_source, '')
+	assert wrapped_res.exit_code == 0, wrapped_res.output
+	assert wrapped.contains("'netbsd', 'dragonfly',\n\t'android', 'js'"), wrapped
+	second_res, wrapped_twice := run_vfmt_write('wrapped_array_layout_twice', wrapped, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert wrapped_twice == wrapped
+}
+
 fn test_fmt_preserves_closure_capture_qualifiers_with_v3() {
 	source := 'fn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut value, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n'
 	res, formatted := run_vfmt_write('closure_capture_qualifiers', source, '')

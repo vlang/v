@@ -260,6 +260,15 @@ fn test_string_escaping() {
 	assert out.contains("'\${x}y'")
 }
 
+fn test_rune_literal_escaping() {
+	source := "fn f() {\n\tprintln(`\\n`)\n\tprintln(`\\``)\n}\n"
+	out := vfmt('rune_literal_escaping', source)
+	assert out == source, out
+	assert escape_string('\n', `\``) == '\\n'
+	assert escape_string('`', `\``) == '\\`'
+	assert vfmt('rune_literal_escaping_twice', out) == out
+}
+
 fn test_formatter_preserves_source_only_syntax() {
 	out := vfmt('source_only',
 		'// docs\nfn f() {\n\tx := c\' \'\n\ty := r"raw \\\\ text"\n\t\$if windows {\n\t\tprintln(\'windows\')\n\t} \$else {\n\t\tprintln(\'other\')\n\t}\n\tasm amd64 {\n\t\tnop\n\t}\n\tprintln(@FN) // inline\n\t_ = x\n\t_ = y\n}\n')
@@ -291,6 +300,24 @@ fn test_formatter_preserves_fixed_array_literal_prefixes() {
 		'fn main() {\n\ta := [4]f32[1, 2, 3, 4]\n\tb := [..]f32[1, 2, 3, 4]\n\t_ = a\n\t_ = b\n}\n')
 	assert out.contains('a := [4]f32[1, 2, 3, 4]'), out
 	assert out.contains('b := [..]f32[1, 2, 3, 4]\n'), out
+}
+
+fn test_formatter_preserves_and_wraps_array_layout() {
+	vertical := 'fn f() {
+	values := [
+		[1, 2],
+		[3, 4],
+	]
+	_ = values
+}
+'
+	vertical_out := vfmt('vertical_array_layout', vertical)
+	assert vertical_out == vertical, vertical_out
+
+	wrapped_source := "const supported_platforms = ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku']\n"
+	wrapped := vfmt('wrapped_array_layout', wrapped_source)
+	assert wrapped.contains("'netbsd', 'dragonfly',\n\t'android', 'js'"), wrapped
+	assert vfmt('wrapped_array_layout_twice', wrapped) == wrapped
 }
 
 fn test_formatter_preserves_capture_and_shared_parameter_qualifiers() {
