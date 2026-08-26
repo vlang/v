@@ -237,6 +237,11 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 			for field_id in g.a.children_of(n) {
 				declared_names[g.a.node(field_id).value] = true
 			}
+		} else if n.kind == .fn_decl && !n.value.contains('.') {
+			declared_names[n.value] = true
+		} else if n.kind == .c_fn_decl && n.value.starts_with('V:')
+			&& !n.value[2..].contains('.') {
+			declared_names[n.value[2..]] = true
 		}
 	}
 	mut legacy_imports := []flat.NodeId{}
@@ -719,7 +724,10 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		}
 		.selector {
 			g.expr(g.a.child(n, 0))
-			if n.value == '$' {
+			if source := g.a.formatter_sources[int(id)] {
+				// comptime method shorthand `recv.$method(args)`
+				g.write('.${source}')
+			} else if n.value == '$' {
 				// comptime field access `recv.$(name_expr)`
 				g.write('.\$(')
 				g.expr(g.a.child(n, 1))

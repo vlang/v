@@ -150,6 +150,19 @@ fn test_fmt_preserves_comptime_calls_and_pseudo_variables_with_v3() {
 	assert formatted.contains('println(@VEXE)'), formatted
 }
 
+fn test_fmt_preserves_comptime_method_shorthand_with_v3() {
+	source := 'struct Dummy {}\n\nfn (d Dummy) sample(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\t\$for method in Dummy.methods {\n\t\tDummy{}.\$method(1)\n\t}\n}\n'
+	res, formatted := run_vfmt_write('comptime_method_shorthand', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('Dummy{}.\$method(1)'), formatted
+	assert !formatted.contains('Dummy{}.\$(method)(1)'), formatted
+	second_res, formatted_twice := run_vfmt_write('comptime_method_shorthand_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_conditional_attributes_with_v3() {
 	source := "@[if formatter_missing_flag ?]\nfn guarded(){\n\tprintln('kept')\n}\n"
 	res, formatted := run_vfmt_write('conditional_attribute', source, '')
@@ -291,6 +304,20 @@ fn f() {
 	assert formatted.contains('import json\n'), formatted
 	assert formatted.contains('json.encode('), formatted
 	assert !formatted.contains('import json2'), formatted
+
+	fn_source := 'import json
+
+fn json2() {}
+
+fn f() {
+	println(json.encode(1))
+}
+'
+	fn_res, fn_formatted := run_vfmt_write('json2_function_collision', fn_source, '')
+	assert fn_res.exit_code == 0, fn_res.output
+	assert fn_formatted.contains('import json\n'), fn_formatted
+	assert fn_formatted.contains('json.encode('), fn_formatted
+	assert !fn_formatted.contains('import json2'), fn_formatted
 }
 
 fn test_fmt_keeps_comments_before_grouped_const_fields_with_v3() {

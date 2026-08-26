@@ -401,6 +401,19 @@ fn f() {
 	assert global_out.contains('import json\n'), global_out
 	assert global_out.contains('json.encode('), global_out
 	assert !global_out.contains('import json2'), global_out
+
+	fn_source := 'import json
+
+fn json2() {}
+
+fn f() {
+	println(json.encode(1))
+}
+'
+	fn_out := vfmt_with_json_migration('function_collision', fn_source)
+	assert fn_out.contains('import json\n'), fn_out
+	assert fn_out.contains('json.encode('), fn_out
+	assert !fn_out.contains('import json2'), fn_out
 }
 
 fn test_formatter_keeps_comments_before_grouped_const_fields() {
@@ -515,6 +528,14 @@ fn test_channel_ops() {
 fn test_comptime_selector() {
 	out := vfmt('ctsel', 'fn f[T](owned T) {\n\tdrop_owned(owned.\$(field.name))\n}\n')
 	assert out.contains('owned.\$(field.name)')
+}
+
+fn test_comptime_method_shorthand_selector() {
+	source := 'struct Dummy {}\n\nfn (d Dummy) sample(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\t\$for method in Dummy.methods {\n\t\tDummy{}.\$method(1)\n\t}\n}\n'
+	out := vfmt('comptime_method_shorthand', source)
+	assert out.contains('Dummy{}.\$method(1)'), out
+	assert !out.contains('Dummy{}.\$(method)(1)'), out
+	assert vfmt('comptime_method_shorthand_twice', out) == out
 }
 
 fn test_select_compound_receive_preserves_operator() {

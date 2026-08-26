@@ -9998,6 +9998,7 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 		// spelling in the marker so the checker reports it instead of deferring it to cgen.
 		p.next() // skip $
 		mut selector_value := '$'
+		mut formatter_shorthand := ''
 		inner := if p.tok == .lpar {
 			p.next()
 			name_expr := p.expr(.lowest)
@@ -10005,6 +10006,9 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 			name_expr
 		} else {
 			name := p.expect_name_or_keyword()
+			if p.prefs.is_fmt {
+				formatter_shorthand = '$${name}'
+			}
 			valid_method_name := p.comptime_method_var.len > 0
 				&& name in ['method', p.comptime_method_var]
 			if !valid_method_name {
@@ -10024,6 +10028,9 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 			children_start: sel_start
 			children_count: 2
 		}, lhs)
+		if formatter_shorthand.len > 0 {
+			p.a.formatter_sources[int(sel)] = formatter_shorthand
+		}
 		p.mark_formatter_local_selector(sel, lhs)
 		if p.tok == .lpar {
 			return p.call_args(sel)
