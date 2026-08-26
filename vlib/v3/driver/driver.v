@@ -2568,7 +2568,7 @@ fn prepare_v3_checker_native_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		prefs.c99, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags,
 		prefs.ccompiler, prefs.target, native_inputs_language)
-	external_inputs, native_source_roots, native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, external_input_digests, _ := cgen.cache_external_input_snapshot_with_resolved_flags(a,
+	external_inputs, native_source_roots, native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a,
 		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
 		module_cache_source_path_set(user_files), compiler_macros,
 		compiler_macro_environment_complete)
@@ -2584,9 +2584,11 @@ fn prepare_v3_checker_native_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	state.external_missing_paths = missing_resolution_paths.filter(
 		!v3_path_is_within(it, cache_dir) && !v3_path_is_within(it, real_cache_dir))
 	state.external_inputs_ready = true
-	// Ownership and digest completeness were not established; every consumer
-	// that needs them (fallback reports, cache manifests) checks this flag.
-	state.external_inputs_complete = false
+	// The macOS C-error fallback report requires a complete native-input
+	// manifest, and completeness here needs only resolved includes and valid
+	// digests — cache-unit ownership is a cache-manifest concern.
+	state.external_inputs_complete = !has_untracked_c_include
+		&& v3_external_input_digests_complete(state)
 }
 
 fn ast_has_native_source_include(a &flat.FlatAst) bool {
@@ -8374,7 +8376,6 @@ pub fn run(args []string) {
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
-	mut ck_stage_sw := time.new_stopwatch()
 
 	mut crun_build_identity := ''
 	if is_direct_vsh && should_run && !explicit_output {
@@ -8626,6 +8627,7 @@ pub fn run(args []string) {
 	// Source includes can introduce typedef structs used by V declarations and
 	// literals before Cgen sees the included translation unit. Resolve those rare
 	// inputs before checking so the type is available to semantic lookup.
+	mut ck_stage_sw := time.new_stopwatch()
 	if !cache_state.external_inputs_ready && ast_has_native_source_include(a) {
 		if cache_state.manager.enabled {
 			_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files,
