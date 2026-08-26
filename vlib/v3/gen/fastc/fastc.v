@@ -1,8 +1,6 @@
 module fastc
 
-import os
 import strings
-import v3.gen.c.naming
 import v3.pref
 import v3.scanner
 import v3.token

@@ -1,5 +1,6 @@
 module fastc
 
+import strings
 import v3.token
 
 // FastC lowers `spawn f(args)` to a generated pthread creator: the arguments
@@ -13,15 +14,16 @@ const fastc_thread_type_prefix = '__v_fastc_thread_'
 const c_spawn_runtime = r'#include <pthread.h>
 '
 
-// fastc_type_text_hash is an FNV-1a digest of a type spelling. The readable
-// sanitized name alone is lossy (`Foo*` and a declared `Foo_ptr` collapse),
-// so thread type names append this stable discriminator to stay injective.
-fn fastc_type_text_hash(text string) string {
-	mut digest := u32(2166136261)
-	for i in 0 .. text.len {
-		digest = (digest ^ u32(text[i])) * 16777619
+// fastc_name_key hex-encodes the original UTF-8 bytes. The readable sanitized
+// part of a generated name is lossy, so this C-safe key keeps names injective.
+fn fastc_name_key(text string) string {
+	hex_digits := '0123456789abcdef'
+	mut encoded := strings.new_builder(text.len * 2)
+	for value in text.bytes() {
+		encoded.write_u8(hex_digits[value >> 4])
+		encoded.write_u8(hex_digits[value & 0x0f])
 	}
-	return digest.hex()
+	return encoded.str()
 }
 
 fn fastc_thread_type_name(value_type string) string {
@@ -29,7 +31,7 @@ fn fastc_thread_type_name(value_type string) string {
 		return '${fastc_thread_type_prefix}void'
 	}
 	sanitized := value_type.replace('*', '_ptr').replace(' ', '_').replace('.', '__')
-	return '${fastc_thread_type_prefix}${sanitized}_${fastc_type_text_hash(value_type)}'
+	return '${fastc_thread_type_prefix}k${fastc_name_key(value_type)}_${sanitized}'
 }
 
 fn fastc_thread_wait_name(thread_type string) string {
@@ -75,13 +77,19 @@ fn (mut g Parser) read_spawn_expression() !string {
 	signature := g.functions[function_key] or {
 		return g.unsupported('spawn of undeclared function `${callee}`')
 	}
+	// Ordinary disabled calls elide the call and its arguments. A spawn cannot
+	// provide a valid thread handle for an elided call, so reject it before
+	// parsing any arguments.
+	if signature.is_disabled {
+		return g.unsupported('spawn of disabled function `${callee}`')
+	}
 	// Mirror validate_expression_calls: read_spawn_expression consumes the
 	// call eagerly, so the ordinary call-visibility validation never runs.
 	if !signature.is_public && signature.module_name != '' && signature.module_name != g.module_name
 		&& signature.module_name != 'builtin' && signature.module_name in g.imports.values() {
 		return g.unsupported('spawn of private function `${callee}` from imported module `${signature.module_name}`')
 	}
-	if signature.is_variadic || signature.last_parameter_is_params {
+	if signature.is_variadic {
 		return g.unsupported('spawn of variadic function `${callee}`')
 	}
 	if signature.option_type != '' {
@@ -125,6 +133,10 @@ fn (mut g Parser) read_spawn_expression() !string {
 		}
 	}
 	g.next()
+	if signature.last_parameter_is_params && arguments.len + 1 == signature.parameter_types.len {
+		parameter_type := signature.parameter_types.last()
+		arguments << '(${parameter_type}){0}'
+	}
 	if arguments.len != signature.parameter_types.len {
 		return g.unsupported('spawn of `${callee}` with ${arguments.len} arguments, expected ${signature.parameter_types.len}')
 	}
@@ -144,7 +156,15 @@ fn (mut g Parser) read_spawn_expression() !string {
 }
 
 fn fastc_spawn_start_name(function_key string) string {
-	return '__v_fastc_spawn_start_${fastc_c_identifier(fastc_c_function_name_for_key(function_key))}'
+	return '__v_fastc_spawn_start_${fastc_spawn_target_stem(function_key)}'
+}
+
+// fastc_spawn_target_stem puts the injective target key before the readable C
+// name. A collision suffix on one target therefore cannot equal another
+// target's natural generated name, and parallel file parsers choose alike.
+fn fastc_spawn_target_stem(function_key string) string {
+	readable := fastc_c_identifier(fastc_c_function_name_for_key(function_key))
+	return 'k${fastc_name_key(function_key)}_${readable}'
 }
 
 // fastc_unclaimed_generated_name screens a deterministic generated name
@@ -214,10 +234,9 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 		return
 	}
 	target := fastc_c_function_name_for_key(function_key)
-	args_struct :=
-		g.fastc_unclaimed_generated_name('__v_fastc_spawn_args_${fastc_c_identifier(target)}')
-	run_name :=
-		g.fastc_unclaimed_generated_name('__v_fastc_spawn_run_${fastc_c_identifier(target)}')
+	target_stem := fastc_spawn_target_stem(function_key)
+	args_struct := g.fastc_unclaimed_generated_name('__v_fastc_spawn_args_${target_stem}')
+	run_name := g.fastc_unclaimed_generated_name('__v_fastc_spawn_run_${target_stem}')
 	mut fields := ''
 	if value_type != '' {
 		fields += '\t${value_type} result;\n'

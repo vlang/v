@@ -41,7 +41,10 @@ fn fastc_chunk_bounds(sources []FastcSourceFile, jobs int) []int {
 	for chunk_idx in 0 .. jobs {
 		mut end := start
 		target := total_size * i64(chunk_idx + 1) / i64(jobs)
-		for end < sources.len && (chunk_idx == jobs - 1 || consumed < target || end == start) {
+		// Leave one file for every later chunk even when a large file keeps the
+		// current chunk below its cumulative size target.
+		last_available := sources.len - (jobs - chunk_idx - 1)
+		for end < last_available && (chunk_idx == jobs - 1 || consumed < target || end == start) {
 			consumed += i64(sources[end].source.len) + 1
 			end++
 		}

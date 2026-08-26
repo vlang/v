@@ -6,6 +6,131 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
+	sources := [
+		FastcSourceFile{
+			source: 'a'.repeat(90)
+		},
+		FastcSourceFile{
+			source: 'b'.repeat(90)
+		},
+		FastcSourceFile{
+			source: 'c'.repeat(90)
+		},
+		FastcSourceFile{
+			source: 'd'.repeat(300)
+		},
+	]
+	assert fastc_chunk_bounds(sources, 2) == [0, 3, 3, 4]
+}
+
+fn test_selfhost_spawn_nested_wait_statement_and_helper_names() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	foo_start := fastc_spawn_start_name('foo')
+	foo_creator := '${foo_start}_c1'
+	foo_c1_creator := fastc_spawn_start_name('foo_c1')
+	void_waiter := fastc_thread_wait_name(fastc_thread_type_name(''))
+	int_waiter := fastc_thread_wait_name(fastc_thread_type_name('int'))
+	assert foo_creator != foo_c1_creator
+	source := 'module main
+
+fn foo() int {
+	return 1
+}
+
+fn foo_c1() int {
+	return 2
+}
+
+fn ${foo_start}() int {
+	return 0
+}
+
+fn finish() {}
+
+fn main() {
+	first := spawn foo()
+	mut threads := [first]
+	threads << spawn foo_c1()
+	println(threads[0].wait())
+	println(threads[1].wait())
+	println((spawn foo()).wait())
+	done := spawn finish()
+	done.wait()
+}
+'
+	c_source := generate(source, 'selfhost_spawn_regressions.v', prefs) or { panic(err) }
+	assert c_source.contains('args->result = foo();'), c_source
+	assert c_source.contains('args->result = foo_c1();'), c_source
+	assert c_source.contains('${foo_creator}()'), c_source
+	assert c_source.contains('${foo_c1_creator}()'), c_source
+	assert !c_source.contains('spawn foo_c1'), c_source
+	assert c_source.contains('${int_waiter}((${foo_creator}()))'), c_source
+	assert c_source.contains('${void_waiter}(done);'), c_source
+}
+
+fn test_selfhost_spawn_rejects_disabled_callee_before_arguments() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	mut message := ''
+	_ := generate('module main
+
+@[if fastc_missing_define ?]
+fn traced(value int) {}
+
+fn side_effect() int {
+	println(99)
+	return 1
+}
+
+fn main() {
+	t := spawn traced(side_effect())
+	t.wait()
+}
+',
+		'disabled_spawn.v', prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('spawn of disabled function `traced`'), message
+}
+
+fn test_selfhost_spawn_accepts_explicit_and_omitted_params_structs() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+@[params]
+struct Config {
+	value int
+}
+
+fn configured(base int, config Config) int {
+	return base + config.value
+}
+
+fn main() {
+	explicit := spawn configured(1, Config{value: 2})
+	omitted := spawn configured(4)
+	println(explicit.wait())
+	println(omitted.wait())
+}
+',
+		'spawn_params_struct.v', prefs) or { panic(err) }
+	assert c_source.contains('args->result = configured(args->arg0, args->arg1);'), c_source
+	assert c_source.contains('(Config){0}'), c_source
+}
+
 fn test_generate_and_compile_without_flat_ast() {
 	source := 'module main
 
@@ -752,7 +877,7 @@ pub fn ping() {}
 	}
 	assert resolved_modules == ['main', 'alpha']
 	prefs.building_v = true
-	c_source := generate_source_files(sources, prefs) or { panic(err) }
+	c_source, _ := generate_source_files(sources, prefs) or { panic(err) }
 	assert c_source.contains('\talpha__init();'), c_source
 	assert c_source.contains('\talpha__cleanup();'), c_source
 	assert !c_source.contains('beta__init'), c_source
@@ -1185,7 +1310,7 @@ pub fn make() Settings {
 		'module main\nimport records\nfn main() { value := records.Settings{secret: 1}; println(value.visible) }\n',
 	] {
 		mut message := ''
-		_ := generate_source_files([
+		unused_source, _ := generate_source_files([
 			FastcSourceFile{
 				path:   main_file
 				source: source
@@ -1200,13 +1325,14 @@ pub fn make() Settings {
 			},
 		], prefs) or {
 			message = err.msg()
-			''
+			'', false
 		}
+		_ = unused_source
 		assert message.contains('private field `Settings.secret` from imported module `records`'), message
 	}
 
 	valid_source := 'module main\nimport records\nfn main() { value := records.Settings{visible: 2}; println(value.visible) }\n'
-	c_source := generate_source_files([
+	c_source, _ := generate_source_files([
 		FastcSourceFile{
 			path:   main_file
 			source: valid_source
@@ -1251,7 +1377,7 @@ fn main() {
 }
 '
 	mut message := ''
-	_ := generate_source_files([
+	unused_source, _ := generate_source_files([
 		FastcSourceFile{
 			path:   main_file
 			source: invalid_source
@@ -1264,8 +1390,9 @@ fn main() {
 		},
 	], prefs) or {
 		message = err.msg()
-		''
+		'', false
 	}
+	_ = unused_source
 	assert message.contains('mutation of immutable field `Config.read_only`'), message
 
 	valid_source := 'module main
@@ -1277,7 +1404,7 @@ fn main() {
 	config.writable = 2
 }
 '
-	c_source := generate_source_files([
+	c_source, _ := generate_source_files([
 		FastcSourceFile{
 			path:   main_file
 			source: valid_source
@@ -2610,7 +2737,7 @@ fn main() {
 }
 '
 	mut field_message := ''
-	_ := generate_source_files([
+	unused_source, _ := generate_source_files([
 		FastcSourceFile{
 			path:   'immutable_flag_field.v'
 			source: main_source
@@ -2625,8 +2752,9 @@ fn main() {
 		},
 	], prefs) or {
 		field_message = err.msg()
-		''
+		'', false
 	}
+	_ = unused_source
 	assert field_message.contains('receiver field `Config.permissions` is not `pub mut`'), field_message
 
 	c_source := generate('module main
@@ -4323,7 +4451,7 @@ fn main() {
 	copy_byte(mut file, []u8{}, 0)
 }
 '
-	c_source := generate_source_files([
+	c_source, _ := generate_source_files([
 		FastcSourceFile{
 			path:   'main.v'
 			source: main_source

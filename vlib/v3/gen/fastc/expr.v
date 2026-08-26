@@ -255,6 +255,27 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.pos
 			continue
 		}
+		if g.selfhost && g.tok == .key_spawn {
+			spawned := g.read_spawn_expression()!
+			spawned_type := g.last_expression_type
+			if result.len > 0 && fastc_needs_space(result.last(), spawned)
+				&& !previous_module_separator {
+				result.write_u8(` `)
+			}
+			result.write_string(spawned)
+			// The eager spawn parser consumes the complete call. Keep it as one
+			// typed atom so enclosing calls, appends, and operators can infer it.
+			expression_tokens << FastcExpressionToken{
+				tok: .name
+				lit: spawned
+				typ: spawned_type
+			}
+			previous_token = .name
+			previous_lit = spawned
+			previous_module_separator = false
+			previous_token_end = g.s.pos
+			continue
+		}
 		if g.selfhost && g.tok == .key_or {
 			or_expression_is_statement := g.expression_tokens_are_statement(expression_tokens)
 			or_return_types := g.multi_return_types_for_expression(expression_tokens)
