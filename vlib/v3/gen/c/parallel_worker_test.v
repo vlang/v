@@ -1,6 +1,7 @@
 module c
 
 import v3.flat
+import v3.pref
 import v3.types
 
 fn parallel_worker_test_gen(scoped bool) (&FlatGen, &types.TypeChecker) {
@@ -59,6 +60,13 @@ fn test_parallel_worker_preserves_test_assertion_stats_mode() {
 	g.show_test_stats = true
 	w := g.new_parallel_worker(1)
 	assert w.show_test_stats
+}
+
+fn test_parallel_worker_preserves_target() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.target = pref.target_from('linux', 'x86') or { panic(err) }
+	w := g.new_parallel_worker(1)
+	assert w.target == g.target
 }
 
 fn test_windows_filelock_method_preseeds_parallel_compat_helpers() {
