@@ -156,6 +156,52 @@ fn test_fmt_preserves_fixed_array_literal_prefixes_with_v3() {
 	assert formatted.contains('b := [..]f32[1, 2, 3, 4]\n'), formatted
 }
 
+fn test_fmt_preserves_closure_capture_qualifiers_with_v3() {
+	source := 'fn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut value, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n'
+	res, formatted := run_vfmt_write('closure_capture_qualifiers', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('atomic counter := 0'), formatted
+	assert formatted.contains('fn [mut value, atomic counter, shared state] ()'), formatted
+	assert formatted.contains('consume[[]int]([]int{})'), formatted
+	second_res, formatted_twice := run_vfmt_write('closure_capture_qualifiers_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_places_shared_before_receiver_and_parameter_names_with_v3() {
+	source := 'struct St {}\n\nfn (shared receiver St) use(shared value St) {}\n'
+	res, formatted := run_vfmt_write('shared_receiver_and_parameter', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('fn (shared receiver St) use(shared value St)'), formatted
+}
+
+fn test_fmt_preserves_comptime_match_with_v3() {
+	source := "\$match @OS {\n\t'linux' {\n\t\tconst platform = 'linux'\n\t}\n\t\$else {\n\t\tconst platform = 'other'\n\t}\n}\n\nfn main() {\n\tvalue := \$match @OS {\n\t\t'linux' { 'linux' }\n\t\t\$else { 'other' }\n\t}\n\t_ = value\n}\n"
+	res, formatted := run_vfmt_write('comptime_match', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains("\$match @OS"), formatted
+	assert formatted.contains("const platform = 'linux'"), formatted
+	assert formatted.contains("const platform = 'other'"), formatted
+	assert formatted.count('\$match @OS') == 2, formatted
+	second_res, formatted_twice := run_vfmt_write('comptime_match_twice', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_ignores_vfmt_directives_inside_strings_with_v3() {
+	source := "fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n"
+	res, formatted := run_vfmt_write('vfmt_directives_in_strings', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains("off := '// vfmt off'"), formatted
+	assert formatted.contains("on := '// vfmt on'"), formatted
+	assert formatted.contains("fn format_me() {\n\tprintln('yes')\n}"), formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')

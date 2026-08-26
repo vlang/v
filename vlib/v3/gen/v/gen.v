@@ -18,6 +18,9 @@ module v
 import os
 import strings
 import v3.flat
+import v3.pref
+import v3.scanner
+import v3.token
 
 // Gen holds the formatter state for one output buffer.
 pub struct Gen {
@@ -133,7 +136,7 @@ pub fn (mut g Gen) gen_file(a &flat.FlatAst, file_id flat.NodeId) string {
 	g.top_level(a.children_of(fnode))
 	g.emit_comments_before(fnode.pos.end + 1)
 	formatted := g.out.str()
-	if g.source.contains('// vfmt off') {
+	if g.comments.any(it.text.trim_space().starts_with('// vfmt off')) {
 		return restore_vfmt_disabled_regions(formatted, g.source.replace('\r\n', '\n'))
 	}
 	return formatted
@@ -613,7 +616,12 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.string_interp(id)
 		}
 		.ident {
-			g.write(if g.in_array_init && n.value == 'it' { 'index' } else { n.value })
+			if n.typ == '__v3_formatter_raw' {
+				source := g.a.formatter_sources[int(id)] or { n.value }
+				g.write(source.trim_space())
+			} else {
+				g.write(if g.in_array_init && n.value == 'it' { 'index' } else { n.value })
+			}
 		}
 		.nil_literal {
 			g.write('nil')
@@ -790,7 +798,8 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write('/* ${n.kind} */')
 		}
 	}
-	if n.kind == .sql_expr && int(id) in g.a.formatter_sources {
+	if (n.kind == .sql_expr || n.typ == '__v3_formatter_raw')
+		&& int(id) in g.a.formatter_sources {
 		g.skip_comments_before(n.pos.end + 1)
 	} else {
 		g.emit_trailing_comments(n.pos.end)
@@ -1058,7 +1067,19 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 	}
 	if captures.len > 0 {
 		g.write(' [')
-		g.expr_list(captures, ', ')
+		for capture_i, capture_id in captures {
+			capture := g.a.node(capture_id)
+			if capture.is_mut {
+				g.write('mut ')
+			}
+			if capture.typ in ['shared', 'atomic'] {
+				g.write('${capture.typ} ')
+			}
+			g.expr(capture_id)
+			if capture_i < captures.len - 1 {
+				g.write(', ')
+			}
+		}
 		g.write(']')
 	}
 	g.write(' ')
@@ -1240,7 +1261,9 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 	is_decl := n.kind == .decl_assign
 	opstr := if is_decl { ':=' } else { op_str(n.op) }
 	modifier, count := parse_assign_meta(n.value)
-	if n.is_mut && modifier == 'volatile' && !g.suppress_mut {
+	if modifier == 'atomic' {
+		g.write('atomic ')
+	} else if n.is_mut && modifier == 'volatile' && !g.suppress_mut {
 		g.write('mut volatile ')
 	} else if modifier.len > 0 {
 		g.write('${modifier} ')
@@ -1612,13 +1635,18 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	name := n.value
 	if int(recv) >= 0 {
 		rn := g.a.node(recv)
+		mut receiver_type := g.receiver_type(rn)
 		g.write('(')
 		if rn.is_mut {
 			g.write('mut ')
 		}
+		if receiver_type.starts_with('shared ') {
+			g.write('shared ')
+			receiver_type = receiver_type[7..]
+		}
 		g.write(rn.value)
 		g.write(' ')
-		g.write(g.receiver_type(rn))
+		g.write(receiver_type)
 		g.write(') ')
 		g.write(name.all_after_last('.'))
 	} else if n.kind == .c_fn_decl {
@@ -1651,14 +1679,19 @@ fn (mut g Gen) params(ids []flat.NodeId) {
 	g.write('(')
 	for i, pid in ids {
 		p := g.a.node(pid)
+		mut typ := g.param_type(p)
 		if p.is_mut {
 			g.write('mut ')
+		}
+		if typ.starts_with('shared ') {
+			g.write('shared ')
+			typ = typ[7..]
 		}
 		if p.value.len > 0 {
 			g.write(p.value)
 			g.write(' ')
 		}
-		g.write(g.param_type(p))
+		g.write(typ)
 		if i < ids.len - 1 {
 			g.write(', ')
 		}
@@ -2074,29 +2107,75 @@ fn (mut g Gen) write_comment(text string) {
 	}
 }
 
+struct VfmtDirective {
+	is_off bool
+	offset int
+}
+
+fn vfmt_directives(source string) []VfmtDirective {
+	mut directives := []VfmtDirective{}
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('vfmt_source', source.len)
+	file.index_lines(source)
+	mut s := scanner.new_scanner(pref.new_preferences(), .scan_comments)
+	s.init(file, source)
+	for {
+		tok := s.scan()
+		if tok == .comment {
+			text := s.lit.trim_space()
+			if text.starts_with('// vfmt off') {
+				directives << VfmtDirective{
+					is_off: true
+					offset: s.pos
+				}
+			} else if text.starts_with('// vfmt on') {
+				directives << VfmtDirective{
+					offset: s.pos
+				}
+			}
+		}
+		if tok == .eof {
+			break
+		}
+	}
+	return directives
+}
+
+fn next_vfmt_directive(directives []VfmtDirective, offset int, is_off bool) ?VfmtDirective {
+	for directive in directives {
+		if directive.offset >= offset && directive.is_off == is_off {
+			return directive
+		}
+	}
+	return none
+}
+
+fn line_after(source string, offset int) int {
+	return source.index_after('\n', offset) or { source.len - 1 } + 1
+}
+
 fn restore_vfmt_disabled_regions(formatted string, source string) string {
-	marker_off := '// vfmt off'
-	marker_on := '// vfmt on'
+	source_directives := vfmt_directives(source)
+	formatted_directives := vfmt_directives(formatted)
 	mut source_pos := 0
 	mut formatted_pos := 0
 	mut out := strings.new_builder(formatted.len + source.len / 8)
 	for {
-		source_off := source.index_after(marker_off, source_pos) or { break }
-		formatted_off := formatted.index_after(marker_off, formatted_pos) or { break }
-		source_content := source.index_after('\n', source_off) or { source.len - 1 } + 1
-		formatted_content := formatted.index_after('\n', formatted_off) or { formatted.len - 1 } + 1
+		source_off := next_vfmt_directive(source_directives, source_pos, true) or { break }
+		formatted_off := next_vfmt_directive(formatted_directives, formatted_pos, true) or { break }
+		source_content := line_after(source, source_off.offset)
+		formatted_content := line_after(formatted, formatted_off.offset)
 		out.write_string(formatted[formatted_pos..formatted_content])
-		source_on := source.index_after(marker_on, source_content) or {
+		source_on := next_vfmt_directive(source_directives, source_content, false) or {
 			out.write_string(source[source_content..])
 			return out.str()
 		}
-		formatted_on := formatted.index_after(marker_on, formatted_content) or {
+		formatted_on := next_vfmt_directive(formatted_directives, formatted_content, false) or {
 			out.write_string(source[source_content..])
 			return out.str()
 		}
-		mut source_resume := source.index_after('\n', source_on) or { source.len - 1 } + 1
-		mut formatted_resume := formatted.index_after('\n', formatted_on) or { formatted.len - 1 } +
-			1
+		mut source_resume := line_after(source, source_on.offset)
+		mut formatted_resume := line_after(formatted, formatted_on.offset)
 		for source_resume < source.len && source[source_resume] == `\n` {
 			source_resume++
 		}

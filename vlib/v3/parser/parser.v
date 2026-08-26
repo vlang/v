@@ -2950,6 +2950,14 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 			return p.parse_comptime_for(dollar_start)
 		}
 		if p.tok == .key_match {
+			if p.prefs.is_fmt {
+				expr := p.parse_formatter_comptime_match(dollar_start)
+				return p.add_node_from(flat.Node{
+					kind:           .expr_stmt
+					children_start: p.add_child(expr)
+					children_count: 1
+				}, expr)
+			}
 			return p.parse_comptime_match(false, false)
 		}
 		if p.tok == .name && p.lit == 'compile_error' {
@@ -3259,6 +3267,14 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 			return p.parse_comptime_for(dollar_start)
 		}
 		if p.tok == .key_match {
+			if p.prefs.is_fmt {
+				expr := p.parse_formatter_comptime_match(dollar_start)
+				return p.add_node_from(flat.Node{
+					kind:           .expr_stmt
+					children_start: p.add_child(expr)
+					children_count: 1
+				}, expr)
+			}
 			return p.parse_comptime_match(true, false)
 		}
 		if p.tok == .name && p.lit == 'compile_error' {
@@ -5420,6 +5436,9 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		return p.parse_comptime_if_expr_after_if()
 	}
 	if p.tok == .key_match || (p.tok == .name && p.lit == 'match') {
+		if p.prefs.is_fmt {
+			return p.parse_formatter_comptime_match(dollar_pos)
+		}
 		return p.parse_comptime_match(false, true)
 	}
 	if p.tok == .name && p.lit == 'd' {
@@ -5596,6 +5615,35 @@ fn (mut p Parser) parse_formatter_comptime_call(start int) flat.NodeId {
 		value: p.s.src[start..end]
 		pos:   token.new_span(p.cur_file_id, start, end)
 	})
+}
+
+fn (mut p Parser) parse_formatter_comptime_match(start int) flat.NodeId {
+	mut depth := 0
+	mut saw_body := false
+	for p.tok != .eof {
+		if p.tok == .lcbr {
+			depth++
+			saw_body = true
+		} else if p.tok == .rcbr && saw_body {
+			depth--
+			p.next()
+			if depth == 0 {
+				break
+			}
+			continue
+		}
+		p.next()
+	}
+	end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+	source := p.s.src[start..end]
+	id := p.a.add_node(flat.Node{
+		kind:  .ident
+		value: source
+		typ:   '__v3_formatter_raw'
+		pos:   token.new_span(p.cur_file_id, start, end)
+	})
+	p.a.formatter_sources[int(id)] = source
+	return id
 }
 
 fn resolve_comptime_define_literal(default &flat.Node, value string) !flat.Node {
@@ -10322,6 +10370,20 @@ fn (mut p Parser) index_range_expr(lhs flat.NodeId, range_id flat.NodeId, gated_
 }
 
 fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
+	if p.prefs.is_fmt {
+		node := p.a.node(id)
+		if node.pos.is_valid() && node.pos.end <= p.s.src.len {
+			source := p.s.src[node.pos.offset..node.pos.end].trim_space()
+			if source.len > 0 {
+				return p.add_node(flat.Node{
+					kind:  .ident
+					value: source
+					typ:   source
+					pos:   node.pos
+				})
+			}
+		}
+	}
 	name := p.type_expr_name(id)
 	resolved := p.resolve_local_type_name(name)
 	if name.len == 0 || resolved == name {

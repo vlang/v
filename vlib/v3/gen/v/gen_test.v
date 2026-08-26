@@ -159,6 +159,33 @@ fn test_formatter_preserves_fixed_array_literal_prefixes() {
 	assert out.contains('b := [..]f32[1, 2, 3, 4]\n'), out
 }
 
+fn test_formatter_preserves_capture_and_shared_parameter_qualifiers() {
+	out := vfmt('capture_and_shared_qualifiers',
+		'struct St {}\n\nfn (shared receiver St) use(shared value St) {}\n\nfn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut item, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n')
+	assert out.contains('fn (shared receiver St) use(shared value St)'), out
+	assert out.contains('atomic counter := 0'), out
+	assert out.contains('fn [mut item, atomic counter, shared state] ()'), out
+	assert out.contains('consume[[]int]([]int{})'), out
+	assert vfmt('capture_and_shared_qualifiers_twice', out) == out
+}
+
+fn test_formatter_preserves_comptime_match() {
+	source := "\$match @OS {\n\t'linux' {\n\t\tconst platform = 'linux'\n\t}\n\t\$else {\n\t\tconst platform = 'other'\n\t}\n}\n\nfn main() {\n\tvalue := \$match @OS {\n\t\t'linux' { 'linux' }\n\t\t\$else { 'other' }\n\t}\n\t_ = value\n}\n"
+	out := vfmt('comptime_match', source)
+	assert out.count('\$match @OS') == 2, out
+	assert out.contains("const platform = 'linux'"), out
+	assert out.contains("const platform = 'other'"), out
+	assert vfmt('comptime_match_twice', out) == out
+}
+
+fn test_formatter_ignores_vfmt_directives_inside_strings() {
+	out := vfmt('vfmt_directives_in_strings',
+		"fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n")
+	assert out.contains("off := '// vfmt off'"), out
+	assert out.contains("on := '// vfmt on'"), out
+	assert out.contains("fn format_me() {\n\tprintln('yes')\n}"), out
+}
+
 fn test_formatter_preserves_sql_body() {
 	out := vfmt('sql_body',
 		'struct User {\n\tid int\n}\n\nfn f(db DB) {\n\t_ := sql db {\n\t\tselect from User where id == 1\n\t}\n}\n')
