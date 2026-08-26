@@ -7916,6 +7916,12 @@ pub fn run(args []string) {
 		if translated_mode || is_repl {
 			unsupported_modes << 'translated/REPL mode'
 		}
+		// Bundled TinyCC has no thread-local storage, so the prealloc arena
+		// pointer would become one shared global while FastC compiler
+		// generations spawn worker threads; concurrent bumps corrupt it.
+		if 'prealloc' in prefs.user_defines {
+			unsupported_modes << '`-prealloc` builds'
+		}
 		if unsupported_modes.len > 0 {
 			eprintln('fastc parser does not support ${unsupported_modes.join(', ')}')
 			exit(1)
