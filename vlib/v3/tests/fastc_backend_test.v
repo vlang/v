@@ -14,6 +14,30 @@ fn write_fastc_test_source(path string, source string) {
 	os.write_file(path, source) or { panic(err) }
 }
 
+fn test_v_self_accepts_fastc_backend() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_self_fastc_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	selfhost_binary := os.join_path(root, 'vfastc')
+	self_build := cmdexec.run(@VEXE, ['self', '-silent', '-b', 'fastc', '-o', selfhost_binary])
+	assert self_build.exit_code == 0, self_build.output
+	assert os.is_executable(selfhost_binary)
+	source := os.join_path(root, 'main.v')
+	write_fastc_test_source(source, 'module main\nfn main() { println(42) }\n')
+	program := os.join_path(root, 'program')
+	compile := cmdexec.run(selfhost_binary, ['-b', 'fastc', '-o', program, source])
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
+}
+
 fn test_fastc_backend_parses_directly_to_c_without_ast_fallback() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_backend_${os.getpid()}')
 	os.rmdir_all(root) or {}

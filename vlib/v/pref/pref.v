@@ -571,6 +571,9 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 				res.new_compiler = true
 				new_compiler_set_by_flag = true
 			}
+			'-selfhost' {
+				// Passed through to the embedded V3 driver for FastC compiler builds.
+			}
 			'-checker-fixture', '-macos-v3-compat-c99' {
 				// Passed through to the embedded V3 diagnostic fixture runner.
 			}

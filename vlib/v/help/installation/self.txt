@@ -6,3 +6,4 @@ Usage:
 Options:
   All other options are passed to the build command. (e.g. -prod)
   With -prod and clang/gcc, `v self` may use PGO automatically when tools are available.
+  On macOS and Linux, `-b fastc` builds the standalone experimental V3 FastC compiler.

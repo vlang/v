@@ -11,7 +11,8 @@ const is_debug = args_.contains('-debug')
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
 
 const vroot = os.dir(vexe)
-const vself_flags_with_values = ['-o', '-os', '-cc', '-gc', '-cf', '-cflags', '-d', '-define']
+const vself_flags_with_values = ['-o', '-os', '-cc', '-gc', '-cf', '-cflags', '-d', '-define',
+	'-b', '-backend']
 
 fn main() {
 	// make testing `v up` easier, by providing a way to force `v self` to fail,
@@ -28,7 +29,9 @@ fn main() {
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
 	repeat_count, mut args := extract_repeat_count(args_[1..].filter(it != 'self'))
-	if args.len == 0 || ('-cc' !in args && '-prod' !in args && '-parallel-cc' !in args) {
+	fastc_self_build := uses_fastc_backend(args)
+	if !fastc_self_build
+		&& (args.len == 0 || ('-cc' !in args && '-prod' !in args && '-parallel-cc' !in args)) {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()
 		uname := os.uname()
@@ -51,11 +54,13 @@ fn main() {
 	sargs := if obinary != '' { jargs } else { '${jargs} -o v2' }
 	options := if args.len > 0 { '(${sargs})' } else { '' }
 	final_binary := if obinary != '' { obinary } else { 'v2' }
-	pgo_cc_kind := pgo_compiler_kind(args)
+	pgo_cc_kind := if fastc_self_build { '' } else { pgo_compiler_kind(args) }
+	compilation_source := if fastc_self_build { 'vlib/v3/v3.v' } else { 'cmd/v' }
+	compile_args := if fastc_self_build { '${sargs} -selfhost' } else { sargs }
 	for run_idx in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
 		println('V self compiling${run_label} ${options}...')
-		cmd := '${os.quoted_path(vexe)} ${sargs} ${os.quoted_path('cmd/v')}'
+		cmd := '${os.quoted_path(vexe)} ${compile_args} ${os.quoted_path(compilation_source)}'
 		mut used_pgo := false
 		if pgo_cc_kind != '' {
 			used_pgo = compile_with_pgo(vroot, vexe, args, final_binary, pgo_cc_kind)
@@ -63,7 +68,12 @@ fn main() {
 				eprintln('PGO self-build failed; falling back to a regular self-build.')
 			}
 		}
-		if !used_pgo {
+		if fastc_self_build {
+			run_cmd(cmd) or {
+				eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
+				exit(1)
+			}
+		} else if !used_pgo {
 			if !try_compile(cmd) {
 				bootstrap_self_build(vroot, clone_args(args), final_binary) or {
 					eprintln('cannot compile to `${vroot}`: \n${err.msg()}')
@@ -79,6 +89,20 @@ fn main() {
 		return
 	}
 	println('V built successfully as executable "${vexe_name}".')
+}
+
+fn uses_fastc_backend(args []string) bool {
+	mut backend := ''
+	mut i := 0
+	for i < args.len {
+		if args[i] in ['-b', '-backend'] && i + 1 < args.len {
+			backend = args[i + 1]
+			i += 2
+			continue
+		}
+		i++
+	}
+	return backend == 'fastc'
 }
 
 fn repeat_count_arg(arg string) int {

@@ -62,7 +62,7 @@ V supports the following commands:
 * Installation Management Utilities:
   symlink                      Create a symbolic link for V.
   up                           Run the V self-updater.
-  self [-prod]                 Run the V self-compiler, use -prod to optimize
+  self [-prod] [-b backend]    Run the V self-compiler, use -prod to optimize
                                compilation.
   version                      Print the version text and exits.
 

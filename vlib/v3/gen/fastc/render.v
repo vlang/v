@@ -567,8 +567,9 @@ fn (g &Parser) render_empty_struct_initializer(c_type string) string {
 		}
 		return '(${c_type}){0}'
 	}
-	return g.render_struct_literal_with_defaults(c_type, layout_type, []string{}, rendered_fields,
-		rendered_fields_by_name).source
+	empty_initializers := []string{}
+	return g.render_struct_literal_with_defaults(c_type, layout_type, empty_initializers,
+		rendered_fields, rendered_fields_by_name).source
 }
 
 fn (g &Parser) render_named_struct_initializer(c_type string, fields [][]FastcExpressionToken) ?string {
