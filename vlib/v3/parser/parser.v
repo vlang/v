@@ -7785,6 +7785,13 @@ fn (mut p Parser) assert_stmt() flat.NodeId {
 	if p.tok == .comma {
 		p.next()
 		ids << p.expr(.lowest)
+	} else if p.tok !in [.semicolon, .rcbr, .eof, .key_return, .key_break, .key_continue] {
+		literal := if p.tok == .string && p.lit.len >= 2 { p.lit[1..p.lit.len - 1] } else { p.lit }
+		got := if literal == '' { '`${p.tok.str()}`' } else { '${p.tok.str()} `${literal}`' }
+		p.record_diagnostic_span('unexpected ${got}, expecting `,`', p.tok_pos, p.tok_end)
+		for p.tok !in [.semicolon, .rcbr, .eof] {
+			p.next()
+		}
 	}
 	if p.tok == .semicolon {
 		p.next()

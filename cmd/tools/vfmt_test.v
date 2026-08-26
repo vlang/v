@@ -48,3 +48,14 @@ fn test_fmt_preferences_respect_vflags() {
 	assert res.output.contains("x := 'abc'.str"), res.output
 	assert !res.output.contains("x := c'abc'"), res.output
 }
+
+fn test_fmt_uses_v3_formatter() {
+	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter.v')
+	os.write_file(source_path, 'fn main(){println("v3")}\n')!
+
+	res := os.execute('${os.quoted_path(vexe)} fmt -verbose ${os.quoted_path(source_path)}')
+
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert res.output.contains("fn main() {\n\tprintln('v3')\n}"), res.output
+}

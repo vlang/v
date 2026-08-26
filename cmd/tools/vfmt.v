@@ -7,13 +7,14 @@ import os
 import os.cmdline
 import rand
 import term
-import v.ast
-import v.pref
-import v.fmt
 import v.util
 import v.util.diff
-import v.parser
 import v.help
+import v3.errors as v3errors
+import v3.flat
+import v3.gen.v as v3fmt
+import v3.parser as v3parser
+import v3.pref as v3pref
 
 struct FormatOptions {
 	is_l             bool
@@ -36,8 +37,6 @@ mut:
 const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 const vtmp_folder = os.vtmp_dir()
 const term_colors = term.can_show_color_on_stderr()
-const vfmt_only_flags = ['-backup', '-c', '-diff', '-inprocess', '-l', '-new_int',
-	'-no-migrate-json2', '-noerror', '-verbose', '--verbose', '-verify', '-w']
 
 fn main() {
 	// if os.getenv('VFMT_ENABLE') == '' {
@@ -109,14 +108,13 @@ fn main() {
 	}
 	mut errors := 0
 	mut has_internal_error := false
-	mut prefs := setup_preferences(args)
 	for file in files {
 		fpath := os.real_path(file)
 		if foptions.is_verify && foptions.in_process {
 			// For a small amount of files, it is faster to process
 			// everything directly in the same process, single threaded,
 			// when vfmt is compiled with `-gc none`:
-			if !foptions.verify_file(prefs, fpath) {
+			if !foptions.verify_file(fpath) {
 				println("${file} is not vfmt'ed")
 				errors++
 			}
@@ -172,37 +170,10 @@ fn main() {
 	exit(0)
 }
 
-fn (foptions &FormatOptions) verify_file(prefs &pref.Preferences, fpath string) bool {
-	fcontent := foptions.formated_content_from_file(prefs, fpath) or { return false }
+fn (foptions &FormatOptions) verify_file(fpath string) bool {
+	fcontent := foptions.formatted_content_from_file(fpath) or { return false }
 	content := os.read_file(fpath) or { return false }
 	return fcontent == content
-}
-
-fn setup_preferences(args []string) &pref.Preferences {
-	mut prefs, _ := pref.parse_args_and_show_errors(['fmt'], vfmt_args_for_preferences(args), false)
-	prefs.is_fmt = true
-	prefs.skip_warnings = true
-	return prefs
-}
-
-fn vfmt_args_for_preferences(args []string) []string {
-	mut res := []string{}
-	for i := 1; i < args.len; i++ {
-		arg := args[i]
-		if arg == '-worker' {
-			i++
-			continue
-		}
-		if arg in vfmt_only_flags {
-			continue
-		}
-		res << arg
-	}
-	return res
-}
-
-fn setup_preferences_and_table(args []string) (&pref.Preferences, &ast.Table) {
-	return setup_preferences(args), ast.new_table()
 }
 
 fn (foptions &FormatOptions) vlog(msg string) {
@@ -211,28 +182,31 @@ fn (foptions &FormatOptions) vlog(msg string) {
 	}
 }
 
-// should_migrate_json2 reports whether the deprecated `json`->`json2` migration should run
-// for `file`. It is on by default, but skipped for tests (`_test.v`) and vfmt fixtures
-// (`.vv`) — which legitimately exercise the legacy module — and when `-no-migrate-json2` is
-// passed.
-fn (foptions &FormatOptions) should_migrate_json2(file string) bool {
-	if foptions.no_migrate_json2 {
-		return false
-	}
-	return !file.ends_with('_test.v') && !file.ends_with('.vv')
-}
-
-fn (foptions &FormatOptions) formated_content_from_file(prefs &pref.Preferences, file string) !string {
-	mut table := ast.new_table()
-	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
-	if file_ast.errors.len > 0 {
+fn (foptions &FormatOptions) formatted_content_from_file(file string) !string {
+	prefs := v3pref.new_preferences()
+	mut p := v3parser.Parser.new(prefs)
+	a := p.parse_file(file)
+	if report_v3_parser_diagnostics(p.diagnostics, a) {
 		return error('the file contains parser errors')
 	}
-	table.new_int = foptions.is_new_int
-	formated_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
-		migrate_json2: foptions.should_migrate_json2(file)
-	)
-	return formated_content
+	return v3fmt.format(a)
+}
+
+fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatAst) bool {
+	mut has_errors := false
+	for diagnostic in diagnostics {
+		severity := if diagnostic.severity == '' { 'error:' } else { diagnostic.severity }
+		if severity == 'error:' {
+			has_errors = true
+		}
+		if diagnostic.pos.is_valid() && diagnostic.pos.id in a.source_files {
+			eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
+				diagnostic.pos))
+		} else {
+			eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: ${severity} ${diagnostic.message}')
+		}
+	}
+	return has_errors
 }
 
 fn (foptions &FormatOptions) format_file(file string) {
@@ -245,41 +219,28 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('${formatted_file_token}${vfmt_output_path}')
 		return
 	}
-	foptions.vlog('vfmt2 running fmt.fmt over file: ${file}')
-	args := util.join_env_vflags_and_os_args()
-	prefs, mut table := setup_preferences_and_table(args)
-	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
-	if file_ast.errors.len > 0 {
-		exit(2)
-	}
-	// checker.new_checker(table, prefs).check(file_ast)
-	table.new_int = foptions.is_new_int
-	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
-		migrate_json2: foptions.should_migrate_json2(file)
-	)
+	foptions.vlog('vfmt running v3.gen.v over file: ${file}')
+	formatted_content := foptions.formatted_content_from_file(file) or { exit(2) }
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
-	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
+	foptions.vlog('v3.gen.v wrote ${formatted_content.len} bytes to ${vfmt_output_path}.')
 	eprintln('${formatted_file_token}${vfmt_output_path}')
 }
 
 fn (foptions &FormatOptions) format_pipe() {
-	foptions.vlog('vfmt2 running fmt.fmt over stdin')
-	args := util.join_env_vflags_and_os_args()
-	prefs, mut table := setup_preferences_and_table(args)
+	foptions.vlog('vfmt running v3.gen.v over stdin')
 	input_text := os.get_raw_lines_joined()
-	file_ast := parser.parse_text(input_text, '', mut table, .parse_comments, prefs)
-	if file_ast.errors.len > 0 {
+	stdin_path := os.join_path(vtmp_folder, 'vfmt_stdin_${rand.ulid()}.v')
+	os.write_file(stdin_path, input_text) or {
+		eprintln('vfmt could not stage stdin: ${err}')
 		exit(1)
 	}
-	// checker.new_checker(table, prefs).check(file_ast)
-	table.new_int = foptions.is_new_int
-	formatted_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
-		source_text:   input_text
-		migrate_json2: !foptions.no_migrate_json2
-	)
+	defer {
+		os.rm(stdin_path) or {}
+	}
+	formatted_content := foptions.formatted_content_from_file(stdin_path) or { exit(1) }
 	print(formatted_content)
 	flush_stdout()
-	foptions.vlog('fmt.fmt worked and ${formatted_content.len} bytes were written to stdout.')
+	foptions.vlog('v3.gen.v wrote ${formatted_content.len} bytes to stdout.')
 }
 
 fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ! {
