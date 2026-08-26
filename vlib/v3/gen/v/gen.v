@@ -726,14 +726,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			}
 		}
 		.string_literal {
-			if n.typ.starts_with('raw:') {
-				quote := if n.typ.ends_with('"') { '"' } else { "'" }
-				g.write('r${quote}${n.value}${quote}')
-			} else if n.typ.starts_with('js:') {
-				g.write('js${quote_string(n.value)}')
-			} else {
-				g.write(quote_string(n.value))
-			}
+			g.write(g.string_literal_text(n))
 		}
 		.string_interp {
 			g.string_interp(id)
@@ -1454,14 +1447,7 @@ fn (g &Gen) map_key_width(id flat.NodeId) int {
 	n := g.a.node(id)
 	text := match n.kind {
 		.string_literal {
-			if n.typ.starts_with('raw:') {
-				quote := if n.typ.ends_with('"') { '"' } else { "'" }
-				'r${quote}${n.value}${quote}'
-			} else if n.typ.starts_with('js:') {
-				'js${quote_string(n.value)}'
-			} else {
-				quote_string(n.value)
-			}
+			g.string_literal_text(n)
 		}
 		.char_literal {
 			if n.value.starts_with('c:') { "c'${n.value[2..]}'" } else { g.rune_literal(n) }
@@ -2388,10 +2374,10 @@ fn (mut g Gen) struct_decl(id flat.NodeId) {
 	if impls.len > 0 {
 		g.write(' implements ${impls.replace('|', ', ')}')
 	}
-	g.struct_fields(g.a.children_of(n))
+	g.struct_fields(g.a.children_of(n), n.pos.end)
 }
 
-fn (mut g Gen) struct_fields(fields []flat.NodeId) {
+fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 	if fields.len > 0 {
 		g.writeln(' {')
 	} else {
@@ -2450,6 +2436,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId) {
 		}
 		g.source_end = int_max(g.source_end, f.pos.end)
 	}
+	g.emit_comments_before(end)
 	g.indent--
 	g.writeln('}')
 }
@@ -3088,6 +3075,23 @@ fn op_str(op flat.Op) string {
 		.power { '**' }
 		.power_assign { '**=' }
 	}
+}
+
+fn (g &Gen) string_literal_text(n &flat.Node) string {
+	if source := g.source_span(n.pos.offset, n.pos.end) {
+		// Physical newlines are part of a multiline literal's value and layout.
+		if source.contains('\n') || source.contains('\r') {
+			return source
+		}
+	}
+	if n.typ.starts_with('raw:') {
+		quote := if n.typ.ends_with('"') { '"' } else { "'" }
+		return 'r${quote}${n.value}${quote}'
+	}
+	if n.typ.starts_with('js:') {
+		return 'js${quote_string(n.value)}'
+	}
+	return quote_string(n.value)
 }
 
 // quote_string wraps a decoded string-literal value in quotes, preferring

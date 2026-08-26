@@ -1150,3 +1150,15 @@ fn test_fmt_suppresses_parser_warnings_with_v3() {
 	assert !res.output.contains('warning:'), res.output
 	assert formatted.contains('value := []int'), formatted
 }
+
+fn test_fmt_preserves_multiline_strings_and_trailing_struct_comments_with_v3() {
+	source := "const text = 'first\nsecond\nthird'\n\nstruct User {\n\tname string\n\t// trailing one\n\t// trailing two\n}\n"
+	res, formatted := run_vfmt_write('multiline_string_struct_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('multiline_string_struct_comments_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}

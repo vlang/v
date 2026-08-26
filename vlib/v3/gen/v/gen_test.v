@@ -99,6 +99,13 @@ fn test_formatter_keeps_trailing_interface_comments_inside_body() {
 	assert vfmt('interface_trailing_comment_twice', out) == out
 }
 
+fn test_formatter_preserves_multiline_strings_and_trailing_struct_comments() {
+	source := "const text = 'first\nsecond\nthird'\n\nstruct User {\n\tname string\n\t// trailing one\n\t// trailing two\n}\n"
+	out := vfmt('multiline_string_struct_comments', source)
+	assert out == source, out
+	assert vfmt('multiline_string_struct_comments_twice', out) == out
+}
+
 fn test_formatter_keeps_comments_inside_fn_literals() {
 	source := "fn main() {\n\tcomment_only := fn () {\n\t\t// only comment\n\t}\n\twith_statement := fn () {\n\t\tprintln('inside')\n\t\t// trailing comment\n\t}\n\t_ = comment_only\n\t_ = with_statement\n}\n"
 	out := vfmt('fn_literal_comments', source)
