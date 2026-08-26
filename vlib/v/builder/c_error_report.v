@@ -38,6 +38,9 @@ const v3_report_max_env_input_digests_bytes = 64 * 1024
 const v3_report_conservative_exec_bytes = 128 * 1024
 const v3_report_exec_reserve_bytes = 16 * 1024
 const v3_report_max_env_payload_bytes = 64 * 1024
+// `_wputenv` receives NAME=VALUE as one wide string. Keep each handoff value
+// below Win32's 32,767-character user-defined environment-variable limit.
+const v3_report_windows_max_env_value_bytes = 30 * 1024
 const v3_fallback_native_input_prefix = '@native-input:'
 const v3_fallback_native_manifest_key = '@native-input-manifest:v1'
 const v3_fallback_native_manifest_value = 'v3-native-input-manifest-v1'
@@ -349,6 +352,23 @@ fn v3_report_env_payload_bytes(payload map[string]string) int {
 	return total
 }
 
+fn v3_report_env_value_limit() int {
+	$if windows {
+		return v3_report_windows_max_env_value_bytes
+	} $else {
+		return v3_report_max_env_payload_bytes
+	}
+}
+
+fn v3_report_env_values_fit(payload map[string]string, max_value_bytes int) bool {
+	for _, value in payload {
+		if value.len > max_value_bytes {
+			return false
+		}
+	}
+	return true
+}
+
 fn v3_report_env_budget(environment map[string]string, args []string) int {
 	mut used := v3_report_exec_reserve_bytes
 	mut base_environment_entries := 0
@@ -427,7 +447,9 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 		'INPUT_DIGESTS_COMPLETE': if input_digests_complete { '1' } else { '0' }
 	}
 	budget := v3_report_env_budget(os.environ(), os.args)
-	if v3_report_env_payload_bytes(payload) > budget {
+	value_limit := v3_report_env_value_limit()
+	if v3_report_env_payload_bytes(payload) > budget
+		|| !v3_report_env_values_fit(payload, value_limit) {
 		// The exact-input manifest and metadata are indivisible. Preserve compatibility
 		// and the post-success notice, but omit the report rather than risk E2BIG.
 		payload = v3_transport_limited_notice_payload()
@@ -448,10 +470,14 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	if c_output_budget > c_error_bug_report_max_env_c_output_bytes {
 		c_output_budget = c_error_bug_report_max_env_c_output_bytes
 	}
+	if c_output_budget > value_limit {
+		c_output_budget = value_limit
+	}
 	payload['COUTPUT'] = truncated_report_text(report.c_output, c_output_budget)
 	content_budget = budget - v3_report_env_payload_bytes(payload)
-	payload['VSOURCE'] = if content_budget > 0 {
-		bounded_v_source(report.v_source, content_budget, 0)
+	v_source_budget := if content_budget < value_limit { content_budget } else { value_limit }
+	payload['VSOURCE'] = if v_source_budget > 0 {
+		bounded_v_source(report.v_source, v_source_budget, 0)
 	} else {
 		''
 	}

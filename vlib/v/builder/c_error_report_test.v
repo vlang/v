@@ -603,6 +603,21 @@ fn test_v3_report_env_budget_reserves_existing_argv_and_environment() {
 	}, ['v', 'main.v']) == 0
 }
 
+fn test_v3_report_env_value_limit_rejects_oversized_values() {
+	limit := 1024
+	assert v3_report_env_values_fit({
+		'VALUE': 'x'.repeat(limit)
+	}, limit)
+	assert !v3_report_env_values_fit({
+		'VALUE': 'x'.repeat(limit + 1)
+	}, limit)
+	$if windows {
+		assert v3_report_env_value_limit() == v3_report_windows_max_env_value_bytes
+	} $else {
+		assert v3_report_env_value_limit() == v3_report_max_env_payload_bytes
+	}
+}
+
 fn test_export_external_v3_report_uses_notice_only_when_metadata_cannot_fit() {
 	clear_v3_report_env()
 	export_external_v3_report_to_env(ExternalCErrorBugReport{
