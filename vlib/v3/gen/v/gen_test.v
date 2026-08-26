@@ -205,6 +205,21 @@ fn test_formatter_expands_grouped_consts_and_keeps_trailing_global_comments_insi
 	assert second == out, second
 }
 
+fn test_formatter_keeps_trailing_array_initializer_comments_inside() {
+	source := "fn f() {\n\ta := []int{len: 1\n\t\t/* trailing initializer */\n\t}\n\t_ = a\n}\n"
+	out := vfmt('trailing_array_initializer_comment', source)
+	assert out == source, out
+	assert vfmt('trailing_array_initializer_comment_twice', out) == out
+}
+
+fn test_formatter_keeps_singleton_grouped_const_comments_before_declaration() {
+	source := "const (\n\t// only docs\n\tonly = 1\n)\n"
+	expected := "// only docs\nconst only = 1\n"
+	out := vfmt('singleton_grouped_const_comment', source)
+	assert out == expected, out
+	assert vfmt('singleton_grouped_const_comment_twice', out) == out
+}
+
 fn test_formatter_preserves_declaration_attribute_groups() {
 	source := "@[deprecated: 'use bar() instead']\n@[foo: bar]\n@[if debug; inline]\nfn keep_attributes() {}\n\n@[deprecated(msg: 'use foo_v2() instead', after: '2026-06-01')]\n@[inline]\nfn call_syntax() {}\n\n@[inline]\n@[export: 'symbol']\n@[unsafe]\n@[tom: 'jerry']\nfn normalized() {}\n"
 	expected := "@[deprecated: 'use bar() instead']\n@[foo: bar]\n@[if debug; inline]\nfn keep_attributes() {}\n\n@[deprecated(msg: 'use foo_v2() instead', after: '2026-06-01')]\n@[inline]\nfn call_syntax() {}\n\n@[export: 'symbol']\n@[tom: 'jerry']\n@[inline; unsafe]\nfn normalized() {}\n"

@@ -905,6 +905,10 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			}
 			g.write('{')
 			g.init_fields(g.a.children_of(n))
+			g.indent++
+			g.advance_source_end_before_pending_comment(n.pos.end)
+			g.emit_comments_before(n.pos.end)
+			g.indent--
 			g.write('}')
 		}
 		.map_init {
@@ -3193,6 +3197,7 @@ fn (mut g Gen) const_decl(id flat.NodeId) {
 	fields := g.a.children_of(n)
 	if fields.len == 1 {
 		f := g.a.node(fields[0])
+		g.emit_comments_before(f.pos.offset)
 		g.write('${pub_prefix}const ${f.value}')
 		if f.children_count > 0 {
 			g.write(' = ')
@@ -3201,6 +3206,7 @@ fn (mut g Gen) const_decl(id flat.NodeId) {
 			g.write(' ${g.type_text(f.typ)}')
 		}
 		g.writeln('')
+		g.source_end = int_max(g.source_end, f.pos.end)
 		return
 	}
 	for fid in fields {
