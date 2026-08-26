@@ -919,7 +919,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	for source_file in sources {
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines(source_file.source)
+		file.index_lines_without_digest(source_file.source)
 		mut gen := Parser{
 			prefs:                   unsafe { prefs }
 			path:                    source_file.path
@@ -1275,10 +1275,20 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 	}
 	mut seen := map[string]bool{}
 	mut sources := []FastcSourceFile{}
+	// Modules are re-discovered once per importing file; canonicalization and
+	// directory enumeration are syscalls, so both are memoized for the walk.
+	mut real_path_cache := map[string]string{}
+	mut module_dir_files := map[string][]string{}
 	for queue.len > 0 {
 		queued := queue[0]
 		queue.delete(0)
-		path := os.real_path(queued.path)
+		mut path := ''
+		if cached := real_path_cache[queued.path] {
+			path = cached
+		} else {
+			path = os.real_path(queued.path)
+			real_path_cache[queued.path] = path
+		}
 		if seen[path] {
 			continue
 		}
@@ -1316,12 +1326,27 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 			if module_dir == '' {
 				return error('fastc cannot resolve imported module `${imported_module}` from `${path}`')
 			}
-			for module_file in pref.get_v_files_from_dir_for_target(module_dir, prefs.user_defines,
-				prefs.target) {
-				if !fastc_source_file_matches_backend(module_file) {
-					continue
+			mut module_files := []string{}
+			if cached := module_dir_files[module_dir] {
+				module_files = cached.clone()
+			} else {
+				for module_file in pref.get_v_files_from_dir_for_target(module_dir,
+					prefs.user_defines, prefs.target) {
+					if fastc_source_file_matches_backend(module_file) {
+						module_files << module_file
+					}
 				}
-				if !seen[os.real_path(module_file)] {
+				module_dir_files[module_dir] = module_files
+			}
+			for module_file in module_files {
+				mut module_file_real := ''
+				if cached := real_path_cache[module_file] {
+					module_file_real = cached
+				} else {
+					module_file_real = os.real_path(module_file)
+					real_path_cache[module_file] = module_file_real
+				}
+				if !seen[module_file_real] {
 					queue << FastcQueuedSource{
 						path:        module_file
 						module_name: imported_module
@@ -1455,7 +1480,7 @@ fn fastc_source_file_matches_backend(path string) bool {
 fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences) !FastcSourceHeader {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
-	file.index_lines(source)
+	file.index_lines_without_digest(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut module_name := ''
@@ -1669,7 +1694,7 @@ fn fastc_register_selective_imports(import_path string, selected_names []string,
 fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
-	file.index_lines(source)
+	file.index_lines_without_digest(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
@@ -1764,7 +1789,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, mut constants map[string]string, mut public_constants map[string]bool) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
-	file.index_lines(source)
+	file.index_lines_without_digest(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
@@ -1846,7 +1871,7 @@ fn fastc_register_constant(module_name string, name string, is_public bool, path
 fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
-	file.index_lines(source)
+	file.index_lines_without_digest(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut depth := 0
@@ -1926,7 +1951,7 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 		mut initializers := strings.new_builder(256)
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines(source_file.source)
+		file.index_lines_without_digest(source_file.source)
 		mut gen := Parser{
 			prefs:                  unsafe { prefs }
 			path:                   source_file.path
@@ -2105,7 +2130,7 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 			default_path := '${field.path}:${field.name}:default'
 			mut file_set := token.FileSet.new()
 			mut file := file_set.add_file(default_path, field.default_source.len)
-			file.index_lines(field.default_source)
+			file.index_lines_without_digest(field.default_source)
 			mut gen := Parser{
 				prefs:                  unsafe { prefs }
 				path:                   default_path
@@ -2161,7 +2186,7 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 	for source_file in ordered_sources {
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines(source_file.source)
+		file.index_lines_without_digest(source_file.source)
 		mut gen := Parser{
 			prefs:                  unsafe { prefs }
 			path:                   source_file.path
@@ -2582,7 +2607,7 @@ fn fastc_c_composite_definition_end(source string, start int) ?int {
 fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut alias_base_types map[string]string, mut enum_infos []FastcEnumInfo, mut out strings.Builder) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(source_file.path, source_file.source.len)
-	file.index_lines(source_file.source)
+	file.index_lines_without_digest(source_file.source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source_file.source)
 	mut depth := 0
@@ -3644,7 +3669,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 fn fastc_collect_selected_comptime_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
-	file.index_lines(source)
+	file.index_lines_without_digest(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
@@ -3678,7 +3703,7 @@ fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[st
 fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
-	file.index_lines(source)
+	file.index_lines_without_digest(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
@@ -3953,7 +3978,7 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	for source_file in sources {
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines(source_file.source)
+		file.index_lines_without_digest(source_file.source)
 		mut scan := scanner.new_scanner(prefs, .normal)
 		scan.init(file, source_file.source)
 		mut previous := token.Token.unknown
@@ -4110,7 +4135,7 @@ fn fastc_collect_type_default_references(mut scan scanner.Scanner, first token.T
 fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
-	file.index_lines(source)
+	file.index_lines_without_digest(source)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut tok := scan.scan()
@@ -13659,10 +13684,18 @@ fn fastc_boolean_operator_precedence(tok token.Token) int {
 	return -1
 }
 
-fn fastc_top_level_operator_index(tokens []FastcExpressionToken, start int, end int, precedence int) ?int {
+// fastc_lowest_precedence_operator_index returns the leftmost top-level
+// boolean operator of the lowest available precedence class (`||`, then `&&`,
+// then comparisons) in one pass. Equivalent to probing each class with a full
+// scan, which previously tripled the per-inference-step token traffic.
+@[direct_array_access]
+fn fastc_lowest_precedence_operator_index(tokens []FastcExpressionToken, start int, end int) ?int {
 	mut depth := 0
+	mut first_and := -1
+	mut first_comparison := -1
 	for i in start .. end {
-		match tokens[i].tok {
+		tok := tokens[i].tok
+		match tok {
 			.lpar, .lsbr, .lcbr {
 				depth++
 				continue
@@ -13673,10 +13706,29 @@ fn fastc_top_level_operator_index(tokens []FastcExpressionToken, start int, end 
 			}
 			else {}
 		}
-		if depth == 0 && fastc_boolean_operator_precedence(tokens[i].tok) == precedence && i > start
-			&& i + 1 < end {
+		if depth != 0 || i == start || i + 1 >= end {
+			continue
+		}
+		precedence := fastc_boolean_operator_precedence(tok)
+		if precedence == 0 {
+			// Nothing binds looser than the leftmost `||`.
 			return i
 		}
+		if precedence == 1 {
+			if first_and == -1 {
+				first_and = i
+			}
+		} else if precedence == 2 {
+			if first_comparison == -1 {
+				first_comparison = i
+			}
+		}
+	}
+	if first_and != -1 {
+		return first_and
+	}
+	if first_comparison != -1 {
+		return first_comparison
 	}
 	return none
 }
@@ -13782,13 +13834,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 		_ = g.infer_expression_type(tokens[start + 1..end])!
 		return 'bool'
 	}
-	if operator_index := fastc_top_level_operator_index(tokens, start, end, 0) {
-		return g.infer_boolean_binary_expression_type(tokens, start, end, operator_index)!
-	}
-	if operator_index := fastc_top_level_operator_index(tokens, start, end, 1) {
-		return g.infer_boolean_binary_expression_type(tokens, start, end, operator_index)!
-	}
-	if operator_index := fastc_top_level_operator_index(tokens, start, end, 2) {
+	if operator_index := fastc_lowest_precedence_operator_index(tokens, start, end) {
 		return g.infer_boolean_binary_expression_type(tokens, start, end, operator_index)!
 	}
 	if end - start == 1 {
