@@ -6,7 +6,8 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
+      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # Linux, including this riscv64 runner.
       - '**.md'
       - '**.yml'
       - '!**/riscv64_linux_ci.yml'
@@ -31,6 +32,7 @@ on:
       - 'vlib/strings/**'
       - 'vlib/sync/**'
       - 'vlib/v/**'
+      - 'vlib/v3/**'
       - 'thirdparty/**'
       - 'vc/**'
       - 'v.mod'
