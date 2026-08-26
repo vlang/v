@@ -1530,6 +1530,11 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 	if n.typ.len > 0 && n.typ != 'void' {
 		g.write(' ${g.type_text(n.typ)}')
 	}
+	if body.len == 0 && g.empty_braced_body_is_compact(n, n.pos.end)
+		&& !g.has_comment_between(n.pos.offset, n.pos.end) {
+		g.write(' {}')
+		return
+	}
 	g.writeln(' {')
 	g.stmt_list_ids(body)
 	g.indent++
@@ -2510,7 +2515,7 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		return
 	}
 	formatter_end := g.a.formatter_node_ends[int(id)] or { n.pos.end }
-	if body.len == 0 && g.empty_fn_body_is_compact(n, formatter_end)
+	if body.len == 0 && g.empty_braced_body_is_compact(n, formatter_end)
 		&& !g.has_comment_between(n.pos.offset, formatter_end) {
 		g.writeln(' {}')
 		return
@@ -2523,7 +2528,7 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	g.writeln('}')
 }
 
-fn (g &Gen) empty_fn_body_is_compact(n &flat.Node, end int) bool {
+fn (g &Gen) empty_braced_body_is_compact(n &flat.Node, end int) bool {
 	if source := g.source_span(n.pos.offset, end) {
 		close_pos := source.last_index_u8(`}`)
 		if close_pos < 0 {
@@ -2701,9 +2706,15 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 	if gp.len > 0 && gp[0].len > 0 {
 		g.write(' as ${gp[0]}')
 	}
+	end := g.a.formatter_node_ends[int(id)] or { n.pos.end }
+	fields := g.a.children_of(n)
+	if fields.len == 0 && g.empty_braced_body_is_compact(n, end)
+		&& !g.has_comment_between(n.pos.offset, end) {
+		g.writeln(' {}')
+		return
+	}
 	g.writeln(' {')
 	g.indent++
-	fields := g.a.children_of(n)
 	mut value_width := 0
 	for fid in fields {
 		f := g.a.node(fid)
@@ -2731,7 +2742,7 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		}
 		g.source_end = int_max(g.source_end, f.pos.end)
 	}
-	g.emit_comments_before(g.a.formatter_node_ends[int(id)] or { n.pos.end })
+	g.emit_comments_before(end)
 	g.indent--
 	g.writeln('}')
 }
@@ -2840,9 +2851,14 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 	if gp.len > 0 {
 		g.write('[${gp.join(', ')}]')
 	}
+	fields := g.a.children_of(n)
+	if fields.len == 0 && g.empty_braced_body_is_compact(n, n.pos.end)
+		&& !g.has_comment_between(n.pos.offset, n.pos.end) {
+		g.writeln(' {}')
+		return
+	}
 	g.writeln(' {')
 	g.indent++
-	fields := g.a.children_of(n)
 	alignments := g.aggregate_field_alignments(fields, true)
 	mut cur_mut := false
 	for fid in fields {

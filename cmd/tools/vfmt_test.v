@@ -190,6 +190,18 @@ fn test_fmt_preserves_unsafe_and_defer_source_layout_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_compact_empty_literals_and_declarations_with_v3() {
+	source := "interface Compact {}\n\nstruct Between {}\n\ninterface Expanded {\n}\n\nenum CompactEnum {}\n\nstruct Between2 {}\n\nenum ExpandedEnum {\n}\n\nfn literal_layouts() {\n\tcompact := fn (_s string) {}\n\texpanded := fn (_s string) {\n\t}\n\t_ = compact\n\t_ = expanded\n}\n"
+	res, formatted := run_vfmt_write('compact_empty_literals_declarations', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('compact_empty_literals_declarations_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
 	source := 'struct Config {
 	one int

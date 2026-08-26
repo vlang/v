@@ -115,6 +115,13 @@ fn test_formatter_preserves_unsafe_and_defer_source_layout() {
 	assert vfmt('unsafe_defer_layout_twice', out) == out
 }
 
+fn test_formatter_preserves_compact_empty_literals_and_declarations() {
+	source := "interface Compact {}\n\nstruct Between {}\n\ninterface Expanded {\n}\n\nenum CompactEnum {}\n\nstruct Between2 {}\n\nenum ExpandedEnum {\n}\n\nfn literal_layouts() {\n\tcompact := fn (_s string) {}\n\texpanded := fn (_s string) {\n\t}\n\t_ = compact\n\t_ = expanded\n}\n"
+	out := vfmt('compact_empty_literals_declarations', source)
+	assert out == source, out
+	assert vfmt('compact_empty_literals_declarations_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_interface_comments_inside_body() {
 	source := 'interface Speaker {
 	// first
