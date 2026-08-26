@@ -787,6 +787,9 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		.select_stmt {
 			g.select_stmt(id)
 		}
+		.comptime_if {
+			g.comptime_if_expr(id)
+		}
 		.struct_init {
 			g.struct_init(id)
 		}
@@ -2045,6 +2048,39 @@ fn (mut g Gen) comptime_if(id flat.NodeId) {
 			g.write('}')
 		}
 	}
+}
+
+fn (mut g Gen) comptime_if_expr(id flat.NodeId) {
+	n := g.a.node(id)
+	children := g.a.children_of(n)
+	g.write('\$if ${n.value.trim_space()} ')
+	if children.len == 0 {
+		g.write('{}')
+		return
+	}
+	g.comptime_if_expr_branch(children[0])
+	if children.len > 1 {
+		el := g.a.node(children[1])
+		g.write(' \$else ')
+		if el.kind == .comptime_if {
+			g.comptime_if_expr(children[1])
+		} else {
+			g.comptime_if_expr_branch(children[1])
+		}
+	}
+}
+
+fn (mut g Gen) comptime_if_expr_branch(id flat.NodeId) {
+	n := g.a.node(id)
+	if n.kind == .block {
+		g.writeln('{')
+		g.stmt_list_ids(g.a.children_of(n))
+		g.write('}')
+		return
+	}
+	g.write('{ ')
+	g.expr(id)
+	g.write(' }')
 }
 
 fn (mut g Gen) comptime_for(id flat.NodeId) {

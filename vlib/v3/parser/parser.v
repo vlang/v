@@ -5552,7 +5552,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		return p.parse_formatter_comptime_call(dollar_pos)
 	}
 	if p.tok == .key_if || (p.tok == .name && p.lit == 'if') {
-		return p.parse_comptime_if_expr_after_if()
+		return p.parse_comptime_if_expr_after_if(dollar_pos)
 	}
 	if p.tok == .key_match || (p.tok == .name && p.lit == 'match') {
 		if p.prefs.is_fmt {
@@ -6063,20 +6063,21 @@ fn (p &Parser) embed_file_abs_path(path string) string {
 }
 
 fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {
+	dollar_start := p.span_start()
 	p.next() // skip $
 	if p.tok != .key_if && !(p.tok == .name && p.lit == 'if') {
 		return flat.empty_node
 	}
-	return p.parse_comptime_if_expr_after_if()
+	return p.parse_comptime_if_expr_after_if(dollar_start)
 }
 
-fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
+fn (mut p Parser) parse_comptime_if_expr_after_if(dollar_start int) flat.NodeId {
 	p.next() // skip if
 	mut cond := p.parse_comptime_cond()
 	if p.prefs.preserve_comptime_conditionals {
 		then_expr := p.parse_comptime_expr_block()
 		else_expr := p.parse_comptime_else_expr()
-		return p.comptime_if_node(cond, then_expr, else_expr)
+		return p.comptime_if_node_at(cond, then_expr, else_expr, dollar_start)
 	}
 	cond = p.resolve_comptime_const_values(p.resolve_comptime_at_values(cond))
 	// Whether `threads` is enabled depends on spawn expressions in the completed AST,
@@ -6088,7 +6089,7 @@ fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
 			|| comptime_cond_has_builtin_threads(cond) {
 			then_expr := p.parse_comptime_expr_block()
 			else_expr := p.parse_comptime_else_expr()
-			return p.comptime_if_node(cond, then_expr, else_expr)
+			return p.comptime_if_node_at(cond, then_expr, else_expr, dollar_start)
 		}
 	}
 	taken := p.eval_comptime_cond(cond)

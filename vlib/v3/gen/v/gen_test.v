@@ -996,6 +996,19 @@ fn test_formatter_keeps_trailing_select_comments_inside_body() {
 	assert vfmt('select_trailing_comment_twice', out) == out
 }
 
+fn test_formatter_renders_comptime_if_expressions() {
+	source := 'const enable_debug = \$if debug { true } \$else { false }
+
+fn enabled() bool {
+	return \$if prod { false } \$else \$if debug { true } \$else { false }
+}
+'
+	out := vfmt('comptime_if_expressions', source)
+	assert out == source, out
+	assert !out.contains('/* comptime_if */'), out
+	assert vfmt('comptime_if_expressions_twice', out) == out
+}
+
 fn test_generics_and_interface() {
 	out := vfmt('gen',
 		'pub struct Stack[T] {\nmut:\n\tdata []T\n}\n\ninterface Reader {\n\tread(mut buf []u8) !int\nmut:\n\tpos int\n}\n')

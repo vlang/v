@@ -1107,3 +1107,21 @@ fn test_fmt_keeps_trailing_select_comments_inside_body_with_v3() {
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
+
+fn test_fmt_renders_comptime_if_expressions_with_v3() {
+	source := 'const enable_debug = \$if debug { true } \$else { false }
+
+fn enabled() bool {
+	return \$if prod { false } \$else \$if debug { true } \$else { false }
+}
+'
+	res, formatted := run_vfmt_write('comptime_if_expressions', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	assert !formatted.contains('/* comptime_if */'), formatted
+	second_res, formatted_twice := run_vfmt_write('comptime_if_expressions_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
