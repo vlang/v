@@ -282,6 +282,20 @@ fn test_formatter_preserves_capture_and_shared_parameter_qualifiers() {
 	assert vfmt('capture_and_shared_qualifiers_twice', out) == out
 }
 
+fn test_formatter_preserves_atomic_parameter_qualifiers() {
+	source := 'fn update(atomic value u64) {\n\t_ = value\n}\n'
+	out := vfmt('atomic_parameter_qualifier', source)
+	assert out == source, out
+	assert vfmt('atomic_parameter_qualifier_twice', out) == out
+}
+
+fn test_formatter_preserves_comment_only_files() {
+	source := '/*\nmodule acommentedmodule\n*/\n'
+	out := vfmt_with_options('comment_only_file', source, FormatOptions{})
+	assert out == source, out
+	assert vfmt_with_options('comment_only_file_twice', out, FormatOptions{}) == out
+}
+
 fn test_formatter_preserves_comptime_match() {
 	source := "\$match @OS {\n\t'linux' {\n\t\tconst platform = 'linux'\n\t}\n\t\$else {\n\t\tconst platform = 'other'\n\t}\n}\n\nfn main() {\n\tvalue := \$match @OS {\n\t\t'linux' { 'linux' }\n\t\t\$else { 'other' }\n\t}\n\t_ = value\n}\n"
 	out := vfmt('comptime_match', source)

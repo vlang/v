@@ -102,6 +102,30 @@ fn test_fmt_keeps_regular_comments_attached_with_v3() {
 	assert formatted.contains('x := 1 // inline')
 }
 
+fn test_fmt_preserves_comment_only_files_with_v3() {
+	source := '/*\nmodule acommentedmodule\n*/\n'
+	res, formatted := run_vfmt_write('comment_only_file', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('comment_only_file_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_atomic_parameter_qualifiers_with_v3() {
+	source := 'fn update(atomic value u64) {\n\t_ = value\n}\n'
+	res, formatted := run_vfmt_write('atomic_parameter_qualifier', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('atomic_parameter_qualifier_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_comptime_if_with_v3() {
 	source := "fn main(){\n\t\$if windows {\n\t\tprintln('windows')\n\t} \$else {\n\t\tprintln('other')\n\t}\n}\n"
 	res, formatted := run_vfmt_write('comptime_if', source, '')

@@ -120,15 +120,25 @@ pub fn format_with_options(a &flat.FlatAst, options FormatOptions) string {
 	g.is_new_int = options.is_new_int
 	mut out := strings.new_builder(1000)
 	mut first := true
-	for id in a.file_node_ids {
-		n := a.node(flat.NodeId(id))
-		if n.kind == .file && n.children_count > 0 {
-			if !first {
-				out.writeln('')
-			}
-			out.write_string(g.gen_file(a, flat.NodeId(id)))
-			first = false
+	for i, id in a.file_node_ids {
+		// file_node_ids contains (marker, trailing) pairs. A trailing node can
+		// legitimately have no children when its file contains only comments.
+		if i % 2 == 0 {
+			continue
 		}
+		n := a.node(flat.NodeId(id))
+		if n.kind != .file {
+			continue
+		}
+		formatted := g.gen_file(a, flat.NodeId(id))
+		if formatted.len == 0 {
+			continue
+		}
+		if !first {
+			out.writeln('')
+		}
+		out.write_string(formatted)
+		first = false
 	}
 	return out.str()
 }
@@ -1845,6 +1855,10 @@ fn (mut g Gen) params(ids []flat.NodeId) {
 		}
 		if typ.starts_with('shared ') {
 			g.write('shared ')
+			typ = typ[7..]
+		}
+		if typ.starts_with('atomic ') {
+			g.write('atomic ')
 			typ = typ[7..]
 		}
 		if p.value.len > 0 {

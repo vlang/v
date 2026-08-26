@@ -1568,12 +1568,17 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	mut name_positions := []token.Pos{}
 	mut is_mut := false
 	mut is_shared := false
+	mut is_atomic := false
 	if p.tok == .key_mut {
 		is_mut = true
 		p.next()
 	}
 	if p.tok == .key_shared {
 		is_shared = true
+		p.next()
+	}
+	if p.tok == .key_atomic {
+		is_atomic = true
 		p.next()
 	}
 	// variadic ...Type (no param name)
@@ -1597,6 +1602,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 		if is_shared {
 			typ = 'shared ' + typ
+		}
+		if is_atomic {
+			typ = 'atomic ' + typ
 		}
 		ids << p.add_node(flat.Node{
 			kind:   .param
@@ -1628,6 +1636,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	}
 	if is_shared {
 		typ = 'shared ' + typ
+	}
+	if is_atomic {
+		typ = 'atomic ' + typ
 	}
 	for i, name in names {
 		ids << p.add_node(flat.Node{
