@@ -4,10 +4,13 @@ import os
 import v3.pref
 
 // fastc_parallel_jobs picks the worker count for a parallel phase; 1 selects
-// the serial path. VJOBS overrides the detected CPU count like runtime.nr_jobs,
-// and V3_FASTC_NO_PARALLEL forces serial for debugging and for byte-comparing
-// parallel output against a serial run.
-fn fastc_parallel_jobs(sources []FastcSourceFile) int {
+// the serial path. `-no-parallel` and VJOBS mirror the AST pipeline's
+// behavior, and V3_FASTC_NO_PARALLEL forces serial for debugging and for
+// byte-comparing parallel output against a serial run.
+fn fastc_parallel_jobs(sources []FastcSourceFile, prefs &pref.Preferences) int {
+	if prefs.no_parallel {
+		return 1
+	}
 	mut jobs := fastc_nr_cpus()
 	vjobs := os.getenv('VJOBS').int()
 	if vjobs > 0 {
@@ -67,7 +70,7 @@ fn fastc_generate_file_chunk(ctx &FastcFileGenContext, sources []FastcSourceFile
 // balanced by source size, and results are stitched back in file order, so
 // the emitted C is identical to a serial run.
 fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) []FastcFileGenOutput {
-	jobs := fastc_parallel_jobs(sources)
+	jobs := fastc_parallel_jobs(sources, ctx.prefs)
 	mut outputs := []FastcFileGenOutput{cap: sources.len}
 	if jobs <= 1 {
 		for source_file in sources {
@@ -117,7 +120,7 @@ fn fastc_collect_reference_chunk(sources []FastcSourceFile, prefs &pref.Preferen
 // size-balanced chunks and unions the partials in file order. Reference sets
 // union commutatively, so the merged result matches a serial scan exactly.
 fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]map[string]bool, mut top_level_references map[string]bool) {
-	jobs := fastc_parallel_jobs(sources)
+	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
 		for source_file in sources {
 			fastc_collect_file_references(source_file, prefs, available_names, mut references, mut

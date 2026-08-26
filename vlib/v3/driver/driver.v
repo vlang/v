@@ -7818,6 +7818,7 @@ pub fn run(args []string) {
 	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
 	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, explicit_tcc)
 	prefs.ccompiler = effective_c_compiler
+	prefs.no_parallel = current_no_parallel
 	prefs.c99 = c99
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.enable_globals = enable_globals_compat
