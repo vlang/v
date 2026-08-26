@@ -587,6 +587,25 @@ fn (g &Gen) source_has_blank_line_between(start int, end int) bool {
 	return false
 }
 
+fn (mut g Gen) emit_blank_line_between(previous flat.NodeId, current flat.NodeId) {
+	if int(previous) < 0 {
+		return
+	}
+	prev := g.a.node(previous)
+	cur := g.a.node(current)
+	if !prev.pos.is_valid() || !cur.pos.is_valid()
+		|| !g.source_has_blank_line_between(prev.pos.end, cur.pos.offset) {
+		return
+	}
+	if !g.on_newline {
+		g.writeln('')
+	}
+	if g.out.len < 2 || g.out.last_n(2) != '\n\n' {
+		g.out.writeln('')
+		g.on_newline = true
+	}
+}
+
 fn (g &Gen) source_has_line_break_between(start int, end int) bool {
 	if gap := g.source_span(start, end) {
 		return gap.contains('\n') || gap.contains('\r')
@@ -2344,6 +2363,10 @@ fn (mut g Gen) comptime_if(id flat.NodeId) {
 	if children.len > 0 {
 		then_blk := g.a.node(children[0])
 		g.stmt_list_ids(g.a.children_of(then_blk))
+		g.indent++
+		g.advance_source_end_before_pending_comment(then_blk.pos.end)
+		g.emit_comments_before(then_blk.pos.end)
+		g.indent--
 	}
 	g.write('}')
 	if children.len > 1 {
@@ -2354,6 +2377,10 @@ fn (mut g Gen) comptime_if(id flat.NodeId) {
 		} else {
 			g.writeln(' \$else {')
 			g.stmt_list_ids(g.a.children_of(el))
+			g.indent++
+			g.advance_source_end_before_pending_comment(el.pos.end)
+			g.emit_comments_before(el.pos.end)
+			g.indent--
 			g.write('}')
 		}
 	}
@@ -2384,6 +2411,10 @@ fn (mut g Gen) comptime_if_expr_branch(id flat.NodeId) {
 	if n.kind == .block {
 		g.writeln('{')
 		g.stmt_list_ids(g.a.children_of(n))
+		g.indent++
+		g.advance_source_end_before_pending_comment(n.pos.end)
+		g.emit_comments_before(n.pos.end)
+		g.indent--
 		g.write('}')
 		return
 	}
@@ -2529,6 +2560,8 @@ fn (mut g Gen) import_decl(id flat.NodeId) {
 				}
 				g.source_end = int_max(g.source_end, s.pos.end)
 			}
+			g.advance_source_end_before_pending_comment(n.pos.end)
+			g.emit_comments_before(n.pos.end)
 			g.indent--
 			g.write('}')
 		} else {
@@ -2734,13 +2767,16 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 	g.indent++
 	alignments := g.aggregate_field_alignments(fields, false)
 	mut cur_access := ''
+	mut previous := flat.empty_node
 	for fid in fields {
 		f := g.a.node(fid)
+		g.emit_blank_line_between(previous, fid)
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
 		if f.kind != .field_decl {
 			// e.g. a `$if` block inside the struct body
 			g.stmt(fid)
+			previous = fid
 			continue
 		}
 		gp := f.generic_params()
@@ -2783,6 +2819,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 			g.writeln('')
 		}
 		g.source_end = int_max(g.source_end, f.pos.end)
+		previous = fid
 	}
 	g.emit_comments_before(end)
 	g.indent--
@@ -2813,16 +2850,7 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 	mut previous := flat.empty_node
 	for fid in fields {
 		f := g.a.node(fid)
-		if int(previous) >= 0
-			&& g.source_has_blank_line_between(g.a.node(previous).pos.end, f.pos.offset) {
-			if !g.on_newline {
-				g.writeln('')
-			}
-			if g.out.len < 2 || g.out.last_n(2) != '\n\n' {
-				g.out.writeln('')
-				g.on_newline = true
-			}
-		}
+		g.emit_blank_line_between(previous, fid)
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
 		g.write(f.value)
@@ -2995,8 +3023,10 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 	g.indent++
 	alignments := g.aggregate_field_alignments(fields, true)
 	mut cur_mut := false
+	mut previous := flat.empty_node
 	for fid in fields {
 		f := g.a.node(fid)
+		g.emit_blank_line_between(previous, fid)
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
 		if f.is_mut != cur_mut {
@@ -3031,6 +3061,7 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 			g.writeln('')
 		}
 		g.source_end = int_max(g.source_end, f.pos.end)
+		previous = fid
 	}
 	g.emit_comments_before(n.pos.end)
 	g.indent--

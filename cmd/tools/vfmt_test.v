@@ -264,6 +264,30 @@ fn test_fmt_keeps_trailing_comptime_for_comments_inside_body_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_aggregate_member_blank_lines_with_v3() {
+	source := "struct Grouped {\n\ta int\n\n\tbb string\n\tcc bool\n}\n\ninterface Contract {\n\ta int\n\n\tbb string\n\n\tfirst()\n\tsecond()\n}\n"
+	res, formatted := run_vfmt_write('aggregate_member_blank_lines', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('aggregate_member_blank_lines_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_keeps_comptime_branch_and_selective_import_comments_inside_with_v3() {
+	source := "import sample {\n\tOne,\n\tTwo,\n\t// trailing import\n}\n\n\$if linux {\n\tprintln('first')\n\t// trailing first\n} \$else \$if windows {\n\t// comment-only second\n} \$else {\n\tprintln('last')\n\t// trailing last\n}\n"
+	res, formatted := run_vfmt_write('comptime_branch_selective_import_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('comptime_branch_selective_import_comments_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
 	source := 'struct Config {
 	one int
