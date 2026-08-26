@@ -80,6 +80,13 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_keeps_comments_inside_fn_literals() {
+	source := "fn main() {\n\tcomment_only := fn () {\n\t\t// only comment\n\t}\n\twith_statement := fn () {\n\t\tprintln('inside')\n\t\t// trailing comment\n\t}\n\t_ = comment_only\n\t_ = with_statement\n}\n"
+	out := vfmt('fn_literal_comments', source)
+	assert out == source, out
+	assert vfmt('fn_literal_comments_twice', out) == out
+}
+
 fn test_struct_access_sections() {
 	out := vfmt('struct', 'struct Point {\n\tid int\npub mut:\n\tx int\n\ty int = 3\n}\n')
 	assert out == 'struct Point {

@@ -1493,6 +1493,9 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 	}
 	g.writeln(' {')
 	g.stmt_list_ids(body)
+	g.indent++
+	g.emit_comments_before(n.pos.end)
+	g.indent--
 	g.write('}')
 }
 
