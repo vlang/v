@@ -43,6 +43,11 @@ fn (mut g Parser) read_spawn_expression() !string {
 	if !g.selfhost {
 		return g.unsupported('spawn expressions')
 	}
+	if g.declaration_initializer_mode {
+		// These parsers discard spawn helper registrations, so the emitted C
+		// would reference undefined creators and thread types.
+		return g.unsupported('spawn in constant, global, or field default initializers')
+	}
 	if g.prefs.normalized_target_os() == 'windows' {
 		return g.unsupported('spawn for windows targets')
 	}
@@ -128,9 +133,10 @@ fn (mut g Parser) read_spawn_expression() !string {
 	} else {
 		signature.return_type
 	}
-	thread_type := fastc_thread_type_name(value_type)
-	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types)
-	start_name := fastc_spawn_start_name(function_key)
+	thread_type := g.fastc_unclaimed_generated_name(fastc_thread_type_name(value_type))
+	start_name := g.fastc_unclaimed_generated_name(fastc_spawn_start_name(function_key))
+	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types,
+		start_name)
 	g.last_expression = []FastcExpressionToken{}
 	g.last_expression_type = thread_type
 	g.last_multi_return_types = []string{}
@@ -141,18 +147,44 @@ fn fastc_spawn_start_name(function_key string) string {
 	return '__v_fastc_spawn_start_${fastc_c_identifier(fastc_c_function_name_for_key(function_key))}'
 }
 
+// fastc_unclaimed_generated_name screens a deterministic generated name
+// against the program's collected `__v_fastc_`-prefixed function and global C
+// names and its declared type spellings, suffixing until free. Both inputs
+// are frozen program-wide, so every file resolves the same name.
+fn (g &Parser) fastc_unclaimed_generated_name(base string) string {
+	mut candidate := base
+	mut suffix := 0
+	for g.generated_name_is_claimed(candidate) {
+		suffix++
+		candidate = '${base}_c${suffix}'
+	}
+	return candidate
+}
+
+fn (g &Parser) generated_name_is_claimed(candidate string) bool {
+	if candidate in g.declared_type_c_names {
+		return true
+	}
+	for claimed in g.fastc_prefixed_c_names {
+		if claimed == candidate {
+			return true
+		}
+	}
+	return false
+}
+
 // register_spawn_helpers records the thread typedef, waiter, packed-argument
 // struct, run wrapper, and creator for one spawn target. The result is the
 // first packed field, so the per-type waiter reads it without knowing which
 // call site produced the thread.
-fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type string, parameter_types []string) {
+fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type string, parameter_types []string, start_name string) {
 	g.thread_value_types[thread_type] = value_type
 	if thread_type !in g.spawn_typedefs {
 		g.spawn_typedefs[thread_type] = 'typedef struct { pthread_t handle; void *packed; } ${thread_type};'
 		// Thread handles are routinely collected into arrays for joining.
 		g.composite_types['Array_${thread_type}'] = true
 	}
-	wait_name := fastc_thread_wait_name(thread_type)
+	wait_name := g.fastc_unclaimed_generated_name(fastc_thread_wait_name(thread_type))
 	if wait_name !in g.spawn_helpers {
 		mut waiter := ''
 		if value_type == '' {
@@ -178,13 +210,14 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 		}
 		g.spawn_helpers[wait_name] = waiter
 	}
-	start_name := fastc_spawn_start_name(function_key)
 	if start_name in g.spawn_helpers {
 		return
 	}
 	target := fastc_c_function_name_for_key(function_key)
-	args_struct := '__v_fastc_spawn_args_${fastc_c_identifier(target)}'
-	run_name := '__v_fastc_spawn_run_${fastc_c_identifier(target)}'
+	args_struct :=
+		g.fastc_unclaimed_generated_name('__v_fastc_spawn_args_${fastc_c_identifier(target)}')
+	run_name :=
+		g.fastc_unclaimed_generated_name('__v_fastc_spawn_run_${fastc_c_identifier(target)}')
 	mut fields := ''
 	if value_type != '' {
 		fields += '\t${value_type} result;\n'

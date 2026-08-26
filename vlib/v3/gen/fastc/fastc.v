@@ -793,6 +793,9 @@ mut:
 	spawn_typedefs     map[string]string
 	spawn_helpers      map[string]string
 	thread_value_types map[string]string
+	// Declaration-initializer parsers (constants, globals, struct field
+	// defaults) discard spawn registrations, so spawn is rejected there.
+	declaration_initializer_mode bool
 }
 
 // fastc_comparison_memo_key identifies a token subrange within the current

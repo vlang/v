@@ -2024,7 +2024,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
 			value_type := g.thread_value_types[receiver_type] or { '' }
-			wait_call := '${fastc_thread_wait_name(receiver_type)}(${receiver.source})'
+			wait_call := '${g.fastc_unclaimed_generated_name(fastc_thread_wait_name(receiver_type))}(${receiver.source})'
 			if receiver_start == 0 && wait_end == tokens.len - 1 {
 				return FastcRenderedExpression{
 					source: wait_call
