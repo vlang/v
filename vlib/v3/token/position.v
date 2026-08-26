@@ -159,8 +159,11 @@ pub fn (mut f File) index_lines(src string) {
 // index_lines_without_digest records line starts only. FastC builds a fresh
 // file index per source file for every collection and generation pass and
 // never consumes source digests; hashing every pass dominated its runtime.
+// Any previously stored digest described a different source than the new
+// line table, so integrity consumers must not see it as current.
 pub fn (mut f File) index_lines_without_digest(src string) {
 	f.line_offsets = [0]
+	f.has_source_digest = false
 	for i, ch in src {
 		if ch == `\n` {
 			f.line_offsets << i + 1
