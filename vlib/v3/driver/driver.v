@@ -2554,6 +2554,41 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 	return !has_untracked_c_include && can_scope_static_inputs && can_extract_native_types
 }
 
+// prepare_v3_checker_native_inputs resolves native `#include` source roots so
+// the checker can register their typedefs, skipping the cache-unit ownership
+// scan and native type-declaration extraction whose outputs only cache-enabled
+// builds consume (cache dependency manifests and per-unit C source rewriting).
+fn prepare_v3_checker_native_inputs(mut state V3ModuleCacheState, a &flat.FlatAst, prefs &pref.Preferences, user_files []string, user_c_flags []string) {
+	mut cache_input_modules := map[string]bool{}
+	for module_name in state.module_sources.keys() {
+		cache_input_modules[module_name] = true
+	}
+	cache_input_modules['main'] = true
+	native_inputs_language := cgen.cache_native_inputs_language(a, prefs.vroot, user_c_flags,
+		prefs.c99, prefs.target)
+	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags,
+		prefs.ccompiler, prefs.target, native_inputs_language)
+	external_inputs, native_source_roots, native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, external_input_digests, _ := cgen.cache_external_input_snapshot_with_resolved_flags(a,
+		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
+		module_cache_source_path_set(user_files), compiler_macros,
+		compiler_macro_environment_complete)
+	state.module_external_inputs = external_inputs.clone()
+	state.module_native_roots = native_source_roots.clone()
+	state.native_root_contexts = native_root_contexts.clone()
+	state.external_input_signatures = map[string]string{}
+	state.external_input_digests = external_input_digests.clone()
+	cache_dir := os.abs_path(state.manager.dir)
+	real_cache_dir := os.real_path(state.manager.dir)
+	state.external_resolution_dirs = resolution_dirs.filter(!v3_path_is_within(it, cache_dir)
+		&& !v3_path_is_within(it, real_cache_dir))
+	state.external_missing_paths = missing_resolution_paths.filter(
+		!v3_path_is_within(it, cache_dir) && !v3_path_is_within(it, real_cache_dir))
+	state.external_inputs_ready = true
+	// Ownership and digest completeness were not established; every consumer
+	// that needs them (fallback reports, cache manifests) checks this flag.
+	state.external_inputs_complete = false
+}
+
 fn ast_has_native_source_include(a &flat.FlatAst) bool {
 	for node in a.nodes {
 		if node.kind != .directive
@@ -8339,6 +8374,7 @@ pub fn run(args []string) {
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
+	mut ck_stage_sw := time.new_stopwatch()
 
 	mut crun_build_identity := ''
 	if is_direct_vsh && should_run && !explicit_output {
@@ -8591,7 +8627,15 @@ pub fn run(args []string) {
 	// literals before Cgen sees the included translation unit. Resolve those rare
 	// inputs before checking so the type is available to semantic lookup.
 	if !cache_state.external_inputs_ready && ast_has_native_source_include(a) {
-		_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files, cache_c_flags)
+		if cache_state.manager.enabled {
+			_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files,
+				cache_c_flags)
+		} else {
+			prepare_v3_checker_native_inputs(mut cache_state, a, prefs, user_files, cache_c_flags)
+		}
+	}
+	if verbose {
+		eprintln('  [ttime]   ck native inputs ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
 	if backend == 'c' && cache_state.external_inputs_ready {
 		fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources,
@@ -8699,10 +8743,18 @@ pub fn run(args []string) {
 		} else if incremental_cache_hit {
 			pre_tc.check_semantics_selected(incremental_changed_names)
 		} else {
+			ck_stage_sw.restart()
 			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel
 				&& a.missing_imports.len == 0)
+			if verbose {
+				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			}
 		}
+		ck_stage_sw.restart()
 		mut prepared_markused := prepared_markused_thread.wait()
+		if verbose {
+			eprintln('  [ttime]   ck mkused wait   ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		}
 		ckpre_sw.restart()
 		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
 			|| a.export_fn_names.len > 0)
