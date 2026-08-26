@@ -116,13 +116,12 @@ fn test_vschannel_pooled_transport_stable_address() {
 			if is_transport_timeout_error(err) {
 				continue
 			}
-			assert false, 'read: ${err}'
-			return
+			break
 		}
 		read_ok = true
 		break
 	}
-	assert read_ok, 'read timed out: ${last_read_error}'
+	assert read_ok, 'read: ${last_read_error}'
 	addr2 := voidptr(&t.ctx)
 	assert addr1 == addr2, 'the embedded TlsContext must not move across calls'
 	t.close()
