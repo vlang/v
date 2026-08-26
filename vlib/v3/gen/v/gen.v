@@ -430,7 +430,7 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 		}
 		if wrote_any {
 			if !injected_now && !(prev == .import_decl && kind == .import_decl) && !(prev == kind
-				&& kind in [.enum_decl, .expr_stmt, .global_decl]) {
+				&& kind in [.expr_stmt, .global_decl]) {
 				g.writeln('')
 			}
 		}

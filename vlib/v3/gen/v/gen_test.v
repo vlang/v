@@ -174,6 +174,13 @@ fn test_formatter_preserves_aggregate_member_blank_lines() {
 	assert vfmt('aggregate_member_blank_lines_twice', out) == out
 }
 
+fn test_formatter_keeps_blank_lines_between_consecutive_enums() {
+	source := "enum First {\n\tone\n}\n\nenum Second {\n\ttwo\n}\n"
+	out := vfmt('consecutive_enum_blank_lines', source)
+	assert out == source, out
+	assert vfmt('consecutive_enum_blank_lines_twice', out) == out
+}
+
 fn test_formatter_keeps_comptime_branch_and_selective_import_comments_inside() {
 	source := "import sample {\n\tOne,\n\tTwo,\n\t// trailing import\n}\n\n\$if linux {\n\tprintln('first')\n\t// trailing first\n} \$else \$if windows {\n\t// comment-only second\n} \$else {\n\tprintln('last')\n\t// trailing last\n}\n"
 	out := vfmt('comptime_branch_selective_import_comments', source)
