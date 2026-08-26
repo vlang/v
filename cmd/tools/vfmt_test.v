@@ -831,13 +831,18 @@ fn test_fmt_normalizes_legacy_const_decl_assign_with_v3() {
 fn test_fmt_honors_new_int_with_v3() {
 	c_source := 'module main
 
-fn C.abc(a int, b []int) int
+fn C.abc(a int, b []int, foreign C.int, foreign_values []C.int) int
+
+fn C.foreign(value C.int) C.int
 
 fn abc(a int) int
 '
 	c_res, c_formatted := run_vfmt_write('new_int_c_decl', c_source, '-new_int')
 	assert c_res.exit_code == 0, c_res.output
-	assert c_formatted.contains('fn C.abc(a i32, b []i32) i32'), c_formatted
+	assert c_formatted.contains('fn C.abc(a i32, b []i32, foreign C.int, foreign_values []C.int) i32'),
+		c_formatted
+	assert c_formatted.contains('fn C.foreign(value C.int) C.int'), c_formatted
+	assert !c_formatted.contains('C.i32'), c_formatted
 	assert c_formatted.contains('fn abc(a int) int'), c_formatted
 
 	translated_source := '@[translated]
@@ -1003,6 +1008,35 @@ fn test_fmt_preserves_for_in_binder_mutability_with_v3() {
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
 	second_res, formatted_twice := run_vfmt_write('for_in_binder_mutability_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_function_parameter_comments_with_v3() {
+	source := 'fn describe(
+	// documents a
+	a int // explains a
+	// documents b
+	b int // explains b
+	// closes parameter list
+) {
+}
+'
+	expected := 'fn describe(
+	// documents a
+	a int, // explains a
+	// documents b
+	b int // explains b
+	// closes parameter list
+) {
+}
+'
+	res, formatted := run_vfmt_write('function_parameter_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice := run_vfmt_write('function_parameter_comments_twice', formatted,
 		'')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted

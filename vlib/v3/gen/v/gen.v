@@ -1487,7 +1487,7 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 		g.write(']')
 	}
 	g.write(' ')
-	g.params(params)
+	g.params(id, params)
 	if n.typ.len > 0 && n.typ != 'void' {
 		g.write(' ${g.type_text(n.typ)}')
 	}
@@ -2202,7 +2202,7 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	if gp.len > 0 {
 		g.write('[${gp.join(', ')}]')
 	}
-	g.params(params)
+	g.params(id, params)
 	if n.typ.len > 0 && n.typ != 'void' {
 		g.write(' ${g.type_text(n.typ)}')
 	}
@@ -2218,10 +2218,15 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	g.writeln('}')
 }
 
-fn (mut g Gen) params(ids []flat.NodeId) {
+fn (mut g Gen) params(parent_id flat.NodeId, ids []flat.NodeId) {
 	g.write('(')
+	g.indent++
 	for i, pid in ids {
 		p := g.a.node(pid)
+		g.emit_comments_before(p.pos.offset)
+		if i > 0 && !g.on_newline {
+			g.write(' ')
+		}
 		mut typ := g.type_text(g.param_type(p))
 		if p.is_mut {
 			g.write('mut ')
@@ -2240,9 +2245,14 @@ fn (mut g Gen) params(ids []flat.NodeId) {
 		}
 		g.write(typ)
 		if i < ids.len - 1 {
-			g.write(', ')
+			g.write(',')
 		}
+		param_end := g.a.formatter_node_ends[int(pid)] or { p.pos.end }
+		g.source_end = int_max(g.source_end, param_end)
+		g.emit_trailing_comments(param_end)
 	}
+	g.emit_comments_before(g.a.formatter_param_list_end[int(parent_id)] or { 0 })
+	g.indent--
 	g.write(')')
 }
 
@@ -2439,7 +2449,7 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 			if mgp.len > 0 {
 				g.write('[${mgp.join(', ')}]')
 			}
-			g.params(g.a.children_of(f))
+			g.params(fid, g.a.children_of(f))
 			if f.typ.len > 0 {
 				g.write(' ${g.type_text(f.typ)}')
 			}
@@ -3009,7 +3019,8 @@ fn (mut g Gen) type_text(typ string) string {
 	for i < expanded.len {
 		if i + 3 <= expanded.len && expanded[i..i + 3] == 'int'
 			&& (i == 0 || !is_type_ident_char(expanded[i - 1]))
-			&& (i + 3 == expanded.len || !is_type_ident_char(expanded[i + 3])) {
+			&& (i + 3 == expanded.len || !is_type_ident_char(expanded[i + 3]))
+			&& !type_ident_is_qualified(expanded, i) {
 			out.write_string('i32')
 			i += 3
 			continue
@@ -3033,6 +3044,18 @@ fn (mut g Gen) skip_comments_in_source(start int, end int) {
 fn is_type_ident_char(c u8) bool {
 	return c == `_` || (c >= `0` && c <= `9`) || (c >= `A` && c <= `Z`)
 		|| (c >= `a` && c <= `z`)
+}
+
+fn type_ident_is_qualified(typ string, start int) bool {
+	mut i := start
+	for i > 0 {
+		i--
+		if typ[i] in [` `, `\t`, `\r`, `\n`] {
+			continue
+		}
+		return typ[i] == `.`
+	}
+	return false
 }
 
 // tag_has reports whether a comma-joined struct tag string contains `name`.

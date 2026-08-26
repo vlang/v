@@ -113,12 +113,16 @@ fn test_formatter_normalizes_legacy_const_decl_assign() {
 fn test_formatter_honors_new_int_option() {
 	c_source := 'module main
 
-fn C.abc(a int, b []int) int
+fn C.abc(a int, b []int, foreign C.int, foreign_values []C.int) int
+
+fn C.foreign(value C.int) C.int
 
 fn abc(a int) int
 '
 	c_out := vfmt_with_options('new_int_c_decl', c_source, is_new_int: true)
-	assert c_out.contains('fn C.abc(a i32, b []i32) i32'), c_out
+	assert c_out.contains('fn C.abc(a i32, b []i32, foreign C.int, foreign_values []C.int) i32'), c_out
+	assert c_out.contains('fn C.foreign(value C.int) C.int'), c_out
+	assert !c_out.contains('C.i32'), c_out
 	assert c_out.contains('fn abc(a int) int'), c_out
 
 	translated_source := '@[translated]
@@ -988,4 +992,28 @@ fn test_formatter_preserves_for_in_binder_mutability() {
 	out := vfmt('for_in_binder_mutability', source)
 	assert out == source, out
 	assert vfmt('for_in_binder_mutability_twice', out) == out
+}
+
+fn test_formatter_preserves_function_parameter_comments() {
+	source := 'fn describe(
+	// documents a
+	a int // explains a
+	// documents b
+	b int // explains b
+	// closes parameter list
+) {
+}
+'
+	expected := 'fn describe(
+	// documents a
+	a int, // explains a
+	// documents b
+	b int // explains b
+	// closes parameter list
+) {
+}
+'
+	out := vfmt('function_parameter_comments', source)
+	assert out == expected, out
+	assert vfmt('function_parameter_comments_twice', out) == out
 }

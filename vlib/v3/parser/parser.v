@@ -184,6 +184,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			formatter_node_ends:      map[int]int{}
 			formatter_expanded_calls: map[int]bool{}
 			formatter_assignment_ops: map[int]string{}
+			formatter_param_list_end: map[int]int{}
 			formatter_for_in_mut:     map[int]u8{}
 			formatter_local_sels:     map[int]bool{}
 			text_ids:               map[string]flat.TextId{}
@@ -1213,12 +1214,17 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	})
 	// operator param
 	for p.tok != .rpar && p.tok != .eof {
+		if p.prefs.is_fmt && p.tok == .semicolon {
+			p.next()
+			continue
+		}
 		start_offset := p.s.offset
 		param_ids << p.parse_param_group(false)
 		if p.s.offset == start_offset && p.tok != .rpar && p.tok != .eof {
 			p.next()
 		}
 	}
+	param_list_end := p.tok_pos
 	p.check(.rpar)
 
 	mut ret_type := 'void'
@@ -1316,6 +1322,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
+	p.record_formatter_param_list_end(id, param_list_end)
 	p.register_pending_export(name)
 	return id
 }
@@ -1347,12 +1354,17 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		})
 	}
 	for p.tok != .rpar && p.tok != .eof {
+		if p.prefs.is_fmt && p.tok == .semicolon {
+			p.next()
+			continue
+		}
 		start_offset := p.s.offset
 		param_ids << p.parse_param_group(is_c_decl)
 		if p.s.offset == start_offset && p.tok != .rpar && p.tok != .eof {
 			p.next()
 		}
 	}
+	param_list_end := p.tok_pos
 	p.check(.rpar)
 
 	// return type
@@ -1402,6 +1414,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			// on a C declaration it preserves the parser's implicit unsafe/trusted state.
 			is_mut: is_v_header_decl || is_trusted_c_decl
 		})
+		p.record_formatter_param_list_end(id, param_list_end)
 		p.pending_export = ''
 		p.register_pending_noreturn(name)
 		return id
@@ -1494,6 +1507,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	if p.prefs.is_fmt && formatter_end > 0 {
 		p.a.formatter_node_ends[int(id)] = formatter_end
 	}
+	p.record_formatter_param_list_end(id, param_list_end)
 	p.register_pending_export(name)
 	p.register_pending_noreturn(name)
 	return id
@@ -1593,6 +1607,7 @@ fn (mut p Parser) register_pending_export(name string) {
 }
 
 fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
+	param_start := p.current_pos()
 	mut ids := []flat.NodeId{}
 	mut names := []string{}
 	mut name_positions := []token.Pos{}
@@ -1614,12 +1629,15 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	// variadic ...Type (no param name)
 	if p.tok == .ellipsis {
 		typ := p.parse_type_name()
-		ids << p.add_node(flat.Node{
+		id := p.add_node(flat.Node{
 			kind:   .param
 			value:  ''
 			typ:    typ
 			is_mut: is_mut
+			pos:    if p.prefs.is_fmt { param_start } else { token.Pos{} }
 		})
+		ids << id
+		p.record_formatter_param_end(id, p.prev_tok_end)
 		if p.tok == .comma {
 			p.next()
 		}
@@ -1636,12 +1654,15 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		if is_atomic {
 			typ = 'atomic ' + typ
 		}
-		ids << p.add_node(flat.Node{
+		id := p.add_node(flat.Node{
 			kind:   .param
 			value:  ''
 			typ:    typ
 			is_mut: is_mut
+			pos:    if p.prefs.is_fmt { param_start } else { token.Pos{} }
 		})
+		ids << id
+		p.record_formatter_param_end(id, p.prev_tok_end)
 		if p.tok == .comma {
 			p.next()
 		}
@@ -1660,6 +1681,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 	}
 	mut typ := p.parse_type_name()
+	param_group_end := p.prev_tok_end
 	explicit_mut_ref := is_mut && typ.starts_with('&')
 	if is_mut && !typ.starts_with('&') {
 		typ = '&' + typ
@@ -1671,7 +1693,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		typ = 'atomic ' + typ
 	}
 	for i, name in names {
-		ids << p.add_node(flat.Node{
+		id := p.add_node(flat.Node{
 			kind:   .param
 			op:     if explicit_mut_ref { .amp } else { .none }
 			value:  name
@@ -1679,11 +1701,26 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 			is_mut: is_mut
 			pos:    name_positions[i]
 		})
+		ids << id
+		param_end := if i < names.len - 1 { name_positions[i].end } else { param_group_end }
+		p.record_formatter_param_end(id, param_end)
 	}
 	if p.tok == .comma {
 		p.next()
 	}
 	return ids
+}
+
+fn (mut p Parser) record_formatter_param_end(id flat.NodeId, end int) {
+	if p.prefs.is_fmt && end > 0 {
+		p.a.formatter_node_ends[int(id)] = end
+	}
+}
+
+fn (mut p Parser) record_formatter_param_list_end(id flat.NodeId, end int) {
+	if p.prefs.is_fmt && end > 0 {
+		p.a.formatter_param_list_end[int(id)] = end
+	}
 }
 
 fn (mut p Parser) c_anon_param_starts_type() bool {
@@ -2469,7 +2506,12 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 			p.next() // skip (
 			mut params := []flat.NodeId{}
 			for p.tok != .rpar && p.tok != .eof {
+				if p.prefs.is_fmt && p.tok == .semicolon {
+					p.next()
+					continue
+				}
 				param_start_offset := p.s.offset
+				param_start_pos := p.current_pos()
 				mut param_is_mut := false
 				mut param_name := ''
 				mut param_pos := token.Pos{}
@@ -2498,13 +2540,17 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					}
 				}
 				mut ptype := p.parse_type_name()
+				param_end := p.prev_tok_end
 				explicit_mut_ref := param_is_mut && ptype.starts_with('&')
 				// `mut` params are references, exactly like fn decls record them
 				// (parse_param_group), so implementation signatures compare equal.
 				if param_is_mut && !ptype.starts_with('&') {
 					ptype = '&' + ptype
 				}
-				params << p.add_node(flat.Node{
+				if p.prefs.is_fmt && !param_pos.is_valid() {
+					param_pos = param_start_pos
+				}
+				param_id := p.add_node(flat.Node{
 					kind:   .param
 					value:  param_name
 					typ:    ptype
@@ -2512,6 +2558,8 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					is_mut: param_is_mut
 					pos:    param_pos
 				})
+				params << param_id
+				p.record_formatter_param_end(param_id, param_end)
 				if p.tok == .comma {
 					p.next()
 				}
@@ -2519,13 +2567,14 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 					p.next()
 				}
 			}
+			param_list_end := p.tok_pos
 			p.check(.rpar) // skip )
 			mut ret_type := ''
 			if p.tok != .semicolon && p.tok != .rcbr && p.tok != .eof {
 				ret_type = p.parse_type_name()
 			}
 			start := p.add_children(params)
-			ids << p.add_node(flat.Node{
+			method_id := p.add_node(flat.Node{
 				kind:           .interface_field
 				op:             .dot
 				is_mut:         fields_are_mut
@@ -2536,6 +2585,8 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				children_count: flat.child_count(params.len)
 				pos:            p.span_to(method_start)
 			})
+			ids << method_id
+			p.record_formatter_param_list_end(method_id, param_list_end)
 		} else if p.tok == .semicolon || p.tok == .rcbr {
 			// embedded type or field without explicit type
 			ids << p.add_node(flat.Node{
@@ -11403,6 +11454,10 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	p.check(.lpar)
 	mut param_ids := []flat.NodeId{}
 	for p.tok != .rpar && p.tok != .eof {
+		if p.prefs.is_fmt && p.tok == .semicolon {
+			p.next()
+			continue
+		}
 		start_offset := p.s.offset
 		parsed_params := p.parse_param_group(false)
 		if parsed_params.len == 1 {
@@ -11418,6 +11473,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 			p.next()
 		}
 	}
+	param_list_end := p.tok_pos
 	p.check(.rpar)
 	// return type
 	mut ret_type := 'void'
@@ -11499,6 +11555,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		pos:            p.span_to(fn_start)
 	})
 	p.a.nodes[int(id)].set_generic_params(generic_params)
+	p.record_formatter_param_list_end(id, param_list_end)
 	return id
 }
 

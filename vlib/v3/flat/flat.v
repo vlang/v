@@ -251,6 +251,8 @@ pub mut:
 	formatter_expanded_calls map[int]bool
 	// formatter_assignment_ops retains compound operator spellings that share one flat op.
 	formatter_assignment_ops map[int]string
+	// formatter_param_list_end retains the closing-parenthesis offset for parameter lists.
+	formatter_param_list_end map[int]int
 	// formatter_for_in_mut retains which for-in binder carried `mut`:
 	// bit 0 is the first binder and bit 1 is the second binder.
 	formatter_for_in_mut map[int]u8
@@ -357,6 +359,7 @@ pub fn FlatAst.new() FlatAst {
 		formatter_node_ends:      map[int]int{}
 		formatter_expanded_calls: map[int]bool{}
 		formatter_assignment_ops: map[int]string{}
+		formatter_param_list_end: map[int]int{}
 		formatter_for_in_mut:     map[int]u8{}
 		formatter_local_sels:     map[int]bool{}
 		text_ids:               map[string]TextId{}
