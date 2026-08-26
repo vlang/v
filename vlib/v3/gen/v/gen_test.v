@@ -436,6 +436,30 @@ fn f() {
 	assert !fn_out.contains('import json2'), fn_out
 }
 
+fn test_json_migration_rejects_aliased_qualifier_local_collisions() {
+	source := 'import json
+import json2 as j2
+
+struct Foo {}
+
+fn already_new() {
+	println(j2.encode(1))
+}
+
+fn encode_legacy() string {
+	j2 := Foo{}
+	return json.encode(j2)
+}
+'
+	out := vfmt_with_json_migration('aliased_qualifier_local_collision', source)
+	assert out.contains('import json\n'), out
+	assert out.contains('import json2 as j2'), out
+	assert out.contains('j2 := Foo{}'), out
+	assert out.contains('return json.encode(j2)'), out
+	assert !out.contains('return j2.encode(j2'), out
+	assert vfmt_with_json_migration('aliased_qualifier_local_collision_twice', out) == out
+}
+
 fn test_json_migration_skips_vfmt_disabled_regions() {
 	source := 'import json
 
@@ -538,6 +562,20 @@ fn test_formatter_preserves_branch_prediction_builtins() {
 	assert out.contains('if _likely_(value > 0) {'), out
 	assert out.contains('return _unlikely_(value < 0)'), out
 	assert vfmt('branch_prediction_builtins_twice', out) == out
+}
+
+fn test_formatter_emits_mut_before_static_declarations() {
+	source := '@[unsafe]
+fn next() int {
+	mut static value := 1
+	value++
+	return value
+}
+'
+	out := vfmt('mutable_static_declaration', source)
+	assert out.contains('mut static value := 1'), out
+	assert !out.contains('static mut value'), out
+	assert vfmt('mutable_static_declaration_twice', out) == out
 }
 
 fn test_formatter_preserves_js_string_prefixes() {

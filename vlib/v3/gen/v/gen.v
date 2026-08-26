@@ -248,7 +248,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	mut legacy_imports := []flat.NodeId{}
 	mut json2_imports := []flat.NodeId{}
 	mut called := map[int]bool{}
-	mut module_receivers := map[int]bool{}
+	mut selector_receivers := map[int]bool{}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
@@ -258,8 +258,8 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		}
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child(n, 0)
-			if g.a.node(receiver).kind == .ident && g.a.node(receiver).value in ['json', 'json2'] {
-				module_receivers[int(receiver)] = true
+			if g.a.node(receiver).kind == .ident {
+				selector_receivers[int(receiver)] = true
 			}
 		}
 		if n.kind == .import_decl {
@@ -308,10 +308,15 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		if n.pos.id != g.file_id {
 			continue
 		}
-		if n.kind == .ident && n.value == 'json2' && !module_receivers[i] {
+		// Existing module selector receivers are safe; any other identifier with the
+		// qualifier can be a lexical collision, so keep the legacy import conservatively.
+		if n.kind == .ident && n.value == qualifier && !selector_receivers[i] {
 			return
 		}
 		if n.kind == .param && n.value == qualifier {
+			return
+		}
+		if n.kind == .comptime_for && n.value.all_before('|') == qualifier {
 			return
 		}
 		if n.kind == .fn_decl && n.value in ['encode', 'decode', 'encode_pretty']
@@ -1430,8 +1435,8 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 	modifier, count := parse_assign_meta(n.value)
 	if modifier == 'atomic' {
 		g.write('atomic ')
-	} else if n.is_mut && modifier == 'volatile' && !g.suppress_mut {
-		g.write('mut volatile ')
+	} else if n.is_mut && modifier in ['static', 'volatile'] && !g.suppress_mut {
+		g.write('mut ${modifier} ')
 	} else if modifier.len > 0 {
 		g.write('${modifier} ')
 		if n.is_mut && !g.suppress_mut {

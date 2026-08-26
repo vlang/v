@@ -476,6 +476,54 @@ fn test_fmt_preserves_branch_prediction_builtins_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_emits_mut_before_static_declarations_with_v3() {
+	source := '@[unsafe]
+fn next() int {
+	mut static value := 1
+	value++
+	return value
+}
+'
+	res, formatted := run_vfmt_write('mutable_static_declaration', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('mut static value := 1'), formatted
+	assert !formatted.contains('static mut value'), formatted
+	second_res, formatted_twice := run_vfmt_write('mutable_static_declaration_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_skips_json2_migration_for_aliased_qualifier_local_collisions_with_v3() {
+	source := 'import json
+import json2 as j2
+
+struct Foo {}
+
+fn already_new() {
+	println(j2.encode(1))
+}
+
+fn encode_legacy() string {
+	j2 := Foo{}
+	return json.encode(j2)
+}
+'
+	res, formatted := run_vfmt_write('aliased_json2_local_collision', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('import json\n'), formatted
+	assert formatted.contains('import json2 as j2'), formatted
+	assert formatted.contains('j2 := Foo{}'), formatted
+	assert formatted.contains('return json.encode(j2)'), formatted
+	assert !formatted.contains('return j2.encode(j2'), formatted
+	second_res, formatted_twice := run_vfmt_write('aliased_json2_local_collision_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_js_string_prefixes_with_v3() {
 	source_path := os.join_path(vfmt_test_tdir, 'js_string_prefixes.js.v')
 	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"
