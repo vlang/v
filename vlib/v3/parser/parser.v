@@ -2133,6 +2133,7 @@ fn (mut p Parser) global_decl() flat.NodeId {
 	start := p.add_children(ids)
 	return p.add_node(flat.Node{
 		kind:           .global_decl
+		value:          if p.prefs.is_fmt && !is_grouped { 'ungrouped' } else { '' }
 		op:             if is_pub { .arrow } else { .none }
 		children_start: start
 		children_count: flat.child_count(ids.len)

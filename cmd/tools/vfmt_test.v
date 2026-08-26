@@ -524,6 +524,34 @@ fn encode_legacy() string {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_global_grouping_and_field_comments_with_v3() {
+	source := '@[c_extern]
+__global errno C.int
+
+__global enabled = bool(true)
+
+__global (
+	// typed global docs
+	typed int
+	// initialized global docs
+	initialized = int(2)
+)
+'
+	res, formatted := run_vfmt_write('global_grouping_and_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('@[c_extern]\n__global errno C.int'), formatted
+	assert formatted.contains('__global enabled = bool(true)'), formatted
+	assert formatted.contains('__global (\n\t// typed global docs\n\ttyped       int'), formatted
+	assert formatted.contains('\t// initialized global docs\n\tinitialized = int(2)'), formatted
+	assert !formatted.contains('__global (\n\terrno C.int'), formatted
+	assert !formatted.contains('initialized =\n'), formatted
+	second_res, formatted_twice := run_vfmt_write('global_grouping_and_comments_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_js_string_prefixes_with_v3() {
 	source_path := os.join_path(vfmt_test_tdir, 'js_string_prefixes.js.v')
 	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"

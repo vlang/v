@@ -410,7 +410,7 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 		}
 		if wrote_any {
 			if !injected_now && !(prev == .import_decl && kind == .import_decl) && !(prev == kind
-				&& kind in [.enum_decl, .expr_stmt]) {
+				&& kind in [.enum_decl, .expr_stmt, .global_decl]) {
 				g.writeln('')
 			}
 		}
@@ -2172,30 +2172,66 @@ fn (mut g Gen) global_decl(id flat.NodeId) {
 	if group_pub {
 		g.write('pub ')
 	}
+	fields := g.a.children_of(n)
+	if n.value == 'ungrouped' {
+		g.write('__global ')
+		if fields.len > 0 {
+			g.global_field(fields[0], group_pub, 0)
+		} else {
+			g.writeln('')
+		}
+		return
+	}
 	g.writeln('__global (')
 	g.indent++
-	for fid in g.a.children_of(n) {
-		f := g.a.node(fid)
-		if f.op == .arrow && !group_pub {
-			g.write('pub ')
-		}
-		if 'const' in f.generic_params() {
-			g.write('const ')
-		}
-		g.write(f.value)
-		if f.children_count > 0 {
-			if f.typ.len > 0 {
-				g.write(' ${g.type_text(f.typ)}')
-			}
-			g.write(' = ')
-			g.expr(g.a.child(f, 0))
-		} else {
-			g.write(' ${g.type_text(f.typ)}')
-		}
-		g.writeln('')
+	mut field_width := 0
+	for fid in fields {
+		field_width = int_max(field_width, global_field_head(g.a.node(fid), group_pub).len)
+	}
+	for fid in fields {
+		g.global_field(fid, group_pub, field_width)
 	}
 	g.indent--
 	g.writeln(')')
+}
+
+fn global_field_head(f &flat.Node, group_pub bool) string {
+	mut head := ''
+	if f.op == .arrow && !group_pub {
+		head += 'pub '
+	}
+	if 'const' in f.generic_params() {
+		head += 'const '
+	}
+	return head + f.value
+}
+
+fn (mut g Gen) global_field(fid flat.NodeId, group_pub bool, align_width int) {
+	f := g.a.node(fid)
+	g.emit_comments_before(f.pos.offset)
+	g.source_end = int_max(g.source_end, f.pos.offset)
+	head := global_field_head(f, group_pub)
+	g.write(head)
+	padding := if align_width > 0 { align_width - head.len + 1 } else { 1 }
+	if f.children_count > 0 {
+		if f.typ.len > 0 {
+			g.write(' '.repeat(padding))
+			g.write(g.type_text(f.typ))
+			g.write(' = ')
+		} else {
+			g.write(' '.repeat(padding))
+			g.write('= ')
+		}
+		g.expr(g.a.child(f, 0))
+	} else {
+		g.write(' '.repeat(padding))
+		g.write(g.type_text(f.typ))
+	}
+	g.emit_trailing_comments(f.pos.end)
+	if !g.on_newline {
+		g.writeln('')
+	}
+	g.source_end = int_max(g.source_end, f.pos.end)
 }
 
 fn (mut g Gen) directive_stmt(id flat.NodeId) {

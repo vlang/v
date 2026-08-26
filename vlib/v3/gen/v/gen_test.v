@@ -578,6 +578,29 @@ fn next() int {
 	assert vfmt('mutable_static_declaration_twice', out) == out
 }
 
+fn test_formatter_preserves_global_grouping_and_field_comments() {
+	source := '@[c_extern]
+__global errno C.int
+
+__global enabled = bool(true)
+
+__global (
+	// typed global docs
+	typed int
+	// initialized global docs
+	initialized = int(2)
+)
+'
+	out := vfmt('global_grouping_and_comments', source)
+	assert out.contains('@[c_extern]\n__global errno C.int'), out
+	assert out.contains('__global enabled = bool(true)'), out
+	assert out.contains('__global (\n\t// typed global docs\n\ttyped       int'), out
+	assert out.contains('\t// initialized global docs\n\tinitialized = int(2)'), out
+	assert !out.contains('__global (\n\terrno C.int'), out
+	assert !out.contains('initialized =\n'), out
+	assert vfmt('global_grouping_and_comments_twice', out) == out
+}
+
 fn test_formatter_preserves_js_string_prefixes() {
 	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"
 	out := vfmt('js_string_prefixes', source)
@@ -640,7 +663,7 @@ fn test_source_preservation_matches_formatter_fixtures() {
 		actual := vfmt_file_with_json_migration(input)
 		assert actual == expected, name
 	}
-	for name in ['language_prefixes_keep.vv', 'string_raw_and_cstr_keep.vv'] {
+	for name in ['global_keep.vv', 'language_prefixes_keep.vv', 'string_raw_and_cstr_keep.vv'] {
 		path := os.join_path(fixture_dir, name)
 		expected := os.read_file(path) or { panic(err) }
 		actual := vfmt_file_with_json_migration(path)
