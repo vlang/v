@@ -183,6 +183,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			formatter_file_sources:   map[int]string{}
 			formatter_node_ends:      map[int]int{}
 			formatter_expanded_calls: map[int]bool{}
+			formatter_assignment_ops: map[int]string{}
 			formatter_local_sels:     map[int]bool{}
 			text_ids:               map[string]flat.TextId{}
 			specialized_fn_nodes:   map[int]bool{}
@@ -827,6 +828,25 @@ fn token_right_binding_power(tok token.Token) token.BindingPower {
 @[inline]
 fn token_id_to_op(tv int) flat.Op {
 	return token_to_op(unsafe { token.Token(tv) })
+}
+
+fn (p &Parser) formatter_assignment_op() string {
+	if !p.prefs.is_fmt || p.tok !in [.and_assign, .or_assign] || p.tok_pos < 0
+		|| p.tok_end > p.s.src.len {
+		return ''
+	}
+	spelling := p.s.src[p.tok_pos..p.tok_end]
+	if spelling in ['&&=', '||='] {
+		return spelling
+	}
+	return ''
+}
+
+fn (mut p Parser) record_formatter_assignment_op(id flat.NodeId, spelling string) flat.NodeId {
+	if spelling.len > 0 && int(id) >= 0 {
+		p.a.formatter_assignment_ops[int(id)] = spelling
+	}
+	return id
 }
 
 fn (p &Parser) tok_can_be_decl_name() bool {
@@ -6856,6 +6876,7 @@ fn (mut p Parser) invalid_for_in_header(for_id flat.NodeId) flat.NodeId {
 
 fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 	is_decl := p.tok == .decl_assign
+	formatter_op := p.formatter_assignment_op()
 	op_id := int(p.tok)
 	p.next()
 	mut rhs_ids := []flat.NodeId{}
@@ -6885,6 +6906,7 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 		children_start: init_start
 		children_count: flat.child_count(all_ids.len)
 	})
+	p.record_formatter_assignment_op(init_id, formatter_op)
 	// The `:=` init bindings (`for h, t := head, tail; …`) are in scope for the loop's
 	// condition, post clause and body; register them so a conditionally inlined template in
 	// the body captures a loop-local function value instead of treating it as a top helper.
@@ -6936,6 +6958,7 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 }
 
 fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
+	formatter_op := p.formatter_assignment_op()
 	op_id := int(p.tok)
 	p.next()
 	rhs := p.expr(.lowest)
@@ -6960,6 +6983,7 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 			children_count: 2
 		})
 	}
+	p.record_formatter_assignment_op(init_id, formatter_op)
 
 	// A `:=` init binding (`for render := get_render(); …`) is in scope for the loop's
 	// condition, post clause and body. Register it so a conditionally inlined template in
@@ -7413,6 +7437,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			lhs_ids << lhs_id
 		}
 		if p.tok == .decl_assign || token_is_assignment(p.tok) {
+			formatter_op := p.formatter_assignment_op()
 			op_id := int(p.tok)
 			p.next()
 			mut rhs_ids := []flat.NodeId{}
@@ -7451,6 +7476,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 				children_start: istart
 				children_count: flat.child_count(all_ids.len)
 			})
+			p.record_formatter_assignment_op(id, formatter_op)
 			return p.finish_assignment_stmt(id)
 		}
 		if p.tok == .semicolon {
@@ -7505,6 +7531,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 	}
 
 	if token_is_assignment(p.tok) {
+		formatter_op := p.formatter_assignment_op()
 		op_id := int(p.tok)
 		p.next()
 		rhs := p.expr(.lowest)
@@ -7524,6 +7551,7 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			children_start: istart
 			children_count: 2
 		})
+		p.record_formatter_assignment_op(id, formatter_op)
 		return p.finish_assignment_stmt(id)
 	}
 
@@ -7804,6 +7832,7 @@ fn (mut p Parser) assign_or_expr_inline() flat.NodeId {
 	lhs := p.expr(.lowest)
 
 	if token_is_assignment(p.tok) {
+		formatter_op := p.formatter_assignment_op()
 		op_id := int(p.tok)
 		p.next()
 		rhs := p.expr(.lowest)
@@ -7816,12 +7845,13 @@ fn (mut p Parser) assign_or_expr_inline() flat.NodeId {
 			flat.NodeKind.assign
 		}
 		istart := p.add_children2(lhs, rhs)
-		return p.add_node(flat.Node{
+		id := p.add_node(flat.Node{
 			kind:           kind
 			op:             token_id_to_op(op_id)
 			children_start: istart
 			children_count: 2
 		})
+		return p.record_formatter_assignment_op(id, formatter_op)
 	}
 
 	estart := p.add_child(lhs)
@@ -7865,6 +7895,7 @@ fn (mut p Parser) for_post_clause() flat.NodeId {
 }
 
 fn (mut p Parser) for_post_multi_assign(lhs_ids []flat.NodeId) flat.NodeId {
+	formatter_op := p.formatter_assignment_op()
 	op_id := int(p.tok)
 	p.next()
 	mut rhs_ids := []flat.NodeId{}
@@ -7887,16 +7918,18 @@ fn (mut p Parser) for_post_multi_assign(lhs_ids []flat.NodeId) flat.NodeId {
 	}
 	start := p.add_children(all_ids)
 	anchor := if all_ids.len > 0 { all_ids[0] } else { flat.empty_node }
-	return p.add_node_from(flat.Node{
+	id := p.add_node_from(flat.Node{
 		kind:           .assign
 		value:          if arity_msg.len > 0 { arity_msg } else { '${lhs_ids.len}' }
 		op:             token_id_to_op(op_id)
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	}, anchor)
+	return p.record_formatter_assignment_op(id, formatter_op)
 }
 
 fn (mut p Parser) for_post_assign(lhs flat.NodeId) flat.NodeId {
+	formatter_op := p.formatter_assignment_op()
 	op_id := int(p.tok)
 	p.next()
 	mut rhs_ids := []flat.NodeId{}
@@ -7914,7 +7947,7 @@ fn (mut p Parser) for_post_assign(lhs flat.NodeId) flat.NodeId {
 		flat.NodeKind.assign
 	}
 	start := p.add_children2(lhs, rhs_ids[0])
-	return p.add_node_from(flat.Node{
+	id := p.add_node_from(flat.Node{
 		kind:           kind
 		value:          if rhs_ids.len == 1 {
 			''
@@ -7925,6 +7958,7 @@ fn (mut p Parser) for_post_assign(lhs flat.NodeId) flat.NodeId {
 		children_start: start
 		children_count: 2
 	}, lhs)
+	return p.record_formatter_assignment_op(id, formatter_op)
 }
 
 fn (mut p Parser) for_post_expr_stmt(expr flat.NodeId) flat.NodeId {

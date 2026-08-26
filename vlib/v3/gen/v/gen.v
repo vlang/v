@@ -1720,7 +1720,11 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 		return
 	}
 	is_decl := n.kind == .decl_assign
-	opstr := if is_decl { ':=' } else { op_str(n.op) }
+	opstr := if is_decl {
+		':='
+	} else {
+		g.a.formatter_assignment_ops[int(id)] or { op_str(n.op) }
+	}
 	modifier, count := parse_assign_meta(n.value)
 	if modifier == 'atomic' {
 		g.write('atomic ')
@@ -2545,6 +2549,7 @@ fn (mut g Gen) directive_stmt(id flat.NodeId) {
 	if n.value.starts_with('@attributes:') || n.value == 'string_interp_format' {
 		return
 	}
+	g.emit_attrs(id)
 	g.write('#${n.value}')
 	if n.typ.len > 0 {
 		g.write(' ${n.typ}')

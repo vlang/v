@@ -220,6 +220,49 @@ fn calls() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_emits_hash_directive_attributes_with_v3() {
+	source := '@[use_once] #include "header.h"
+@[custom_tag; use_once] #flag -I @VMODROOT/c
+'
+	expected := '@[use_once]
+#include "header.h"
+
+@[custom_tag; use_once]
+#flag -I @VMODROOT/c
+'
+	res, formatted := run_vfmt_write('hash_directive_attributes', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice := run_vfmt_write('hash_directive_attributes_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_boolean_compound_assignment_spelling_with_v3() {
+	source := 'fn update() {
+	mut flag := true
+	flag ||= false
+	flag &&= true
+	mut flags := [true]
+	flags[0] ||= false
+	flags[0] &&= true
+	mut bits := 1
+	bits |= 2
+	bits &= 1
+}
+'
+	res, formatted := run_vfmt_write('boolean_compound_assignments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('boolean_compound_assignments_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_comment_only_files_with_v3() {
 	source := '/*\nmodule acommentedmodule\n*/\n'
 	res, formatted := run_vfmt_write('comment_only_file', source, '')

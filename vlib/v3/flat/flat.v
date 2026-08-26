@@ -249,6 +249,8 @@ pub mut:
 	// formatter_expanded_calls records calls whose arguments started on the next line
 	// and ended with a trailing comma.
 	formatter_expanded_calls map[int]bool
+	// formatter_assignment_ops retains compound operator spellings that share one flat op.
+	formatter_assignment_ops map[int]string
 	// formatter_local_sels records selectors whose direct receiver is a lexical binding.
 	formatter_local_sels    map[int]bool
 	formatter_migrate_json2 bool
@@ -351,6 +353,7 @@ pub fn FlatAst.new() FlatAst {
 		formatter_file_sources:   map[int]string{}
 		formatter_node_ends:      map[int]int{}
 		formatter_expanded_calls: map[int]bool{}
+		formatter_assignment_ops: map[int]string{}
 		formatter_local_sels:   map[int]bool{}
 		text_ids:               map[string]TextId{}
 		specialized_fn_nodes:   map[int]bool{}

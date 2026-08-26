@@ -442,6 +442,39 @@ fn calls() {
 	assert vfmt('expanded_call_arguments_twice', out) == out
 }
 
+fn test_formatter_emits_hash_directive_attributes() {
+	source := '@[use_once] #include "header.h"
+@[custom_tag; use_once] #flag -I @VMODROOT/c
+'
+	expected := '@[use_once]
+#include "header.h"
+
+@[custom_tag; use_once]
+#flag -I @VMODROOT/c
+'
+	out := vfmt('hash_directive_attributes', source)
+	assert out == expected, out
+	assert vfmt('hash_directive_attributes_twice', out) == out
+}
+
+fn test_formatter_preserves_boolean_compound_assignment_spelling() {
+	source := 'fn update() {
+	mut flag := true
+	flag ||= false
+	flag &&= true
+	mut flags := [true]
+	flags[0] ||= false
+	flags[0] &&= true
+	mut bits := 1
+	bits |= 2
+	bits &= 1
+}
+'
+	out := vfmt('boolean_compound_assignments', source)
+	assert out == source, out
+	assert vfmt('boolean_compound_assignments_twice', out) == out
+}
+
 fn test_formatter_preserves_capture_and_shared_parameter_qualifiers() {
 	out := vfmt('capture_and_shared_qualifiers',
 		'struct St {}\n\nfn (shared receiver St) use(shared value St) {}\n\nfn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut item, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n')
