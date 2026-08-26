@@ -133,15 +133,19 @@ fn (app App) recompile_v() bool {
 		return app.make(vself)
 	}
 
-	self_result := os.execute(vself)
-	if self_result.exit_code == 0 {
-		println(self_result.output.trim_space())
+	// Let `v self` inherit the terminal instead of buffering all of its output.
+	// Rebuilding a V3-enabled compiler can take several seconds, and hiding the
+	// initial "V self compiling" status makes `v up` appear to hang after TCC.
+	mut self_process := os.new_process(vexe_path)
+	self_process.set_args(if app.is_prod { ['-prod', 'self'] } else { ['self'] })
+	self_process.wait()
+	self_exit_code := self_process.code
+	self_process.close()
+	if self_exit_code == 0 {
 		println('> Done recompiling.')
 		return true
-	} else {
-		println('> `${vself}` failed, running `make`...')
-		app.vprintln(self_result.output.trim_space())
 	}
+	println('> `${vself}` failed, running `make`...')
 	return app.make(vself)
 }
 
