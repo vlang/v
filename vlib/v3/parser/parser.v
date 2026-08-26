@@ -11582,6 +11582,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 
 // lock_expr supports lock expr handling for Parser.
 fn (mut p Parser) lock_expr() flat.NodeId {
+	lock_start := p.span_start()
 	is_rlock := p.tok == .key_rlock
 	p.next() // skip 'lock' or 'rlock'
 	mut obj_ids := []flat.NodeId{}
@@ -11625,6 +11626,7 @@ fn (mut p Parser) lock_expr() flat.NodeId {
 		value:          lock_value
 		children_start: lstart
 		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(lock_start)
 	})
 }
 

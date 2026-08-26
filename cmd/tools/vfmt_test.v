@@ -214,6 +214,18 @@ fn test_fmt_preserves_loop_labels_debugger_and_enum_groups_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_or_block_layout_and_lock_comments_with_v3() {
+	source := "fn block_boundaries() {\n\tempty_or_block() or {}\n\tempty_or_block() or {\n\t}\n\tfn_with_option() or { return }\n\tfn_with_option() or {\n\t\treturn\n\t}\n\tlock value {\n\t\tprintln('inside')\n\t\t// trailing lock\n\t}\n\tlock value {\n\t\t// comment only\n\t}\n}\n"
+	res, formatted := run_vfmt_write('or_layout_lock_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('or_layout_lock_comments_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
 	source := 'struct Config {
 	one int

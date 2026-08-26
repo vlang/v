@@ -129,6 +129,13 @@ fn test_formatter_preserves_loop_labels_debugger_and_enum_groups() {
 	assert vfmt('loop_label_debugger_enum_groups_twice', out) == out
 }
 
+fn test_formatter_preserves_or_block_layout_and_lock_comments() {
+	source := "fn block_boundaries() {\n\tempty_or_block() or {}\n\tempty_or_block() or {\n\t}\n\tfn_with_option() or { return }\n\tfn_with_option() or {\n\t\treturn\n\t}\n\tlock value {\n\t\tprintln('inside')\n\t\t// trailing lock\n\t}\n\tlock value {\n\t\t// comment only\n\t}\n}\n"
+	out := vfmt('or_layout_lock_comments', source)
+	assert out == source, out
+	assert vfmt('or_layout_lock_comments_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_interface_comments_inside_body() {
 	source := 'interface Speaker {
 	// first
