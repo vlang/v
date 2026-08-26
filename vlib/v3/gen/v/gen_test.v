@@ -44,6 +44,15 @@ fn vfmt_file_with_json_migration(path string) string {
 	return format(a)
 }
 
+fn vfmt_with_json_migration(name string, source string) string {
+	path := os.join_path(os.temp_dir(), 'v3_vfmt_json_${name}_${os.getpid()}.v')
+	os.write_file(path, source) or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	return vfmt_file_with_json_migration(path)
+}
+
 // reparse_diagnostics reports how many parse diagnostics `src` produces.
 fn reparse_diagnostics(name string, src string) int {
 	path := os.join_path(os.temp_dir(), 'v3_vfmt_rp_${name}_${os.getpid()}.v')
@@ -209,6 +218,65 @@ fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {
 	assert dollar.contains('\$dump(n)'), dollar
 	assert dollar.ends_with("\t// vfmt on\n}\n"), dollar
 	assert vfmt('legacy_dollar_builtins_twice', dollar) == dollar
+}
+
+fn test_formatter_preserves_mixed_lock_modes() {
+	source := 'struct St {}
+
+fn f(shared a St, shared b St, shared c St) {
+	rlock a; lock b; rlock c {
+		println(1)
+	}
+}
+'
+	out := vfmt('mixed_lock_modes', source)
+	assert out.contains('lock b; rlock a, c {'), out
+	assert vfmt('mixed_lock_modes_twice', out) == out
+}
+
+fn test_json_migration_rejects_declaration_collisions() {
+	const_source := 'import json
+
+const json2 = 1
+
+fn f() {
+	println(json.encode(1))
+}
+'
+	const_out := vfmt_with_json_migration('const_collision', const_source)
+	assert const_out.contains('import json\n'), const_out
+	assert const_out.contains('json.encode('), const_out
+	assert !const_out.contains('import json2'), const_out
+
+	global_source := 'import json
+
+__global (
+	json2 = 1
+)
+
+fn f() {
+	println(json.encode(1))
+}
+'
+	global_out := vfmt_with_json_migration('global_collision', global_source)
+	assert global_out.contains('import json\n'), global_out
+	assert global_out.contains('json.encode('), global_out
+	assert !global_out.contains('import json2'), global_out
+}
+
+fn test_formatter_keeps_comments_before_grouped_const_fields() {
+	source := 'const (
+	// pi documents pi
+	pi = 3.14
+	// phi documents phi
+	phi = 1.618
+)
+'
+	out := vfmt('grouped_const_comments', source)
+	assert out.contains('\t// pi documents pi\n\tpi = 3.14'), out
+	assert out.contains('\t// phi documents phi\n\tphi = 1.618'), out
+	assert !out.contains('pi =\n'), out
+	assert vfmt('grouped_const_comments_twice', out) == out
 }
 
 fn test_formatter_preserves_sql_body() {

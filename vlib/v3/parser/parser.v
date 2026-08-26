@@ -11332,25 +11332,23 @@ fn (mut p Parser) lock_expr() flat.NodeId {
 	if p.tok != .lcbr {
 		was_in_for_container := p.in_for_container
 		p.in_for_container = true
-		obj_ids << p.expr(.lowest)
-		modes << if is_rlock { u8(`r`) } else { u8(`w`) }
-		for p.tok == .comma {
-			p.next()
+		mut current_is_rlock := is_rlock
+		for {
 			obj_ids << p.expr(.lowest)
-			modes << if is_rlock { u8(`r`) } else { u8(`w`) }
-		}
-		if p.tok == .semicolon && (p.peek() == .key_lock || p.peek() == .key_rlock) {
-			p.next()
-			second_is_rlock := p.tok == .key_rlock
-			p.next()
-			if p.tok != .lcbr {
+			modes << if current_is_rlock { u8(`r`) } else { u8(`w`) }
+			for p.tok == .comma {
+				p.next()
 				obj_ids << p.expr(.lowest)
-				modes << if second_is_rlock { u8(`r`) } else { u8(`w`) }
-				for p.tok == .comma {
-					p.next()
-					obj_ids << p.expr(.lowest)
-					modes << if second_is_rlock { u8(`r`) } else { u8(`w`) }
-				}
+				modes << if current_is_rlock { u8(`r`) } else { u8(`w`) }
+			}
+			if p.tok != .semicolon || p.peek() !in [.key_lock, .key_rlock] {
+				break
+			}
+			p.next()
+			current_is_rlock = p.tok == .key_rlock
+			p.next()
+			if p.tok == .lcbr {
+				break
 			}
 		}
 		p.in_for_container = was_in_for_container

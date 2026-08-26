@@ -234,6 +234,57 @@ fn test_fmt_preserves_bodyless_function_prefixes_with_v3() {
 	assert !formatted.contains('fn C.plain'), formatted
 }
 
+fn test_fmt_preserves_mixed_lock_modes_with_v3() {
+	source := 'struct St {}
+
+fn f(shared a St, shared b St, shared c St) {
+	rlock a; lock b; rlock c {
+		println(1)
+	}
+}
+'
+	res, formatted := run_vfmt_write('mixed_lock_modes', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('lock b; rlock a, c {'), formatted
+	second_res, formatted_twice := run_vfmt_write('mixed_lock_modes', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_avoids_json2_declaration_collisions_with_v3() {
+	source := 'import json
+
+const json2 = 1
+
+fn f() {
+	println(json.encode(1))
+}
+'
+	res, formatted := run_vfmt_write('json2_declaration_collision', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('import json\n'), formatted
+	assert formatted.contains('json.encode('), formatted
+	assert !formatted.contains('import json2'), formatted
+}
+
+fn test_fmt_keeps_comments_before_grouped_const_fields_with_v3() {
+	source := 'const (
+	// pi documents pi
+	pi = 3.14
+	// phi documents phi
+	phi = 1.618
+)
+'
+	res, formatted := run_vfmt_write('grouped_const_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('\t// pi documents pi\n\tpi = 3.14'), formatted
+	assert formatted.contains('\t// phi documents phi\n\tphi = 1.618'), formatted
+	assert !formatted.contains('pi =\n'), formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')

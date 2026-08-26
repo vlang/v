@@ -171,10 +171,17 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 	}
 	direct_ids := g.a.children_of(fnode)
 	mut direct := map[int]bool{}
+	mut declared_names := map[string]bool{}
 	for id in direct_ids {
 		direct[int(id)] = true
-		if g.a.node(id).kind == .module_decl && g.a.node(id).value == 'json2' {
+		n := g.a.node(id)
+		if n.kind == .module_decl && n.value == 'json2' {
 			return
+		}
+		if n.kind in [.const_decl, .global_decl] {
+			for field_id in g.a.children_of(n) {
+				declared_names[g.a.node(field_id).value] = true
+			}
 		}
 	}
 	mut legacy_imports := []flat.NodeId{}
@@ -229,6 +236,9 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		if existing.typ.len > 0 && existing.typ != 'json2' {
 			qualifier = existing.typ
 		}
+	}
+	if declared_names[qualifier] {
+		return
 	}
 	for i, n in g.a.nodes {
 		if n.pos.id != g.file_id {
@@ -1188,11 +1198,55 @@ fn (mut g Gen) lock_expr(id flat.NodeId) {
 	}
 	body := children.last()
 	objs := children[..children.len - 1]
-	kw := if n.value.starts_with('rlock') { 'rlock' } else { 'lock' }
-	g.write(kw)
-	if objs.len > 0 {
-		g.write(' ')
-		g.expr_list(objs, ', ')
+	if n.value.starts_with('lock_modes:') {
+		modes := n.value.all_after('lock_modes:')
+		mut has_write := false
+		mut has_read := false
+		for i in 0 .. objs.len {
+			if i < modes.len && modes[i] == `r` {
+				has_read = true
+			} else {
+				has_write = true
+			}
+		}
+		if has_write {
+			g.write('lock ')
+			mut wrote := false
+			for i, obj in objs {
+				if i < modes.len && modes[i] == `r` {
+					continue
+				}
+				if wrote {
+					g.write(', ')
+				}
+				g.expr(obj)
+				wrote = true
+			}
+		}
+		if has_read {
+			if has_write {
+				g.write('; ')
+			}
+			g.write('rlock ')
+			mut wrote := false
+			for i, obj in objs {
+				if i >= modes.len || modes[i] != `r` {
+					continue
+				}
+				if wrote {
+					g.write(', ')
+				}
+				g.expr(obj)
+				wrote = true
+			}
+		}
+	} else {
+		kw := if n.value.starts_with('rlock') { 'rlock' } else { 'lock' }
+		g.write(kw)
+		if objs.len > 0 {
+			g.write(' ')
+			g.expr_list(objs, ', ')
+		}
 	}
 	g.writeln(' {')
 	g.stmt_list_ids(g.a.children_of(g.a.node(body)))
@@ -1936,6 +1990,7 @@ fn (mut g Gen) const_decl(id flat.NodeId) {
 	g.indent++
 	for fid in fields {
 		f := g.a.node(fid)
+		g.emit_comments_before(f.pos.offset)
 		g.write('${f.value} = ')
 		g.expr(g.a.child(f, 0))
 		g.writeln('')
