@@ -6872,7 +6872,7 @@ fn canonical_v3_fastc_output_path(path string) string {
 	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 }
 
-fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool) V3FastCCompileResult {
+fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool, uses_threads bool) V3FastCCompileResult {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 	if !os.is_executable(tcc_path) {
@@ -6899,6 +6899,11 @@ fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferenc
 	}
 	cc_args << ['-o', 'out', 'src.c']
 	cc_args << user_c_flags
+	if uses_threads {
+		// The emitted spawn runtime calls pthread functions, which live
+		// outside libc on Linux with glibc before 2.34 and on the BSDs.
+		cc_args << '-lpthread'
+	}
 	cc_args << '-lm'
 	cc_args << environment_ld_flags
 	command := cmdexec.display(tcc_path, cc_args)
@@ -7969,7 +7974,8 @@ pub fn run(args []string) {
 			bin_file
 		}
 		fastc_result := compile_v3_fastc_source(fastc_source, fastc_bin_file, prefs,
-			environment_c_flags, user_c_flags, environment_ld_flags, is_debug)
+			environment_c_flags, user_c_flags, environment_ld_flags, is_debug,
+			fastc_generation.uses_threads)
 		if (!silent || show_cc) && fastc_result.command.len > 0 {
 			if c_to_stdout {
 				eprintln('  > ${fastc_result.command}')

@@ -658,6 +658,7 @@ pub struct GenerationResult {
 pub:
 	c_source     string
 	source_paths []string
+	uses_threads bool
 }
 
 struct FastcGlobalDeclarations {
@@ -814,13 +815,14 @@ pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 	if header.imports.len > 0 || header.blank_imports.len > 0 {
 		return error('fastc parser does not support imports through the single-source API in ${path}')
 	}
-	return generate_source_files([
+	c_source, _ := generate_source_files([
 		FastcSourceFile{
 			path:   path
 			source: source
 			header: header
 		},
-	], prefs)
+	], prefs)!
+	return c_source
 }
 
 // generate_files discovers imports from the input files and emits one C translation unit for
@@ -837,9 +839,11 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	for source_file in sources {
 		source_paths << source_file.path
 	}
+	c_source, uses_threads := generate_source_files(sources, prefs)!
 	return GenerationResult{
-		c_source:     generate_source_files(sources, prefs)!
+		c_source:     c_source
 		source_paths: source_paths
+		uses_threads: uses_threads
 	}
 }
 
@@ -961,7 +965,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	}
 }
 
-fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !string {
+fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !(string, bool) {
 	mut declared_types := map[string]bool{}
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
 	mut enum_flags := map[string]bool{}
@@ -1190,7 +1194,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	result.write_string(synthesized_main)
 	result.write_string(hoisted_body.conditional_code)
 	result.write_string(hoisted_body.body)
-	return result.str()
+	return result.str(), spawn_typedefs.len > 0
 }
 
 fn fastc_synthesized_main(selfhost bool, has_startup_inits bool, has_cleanup_hooks bool) string {

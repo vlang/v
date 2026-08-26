@@ -97,7 +97,23 @@ fn (mut g Parser) read_spawn_expression() !string {
 		if g.tok == .key_mut {
 			return g.unsupported('spawn with a `mut` argument')
 		}
-		argument := g.read_expression([token.Token.comma, token.Token.rpar])!
+		expected_type := if arguments.len < signature.parameter_types.len {
+			signature.parameter_types[arguments.len]
+		} else {
+			''
+		}
+		previous_expected_type := g.expected_expression_type
+		g.expected_expression_type = expected_type
+		mut argument := g.read_expression([token.Token.comma, token.Token.rpar])!
+		g.expected_expression_type = previous_expected_type
+		// Mirror ordinary calls: arguments that need contextual typing (enum
+		// shorthand, boxing) render through the parameter-typed pipeline.
+		argument_tokens := g.last_expression.clone()
+		if expected_type != '' && argument_tokens.len > 0 {
+			if contextual := g.render_call_argument_expression(argument_tokens, expected_type) {
+				argument = contextual
+			}
+		}
 		arguments << argument
 		if g.tok == .comma {
 			g.next()
@@ -216,9 +232,19 @@ static ${thread_type} ${start_name}(${parameters}) {
 ${fills}	${thread_type} t;
 	t.packed = args;
 	pthread_attr_t attributes;
-	pthread_attr_init(&attributes);
-	pthread_attr_setstacksize(&attributes, 8 * 1024 * 1024);
+	if (pthread_attr_init(&attributes) != 0) {
+		free(args);
+		fprintf(stderr, "spawn: thread attribute init failed\\n");
+		exit(1);
+	}
+	if (pthread_attr_setstacksize(&attributes, 8 * 1024 * 1024) != 0) {
+		pthread_attr_destroy(&attributes);
+		free(args);
+		fprintf(stderr, "spawn: thread stack size setup failed\\n");
+		exit(1);
+	}
 	if (pthread_create(&t.handle, &attributes, ${run_name}, args) != 0) {
+		pthread_attr_destroy(&attributes);
 		free(args);
 		fprintf(stderr, "spawn: thread creation failed\\n");
 		exit(1);
