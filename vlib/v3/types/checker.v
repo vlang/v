@@ -15203,7 +15203,7 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	tc.check_comptime_reflection_condition_types(body_id, parts[0])
 	if parts[1] == 'methods' {
 		mut invalid_uses := []flat.NodeId{}
-		tc.collect_anon_fn_comptime_method_uses(body_id, parts[0], false, mut invalid_uses)
+		tc.collect_anon_fn_comptime_method_uses(body_id, parts[0], false, false, mut invalid_uses)
 		if invalid_uses.len > 0 {
 			file := tc.a.source_files[node.pos.id] or { &token.File{} }
 			source := tc.source_texts_by_file[file.name] or { '' }
@@ -15595,10 +15595,29 @@ fn (mut tc TypeChecker) check_comptime_attribute_members(id flat.NodeId, var_nam
 	}
 }
 
-fn (tc &TypeChecker) collect_anon_fn_comptime_method_uses(id flat.NodeId, var_name string, inside_anon_fn bool, mut uses []flat.NodeId) {
+fn (tc &TypeChecker) fn_literal_directly_captures_ident(node flat.Node, var_name string) bool {
+	if node.kind !in [.fn_literal, .lambda_expr] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .ident && child.value == var_name {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) collect_anon_fn_comptime_method_uses(id flat.NodeId, var_name string, inside_anon_fn bool, captured bool, mut uses []flat.NodeId) {
 	node := tc.a.node(id)
 	is_inside := inside_anon_fn || node.kind in [.fn_literal, .lambda_expr]
-	if is_inside && node.kind == .selector && node.value == '$' && node.children_count > 1 {
+	inside_capture := if node.kind in [.fn_literal, .lambda_expr] {
+		tc.fn_literal_directly_captures_ident(node, var_name)
+	} else {
+		captured
+	}
+	if is_inside && !inside_capture && node.kind == .selector && node.value == '$'
+		&& node.children_count > 1 {
 		method_var := tc.a.child_node(node, 1)
 		if method_var.kind == .ident && method_var.value == var_name {
 			uses << id
@@ -15606,7 +15625,8 @@ fn (tc &TypeChecker) collect_anon_fn_comptime_method_uses(id flat.NodeId, var_na
 		}
 	}
 	for i in 0 .. node.children_count {
-		tc.collect_anon_fn_comptime_method_uses(tc.a.child(node, i), var_name, is_inside, mut uses)
+		tc.collect_anon_fn_comptime_method_uses(tc.a.child(node, i), var_name, is_inside,
+			inside_capture, mut uses)
 	}
 }
 

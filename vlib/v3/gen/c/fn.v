@@ -3143,6 +3143,9 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	} else if clean is types.String || clean is types.Primitive || clean is types.Char
 		|| clean is types.Rune {
 		receiver_name = clean.name()
+		if alias_method := g.find_alias_method(receiver_name, method) {
+			receiver_name = alias_method.all_before_last('.')
+		}
 	} else {
 		alias_method := g.find_alias_method(clean.name(), method) or { return false }
 		receiver_name = alias_method.all_before_last('.')
@@ -3642,7 +3645,11 @@ fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPacke
 	}
 	suffix = suffix.replace('*', 'ptr').replace(' ', '_')
 	struct_name := g.cname('fn_value_thread_args_${suffix}')
-	wrapper_name := g.cname('fn_value_args_thread_wrapper_${suffix}')
+	wrapper_name := g.cname('fn_value_args_thread_wrapper_${suffix}${if destroys_fn {
+		'_destroy'
+	} else {
+		''
+	}}')
 	key := 'fnvalue|${fn_ct}|${ret_ct}|${signature}|captures:${capture_signature}|destroy:${destroys_fn}'
 	if name := g.spawn_wrapper_names[key] {
 		return name, struct_name

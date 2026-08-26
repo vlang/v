@@ -514,8 +514,8 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 }
 
 fn (tc &TypeChecker) fn_storage_voidptr_mismatch(expr_id flat.NodeId, actual Type, expected Type) bool {
-	return is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual)
-		&& !tc.expr_is_unsafe_nil(expr_id)
+	return is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual) && tc.unsafe_depth == 0
+		&& !tc.current_fn_declared_unsafe() && !tc.expr_is_unsafe_nil(expr_id)
 }
 
 fn (tc &TypeChecker) direct_sum_assignment_variant_matches(actual Type, expected SumType) bool {

@@ -15605,7 +15605,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_selector_enum
 			}
 			if base.kind == .ident && base.value == 'C' {
-				g.write(c_winapi_wide_export_name(node.value))
+				g.write(c_winapi_wide_export_name(g.c_namespace_global_c_name(node.value)))
 			} else if enum_selector_qbase.len > 0 {
 				ekey := '${enum_selector_qbase}.${node.value}'
 				if expr := g.enum_value_expr_for_key(ekey) {
@@ -21229,6 +21229,17 @@ fn (g &FlatGen) global_c_name(name string) string {
 		return g.cname(name[2..])
 	}
 	return g.cname(name)
+}
+
+fn (g &FlatGen) c_namespace_global_c_name(raw_name string) string {
+	if module_name := g.global_modules[raw_name] {
+		qualified := qualify_name_in_module(module_name, raw_name)
+		if qualified in g.global_types
+			&& ('C.${raw_name}' in g.global_types || 'C.${raw_name}' in g.tc.c_globals) {
+			return g.global_c_name(qualified)
+		}
+	}
+	return raw_name
 }
 
 fn (mut g FlatGen) fn_capture_shared_global_c_type(name string) ?string {
