@@ -2022,13 +2022,28 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			// `.wait()` joins a spawned thread (see spawn.v); it has no entry in
 			// the collected function signatures.
 			wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+			receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+			value_type := g.thread_value_types[receiver_type] or { '' }
+			wait_call := '${fastc_thread_wait_name(receiver_type)}(${receiver.source})'
 			if receiver_start == 0 && wait_end == tokens.len - 1 {
-				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
-				value_type := g.thread_value_types[receiver_type] or { '' }
 				return FastcRenderedExpression{
-					source: '${fastc_thread_wait_name(receiver_type)}(${receiver.source})'
+					source: wait_call
 					typ:    if value_type == '' { 'void' } else { value_type }
 				}
+			}
+			// A wait nested in a larger expression replaces its raw call form,
+			// exactly like ordinary method calls.
+			mut wait_needle := '${receiver.source}.wait()'
+			if !rendered.contains(wait_needle) {
+				raw_receiver := g.render_raw_expression_tokens(receiver_tokens) or { '' }
+				raw_needle := '${raw_receiver}.wait()'
+				if raw_receiver != '' && rendered.contains(raw_needle) {
+					wait_needle = raw_needle
+				}
+			}
+			if rendered.contains(wait_needle) {
+				rendered = rendered.replace(wait_needle, wait_call)
+				changed = true
 			}
 			continue
 		}

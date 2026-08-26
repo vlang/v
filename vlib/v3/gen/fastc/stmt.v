@@ -625,6 +625,11 @@ fn (mut g Parser) parse_simple_statement() ! {
 	if expression.len == 0 {
 		return g.unsupported('statement `${g.token_source()}`')
 	}
+	if g.last_expression.len == 0 && g.last_expression_type.starts_with(fastc_thread_type_prefix) {
+		// A discarded handle can never be joined, so the packed arguments and
+		// pthread join state of every completed spawn would leak.
+		return g.unsupported('statement-form `spawn` that discards its thread handle; assign the handle and call `.wait()`')
+	}
 	if g.selfhost && g.last_expression_is_statement() {
 		g.consume_statement_end()
 		g.write_line('${expression};')
