@@ -143,6 +143,15 @@ fn test_fmt_preserves_volatile_fields_with_v3() {
 	assert formatted.contains('volatile value u64'), formatted
 }
 
+fn test_fmt_preserves_fixed_array_literal_prefixes_with_v3() {
+	source := 'fn main() {\n\ta := [4]f32[1, 2, 3, 4]\n\tb := [..]f32[1, 2, 3, 4]\n\t_ = a\n\t_ = b\n}\n'
+	res, formatted := run_vfmt_write('fixed_array_literal_prefixes', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('a := [4]f32[1, 2, 3, 4]'), formatted
+	assert formatted.contains('b := [..]f32[1, 2, 3, 4]\n'), formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')

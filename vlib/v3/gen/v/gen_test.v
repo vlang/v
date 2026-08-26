@@ -150,6 +150,13 @@ fn test_formatter_preserves_comptime_calls_attributes_and_volatile_fields() {
 	assert out.contains('volatile value u64'), out
 }
 
+fn test_formatter_preserves_fixed_array_literal_prefixes() {
+	out := vfmt('fixed_array_literal_prefixes',
+		'fn main() {\n\ta := [4]f32[1, 2, 3, 4]\n\tb := [..]f32[1, 2, 3, 4]\n\t_ = a\n\t_ = b\n}\n')
+	assert out.contains('a := [4]f32[1, 2, 3, 4]'), out
+	assert out.contains('b := [..]f32[1, 2, 3, 4]\n'), out
+}
+
 fn test_formatter_preserves_sql_body() {
 	out := vfmt('sql_body',
 		'struct User {\n\tid int\n}\n\nfn f(db DB) {\n\t_ := sql db {\n\t\tselect from User where id == 1\n\t}\n}\n')

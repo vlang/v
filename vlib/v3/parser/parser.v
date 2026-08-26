@@ -10969,6 +10969,7 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 // prefix, so the resulting node spans the whole expression, not just the value
 // list — the `[N]T` prefix has already been consumed by the caller.
 fn (mut p Parser) fixed_array_value_literal(fixed_type string, start int) flat.NodeId {
+	prefix_end := p.tok_pos
 	p.check(.lsbr)
 	mut vals := []flat.NodeId{}
 	for p.tok != .rsbr && p.tok != .eof {
@@ -10983,13 +10984,17 @@ fn (mut p Parser) fixed_array_value_literal(fixed_type string, start int) flat.N
 	}
 	p.check(.rsbr)
 	cstart := p.add_children(vals)
-	return p.a.add_node(flat.Node{
+	id := p.a.add_node(flat.Node{
 		kind:           .array_literal
 		typ:            fixed_type
 		children_start: cstart
 		children_count: flat.child_count(vals.len)
 		pos:            p.span_to(start)
 	})
+	if p.prefs.is_fmt && prefix_end > start {
+		p.a.formatter_sources[int(id)] = p.s.src[start..prefix_end]
+	}
+	return id
 }
 
 // array_init_after_element_type parses a dynamic-array initializer (`[]T{...}`).
@@ -11039,6 +11044,7 @@ fn (mut p Parser) array_init_after_element_type(elem_type string, start int) fla
 // span from: the outer opening `[` for the top-level literal, and each row's own
 // opening `[` for the recursively-parsed inner dimensions.
 fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dimensions int, start int) (flat.NodeId, string) {
+	prefix_end := p.tok_pos
 	p.check(.lsbr)
 	mut vals := []flat.NodeId{}
 	mut elem_type := base_elem_type
@@ -11075,6 +11081,9 @@ fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dim
 		children_count: flat.child_count(vals.len)
 		pos:            p.span_to(start)
 	})
+	if p.prefs.is_fmt && prefix_end > start {
+		p.a.formatter_sources[int(lit)] = p.s.src[start..prefix_end]
+	}
 	pstart := p.add_child(lit)
 	return p.a.add_node(flat.Node{
 		kind:           .postfix

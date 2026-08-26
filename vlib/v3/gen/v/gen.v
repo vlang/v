@@ -633,11 +633,15 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.prefix_expr(id)
 		}
 		.postfix {
-			if n.op == .not {
-				g.expr(g.a.child(n, 0))
+			child := g.a.child(n, 0)
+			cn := g.a.node(child)
+			if n.op == .not && n.typ.len > 0 && cn.kind == .array_literal && cn.typ == n.typ {
+				g.expr(child)
+			} else if n.op == .not {
+				g.expr(child)
 				g.write('!')
 			} else {
-				g.expr(g.a.child(n, 0))
+				g.expr(child)
 				g.write(op_str(n.op))
 			}
 		}
@@ -679,6 +683,9 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.assoc(id)
 		}
 		.array_literal {
+			if prefix := g.a.formatter_sources[int(id)] {
+				g.write(prefix.trim_space())
+			}
 			g.write('[')
 			g.expr_list(g.a.children_of(n), ', ')
 			g.write(']')

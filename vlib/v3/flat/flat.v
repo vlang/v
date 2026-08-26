@@ -239,8 +239,8 @@ pub mut:
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
 	comments        []Comment
-	// formatter_sources retains exact source spans for constructs whose internal
-	// syntax is intentionally opaque to compiler backends (currently asm and SQL).
+	// formatter_sources retains exact source spans or prefixes for constructs whose
+	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources       map[int]string
 	formatter_file_sources  map[int]string
 	formatter_migrate_json2 bool
