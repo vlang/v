@@ -787,6 +787,11 @@ mut:
 	// without the memo that search re-renders the same ranges combinatorially.
 	comparison_memo map[i64]FastcRenderedExpression
 	has_c_functions bool
+	// Spawn lowering registrations (see spawn.v): thread struct typedefs,
+	// creator/run/waiter helper definitions, and thread type -> value type.
+	spawn_typedefs     map[string]string
+	spawn_helpers      map[string]string
+	thread_value_types map[string]string
 }
 
 // fastc_comparison_memo_key identifies a token subrange within the current
@@ -878,6 +883,8 @@ mut:
 	has_main_entry    bool
 	fixed_array_types map[string]string
 	composite_types   map[string]bool
+	spawn_typedefs    map[string]string
+	spawn_helpers     map[string]string
 	failed            bool
 	error_message     string
 }
@@ -897,6 +904,9 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		fastc_prefixed_c_names:  ctx.fastc_prefixed_c_names
 		has_c_functions:         ctx.has_c_functions
 		comparison_memo:         map[i64]FastcRenderedExpression{}
+		spawn_typedefs:          map[string]string{}
+		spawn_helpers:           map[string]string{}
+		thread_value_types:      map[string]string{}
 		declared_kinds:          ctx.declared_kinds
 		enum_flags:              ctx.enum_flags
 		alias_base_types:        ctx.alias_base_types
@@ -946,6 +956,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		has_main_entry:    source_file.header.module_name in ['', 'main'] && gen.has_main
 		fixed_array_types: gen.fixed_array_types
 		composite_types:   gen.composite_types
+		spawn_typedefs:    gen.spawn_typedefs
+		spawn_helpers:     gen.spawn_helpers
 	}
 }
 
@@ -1063,6 +1075,8 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		fixed_array_types:      fixed_array_types
 		composite_types:        composite_types
 	}
+	mut spawn_typedefs := map[string]string{}
+	mut spawn_helpers := map[string]string{}
 	outputs := fastc_generate_file_outputs(&ctx, sources)
 	for output in outputs {
 		if output.failed {
@@ -1078,6 +1092,12 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 		}
 		for name, _ in output.composite_types {
 			composite_types[name] = true
+		}
+		for name, text in output.spawn_typedefs {
+			spawn_typedefs[name] = text
+		}
+		for name, text in output.spawn_helpers {
+			spawn_helpers[name] = text
 		}
 	}
 	synthesized_main := if has_entry_module && !entry_has_main {
@@ -1114,10 +1134,22 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	result.write_string(preamble)
 	result.write_string(c_integer_comparison_helpers)
 	result.write_string(hoisted_body.directives)
+	if spawn_typedefs.len > 0 {
+		result.write_string(c_spawn_runtime)
+		result.writeln('')
+	}
 	result.write_string(constant_output.macros)
 	result.write_string(type_declarations)
 	result.write_string(late_composite_declarations.str())
 	result.write_string(fixed_array_declarations)
+	if spawn_typedefs.len > 0 {
+		mut thread_type_names := spawn_typedefs.keys()
+		thread_type_names.sort()
+		for thread_type_name in thread_type_names {
+			result.writeln(spawn_typedefs[thread_type_name])
+		}
+		result.writeln('')
+	}
 	result.write_string(constant_output.declarations)
 	result.write_string(global_output.declarations)
 	result.write_string(prototypes.str())
@@ -1130,6 +1162,14 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !st
 	result.writeln('')
 	if prefs.building_v {
 		result.write_string(c_selfhost_runtime)
+	}
+	if spawn_helpers.len > 0 {
+		mut spawn_helper_names := spawn_helpers.keys()
+		spawn_helper_names.sort()
+		for spawn_helper_name in spawn_helper_names {
+			result.writeln(spawn_helpers[spawn_helper_name])
+			result.writeln('')
+		}
 	}
 	result.write_string(type_output.enum_string_helpers)
 	result.write_string(interface_dispatches)

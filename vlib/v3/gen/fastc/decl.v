@@ -276,6 +276,9 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 			fastc_prefixed_c_names: fastc_prefixed_c_names
 			has_c_functions:        helper_has_c_functions
 			comparison_memo:        map[i64]FastcRenderedExpression{}
+			spawn_typedefs:         map[string]string{}
+			spawn_helpers:          map[string]string{}
+			thread_value_types:     map[string]string{}
 			declared_kinds:         declared_kinds
 			enum_flags:             enum_flags
 			alias_base_types:       alias_base_types
@@ -455,6 +458,9 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 				fastc_prefixed_c_names: fastc_prefixed_c_names
 				has_c_functions:        helper_has_c_functions
 				comparison_memo:        map[i64]FastcRenderedExpression{}
+				spawn_typedefs:         map[string]string{}
+				spawn_helpers:          map[string]string{}
+				thread_value_types:     map[string]string{}
 				declared_kinds:         declared_kinds
 				enum_flags:             enum_flags
 				alias_base_types:       alias_base_types
@@ -511,6 +517,9 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 			fastc_prefixed_c_names: fastc_prefixed_c_names
 			has_c_functions:        helper_has_c_functions
 			comparison_memo:        map[i64]FastcRenderedExpression{}
+			spawn_typedefs:         map[string]string{}
+			spawn_helpers:          map[string]string{}
+			thread_value_types:     map[string]string{}
 			declared_kinds:         declared_kinds
 			enum_flags:             enum_flags
 			alias_base_types:       alias_base_types

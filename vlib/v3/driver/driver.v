@@ -6904,6 +6904,11 @@ fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferenc
 	command := cmdexec.display(tcc_path, cc_args)
 	result := cmdexec.run_in(tcc_path, cc_args, build_dir)
 	if result.exit_code != 0 || !os.is_file(staged_binary) {
+		if keep_dir := os.getenv_opt('V3_FASTC_KEEP_FAILED_C') {
+			if keep_dir.len > 0 {
+				os.cp(source_file, keep_dir) or {}
+			}
+		}
 		return V3FastCCompileResult{
 			command: command
 			output:  result.output
@@ -7656,7 +7661,10 @@ pub fn run(args []string) {
 		// allocation-heavy phases) — so compiler builds default to it.
 		// -no-prealloc opts out (also restores tcc linking: tcc has no
 		// thread-local storage support, so prealloc builds link with cc).
-		if !no_prealloc && 'prealloc' !in user_defines {
+		// FastC output is always compiled by bundled TinyCC, where the arena
+		// pointer cannot be thread-local; a FastC compiler generation spawns
+		// worker threads, so it must use plain thread-safe malloc instead.
+		if !no_prealloc && 'prealloc' !in user_defines && backend != 'fastc' {
 			user_defines << 'prealloc'
 		}
 	}

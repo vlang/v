@@ -2018,6 +2018,20 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
 		receiver_tokens := tokens[receiver_start..i - 1]
 		receiver_type := g.infer_expression_type(receiver_tokens) or { continue }
+		if tokens[i].lit == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
+			// `.wait()` joins a spawned thread (see spawn.v); it has no entry in
+			// the collected function signatures.
+			wait_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+			if receiver_start == 0 && wait_end == tokens.len - 1 {
+				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+				value_type := g.thread_value_types[receiver_type] or { '' }
+				return FastcRenderedExpression{
+					source: '${fastc_thread_wait_name(receiver_type)}(${receiver.source})'
+					typ:    if value_type == '' { 'void' } else { value_type }
+				}
+			}
+			continue
+		}
 		method_key := g.method_function_key(receiver_type, tokens[i].lit)
 		if method_key !in g.functions {
 			if g.struct_member_type(receiver_type, tokens[i].lit) != '' {

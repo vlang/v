@@ -51,6 +51,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	if prefix == '' && g.tok == .dollar {
 		return g.read_comptime_if_expression()!
 	}
+	if prefix == '' && g.tok == .key_spawn {
+		return g.read_spawn_expression()!
+	}
 	mut result := strings.new_builder(64)
 	mut expression_tokens := []FastcExpressionToken{}
 	if prefix.len > 0 {
@@ -589,7 +592,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			''
 		}
 		mut piece := g.expression_token(previous_token, previous_lit, qualified_name_owner)!
-		if g.tok == .name {
+		if g.tok == .name && previous_token != .dot {
+			// A name after `.` is a field or method: never substitute a local
+			// (a mut parameter's deref form) that happens to share its name.
 			if local := g.locals[g.lit] {
 				mut lookahead := g.s
 				next_token := lookahead.scan()

@@ -1,14 +1,18 @@
 module fastc
 
 import os
-import runtime
 import v3.pref
 
 // fastc_parallel_jobs picks the worker count for a parallel phase; 1 selects
-// the serial path. V3_FASTC_NO_PARALLEL forces serial for debugging and for
-// byte-comparing parallel output against a serial run.
+// the serial path. VJOBS overrides the detected CPU count like runtime.nr_jobs,
+// and V3_FASTC_NO_PARALLEL forces serial for debugging and for byte-comparing
+// parallel output against a serial run.
 fn fastc_parallel_jobs(sources []FastcSourceFile) int {
-	mut jobs := runtime.nr_jobs()
+	mut jobs := fastc_nr_cpus()
+	vjobs := os.getenv('VJOBS').int()
+	if vjobs > 0 {
+		jobs = vjobs
+	}
 	if os.getenv('V3_FASTC_NO_PARALLEL') != '' {
 		jobs = 1
 	}
@@ -45,13 +49,15 @@ fn fastc_chunk_bounds(sources []FastcSourceFile, jobs int) []int {
 	return bounds
 }
 
-// fastc_generate_file_chunk generates a contiguous file range. It runs as a
-// value-returning spawn: under -prealloc, V frees a void thread's arena when
-// the thread exits, so the outputs must travel through the thread result.
-fn fastc_generate_file_chunk(ctx &FastcFileGenContext, sources &[]FastcSourceFile, start int, end int) []FastcFileGenOutput {
+// fastc_generate_file_chunk generates a contiguous file range on its own
+// thread. The array header is passed by value; the backing file data is
+// shared and read-only. It runs as a value-returning spawn: under -prealloc,
+// V frees a void thread's arena when the thread exits, so the outputs must
+// travel through the thread result.
+fn fastc_generate_file_chunk(ctx &FastcFileGenContext, sources []FastcSourceFile, start int, end int) []FastcFileGenOutput {
 	mut outputs := []FastcFileGenOutput{cap: end - start}
 	for idx in start .. end {
-		outputs << fastc_generate_single_file(ctx, (*sources)[idx])
+		outputs << fastc_generate_single_file(ctx, sources[idx])
 	}
 	return outputs
 }
@@ -62,20 +68,21 @@ fn fastc_generate_file_chunk(ctx &FastcFileGenContext, sources &[]FastcSourceFil
 // the emitted C is identical to a serial run.
 fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) []FastcFileGenOutput {
 	jobs := fastc_parallel_jobs(sources)
+	mut outputs := []FastcFileGenOutput{cap: sources.len}
 	if jobs <= 1 {
-		mut outputs := []FastcFileGenOutput{cap: sources.len}
 		for source_file in sources {
 			outputs << fastc_generate_single_file(ctx, source_file)
 		}
 		return outputs
 	}
 	bounds := fastc_chunk_bounds(sources, jobs)
-	mut chunk_threads := []thread []FastcFileGenOutput{cap: jobs}
-	for chunk_idx in 0 .. bounds.len / 2 {
-		chunk_threads << spawn fastc_generate_file_chunk(ctx, &sources, bounds[chunk_idx * 2], bounds[
+	first_thread := spawn fastc_generate_file_chunk(ctx, sources, bounds[0], bounds[1])
+	mut chunk_threads := [first_thread]
+	for chunk_idx in 1 .. bounds.len / 2 {
+		chunk_thread := spawn fastc_generate_file_chunk(ctx, sources, bounds[chunk_idx * 2], bounds[
 			chunk_idx * 2 + 1])
+		chunk_threads << chunk_thread
 	}
-	mut outputs := []FastcFileGenOutput{cap: sources.len}
 	for chunk_idx in 0 .. chunk_threads.len {
 		chunk_outputs := chunk_threads[chunk_idx].wait()
 		for output in chunk_outputs {
@@ -93,11 +100,11 @@ mut:
 	top_level_references map[string]bool
 }
 
-fn fastc_collect_reference_chunk(sources &[]FastcSourceFile, prefs &pref.Preferences, available_names map[string]bool, start int, end int) FastcReferencePartial {
+fn fastc_collect_reference_chunk(sources []FastcSourceFile, prefs &pref.Preferences, available_names map[string]bool, start int, end int) FastcReferencePartial {
 	mut references := map[string]map[string]bool{}
 	mut top_level_references := map[string]bool{}
 	for idx in start .. end {
-		fastc_collect_file_references((*sources)[idx], prefs, available_names, mut references, mut
+		fastc_collect_file_references(sources[idx], prefs, available_names, mut references, mut
 			top_level_references)
 	}
 	return FastcReferencePartial{
@@ -119,10 +126,13 @@ fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Prefe
 		return
 	}
 	bounds := fastc_chunk_bounds(sources, jobs)
-	mut chunk_threads := []thread FastcReferencePartial{cap: jobs}
-	for chunk_idx in 0 .. bounds.len / 2 {
-		chunk_threads << spawn fastc_collect_reference_chunk(&sources, prefs, available_names,
+	first_thread := spawn fastc_collect_reference_chunk(sources, prefs, available_names, bounds[0],
+		bounds[1])
+	mut chunk_threads := [first_thread]
+	for chunk_idx in 1 .. bounds.len / 2 {
+		chunk_thread := spawn fastc_collect_reference_chunk(sources, prefs, available_names,
 			bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
+		chunk_threads << chunk_thread
 	}
 	for chunk_idx in 0 .. chunk_threads.len {
 		chunk := chunk_threads[chunk_idx].wait()
