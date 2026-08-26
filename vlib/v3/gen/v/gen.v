@@ -56,6 +56,7 @@ mut:
 	is_new_int      bool
 	is_translated   bool
 	in_c_function   bool
+	backend         string = 'c'
 	formatter_types map[string]FormatterTypeSource
 	array_breaks    []bool
 	array_depth     int
@@ -73,6 +74,7 @@ pub struct FormatOptions {
 pub:
 	is_debug   bool
 	is_new_int bool
+	backend    string = 'c'
 }
 
 // Gen.new returns a fresh formatter.
@@ -126,6 +128,7 @@ pub fn format_with_options(a &flat.FlatAst, options FormatOptions) string {
 	mut g := Gen.new()
 	g.is_debug = options.is_debug
 	g.is_new_int = options.is_new_int
+	g.backend = options.backend
 	mut out := strings.new_builder(1000)
 	mut first := true
 	for i, id in a.file_node_ids {
@@ -821,17 +824,23 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.call_expr(id)
 		}
 		.selector {
-			g.expr(g.a.child(n, 0))
-			if source := g.a.formatter_sources[int(id)] {
-				// comptime method shorthand `recv.$method(args)`
-				g.write('.${source}')
-			} else if n.value == '$' {
-				// comptime field access `recv.$(name_expr)`
-				g.write('.\$(')
-				g.expr(g.a.child(n, 1))
-				g.write(')')
+			receiver := g.a.child(n, 0)
+			if g.should_rewrite_c_string_selector(n, receiver) {
+				g.write('c')
+				g.expr(receiver)
 			} else {
-				g.write('.${n.value}')
+				g.expr(receiver)
+				if source := g.a.formatter_sources[int(id)] {
+					// comptime method shorthand `recv.$method(args)`
+					g.write('.${source}')
+				} else if n.value == '$' {
+					// comptime field access `recv.$(name_expr)`
+					g.write('.\$(')
+					g.expr(g.a.child(n, 1))
+					g.write(')')
+				} else {
+					g.write('.${n.value}')
+				}
 			}
 		}
 		.index {
@@ -2393,8 +2402,21 @@ fn (mut g Gen) comptime_for(id flat.NodeId) {
 	if n.children_count > 0 {
 		blk := g.a.child_node(n, 0)
 		g.stmt_list_ids(g.a.children_of(blk))
+		g.indent++
+		g.advance_source_end_before_pending_comment(blk.pos.end)
+		g.emit_comments_before(blk.pos.end)
+		g.indent--
 	}
 	g.write('}')
+}
+
+fn (g &Gen) should_rewrite_c_string_selector(n &flat.Node, receiver flat.NodeId) bool {
+	if g.backend == 'js' || n.value != 'str' || g.a.node(receiver).kind != .string_literal {
+		return false
+	}
+	file := g.a.source_files[g.file_id] or { return false }
+	return !file.name.ends_with('.js.v')
+		&& !file.name.ends_with(os.join_path('v', 'gen', 'js', 'tests', 'js.v'))
 }
 
 fn (mut g Gen) select_stmt(id flat.NodeId) {

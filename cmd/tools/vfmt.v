@@ -30,6 +30,7 @@ struct FormatOptions {
 	in_process       bool // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
 	is_new_int       bool // rewrite int to i32 in translated modules and C declarations
 	no_migrate_json2 bool // opt out of the default rewrite of deprecated `json` usage to `json2` (`-no-migrate-json2`)
+	backend          string = 'c'
 mut:
 	diff_cmd string // filled in when -diff or -verify is passed
 }
@@ -60,6 +61,7 @@ fn main() {
 		in_process:       '-inprocess' in args
 		is_new_int:       '-new_int' in args
 		no_migrate_json2: '-no-migrate-json2' in args
+		backend:          cmdline.option(args, '-b', 'c')
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
@@ -204,6 +206,7 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string) !string {
 	return v3fmt.format_with_options(a,
 		is_debug:   foptions.is_debug
 		is_new_int: foptions.is_new_int
+		backend:    foptions.backend
 	)
 }
 
@@ -331,5 +334,5 @@ fn (f FormatOptions) str() string {
 	return
 		'FormatOptions{ is_l: ${f.is_l}, is_w: ${f.is_w}, is_diff: ${f.is_diff}, is_verbose: ${f.is_verbose},' +
 		' is_worker: ${f.is_worker}, is_debug: ${f.is_debug}, is_noerror: ${f.is_noerror},' +
-		' is_verify: ${f.is_verify}" }'
+		' is_verify: ${f.is_verify}, backend: ${f.backend}" }'
 }

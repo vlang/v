@@ -40,6 +40,17 @@ fn test_fmt_preferences_respect_vflags() {
 	os.unsetenv('VFLAGS')
 	warmup_res := os.execute('${os.quoted_path(vexe)} fmt -help')
 	assert warmup_res.exit_code == 0, warmup_res.output
+	c_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
+	assert c_res.exit_code == 0, c_res.output
+	assert c_res.output.contains("x := c'abc'"), c_res.output
+	assert !c_res.output.contains("x := 'abc'.str"), c_res.output
+	special_js_path := os.join_path(vfmt_test_tdir, 'v', 'gen', 'js', 'tests', 'js.v')
+	os.mkdir_all(os.dir(special_js_path))!
+	os.write_file(special_js_path, "fn main() {\n\tx := 'abc'.str\n}\n")!
+	special_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(special_js_path)}')
+	assert special_res.exit_code == 0, special_res.output
+	assert special_res.output.contains("x := 'abc'.str"), special_res.output
+	assert !special_res.output.contains("x := c'abc'"), special_res.output
 
 	os.setenv('VFLAGS', '-b js', true)
 	res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
@@ -234,6 +245,18 @@ fn test_fmt_keeps_trailing_loop_comments_inside_body_with_v3() {
 	assert formatted == source, formatted
 	second_res, formatted_twice := run_vfmt_write('trailing_loop_comments_twice', formatted,
 		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_keeps_trailing_comptime_for_comments_inside_body_with_v3() {
+	source := "fn comptime_loop_comments[T]() {\n\t\$for field in T.fields {\n\t\tprintln(field.name)\n\t\t// trailing comptime loop\n\t}\n\t\$for method in T.methods {\n\t\t// comment-only comptime loop\n\t}\n}\n"
+	res, formatted := run_vfmt_write('trailing_comptime_for_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('trailing_comptime_for_comments_twice',
+		formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -885,7 +908,7 @@ __global (
 
 fn test_fmt_preserves_js_string_prefixes_with_v3() {
 	source_path := os.join_path(vfmt_test_tdir, 'js_string_prefixes.js.v')
-	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"
+	source := "fn f() {\n\ts := js'hello V'\n\tp := 'abc'.str\n\tassert s == js'hello V'\n\tassert p == 'abc'\n}\n"
 	os.write_file(source_path, source)!
 
 	res := os.execute('${os.quoted_path(vexe)} fmt -w -verbose ${os.quoted_path(source_path)}')
@@ -893,6 +916,7 @@ fn test_fmt_preserves_js_string_prefixes_with_v3() {
 	assert res.exit_code == 0, res.output
 	assert formatted.contains("s := js'hello V'"), formatted
 	assert formatted.contains("s == js'hello V'"), formatted
+	assert formatted.contains("p := 'abc'.str"), formatted
 
 	second_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(source_path)}')
 	assert second_res.exit_code == 0, second_res.output
