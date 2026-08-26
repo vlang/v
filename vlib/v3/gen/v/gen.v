@@ -1397,6 +1397,8 @@ fn (mut g Gen) assoc(id flat.NodeId) {
 	for fid in children[1..] {
 		g.named_init_field(fid)
 	}
+	g.advance_source_end_before_pending_comment(n.pos.end)
+	g.emit_comments_before(n.pos.end)
 	g.indent--
 	g.write('}')
 }
@@ -1629,6 +1631,10 @@ fn (mut g Gen) block_stmt(id flat.NodeId) {
 	prefix := if n.value == 'unsafe' { 'unsafe ' } else { '' }
 	g.writeln('${prefix}{')
 	g.stmt_list_ids(stmts)
+	g.indent++
+	g.advance_source_end_before_pending_comment(n.pos.end)
+	g.emit_comments_before(n.pos.end)
+	g.indent--
 	g.writeln('}')
 }
 

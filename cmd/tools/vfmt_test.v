@@ -166,6 +166,18 @@ fn test_fmt_keeps_trailing_array_comments_inside_literal_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_keeps_trailing_block_and_struct_update_comments_inside_with_v3() {
+	source := "struct Item {\n\tvalue int\n}\n\nfn comment_boundaries() {\n\t{\n\t\tprintln('first')\n\t\t// trailing block\n\t}\n\t{\n\t\tprintln('second')\n\n\t\t// trailing after blank\n\t}\n\titem := Item{}\n\t_ := Item{\n\t\t...item // inline spread\n\t\t// trailing spread\n\t}\n\t_ := Item{\n\t\t...item\n\t\tvalue: 1\n\t\t// trailing field\n\t}\n}\n"
+	res, formatted := run_vfmt_write('trailing_block_update_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('trailing_block_update_comments_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
 	source := 'struct Config {
 	one int

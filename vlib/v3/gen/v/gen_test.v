@@ -101,6 +101,13 @@ fn test_formatter_keeps_trailing_array_comments_inside_literal() {
 	assert vfmt('trailing_array_comments_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_block_and_struct_update_comments_inside() {
+	source := "struct Item {\n\tvalue int\n}\n\nfn comment_boundaries() {\n\t{\n\t\tprintln('first')\n\t\t// trailing block\n\t}\n\t{\n\t\tprintln('second')\n\n\t\t// trailing after blank\n\t}\n\titem := Item{}\n\t_ := Item{\n\t\t...item // inline spread\n\t\t// trailing spread\n\t}\n\t_ := Item{\n\t\t...item\n\t\tvalue: 1\n\t\t// trailing field\n\t}\n}\n"
+	out := vfmt('trailing_block_update_comments', source)
+	assert out == source, out
+	assert vfmt('trailing_block_update_comments_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_interface_comments_inside_body() {
 	source := 'interface Speaker {
 	// first
