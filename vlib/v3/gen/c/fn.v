@@ -3143,8 +3143,10 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	} else if clean is types.String || clean is types.Primitive || clean is types.Char
 		|| clean is types.Rune {
 		receiver_name = clean.name()
-		if alias_method := g.find_alias_method(receiver_name, method) {
-			receiver_name = alias_method.all_before_last('.')
+		if g.resolve_method_name(receiver_name, method).len == 0 {
+			if alias_method := g.find_alias_method(receiver_name, method) {
+				receiver_name = alias_method.all_before_last('.')
+			}
 		}
 	} else {
 		alias_method := g.find_alias_method(clean.name(), method) or { return false }

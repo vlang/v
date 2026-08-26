@@ -21270,7 +21270,15 @@ fn (g &FlatGen) global_c_name(name string) string {
 }
 
 fn (g &FlatGen) c_namespace_global_c_name(raw_name string) string {
+	// Legacy closure tests expose the internal runtime global as `C.g_closure`.
+	// Other C globals must keep their external C symbol, even when a V global collides.
+	if raw_name != 'g_closure' {
+		return raw_name
+	}
 	if module_name := g.global_modules[raw_name] {
+		if module_name != 'closure' {
+			return raw_name
+		}
 		qualified := qualify_name_in_module(module_name, raw_name)
 		if qualified in g.global_types
 			&& ('C.${raw_name}' in g.global_types || 'C.${raw_name}' in g.tc.c_globals) {
