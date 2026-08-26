@@ -1154,7 +1154,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		// body workers read (for example the const-cycle poisoning of
 		// tc.const_types), so they must complete before any chunk is
 		// submitted; only the read-only signature checks overlap the pool.
+		tlv_sw := time.new_stopwatch()
 		tc.check_top_level_declaration_values()
+		tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		mut chunk_target := n_jobs
 		if tc.scope_parallel_check_workers {
 			chunk_target = n_jobs * check_chunk_oversubscribe
@@ -1275,7 +1277,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
 		tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
 		check_worker_scope_free(setup_scope)
+		sort_sw := time.new_stopwatch()
 		tc.sort_parallel_check_errors()
+		tc.timing_profile('  [ttime]   ck err sort      ${f64(sort_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		return any_started
 	}
 }
