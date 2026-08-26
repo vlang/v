@@ -11613,6 +11613,7 @@ fn (mut p Parser) lock_expr() flat.NodeId {
 
 // select_expr resolves select expr information for parser.
 fn (mut p Parser) select_expr() flat.NodeId {
+	select_start := p.span_start()
 	p.next() // skip 'select'
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
@@ -11629,11 +11630,13 @@ fn (mut p Parser) select_expr() flat.NodeId {
 		kind:           .select_stmt
 		children_start: start
 		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(select_start)
 	})
 }
 
 // select_branch resolves select branch information for parser.
 fn (mut p Parser) select_branch() flat.NodeId {
+	branch_start := p.span_start()
 	mut is_else := false
 	mut is_recv_decl := false
 	mut is_recv_assign := false
@@ -11690,6 +11693,7 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		value:          branch_value
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
+		pos:            p.span_to(branch_start)
 	})
 }
 

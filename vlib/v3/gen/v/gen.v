@@ -2067,12 +2067,18 @@ fn (mut g Gen) select_stmt(id flat.NodeId) {
 	g.indent++
 	for bid in g.a.children_of(n) {
 		b := g.a.node(bid)
+		g.emit_comments_before(b.pos.offset)
+		g.source_end = int_max(g.source_end, b.pos.offset)
 		bchildren := g.a.children_of(b)
 		if b.value == 'else' {
 			g.write('else')
 			g.writeln(' {')
 			g.stmt_list_ids(bchildren)
+			g.indent++
+			g.emit_comments_before(b.pos.end)
+			g.indent--
 			g.writeln('}')
+			g.source_end = int_max(g.source_end, b.pos.end)
 			continue
 		}
 		ncond := select_branch_cond_count(b.value)
@@ -2081,8 +2087,13 @@ fn (mut g Gen) select_stmt(id flat.NodeId) {
 		g.select_branch_header(b.value, conds)
 		g.writeln(' {')
 		g.stmt_list_ids(rest)
+		g.indent++
+		g.emit_comments_before(b.pos.end)
+		g.indent--
 		g.writeln('}')
+		g.source_end = int_max(g.source_end, b.pos.end)
 	}
+	g.emit_comments_before(n.pos.end)
 	g.indent--
 	g.write('}')
 }

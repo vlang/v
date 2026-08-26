@@ -1085,3 +1085,25 @@ fn test_fmt_keeps_comments_inside_fn_literals_with_v3() {
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
+
+fn test_fmt_keeps_trailing_select_comments_inside_body_with_v3() {
+	source := 'fn receive(ch chan int) {
+	mut n := 0
+	select {
+		n = <-ch {
+			n++
+		}
+		// post comment
+	}
+	assert n >= 0
+}
+'
+	res, formatted := run_vfmt_write('select_trailing_comment', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('select_trailing_comment_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}

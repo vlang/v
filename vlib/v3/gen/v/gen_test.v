@@ -979,6 +979,23 @@ fn test_select_receive_forms() {
 	assert out.contains('x = <-ch'), out
 }
 
+fn test_formatter_keeps_trailing_select_comments_inside_body() {
+	source := 'fn receive(ch chan int) {
+	mut n := 0
+	select {
+		n = <-ch {
+			n++
+		}
+		// post comment
+	}
+	assert n >= 0
+}
+'
+	out := vfmt('select_trailing_comment', source)
+	assert out == source, out
+	assert vfmt('select_trailing_comment_twice', out) == out
+}
+
 fn test_generics_and_interface() {
 	out := vfmt('gen',
 		'pub struct Stack[T] {\nmut:\n\tdata []T\n}\n\ninterface Reader {\n\tread(mut buf []u8) !int\nmut:\n\tpos int\n}\n')
