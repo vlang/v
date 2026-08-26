@@ -166,6 +166,13 @@ pub:
 	generic_params []string
 }
 
+// Comment retains source comments for syntax-preserving tools such as vfmt.
+pub struct Comment {
+pub:
+	text string
+	pos  token.Pos
+}
+
 // node_payload creates an uncommon node payload, or nil for an empty list.
 pub fn node_payload(generic_params []string) &NodePayload {
 	if generic_params.len == 0 {
@@ -231,6 +238,12 @@ pub mut:
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
+	comments        []Comment
+	// formatter_sources retains exact source spans for constructs whose internal
+	// syntax is intentionally opaque to compiler backends (currently asm and SQL).
+	formatter_sources       map[int]string
+	formatter_file_sources  map[int]string
+	formatter_migrate_json2 bool
 	// Template-generated nodes keep their original template source location while
 	// retaining the comptime call site used for v1-compatible diagnostic stacks.
 	template_call_sites map[int]token.Pos
@@ -326,6 +339,8 @@ pub fn FlatAst.new() FlatAst {
 		template_call_sites:    map[int]token.Pos{}
 		template_actions:       map[int]string{}
 		missing_imports:        map[int]string{}
+		formatter_sources:      map[int]string{}
+		formatter_file_sources: map[int]string{}
 		text_ids:               map[string]TextId{}
 		specialized_fn_nodes:   map[int]bool{}
 		specialized_fn_modules: map[int]string{}

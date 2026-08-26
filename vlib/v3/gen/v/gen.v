@@ -10,28 +10,36 @@
 // every type is stored on a node as a `typ` string, so no type checker is
 // required.
 //
-// Known limitations inherited from the flat representation:
-//   - Comments are not part of the flat AST, so they are not reproduced (this
-//     includes `// vfmt off` / `// vfmt on` markers).
-//   - `$if <const/os>` blocks are resolved and folded at parse time, so only
-//     the taken branch survives; they cannot be round-tripped. `comptime_if`
-//     nodes (deferred type/loop conditions) are handled.
-//   - `asm { ... }` and `sql { ... }` bodies are not retained by the parser.
-//   - String quote style and `r`/`c` prefixes are not stored; single quotes
-//     are emitted (contents are re-escaped so the bytes are preserved).
+// Formatter-mode parsing retains source-only data that compiler backends do not
+// need: comments, unfurled compile-time branches, opaque asm/SQL bodies, and
+// literal prefixes. This keeps formatting syntax-preserving without type checking.
 module v
 
+import os
 import strings
 import v3.flat
 
 // Gen holds the formatter state for one output buffer.
 pub struct Gen {
 mut:
-	a          &flat.FlatAst = unsafe { nil }
-	out        strings.Builder
-	indent     int
-	on_newline bool
-	in_init    bool
+	a               &flat.FlatAst = unsafe { nil }
+	out             strings.Builder
+	indent          int
+	on_newline      bool
+	in_init         bool
+	file_id         int
+	source          string
+	comments        []flat.Comment
+	comment_i       int
+	source_end      int = -1
+	migrate_json2   bool
+	json_qualifier  string
+	json_import_id  int = -1
+	skip_decls      map[int]bool
+	selective_json  bool
+	implied_imports []string
+	in_array_init   bool
+	is_debug        bool
 	// suppress_mut skips the `mut ` prefix on an assignment (used for C-style
 	// `for` loop init clauses, whose variable the parser always marks mutable).
 	suppress_mut bool
@@ -39,6 +47,12 @@ mut:
 	// parser stores attributes on a separate floating `.directive` node rather
 	// than as a child, so they are collected up-front in collect_attrs.
 	attrs map[int][]string
+}
+
+// FormatOptions controls optional formatter output.
+pub struct FormatOptions {
+pub:
+	is_debug bool
 }
 
 // Gen.new returns a fresh formatter.
@@ -55,6 +69,18 @@ pub fn (mut g Gen) reset() {
 	g.indent = -1
 	g.on_newline = false
 	g.in_init = false
+	g.file_id = 0
+	g.source = ''
+	g.comments.clear()
+	g.comment_i = 0
+	g.source_end = -1
+	g.migrate_json2 = false
+	g.json_qualifier = ''
+	g.json_import_id = -1
+	g.skip_decls = map[int]bool{}
+	g.selective_json = false
+	g.implied_imports.clear()
+	g.in_array_init = false
 }
 
 // format_file parses-independent convenience: format the file whose trailing
@@ -67,7 +93,13 @@ pub fn format_file(a &flat.FlatAst, file_id flat.NodeId) string {
 // format finds every trailing `.file` node in `a` and formats them in order,
 // separated by a blank line. Useful when a single file was parsed on its own.
 pub fn format(a &flat.FlatAst) string {
+	return format_with_options(a, FormatOptions{})
+}
+
+// format_with_options formats every trailing file node in `a` with `options`.
+pub fn format_with_options(a &flat.FlatAst, options FormatOptions) string {
 	mut g := Gen.new()
+	g.is_debug = options.is_debug
 	mut out := strings.new_builder(1000)
 	mut first := true
 	for id in a.file_node_ids {
@@ -89,8 +121,22 @@ pub fn (mut g Gen) gen_file(a &flat.FlatAst, file_id flat.NodeId) string {
 	g.a = a
 	g.collect_attrs()
 	fnode := a.node(file_id)
+	g.file_id = fnode.pos.id
+	g.source = a.formatter_file_sources[g.file_id] or { '' }
+	for comment in a.comments {
+		if comment.pos.id == g.file_id {
+			g.comments << comment
+		}
+	}
+	g.setup_json_migration(fnode)
+	g.collect_implied_imports(fnode)
 	g.top_level(a.children_of(fnode))
-	return g.out.str()
+	g.emit_comments_before(fnode.pos.end + 1)
+	formatted := g.out.str()
+	if g.source.contains('// vfmt off') {
+		return restore_vfmt_disabled_regions(formatted, g.source.replace('\r\n', '\n'))
+	}
+	return formatted
 }
 
 // output_string returns the generated V source code.
@@ -110,6 +156,134 @@ fn (mut g Gen) collect_attrs() {
 	}
 }
 
+// setup_json_migration enables the formatter's conservative json-to-json2 rewrite.
+// Migration is all-or-nothing for a file: if a qualifier can be shadowed, an import
+// lives in a conditional branch, a call is used as a value, or a comment would move,
+// the legacy source is retained unchanged.
+fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
+	if !g.a.formatter_migrate_json2
+		|| g.source.split_into_lines().any(it.trim_space().starts_with('import json //'))
+		|| g.source.contains('json.decode( //') {
+		return
+	}
+	direct_ids := g.a.children_of(fnode)
+	mut direct := map[int]bool{}
+	for id in direct_ids {
+		direct[int(id)] = true
+		if g.a.node(id).kind == .module_decl && g.a.node(id).value == 'json2' {
+			return
+		}
+	}
+	mut legacy_imports := []flat.NodeId{}
+	mut json2_imports := []flat.NodeId{}
+	mut called := map[int]bool{}
+	mut module_receivers := map[int]bool{}
+	for i, n in g.a.nodes {
+		if n.pos.id != g.file_id {
+			continue
+		}
+		if n.kind == .call && n.children_count > 0 {
+			called[int(g.a.child(n, 0))] = true
+		}
+		if n.kind == .selector && n.children_count > 0 {
+			receiver := g.a.child(n, 0)
+			if g.a.node(receiver).kind == .ident && g.a.node(receiver).value in ['json', 'json2'] {
+				module_receivers[int(receiver)] = true
+			}
+		}
+		if n.kind == .import_decl {
+			if n.value == 'json' {
+				legacy_imports << flat.NodeId(i)
+			} else if n.value == 'json2' {
+				json2_imports << flat.NodeId(i)
+			} else if n.typ == 'json2' {
+				return
+			}
+		}
+	}
+	if legacy_imports.len != 1 {
+		return
+	}
+	legacy_id := legacy_imports[0]
+	legacy := g.a.node(legacy_id)
+	if !direct[int(legacy_id)] || (legacy.typ.len > 0 && legacy.typ != 'json') {
+		return
+	}
+	for id in json2_imports {
+		if !direct[int(id)] {
+			return
+		}
+	}
+	if json2_imports.len > 1 {
+		return
+	}
+	mut qualifier := 'json2'
+	if json2_imports.len == 1 {
+		existing := g.a.node(json2_imports[0])
+		if existing.typ == '_' || g.comment_on_same_line_after(legacy.pos.offset, legacy.pos.end) {
+			return
+		}
+		if existing.typ.len > 0 && existing.typ != 'json2' {
+			qualifier = existing.typ
+		}
+	}
+	for i, n in g.a.nodes {
+		if n.pos.id != g.file_id {
+			continue
+		}
+		if n.kind == .ident && n.value == 'json2' && !module_receivers[i] {
+			return
+		}
+		if n.kind == .param && n.value == qualifier {
+			return
+		}
+		if n.kind == .fn_decl && n.value in ['encode', 'decode', 'encode_pretty']
+			&& legacy.children_count > 0 {
+			return
+		}
+		if n.kind == .field_decl && n.value == n.typ && n.children_count == 0 {
+			return
+		}
+		if n.kind == .selector && n.children_count > 0 {
+			receiver := g.a.child_node(n, 0)
+			if receiver.kind == .ident && receiver.value == 'json' {
+				if n.value !in ['encode', 'decode', 'encode_pretty'] || !called[i] {
+					return
+				}
+				if n.value == 'decode' && g.comments_inside(n.pos.offset, n.pos.end) {
+					return
+				}
+			}
+		}
+	}
+	g.migrate_json2 = true
+	g.json_qualifier = qualifier
+	g.json_import_id = int(legacy_id)
+	g.selective_json = legacy.children_count > 0
+	if json2_imports.len == 1 {
+		g.skip_decls[int(legacy_id)] = true
+	}
+}
+
+fn (g &Gen) comments_inside(start int, end int) bool {
+	for comment in g.comments {
+		if comment.pos.offset > start && comment.pos.offset < end {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &Gen) comment_on_same_line_after(start int, end int) bool {
+	line := g.source_line(start)
+	for comment in g.comments {
+		if comment.pos.offset >= end && g.source_line(comment.pos.offset) == line {
+			return true
+		}
+	}
+	return false
+}
+
 // top_level renders the file's top-level declarations, inserting a blank line
 // between them (but keeping consecutive imports grouped).
 fn (mut g Gen) top_level(ids []flat.NodeId) {
@@ -117,19 +291,105 @@ fn (mut g Gen) top_level(ids []flat.NodeId) {
 	g.collect_top_level(ids, mut decls)
 	mut prev := flat.NodeKind.empty
 	mut wrote_any := false
-	for id in decls {
+	mut last_import := -1
+	for i, id in decls {
+		if g.a.node(id).kind == .import_decl && !g.skip_decls[int(id)] {
+			last_import = i
+		}
+	}
+	mut injected_imports := false
+	for i, id in decls {
+		if g.skip_decls[int(id)] {
+			continue
+		}
 		kind := g.a.node(id).kind
+		mut injected_now := false
+		if !injected_imports && last_import < 0 && g.implied_imports.len > 0
+			&& kind !in [.module_decl, .directive] {
+			if wrote_any {
+				g.writeln('')
+			}
+			g.emit_implied_imports()
+			g.writeln('')
+			injected_imports = true
+			injected_now = true
+			wrote_any = true
+			prev = .import_decl
+		}
 		if wrote_any {
-			if !(prev == .import_decl && kind == .import_decl) {
+			if !injected_now && !(prev == .import_decl && kind == .import_decl) && !(prev == kind
+				&& kind in [.enum_decl, .expr_stmt]) {
 				g.writeln('')
 			}
 		}
 		g.indent++
 		g.stmt(id)
 		g.indent--
+		if i == last_import && g.implied_imports.len > 0 {
+			g.emit_implied_imports()
+			injected_imports = true
+		}
 		prev = kind
 		wrote_any = true
 	}
+	if !injected_imports && g.implied_imports.len > 0 {
+		if wrote_any {
+			g.writeln('')
+		}
+		g.emit_implied_imports()
+	}
+}
+
+fn (mut g Gen) emit_implied_imports() {
+	for name in g.implied_imports {
+		g.writeln('import ${name}')
+	}
+}
+
+fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
+	mut imported := map[string]bool{}
+	mut declared := map[string]bool{}
+	for id in g.a.children_of(fnode) {
+		n := g.a.node(id)
+		if n.kind == .import_decl {
+			local_name := if n.typ.len > 0 { n.typ } else { n.value.all_after_last('.') }
+			imported[local_name] = true
+		} else if n.kind == .module_decl {
+			declared[n.value.all_after_last('.')] = true
+		} else if n.kind == .fn_decl {
+			declared[n.value.all_after_last('.')] = true
+		}
+	}
+	for n in g.a.nodes {
+		if n.pos.id != g.file_id {
+			continue
+		}
+		if n.kind == .param {
+			declared[n.value] = true
+		}
+		if n.kind == .decl_assign && n.children_count > 0 {
+			for child in g.a.children_of(n) {
+				cn := g.a.node(child)
+				if cn.kind == .ident {
+					declared[cn.value] = true
+				}
+			}
+		}
+	}
+	mut implied := map[string]bool{}
+	for n in g.a.nodes {
+		if n.pos.id != g.file_id || n.kind != .selector || n.children_count == 0 {
+			continue
+		}
+		receiver := g.a.child_node(n, 0)
+		name := receiver.value
+		if receiver.kind == .ident && name.len > 0 && name !in ['C', 'JS'] && !imported[name]
+			&& !declared[name] && os.is_dir(os.join_path(@VEXEROOT, 'vlib', name)) {
+			implied[name] = true
+		}
+	}
+	g.implied_imports = implied.keys()
+	g.implied_imports.sort()
 }
 
 // collect_top_level flattens the file's declaration list. A folded top-level
@@ -172,8 +432,15 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 		return
 	}
 	n := g.a.node(id)
+	if g.is_debug {
+		eprintln('stmt ${n.kind} | pos: ${n.pos.offset}')
+	}
+	stmt_start, stmt_end := g.stmt_source_span(n)
+	g.emit_comments_before(stmt_start)
+	g.source_end = int_max(g.source_end, stmt_start)
 	match n.kind {
 		.module_decl {
+			g.emit_attrs(id)
 			g.writeln('module ${n.value}')
 		}
 		.import_decl {
@@ -208,7 +475,7 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 			// expr_stmt with no renderable expression; emit nothing for those.
 			before := g.out.len
 			g.expr(g.a.child(n, 0))
-			if g.out.len != before && !g.in_init {
+			if g.out.len != before && !g.in_init && !g.on_newline {
 				g.writeln('')
 			}
 		}
@@ -222,7 +489,9 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 			} else {
 				g.write('return ')
 				g.expr_list(exprs, ', ')
-				g.writeln('')
+				if !g.on_newline {
+					g.writeln('')
+				}
 			}
 		}
 		.block {
@@ -277,8 +546,12 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 			}
 		}
 		.asm_stmt {
-			g.writeln('asm {')
-			g.writeln('}')
+			if source := g.a.formatter_sources[int(id)] {
+				g.writeln(source.trim_space())
+			} else {
+				g.writeln('asm {')
+				g.writeln('}')
+			}
 		}
 		.debugger_stmt {
 			g.writeln('\$dbg')
@@ -297,6 +570,12 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 			}
 		}
 	}
+	if n.kind == .asm_stmt && int(id) in g.a.formatter_sources {
+		g.skip_comments_before(stmt_end + 1)
+	} else {
+		g.emit_trailing_comments(stmt_end)
+	}
+	g.source_end = int_max(g.source_end, stmt_end)
 }
 
 fn (mut g Gen) expr(id flat.NodeId) {
@@ -304,23 +583,37 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		return
 	}
 	n := g.a.node(id)
+	if g.is_debug {
+		eprintln('expr ${n.kind} | pos: ${n.pos.offset}')
+	}
+	g.emit_comments_before(n.pos.offset)
+	g.source_end = int_max(g.source_end, n.pos.offset)
 	match n.kind {
 		.empty {}
 		.int_literal, .float_literal, .bool_literal {
 			g.write(n.value)
 		}
 		.char_literal {
-			// char values are stored verbatim (escapes not decoded)
-			g.write('`${n.value}`')
+			if n.value.starts_with('c:') {
+				g.write("c'${n.value[2..]}'")
+			} else {
+				// char values are stored verbatim (escapes not decoded)
+				g.write('`${n.value}`')
+			}
 		}
 		.string_literal {
-			g.write(quote_string(n.value))
+			if n.typ.starts_with('raw:') {
+				quote := if n.typ.ends_with('"') { '"' } else { "'" }
+				g.write('r${quote}${n.value}${quote}')
+			} else {
+				g.write(quote_string(n.value))
+			}
 		}
 		.string_interp {
 			g.string_interp(id)
 		}
 		.ident {
-			g.write(n.value)
+			g.write(if g.in_array_init && n.value == 'it' { 'index' } else { n.value })
 		}
 		.nil_literal {
 			g.write('nil')
@@ -393,7 +686,10 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		.array_init {
 			g.write(n.typ)
 			g.write('{')
+			was_in_array_init := g.in_array_init
+			g.in_array_init = true
 			g.init_fields(g.a.children_of(n))
+			g.in_array_init = was_in_array_init
 			g.write('}')
 		}
 		.map_init {
@@ -425,6 +721,9 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write(' as ${n.value}')
 		}
 		.is_expr {
+			if g.a.child_node(n, 0).is_mut {
+				g.write('mut ')
+			}
 			g.expr(g.a.child(n, 0))
 			g.write(' is ${n.value}')
 		}
@@ -484,6 +783,12 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.write('/* ${n.kind} */')
 		}
 	}
+	if n.kind == .sql_expr && int(id) in g.a.formatter_sources {
+		g.skip_comments_before(n.pos.end + 1)
+	} else {
+		g.emit_trailing_comments(n.pos.end)
+	}
+	g.source_end = int_max(g.source_end, n.pos.end)
 }
 
 fn (mut g Gen) prefix_expr(id flat.NodeId) {
@@ -492,6 +797,9 @@ fn (mut g Gen) prefix_expr(id flat.NodeId) {
 	cn := g.a.node(child)
 	// `!is` / `!in` are parsed as a `.not` prefix wrapping the is/in expression.
 	if n.op == .not && cn.kind == .is_expr {
+		if g.a.child_node(cn, 0).is_mut {
+			g.write('mut ')
+		}
 		g.expr(g.a.child(cn, 0))
 		g.write(' !is ${cn.value}')
 		return
@@ -522,6 +830,10 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 	if children.len == 0 {
 		return
 	}
+	if kind := g.json_migration_call_kind(children[0]) {
+		g.json_migration_call(kind, children[1..])
+		return
+	}
 	g.expr(children[0])
 	g.write('(')
 	args := children[1..]
@@ -536,6 +848,50 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		}
 	}
 	g.write(')')
+}
+
+fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
+	if !g.migrate_json2 {
+		return none
+	}
+	callee := g.a.node(callee_id)
+	if callee.kind == .selector && callee.children_count > 0 {
+		receiver := g.a.child_node(callee, 0)
+		if receiver.kind == .ident && receiver.value == 'json'
+			&& callee.value in ['encode', 'decode', 'encode_pretty'] {
+			return callee.value
+		}
+	}
+	if g.selective_json && callee.kind == .ident
+		&& callee.value in ['encode', 'decode', 'encode_pretty'] {
+		return callee.value
+	}
+	return none
+}
+
+fn (mut g Gen) json_migration_call(kind string, args []flat.NodeId) {
+	if kind == 'decode' && args.len >= 2 {
+		g.write('${g.json_qualifier}.decode[')
+		type_arg := g.a.node(args[0])
+		if source_type := g.source_span(type_arg.pos.offset, type_arg.pos.end) {
+			g.write(source_type.trim_space())
+		} else {
+			g.expr(args[0])
+		}
+		g.write('](')
+		g.expr_list(args[1..], ', ')
+		g.write(')')
+		return
+	}
+	g.write('${g.json_qualifier}.encode(')
+	g.expr_list(args, ', ')
+	if args.len > 0 {
+		g.write(', ')
+	}
+	if kind == 'encode_pretty' {
+		g.write('prettify: true, ')
+	}
+	g.write('escape_unicode: true)')
 }
 
 fn (mut g Gen) index_expr(id flat.NodeId) {
@@ -573,6 +929,19 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 	}
 	first := g.a.node(fields[0])
 	if first.value.len > 0 {
+		if g.source_line(n.pos.offset) == g.source_line(n.pos.end) {
+			g.write('{ ')
+			for i, fid in fields {
+				f := g.a.node(fid)
+				g.write('${f.value}: ')
+				g.expr(g.a.child(f, 0))
+				if i < fields.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.write(' }')
+			return
+		}
 		// named fields, one per line
 		g.writeln('{')
 		in_init := g.in_init
@@ -804,6 +1173,10 @@ fn (mut g Gen) lock_expr(id flat.NodeId) {
 
 fn (mut g Gen) sql_expr(id flat.NodeId) {
 	n := g.a.node(id)
+	if source := g.a.formatter_sources[int(id)] {
+		g.write(source.trim_space())
+		return
+	}
 	g.write('sql')
 	if n.children_count > 0 {
 		g.write(' ')
@@ -884,7 +1257,7 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 		g.write(' ${opstr} ')
 		g.expr_list(rhs, ', ')
 	}
-	if !g.in_init {
+	if !g.in_init && !g.on_newline {
 		g.writeln('')
 	}
 }
@@ -1087,7 +1460,7 @@ fn (mut g Gen) assert_stmt(id flat.NodeId) {
 fn (mut g Gen) comptime_if(id flat.NodeId) {
 	n := g.a.node(id)
 	children := g.a.children_of(n)
-	g.write('\$if ${n.value} {')
+	g.write('\$if ${n.value.trim_space()} {')
 	g.writeln('')
 	if children.len > 0 {
 		then_blk := g.a.node(children[0])
@@ -1187,6 +1560,10 @@ fn (mut g Gen) select_branch_header(value string, conds []flat.NodeId) {
 
 fn (mut g Gen) import_decl(id flat.NodeId) {
 	n := g.a.node(id)
+	if g.migrate_json2 && int(id) == g.json_import_id {
+		g.writeln('import json2')
+		return
+	}
 	g.write('import ${n.value}')
 	last_seg := n.value.all_after_last('.')
 	if n.typ.len > 0 && n.typ != last_seg {
@@ -1234,7 +1611,11 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 		g.write(') ')
 		g.write(name.all_after_last('.'))
 	} else if n.kind == .c_fn_decl {
-		g.write('C.${name}')
+		if name.starts_with('JS:') {
+			g.write('JS.${name[3..]}')
+		} else {
+			g.write('C.${name}')
+		}
 	} else {
 		g.write(name)
 	}
@@ -1321,6 +1702,8 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId) {
 	mut cur_access := ''
 	for fid in fields {
 		f := g.a.node(fid)
+		g.emit_comments_before(f.pos.offset)
+		g.source_end = int_max(g.source_end, f.pos.offset)
 		if f.kind != .field_decl {
 			// e.g. a `$if` block inside the struct body
 			g.stmt(fid)
@@ -1356,7 +1739,11 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId) {
 		if gp.len > 1 {
 			g.write(' @[${gp[1..].join('; ')}]')
 		}
-		g.writeln('')
+		g.emit_trailing_comments(f.pos.end)
+		if !g.on_newline {
+			g.writeln('')
+		}
+		g.source_end = int_max(g.source_end, f.pos.end)
 	}
 	g.indent--
 	g.writeln('}')
@@ -1377,6 +1764,8 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 	g.indent++
 	for fid in g.a.children_of(n) {
 		f := g.a.node(fid)
+		g.emit_comments_before(f.pos.offset)
+		g.source_end = int_max(g.source_end, f.pos.offset)
 		g.write(f.value)
 		if f.children_count > 0 {
 			g.write(' = ')
@@ -1386,7 +1775,11 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 		if fattrs.len > 0 {
 			g.write(' @[${fattrs.join('; ')}]')
 		}
-		g.writeln('')
+		g.emit_trailing_comments(f.pos.end)
+		if !g.on_newline {
+			g.writeln('')
+		}
+		g.source_end = int_max(g.source_end, f.pos.end)
 	}
 	g.indent--
 	g.writeln('}')
@@ -1434,6 +1827,8 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 	mut cur_mut := false
 	for fid in g.a.children_of(n) {
 		f := g.a.node(fid)
+		g.emit_comments_before(f.pos.offset)
+		g.source_end = int_max(g.source_end, f.pos.offset)
 		if f.is_mut != cur_mut {
 			if f.is_mut {
 				g.indent--
@@ -1459,7 +1854,11 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 				g.write(' ${f.typ}')
 			}
 		}
-		g.writeln('')
+		g.emit_trailing_comments(f.pos.end)
+		if !g.on_newline {
+			g.writeln('')
+		}
+		g.source_end = int_max(g.source_end, f.pos.end)
 	}
 	g.indent--
 	g.writeln('}')
@@ -1547,6 +1946,156 @@ fn (mut g Gen) emit_attrs(id flat.NodeId) {
 }
 
 // Helpers --------------------------------------------------------------------
+
+fn (g &Gen) stmt_source_span(n &flat.Node) (int, int) {
+	if n.kind in [.expr_stmt, .assign, .selector_assign, .index_assign, .decl_assign, .return_stmt, .assert_stmt]
+		&& n.children_count > 0 {
+		mut start := n.pos.offset
+		mut end := 0
+		mut found := false
+		for child_id in g.a.children_of(n) {
+			child := g.a.node(child_id)
+			if !child.pos.is_valid() {
+				continue
+			}
+			if !found || child.pos.offset < start {
+				start = child.pos.offset
+			}
+			end = int_max(end, child.pos.end)
+			found = true
+		}
+		if found {
+			return start, end
+		}
+	}
+	return n.pos.offset, n.pos.end
+}
+
+fn (mut g Gen) emit_comments_before(limit int) {
+	for g.comment_i < g.comments.len && g.comments[g.comment_i].pos.offset < limit {
+		comment := g.comments[g.comment_i]
+		is_inline := g.source_end >= 0
+			&& g.source_line(g.source_end) == g.source_line(comment.pos.offset)
+		if is_inline {
+			mut removed_newlines := 0
+			for g.out.len > 0 && g.out.last_n(1) == '\n' {
+				g.out.go_back(1)
+				removed_newlines++
+			}
+			g.on_newline = false
+			if g.out.len > 0 && g.out.last_n(1) !in [' ', '\t', '\n'] {
+				g.write(' ')
+			}
+			g.write_comment(comment.text)
+			for _ in 1 .. removed_newlines {
+				g.writeln('')
+			}
+		} else {
+			if !g.on_newline && g.out.len > 0 {
+				g.writeln('')
+			}
+			if g.source_end >= 0
+				&& g.source_line(comment.pos.offset) > g.source_line(g.source_end) + 1
+				&& (g.out.len == 0 || !g.out.last_n(int_min(2, g.out.len)).ends_with('\n\n')) {
+				g.writeln('')
+			}
+			g.write_comment(comment.text)
+		}
+		g.source_end = int_max(g.source_end, comment.pos.end)
+		g.comment_i++
+	}
+}
+
+fn (mut g Gen) emit_trailing_comments(end int) {
+	for g.comment_i < g.comments.len {
+		comment := g.comments[g.comment_i]
+		if comment.pos.offset < end || g.source_line(comment.pos.offset) != g.source_line(end)
+			|| comment.pos.offset > g.source.len
+			|| g.source[end..comment.pos.offset].trim_space().len > 0 {
+			return
+		}
+		if g.out.len > 0 && g.out.last_n(1) == '\n' {
+			g.out.go_back(1)
+			g.on_newline = false
+		}
+		if g.out.len > 0 && g.out.last_n(1) !in [' ', '\t', '\n'] {
+			g.write(' ')
+		}
+		g.write_comment(comment.text)
+		g.source_end = comment.pos.end
+		g.comment_i++
+	}
+}
+
+fn (mut g Gen) skip_comments_before(limit int) {
+	for g.comment_i < g.comments.len && g.comments[g.comment_i].pos.offset < limit {
+		g.source_end = int_max(g.source_end, g.comments[g.comment_i].pos.end)
+		g.comment_i++
+	}
+}
+
+fn (g &Gen) source_line(offset int) int {
+	file := g.a.source_files[g.file_id] or { return 0 }
+	return file.find_line(offset)
+}
+
+fn (g &Gen) source_span(start int, end int) ?string {
+	if start < 0 || end < start || end > g.source.len {
+		return none
+	}
+	return g.source[start..end]
+}
+
+fn (mut g Gen) write_comment(text string) {
+	mut normalized := text
+	if text.starts_with('//') && text.len > 2 && text[2] !in [` `, `\t`, `/`, `!`, `#`, `*`] {
+		normalized = '// ${text[2..]}'
+	}
+	lines := normalized.split('\n')
+	for i, line in lines {
+		if i == lines.len - 1 && line == '' {
+			continue
+		}
+		g.writeln(line)
+	}
+}
+
+fn restore_vfmt_disabled_regions(formatted string, source string) string {
+	marker_off := '// vfmt off'
+	marker_on := '// vfmt on'
+	mut source_pos := 0
+	mut formatted_pos := 0
+	mut out := strings.new_builder(formatted.len + source.len / 8)
+	for {
+		source_off := source.index_after(marker_off, source_pos) or { break }
+		formatted_off := formatted.index_after(marker_off, formatted_pos) or { break }
+		source_content := source.index_after('\n', source_off) or { source.len - 1 } + 1
+		formatted_content := formatted.index_after('\n', formatted_off) or { formatted.len - 1 } + 1
+		out.write_string(formatted[formatted_pos..formatted_content])
+		source_on := source.index_after(marker_on, source_content) or {
+			out.write_string(source[source_content..])
+			return out.str()
+		}
+		formatted_on := formatted.index_after(marker_on, formatted_content) or {
+			out.write_string(source[source_content..])
+			return out.str()
+		}
+		mut source_resume := source.index_after('\n', source_on) or { source.len - 1 } + 1
+		mut formatted_resume := formatted.index_after('\n', formatted_on) or { formatted.len - 1 } +
+			1
+		for source_resume < source.len && source[source_resume] == `\n` {
+			source_resume++
+		}
+		for formatted_resume < formatted.len && formatted[formatted_resume] == `\n` {
+			formatted_resume++
+		}
+		out.write_string(source[source_content..source_resume])
+		source_pos = source_resume
+		formatted_pos = formatted_resume
+	}
+	out.write_string(formatted[formatted_pos..])
+	return out.str()
+}
 
 fn (mut g Gen) expr_list(ids []flat.NodeId, sep string) {
 	mut first := true

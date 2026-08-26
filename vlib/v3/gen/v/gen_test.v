@@ -10,7 +10,11 @@ import v3.flat
 fn parse_source(name string, src string) (&flat.FlatAst, flat.NodeId) {
 	path := os.join_path(os.temp_dir(), 'v3_vfmt_${name}_${os.getpid()}.v')
 	os.write_file(path, src) or { panic(err) }
-	mut p := parser.Parser.new(pref.new_preferences())
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	prefs.preserve_comptime_conditionals = true
+	prefs.supports_inline_asm = true
+	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(path)
 	os.rm(path) or {}
 	mut fid := flat.empty_node
@@ -27,6 +31,17 @@ fn parse_source(name string, src string) (&flat.FlatAst, flat.NodeId) {
 fn vfmt(name string, src string) string {
 	a, fid := parse_source(name, src)
 	return format_file(a, fid)
+}
+
+fn vfmt_file_with_json_migration(path string) string {
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	prefs.migrate_json2 = true
+	prefs.preserve_comptime_conditionals = true
+	prefs.supports_inline_asm = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(path)
+	return format(a)
 }
 
 // reparse_diagnostics reports how many parse diagnostics `src` produces.
@@ -109,6 +124,81 @@ fn test_string_escaping() {
 	out := vfmt('stresc', "fn f() {\n\ta := 'price: \$5'\n\tb := '\${x}y'\n}\n")
 	assert out.contains("'price: \\\$5'")
 	assert out.contains("'\${x}y'")
+}
+
+fn test_formatter_preserves_source_only_syntax() {
+	out := vfmt('source_only',
+		'// docs\nfn f() {\n\tx := c\' \'\n\ty := r"raw \\\\ text"\n\t\$if windows {\n\t\tprintln(\'windows\')\n\t} \$else {\n\t\tprintln(\'other\')\n\t}\n\tasm amd64 {\n\t\tnop\n\t}\n\tprintln(@FN) // inline\n\t_ = x\n\t_ = y\n}\n')
+	assert out.starts_with('// docs\nfn f() {'), out
+	assert out.contains("x := c' '"), out
+	assert out.contains('y := r"raw \\\\ text"'), out
+	assert out.contains('\$if windows {'), out
+	assert out.contains("println('windows')"), out
+	assert out.contains("println('other')"), out
+	assert out.contains('asm amd64 {\n\t\tnop\n\t}'), out
+	assert out.contains('println(@FN) // inline'), out
+}
+
+fn test_formatter_preserves_sql_body() {
+	out := vfmt('sql_body',
+		'struct User {\n\tid int\n}\n\nfn f(db DB) {\n\t_ := sql db {\n\t\tselect from User where id == 1\n\t}\n}\n')
+	assert out.contains('sql db {\n\t\tselect from User where id == 1\n\t}'), out
+}
+
+fn test_formatter_preserves_mut_type_check() {
+	out := vfmt('mut_type_check',
+		'fn f(mut writer io.Writer) {\n\tif mut writer is os.File {\n\t\twriter.flush()\n\t}\n}\n')
+	assert out.contains('if mut writer is os.File {'), out
+}
+
+fn test_json_migration_keeps_unsafe_legacy_uses() {
+	fixture_dir := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests')
+	mut files := os.walk_ext(fixture_dir, '_keep.vv')
+	files = files.filter(os.file_name(it).starts_with('json_migrate_'))
+	assert files.len > 0
+	for path in files {
+		source := os.read_file(path) or { panic(err) }
+		out := vfmt_file_with_json_migration(path)
+		if source.contains('import json\n') {
+			assert out.contains('import json\n'), os.file_name(path)
+		}
+		if source.contains('json.encode') {
+			assert out.contains('json.encode'), os.file_name(path)
+		}
+		if source.contains('json.decode') {
+			assert out.contains('json.decode'), os.file_name(path)
+		}
+	}
+}
+
+fn test_json_migration_matches_formatter_fixtures() {
+	fixture_dir := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests')
+	mut inputs := os.walk_ext(fixture_dir, '_input.vv')
+	inputs = inputs.filter(os.file_name(it).starts_with('json_migrate_'))
+	assert inputs.len > 0
+	for input in inputs {
+		expected_path := input.replace('_input.vv', '_expected.vv')
+		expected := os.read_file(expected_path) or { panic(err) }
+		actual := vfmt_file_with_json_migration(input)
+		assert actual == expected, os.file_name(input)
+	}
+}
+
+fn test_source_preservation_matches_formatter_fixtures() {
+	fixture_dir := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests')
+	for name in ['conditional_import', 'struct_decl_with_comments', 'vfmt_off_vfmt_on_with_crlf'] {
+		input := os.join_path(fixture_dir, '${name}_input.vv')
+		expected_path := os.join_path(fixture_dir, '${name}_expected.vv')
+		expected := os.read_file(expected_path) or { panic(err) }
+		actual := vfmt_file_with_json_migration(input)
+		assert actual == expected, name
+	}
+	for name in ['language_prefixes_keep.vv', 'string_raw_and_cstr_keep.vv'] {
+		path := os.join_path(fixture_dir, name)
+		expected := os.read_file(path) or { panic(err) }
+		actual := vfmt_file_with_json_migration(path)
+		assert actual == expected, name
+	}
 }
 
 fn test_channel_ops() {

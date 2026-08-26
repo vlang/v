@@ -7,10 +7,6 @@ import os
 import os.cmdline
 import rand
 import term
-import v.ast
-import v.fmt
-import v.parser
-import v.pref
 import v.util
 import v.util.diff
 import v.help
@@ -32,7 +28,7 @@ struct FormatOptions {
 	is_worker        bool // true *only* in the worker processes. Note: workers can crash.
 	is_backup        bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
 	in_process       bool // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
-	is_new_int       bool // Forcefully cast the `int` type in @[translated] modules or in the definition of `C.func` to the `i32` type.
+	is_new_int       bool // accepted for CLI compatibility; the V3 formatter does not rewrite int
 	no_migrate_json2 bool // opt out of the default rewrite of deprecated `json` usage to `json2` (`-no-migrate-json2`)
 mut:
 	diff_cmd string // filled in when -diff or -verify is passed
@@ -41,8 +37,6 @@ mut:
 const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 const vtmp_folder = os.vtmp_dir()
 const term_colors = term.can_show_color_on_stderr()
-const vfmt_only_flags = ['-backup', '-c', '-diff', '-inprocess', '-l', '-new_int',
-	'-no-migrate-json2', '-noerror', '-verbose', '--verbose', '-verify', '-w']
 
 fn main() {
 	// if os.getenv('VFMT_ENABLE') == '' {
@@ -188,29 +182,6 @@ fn (foptions &FormatOptions) vlog(msg string) {
 	}
 }
 
-fn setup_preferences(args []string) &pref.Preferences {
-	mut prefs, _ := pref.parse_args_and_show_errors(['fmt'], vfmt_args_for_preferences(args), false)
-	prefs.is_fmt = true
-	prefs.skip_warnings = true
-	return prefs
-}
-
-fn vfmt_args_for_preferences(args []string) []string {
-	mut res := []string{}
-	for i := 1; i < args.len; i++ {
-		arg := args[i]
-		if arg == '-worker' {
-			i++
-			continue
-		}
-		if arg in vfmt_only_flags {
-			continue
-		}
-		res << arg
-	}
-	return res
-}
-
 fn (foptions &FormatOptions) should_migrate_json2(file string) bool {
 	if foptions.no_migrate_json2 {
 		return false
@@ -219,65 +190,18 @@ fn (foptions &FormatOptions) should_migrate_json2(file string) bool {
 }
 
 fn (foptions &FormatOptions) formatted_content_from_file(file string) !string {
-	source := os.read_file(file)!
-	if foptions.should_use_legacy_formatter(file, source) {
-		foptions.vlog('vfmt running v.fmt over file: ${file}')
-		return foptions.legacy_formatted_content_from_file(file)
-	}
 	foptions.vlog('vfmt running v3.gen.v over file: ${file}')
-	prefs := v3pref.new_preferences()
+	mut prefs := v3pref.new_preferences()
+	prefs.is_fmt = true
+	prefs.migrate_json2 = foptions.should_migrate_json2(file)
+	prefs.preserve_comptime_conditionals = true
+	prefs.supports_inline_asm = true
 	mut p := v3parser.Parser.new(prefs)
 	a := p.parse_file(file)
 	if report_v3_parser_diagnostics(p.diagnostics, a) {
 		return error('the file contains parser errors')
 	}
-	return v3fmt.format(a)
-}
-
-fn (foptions &FormatOptions) should_use_legacy_formatter(file string, source string) bool {
-	if foptions.is_new_int || foptions.is_debug {
-		return true
-	}
-	if source.contains('//') || source.contains('/*') || source.starts_with('#!') {
-		return true
-	}
-	if source.contains('$if') || source.contains("c'") || source.contains('c"')
-		|| source.contains("r'") || source.contains('r"') {
-		return true
-	}
-	if source_contains_identifier(source, 'asm') || source_contains_identifier(source, 'sql') {
-		return true
-	}
-	return foptions.should_migrate_json2(file) && source_contains_identifier(source, 'json')
-}
-
-fn source_contains_identifier(source string, identifier string) bool {
-	mut offset := 0
-	for offset < source.len {
-		index := source.index_after(identifier, offset) or { return false }
-		has_left_boundary := index == 0 || !util.is_func_char(source[index - 1])
-		right := index + identifier.len
-		has_right_boundary := right == source.len || !util.is_func_char(source[right])
-		if has_left_boundary && has_right_boundary {
-			return true
-		}
-		offset = right
-	}
-	return false
-}
-
-fn (foptions &FormatOptions) legacy_formatted_content_from_file(file string) !string {
-	args := util.join_env_vflags_and_os_args()
-	prefs := setup_preferences(args)
-	mut table := ast.new_table()
-	file_ast := parser.parse_file(file, mut table, .parse_comments, prefs)
-	if file_ast.errors.len > 0 {
-		return error('the file contains parser errors')
-	}
-	table.new_int = foptions.is_new_int
-	return fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
-		migrate_json2: foptions.should_migrate_json2(file)
-	)
+	return v3fmt.format_with_options(a, is_debug: foptions.is_debug)
 }
 
 fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatAst) bool {

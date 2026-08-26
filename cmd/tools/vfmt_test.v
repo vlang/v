@@ -60,6 +60,17 @@ fn test_fmt_uses_v3_formatter() {
 	assert res.output.contains("fn main() {\n\tprintln('v3')\n}"), res.output
 }
 
+fn test_fmt_debug_reports_v3_node_kinds() {
+	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter_debug.v')
+	os.write_file(source_path, 'fn main() { println(1) }\n')!
+
+	res := os.execute('${os.quoted_path(vexe)} fmt -debug ${os.quoted_path(source_path)}')
+
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('stmt fn_decl'), res.output
+	assert res.output.contains('expr call'), res.output
+}
+
 fn run_vfmt_write(name string, source string, extra_args string) (os.Result, string) {
 	source_path := os.join_path(vfmt_test_tdir, '${name}.v')
 	os.write_file(source_path, source) or { panic(err) }
@@ -69,53 +80,72 @@ fn run_vfmt_write(name string, source string, extra_args string) (os.Result, str
 	return res, formatted
 }
 
-fn test_fmt_preserves_comments_with_legacy_fallback() {
-	source := '// vfmt off\nfn main(){println("keep this") }\n// vfmt on\n'
+fn test_fmt_preserves_comments_with_v3() {
+	source := '// vfmt off\nfn main(){println("keep this") }\n// vfmt on\nfn format_me(){println("yes")}\n'
 	res, formatted := run_vfmt_write('comments', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v.fmt over file:'), res.output
+	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
 	assert formatted.contains('// vfmt off')
 	assert formatted.contains('// vfmt on')
 	assert formatted.contains('println("keep this")')
+	assert formatted.contains("fn format_me() {\n\tprintln('yes')\n}"), formatted
 }
 
-fn test_fmt_preserves_comptime_if_with_legacy_fallback() {
+fn test_fmt_keeps_regular_comments_attached_with_v3() {
+	source := '// docs\nfn main(){\n\tx := 1 // inline\n\t_ = x\n}\n'
+	res, formatted := run_vfmt_write('regular_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert formatted.starts_with('// docs\nfn main() {')
+	assert formatted.contains('x := 1 // inline')
+}
+
+fn test_fmt_preserves_comptime_if_with_v3() {
 	source := "fn main(){\n\t\$if windows {\n\t\tprintln('windows')\n\t} \$else {\n\t\tprintln('other')\n\t}\n}\n"
 	res, formatted := run_vfmt_write('comptime_if', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v.fmt over file:'), res.output
+	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
 	assert formatted.contains('$if windows')
 	assert formatted.contains("println('windows')")
 	assert formatted.contains("println('other')")
 }
 
-fn test_fmt_preserves_c_string_prefix_with_legacy_fallback() {
+fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v.fmt over file:'), res.output
+	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
 	assert formatted.contains("x := c' '")
 }
 
-fn test_fmt_accepts_inline_asm_with_legacy_fallback() {
+fn test_fmt_preserves_raw_string_prefix_with_v3() {
+	source := 'fn main(){\n\tx := r"raw \\ value"\n\t_ = x\n}\n'
+	res, formatted := run_vfmt_write('raw_string', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('x := r"raw \\ value"')
+}
+
+fn test_fmt_accepts_inline_asm_with_v3() {
 	source := 'fn main(){\n\tasm amd64 {\n\t\tnop\n\t}\n}\n'
 	res, formatted := run_vfmt_write('inline_asm', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v.fmt over file:'), res.output
+	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
 	assert formatted.contains('asm amd64 {')
 	assert formatted.contains('nop')
 }
 
-fn test_fmt_preserves_json_migration_options_with_legacy_fallback() {
+fn test_fmt_preserves_json_migration_options_with_v3() {
 	source := 'import json\n\nfn main(){\n\tprintln(json.encode(1))\n}\n'
 	migrate_res, migrated := run_vfmt_write('json_migrate', source, '')
 
 	assert migrate_res.exit_code == 0, migrate_res.output
-	assert migrate_res.output.contains('vfmt running v.fmt over file:'), migrate_res.output
+	assert migrate_res.output.contains('vfmt running v3.gen.v over file:'), migrate_res.output
 	assert migrated.contains('import json2')
 	assert migrated.contains('json2.encode(')
 
@@ -123,12 +153,4 @@ fn test_fmt_preserves_json_migration_options_with_legacy_fallback() {
 	assert keep_res.exit_code == 0, keep_res.output
 	assert kept.contains('import json\n')
 	assert kept.contains('json.encode(')
-}
-
-fn test_fmt_honors_new_int_with_legacy_fallback() {
-	res, formatted := run_vfmt_write('new_int', 'fn C.func(arg int) int\n', '-new_int')
-
-	assert res.exit_code == 0, res.output
-	assert res.output.contains('vfmt running v.fmt over file:'), res.output
-	assert formatted == 'fn C.func(arg i32) i32\n'
 }
