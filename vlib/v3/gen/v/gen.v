@@ -1728,6 +1728,9 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId) {
 		if is_embed {
 			g.write(f.value)
 		} else {
+			if flags.contains('v') {
+				g.write('volatile ')
+			}
 			g.write(f.value)
 			g.write(' ')
 			g.write(f.typ)

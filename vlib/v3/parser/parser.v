@@ -2710,12 +2710,12 @@ fn (mut p Parser) parse_attribute_comptime_cond() string {
 	mut cond := strings.new_builder(32)
 	for p.tok != .rsbr && p.tok != .eof {
 		raw_tok_str := p.comptime_cond_token_text()
-		tok_str := if raw_tok_str.starts_with('@') {
+		tok_str := if !p.prefs.is_fmt && raw_tok_str.starts_with('@') {
 			p.resolve_comptime_at_values_at(raw_tok_str, p.tok_pos)
 		} else {
 			raw_tok_str
 		}
-		if cond.len > 0 && tok_str != '?' {
+		if cond.len > 0 && (tok_str != '?' || p.prefs.is_fmt) {
 			cond.write_string(' ')
 		}
 		cond.write_string(tok_str)
@@ -2802,7 +2802,11 @@ fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 		p.next() // consume `@[` / `[`
 		if p.tok == .key_if {
 			p.next()
-			if !p.eval_attribute_comptime_cond(p.parse_attribute_comptime_cond()) {
+			cond := p.parse_attribute_comptime_cond()
+			if p.prefs.is_fmt {
+				attrs << 'if ${cond}'
+				kinds << 0
+			} else if !p.eval_attribute_comptime_cond(cond) {
 				p.skip_next_decl = true
 			}
 			p.check(.rsbr)
@@ -2953,6 +2957,14 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		}
 		if p.tok == .name && p.lit == 'compile_warn' {
 			return p.parse_compile_warn_stmt(dollar_start)
+		}
+		if p.prefs.is_fmt && p.formatter_comptime_call_starts() {
+			call := p.parse_formatter_comptime_call(dollar_start)
+			return p.add_node_from(flat.Node{
+				kind:           .expr_stmt
+				children_start: p.add_child(call)
+				children_count: 1
+			}, call)
 		}
 		// other comptime — skip
 		for p.tok != .semicolon && p.tok != .eof {
@@ -5401,6 +5413,9 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		}
 		else {}
 	}
+	if p.prefs.is_fmt && p.formatter_comptime_call_starts() {
+		return p.parse_formatter_comptime_call(dollar_pos)
+	}
 	if p.tok == .key_if || (p.tok == .name && p.lit == 'if') {
 		return p.parse_comptime_if_expr_after_if()
 	}
@@ -5552,6 +5567,35 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	// `empty_node`, so consumers (e.g. const initializers) never store an
 	// invalid (-1) child node.
 	return p.add_val_id(5, '')
+}
+
+fn (mut p Parser) formatter_comptime_call_starts() bool {
+	return p.tok == .name && (p.peek() == .lpar || (p.lit == 'veb' && p.peek() == .dot))
+}
+
+fn (mut p Parser) parse_formatter_comptime_call(start int) flat.NodeId {
+	mut depth := 0
+	mut saw_lpar := false
+	for p.tok != .eof {
+		if p.tok == .lpar {
+			depth++
+			saw_lpar = true
+		} else if p.tok == .rpar && saw_lpar {
+			depth--
+			p.next()
+			if depth == 0 {
+				break
+			}
+			continue
+		}
+		p.next()
+	}
+	end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+	return p.a.add_node(flat.Node{
+		kind:  .ident
+		value: p.s.src[start..end]
+		pos:   token.new_span(p.cur_file_id, start, end)
+	})
 }
 
 fn resolve_comptime_define_literal(default &flat.Node, value string) !flat.Node {

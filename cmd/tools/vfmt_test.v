@@ -113,6 +113,36 @@ fn test_fmt_preserves_comptime_if_with_v3() {
 	assert formatted.contains("println('other')")
 }
 
+fn test_fmt_preserves_comptime_calls_and_pseudo_variables_with_v3() {
+	source := "fn main(){\n\ta := \$embed_file('./missing.txt')\n\tb := \$env('VFMT_SECRET')\n\tc := \$tmpl('./missing.html')\n\tprintln(@FILE)\n\tprintln(@LINE)\n\tprintln(@VEXE)\n\t_ = a\n\t_ = b\n\t_ = c\n}\n"
+	res, formatted := run_vfmt_write('comptime_calls', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains("\$embed_file('./missing.txt')"), formatted
+	assert formatted.contains("\$env('VFMT_SECRET')"), formatted
+	assert formatted.contains("\$tmpl('./missing.html')"), formatted
+	assert formatted.contains('println(@FILE)'), formatted
+	assert formatted.contains('println(@LINE)'), formatted
+	assert formatted.contains('println(@VEXE)'), formatted
+}
+
+fn test_fmt_preserves_conditional_attributes_with_v3() {
+	source := "@[if formatter_missing_flag ?]\nfn guarded(){\n\tprintln('kept')\n}\n"
+	res, formatted := run_vfmt_write('conditional_attribute', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('@[if formatter_missing_flag ?]'), formatted
+	assert formatted.contains("println('kept')"), formatted
+}
+
+fn test_fmt_preserves_volatile_fields_with_v3() {
+	source := 'struct Counter {\n\tvolatile value u64\n}\n'
+	res, formatted := run_vfmt_write('volatile_field', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('volatile value u64'), formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')

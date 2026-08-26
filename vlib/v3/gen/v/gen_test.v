@@ -139,6 +139,17 @@ fn test_formatter_preserves_source_only_syntax() {
 	assert out.contains('println(@FN) // inline'), out
 }
 
+fn test_formatter_preserves_comptime_calls_attributes_and_volatile_fields() {
+	out := vfmt('more_source_only',
+		"@[if missing_flag ?]\nfn guarded() {\n\ta := \$embed_file('./missing.txt')\n\tb := \$env('VFMT_SECRET')\n\tc := \$tmpl('./missing.html')\n\tprintln(@FILE)\n\t_ = a\n\t_ = b\n\t_ = c\n}\n\nstruct Counter {\n\tvolatile value u64\n}\n")
+	assert out.contains('@[if missing_flag ?]'), out
+	assert out.contains("\$embed_file('./missing.txt')"), out
+	assert out.contains("\$env('VFMT_SECRET')"), out
+	assert out.contains("\$tmpl('./missing.html')"), out
+	assert out.contains('println(@FILE)'), out
+	assert out.contains('volatile value u64'), out
+}
+
 fn test_formatter_preserves_sql_body() {
 	out := vfmt('sql_body',
 		'struct User {\n\tid int\n}\n\nfn f(db DB) {\n\t_ := sql db {\n\t\tselect from User where id == 1\n\t}\n}\n')
