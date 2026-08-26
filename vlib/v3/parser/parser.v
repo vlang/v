@@ -2593,6 +2593,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				kind:   .interface_field
 				is_mut: fields_are_mut
 				value:  field_name
+				pos:    p.span_to(method_start)
 			})
 		} else {
 			// field: name type
@@ -2602,6 +2603,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 				is_mut: fields_are_mut
 				value:  field_name
 				typ:    ftype
+				pos:    p.span_to(method_start)
 			})
 		}
 		if p.tok == .semicolon {
@@ -2650,10 +2652,12 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 				}
 				break
 			}
+			sym_pos := p.current_pos()
 			sym := p.expect_name_or_keyword()
 			selective_ids << p.add_node(flat.Node{
 				kind:  .ident
 				value: sym
+				pos:   sym_pos
 			})
 			if p.tok == .comma {
 				p.next()

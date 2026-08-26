@@ -2135,9 +2135,30 @@ fn (mut g Gen) import_decl(id flat.NodeId) {
 	}
 	symbols := g.a.children_of(n)
 	if symbols.len > 0 {
-		g.write(' { ')
-		g.expr_list(symbols, ', ')
-		g.write(' }')
+		first := g.a.node(symbols[0])
+		is_expanded := first.pos.is_valid()
+			&& g.source_line(first.pos.offset) > g.source_line(n.pos.offset)
+		if is_expanded {
+			g.writeln(' {')
+			g.indent++
+			for symbol in symbols {
+				s := g.a.node(symbol)
+				g.emit_comments_before(s.pos.offset)
+				g.write(s.value)
+				g.write(',')
+				g.emit_trailing_comments(s.pos.end)
+				if !g.on_newline {
+					g.writeln('')
+				}
+				g.source_end = int_max(g.source_end, s.pos.end)
+			}
+			g.indent--
+			g.write('}')
+		} else {
+			g.write(' { ')
+			g.expr_list(symbols, ', ')
+			g.write(' }')
+		}
 	}
 	g.writeln('')
 }
@@ -2300,6 +2321,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId) {
 		g.write(' {')
 	}
 	g.indent++
+	alignments := g.aggregate_field_alignments(fields, false)
 	mut cur_access := ''
 	for fid in fields {
 		f := g.a.node(fid)
@@ -2334,7 +2356,8 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId) {
 				g.write('volatile ')
 			}
 			g.write(f.value)
-			g.write(' ')
+			width := alignments[int(fid)] or { f.value.len }
+			g.write(' '.repeat(width - f.value.len + 1))
 			g.write(g.type_text(f.typ))
 			if f.children_count > 0 {
 				g.write(' = ')
@@ -2429,8 +2452,10 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 	}
 	g.writeln(' {')
 	g.indent++
+	fields := g.a.children_of(n)
+	alignments := g.aggregate_field_alignments(fields, true)
 	mut cur_mut := false
-	for fid in g.a.children_of(n) {
+	for fid in fields {
 		f := g.a.node(fid)
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
@@ -2456,7 +2481,9 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 		} else {
 			g.write(f.value)
 			if f.typ.len > 0 {
-				g.write(' ${g.type_text(f.typ)}')
+				width := alignments[int(fid)] or { f.value.len }
+				g.write(' '.repeat(width - f.value.len + 1))
+				g.write(g.type_text(f.typ))
 			}
 		}
 		g.emit_trailing_comments(f.pos.end)
@@ -2467,6 +2494,89 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 	}
 	g.indent--
 	g.writeln('}')
+}
+
+// aggregate_field_alignments returns the widest field name in each adjacent
+// access section. Blank lines and standalone comments start a fresh alignment
+// group, matching the established formatter layout.
+fn (g &Gen) aggregate_field_alignments(fields []flat.NodeId, is_interface bool) map[int]int {
+	mut alignments := map[int]int{}
+	mut group := []flat.NodeId{}
+	mut group_access := ''
+	mut previous := flat.empty_node
+	for fid in fields {
+		f := g.a.node(fid)
+		mut section := ''
+		mut alignable := false
+		if is_interface {
+			section = if f.is_mut { 'mut' } else { '' }
+			alignable = f.kind == .interface_field && f.op != .dot && f.typ.len > 0
+		} else if f.kind == .field_decl {
+			gp := f.generic_params()
+			flags := if gp.len > 0 { gp[0] } else { '' }
+			section = access_label(flags)
+			alignable = !(f.value == f.typ && f.children_count == 0)
+		}
+		if !alignable {
+			g.store_field_alignment(mut alignments, group)
+			group.clear()
+			group_access = ''
+			previous = flat.empty_node
+			continue
+		}
+		if group.len > 0
+			&& (section != group_access || g.field_alignment_break(previous, fid)) {
+			g.store_field_alignment(mut alignments, group)
+			group.clear()
+		}
+		if group.len == 0 {
+			group_access = section
+		}
+		group << fid
+		previous = fid
+	}
+	g.store_field_alignment(mut alignments, group)
+	return alignments
+}
+
+fn (g &Gen) store_field_alignment(mut alignments map[int]int, fields []flat.NodeId) {
+	mut width := 0
+	for fid in fields {
+		width = int_max(width, g.a.node(fid).value.len)
+	}
+	for fid in fields {
+		alignments[int(fid)] = width
+	}
+}
+
+fn (g &Gen) field_alignment_break(previous flat.NodeId, current flat.NodeId) bool {
+	if int(previous) < 0 {
+		return false
+	}
+	prev := g.a.node(previous)
+	cur := g.a.node(current)
+	if !prev.pos.is_valid() || !cur.pos.is_valid() {
+		return false
+	}
+	prev_line := g.source_line(prev.pos.end)
+	if g.source_line(cur.pos.offset) <= prev_line + 1 {
+		return false
+	}
+	if gap := g.source_span(prev.pos.end, cur.pos.offset) {
+		lines := gap.replace('\r\n', '\n').split('\n')
+		for i in 1 .. lines.len - 1 {
+			if lines[i].trim_space().len == 0 {
+				return true
+			}
+		}
+	}
+	for comment in g.comments {
+		if comment.pos.offset >= prev.pos.end && comment.pos.offset < cur.pos.offset
+			&& g.source_line(comment.pos.offset) > prev_line {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) const_decl(id flat.NodeId) {

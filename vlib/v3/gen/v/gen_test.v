@@ -91,6 +91,43 @@ pub mut:
 '
 }
 
+fn test_formatter_preserves_selective_import_layout() {
+	source := 'import math { max, min }
+import os {
+	file_ext,
+	user_os,
+}
+'
+	out := vfmt('selective_import_layout', source)
+	assert out == source, out
+	assert vfmt('selective_import_layout_twice', out) == out
+}
+
+fn test_formatter_aligns_aggregate_fields() {
+	source := 'interface Hex {
+	a     int
+	ab    int
+	abc   int
+	abcd  int
+	abcde int
+mut:
+	aaaaaaaaaaaaaaaaaa string
+	b                  f64
+}
+
+struct Hex2 {
+	a     int
+	ab    int
+	abc   int
+	abcd  int
+	abcde int
+}
+'
+	out := vfmt('aggregate_field_alignment', source)
+	assert out == source, out
+	assert vfmt('aggregate_field_alignment_twice', out) == out
+}
+
 fn test_formatter_preserves_global_struct_sections() {
 	source := 'struct State {
 	local int
@@ -188,7 +225,7 @@ fn test_formatter_preserves_anonymous_aggregate_types() {
 	out := vfmt('anonymous_aggregate_types', source)
 	assert !out.contains('AnonStruct_'), out
 	assert !out.contains('AnonUnion_'), out
-	assert out.contains('item []struct {'), out
+	assert out.contains('item   []struct {'), out
 	assert out.count('// keep anonymous field comment') == 1, out
 	assert out.contains('choice union { number int }'), out
 	assert out.contains('value struct{ foo string }'), out

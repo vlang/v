@@ -1041,3 +1041,35 @@ fn test_fmt_preserves_function_parameter_comments_with_v3() {
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
+
+fn test_fmt_preserves_selective_import_and_field_layout_with_v3() {
+	source := 'import math { max, min }
+import os {
+	file_ext,
+	user_os,
+}
+
+interface Hex {
+	a     int
+	ab    int
+	abcde int
+mut:
+	aaaaaaaaaaaaaaaaaa string
+	b                  f64
+}
+
+struct Hex2 {
+	a     int
+	ab    int
+	abcde int
+}
+'
+	res, formatted := run_vfmt_write('selective_import_and_field_layout', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('selective_import_and_field_layout_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
