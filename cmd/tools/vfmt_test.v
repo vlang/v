@@ -154,6 +154,18 @@ fn test_fmt_preserves_compact_function_and_expression_bodies_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_keeps_trailing_array_comments_inside_literal_with_v3() {
+	source := "fn array_comments() {\n\t_ := [\n\t\t// before\n\t\t6,\n\t\t// after\n\t]\n\t_ := [\n\t\t7, // inline after\n\t]\n}\n"
+	res, formatted := run_vfmt_write('trailing_array_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('trailing_array_comments_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
 	source := 'struct Config {
 	one int

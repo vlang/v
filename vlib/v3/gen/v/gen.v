@@ -1002,8 +1002,22 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 		}
 		g.expr(child)
 	}
+	last := g.a.node(children.last())
+	has_trailing_comments := g.has_comment_between(last.pos.end, n.pos.end)
 	if line_break {
 		g.writeln(',')
+		if has_trailing_comments {
+			g.advance_source_end_before_pending_comment(n.pos.end)
+			g.emit_comments_before(n.pos.end)
+		}
+		g.indent--
+	} else if has_trailing_comments {
+		g.writeln(',')
+		if !indented {
+			g.indent++
+		}
+		g.advance_source_end_before_pending_comment(n.pos.end)
+		g.emit_comments_before(n.pos.end)
 		g.indent--
 	} else if indented {
 		g.indent--

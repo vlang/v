@@ -94,6 +94,13 @@ fn test_formatter_preserves_compact_function_and_expression_bodies() {
 	assert vfmt('compact_bodies_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_array_comments_inside_literal() {
+	source := "fn array_comments() {\n\t_ := [\n\t\t// before\n\t\t6,\n\t\t// after\n\t]\n\t_ := [\n\t\t7, // inline after\n\t]\n}\n"
+	out := vfmt('trailing_array_comments', source)
+	assert out == source, out
+	assert vfmt('trailing_array_comments_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_interface_comments_inside_body() {
 	source := 'interface Speaker {
 	// first
