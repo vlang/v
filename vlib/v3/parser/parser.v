@@ -181,6 +181,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			missing_imports:        map[int]string{}
 			formatter_sources:      map[int]string{}
 			formatter_file_sources: map[int]string{}
+			formatter_local_sels:   map[int]bool{}
 			text_ids:               map[string]flat.TextId{}
 			specialized_fn_nodes:   map[int]bool{}
 			specialized_fn_modules: map[int]string{}
@@ -3259,7 +3260,10 @@ fn (mut p Parser) parse_comptime_for(dollar_start int) flat.NodeId {
 	if kind == 'methods' {
 		p.comptime_method_var = val_var
 	}
+	p.begin_local_binding_scope()
+	p.declare_local_binding(val_var)
 	body := p.block_stmt()
+	p.end_local_binding_scope()
 	p.comptime_method_var = previous_method_var
 	p.comptime_for_vars.pop()
 	start := p.add_children([body])
@@ -7141,6 +7145,7 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 			children_start: start
 			children_count: 1
 		})
+		p.mark_formatter_local_selector(sel, base_id)
 		if p.tok != .lcbr && p.tok != .comma {
 			return p.expr_with_lhs(sel, .lowest)
 		}
@@ -10019,6 +10024,7 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 			children_start: sel_start
 			children_count: 2
 		}, lhs)
+		p.mark_formatter_local_selector(sel, lhs)
 		if p.tok == .lpar {
 			return p.call_args(sel)
 		}
@@ -10034,6 +10040,7 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 		children_start: sel_start
 		children_count: 1
 	}, lhs)
+	p.mark_formatter_local_selector(sel, lhs)
 	if p.tok == .lpar {
 		if field_name.starts_with('@') {
 			p.a.nodes[int(sel)].value = field_name[1..]
@@ -10056,6 +10063,16 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 		return p.call_args(sel)
 	}
 	return sel
+}
+
+fn (mut p Parser) mark_formatter_local_selector(selector flat.NodeId, lhs flat.NodeId) {
+	if !p.prefs.is_fmt || int(lhs) < 0 || int(lhs) >= p.a.nodes.len {
+		return
+	}
+	receiver := p.a.nodes[int(lhs)]
+	if receiver.kind == .ident && p.is_local_binding(receiver.value) {
+		p.a.formatter_local_sels[int(selector)] = true
+	}
 }
 
 fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
@@ -11463,7 +11480,12 @@ fn (mut p Parser) select_branch() flat.NodeId {
 	}
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
+		p.begin_local_binding_scope()
+		if is_recv_decl && cond_ids.len > 0 {
+			p.declare_local_binding_node(cond_ids[0])
+		}
 		body_ids = p.parse_block_body()
+		p.end_local_binding_scope()
 	}
 	mut all_ids := cond_ids.clone()
 	for id in body_ids {
@@ -11545,7 +11567,11 @@ fn (mut p Parser) isreftype_expr() flat.NodeId {
 	iref_start := p.span_start() // start offset of `isreftype`
 	p.next() // skip 'isreftype'
 	mut arg := flat.empty_node
+	// The compiler lowers type arguments to sizeof nodes. Retain which source form
+	// the formatter must reconstruct without changing the compiler-facing callee.
+	mut formatter_form := 'expr'
 	if p.tok == .lsbr {
+		formatter_form = 'bracket'
 		p.next()
 		type_name := p.parse_type_name()
 		p.check(.rsbr)
@@ -11557,6 +11583,7 @@ fn (mut p Parser) isreftype_expr() flat.NodeId {
 	} else {
 		p.check(.lpar)
 		if p.isreftype_paren_arg_starts_type() {
+			formatter_form = 'type'
 			type_name := p.parse_type_name()
 			arg = p.a.add_val(.sizeof_expr, type_name)
 		} else {
@@ -11568,6 +11595,7 @@ fn (mut p Parser) isreftype_expr() flat.NodeId {
 	start := p.add_children([callee, arg])
 	return p.a.add_node(flat.Node{
 		kind:           .call
+		value:          if p.prefs.is_fmt { '__v3_formatter_isreftype:${formatter_form}' } else { '' }
 		children_start: start
 		children_count: 2
 		typ:            'bool'

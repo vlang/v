@@ -422,6 +422,37 @@ fn test_fmt_does_not_import_for_in_binders_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_resolves_implied_imports_in_selector_scope_with_v3() {
+	source := 'struct Clock {\n\tnow int\n}\n\nfn shadow(time Clock) {\n\tprintln(time.now)\n}\n\nfn use_module() {\n\tprintln(time.now())\n}\n'
+	res, formatted := run_vfmt_write('scope_aware_implied_import', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('import time'), formatted
+	assert formatted.contains('fn shadow(time Clock)'), formatted
+	assert formatted.contains('println(time.now)'), formatted
+	assert formatted.contains('println(time.now())'), formatted
+	second_res, formatted_twice := run_vfmt_write('scope_aware_implied_import_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_isreftype_spelling_with_v3() {
+	source := 'fn check[T](value T) {\n\t_ = isreftype(T)\n\t_ = isreftype[T]()\n\t_ = isreftype(value)\n\t_ = isreftype(sizeof(T))\n}\n'
+	res, formatted := run_vfmt_write('isreftype_spelling', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert !formatted.contains('__v3_isreftype'), formatted
+	assert formatted.contains('isreftype(T)'), formatted
+	assert formatted.contains('isreftype[T]()'), formatted
+	assert formatted.contains('isreftype(value)'), formatted
+	assert formatted.contains('isreftype(sizeof(T))'), formatted
+	second_res, formatted_twice := run_vfmt_write('isreftype_spelling_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_anonymous_aggregate_types_with_v3() {
 	source := "struct Holder {\n\titem []struct { foo string }\n}\n\nfn accept(value struct{ foo string }) {\n\tprintln(value.foo)\n}\n\nfn main() {\n\taccept(struct { foo: 'ok' })\n}\n"
 	res, formatted := run_vfmt_write('anonymous_aggregate_types', source, '')

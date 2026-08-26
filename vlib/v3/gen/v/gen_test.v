@@ -158,6 +158,27 @@ fn test_formatter_does_not_import_lexical_binders() {
 	assert vfmt('lexical_binder_imports_twice', out) == out
 }
 
+fn test_formatter_resolves_implied_imports_in_selector_scope() {
+	source := 'struct Clock {\n\tnow int\n}\n\nfn shadow(time Clock) {\n\tprintln(time.now)\n}\n\nfn use_module() {\n\tprintln(time.now())\n}\n'
+	out := vfmt('scope_aware_implied_import', source)
+	assert out.contains('import time'), out
+	assert out.contains('fn shadow(time Clock)'), out
+	assert out.contains('println(time.now)'), out
+	assert out.contains('println(time.now())'), out
+	assert vfmt('scope_aware_implied_import_twice', out) == out
+}
+
+fn test_formatter_preserves_isreftype_spelling() {
+	source := 'fn check[T](value T) {\n\t_ = isreftype(T)\n\t_ = isreftype[T]()\n\t_ = isreftype(value)\n\t_ = isreftype(sizeof(T))\n}\n'
+	out := vfmt('isreftype_spelling', source)
+	assert !out.contains('__v3_isreftype'), out
+	assert out.contains('isreftype(T)'), out
+	assert out.contains('isreftype[T]()'), out
+	assert out.contains('isreftype(value)'), out
+	assert out.contains('isreftype(sizeof(T))'), out
+	assert vfmt('isreftype_spelling_twice', out) == out
+}
+
 fn test_formatter_preserves_anonymous_aggregate_types() {
 	source := "struct Holder {\n\titem []struct {\n\t\t// keep anonymous field comment\n\t\tfoo string\n\t}\n\tchoice union { number int }\n}\n\nfn accept(value struct{ foo string }) {\n\tprintln(value.foo)\n}\n\nfn main() {\n\taccept(struct { foo: 'ok' })\n}\n"
 	out := vfmt('anonymous_aggregate_types', source)

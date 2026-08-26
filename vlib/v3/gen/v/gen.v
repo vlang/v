@@ -432,57 +432,16 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 			}
 		}
 	}
-	for n in g.a.nodes {
-		if n.pos.id != g.file_id {
-			continue
-		}
-		match n.kind {
-			.param {
-				declared[n.value] = true
-			}
-			.decl_assign {
-				for child in g.a.children_of(n) {
-					cn := g.a.node(child)
-					if cn.kind == .ident {
-						declared[cn.value] = true
-					}
-				}
-			}
-			.for_in_stmt {
-				children := g.a.children_of(n)
-				for i in 0 .. int_min(2, children.len) {
-					binder := g.a.node(children[i])
-					if binder.kind == .ident && binder.value.len > 0 && binder.value != '_' {
-						declared[binder.value] = true
-					}
-				}
-			}
-			.select_branch {
-				if n.value == 'recv' && n.children_count > 0 {
-					binder := g.a.child_node(n, 0)
-					if binder.kind == .ident && binder.value.len > 0 && binder.value != '_' {
-						declared[binder.value] = true
-					}
-				}
-			}
-			.comptime_for {
-				binder := n.value.all_before('|')
-				if binder.len > 0 && binder != '_' {
-					declared[binder] = true
-				}
-			}
-			else {}
-		}
-	}
 	mut implied := map[string]bool{}
-	for n in g.a.nodes {
+	for id, n in g.a.nodes {
 		if n.pos.id != g.file_id || n.kind != .selector || n.children_count == 0 {
 			continue
 		}
 		receiver := g.a.child_node(n, 0)
 		name := receiver.value
 		if receiver.kind == .ident && name.len > 0 && name !in ['C', 'JS'] && !imported[name]
-			&& !declared[name] && os.is_dir(os.join_path(@VEXEROOT, 'vlib', name)) {
+			&& !declared[name] && !g.a.formatter_local_sels[id]
+			&& os.is_dir(os.join_path(@VEXEROOT, 'vlib', name)) {
 			implied[name] = true
 		}
 	}
@@ -949,6 +908,22 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 	n := g.a.node(id)
 	children := g.a.children_of(n)
 	if children.len == 0 {
+		return
+	}
+	if n.value.starts_with('__v3_formatter_isreftype:') && children.len == 2 {
+		form := n.value.all_after('__v3_formatter_isreftype:')
+		arg := g.a.node(children[1])
+		if form == 'bracket' {
+			g.write('isreftype[${g.type_text(arg.value)}]()')
+			return
+		}
+		g.write('isreftype(')
+		if form == 'type' {
+			g.write(g.type_text(arg.value))
+		} else {
+			g.expr(children[1])
+		}
+		g.write(')')
 		return
 	}
 	if kind := g.json_migration_call_kind(children[0]) {

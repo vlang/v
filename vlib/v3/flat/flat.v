@@ -243,6 +243,8 @@ pub mut:
 	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources       map[int]string
 	formatter_file_sources  map[int]string
+	// formatter_local_sels records selectors whose direct receiver is a lexical binding.
+	formatter_local_sels    map[int]bool
 	formatter_migrate_json2 bool
 	// Template-generated nodes keep their original template source location while
 	// retaining the comptime call site used for v1-compatible diagnostic stacks.
@@ -341,6 +343,7 @@ pub fn FlatAst.new() FlatAst {
 		missing_imports:        map[int]string{}
 		formatter_sources:      map[int]string{}
 		formatter_file_sources: map[int]string{}
+		formatter_local_sels:   map[int]bool{}
 		text_ids:               map[string]TextId{}
 		specialized_fn_nodes:   map[int]bool{}
 		specialized_fn_modules: map[int]string{}
