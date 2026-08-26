@@ -9826,6 +9826,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_likely, .key_unlikely {
 			paren_start := p.span_start()
+			hint := if p.prefs.is_fmt { p.tok.str() } else { '' }
 			p.next()
 			p.check(.lpar)
 			inner := p.expr(.lowest)
@@ -9833,6 +9834,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			pstart := p.add_child(inner)
 			return p.a.add_node(flat.Node{
 				kind:           .paren
+				value:          hint
 				children_start: pstart
 				children_count: 1
 				pos:            p.span_to(paren_start)

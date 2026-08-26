@@ -526,6 +526,20 @@ fn test_formatter_preserves_postfix_assignment_attributes() {
 	assert vfmt('postfix_assignment_attribute_twice', out) == out
 }
 
+fn test_formatter_preserves_branch_prediction_builtins() {
+	source := 'fn f(value int) bool {
+	if _likely_(value > 0) {
+		return true
+	}
+	return _unlikely_(value < 0)
+}
+'
+	out := vfmt('branch_prediction_builtins', source)
+	assert out.contains('if _likely_(value > 0) {'), out
+	assert out.contains('return _unlikely_(value < 0)'), out
+	assert vfmt('branch_prediction_builtins_twice', out) == out
+}
+
 fn test_formatter_preserves_js_string_prefixes() {
 	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"
 	out := vfmt('js_string_prefixes', source)

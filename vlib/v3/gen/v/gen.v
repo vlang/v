@@ -729,7 +729,11 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			}
 		}
 		.paren {
-			g.write('(')
+			if n.value in ['_likely_', '_unlikely_'] {
+				g.write('${n.value}(')
+			} else {
+				g.write('(')
+			}
 			g.expr(g.a.child(n, 0))
 			g.write(')')
 		}

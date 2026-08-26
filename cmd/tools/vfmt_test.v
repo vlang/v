@@ -457,6 +457,25 @@ fn test_fmt_preserves_postfix_assignment_attributes_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_branch_prediction_builtins_with_v3() {
+	source := 'fn f(value int) bool {
+	if _likely_(value > 0) {
+		return true
+	}
+	return _unlikely_(value < 0)
+}
+'
+	res, formatted := run_vfmt_write('branch_prediction_builtins', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('if _likely_(value > 0) {'), formatted
+	assert formatted.contains('return _unlikely_(value < 0)'), formatted
+	second_res, formatted_twice := run_vfmt_write('branch_prediction_builtins_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_js_string_prefixes_with_v3() {
 	source_path := os.join_path(vfmt_test_tdir, 'js_string_prefixes.js.v')
 	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"
