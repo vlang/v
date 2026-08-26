@@ -14978,7 +14978,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			if g.gen_safe_integer_division(node, lhs_id, rhs_id, lhs_type) {
+			if g.gen_safe_integer_division(node, lhs_id, rhs_id, g.usable_expr_type(id)) {
 				g.expected_enum = old_expected_enum
 				return
 			}
@@ -22764,12 +22764,12 @@ fn (mut g FlatGen) gen_checked_integer_infix(node flat.Node, lhs_id flat.NodeId,
 	return true
 }
 
-fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type) bool {
+fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, result_type types.Type) bool {
 	if !g.has_builtins || node.op !in [.div, .mod] {
 		return false
 	}
-	checked_integer_bounds(lhs_type) or { return false }
-	c_type := g.value_c_type(lhs_type)
+	checked_integer_bounds(result_type) or { return false }
+	c_type := g.value_c_type(result_type)
 	if c_type.len == 0 {
 		return false
 	}
