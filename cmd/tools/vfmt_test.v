@@ -202,6 +202,18 @@ fn test_fmt_preserves_compact_empty_literals_and_declarations_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_loop_labels_debugger_and_enum_groups_with_v3() {
+	source := "enum Grouped {\n\taa = 1\n\tbbb\n\n\tcccc  = 5\n\tddddd = 10\n\n\t// final group\n\tee  = 20\n\tfff = 30\n}\n\nfn labelled_debugger() {\n\tL1: for {\n\t\t\$dbg;\n\t\tbreak L1\n\t}\n}\n"
+	res, formatted := run_vfmt_write('loop_label_debugger_enum_groups', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('loop_label_debugger_enum_groups_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
 	source := 'struct Config {
 	one int
@@ -726,7 +738,7 @@ fn test_fmt_preserves_multi_variable_c_style_loop_headers_with_v3() {
 	res, formatted := run_vfmt_write('multi_variable_c_style_loop', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert formatted.contains('L4:\n\tfor a, b := 0, 10; a < 4; a++, b-- {'), formatted
+	assert formatted.contains('L4: for a, b := 0, 10; a < 4; a++, b-- {'), formatted
 	assert !formatted.contains('\n\t{\n\t\tmut a, b := 0, 10'), formatted
 	second_res, formatted_twice := run_vfmt_write('multi_variable_c_style_loop_twice',
 		formatted, '')

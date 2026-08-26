@@ -513,7 +513,10 @@ fn (mut g Gen) collect_top_level(ids []flat.NodeId, mut out []flat.NodeId) {
 // stmt_list_ids renders a list of statements, one indentation level deeper.
 fn (mut g Gen) stmt_list_ids(ids []flat.NodeId) {
 	mut previous := flat.empty_node
-	for id in ids {
+	mut i := 0
+	for i < ids.len {
+		id := ids[i]
+		i++
 		if int(id) < 0 {
 			continue
 		}
@@ -534,10 +537,39 @@ fn (mut g Gen) stmt_list_ids(ids []flat.NodeId) {
 			}
 		}
 		g.indent++
+		mut next_i := i
+		for next_i < ids.len
+			&& (int(ids[next_i]) < 0 || g.a.node(ids[next_i]).kind == .empty) {
+			next_i++
+		}
+		if g.a.node(id).kind == .label_stmt && next_i < ids.len
+			&& g.is_loop_statement(ids[next_i]) {
+			label := g.a.node(id)
+			loop := g.a.node(ids[next_i])
+			_, label_end := g.stmt_source_span(label)
+			loop_start, _ := g.stmt_source_span(loop)
+			if !g.has_comment_between(label_end, loop_start) {
+				g.emit_comments_before(label.pos.offset)
+				g.source_end = int_max(g.source_end, label.pos.offset)
+				g.write('${label.value}: ')
+				g.source_end = int_max(g.source_end, label_end)
+				g.stmt(ids[next_i])
+				g.indent--
+				previous = ids[next_i]
+				i = next_i + 1
+				continue
+			}
+		}
 		g.stmt(id)
 		g.indent--
 		previous = id
 	}
+}
+
+fn (g &Gen) is_loop_statement(id flat.NodeId) bool {
+	n := g.a.node(id)
+	return n.kind in [.for_stmt, .for_in_stmt]
+		|| (n.kind == .block && n.value == 'for_c_style_multi')
 }
 
 fn (g &Gen) source_has_blank_line_between(start int, end int) bool {
@@ -686,7 +718,7 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 			}
 		}
 		.debugger_stmt {
-			g.writeln('\$dbg')
+			g.writeln('\$dbg;')
 		}
 		.if_expr {
 			g.if_expr(id)
@@ -2715,20 +2747,26 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 	}
 	g.writeln(' {')
 	g.indent++
-	mut value_width := 0
+	alignments := g.enum_field_alignments(fields)
+	mut previous := flat.empty_node
 	for fid in fields {
 		f := g.a.node(fid)
-		if f.children_count > 0 && f.value.len > value_width {
-			value_width = f.value.len
+		if int(previous) >= 0
+			&& g.source_has_blank_line_between(g.a.node(previous).pos.end, f.pos.offset) {
+			if !g.on_newline {
+				g.writeln('')
+			}
+			if g.out.len < 2 || g.out.last_n(2) != '\n\n' {
+				g.out.writeln('')
+				g.on_newline = true
+			}
 		}
-	}
-	for fid in fields {
-		f := g.a.node(fid)
 		g.emit_comments_before(f.pos.offset)
 		g.source_end = int_max(g.source_end, f.pos.offset)
 		g.write(f.value)
 		if f.children_count > 0 {
-			g.write(' '.repeat(value_width - f.value.len))
+			width := alignments[int(fid)] or { f.value.len }
+			g.write(' '.repeat(width - f.value.len))
 			g.write(' = ')
 			g.expr(g.a.child(f, 0))
 		}
@@ -2741,10 +2779,44 @@ fn (mut g Gen) enum_decl(id flat.NodeId) {
 			g.writeln('')
 		}
 		g.source_end = int_max(g.source_end, f.pos.end)
+		previous = fid
 	}
 	g.emit_comments_before(end)
 	g.indent--
 	g.writeln('}')
+}
+
+fn (g &Gen) enum_field_alignments(fields []flat.NodeId) map[int]int {
+	mut alignments := map[int]int{}
+	mut group := []flat.NodeId{}
+	mut previous := flat.empty_node
+	for fid in fields {
+		f := g.a.node(fid)
+		if int(previous) >= 0
+			&& g.source_has_blank_line_between(g.a.node(previous).pos.end, f.pos.offset) {
+			g.store_enum_field_alignments(mut alignments, group)
+			group.clear()
+		}
+		group << fid
+		previous = fid
+	}
+	g.store_enum_field_alignments(mut alignments, group)
+	return alignments
+}
+
+fn (g &Gen) store_enum_field_alignments(mut alignments map[int]int, fields []flat.NodeId) {
+	mut width := 0
+	for fid in fields {
+		f := g.a.node(fid)
+		if f.children_count > 0 {
+			width = int_max(width, f.value.len)
+		}
+	}
+	for fid in fields {
+		if g.a.node(fid).children_count > 0 {
+			alignments[int(fid)] = width
+		}
+	}
 }
 
 fn (mut g Gen) type_decl(id flat.NodeId) {

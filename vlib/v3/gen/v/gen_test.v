@@ -122,6 +122,13 @@ fn test_formatter_preserves_compact_empty_literals_and_declarations() {
 	assert vfmt('compact_empty_literals_declarations_twice', out) == out
 }
 
+fn test_formatter_preserves_loop_labels_debugger_and_enum_groups() {
+	source := "enum Grouped {\n\taa = 1\n\tbbb\n\n\tcccc  = 5\n\tddddd = 10\n\n\t// final group\n\tee  = 20\n\tfff = 30\n}\n\nfn labelled_debugger() {\n\tL1: for {\n\t\t\$dbg;\n\t\tbreak L1\n\t}\n}\n"
+	out := vfmt('loop_label_debugger_enum_groups', source)
+	assert out == source, out
+	assert vfmt('loop_label_debugger_enum_groups_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_interface_comments_inside_body() {
 	source := 'interface Speaker {
 	// first
@@ -856,7 +863,7 @@ fn test_formatter_preserves_multi_variable_c_style_loop_headers() {
 }
 '
 	out := vfmt('multi_variable_c_style_loop', source)
-	assert out.contains('L4:\n\tfor a, b := 0, 10; a < 4; a++, b-- {'), out
+	assert out.contains('L4: for a, b := 0, 10; a < 4; a++, b-- {'), out
 	assert !out.contains('\n\t{\n\t\tmut a, b := 0, 10'), out
 	assert vfmt('multi_variable_c_style_loop_twice', out) == out
 }
