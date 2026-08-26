@@ -6036,9 +6036,6 @@ fn (g &Parser) comptime_type_matches(left_type string, target_type string, targe
 		'alias' {
 			original_key in g.declared_kinds && g.declared_kinds[original_key] == .alias_
 		}
-		'sumtype', 'shared' {
-			false
-		}
 		else {
 			false
 		}

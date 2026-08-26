@@ -48,7 +48,7 @@ fn C.wkhtmltopdf_convert(converter &C.wkhtmltopdf_converter) i32
 
 fn C.wkhtmltopdf_http_error_code(converter &C.wkhtmltopdf_converter) i32
 
-fn C.wkhtmltopdf_get_output(converter &C.wkhtmltopdf_converter, data &&char) i32
+fn C.wkhtmltopdf_get_output(converter &C.wkhtmltopdf_converter, const_data &&u8) isize
 
 fn main() {
 	// init
@@ -73,7 +73,7 @@ fn main() {
 	error_code := C.wkhtmltopdf_http_error_code(converter)
 	println('wkhtmltopdf_http_error_code: ${error_code}')
 	if result {
-		pdata := &char(unsafe { nil })
+		pdata := &u8(unsafe { nil })
 		ppdata := &pdata
 		nbytes := C.wkhtmltopdf_get_output(converter, voidptr(ppdata))
 		println('wkhtmltopdf_get_output: ${nbytes} bytes')
@@ -81,7 +81,7 @@ fn main() {
 			println('ERR: ${err}')
 			return
 		}
-		wrote := unsafe { file.write_ptr(pdata, nbytes) }
+		wrote := unsafe { file.write_ptr(pdata, int(nbytes)) }
 		println('write_bytes: ${wrote} [./google.pdf]')
 		file.flush()
 		file.close()
