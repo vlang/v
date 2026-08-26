@@ -513,6 +513,61 @@ fn (g &Parser) render_enum_print_expression(tokens []FastcExpressionToken) ?Fast
 	}
 }
 
+fn (g &Parser) render_struct_literal_with_defaults(c_type string, layout_type string, explicit_initializers []string, rendered_fields []string, rendered_fields_by_name map[string]string) FastcRenderedExpression {
+	base_type := c_type.trim_right('*')
+	mut assignments := []string{cap: rendered_fields.len}
+	mut initializers := []string{}
+	mut initialized_fields := map[string]bool{}
+	for field in g.struct_field_info[layout_type] {
+		if fastc_fixed_array_element_type(field.typ) == none {
+			continue
+		}
+		if rendered_field := rendered_fields_by_name[field.name] {
+			initializers << rendered_field
+			initialized_fields[rendered_field] = true
+		}
+	}
+	for field in rendered_fields {
+		if field in initialized_fields {
+			continue
+		}
+		assignments << '__v_fastc_struct_default${field};'
+	}
+	initializer := if initializers.len > 0 {
+		'(${base_type}){${initializers.join(',')}}'
+	} else {
+		'(${base_type}){0}'
+	}
+	result := if c_type.ends_with('*') {
+		'(${c_type})v_fastc_interface_box(&__v_fastc_struct_default, sizeof(${base_type}))'
+	} else {
+		'__v_fastc_struct_default'
+	}
+	return FastcRenderedExpression{
+		source: '({ ${explicit_initializers.join(' ')} ${base_type} __v_fastc_struct_default = ${initializer}; ${assignments.join(' ')} ${result}; })'
+		typ:    c_type
+	}
+}
+
+fn (g &Parser) render_empty_struct_initializer(c_type string) string {
+	layout_type := c_type.trim_right('*')
+	mut rendered_fields := []string{}
+	mut rendered_fields_by_name := map[string]string{}
+	for field in g.struct_field_info[layout_type] {
+		if field.default_value == '' {
+			continue
+		}
+		rendered_field := '.${fastc_c_identifier(field.name)}=(${field.default_value})'
+		rendered_fields << rendered_field
+		rendered_fields_by_name[field.name] = rendered_field
+	}
+	if rendered_fields.len == 0 {
+		return '(${c_type}){0}'
+	}
+	return g.render_struct_literal_with_defaults(c_type, layout_type, []string{}, rendered_fields,
+		rendered_fields_by_name).source
+}
+
 fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
 	mut open := -1
 	mut delimiter_depth := 0
@@ -791,39 +846,8 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		}
 	}
 	if has_applied_defaults {
-		base_type := c_type.trim_right('*')
-		mut assignments := []string{cap: rendered_fields.len}
-		mut initializers := []string{}
-		mut initialized_fields := map[string]bool{}
-		for field in g.struct_field_info[layout_type] {
-			if fastc_fixed_array_element_type(field.typ) == none {
-				continue
-			}
-			if rendered_field := rendered_fields_by_name[field.name] {
-				initializers << rendered_field
-				initialized_fields[rendered_field] = true
-			}
-		}
-		for field in rendered_fields {
-			if field in initialized_fields {
-				continue
-			}
-			assignments << '__v_fastc_struct_default${field};'
-		}
-		initializer := if initializers.len > 0 {
-			'(${base_type}){${initializers.join(',')}}'
-		} else {
-			'(${base_type}){0}'
-		}
-		result := if c_type.ends_with('*') {
-			'(${c_type})v_fastc_interface_box(&__v_fastc_struct_default, sizeof(${base_type}))'
-		} else {
-			'__v_fastc_struct_default'
-		}
-		return FastcRenderedExpression{
-			source: '({ ${explicit_initializers.join(' ')} ${base_type} __v_fastc_struct_default = ${initializer}; ${assignments.join(' ')} ${result}; })'
-			typ:    c_type
-		}
+		return g.render_struct_literal_with_defaults(c_type, layout_type, explicit_initializers,
+			rendered_fields, rendered_fields_by_name)
 	}
 	literal_source := if c_type.ends_with('*') {
 		'(${c_type})v_fastc_interface_box(&(${c_type.trim_right('*')}){${rendered_fields.join(',')}}, sizeof(${c_type.trim_right('*')}))'
@@ -1950,7 +1974,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		rendered_arguments << rendered_argument
 	}
 	for parameter_type in signature.parameter_types[call_args.len..] {
-		rendered_arguments << '(${parameter_type}){0}'
+		rendered_arguments << g.render_empty_struct_initializer(parameter_type)
 	}
 	call_name := if function_key.starts_with('C.') {
 		function_key.all_after_last('.')

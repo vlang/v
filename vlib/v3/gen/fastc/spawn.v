@@ -135,7 +135,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 	g.next()
 	if signature.last_parameter_is_params && arguments.len + 1 == signature.parameter_types.len {
 		parameter_type := signature.parameter_types.last()
-		arguments << '(${parameter_type}){0}'
+		arguments << g.render_empty_struct_initializer(parameter_type)
 	}
 	if arguments.len != signature.parameter_types.len {
 		return g.unsupported('spawn of `${callee}` with ${arguments.len} arguments, expected ${signature.parameter_types.len}')

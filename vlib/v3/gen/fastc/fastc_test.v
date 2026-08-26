@@ -112,7 +112,11 @@ fn test_selfhost_spawn_accepts_explicit_and_omitted_params_structs() {
 
 @[params]
 struct Config {
-	value int
+	value int = default_value()
+}
+
+fn default_value() int {
+	return 1234
 }
 
 fn configured(base int, config Config) int {
@@ -128,7 +132,7 @@ fn main() {
 ',
 		'spawn_params_struct.v', prefs) or { panic(err) }
 	assert c_source.contains('args->result = configured(args->arg0, args->arg1);'), c_source
-	assert c_source.contains('(Config){0}'), c_source
+	assert c_source.contains('__v_fastc_struct_default.value=(default_value());'), c_source
 }
 
 fn test_generate_and_compile_without_flat_ast() {
