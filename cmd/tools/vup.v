@@ -133,14 +133,21 @@ fn (app App) recompile_v() bool {
 		return app.make(vself)
 	}
 
-	// Let `v self` inherit the terminal instead of buffering all of its output.
-	// Rebuilding a V3-enabled compiler can take several seconds, and hiding the
-	// initial "V self compiling" status makes `v up` appear to hang after TCC.
-	mut self_process := os.new_process(vexe_path)
-	self_process.set_args(if app.is_prod { ['-prod', 'self'] } else { ['self'] })
-	self_process.wait()
-	self_exit_code := self_process.code
-	self_process.close()
+	// Let `v self` inherit stdio instead of buffering all of its output. Rebuilding
+	// a V3-enabled compiler can take several seconds, and hiding the initial status
+	// makes `v up` appear to hang after TCC. On Windows the default `os.Process`
+	// launch does not wire inherited standard handles into STARTUPINFO, while
+	// `os.system` does preserve redirected stdout and stderr through `_wsystem`.
+	mut self_exit_code := -1
+	$if windows {
+		self_exit_code = os.system(vself)
+	} $else {
+		mut self_process := os.new_process(vexe_path)
+		self_process.set_args(if app.is_prod { ['-prod', 'self'] } else { ['self'] })
+		self_process.wait()
+		self_exit_code = self_process.code
+		self_process.close()
+	}
 	if self_exit_code == 0 {
 		println('> Done recompiling.')
 		return true
