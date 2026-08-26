@@ -326,6 +326,26 @@ fn test_formatter_preserves_comptime_match() {
 	assert vfmt('comptime_match_twice', out) == out
 }
 
+fn test_formatter_preserves_inclusive_match_ranges() {
+	source := 'fn classify(value int) string {\n\treturn match value {\n\t\t32...126 { \'printable\' }\n\t\telse { \'other\' }\n\t}\n}\n'
+	out := vfmt('inclusive_match_range', source)
+	assert out.contains('32...126 {'), out
+	assert !out.contains('32 .. 126'), out
+	assert vfmt('inclusive_match_range_twice', out) == out
+}
+
+fn test_formatter_preserves_lifetime_annotations() {
+	source := 'interface Reader {\n\tread[^a](value &^a string) &^a string\n}\n\nstruct Borrowed[^a, T] {\n\tvalue &^a T\n}\n\nfn Borrowed.new[^a, T](value &^a T) Borrowed[^a, T] {\n\treturn Borrowed[^a, T]{\n\t\tvalue: value\n\t}\n}\n\nfn (borrowed &^a Borrowed[^a, T]) get[^a]() &^a T {\n\treturn borrowed.value\n}\n'
+	out := vfmt('lifetime_annotations', source)
+	assert out.contains('read[^a](value &^a string) &^a string'), out
+	assert out.contains('struct Borrowed[^a, T]'), out
+	assert out.contains('value &^a T'), out
+	assert out.contains('fn Borrowed.new[^a, T](value &^a T) Borrowed[^a, T]'), out
+	assert out.contains('return Borrowed[^a, T]{'), out
+	assert out.contains('fn (borrowed &^a Borrowed[^a, T]) get[^a]() &^a T'), out
+	assert vfmt('lifetime_annotations_twice', out) == out
+}
+
 fn test_formatter_ignores_vfmt_directives_inside_strings() {
 	out := vfmt('vfmt_directives_in_strings',
 		"fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n")

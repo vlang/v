@@ -817,7 +817,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		}
 		.range {
 			g.expr(g.a.child(n, 0))
-			g.write(' .. ')
+			g.write(if n.value == '...' { '...' } else { ' .. ' })
 			if n.children_count > 1 {
 				g.expr(g.a.child(n, 1))
 			}

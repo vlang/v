@@ -2419,11 +2419,12 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 		mut method_generic_params := []string{}
 		if p.tok == .lsbr && p.peek() in [.name, .xor] {
 			if p.peek() == .xor {
-				// Lifetime param list on an interface method: `name[^a](...)`. v3 erases
-				// lifetimes, so consume and drop the `[^a]` list; without this the following
-				// `(` is not seen as the method parameter list and the name is mis-parsed as a
-				// `[^a]`-typed (fixed-array) interface field, which then fails in cgen.
-				p.parse_generic_param_names()
+				// Compiler parsing erases interface method lifetimes; formatter parsing keeps
+				// their source-facing generic parameter spelling.
+				lifetime_params := p.parse_generic_param_names()
+				if p.prefs.is_fmt {
+					method_generic_params = lifetime_params.clone()
+				}
 			} else {
 				// Keep parsing after the redundant generic names so the checker can report
 				// the focused interface-method diagnostic instead of parser cascades.
@@ -5393,6 +5394,12 @@ fn (mut p Parser) parse_generic_param_names() []string {
 		} else if depth == 1 {
 			if p.tok == .comma {
 				expect_name = true
+			} else if expect_name && p.tok == .xor && p.peek() == .name {
+				p.next()
+				if p.prefs.is_fmt {
+					names << '^${p.lit}'
+				}
+				expect_name = false
 			} else if expect_name && p.tok == .name {
 				names << p.lit
 				expect_name = false
@@ -7171,6 +7178,7 @@ fn (mut p Parser) match_branch_cond() flat.NodeId {
 		rstart := p.add_children2(cond, rhs)
 		return p.add_node(flat.Node{
 			kind:           .range
+			value:          if p.prefs.is_fmt { '...' } else { '' }
 			children_start: rstart
 			children_count: 2
 		})
@@ -10529,6 +10537,10 @@ fn (p &Parser) type_expr_name(id flat.NodeId) string {
 			for i in 1 .. node.children_count {
 				child_id := p.a.child(&node, i)
 				if p.type_expr_is_lifetime_arg(child_id) {
+					if p.prefs.is_fmt {
+						lifetime_node := p.a.child_node(p.a.node(child_id), 0)
+						args << '^${lifetime_node.value}'
+					}
 					continue
 				}
 				arg := p.resolve_local_type_name(p.type_expr_name(child_id))
@@ -11027,8 +11039,10 @@ fn (p &Parser) fixed_array_size_text(size_node flat.NodeId, size_start int, size
 }
 
 fn (mut p Parser) parse_fixed_array_literal_type_name() string {
-	if p.consume_lifetime_type_param() {
-		return p.parse_fixed_array_literal_type_name()
+	lifetime := p.consume_lifetime_type_param()
+	if lifetime.len > 0 {
+		typ := p.parse_fixed_array_literal_type_name()
+		return if p.prefs.is_fmt { lifetime_type_text(lifetime, typ) } else { typ }
 	}
 	if p.tok == .question {
 		p.next()
@@ -12125,15 +12139,21 @@ fn (mut p Parser) parse_fn_type_param() string {
 	return fn_type_param_with_mut(first, is_mut)
 }
 
-fn (mut p Parser) consume_lifetime_type_param() bool {
+fn (mut p Parser) consume_lifetime_type_param() string {
 	if p.tok != .xor {
-		return false
+		return ''
 	}
+	mut lifetime := '^'
 	p.next()
 	if p.tok == .name {
+		lifetime += p.lit
 		p.next()
 	}
-	return true
+	return lifetime
+}
+
+fn lifetime_type_text(lifetime string, typ string) string {
+	return if typ.len > 0 { '${lifetime} ${typ}' } else { lifetime }
 }
 
 fn (mut p Parser) parse_type_generic_suffix() string {
@@ -12157,7 +12177,12 @@ fn (mut p Parser) parse_type_generic_suffix() string {
 	p.next() // skip [
 	mut params := []string{}
 	for p.tok != .rsbr && p.tok != .eof {
-		if !p.consume_lifetime_type_param() {
+		lifetime := p.consume_lifetime_type_param()
+		if lifetime.len > 0 {
+			if p.prefs.is_fmt {
+				params << lifetime
+			}
+		} else {
 			param := p.parse_type_name()
 			if param.len > 0 {
 				params << param
@@ -12208,13 +12233,12 @@ fn (p &Parser) type_suffix_is_followed_by_array_literal() bool {
 
 // parse_type_name reads parse type name input for parser.
 fn (mut p Parser) parse_type_name() string {
-	// Lifetime annotation `^a` (as in `&^a T`, `?&^a T`, `Type[^a]`). v3 erases lifetimes -
-	// they have no runtime representation, so consume the caret and the lifetime name and
-	// continue with the underlying type. Without this, `&^a T` parses as just `&` and the
-	// stray `^` desyncs the enclosing declaration (e.g. a `&^a Recv` method receiver made the
-	// method name get consumed as the return type).
-	if p.consume_lifetime_type_param() {
-		return p.parse_type_name()
+	// Lifetime annotation `^a` has no runtime representation. Compiler parsing erases it;
+	// formatter parsing retains it while consuming the same tokens.
+	lifetime := p.consume_lifetime_type_param()
+	if lifetime.len > 0 {
+		typ := p.parse_type_name()
+		return if p.prefs.is_fmt { lifetime_type_text(lifetime, typ) } else { typ }
 	}
 	if p.tok == .name && p.lit == '&' {
 		p.next()

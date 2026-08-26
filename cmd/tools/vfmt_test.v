@@ -229,6 +229,36 @@ fn test_fmt_preserves_comptime_match_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_inclusive_match_ranges_with_v3() {
+	source := 'fn classify(value int) string {\n\treturn match value {\n\t\t32...126 { \'printable\' }\n\t\telse { \'other\' }\n\t}\n}\n'
+	res, formatted := run_vfmt_write('inclusive_match_range', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('32...126 {'), formatted
+	assert !formatted.contains('32 .. 126'), formatted
+	second_res, formatted_twice := run_vfmt_write('inclusive_match_range_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_lifetime_annotations_with_v3() {
+	source := 'interface Reader {\n\tread[^a](value &^a string) &^a string\n}\n\nstruct Borrowed[^a, T] {\n\tvalue &^a T\n}\n\nfn Borrowed.new[^a, T](value &^a T) Borrowed[^a, T] {\n\treturn Borrowed[^a, T]{\n\t\tvalue: value\n\t}\n}\n\nfn (borrowed &^a Borrowed[^a, T]) get[^a]() &^a T {\n\treturn borrowed.value\n}\n'
+	res, formatted := run_vfmt_write('lifetime_annotations', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('read[^a](value &^a string) &^a string'), formatted
+	assert formatted.contains('struct Borrowed[^a, T]'), formatted
+	assert formatted.contains('value &^a T'), formatted
+	assert formatted.contains('fn Borrowed.new[^a, T](value &^a T) Borrowed[^a, T]'), formatted
+	assert formatted.contains('return Borrowed[^a, T]{'), formatted
+	assert formatted.contains('fn (borrowed &^a Borrowed[^a, T]) get[^a]() &^a T'), formatted
+	second_res, formatted_twice := run_vfmt_write('lifetime_annotations_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_ignores_vfmt_directives_inside_strings_with_v3() {
 	source := "fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n"
 	res, formatted := run_vfmt_write('vfmt_directives_in_strings', source, '')
