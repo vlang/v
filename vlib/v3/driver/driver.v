@@ -6889,10 +6889,11 @@ fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferenc
 	source_file := os.join_path_single(build_dir, 'src.c')
 	staged_binary := os.join_path_single(build_dir, 'out')
 	os.write_file(source_file, source) or { return V3FastCCompileResult{} }
-	tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
+	tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 	mut cc_args := environment_c_flags.clone()
-	cc_args << ['-std=gnu11', '-I${os.join_path_single(tcc_lib_dir, 'include')}', '-L${tcc_lib_dir}',
-		'-w']
+	cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
+	cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os())
+	cc_args << '-w'
 	if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
 		cc_args << '-bt25'
 	}

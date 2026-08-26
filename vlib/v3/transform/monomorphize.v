@@ -4839,6 +4839,30 @@ fn (mut t Transformer) concrete_generic_call_param_type_names(id flat.NodeId, no
 	return t.specialized_generic_call_param_type_texts(decl, args)
 }
 
+fn (mut t Transformer) concrete_generic_call_is_variadic(id flat.NodeId, node flat.Node) bool {
+	if t.skip_generics || node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	decls := t.cached_generic_fn_decls()
+	if decls.len == 0 {
+		return false
+	}
+	decl_key, _ := t.cached_generic_call_specialization(id, node, t.cur_module, decls) or {
+		return false
+	}
+	decl := decls[decl_key] or { return false }
+	mut last_param := ''
+	for i in 0 .. decl.node.children_count {
+		child := t.a.child_node(&decl.node, i)
+		if child.kind == .param {
+			last_param = child.typ
+		} else if t.prefix_param_scan {
+			break
+		}
+	}
+	return generic_param_text_is_variadic(last_param)
+}
+
 fn (mut t Transformer) cached_generic_fn_decls() map[string]GenericFnDecl {
 	if t.skip_generics {
 		if !t.generic_fn_decls_ready {

@@ -4798,17 +4798,25 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	} else {
 		g.tc.c_type(key_type)
 	}
-	mut size_suffix := '4'
-	if c_key in ['u8', 'i8', 'bool', 'char'] {
-		size_suffix = '1'
-	} else if c_key in ['u16', 'i16'] {
-		size_suffix = '2'
-	} else if c_key in ['i64', 'u64', 'isize', 'usize', 'f64', 'double', 'voidptr']
-		|| c_key.starts_with('arc__Arc_') {
-		size_suffix = '8'
-	}
+	size_suffix := map_integer_callback_size_suffix(clean_key, c_key, g.target.pointer_bits)
 
 	return 'map_hash_int_${size_suffix}', 'map_eq_int_${size_suffix}', 'map_clone_int_${size_suffix}', 'map_free_nop'
+}
+
+fn map_integer_callback_size_suffix(key_type types.Type, c_key string, pointer_bits int) string {
+	if c_key in ['u8', 'i8', 'bool', 'char'] {
+		return '1'
+	}
+	if c_key in ['u16', 'i16'] {
+		return '2'
+	}
+	if key_type is types.Pointer || key_type is types.ISize || key_type is types.USize {
+		return if pointer_bits == 32 { '4' } else { '8' }
+	}
+	if c_key in ['i64', 'u64', 'f64', 'double'] || c_key.starts_with('arc__Arc_') {
+		return '8'
+	}
+	return '4'
 }
 
 fn (mut g FlatGen) precompute_fixed_array_map_key_types() {

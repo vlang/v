@@ -11306,12 +11306,16 @@ fn (t &Transformer) discarded_closure_value_is_exclusive(id flat.NodeId) bool {
 	if t.expr_allocates_fresh_runtime_closure(id) {
 		return true
 	}
+	return t.call_returns_exclusive_closure(id)
+}
+
+fn (t &Transformer) call_returns_exclusive_closure(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
-		return t.discarded_closure_value_is_exclusive(t.a.child(&node, 0))
+		return t.call_returns_exclusive_closure(t.a.child(&node, 0))
 	}
 	if node.kind != .call {
 		return false
@@ -21477,6 +21481,22 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 	}
 	if t.validating_generic_spec && node.typ.contains('main.') && decl_type_is_usable(node.typ) {
 		return node.typ
+	}
+	if node.children_count == 2 {
+		rhs_id := t.a.child(node, 1)
+		rhs := t.a.node(rhs_id)
+		if rhs.kind == .fn_literal {
+			if fn_type := t.fn_value_type_name(rhs_id) {
+				return fn_type
+			}
+		}
+		if rhs.kind == .selector && comptime_method_selector_marker in rhs.generic_params() {
+			for param in rhs.generic_params() {
+				if param.starts_with(comptime_method_selector_fn_type_prefix) {
+					return param.all_after(comptime_method_selector_fn_type_prefix)
+				}
+			}
+		}
 	}
 	if !isnil(t.tc) && node.children_count > 0 {
 		// Use only the type that the checker recorded for this declaration. Falling

@@ -8,6 +8,7 @@ import v3.types
 
 const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
 const comptime_method_selector_marker = '__v3_comptime_method_selector'
+const comptime_method_selector_fn_type_prefix = '__v3_comptime_method_selector_fn_type:'
 
 // vmod_root supports vmod root handling for Transformer.
 fn (t &Transformer) vmod_root() string {
@@ -1321,7 +1322,14 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 				inner_vars)
 		}
 	}
-	return t.clone_method_subst_children(node, var_name, method, inner_vars)
+	clone := t.clone_method_subst_children(node, var_name, method, inner_vars)
+	if node.kind == .ident {
+		semantic_type := t.node_type(id)
+		if semantic_type.len > 0 && semantic_type != 'unknown' {
+			t.set_node_typ(int(clone), semantic_type)
+		}
+	}
+	return clone
 }
 
 fn (t &Transformer) method_if_condition_value(id flat.NodeId, var_name string, method MethodMeta) ?bool {
@@ -1412,13 +1420,15 @@ fn (mut t Transformer) make_param_array_literal(params []ParamMeta, module_name 
 fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, method MethodMeta) flat.NodeId {
 	start := t.a.children.len
 	t.a.children << receiver
+	fn_type := fn_literal_value_type_text_from_text(method.params.map(it.typ), method.return_type)
 	return t.a.add_node(flat.Node{
 		kind:           .selector
 		children_start: start
 		children_count: 1
 		value:          method.name
 		typ:            method.return_type
-		payload:        flat.node_payload([comptime_method_selector_marker])
+		payload:        flat.node_payload([comptime_method_selector_marker,
+			comptime_method_selector_fn_type_prefix + fn_type])
 	})
 }
 
@@ -1477,9 +1487,13 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 	child_inner_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		if child := t.clone_method_subst_scoped(t.a.child(&node, i), var_name, method,
-			child_inner_vars)
-		{
+		child_id := t.a.child(&node, i)
+		child_node := t.a.node(child_id)
+		if node.kind in [.fn_literal, .lambda_expr] && child_node.kind == .ident
+			&& child_node.value == var_name {
+			continue
+		}
+		if child := t.clone_method_subst_scoped(child_id, var_name, method, child_inner_vars) {
 			children << child
 		}
 	}
