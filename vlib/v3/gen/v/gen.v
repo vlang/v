@@ -685,7 +685,12 @@ fn (mut g Gen) stmt(id flat.NodeId) {
 				g.writeln('return')
 			} else {
 				g.write('return ')
-				g.expr_list(exprs, ', ')
+				for i, expr in exprs {
+					g.expr(g.statement_expr_without_outer_parens(expr))
+					if i < exprs.len - 1 {
+						g.write(', ')
+					}
+				}
 				if !g.on_newline {
 					g.writeln('')
 				}
@@ -842,13 +847,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			}
 		}
 		.paren {
-			if n.value in ['_likely_', '_unlikely_'] {
-				g.write('${n.value}(')
-			} else {
-				g.write('(')
-			}
-			g.expr(g.a.child(n, 0))
-			g.write(')')
+			g.paren_expr(id)
 		}
 		.call {
 			g.call_expr(id)
@@ -1013,6 +1012,59 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		g.emit_trailing_comments(n.pos.end)
 	}
 	g.source_end = int_max(g.source_end, n.pos.end)
+}
+
+fn (g &Gen) innermost_parenthesized_expr(id flat.NodeId) flat.NodeId {
+	mut current := id
+	for int(current) >= 0 {
+		n := g.a.node(current)
+		if n.kind != .paren || n.value.len > 0 || n.children_count == 0 {
+			break
+		}
+		current = g.a.child(n, 0)
+	}
+	return current
+}
+
+fn (g &Gen) statement_expr_without_outer_parens(id flat.NodeId) flat.NodeId {
+	n := g.a.node(id)
+	if n.kind != .paren || n.value.len > 0 || g.has_comment_between(n.pos.offset, n.pos.end) {
+		return id
+	}
+	return g.innermost_parenthesized_expr(id)
+}
+
+fn (mut g Gen) paren_expr(id flat.NodeId) {
+	n := g.a.node(id)
+	if n.value in ['_likely_', '_unlikely_'] {
+		g.write('${n.value}(')
+		g.expr(g.a.child(n, 0))
+		g.write(')')
+		return
+	}
+	inner := g.innermost_parenthesized_expr(id)
+	has_comments := g.has_comment_between(n.pos.offset, n.pos.end)
+	if has_comments {
+		g.writeln('(')
+		g.indent++
+		g.expr(inner)
+		g.advance_source_end_before_pending_comment(n.pos.end)
+		g.emit_comments_before(n.pos.end)
+		if !g.on_newline {
+			g.writeln('')
+		}
+		g.indent--
+		g.write(')')
+		return
+	}
+	requires_parens := g.a.node(inner).kind != .ident
+	if requires_parens {
+		g.write('(')
+	}
+	g.expr(inner)
+	if requires_parens {
+		g.write(')')
+	}
 }
 
 fn (g &Gen) rune_literal(n &flat.Node) string {
@@ -2383,7 +2435,7 @@ fn (mut g Gen) assert_stmt(id flat.NodeId) {
 	g.write('assert ')
 	in_init := g.in_init
 	g.in_init = true
-	g.expr(children[0])
+	g.expr(g.statement_expr_without_outer_parens(children[0]))
 	g.in_init = in_init
 	if children.len > 1 {
 		g.write(', ')

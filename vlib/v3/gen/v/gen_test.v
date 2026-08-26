@@ -680,6 +680,14 @@ fn test_formatter_expands_long_single_line_named_call_arguments() {
 	assert vfmt('long_single_line_named_call_arguments_twice', out) == out
 }
 
+fn test_formatter_removes_redundant_parentheses() {
+	source := "fn predicate(char int) bool {\n\treturn (char >= 65 && char <= 90)\n}\n\nfn checks() {\n\tx := 3\n\t_ := &(((x)))\n\t_, _ := (((22 > 11))), (43 > 22)\n\t_ := ((10 + 11))\n\t_ := (cond1 && cond2) || (single_ident)\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (((((1 + 2) == 3))))\n\tassert (((true)))\n}\n"
+	expected := "fn predicate(char int) bool {\n\treturn char >= 65 && char <= 90\n}\n\nfn checks() {\n\tx := 3\n\t_ := &x\n\t_, _ := (22 > 11), (43 > 22)\n\t_ := (10 + 11)\n\t_ := (cond1 && cond2) || single_ident\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (1 + 2) == 3\n\tassert true\n}\n"
+	out := vfmt('redundant_parentheses', source)
+	assert out == expected, out
+	assert vfmt('redundant_parentheses_twice', out) == out
+}
+
 fn test_formatter_emits_hash_directive_attributes() {
 	source := '@[use_once] #include "header.h"
 @[custom_tag; use_once] #flag -I @VMODROOT/c

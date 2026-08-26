@@ -466,6 +466,19 @@ fn test_fmt_expands_long_single_line_named_call_arguments_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_removes_redundant_parentheses_with_v3() {
+	source := "fn predicate(char int) bool {\n\treturn (char >= 65 && char <= 90)\n}\n\nfn checks() {\n\tx := 3\n\t_ := &(((x)))\n\t_, _ := (((22 > 11))), (43 > 22)\n\t_ := ((10 + 11))\n\t_ := (cond1 && cond2) || (single_ident)\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (((((1 + 2) == 3))))\n\tassert (((true)))\n}\n"
+	expected := "fn predicate(char int) bool {\n\treturn char >= 65 && char <= 90\n}\n\nfn checks() {\n\tx := 3\n\t_ := &x\n\t_, _ := (22 > 11), (43 > 22)\n\t_ := (10 + 11)\n\t_ := (cond1 && cond2) || single_ident\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (1 + 2) == 3\n\tassert true\n}\n"
+	res, formatted := run_vfmt_write('redundant_parentheses', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice := run_vfmt_write('redundant_parentheses_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_hash_directive_attributes_with_v3() {
 	source := '@[use_once] #include "header.h"
 @[custom_tag; use_once] #flag -I @VMODROOT/c
