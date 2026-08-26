@@ -101,6 +101,20 @@ fn signature_map_storage_owned_by_scope(scope voidptr, layout &SignatureMapLayou
 	}
 }
 
+fn test_discard_transform_signature_changes_resets_fork_publication_state() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.transform_signature_maps_shared = true
+	tc.ensure_private_transform_signatures()
+	tc.register_generated_fn_param_types('main.generated', [Type(int_)])
+	assert tc.transform_signatures_changed()
+	assert tc.transform_signature_names_log == ['main.generated']
+
+	tc.discard_transform_signature_changes()
+	assert !tc.transform_signatures_changed()
+	assert tc.transform_signature_names_log.len == 0
+}
+
 fn test_rebuild_scoped_transform_signatures_and_suffix_index_after_growth() {
 	$if prealloc {
 		a := flat.FlatAst.new()

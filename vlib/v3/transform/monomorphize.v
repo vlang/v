@@ -3558,7 +3558,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.add_generated_fn_decl_context(generated_module)
 	old_params := t.active_generic_params
 	old_specialization_args := t.active_specialization_args
-	mut old_specialization_main_types := t.active_specialization_main_types.clone()
+	mut old_specialization_main_types := t.active_specialization_main_types.move()
 	t.active_generic_params = t.generic_fn_param_names(decl.node, decl.module)
 	t.active_specialization_args = concrete_args
 	t.active_specialization_main_types = t.specialization_main_type_closure(concrete_args)
@@ -3788,18 +3788,36 @@ fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat
 }
 
 fn (mut t Transformer) generated_fn_body_call_names(root flat.NodeId) []string {
+	return t.generated_fn_body_call_names_filtered(root, unsafe { &t.used_struct_operator_fns },
+		false)
+}
+
+fn (mut t Transformer) generated_fn_body_candidate_call_names(root flat.NodeId, candidate_names &map[string]bool) []string {
+	return t.generated_fn_body_call_names_filtered(root, candidate_names, true)
+}
+
+fn (mut t Transformer) generated_fn_body_call_names_filtered(root flat.NodeId, candidate_names &map[string]bool, filter_candidates bool) []string {
 	mut names := []string{}
 	mut seen := map[string]bool{}
 	saved_fn_name := t.cur_fn_name
 	saved_ret_type := t.cur_fn_ret_type
-	saved_vars := t.var_types.clone()
-	saved_mut_param_values := t.mut_param_values.clone()
+	mut saved_vars := unsafe { t.var_types }
+	mut saved_var_indices := t.var_type_indices.move()
+	mut saved_mut_param_values := t.mut_param_values.move()
+	t.var_types = []VarTypeBinding{}
+	t.var_type_indices = map[string]int{}
+	t.mut_param_values = map[string]bool{}
 	t.seed_generated_fn_body_context(root)
-	t.collect_generated_fn_body_call_names(root, mut names, mut seen)
+	t.collect_generated_fn_body_call_names(root, candidate_names, filter_candidates, mut names, mut
+		seen)
 	t.cur_fn_name = saved_fn_name
 	t.cur_fn_ret_type = saved_ret_type
-	t.restore_var_types(saved_vars)
-	t.mut_param_values = saved_mut_param_values.clone()
+	t.var_types = unsafe { saved_vars }
+	t.var_type_indices = saved_var_indices.move()
+	t.mut_param_values = saved_mut_param_values.move()
+	if !isnil(t.var_type_cache) {
+		t.var_type_cache.clear()
+	}
 	return names
 }
 
@@ -3865,7 +3883,7 @@ fn (mut t Transformer) seed_generated_fn_body_context(root flat.NodeId) {
 	}
 }
 
-fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, mut names []string, mut seen map[string]bool) {
+fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, candidate_names &map[string]bool, filter_candidates bool, mut names []string, mut seen map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
@@ -3876,7 +3894,8 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, mut 
 	if node.kind == .call {
 		call_name := t.generated_call_name_for_used(id, node)
 		if call_name.len > 0 {
-			t.push_generated_used_name(call_name, mut names, mut seen)
+			t.push_generated_used_name(call_name, candidate_names, filter_candidates, mut names, mut
+				seen)
 		}
 		if t.defer_nested_generic_emissions {
 			decls := t.cached_generic_fn_decls()
@@ -3891,11 +3910,13 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, mut 
 		}
 	} else if node.kind in [.ident, .selector, .cast_expr, .paren, .expr_stmt] {
 		if fn_value_name := t.generated_fn_value_name_for_used(id, node) {
-			t.push_generated_used_name(fn_value_name, mut names, mut seen)
+			t.push_generated_used_name(fn_value_name, candidate_names, filter_candidates, mut
+				names, mut seen)
 		}
 	}
 	for i in 0 .. node.children_count {
-		t.collect_generated_fn_body_call_names(t.a.child(&node, i), mut names, mut seen)
+		t.collect_generated_fn_body_call_names(t.a.child(&node, i), candidate_names,
+			filter_candidates, mut names, mut seen)
 	}
 }
 
@@ -4136,7 +4157,11 @@ fn (t &Transformer) generated_known_call_name(name string) ?string {
 	return none
 }
 
-fn (mut t Transformer) push_generated_used_name(name string, mut names []string, mut seen map[string]bool) {
+fn (mut t Transformer) push_generated_used_name(name string, candidate_names &map[string]bool, filter_candidates bool, mut names []string, mut seen map[string]bool) {
+	if filter_candidates && !(*candidate_names)[name] && !t.used_struct_operator_fns[name]
+		&& !t.late_name_may_expand_interface(name) {
+		return
+	}
 	if name.len == 0 || seen[name] {
 		return
 	}
@@ -4210,7 +4235,7 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
 	old_specialization_args := t.active_specialization_args
-	old_specialization_main_types := t.active_specialization_main_types.clone()
+	mut old_specialization_main_types := t.active_specialization_main_types.move()
 	t.active_specialization_args = args
 	t.active_specialization_main_types = t.specialization_main_type_closure(args)
 	t.cur_module = decl.module
@@ -4272,7 +4297,7 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	t.cur_module = old_module
 	t.cur_file = old_file
 	t.active_specialization_args = old_specialization_args
-	t.active_specialization_main_types = old_specialization_main_types.clone()
+	t.active_specialization_main_types = old_specialization_main_types.move()
 }
 
 fn (mut t Transformer) specialized_fn_return_type_text(decl GenericFnDecl, args []string) string {

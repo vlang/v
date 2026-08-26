@@ -75,6 +75,7 @@ fn configure_selfhost_parallelism(building_v bool) {
 
 const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_serial_user_check_node_threshold = 400_000
+const scoped_serial_user_transform_node_threshold = 400_000
 const scoped_serial_user_cgen_node_threshold = 500_000
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
@@ -9135,8 +9136,13 @@ pub fn run(args []string) {
 					a, &pre_tc, used_fns, transform_scope)
 				retained_transform_prepare_scope = prepared_transform.take_scope()
 			} else {
+				// Large user programs keep more memory live when function-body workers
+				// overlap the transformed AST. Scoped serial batches trade a little CPU
+				// for a substantially lower peak.
+				use_parallel_transform := current_parallel_transform
+					&& a.nodes.len < scoped_serial_user_transform_node_threshold
 				transform_used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
-					&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, true,
+					&pre_tc, used_fns, use_parallel_transform, skip_transform_generics, true,
 
 					building_v || trivial_literal_output, transform_scope)
 			}

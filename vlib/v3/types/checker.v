@@ -1450,6 +1450,15 @@ pub fn (tc &TypeChecker) transform_signatures_changed() bool {
 	return tc.transform_signature_maps_changed
 }
 
+// discard_transform_signature_changes makes a fork's private signature tables
+// disposable when its parent has already registered the same generated
+// signatures. Other worker results can then be merged without publishing
+// pointers owned by the worker's temporary arena.
+pub fn (mut tc TypeChecker) discard_transform_signature_changes() {
+	tc.transform_signature_names_log = []string{}
+	tc.transform_signature_maps_changed = false
+}
+
 // ensure_private_transform_structs detaches struct metadata before a transform
 // worker publishes a generated capture context into its private result.
 pub fn (mut tc TypeChecker) ensure_private_transform_structs() {
