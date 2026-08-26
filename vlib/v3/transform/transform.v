@@ -166,6 +166,7 @@ mut:
 	cur_file                        string
 	cur_module                      string
 	cur_fn_name                     string
+	cur_fn_receiver_name            string
 	cur_fn_ret_type                 string
 	cur_fn_is_generic               bool
 	cur_fn_manualfree               bool
@@ -8453,6 +8454,8 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		t.transformed_fns[fn_idx] = true
 	}
 	t.cur_fn_name = fn_node.value
+	old_receiver_name := t.cur_fn_receiver_name
+	t.cur_fn_receiver_name = ''
 	old_is_generic := t.cur_fn_is_generic
 	old_manualfree := t.cur_fn_manualfree
 	t.cur_fn_is_generic = if t.skip_generics {
@@ -8490,6 +8493,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		}
 		if child.value.len == 0 {
 			continue
+		}
+		if child.op == .dot {
+			t.cur_fn_receiver_name = child.value
 		}
 		if child.typ.starts_with('...') {
 			t.cur_fn_variadic_param = child.value
@@ -8629,6 +8635,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.invalidated_smartcasts.clear()
 	t.cur_fn_is_generic = old_is_generic
 	t.cur_fn_manualfree = old_manualfree
+	t.cur_fn_receiver_name = old_receiver_name
 	t.temp_counter = outer_temp_counter
 }
 
@@ -16748,7 +16755,9 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	if lowered := t.try_lower_bound_method_array_call(node) {
 		return lowered
 	}
-	call_id := t.normalize_generic_call_expr(id, node)
+	implicit_receiver_call_id := t.normalize_implicit_receiver_generic_call(id, node)
+	implicit_receiver_call := t.a.nodes[int(implicit_receiver_call_id)]
+	call_id := t.normalize_generic_call_expr(implicit_receiver_call_id, implicit_receiver_call)
 	mut call_node := t.a.nodes[int(call_id)]
 	mut resolved_typ := t.concrete_generic_call_return_type(call_id, call_node)
 	if resolved_typ.len > 0 && t.rewrite_contextual_generic_plain_call(call_id, call_node) {

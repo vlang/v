@@ -6660,6 +6660,11 @@ pub fn (mut tc TypeChecker) check_main_module_requirement(is_shared bool) {
 	if is_shared || tc.has_c_test_harness_main() || (tc.checker_fixture_mode && tc.errors.len > 0) {
 		return
 	}
+	// A source file without an explicit `module` declaration belongs to `main`.
+	// Such a file has no module_decl node for the scan below to discover.
+	if tc.has_main_module_fn_main() {
+		return
+	}
 	for file, _ in tc.diagnostic_files {
 		if file.ends_with('_test.v') {
 			return

@@ -5851,6 +5851,13 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 					t.specialized_plain_generic_call_args(node, decl, module_name) or { []string{} }
 				}
 			}
+			if exact_args.any(it.starts_with('fn_')) {
+				if inferred := t.infer_generic_call_args_from_params(decl, id, node, module_name) {
+					if inferred.len == exact_args.len && !t.generic_args_have_placeholders(inferred) {
+						exact_args = inferred.clone()
+					}
+				}
+			}
 			if exact_args.len > 0 && !t.generic_args_have_placeholders(exact_args)
 				&& !t.generic_specialization_registered(decl, exact_args) {
 				t.generic_call_spec_cache[idx] = GenericCallSpec{
@@ -6120,7 +6127,7 @@ fn (mut t Transformer) infer_generic_call_args_from_raw_node_types(decl GenericF
 		}
 		arg := t.a.nodes[int(arg_id)]
 		inference_param_type := generic_inference_param_type(param)
-		mut raw_arg_type := arg.typ
+		mut raw_arg_type := t.fn_value_type_name(arg_id) or { arg.typ }
 		if (param.is_mut || param.op == .amp || param.typ.starts_with('mut '))
 			&& raw_arg_type.starts_with('&') {
 			// A rewritten `mut value` call stores the C ABI address on either the
@@ -6204,7 +6211,7 @@ fn (mut t Transformer) generic_call_specialization(id flat.NodeId, node flat.Nod
 	if t.should_skip_generic_call_specialization(decl_key) {
 		return none
 	}
-	if t.call_has_source_generic_args(node) || node.value.len > 0 {
+	if t.call_has_source_generic_args(node) {
 		if args := t.explicit_generic_call_args(node, module_name) {
 			scoped := t.infer_generic_call_args_with_explicit(decl, id, node, module_name, args) or {
 				[]string{}
@@ -6967,6 +6974,23 @@ fn (t &Transformer) resolved_call_is_concrete_fn(resolved string, key string) bo
 }
 
 fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl GenericFnDecl) bool {
+	actual_args := t.generic_call_effective_arg_count(node)
+	is_receiver := t.generic_decl_is_receiver_method(decl.node)
+		&& !t.generic_call_is_static_assoc_selector(node, decl)
+	actual := if is_receiver && t.call_is_selector_form(node) {
+		actual_args + 1
+	} else {
+		actual_args
+	}
+	return t.generic_call_actual_arg_count_matches_decl(actual, decl)
+}
+
+fn (t &Transformer) generic_call_arg_count_matches_decl_with_implicit_receiver(node flat.Node, decl GenericFnDecl) bool {
+	return t.generic_call_actual_arg_count_matches_decl(t.generic_call_effective_arg_count(node) + 1,
+		decl)
+}
+
+fn (t &Transformer) generic_call_actual_arg_count_matches_decl(actual int, decl GenericFnDecl) bool {
 	mut param_count := 0
 	mut is_variadic := false
 	mut has_trailing_params_struct := false
@@ -6983,20 +7007,6 @@ fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl Gen
 			is_variadic = true
 		}
 		has_trailing_params_struct = t.generic_param_is_params_struct(child.typ, decl.module)
-	}
-	// param_count includes the receiver for methods. The call's child count
-	// depends on form: the selector form (`recv.method(args)`) keeps the receiver
-	// inside the callee child, so children = [callee, args...] and the callee child
-	// offsets the receiver param (actual == children_count). The ident-lowered form
-	// (`Type.method(recv, args)`) carries the receiver as a real child, so
-	// children = [callee, recv, args...] and actual == children_count - 1.
-	is_receiver := t.generic_decl_is_receiver_method(decl.node)
-		&& !t.generic_call_is_static_assoc_selector(node, decl)
-	actual_args := t.generic_call_effective_arg_count(node)
-	actual := if is_receiver && t.call_is_selector_form(node) {
-		actual_args + 1
-	} else {
-		actual_args
 	}
 	if is_variadic {
 		return actual >= param_count - 1
@@ -8211,6 +8221,12 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		}
 	}
 	if node.kind == .ident {
+		if fn_type := t.fn_value_type_name(id) {
+			// Function declarations carry an encoded node type such as
+			// `fn_int_string_bool`. Generic inference needs the semantic function
+			// type so a specialization emits the matching function-pointer typedef.
+			return fn_type
+		}
 		if node.value.starts_with('__') && generic_inference_arg_type_usable(node.typ)
 			&& !t.generic_arg_is_unresolved(t.normalize_type_alias(node.typ)) {
 			// Lowered expression temporaries carry their concrete type on the generated
@@ -9592,6 +9608,11 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []str
 		}
 	}
 	target := t.generic_comptime_base_type(child_id, args) or { return none }
+	if child.kind == .ident && t.mut_param_values[child.value] && !target.starts_with('&') {
+		// A `mut value T` parameter is stored indirectly. `typeof(value)` observes
+		// that pointer shape even though ordinary value uses infer T itself.
+		return '&${target}'
+	}
 	return target
 }
 

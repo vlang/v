@@ -10,7 +10,12 @@ import v3.token
 // FastC parses scanner tokens and emits C immediately. It deliberately has no
 // AST, semantic-checker, transformer, mark-used, or conventional cgen path.
 
-const c_preamble = r'#include <stdbool.h>
+const c_preamble = r'#ifndef __cplusplus
+typedef _Bool bool;
+#define true ((bool)1)
+#define false ((bool)0)
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -297,7 +302,12 @@ fn fastc_c_identifier(name string) string {
 	}
 }
 
-const c_selfhost_preamble = r'#include <stdbool.h>
+const c_selfhost_preamble = r'#ifndef __cplusplus
+typedef _Bool bool;
+#define true ((bool)1)
+#define false ((bool)0)
+#endif
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

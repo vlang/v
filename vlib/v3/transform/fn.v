@@ -245,12 +245,12 @@ fn (t &Transformer) resolve_receiver_method_name(base_id flat.NodeId, method str
 		}
 		if raw_clean.len > 0 && raw_clean != base_type && raw_clean != raw_var_clean {
 			if alias_method := t.resolve_alias_receiver_method(raw_clean, method) {
-				if t.receiver_method_matches_base_type(alias_method, base_id) {
+				if t.receiver_method_matches_type_name(alias_method, raw_clean) {
 					return alias_method
 				}
 			}
 			if method_name := t.resolve_receiver_method_for_type(raw_clean, method) {
-				if t.receiver_method_matches_base_type(method_name, base_id) {
+				if t.receiver_method_matches_type_name(method_name, raw_clean) {
 					return method_name
 				}
 			}
@@ -775,6 +775,43 @@ fn (t &Transformer) resolve_method_receiver_type(call_node flat.Node) string {
 	}
 	base_id := t.a.children[fn_node.children_start]
 	return t.resolve_expr_type(base_id)
+}
+
+fn (mut t Transformer) normalize_implicit_receiver_generic_call(id flat.NodeId, node flat.Node) flat.NodeId {
+	if t.cur_fn_receiver_name.len == 0 || node.children_count == 0 {
+		return id
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .ident || callee.value.contains('.') {
+		return id
+	}
+	decls := t.cached_generic_fn_decls()
+	receiver_type := t.var_type(t.cur_fn_receiver_name)
+	for key in t.generic_receiver_methods_by_name[callee.value] {
+		decl := decls[key] or { continue }
+		if !t.generic_receiver_decl_matches_type(receiver_type, decl, t.cur_module)
+			|| !t.generic_call_arg_count_matches_decl_with_implicit_receiver(node, decl) {
+			continue
+		}
+		mut children := []flat.NodeId{cap: int(node.children_count) + 1}
+		children << t.make_ident(key)
+		children << t.make_ident(t.cur_fn_receiver_name)
+		for i in 1 .. node.children_count {
+			children << t.a.child(&node, i)
+		}
+		start := t.a.children.len
+		t.a.children << children
+		return t.a.add_node(flat.Node{
+			kind:           .call
+			op:             node.op
+			children_start: start
+			children_count: flat.child_count(children.len)
+			pos:            node.pos
+			value:          node.value
+			typ:            node.typ
+		})
+	}
+	return id
 }
 
 // normalize_generic_call_expr transforms normalize generic call expr data for transform.

@@ -354,6 +354,15 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?string {
 			return t.normalize_type_alias(name)
 		}
 	}
+	if node.kind == .ident {
+		if name := fn_value_type_name_from_type(t.tc.resolve_type(id)) {
+			return t.normalize_type_alias(name)
+		}
+		fn_name := t.tc.resolved_fn_value_name(id) or { node.value }
+		params := t.tc.fn_param_types[fn_name] or { return none }
+		ret := t.tc.fn_ret_types[fn_name] or { return none }
+		return fn_literal_value_type_text(params, ret.name())
+	}
 	if node.kind == .lambda_expr {
 		typ := t.tc.resolve_type(id)
 		if name := fn_value_type_name_from_type(typ) {

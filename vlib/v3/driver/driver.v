@@ -14947,7 +14947,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			mod_files := if mod_dir_exists {
-				pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines, prefs.target)
+				v3_directory_user_files(mod_dir, prefs, false, false) or {
+					pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines, prefs.target)
+				}
 			} else {
 				[]string{}
 			}

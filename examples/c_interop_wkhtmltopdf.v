@@ -11,7 +11,7 @@ import os
 // https://wkhtmltopdf.org/downloads.html
 // https://wkhtmltopdf.org/libwkhtmltox/
 #flag -lwkhtmltox
-#include "wkhtmltox/pdf.h" # You can install the C package for your system from the wkhtmltopdf.org/downloads.html page
+#include "c_interop_wkhtmltopdf_wrapper.h" # You can install the C package for your system from the wkhtmltopdf.org/downloads.html page
 
 pub struct C.wkhtmltopdf_global_settings {}
 
@@ -23,7 +23,7 @@ fn C.wkhtmltopdf_init(use_graphics i32) i32
 
 fn C.wkhtmltopdf_deinit() i32
 
-fn C.wkhtmltopdf_version() &char
+fn C.v_example_wkhtmltopdf_version() &char
 
 fn C.wkhtmltopdf_create_global_settings() &C.wkhtmltopdf_global_settings
 
@@ -54,7 +54,7 @@ fn main() {
 	// init
 	init := C.wkhtmltopdf_init(0)
 	println('wkhtmltopdf_init: ${init}')
-	version := unsafe { cstring_to_vstring(&char(C.wkhtmltopdf_version())) }
+	version := unsafe { cstring_to_vstring(C.v_example_wkhtmltopdf_version()) }
 	println('wkhtmltopdf_version: ${version}')
 	global_settings := C.wkhtmltopdf_create_global_settings()
 	println('wkhtmltopdf_create_global_settings: ${voidptr(global_settings)}')
