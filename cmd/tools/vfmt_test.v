@@ -169,6 +169,57 @@ fn config() Config {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_three_value_if_guard_bindings_with_v3() {
+	source := 'fn create() ?(int, string, bool) {
+	return 5, \'value\', true
+}
+
+fn check() {
+	if r1, r2, r3 := create() {
+		_ = r1
+		_ = r2
+		_ = r3
+	}
+}
+'
+	res, formatted := run_vfmt_write('three_value_if_guard', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+}
+
+fn test_fmt_retains_expanded_call_argument_layout_with_v3() {
+	source := 'fn many(a int, b int, c int) int {
+	return a + b + c
+}
+
+fn configure(config Config) {
+}
+
+fn calls() {
+	x := many(
+		1,
+		// before two
+		2, 3, // after three
+	)
+	configure(
+		// before one
+		one: 1 // after one
+		two: 2
+	)
+	_ = x
+}
+'
+	res, formatted := run_vfmt_write('expanded_call_arguments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('expanded_call_arguments_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_comment_only_files_with_v3() {
 	source := '/*\nmodule acommentedmodule\n*/\n'
 	res, formatted := run_vfmt_write('comment_only_file', source, '')

@@ -397,6 +397,51 @@ fn config() Config {
 	assert vfmt('struct_init_field_comments_twice', out) == out
 }
 
+fn test_formatter_preserves_three_value_if_guard_bindings() {
+	source := 'fn create() ?(int, string, bool) {
+	return 5, \'value\', true
+}
+
+fn check() {
+	if r1, r2, r3 := create() {
+		_ = r1
+		_ = r2
+		_ = r3
+	}
+}
+'
+	out := vfmt('three_value_if_guard', source)
+	assert out == source, out
+	assert vfmt('three_value_if_guard_twice', out) == out
+}
+
+fn test_formatter_retains_expanded_call_argument_layout() {
+	source := 'fn many(a int, b int, c int) int {
+	return a + b + c
+}
+
+fn configure(config Config) {
+}
+
+fn calls() {
+	x := many(
+		1,
+		// before two
+		2, 3, // after three
+	)
+	configure(
+		// before one
+		one: 1 // after one
+		two: 2
+	)
+	_ = x
+}
+'
+	out := vfmt('expanded_call_arguments', source)
+	assert out == source, out
+	assert vfmt('expanded_call_arguments_twice', out) == out
+}
+
 fn test_formatter_preserves_capture_and_shared_parameter_qualifiers() {
 	out := vfmt('capture_and_shared_qualifiers',
 		'struct St {}\n\nfn (shared receiver St) use(shared value St) {}\n\nfn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut item, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n')

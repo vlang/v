@@ -1074,6 +1074,11 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 	g.expr(children[0])
 	g.write('(')
 	args := children[1..]
+	if g.call_args_expanded(id, args) {
+		g.expanded_call_args(id, args)
+		g.write(')')
+		return
+	}
 	for i, aid in args {
 		a := g.a.node(aid)
 		if a.is_mut {
@@ -1085,6 +1090,103 @@ fn (mut g Gen) call_expr(id flat.NodeId) {
 		}
 	}
 	g.write(')')
+}
+
+fn (g &Gen) call_args_expanded(id flat.NodeId, args []flat.NodeId) bool {
+	if args.len == 0 {
+		return false
+	}
+	if g.a.formatter_expanded_calls[int(id)] {
+		return true
+	}
+	source := g.a.formatter_sources[int(id)] or { return false }
+	if source.len < 2 || source[0] != `(` || source[source.len - 1] != `)` {
+		return false
+	}
+	mut has_named_args := false
+	for arg in args {
+		if g.a.node(arg).kind == .field_init {
+			has_named_args = true
+			break
+		}
+	}
+	if has_named_args && source.contains('\n') {
+		return true
+	}
+	return false
+}
+
+fn call_args_start_on_new_line(source string) bool {
+	for i in 1 .. source.len {
+		match source[i] {
+			` `, `\t`, `\r` { continue }
+			`\n` { return true }
+			else { return false }
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) expanded_call_args(id flat.NodeId, args []flat.NodeId) {
+	mut first_named := args.len
+	for i, arg in args {
+		if g.a.node(arg).kind == .field_init {
+			first_named = i
+			break
+		}
+	}
+	if first_named == args.len {
+		g.writeln('')
+		g.indent++
+		g.expanded_regular_call_args(args)
+		g.emit_comments_before(g.a.formatter_node_ends[int(id)] or { g.a.node(id).pos.end })
+		g.indent--
+		return
+	}
+	source := g.a.formatter_sources[int(id)] or { '' }
+	if first_named == 0 || call_args_start_on_new_line(source) {
+		g.writeln('')
+		g.indent++
+		g.expanded_regular_call_args(args[..first_named])
+	} else {
+		for i, arg in args[..first_named] {
+			g.call_arg(arg)
+			if i < first_named - 1 {
+				g.write(', ')
+			}
+		}
+		g.writeln(',')
+		g.indent++
+	}
+	for arg in args[first_named..] {
+		g.named_init_field(arg)
+	}
+	g.emit_comments_before(g.a.formatter_node_ends[int(id)] or { g.a.node(id).pos.end })
+	g.indent--
+}
+
+fn (mut g Gen) expanded_regular_call_args(args []flat.NodeId) {
+	for i, arg in args {
+		g.call_arg(arg)
+		g.write(',')
+		g.emit_trailing_comments(g.a.node(arg).pos.end)
+		if g.on_newline {
+			continue
+		}
+		if i == args.len - 1
+			|| g.source_line(g.a.node(args[i + 1]).pos.offset) > g.source_line(g.a.node(arg).pos.end) {
+			g.writeln('')
+		} else {
+			g.write(' ')
+		}
+	}
+}
+
+fn (mut g Gen) call_arg(id flat.NodeId) {
+	if g.a.node(id).is_mut {
+		g.write('mut ')
+	}
+	g.expr(id)
 }
 
 fn (g &Gen) json_migration_call_kind(callee_id flat.NodeId) ?string {
@@ -1639,11 +1741,17 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 	} else {
 		mut lhs := []flat.NodeId{}
 		mut rhs := []flat.NodeId{}
-		for i, c in children {
-			if i % 2 == 0 {
-				lhs << c
-			} else {
-				rhs << c
+		rhs_count := children.len - count
+		mut child_index := 0
+		for i in 0 .. count {
+			if child_index >= children.len {
+				break
+			}
+			lhs << children[child_index]
+			child_index++
+			if i < rhs_count && child_index < children.len {
+				rhs << children[child_index]
+				child_index++
 			}
 		}
 		g.expr_list(lhs, ', ')

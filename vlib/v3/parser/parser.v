@@ -179,9 +179,11 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			template_call_sites:    map[int]token.Pos{}
 			template_actions:       map[int]string{}
 			missing_imports:        map[int]string{}
-			formatter_sources:      map[int]string{}
-			formatter_file_sources: map[int]string{}
-			formatter_local_sels:   map[int]bool{}
+			formatter_sources:        map[int]string{}
+			formatter_file_sources:   map[int]string{}
+			formatter_node_ends:      map[int]int{}
+			formatter_expanded_calls: map[int]bool{}
+			formatter_local_sels:     map[int]bool{}
 			text_ids:               map[string]flat.TextId{}
 			specialized_fn_nodes:   map[int]bool{}
 			specialized_fn_modules: map[int]string{}
@@ -10119,10 +10121,15 @@ fn (mut p Parser) mark_formatter_local_selector(selector flat.NodeId, lhs flat.N
 }
 
 fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
+	args_start := p.tok_pos
 	p.check(.lpar)
+	args_start_on_new_line := p.tok != .rpar
+		&& p.line_nr_for_pos(p.tok_pos) > p.line_nr_for_pos(args_start)
 	mut ids := []flat.NodeId{}
 	ids << fn_expr
+	mut trailing_comma := false
 	for p.tok != .rpar && p.tok != .eof {
+		trailing_comma = false
 		prev_offset := p.s.offset
 		prev_tok := p.tok
 		if p.tok_can_be_decl_name() && p.peek() == .colon {
@@ -10141,6 +10148,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 				p.next()
 			}
 			if p.tok == .comma {
+				trailing_comma = true
 				p.next()
 			}
 			if p.s.offset == prev_offset && p.tok == prev_tok {
@@ -10215,6 +10223,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			}
 		}
 		if p.tok == .comma {
+			trailing_comma = true
 			p.next()
 		}
 		if p.s.offset == prev_offset && p.tok == prev_tok {
@@ -10222,6 +10231,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 	}
 	p.check(.rpar)
+	args_end := p.prev_tok_end
 	fn_node := p.a.nodes[int(fn_expr)]
 	if fn_node.kind == .ident && fn_node.value in ['print', 'println', 'eprint', 'eprintln'] {
 		for arg_id in ids[1..] {
@@ -10236,11 +10246,19 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 	cstart := p.add_children(ids)
 	// Anchor the completed call at its callee (fn_expr) so unknown-function and
 	// argument diagnostics point at the call, not the token after `)`.
-	return p.add_node_from(flat.Node{
+	id := p.add_node_from(flat.Node{
 		kind:           .call
 		children_start: cstart
 		children_count: flat.child_count(ids.len)
 	}, fn_expr)
+	if p.prefs.is_fmt && args_start >= 0 && args_end >= args_start && args_end <= p.s.src.len {
+		p.a.formatter_sources[int(id)] = p.s.src[args_start..args_end].clone()
+		p.a.formatter_node_ends[int(id)] = args_end
+		if args_start_on_new_line && trailing_comma {
+			p.a.formatter_expanded_calls[int(id)] = true
+		}
+	}
+	return id
 }
 
 fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
