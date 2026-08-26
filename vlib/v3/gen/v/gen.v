@@ -1419,6 +1419,14 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 				g.write(', ')
 			}
 		}
+		last := g.a.child_node(g.a.node(fields.last()), 0)
+		if g.has_comment_between(last.pos.end, n.pos.end) {
+			g.write(',')
+			g.indent++
+			g.advance_source_end_before_pending_comment(n.pos.end)
+			g.emit_comments_before(n.pos.end)
+			g.indent--
+		}
 		g.write('}')
 	}
 }

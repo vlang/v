@@ -181,6 +181,14 @@ fn test_formatter_keeps_blank_lines_between_consecutive_enums() {
 	assert vfmt('consecutive_enum_blank_lines_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_positional_struct_init_comments_inside() {
+	source := "struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{\n\t\t1,\n\t\t2,\n\t\t// trailing positional\n\t}\n}\n"
+	expected := "struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{1, 2,\n\t\t// trailing positional\n\t}\n}\n"
+	out := vfmt('trailing_positional_struct_init_comment', source)
+	assert out == expected, out
+	assert vfmt('trailing_positional_struct_init_comment_twice', out) == out
+}
+
 fn test_formatter_keeps_comptime_branch_and_selective_import_comments_inside() {
 	source := "import sample {\n\tOne,\n\tTwo,\n\t// trailing import\n}\n\n\$if linux {\n\tprintln('first')\n\t// trailing first\n} \$else \$if windows {\n\t// comment-only second\n} \$else {\n\tprintln('last')\n\t// trailing last\n}\n"
 	out := vfmt('comptime_branch_selective_import_comments', source)
