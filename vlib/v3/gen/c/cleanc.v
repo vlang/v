@@ -90,6 +90,64 @@ fn clone_cgen_string_list(values []string) []string {
 	return cloned
 }
 
+fn clone_cgen_string_bool_lookup(values map[string]bool) map[string]bool {
+	mut cloned := map[string]bool{}
+	cloned.reserve(u32(values.len))
+	for key, value in values {
+		cloned[key.clone()] = value
+	}
+	return cloned
+}
+
+fn clone_c_inline_header(header CInlineHeader) CInlineHeader {
+	mut preserved_headers := []CPreservedHeader{cap: header.preserved_headers.len}
+	for preserved_header in header.preserved_headers {
+		preserved_headers << CPreservedHeader{
+			include_arg: preserved_header.include_arg.clone()
+			source_file: preserved_header.source_file.clone()
+		}
+	}
+	return CInlineHeader{
+		text:                      header.text.clone()
+		preserved_directives:      clone_cgen_string_list(header.preserved_directives)
+		preserved_c_fns:           clone_cgen_string_list(header.preserved_c_fns)
+		preserved_c_structs:       clone_cgen_string_list(header.preserved_c_structs)
+		preserved_c_typedef_names: clone_cgen_string_list(header.preserved_c_typedef_names)
+		preserved_headers:         preserved_headers
+	}
+}
+
+struct CgenScopedAppend {
+	scope       voidptr
+	original_sb strings.Builder
+}
+
+fn (mut g FlatGen) begin_scoped_append() CgenScopedAppend {
+	original_sb := g.sb
+	scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	if scope != unsafe { nil } {
+		g.sb = strings.new_builder(4096)
+	}
+	return CgenScopedAppend{
+		scope:       scope
+		original_sb: original_sb
+	}
+}
+
+fn (mut g FlatGen) finish_scoped_append(state CgenScopedAppend) {
+	if state.scope == unsafe { nil } {
+		return
+	}
+	data := g.sb.data
+	len := g.sb.len
+	line_start := g.line_start
+	cgen_worker_scope_leave(state.scope)
+	g.sb = state.original_sb
+	g.line_start = line_start
+	unsafe { g.sb.write_ptr(data, len) }
+	cgen_worker_scope_free(state.scope)
+}
+
 struct ActiveLock {
 	mutexes_var string
 	modes_var   string
@@ -419,6 +477,7 @@ mut:
 	output_error                 string
 	c99_mode                     bool
 	trace_calls                  bool
+	track_heap                   bool
 	inside_trace_call            bool
 	skip_generics                bool
 	skip_enum_autostr            bool
@@ -1230,6 +1289,11 @@ pub fn (mut g FlatGen) set_suppress_main(enabled bool) {
 pub fn (mut g FlatGen) set_compile_values(values map[string]string) {
 	g.compile_values = values.clone()
 	g.trace_calls = 'trace' in g.compile_values
+}
+
+// set_track_heap records whether user-provided heap tracking hooks are required.
+pub fn (mut g FlatGen) set_track_heap(enabled bool) {
+	g.track_heap = enabled
 }
 
 // set_cache_split enables stable cache markers and string symbols in generated C.
@@ -3173,15 +3237,27 @@ fn (mut g FlatGen) gen_translation_unit_prefix() {
 	}
 	g.thread_stack_size_definition()
 	g.emit_preinclude_directives()
-	g.emit_preserved_c_directives()
+	g.emit_preserved_c_directives_scoped()
 	g.preamble()
 	if g.cache_split {
 		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */')
 	}
-	g.emit_c_directives(false)
+	g.emit_c_directives_scoped(false)
 	if g.cache_split {
 		g.writeln('/* V3CACHE_NATIVE_DIRECTIVES_END */')
 	}
+}
+
+fn (mut g FlatGen) emit_preserved_c_directives_scoped() {
+	state := g.begin_scoped_append()
+	g.emit_preserved_c_directives()
+	g.finish_scoped_append(state)
+}
+
+fn (mut g FlatGen) emit_c_directives_scoped(late bool) {
+	state := g.begin_scoped_append()
+	g.emit_c_directives(late)
+	g.finish_scoped_append(state)
 }
 
 fn (mut g FlatGen) gen_global_declaration_block() {
@@ -3665,7 +3741,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		g.collect_c_flags_from_directives()
 	}
 	g.c_flags << g.initial_c_flags
-	g.use_system_stdint = g.translation_unit_uses_inttypes()
+	inttypes_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	uses_system_stdint := g.translation_unit_uses_inttypes()
+	cgen_worker_scope_leave(inttypes_scope)
+	g.use_system_stdint = uses_system_stdint
+	cgen_worker_scope_free(inttypes_scope)
 	if profile {
 		g.timing_profile('  [ttime]   ci flags+stdint  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
@@ -4407,8 +4487,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 			return true
 		}
-		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs,
-			g.use_system_stdint)
+		if header := c_inline_header_text_scoped(include_arg, g.compiler_vroot, source_file,
+			include_dirs, g.use_system_stdint, g.scope_parallel_workers)
 		{
 			header_text := header.text
 			late_source := c_include_is_late_source(include_arg)
@@ -4573,21 +4653,71 @@ fn (mut g FlatGen) collect_preserved_include_metadata_with_state(include_arg str
 }
 
 fn (mut g FlatGen) collect_preserved_header_tree(include_arg string, source_file string, include_dirs []string) bool {
+	probe_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	mut preserved_path := ''
 	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
 		mut tree_size := CHeaderTreeSize{}
 		if os.is_file(path)
 			&& c_header_tree_exceeds_inline_limit(path, g.compiler_vroot, include_dirs, mut tree_size) {
-			// Some system APIs are declared through macros that the lightweight header
-			// declaration scanner cannot expand (for example OpenSSL's X509_free).
-			// Record the known declarations only when the header will be preserved.
-			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
-			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
-			g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
-			g.collect_preserved_header_file(path, include_dirs)
-			return true
+			preserved_path = path
+			break
 		}
 	}
-	return false
+	cgen_worker_scope_leave(probe_scope)
+	if preserved_path.len == 0 {
+		cgen_worker_scope_free(probe_scope)
+		return false
+	}
+	owned_path := if probe_scope == unsafe { nil } {
+		preserved_path
+	} else {
+		preserved_path.clone()
+	}
+	cgen_worker_scope_free(probe_scope)
+	// Some system APIs are declared through macros that the lightweight header
+	// declaration scanner cannot expand (for example OpenSSL's X509_free).
+	// Record the known declarations only when the header will be preserved.
+	g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+	g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+	g.collect_preserved_c_typedef_names(c_preserved_system_include_typedef_names(include_arg))
+	g.collect_preserved_header_tree_file(owned_path, include_dirs)
+	return true
+}
+
+fn (mut g FlatGen) collect_preserved_header_tree_file(path string, include_dirs []string) {
+	scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	if scope == unsafe { nil } {
+		g.collect_preserved_header_file(path, include_dirs)
+		return
+	}
+	// Header macro-state snapshots can dwarf the declarations that C generation
+	// needs afterward. Keep a complete tree walk in a disposable arena, then copy
+	// only its compact declaration/name sets back to the parent arena.
+	g.inlined_c_structs = clone_cgen_string_bool_lookup(g.inlined_c_structs)
+	g.inlined_c_typedef_names = clone_cgen_string_bool_lookup(g.inlined_c_typedef_names)
+	g.inlined_c_fns = clone_cgen_string_bool_lookup(g.inlined_c_fns)
+	g.inlined_c_declared_fns = clone_cgen_string_bool_lookup(g.inlined_c_declared_fns)
+	g.inlined_c_active_macros = clone_cgen_string_bool_lookup(g.inlined_c_active_macros)
+	g.possibly_active_c_macros = clone_cgen_string_bool_lookup(g.possibly_active_c_macros)
+	g.inlined_c_static_fns = clone_cgen_string_bool_lookup(g.inlined_c_static_fns)
+	g.preserved_header_files_seen = clone_cgen_string_bool_lookup(g.preserved_header_files_seen)
+	g.preserved_macro_files_seen = clone_cgen_string_bool_lookup(g.preserved_macro_files_seen)
+	g.preserved_header_scan_results = map[string]CHeaderMacroState{}
+	g.preserved_header_scans_active = map[string]bool{}
+	g.collect_preserved_header_file(path, include_dirs)
+	cgen_worker_scope_leave(scope)
+	g.inlined_c_structs = clone_cgen_string_bool_lookup(g.inlined_c_structs)
+	g.inlined_c_typedef_names = clone_cgen_string_bool_lookup(g.inlined_c_typedef_names)
+	g.inlined_c_fns = clone_cgen_string_bool_lookup(g.inlined_c_fns)
+	g.inlined_c_declared_fns = clone_cgen_string_bool_lookup(g.inlined_c_declared_fns)
+	g.inlined_c_active_macros = clone_cgen_string_bool_lookup(g.inlined_c_active_macros)
+	g.possibly_active_c_macros = clone_cgen_string_bool_lookup(g.possibly_active_c_macros)
+	g.inlined_c_static_fns = clone_cgen_string_bool_lookup(g.inlined_c_static_fns)
+	g.preserved_header_files_seen = clone_cgen_string_bool_lookup(g.preserved_header_files_seen)
+	g.preserved_macro_files_seen = clone_cgen_string_bool_lookup(g.preserved_macro_files_seen)
+	g.preserved_header_scan_results = map[string]CHeaderMacroState{}
+	g.preserved_header_scans_active = map[string]bool{}
+	cgen_worker_scope_free(scope)
 }
 
 fn c_header_tree_exceeds_inline_limit(path string, vroot string, include_dirs []string, mut tree_size CHeaderTreeSize) bool {
@@ -4651,14 +4781,16 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 	}
 	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
 	mut include_results := map[string]CHeaderIncludeResult{}
-	mut final_scan := CHeaderActiveScan{}
-	mut stable := false
 	// Resolve one include at a time, from left to right. Restarting the scan after
 	// each child applies its resulting macro state before any later include is
-	// visited, so metadata is never collected under a transient parent state.
+	// visited, so metadata is never collected under a transient parent state. Each
+	// restart uses a disposable arena: large third-party header trees otherwise
+	// retain every superseded scan until the whole C generation stage finishes.
 	for _ in 0 .. c_join_continued_lines(text).len + 2 {
+		scan_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
 		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
 			g.target, include_results)
+		cgen_worker_scope_leave(scan_scope)
 		mut unresolved_include := -1
 		for i, include_key in scan.include_keys {
 			include_state_signature := c_header_macro_state_signature(scan.include_states[i])
@@ -4668,16 +4800,22 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 				break
 			}
 		}
-		final_scan = scan
 		if unresolved_include < 0 {
-			stable = true
-			break
+			result := g.finish_preserved_header_scan(scan, visit_key, collect_declarations)
+			cgen_worker_scope_free(scan_scope)
+			return result
 		}
-		include_state := scan.include_states[unresolved_include]
-		include_key := scan.include_keys[unresolved_include]
+		mut include_state := scan.include_states[unresolved_include]
+		mut include_key := scan.include_keys[unresolved_include]
 		include_is_definitely_active := scan.include_definitely_active[unresolved_include]
-		include_arg := c_include_arg(scan.include_args[unresolved_include], g.compiler_vroot,
-			real_path)
+		mut raw_include_arg := scan.include_args[unresolved_include]
+		if scan_scope != unsafe { nil } {
+			include_state = c_header_macro_state_clone(include_state)
+			include_key = include_key.clone()
+			raw_include_arg = raw_include_arg.clone()
+		}
+		cgen_worker_scope_free(scan_scope)
+		include_arg := c_include_arg(raw_include_arg, g.compiler_vroot, real_path)
 		mut found := false
 		mut result_state := CHeaderMacroState{}
 		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
@@ -4707,11 +4845,17 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 			output_state:    result_state
 		}
 	}
-	if !stable {
-		// A pathological include cycle should never let uncertain metadata suppress a
-		// generated prototype. Fall back to the conservative, pre-propagation scan.
-		final_scan = c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
-	}
+	// A pathological include cycle should never let uncertain metadata suppress a
+	// generated prototype. Fall back to the conservative, pre-propagation scan.
+	fallback_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
+	fallback_scan := c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
+	cgen_worker_scope_leave(fallback_scope)
+	result := g.finish_preserved_header_scan(fallback_scan, visit_key, collect_declarations)
+	cgen_worker_scope_free(fallback_scope)
+	return result
+}
+
+fn (mut g FlatGen) finish_preserved_header_scan(final_scan CHeaderActiveScan, visit_key string, collect_declarations bool) CHeaderMacroState {
 	if collect_declarations {
 		g.collect_inlined_c_structs(final_scan.text)
 		g.collect_inlined_c_fns(final_scan.text)
@@ -5117,6 +5261,24 @@ fn c_inline_header_text(include_arg string, vroot string, source_file string, in
 		unsafe { output.free() }
 	}
 	return none
+}
+
+fn c_inline_header_text_scoped(include_arg string, vroot string, source_file string, include_dirs []string, translation_unit_uses_inttypes bool, enabled bool) ?CInlineHeader {
+	scope := cgen_worker_scope_begin(enabled)
+	if scope == unsafe { nil } {
+		return c_inline_header_text(include_arg, vroot, source_file, include_dirs,
+			translation_unit_uses_inttypes)
+	}
+	header := c_inline_header_text(include_arg, vroot, source_file, include_dirs,
+		translation_unit_uses_inttypes) or {
+		cgen_worker_scope_leave(scope)
+		cgen_worker_scope_free(scope)
+		return none
+	}
+	cgen_worker_scope_leave(scope)
+	owned_header := clone_c_inline_header(header)
+	cgen_worker_scope_free(scope)
+	return owned_header
 }
 
 fn c_inline_header_file(path string, vroot string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool, mut output strings.Builder) ?CInlineHeader {
@@ -14972,6 +15134,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
+			if g.gen_safe_integer_division(node, lhs_id, rhs_id, g.usable_expr_type(id)) {
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if g.gen_checked_integer_infix(node, lhs_id, rhs_id, lhs_type) {
 				g.expected_enum = old_expected_enum
 				return
@@ -15439,7 +15605,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_selector_enum
 			}
 			if base.kind == .ident && base.value == 'C' {
-				g.write(c_winapi_wide_export_name(node.value))
+				g.write(c_winapi_wide_export_name(g.c_namespace_global_c_name(node.value)))
 			} else if enum_selector_qbase.len > 0 {
 				ekey := '${enum_selector_qbase}.${node.value}'
 				if expr := g.enum_value_expr_for_key(ekey) {
@@ -17567,6 +17733,13 @@ fn (mut g FlatGen) c99_feature_test_macros() {
 	g.writeln('#endif')
 }
 
+fn (mut g FlatGen) headerless_darwin_pthread_alias(alias string, typ string, guard string) {
+	g.writeln('#ifndef ${guard}')
+	g.writeln('typedef ${typ} ${alias};')
+	g.writeln('#define ${guard}')
+	g.writeln('#endif')
+}
+
 fn (mut g FlatGen) headerless_libc_preamble() {
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	g.writeln(c_stdint_header_text())
@@ -17646,6 +17819,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('void free(void* ptr);')
 	g.writeln('int printf(const char* format, ...);')
 	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
+	g.writeln('void perror(const char* message);')
 	g.writeln('int fseek(FILE* stream, long offset, int whence);')
 	g.writeln('char* getenv(const char* name);')
 	g.writeln('int setenv(const char* name, const char* value, int overwrite);')
@@ -17659,6 +17833,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('void* memset(void* s, int c, size_t n);')
 	g.writeln('void* memcpy(void* dest, const void* src, size_t n);')
 	g.writeln('void* memmove(void* dest, const void* src, size_t n);')
+	g.writeln('void* memchr(const void* s, int c, size_t n);')
 	g.writeln('int memcmp(const void* s1, const void* s2, size_t n);')
 	g.writeln('size_t strlen(const char* s);')
 	g.writeln('int strcmp(const char* s1, const char* s2);')
@@ -17774,6 +17949,27 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef union { unsigned char _opaque[16]; long long _align; } pthread_once_t;')
 	g.writeln('typedef unsigned long pthread_key_t;')
 	g.writeln('#endif')
+	// Mach headers expose Darwin's internal pthread storage types without the
+	// public aliases that <pthread.h> supplies. Recreate only the missing aliases.
+	g.writeln('#if defined(__APPLE__) && defined(_SYS__PTHREAD_TYPES_H_)')
+	g.writeln('#define V_HEADERLESS_DARWIN_PTHREAD_TYPES 1')
+	g.headerless_darwin_pthread_alias('pthread_t', '__darwin_pthread_t', '_PTHREAD_T')
+	g.headerless_darwin_pthread_alias('pthread_attr_t', '__darwin_pthread_attr_t',
+		'_PTHREAD_ATTR_T')
+	g.headerless_darwin_pthread_alias('pthread_mutex_t', '__darwin_pthread_mutex_t',
+		'_PTHREAD_MUTEX_T')
+	g.headerless_darwin_pthread_alias('pthread_cond_t', '__darwin_pthread_cond_t',
+		'_PTHREAD_COND_T')
+	g.headerless_darwin_pthread_alias('pthread_rwlock_t', '__darwin_pthread_rwlock_t',
+		'_PTHREAD_RWLOCK_T')
+	g.headerless_darwin_pthread_alias('pthread_rwlockattr_t', '__darwin_pthread_rwlockattr_t',
+		'_PTHREAD_RWLOCKATTR_T')
+	g.headerless_darwin_pthread_alias('pthread_condattr_t', '__darwin_pthread_condattr_t',
+		'_PTHREAD_CONDATTR_T')
+	g.headerless_darwin_pthread_alias('pthread_once_t', '__darwin_pthread_once_t',
+		'_PTHREAD_ONCE_T')
+	g.headerless_darwin_pthread_alias('pthread_key_t', '__darwin_pthread_key_t', '_PTHREAD_KEY_T')
+	g.writeln('#endif')
 	g.writeln('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
 	g.writeln('void* pthread_getspecific(pthread_key_t key);')
 	g.writeln('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
@@ -17786,7 +17982,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int sigprocmask(int how, const sigset_t* set, sigset_t* old_set);')
 	g.headerless_stdarg_decls()
 	g.writeln('#ifndef PTHREAD_MUTEX_INITIALIZER')
-	g.writeln('#ifdef __APPLE__')
+	g.writeln('#ifdef V_HEADERLESS_DARWIN_PTHREAD_TYPES')
+	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { 0x32AAABA7, { 0 } }')
+	g.writeln('#elif defined(__APPLE__)')
 	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { ._opaque = { 0xa7, 0xab, 0xaa, 0x32 } }')
 	g.writeln('#else')
 	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { 0 }')
@@ -18388,6 +18586,8 @@ fn (mut g FlatGen) headerless_qnx_stat_struct() {
 fn (mut g FlatGen) headerless_linux_stat_struct() {
 	g.writeln('#if defined(__x86_64__) && !defined(__ILP32__)')
 	g.writeln('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __pad0; u64 st_rdev; i64 st_size; i64 st_blksize; i64 st_blocks; i64 st_atime; i64 st_atimensec; i64 st_mtime; i64 st_mtimensec; i64 st_ctime; i64 st_ctimensec; i64 __glibc_reserved[3]; };')
+	g.writeln('#elif defined(__s390x__)')
+	g.writeln('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __glibc_reserved0; u64 st_rdev; i64 st_size; i64 st_atime; unsigned long st_atimensec; i64 st_mtime; unsigned long st_mtimensec; i64 st_ctime; unsigned long st_ctimensec; i64 st_blksize; i64 st_blocks; i64 __glibc_reserved[3]; };')
 	g.writeln('#elif defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64) || defined(__loongarch_lp64)')
 	g.writeln('struct stat { u64 st_dev; u64 st_ino; u32 st_mode; u32 st_nlink; u32 st_uid; u32 st_gid; u64 st_rdev; unsigned long __pad1; i64 st_size; int st_blksize; int __pad2; i64 st_blocks; i64 st_atime; i64 st_atimensec; i64 st_mtime; i64 st_mtimensec; i64 st_ctime; i64 st_ctimensec; unsigned int __glibc_reserved[2]; };')
 	g.writeln('#elif defined(__i386__) || defined(__arm__)')
@@ -19608,6 +19808,31 @@ fn (mut g FlatGen) write_arch_macros() {
 	g.writeln('#undef __V_architecture')
 	g.writeln('#define __V_architecture 6')
 	g.writeln('#endif')
+	g.writeln('#if defined(__s390x__)')
+	g.writeln('#define __V_s390x 1')
+	g.writeln('#undef __V_architecture')
+	g.writeln('#define __V_architecture 7')
+	g.writeln('#endif')
+	g.writeln('#if defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)')
+	g.writeln('#define __V_ppc64le 1')
+	g.writeln('#undef __V_architecture')
+	g.writeln('#define __V_architecture 8')
+	g.writeln('#endif')
+	g.writeln('#if defined(__loongarch64)')
+	g.writeln('#define __V_loongarch64 1')
+	g.writeln('#undef __V_architecture')
+	g.writeln('#define __V_architecture 9')
+	g.writeln('#endif')
+	g.writeln('#if defined(__sparc__)')
+	g.writeln('#define __V_sparc64 1')
+	g.writeln('#undef __V_architecture')
+	g.writeln('#define __V_architecture 10')
+	g.writeln('#endif')
+	g.writeln('#if defined(__powerpc64__) && defined(__BIG_ENDIAN__)')
+	g.writeln('#define __V_ppc64 1')
+	g.writeln('#undef __V_architecture')
+	g.writeln('#define __V_architecture 11')
+	g.writeln('#endif')
 	g.writeln('#if (defined(__powerpc__) || defined(__powerpc) || defined(__POWERPC__) || defined(__ppc__) || defined(__ppc) || defined(__PPC__)) && !defined(__powerpc64__) && !defined(__ppc64__) && !defined(__PPC64__)')
 	g.writeln('#define __V_ppc 1')
 	g.writeln('#undef __V_architecture')
@@ -19631,6 +19856,8 @@ fn (mut g FlatGen) libc_compat_decls() {
 		g.writeln('#define SYS_gettid 178')
 		g.writeln('#elif defined(__loongarch_lp64)')
 		g.writeln('#define SYS_gettid 178')
+		g.writeln('#elif defined(__s390x__)')
+		g.writeln('#define SYS_gettid 236')
 		g.writeln('#else')
 		g.writeln('#error unsupported Linux gettid syscall number for this architecture')
 		g.writeln('#endif')
@@ -19775,6 +20002,21 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	g.writeln('#endif')
 }
 
+fn (mut g FlatGen) heap_tracking_fallback_decls() {
+	if g.track_heap {
+		return
+	}
+	// Weak fallbacks keep ordinary builds linkable. Tracking builds require the
+	// user hooks and must not receive definitions in the same translation unit.
+	if g.object_file_mode {
+		g.writeln('static void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
+		g.writeln('static void vheap_free(void* p) { (void)p; }')
+	} else {
+		g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
+		g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
+	}
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -19799,17 +20041,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define V_COMMIT_HASH ""')
 	g.writeln('#endif')
 	g.atomic_thread_fence_compat_decls()
-	// Weak fallbacks for the heap-tracking hooks. A program that provides real
-	// implementations (e.g. a `vheap_alloc`/`vheap_free` from a linked C file, as
-	// some projects do) overrides these without a redefinition/static-vs-non-static
-	// clash against that file's own non-static prototype.
-	if g.object_file_mode {
-		g.writeln('static void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
-		g.writeln('static void vheap_free(void* p) { (void)p; }')
-	} else {
-		g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
-		g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
-	}
+	g.heap_tracking_fallback_decls()
 	g.writeln('static inline int v3_sum_ptr_type_idx(const void* p) { return p == NULL ? 0 : *(const int*)p; }')
 	g.prealloc_atomic_compat_decls()
 	g.atomic_builtin_compat_decls()
@@ -20997,6 +21229,17 @@ fn (g &FlatGen) global_c_name(name string) string {
 		return g.cname(name[2..])
 	}
 	return g.cname(name)
+}
+
+fn (g &FlatGen) c_namespace_global_c_name(raw_name string) string {
+	if module_name := g.global_modules[raw_name] {
+		qualified := qualify_name_in_module(module_name, raw_name)
+		if qualified in g.global_types
+			&& ('C.${raw_name}' in g.global_types || 'C.${raw_name}' in g.tc.c_globals) {
+			return g.global_c_name(qualified)
+		}
+	}
+	return raw_name
 }
 
 fn (mut g FlatGen) fn_capture_shared_global_c_type(name string) ?string {
@@ -22714,6 +22957,26 @@ fn (mut g FlatGen) gen_checked_integer_infix(node flat.Node, lhs_id flat.NodeId,
 		}
 	}
 	g.write(') v_panic(_S("integer overflow")); ${c_type} ${result_tmp} = (${c_type})(${lhs_tmp} ${g.op_str(node.op)} ${rhs_tmp}); ${result_tmp}; })')
+	return true
+}
+
+fn (mut g FlatGen) gen_safe_integer_division(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, result_type types.Type) bool {
+	if !g.has_builtins || node.op !in [.div, .mod] {
+		return false
+	}
+	checked_integer_bounds(result_type) or { return false }
+	c_type := g.value_c_type(result_type)
+	if c_type.len == 0 {
+		return false
+	}
+	lhs_tmp := g.tmp_name()
+	rhs_tmp := g.tmp_name()
+	message := if node.op == .div { 'division by zero' } else { 'modulo by zero' }
+	g.write('({ ${c_type} ${lhs_tmp} = (${c_type})(')
+	g.gen_expr(lhs_id)
+	g.write('); ${c_type} ${rhs_tmp} = (${c_type})(')
+	g.gen_expr(rhs_id)
+	g.write('); if (${rhs_tmp} == 0) v_panic(_S("${message}")); (${c_type})(${lhs_tmp} ${g.op_str(node.op)} ${rhs_tmp}); })')
 	return true
 }
 

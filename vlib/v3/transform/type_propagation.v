@@ -354,6 +354,15 @@ fn (t &Transformer) fn_value_type_name(id flat.NodeId) ?string {
 			return t.normalize_type_alias(name)
 		}
 	}
+	if node.kind == .ident {
+		if name := fn_value_type_name_from_type(t.tc.resolve_type(id)) {
+			return t.normalize_type_alias(name)
+		}
+		fn_name := t.tc.resolved_fn_value_name(id) or { node.value }
+		params := t.tc.fn_param_types[fn_name] or { return none }
+		ret := t.tc.fn_ret_types[fn_name] or { return none }
+		return fn_literal_value_type_text(params, ret.name())
+	}
 	if node.kind == .lambda_expr {
 		typ := t.tc.resolve_type(id)
 		if name := fn_value_type_name_from_type(typ) {
@@ -414,6 +423,30 @@ fn fn_value_type_name_from_type(typ types.Type) ?string {
 		}
 	}
 	return none
+}
+
+fn fn_call_value_type_name_from_type(typ types.Type) ?string {
+	if typ is types.FnType {
+		for i, param in typ.params {
+			if i < typ.params_mut.len && typ.params_mut[i] && param is types.Pointer {
+				return fn_literal_value_type_text(typ.params, typ.return_type.name())
+			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) checker_call_fn_value_return_type(id flat.NodeId) ?string {
+	if isnil(t.tc) || int(id) < 0 {
+		return none
+	}
+	name := t.tc.resolved_call_name(id) or { return none }
+	ret_type := t.tc.fn_ret_types[name] or { return none }
+	fn_value_type := fn_call_value_type_name_from_type(ret_type) or { return none }
+	if t.generic_arg_is_unresolved(fn_value_type) {
+		return none
+	}
+	return t.normalize_type_alias(fn_value_type)
 }
 
 fn (t &Transformer) concrete_node_type_name(node flat.Node) string {

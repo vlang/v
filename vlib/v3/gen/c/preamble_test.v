@@ -32,6 +32,11 @@ fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	guard := c_code.all_before('typedef void* pthread_t;')
 	assert guard.contains('!defined(_SYS__PTHREAD_TYPES_H_)'), guard
 	assert guard.contains('!defined(_PTHREAD_T)'), guard
+	assert c_code.contains('#if defined(__APPLE__) && defined(_SYS__PTHREAD_TYPES_H_)'), c_code
+	assert c_code.contains('#define V_HEADERLESS_DARWIN_PTHREAD_TYPES 1'), c_code
+	assert c_code.contains('typedef __darwin_pthread_t pthread_t;'), c_code
+	assert c_code.contains('typedef __darwin_pthread_key_t pthread_key_t;'), c_code
+	assert c_code.contains('#define PTHREAD_MUTEX_INITIALIZER { 0x32AAABA7, { 0 } }'), c_code
 	assert c_code.contains('int pthread_equal(pthread_t t1, pthread_t t2);'), c_code
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0'), c_code
 }
@@ -41,6 +46,8 @@ fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('int printf(const char* format, ...);'), c_code
+	assert c_code.contains('void perror(const char* message);'), c_code
+	assert c_code.contains('void* memchr(const void* s, int c, size_t n);'), c_code
 }
 
 fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {
@@ -48,6 +55,46 @@ fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));'), c_code
+}
+
+fn test_headerless_linux_stat_preamble_supports_s390x() {
+	mut g := FlatGen.new()
+	g.headerless_linux_stat_struct()
+	c_code := g.sb.str()
+	s390_guard := '#elif defined(__s390x__)'
+	s390_layout := 'struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __glibc_reserved0; u64 st_rdev; i64 st_size; i64 st_atime; unsigned long st_atimensec; i64 st_mtime; unsigned long st_mtimensec; i64 st_ctime; unsigned long st_ctimensec; i64 st_blksize; i64 st_blocks; i64 __glibc_reserved[3]; };'
+	assert c_code.contains('${s390_guard}\n${s390_layout}'), c_code
+}
+
+fn test_arch_macros_cover_all_supported_targets() {
+	mut g := FlatGen.new()
+	g.write_arch_macros()
+	c_code := g.sb.str()
+	for architecture, id in {
+		'amd64':       1
+		'arm64':       2
+		'arm32':       3
+		'rv64':        4
+		'rv32':        5
+		'x86':         6
+		's390x':       7
+		'ppc64le':     8
+		'loongarch64': 9
+		'sparc64':     10
+		'ppc64':       11
+		'ppc':         12
+	} {
+		assert c_code.contains('#define __V_${architecture} 1'), architecture
+		assert c_code.contains('#define __V_architecture ${id}'), architecture
+	}
+}
+
+fn test_libc_compat_gettid_supports_s390x() {
+	mut g := FlatGen.new()
+	g.libc_compat_fns['gettid'] = true
+	g.libc_compat_decls()
+	c_code := g.sb.str()
+	assert c_code.contains('#elif defined(__s390x__)\n#define SYS_gettid 236'), c_code
 }
 
 fn test_headerless_libc_preamble_suppresses_its_mach_timebase_declaration() {
@@ -80,6 +127,17 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	c_code := g.sb.str()
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
+}
+
+fn test_builtin_heap_tracking_fallbacks_do_not_redefine_user_hooks() {
+	mut fallback := FlatGen.new()
+	fallback.heap_tracking_fallback_decls()
+	assert fallback.sb.str().contains('__attribute__((weak)) void vheap_alloc')
+
+	mut tracked := FlatGen.new()
+	tracked.set_track_heap(true)
+	tracked.heap_tracking_fallback_decls()
+	assert tracked.sb.len == 0
 }
 
 fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {

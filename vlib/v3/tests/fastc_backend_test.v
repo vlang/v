@@ -144,10 +144,13 @@ fn main() {
 	assert !stdout_source.contains('=== v3 benchmark ===')
 	assert !stdout_source.contains('fastc parse+gen')
 	tcc_dir := os.join_path(os.dir(fastc_backend_vlib_dir), 'thirdparty', 'tcc')
+	tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
+	tcc_nested_dir := os.join_path_single(tcc_lib_dir, 'tcc')
+	tcc_install_dir := if os.is_dir(tcc_nested_dir) { tcc_nested_dir } else { tcc_lib_dir }
 	stdout_binary := os.join_path(root, 'stdout')
 	stdout_compile := cmdexec.run(os.join_path(tcc_dir, 'tcc.exe'), ['-std=gnu11',
-		'-I${os.join_path(tcc_dir, 'lib', 'include')}', '-L${os.join_path(tcc_dir, 'lib')}', '-w',
-		'-o', stdout_binary, stdout_c, '-lm'])
+		'-B${tcc_install_dir}', '-I${os.join_path_single(tcc_install_dir, 'include')}',
+		'-L${tcc_install_dir}', '-w', '-o', stdout_binary, stdout_c, '-lm'])
 	assert stdout_compile.exit_code == 0, stdout_compile.output
 
 	cross_stdout_c := os.join_path(root, 'cross_stdout.c')

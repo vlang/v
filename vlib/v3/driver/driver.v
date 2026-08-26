@@ -74,6 +74,8 @@ fn configure_selfhost_parallelism(building_v bool) {
 }
 
 const embedded_parallel_transform_node_limit = 10_000_000
+const scoped_serial_user_check_node_threshold = 400_000
+const scoped_serial_user_cgen_node_threshold = 500_000
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
@@ -2274,7 +2276,7 @@ fn cli_usage() string {
 		'  -profile [file]              write V1-compatible function profile data\n' +
 		'  -profile-fns <names>         profile only named functions and their callees\n' +
 		'  -profile-no-inline           omit @[inline] functions from the profile\n' +
-		'  -no-memory-limit             disable the 4 GiB memory safety limit\n' +
+		'  -no-memory-limit             disable the 10 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
 
@@ -2552,6 +2554,43 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		}
 	}
 	return !has_untracked_c_include && can_scope_static_inputs && can_extract_native_types
+}
+
+// prepare_v3_checker_native_inputs resolves native `#include` source roots so
+// the checker can register their typedefs, skipping the cache-unit ownership
+// scan and native type-declaration extraction whose outputs only cache-enabled
+// builds consume (cache dependency manifests and per-unit C source rewriting).
+fn prepare_v3_checker_native_inputs(mut state V3ModuleCacheState, a &flat.FlatAst, prefs &pref.Preferences, user_files []string, user_c_flags []string) {
+	mut cache_input_modules := map[string]bool{}
+	for module_name in state.module_sources.keys() {
+		cache_input_modules[module_name] = true
+	}
+	cache_input_modules['main'] = true
+	native_inputs_language := cgen.cache_native_inputs_language(a, prefs.vroot, user_c_flags,
+		prefs.c99, prefs.target)
+	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags,
+		prefs.ccompiler, prefs.target, native_inputs_language)
+	external_inputs, native_source_roots, native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a,
+		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
+		module_cache_source_path_set(user_files), compiler_macros,
+		compiler_macro_environment_complete)
+	state.module_external_inputs = external_inputs.clone()
+	state.module_native_roots = native_source_roots.clone()
+	state.native_root_contexts = native_root_contexts.clone()
+	state.external_input_signatures = map[string]string{}
+	state.external_input_digests = external_input_digests.clone()
+	cache_dir := os.abs_path(state.manager.dir)
+	real_cache_dir := os.real_path(state.manager.dir)
+	state.external_resolution_dirs = resolution_dirs.filter(!v3_path_is_within(it, cache_dir)
+		&& !v3_path_is_within(it, real_cache_dir))
+	state.external_missing_paths = missing_resolution_paths.filter(
+		!v3_path_is_within(it, cache_dir) && !v3_path_is_within(it, real_cache_dir))
+	state.external_inputs_ready = true
+	// The macOS C-error fallback report requires a complete native-input
+	// manifest, and completeness here needs only resolved includes and valid
+	// digests — cache-unit ownership is a cache-manifest concern.
+	state.external_inputs_complete = !has_untracked_c_include
+		&& v3_external_input_digests_complete(state)
 }
 
 fn ast_has_native_source_include(a &flat.FlatAst) bool {
@@ -6835,7 +6874,7 @@ fn canonical_v3_fastc_output_path(path string) string {
 	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 }
 
-fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool) V3FastCCompileResult {
+fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool, uses_threads bool) V3FastCCompileResult {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 	if !os.is_executable(tcc_path) {
@@ -6850,10 +6889,11 @@ fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferenc
 	source_file := os.join_path_single(build_dir, 'src.c')
 	staged_binary := os.join_path_single(build_dir, 'out')
 	os.write_file(source_file, source) or { return V3FastCCompileResult{} }
-	tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
+	tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 	mut cc_args := environment_c_flags.clone()
-	cc_args << ['-std=gnu11', '-I${os.join_path_single(tcc_lib_dir, 'include')}', '-L${tcc_lib_dir}',
-		'-w']
+	cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
+	cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os())
+	cc_args << '-w'
 	if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
 		cc_args << '-bt25'
 	}
@@ -6862,11 +6902,21 @@ fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferenc
 	}
 	cc_args << ['-o', 'out', 'src.c']
 	cc_args << user_c_flags
+	if uses_threads {
+		// The emitted spawn runtime calls pthread functions, which live
+		// outside libc on Linux with glibc before 2.34 and on the BSDs.
+		cc_args << '-lpthread'
+	}
 	cc_args << '-lm'
 	cc_args << environment_ld_flags
 	command := cmdexec.display(tcc_path, cc_args)
 	result := cmdexec.run_in(tcc_path, cc_args, build_dir)
 	if result.exit_code != 0 || !os.is_file(staged_binary) {
+		if keep_dir := os.getenv_opt('V3_FASTC_KEEP_FAILED_C') {
+			if keep_dir.len > 0 {
+				os.cp(source_file, keep_dir) or {}
+			}
+		}
 		return V3FastCCompileResult{
 			command: command
 			output:  result.output
@@ -7619,7 +7669,10 @@ pub fn run(args []string) {
 		// allocation-heavy phases) — so compiler builds default to it.
 		// -no-prealloc opts out (also restores tcc linking: tcc has no
 		// thread-local storage support, so prealloc builds link with cc).
-		if !no_prealloc && 'prealloc' !in user_defines {
+		// FastC output is always compiled by bundled TinyCC, where the arena
+		// pointer cannot be thread-local; a FastC compiler generation spawns
+		// worker threads, so it must use plain thread-safe malloc instead.
+		if !no_prealloc && 'prealloc' !in user_defines && backend != 'fastc' {
 			user_defines << 'prealloc'
 		}
 	}
@@ -7721,8 +7774,8 @@ pub fn run(args []string) {
 	if no_memory_limit {
 		b.disable_memory_limit()
 	} else if v3_compiler_tree_input {
-		// A compiler-module test retains test-runner state in addition to the full
-		// compiler AST. Its measured peak is above the self-host-only limit.
+		// Compiler-module tests retain test-runner state in addition to the full
+		// compiler AST, so keep their guard separately configurable.
 		b.use_compiler_tree_memory_limit()
 	} else if building_v || cmd_v_module_input {
 		// Self-host transformation temporarily retains both the source and rewritten
@@ -7768,6 +7821,7 @@ pub fn run(args []string) {
 	explicit_tcc = c_compiler_explicit && effective_c_compiler == 'tinyc'
 	add_v3_tcc_compat_defines(mut user_defines, target.os, target.arch, is_shared, explicit_tcc)
 	prefs.ccompiler = effective_c_compiler
+	prefs.no_parallel = current_no_parallel
 	prefs.c99 = c99
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.enable_globals = enable_globals_compat
@@ -7871,6 +7925,12 @@ pub fn run(args []string) {
 		if translated_mode || is_repl {
 			unsupported_modes << 'translated/REPL mode'
 		}
+		// Bundled TinyCC has no thread-local storage, so the prealloc arena
+		// pointer would become one shared global while FastC compiler
+		// generations spawn worker threads; concurrent bumps corrupt it.
+		if 'prealloc' in prefs.user_defines {
+			unsupported_modes << '`-prealloc` builds'
+		}
 		if unsupported_modes.len > 0 {
 			eprintln('fastc parser does not support ${unsupported_modes.join(', ')}')
 			exit(1)
@@ -7918,7 +7978,8 @@ pub fn run(args []string) {
 			bin_file
 		}
 		fastc_result := compile_v3_fastc_source(fastc_source, fastc_bin_file, prefs,
-			environment_c_flags, user_c_flags, environment_ld_flags, is_debug)
+			environment_c_flags, user_c_flags, environment_ld_flags, is_debug,
+			fastc_generation.uses_threads)
 		if (!silent || show_cc) && fastc_result.command.len > 0 {
 			if c_to_stdout {
 				eprintln('  > ${fastc_result.command}')
@@ -8037,8 +8098,6 @@ pub fn run(args []string) {
 	program_cache_enabled := persistent_program_cache_enabled(cache_enabled, is_test_command
 		|| is_v3_test_file(input_file, backend, target), os.vtmp_dir())
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
-	// Cache markers and scoped output are stable across ordered worker chunks, so cached
-	// and preallocated builds use the same parallel function-body generator.
 	mut cache_no_parallel_cgen := current_no_parallel
 	stage_macos_v3_compiler_error_fallback(macos_v3_fallback_file, 'source parsing')
 	mut p := parser.Parser.new(prefs)
@@ -8590,8 +8649,17 @@ pub fn run(args []string) {
 	// Source includes can introduce typedef structs used by V declarations and
 	// literals before Cgen sees the included translation unit. Resolve those rare
 	// inputs before checking so the type is available to semantic lookup.
+	mut ck_stage_sw := time.new_stopwatch()
 	if !cache_state.external_inputs_ready && ast_has_native_source_include(a) {
-		_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files, cache_c_flags)
+		if cache_state.manager.enabled {
+			_ = prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_files,
+				cache_c_flags)
+		} else {
+			prepare_v3_checker_native_inputs(mut cache_state, a, prefs, user_files, cache_c_flags)
+		}
+	}
+	if verbose {
+		eprintln('  [ttime]   ck native inputs ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	}
 	if backend == 'c' && cache_state.external_inputs_ready {
 		fallback_report_sources = macos_v3_fallback_report_inputs(fallback_report_sources,
@@ -8633,7 +8701,7 @@ pub fn run(args []string) {
 	mut trivial_literal_output := false
 	if !cgen_cache_hit {
 		pre_tc.verbose = prefs.verbose
-		if scope_prealloc_check && !current_no_parallel && a.missing_imports.len == 0 {
+		if scope_prealloc_check && a.missing_imports.len == 0 {
 			pre_tc.enable_scoped_parallel_workers()
 		}
 		pre_tc.reject_unsupported_generics = is_selfhost
@@ -8699,10 +8767,22 @@ pub fn run(args []string) {
 		} else if incremental_cache_hit {
 			pre_tc.check_semantics_selected(incremental_changed_names)
 		} else {
-			check_was_parallel = pre_tc.check_semantics_opt(!current_no_parallel
-				&& a.missing_imports.len == 0)
+			ck_stage_sw.restart()
+			// On large user import graphs, scoped serial batches use less memory than
+			// retaining one semantic-check accumulator per worker.
+			parallel_semantic_check := !current_no_parallel && a.missing_imports.len == 0
+				&& (building_v || !scope_prealloc_check
+				|| a.nodes.len < scoped_serial_user_check_node_threshold)
+			check_was_parallel = pre_tc.check_semantics_opt(parallel_semantic_check)
+			if verbose {
+				eprintln('  [ttime]   ck semantics     ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+			}
 		}
+		ck_stage_sw.restart()
 		mut prepared_markused := prepared_markused_thread.wait()
+		if verbose {
+			eprintln('  [ttime]   ck mkused wait   ${f64(ck_stage_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+		}
 		ckpre_sw.restart()
 		pre_tc.check_main_module_requirement(is_shared || test_files.len > 0
 			|| a.export_fn_names.len > 0)
@@ -9641,6 +9721,13 @@ pub fn run(args []string) {
 		}
 	} else {
 		// C backend (default)
+		// Large generic user programs retain their transformed AST through cgen.
+		// Bounded serial batches prevent worker snapshots from overlapping that live
+		// set at the memory-limit peak; smaller programs keep the parallel fast path.
+		if scope_prealloc_cgen && !building_v && !cmd_v_build
+			&& a.nodes.len >= scoped_serial_user_cgen_node_threshold {
+			cache_no_parallel_cgen = true
+		}
 		c_standard := c_standard_flag(prefs.c99)
 		use_cached_dev_dylib := cache_state.manager.enabled && remove_binary_after_run && !is_prod
 			&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
@@ -9731,6 +9818,7 @@ pub fn run(args []string) {
 			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
+			g.set_track_heap('track_heap' in prefs.user_defines)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
@@ -9785,6 +9873,7 @@ pub fn run(args []string) {
 			g.set_suppress_main('no_main' in prefs.user_defines)
 			g.set_coverage(coverage_dir, args.join(' '))
 			g.set_compile_values(prefs.compile_values)
+			g.set_track_heap('track_heap' in prefs.user_defines)
 			g.set_cache_split(cache_state.manager.enabled)
 			g.set_cache_native_input_paths(cache_scoped_native_input_paths(cache_state))
 			g.set_program_body_only(generic_cache_hit)
@@ -14891,7 +14980,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			mod_files := if mod_dir_exists {
-				pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines, prefs.target)
+				v3_directory_user_files(mod_dir, prefs, false, false) or {
+					pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines, prefs.target)
+				}
 			} else {
 				[]string{}
 			}

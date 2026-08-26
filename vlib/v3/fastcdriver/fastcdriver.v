@@ -99,6 +99,13 @@ pub fn run(args []string) {
 	prefs.building_v = real_input.ends_with('/vlib/v3/v3.v')
 	prefs.selfhost = prefs.building_v
 	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_wasm', 'skip_eval']
+	// Mirror the driver's TinyCC compatibility plan (add_v3_tcc_compat_defines):
+	// TCC's backtrace runtime cannot be linked on macOS arm64, so builtin must
+	// not reference tcc_backtrace there. Descendant generations then compile
+	// builtin exactly like the first FastC generation did.
+	if prefs.normalized_target_os() == 'macos' && prefs.target.arch == 'arm64' {
+		prefs.user_defines << 'no_backtrace'
+	}
 
 	generation := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
 	canonical_output := canonical_output_path(output)
@@ -115,8 +122,14 @@ pub fn run(args []string) {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc := os.join_path_single(tcc_dir, 'tcc.exe')
 	tcc_lib := os.join_path_single(tcc_dir, 'lib')
+	// The emitted spawn runtime calls pthread functions, which live outside
+	// libc on Linux with glibc before 2.34 and on the BSDs.
+	mut thread_link_flag := ''
+	if generation.uses_threads {
+		thread_link_flag = '-lpthread '
+	}
 	command := '${os.quoted_path(tcc)} -std=gnu11 -I${os.quoted_path(os.join_path_single(tcc_lib,
-		'include'))} -L${os.quoted_path(tcc_lib)} -w -o ${os.quoted_path(staged_output)} ${os.quoted_path(c_path)} -lm'
+		'include'))} -L${os.quoted_path(tcc_lib)} -w -o ${os.quoted_path(staged_output)} ${os.quoted_path(c_path)} ${thread_link_flag}-lm'
 	result := os.execute(command)
 	if result.exit_code != 0 {
 		fail(result.output)

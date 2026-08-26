@@ -726,6 +726,11 @@ fn clamp_source_offset(pos int, source_len int) int {
 	return pos
 }
 
+fn (p &Parser) current_token_is_newline_semicolon() bool {
+	return p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
+		&& p.s.src[p.tok_pos] == `\n`
+}
+
 fn (p &Parser) line_indent_for_pos(pos int) int {
 	mut i := if pos < p.s.src.len { pos } else { p.s.src.len }
 	for i > 0 && p.s.src[i - 1] != `\n` {
@@ -1619,6 +1624,14 @@ fn (mut p Parser) register_pending_export(name string) {
 fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	param_start := p.current_pos()
 	mut ids := []flat.NodeId{}
+	// Newlines separate parameters just like commas. The scanner represents a
+	// newline inside a parameter list as a synthetic semicolon.
+	for p.current_token_is_newline_semicolon() {
+		p.next()
+	}
+	if p.tok in [.rpar, .eof] {
+		return ids
+	}
 	mut names := []string{}
 	mut name_positions := []token.Pos{}
 	mut is_mut := false
@@ -10284,6 +10297,10 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 	ids << fn_expr
 	mut trailing_comma := false
 	for p.tok != .rpar && p.tok != .eof {
+		if p.current_token_is_newline_semicolon() {
+			p.next()
+			continue
+		}
 		trailing_comma = false
 		prev_offset := p.s.offset
 		prev_tok := p.tok

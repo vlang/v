@@ -2381,6 +2381,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		compiler_vexe:                  g.compiler_vexe
 		compiler_vexe_env_setup:        g.compiler_vexe_env_setup
 		ccompiler:                      g.ccompiler
+		target:                         g.target
 		suppress_main:                  g.suppress_main
 		cur_param_names:                if result_only {
 			g.cur_param_names

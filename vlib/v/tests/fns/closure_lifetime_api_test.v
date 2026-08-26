@@ -75,7 +75,8 @@ fn run_program_with_track_heap(tmp_dir string, name string, source string) os.Re
 
 fn c_output_for_program(tmp_dir string, name string, source string) os.Result {
 	source_path := write_program(tmp_dir, name, source)
-	return os.execute('${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}')
+	// These assertions verify the legacy C backend's ownership cleanup shape.
+	return os.execute('${os.quoted_path(vexe)} -old-compiler -o - ${os.quoted_path(source_path)}')
 }
 
 fn assert_boehm_leak_compile_or_missing_lib(tmp_dir string, name string, source string) {

@@ -16398,6 +16398,12 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		}
 		if t.name.starts_with('C.') {
 			raw := t.name[2..]
+			if raw.starts_with('builtin__closure__') {
+				closure_name := 'closure.${raw['builtin__closure__'.len..]}'
+				if closure_name in tc.structs {
+					return tc.c_struct_type_name(closure_name)
+				}
+			}
 			// A struct declared `@[typedef] struct C.foo {}` is referenced by its
 			// typedef name (`foo`), never as `struct foo` — the C header (and v3's own
 			// emitted `typedef struct {...} foo;`) has no matching `struct foo` tag, so

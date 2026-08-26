@@ -4393,11 +4393,11 @@ fn main() {
 	assert out == '2'
 }
 
-fn test_empty_interface_box_preserves_alias_type_id() {
+fn test_empty_interface_is_matches_alias_equivalent_type_ids() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'empty_interface_alias_type_id',
 		'interface Any {}\n\ntype MyInt = int\n\nfn main() {\n\tvalue := MyInt(1)\n\ta := Any(value)\n\tprintln((a is MyInt).str())\n\tprintln((a is int).str())\n\tplain := int(2)\n\tb := Any(plain)\n\tprintln((b is MyInt).str())\n\tprintln((b is int).str())\n}\n')
-	assert out == 'true\nfalse\nfalse\ntrue'
+	assert out == 'true\ntrue\ntrue\ntrue'
 }
 
 fn test_empty_interface_box_preserves_enum_type_id() {

@@ -166,6 +166,7 @@ mut:
 	cur_file                        string
 	cur_module                      string
 	cur_fn_name                     string
+	cur_fn_receiver_name            string
 	cur_fn_ret_type                 string
 	cur_fn_is_generic               bool
 	cur_fn_manualfree               bool
@@ -8453,6 +8454,8 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		t.transformed_fns[fn_idx] = true
 	}
 	t.cur_fn_name = fn_node.value
+	old_receiver_name := t.cur_fn_receiver_name
+	t.cur_fn_receiver_name = ''
 	old_is_generic := t.cur_fn_is_generic
 	old_manualfree := t.cur_fn_manualfree
 	t.cur_fn_is_generic = if t.skip_generics {
@@ -8490,6 +8493,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		}
 		if child.value.len == 0 {
 			continue
+		}
+		if child.op == .dot {
+			t.cur_fn_receiver_name = child.value
 		}
 		if child.typ.starts_with('...') {
 			t.cur_fn_variadic_param = child.value
@@ -8629,6 +8635,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.invalidated_smartcasts.clear()
 	t.cur_fn_is_generic = old_is_generic
 	t.cur_fn_manualfree = old_manualfree
+	t.cur_fn_receiver_name = old_receiver_name
 	t.temp_counter = outer_temp_counter
 }
 
@@ -11299,12 +11306,16 @@ fn (t &Transformer) discarded_closure_value_is_exclusive(id flat.NodeId) bool {
 	if t.expr_allocates_fresh_runtime_closure(id) {
 		return true
 	}
+	return t.call_returns_exclusive_closure(id)
+}
+
+fn (t &Transformer) call_returns_exclusive_closure(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
-		return t.discarded_closure_value_is_exclusive(t.a.child(&node, 0))
+		return t.call_returns_exclusive_closure(t.a.child(&node, 0))
 	}
 	if node.kind != .call {
 		return false
@@ -11388,11 +11399,38 @@ fn (mut t Transformer) fn_value_self_capture_refresh_stmt(node flat.Node, new_ch
 	if !t.fn_literal_captures_name(rhs_source_id, lhs.value) {
 		return none
 	}
-	rhs := t.a.nodes[int(new_children[1])]
-	if rhs.kind != .ident || !rhs.value.contains('__anon_fn_') {
+	context_type := t.runtime_closure_context_type(new_children[1]) or { return none }
+	fn_type := t.var_type(lhs.value)
+	if fn_type.len == 0 {
 		return none
 	}
-	return t.make_assign(t.make_ident('${rhs.value}_${lhs.value}'), t.make_ident(lhs.value))
+	closure_value := t.make_ident(lhs.value)
+	t.set_node_typ(int(closure_value), fn_type)
+	closure_ptr := t.make_cast('voidptr', closure_value, 'voidptr')
+	context_data := t.make_call_typed('closure.closure_data', [closure_ptr], 'voidptr')
+	t.mark_fn_used_name('closure.closure_data')
+	context_ptr_type := '&${context_type}'
+	context_ptr := t.make_cast(context_ptr_type, context_data, context_ptr_type)
+	context_field := t.make_selector_op(context_ptr, lhs.value, fn_type, .arrow)
+	refresh_value := t.make_ident(lhs.value)
+	t.set_node_typ(int(refresh_value), fn_type)
+	return t.make_assign(context_field, refresh_value)
+}
+
+fn (t &Transformer) runtime_closure_context_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .struct_init && node.value.ends_with('_Ctx') {
+		return node.value
+	}
+	for i in 0 .. node.children_count {
+		if context_type := t.runtime_closure_context_type(t.a.child(&node, i)) {
+			return context_type
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) fn_literal_captures_name(id flat.NodeId, name string) bool {
@@ -13430,6 +13468,10 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 					if decl_type_is_usable(checker_typ) && !t.generic_arg_is_unresolved(checker_typ) {
 						typ = checker_typ
 					}
+				}
+				if fn_value_type := t.checker_call_fn_value_return_type(rhs_id) {
+					typ = fn_value_type
+					t.set_node_typ(int(t.a.child(&node, 0)), fn_value_type)
 				}
 			}
 			if rhs.kind == .call && t.is_strings_builder_new_call(rhs_id, rhs) {
@@ -16717,7 +16759,9 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 	if lowered := t.try_lower_bound_method_array_call(node) {
 		return lowered
 	}
-	call_id := t.normalize_generic_call_expr(id, node)
+	implicit_receiver_call_id := t.normalize_implicit_receiver_generic_call(id, node)
+	implicit_receiver_call := t.a.nodes[int(implicit_receiver_call_id)]
+	call_id := t.normalize_generic_call_expr(implicit_receiver_call_id, implicit_receiver_call)
 	mut call_node := t.a.nodes[int(call_id)]
 	mut resolved_typ := t.concrete_generic_call_return_type(call_id, call_node)
 	if resolved_typ.len > 0 && t.rewrite_contextual_generic_plain_call(call_id, call_node) {
@@ -16746,6 +16790,9 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		if call_typ !in ['array', 'map', 'unknown'] {
 			resolved_typ = call_typ
 		}
+	}
+	if fn_value_type := t.checker_call_fn_value_return_type(call_id) {
+		resolved_typ = fn_value_type
 	}
 	if resolved_typ.len > 0 {
 		t.set_node_typ(int(call_id), resolved_typ)
@@ -21434,6 +21481,22 @@ fn (t &Transformer) infer_decl_type(node &flat.Node) string {
 	}
 	if t.validating_generic_spec && node.typ.contains('main.') && decl_type_is_usable(node.typ) {
 		return node.typ
+	}
+	if node.children_count == 2 {
+		rhs_id := t.a.child(node, 1)
+		rhs := t.a.node(rhs_id)
+		if rhs.kind == .fn_literal {
+			if fn_type := t.fn_value_type_name(rhs_id) {
+				return fn_type
+			}
+		}
+		if rhs.kind == .selector && comptime_method_selector_marker in rhs.generic_params() {
+			for param in rhs.generic_params() {
+				if param.starts_with(comptime_method_selector_fn_type_prefix) {
+					return param.all_after(comptime_method_selector_fn_type_prefix)
+				}
+			}
+		}
 	}
 	if !isnil(t.tc) && node.children_count > 0 {
 		// Use only the type that the checker recorded for this declaration. Falling

@@ -31,6 +31,7 @@ const macos_v3_private_environment_names = [
 pub struct Preferences {
 pub mut:
 	verbose               bool
+	no_parallel           bool
 	output_file           string
 	target                Target = host_target()
 	user_defines          []string

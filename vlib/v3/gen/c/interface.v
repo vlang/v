@@ -2495,6 +2495,14 @@ fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, m
 
 fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string, mut stack []string) ?string {
 	iface_name := iface.name
+	stack_key := 'interface:${g.tc.qualify_name(iface_name)}'
+	if stack_key in stack {
+		return none
+	}
+	stack << stack_key
+	defer {
+		stack.delete_last()
+	}
 	impls := g.iface_impls[iface_name] or {
 		qualified := g.tc.qualify_name(iface_name)
 		g.iface_impls[qualified] or { return none }
