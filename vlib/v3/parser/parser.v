@@ -1732,6 +1732,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	// mutability/visibility/attrs are recorded on its `field_decl` node for `$for` reflection.
 	mut sect_is_pub := false
 	mut sect_is_mut := false
+	mut sect_is_global := false
 	mut pending_attrs := []string{}
 	for p.tok != .rcbr && p.tok != .eof {
 		// access modifiers
@@ -1755,6 +1756,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				}
 				sect_is_pub = true
 				sect_is_mut = section_mut
+				sect_is_global = false
 				continue
 			}
 		}
@@ -1764,6 +1766,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				p.next()
 				sect_is_pub = false
 				sect_is_mut = true
+				sect_is_global = false
 				continue
 			}
 		}
@@ -1773,6 +1776,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				p.next()
 				sect_is_pub = true
 				sect_is_mut = true
+				sect_is_global = true
 				continue
 			}
 		}
@@ -1834,7 +1838,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   field_type
 					pos:   p.span_to(field_start)
 				})
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, pending_attrs)
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs)
 				pending_attrs = []string{}
 				ids << fid
 				if p.tok == .semicolon {
@@ -1860,7 +1864,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   embedded_type
 						pos:   p.span_to(field_start)
 					})
-					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, pending_attrs)
+					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global,
+						pending_attrs)
 					pending_attrs = []string{}
 					ids << fid
 					if p.tok == .semicolon {
@@ -1886,7 +1891,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					typ:   embedded_type
 					pos:   p.span_to(field_start)
 				})
-				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, pending_attrs)
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, pending_attrs)
 				pending_attrs = []string{}
 				ids << fid
 				if p.tok == .semicolon {
@@ -1915,7 +1920,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 						typ:   field_type
 						pos:   p.span_to(field_start)
 					})
-					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, group_attrs)
+					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, group_attrs)
 					ids << fid
 				}
 				if p.tok == .semicolon {
@@ -1952,7 +1957,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				children_count: flat.child_count(children_count)
 				pos:            p.span_to(field_start)
 			})
-			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, fattrs)
+			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, sect_is_global, fattrs)
 			ids << fid
 			if p.tok == .semicolon {
 				p.next()
@@ -2157,7 +2162,7 @@ fn (mut p Parser) const_decl() flat.NodeId {
 				p.next()
 				full_name = 'C.' + p.expect_name_or_keyword()
 			}
-			if p.tok == .assign {
+			if p.tok == .assign || (p.prefs.is_fmt && p.tok == .decl_assign) {
 				p.next()
 				val_id := p.expr(.lowest)
 				if value := p.comptime_node_value(val_id) {
@@ -2566,7 +2571,7 @@ fn (mut p Parser) import_stmt() flat.NodeId {
 		p.next()
 	}
 	import_pos := p.span_to(import_start)
-	if !p.cur_file.ends_with('.vh') && alias.len > 1 && alias[0] == `_` {
+	if !p.prefs.is_fmt && !p.cur_file.ends_with('.vh') && alias.len > 1 && alias[0] == `_` {
 		p.record_diagnostic_span('module alias `${alias}` cannot start with `_`',
 			import_pos.offset, import_pos.end)
 	}
@@ -2724,14 +2729,14 @@ fn (mut p Parser) parse_attribute_comptime_cond() string {
 	return cond.str()
 }
 
-// apply_field_meta records a struct field's mutability, visibility, and attributes on its
+// apply_field_meta records a struct field's mutability, visibility, global status, and attributes on its
 // `field_decl` node so `$for field in T.fields` reflection can expose `field.is_mut`,
 // `field.is_pub`, and `field.attrs`. Everything is packed into the otherwise-unused
-// `generic_params` (element 0 is a flag string: `m` = mut, `p` = pub; the rest are the
+// `generic_params` (element 0 is a flag string: `m` = mut, `p` = pub, `g` = global; the rest are the
 // attributes) - the node's own `kind_id`/`is_mut` are load-bearing (kind dispatch) and must not
 // be repurposed. A default field (private, immutable, no attrs) is left untouched so it costs no
 // allocation and reads back as the default.
-fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, attrs []string) {
+fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, is_global bool, attrs []string) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
 	}
@@ -2741,7 +2746,7 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, att
 	} else {
 		attrs
 	}
-	if !is_mut && !is_pub && !is_volatile && stored_attrs.len == 0 {
+	if !is_mut && !is_pub && !is_global && !is_volatile && stored_attrs.len == 0 {
 		return
 	}
 	mut flags := ''
@@ -2750,6 +2755,9 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, att
 	}
 	if is_pub {
 		flags += 'p'
+	}
+	if is_global {
+		flags += 'g'
 	}
 	if is_volatile {
 		flags += 'v'
@@ -10294,7 +10302,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 }
 
 fn (mut p Parser) index_part_expr() flat.NodeId {
-	if p.tok == .question || p.tok == .not {
+	if p.tok in [.question, .not, .key_atomic, .key_shared] {
 		start := p.span_start()
 		type_name := p.parse_type_name()
 		return p.add_node(flat.Node{
@@ -11485,6 +11493,23 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 		})
 	}
 	p.check(.lpar)
+	if p.prefs.is_fmt && !p.can_start_type_name() {
+		mut depth := 1
+		for depth > 0 && p.tok != .eof {
+			if p.tok == .lpar {
+				depth++
+			} else if p.tok == .rpar {
+				depth--
+			}
+			p.next()
+		}
+		id := p.add_node(flat.Node{
+			kind: .sizeof_expr
+			pos:  p.span_to(sizeof_start)
+		})
+		p.a.formatter_sources[int(id)] = p.s.src[sizeof_start..p.prev_tok_end]
+		return id
+	}
 	type_name := p.parse_type_name()
 	p.check(.rpar)
 	return p.a.add_node(flat.Node{
@@ -12069,7 +12094,7 @@ fn (mut p Parser) parse_type_generic_suffix() string {
 		}
 	}
 	pk := p.peek()
-	if pk != .name && pk != .amp && pk != .lsbr && pk != .question && pk != .key_fn && pk != .xor {
+	if !token_can_start_type_name(pk) && pk !in [.and, .xor] {
 		return ''
 	}
 	p.next() // skip [
@@ -12631,6 +12656,7 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 	mut field_types := []string{}
 	mut sect_is_pub := false
 	mut sect_is_mut := false
+	mut sect_is_global := false
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon || p.tok == .comma {
 			p.next()
@@ -12640,6 +12666,7 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 			p.next()
 			sect_is_pub = true
 			sect_is_mut = false
+			sect_is_global = false
 			if p.tok == .key_mut {
 				sect_is_mut = true
 				p.next()
@@ -12654,6 +12681,15 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 			p.next()
 			sect_is_pub = false
 			sect_is_mut = true
+			sect_is_global = false
+			continue
+		}
+		if p.tok == .key_global && p.peek() == .colon {
+			p.next()
+			p.next()
+			sect_is_pub = true
+			sect_is_mut = true
+			sect_is_global = true
 			continue
 		}
 		mut field_is_volatile := false
@@ -12716,7 +12752,8 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 					typ:   field_type
 					pos:   p.span_to(name_starts[index])
 				})
-				p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, attrs)
+				p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global,
+					attrs)
 				ids << fid
 				field_names << name
 				field_types << field_type
@@ -12751,11 +12788,11 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 			if field_is_volatile {
 				attrs << '__v3_volatile_field'
 			}
-			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, attrs)
+			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global,
+				attrs)
 		} else {
-			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, if field_is_volatile { [
-					'__v3_volatile_field',
-				] } else { []string{} })
+			p.apply_field_meta(fid, sect_is_mut || !is_union, sect_is_pub, sect_is_global,
+				if field_is_volatile { ['__v3_volatile_field'] } else { []string{} })
 		}
 		ids << fid
 		field_names << field_name

@@ -27,6 +27,7 @@ pub struct Scanner {
 mut:
 	file        &token.File = unsafe { nil }
 	insert_semi bool
+	after_dot   bool
 pub mut:
 	src                 string
 	offset              int
@@ -67,6 +68,7 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.pos = 0
 	s.lit = ''
 	s.insert_semi = false
+	s.after_dot = false
 	s.in_str_incomplete = false
 	s.in_str_inter = false
 	s.in_str_inter_format = false
@@ -153,6 +155,8 @@ pub fn (mut s Scanner) scan() token.Token {
 		s.lit = s.source_lit(s.pos, s.offset)
 		return .string
 	}
+	follows_dot := s.after_dot
+	s.after_dot = false
 	start:
 	s.whitespace()
 	if s.offset >= s.src.len {
@@ -247,7 +251,7 @@ pub fn (mut s Scanner) scan() token.Token {
 		}
 		tok := token.Token.from_string_tinyv(s.lit)
 		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
-			.name] {
+			.name] || (follows_dot && tok.is_keyword()) {
 			s.insert_semi = true
 		}
 		return tok
@@ -280,6 +284,7 @@ pub fn (mut s Scanner) scan() token.Token {
 				}
 				return .dotdot
 			}
+			s.after_dot = true
 			return .dot
 		}
 		`:` {

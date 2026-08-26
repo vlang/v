@@ -43,6 +43,9 @@ mut:
 	implied_imports []string
 	in_array_init   bool
 	is_debug        bool
+	is_new_int      bool
+	is_translated   bool
+	in_c_function   bool
 	// suppress_mut skips the `mut ` prefix on an assignment (used for C-style
 	// `for` loop init clauses, whose variable the parser always marks mutable).
 	suppress_mut bool
@@ -55,7 +58,8 @@ mut:
 // FormatOptions controls optional formatter output.
 pub struct FormatOptions {
 pub:
-	is_debug bool
+	is_debug   bool
+	is_new_int bool
 }
 
 // Gen.new returns a fresh formatter.
@@ -84,6 +88,8 @@ pub fn (mut g Gen) reset() {
 	g.selective_json = false
 	g.implied_imports.clear()
 	g.in_array_init = false
+	g.is_translated = false
+	g.in_c_function = false
 }
 
 // format_file parses-independent convenience: format the file whose trailing
@@ -103,6 +109,7 @@ pub fn format(a &flat.FlatAst) string {
 pub fn format_with_options(a &flat.FlatAst, options FormatOptions) string {
 	mut g := Gen.new()
 	g.is_debug = options.is_debug
+	g.is_new_int = options.is_new_int
 	mut out := strings.new_builder(1000)
 	mut first := true
 	for id in a.file_node_ids {
@@ -124,6 +131,7 @@ pub fn (mut g Gen) gen_file(a &flat.FlatAst, file_id flat.NodeId) string {
 	g.a = a
 	g.collect_attrs()
 	fnode := a.node(file_id)
+	g.is_translated = g.file_has_attr(fnode, 'translated')
 	g.file_id = fnode.pos.id
 	g.source = a.formatter_file_sources[g.file_id] or { '' }
 	for comment in a.comments {
@@ -157,6 +165,17 @@ fn (mut g Gen) collect_attrs() {
 			g.attrs[decl_id] = n.generic_params()
 		}
 	}
+}
+
+fn (g &Gen) file_has_attr(fnode &flat.Node, name string) bool {
+	for id in g.a.children_of(fnode) {
+		if g.a.node(id).kind != .module_decl {
+			continue
+		}
+		attrs := g.attrs[int(id)] or { return false }
+		return attrs.any(it.all_before(':').trim_space() == name)
+	}
+	return false
 }
 
 // setup_json_migration enables the formatter's conservative json-to-json2 rewrite.
@@ -712,9 +731,9 @@ fn (mut g Gen) expr(id flat.NodeId) {
 		}
 		.array_init {
 			if n.typ.len > 0 {
-				g.write(n.typ)
+				g.write(g.type_text(n.typ))
 			} else if n.value.len > 0 {
-				g.write('[]${n.value}')
+				g.write('[]${g.type_text(n.value)}')
 			}
 			g.write('{')
 			was_in_array_init := g.in_array_init
@@ -742,21 +761,21 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.or_expr(id)
 		}
 		.cast_expr {
-			g.write(n.value)
+			g.write(g.type_text(n.value))
 			g.write('(')
 			g.expr(g.a.child(n, 0))
 			g.write(')')
 		}
 		.as_expr {
 			g.expr(g.a.child(n, 0))
-			g.write(' as ${n.value}')
+			g.write(' as ${g.type_text(n.value)}')
 		}
 		.is_expr {
 			if g.a.child_node(n, 0).is_mut {
 				g.write('mut ')
 			}
 			g.expr(g.a.child(n, 0))
-			g.write(' is ${n.value}')
+			g.write(' is ${g.type_text(n.value)}')
 		}
 		.in_expr {
 			g.expr(g.a.child(n, 0))
@@ -778,11 +797,15 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			g.lock_expr(id)
 		}
 		.sizeof_expr {
-			g.write('sizeof(${n.value})')
+			if source := g.a.formatter_sources[int(id)] {
+				g.write(source.trim_space())
+			} else {
+				g.write('sizeof(${g.type_text(n.value)})')
+			}
 		}
 		.typeof_expr {
 			if n.value.len > 0 {
-				g.write('typeof[${n.value}]()')
+				g.write('typeof[${g.type_text(n.value)}]()')
 			} else {
 				g.write('typeof(')
 				g.expr(g.a.child(n, 0))
@@ -1038,7 +1061,7 @@ fn (mut g Gen) init_fields(ids []flat.NodeId) {
 fn (mut g Gen) map_init(id flat.NodeId) {
 	n := g.a.node(id)
 	if n.value.len > 0 {
-		g.write(n.value)
+		g.write(g.type_text(n.value))
 	}
 	children := g.a.children_of(n)
 	if children.len == 0 {
@@ -1099,7 +1122,7 @@ fn (mut g Gen) fn_literal(id flat.NodeId) {
 	g.write(' ')
 	g.params(params)
 	if n.typ.len > 0 && n.typ != 'void' {
-		g.write(' ${n.typ}')
+		g.write(' ${g.type_text(n.typ)}')
 	}
 	g.writeln(' {')
 	g.stmt_list_ids(body)
@@ -1580,7 +1603,7 @@ fn (mut g Gen) comptime_for(id flat.NodeId) {
 	parts := n.value.split('|')
 	loopvar := if parts.len > 0 { parts[0] } else { 'x' }
 	kind := if parts.len > 1 { parts[1] } else { 'fields' }
-	g.write('\$for ${loopvar} in ${n.typ}.${kind} {')
+	g.write('\$for ${loopvar} in ${g.type_text(n.typ)}.${kind} {')
 	g.writeln('')
 	if n.children_count > 0 {
 		blk := g.a.child_node(n, 0)
@@ -1621,11 +1644,11 @@ fn (mut g Gen) select_stmt(id flat.NodeId) {
 fn (mut g Gen) match_cond(id flat.NodeId) {
 	n := g.a.node(id)
 	if n.kind == .array_init && n.children_count == 0 && n.typ.len > 0 {
-		g.write(n.typ)
+		g.write(g.type_text(n.typ))
 		return
 	}
 	if n.kind == .map_init && n.children_count == 0 && n.value.len > 0 {
-		g.write(n.value)
+		g.write(g.type_text(n.value))
 		return
 	}
 	g.expr(id)
@@ -1675,6 +1698,12 @@ fn (mut g Gen) import_decl(id flat.NodeId) {
 
 fn (mut g Gen) fn_decl(id flat.NodeId) {
 	n := g.a.node(id)
+	was_in_c_function := g.in_c_function
+	g.in_c_function = n.kind == .c_fn_decl && !n.value.starts_with('JS:')
+		&& !n.value.starts_with('V:')
+	defer {
+		g.in_c_function = was_in_c_function
+	}
 	g.emit_attrs(id)
 	if n.op == .arrow {
 		g.write('pub ')
@@ -1696,7 +1725,7 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	name := n.value
 	if int(recv) >= 0 {
 		rn := g.a.node(recv)
-		mut receiver_type := g.receiver_type(rn)
+		mut receiver_type := g.type_text(g.receiver_type(rn))
 		g.write('(')
 		if rn.is_mut {
 			g.write('mut ')
@@ -1729,7 +1758,7 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	}
 	g.params(params)
 	if n.typ.len > 0 && n.typ != 'void' {
-		g.write(' ${n.typ}')
+		g.write(' ${g.type_text(n.typ)}')
 	}
 	if n.kind == .c_fn_decl {
 		g.writeln('')
@@ -1744,7 +1773,7 @@ fn (mut g Gen) params(ids []flat.NodeId) {
 	g.write('(')
 	for i, pid in ids {
 		p := g.a.node(pid)
-		mut typ := g.param_type(p)
+		mut typ := g.type_text(g.param_type(p))
 		if p.is_mut {
 			g.write('mut ')
 		}
@@ -1828,6 +1857,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId) {
 				'mut' { g.writeln('mut:') }
 				'pub' { g.writeln('pub:') }
 				'pub mut' { g.writeln('pub mut:') }
+				'__global' { g.writeln('__global:') }
 				else {}
 			}
 			g.indent++
@@ -1842,7 +1872,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId) {
 			}
 			g.write(f.value)
 			g.write(' ')
-			g.write(f.typ)
+			g.write(g.type_text(f.typ))
 			if f.children_count > 0 {
 				g.write(' = ')
 				g.expr(g.a.child(f, 0))
@@ -1918,7 +1948,7 @@ fn (mut g Gen) type_decl(id flat.NodeId) {
 			}
 		}
 	} else if n.typ.len > 0 {
-		g.write(' = ${n.typ}')
+		g.write(' = ${g.type_text(n.typ)}')
 	}
 	g.writeln('')
 }
@@ -1958,12 +1988,12 @@ fn (mut g Gen) interface_decl(id flat.NodeId) {
 			}
 			g.params(g.a.children_of(f))
 			if f.typ.len > 0 {
-				g.write(' ${f.typ}')
+				g.write(' ${g.type_text(f.typ)}')
 			}
 		} else {
 			g.write(f.value)
 			if f.typ.len > 0 {
-				g.write(' ${f.typ}')
+				g.write(' ${g.type_text(f.typ)}')
 			}
 		}
 		g.emit_trailing_comments(f.pos.end)
@@ -1988,7 +2018,7 @@ fn (mut g Gen) const_decl(id flat.NodeId) {
 			g.write(' = ')
 			g.expr(g.a.child(f, 0))
 		} else if f.typ.len > 0 {
-			g.write(' ${f.typ}')
+			g.write(' ${g.type_text(f.typ)}')
 		}
 		g.writeln('')
 		return
@@ -2026,12 +2056,12 @@ fn (mut g Gen) global_decl(id flat.NodeId) {
 		g.write(f.value)
 		if f.children_count > 0 {
 			if f.typ.len > 0 {
-				g.write(' ${f.typ}')
+				g.write(' ${g.type_text(f.typ)}')
 			}
 			g.write(' = ')
 			g.expr(g.a.child(f, 0))
 		} else {
-			g.write(' ${f.typ}')
+			g.write(' ${g.type_text(f.typ)}')
 		}
 		g.writeln('')
 	}
@@ -2409,8 +2439,11 @@ fn escape_string(s string, quote u8) string {
 }
 
 // access_label maps a struct field flag code (from generic_params()[0]) to its
-// section keyword. Codes: `m`=mut, `p`=pub (order is mut-then-pub).
+// section keyword. Codes: `m`=mut, `p`=pub, `g`=global.
 fn access_label(flags string) string {
+	if flags.contains('g') {
+		return '__global'
+	}
 	has_mut := flags.contains('m')
 	has_pub := flags.contains('p')
 	if has_pub && has_mut {
@@ -2423,6 +2456,31 @@ fn access_label(flags string) string {
 		return 'mut'
 	}
 	return ''
+}
+
+fn (g &Gen) type_text(typ string) string {
+	if !g.is_new_int || (!g.is_translated && !g.in_c_function) || !typ.contains('int') {
+		return typ
+	}
+	mut out := strings.new_builder(typ.len)
+	mut i := 0
+	for i < typ.len {
+		if i + 3 <= typ.len && typ[i..i + 3] == 'int'
+			&& (i == 0 || !is_type_ident_char(typ[i - 1]))
+			&& (i + 3 == typ.len || !is_type_ident_char(typ[i + 3])) {
+			out.write_string('i32')
+			i += 3
+			continue
+		}
+		out.write_u8(typ[i])
+		i++
+	}
+	return out.str()
+}
+
+fn is_type_ident_char(c u8) bool {
+	return c == `_` || (c >= `0` && c <= `9`) || (c >= `A` && c <= `Z`)
+		|| (c >= `a` && c <= `z`)
 }
 
 // tag_has reports whether a comma-joined struct tag string contains `name`.

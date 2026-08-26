@@ -28,7 +28,7 @@ struct FormatOptions {
 	is_worker        bool // true *only* in the worker processes. Note: workers can crash.
 	is_backup        bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
 	in_process       bool // do not fork a worker process; potentially faster, but more prone to crashes for invalid files
-	is_new_int       bool // accepted for CLI compatibility; the V3 formatter does not rewrite int
+	is_new_int       bool // rewrite int to i32 in translated modules and C declarations
 	no_migrate_json2 bool // opt out of the default rewrite of deprecated `json` usage to `json2` (`-no-migrate-json2`)
 mut:
 	diff_cmd string // filled in when -diff or -verify is passed
@@ -201,7 +201,10 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string) !string {
 	if report_v3_parser_diagnostics(p.diagnostics, a) {
 		return error('the file contains parser errors')
 	}
-	return v3fmt.format_with_options(a, is_debug: foptions.is_debug)
+	return v3fmt.format_with_options(a,
+		is_debug:   foptions.is_debug
+		is_new_int: foptions.is_new_int
+	)
 }
 
 fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatAst) bool {

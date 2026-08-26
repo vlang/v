@@ -33,6 +33,11 @@ fn vfmt(name string, src string) string {
 	return format_file(a, fid)
 }
 
+fn vfmt_with_options(name string, src string, options FormatOptions) string {
+	a, _ := parse_source(name, src)
+	return format_with_options(a, options)
+}
+
 fn vfmt_file_with_json_migration(path string) string {
 	mut prefs := pref.new_preferences()
 	prefs.is_fmt = true
@@ -84,6 +89,61 @@ pub mut:
 	y int = 3
 }
 '
+}
+
+fn test_formatter_preserves_global_struct_sections() {
+	source := 'struct State {
+	local int
+__global:
+	shared_value int
+}
+'
+	out := vfmt('global_struct_section', source)
+	assert out.contains('__global:\n\tshared_value int'), out
+	assert !out.contains('pub mut:'), out
+	assert vfmt('global_struct_section_twice', out) == out
+}
+
+fn test_formatter_normalizes_legacy_const_decl_assign() {
+	out := vfmt('legacy_const_decl_assign', 'const answer := 42\n')
+	assert out == 'const answer = 42\n', out
+	assert vfmt('legacy_const_decl_assign_twice', out) == out
+}
+
+fn test_formatter_honors_new_int_option() {
+	c_source := 'module main
+
+fn C.abc(a int, b []int) int
+
+fn abc(a int) int
+'
+	c_out := vfmt_with_options('new_int_c_decl', c_source, is_new_int: true)
+	assert c_out.contains('fn C.abc(a i32, b []i32) i32'), c_out
+	assert c_out.contains('fn abc(a int) int'), c_out
+
+	translated_source := '@[translated]
+module translated
+
+fn convert(value int) int {
+	return int(value)
+}
+'
+	translated_out := vfmt_with_options('new_int_translated', translated_source,
+		is_new_int: true)
+	assert translated_out.contains('fn convert(value i32) i32'), translated_out
+	assert translated_out.contains('return i32(value)'), translated_out
+}
+
+fn test_formatter_accepts_remaining_repository_syntax() {
+	source := "module main\n\nimport underscore as _abc\n\nfn accepts[T]() bool { return true }\n\nfn check() {\n\tassert kind == .fn\n\tassert accepts[atomic fn (int) int]()\n\tassert sizeof(`€`) == 4\n\tassert sizeof(c'hello') == 6\n\tassert sizeof(r'hello') > 0\n}\n"
+	out := vfmt('remaining_repository_syntax', source)
+	assert out.contains('import underscore as _abc'), out
+	assert out.contains('assert kind == .fn'), out
+	assert out.contains('accepts[atomic fn (int) int]()'), out
+	assert out.contains('sizeof(`€`)'), out
+	assert out.contains("sizeof(c'hello')"), out
+	assert out.contains("sizeof(r'hello')"), out
+	assert vfmt('remaining_repository_syntax_twice', out) == out
 }
 
 fn test_attributes_and_pub() {

@@ -153,3 +153,18 @@ fn test_js_prefixed_string_is_one_token() {
 	assert scanner.scan() == .eof
 	assert scanner.diagnostics.len == 0
 }
+
+fn test_keyword_enum_selector_inserts_semicolon() {
+	source := 'assert value == .fn\nassert value == .struct'
+	mut files := token.FileSet.new()
+	mut file := files.add_file('keyword_enum_selector.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+
+	for expected in [.key_assert, .name, .eq, .dot, .key_fn, .semicolon, .key_assert, .name,
+		.eq, .dot, .key_struct, .semicolon, .eof] {
+		assert scanner.scan() == expected
+	}
+}

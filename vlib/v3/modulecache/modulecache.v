@@ -6069,7 +6069,9 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 		field := a.node(field_id)
 		field_params := field.generic_params()
 		flags := if field_params.len > 0 { field_params[0] } else { '' }
-		wanted := if flags.contains('p') && flags.contains('m') {
+		wanted := if flags.contains('g') {
+			'__global'
+		} else if flags.contains('p') && flags.contains('m') {
 			'pub mut'
 		} else if flags.contains('p') {
 			'pub'

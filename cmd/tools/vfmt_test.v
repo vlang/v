@@ -314,6 +314,56 @@ fn test_fmt_preserves_js_string_prefixes_with_v3() {
 	assert os.read_file(source_path)! == formatted
 }
 
+fn test_fmt_preserves_global_struct_sections_with_v3() {
+	source := 'struct State {
+	local int
+__global:
+	shared_value int
+}
+'
+	res, formatted := run_vfmt_write('global_struct_section', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('__global:\n\tshared_value int'), formatted
+	assert !formatted.contains('pub mut:'), formatted
+	second_res, formatted_twice := run_vfmt_write('global_struct_section', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_normalizes_legacy_const_decl_assign_with_v3() {
+	res, formatted := run_vfmt_write('legacy_const_decl_assign', 'const answer := 42\n', '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == 'const answer = 42\n', formatted
+}
+
+fn test_fmt_honors_new_int_with_v3() {
+	c_source := 'module main
+
+fn C.abc(a int, b []int) int
+
+fn abc(a int) int
+'
+	c_res, c_formatted := run_vfmt_write('new_int_c_decl', c_source, '-new_int')
+	assert c_res.exit_code == 0, c_res.output
+	assert c_formatted.contains('fn C.abc(a i32, b []i32) i32'), c_formatted
+	assert c_formatted.contains('fn abc(a int) int'), c_formatted
+
+	translated_source := '@[translated]
+module translated
+
+fn convert(value int) int {
+	return int(value)
+}
+'
+	translated_res, translated_formatted := run_vfmt_write('new_int_translated',
+		translated_source, '-new_int')
+	assert translated_res.exit_code == 0, translated_res.output
+	assert translated_formatted.contains('fn convert(value i32) i32'), translated_formatted
+	assert translated_formatted.contains('return i32(value)'), translated_formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')
