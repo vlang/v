@@ -143,6 +143,32 @@ fn only_comments() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
+	source := 'struct Config {
+	one int
+	two int
+}
+
+fn config() Config {
+	return Config{
+		// before one
+		one: 1 // after one
+
+		// before two
+		two: 2 // after two
+	}
+}
+'
+	res, formatted := run_vfmt_write('struct_init_field_comments', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('struct_init_field_comments_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_comment_only_files_with_v3() {
 	source := '/*\nmodule acommentedmodule\n*/\n'
 	res, formatted := run_vfmt_write('comment_only_file', source, '')

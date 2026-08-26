@@ -1198,10 +1198,7 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 		g.in_init = true
 		g.indent++
 		for fid in fields {
-			f := g.a.node(fid)
-			g.write('${f.value}: ')
-			g.expr(g.a.child(f, 0))
-			g.writeln('')
+			g.named_init_field(fid)
 		}
 		g.emit_comments_before(n.pos.end)
 		g.indent--
@@ -1218,6 +1215,20 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 		}
 		g.write('}')
 	}
+}
+
+fn (mut g Gen) named_init_field(id flat.NodeId) {
+	f := g.a.node(id)
+	value := g.a.child(f, 0)
+	v := g.a.node(value)
+	g.emit_comments_before(v.pos.offset)
+	g.write('${f.value}: ')
+	g.expr(value)
+	g.emit_trailing_comments(v.pos.end)
+	if !g.on_newline {
+		g.writeln('')
+	}
+	g.source_end = int_max(g.source_end, v.pos.end)
 }
 
 fn (mut g Gen) assoc(id flat.NodeId) {
@@ -1238,10 +1249,7 @@ fn (mut g Gen) assoc(id flat.NodeId) {
 		g.writeln('')
 	}
 	for fid in children[1..] {
-		f := g.a.node(fid)
-		g.write('${f.value}: ')
-		g.expr(g.a.child(f, 0))
-		g.writeln('')
+		g.named_init_field(fid)
 	}
 	g.indent--
 	g.write('}')
@@ -2486,7 +2494,7 @@ fn (mut g Gen) emit_comments_before(limit int) {
 			}
 			g.write_comment(comment.text)
 			for _ in 1 .. removed_newlines {
-				g.writeln('')
+				g.out.writeln('')
 			}
 		} else {
 			if !g.on_newline && g.out.len > 0 {
@@ -2495,7 +2503,7 @@ fn (mut g Gen) emit_comments_before(limit int) {
 			if g.source_end >= 0
 				&& g.source_line(comment.pos.offset) > g.source_line(g.source_end) + 1
 				&& (g.out.len == 0 || !g.out.last_n(int_min(2, g.out.len)).ends_with('\n\n')) {
-				g.writeln('')
+				g.out.writeln('')
 			}
 			g.write_comment(comment.text)
 		}

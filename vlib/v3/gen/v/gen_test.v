@@ -376,6 +376,27 @@ fn only_comments() {
 	assert vfmt('construct_comment_boundaries_twice', out) == out
 }
 
+fn test_formatter_emits_comments_before_struct_init_field_names() {
+	source := 'struct Config {
+	one int
+	two int
+}
+
+fn config() Config {
+	return Config{
+		// before one
+		one: 1 // after one
+
+		// before two
+		two: 2 // after two
+	}
+}
+'
+	out := vfmt('struct_init_field_comments', source)
+	assert out == source, out
+	assert vfmt('struct_init_field_comments_twice', out) == out
+}
+
 fn test_formatter_preserves_capture_and_shared_parameter_qualifiers() {
 	out := vfmt('capture_and_shared_qualifiers',
 		'struct St {}\n\nfn (shared receiver St) use(shared value St) {}\n\nfn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut item, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n')
