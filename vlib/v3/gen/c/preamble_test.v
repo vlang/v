@@ -32,6 +32,11 @@ fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	guard := c_code.all_before('typedef void* pthread_t;')
 	assert guard.contains('!defined(_SYS__PTHREAD_TYPES_H_)'), guard
 	assert guard.contains('!defined(_PTHREAD_T)'), guard
+	assert c_code.contains('#if defined(__APPLE__) && defined(_SYS__PTHREAD_TYPES_H_)'), c_code
+	assert c_code.contains('#define V_HEADERLESS_DARWIN_PTHREAD_TYPES 1'), c_code
+	assert c_code.contains('typedef __darwin_pthread_t pthread_t;'), c_code
+	assert c_code.contains('typedef __darwin_pthread_key_t pthread_key_t;'), c_code
+	assert c_code.contains('#define PTHREAD_MUTEX_INITIALIZER { 0x32AAABA7, { 0 } }'), c_code
 	assert c_code.contains('int pthread_equal(pthread_t t1, pthread_t t2);'), c_code
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0'), c_code
 }
@@ -82,6 +87,17 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	c_code := g.sb.str()
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
+}
+
+fn test_builtin_heap_tracking_fallbacks_do_not_redefine_user_hooks() {
+	mut fallback := FlatGen.new()
+	fallback.heap_tracking_fallback_decls()
+	assert fallback.sb.str().contains('__attribute__((weak)) void vheap_alloc')
+
+	mut tracked := FlatGen.new()
+	tracked.set_track_heap(true)
+	tracked.heap_tracking_fallback_decls()
+	assert tracked.sb.len == 0
 }
 
 fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {

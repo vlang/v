@@ -419,6 +419,7 @@ mut:
 	output_error                 string
 	c99_mode                     bool
 	trace_calls                  bool
+	track_heap                   bool
 	inside_trace_call            bool
 	skip_generics                bool
 	skip_enum_autostr            bool
@@ -1230,6 +1231,11 @@ pub fn (mut g FlatGen) set_suppress_main(enabled bool) {
 pub fn (mut g FlatGen) set_compile_values(values map[string]string) {
 	g.compile_values = values.clone()
 	g.trace_calls = 'trace' in g.compile_values
+}
+
+// set_track_heap records whether user-provided heap tracking hooks are required.
+pub fn (mut g FlatGen) set_track_heap(enabled bool) {
+	g.track_heap = enabled
 }
 
 // set_cache_split enables stable cache markers and string symbols in generated C.
@@ -17567,6 +17573,13 @@ fn (mut g FlatGen) c99_feature_test_macros() {
 	g.writeln('#endif')
 }
 
+fn (mut g FlatGen) headerless_darwin_pthread_alias(alias string, typ string, guard string) {
+	g.writeln('#ifndef ${guard}')
+	g.writeln('typedef ${typ} ${alias};')
+	g.writeln('#define ${guard}')
+	g.writeln('#endif')
+}
+
 fn (mut g FlatGen) headerless_libc_preamble() {
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	g.writeln(c_stdint_header_text())
@@ -17776,6 +17789,27 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef union { unsigned char _opaque[16]; long long _align; } pthread_once_t;')
 	g.writeln('typedef unsigned long pthread_key_t;')
 	g.writeln('#endif')
+	// Mach headers expose Darwin's internal pthread storage types without the
+	// public aliases that <pthread.h> supplies. Recreate only the missing aliases.
+	g.writeln('#if defined(__APPLE__) && defined(_SYS__PTHREAD_TYPES_H_)')
+	g.writeln('#define V_HEADERLESS_DARWIN_PTHREAD_TYPES 1')
+	g.headerless_darwin_pthread_alias('pthread_t', '__darwin_pthread_t', '_PTHREAD_T')
+	g.headerless_darwin_pthread_alias('pthread_attr_t', '__darwin_pthread_attr_t',
+		'_PTHREAD_ATTR_T')
+	g.headerless_darwin_pthread_alias('pthread_mutex_t', '__darwin_pthread_mutex_t',
+		'_PTHREAD_MUTEX_T')
+	g.headerless_darwin_pthread_alias('pthread_cond_t', '__darwin_pthread_cond_t',
+		'_PTHREAD_COND_T')
+	g.headerless_darwin_pthread_alias('pthread_rwlock_t', '__darwin_pthread_rwlock_t',
+		'_PTHREAD_RWLOCK_T')
+	g.headerless_darwin_pthread_alias('pthread_rwlockattr_t', '__darwin_pthread_rwlockattr_t',
+		'_PTHREAD_RWLOCKATTR_T')
+	g.headerless_darwin_pthread_alias('pthread_condattr_t', '__darwin_pthread_condattr_t',
+		'_PTHREAD_CONDATTR_T')
+	g.headerless_darwin_pthread_alias('pthread_once_t', '__darwin_pthread_once_t',
+		'_PTHREAD_ONCE_T')
+	g.headerless_darwin_pthread_alias('pthread_key_t', '__darwin_pthread_key_t', '_PTHREAD_KEY_T')
+	g.writeln('#endif')
 	g.writeln('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
 	g.writeln('void* pthread_getspecific(pthread_key_t key);')
 	g.writeln('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
@@ -17788,7 +17822,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int sigprocmask(int how, const sigset_t* set, sigset_t* old_set);')
 	g.headerless_stdarg_decls()
 	g.writeln('#ifndef PTHREAD_MUTEX_INITIALIZER')
-	g.writeln('#ifdef __APPLE__')
+	g.writeln('#ifdef V_HEADERLESS_DARWIN_PTHREAD_TYPES')
+	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { 0x32AAABA7, { 0 } }')
+	g.writeln('#elif defined(__APPLE__)')
 	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { ._opaque = { 0xa7, 0xab, 0xaa, 0x32 } }')
 	g.writeln('#else')
 	g.writeln('#define PTHREAD_MUTEX_INITIALIZER { 0 }')
@@ -19777,6 +19813,21 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	g.writeln('#endif')
 }
 
+fn (mut g FlatGen) heap_tracking_fallback_decls() {
+	if g.track_heap {
+		return
+	}
+	// Weak fallbacks keep ordinary builds linkable. Tracking builds require the
+	// user hooks and must not receive definitions in the same translation unit.
+	if g.object_file_mode {
+		g.writeln('static void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
+		g.writeln('static void vheap_free(void* p) { (void)p; }')
+	} else {
+		g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
+		g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
+	}
+}
+
 fn (mut g FlatGen) builtin_abi_decls() {
 	if !g.has_builtins {
 		return
@@ -19801,17 +19852,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define V_COMMIT_HASH ""')
 	g.writeln('#endif')
 	g.atomic_thread_fence_compat_decls()
-	// Weak fallbacks for the heap-tracking hooks. A program that provides real
-	// implementations (e.g. a `vheap_alloc`/`vheap_free` from a linked C file, as
-	// some projects do) overrides these without a redefinition/static-vs-non-static
-	// clash against that file's own non-static prototype.
-	if g.object_file_mode {
-		g.writeln('static void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
-		g.writeln('static void vheap_free(void* p) { (void)p; }')
-	} else {
-		g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
-		g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
-	}
+	g.heap_tracking_fallback_decls()
 	g.writeln('static inline int v3_sum_ptr_type_idx(const void* p) { return p == NULL ? 0 : *(const int*)p; }')
 	g.prealloc_atomic_compat_decls()
 	g.atomic_builtin_compat_decls()
