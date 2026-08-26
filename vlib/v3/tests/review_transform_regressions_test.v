@@ -170,6 +170,54 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_return_match_map_lookup_guard_keeps_presence_check() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'return_match_map_lookup_guard', '-building-v', 'struct Local {
+	typ string
+}
+
+struct Parser {
+	locals         map[string]Local
+	constant_types map[string]string
+}
+
+fn (p &Parser) infer(name string) !string {
+	return match name {
+		"known" {
+			if local := p.locals[name] {
+				local.typ
+			} else if typ := p.constant_types[name] {
+				typ
+			} else {
+				"missing"
+			}
+		}
+		else {
+			"other"
+		}
+	}
+}
+
+fn main() {
+	local_parser := Parser{
+		locals: {
+			"known": Local{
+				typ: "local"
+			}
+		}
+	}
+	constant_parser := Parser{
+		constant_types: {
+			"known": "constant"
+		}
+	}
+	println(local_parser.infer("known") or { panic(err) })
+	println(constant_parser.infer("known") or { panic(err) })
+}
+')
+	assert out == 'local\nconstant'
+}
+
 fn test_pointer_interface_field_as_interface_uses_storage_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'pointer_interface_field_as_interface_storage', 'interface Layout {
