@@ -49,7 +49,8 @@ jobs:
   s390x_linux:
     # The host should always be Linux
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    # Embedding the Linux-default V3 compiler makes both bootstrap stages slow under QEMU.
+    timeout-minutes: 120
     name: Build on ubuntu-22.04 s390x
     steps:
       - uses: actions/checkout@v7.0.1
