@@ -364,6 +364,29 @@ fn convert(value int) int {
 	assert translated_formatted.contains('return i32(value)'), translated_formatted
 }
 
+fn test_fmt_preserves_function_exit_defer_with_v3() {
+	source := "fn cleanup() {\n\tdefer\n\t(fn)\n\t{\n\t\tprintln('done')\n\t}\n\tprintln('after')\n}\n"
+	expected := "fn cleanup() {\n\tdefer(fn) {\n\t\tprintln('done')\n\t}\n\tprintln('after')\n}\n"
+	res, formatted := run_vfmt_write('function_exit_defer', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == expected, formatted
+	second_res, formatted_twice := run_vfmt_write('function_exit_defer', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_reescapes_control_bytes_with_v3() {
+	source := "fn main() {\n\tprint('\\a\\b\\f\\v\\x01\\x1b\\x7f')\n}\n"
+	res, formatted := run_vfmt_write('escaped_control_bytes', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('escaped_control_bytes', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')

@@ -7931,6 +7931,9 @@ fn (mut p Parser) defer_stmt() flat.NodeId {
 			p.next()
 		}
 		p.check(.rpar)
+		for p.tok == .semicolon {
+			p.next()
+		}
 	}
 	outer_defer_result_allowed := p.defer_result_allowed
 	p.defer_result_allowed = outer_defer_result_allowed || mode == 'function'

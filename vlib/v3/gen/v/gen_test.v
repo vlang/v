@@ -134,6 +134,21 @@ fn convert(value int) int {
 	assert translated_out.contains('return i32(value)'), translated_out
 }
 
+fn test_formatter_preserves_function_exit_defer() {
+	source := "fn cleanup() {\n\tdefer\n\t(fn)\n\t{\n\t\tprintln('done')\n\t}\n\tprintln('after')\n}\n"
+	expected := "fn cleanup() {\n\tdefer(fn) {\n\t\tprintln('done')\n\t}\n\tprintln('after')\n}\n"
+	out := vfmt('function_exit_defer', source)
+	assert out == expected, out
+	assert vfmt('function_exit_defer_twice', out) == out
+}
+
+fn test_formatter_reescapes_control_bytes() {
+	source := "fn main() {\n\tprint('\\a\\b\\f\\v\\x01\\x1b\\x7f')\n}\n"
+	out := vfmt('escaped_control_bytes', source)
+	assert out == source, out
+	assert vfmt('escaped_control_bytes_twice', out) == out
+}
+
 fn test_formatter_accepts_remaining_repository_syntax() {
 	source := "module main\n\nimport underscore as _abc\n\nfn accepts[T]() bool { return true }\n\nfn check() {\n\tassert kind == .fn\n\tassert accepts[atomic fn (int) int]()\n\tassert sizeof(`€`) == 4\n\tassert sizeof(c'hello') == 6\n\tassert sizeof(r'hello') > 0\n}\n"
 	out := vfmt('remaining_repository_syntax', source)

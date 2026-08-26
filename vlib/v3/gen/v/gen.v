@@ -1547,7 +1547,7 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 
 fn (mut g Gen) defer_stmt(id flat.NodeId) {
 	n := g.a.node(id)
-	g.writeln('defer {')
+	g.writeln(if n.value == 'function' { 'defer(fn) {' } else { 'defer {' })
 	if n.children_count > 0 {
 		blk := g.a.child_node(n, 0)
 		g.stmt_list_ids(g.a.children_of(blk))
@@ -2424,14 +2424,30 @@ fn escape_string(s string, quote u8) string {
 			`\t` {
 				b.write_string('\\t')
 			}
+			7 {
+				b.write_string('\\a')
+			}
+			8 {
+				b.write_string('\\b')
+			}
+			11 {
+				b.write_string('\\v')
+			}
+			12 {
+				b.write_string('\\f')
+			}
 			0 {
 				b.write_string('\\0')
 			}
 			else {
-				if c == quote {
+				if c < 32 || c == 127 {
+					b.write_string('\\x${c.hex()}')
+				} else if c == quote {
 					b.write_u8(`\\`)
+					b.write_u8(c)
+				} else {
+					b.write_u8(c)
 				}
-				b.write_u8(c)
 			}
 		}
 	}
