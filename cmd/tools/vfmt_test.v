@@ -136,11 +136,15 @@ fn test_fmt_preserves_conditional_attributes_with_v3() {
 }
 
 fn test_fmt_preserves_volatile_fields_with_v3() {
-	source := 'struct Counter {\n\tvolatile value u64\n}\n'
+	source := 'struct Counter {\n\tvolatile value u64\n}\n\nfn main() {\n\tmut volatile counter := u64(0)\n\t_ = counter\n}\n'
 	res, formatted := run_vfmt_write('volatile_field', source, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('volatile value u64'), formatted
+	assert formatted.contains('mut volatile counter := u64(0)'), formatted
+	second_res, formatted_twice := run_vfmt_write('volatile_field_twice', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
 }
 
 fn test_fmt_preserves_fixed_array_literal_prefixes_with_v3() {

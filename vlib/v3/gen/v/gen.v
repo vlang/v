@@ -1240,10 +1240,14 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 	is_decl := n.kind == .decl_assign
 	opstr := if is_decl { ':=' } else { op_str(n.op) }
 	modifier, count := parse_assign_meta(n.value)
-	if modifier.len > 0 {
+	if n.is_mut && modifier == 'volatile' && !g.suppress_mut {
+		g.write('mut volatile ')
+	} else if modifier.len > 0 {
 		g.write('${modifier} ')
-	}
-	if n.is_mut && !g.suppress_mut {
+		if n.is_mut && !g.suppress_mut {
+			g.write('mut ')
+		}
+	} else if n.is_mut && !g.suppress_mut {
 		g.write('mut ')
 	}
 	if count <= 1 {

@@ -141,13 +141,15 @@ fn test_formatter_preserves_source_only_syntax() {
 
 fn test_formatter_preserves_comptime_calls_attributes_and_volatile_fields() {
 	out := vfmt('more_source_only',
-		"@[if missing_flag ?]\nfn guarded() {\n\ta := \$embed_file('./missing.txt')\n\tb := \$env('VFMT_SECRET')\n\tc := \$tmpl('./missing.html')\n\tprintln(@FILE)\n\t_ = a\n\t_ = b\n\t_ = c\n}\n\nstruct Counter {\n\tvolatile value u64\n}\n")
+		"@[if missing_flag ?]\nfn guarded() {\n\ta := \$embed_file('./missing.txt')\n\tb := \$env('VFMT_SECRET')\n\tc := \$tmpl('./missing.html')\n\tprintln(@FILE)\n\t_ = a\n\t_ = b\n\t_ = c\n}\n\nstruct Counter {\n\tvolatile value u64\n}\n\nfn main() {\n\tmut volatile counter := u64(0)\n\t_ = counter\n}\n")
 	assert out.contains('@[if missing_flag ?]'), out
 	assert out.contains("\$embed_file('./missing.txt')"), out
 	assert out.contains("\$env('VFMT_SECRET')"), out
 	assert out.contains("\$tmpl('./missing.html')"), out
 	assert out.contains('println(@FILE)'), out
 	assert out.contains('volatile value u64'), out
+	assert out.contains('mut volatile counter := u64(0)'), out
+	assert vfmt('more_source_only_twice', out) == out
 }
 
 fn test_formatter_preserves_fixed_array_literal_prefixes() {
