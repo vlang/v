@@ -1859,16 +1859,30 @@ fn (mut g Gen) for_in_stmt(id flat.NodeId) {
 	v0 := children[0]
 	v1 := children[1]
 	mut_val := n.op == .amp
+	mutability := g.a.formatter_for_in_mut[int(id)] or { u8(0) }
+	first_is_mut := if mutability > 0 {
+		mutability & 1 != 0
+	} else {
+		g.is_empty(v1) && mut_val
+	}
+	second_is_mut := if mutability > 0 {
+		mutability & 2 != 0
+	} else {
+		!g.is_empty(v1) && mut_val
+	}
 	g.write('for ')
 	if g.is_empty(v1) {
-		if mut_val {
+		if first_is_mut {
 			g.write('mut ')
 		}
 		g.expr(v0)
 	} else {
+		if first_is_mut {
+			g.write('mut ')
+		}
 		g.expr(v0)
 		g.write(', ')
-		if mut_val {
+		if second_is_mut {
 			g.write('mut ')
 		}
 		g.expr(v1)

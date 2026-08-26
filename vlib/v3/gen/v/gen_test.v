@@ -973,3 +973,19 @@ pub fn (mut n Node[T]) push(v T) {
 	out2 := vfmt('rt2', out1)
 	assert out1 == out2
 }
+
+fn test_formatter_preserves_for_in_binder_mutability() {
+	source := 'fn loops(mut values []int) {
+	for mut index, _ in values {
+		index++
+	}
+	for index, mut value in values {
+		value++
+		_ = index
+	}
+}
+'
+	out := vfmt('for_in_binder_mutability', source)
+	assert out == source, out
+	assert vfmt('for_in_binder_mutability_twice', out) == out
+}

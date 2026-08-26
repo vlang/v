@@ -986,3 +986,24 @@ fn test_fmt_preserves_json_migration_options_with_v3() {
 	assert kept.contains('import json\n')
 	assert kept.contains('json.encode(')
 }
+
+fn test_fmt_preserves_for_in_binder_mutability_with_v3() {
+	source := 'fn loops(mut values []int) {
+	for mut index, _ in values {
+		index++
+	}
+	for index, mut value in values {
+		value++
+		_ = index
+	}
+}
+'
+	res, formatted := run_vfmt_write('for_in_binder_mutability', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('for_in_binder_mutability_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}

@@ -184,6 +184,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			formatter_node_ends:      map[int]int{}
 			formatter_expanded_calls: map[int]bool{}
 			formatter_assignment_ops: map[int]string{}
+			formatter_for_in_mut:     map[int]u8{}
 			formatter_local_sels:     map[int]bool{}
 			text_ids:               map[string]flat.TextId{}
 			specialized_fn_nodes:   map[int]bool{}
@@ -6819,12 +6820,12 @@ fn (mut p Parser) for_comma_header(first_expr flat.NodeId, first_is_mut bool) fl
 	mut lhs_ids := []flat.NodeId{}
 	lhs_ids << first_expr
 	mut val_id := flat.empty_node
-	mut value_is_mut := first_is_mut
+	mut second_is_mut := false
 	for p.tok == .comma {
 		p.next()
 		if p.tok == .key_mut {
 			p.next()
-			value_is_mut = true
+			second_is_mut = true
 		}
 		next_lhs := p.expr(.sum)
 		lhs_ids << next_lhs
@@ -6836,11 +6837,12 @@ fn (mut p Parser) for_comma_header(first_expr flat.NodeId, first_is_mut bool) fl
 		if lhs_ids.len != 2 {
 			return flat.empty_node
 		}
+		for_id := p.for_in_parts(first_expr, val_id, first_is_mut || second_is_mut)
+		p.record_formatter_for_in_mutability(for_id, first_is_mut, second_is_mut)
 		if !p.for_in_var_is_ident(first_expr) || !p.for_in_var_is_ident(val_id) {
-			for_id := p.for_in_parts(first_expr, val_id, value_is_mut)
 			return p.invalid_for_in_header(for_id)
 		}
-		return p.for_in_parts(first_expr, val_id, value_is_mut)
+		return for_id
 	}
 	if p.tok == .decl_assign || token_is_assignment(p.tok) {
 		return p.for_c_style_multi(lhs_ids)
@@ -7031,19 +7033,37 @@ fn (mut p Parser) for_in(first_expr flat.NodeId, first_is_mut bool) flat.NodeId 
 	// first_expr is either the key var or the only var
 	mut key_id := first_expr
 	mut val_id := flat.empty_node
-	mut value_is_mut := first_is_mut
+	mut second_is_mut := false
 
 	if p.tok == .comma {
 		p.next()
 		// second variable
 		if p.tok == .key_mut {
 			p.next()
-			value_is_mut = true
+			second_is_mut = true
 		}
 		val_id = p.add_val(.ident, p.expect_name())
 	}
 
-	return p.for_in_parts(key_id, val_id, value_is_mut)
+	for_id := p.for_in_parts(key_id, val_id, first_is_mut || second_is_mut)
+	p.record_formatter_for_in_mutability(for_id, first_is_mut, second_is_mut)
+	return for_id
+}
+
+fn (mut p Parser) record_formatter_for_in_mutability(id flat.NodeId, first_is_mut bool, second_is_mut bool) {
+	if !p.prefs.is_fmt {
+		return
+	}
+	mut mutability := u8(0)
+	if first_is_mut {
+		mutability |= 1
+	}
+	if second_is_mut {
+		mutability |= 2
+	}
+	if mutability > 0 {
+		p.a.formatter_for_in_mut[int(id)] = mutability
+	}
 }
 
 fn (mut p Parser) for_in_parts(key_id flat.NodeId, val_id flat.NodeId, value_is_mut bool) flat.NodeId {
