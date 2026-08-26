@@ -341,6 +341,41 @@ fn test_formatter_preserves_multiline_map_layout() {
 	assert vfmt('map_comments', comments) == comments
 }
 
+fn test_formatter_keeps_comments_inside_construct_boundaries() {
+	source := 'struct Foo {
+	value int
+}
+
+fn comments(base Foo, condition bool) {
+	updated := Foo{
+		// before
+		...base // after
+	}
+	empty := Foo{
+		// inside struct init
+	}
+	values := [
+		// inside array
+	]
+	if condition {
+		// inside branch
+	} else {
+		// inside else branch
+	}
+	_ = updated
+	_ = empty
+	_ = values
+}
+
+fn only_comments() {
+	// abc
+}
+'
+	out := vfmt('construct_comment_boundaries', source)
+	assert out == source, out
+	assert vfmt('construct_comment_boundaries_twice', out) == out
+}
+
 fn test_formatter_preserves_capture_and_shared_parameter_qualifiers() {
 	out := vfmt('capture_and_shared_qualifiers',
 		'struct St {}\n\nfn (shared receiver St) use(shared value St) {}\n\nfn consume[T](value T) {}\n\nfn main() {\n\tatomic counter := 0\n\tcallback := fn [mut item, atomic counter, shared state] () {}\n\tconsume[[]int]([]int{})\n\t_ = callback\n}\n')

@@ -928,6 +928,12 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 	g.write('[')
 	children := g.a.children_of(n)
 	if children.len == 0 {
+		if g.comments_inside(n.pos.offset, n.pos.end) {
+			g.writeln('')
+			g.indent++
+			g.emit_comments_before(n.pos.end)
+			g.indent--
+		}
 		g.write(']')
 		return
 	}
@@ -1161,7 +1167,14 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 	fields := g.a.children_of(n)
 	g.write(g.type_text(n.value))
 	if fields.len == 0 {
-		g.write('{}')
+		g.write('{')
+		if g.comments_inside(n.pos.offset, n.pos.end) {
+			g.writeln('')
+			g.indent++
+			g.emit_comments_before(n.pos.end)
+			g.indent--
+		}
+		g.write('}')
 		return
 	}
 	first := g.a.node(fields[0])
@@ -1190,6 +1203,7 @@ fn (mut g Gen) struct_init(id flat.NodeId) {
 			g.expr(g.a.child(f, 0))
 			g.writeln('')
 		}
+		g.emit_comments_before(n.pos.end)
 		g.indent--
 		g.in_init = in_init
 		g.write('}')
@@ -1212,11 +1226,17 @@ fn (mut g Gen) assoc(id flat.NodeId) {
 	g.write(n.value)
 	g.writeln('{')
 	g.indent++
+	if children.len > 0 {
+		g.emit_comments_before(g.a.node(children[0]).pos.offset)
+	}
 	g.write('...')
 	if children.len > 0 {
 		g.expr(children[0])
+		g.emit_trailing_comments(g.a.node(children[0]).pos.end)
 	}
-	g.writeln('')
+	if !g.on_newline {
+		g.writeln('')
+	}
 	for fid in children[1..] {
 		f := g.a.node(fid)
 		g.write('${f.value}: ')
@@ -1769,7 +1789,11 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 	g.write(' ')
 	then_blk := g.a.node(children[1])
 	g.writeln('{')
+	g.source_end = int_max(g.source_end, then_blk.pos.offset)
 	g.stmt_list_ids(g.a.children_of(then_blk))
+	g.indent++
+	g.emit_comments_before(then_blk.pos.end)
+	g.indent--
 	g.write('}')
 	if children.len > 2 {
 		else_id := children[2]
@@ -1779,7 +1803,11 @@ fn (mut g Gen) if_expr(id flat.NodeId) {
 			g.if_expr(else_id)
 		} else {
 			g.writeln(' else {')
+			g.source_end = int_max(g.source_end, en.pos.offset)
 			g.stmt_list_ids(g.a.children_of(en))
+			g.indent++
+			g.emit_comments_before(en.pos.end)
+			g.indent--
 			g.write('}')
 		}
 	}
@@ -2050,6 +2078,9 @@ fn (mut g Gen) fn_decl(id flat.NodeId) {
 	}
 	g.writeln(' {')
 	g.stmt_list_ids(body)
+	g.indent++
+	g.emit_comments_before(g.a.formatter_node_ends[int(id)] or { n.pos.end })
+	g.indent--
 	g.writeln('}')
 }
 

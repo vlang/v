@@ -102,6 +102,47 @@ fn test_fmt_keeps_regular_comments_attached_with_v3() {
 	assert formatted.contains('x := 1 // inline')
 }
 
+fn test_fmt_keeps_comments_inside_construct_boundaries_with_v3() {
+	source := 'struct Foo {
+	value int
+}
+
+fn comments(base Foo, condition bool) {
+	updated := Foo{
+		// before
+		...base // after
+	}
+	empty := Foo{
+		// inside struct init
+	}
+	values := [
+		// inside array
+	]
+	if condition {
+		// inside branch
+	} else {
+		// inside else branch
+	}
+	_ = updated
+	_ = empty
+	_ = values
+}
+
+fn only_comments() {
+	// abc
+}
+'
+	res, formatted := run_vfmt_write('construct_comment_boundaries', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('construct_comment_boundaries_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_comment_only_files_with_v3() {
 	source := '/*\nmodule acommentedmodule\n*/\n'
 	res, formatted := run_vfmt_write('comment_only_file', source, '')

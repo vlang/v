@@ -243,6 +243,9 @@ pub mut:
 	// source syntax is intentionally opaque to compiler backends.
 	formatter_sources       map[int]string
 	formatter_file_sources  map[int]string
+	// formatter_node_ends retains the full source end for nodes whose compiler-facing
+	// position deliberately covers only their name or another diagnostic token.
+	formatter_node_ends     map[int]int
 	// formatter_local_sels records selectors whose direct receiver is a lexical binding.
 	formatter_local_sels    map[int]bool
 	formatter_migrate_json2 bool
@@ -343,6 +346,7 @@ pub fn FlatAst.new() FlatAst {
 		missing_imports:        map[int]string{}
 		formatter_sources:      map[int]string{}
 		formatter_file_sources: map[int]string{}
+		formatter_node_ends:    map[int]int{}
 		formatter_local_sels:   map[int]bool{}
 		text_ids:               map[string]TextId{}
 		specialized_fn_nodes:   map[int]bool{}

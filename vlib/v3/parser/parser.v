@@ -1386,6 +1386,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 
 	// body
 	mut body_ids := []flat.NodeId{}
+	mut formatter_end := 0
 	prev_fn := p.cur_fn
 	prev_struct := p.cur_struct
 	prev_method_is_static := p.cur_method_is_static
@@ -1420,6 +1421,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	if disable_body {
 		p.mark_disabled_fn(name)
 		p.skip_block()
+		formatter_end = p.prev_tok_end
 	} else {
 		body_start := p.tok_pos
 		p.check(.lcbr)
@@ -1435,6 +1437,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			}
 		}
 		p.check(.rcbr)
+		formatter_end = p.prev_tok_end
 	}
 	p.end_local_binding_scope()
 	p.end_comptime_value_scope()
@@ -1465,6 +1468,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
+	if p.prefs.is_fmt && formatter_end > 0 {
+		p.a.formatter_node_ends[int(id)] = formatter_end
+	}
 	p.register_pending_export(name)
 	p.register_pending_noreturn(name)
 	return id
