@@ -350,6 +350,28 @@ fn f() {
 	assert !fn_formatted.contains('import json2'), fn_formatted
 }
 
+fn test_fmt_skips_json2_migration_in_vfmt_disabled_regions_with_v3() {
+	source := 'import json
+
+fn f() {
+	// vfmt off
+	println(json.encode(1))
+	// vfmt on
+}
+'
+	res, formatted := run_vfmt_write('disabled_json_migration', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('import json\n'), formatted
+	assert formatted.contains('json.encode(1)'), formatted
+	assert !formatted.contains('import json2'), formatted
+	assert !formatted.contains('json2.encode'), formatted
+	second_res, formatted_twice := run_vfmt_write('disabled_json_migration_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_keeps_comments_before_grouped_const_fields_with_v3() {
 	source := 'const (
 	// pi documents pi
@@ -375,6 +397,23 @@ fn test_fmt_preserves_typed_map_entries_and_typeof_array_init_with_v3() {
 	assert formatted.contains('[]typeof(fixed[0]){}'), formatted
 	second_res, formatted_twice := run_vfmt_write('typed_map_and_typeof_array', formatted,
 		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_rewrites_legacy_it_only_in_array_init_expression_with_v3() {
+	source := 'fn f() {
+	it := 3
+	a := []int{len: it, cap: it + 1, init: it}
+	println(a)
+}
+'
+	res, formatted := run_vfmt_write('array_init_legacy_it_scope', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('[]int{len: it, cap: it + 1, init: index}'), formatted
+	second_res, formatted_twice := run_vfmt_write('array_init_legacy_it_scope_twice',
+		formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }

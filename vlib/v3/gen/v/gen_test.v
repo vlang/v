@@ -436,6 +436,23 @@ fn f() {
 	assert !fn_out.contains('import json2'), fn_out
 }
 
+fn test_json_migration_skips_vfmt_disabled_regions() {
+	source := 'import json
+
+fn f() {
+	// vfmt off
+	println(json.encode(1))
+	// vfmt on
+}
+'
+	out := vfmt_with_json_migration('disabled_json_migration', source)
+	assert out.contains('import json\n'), out
+	assert out.contains('json.encode(1)'), out
+	assert !out.contains('import json2'), out
+	assert !out.contains('json2.encode'), out
+	assert vfmt_with_json_migration('disabled_json_migration_twice', out) == out
+}
+
 fn test_formatter_keeps_comments_before_grouped_const_fields() {
 	source := 'const (
 	// pi documents pi
@@ -466,6 +483,18 @@ fn test_formatter_preserves_typed_map_entries_and_typeof_array_init() {
 	array_out := vfmt('typeof_array_init', array_source)
 	assert array_out.contains('[]typeof(fixed[0]){}'), array_out
 	assert vfmt('typeof_array_init_twice', array_out) == array_out
+}
+
+fn test_formatter_rewrites_legacy_it_only_in_array_init_expression() {
+	source := 'fn f() {
+	it := 3
+	a := []int{len: it, cap: it + 1, init: it}
+	println(a)
+}
+'
+	out := vfmt('array_init_legacy_it_scope', source)
+	assert out.contains('[]int{len: it, cap: it + 1, init: index}'), out
+	assert vfmt('array_init_legacy_it_scope_twice', out) == out
 }
 
 fn test_formatter_preserves_js_string_prefixes() {

@@ -224,6 +224,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		|| g.source.contains('json.decode( //') {
 		return
 	}
+	directives := vfmt_directives(g.source)
 	direct_ids := g.a.children_of(fnode)
 	mut direct := map[int]bool{}
 	mut declared_names := map[string]bool{}
@@ -262,6 +263,9 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 			}
 		}
 		if n.kind == .import_decl {
+			if n.value in ['json', 'json2'] && vfmt_is_disabled_at(directives, n.pos.offset) {
+				return
+			}
 			if n.value == 'json' {
 				legacy_imports << flat.NodeId(i)
 			} else if n.value == 'json2' {
@@ -320,12 +324,22 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 		if n.kind == .selector && n.children_count > 0 {
 			receiver := g.a.child_node(n, 0)
 			if receiver.kind == .ident && receiver.value == 'json' {
+				if vfmt_is_disabled_at(directives, n.pos.offset) {
+					return
+				}
 				if n.value !in ['encode', 'decode', 'encode_pretty'] || !called[i] {
 					return
 				}
 				if n.value == 'decode' && g.comments_inside(n.pos.offset, n.pos.end) {
 					return
 				}
+			}
+		}
+		if legacy.children_count > 0 && n.kind == .call && n.children_count > 0 {
+			callee := g.a.child_node(n, 0)
+			if callee.kind == .ident && callee.value in ['encode', 'decode', 'encode_pretty']
+				&& vfmt_is_disabled_at(directives, callee.pos.offset) {
+				return
 			}
 		}
 	}
@@ -769,10 +783,7 @@ fn (mut g Gen) expr(id flat.NodeId) {
 				g.write('[]${g.type_text(n.value)}')
 			}
 			g.write('{')
-			was_in_array_init := g.in_array_init
-			g.in_array_init = true
 			g.init_fields(g.a.children_of(n))
-			g.in_array_init = was_in_array_init
 			g.write('}')
 		}
 		.map_init {
@@ -1106,7 +1117,10 @@ fn (mut g Gen) init_fields(ids []flat.NodeId) {
 		if f.value.len > 0 {
 			g.write('${f.value}: ')
 		}
+		was_in_array_init := g.in_array_init
+		g.in_array_init = was_in_array_init || f.value == 'init'
 		g.expr(g.a.child(f, 0))
+		g.in_array_init = was_in_array_init
 		if i < ids.len - 1 {
 			g.write(', ')
 		}
@@ -2298,6 +2312,17 @@ fn vfmt_directives(source string) []VfmtDirective {
 		}
 	}
 	return directives
+}
+
+fn vfmt_is_disabled_at(directives []VfmtDirective, offset int) bool {
+	mut is_disabled := false
+	for directive in directives {
+		if directive.offset > offset {
+			break
+		}
+		is_disabled = directive.is_off
+	}
+	return is_disabled
 }
 
 fn next_vfmt_directive(directives []VfmtDirective, offset int, is_off bool) ?VfmtDirective {
