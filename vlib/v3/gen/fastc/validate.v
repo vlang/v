@@ -446,6 +446,9 @@ fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
 			if name == 'wait' && receiver_type.starts_with(fastc_thread_type_prefix) {
 				// `.wait()` on a spawned thread resolves through the generated
 				// join helper, not the collected function signatures.
+				if call_args.len != 0 {
+					return g.unsupported('`.wait()` on a spawned thread with ${call_args.len} arguments')
+				}
 				i = call_end + 1
 				continue
 			}

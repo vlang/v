@@ -13,12 +13,23 @@ const fastc_thread_type_prefix = '__v_fastc_thread_'
 const c_spawn_runtime = r'#include <pthread.h>
 '
 
+// fastc_type_text_hash is an FNV-1a digest of a type spelling. The readable
+// sanitized name alone is lossy (`Foo*` and a declared `Foo_ptr` collapse),
+// so thread type names append this stable discriminator to stay injective.
+fn fastc_type_text_hash(text string) string {
+	mut digest := u32(2166136261)
+	for i in 0 .. text.len {
+		digest = (digest ^ u32(text[i])) * 16777619
+	}
+	return digest.hex()
+}
+
 fn fastc_thread_type_name(value_type string) string {
 	if value_type in ['', 'void'] {
 		return '${fastc_thread_type_prefix}void'
 	}
-	return fastc_thread_type_prefix +
-		value_type.replace('*', '_ptr').replace(' ', '_').replace('.', '__')
+	sanitized := value_type.replace('*', '_ptr').replace(' ', '_').replace('.', '__')
+	return '${fastc_thread_type_prefix}${sanitized}_${fastc_type_text_hash(value_type)}'
 }
 
 fn fastc_thread_wait_name(thread_type string) string {
@@ -58,6 +69,12 @@ fn (mut g Parser) read_spawn_expression() !string {
 	}
 	signature := g.functions[function_key] or {
 		return g.unsupported('spawn of undeclared function `${callee}`')
+	}
+	// Mirror validate_expression_calls: read_spawn_expression consumes the
+	// call eagerly, so the ordinary call-visibility validation never runs.
+	if !signature.is_public && signature.module_name != '' && signature.module_name != g.module_name
+		&& signature.module_name != 'builtin' && signature.module_name in g.imports.values() {
+		return g.unsupported('spawn of private function `${callee}` from imported module `${signature.module_name}`')
 	}
 	if signature.is_variadic || signature.last_parameter_is_params {
 		return g.unsupported('spawn of variadic function `${callee}`')
