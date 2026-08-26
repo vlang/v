@@ -1599,20 +1599,44 @@ fn (mut g Gen) block_expr(id flat.NodeId) {
 	n := g.a.node(id)
 	stmts := g.a.children_of(n)
 	prefix := if n.value == 'unsafe' { 'unsafe ' } else { '' }
-	if g.in_init || stmts.len <= 1 {
-		g.write('${prefix}{ ')
+	is_compact := if n.value == 'unsafe' {
+		stmts.len <= 1 && g.source_block_is_compact(n)
+			&& !g.has_comment_between(n.pos.offset, n.pos.end)
+	} else {
+		g.in_init || stmts.len <= 1
+	}
+	if is_compact {
+		g.write('${prefix}{')
+		has_padding := stmts.len > 0 || n.value != 'unsafe'
+		if has_padding {
+			g.write(' ')
+		}
 		in_init := g.in_init
 		g.in_init = true
 		for s in stmts {
 			g.stmt(s)
 		}
 		g.in_init = in_init
-		g.write(' }')
+		if has_padding {
+			g.write(' ')
+		}
+		g.write('}')
 	} else {
 		g.writeln('${prefix}{')
 		g.stmt_list_ids(stmts)
+		g.indent++
+		g.advance_source_end_before_pending_comment(n.pos.end)
+		g.emit_comments_before(n.pos.end)
+		g.indent--
 		g.write('}')
 	}
+}
+
+fn (g &Gen) source_block_is_compact(n &flat.Node) bool {
+	if source := g.source_span(n.pos.offset, n.pos.end) {
+		return !source.contains('\n') && !source.contains('\r')
+	}
+	return false
 }
 
 fn (mut g Gen) block_stmt(id flat.NodeId) {
@@ -1629,6 +1653,20 @@ fn (mut g Gen) block_stmt(id flat.NodeId) {
 		}
 	}
 	prefix := if n.value == 'unsafe' { 'unsafe ' } else { '' }
+	if n.value == 'unsafe' && stmts.len <= 1 && g.source_block_is_compact(n)
+		&& !g.has_comment_between(n.pos.offset, n.pos.end) {
+		g.write('${prefix}{')
+		if stmts.len > 0 {
+			g.write(' ')
+			in_init := g.in_init
+			g.in_init = true
+			g.stmt(stmts[0])
+			g.in_init = in_init
+			g.write(' ')
+		}
+		g.writeln('}')
+		return
+	}
 	g.writeln('${prefix}{')
 	g.stmt_list_ids(stmts)
 	g.indent++
@@ -2168,11 +2206,32 @@ fn (mut g Gen) compact_match_branch(branch &flat.Node, body []flat.NodeId) {
 
 fn (mut g Gen) defer_stmt(id flat.NodeId) {
 	n := g.a.node(id)
-	g.writeln(if n.value == 'function' { 'defer(fn) {' } else { 'defer {' })
+	prefix := if n.value == 'function' { 'defer(fn) {' } else { 'defer {' }
+	mut stmts := []flat.NodeId{}
 	if n.children_count > 0 {
-		blk := g.a.child_node(n, 0)
-		g.stmt_list_ids(g.a.children_of(blk))
+		stmts = g.a.children_of(g.a.child_node(n, 0))
 	}
+	is_compact := stmts.len <= 1 && g.source_block_is_compact(n)
+		&& !g.has_comment_between(n.pos.offset, n.pos.end)
+	if is_compact {
+		g.write(prefix)
+		if stmts.len > 0 {
+			g.write(' ')
+			in_init := g.in_init
+			g.in_init = true
+			g.stmt(stmts[0])
+			g.in_init = in_init
+			g.write(' ')
+		}
+		g.writeln('}')
+		return
+	}
+	g.writeln(prefix)
+	g.stmt_list_ids(stmts)
+	g.indent++
+	g.advance_source_end_before_pending_comment(n.pos.end)
+	g.emit_comments_before(n.pos.end)
+	g.indent--
 	g.writeln('}')
 }
 

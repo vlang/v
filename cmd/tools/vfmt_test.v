@@ -178,6 +178,18 @@ fn test_fmt_keeps_trailing_block_and_struct_update_comments_inside_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_unsafe_and_defer_source_layout_with_v3() {
+	source := "fn foo() {}\n\nfn block_layouts() {\n\tunsafe { 6 }\n\tunsafe {}\n\tunsafe {\n\t}\n\tx := unsafe {\n\t\t5\n\t}\n\ty := unsafe { 7 }\n\tdefer {}\n\tdefer { foo() }\n\tdefer {\n\t\tfoo()\n\t}\n\t_ = x\n\t_ = y\n}\n"
+	res, formatted := run_vfmt_write('unsafe_defer_layout', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	second_res, formatted_twice := run_vfmt_write('unsafe_defer_layout_twice', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_emits_comments_before_struct_init_field_names_with_v3() {
 	source := 'struct Config {
 	one int

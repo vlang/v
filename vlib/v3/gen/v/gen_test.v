@@ -108,6 +108,13 @@ fn test_formatter_keeps_trailing_block_and_struct_update_comments_inside() {
 	assert vfmt('trailing_block_update_comments_twice', out) == out
 }
 
+fn test_formatter_preserves_unsafe_and_defer_source_layout() {
+	source := "fn foo() {}\n\nfn block_layouts() {\n\tunsafe { 6 }\n\tunsafe {}\n\tunsafe {\n\t}\n\tx := unsafe {\n\t\t5\n\t}\n\ty := unsafe { 7 }\n\tdefer {}\n\tdefer { foo() }\n\tdefer {\n\t\tfoo()\n\t}\n\t_ = x\n\t_ = y\n}\n"
+	out := vfmt('unsafe_defer_layout', source)
+	assert out == source, out
+	assert vfmt('unsafe_defer_layout_twice', out) == out
+}
+
 fn test_formatter_keeps_trailing_interface_comments_inside_body() {
 	source := 'interface Speaker {
 	// first
