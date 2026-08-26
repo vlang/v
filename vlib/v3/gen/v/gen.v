@@ -22,6 +22,12 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+struct FormatterTypeSource {
+	text  string
+	start int
+	end   int
+}
+
 // Gen holds the formatter state for one output buffer.
 pub struct Gen {
 mut:
@@ -46,6 +52,7 @@ mut:
 	is_new_int      bool
 	is_translated   bool
 	in_c_function   bool
+	formatter_types map[string]FormatterTypeSource
 	// suppress_mut skips the `mut ` prefix on an assignment (used for C-style
 	// `for` loop init clauses, whose variable the parser always marks mutable).
 	suppress_mut bool
@@ -90,6 +97,7 @@ pub fn (mut g Gen) reset() {
 	g.in_array_init = false
 	g.is_translated = false
 	g.in_c_function = false
+	g.formatter_types = map[string]FormatterTypeSource{}
 }
 
 // format_file parses-independent convenience: format the file whose trailing
@@ -134,6 +142,7 @@ pub fn (mut g Gen) gen_file(a &flat.FlatAst, file_id flat.NodeId) string {
 	g.is_translated = g.file_has_attr(fnode, 'translated')
 	g.file_id = fnode.pos.id
 	g.source = a.formatter_file_sources[g.file_id] or { '' }
+	g.collect_formatter_types()
 	for comment in a.comments {
 		if comment.pos.id == g.file_id {
 			g.comments << comment
@@ -148,6 +157,23 @@ pub fn (mut g Gen) gen_file(a &flat.FlatAst, file_id flat.NodeId) string {
 		return restore_vfmt_disabled_regions(formatted, g.source.replace('\r\n', '\n'))
 	}
 	return formatted
+}
+
+fn (mut g Gen) collect_formatter_types() {
+	for id, n in g.a.nodes {
+		if n.kind != .struct_decl || n.pos.id != g.file_id {
+			continue
+		}
+		source := g.a.formatter_sources[id] or { continue }
+		if !n.value.starts_with('AnonStruct_') && !n.value.starts_with('AnonUnion_') {
+			continue
+		}
+		g.formatter_types[n.value] = FormatterTypeSource{
+			text:  source.trim_space()
+			start: n.pos.offset
+			end:   n.pos.end
+		}
+	}
 }
 
 // output_string returns the generated V source code.
@@ -390,22 +416,52 @@ fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
 			declared[n.value.all_after_last('.')] = true
 		} else if n.kind == .fn_decl {
 			declared[n.value.all_after_last('.')] = true
+		} else if n.kind in [.const_decl, .global_decl] {
+			for field_id in g.a.children_of(n) {
+				declared[g.a.node(field_id).value] = true
+			}
 		}
 	}
 	for n in g.a.nodes {
 		if n.pos.id != g.file_id {
 			continue
 		}
-		if n.kind == .param {
-			declared[n.value] = true
-		}
-		if n.kind == .decl_assign && n.children_count > 0 {
-			for child in g.a.children_of(n) {
-				cn := g.a.node(child)
-				if cn.kind == .ident {
-					declared[cn.value] = true
+		match n.kind {
+			.param {
+				declared[n.value] = true
+			}
+			.decl_assign {
+				for child in g.a.children_of(n) {
+					cn := g.a.node(child)
+					if cn.kind == .ident {
+						declared[cn.value] = true
+					}
 				}
 			}
+			.for_in_stmt {
+				children := g.a.children_of(n)
+				for i in 0 .. int_min(2, children.len) {
+					binder := g.a.node(children[i])
+					if binder.kind == .ident && binder.value.len > 0 && binder.value != '_' {
+						declared[binder.value] = true
+					}
+				}
+			}
+			.select_branch {
+				if n.value == 'recv' && n.children_count > 0 {
+					binder := g.a.child_node(n, 0)
+					if binder.kind == .ident && binder.value.len > 0 && binder.value != '_' {
+						declared[binder.value] = true
+					}
+				}
+			}
+			.comptime_for {
+				binder := n.value.all_before('|')
+				if binder.len > 0 && binder != '_' {
+					declared[binder] = true
+				}
+			}
+			else {}
 		}
 	}
 	mut implied := map[string]bool{}
@@ -976,8 +1032,14 @@ fn (mut g Gen) index_expr(id flat.NodeId) {
 
 fn (mut g Gen) struct_init(id flat.NodeId) {
 	n := g.a.node(id)
+	if source := g.a.formatter_sources[int(id)] {
+		g.write(source.trim_space())
+		g.skip_comments_before(n.pos.end)
+		g.source_end = int_max(g.source_end, n.pos.end)
+		return
+	}
 	fields := g.a.children_of(n)
-	g.write(n.value)
+	g.write(g.type_text(n.value))
 	if fields.len == 0 {
 		g.write('{}')
 		return
@@ -1512,6 +1574,10 @@ fn (mut g Gen) match_node(id flat.NodeId) {
 		return
 	}
 	g.write('match ')
+	subject := g.a.node(children[0])
+	if subject.is_mut {
+		g.write('mut ')
+	}
 	in_init := g.in_init
 	g.in_init = true
 	g.expr(children[0])
@@ -2474,24 +2540,59 @@ fn access_label(flags string) string {
 	return ''
 }
 
-fn (g &Gen) type_text(typ string) string {
-	if !g.is_new_int || (!g.is_translated && !g.in_c_function) || !typ.contains('int') {
-		return typ
+fn (mut g Gen) type_text(typ string) string {
+	mut expanded := typ
+	if g.formatter_types.len > 0 {
+		mut out := strings.new_builder(typ.len)
+		mut i := 0
+		for i < typ.len {
+			if is_type_ident_char(typ[i]) {
+				start := i
+				for i < typ.len && is_type_ident_char(typ[i]) {
+					i++
+				}
+				name := typ[start..i]
+				if source := g.formatter_types[name] {
+					out.write_string(source.text)
+					g.skip_comments_in_source(source.start, source.end)
+					g.source_end = int_max(g.source_end, source.end)
+				} else {
+					out.write_string(name)
+				}
+				continue
+			}
+			out.write_u8(typ[i])
+			i++
+		}
+		expanded = out.str()
 	}
-	mut out := strings.new_builder(typ.len)
+	if !g.is_new_int || (!g.is_translated && !g.in_c_function) || !expanded.contains('int') {
+		return expanded
+	}
+	mut out := strings.new_builder(expanded.len)
 	mut i := 0
-	for i < typ.len {
-		if i + 3 <= typ.len && typ[i..i + 3] == 'int'
-			&& (i == 0 || !is_type_ident_char(typ[i - 1]))
-			&& (i + 3 == typ.len || !is_type_ident_char(typ[i + 3])) {
+	for i < expanded.len {
+		if i + 3 <= expanded.len && expanded[i..i + 3] == 'int'
+			&& (i == 0 || !is_type_ident_char(expanded[i - 1]))
+			&& (i + 3 == expanded.len || !is_type_ident_char(expanded[i + 3])) {
 			out.write_string('i32')
 			i += 3
 			continue
 		}
-		out.write_u8(typ[i])
+		out.write_u8(expanded[i])
 		i++
 	}
 	return out.str()
+}
+
+fn (mut g Gen) skip_comments_in_source(start int, end int) {
+	if g.comment_i < g.comments.len && g.comments[g.comment_i].pos.offset < start {
+		return
+	}
+	for g.comment_i < g.comments.len && g.comments[g.comment_i].pos.offset < end {
+		g.source_end = int_max(g.source_end, g.comments[g.comment_i].pos.end)
+		g.comment_i++
+	}
 }
 
 fn is_type_ident_char(c u8) bool {

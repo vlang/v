@@ -9720,7 +9720,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_struct {
 			p.next()
-			init_id := p.struct_init('struct')
+			mut init_id := p.struct_init('struct')
 			init := p.a.nodes[int(init_id)]
 			if name := p.anonymous_struct_type_for_literal(init) {
 				p.a.nodes[int(init_id)].value = name
@@ -9730,10 +9730,18 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				p.a.nodes[int(init_id)].typ = name
 			} else if name := p.create_anonymous_struct_type_from_type_init(init) {
 				if p.tok == .lcbr {
-					return p.struct_init(name)
+					init_id = p.struct_init(name)
+				} else {
+					p.a.nodes[int(init_id)].value = name
+					p.a.nodes[int(init_id)].typ = name
 				}
-				p.a.nodes[int(init_id)].value = name
-				p.a.nodes[int(init_id)].typ = name
+			}
+			if p.prefs.is_fmt {
+				start := clamp_source_offset(op_start, p.s.src.len)
+				end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+				if end >= start {
+					p.a.formatter_sources[int(init_id)] = p.s.src[start..end].clone()
+				}
 			}
 			return init_id
 		}
@@ -12814,7 +12822,7 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 	name_prefix := if is_union { 'AnonUnion' } else { 'AnonStruct' }
 	name := '${name_prefix}_${local_type_scope_part(p.cur_file)}_${p.anonymous_struct_count}'
 	start := p.add_children(ids)
-	p.add_node(flat.Node{
+	decl_id := p.add_node(flat.Node{
 		kind:           .struct_decl
 		value:          name
 		typ:            if is_union { 'union' } else { '' }
@@ -12826,6 +12834,13 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
+	if p.prefs.is_fmt && aggregate_start >= 0 {
+		source_start := clamp_source_offset(aggregate_start, p.s.src.len)
+		source_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+		if source_end >= source_start {
+			p.a.formatter_sources[int(decl_id)] = p.s.src[source_start..source_end].clone()
+		}
+	}
 	typed_key := anonymous_struct_typed_shape_key(field_names, field_types)
 	mut typed_candidates := p.anonymous_struct_types[typed_key] or { []string{} }
 	typed_candidates << name

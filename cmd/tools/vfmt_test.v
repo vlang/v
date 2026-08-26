@@ -387,6 +387,43 @@ fn test_fmt_reescapes_control_bytes_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_does_not_import_for_in_binders_with_v3() {
+	source := "struct Item {\n\tname string\n}\n\nfn scan(items []Item) {\n\tfor flag in items {\n\t\tprintln(flag.name)\n\t}\n}\n"
+	res, formatted := run_vfmt_write('for_in_binder_import', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert !formatted.contains('import flag'), formatted
+	second_res, formatted_twice := run_vfmt_write('for_in_binder_import', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_anonymous_aggregate_types_with_v3() {
+	source := "struct Holder {\n\titem []struct { foo string }\n}\n\nfn accept(value struct{ foo string }) {\n\tprintln(value.foo)\n}\n\nfn main() {\n\taccept(struct { foo: 'ok' })\n}\n"
+	res, formatted := run_vfmt_write('anonymous_aggregate_types', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert !formatted.contains('AnonStruct_'), formatted
+	assert formatted.contains('item []struct { foo string }'), formatted
+	assert formatted.contains('value struct{ foo string }'), formatted
+	assert formatted.contains("accept(struct { foo: 'ok' })"), formatted
+	second_res, formatted_twice := run_vfmt_write('anonymous_aggregate_types', formatted,
+		'')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
+fn test_fmt_preserves_mutable_match_subjects_with_v3() {
+	source := "fn update(mut value int) {\n\tmatch mut value {\n\t\tint {\n\t\t\tvalue++\n\t\t}\n\t}\n}\n"
+	res, formatted := run_vfmt_write('mutable_match_subject', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted.contains('match mut value {'), formatted
+	second_res, formatted_twice := run_vfmt_write('mutable_match_subject', formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')

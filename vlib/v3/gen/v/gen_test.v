@@ -149,6 +149,35 @@ fn test_formatter_reescapes_control_bytes() {
 	assert vfmt('escaped_control_bytes_twice', out) == out
 }
 
+fn test_formatter_does_not_import_lexical_binders() {
+	source := "struct Item {\n\tname string\n}\n\nfn scan(items []Item, ch chan Item) {\n\tfor flag in items {\n\t\tprintln(flag.name)\n\t}\n\tselect {\n\t\ttime := <-ch {\n\t\t\tprintln(time.name)\n\t\t}\n\t}\n}\n\nfn fields[T]() {\n\t\$for json in T.fields {\n\t\tprintln(json.name)\n\t}\n}\n"
+	out := vfmt('lexical_binder_imports', source)
+	assert !out.contains('import flag'), out
+	assert !out.contains('import time'), out
+	assert !out.contains('import json'), out
+	assert vfmt('lexical_binder_imports_twice', out) == out
+}
+
+fn test_formatter_preserves_anonymous_aggregate_types() {
+	source := "struct Holder {\n\titem []struct {\n\t\t// keep anonymous field comment\n\t\tfoo string\n\t}\n\tchoice union { number int }\n}\n\nfn accept(value struct{ foo string }) {\n\tprintln(value.foo)\n}\n\nfn main() {\n\taccept(struct { foo: 'ok' })\n}\n"
+	out := vfmt('anonymous_aggregate_types', source)
+	assert !out.contains('AnonStruct_'), out
+	assert !out.contains('AnonUnion_'), out
+	assert out.contains('item []struct {'), out
+	assert out.count('// keep anonymous field comment') == 1, out
+	assert out.contains('choice union { number int }'), out
+	assert out.contains('value struct{ foo string }'), out
+	assert out.contains("accept(struct { foo: 'ok' })"), out
+	assert vfmt('anonymous_aggregate_types_twice', out) == out
+}
+
+fn test_formatter_preserves_mutable_match_subjects() {
+	source := "fn update(mut value int) {\n\tmatch mut value {\n\t\tint {\n\t\t\tvalue++\n\t\t}\n\t}\n}\n"
+	out := vfmt('mutable_match_subject', source)
+	assert out.contains('match mut value {'), out
+	assert vfmt('mutable_match_subject_twice', out) == out
+}
+
 fn test_formatter_accepts_remaining_repository_syntax() {
 	source := "module main\n\nimport underscore as _abc\n\nfn accepts[T]() bool { return true }\n\nfn check() {\n\tassert kind == .fn\n\tassert accepts[atomic fn (int) int]()\n\tassert sizeof(`€`) == 4\n\tassert sizeof(c'hello') == 6\n\tassert sizeof(r'hello') > 0\n}\n"
 	out := vfmt('remaining_repository_syntax', source)
