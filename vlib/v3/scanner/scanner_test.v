@@ -137,3 +137,19 @@ fn test_unknown_string_escape_is_reported() {
 	assert scanner.diagnostics[0].message == '`_` unknown escape sequence'
 	assert scanner.diagnostics[0].offset == 2
 }
+
+fn test_js_prefixed_string_is_one_token() {
+	source := "js'hello V'"
+	mut files := token.FileSet.new()
+	mut file := files.add_file('js_string.js.v', source.len)
+	file.index_lines(source)
+	preferences := &pref.Preferences{}
+	mut scanner := new_scanner(preferences, .normal)
+	scanner.init(file, source)
+
+	assert scanner.scan() == .string
+	assert scanner.lit == source
+	assert scanner.scan() == .semicolon
+	assert scanner.scan() == .eof
+	assert scanner.diagnostics.len == 0
+}

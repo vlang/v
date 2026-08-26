@@ -296,6 +296,14 @@ fn test_formatter_preserves_typed_map_entries_and_typeof_array_init() {
 	assert vfmt('typeof_array_init_twice', array_out) == array_out
 }
 
+fn test_formatter_preserves_js_string_prefixes() {
+	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"
+	out := vfmt('js_string_prefixes', source)
+	assert out.contains("s := js'hello V'"), out
+	assert out.contains("s == js'hello V'"), out
+	assert vfmt('js_string_prefixes_twice', out) == out
+}
+
 fn test_formatter_preserves_sql_body() {
 	out := vfmt('sql_body',
 		'struct User {\n\tid int\n}\n\nfn f(db DB) {\n\t_ := sql db {\n\t\tselect from User where id == 1\n\t}\n}\n')

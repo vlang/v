@@ -233,6 +233,18 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.insert_semi = true
 			return .string
 		}
+		if s.lit == 'js' && s.offset < s.src.len
+			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
+			quote := s.src[s.offset]
+			s.offset++
+			if !s.in_str_inter {
+				s.str_quote = quote
+			}
+			s.string_literal(false, quote)
+			s.lit = s.source_lit(s.pos, s.offset)
+			s.insert_semi = true
+			return .string
+		}
 		tok := token.Token.from_string_tinyv(s.lit)
 		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
 			.name] {

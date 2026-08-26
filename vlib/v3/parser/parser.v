@@ -10628,7 +10628,9 @@ fn (mut p Parser) string_literal() flat.NodeId {
 	mut q := u8(`'`)
 	lit := p.lit
 	if lit.len > 0 {
-		if lit[0] == `r` && lit.len > 1 {
+		if lit.len > 2 && lit.starts_with('js') {
+			q = lit[2]
+		} else if lit[0] == `r` && lit.len > 1 {
 			q = p.lit[1]
 		} else if lit[0] == `'` || lit[0] == `"` {
 			q = lit[0]
@@ -10640,13 +10642,23 @@ fn (mut p Parser) string_literal() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:  .string_literal
 			value: val
-			typ:   if lit.len > 1 && lit[0] == `r` { 'raw:${lit[1].ascii_str()}' } else { '' }
+			typ:   if lit.len > 2 && lit.starts_with('js') {
+				'js:${lit[2].ascii_str()}'
+			} else if lit.len > 1 && lit[0] == `r` {
+				'raw:${lit[1].ascii_str()}'
+			} else {
+				''
+			}
 			pos:   start_pos
 		})
 	}
 	// string interpolation
 	val := strip_interp_start_quotes(lit)
-	return p.string_interp(val, q, start_pos)
+	id := p.string_interp(val, q, start_pos)
+	if lit.len > 2 && lit.starts_with('js') {
+		p.a.nodes[int(id)].typ = 'js:${lit[2].ascii_str()}'
+	}
+	return id
 }
 
 // string_interp supports string interp handling for Parser.
@@ -12946,8 +12958,11 @@ fn local_type_scope_part(name string) string {
 fn strip_quotes(s string) string {
 	mut raw := s
 	is_raw := s.len >= 3 && s[0] == `r`
+	is_js := s.len >= 4 && s.starts_with('js')
 	if is_raw {
 		raw = s[1..]
+	} else if is_js {
+		raw = s[2..]
 	}
 	if raw.len >= 2 && ((raw[0] == `'` && raw[raw.len - 1] == `'`)
 		|| (raw[0] == `"` && raw[raw.len - 1] == `"`)) {
@@ -12964,8 +12979,11 @@ fn strip_quotes(s string) string {
 fn strip_interp_start_quotes(s string) string {
 	mut raw := s
 	is_raw := s.len >= 3 && s[0] == `r`
+	is_js := s.len >= 4 && s.starts_with('js')
 	if is_raw {
 		raw = s[1..]
+	} else if is_js {
+		raw = s[2..]
 	}
 	if raw.len >= 1 && (raw[0] == `'` || raw[0] == `"`) {
 		raw = raw[1..]

@@ -298,6 +298,22 @@ fn test_fmt_preserves_typed_map_entries_and_typeof_array_init_with_v3() {
 	assert formatted_twice == formatted
 }
 
+fn test_fmt_preserves_js_string_prefixes_with_v3() {
+	source_path := os.join_path(vfmt_test_tdir, 'js_string_prefixes.js.v')
+	source := "fn f() {\n\ts := js'hello V'\n\tassert s == js'hello V'\n}\n"
+	os.write_file(source_path, source)!
+
+	res := os.execute('${os.quoted_path(vexe)} fmt -w -verbose ${os.quoted_path(source_path)}')
+	formatted := os.read_file(source_path)!
+	assert res.exit_code == 0, res.output
+	assert formatted.contains("s := js'hello V'"), formatted
+	assert formatted.contains("s == js'hello V'"), formatted
+
+	second_res := os.execute('${os.quoted_path(vexe)} fmt -w ${os.quoted_path(source_path)}')
+	assert second_res.exit_code == 0, second_res.output
+	assert os.read_file(source_path)! == formatted
+}
+
 fn test_fmt_preserves_c_string_prefix_with_v3() {
 	source := "fn main(){\n\tx := c' '\n\t_ = x\n}\n"
 	res, formatted := run_vfmt_write('c_string', source, '')

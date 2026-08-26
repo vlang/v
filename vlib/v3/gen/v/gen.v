@@ -618,6 +618,8 @@ fn (mut g Gen) expr(id flat.NodeId) {
 			if n.typ.starts_with('raw:') {
 				quote := if n.typ.ends_with('"') { '"' } else { "'" }
 				g.write('r${quote}${n.value}${quote}')
+			} else if n.typ.starts_with('js:') {
+				g.write('js${quote_string(n.value)}')
 			} else {
 				g.write(quote_string(n.value))
 			}
@@ -1289,6 +1291,9 @@ fn (mut g Gen) string_interp(id flat.NodeId) {
 	}
 	quote := if has_single && !has_double { `"` } else { `'` }
 	quote_str := if quote == `"` { '"' } else { "'" }
+	if n.typ.starts_with('js:') {
+		g.write('js')
+	}
 	g.write(quote_str)
 	for cid in children {
 		c := g.a.node(cid)
