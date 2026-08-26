@@ -484,6 +484,7 @@ fn main() {
 	C.exit(0)
 }
 ')
+	no_main_output := os.join_path(root, 'no_main.c')
 	for invocation in [
 		UnsupportedFastCInvocation{
 			args:     ['-b', 'fastc', '-o', os.join_path(root, 'multiple_sources'), valid_source,
@@ -523,8 +524,7 @@ fn main() {
 			expected: 'fastc parser does not support `-prod`'
 		},
 		UnsupportedFastCInvocation{
-			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o',
-				os.join_path(root, 'no_main.c'), valid_source]
+			args:     ['-silent', '-b', 'fastc', '-d', 'no_main', '-o', no_main_output, valid_source]
 			expected: 'fastc parser does not support `-d no_main`'
 		},
 		UnsupportedFastCInvocation{
