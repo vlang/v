@@ -1690,7 +1690,7 @@ fn c_error_location_for_generated_c(c_output string, generated_c_file string) ?C
 }
 
 fn c_error_generated_c_needles(generated_c_file string) []string {
-	mut needles := []string{}
+	mut needles := [cgen.generated_c_debug_path]
 	for candidate in [generated_c_file, os.real_path(generated_c_file),
 		os.file_name(generated_c_file)] {
 		if candidate != '' && candidate !in needles {
