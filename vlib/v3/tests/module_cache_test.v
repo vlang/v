@@ -1658,6 +1658,49 @@ fn main() {
 	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
 }
 
+fn test_conventional_native_implementation_macro_is_restored_in_owner() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_conventional_impl_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'owner/native.h', '#ifdef SOKOL_TEST_IMPL
+int v3_conventional_impl_value(void) { return 42; }
+#endif
+')
+	write_module_cache_file(root, 'owner/owner.v', 'module owner
+
+#define SOKOL_TEST_IMPL
+#insert "@DIR/native.h"
+
+fn C.v3_conventional_impl_value() int
+
+pub fn value() int {
+	return C.v3_conventional_impl_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import owner
+
+fn main() {
+	println(owner.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_unconditional_native_definition_disables_module_cache_split() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(),

@@ -2861,6 +2861,15 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 			arg_type := t.node_type(arg_id)
 			if arg_type == param_type {
 				value := t.transform_expr_preserving_pointer_value(arg_id)
+				if t.has_smartcast(arg_node.value) {
+					value_node := t.a.nodes[int(value)]
+					if value_node.kind == .prefix && value_node.op == .mul
+						&& value_node.children_count > 0 {
+						pointer := t.a.child(&value_node, 0)
+						t.set_node_typ(int(pointer), param_type)
+						return pointer
+					}
+				}
 				t.set_node_typ(int(value), param_type)
 				return value
 			}

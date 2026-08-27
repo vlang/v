@@ -410,3 +410,130 @@ pub fn owned_score() int {
 	assert !c_code.contains('C__stdout'), c_code
 	assert !c_code.contains('\nFILE* stdout'), c_code
 }
+
+fn test_map_for_bindings_shadowing_global_use_local_c_name() {
+	c_code := gen_c_for_c_global_source('map_for_binding_shadows_global', 'module main
+
+__global id int
+
+fn sum_entries(values map[int]int) int {
+	mut total := 0
+	for id, value in values {
+		total += id + value
+	}
+	return total
+}
+
+fn main() {
+	_ := sum_entries({1: 2})
+}
+')
+	assert c_code.contains('int id__local = *(int*)'), c_code
+	assert c_code.contains('total += id__local + value;'), c_code
+	assert !c_code.contains('int id = *(int*)'), c_code
+}
+
+fn test_mut_pointer_cast_uses_c_typedef_safe_parameter_name() {
+	c_code := gen_c_for_c_global_source('mut_pointer_cast_shadows_c_type', 'module main
+
+@[typedef]
+struct C.buf {
+	value int
+}
+
+fn cast_buffer(mut buf &u8) &u8 {
+	return &u8(buf)
+}
+
+fn main() {
+	mut value := u8(1)
+	mut ptr := &value
+	_ := cast_buffer(mut ptr)
+}
+')
+	assert c_code.contains('u8* cast_buffer(u8** buf__local)'), c_code
+	assert c_code.contains('return (u8*)(*buf__local);'), c_code
+	assert !c_code.contains('return (u8*)(*buf);'), c_code
+}
+
+fn test_builtin_copy_uses_c_typedef_safe_parameter_name() {
+	c_code := gen_c_for_c_global_source('builtin_copy_shadows_c_type', 'module main
+
+@[typedef]
+struct C.buf {
+	value int
+}
+
+fn copy(mut dst []u8, src []u8) int {
+	return 0
+}
+
+fn copy_buffer(mut buf []u8) int {
+	return copy(mut buf, [u8(1)])
+}
+
+fn main() {
+	mut values := [u8(0)]
+	_ := copy_buffer(mut values)
+}
+')
+	assert c_code.contains('int copy_buffer(Array* buf__local)'), c_code
+	assert c_code.contains('return copy(buf__local, '), c_code
+	assert !c_code.contains('return copy(buf, '), c_code
+}
+
+fn test_sizeof_uses_c_typedef_safe_local_name() {
+	c_code := gen_c_for_c_global_source('sizeof_local_shadows_c_type', 'module main
+
+@[typedef]
+struct C.buf {
+	value int
+}
+
+fn buffer_size() int {
+	mut buf := [1024]u8{}
+	return int(sizeof(buf))
+}
+
+fn main() {
+	_ := buffer_size()
+}
+')
+	assert c_code.contains('u8 buf__local[1024]'), c_code
+	assert c_code.contains('return (int)(sizeof(buf__local));'), c_code
+	assert !c_code.contains('return (int)(sizeof(buf));'), c_code
+}
+
+fn test_mut_interface_smartcast_loop_arg_forwards_object_pointer() {
+	c_code := gen_c_for_c_global_source('mut_interface_smartcast_loop_arg', 'module main
+
+interface Widget {
+	id int
+}
+
+struct Stack {
+mut:
+	id       int
+	children []Widget
+}
+
+fn increment(mut stack Stack) {
+	stack.id++
+}
+
+fn visit(mut stack Stack) {
+	for mut child in stack.children {
+		if mut child is Stack {
+			increment(mut child)
+		}
+	}
+}
+
+fn main() {
+	mut stack := Stack{}
+	visit(mut stack)
+}
+')
+	assert c_code.contains('increment((main__Stack*)(child->_object))'), c_code
+	assert !c_code.contains('increment(*(main__Stack*)(child->_object))'), c_code
+}

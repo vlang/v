@@ -14392,7 +14392,7 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	// particular, `mut p &T` is represented as `T**`; forwarding `mut p` to
 	// another such parameter must pass that slot directly, not read `*p` first.
 	if arg_node.is_mut && arg_node.kind == .ident && g.current_param_is_mut(arg_node.value) {
-		g.write(g.cname(arg_node.value))
+		g.write(g.local_decl_cname(arg_node.value))
 		return true
 	}
 	// Transform lowers a forwarded `mut p` argument to the lvalue `*p`. When p
@@ -14404,7 +14404,7 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 			&& !g.current_param_is_mut_pointer(child.value) {
 			param_type := g.current_param_type(child.value) or { types.Type(types.void_) }
 			if g.tc.c_type(param_type) == g.tc.c_type(expected) {
-				g.write(g.cname(child.value))
+				g.write(g.local_decl_cname(child.value))
 				return true
 			}
 		}

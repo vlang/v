@@ -124,6 +124,25 @@ fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
 	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
 }
 
+fn test_collect_cache_native_c_symbols_ignores_comments_and_literals() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.structs['C.HEADER_ENUM_VALUE'] = []types.StructField{}
+	tc.structs['C.CommentOnly'] = []types.StructField{}
+	tc.structs['C.StringOnly'] = []types.StructField{}
+	tc.structs['C.UnrelatedOpaque'] = []types.StructField{}
+
+	g.collect_cache_native_c_symbols('// CommentOnly\n"StringOnly"; HEADER_ENUM_VALUE,')
+
+	assert g.cache_native_c_symbols['HEADER_ENUM_VALUE']
+	assert !g.cache_native_c_symbols['CommentOnly']
+	assert !g.cache_native_c_symbols['StringOnly']
+	assert !g.cache_native_c_symbols['UnrelatedOpaque']
+}
+
 fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -73,6 +73,35 @@ fn test_cache_native_public_include_strips_conventional_implementation_macros() 
 	assert (include.last_index('#define SOKOL_FONTSTASH_IMPL') or { -1 }) > include_pos
 }
 
+fn test_cached_native_owner_restores_stripped_implementation_context() {
+	path := os.real_path('/tmp/sokol_gl.h')
+	include_line := '#include "${c_include_path(path)}"'
+	state := &V3ModuleCacheState{
+		module_sources:        {
+			'sgl': ['/tmp/sgl.v']
+		}
+		module_native_roots:   {
+			'sgl': [path]
+		}
+		native_root_contexts:  {
+			path: ['#define SOKOL_IMPL']
+		}
+		native_root_owners:    {
+			path: 'sgl'
+		}
+		native_source_modules: {
+			'sgl': true
+		}
+	}
+	native := cache_source_with_cached_native_inputs('/* v3 cache omitted SOKOL_IMPL */\n${include_line}\n',
+		state, ['sgl'])
+	define_pos := native.source.index('#define SOKOL_IMPL') or { -1 }
+	include_pos := native.source.index(include_line) or { -1 }
+	assert native.has_native
+	assert define_pos >= 0
+	assert include_pos > define_pos
+}
+
 fn test_cache_native_public_include_detects_external_function_implementation_macro() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_external_implementation_macro_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -82,6 +111,9 @@ fn test_cache_native_public_include_detects_external_function_implementation_mac
 	}
 	header := os.join_path(dir, 'native.h')
 	os.write_file(header, 'typedef struct { int value; } V3LibType;
+/*
+#define LIB_IMPL
+*/
 #ifdef LIB_IMPL
 int v3_lib_value(void) { return 42; }
 #endif
@@ -144,6 +176,31 @@ static int v3_private_helper(void) { return 7; }
 	// cannot collide; splitting stays safe.
 	assert !cache_native_public_include_replays_external_definition(real_header, []string{},
 		map[string]bool{}, {
+		real_header: true
+	}, []string{}, 'cc', pref.host_target())
+}
+
+fn test_cache_native_public_include_falls_back_when_isolated_preprocessing_fails() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_public_replay_preprocess_fallback_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(dir, 'native.h')
+	os.write_file(header, '#ifndef V3_DEPENDENCY_READY
+#error "include dependency declarations first"
+#endif
+#ifdef LIB_IMPL
+int v3_gated_helper(void) { return 7; }
+#endif
+')!
+	real_header := os.real_path(header)
+	assert !cache_native_public_include_replays_external_definition(real_header, [
+		'#define LIB_IMPL',
+	], {
+		'LIB_IMPL': true
+	}, {
 		real_header: true
 	}, []string{}, 'cc', pref.host_target())
 }
@@ -234,6 +291,15 @@ fn test_cache_c_source_definitely_active_code_filters_conditional_definitions() 
 	assert unknown.contains('always_active')
 	assert !unknown.contains('bundled_api')
 	assert !unknown.contains('library_api')
+}
+
+fn test_cache_c_source_definitely_active_code_ignores_directives_in_comments() {
+	source := '/*\n#define FEATURE\n*/\n#ifdef FEATURE\nint commented_api(void) { return 1; }\n#endif\n'
+	mut macros := cache_local_c_flag_macros(['-UFEATURE'])
+	active, complete := cache_c_source_definitely_active_code_with_status(source, mut macros)
+	assert complete
+	assert !active.contains('commented_api')
+	assert !macros['FEATURE'].is_defined
 }
 
 fn test_cache_c_source_definitely_active_code_uses_compiler_predefined_macros() {

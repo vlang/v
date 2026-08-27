@@ -2509,25 +2509,25 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		prefs.c99, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags,
 		prefs.ccompiler, prefs.target, native_inputs_language)
-	external_inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a,
+	mut external_inputs, mut native_source_roots, mut native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a,
 		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
 		module_cache_source_path_set(user_files), compiler_macros,
 		compiler_macro_environment_complete)
-	state.module_external_inputs = external_inputs.clone()
-	state.module_native_roots = native_source_roots.clone()
-	state.native_root_contexts = native_root_contexts.clone()
+	state.module_external_inputs = external_inputs.move()
+	state.module_native_roots = native_source_roots.move()
+	state.native_root_contexts = native_root_contexts.move()
 	state.external_input_signatures = map[string]string{}
-	state.external_input_digests = external_input_digests.clone()
+	state.external_input_digests = external_input_digests.move()
 	cache_dir := os.abs_path(state.manager.dir)
 	real_cache_dir := os.real_path(state.manager.dir)
 	state.external_resolution_dirs = resolution_dirs.filter(!v3_path_is_within(it, cache_dir)
 		&& !v3_path_is_within(it, real_cache_dir))
 	state.external_missing_paths = missing_resolution_paths.filter(
 		!v3_path_is_within(it, cache_dir) && !v3_path_is_within(it, real_cache_dir))
-	native_source_modules, can_scope_static_inputs := cache_external_input_owner_modules(state, a,
-		unscoped_inputs, static_storage_inputs, user_files, user_c_flags, prefs.ccompiler,
+	mut native_source_modules, can_scope_static_inputs := cache_external_input_owner_modules(state,
+		a, unscoped_inputs, static_storage_inputs, user_files, user_c_flags, prefs.ccompiler,
 		prefs.target)
-	state.native_source_modules = native_source_modules.clone()
+	state.native_source_modules = native_source_modules.move()
 	state.native_root_owners = map[string]string{}
 	for raw_module_name, roots in state.module_native_roots {
 		module_name := if raw_module_name == 'main' {
@@ -2572,15 +2572,15 @@ fn prepare_v3_checker_native_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		prefs.c99, prefs.target)
 	compiler_macros, compiler_macro_environment_complete := cache_c_compiler_predefined_macros(user_c_flags,
 		prefs.ccompiler, prefs.target, native_inputs_language)
-	external_inputs, native_source_roots, native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a,
+	mut external_inputs, mut native_source_roots, mut native_root_contexts, _, _, resolution_dirs, missing_resolution_paths, mut external_input_digests, has_untracked_c_include := cgen.cache_external_input_snapshot_with_resolved_flags(a,
 		prefs.vroot, cache_input_modules, user_c_flags, prefs.target,
 		module_cache_source_path_set(user_files), compiler_macros,
 		compiler_macro_environment_complete)
-	state.module_external_inputs = external_inputs.clone()
-	state.module_native_roots = native_source_roots.clone()
-	state.native_root_contexts = native_root_contexts.clone()
+	state.module_external_inputs = external_inputs.move()
+	state.module_native_roots = native_source_roots.move()
+	state.native_root_contexts = native_root_contexts.move()
 	state.external_input_signatures = map[string]string{}
-	state.external_input_digests = external_input_digests.clone()
+	state.external_input_digests = external_input_digests.move()
 	cache_dir := os.abs_path(state.manager.dir)
 	real_cache_dir := os.real_path(state.manager.dir)
 	state.external_resolution_dirs = resolution_dirs.filter(!v3_path_is_within(it, cache_dir)
@@ -2859,10 +2859,15 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 					[]string{}
 				}, c_flags, ccompiler, target) or { continue }
 				functions, _ := modulecache.c_source_function_identifiers_with_status(preprocessed)
+				mut root_has_recovered_functions := false
 				for name, present in functions {
 					if present && file_scope_identifiers[name] {
 						recovered_functions[name] = true
+						root_has_recovered_functions = true
 					}
+				}
+				if root_has_recovered_functions {
+					roots_with_function_declarations[real_root] = true
 				}
 			}
 			if recovered_functions.len > 0 {
@@ -3031,6 +3036,10 @@ fn cache_native_public_include(path string, context []string, implementation_mac
 			continue
 		}
 		if directive != 'define' {
+			// Preceding headers are part of the exact macro context for this root.
+			// Replaying the include preserves its guarded mutations without flattening
+			// thousands of transitive definitions into unconditional directives.
+			out.writeln(line)
 			continue
 		}
 		name := cache_local_c_define_name(arg)
@@ -3084,14 +3093,28 @@ fn cache_native_public_include_replays_external_definition(path string, context 
 		}
 		replay_context << line
 	}
-	preprocessed := cache_preprocessed_native_input(path, replay_context, c_flags, ccompiler,
-		target) or { return true }
 	mut replay_macros := cache_local_c_compiler_macros(c_flags, ccompiler, target)
 	cache_apply_native_root_context(replay_context, mut replay_macros)
 	mut active_paths := map[string]bool{}
 	active_source, active_complete := cache_c_source_definitely_active_code_for_path_with_status(path,
 		allowed_paths, mut active_paths, mut replay_macros, false)
-	if !active_complete {
+	// Prefer compiler-expanded storage-class macros. Some public native headers
+	// deliberately require dependency declarations to have been included first,
+	// so an isolated preprocessing probe can fail even though the generated cache
+	// unit has that dependency prefix. In that case the definitely-active raw scan
+	// still provides a conservative linkage classification; incomplete raw syntax
+	// continues to fail closed below.
+	mut linkage_source := active_source
+	mut preprocessed_complete_context := false
+	if preprocessed := cache_preprocessed_native_input(path, replay_context, c_flags, ccompiler,
+		target)
+	{
+		linkage_source = preprocessed
+		preprocessed_complete_context = true
+	} else if !active_complete {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 module cache unresolved public native replay guard: path=${path}')
+		}
 		return true
 	}
 	// Include identifiers from active project headers reached transitively by the
@@ -3100,14 +3123,27 @@ fn cache_native_public_include_replays_external_definition(path string, context 
 	// replay it into every cached dependent.
 	file_scope := c_source_file_scope_identifiers(active_source)
 	all_functions, functions_complete :=
-		modulecache.c_source_function_identifiers_with_status(preprocessed)
+		modulecache.c_source_function_identifiers_with_status(linkage_source)
 	static_functions, static_complete :=
-		modulecache.c_source_static_function_identifiers_with_status(preprocessed)
+		modulecache.c_source_static_function_identifiers_with_status(linkage_source)
 	if !functions_complete || !static_complete {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 module cache incomplete public native replay scan: path=${path} functions=${functions_complete} static=${static_complete}')
+		}
 		return true
 	}
 	for name, present in all_functions {
-		if present && !static_functions[name] && file_scope[name] {
+		// An exact compiler-preprocessed source is also the conservative fallback when
+		// the lightweight guard evaluator is incomplete. In that case do not filter
+		// definitions by its partial file-scope view: any surviving external definition,
+		// including one reached through an unresolved project-header branch, must disable
+		// replay. Compiler/system inline helpers with internal linkage remain excluded by
+		// the expanded static-function scan above.
+		if present && !static_functions[name]
+			&& (file_scope[name] || (preprocessed_complete_context && !active_complete)) {
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 module cache replayed external native definition: path=${path} identifier=${name}')
+			}
 			return true
 		}
 	}
@@ -3212,8 +3248,11 @@ fn cache_native_type_declarations_for_path_rec(path string, allowed_paths map[st
 	}
 	mut out := strings.new_builder(header.len)
 	mut conditionals := []V3CacheLocalCConditional{}
+	mut in_block_comment := false
 	for line in header.split_into_lines() {
-		directive, arg := cache_local_c_directive(line)
+		directive, arg, next_block_comment := cache_local_c_directive_outside_comments(line,
+			in_block_comment)
+		in_block_comment = next_block_comment
 		if directive in ['if', 'ifdef', 'ifndef'] {
 			parent_inactive := conditionals.any(it.inactive)
 			parent_ambiguous := conditionals.any(it.ambiguous)
@@ -3387,8 +3426,11 @@ fn cache_local_c_define_name(arg string) string {
 }
 
 fn cache_seed_locally_defined_c_macros(source string, mut macros map[string]V3CacheLocalCMacro) {
+	mut in_block_comment := false
 	for line in source.split_into_lines() {
-		directive, arg := cache_local_c_directive(line)
+		directive, arg, next_block_comment := cache_local_c_directive_outside_comments(line,
+			in_block_comment)
+		in_block_comment = next_block_comment
 		if directive != 'define' {
 			continue
 		}
@@ -4037,6 +4079,65 @@ fn cache_local_c_directive(line string) (string, string) {
 	return rest[..end], rest[end..].trim_space()
 }
 
+fn cache_local_c_directive_outside_comments(line string, starts_in_block_comment bool) (string, string, bool) {
+	mut directive_at := -1
+	mut at_line_start := true
+	mut in_block_comment := starts_in_block_comment
+	mut i := 0
+	for i < line.len {
+		if in_block_comment {
+			for i + 1 < line.len && (line[i] != `*` || line[i + 1] != `/`) {
+				i++
+			}
+			if i + 1 >= line.len {
+				return '', '', true
+			}
+			in_block_comment = false
+			i += 2
+			continue
+		}
+		if i + 1 < line.len && line[i] == `/` && line[i + 1] == `/` {
+			break
+		}
+		if i + 1 < line.len && line[i] == `/` && line[i + 1] == `*` {
+			in_block_comment = true
+			i += 2
+			continue
+		}
+		c := line[i]
+		if c in [`'`, `"`] {
+			at_line_start = false
+			quote := c
+			i++
+			for i < line.len {
+				if line[i] == `\\` && i + 1 < line.len {
+					i += 2
+					continue
+				}
+				i++
+				if line[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
+		if at_line_start && c.is_space() {
+			i++
+			continue
+		}
+		if at_line_start && c == `#` {
+			directive_at = i
+		}
+		at_line_start = false
+		i++
+	}
+	if directive_at < 0 {
+		return '', '', in_block_comment
+	}
+	directive, arg := cache_local_c_directive(line[directive_at..])
+	return directive, arg, in_block_comment
+}
+
 // V3CacheActiveCSourceScan retains a possible-code view after the first unresolved guard,
 // so native declaration discovery can detect definitions omitted from the active view.
 struct V3CacheActiveCSourceScan {
@@ -4108,8 +4209,11 @@ fn cache_c_source_definitely_active_code_rec(source string, source_path string, 
 	mut possible := strings.new_builder(256)
 	mut has_ambiguity := false
 	mut conditionals := []V3CacheLocalCConditional{}
+	mut in_block_comment := false
 	for line in source.split_into_lines() {
-		directive, arg := cache_local_c_directive(line)
+		directive, arg, next_block_comment := cache_local_c_directive_outside_comments(line,
+			in_block_comment)
+		in_block_comment = next_block_comment
 		if directive in ['if', 'ifdef', 'ifndef'] {
 			parent_inactive := conditionals.any(it.inactive)
 			parent_ambiguous := conditionals.any(it.ambiguous)
@@ -11595,16 +11699,20 @@ fn cache_source_with_cached_native_inputs(source string, state &V3ModuleCacheSta
 	}
 	mut found := map[string]bool{}
 	mut out := strings.new_builder(source.len + selected_include_lines.len * 64)
+	mut pending_lines := []string{}
 	for line in source.split_into_lines() {
 		clean := line.trim_space()
+		if clean !in all_include_lines {
+			pending_lines << line
+			continue
+		}
+		is_selected := selected_include_lines[clean]
+		cache_write_native_declaration_segment(pending_lines, is_selected, mut out)
+		pending_lines.clear()
 		if selected_include_lines[clean] {
 			// The compiler-only macro suppresses fallback declarations, but must not
 			// leak into native source that did not see it in the uncached unit.
 			out.writeln('#undef V3CACHE_PROGRAM_UNIT')
-			// This occurrence is still in its original generated directive sequence,
-			// which already established the exact macro state at the include site.
-			// Replaying its saved context here can undo mutations made by an earlier
-			// header (for example, redefining a macro that header just undefined).
 			out.writeln(line)
 			out.writeln('#define V3CACHE_PROGRAM_UNIT 1')
 			found[clean] = true
@@ -11613,10 +11721,9 @@ fn cache_source_with_cached_native_inputs(source string, state &V3ModuleCacheSta
 			if declarations := state.native_type_declarations[path] {
 				out.writeln(declarations)
 			}
-		} else {
-			out.writeln(line)
 		}
 	}
+	cache_write_native_declaration_segment(pending_lines, false, mut out)
 	mut remaining := strings.new_builder(selected_order.len * 96)
 	for include_line in selected_order {
 		if !found[include_line] {
@@ -11631,6 +11738,21 @@ fn cache_source_with_cached_native_inputs(source string, state &V3ModuleCacheSta
 		source:             out.str()
 		remaining_includes: remaining.str()
 		has_native:         true
+	}
+}
+
+fn cache_write_native_declaration_segment(lines []string, restore_implementation_macros bool, mut out strings.Builder) {
+	marker := '/* v3 cache omitted '
+	for line in lines {
+		clean := line.trim_space()
+		if restore_implementation_macros && clean.starts_with(marker) && clean.ends_with(' */') {
+			name := clean[marker.len..clean.len - 3].trim_space()
+			if cache_native_implementation_macro(name) {
+				out.writeln('#define ${name}')
+				continue
+			}
+		}
+		out.writeln(line)
 	}
 }
 
