@@ -28,7 +28,7 @@ fn main() {
 		'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
-	repeat_count, mut args := extract_repeat_count(args_[1..].filter(it != 'self'))
+	repeat_count, mut args := extract_repeat_count(args_[1..])
 	fastc_self_build := uses_fastc_backend(args)
 	if fastc_self_build && '-prod' in args {
 		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
@@ -148,6 +148,7 @@ fn extract_repeat_count(args []string) (int, []string) {
 	mut repeat_count := 1
 	mut filtered := []string{cap: args.len}
 	mut should_skip_repeat_check := false
+	mut removed_self_command := false
 	for arg in args {
 		if should_skip_repeat_check {
 			filtered << arg
@@ -157,6 +158,10 @@ fn extract_repeat_count(args []string) (int, []string) {
 		if arg in vself_flags_with_values {
 			filtered << arg
 			should_skip_repeat_check = true
+			continue
+		}
+		if !removed_self_command && arg == 'self' {
+			removed_self_command = true
 			continue
 		}
 		if repeat_count == 1 {

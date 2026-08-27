@@ -46,8 +46,9 @@ fn test_v_self_accepts_fastc_backend() {
 	}
 	vflags_binary := os.join_path(root, 'v fastc from vflags')
 	vflags_self_build := run_with_vflags(@VEXE, ['self', '-silent', '-o', vflags_binary],
-		'-b fastc')
+		'-d self -b fastc')
 	assert vflags_self_build.exit_code == 0, vflags_self_build.output
+	assert vflags_self_build.output.contains('-d self'), vflags_self_build.output
 	assert vflags_self_build.output.contains('-b fastc'), vflags_self_build.output
 	assert os.is_executable(vflags_binary)
 
