@@ -2,6 +2,7 @@ module main
 
 import os
 import testing
+import v.util.vflags
 
 struct Config {
 	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
@@ -24,6 +25,10 @@ mut:
 const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
 const temporarily_disabled_self_test_vlib_dirs = ['v3']
+
+const v3_only_self_test_files = [
+	'vlib/v/tests/generics/multiple_generic_struct_fields_v3_test.v',
+]
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
@@ -440,6 +445,10 @@ fn main() {
 	for test_dir in temporarily_disabled_self_test_vlib_dirs {
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+	}
+	// V3-only regression sources may intentionally fail to compile with V1.
+	if '-old-compiler' in vflags.join_env_vflags_and_os_args() {
+		tsession.skip_files << v3_only_self_test_files.map(os.join_path(vroot, it))
 	}
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'
