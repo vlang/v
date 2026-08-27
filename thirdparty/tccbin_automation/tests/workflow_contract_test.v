@@ -77,7 +77,7 @@ fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	assert source.count('timeout-minutes: 30') == 1
 	assert source.count('timeout-minutes: 5') == 2
 	assert source.count('persist-credentials: false') == 4
-	assert source.count('uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1') == 2
+	assert source.count('uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1') == 4
 	assert source.count('repository: vlang/vc') == 1
 	assert source.count('ref: ${vc_lock.commit}') == 1
 	assert source.count('path: vc') == 1
@@ -91,7 +91,7 @@ fn test_pr_contract_workflow_always_exposes_both_required_checks() {
 	assert source.count('make local=1') == 1
 	assert !source.contains('make latest_tcc')
 	tested_checkout := '      - name: Checkout the tested revision\n' +
-		'        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n' +
+		'        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n' +
 		'        with:\n' + '          fetch-depth: 0\n' + '          persist-credentials: false\n'
 	assert source.count(tested_checkout) == 1
 	vc_checkout_index := source.index('      - name: Checkout the immutable VC bootstrap snapshot') or {
@@ -233,7 +233,6 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 	upload_pin := '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
 	vc_lock := 'dfc458a13ba8923ebc249e262c331f8169aa728b'
 	cpa_pin := '24ef01df165c76df1ed2b9f9e9212e78dc2fc963'
-	old_checkout_pin := '11bd71901bbe5b1630ceea73d27597364c9af683'
 	mut action_calls := 0
 	for raw_line in source.split_into_lines() {
 		mut line := raw_line.trim_space()
@@ -249,8 +248,7 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 		assert workflow_is_lower_hex_40(parts[1])
 	}
 	assert action_calls == 8
-	assert source.count('uses: actions/checkout@${old_checkout_pin}') == 1
-	assert source.count('uses: actions/checkout@${checkout_pin}') == 4
+	assert source.count('uses: actions/checkout@${checkout_pin}') == 5
 	assert source.count('repository: vlang/vc') == 2
 	assert source.count('ref: ${vc_lock}') == 2
 	assert source.count(r'ref: ${{ github.sha }}') == 2
