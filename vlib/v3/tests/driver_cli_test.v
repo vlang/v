@@ -982,7 +982,7 @@ fn test_linux_pool_limit_stays_out_of_run_environment() {
 		defer {
 			os.rmdir_all(root) or {}
 		}
-		v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc'])
+		v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc', '-parallel-cc'])
 		source := os.join_path(root, 'pool_environment.v')
 		os.write_file(source, "import os
 
@@ -995,10 +995,11 @@ fn main() {
 		mut environment := os.environ()
 		environment.delete('V3_INTERNAL_POOL_SIZE_LIMIT')
 		environment['VJOBS'] = '8'
-		run := run_driver_with_environment(v3_bin, ['-silent', '-nocache', '-no-memory-limit',
-			'run', source], environment)
+		run := run_driver_with_environment(v3_bin, ['-nocache', '-no-memory-limit', '-v', 'run',
+			source], environment)
 		assert run.exit_code == 0, run.output
-		assert run.output == '|\n', run.output
+		assert run.output.split_into_lines().any(it == '|'), run.output
+		assert run.output.contains('persistent worker threads    3 threads'), run.output
 	}
 }
 

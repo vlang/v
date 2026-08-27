@@ -1,3 +1,4 @@
+@[has_globals]
 module workers
 
 import os
@@ -17,9 +18,13 @@ const compiler_worker_stack_size = 64 * 1024 * 1024
 // a mistuned setting cannot hand the recursive phases a too-small stack.
 const min_worker_stack_size = 4 * 1024 * 1024
 
+__global v3_pool_size_limit int
+
 // limit_pool_size caps pools created after this call to at most `size` workers.
 pub fn limit_pool_size(size int) {
-	C.v3_worker_pool_limit_size(size)
+	if size > 0 && (v3_pool_size_limit == 0 || size < v3_pool_size_limit) {
+		v3_pool_size_limit = size
+	}
 }
 
 // worker_stack_size resolves the per-worker stack size, honoring the
@@ -78,8 +83,6 @@ struct C.pthread_t {}
 fn C.pthread_join(thread C.pthread_t, retval voidptr) int
 fn C.v3_pthread_zero() C.pthread_t
 fn C.v3_pthread_create(thread &C.pthread_t, stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr) int
-fn C.v3_worker_pool_limit_size(size int)
-fn C.v3_worker_pool_limited_size(size int) int
 
 // Pool owns a bounded set of persistent compiler workers. Phase payloads stay
 // owned by the submitting thread until run returns.
@@ -132,7 +135,10 @@ fn pool_worker(arg voidptr) voidptr {
 // new creates up to size persistent workers. Failed launches simply reduce
 // the available parallelism; run executes synchronously if none launch.
 pub fn new(size int) &Pool {
-	wanted := C.v3_worker_pool_limited_size(size)
+	mut wanted := if size < 0 { 0 } else { size }
+	if v3_pool_size_limit > 0 && wanted > v3_pool_size_limit {
+		wanted = v3_pool_size_limit
+	}
 	// Compiler phases deliberately oversubscribe the workers with small chunks
 	// so that uneven AST bodies do not leave cores idle. Buffer the whole normal
 	// batch: otherwise Pool.run has to wait for early completions while it is
