@@ -100,6 +100,27 @@ pub struct QuicListenerPollResult {
 pub mut:
 	outgoing []QuicListenerDatagram
 	events   []QuicListenerEvent
+	// touched_conns lists every connection this SPECIFIC poll()/
+	// process_timeouts() call actually drove -- INCLUDING one that
+	// produced zero new QuicEvents. A caller layering its own per-
+	// connection protocol driver on top of this listener (net.http's
+	// h3_server.v: H3Conn.drive_events) cannot derive "which connections
+	// need driving" from `events` alone: a connection can process real
+	// incoming bytes (more STREAM data for a stream whose one-time
+	// peer_stream_opened event already fired) without generating any new
+	// QuicEvent at all, since QUIC's own event model only reports
+	// STATE TRANSITIONS, not "bytes arrived". Deriving the dispatch set
+	// purely from `events` silently drops exactly that case -- found via
+	// Codex review, PR #28164 pullrequestreview-5044139767: a request
+	// whose HEADERS and body land in separate UDP datagrams stalled
+	// forever, because the second datagram's connection never appeared
+	// anywhere in `events` and so was never handed to the H3 layer at
+	// all. Never contains the same connection twice within one call:
+	// poll() drives at most one connection per datagram, and
+	// process_timeouts() invokes each managed connection's own
+	// process_timeouts() at most once per call -- callers needing a set
+	// can rely on no duplicates.
+	touched_conns []&QuicConn
 	// The earliest next_timeout across every currently-managed connection
 	// (none if no connection has an armed timer) -- when to next call
 	// process_timeouts() if nothing else arrives first, the listener-level
@@ -346,11 +367,14 @@ pub fn (mut l QuicListener) process_timeouts(now u64) !QuicListenerPollResult {
 // listener-level result being built: every outgoing datagram is addressed
 // to `peer` (see QuicListener.peers' own doc comment for why that's always
 // the connection's ORIGINALLY recorded address, never a later claimed
-// one), every event is tagged with which connection/peer produced it, and
-// next_timeout is merged as the EARLIEST across every connection seen so
-// far this call (mirroring compute_next_timeout's own earliest-of-several
-// merge inside QuicConn itself).
+// one), every event is tagged with which connection/peer produced it,
+// `c` itself is recorded in touched_conns regardless of whether `r.events`
+// was empty (see that field's own doc comment for why), and next_timeout
+// is merged as the EARLIEST across every connection seen so far this call
+// (mirroring compute_next_timeout's own earliest-of-several merge inside
+// QuicConn itself).
 fn (mut l QuicListener) merge_conn_result(mut result QuicListenerPollResult, c &QuicConn, r PollResult, peer []u8) {
+	result.touched_conns << c
 	for dg in r.outgoing {
 		result.outgoing << QuicListenerDatagram{
 			bytes: dg.bytes
@@ -449,8 +473,34 @@ fn (mut l QuicListener) handle_new_attempt(header QuicLongHeader, datagram []u8,
 		l.pending_by_dcid.delete(bootstrap_key)
 	}
 	if header.token.len > 0 {
+		// retry_token_max_age_ms (and RetryTokenClaims.issued_at_ms/
+		// validate_retry_token_for_attempt's own now_ms/max_age_ms
+		// params) are genuinely MILLISECOND-scale -- unlike every other
+		// `now u64` in this module (nanosecond, raw time.sys_mono_now()),
+		// this subsystem's timestamps are opaque values sealed inside an
+		// encrypted token, only ever compared against each OTHER, never
+		// against any other net.quic deadline -- so there is no reason
+		// they need to share the rest of the module's nanosecond
+		// convention, and every good reason not to: retry_token_max_age_
+		// ms's own sensible default (30000 = 30 real seconds, RFC 9000
+		// §8.1.4's "a short time") only means that in milliseconds.
+		// `now` itself stays nanosecond-scale for every OTHER use in this
+		// function (do_accept, c.poll) -- only this narrow conversion,
+		// right at the boundary into the retry-token subsystem, changes
+		// scale. A prior version of this call site passed raw `now`
+		// straight through, silently assuming whatever scale the ultimate
+		// caller happened to use; while net.http's h3_now_ms bug fed
+		// milliseconds (its own bug, since fixed -- h3_now_ns), that
+		// coincidentally matched and every retry token validated
+		// correctly. Once h3_now_ns started feeding real nanoseconds, the
+		// SAME 30000 threshold, now compared against nanosecond deltas,
+		// made every token appear expired within 30 MICROseconds of
+		// issuance -- found while investigating a stalled
+		// test_h3_server_real_udp_request_response_round_trip after that
+		// unrelated fix (PR #28164, github.com/vlang/v/pull/28164#issuecomment-5440010074).
+		now_ms := now / 1_000_000
 		claims := validate_retry_token_for_attempt(l.params.retry_token_key, header.token, peer,
-			now, l.params.retry_token_max_age_ms) or {
+			now_ms, l.params.retry_token_max_age_ms) or {
 			// RFC 9000 §8.1.2: "In response to processing an Initial
 			// packet containing a token that was provided in a Retry
 			// packet, a server cannot send another Retry packet; it can
@@ -502,13 +552,16 @@ fn (mut l QuicListener) handle_new_attempt(header QuicLongHeader, datagram []u8,
 // would have nothing to actually limit.
 fn (mut l QuicListener) send_retry(header QuicLongHeader, peer []u8, now u64, mut result QuicListenerPollResult) ! {
 	server_scid := derive_retry_scid(l.params.retry_token_key, header.dcid)!
+	// now / 1_000_000 -- see handle_new_attempt's identical conversion and
+	// its own doc comment for why: RetryPacketParams.issued_at_ms is
+	// genuinely millisecond-scale, unlike this function's own `now`.
 	retry_bytes := encode_retry_packet(RetryPacketParams{
 		client_scid:   header.scid
 		server_scid:   server_scid
 		original_dcid: header.dcid
 		token_key:     l.params.retry_token_key
 		client_addr:   peer
-		issued_at_ms:  now
+		issued_at_ms:  now / 1_000_000
 	}) or {
 		// Two distinct ways this can fail, neither worth propagating as
 		// an error for the WHOLE poll() call (some other, unrelated

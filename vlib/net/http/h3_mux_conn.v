@@ -491,12 +491,21 @@ fn (mut c H3MuxConn) driver_loop() {
 
 		mut wait := h3_driver_poll_interval
 		if nt := next_timeout {
-			now_ms := h3_now_ms()
+			now_ns := h3_now_ns()
 			mut remaining := i64(0)
-			if nt > now_ms {
-				remaining = i64(nt - now_ms)
+			if nt > now_ns {
+				remaining = i64(nt - now_ns)
 			}
-			candidate := remaining * time.millisecond
+			// `remaining` is already a nanosecond count (nt/now_ns are both
+			// raw time.sys_mono_now() instants) -- time.Duration IS
+			// nanoseconds (vlib/time/duration.v), so no further scaling.
+			// An earlier version multiplied by time.millisecond here, on
+			// the mistaken assumption that now_ns was millisecond-scale;
+			// that inflated an already-huge nanosecond `remaining` by
+			// another 1e6x, so `candidate < wait` was never true and
+			// next_timeout never actually shortened the poll wait below
+			// h3_driver_poll_interval.
+			candidate := time.Duration(remaining)
 			if candidate < wait {
 				wait = candidate
 			}
@@ -513,14 +522,14 @@ fn (mut c H3MuxConn) driver_loop() {
 			}
 			0
 		}
-		now_ms := h3_now_ms()
+		now_ns := h3_now_ns()
 		result := if n > 0 {
-			c.h3.poll(buf[..n].clone(), now_ms) or {
+			c.h3.poll(buf[..n].clone(), now_ns) or {
 				c.fail_conn('h3: ${err.msg()}')
 				return
 			}
 		} else {
-			c.h3.process_timeouts(now_ms) or {
+			c.h3.process_timeouts(now_ns) or {
 				c.fail_conn('h3: ${err.msg()}')
 				return
 			}

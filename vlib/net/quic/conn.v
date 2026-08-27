@@ -2210,7 +2210,28 @@ fn (mut c QuicConn) build_one_rtt_packet(payload []u8, is_ack_eliciting bool, no
 // specific unacked data -- correct (RFC 9002 explicitly permits this) but
 // not the most bandwidth-efficient choice; a real send/retransmission
 // buffer is a documented follow-up, not a Phase 9a blocker.
+//
+// Every arm is gated on has_amplification_budget()/record_amplification_
+// sent() -- the SAME RFC 9000 §8.1 3x-received budget drain_outgoing's own
+// sends are gated on (a no-op check/record for a client role; see both
+// functions' own doc comments). Missed in an earlier version: a server
+// accepted without Retry (always_retry: false) has an UNVALIDATED address
+// the moment it accepts, exactly like drain_outgoing's own sends at that
+// point -- an unbounded PTO backoff loop (this function's own caller,
+// on_loss_detection_timeout, fires again and again with 2^pto_count
+// spacing whenever anything stays unacked) could keep appending probe
+// datagrams past the 3x-received cap forever, turning a spoofed Initial
+// into a sustained amplification source. If the budget is exhausted, the
+// probe is simply skipped this round -- safe, since on_loss_detection_
+// timeout (this function's only caller) has already advanced pto_count/
+// the backoff timer BEFORE calling this, independent of whether a
+// datagram actually goes out; a future incoming datagram raising the
+// budget lets the next-armed PTO actually send. (Codex review, PR #28164
+// pullrequestreview-5044139767.)
 fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut result PollResult) ! {
+	if !c.has_amplification_budget() {
+		return
+	}
 	ping := encode_varint(frame_type_ping)!
 	match space {
 		.initial {
@@ -2219,6 +2240,7 @@ fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut res
 			}
 			datagram := c.build_initial_packet(ping, true, now)!
 			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
 		}
 		.handshake {
 			if c.handshake_keys_discarded {
@@ -2227,11 +2249,13 @@ fn (mut c QuicConn) send_pto_probe(space QuicPacketNumberSpace, now u64, mut res
 			_ := c.own_handshake_keys() or { return }
 			datagram := c.build_handshake_packet(ping, true, now)!
 			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
 		}
 		.application_data {
 			_ := c.app_write_keys or { return }
 			datagram := c.build_one_rtt_packet(ping, true, now)!
 			result.outgoing << datagram
+			c.record_amplification_sent(datagram.bytes.len)
 		}
 	}
 }

@@ -50,9 +50,11 @@ pub:
 	// validation reject a token replayed against a DIFFERENT original
 	// DCID than the one it was actually issued for.
 	original_dcid []u8
-	// A caller-supplied monotonic timestamp (time.sys_mono_now()-sourced,
-	// matching this module's existing idle_timeout.v convention) recording
-	// when this token was issued.
+	// A caller-supplied MILLISECOND-scale monotonic timestamp recording
+	// when this token was issued -- see RetryPacketParams.issued_at_ms's
+	// own doc comment (retry.v) for why this is deliberately millisecond-
+	// scale rather than this module's usual nanosecond time.sys_mono_now()
+	// convention.
 	issued_at_ms u64
 }
 
@@ -179,14 +181,15 @@ pub fn validate_retry_token(key []u8, token []u8) !RetryTokenClaims {
 // §8.1.4: "Servers SHOULD ensure that tokens sent in Retry packets are only
 // accepted for a short time, as they are returned immediately by clients").
 //
-// `now_ms`/the claims' own `issued_at_ms` are both expected to be
-// time.sys_mono_now()-sourced instants from the SAME continuously-running
-// server process that issued the token (this module's established
-// convention, e.g. idle_timeout.v) -- under that assumption `now_ms` can
-// never legitimately precede `issued_at_ms`. The check below still treats
-// that case as expired rather than underflowing the u64 subtraction, purely
-// as a defensive guard against a caller passing an inconsistent `now_ms`,
-// not because it's an expected code path.
+// `now_ms`/the claims' own `issued_at_ms` are both MILLISECOND-scale
+// monotonic instants from the SAME continuously-running server process
+// that issued the token (deliberately NOT this module's usual nanosecond
+// time.sys_mono_now() convention -- see issued_at_ms's own doc comment
+// above for why) -- under that assumption `now_ms` can never legitimately
+// precede `issued_at_ms`. The check below still treats that case as
+// expired rather than underflowing the u64 subtraction, purely as a
+// defensive guard against a caller passing an inconsistent `now_ms`, not
+// because it's an expected code path.
 //
 // Single-use / replay-prevention beyond this short expiry window is NOT
 // implemented -- RFC 9000 §8.1.4's "MUST ensure that replay of tokens is

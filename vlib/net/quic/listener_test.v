@@ -559,3 +559,68 @@ fn test_listener_direct_accept_enforces_anti_amplification_limit() {
 	}
 	assert outgoing_total <= 3 * incoming_len
 }
+
+// test_pto_probe_respects_anti_amplification_limit is the regression test
+// for a real bug: send_pto_probe (conn.v) appended a PING datagram for the
+// .initial/.handshake spaces unconditionally, with no has_amplification_
+// budget()/record_amplification_sent() gating at all -- unlike every other
+// send in drain_outgoing, which IS gated. A server accepted without Retry
+// (always_retry: false, exactly this test's own setup) has an unvalidated
+// address the moment it accepts; on_loss_detection_timeout keeps firing a
+// fresh PTO (2^pto_count backoff) for as long as anything stays unacked,
+// and pre-fix each firing would append another probe past the RFC 9000
+// §8.1 3x-received cap -- an unbounded amplification source triggered by
+// nothing but a spoofed Initial and silence. Deterministically drains the
+// accepted connection's OWN remaining budget to exactly zero (module-
+// private field, reachable since this file is `module quic` -- avoids
+// depending on a specific certificate size coincidentally leaving zero
+// headroom after one poll(), which the coarse has_amplification_budget()
+// check -- "is there ANY budget at all", same imprecision drain_outgoing's
+// own doc comment already accepts elsewhere -- would otherwise still
+// legitimately let a small enough PING through), then drives
+// process_timeouts() far enough past accept to guarantee a PTO has fired,
+// and asserts NOTHING new went out. Pre-fix, this would see a PING-only
+// Initial/Handshake datagram from send_pto_probe despite zero budget.
+// (Codex review, PR #28164 pullrequestreview-5044139767.)
+fn test_pto_probe_respects_anti_amplification_limit() {
+	mut signing_key := ecdsa.new_key_from_seed(listener_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+	params := QuicListenerParams{
+		...listener_test_params(signing_key)
+		always_retry: false
+	}
+
+	dial_params := DialParams{
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: listener_test_transport_parameters()
+	}
+	mut client, client_dg := dial(dial_params, 0)!
+	mut client_hs := client.client_handshake()
+	defer {
+		client_hs.free()
+	}
+
+	mut listener := new_quic_listener(params)!
+	peer := 'pto-amplification-peer'.bytes()
+
+	accept_result := listener.poll(client_dg.bytes, peer, 0)!
+	assert accept_result.touched_conns.len == 1
+	mut c := accept_result.touched_conns[0]
+	remaining := c.amplification.available_to_send()
+	if remaining > 0 {
+		c.amplification.note_sent_unconditional(remaining)
+	}
+	assert c.amplification.available_to_send() == 0
+
+	// 10 real seconds (nanosecond-scale `now`, this module's own
+	// convention) is far past any first-PTO deadline for a connection
+	// still on its initial RTT estimate -- guarantees on_loss_detection_
+	// timeout has fired at least once by the time process_timeouts runs.
+	far_future := u64(10) * 1_000_000_000
+	timeout_result := listener.process_timeouts(far_future)!
+	assert timeout_result.outgoing.len == 0
+}

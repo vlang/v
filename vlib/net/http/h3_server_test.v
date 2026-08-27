@@ -134,7 +134,7 @@ fn test_h3_server_real_udp_request_response_round_trip() {
 	}
 	udp.set_read_timeout(500 * time.millisecond)
 
-	now0 := h3_now_ms()
+	now0 := h3_now_ns()
 	mut qc, first_dg := quic.dial(quic.DialParams{
 		server_name:          'localhost'
 		ca_bundle_pem:        h3_server_test_cert_pem
@@ -170,7 +170,7 @@ fn test_h3_server_real_udp_request_response_round_trip() {
 		if read_failed {
 			break
 		}
-		now := h3_now_ms()
+		now := h3_now_ns()
 		result := if n > 0 {
 			h3.poll(buf[..n].clone(), now)!
 		} else {

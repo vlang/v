@@ -138,12 +138,21 @@ pub:
 	// the exact byte representation as long as it's used consistently
 	// between issuance and validation.
 	client_addr []u8
-	// A caller-supplied monotonic timestamp (matching this module's
-	// existing time.sys_mono_now()-sourced convention, e.g.
-	// idle_timeout.v's `now u64` parameters) recording when this token was
-	// issued, for the short-expiry check RFC 9000 §8.1.4 recommends
-	// ("SHOULD ensure that tokens sent in Retry packets are only accepted
-	// for a short time").
+	// A caller-supplied MILLISECOND-scale monotonic timestamp recording
+	// when this token was issued, for the short-expiry check RFC 9000
+	// §8.1.4 recommends ("SHOULD ensure that tokens sent in Retry packets
+	// are only accepted for a short time"). Deliberately NOT this
+	// module's usual nanosecond time.sys_mono_now() convention (idle_
+	// timeout.v's `now u64` parameters, etc.): this value is only ever
+	// compared against retry_token_max_age_ms and its own later re-
+	// validation, both equally millisecond-scale, never against any
+	// other net.quic deadline -- so there is no correctness reason to
+	// match the rest of the module, and every reason not to invite a
+	// silent scale mismatch at the call site (listener.v's
+	// handle_new_attempt/send_retry convert their own nanosecond `now`
+	// down via `now / 1_000_000` right at this boundary; see their own
+	// doc comments for the real bug this caused when an earlier version
+	// of this comment claimed nanosecond-consistency instead).
 	issued_at_ms u64
 }
 

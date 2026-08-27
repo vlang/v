@@ -33,14 +33,26 @@ const h3_default_own_qpack_blocked_streams = u64(100)
 // smaller, bounded by path MTU), so a read is never truncated.
 const h3_datagram_buf_size = 65535
 
-// h3_now_ms returns the current time as milliseconds on a monotonic
-// clock -- the unit and clock domain every quic.QuicConn/quic.H3Conn `now
-// u64` parameter expects (idle-timeout and loss-detection arithmetic is
-// relative, not wall-clock; see quic.dial's own connection_start field).
+// h3_now_ns returns the current time as a raw time.sys_mono_now()
+// nanosecond instant -- the unit and clock domain every
+// quic.QuicConn/quic.H3Conn `now u64` parameter expects (idle-timeout and
+// loss-detection arithmetic is relative, not wall-clock; see quic.dial's
+// own connection_start field, and idle_timeout.v/loss_detection.v/conn.v's
+// own doc comments, which all state this convention explicitly).
 // Deliberately never wall-clock based: a wall-clock step (NTP correction,
 // DST, manual clock change) must never corrupt that arithmetic.
-fn h3_now_ms() u64 {
-	return time.sys_mono_now() / 1_000_000
+//
+// Named `_ns`, not `_ms` -- an earlier version of this function divided by
+// 1_000_000 to return milliseconds, silently mismatched against every
+// quic-internal deadline it was compared against (those are nanosecond
+// instants, never scaled down). That made elapsed-time arithmetic
+// undercount by ~1e6x, so e.g. a 30s idle timeout would not actually fire
+// for roughly 347 days. Reported by a maintainer-relayed "Local AI check"
+// on PR #28164 (github.com/vlang/v/pull/28164#issuecomment-5440010074);
+// see test_h3_now_ns_returns_a_nanosecond_scale_instant_not_milliseconds
+// (h3_udp_dial_test.v) for the regression test.
+fn h3_now_ns() u64 {
+	return time.sys_mono_now()
 }
 
 // h3_default_own_settings builds this client's own outgoing SETTINGS
@@ -112,7 +124,7 @@ fn h3_dial_udp_and_open(server_name string, host string, port int, ca_bundle_pem
 	mut transport := H3UdpTransport(&H3UdpConnTransport{
 		conn: udp
 	})
-	now := h3_now_ms()
+	now := h3_now_ns()
 	mut qc, first_datagram := quic.dial(quic.DialParams{
 		server_name:          server_name
 		ca_bundle_pem:        ca_bundle_pem

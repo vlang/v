@@ -209,12 +209,15 @@ pub fn (mut s H3Server) serve() ! {
 		}
 		mut wait := h3_driver_poll_interval
 		if nt := next_timeout {
-			now_ms := h3_now_ms()
+			now_ns := h3_now_ns()
 			mut remaining := i64(0)
-			if nt > now_ms {
-				remaining = i64(nt - now_ms)
+			if nt > now_ns {
+				remaining = i64(nt - now_ns)
 			}
-			candidate := remaining * time.millisecond
+			// See h3_mux_conn.v's driver_loop -- identical fix, same
+			// reasoning: `remaining` is already nanosecond-scale, so no
+			// further multiplication by time.millisecond.
+			candidate := time.Duration(remaining)
 			if candidate < wait {
 				wait = candidate
 			}
@@ -230,7 +233,7 @@ pub fn (mut s H3Server) serve() ! {
 			}
 			0, net.Addr{}
 		}
-		now := h3_now_ms()
+		now := h3_now_ns()
 		mut result := quic.QuicListenerPollResult{}
 		if n > 0 {
 			peer_str := addr.str()
@@ -271,6 +274,27 @@ fn (mut s H3Server) absorb_and_dispatch(result quic.QuicListenerPollResult) {
 			conn_by_key[key] = ev.conn
 		}
 		events_by_key[key] << ev.event
+	}
+	// touched_conns also seeds the dispatch set, with an EMPTY events
+	// slice for any connection not already present above -- a connection
+	// this poll()/process_timeouts() call actually drove but which
+	// produced zero new QuicEvents (see QuicListenerPollResult.
+	// touched_conns' own doc comment) still needs h3c.drive_events called
+	// so H3Conn.drain_known_peer_streams can read whatever new bytes
+	// landed in an already-open stream's receive buffer. Without this, a
+	// request whose HEADERS and body arrive in separate UDP datagrams
+	// stalls forever: the second datagram's connection never appears in
+	// `result.events` at all (its stream was already open, so no new
+	// peer_stream_opened fires), so drive_events was never even called
+	// for it -- not with an empty slice, not at all. (Codex review, PR
+	// #28164 pullrequestreview-5044139767.)
+	for c in result.touched_conns {
+		key := c.connection_id()
+		if key !in events_by_key {
+			order << key
+			events_by_key[key] = []quic.QuicEvent{}
+			conn_by_key[key] = c
+		}
 	}
 	for key in order {
 		events := events_by_key[key] or { continue }
@@ -483,16 +507,34 @@ fn h3_build_request(st &H3ServerStream) !Request {
 // side: "RFC 9114 §4.1.1 intentionally mirrors RFC 9113 §8.1.2.2 here, so
 // there is nothing HTTP/3-specific to re-derive"): only the request
 // pseudo-headers, each at most once, all appearing before any regular
-// field, with :method, :path and :scheme present. Every regular field is
-// validated via h2_request_field_error (h2_server.v), reused directly for
-// the identical reason -- RFC 9114 §4.2 mirrors RFC 9113 §8.2.2's
-// forbidden-octet/connection-specific-field/TE rules verbatim.
+// field. Every regular field is validated via h2_request_field_error
+// (h2_server.v), reused directly for the identical reason -- RFC 9114 §4.2
+// mirrors RFC 9113 §8.2.2's forbidden-octet/connection-specific-field/TE
+// rules verbatim.
+//
+// Mandatory-pseudo-header shape depends on :method (RFC 9114 §4.4, "The
+// CONNECT Method" -- mirrors RFC 9113 §8.5 exactly, same precedent as
+// above): an ORDINARY request needs :method/:path/:scheme, but a CONNECT
+// request "MUST omit" :scheme and :path entirely and instead needs
+// :authority ("contains the host and port to connect to") -- "A CONNECT
+// request that does not conform to these restrictions is malformed."
+// Extended CONNECT (RFC 9220's `:protocol`, e.g. WebSockets-over-HTTP/3)
+// is NOT handled here -- a documented v1 scope limit, not an oversight:
+// this function only avoids REJECTING a conforming plain CONNECT's
+// pseudo-header shape, it doesn't implement CONNECT tunneling itself
+// (h3_server.v has no Handler-visible CONNECT semantics yet either).
+// Missed in an earlier version: EVERY request, CONNECT included, was
+// required to carry :path and :scheme, so a conforming CONNECT request
+// was unconditionally classified malformed and answered 400 instead of
+// ever reaching the Handler. (Codex review, PR #28164
+// pullrequestreview-5044139767.)
 fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 	mut seen_regular := false
 	mut has_method := false
 	mut has_path := false
 	mut has_scheme := false
 	mut has_authority := false
+	mut method := ''
 	for f in headers {
 		if f.name.starts_with(':') {
 			if seen_regular {
@@ -510,6 +552,7 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 						return error('empty :method pseudo-header')
 					}
 					has_method = true
+					method = f.value
 				}
 				':path' {
 					if has_path {
@@ -546,6 +589,15 @@ fn h3_validate_request_pseudo(headers []quic.QpackFieldLine) ! {
 				return error(reason)
 			}
 		}
+	}
+	if method == 'CONNECT' {
+		if has_scheme || has_path {
+			return error('CONNECT request must omit :scheme and :path (RFC 9114 §4.4)')
+		}
+		if !has_authority {
+			return error('CONNECT request omits mandatory :authority pseudo-header (RFC 9114 §4.4)')
+		}
+		return
 	}
 	if !has_method || !has_path || !has_scheme {
 		return error('request omits a mandatory pseudo-header (:method/:path/:scheme)')
