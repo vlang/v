@@ -4953,6 +4953,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		return true
 	}
 	if name.starts_with('C.') {
+		if g.cache_native_c_symbols[name[2..]] {
+			return true
+		}
+		if g.inlined_c_typedef_names[name[2..]] {
+			return true
+		}
 		if info := g.struct_decl_infos[name] {
 			// Platform binding files describe types supplied by their C/Objective-C
 			// headers. Emitting a fallback body can redefine Objective-C classes such

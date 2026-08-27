@@ -114,7 +114,9 @@ pub fn run(args []string) {
 		repeat = 1
 	}
 	if bench && repeat > 1 {
-		mut warm := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
+		mut warm := fastc.generate_files_with_source_paths([real_input], prefs) or {
+			fail(err.msg())
+		}
 		warm = warm
 		mut best_us := i64(0)
 		mut sw2 := time.new_stopwatch()

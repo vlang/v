@@ -393,6 +393,7 @@ mut:
 	objective_cpp_source_requests  []ObjectiveCppSourceRequest
 	native_source_wrapper_index    int
 	inlined_c_structs              map[string]bool
+	cache_native_c_symbols         map[string]bool
 	inlined_c_typedef_names        map[string]bool
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
@@ -1089,6 +1090,7 @@ pub fn FlatGen.new() FlatGen {
 		native_source_contexts:          map[string][]NativeSourceContextDirective{}
 		objective_cpp_source_requests:   []ObjectiveCppSourceRequest{}
 		inlined_c_structs:               map[string]bool{}
+		cache_native_c_symbols:          map[string]bool{}
 		inlined_c_fns:                   map[string]bool{}
 		inlined_c_declared_fns:          map[string]bool{}
 		inlined_c_active_macros:         map[string]bool{}
@@ -1429,15 +1431,75 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 	return inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, has_untracked_include
 }
 
+struct CCachePlacedInclude {
+	file_node      int
+	module_node    int
+	directive_node int
+}
+
+// c_cache_external_input_node_order mirrors cgen placement: preincludes are
+// emitted before the translation-unit prefix and postincludes after its bodies,
+// independent of where their V directives occur.
+fn c_cache_external_input_node_order(a &flat.FlatAst) []int {
+	mut preincludes := []CCachePlacedInclude{}
+	mut postincludes := []CCachePlacedInclude{}
+	mut normal := []int{cap: a.nodes.len}
+	mut file_node := -1
+	mut module_node := -1
+	for node_id, node in a.nodes {
+		if node.kind == .file {
+			file_node = node_id
+			module_node = -1
+		} else if node.kind == .module_decl {
+			module_node = node_id
+		}
+		if node.kind == .directive && node.value in ['preinclude', 'postinclude'] {
+			placed := CCachePlacedInclude{
+				file_node:      file_node
+				module_node:    module_node
+				directive_node: node_id
+			}
+			if node.value == 'preinclude' {
+				preincludes << placed
+			} else {
+				postincludes << placed
+			}
+			continue
+		}
+		normal << node_id
+	}
+	mut ordered := []int{cap: normal.len + (preincludes.len + postincludes.len) * 3}
+	for placed in preincludes {
+		if placed.file_node >= 0 {
+			ordered << placed.file_node
+		}
+		if placed.module_node >= 0 {
+			ordered << placed.module_node
+		}
+		ordered << placed.directive_node
+	}
+	ordered << normal
+	for placed in postincludes {
+		if placed.file_node >= 0 {
+			ordered << placed.file_node
+		}
+		if placed.module_node >= 0 {
+			ordered << placed.module_node
+		}
+		ordered << placed.directive_node
+	}
+	return ordered
+}
+
 // cache_external_input_snapshot_with_resolved_flags also returns SHA-256 digests
 // of the exact native buffers used to resolve the dependency tree.
 pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot string, source_modules map[string]bool, c_flags []string, target pref.Target, program_files map[string]bool, compiler_macros map[string]string, compiler_macro_environment_complete bool) (map[string][]string, map[string][]string, map[string][]string, map[string][]string, map[string][]string, []string, []string, map[string]string, bool) {
 	include_dirs := c_flag_include_dirs(c_flags)
-	mut captured_input_texts := map[string]string{}
 	mut captured_input_digests := map[string]string{}
+	mut literal_include_macros := map[string][]string{}
 	flag_inputs, flags_have_untracked_include, mut include_macros, mut dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths := cache_c_flag_input_files_with_status(c_flags,
-		compiler_macros, compiler_macro_environment_complete, mut captured_input_texts, mut
-		captured_input_digests)
+		compiler_macros, compiler_macro_environment_complete, mut captured_input_digests, mut
+		literal_include_macros)
 	mut collect_modules := map[string]bool{}
 	for module_name, enabled in source_modules {
 		if enabled {
@@ -1461,9 +1523,11 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 	mut cur_file := ''
 	mut cur_file_is_program := false
 	mut context_directives := map[string][]string{}
+	mut preinclude_context_directives := []string{}
 	mut conditional_context_mutations := map[string]bool{}
 	mut conditionals := []CCacheConditional{}
-	for node in a.nodes {
+	for node_id in c_cache_external_input_node_order(a) {
+		node := a.nodes[node_id]
 		if node.kind == .file {
 			cur_file = node.value
 			cur_file_is_program = program_files[cur_file] || program_files[os.real_path(cur_file)]
@@ -1519,10 +1583,16 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 			}
 		}
 		if node.kind == .directive && node.value in ['define', 'undef'] {
+			// A mutation in a definitely inactive branch never reaches the C
+			// preprocessor state at a later native root. Recording it would replay
+			// dead configuration unconditionally and unnecessarily disable splitting.
+			if conditionals.any(it.inactive) {
+				continue
+			}
 			directive := c_preprocessor_directive_line(node.value, node.typ)
-			is_ambiguous := conditionals.any(it.inactive || it.ambiguous)
+			is_ambiguous := conditionals.any(it.ambiguous)
 			c_record_include_macro_definition(directive, is_ambiguous, mut include_macros, mut
-				dynamic_include_macros)
+				dynamic_include_macros, compiler_macro_environment_complete)
 			mut module_context := context_directives[owner_module]
 			module_context << directive
 			context_directives[owner_module] = module_context
@@ -1533,6 +1603,11 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 		}
 		if node.kind == .directive
 			&& node.value in ['include', 'insert', 'preinclude', 'postinclude'] && node.typ.len > 0 {
+			// Do not assign a native input that the current preprocessor state has
+			// proved unreachable. Ambiguous branches still fail closed below.
+			if conditionals.any(it.inactive) {
+				continue
+			}
 			include_arg := c_include_arg_for_target(node.typ, vroot, cur_file, target)
 			if include_arg.len == 0 {
 				continue
@@ -1547,7 +1622,7 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 				has_untracked_include = true
 				continue
 			}
-			context_is_replayable := !conditionals.any(it.inactive || it.ambiguous)
+			context_is_replayable := !conditionals.any(it.ambiguous)
 				&& !conditional_context_mutations[owner_module]
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
 				c_record_cache_resolution_path(path, mut resolution_dirs, mut
@@ -1556,11 +1631,18 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 					continue
 				}
 				is_source_input := c_include_arg_is_source_file(include_arg)
-				if is_source_input || node.value == 'insert' {
-					real_path := os.real_path(path)
+				real_path := os.real_path(path)
+				// Objective-C++ sources are already materialized as separate native-language
+				// wrappers. Assigning them to a C cache object compiles them twice and uses
+				// the wrong language for the cached copy.
+				is_native_root := node.value in ['include', 'insert']
+					&& (is_source_input || node.value == 'insert') && !real_path.ends_with('.mm')
+				if is_native_root {
+					mut root_context := preinclude_context_directives.clone()
+					root_context << context_directives[owner_module]
 					if !c_add_cache_native_source_root(mut native_source_roots, mut
-						native_root_contexts, owner_module, real_path,
-						context_directives[owner_module], context_is_replayable) {
+						native_root_contexts, owner_module, real_path, root_context,
+						context_is_replayable) {
 						has_untracked_include = true
 					}
 				}
@@ -1568,8 +1650,8 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 				mut files := []string{}
 				if c_collect_external_input_tree(path, vroot, include_dirs, mut active_paths, mut
 					collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
-					dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut
-					active_static_storage_paths, mut captured_input_texts, mut
+					dynamic_include_macros, mut literal_include_macros, mut resolution_dirs, mut
+					missing_resolution_paths, mut active_static_storage_paths, mut
 					captured_input_digests, owner_module, false,
 					compiler_macro_environment_complete)
 				{
@@ -1577,6 +1659,11 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 				}
 				for file in files {
 					c_add_cache_external_input(mut inputs, owner_module, file)
+					if node.value == 'preinclude' {
+						// Preincludes are part of every generated cache translation unit,
+						// so every object stamp must track their complete input tree.
+						c_add_cache_external_input(mut inputs, '__v3_c_flags__', file)
+					}
 					if is_source_input || include_arg.trim_space().starts_with('"') {
 						c_add_cache_external_input(mut unscoped_inputs, owner_module, file)
 						collection_key := owner_module + '\x00' + os.real_path(file)
@@ -1586,23 +1673,47 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 						}
 					}
 				}
-				if !is_source_input && include_arg.trim_space().starts_with('"')
+				if node.value in ['include', 'insert'] && !is_source_input
+					&& include_arg.trim_space().starts_with('"')
 					&& files.any(active_static_storage_paths[owner_module + '\x00' + os.real_path(it)]) {
-					real_path := os.real_path(path)
+					mut root_context := preinclude_context_directives.clone()
+					root_context << context_directives[owner_module]
 					if !c_add_cache_native_source_root(mut native_source_roots, mut
-						native_root_contexts, owner_module, real_path,
-						context_directives[owner_module], context_is_replayable) {
+						native_root_contexts, owner_module, real_path, root_context,
+						context_is_replayable) {
 						has_untracked_include = true
 					}
+				}
+				// A preceding header can change the macro state seen by a later native
+				// root. Replay the header itself instead of expanding its transitive macro
+				// mutations into the context. This preserves conditional guards, multiline
+				// definitions, push/pop state, and include order without retaining thousands
+				// of system-header definitions.
+				if !is_source_input && node.value == 'include' {
+					if conditionals.any(it.ambiguous) {
+						conditional_context_mutations[owner_module] = true
+					} else {
+						mut module_context := context_directives[owner_module]
+						module_context << c_cache_context_include_directive(include_arg, real_path)
+						context_directives[owner_module] = module_context
+					}
+				} else if !is_source_input && node.value == 'preinclude' {
+					directive := c_cache_context_include_directive(include_arg, real_path)
+					if directive !in preinclude_context_directives {
+						preinclude_context_directives << directive
+					}
+				} else if is_source_input && node.value in ['preinclude', 'postinclude'] {
+					// Hoisted native source files cannot be assigned to a module object
+					// without changing their generated placement.
+					has_untracked_include = true
 				}
 				break
 			}
 			continue
 		}
 		if path := c_embed_external_input_path(a, node) {
-			if _ := c_captured_external_input_text(path, mut captured_input_texts, mut
-				captured_input_digests)
-			{
+			if text := c_snapshot_external_input_text(path, mut captured_input_digests) {
+				unsafe { text.free() }
 				c_add_cache_external_input(mut inputs, owner_module, path)
 			} else {
 				has_untracked_include = true
@@ -1635,6 +1746,14 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 	mut sorted_missing_resolution_paths := missing_resolution_paths.keys()
 	sorted_missing_resolution_paths.sort()
 	return inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, sorted_resolution_dirs, sorted_missing_resolution_paths, captured_input_digests, has_untracked_include
+}
+
+fn c_cache_context_include_directive(include_arg string, real_path string) string {
+	clean := include_arg.trim_space()
+	if clean.starts_with('<') {
+		return '#include ${clean}'
+	}
+	return '#include "${c_escape(real_path)}"'
 }
 
 fn c_add_cache_native_source_root(mut native_source_roots map[string][]string, mut native_root_contexts map[string][]string, owner_module string, real_path string, context []string, context_is_replayable bool) bool {
@@ -1796,14 +1915,14 @@ fn c_native_language_from_features(need_objc bool, need_cpp bool) string {
 // cache_c_flag_input_files returns forced include/macro files whose contents
 // affect every cached object compiled with the supplied C flags.
 pub fn cache_c_flag_input_files(flags []string) []string {
-	mut captured_input_texts := map[string]string{}
 	mut captured_input_digests := map[string]string{}
+	mut literal_include_macros := map[string][]string{}
 	files, _, _, _, _, _ := cache_c_flag_input_files_with_status(flags, map[string]string{}, false, mut
-		captured_input_texts, mut captured_input_digests)
+		captured_input_digests, mut literal_include_macros)
 	return files
 }
 
-fn cache_c_flag_input_files_with_status(flags []string, compiler_macros map[string]string, compiler_macro_environment_complete bool, mut captured_input_texts map[string]string, mut captured_input_digests map[string]string) ([]string, bool, map[string][]string, map[string]bool, map[string]bool, map[string]bool) {
+fn cache_c_flag_input_files_with_status(flags []string, compiler_macros map[string]string, compiler_macro_environment_complete bool, mut captured_input_digests map[string]string, mut literal_include_macros map[string][]string) ([]string, bool, map[string][]string, map[string]bool, map[string]bool, map[string]bool) {
 	include_dirs := c_flag_include_dirs(flags)
 	mut active_paths := map[string]bool{}
 	mut collected_paths := map[string]bool{}
@@ -1823,9 +1942,10 @@ fn cache_c_flag_input_files_with_status(flags []string, compiler_macros map[stri
 			}
 			if c_collect_external_input_tree(path, '', include_dirs, mut active_paths, mut
 				collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut
-				dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut
-				active_static_storage_paths, mut captured_input_texts, mut captured_input_digests,
-				'__v3_c_flags__', false, compiler_macro_environment_complete)
+				dynamic_include_macros, mut literal_include_macros, mut resolution_dirs, mut
+				missing_resolution_paths, mut active_static_storage_paths, mut
+				captured_input_digests, '__v3_c_flags__', false,
+				compiler_macro_environment_complete)
 			{
 				has_untracked_include = true
 			}
@@ -1884,7 +2004,7 @@ mut:
 	ambiguous bool
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut ambiguous_collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool, mut active_static_storage_paths map[string]bool, mut captured_input_texts map[string]string, mut captured_input_digests map[string]string, collection_scope string, ambient_ambiguous bool, compiler_macro_environment_complete bool) bool {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut active_paths map[string]bool, mut collected_paths map[string]bool, mut ambiguous_collected_paths map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut literal_include_macros map[string][]string, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool, mut active_static_storage_paths map[string]bool, mut captured_input_digests map[string]string, collection_scope string, ambient_ambiguous bool, compiler_macro_environment_complete bool) bool {
 	if path.len == 0 {
 		return false
 	}
@@ -1892,8 +2012,10 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	if active_paths[real_path] {
 		return false
 	}
-	text := c_captured_external_input_text(real_path, mut captured_input_texts, mut
-		captured_input_digests) or { return true }
+	text := c_snapshot_external_input_text(real_path, mut captured_input_digests) or { return true }
+	defer {
+		unsafe { text.free() }
+	}
 	collection_key := collection_scope + '\x00' + real_path
 	first_collection := !collected_paths[collection_key]
 	if collected_paths[collection_key] {
@@ -1941,10 +2063,20 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	mut possible_source := strings.new_builder(text.len)
 	mut in_block_comment := false
 	mut conditionals := []CCacheConditional{}
-	for line in text.split_into_lines() {
+	defer {
+		unsafe { conditionals.free() }
+	}
+	mut lines := text.split_into_lines()
+	defer {
+		unsafe { lines.free() }
+	}
+	for line in lines {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		directive_name := c_directive_name(clean)
+		if directive_name == 'define' {
+			c_record_literal_include_macro_definition(clean, mut literal_include_macros)
+		}
 		if directive_name in ['if', 'ifdef', 'ifndef'] {
 			parent_inactive := conditionals.any(it.inactive)
 			parent_ambiguous := conditionals.any(it.ambiguous)
@@ -1986,8 +2118,9 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		}
 		possible_source.writeln(line)
 		if directive_name !in ['include', 'import'] {
-			c_record_include_macro_definition(clean, ambient_ambiguous
-				|| conditionals.any(it.ambiguous), mut include_macros, mut dynamic_include_macros)
+			mutation_is_ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
+			c_record_include_macro_definition(clean, mutation_is_ambiguous, mut include_macros, mut
+				dynamic_include_macros, compiler_macro_environment_complete)
 			continue
 		}
 		mut include_args := [c_include_arg(c_directive_arg(clean), vroot, real_path)]
@@ -2007,8 +2140,7 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			}
 			include_args = include_macros[macro_name].clone()
 			if include_args.len == 0 {
-				literal_values := c_literal_include_macro_values(files, captured_input_texts,
-					macro_name)
+				literal_values := literal_include_macros[macro_name].clone()
 				if literal_values.len == 1 {
 					include_args = literal_values.clone()
 					include_macros[macro_name] = include_args.clone()
@@ -2033,10 +2165,10 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 				nested_ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
 				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut
 					active_paths, mut collected_paths, mut ambiguous_collected_paths, mut files, mut
-					include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
-					missing_resolution_paths, mut active_static_storage_paths, mut
-					captured_input_texts, mut captured_input_digests, collection_scope,
-					nested_ambiguous, compiler_macro_environment_complete)
+					include_macros, mut dynamic_include_macros, mut literal_include_macros, mut
+					resolution_dirs, mut missing_resolution_paths, mut active_static_storage_paths, mut
+					captured_input_digests, collection_scope, nested_ambiguous,
+					compiler_macro_environment_complete)
 				{
 					has_untracked_include = true
 				}
@@ -2051,45 +2183,55 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			eprintln('  V3 module cache active static C input: module=${collection_scope} path=${real_path}')
 		}
 	}
+	unsafe { possible_text.free() }
 	unsafe { possible_source.free() }
 	return has_untracked_include
 }
 
-fn c_literal_include_macro_values(paths []string, captured_input_texts map[string]string, macro_name string) []string {
-	mut values := []string{}
-	for path in paths {
-		text := captured_input_texts[os.real_path(path)] or { continue }
-		mut in_block_comment := false
-		for line in text.split_into_lines() {
-			clean, next_in_block_comment := c_preprocessor_directive_scan_line(line,
-				in_block_comment)
-			in_block_comment = next_in_block_comment
-			if c_directive_name(clean) != 'define' {
-				continue
-			}
-			definition := c_directive_arg(clean)
-			fields := definition.fields()
-			if fields.len == 0 || fields[0] != macro_name {
-				continue
-			}
-			value := definition[macro_name.len..].trim_space()
-			if c_include_arg_is_literal(value) && value !in values {
-				values << value
-			}
-		}
+fn c_record_literal_include_macro_definition(directive string, mut literal_include_macros map[string][]string) {
+	definition := c_directive_arg(directive)
+	mut name_end := 0
+	for name_end < definition.len && !definition[name_end].is_space() {
+		name_end++
 	}
-	values.sort()
-	return values
+	if name_end == 0 || name_end >= definition.len || definition[..name_end].contains('(') {
+		return
+	}
+	name := definition[..name_end]
+	value := definition[name_end..].trim_space()
+	if !c_include_arg_is_literal(value) {
+		return
+	}
+	mut values := literal_include_macros[name]
+	if value !in values {
+		values << value
+		values.sort()
+		literal_include_macros[name] = values
+	}
 }
 
-fn c_captured_external_input_text(path string, mut captured_input_texts map[string]string, mut captured_input_digests map[string]string) ?string {
+// c_snapshot_external_input_text reads a native dependency without retaining its
+// potentially large contents. Repeated reads must match the digest of the first
+// buffer, otherwise the dependency tree no longer describes one exact snapshot.
+fn c_snapshot_external_input_text(path string, mut captured_input_digests map[string]string) ?string {
 	real_path := os.real_path(path)
-	if real_path in captured_input_texts {
-		return captured_input_texts[real_path]
+	text := os.read_file(real_path) or {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 module cache native input read failed: path=${real_path}')
+		}
+		return none
 	}
-	text := os.read_file(real_path) or { return none }
-	captured_input_texts[real_path] = text
-	captured_input_digests[real_path] = sha256.hexhash(text)
+	digest := sha256.hexhash(text)
+	if captured_digest := captured_input_digests[real_path] {
+		if captured_digest != digest {
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 module cache native input changed during scan: path=${real_path}')
+			}
+			return none
+		}
+	} else {
+		captured_input_digests[real_path] = digest
+	}
 	return text
 }
 
@@ -2304,7 +2446,7 @@ fn c_flag_include_macro_definitions(flags []string, compiler_macros map[string]s
 	return include_macros, dynamic_include_macros
 }
 
-fn c_record_include_macro_definition(directive string, ambiguous bool, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) {
+fn c_record_include_macro_definition(directive string, ambiguous bool, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, compiler_macro_environment_complete bool) {
 	directive_name := c_directive_name(directive)
 	if directive_name == 'undef' {
 		fields := c_directive_arg(directive).fields()
@@ -2312,6 +2454,14 @@ fn c_record_include_macro_definition(directive string, ambiguous bool, mut inclu
 			return
 		}
 		macro_name := fields[0]
+		// An #undef in an unresolved branch is still a definite no-op when the
+		// complete compiler environment and prior directives agree that the macro
+		// is already absent. Keep that known state instead of exploring code guarded
+		// by the macro later (TargetConditionals.h uses this pattern on macOS).
+		if ambiguous && compiler_macro_environment_complete && macro_name !in include_macros
+			&& macro_name !in dynamic_include_macros {
+			return
+		}
 		include_macros.delete(macro_name)
 		if ambiguous {
 			dynamic_include_macros[macro_name] = false
@@ -2713,6 +2863,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.objective_cpp_source_requests = []ObjectiveCppSourceRequest{}
 	g.native_source_wrapper_index = 0
 	g.inlined_c_structs.clear()
+	g.cache_native_c_symbols.clear()
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
 	g.inlined_c_active_macros.clear()
@@ -2851,6 +3002,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
 	g.collect_gen_info(effective_no_parallel)
+	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
 	g.preintern_json_encode_strings()
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -4546,6 +4698,9 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				g.c_flags << ['-x', 'objective-c', '-x', 'none']
 			}
 			g.collect_inlined_c_structs(header_text)
+			if g.cache_split {
+				g.collect_cache_native_c_symbols(header_text)
+			}
 			g.collect_inlined_c_fns_for_cache(header_text, false, true)
 			g.collect_inlined_c_declared_fns(header_text)
 			g.collect_preserved_c_fns(header.preserved_c_fns)
@@ -7754,6 +7909,9 @@ fn c_preserved_system_include_typedef_names(include_arg string) []string {
 	if include_arg.starts_with('<X11/') {
 		return c_preserved_system_include_struct_names(include_arg)
 	}
+	if include_arg in ['<Cocoa/Cocoa.h>', '<Foundation/Foundation.h>', '<objc/objc.h>'] {
+		return ['BOOL']
+	}
 	return []string{}
 }
 
@@ -7917,6 +8075,226 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 		g.inlined_c_structs[alias] = true
 		g.inlined_c_typedef_names[alias] = true
 	}
+}
+
+// collect_cache_native_c_symbols records names declared by a native header that
+// cache splitting preserves as an include. Empty C placeholders discovered while
+// checking selector expressions must not be emitted before a real typedef, tag,
+// Objective-C type declaration, or enum constant. Ordinary identifiers such as
+// parameters and fields must not suppress placeholders.
+fn (mut g FlatGen) collect_cache_native_c_symbols(text string) {
+	declarations, _ := modulecache.c_source_type_declarations_with_status(text)
+	clean_declarations := c_strip_comments(declarations)
+	for name, _ in modulecache.c_source_type_identifiers(clean_declarations) {
+		g.cache_native_c_symbols[name] = true
+	}
+	// Selector expressions expose C enum constants as placeholder types until C
+	// generation resolves them. Only collect identifiers in actual enum bodies;
+	// scanning every header token also mistakes parameters and fields for types.
+	for name in c_cache_native_enum_constants(declarations) {
+		g.cache_native_c_symbols[name] = true
+	}
+	// The shared identifier extractor records aggregate tags and the final alias
+	// in a typedef. Preserve every alias in comma-separated and function typedefs.
+	for alias in c_typedef_all_aggregate_aliases(clean_declarations) {
+		g.cache_native_c_symbols[alias] = true
+	}
+	for alias in c_typedef_plain_aliases(clean_declarations) {
+		g.cache_native_c_symbols[alias] = true
+	}
+	for alias in c_typedef_fn_aliases(clean_declarations) {
+		g.cache_native_c_symbols[alias] = true
+	}
+	// Objective-C classes and protocols are type declarations too, but do not
+	// use C's struct/union/enum or typedef spelling.
+	for line in clean_declarations.split_into_lines() {
+		clean := line.trim_space()
+		for prefix in ['@interface ', '@protocol '] {
+			if clean.starts_with(prefix) {
+				name := c_header_struct_tag(clean[prefix.len..])
+				if name.len > 0 {
+					g.cache_native_c_symbols[name] = true
+				}
+			}
+		}
+		if clean.starts_with('@class ') {
+			for declaration in clean['@class '.len..].trim_right(';').split(',') {
+				name := c_header_struct_tag(declaration.trim_space())
+				if name.len > 0 {
+					g.cache_native_c_symbols[name] = true
+				}
+			}
+		}
+	}
+}
+
+fn c_cache_native_enum_constants(text string) []string {
+	mut names := []string{}
+	mut i := 0
+	for i < text.len {
+		comment_end := c_cache_native_comment_end(text, i)
+		if comment_end != i {
+			i = comment_end
+			continue
+		}
+		if text[i] in [`'`, `"`] {
+			quote := text[i]
+			i++
+			for i < text.len {
+				if text[i] == quote && !c_flag_quote_is_escaped(text, i) {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if !c_identifier_start(text[i]) {
+			i++
+			continue
+		}
+		token_start := i
+		i++
+		for i < text.len && c_identifier_continue(text[i]) {
+			i++
+		}
+		if text[token_start..i] != 'enum' {
+			continue
+		}
+		resume := i
+		mut brace := i
+		for brace < text.len && text[brace] !in [`{`, `;`] {
+			comment_end_at_brace := c_cache_native_comment_end(text, brace)
+			if comment_end_at_brace != brace {
+				brace = comment_end_at_brace
+				continue
+			}
+			if text[brace] in [`'`, `"`] {
+				quote := text[brace]
+				brace++
+				for brace < text.len {
+					if text[brace] == quote && !c_flag_quote_is_escaped(text, brace) {
+						brace++
+						break
+					}
+					brace++
+				}
+				continue
+			}
+			brace++
+		}
+		if brace >= text.len || text[brace] != `{` {
+			i = resume
+			continue
+		}
+		mut depth := 1
+		mut paren_depth := 0
+		mut bracket_depth := 0
+		mut expect_name := true
+		i = brace + 1
+		for i < text.len && depth > 0 {
+			comment_end_in_body := c_cache_native_comment_end(text, i)
+			if comment_end_in_body != i {
+				i = comment_end_in_body
+				continue
+			}
+			if text[i] in [`'`, `"`] {
+				quote := text[i]
+				i++
+				for i < text.len {
+					if text[i] == quote && !c_flag_quote_is_escaped(text, i) {
+						i++
+						break
+					}
+					i++
+				}
+				continue
+			}
+			if text[i] == `#` && c_cache_native_line_prefix_is_space(text, i) {
+				for i < text.len && text[i] != `\n` {
+					i++
+				}
+				continue
+			}
+			match text[i] {
+				`{` {
+					depth++
+					i++
+					continue
+				}
+				`}` {
+					depth--
+					i++
+					continue
+				}
+				`(` {
+					paren_depth++
+				}
+				`)` {
+					if paren_depth > 0 {
+						paren_depth--
+					}
+				}
+				`[` {
+					bracket_depth++
+				}
+				`]` {
+					if bracket_depth > 0 {
+						bracket_depth--
+					}
+				}
+				`,` {
+					if depth == 1 && paren_depth == 0 && bracket_depth == 0 {
+						expect_name = true
+					}
+				}
+				else {}
+			}
+			if expect_name && depth == 1 && paren_depth == 0 && bracket_depth == 0
+				&& c_identifier_start(text[i]) {
+				name_start := i
+				i++
+				for i < text.len && c_identifier_continue(text[i]) {
+					i++
+				}
+				names << text[name_start..i]
+				expect_name = false
+				continue
+			}
+			i++
+		}
+		i = resume
+	}
+	return names
+}
+
+fn c_cache_native_comment_end(text string, start int) int {
+	if start + 1 >= text.len || text[start] != `/` {
+		return start
+	}
+	if text[start + 1] == `/` {
+		mut i := start + 2
+		for i < text.len && text[i] != `\n` {
+			i++
+		}
+		return i
+	}
+	if text[start + 1] == `*` {
+		mut i := start + 2
+		for i + 1 < text.len && !(text[i] == `*` && text[i + 1] == `/`) {
+			i++
+		}
+		return if i + 1 < text.len { i + 2 } else { text.len }
+	}
+	return start
+}
+
+fn c_cache_native_line_prefix_is_space(text string, pos int) bool {
+	mut start := pos
+	for start > 0 && text[start - 1] != `\n` {
+		start--
+	}
+	return text[start..pos].trim_space().len == 0
 }
 
 fn (g &FlatGen) c_source_defines_used_c_type(text string) bool {
@@ -11698,7 +12076,9 @@ fn (mut g FlatGen) gen_cast_from_mut_pointer_param_value(id flat.NodeId, ct stri
 	if pointer_type.base_type !is types.Pointer {
 		return false
 	}
-	g.write('(${ct})(*${g.cname(node.value)})')
+	g.write('(${ct})(*')
+	g.gen_mut_pointer_slot_expr(id)
+	g.write(')')
 	return true
 }
 
@@ -13342,6 +13722,9 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 		|| parsed is types.Alias) {
 		return g.value_sizeof_target(parsed)
 	}
+	if g.current_param_type(value) != none || g.cur_scope_has_local_name(value) {
+		return g.local_decl_cname(value)
+	}
 	// A dotted `sizeof` target can be either a qualified type (`time.Time`) or a
 	// selector expression (`bf.p`). Resolve visible values before interpreting the
 	// spelling as a type; parse_type accepts both shapes and cannot disambiguate them.
@@ -13571,9 +13954,9 @@ fn (g &FlatGen) const_ref_name(name string) string {
 }
 
 fn (g &FlatGen) unique_const_ref_name(short_name string) ?string {
-	// Iterating every const per query cost ~70us a call; the short-name index
-	// is built once (const_vals is complete after collect_gen_info) and maps a
-	// short name to its unique primary const ('' = ambiguous).
+	// Iterating every const per query cost ~70us a call. Normal generation
+	// freezes the short-name index before workers start; the lazy build remains
+	// for focused helpers that call this method without running the full setup.
 	if isnil(g.const_short_index) {
 		return g.unique_const_ref_name_scan(short_name)
 	}
@@ -13618,6 +14001,15 @@ fn (g &FlatGen) unique_const_ref_name_scan(short_name string) ?string {
 		return none
 	}
 	return found
+}
+
+fn (mut g FlatGen) precompute_const_short_index() {
+	if isnil(g.const_short_index) {
+		g.const_short_index = &ConstShortIndex{}
+	}
+	mut idx := g.const_short_index
+	idx.entries = g.build_unique_const_ref_names()
+	idx.built = true
 }
 
 // const_ref_name_from_node converts const ref name from node data for c.

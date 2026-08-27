@@ -125,6 +125,25 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run_good_project_with_flags(v3_bin, name, '', files, input)
 }
 
+fn run_good_cached_project(v3_bin string, name string, files map[string]string, input string) string {
+	root := '${tmp_test_path(name)}_project'
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	good_bin := tmp_test_path(name)
+	compile := os.execute('${v3_bin} ${input_path} -o ${good_bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
+}
+
 struct GoodProjectRun {
 	run_output     string
 	compile_output string
@@ -6630,6 +6649,54 @@ fn test_imported_objective_cpp_wrapper_context() {
 		'main.v':                  'module main\n\nimport consumer\n\nfn main() {\n\tprintln(int_str(consumer.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '68'
+}
+
+fn test_cached_native_root_preserves_preceding_header_macro_mutations() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'cached_native_header_macro_mutation', {
+		'v.mod':                         "Module { name: 'cached_native_header_macro_mutation' }\n"
+		'nativeanswer/config.h':         '#undef V3_NATIVE_FEATURE\n#define V3_NATIVE_HEADER_VALUE 73\n'
+		'nativeanswer/implementation.h': '#ifdef V3_NATIVE_FEATURE\nint v3_native_header_answer(void) { return 1; }\n#else\nint v3_native_header_answer(void) { return V3_NATIVE_HEADER_VALUE; }\n#endif\n'
+		'nativeanswer/nativeanswer.v':   'module nativeanswer\n\n#define V3_NATIVE_FEATURE 1\n#include "config.h"\n#insert "implementation.h"\n\nfn C.v3_native_header_answer() int\n\npub fn answer() int {\n\treturn C.v3_native_header_answer()\n}\n'
+		'main.v':                        'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '73'
+}
+
+fn test_cached_native_public_replay_does_not_repeat_preceding_header() {
+	v3_bin := build_v3()
+	out := run_good_cached_project(v3_bin, 'cached_native_single_preceding_header', {
+		'v.mod':                         "Module { name: 'cached_native_single_preceding_header' }\n"
+		'nativeanswer/context.h':        '#pragma once\nstruct V3CacheContextType { int value; };\n#define V3_CACHE_CONTEXT_VALUE 76\n'
+		'nativeanswer/implementation.h': '#ifdef V3_CACHE_CONTEXT_IMPLEMENTATION\nint v3_cache_context_answer(void) { struct V3CacheContextType value = { V3_CACHE_CONTEXT_VALUE }; return value.value; }\n#else\nint v3_cache_context_answer(void);\n#endif\n'
+		'nativeanswer/nativeanswer.v':   'module nativeanswer\n\n#define V3_CACHE_CONTEXT_IMPLEMENTATION\n#include "context.h"\n#insert "implementation.h"\n#undef V3_CACHE_CONTEXT_IMPLEMENTATION\n\nfn C.v3_cache_context_answer() int\n\npub fn answer() int {\n\treturn C.v3_cache_context_answer()\n}\n'
+		'main.v':                        'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '76'
+}
+
+fn test_cached_native_root_uses_generated_pre_and_postinclude_order() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'cached_native_placed_includes', {
+		'v.mod':                         "Module { name: 'cached_native_placed_includes' }\n"
+		'nativeanswer/pre.h':            '#define V3_NATIVE_PRE_READY 1\n'
+		'nativeanswer/post.h':           '#define V3_NATIVE_POST_LATE 1\n'
+		'nativeanswer/implementation.h': '#ifndef V3_NATIVE_PRE_READY\n#error missing generated preinclude context\n#endif\n#ifdef V3_NATIVE_POST_LATE\n#error postinclude replayed before native root\n#endif\nint v3_placed_include_answer(void) { return 74; }\n'
+		'nativeanswer/nativeanswer.v':   'module nativeanswer\n\n#postinclude "@DIR/post.h"\n#insert "@DIR/implementation.h"\n#preinclude "@DIR/pre.h"\n\nfn C.v3_placed_include_answer() int\n\npub fn answer() int {\n\treturn C.v3_placed_include_answer()\n}\n'
+		'main.v':                        'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '74'
+}
+
+fn test_cached_native_parameter_name_does_not_suppress_c_type() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'cached_native_parameter_type_name', {
+		'v.mod':                       "Module { name: 'cached_native_parameter_type_name' }\n"
+		'nativeanswer/native.h':       'int v3_parameter_name_only(int Unrelated);\n'
+		'nativeanswer/nativeanswer.v': 'module nativeanswer\n\n#insert "native.h"\n\nstruct C.Unrelated {}\n\nfn accepts_unrelated(value &C.Unrelated) int {\n\treturn if isnil(value) { 75 } else { 0 }\n}\n\npub fn answer() int {\n\treturn accepts_unrelated(unsafe { nil })\n}\n'
+		'main.v':                      'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '75'
 }
 
 fn test_bare_macro_objective_c_guards_stay_inactive() {

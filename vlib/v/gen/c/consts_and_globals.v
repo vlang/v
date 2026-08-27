@@ -694,8 +694,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 }
 
 // write_prealloc_tls_global emits the definition of the thread-local prealloc arena
-// root (`g_memory_block`). Regular C compilers back it with a `_Thread_local` variable
-// so each thread bump-allocates from its own arena. TinyCC on macOS has no working
+// root (`g_memory_block`). C compilers use `_Thread_local`, while C++ compilers use
+// `thread_local`, so each thread bump-allocates from its own arena. TinyCC on macOS has no working
 // thread-local storage (a store to a `_Thread_local` variable segfaults), so there the
 // same identifier is redirected to per-thread storage held in a pthread key. Both variants
 // are emitted because the same generated C can be compiled by TCC or the system compiler.
@@ -718,13 +718,15 @@ fn (mut g Gen) write_prealloc_tls_global(mut def_builder strings.Builder, linkag
 	def_builder.writeln('\treturn slot;')
 	def_builder.writeln('}')
 	def_builder.writeln('#define ${cname} (*(${styp} *)v_prealloc_tls_slot())')
+	def_builder.writeln('#elif defined(__cplusplus)')
+	def_builder.writeln('${linkage}thread_local ${styp} ${cname}; // global 6')
 	def_builder.writeln('#else')
 	def_builder.writeln('${linkage}_Thread_local ${styp} ${cname}; // global 6')
 	def_builder.writeln('#endif')
 }
 
 fn (g &Gen) prealloc_tls_global_extern(styp string, cname string) string {
-	return '#if defined(__TINYC__) && defined(__APPLE__)\nvoid **v_prealloc_tls_slot(void);\n#define ${cname} (*(${styp} *)v_prealloc_tls_slot())\n#else\nextern _Thread_local ${styp} ${cname};\n#endif'
+	return '#if defined(__TINYC__) && defined(__APPLE__)\nvoid **v_prealloc_tls_slot(void);\n#define ${cname} (*(${styp} *)v_prealloc_tls_slot())\n#elif defined(__cplusplus)\nextern thread_local ${styp} ${cname};\n#else\nextern _Thread_local ${styp} ${cname};\n#endif'
 }
 
 fn (mut g Gen) sort_globals_consts() {
