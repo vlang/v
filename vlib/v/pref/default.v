@@ -303,7 +303,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// ordinary `v -o vnew cmd/v` builds do not retain every stage allocation.
 		if p.building_v && p.os in [.macos, .linux] && !p.prealloc
 			&& (!p.gc_set_by_flag || p.gc_mode == .no_gc)
-			&& (!p.ccompiler_set_by_flag || cc_from_string(p.ccompiler) != .tinyc) {
+			&& (p.os != .linux || !p.ccompiler_set_by_flag || cc_from_string(p.ccompiler) != .tinyc) {
 			p.prealloc = true
 			p.build_options << '-prealloc'
 		}

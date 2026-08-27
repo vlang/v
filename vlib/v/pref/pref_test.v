@@ -432,8 +432,8 @@ fn test_macos_and_linux_v_compiler_target_defaults_to_prealloc() {
 	assert prefs.gc_mode == .no_gc
 }
 
-fn test_macos_and_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
-	if pref.get_host_os() !in [.macos, .linux] {
+fn test_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
+	if pref.get_host_os() != .linux {
 		return
 	}
 	target := os.join_path(vroot, 'cmd', 'v')
@@ -443,6 +443,20 @@ fn test_macos_and_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
 		assert prefs.ccompiler_type == .tinyc
 		assert !prefs.prealloc
 		assert '-prealloc' !in prefs.build_options
+	}
+}
+
+fn test_macos_explicit_tinyc_v_compiler_target_keeps_prealloc() {
+	if pref.get_host_os() != .macos {
+		return
+	}
+	target := os.join_path(vroot, 'cmd', 'v')
+	for compiler in ['tcc', 'tinyc'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-cc', compiler, target], false)
+		assert prefs.building_v
+		assert prefs.ccompiler_type == .tinyc
+		assert prefs.prealloc
+		assert '-prealloc' in prefs.build_options
 	}
 }
 
