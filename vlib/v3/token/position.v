@@ -149,6 +149,11 @@ pub fn (mut f File) add_line(offset int) {
 // and stores the source digest consumed by cache and fallback verification.
 pub fn (mut f File) index_lines(src string) {
 	f.index_lines_without_digest(src)
+	for i, c in src {
+		if c == `\n` {
+			f.line_offsets << i + 1
+		}
+	}
 	digest := sha256.sum(src.bytes())
 	for i in 0 .. sha256.size {
 		f.source_digest[i] = digest[i]

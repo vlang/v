@@ -2556,9 +2556,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		c_name_cache:                    &CNameCache{
 			base: if !isnil(g.c_name_cache.base) { g.c_name_cache.base } else { g.c_name_cache }
 		}
-		// The const short-name index is read-only after its first build (the
-		// master queries it during the const precompute, before the forks);
-		// sharing it avoids a rebuild per worker.
+		// The master freezes the const short-name index before forking workers;
+		// sharing the read-only index avoids a rebuild per worker.
 		const_short_index:               g.const_short_index
 		mut_recv_facts:                  &FnNameFactCache{}
 		local_typedef_shadow_facts:      &FnNameFactCache{}

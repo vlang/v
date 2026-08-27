@@ -2851,6 +2851,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.precompute_shared_alias_pointer_shorts()
 	g.collect_gen_info(effective_no_parallel)
+	g.precompute_const_short_index()
 	g.precompute_local_global_suffix_names()
 	g.preintern_json_encode_strings()
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
@@ -13571,9 +13572,9 @@ fn (g &FlatGen) const_ref_name(name string) string {
 }
 
 fn (g &FlatGen) unique_const_ref_name(short_name string) ?string {
-	// Iterating every const per query cost ~70us a call; the short-name index
-	// is built once (const_vals is complete after collect_gen_info) and maps a
-	// short name to its unique primary const ('' = ambiguous).
+	// Iterating every const per query cost ~70us a call. Normal generation
+	// freezes the short-name index before workers start; the lazy build remains
+	// for focused helpers that call this method without running the full setup.
 	if isnil(g.const_short_index) {
 		return g.unique_const_ref_name_scan(short_name)
 	}
@@ -13618,6 +13619,15 @@ fn (g &FlatGen) unique_const_ref_name_scan(short_name string) ?string {
 		return none
 	}
 	return found
+}
+
+fn (mut g FlatGen) precompute_const_short_index() {
+	if isnil(g.const_short_index) {
+		g.const_short_index = &ConstShortIndex{}
+	}
+	mut idx := g.const_short_index
+	idx.entries = g.build_unique_const_ref_names()
+	idx.built = true
 }
 
 // const_ref_name_from_node converts const ref name from node data for c.

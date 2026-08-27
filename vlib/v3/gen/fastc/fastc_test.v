@@ -4881,8 +4881,8 @@ fn test_selfhost_composite_ordering_moves_one_line_interfaces_before_fields() {
 			'wr': 'Writer'
 		}
 	}, {
-		fastc_type_key('main', 'Holder'): FastcDeclaredTypeKind.struct_
-		fastc_type_key('main', 'Writer'): FastcDeclaredTypeKind.interface_
+		'Holder': true
+		'Writer': true
 	})
 	writer_index := ordered.index('struct Writer {') or { -1 }
 	holder_index := ordered.index('struct Holder {') or { -1 }

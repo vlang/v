@@ -144,7 +144,8 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 					return error('fastc method receiver: ${err.msg()}')
 				}
 				if receiver_key == '' {
-					receiver_key = fastc_semantic_declared_type_key(receiver_type, declared_type_c_names)
+					receiver_key = fastc_semantic_declared_type_key(receiver_type,
+						declared_type_c_names)
 				}
 				if receiver_is_mut && !receiver_type.ends_with('*') {
 					receiver_type += '*'
