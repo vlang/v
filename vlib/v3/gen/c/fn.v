@@ -2937,6 +2937,9 @@ fn (mut g FlatGen) spawn_wrapper_decls() {
 		seen[def] = true
 		g.writeln(def)
 	}
+	if g.cache_split && g.spawn_wrapper_defs.len > 0 {
+		g.writeln('/* V3CACHE_PROGRAM_WRAPPERS_END */')
+	}
 	if g.spawn_wrapper_defs.len > 0 {
 		g.writeln('')
 	}
@@ -3345,6 +3348,9 @@ fn (mut g FlatGen) callback_wrapper_decls() {
 	}
 	for def in g.callback_wrapper_defs {
 		g.writeln(def)
+	}
+	if g.cache_split && g.callback_wrapper_defs.len > 0 {
+		g.writeln('/* V3CACHE_PROGRAM_WRAPPERS_END */')
 	}
 	if g.callback_wrapper_defs.len > 0 {
 		g.writeln('')

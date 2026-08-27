@@ -32,6 +32,19 @@ fn test_builtin_bundle_module_inputs_do_not_reuse_the_bundle_object() {
 		@VEXEROOT)
 }
 
+fn test_cached_object_wrapper_signature_ignores_non_wrapper_prefix_changes() {
+	base := 'base signature'
+	wrapper := '/* V3CACHE_PROGRAM_WRAPPERS */\nstatic void callback(void) {}\n/* V3CACHE_PROGRAM_WRAPPERS_END */'
+	raw_source := '#define NATIVE_IMPLEMENTATION\n#include "native.h"\n${wrapper}\n/* V3CACHE_BODY_BEGIN */\n'
+	prepared_source := '#define V3CACHE_PROGRAM_UNIT 1\n${wrapper}\n/* V3CACHE_BODY_BEGIN */\n'
+	assert v3_cached_object_wrapper_compile_signature(base, raw_source) == v3_cached_object_wrapper_compile_signature(base,
+		prepared_source)
+	changed_source := prepared_source.replace('callback(void)', 'other_callback(void)')
+	assert v3_cached_object_wrapper_compile_signature(base, prepared_source) != v3_cached_object_wrapper_compile_signature(base,
+		changed_source)
+	assert v3_cached_object_wrapper_compile_signature(base, 'int declaration;') == base
+}
+
 fn test_cache_function_reference_counts_scans_source_once() {
 	candidates := {
 		'alpha__one': true
@@ -65,12 +78,12 @@ fn test_cache_native_public_include_strips_conventional_implementation_macros() 
 	assert include.contains('#undef SOKOL_IMPL')
 	include_pos := include.index('#include') or { -1 }
 	assert include_pos >= 0
-	// The switches are undefined while the header expands, then restored after it
-	// so later native directives in the same unit see the original macro state.
+	// Declaration-only replay must leave the switches undefined so later generated
+	// wrappers are emitted only by the selected owner object.
 	assert (include.index('#undef FONTSTASH_IMPLEMENTATION') or { -1 }) < include_pos
 	assert (include.index('#undef SOKOL_FONTSTASH_IMPL') or { -1 }) < include_pos
-	assert (include.last_index('#define FONTSTASH_IMPLEMENTATION') or { -1 }) > include_pos
-	assert (include.last_index('#define SOKOL_FONTSTASH_IMPL') or { -1 }) > include_pos
+	assert !include.contains('#define FONTSTASH_IMPLEMENTATION')
+	assert !include.contains('#define SOKOL_FONTSTASH_IMPL')
 }
 
 fn test_cached_native_owner_restores_stripped_implementation_context() {
@@ -130,8 +143,7 @@ int v3_lib_value(void) { return 42; }
 	include_pos := include.index('#include') or { -1 }
 	assert include_pos >= 0
 	assert (include.index('#undef LIB_IMPL') or { -1 }) < include_pos
-	// The implementation switch is restored after the header expands.
-	assert (include.last_index('#define LIB_IMPL') or { -1 }) > include_pos
+	assert !include.contains('#define LIB_IMPL')
 	// A gated external definition is stripped, so splitting the root is safe.
 	assert !cache_native_public_include_replays_external_definition(real_header, [
 		'#define LIB_IMPL',
