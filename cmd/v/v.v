@@ -128,7 +128,8 @@ fn main() {
 		return
 	}
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
-	prefs, command := pref.parse_args_for_launcher(external_tools, args_and_flags, true)
+	prefs, command, command_idx := pref.parse_args_for_launcher_with_command_index(external_tools,
+		args_and_flags, true)
 	maybe_delegate_to_vvmrc(command, prefs)
 	maybe_delegate_to_ownership(command, prefs, args_and_flags)
 	macos_v3_c_error_report := maybe_delegate_to_macos_v3(command, prefs)
@@ -148,15 +149,10 @@ fn main() {
 		if command == 'self' {
 			// vself forwards compiler flags to the compiler it builds. Pass merged
 			// VFLAGS once as arguments, then keep them out of vself's own recompilation.
-			// Preserve their boundary so vself never interprets a flag value as one of
-			// its positional arguments.
+			// Preserve the parser's authoritative command boundary so vself never
+			// interprets a flag value as one of its positional arguments.
 			tool_args = args_and_flags.clone()
-			process_args := os.args[1..]
-			mut merged_prefix_count := args_and_flags.len - process_args.len
-			if merged_prefix_count < 0 || args_and_flags[merged_prefix_count..] != process_args {
-				merged_prefix_count = 0
-			}
-			os.setenv('VSELF_VFLAGS_COUNT', merged_prefix_count.str(), true)
+			os.setenv('VSELF_COMMAND_INDEX', command_idx.str(), true)
 			os.unsetenv('VFLAGS')
 			os.unsetenv('VOSARGS')
 		}

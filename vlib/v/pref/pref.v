@@ -429,7 +429,8 @@ fn optional_arg_value(args []string, idx int, command string, known_external_com
 }
 
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
-	return parse_args_impl(known_external_commands, args, show_output, false)
+	prefs, command, _ := parse_args_impl(known_external_commands, args, show_output, false)
+	return prefs, command
 }
 
 // parse_args_for_launcher works like parse_args_and_show_errors, but once a known external command
@@ -438,10 +439,29 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 // the original os.args on to the tool verbatim. Do NOT use it when you actually need the V
 // preferences that follow the command name, for example `v fmt -translated file.v`; see vlang/v#28114.
 pub fn parse_args_for_launcher(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
+	prefs, command, _ := parse_args_impl(known_external_commands, args, show_output, true)
+	return prefs, command
+}
+
+// parse_args_for_launcher_with_command_index also returns the exact command token index.
+pub fn parse_args_for_launcher_with_command_index(known_external_commands []string, args []string, show_output bool) (&Preferences, string, int) {
 	return parse_args_impl(known_external_commands, args, show_output, true)
 }
 
-fn parse_args_impl(known_external_commands []string, args []string, show_output bool, pass_external_command_args bool) (&Preferences, string) {
+// option_may_consume_value reports whether an option can consume the following argument.
+pub fn option_may_consume_value(option string) bool {
+	return option in ['-wasm-stack-top', '-arch', '-assert', '-e', '-subsystem', '-icon', '--icon',
+		'-seticon', '--seticon', '-gc', '-print_autofree_vars_in_fn', '-trace-fns', '-prof',
+		'-profile', '-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude',
+		'-file-list', '-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files',
+		'-dump-defines', '-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags',
+		'-ldflags', '-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend',
+		'-compile-backend', '--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude',
+		'-raw-vsh-tmp-prefix', '-cmain', '-line-info']
+}
+
+fn parse_args_impl(known_external_commands []string, args []string, show_output bool, pass_external_command_args bool) (&Preferences, string, int) {
 	mut res := &Preferences{}
 	detect_musl(mut res)
 	$if x64 {
@@ -1414,7 +1434,7 @@ fn parse_args_impl(known_external_commands []string, args []string, show_output 
 		}
 	}
 
-	return res, command
+	return res, command, command_idx
 }
 
 @[noreturn]

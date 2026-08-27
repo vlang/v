@@ -2,6 +2,7 @@ module main
 
 import os
 import os.cmdline
+import v.pref
 import v.util.recompilation
 
 const args_ = arguments()
@@ -11,8 +12,6 @@ const is_debug = args_.contains('-debug')
 const vexe = os.getenv_opt('VEXE') or { @VEXE }
 
 const vroot = os.dir(vexe)
-const vself_flags_with_values = ['-o', '-os', '-cc', '-gc', '-cf', '-cflags', '-d', '-define',
-	'-b', '-backend']
 
 fn main() {
 	// make testing `v up` easier, by providing a way to force `v self` to fail,
@@ -28,9 +27,9 @@ fn main() {
 		'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
-	vflags_count := os.getenv('VSELF_VFLAGS_COUNT').int()
-	os.unsetenv('VSELF_VFLAGS_COUNT')
-	repeat_count, mut args := extract_repeat_count(args_[1..], vflags_count)
+	command_index := os.getenv('VSELF_COMMAND_INDEX').int()
+	os.unsetenv('VSELF_COMMAND_INDEX')
+	repeat_count, mut args := extract_repeat_count(args_[1..], command_index)
 	fastc_self_build := uses_fastc_backend(args)
 	if fastc_self_build && '-prod' in args {
 		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
@@ -59,6 +58,14 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	obinary := cmdline.option(args, '-o', '')
+	if fastc_self_build && repeat_count > 1 && obinary == '' {
+		unsupported := unsupported_fastc_repeat_args(args)
+		if unsupported.len > 0 {
+			eprintln('`v self -b fastc xN` cannot preserve these options across repeated replacement builds: ${unsupported.join(' ')}')
+			eprintln('Remove the options, use `x1`, or specify `-o` to keep the original compiler.')
+			exit(1)
+		}
+	}
 	mut compile_args := clone_args(args)
 	if obinary == '' {
 		compile_args << ['-o', 'v2']
@@ -71,14 +78,9 @@ fn main() {
 	compilation_source := if fastc_self_build { 'vlib/v3/v3.v' } else { 'cmd/v' }
 	for run_idx in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
-		run_compile_args := if fastc_self_build && obinary == '' && run_idx > 0 {
-			fastc_descendant_compile_args(compile_args, final_binary)
-		} else {
-			compile_args
-		}
-		options := if args.len > 0 { '(${run_compile_args.join(' ')})' } else { '' }
+		options := if args.len > 0 { '(${compile_args.join(' ')})' } else { '' }
 		println('V self compiling${run_label} ${options}...')
-		cmd := compose_v_cmd(vexe, run_compile_args, compilation_source)
+		cmd := compose_v_cmd(vexe, compile_args, compilation_source)
 		mut used_pgo := false
 		if pgo_cc_kind != '' {
 			used_pgo = compile_with_pgo(vroot, vexe, args, final_binary, pgo_cc_kind)
@@ -138,17 +140,39 @@ fn normalize_fastc_backend_args(args []string) []string {
 	return normalized
 }
 
-fn fastc_descendant_compile_args(args []string, output string) []string {
-	// The standalone FastC driver has a deliberately narrow CLI. Once it replaces
-	// v, retain only the self-build arguments that it can honor.
-	mut descendant_args := []string{cap: 9}
-	for arg in args {
-		if arg in ['-silent', '-keepc'] && arg !in descendant_args {
-			descendant_args << arg
+fn unsupported_fastc_repeat_args(args []string) []string {
+	mut unsupported := []string{}
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in ['-b', '-gc', '-cc'] && i + 1 < args.len {
+			value := args[i + 1]
+			supported := match arg {
+				'-b' { value == 'fastc' }
+				'-gc' { value == 'none' }
+				'-cc' { value in ['tinyc', 'tcc'] }
+				else { false }
+			}
+			if !supported {
+				unsupported << '${arg} ${value}'
+			}
+			i += 2
+			continue
 		}
+		if arg in ['-silent', '-keepc'] {
+			i++
+			continue
+		}
+		mut option := arg
+		if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
+			option += ' ${args[i + 1]}'
+			i += 2
+		} else {
+			i++
+		}
+		unsupported << option
 	}
-	descendant_args << ['-b', 'fastc', '-gc', 'none', '-o', output, '-selfhost']
-	return descendant_args
+	return unsupported
 }
 
 fn repeat_count_arg(arg string) int {
@@ -177,7 +201,7 @@ fn extract_repeat_count(args []string, protected_prefix_count int) (int, []strin
 			should_skip_repeat_check = false
 			continue
 		}
-		if arg in vself_flags_with_values {
+		if arg == '-cf' || pref.option_may_consume_value(arg) {
 			filtered << arg
 			should_skip_repeat_check = true
 			continue

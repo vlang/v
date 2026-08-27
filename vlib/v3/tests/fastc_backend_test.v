@@ -57,11 +57,12 @@ fn test_v_self_accepts_fastc_backend() {
 		os.rmdir_all(root) or {}
 	}
 	vflags_value_binary := os.join_path(root, 'v from x2 value')
-	vflags_value_build := run_with_v_environment(@VEXE,
-		['self', '-silent', '-o', vflags_value_binary], '-exclude x2', @VEXE)
+	vflags_value_build := run_with_v_environment(@VEXE, ['-exclude', 'x2', 'self', '-silent', '-o',
+		vflags_value_binary], '-exclude x3', @VEXE)
 	assert vflags_value_build.exit_code == 0, vflags_value_build.output
 	assert vflags_value_build.output.count('V self compiling') == 1, vflags_value_build.output
 	assert vflags_value_build.output.contains('-exclude x2'), vflags_value_build.output
+	assert vflags_value_build.output.contains('-exclude x3'), vflags_value_build.output
 	assert os.is_executable(vflags_value_binary)
 
 	vflags_binary := os.join_path(root, 'v fastc from vflags')
@@ -90,15 +91,20 @@ fn test_v_self_accepts_fastc_backend() {
 	}
 	isolated_vexe := os.join_path(isolated_vroot, 'v')
 	os.cp(@VEXE, isolated_vexe) or { panic(err) }
-	descendant_unsupported_flag := $if linux { '-g' } $else { '-no-parallel' }
+	unsupported_repeat := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b', 'fastc',
+		'-g', 'x2'], '', isolated_vexe)
+	assert unsupported_repeat.exit_code != 0
+	assert unsupported_repeat.output.contains('cannot preserve'), unsupported_repeat.output
+	assert unsupported_repeat.output.contains('-g'), unsupported_repeat.output
+	assert unsupported_repeat.output.count('V self compiling') == 0, unsupported_repeat.output
+	assert !os.exists(os.join_path(isolated_vroot, 'v_old'))
+
 	repeated_build := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b', 'fastc',
-		descendant_unsupported_flag, 'x2'], '', isolated_vexe)
+		'x2'], '', isolated_vexe)
 	assert repeated_build.exit_code == 0, repeated_build.output
 	compiling_lines :=
 		repeated_build.output.split_into_lines().filter(it.contains('V self compiling'))
 	assert compiling_lines.len == 2, repeated_build.output
-	assert compiling_lines[0].contains(descendant_unsupported_flag), repeated_build.output
-	assert !compiling_lines[1].contains(descendant_unsupported_flag), repeated_build.output
 	assert os.is_executable(isolated_vexe)
 
 	prod_build := cmdexec.run(@VEXE, ['self', '-silent', '-prod', '-b', 'fastc', '-o',
