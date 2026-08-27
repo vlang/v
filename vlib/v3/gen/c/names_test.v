@@ -124,23 +124,36 @@ fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
 	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
 }
 
-fn test_collect_cache_native_c_symbols_ignores_comments_and_literals() {
+fn test_collect_cache_native_c_symbols_only_records_type_declarations() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	tc.structs['C.HEADER_ENUM_VALUE'] = []types.StructField{}
+	tc.structs['C.HeaderTag'] = []types.StructField{}
+	tc.structs['C.HeaderAlias'] = []types.StructField{}
+	tc.structs['C.HeaderEnum'] = []types.StructField{}
+	tc.structs['C.HeaderScalar'] = []types.StructField{}
+	tc.structs['C.HeaderOther'] = []types.StructField{}
 	tc.structs['C.CommentOnly'] = []types.StructField{}
 	tc.structs['C.StringOnly'] = []types.StructField{}
 	tc.structs['C.UnrelatedOpaque'] = []types.StructField{}
+	tc.structs['C.HEADER_ENUM_VALUE'] = []types.StructField{}
 
-	g.collect_cache_native_c_symbols('// CommentOnly\n"StringOnly"; HEADER_ENUM_VALUE,')
+	g.collect_cache_native_c_symbols('// typedef int CommentOnly;\n"typedef int StringOnly;";\nint f(int UnrelatedOpaque);\ntypedef struct HeaderTag { int field_name; } HeaderAlias;\nenum HeaderEnum { HEADER_ENUM_VALUE };\ntypedef int HeaderScalar, HeaderOther;')
 
-	assert g.cache_native_c_symbols['HEADER_ENUM_VALUE']
+	assert g.cache_native_c_symbols['HeaderTag']
+	assert g.cache_native_c_symbols['HeaderAlias']
+	assert g.cache_native_c_symbols['HeaderEnum']
+	assert g.cache_native_c_symbols['HeaderScalar']
+	assert g.cache_native_c_symbols['HeaderOther']
 	assert !g.cache_native_c_symbols['CommentOnly']
 	assert !g.cache_native_c_symbols['StringOnly']
 	assert !g.cache_native_c_symbols['UnrelatedOpaque']
+	assert !g.cache_native_c_symbols['HEADER_ENUM_VALUE']
+	assert !g.cache_native_c_symbols['field_name']
+	assert g.skip_builtin_struct('C.HeaderScalar')
+	assert !g.skip_builtin_struct('C.UnrelatedOpaque')
 }
 
 fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {

@@ -1431,6 +1431,66 @@ pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot str
 	return inputs, native_source_roots, native_root_contexts, unscoped_inputs, static_storage_inputs, resolution_dirs, missing_resolution_paths, has_untracked_include
 }
 
+struct CCachePlacedInclude {
+	file_node      int
+	module_node    int
+	directive_node int
+}
+
+// c_cache_external_input_node_order mirrors cgen placement: preincludes are
+// emitted before the translation-unit prefix and postincludes after its bodies,
+// independent of where their V directives occur.
+fn c_cache_external_input_node_order(a &flat.FlatAst) []int {
+	mut preincludes := []CCachePlacedInclude{}
+	mut postincludes := []CCachePlacedInclude{}
+	mut normal := []int{cap: a.nodes.len}
+	mut file_node := -1
+	mut module_node := -1
+	for node_id, node in a.nodes {
+		if node.kind == .file {
+			file_node = node_id
+			module_node = -1
+		} else if node.kind == .module_decl {
+			module_node = node_id
+		}
+		if node.kind == .directive && node.value in ['preinclude', 'postinclude'] {
+			placed := CCachePlacedInclude{
+				file_node:      file_node
+				module_node:    module_node
+				directive_node: node_id
+			}
+			if node.value == 'preinclude' {
+				preincludes << placed
+			} else {
+				postincludes << placed
+			}
+			continue
+		}
+		normal << node_id
+	}
+	mut ordered := []int{cap: normal.len + (preincludes.len + postincludes.len) * 3}
+	for placed in preincludes {
+		if placed.file_node >= 0 {
+			ordered << placed.file_node
+		}
+		if placed.module_node >= 0 {
+			ordered << placed.module_node
+		}
+		ordered << placed.directive_node
+	}
+	ordered << normal
+	for placed in postincludes {
+		if placed.file_node >= 0 {
+			ordered << placed.file_node
+		}
+		if placed.module_node >= 0 {
+			ordered << placed.module_node
+		}
+		ordered << placed.directive_node
+	}
+	return ordered
+}
+
 // cache_external_input_snapshot_with_resolved_flags also returns SHA-256 digests
 // of the exact native buffers used to resolve the dependency tree.
 pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot string, source_modules map[string]bool, c_flags []string, target pref.Target, program_files map[string]bool, compiler_macros map[string]string, compiler_macro_environment_complete bool) (map[string][]string, map[string][]string, map[string][]string, map[string][]string, map[string][]string, []string, []string, map[string]string, bool) {
@@ -1463,9 +1523,11 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 	mut cur_file := ''
 	mut cur_file_is_program := false
 	mut context_directives := map[string][]string{}
+	mut preinclude_context_directives := []string{}
 	mut conditional_context_mutations := map[string]bool{}
 	mut conditionals := []CCacheConditional{}
-	for node in a.nodes {
+	for node_id in c_cache_external_input_node_order(a) {
+		node := a.nodes[node_id]
 		if node.kind == .file {
 			cur_file = node.value
 			cur_file_is_program = program_files[cur_file] || program_files[os.real_path(cur_file)]
@@ -1573,12 +1635,14 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 				// Objective-C++ sources are already materialized as separate native-language
 				// wrappers. Assigning them to a C cache object compiles them twice and uses
 				// the wrong language for the cached copy.
-				is_native_root := (is_source_input || node.value == 'insert')
-					&& !real_path.ends_with('.mm')
+				is_native_root := node.value in ['include', 'insert']
+					&& (is_source_input || node.value == 'insert') && !real_path.ends_with('.mm')
 				if is_native_root {
+					mut root_context := preinclude_context_directives.clone()
+					root_context << context_directives[owner_module]
 					if !c_add_cache_native_source_root(mut native_source_roots, mut
-						native_root_contexts, owner_module, real_path,
-						context_directives[owner_module], context_is_replayable) {
+						native_root_contexts, owner_module, real_path, root_context,
+						context_is_replayable) {
 						has_untracked_include = true
 					}
 				}
@@ -1595,6 +1659,11 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 				}
 				for file in files {
 					c_add_cache_external_input(mut inputs, owner_module, file)
+					if node.value == 'preinclude' {
+						// Preincludes are part of every generated cache translation unit,
+						// so every object stamp must track their complete input tree.
+						c_add_cache_external_input(mut inputs, '__v3_c_flags__', file)
+					}
 					if is_source_input || include_arg.trim_space().starts_with('"') {
 						c_add_cache_external_input(mut unscoped_inputs, owner_module, file)
 						collection_key := owner_module + '\x00' + os.real_path(file)
@@ -1604,11 +1673,14 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 						}
 					}
 				}
-				if !is_source_input && include_arg.trim_space().starts_with('"')
+				if node.value in ['include', 'insert'] && !is_source_input
+					&& include_arg.trim_space().starts_with('"')
 					&& files.any(active_static_storage_paths[owner_module + '\x00' + os.real_path(it)]) {
+					mut root_context := preinclude_context_directives.clone()
+					root_context << context_directives[owner_module]
 					if !c_add_cache_native_source_root(mut native_source_roots, mut
-						native_root_contexts, owner_module, real_path,
-						context_directives[owner_module], context_is_replayable) {
+						native_root_contexts, owner_module, real_path, root_context,
+						context_is_replayable) {
 						has_untracked_include = true
 					}
 				}
@@ -1617,7 +1689,7 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 				// mutations into the context. This preserves conditional guards, multiline
 				// definitions, push/pop state, and include order without retaining thousands
 				// of system-header definitions.
-				if !is_source_input && node.value != 'insert' {
+				if !is_source_input && node.value == 'include' {
 					if conditionals.any(it.ambiguous) {
 						conditional_context_mutations[owner_module] = true
 					} else {
@@ -1625,6 +1697,15 @@ pub fn cache_external_input_snapshot_with_resolved_flags(a &flat.FlatAst, vroot 
 						module_context << c_cache_context_include_directive(include_arg, real_path)
 						context_directives[owner_module] = module_context
 					}
+				} else if !is_source_input && node.value == 'preinclude' {
+					directive := c_cache_context_include_directive(include_arg, real_path)
+					if directive !in preinclude_context_directives {
+						preinclude_context_directives << directive
+					}
+				} else if is_source_input && node.value in ['preinclude', 'postinclude'] {
+					// Hoisted native source files cannot be assigned to a module object
+					// without changing their generated placement.
+					has_untracked_include = true
 				}
 				break
 			}
@@ -7992,59 +8073,48 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 	}
 }
 
-// collect_cache_native_c_symbols records C names supplied by a
-// native header that cache splitting preserves as an include. Without this,
-// empty C placeholders discovered while checking selector expressions can be
-// emitted as fallback structs before the header, colliding with its typedefs,
-// enum values, and field names.
+// collect_cache_native_c_symbols records type names declared by a native header
+// that cache splitting preserves as an include. Empty C placeholders discovered
+// while checking selector expressions must not be emitted before a real typedef,
+// tag, or Objective-C type declaration. Ordinary identifiers such as parameters,
+// fields, and enum values do not declare types and must not suppress placeholders.
 fn (mut g FlatGen) collect_cache_native_c_symbols(text string) {
-	mut i := 0
-	for i < text.len {
-		if text[i] == `/` && i + 1 < text.len {
-			if text[i + 1] == `/` {
-				i += 2
-				for i < text.len && text[i] != `\n` {
-					i++
-				}
-				continue
-			}
-			if text[i + 1] == `*` {
-				i += 2
-				for i + 1 < text.len && !(text[i] == `*` && text[i + 1] == `/`) {
-					i++
-				}
-				if i + 1 < text.len {
-					i += 2
-				}
-				continue
-			}
-		}
-		if text[i] in [`'`, `"`] {
-			quote := text[i]
-			i++
-			for i < text.len {
-				if text[i] == `\\` && i + 1 < text.len {
-					i += 2
-					continue
-				}
-				i++
-				if text[i - 1] == quote {
-					break
+	declarations, _ := modulecache.c_source_type_declarations_with_status(text)
+	clean_declarations := c_strip_comments(declarations)
+	for name, _ in modulecache.c_source_type_identifiers(clean_declarations) {
+		g.cache_native_c_symbols[name] = true
+	}
+	// The shared identifier extractor records aggregate tags and the final alias
+	// in a typedef. Preserve every alias in comma-separated and function typedefs.
+	for alias in c_typedef_all_aggregate_aliases(clean_declarations) {
+		g.cache_native_c_symbols[alias] = true
+	}
+	for alias in c_typedef_plain_aliases(clean_declarations) {
+		g.cache_native_c_symbols[alias] = true
+	}
+	for alias in c_typedef_fn_aliases(clean_declarations) {
+		g.cache_native_c_symbols[alias] = true
+	}
+	// Objective-C classes and protocols are type declarations too, but do not
+	// use C's struct/union/enum or typedef spelling.
+	for line in clean_declarations.split_into_lines() {
+		clean := line.trim_space()
+		for prefix in ['@interface ', '@protocol '] {
+			if clean.starts_with(prefix) {
+				name := c_header_struct_tag(clean[prefix.len..])
+				if name.len > 0 {
+					g.cache_native_c_symbols[name] = true
 				}
 			}
-			continue
 		}
-		if !c_identifier_start(text[i]) {
-			i++
-			continue
+		if clean.starts_with('@class ') {
+			for declaration in clean['@class '.len..].trim_right(';').split(',') {
+				name := c_header_struct_tag(declaration.trim_space())
+				if name.len > 0 {
+					g.cache_native_c_symbols[name] = true
+				}
+			}
 		}
-		start := i
-		i++
-		for i < text.len && c_identifier_continue(text[i]) {
-			i++
-		}
-		identifier := unsafe { text[start..i] }
-		g.cache_native_c_symbols[identifier] = true
 	}
 }
 

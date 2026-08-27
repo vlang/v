@@ -6644,6 +6644,30 @@ fn test_cached_native_root_preserves_preceding_header_macro_mutations() {
 	assert out == '73'
 }
 
+fn test_cached_native_root_uses_generated_pre_and_postinclude_order() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'cached_native_placed_includes', {
+		'v.mod':                         "Module { name: 'cached_native_placed_includes' }\n"
+		'nativeanswer/pre.h':            '#define V3_NATIVE_PRE_READY 1\n'
+		'nativeanswer/post.h':           '#define V3_NATIVE_POST_LATE 1\n'
+		'nativeanswer/implementation.h': '#ifndef V3_NATIVE_PRE_READY\n#error missing generated preinclude context\n#endif\n#ifdef V3_NATIVE_POST_LATE\n#error postinclude replayed before native root\n#endif\nint v3_placed_include_answer(void) { return 74; }\n'
+		'nativeanswer/nativeanswer.v':   'module nativeanswer\n\n#postinclude "@DIR/post.h"\n#insert "@DIR/implementation.h"\n#preinclude "@DIR/pre.h"\n\nfn C.v3_placed_include_answer() int\n\npub fn answer() int {\n\treturn C.v3_placed_include_answer()\n}\n'
+		'main.v':                        'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '74'
+}
+
+fn test_cached_native_parameter_name_does_not_suppress_c_type() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'cached_native_parameter_type_name', {
+		'v.mod':                       "Module { name: 'cached_native_parameter_type_name' }\n"
+		'nativeanswer/native.h':       'int v3_parameter_name_only(int Unrelated);\n'
+		'nativeanswer/nativeanswer.v': 'module nativeanswer\n\n#insert "native.h"\n\nstruct C.Unrelated {}\n\nfn accepts_unrelated(value &C.Unrelated) int {\n\treturn if isnil(value) { 75 } else { 0 }\n}\n\npub fn answer() int {\n\treturn accepts_unrelated(unsafe { nil })\n}\n'
+		'main.v':                      'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '75'
+}
+
 fn test_bare_macro_objective_c_guards_stay_inactive() {
 	v3_bin := build_v3()
 	result := run_good_project_result(v3_bin, 'bare_macro_objective_c_guards', '', {

@@ -846,6 +846,42 @@ fn test_cache_input_scan_tracks_preceding_header_macro_mutations() {
 	]
 }
 
+fn test_cache_input_scan_orders_pre_and_postincludes_like_cgen() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_placed_include_context_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	pre_header := os.join_path(dir, 'pre.h')
+	post_header := os.join_path(dir, 'post.h')
+	implementation_header := os.join_path(dir, 'implementation.h')
+	os.write_file(pre_header, '#define V3_PRE_READY 1\n')!
+	os.write_file(post_header, '#define V3_POST_LATE 1\n')!
+	os.write_file(implementation_header,
+		'#ifndef V3_PRE_READY\n#error missing preinclude\n#endif\n#ifdef V3_POST_LATE\nstatic int v3_wrong_postinclude_order;\n#endif\nstatic int v3_placed_include_state;\n')!
+	source := os.join_path(dir, 'sample.v')
+	// Source order is deliberately opposite to generated placement: cgen emits
+	// the preinclude first and the postinclude after all generated bodies.
+	os.write_file(source,
+		'module sample\n#postinclude "post.h"\n#insert "implementation.h"\n#preinclude "pre.h"\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
+		'sample': true
+	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
+	assert !has_untracked
+	assert native_roots['sample'] == [os.real_path(implementation_header)]
+	assert native_contexts[os.real_path(implementation_header)] == [
+		'#include "${c_escape(os.real_path(pre_header))}"',
+	]
+	assert os.real_path(pre_header) in inputs['__v3_c_flags__']
+	assert os.real_path(post_header) !in inputs['__v3_c_flags__']
+}
+
 fn test_cache_input_scan_excludes_objective_cpp_sources_from_native_roots() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_objective_cpp_cache_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}
