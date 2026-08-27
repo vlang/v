@@ -2133,8 +2133,18 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 			verror('could not create the reproducible macOS debug object directory: ${err}')
 			return ''
 		}
+		prune_reproducible_macos_debug_compiler_temporaries(cache_dir)
 		temporary_object := os.join_path(cache_dir, 'v-compiler.${os.getpid()}.tmp')
+		mut temporary_object_lock := filelock.new(temporary_object + '.lock')
+		temporary_object_lock.acquire() or {
+			verror('could not lock the temporary reproducible macOS debug object: ${err}')
+			return ''
+		}
+		defer {
+			temporary_object_lock.release()
+		}
 		os.rm(temporary_object) or {}
+		os.rm(temporary_object + '.rsp') or {}
 		mut compile_options := v.ccoptions
 		// Output and linked third-party objects do not affect compilation of the
 		// generated C file and must not enter the persistent object's content.
@@ -2222,6 +2232,7 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 
 fn prune_reproducible_macos_debug_compiler_cache(cache_dir string, retained_object string, max_bytes u64) {
 	$if macos {
+		prune_reproducible_macos_debug_compiler_temporaries(cache_dir)
 		mut total_size := u64(0)
 		mut candidates := []ReproducibleMacosDebugCacheEntry{}
 		for name in os.ls(cache_dir) or { return } {
@@ -2251,6 +2262,39 @@ fn prune_reproducible_macos_debug_compiler_cache(cache_dir string, retained_obje
 				total_size -= entry.size
 			}
 		}
+	}
+}
+
+fn prune_reproducible_macos_debug_compiler_temporaries(cache_dir string) {
+	mut temporary_names := map[string]bool{}
+	for name in os.ls(cache_dir) or { return } {
+		if !name.starts_with('v-compiler.') {
+			continue
+		}
+		temporary_name := if name.ends_with('.tmp') {
+			name
+		} else if name.ends_with('.tmp.rsp') {
+			name.trim_string_right('.rsp')
+		} else if name.ends_with('.tmp.lock') {
+			name.trim_string_right('.lock')
+		} else {
+			continue
+		}
+		pid := temporary_name.trim_string_left('v-compiler.').trim_string_right('.tmp')
+		if pid.len == 0 || !pid.bytes().all(it.is_digit()) {
+			continue
+		}
+		temporary_names[temporary_name] = true
+	}
+	for temporary_name, _ in temporary_names {
+		temporary_object := os.join_path(cache_dir, temporary_name)
+		mut temporary_object_lock := filelock.new(temporary_object + '.lock')
+		if !temporary_object_lock.try_acquire() {
+			continue
+		}
+		os.rm(temporary_object) or {}
+		os.rm(temporary_object + '.rsp') or {}
+		temporary_object_lock.release()
 	}
 }
 

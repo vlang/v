@@ -2,6 +2,7 @@ module builder
 
 import crypto.sha256
 import os
+import os.filelock
 
 const macos_reproducible_compiler_vexe = @VEXE
 
@@ -27,12 +28,33 @@ fn test_macos_debug_compiler_cache_is_bounded() {
 	retained := create_macos_debug_cache_entry(cache_dir, 'retained', '123456', 10)!
 	obsolete := create_macos_debug_cache_entry(cache_dir, 'obsolete', '123456', 20)!
 	newest := create_macos_debug_cache_entry(cache_dir, 'newest', '123456', 30)!
+	abandoned_temporary := os.join_path(cache_dir, 'v-compiler.123456.tmp')
+	os.write_file(abandoned_temporary, 'temporary object')!
+	os.write_file(abandoned_temporary + '.rsp', 'response file')!
+	clang_temporary := os.join_path(cache_dir, 'v-compiler.123456-abcd.tmp.tmp')
+	os.write_file(clang_temporary, 'active clang temporary object')!
+	orphaned_response_temporary := os.join_path(cache_dir, 'v-compiler.123457.tmp')
+	os.write_file(orphaned_response_temporary + '.rsp', 'orphaned response file')!
+	active_temporary := os.join_path(cache_dir, 'v-compiler.123458.tmp')
+	os.write_file(active_temporary, 'active temporary object')!
+	os.write_file(active_temporary + '.rsp', 'active response file')!
+	mut active_temporary_lock := filelock.new(active_temporary + '.lock')
+	active_temporary_lock.acquire()!
+	defer {
+		active_temporary_lock.release()
+	}
 
 	prune_reproducible_macos_debug_compiler_cache(cache_dir, retained, 12)
 
 	assert os.is_file(retained)
 	assert !os.exists(obsolete)
 	assert os.is_file(newest)
+	assert !os.exists(abandoned_temporary)
+	assert !os.exists(abandoned_temporary + '.rsp')
+	assert os.is_file(clang_temporary)
+	assert !os.exists(orphaned_response_temporary + '.rsp')
+	assert os.is_file(active_temporary)
+	assert os.is_file(active_temporary + '.rsp')
 }
 
 fn test_macos_debug_compiler_build_is_reproducible() {
