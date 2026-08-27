@@ -57,6 +57,13 @@ fn main() {
 	if !has_gc_arg(args) {
 		args << ['-gc', 'none']
 	}
+	if !fastc_self_build && os.user_os() == 'linux' && self_build_supports_prealloc(args)
+		&& '-prealloc' !in args && '-no-prealloc' !in args {
+		// The embedded V3 compiler uses disposable preallocation scopes. Pass the
+		// flag explicitly so the first `v up` built by an older Linux compiler gets
+		// the bounded-memory implementation too.
+		args << '-prealloc'
+	}
 	obinary := self_build_output(args)
 	if fastc_self_build && repeat_count > 1 && obinary == '' {
 		unsupported := unsupported_fastc_repeat_args(args)
@@ -261,6 +268,37 @@ fn has_gc_arg(args []string) bool {
 		}
 	}
 	return false
+}
+
+fn self_build_supports_prealloc(args []string) bool {
+	mut skip_next := false
+	for i, arg in args {
+		if skip_next {
+			skip_next = false
+			continue
+		}
+		if arg == '-os' {
+			if i + 1 < args.len && args[i + 1] != 'linux' {
+				return false
+			}
+			skip_next = true
+			continue
+		}
+		if arg.starts_with('-os=') && arg.all_after('=') != 'linux' {
+			return false
+		}
+		if arg == '-gc' {
+			if i + 1 < args.len && args[i + 1] != 'none' {
+				return false
+			}
+			skip_next = true
+			continue
+		}
+		if arg.starts_with('-gc=') && arg.all_after('=') != 'none' {
+			return false
+		}
+	}
+	return true
 }
 
 fn has_profile_cflag(args []string) bool {

@@ -22,6 +22,9 @@ pub:
 	force_sync bool
 }
 
+// limit_pool_size is a no-op because the Windows compatibility pool is serial.
+pub fn limit_pool_size(_ int) {}
+
 // Pool is a serial compatibility implementation on Windows.
 @[heap]
 pub struct Pool {

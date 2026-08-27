@@ -421,8 +421,8 @@ fn test_prealloc_defaults_to_no_gc() {
 	assert prefs.gc_mode == .no_gc
 }
 
-fn test_macos_v_compiler_target_defaults_to_prealloc() {
-	if pref.get_host_os() != .macos {
+fn test_macos_and_linux_v_compiler_target_defaults_to_prealloc() {
+	if pref.get_host_os() !in [.macos, .linux] {
 		return
 	}
 	target := os.join_path(vroot, 'cmd', 'v')
