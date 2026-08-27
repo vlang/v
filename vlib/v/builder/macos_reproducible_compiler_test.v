@@ -72,7 +72,7 @@ fn test_macos_debug_compiler_cache_recreates_entry_directory_before_store() {
 	object_path := os.join_path(object_dir, 'v-compiler.o')
 	os.write_file(temporary_object, 'compiler object')!
 	os.mkdir_all(object_dir)!
-	mut cache_entry_lock := filelock.new(object_dir + '.lock')
+	mut cache_entry_lock := new_reproducible_macos_debug_cache_entry_lock(object_dir)!
 	cache_entry_lock.acquire()!
 	defer {
 		cache_entry_lock.release()
@@ -83,9 +83,10 @@ fn test_macos_debug_compiler_cache_recreates_entry_directory_before_store() {
 
 	assert os.read_file(object_path)! == 'compiler object'
 	assert !os.exists(temporary_object)
+	assert os.is_file(object_dir + '.lock')
 }
 
-fn test_macos_debug_compiler_cache_lock_reopens_replaced_sidecar() {
+fn test_macos_debug_compiler_cache_lock_uses_persistent_inode() {
 	$if !macos {
 		return
 	}
@@ -96,18 +97,22 @@ fn test_macos_debug_compiler_cache_lock_reopens_replaced_sidecar() {
 		os.rmdir_all(cache_dir) or {}
 	}
 	lock_path := os.join_path(cache_dir, 'content-hash.lock')
-	mut first_owner := filelock.new(lock_path)
+	object_dir := os.join_path(cache_dir, 'content-hash')
+	mut first_owner := new_reproducible_macos_debug_cache_entry_lock(object_dir)!
 	first_owner.acquire()!
-	mut waiter := filelock.new(lock_path)
-	assert !waiter.try_acquire()
+	lock_stat := os.stat(lock_path)!
 	first_owner.release()
-
-	mut replacement_owner := filelock.new(lock_path)
-	replacement_owner.acquire()!
-	assert !waiter.try_acquire()
-	replacement_owner.release()
-	assert waiter.try_acquire()
-	waiter.release()
+	assert os.is_file(lock_path)
+	after_first_release := os.stat(lock_path)!
+	assert after_first_release.dev == lock_stat.dev
+	assert after_first_release.inode == lock_stat.inode
+	mut next_owner := new_reproducible_macos_debug_cache_entry_lock(object_dir)!
+	next_owner.acquire()!
+	next_owner.release()
+	assert os.is_file(lock_path)
+	after_next_release := os.stat(lock_path)!
+	assert after_next_release.dev == lock_stat.dev
+	assert after_next_release.inode == lock_stat.inode
 }
 
 fn test_macos_debug_compiler_build_is_reproducible() {

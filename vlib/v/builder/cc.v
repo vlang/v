@@ -2197,11 +2197,13 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 			verror('could not create the content-addressed macOS debug object directory: ${err}')
 			return ''
 		}
-		mut cache_entry_lock := filelock.new(object_dir + '.lock')
-		// A sidecar lock is unlinked on release. Retrying nonblocking acquisition
-		// reopens the path, so a waiter cannot acquire an old, unlinked inode.
-		for !cache_entry_lock.try_acquire() {
-			time.sleep(time.millisecond)
+		mut cache_entry_lock := new_reproducible_macos_debug_cache_entry_lock(object_dir) or {
+			verror('could not open the reproducible macOS debug cache entry lock: ${err}')
+			return ''
+		}
+		cache_entry_lock.acquire() or {
+			verror('could not lock the reproducible macOS debug cache entry: ${err}')
+			return ''
 		}
 		defer {
 			cache_entry_lock.release()
@@ -2234,6 +2236,15 @@ fn store_reproducible_macos_debug_compiler_object(temporary_object string, objec
 	} else {
 		os.mv(temporary_object, object_path)!
 	}
+}
+
+fn new_reproducible_macos_debug_cache_entry_lock(object_dir string) !filelock.FileLock {
+	lock_path := object_dir + '.lock'
+	// Cache entry locks remain in the cache root so all contenders always lock the
+	// same inode, including while the corresponding content directory is pruned.
+	mut lock_file := os.open_append(lock_path)!
+	lock_file.close()
+	return filelock.new_file(lock_path)
 }
 
 fn prune_reproducible_macos_debug_compiler_cache(cache_dir string, retained_object string, max_bytes u64) {
@@ -2305,7 +2316,9 @@ fn prune_reproducible_macos_debug_compiler_temporaries(cache_dir string) {
 }
 
 fn remove_reproducible_macos_debug_cache_entry(entry ReproducibleMacosDebugCacheEntry) bool {
-	mut cache_entry_lock := filelock.new(entry.object_dir + '.lock')
+	mut cache_entry_lock := new_reproducible_macos_debug_cache_entry_lock(entry.object_dir) or {
+		return false
+	}
 	if !cache_entry_lock.try_acquire() {
 		return false
 	}
