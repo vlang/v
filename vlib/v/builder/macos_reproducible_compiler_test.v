@@ -172,6 +172,9 @@ fn test_macos_debug_compiler_build_is_reproducible() {
 	assert cdebug_hashes[0] == cdebug_hashes[1], cdebug_hashes.str()
 
 	first_output := os.join_path(test_dir, 'first')
+	first_codesign_result :=
+		os.execute('codesign --verify --strict ${os.quoted_path(first_output)}')
+	assert first_codesign_result.exit_code == 0, first_codesign_result.output
 	nm_result := os.execute('nm -ap ${os.quoted_path(first_output)}')
 	assert nm_result.exit_code == 0, nm_result.output
 	oso_lines := nm_result.output.split_into_lines().filter(it.contains(' OSO '))

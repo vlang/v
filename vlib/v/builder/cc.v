@@ -1143,10 +1143,13 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			ccoptions.linker_flags << '-Wl,-export_dynamic' // clang for mac needs export_dynamic instead of -rdynamic
 			if v.pref.building_v && ccoptions.cc == .clang {
 				// ld64 otherwise lets temporary object and output paths perturb the
-				// content-derived UUID and the ad-hoc code signature.
+				// content-derived UUID and its provisional ad-hoc code signature.
+				// Suppress that signature so every linker version leaves the same
+				// unsigned layout for the normalized post-link signature below.
 				ccoptions.args << os.quoted_path('-ffile-prefix-map=${v.out_name_c}=<generated-c>')
 				ccoptions.linker_flags << '-Wl,-reproducible'
 				ccoptions.linker_flags << '-Wl,-final_output,v-compiler'
+				ccoptions.linker_flags << '-Wl,-no_adhoc_codesign'
 			}
 		} else {
 			if v.pref.ccompiler != 'x86_64-w64-mingw32-gcc' {
@@ -2374,9 +2377,8 @@ fn (v &Builder) finalize_reproducible_macos_debug_compiler() {
 			verror('could not find `codesign` to finalize the reproducible macOS compiler binary')
 			return
 		}
-		// Removing the linker's signature first also removes its output-name-dependent
-		// allocation, so the replacement has the same layout for every output path.
-		os.execute('${os.quoted_path(codesign_path)} --remove-signature ${os.quoted_path(v.pref.out_name)}')
+		// The linker leaves this compiler unsigned; add one normalized signature with
+		// a stable identifier so its layout and contents do not depend on the output path.
 		codesign_result :=
 			os.execute('${os.quoted_path(codesign_path)} --force --sign - --identifier org.vlang.v ${os.quoted_path(v.pref.out_name)}')
 		if codesign_result.exit_code != 0 {
