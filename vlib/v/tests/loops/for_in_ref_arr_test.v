@@ -82,6 +82,8 @@ fn for_in_ref_second_callback() int {
 	return 20
 }
 
+type ForInRefCallback = fn () int
+
 fn test_for_in_ref_fixed_array_of_functions() {
 	callbacks := [for_in_ref_first_callback, for_in_ref_second_callback]!
 	mut results := []int{}
@@ -94,4 +96,14 @@ fn test_for_in_ref_fixed_array_of_functions() {
 		}
 	}
 	assert results == [10, 20]
+}
+
+fn test_for_in_mut_fixed_array_of_function_aliases() {
+	mut callbacks := [ForInRefCallback(for_in_ref_first_callback),
+		ForInRefCallback(for_in_ref_second_callback)]!
+	for mut callback in callbacks {
+		callback = ForInRefCallback(for_in_ref_second_callback)
+	}
+	assert callbacks[0]() == 20
+	assert callbacks[1]() == 20
 }
