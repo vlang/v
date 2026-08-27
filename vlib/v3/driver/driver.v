@@ -9704,7 +9704,6 @@ pub fn run(args []string) {
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
 				&pre_tc, monomorph_input_used, !current_no_parallel
 				&& should_parallel_monomorphize(), monomorph_scope, cached_monomorph_specs)
-			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			prealloc_scope_leave_for_v3(monomorph_scope)
 			// Specialization can rewrite payload text on pre-existing nodes as
 			// well as append new nodes. Publish every string still owned by the
@@ -9739,7 +9738,10 @@ pub fn run(args []string) {
 			monomorph_used_fns = clone_string_bool_map(monomorph_used_fns)
 			monomorph_errors = clone_string_list(monomorph_errors)
 			generated_monomorph_specs = clone_monomorph_cache_specs(generated_monomorph_specs)
-			pre_tc.set_fresh_type_cache(parse_cache_enabled)
+			// Scoped specialization can leave parse-cache key text in a disposable
+			// worker arena. Cgen must reparse from the promoted AST instead of reading
+			// those keys after the monomorph scope is released.
+			pre_tc.set_fresh_type_cache(false)
 			prealloc_scope_free_for_v3(monomorph_scope)
 		} else {
 			monomorph_used_fns, monomorph_errors, generated_monomorph_specs = transform.monomorphize_with_used_checked_config_scoped_cached(mut a,
