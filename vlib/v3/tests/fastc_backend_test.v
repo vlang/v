@@ -91,6 +91,15 @@ fn test_v_self_accepts_fastc_backend() {
 	}
 	isolated_vexe := os.join_path(isolated_vroot, 'v')
 	os.cp(@VEXE, isolated_vexe) or { panic(err) }
+	for ccompiler in ['tcc', 'tinyc'] {
+		unsupported_cc_repeat := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b',
+			'fastc', '-cc', ccompiler, 'x2'], '', isolated_vexe)
+		assert unsupported_cc_repeat.exit_code != 0
+		assert unsupported_cc_repeat.output.contains('cannot preserve'), unsupported_cc_repeat.output
+		assert unsupported_cc_repeat.output.contains('-cc ${ccompiler}'), unsupported_cc_repeat.output
+		assert unsupported_cc_repeat.output.count('V self compiling') == 0, unsupported_cc_repeat.output
+		assert !os.exists(os.join_path(isolated_vroot, 'v_old'))
+	}
 	unsupported_repeat := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b', 'fastc',
 		'-g', 'x2'], '', isolated_vexe)
 	assert unsupported_repeat.exit_code != 0

@@ -145,12 +145,11 @@ fn unsupported_fastc_repeat_args(args []string) []string {
 	mut i := 0
 	for i < args.len {
 		arg := args[i]
-		if arg in ['-b', '-gc', '-cc'] && i + 1 < args.len {
+		if arg in ['-b', '-gc'] && i + 1 < args.len {
 			value := args[i + 1]
 			supported := match arg {
 				'-b' { value == 'fastc' }
 				'-gc' { value == 'none' }
-				'-cc' { value in ['tinyc', 'tcc'] }
 				else { false }
 			}
 			if !supported {
