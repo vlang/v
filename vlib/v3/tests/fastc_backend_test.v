@@ -14,6 +14,26 @@ fn write_fastc_test_source(path string, source string) {
 	os.write_file(path, source) or { panic(err) }
 }
 
+fn run_with_vflags(program string, args []string, flags string) os.Result {
+	old_vflags := os.getenv_opt('VFLAGS')
+	old_vosargs := os.getenv_opt('VOSARGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
+		if value := old_vosargs {
+			os.setenv('VOSARGS', value, true)
+		} else {
+			os.unsetenv('VOSARGS')
+		}
+	}
+	os.setenv('VFLAGS', flags, true)
+	os.unsetenv('VOSARGS')
+	return cmdexec.run(program, args)
+}
+
 fn test_v_self_accepts_fastc_backend() {
 	$if !macos && !linux {
 		return
@@ -24,6 +44,13 @@ fn test_v_self_accepts_fastc_backend() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
+	vflags_binary := os.join_path(root, 'v fastc from vflags')
+	vflags_self_build := run_with_vflags(@VEXE, ['self', '-silent', '-o', vflags_binary],
+		'-b fastc')
+	assert vflags_self_build.exit_code == 0, vflags_self_build.output
+	assert vflags_self_build.output.contains('-b fastc'), vflags_self_build.output
+	assert os.is_executable(vflags_binary)
+
 	selfhost_binary := os.join_path(root, 'v fastc')
 	self_build := cmdexec.run(@VEXE, ['self', '-silent', '-backend', 'fastc', 'x2', '-o',
 		selfhost_binary])
@@ -32,6 +59,12 @@ fn test_v_self_accepts_fastc_backend() {
 	assert self_build.output.contains('-b fastc'), self_build.output
 	assert !self_build.output.contains('-backend fastc'), self_build.output
 	assert os.is_executable(selfhost_binary)
+
+	prod_build := cmdexec.run(@VEXE, ['self', '-silent', '-prod', '-b', 'fastc', '-o',
+		os.join_path(root, 'v prod')])
+	assert prod_build.exit_code != 0
+	assert prod_build.output.contains('does not support `-prod`'), prod_build.output
+
 	source := os.join_path(root, 'main.v')
 	write_fastc_test_source(source, 'module main\nfn main() { println(42) }\n')
 	program := os.join_path(root, 'program')

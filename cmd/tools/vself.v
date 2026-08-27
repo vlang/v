@@ -30,6 +30,10 @@ fn main() {
 	os.setenv('VCOLORS', 'always', true)
 	repeat_count, mut args := extract_repeat_count(args_[1..].filter(it != 'self'))
 	fastc_self_build := uses_fastc_backend(args)
+	if fastc_self_build && '-prod' in args {
+		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
+		exit(1)
+	}
 	if fastc_self_build {
 		args = normalize_fastc_backend_args(args)
 	}

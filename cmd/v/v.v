@@ -144,7 +144,15 @@ fn main() {
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in external_tools {
 		// External tools
-		util.launch_tool(prefs.is_verbose, 'v' + command, os.args[1..])
+		mut tool_args := os.args[1..].clone()
+		if command == 'self' {
+			// vself forwards compiler flags to the compiler it builds. Pass merged
+			// VFLAGS once as arguments, then keep them out of vself's own recompilation.
+			tool_args = args_and_flags.clone()
+			os.unsetenv('VFLAGS')
+			os.unsetenv('VOSARGS')
+		}
+		util.launch_tool(prefs.is_verbose, 'v' + command, tool_args)
 		return
 	}
 	match command {
