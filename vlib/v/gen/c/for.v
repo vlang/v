@@ -914,12 +914,18 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.writeln('\t${styp} ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*(${styp}*)${c_name(node.val_var)}, (byte*)${cond_var}[${idx}], sizeof(${styp}));')
 			} else {
-				styp := g.styp(node.val_type)
+				styp := if node.val_type.has_flag(.option_mut_param_t) {
+					'${g.styp(node.val_type.clear_flag(.option_mut_param_t))}*'
+				} else {
+					g.styp(node.val_type)
+				}
 				g.write('\t${styp} ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
-				addr := if (node.val_is_mut || node.val_is_ref)
-					&& !info.elem_type.is_any_kind_of_pointer() && !elem_is_fn {
+				val_was_promoted_to_ref := node.val_type.nr_muls() > info.elem_type.nr_muls()
+					|| node.val_type.has_flag(.option_mut_param_t)
+				addr := if (node.val_is_mut || node.val_is_ref) && val_was_promoted_to_ref
+					&& !elem_is_fn {
 					'&'
 				} else {
 					''

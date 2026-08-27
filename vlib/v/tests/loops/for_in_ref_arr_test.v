@@ -52,6 +52,28 @@ fn test_for_in_ref_fixed_array_of_pointers() {
 	}
 }
 
+fn test_for_in_ref_fixed_array_of_optional_pointers() {
+	first := &ForInRefPointerItem{
+		value: 10
+	}
+	second := &ForInRefPointerItem{
+		value: 20
+	}
+	mut items := unsafe { [2]?&ForInRefPointerItem{} }
+	items[0] = first
+	items[1] = second
+	mut values := []int{}
+
+	// Referencing a stack-allocated fixed array requires an explicit unsafe scope.
+	unsafe {
+		for optional_item in &items {
+			item := optional_item or { continue }
+			values << item.value
+		}
+	}
+	assert values == [10, 20]
+}
+
 fn for_in_ref_first_callback() int {
 	return 10
 }
