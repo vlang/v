@@ -57,6 +57,34 @@ fn test_macos_debug_compiler_cache_is_bounded() {
 	assert os.is_file(active_temporary + '.rsp')
 }
 
+fn test_macos_debug_compiler_cache_recreates_entry_directory_before_store() {
+	$if !macos {
+		return
+	}
+	cache_dir := os.join_path(os.vtmp_dir(), 'macos_debug_cache_store_${os.getpid()}')
+	os.rmdir_all(cache_dir) or {}
+	os.mkdir_all(cache_dir)!
+	defer {
+		os.rmdir_all(cache_dir) or {}
+	}
+	temporary_object := os.join_path(cache_dir, 'v-compiler.123456.tmp')
+	object_dir := os.join_path(cache_dir, 'content-hash')
+	object_path := os.join_path(object_dir, 'v-compiler.o')
+	os.write_file(temporary_object, 'compiler object')!
+	os.mkdir_all(object_dir)!
+	mut cache_entry_lock := filelock.new(object_dir + '.lock')
+	cache_entry_lock.acquire()!
+	defer {
+		cache_entry_lock.release()
+	}
+	// Simulate a pruner removing the entry while the producer waited for this lock.
+	os.rmdir_all(object_dir)!
+	store_reproducible_macos_debug_compiler_object(temporary_object, object_dir, object_path)!
+
+	assert os.read_file(object_path)! == 'compiler object'
+	assert !os.exists(temporary_object)
+}
+
 fn test_macos_debug_compiler_build_is_reproducible() {
 	$if !macos {
 		return

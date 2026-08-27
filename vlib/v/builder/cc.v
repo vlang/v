@@ -2205,13 +2205,9 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 		defer {
 			cache_entry_lock.release()
 		}
-		if os.is_file(object_path) {
-			os.rm(temporary_object) or {}
-		} else {
-			os.mv(temporary_object, object_path) or {
-				verror('could not store the reproducible macOS debug object: ${err}')
-				return ''
-			}
+		store_reproducible_macos_debug_compiler_object(temporary_object, object_dir, object_path) or {
+			verror('could not store the reproducible macOS debug object: ${err}')
+			return ''
 		}
 		os.utime(object_path, 1, 1) or {
 			verror('could not normalize the reproducible macOS debug object timestamp: ${err}')
@@ -2228,6 +2224,15 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 		return object_path
 	}
 	return ''
+}
+
+fn store_reproducible_macos_debug_compiler_object(temporary_object string, object_dir string, object_path string) ! {
+	os.mkdir_all(object_dir)!
+	if os.is_file(object_path) {
+		os.rm(temporary_object) or {}
+	} else {
+		os.mv(temporary_object, object_path)!
+	}
 }
 
 fn prune_reproducible_macos_debug_compiler_cache(cache_dir string, retained_object string, max_bytes u64) {
