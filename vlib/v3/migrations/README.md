@@ -103,11 +103,11 @@ can override whether per-migration transaction methods are used for DDL. SQLite'
 transaction still covers each mutating workflow; failed acquisition and commit paths roll back and
 remove their temporary transaction probes. Migration names containing NUL bytes are rejected before
 any database access. PostgreSQL migrations reject `orm.DB` decorators without probing their
-transactions; pass a direct session-pinned `pg.Conn` without an active transaction. Existing
-transactions, including `pg.Tx`, are rejected in every transaction mode so the session lock cannot
-be released before their work commits. Unqualified PostgreSQL history tables resolve an existing
-persistent relation before falling back to the normal creation schema for inspection, creation,
-and lock namespacing. Temporary relations are ignored unless explicitly qualified in `Config.table`.
+transactions; pass a direct session-pinned `pg.Conn` without an active transaction. Mutating and
+inspection workflows reject existing transactions, including `pg.Tx`, before resolving or retaining
+the history schema. Unqualified PostgreSQL history tables resolve an existing persistent relation
+before falling back to the normal creation schema for inspection, creation, and lock namespacing.
+Temporary relations are ignored unless explicitly qualified in `Config.table`.
 PostgreSQL transactions opened by callbacks in `never` mode are rolled back and rejected before the
 advisory migration lock is released, including when an aborted transaction makes the history write
 fail. In transactional modes, callbacks cannot end the migrator-owned PostgreSQL transaction before

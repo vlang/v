@@ -406,6 +406,9 @@ fn (m &Migrator) find_migration(version i64) ?Migration {
 fn (mut m Migrator) ensure_history_table() ! {
 	match m.config.dialect {
 		.pg {
+			if m.pg_lock_key == none {
+				m.reject_existing_postgresql_transaction()!
+			}
 			m.resolve_postgresql_history_schema()!
 		}
 		.mysql {
