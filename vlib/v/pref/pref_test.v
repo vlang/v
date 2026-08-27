@@ -147,6 +147,17 @@ fn test_launcher_leaves_flags_after_a_known_external_command_for_the_tool() {
 	assert prefs.eval_argument == ''
 }
 
+fn test_launcher_reports_external_command_index() {
+	_, command, command_idx := pref.parse_args_for_launcher_with_command_index([
+		'self',
+	], ['-exclude', 'x2', 'self', '-o', 'vnew'], false)
+	assert command == 'self'
+	assert command_idx == 2
+	assert pref.option_may_consume_value('-exclude')
+	assert pref.option_may_consume_value('-profile')
+	assert !pref.option_may_consume_value('-g')
+}
+
 fn test_non_launcher_parse_keeps_v_flags_after_the_command() {
 	// vfmt and similar tools recognize their own command name (`fmt`), but still rely on the
 	// general V preference flags that follow it. The default parser (non-launcher mode) must

@@ -3,6 +3,7 @@ import v3.cmdexec
 
 const fastc_backend_v3_dir = os.dir(os.dir(@FILE))
 const fastc_backend_vlib_dir = os.dir(fastc_backend_v3_dir)
+const fastc_backend_vroot = os.dir(fastc_backend_vlib_dir)
 const fastc_backend_v3_source = os.join_path(fastc_backend_v3_dir, 'v3.v')
 
 struct UnsupportedFastCInvocation {
@@ -12,6 +13,139 @@ struct UnsupportedFastCInvocation {
 
 fn write_fastc_test_source(path string, source string) {
 	os.write_file(path, source) or { panic(err) }
+}
+
+fn run_with_v_environment(program string, args []string, flags string, vexe string) os.Result {
+	old_vflags := os.getenv_opt('VFLAGS')
+	old_vosargs := os.getenv_opt('VOSARGS')
+	old_vexe := os.getenv_opt('VEXE')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
+		if value := old_vosargs {
+			os.setenv('VOSARGS', value, true)
+		} else {
+			os.unsetenv('VOSARGS')
+		}
+		if value := old_vexe {
+			os.setenv('VEXE', value, true)
+		} else {
+			os.unsetenv('VEXE')
+		}
+	}
+	if flags == '' {
+		os.unsetenv('VFLAGS')
+	} else {
+		os.setenv('VFLAGS', flags, true)
+	}
+	os.unsetenv('VOSARGS')
+	os.setenv('VEXE', vexe, true)
+	return cmdexec.run(program, args)
+}
+
+fn test_v_self_accepts_fastc_backend() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_self_fastc_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	vflags_value_binary := os.join_path(root, 'v from x2 value')
+	vflags_value_build := run_with_v_environment(@VEXE, ['-exclude', 'x2', 'self', '-silent', '-o',
+		vflags_value_binary], '-exclude x3', @VEXE)
+	assert vflags_value_build.exit_code == 0, vflags_value_build.output
+	assert vflags_value_build.output.count('V self compiling') == 1, vflags_value_build.output
+	assert vflags_value_build.output.contains('-exclude x2'), vflags_value_build.output
+	assert vflags_value_build.output.contains('-exclude x3'), vflags_value_build.output
+	assert os.is_executable(vflags_value_binary)
+
+	vflags_binary := os.join_path(root, 'v fastc from vflags')
+	vflags_self_build := run_with_v_environment(@VEXE, ['self', '-silent', '-o', vflags_binary],
+		'-d self -b fastc', @VEXE)
+	assert vflags_self_build.exit_code == 0, vflags_self_build.output
+	assert vflags_self_build.output.count('V self compiling') == 1, vflags_self_build.output
+	assert vflags_self_build.output.contains('-d self'), vflags_self_build.output
+	assert vflags_self_build.output.contains('-b fastc'), vflags_self_build.output
+	assert os.is_executable(vflags_binary)
+
+	vflags_backend_value_binary := os.join_path(root, 'v fastc backend value')
+	vflags_backend_value_build := run_with_v_environment(@VEXE, ['self', '-b', 'fastc', '-o',
+		vflags_backend_value_binary], '-exclude -b', @VEXE)
+	assert vflags_backend_value_build.exit_code != 0
+	assert vflags_backend_value_build.output.count('V self compiling') == 1, vflags_backend_value_build.output
+	assert vflags_backend_value_build.output.contains('-exclude -b'), vflags_backend_value_build.output
+	assert !vflags_backend_value_build.output.contains('-exclude fastc'), vflags_backend_value_build.output
+	assert vflags_backend_value_build.output.contains('only supported by the V1 compiler'), vflags_backend_value_build.output
+	assert !os.exists(vflags_backend_value_binary)
+
+	selfhost_binary := os.join_path(root, 'v fastc')
+	self_build := cmdexec.run(@VEXE, ['self', '-silent', '-backend', 'fastc', 'x2', '-o',
+		selfhost_binary])
+	assert self_build.exit_code == 0, self_build.output
+	assert self_build.output.count('V self compiling') == 2, self_build.output
+	assert self_build.output.contains('-b fastc'), self_build.output
+	assert !self_build.output.contains('-backend fastc'), self_build.output
+	assert os.is_executable(selfhost_binary)
+
+	isolated_vroot := os.join_path(root, 'isolated_vroot')
+	os.mkdir_all(isolated_vroot) or { panic(err) }
+	for directory in ['cmd', 'vlib', 'thirdparty'] {
+		os.symlink(os.join_path(fastc_backend_vroot, directory), os.join_path(isolated_vroot,
+			directory)) or { panic(err) }
+	}
+	isolated_vexe := os.join_path(isolated_vroot, 'v')
+	os.cp(@VEXE, isolated_vexe) or { panic(err) }
+	output_alias_binary := os.join_path(root, 'v fastc output alias')
+	output_alias_build := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b', 'fastc',
+		'-output', output_alias_binary], '', isolated_vexe)
+	assert output_alias_build.exit_code == 0, output_alias_build.output
+	assert output_alias_build.output.count('V self compiling') == 1, output_alias_build.output
+	assert os.is_executable(output_alias_binary)
+	assert !os.exists(os.join_path(isolated_vroot, 'v_old'))
+	for ccompiler in ['tcc', 'tinyc'] {
+		unsupported_cc_repeat := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b',
+			'fastc', '-cc', ccompiler, 'x2'], '', isolated_vexe)
+		assert unsupported_cc_repeat.exit_code != 0
+		assert unsupported_cc_repeat.output.contains('cannot preserve'), unsupported_cc_repeat.output
+		assert unsupported_cc_repeat.output.contains('-cc ${ccompiler}'), unsupported_cc_repeat.output
+		assert unsupported_cc_repeat.output.count('V self compiling') == 0, unsupported_cc_repeat.output
+		assert !os.exists(os.join_path(isolated_vroot, 'v_old'))
+	}
+	unsupported_repeat := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b', 'fastc',
+		'-g', 'x2'], '', isolated_vexe)
+	assert unsupported_repeat.exit_code != 0
+	assert unsupported_repeat.output.contains('cannot preserve'), unsupported_repeat.output
+	assert unsupported_repeat.output.contains('-g'), unsupported_repeat.output
+	assert unsupported_repeat.output.count('V self compiling') == 0, unsupported_repeat.output
+	assert !os.exists(os.join_path(isolated_vroot, 'v_old'))
+
+	repeated_build := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b', 'fastc',
+		'x2'], '', isolated_vexe)
+	assert repeated_build.exit_code == 0, repeated_build.output
+	compiling_lines :=
+		repeated_build.output.split_into_lines().filter(it.contains('V self compiling'))
+	assert compiling_lines.len == 2, repeated_build.output
+	assert os.is_executable(isolated_vexe)
+
+	prod_build := cmdexec.run(@VEXE, ['self', '-silent', '-prod', '-b', 'fastc', '-o',
+		os.join_path(root, 'v prod')])
+	assert prod_build.exit_code != 0
+	assert prod_build.output.contains('does not support `-prod`'), prod_build.output
+
+	source := os.join_path(root, 'main.v')
+	write_fastc_test_source(source, 'module main\nfn main() { println(42) }\n')
+	program := os.join_path(root, 'program')
+	compile := cmdexec.run(selfhost_binary, ['-b', 'fastc', '-o', program, source])
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
 }
 
 fn test_fastc_backend_parses_directly_to_c_without_ast_fallback() {
