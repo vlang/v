@@ -8726,6 +8726,12 @@ pub fn run(args []string) {
 		}
 		mut cvsw := time.new_stopwatch()
 		pre_tc.collect(a)
+		if has_conflicting_c_declaration_errors(pre_tc.errors) {
+			if !macos_v3_fallback_suppresses_diagnostics(macos_v3_fallback_file) {
+				print_type_diagnostics(a, pre_tc.notices, pre_tc.errors, is_checker_fixture)
+			}
+			exit(1)
+		}
 		register_headerless_c_types(mut pre_tc)
 		register_native_source_typedefs(mut pre_tc, &cache_state)
 		if translated_mode {
@@ -12835,6 +12841,13 @@ fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_error
 	if !all_errors && ordered_errors.len > max_errors {
 		eprintln('... and ${ordered_errors.len - max_errors} more errors')
 	}
+}
+
+fn has_conflicting_c_declaration_errors(errors []types.TypeError) bool {
+	return errors.any(it.kind == .duplicate_decl
+		&& (it.msg.starts_with('cannot redeclare C struct `')
+		|| (it.msg.starts_with('C function `')
+		&& it.msg.contains('was already declared with a different signature'))))
 }
 
 fn unused_notice_is_parameter_redefinition_cascade(a &flat.FlatAst, notice types.TypeError, type_errors []types.TypeError) bool {
