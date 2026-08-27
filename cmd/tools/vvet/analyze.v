@@ -107,7 +107,12 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 					expr.pos)
 			} else {
 				lock vt.call_counter {
-					vt.call_counter[expr.name]++
+					fn_name := if expr.name.contains('.') {
+						expr.name
+					} else {
+						'${expr.mod}.${expr.name}'
+					}
+					vt.call_counter[fn_name]++
 				}
 				vt.save_expr(callexpr_cutoff,
 					'${expr.name}(${expr.args.map(it.str()).join(', ')})', vet.file, expr.pos)
