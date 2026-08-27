@@ -1,0 +1,19 @@
+module main
+
+struct Point {
+	x int
+	y int
+}
+
+struct Holder {
+	buf [3]Point
+}
+
+fn main() {
+	h := Holder{
+		buf: [Point{1, 2}, Point{3, 4}, Point{5, 6}]
+	}
+	for i in &h.buf {
+		println(i.x)
+	}
+}
