@@ -756,7 +756,11 @@ pub fn (mut c QuicConn) process_timeouts(now u64) !PollResult {
 				max_ack_delay)
 			if timeout_result.pto_fired {
 				c.send_pto_probe(timeout_result.pto_space, now, mut result) or {
-					code := if err.code() != 0 { u64(err.code()) } else { quic_error_protocol_violation }
+					code := if err.code() != 0 {
+						u64(err.code())
+					} else {
+						quic_error_protocol_violation
+					}
 					c.close_with_error(code, err.msg(), false, now, mut result)
 				}
 			} else if timeout_result.lost.len > 0 {
