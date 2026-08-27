@@ -5,6 +5,36 @@ import os
 
 const macos_reproducible_compiler_vexe = @VEXE
 
+fn create_macos_debug_cache_entry(cache_dir string, name string, contents string, last_used i64) !string {
+	object_dir := os.join_path(cache_dir, name)
+	os.mkdir_all(object_dir)!
+	object_path := os.join_path(object_dir, 'v-compiler.o')
+	os.write_file(object_path, contents)!
+	os.utime(object_dir, last_used, last_used)!
+	return object_path
+}
+
+fn test_macos_debug_compiler_cache_is_bounded() {
+	$if !macos {
+		return
+	}
+	cache_dir := os.join_path(os.vtmp_dir(), 'macos_debug_cache_${os.getpid()}')
+	os.rmdir_all(cache_dir) or {}
+	os.mkdir_all(cache_dir)!
+	defer {
+		os.rmdir_all(cache_dir) or {}
+	}
+	retained := create_macos_debug_cache_entry(cache_dir, 'retained', '123456', 10)!
+	obsolete := create_macos_debug_cache_entry(cache_dir, 'obsolete', '123456', 20)!
+	newest := create_macos_debug_cache_entry(cache_dir, 'newest', '123456', 30)!
+
+	prune_reproducible_macos_debug_compiler_cache(cache_dir, retained, 12)
+
+	assert os.is_file(retained)
+	assert !os.exists(obsolete)
+	assert os.is_file(newest)
+}
+
 fn test_macos_debug_compiler_build_is_reproducible() {
 	$if !macos {
 		return

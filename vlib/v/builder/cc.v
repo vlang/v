@@ -7,6 +7,7 @@ import crypto.sha256
 import hash.fnv1a
 import os
 import os.filelock
+import time
 import v.ast
 import v.cflag
 import v.pref
@@ -31,6 +32,14 @@ const missing_libatomic_markers = [
 ]!
 const max_cross_sysroot_git_symlink_depth = 32
 const max_cross_sysroot_git_symlink_placeholder_size = 256
+const max_reproducible_macos_debug_cache_bytes = u64(1024 * 1024 * 1024)
+
+struct ReproducibleMacosDebugCacheEntry {
+	object_dir  string
+	object_path string
+	size        u64
+	last_used   i64
+}
 
 fn live_windows_import_lib_path(source_path string) string {
 	cache_dir := os.join_path(os.cache_dir(), 'v', 'live')
@@ -1906,6 +1915,10 @@ pub fn (mut v Builder) cc() {
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
 	mut reproducible_debug_object := ''
+	mut reproducible_debug_object_lock := filelock.new('')
+	defer {
+		reproducible_debug_object_lock.release()
+	}
 	original_pwd := os.getwd()
 	for {
 		// try to compile with the chosen compiler
@@ -1937,8 +1950,9 @@ pub fn (mut v Builder) cc() {
 			v.ccoptions.pre_args << '-c'
 		}
 		v.handle_usecache(vexe)
-		reproducible_debug_object =
-			v.prepare_reproducible_macos_debug_compiler_object(ccompiler, vdir)
+		reproducible_debug_object_lock.release()
+		reproducible_debug_object = v.prepare_reproducible_macos_debug_compiler_object(ccompiler,
+			vdir, mut reproducible_debug_object_lock)
 		if reproducible_debug_object != '' {
 			// Link the persistent object instead of letting clang use a random temporary
 			// object, whose path would otherwise be recorded in the Mach-O debug map.
@@ -2108,7 +2122,7 @@ pub fn (mut v Builder) cc() {
 	// }
 }
 
-fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler string, vdir string) string {
+fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler string, vdir string, mut object_usage_lock filelock.FileLock) string {
 	$if macos {
 		if v.pref.os != .macos || !v.pref.building_v || !v.pref.is_debug || v.pref.parallel_cc
 			|| v.pref.build_mode == .build_module || v.ccoptions.cc != .clang {
@@ -2173,13 +2187,13 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 			verror('could not create the content-addressed macOS debug object directory: ${err}')
 			return ''
 		}
-		mut object_lock := filelock.new(object_path + '.lock')
-		object_lock.acquire() or {
+		mut cache_entry_lock := filelock.new(object_dir + '.lock')
+		cache_entry_lock.acquire() or {
 			verror('could not lock the reproducible macOS debug object: ${err}')
 			return ''
 		}
 		defer {
-			object_lock.release()
+			cache_entry_lock.release()
 		}
 		if os.is_file(object_path) {
 			os.rm(temporary_object) or {}
@@ -2192,9 +2206,75 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 		os.utime(object_path, 1, 1) or {
 			verror('could not normalize the reproducible macOS debug object timestamp: ${err}')
 		}
+		object_usage_lock = filelock.new_file(object_path, mode: .shared)
+		object_usage_lock.acquire() or {
+			verror('could not lock the reproducible macOS debug object for linking: ${err}')
+			return ''
+		}
+		now := time.now().unix()
+		os.utime(object_dir, now, now) or {}
+		prune_reproducible_macos_debug_compiler_cache(cache_dir, object_path,
+			max_reproducible_macos_debug_cache_bytes)
 		return object_path
 	}
 	return ''
+}
+
+fn prune_reproducible_macos_debug_compiler_cache(cache_dir string, retained_object string, max_bytes u64) {
+	$if macos {
+		mut total_size := u64(0)
+		mut candidates := []ReproducibleMacosDebugCacheEntry{}
+		for name in os.ls(cache_dir) or { return } {
+			object_dir := os.join_path(cache_dir, name)
+			object_path := os.join_path(object_dir, 'v-compiler.o')
+			object_stat := os.stat(object_path) or { continue }
+			dir_stat := os.stat(object_dir) or { continue }
+			total_size += object_stat.size
+			if object_path != retained_object {
+				candidates << ReproducibleMacosDebugCacheEntry{
+					object_dir:  object_dir
+					object_path: object_path
+					size:        object_stat.size
+					last_used:   dir_stat.mtime
+				}
+			}
+		}
+		if total_size <= max_bytes {
+			return
+		}
+		candidates.sort(a.last_used < b.last_used)
+		for entry in candidates {
+			if total_size <= max_bytes {
+				break
+			}
+			if remove_reproducible_macos_debug_cache_entry(entry) {
+				total_size -= entry.size
+			}
+		}
+	}
+}
+
+fn remove_reproducible_macos_debug_cache_entry(entry ReproducibleMacosDebugCacheEntry) bool {
+	mut cache_entry_lock := filelock.new(entry.object_dir + '.lock')
+	if !cache_entry_lock.try_acquire() {
+		return false
+	}
+	defer {
+		cache_entry_lock.release()
+	}
+	mut object_lock := filelock.new_file(entry.object_path, mode: .exclusive)
+	if !object_lock.try_acquire() {
+		return false
+	}
+	defer {
+		object_lock.release()
+	}
+	current_dir_stat := os.stat(entry.object_dir) or { return false }
+	if current_dir_stat.mtime != entry.last_used {
+		return false
+	}
+	os.rmdir_all(entry.object_dir) or { return false }
+	return true
 }
 
 fn (v &Builder) should_finalize_reproducible_macos_debug_compiler() bool {
