@@ -107,7 +107,7 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 					expr.pos)
 			} else {
 				lock vt.call_counter {
-					fn_name := if expr.name.contains('.') {
+					fn_name := if expr.name.contains('.') || expr.mod == 'builtin' {
 						expr.name
 					} else {
 						'${expr.mod}.${expr.name}'
