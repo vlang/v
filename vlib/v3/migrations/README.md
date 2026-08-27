@@ -111,9 +111,10 @@ Temporary relations are ignored unless explicitly qualified in `Config.table`.
 PostgreSQL transactions opened by callbacks in `never` mode are rolled back and rejected before the
 advisory migration lock is released, including when an aborted transaction prevents post-callback
 lock verification. After every successful PostgreSQL `up` or `down` callback, the backend's
-exclusive advisory lock is verified before history is written; callbacks that release the
-deterministic key or all advisory locks are rejected. In transactional modes, callbacks cannot end
-the migrator-owned PostgreSQL transaction before history is written. After every successful MySQL
+exclusive session-level advisory lock is verified before history is written; transaction-level
+locks for the same deterministic key are not accepted as replacements. Callbacks that release the
+key or all advisory locks are rejected. In transactional modes, callbacks cannot end the
+migrator-owned PostgreSQL transaction before history is written. After every successful MySQL
 `up` or `down` callback, named-lock ownership is verified before history is written; callbacks that
 release the deterministic name or all named locks are rejected. MySQL `always` mode also verifies an
 owned savepoint before writing history. SQLite callbacks likewise cannot end or replace the original
