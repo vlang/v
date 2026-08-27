@@ -1344,6 +1344,41 @@ fn test_postgresql_inspection_resolves_and_retains_existing_history_schema() {
 	assert query.contains('n.oid <> pg_catalog.pg_my_temp_schema()')
 }
 
+fn test_postgresql_inspection_rejects_active_transaction_without_retaining_schema() {
+	mut recorder := &RecordingConnection{
+		schema:         'transaction_schema'
+		in_transaction: true
+	}
+	mut runner := new(mut recorder, []Migration{}, Config{
+		dialect: .pg
+	})!
+	expected_error := 'PostgreSQL migrations require a connection without an already-open transaction; pg.Tx and transactional pg.Conn values are not supported'
+
+	mut error_message := ''
+	runner.applied() or { error_message = err.msg() }
+	assert error_message == expected_error
+	error_message = ''
+	runner.pending() or { error_message = err.msg() }
+	assert error_message == expected_error
+	error_message = ''
+	runner.current_version() or { error_message = err.msg() }
+	assert error_message == expected_error
+	error_message = ''
+	runner.status() or { error_message = err.msg() }
+	assert error_message == expected_error
+	assert runner.resolved_history_namespace == ''
+	assert recorder.queries.filter(it == postgresql_history_schema_query('schema_migrations')).len == 0
+	assert recorder.queries.filter(it.starts_with('CREATE TABLE IF NOT EXISTS ')).len == 0
+	assert recorder.queries.filter(it == postgresql_transaction_probe_read_query()).len == 4
+
+	recorder.execute('ROLLBACK;')!
+	recorder.schema = 'public'
+	assert runner.migrate()!.len == 0
+	assert runner.resolved_history_namespace == 'public'
+	key := postgresql_migration_lock_key('public', 'schema_migrations')
+	assert 'SELECT pg_advisory_lock(${key});' in recorder.queries
+}
+
 fn test_mysql_inspection_resolves_and_retains_history_database() {
 	mut recorder := &RecordingConnection{
 		database:     'app'
