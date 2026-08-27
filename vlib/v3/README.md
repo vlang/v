@@ -91,6 +91,18 @@ Stage rows recorded at pipeline boundaries report sampled peak RSS and the proce
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.
 
+## Parallel jobs
+
+`VJOBS` selects V3's desired parallel job count. On Linux, an executable of the V3 compiler that
+was itself built with `-prealloc` caps ordinary user builds at four total compiler jobs whenever
+the effective job count is greater than four. The caller thread counts as one job, so V3 creates
+at most three worker threads. `VJOBS` values from 1 through 4 are unchanged; values greater than
+4 cannot override this cap.
+
+The cap does not apply to compiler/self-host inputs or to V3 executables built without
+preallocation. It depends on how the V3 compiler executable was built, so passing `-no-prealloc`
+for the user program being compiled does not disable the compiler's own job cap.
+
 ## Fast C backend
 
 `-b fastc` selects the embedded V3 driver and its AST-free parser for the shortest edit-run cycle.
