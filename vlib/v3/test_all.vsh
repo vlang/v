@@ -22,7 +22,7 @@ const requested_vlib_tests = [
 	'vlib/os/process_test.v',
 	'vlib/os/file_test.v',
 	'vlib/arrays/arrays_test.v',
-	'vlib/v/tests/generics/multiple_generic_struct_fields_v3_test.v',
+	'vlib/v3/tests/testdata/multiple_generic_struct_fields.v',
 ]
 
 struct Config {

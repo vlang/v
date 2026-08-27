@@ -25,10 +25,6 @@ const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
 const temporarily_disabled_self_test_vlib_dirs = ['v3']
 
-const v3_only_self_test_files = [
-	'vlib/v/tests/generics/multiple_generic_struct_fields_v3_test.v',
-]
-
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
 	'cmd/tools/vdoc/document/doc_test.v',
@@ -445,9 +441,6 @@ fn main() {
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
 	}
-	// `test-self` can route builds to V1 in several modes. Exclude V3-only regressions
-	// rather than duplicating the compiler-routing policy here.
-	tsession.skip_files << v3_only_self_test_files.map(os.join_path(vroot, it))
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'
 	}
