@@ -4,14 +4,16 @@ fn add(a int, b int) int {
 }
 
 fn main() {
-	println(add(1, 1))
-	println(add(2, 2))
-	println(add(3, 3))
-	println(add(4, 4))
-	println(add(5, 5))
-	println(add(6, 6))
-	println(add(7, 7))
-	println(add(8, 8))
-	println(add(9, 9))
-	println(add(10, 10))
+	for i in 0 .. 10_000 {
+		println(add(i, i))
+		println(add(i, i))
+		println(add(i, i))
+		println(add(i, i))
+		println(add(i, i))
+		println(add(i, i))
+		println(add(i, i))
+		println(add(i, i))
+		println(add(i, i))
+		println(add(i, i))
+	}
 }
