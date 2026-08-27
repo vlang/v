@@ -1,6 +1,7 @@
 module fastcdriver
 
 import os
+import time
 import v3.gen.fastc
 import v3.pref
 
@@ -107,7 +108,54 @@ pub fn run(args []string) {
 		prefs.user_defines << 'no_backtrace'
 	}
 
+	bench := os.getenv('FASTC_BENCH') != ''
+	mut repeat := os.getenv('FASTC_BENCH_REPEAT').int()
+	if repeat < 1 {
+		repeat = 1
+	}
+	if bench && repeat > 1 {
+		mut warm := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
+		warm = warm
+		mut best_us := i64(0)
+		mut sw2 := time.new_stopwatch()
+		for iteration in 0 .. repeat {
+			sw2.restart()
+			fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
+			iter_us := sw2.elapsed().microseconds()
+			if iteration == 0 || iter_us < best_us {
+				best_us = iter_us
+			}
+		}
+		mut total_lines := 0
+		for source_path in warm.source_paths {
+			content := os.read_file(source_path) or { '' }
+			for ch in content {
+				if ch == `\n` {
+					total_lines++
+				}
+			}
+		}
+		gen_ms := f64(best_us) / 1000.0
+		loc_per_s := f64(total_lines) * 1_000_000.0 / f64(best_us)
+		eprintln('fastc-bench: files=${warm.source_paths.len} lines=${total_lines} best_gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f} (repeat=${repeat})')
+	}
+	mut sw := time.new_stopwatch()
 	generation := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
+	if bench && repeat == 1 {
+		gen_us := sw.elapsed().microseconds()
+		mut total_lines := 0
+		for source_path in generation.source_paths {
+			content := os.read_file(source_path) or { '' }
+			for ch in content {
+				if ch == `\n` {
+					total_lines++
+				}
+			}
+		}
+		gen_ms := f64(gen_us) / 1000.0
+		loc_per_s := f64(total_lines) * 1_000_000.0 / f64(gen_us)
+		eprintln('fastc-bench: files=${generation.source_paths.len} lines=${total_lines} gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f}')
+	}
 	canonical_output := canonical_output_path(output)
 	for source_path in generation.source_paths {
 		if canonical_output == source_path && source_path != real_input {

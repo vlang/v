@@ -156,19 +156,18 @@ pub fn (mut f File) index_lines(src string) {
 	f.has_source_digest = true
 }
 
-// index_lines_without_digest records line starts only. FastC builds a fresh
-// file index per source file for every collection and generation pass and
-// never consumes source digests; hashing every pass dominated its runtime.
-// Any previously stored digest described a different source than the new
-// line table, so integrity consumers must not see it as current.
+// index_lines_without_digest resets the line table without indexing. FastC is
+// its only caller: it builds a fresh file per source file for every collection
+// and generation pass, its scanner reads `src` directly, and its diagnostics
+// report raw byte offsets rather than line/column positions. Building the
+// per-line offset table (and the growing []int backing it) on every pass was
+// pure overhead, so the table is left empty; a position lookup on such a file
+// would resolve to line 1, which FastC never requests. The unused `src`
+// parameter keeps the call sites and signature stable.
 pub fn (mut f File) index_lines_without_digest(src string) {
+	_ := src
 	f.line_offsets = [0]
 	f.has_source_digest = false
-	for i, ch in src {
-		if ch == `\n` {
-			f.line_offsets << i + 1
-		}
-	}
 }
 
 // source_sha256 returns the digest bytes of the exact source indexed for this file.

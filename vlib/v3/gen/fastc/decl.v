@@ -838,8 +838,18 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Prefe
 	out.writeln('')
 	mut type_bodies := bodies.str()
 	if prefs.building_v {
+		// Index the by-value composite C spellings once. The ordering pass below
+		// queries this per struct field on every pass; the previous linear scan
+		// over declared_kinds re-rendered each candidate's C name (a `.replace`
+		// allocation) on every query, which dominated the type-declaration phase.
+		mut by_value_composite_names := map[string]bool{}
+		for key, kind in declared_kinds {
+			if kind in [.struct_, .union_, .interface_] {
+				by_value_composite_names[fastc_c_declared_type_name(key)] = true
+			}
+		}
 		type_bodies = fastc_order_c_composite_definitions(type_bodies, struct_fields,
-			declared_kinds)
+			by_value_composite_names)
 	}
 	out.write_string(type_bodies)
 	return FastcTypeDeclarations{
@@ -849,23 +859,35 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Prefe
 	}
 }
 
-fn fastc_order_c_composite_definitions(source string, struct_fields map[string]map[string]string, declared_kinds map[string]FastcDeclaredTypeKind) string {
+fn fastc_order_c_composite_definitions(source string, struct_fields map[string]map[string]string, by_value_composite_names map[string]bool) string {
 	mut ordered := source
 	mut changed := true
 	mut passes := 0
 	for changed && passes < struct_fields.len {
 		changed = false
 		passes++
+		// Index every `struct/union NAME {` definition start once per pass.
+		// The dependency-already-before-dependent test is the overwhelmingly
+		// common case; the previous code re-scanned `ordered` twice per struct
+		// field to decide it. Positions only shift when a move happens, so the
+		// map is rebuilt after each actual splice.
+		mut positions := fastc_composite_definition_positions(ordered)
 		for dependent, fields in struct_fields {
 			for _, field_type in fields {
-				dependency := fastc_by_value_composite_type(field_type, declared_kinds)
+				dependency := fastc_by_value_composite_type(field_type, by_value_composite_names)
 				if dependency == '' || dependency == dependent {
+					continue
+				}
+				dependency_start := positions[dependency] or { continue }
+				dependent_start := positions[dependent] or { continue }
+				if dependency_start < dependent_start {
 					continue
 				}
 				next := fastc_move_c_composite_before(ordered, dependency, dependent)
 				if next != ordered {
 					ordered = next
 					changed = true
+					positions = fastc_composite_definition_positions(ordered)
 				}
 			}
 		}
@@ -873,7 +895,45 @@ fn fastc_order_c_composite_definitions(source string, struct_fields map[string]m
 	return ordered
 }
 
-fn fastc_by_value_composite_type(field_type string, declared_kinds map[string]FastcDeclaredTypeKind) string {
+// fastc_composite_definition_positions maps each C composite name to the start
+// offset of its `struct NAME {` / `union NAME {` definition, matching the first
+// occurrence that fastc_c_composite_definition_start would find via `.index`.
+@[direct_array_access]
+fn fastc_composite_definition_positions(source string) map[string]int {
+	mut positions := map[string]int{}
+	mut i := 0
+	for i < source.len {
+		c := source[i]
+		mut keyword_len := 0
+		if c == `s` && i + 7 <= source.len && source[i + 1] == `t` && source[i + 2] == `r`
+			&& source[i + 3] == `u` && source[i + 4] == `c` && source[i + 5] == `t`
+			&& source[i + 6] == ` ` {
+			keyword_len = 7
+		} else if c == `u` && i + 6 <= source.len && source[i + 1] == `n` && source[i + 2] == `i`
+			&& source[i + 3] == `o` && source[i + 4] == `n` && source[i + 5] == ` ` {
+			keyword_len = 6
+		}
+		if keyword_len == 0 {
+			i++
+			continue
+		}
+		mut j := i + keyword_len
+		name_start := j
+		for j < source.len && (source[j].is_alnum() || source[j] == `_`) {
+			j++
+		}
+		if j > name_start && j + 1 < source.len && source[j] == ` ` && source[j + 1] == `{` {
+			name := source[name_start..j]
+			if name !in positions {
+				positions[name] = i
+			}
+		}
+		i = j
+	}
+	return positions
+}
+
+fn fastc_by_value_composite_type(field_type string, by_value_composite_names map[string]bool) string {
 	if field_type.ends_with('*') || field_type.starts_with('Array_')
 		|| field_type.starts_with('Map_') {
 		return ''
@@ -882,10 +942,8 @@ fn fastc_by_value_composite_type(field_type string, declared_kinds map[string]Fa
 	if element_type := fastc_fixed_array_element_type(candidate) {
 		candidate = element_type
 	}
-	for key, kind in declared_kinds {
-		if kind in [.struct_, .union_, .interface_] && fastc_c_declared_type_name(key) == candidate {
-			return candidate
-		}
+	if candidate in by_value_composite_names {
+		return candidate
 	}
 	return ''
 }
@@ -1283,12 +1341,14 @@ fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports 
 	return none
 }
 
-fn fastc_semantic_declared_type_key(c_type string, declared_types map[string]bool) string {
+fn fastc_semantic_declared_type_key(c_type string, declared_type_c_names map[string]string) string {
 	base := c_type.trim_right('*')
-	for key in declared_types.keys() {
-		if fastc_c_declared_type_name(key) == base {
-			return key
-		}
+	// Resolve through the precomputed C-spelling index (first key per spelling
+	// wins, matching the previous insertion-ordered first-match scan). The old
+	// scan re-rendered every declared type's C name per query — an allocation
+	// per key on a path hit once per method receiver during signature scanning.
+	if key := declared_type_c_names[base] {
+		return key
 	}
 	return base
 }

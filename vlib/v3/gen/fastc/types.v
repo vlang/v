@@ -760,8 +760,15 @@ fn (g &Parser) semantic_type_key(c_type string) string {
 }
 
 fn (g &Parser) underlying_alias_type(c_type string) string {
-	mut resolved := c_type
+	// Fast path: most types are not aliases, so resolve the first hop before
+	// allocating the cycle-guard map. underlying_alias_type is called for
+	// nearly every inferred expression type; the unconditional map allocation
+	// showed up as a hot allocation site under -prealloc.
+	base0 := c_type.trim_right('*')
+	first := g.alias_base_types[base0] or { return c_type }
+	mut resolved := first + c_type[base0.len..]
 	mut seen := map[string]bool{}
+	seen[base0] = true
 	for {
 		base := resolved.trim_right('*')
 		if base in seen {
