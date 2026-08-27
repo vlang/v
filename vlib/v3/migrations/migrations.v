@@ -740,7 +740,9 @@ fn migration_lock_result(rows []orm.Row) bool {
 }
 
 fn postgresql_migration_lock_owned_query(key i64) string {
-	return "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks WHERE locktype = 'advisory' AND pid = pg_catalog.pg_backend_pid() AND mode = 'ExclusiveLock' AND granted AND ((classid::bigint << 32) | objid::bigint) = ${key} AND objsubid = 1);"
+	// pg_locks merges session- and transaction-level ownership for the same tag.
+	// The transaction guard keeps exclusion while the session lock is probed and restored.
+	return 'WITH transaction_guard AS (SELECT pg_catalog.pg_try_advisory_xact_lock(${key}) AS acquired), session_unlock AS (SELECT pg_catalog.pg_advisory_unlock(${key}) AS held FROM transaction_guard WHERE acquired), session_relock AS (SELECT pg_catalog.pg_advisory_lock(${key}) FROM session_unlock WHERE held) SELECT COALESCE((SELECT session_unlock.held FROM session_unlock LEFT JOIN session_relock ON true), false);'
 }
 
 fn (m &Migrator) verify_postgresql_migration_lock(mut ctx Context) ! {
