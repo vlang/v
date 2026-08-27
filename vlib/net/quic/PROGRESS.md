@@ -1452,6 +1452,45 @@ stacked-PR convention as Phase 12's 12a-12d.
       its very next event instead of tearing the connection down — fixed by
       calling `qc.close()`, mirroring how `h3_mux_conn.v`'s own client
       driver answers the identical error via `fail_conn()`.
+- [x] Review round on PR #28164 (2026-08-27): a maintainer-relayed "Local
+      AI check" comment (issuecomment-5440010074) and a same-day Codex
+      review (pullrequestreview-5044139767) each found real, independent
+      bugs in already-reviewed 13e code. `net.http`'s `h3_now_ms()` divided
+      `time.sys_mono_now()` by 1_000_000 before feeding it to every
+      `quic.QuicConn`/`H3Conn` `now u64` parameter, which this whole module
+      treats as a raw nanosecond instant — undercounted elapsed time by
+      ~1e6x, so a 30s idle timeout would not actually fire for ~347 days.
+      Renamed to `h3_now_ns()`, fixed. Fixing it ALONE then broke a
+      previously-passing real end-to-end test
+      (`test_h3_server_real_udp_request_response_round_trip`), which led to
+      finding two more bugs the ns/ms bug had been masking: `listener.v`'s
+      retry-token expiry check compared a raw nanosecond `now` against
+      `retry_token_max_age_ms` (genuinely millisecond-scale, by name and by
+      its 30000=30s default) with no conversion, so once `now` was
+      genuinely nanosecond-scale every retry token appeared expired within
+      30 MICROseconds of issuance — permanently breaking every handshake
+      for `always_retry: true` (the default); fixed with an explicit
+      `now / 1_000_000` at the two call sites. Codex independently found
+      the SAME underlying stall from a different angle plus two more real
+      bugs: `H3Server.absorb_and_dispatch` derived its dispatch set purely
+      from `QuicListenerPollResult.events`, so a connection touched with
+      zero new QUIC events (e.g. a second UDP datagram continuing an
+      already-open request stream) was never driven at all — fixed via a
+      new `touched_conns []&QuicConn` field, populated unconditionally in
+      `merge_conn_result`; `conn.v`'s `send_pto_probe` appended PING-only
+      probes with no anti-amplification gating at all (unlike every send in
+      the sibling `drain_outgoing`), letting an unbounded PTO backoff drive
+      a server accepted without Retry past RFC 9000 §8.1's 3x-received cap
+      indefinitely — fixed with the same `has_amplification_budget()`/
+      `record_amplification_sent()` gating every arm; and
+      `h3_validate_request_pseudo` required `:path`/`:scheme`
+      unconditionally, rejecting every conforming CONNECT request (RFC 9114
+      §4.4 mandates omitting both) as malformed — fixed with a method-aware
+      branch. All five bugs Phase-R'd (reproduced against the pre-fix code
+      before applying each fix) with regression tests; full net.quic
+      (60/60) and net.http (31/35, 4 platform skips) suites pass. Noted,
+      not fixed (out of scope — different file/protocol layer):
+      `h2_server.v` has the identical CONNECT pseudo-header gap.
 - [ ] *(optional, deferrable)* Connection migration (`PATH_CHALLENGE`/
       `PATH_RESPONSE`) — both unimplemented today; a minimal v1 server can
       ship without full migration support, same as the client structurally
