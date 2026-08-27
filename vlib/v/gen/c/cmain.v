@@ -42,7 +42,11 @@ fn (mut g Gen) gen_vlines_reset() {
 		// At this point, the v files are transpiled.
 		// The rest is auto generated code, which will not have
 		// different .v source file/line numbers.
-		g.vlines_path = generated_c_debug_path
+		g.vlines_path = if g.pref.os == .macos && g.pref.building_v && g.pref.is_debug {
+			generated_c_debug_path
+		} else {
+			util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
+		}
 		g.writeln2('', '// Reset the C file/line numbers')
 		g.writeln2('${reset_dbg_line} "${g.vlines_path}"', '')
 	}
