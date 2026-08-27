@@ -2073,7 +2073,7 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
-	v.finalize_reproducible_macos_debug_compiler(reproducible_debug_object)
+	v.generate_reproducible_macos_debug_compiler_dsym(reproducible_debug_object)
 	if v.pref.compress {
 		ret := os.system('strip ${os.quoted_path(v.pref.out_name)}')
 		if ret != 0 {
@@ -2099,6 +2099,7 @@ pub fn (mut v Builder) cc() {
 			}
 		}
 	}
+	v.finalize_reproducible_macos_debug_compiler()
 	// if v.pref.os == .ios {
 	// ret := os.system('ldid2 -S ${v.pref.out_name}')
 	// if ret != 0 {
@@ -2196,10 +2197,34 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 	return ''
 }
 
-fn (v &Builder) finalize_reproducible_macos_debug_compiler(debug_object string) {
+fn (v &Builder) should_finalize_reproducible_macos_debug_compiler() bool {
 	$if macos {
-		if v.pref.os != .macos || !v.pref.building_v || !v.pref.is_debug
-			|| v.pref.build_mode == .build_module {
+		return v.pref.os == .macos && v.pref.building_v && v.pref.is_debug
+			&& v.pref.build_mode != .build_module
+	}
+	return false
+}
+
+fn (v &Builder) generate_reproducible_macos_debug_compiler_dsym(debug_object string) {
+	$if macos {
+		if !v.should_finalize_reproducible_macos_debug_compiler() || debug_object == '' {
+			return
+		}
+		dsymutil_path := os.find_abs_path_of_executable('dsymutil') or {
+			verror('could not find `dsymutil` to finalize the reproducible macOS compiler debug information')
+			return
+		}
+		dsymutil_result := os.execute('${os.quoted_path(dsymutil_path)} -o ${os.quoted_path(
+			v.pref.out_name + '.dSYM')} ${os.quoted_path(v.pref.out_name)}')
+		if dsymutil_result.exit_code != 0 {
+			verror('failed to generate the reproducible macOS compiler debug information:\n${dsymutil_result.output}')
+		}
+	}
+}
+
+fn (v &Builder) finalize_reproducible_macos_debug_compiler() {
+	$if macos {
+		if !v.should_finalize_reproducible_macos_debug_compiler() {
 			return
 		}
 		codesign_path := os.find_abs_path_of_executable('codesign') or {
@@ -2213,18 +2238,6 @@ fn (v &Builder) finalize_reproducible_macos_debug_compiler(debug_object string) 
 			os.execute('${os.quoted_path(codesign_path)} --force --sign - --identifier org.vlang.v ${os.quoted_path(v.pref.out_name)}')
 		if codesign_result.exit_code != 0 {
 			verror('failed to ad-hoc sign the reproducible macOS compiler binary:\n${codesign_result.output}')
-		}
-		if debug_object == '' {
-			return
-		}
-		dsymutil_path := os.find_abs_path_of_executable('dsymutil') or {
-			verror('could not find `dsymutil` to finalize the reproducible macOS compiler debug information')
-			return
-		}
-		dsymutil_result := os.execute('${os.quoted_path(dsymutil_path)} -o ${os.quoted_path(
-			v.pref.out_name + '.dSYM')} ${os.quoted_path(v.pref.out_name)}')
-		if dsymutil_result.exit_code != 0 {
-			verror('failed to generate the reproducible macOS compiler debug information:\n${dsymutil_result.output}')
 		}
 	}
 }

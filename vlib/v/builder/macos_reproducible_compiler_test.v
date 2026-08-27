@@ -69,4 +69,12 @@ fn test_macos_debug_compiler_build_is_reproducible() {
 		os.execute('dsymutil -o ${os.quoted_path(dsym_path)} ${os.quoted_path(first_output)}')
 	assert dsymutil_result.exit_code == 0, dsymutil_result.output
 	assert os.is_dir(dsym_path)
+
+	compressed_output := os.join_path(test_dir, 'compressed')
+	compressed_cmd := '${os.quoted_path(macos_reproducible_compiler_vexe)} -old-compiler -g -keepc -compress -o ${os.quoted_path(compressed_output)} ${os.quoted_path(source_path)}'
+	compressed_result := os.execute(compressed_cmd)
+	assert compressed_result.exit_code == 0, compressed_result.output
+	assert os.is_dir(compressed_output + '.dSYM')
+	codesign_result := os.execute('codesign --verify --strict ${os.quoted_path(compressed_output)}')
+	assert codesign_result.exit_code == 0, codesign_result.output
 }
