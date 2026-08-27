@@ -3,8 +3,10 @@
 // that can be found in the LICENSE file.
 module builder
 
+import crypto.sha256
 import hash.fnv1a
 import os
+import os.filelock
 import v.ast
 import v.cflag
 import v.pref
@@ -1133,7 +1135,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			if v.pref.building_v && ccoptions.cc == .clang {
 				// ld64 otherwise lets temporary object and output paths perturb the
 				// content-derived UUID and the ad-hoc code signature.
-				ccoptions.args << '-ffile-prefix-map=${v.out_name_c}=<generated-c>'
+				ccoptions.args << os.quoted_path('-ffile-prefix-map=${v.out_name_c}=<generated-c>')
 				ccoptions.linker_flags << '-Wl,-reproducible'
 				ccoptions.linker_flags << '-Wl,-final_output,v-compiler'
 			}
@@ -1903,6 +1905,7 @@ pub fn (mut v Builder) cc() {
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
+	mut reproducible_debug_object := ''
 	original_pwd := os.getwd()
 	for {
 		// try to compile with the chosen compiler
@@ -1934,6 +1937,14 @@ pub fn (mut v Builder) cc() {
 			v.ccoptions.pre_args << '-c'
 		}
 		v.handle_usecache(vexe)
+		reproducible_debug_object =
+			v.prepare_reproducible_macos_debug_compiler_object(ccompiler, vdir)
+		if reproducible_debug_object != '' {
+			// Link the persistent object instead of letting clang use a random temporary
+			// object, whose path would otherwise be recorded in the Mach-O debug map.
+			v.ccoptions.source_args = [v.tcc_quoted_path(reproducible_debug_object)]
+			v.ccoptions.args << '-Qunused-arguments'
+		}
 		$if windows {
 			if v.ccoptions.cc == .msvc || v.pref.ccompiler_type == .msvc {
 				v.cc_msvc()
@@ -2062,7 +2073,7 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
-	v.finalize_reproducible_macos_debug_compiler()
+	v.finalize_reproducible_macos_debug_compiler(reproducible_debug_object)
 	if v.pref.compress {
 		ret := os.system('strip ${os.quoted_path(v.pref.out_name)}')
 		if ret != 0 {
@@ -2096,20 +2107,100 @@ pub fn (mut v Builder) cc() {
 	// }
 }
 
-fn (v &Builder) finalize_reproducible_macos_debug_compiler() {
+fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler string, vdir string) string {
+	$if macos {
+		if v.pref.os != .macos || !v.pref.building_v || !v.pref.is_debug || v.pref.parallel_cc
+			|| v.pref.build_mode == .build_module || v.ccoptions.cc != .clang {
+			return ''
+		}
+		cache_dir := os.join_path(os.cache_dir(), 'v', 'reproducible-macos-debug')
+		os.mkdir_all(cache_dir) or {
+			verror('could not create the reproducible macOS debug object directory: ${err}')
+			return ''
+		}
+		temporary_object := os.join_path(cache_dir, 'v-compiler.${os.getpid()}.tmp')
+		os.rm(temporary_object) or {}
+		mut compile_options := v.ccoptions
+		// Output and linked third-party objects do not affect compilation of the
+		// generated C file and must not enter the persistent object's content.
+		compile_options.o_args = ['-o ${v.tcc_quoted_path(temporary_object)}', '-c']
+		mut rsp_args := v.only_compile_args(compile_options).map(v.rsp_safe_arg(it))
+		rsp_args = rsp_args.map(v.tcc_windows_path_arg(it))
+		should_use_rsp := v.should_use_rsp(rsp_args)
+		mut str_args := if should_use_rsp {
+			rsp_args.join(' ')
+		} else {
+			rsp_args.map(shell_safe_cc_arg(it)).join(' ').replace('\n', ' ')
+		}
+		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
+		mut response_file := ''
+		mut response_file_content := str_args
+		if should_use_rsp {
+			response_file = '${temporary_object}.rsp'
+			response_file_content = str_args.replace('\\', '\\\\')
+			write_response_file(response_file, response_file_content)
+			rspexpr := '@${v.tcc_windows_path(response_file)}'
+			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
+		}
+		v.show_cc(cmd, response_file, response_file_content)
+		original_pwd := os.getwd()
+		os.chdir(vdir) or {
+			verror('could not enter the compiler directory for the reproducible macOS debug build: ${err}')
+			return ''
+		}
+		util.timing_start('C object')
+		res := os.execute(cmd)
+		util.timing_measure('C object')
+		os.chdir(original_pwd) or {}
+		if v.pref.show_c_output {
+			v.show_c_compiler_output(ccompiler, res)
+		}
+		if response_file != '' {
+			os.rm(response_file) or {}
+		}
+		if res.exit_code != 0 {
+			os.rm(temporary_object) or {}
+		}
+		v.post_process_c_compiler_output(ccompiler, res)
+		object_bytes := os.read_bytes(temporary_object) or {
+			verror('could not read the reproducible macOS debug object: ${err}')
+			return ''
+		}
+		object_dir := os.join_path(cache_dir, sha256.sum(object_bytes).hex())
+		object_path := os.join_path(object_dir, 'v-compiler.o')
+		os.mkdir_all(object_dir) or {
+			verror('could not create the content-addressed macOS debug object directory: ${err}')
+			return ''
+		}
+		mut object_lock := filelock.new(object_path + '.lock')
+		object_lock.acquire() or {
+			verror('could not lock the reproducible macOS debug object: ${err}')
+			return ''
+		}
+		defer {
+			object_lock.release()
+		}
+		if os.is_file(object_path) {
+			os.rm(temporary_object) or {}
+		} else {
+			os.mv(temporary_object, object_path) or {
+				verror('could not store the reproducible macOS debug object: ${err}')
+				return ''
+			}
+		}
+		os.utime(object_path, 1, 1) or {
+			verror('could not normalize the reproducible macOS debug object timestamp: ${err}')
+		}
+		return object_path
+	}
+	return ''
+}
+
+fn (v &Builder) finalize_reproducible_macos_debug_compiler(debug_object string) {
 	$if macos {
 		if v.pref.os != .macos || !v.pref.building_v || !v.pref.is_debug
 			|| v.pref.build_mode == .build_module {
 			return
-		}
-		strip_path := os.find_abs_path_of_executable('strip') or {
-			verror('could not find `strip` to finalize the reproducible macOS compiler binary')
-			return
-		}
-		strip_result :=
-			os.execute('${os.quoted_path(strip_path)} -S ${os.quoted_path(v.pref.out_name)}')
-		if strip_result.exit_code != 0 {
-			verror('failed to strip the macOS compiler debug map:\n${strip_result.output}')
 		}
 		codesign_path := os.find_abs_path_of_executable('codesign') or {
 			verror('could not find `codesign` to finalize the reproducible macOS compiler binary')
@@ -2122,6 +2213,18 @@ fn (v &Builder) finalize_reproducible_macos_debug_compiler() {
 			os.execute('${os.quoted_path(codesign_path)} --force --sign - --identifier org.vlang.v ${os.quoted_path(v.pref.out_name)}')
 		if codesign_result.exit_code != 0 {
 			verror('failed to ad-hoc sign the reproducible macOS compiler binary:\n${codesign_result.output}')
+		}
+		if debug_object == '' {
+			return
+		}
+		dsymutil_path := os.find_abs_path_of_executable('dsymutil') or {
+			verror('could not find `dsymutil` to finalize the reproducible macOS compiler debug information')
+			return
+		}
+		dsymutil_result := os.execute('${os.quoted_path(dsymutil_path)} -o ${os.quoted_path(
+			v.pref.out_name + '.dSYM')} ${os.quoted_path(v.pref.out_name)}')
+		if dsymutil_result.exit_code != 0 {
+			verror('failed to generate the reproducible macOS compiler debug information:\n${dsymutil_result.output}')
 		}
 	}
 }
