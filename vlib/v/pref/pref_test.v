@@ -432,6 +432,20 @@ fn test_macos_and_linux_v_compiler_target_defaults_to_prealloc() {
 	assert prefs.gc_mode == .no_gc
 }
 
+fn test_macos_and_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {
+	if pref.get_host_os() !in [.macos, .linux] {
+		return
+	}
+	target := os.join_path(vroot, 'cmd', 'v')
+	for compiler in ['tcc', 'tinyc'] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', '-cc', compiler, target], false)
+		assert prefs.building_v
+		assert prefs.ccompiler_type == .tinyc
+		assert !prefs.prealloc
+		assert '-prealloc' !in prefs.build_options
+	}
+}
+
 fn test_prealloc_overrides_explicit_gc_selection() {
 	target := os.join_path(vroot, 'examples', 'hello_world.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', '-prealloc', target],

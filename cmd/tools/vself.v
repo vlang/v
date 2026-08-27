@@ -287,6 +287,19 @@ fn self_build_supports_prealloc(args []string) bool {
 		if arg.starts_with('-os=') && arg.all_after('=') != 'linux' {
 			return false
 		}
+		if arg == '-cc' {
+			if i + 1 < args.len && !self_ccompiler_supports_prealloc(args[i + 1]) {
+				return false
+			}
+			skip_next = true
+			continue
+		}
+		if arg.starts_with('-cc=') && !self_ccompiler_supports_prealloc(arg.all_after('=')) {
+			return false
+		}
+		if arg.starts_with('-cc ') && !self_ccompiler_supports_prealloc(arg.all_after('-cc ')) {
+			return false
+		}
 		if arg == '-gc' {
 			if i + 1 < args.len && args[i + 1] != 'none' {
 				return false
@@ -299,6 +312,12 @@ fn self_build_supports_prealloc(args []string) bool {
 		}
 	}
 	return true
+}
+
+fn self_ccompiler_supports_prealloc(ccompiler string) bool {
+	cc := os.file_name(ccompiler.trim_space()).to_lower_ascii()
+	return !cc.contains('tcc') && !cc.contains('tinyc') && !cc.contains('tinygcc')
+		&& !cc.contains('tiny_gcc') && !cc.contains('tiny-gcc')
 }
 
 fn has_profile_cflag(args []string) bool {
