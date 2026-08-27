@@ -69,10 +69,12 @@ fn test_c_source_references_identifiers_ignores_comments_strings_and_longer_name
 fn test_cache_native_public_include_strips_conventional_implementation_macros() {
 	include := cache_native_public_include('/tmp/native.h', [
 		'#define FEATURE 1',
+		'#include "/tmp/context.h"',
 		'#define FONTSTASH_IMPLEMENTATION',
 		'#define SOKOL_FONTSTASH_IMPL',
 	], map[string]bool{})
 	assert include.contains('#define FEATURE 1')
+	assert !include.contains('context.h')
 	assert include.contains('#undef FONTSTASH_IMPLEMENTATION')
 	assert include.contains('#undef SOKOL_FONTSTASH_IMPL')
 	assert include.contains('#undef SOKOL_IMPL')

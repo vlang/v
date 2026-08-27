@@ -3075,10 +3075,13 @@ fn cache_native_public_include(path string, context []string, implementation_mac
 			out.writeln(line)
 			continue
 		}
+		if directive == 'include' {
+			// The declaration prefix has already emitted every header that precedes
+			// this root. Replaying a physical include after an inlined copy can
+			// redefine types even when the header uses `#pragma once`.
+			continue
+		}
 		if directive != 'define' {
-			// Preceding headers are part of the exact macro context for this root.
-			// Replaying the include preserves its guarded mutations without flattening
-			// thousands of transitive definitions into unconditional directives.
 			out.writeln(line)
 			continue
 		}
