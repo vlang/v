@@ -739,6 +739,66 @@ fn test_cache_input_scan_tracks_native_header_macro_context() {
 	assert static_inputs['sample'] == [os.real_path(header)]
 }
 
+fn test_cache_input_scan_tracks_preceding_header_macro_mutations() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_header_mutation_context_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	config_header := os.join_path(dir, 'config.h')
+	implementation_header := os.join_path(dir, 'implementation.h')
+	os.write_file(config_header, '#undef V3_FEATURE\n#define V3_HEADER_VALUE 73\n')!
+	os.write_file(implementation_header, '#ifdef V3_FEATURE\nstatic int v3_wrong_state;\n#endif\n')!
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample
+#define V3_FEATURE 1
+#include "config.h"
+#insert "implementation.h"
+')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	_, native_roots, native_contexts, _, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
+		'sample': true
+	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
+	assert !has_untracked
+	assert native_roots['sample'] == [os.real_path(implementation_header)]
+	assert native_contexts[os.real_path(implementation_header)] == [
+		'#define V3_FEATURE 1',
+		'#undef V3_FEATURE',
+		'#define V3_HEADER_VALUE 73',
+	]
+}
+
+fn test_cache_input_scan_excludes_objective_cpp_sources_from_native_roots() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_objective_cpp_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	objective_cpp_source := os.join_path(dir, 'implementation.mm')
+	os.write_file(objective_cpp_source,
+		'extern "C" int v3_objective_cpp_value(void) { return []() { return 1; }(); }\n')!
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "implementation.mm"\n')!
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, native_roots, _, unscoped_inputs, _, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
+		'sample': true
+	}, [], prefs.target, map[string]bool{}, map[string]string{}, true)
+	assert !has_untracked
+	assert inputs['sample'] == [os.real_path(objective_cpp_source)]
+	assert unscoped_inputs['sample'] == [os.real_path(objective_cpp_source)]
+	assert (native_roots['sample'] or { []string{} }).len == 0
+}
+
 fn test_cache_input_scan_rejects_conditional_native_root_context() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_conditional_native_header_context_${os.getpid()}')
 	os.rmdir_all(dir) or {}

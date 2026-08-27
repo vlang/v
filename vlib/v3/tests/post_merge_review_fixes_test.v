@@ -6632,6 +6632,18 @@ fn test_imported_objective_cpp_wrapper_context() {
 	assert out == '68'
 }
 
+fn test_cached_native_root_preserves_preceding_header_macro_mutations() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'cached_native_header_macro_mutation', {
+		'v.mod':                         "Module { name: 'cached_native_header_macro_mutation' }\n"
+		'nativeanswer/config.h':         '#undef V3_NATIVE_FEATURE\n#define V3_NATIVE_HEADER_VALUE 73\n'
+		'nativeanswer/implementation.h': '#ifdef V3_NATIVE_FEATURE\nint v3_native_header_answer(void) { return 1; }\n#else\nint v3_native_header_answer(void) { return V3_NATIVE_HEADER_VALUE; }\n#endif\n'
+		'nativeanswer/nativeanswer.v':   'module nativeanswer\n\n#define V3_NATIVE_FEATURE 1\n#include "config.h"\n#insert "implementation.h"\n\nfn C.v3_native_header_answer() int\n\npub fn answer() int {\n\treturn C.v3_native_header_answer()\n}\n'
+		'main.v':                        'module main\n\nimport nativeanswer\n\nfn main() {\n\tprintln(int_str(nativeanswer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '73'
+}
+
 fn test_bare_macro_objective_c_guards_stay_inactive() {
 	v3_bin := build_v3()
 	result := run_good_project_result(v3_bin, 'bare_macro_objective_c_guards', '', {

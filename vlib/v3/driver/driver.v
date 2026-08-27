@@ -11601,10 +11601,10 @@ fn cache_source_with_cached_native_inputs(source string, state &V3ModuleCacheSta
 			// The compiler-only macro suppresses fallback declarations, but must not
 			// leak into native source that did not see it in the uncached unit.
 			out.writeln('#undef V3CACHE_PROGRAM_UNIT')
-			path := include_paths[clean] or { '' }
-			for directive in state.native_root_contexts[path] or { []string{} } {
-				out.writeln(directive)
-			}
+			// This occurrence is still in its original generated directive sequence,
+			// which already established the exact macro state at the include site.
+			// Replaying its saved context here can undo mutations made by an earlier
+			// header (for example, redefining a macro that header just undefined).
 			out.writeln(line)
 			out.writeln('#define V3CACHE_PROGRAM_UNIT 1')
 			found[clean] = true
