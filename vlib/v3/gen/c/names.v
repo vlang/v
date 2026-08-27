@@ -81,7 +81,8 @@ fn (mut c CNameCache) remember(name string, value string) {
 }
 
 // ConstShortIndex maps a const short name to its unique primary const name
-// ('' marks an ambiguous short name); built lazily on first query.
+// ('' marks an ambiguous short name). Full generation freezes it before
+// parallel workers start; focused helpers may still build it lazily.
 @[heap]
 struct ConstShortIndex {
 mut:

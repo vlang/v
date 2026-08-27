@@ -55,6 +55,24 @@ fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() 
 	assert w.c_extern_refs_ready
 }
 
+fn test_parallel_worker_shares_precomputed_const_short_index() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.const_vals = {
+		'moda.only':   flat.NodeId(0)
+		'moda.answer': flat.NodeId(1)
+		'modb.answer': flat.NodeId(2)
+	}
+	g.precompute_const_short_index()
+	assert g.const_short_index.built
+	assert g.const_short_index.entries['only'] == 'moda.only'
+	assert g.const_short_index.entries['answer'] == ''
+
+	w := g.new_parallel_worker(1)
+	assert w.const_short_index == g.const_short_index
+	assert w.unique_const_ref_name('only') or { '' } == 'moda.only'
+	assert w.unique_const_ref_name('answer') == none
+}
+
 fn test_parallel_worker_preserves_test_assertion_stats_mode() {
 	mut g, _ := parallel_worker_test_gen(true)
 	g.show_test_stats = true
