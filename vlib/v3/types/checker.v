@@ -2275,6 +2275,10 @@ fn (mut tc TypeChecker) record_error_unfiltered(kind TypeErrorKind, msg string, 
 	tc.errors << tc.make_type_error(kind, msg, node)
 }
 
+fn (mut tc TypeChecker) record_error_unfiltered_at(kind TypeErrorKind, msg string, node flat.NodeId, pos token.Pos) {
+	tc.errors << tc.make_type_error_at(kind, msg, node, pos)
+}
+
 fn (tc &TypeChecker) make_type_error(kind TypeErrorKind, msg string, node flat.NodeId) TypeError {
 	return tc.make_type_error_at(kind, msg, node, tc.node_pos(node))
 }
@@ -3897,8 +3901,15 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 						existing_module := c_struct_decl_modules[qname] or { '' }
 						if !tc.c_struct_redeclaration_allowed(qname, existing_file, tc.cur_file,
 							existing_module, tc.cur_module) {
-							tc.record_error_unfiltered(.duplicate_decl,
-								'cannot redeclare C struct `${qname}`', flat.NodeId(node_idx))
+							node_id := flat.NodeId(node_idx)
+							keyword := if comma_attr_text_has(node.typ, 'union') {
+								'union'
+							} else {
+								'struct'
+							}
+							tc.record_error_unfiltered_at(.duplicate_decl,
+								'cannot redeclare C struct `${qname}`', node_id, tc.declaration_keyword_name_pos(node_id,
+								keyword))
 						}
 					}
 					existing_fields := c_struct_decl_signature_field_count(existing_sig)
