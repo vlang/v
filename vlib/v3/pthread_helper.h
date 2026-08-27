@@ -9,6 +9,26 @@
  * declaration used only by the helper available after includes are flattened. */
 extern int pthread_attr_setstacksize(pthread_attr_t *attr, size_t stack_size);
 
+/* The compiler configures this before creating its persistent worker pool.
+ * Keep it process-local so compiler internals never leak through the child
+ * environment used by `v run`, `v test`, or nested compiler invocations. */
+static int v3_worker_pool_size_limit = 0;
+
+static inline void v3_worker_pool_limit_size(int size) {
+	if (size > 0 &&
+		(v3_worker_pool_size_limit == 0 || size < v3_worker_pool_size_limit)) {
+		v3_worker_pool_size_limit = size;
+	}
+}
+
+static inline int v3_worker_pool_limited_size(int size) {
+	int wanted = size < 0 ? 0 : size;
+	if (v3_worker_pool_size_limit > 0 && wanted > v3_worker_pool_size_limit) {
+		return v3_worker_pool_size_limit;
+	}
+	return wanted;
+}
+
 static inline pthread_t v3_pthread_zero(void) {
 	return (pthread_t)0;
 }

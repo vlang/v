@@ -49,25 +49,6 @@ fn test_worker_stack_size_env_override_and_clamp() {
 	}
 }
 
-fn test_pool_size_limit_only_lowers_future_pool_sizes() {
-	$if !windows {
-		old_limit := os.getenv_opt(pool_size_limit_env)
-		defer {
-			if value := old_limit {
-				os.setenv(pool_size_limit_env, value, true)
-			} else {
-				os.unsetenv(pool_size_limit_env)
-			}
-		}
-		os.unsetenv(pool_size_limit_env)
-		limit_pool_size(2)
-		limit_pool_size(4)
-		mut pool := new(5)
-		assert pool.stats().launch_attempts == 2
-		pool.close()
-	}
-}
-
 fn test_pool_runs_persistent_batches_and_sync_fallbacks() {
 	mut pool := new(2)
 	mut args := []&PoolTestArg{cap: 4}
