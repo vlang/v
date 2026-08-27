@@ -686,25 +686,25 @@ fn (g &FlatGen) for_in_map_storage_key(id flat.NodeId) string {
 
 fn (g &FlatGen) c_loop_local_name(name string) string {
 	if name.contains('.') {
-		return g.cname(name.all_after_last('.'))
+		return g.local_decl_cname(name.all_after_last('.'))
 	}
 	if name.contains('__') {
 		prefix := name.all_before_last('__')
 		suffix := name.all_after_last('__')
 		if suffix == 'index' {
-			return g.cname(suffix)
+			return g.local_decl_cname(suffix)
 		}
 		if g.has_import_alias(prefix) {
-			return g.cname(suffix)
+			return g.local_decl_cname(suffix)
 		}
 		for _, mod_name in g.modules {
 			short_mod := if mod_name.contains('.') { mod_name.all_after_last('.') } else { mod_name }
 			if prefix == short_mod {
-				return g.cname(suffix)
+				return g.local_decl_cname(suffix)
 			}
 		}
 	}
-	return g.cname(name)
+	return g.local_decl_cname(name)
 }
 
 // gen_node_inline emits node inline output for c.
