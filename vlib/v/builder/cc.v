@@ -2125,7 +2125,7 @@ pub fn (mut v Builder) cc() {
 fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler string, vdir string, mut object_usage_lock filelock.FileLock) string {
 	$if macos {
 		if v.pref.os != .macos || !v.pref.building_v || !v.pref.is_debug || v.pref.parallel_cc
-			|| v.pref.build_mode == .build_module || v.ccoptions.cc != .clang {
+			|| v.pref.build_mode == .build_module || v.pref.is_o || v.ccoptions.cc != .clang {
 			return ''
 		}
 		cache_dir := os.join_path(os.cache_dir(), 'v', 'reproducible-macos-debug')
@@ -2324,7 +2324,7 @@ fn remove_reproducible_macos_debug_cache_entry(entry ReproducibleMacosDebugCache
 fn (v &Builder) should_finalize_reproducible_macos_debug_compiler() bool {
 	$if macos {
 		return v.pref.os == .macos && v.pref.building_v && v.pref.is_debug
-			&& v.pref.build_mode != .build_module
+			&& v.pref.build_mode != .build_module && !v.pref.is_o
 	}
 	return false
 }

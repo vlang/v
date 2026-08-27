@@ -29,3 +29,25 @@ fn test_for_in_ref_val_ref_arr_ident() {
 	}
 	assert rets == expects
 }
+
+struct ForInRefPointerItem {
+	value int
+}
+
+fn test_for_in_ref_fixed_array_of_pointers() {
+	first := &ForInRefPointerItem{
+		value: 10
+	}
+	second := &ForInRefPointerItem{
+		value: 20
+	}
+	items := [first, second]!
+
+	// Referencing a stack-allocated fixed array requires an explicit unsafe scope.
+	unsafe {
+		for i, item in &items {
+			assert voidptr(item) == voidptr(items[i])
+			assert item.value == (i + 1) * 10
+		}
+	}
+}

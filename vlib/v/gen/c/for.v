@@ -917,7 +917,12 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 				g.write('\t${styp} ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
-				addr := if node.val_is_mut || node.val_is_ref { '&' } else { '' }
+				addr := if (node.val_is_mut || node.val_is_ref)
+					&& !info.elem_type.is_any_kind_of_pointer() {
+					'&'
+				} else {
+					''
+				}
 				if cond_type_is_ptr {
 					g.writeln(' = ${addr}(*${cond_var})[${idx}];')
 				} else if cond_is_literal {

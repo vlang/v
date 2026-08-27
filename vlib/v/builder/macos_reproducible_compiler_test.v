@@ -70,6 +70,13 @@ fn test_macos_debug_compiler_build_is_reproducible() {
 	}
 	source_path := os.join_path(compiler_dir, 'v.v')
 	os.write_file(source_path, 'fn main() {\n\tprintln(42)\n}\n')!
+	object_output := os.join_path(test_dir, 'compiler.o')
+	object_cmd := '${os.quoted_path(macos_reproducible_compiler_vexe)} -old-compiler -g -keepc -o ${os.quoted_path(object_output)} ${os.quoted_path(source_path)}'
+	object_result := os.execute(object_cmd)
+	assert object_result.exit_code == 0, object_result.output
+	assert os.is_file(object_output)
+	assert os.file_size(object_output) > 0
+	assert !os.exists(object_output + '.dSYM')
 	mut binary_hashes := []string{}
 	build_names := ['first', 'second', 'no_rsp']
 	build_flags := ['', '', '-no-rsp']
