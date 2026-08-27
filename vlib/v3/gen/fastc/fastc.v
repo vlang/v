@@ -994,7 +994,7 @@ fn generate_source_files(sources []FastcSourceFile, prefs &pref.Preferences) !(s
 	mut interface_fields := map[string]FastcInterfaceField{}
 	for source_file in sources {
 		collect_function_signatures(source_file.source, source_file.path, source_file.header,
-			prefs, declared_types, params_structs, mut functions)!
+			prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
 		collect_interface_method_signatures(source_file.source, source_file.path,
 			source_file.header, prefs, declared_types, mut functions, mut interface_methods, mut
 			interface_fields)!

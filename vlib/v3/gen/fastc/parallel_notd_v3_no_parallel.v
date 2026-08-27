@@ -143,12 +143,11 @@ fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Prefe
 	for chunk_idx in 0 .. chunk_threads.len {
 		chunk := chunk_threads[chunk_idx].wait()
 		for function_name in chunk.references.keys() {
-			chunk_refs := chunk.references[function_name].clone()
 			mut combined := map[string]bool{}
 			if function_name in references {
 				combined = references[function_name].clone()
 			}
-			for referenced_name, _ in chunk_refs {
+			for referenced_name, _ in chunk.references[function_name] {
 				combined[referenced_name] = true
 			}
 			references[function_name] = combined.clone()

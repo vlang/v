@@ -166,7 +166,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 	return FastcComptimeBlock{}
 }
 
-fn fastc_collect_selected_comptime_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn fastc_collect_selected_comptime_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines_without_digest(source)
@@ -181,7 +181,7 @@ fn fastc_collect_selected_comptime_function_signatures(source string, path strin
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
 					collect_function_signatures(selected.source, path, header, prefs,
-						declared_types, params_structs, mut functions)!
+						declared_types, declared_type_c_names, params_structs, mut functions)!
 				}
 				tok = selected.tok
 				continue

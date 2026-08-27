@@ -99,7 +99,7 @@ fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[st
 	return params_structs[parameter_type.trim_right('*')]
 }
 
-fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines_without_digest(source)
@@ -144,7 +144,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 					return error('fastc method receiver: ${err.msg()}')
 				}
 				if receiver_key == '' {
-					receiver_key = fastc_semantic_declared_type_key(receiver_type, declared_types)
+					receiver_key = fastc_semantic_declared_type_key(receiver_type, declared_type_c_names)
 				}
 				if receiver_is_mut && !receiver_type.ends_with('*') {
 					receiver_type += '*'
@@ -364,7 +364,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		tok = scan.scan()
 	}
 	fastc_collect_selected_comptime_function_signatures(source, path, header, prefs,
-		declared_types, params_structs, mut functions)!
+		declared_types, declared_type_c_names, params_structs, mut functions)!
 }
 
 fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pref.Preferences, functions map[string]FastcFunctionSignature) map[string]bool {
@@ -416,19 +416,20 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	for name in top_level_references.keys() {
 		used[name] = true
 	}
-	mut changed := true
-	for changed {
-		changed = false
-		for name in used.keys() {
-			if name !in references {
-				continue
-			}
-			referenced := references[name].clone()
-			for referenced_name in referenced.keys() {
-				if referenced_name !in used {
-					used[referenced_name] = true
-					changed = true
-				}
+	// Reachability by worklist BFS. The previous fixpoint re-scanned every
+	// discovered name on every pass and cloned each name's reference set per
+	// visit; under -prealloc those clones were never reclaimed. Each name is
+	// now expanded exactly once and its reference set is iterated in place.
+	mut worklist := used.keys()
+	for worklist.len > 0 {
+		name := worklist.pop()
+		if name !in references {
+			continue
+		}
+		for referenced_name, _ in references[name] {
+			if referenced_name !in used {
+				used[referenced_name] = true
+				worklist << referenced_name
 			}
 		}
 	}
