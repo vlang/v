@@ -57,7 +57,7 @@ fn main() {
 	if !has_gc_arg(args) {
 		args << ['-gc', 'none']
 	}
-	obinary := cmdline.option(args, '-o', '')
+	obinary := self_build_output(args)
 	if fastc_self_build && repeat_count > 1 && obinary == '' {
 		unsupported := unsupported_fastc_repeat_args(args)
 		if unsupported.len > 0 {
@@ -109,6 +109,25 @@ fn main() {
 		return
 	}
 	println('V built successfully as executable "${vexe_name}".')
+}
+
+fn self_build_output(args []string) string {
+	mut output := ''
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in ['-o', '-output'] && i + 1 < args.len {
+			output = args[i + 1]
+			i += 2
+			continue
+		}
+		if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
+			i += 2
+		} else {
+			i++
+		}
+	}
+	return output
 }
 
 fn uses_fastc_backend(args []string) bool {

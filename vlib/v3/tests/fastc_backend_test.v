@@ -91,6 +91,13 @@ fn test_v_self_accepts_fastc_backend() {
 	}
 	isolated_vexe := os.join_path(isolated_vroot, 'v')
 	os.cp(@VEXE, isolated_vexe) or { panic(err) }
+	output_alias_binary := os.join_path(root, 'v fastc output alias')
+	output_alias_build := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b', 'fastc',
+		'-output', output_alias_binary], '', isolated_vexe)
+	assert output_alias_build.exit_code == 0, output_alias_build.output
+	assert output_alias_build.output.count('V self compiling') == 1, output_alias_build.output
+	assert os.is_executable(output_alias_binary)
+	assert !os.exists(os.join_path(isolated_vroot, 'v_old'))
 	for ccompiler in ['tcc', 'tinyc'] {
 		unsupported_cc_repeat := run_with_v_environment(isolated_vexe, ['self', '-silent', '-b',
 			'fastc', '-cc', ccompiler, 'x2'], '', isolated_vexe)
