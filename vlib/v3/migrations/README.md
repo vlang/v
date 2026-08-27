@@ -102,18 +102,22 @@ The migrator accepts `orm.TransactionalConnection` implementations, and `Config.
 can override whether per-migration transaction methods are used for DDL. SQLite's immediate lock
 transaction still covers each mutating workflow; failed acquisition and commit paths roll back and
 remove their temporary transaction probes. Migration names containing NUL bytes are rejected before
-any database access. PostgreSQL migrations reject `orm.DB` decorators without probing their
+any database access. PostgreSQL migrators reject `orm.DB` decorators without probing their
 transactions; pass a direct session-pinned `pg.Conn` without an active transaction. Mutating and
 inspection workflows reject existing transactions, including `pg.Tx`, before resolving or retaining
 the history schema. Unqualified PostgreSQL history tables resolve an existing persistent relation
 before falling back to the normal creation schema for inspection, creation, and lock namespacing.
 Temporary relations are ignored unless explicitly qualified in `Config.table`.
 PostgreSQL transactions opened by callbacks in `never` mode are rolled back and rejected before the
-advisory migration lock is released, including when an aborted transaction makes the history write
-fail. In transactional modes, callbacks cannot end the migrator-owned PostgreSQL transaction before
-history is written. MySQL `always` mode verifies an owned savepoint before writing history. SQLite
-callbacks likewise cannot end or replace the original immediate lock transaction before the history
-write.
+advisory migration lock is released, including when an aborted transaction prevents post-callback
+lock verification. After every successful PostgreSQL `up` or `down` callback, the backend's
+exclusive advisory lock is verified before history is written; callbacks that release the
+deterministic key or all advisory locks are rejected. In transactional modes, callbacks cannot end
+the migrator-owned PostgreSQL transaction before history is written. After every successful MySQL
+`up` or `down` callback, named-lock ownership is verified before history is written; callbacks that
+release the deterministic name or all named locks are rejected. MySQL `always` mode also verifies an
+owned savepoint before writing history. SQLite callbacks likewise cannot end or replace the original
+immediate lock transaction before the history write.
 MySQL migrations and inspections also reject connections with active transactions or disabled
 session autocommit, using a unique savepoint name for each transaction-state probe. An unqualified
 MySQL history table is resolved and retained on first use, so later database changes on the same
