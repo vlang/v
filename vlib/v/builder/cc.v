@@ -2198,9 +2198,10 @@ fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler st
 			return ''
 		}
 		mut cache_entry_lock := filelock.new(object_dir + '.lock')
-		cache_entry_lock.acquire() or {
-			verror('could not lock the reproducible macOS debug object: ${err}')
-			return ''
+		// A sidecar lock is unlinked on release. Retrying nonblocking acquisition
+		// reopens the path, so a waiter cannot acquire an old, unlinked inode.
+		for !cache_entry_lock.try_acquire() {
+			time.sleep(time.millisecond)
 		}
 		defer {
 			cache_entry_lock.release()

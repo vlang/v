@@ -85,6 +85,31 @@ fn test_macos_debug_compiler_cache_recreates_entry_directory_before_store() {
 	assert !os.exists(temporary_object)
 }
 
+fn test_macos_debug_compiler_cache_lock_reopens_replaced_sidecar() {
+	$if !macos {
+		return
+	}
+	cache_dir := os.join_path(os.vtmp_dir(), 'macos_debug_cache_lock_${os.getpid()}')
+	os.rmdir_all(cache_dir) or {}
+	os.mkdir_all(cache_dir)!
+	defer {
+		os.rmdir_all(cache_dir) or {}
+	}
+	lock_path := os.join_path(cache_dir, 'content-hash.lock')
+	mut first_owner := filelock.new(lock_path)
+	first_owner.acquire()!
+	mut waiter := filelock.new(lock_path)
+	assert !waiter.try_acquire()
+	first_owner.release()
+
+	mut replacement_owner := filelock.new(lock_path)
+	replacement_owner.acquire()!
+	assert !waiter.try_acquire()
+	replacement_owner.release()
+	assert waiter.try_acquire()
+	waiter.release()
+}
+
 fn test_macos_debug_compiler_build_is_reproducible() {
 	$if !macos {
 		return
