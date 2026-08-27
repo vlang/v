@@ -3,6 +3,7 @@ module builder
 import os
 import crypto.sha256
 import v.ast
+import v.gen.c as cgen
 import v.pref
 
 fn restore_env_var(name string, old_value ?string) {
@@ -977,6 +978,16 @@ fn test_generated_c_reset_line_is_not_reported_as_v_source() {
 	if _ := v_source_location_for_c_line(c_lines, 2, '/tmp/program.tmp.c') {
 		assert false
 	}
+}
+
+fn test_generated_c_debug_marker_is_recognized_as_generated_c() {
+	loc := c_error_location_for_generated_c('<generated C>:42:7: error: unknown type name',
+		'/tmp/program.random.tmp.c') or {
+		assert false
+		return
+	}
+	assert loc.file == cgen.generated_c_debug_path
+	assert loc.line == 42
 }
 
 fn test_generated_c_line_for_source_location_prefers_non_empty_line() {

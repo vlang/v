@@ -1,0 +1,29 @@
+// vtest vflags: -old-compiler
+struct Item {
+mut:
+	val int
+}
+
+struct Test {
+mut:
+	buf [10]Item
+}
+
+fn main() {
+	mut t := Test{}
+	for i in 0 .. 10 {
+		t.buf[i] = Item{
+			val: i
+		}
+	}
+	for item in &t.buf {
+		unsafe {
+			item.val *= 100
+		}
+	}
+	mut total := 0
+	for item in t.buf {
+		total += item.val
+	}
+	println(total)
+}

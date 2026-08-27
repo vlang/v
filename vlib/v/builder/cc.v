@@ -1130,6 +1130,13 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if ccoptions.debug_mode && current_os != 'windows' && v.pref.build_mode != .build_module {
 		if ccoptions.cc != .tcc && current_os == 'macos' {
 			ccoptions.linker_flags << '-Wl,-export_dynamic' // clang for mac needs export_dynamic instead of -rdynamic
+			if v.pref.building_v && ccoptions.cc == .clang {
+				// ld64 otherwise lets temporary object and output paths perturb the
+				// content-derived UUID and the ad-hoc code signature.
+				ccoptions.args << '-ffile-prefix-map=${v.out_name_c}=<generated-c>'
+				ccoptions.linker_flags << '-Wl,-reproducible'
+				ccoptions.linker_flags << '-Wl,-final_output,v-compiler'
+			}
 		} else {
 			if v.pref.ccompiler != 'x86_64-w64-mingw32-gcc' {
 				// the mingw-w64-gcc cross compiler does not support -rdynamic, and windows/wine already does have nicer backtraces
@@ -2055,6 +2062,7 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
+	v.finalize_reproducible_macos_debug_compiler()
 	if v.pref.compress {
 		ret := os.system('strip ${os.quoted_path(v.pref.out_name)}')
 		if ret != 0 {
@@ -2086,6 +2094,36 @@ pub fn (mut v Builder) cc() {
 	// eprintln('failed to run ldid2, try: brew install ldid')
 	// }
 	// }
+}
+
+fn (v &Builder) finalize_reproducible_macos_debug_compiler() {
+	$if macos {
+		if v.pref.os != .macos || !v.pref.building_v || !v.pref.is_debug
+			|| v.pref.build_mode == .build_module {
+			return
+		}
+		strip_path := os.find_abs_path_of_executable('strip') or {
+			verror('could not find `strip` to finalize the reproducible macOS compiler binary')
+			return
+		}
+		strip_result :=
+			os.execute('${os.quoted_path(strip_path)} -S ${os.quoted_path(v.pref.out_name)}')
+		if strip_result.exit_code != 0 {
+			verror('failed to strip the macOS compiler debug map:\n${strip_result.output}')
+		}
+		codesign_path := os.find_abs_path_of_executable('codesign') or {
+			verror('could not find `codesign` to finalize the reproducible macOS compiler binary')
+			return
+		}
+		// Removing the linker's signature first also removes its output-name-dependent
+		// allocation, so the replacement has the same layout for every output path.
+		os.execute('${os.quoted_path(codesign_path)} --remove-signature ${os.quoted_path(v.pref.out_name)}')
+		codesign_result :=
+			os.execute('${os.quoted_path(codesign_path)} --force --sign - --identifier org.vlang.v ${os.quoted_path(v.pref.out_name)}')
+		if codesign_result.exit_code != 0 {
+			verror('failed to ad-hoc sign the reproducible macOS compiler binary:\n${codesign_result.output}')
+		}
+	}
 }
 
 fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {

@@ -900,8 +900,13 @@ fn (mut t Transformer) lower_iterator_for_in(id flat.NodeId, node flat.Node, key
 	elem_type := info.elem_type
 	t.set_var_type(elem_name, elem_type)
 	t.mark_fn_used_name(info.next_method)
+	next_receiver := if iter_type.trim_space().starts_with('&') {
+		t.make_ident(iter_name)
+	} else {
+		t.make_prefix(.amp, t.make_ident(iter_name))
+	}
 	next_call := t.make_call_typed(info.next_method, [
-		t.make_prefix(.amp, t.make_ident(iter_name)),
+		next_receiver,
 	], '?${elem_type}')
 	next_decl := t.make_decl_assign_typed(next_name, next_call, '?${elem_type}')
 	no_value := t.make_prefix(.not, t.make_selector(t.make_ident(next_name), 'ok', 'bool'))
