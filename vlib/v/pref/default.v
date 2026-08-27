@@ -297,12 +297,13 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	npath := rpath.replace('\\', '/')
 	p.building_v = !p.is_repl && is_v_compiler_target(npath)
-	$if macos {
+	$if macos || linux {
 		// The embedded V3 compiler relies on disposable preallocation scopes to keep
 		// large compiler-module tests bounded. Match V3's own building-v default so
 		// ordinary `v -o vnew cmd/v` builds do not retain every stage allocation.
-		if p.building_v && p.os == .macos && !p.prealloc
-			&& (!p.gc_set_by_flag || p.gc_mode == .no_gc) {
+		if p.building_v && p.os in [.macos, .linux] && !p.prealloc
+			&& (!p.gc_set_by_flag || p.gc_mode == .no_gc)
+			&& (p.os != .linux || !p.ccompiler_set_by_flag || cc_from_string(p.ccompiler) != .tinyc) {
 			p.prealloc = true
 			p.build_options << '-prealloc'
 		}

@@ -974,6 +974,35 @@ fn main() {
 	}
 }
 
+fn test_linux_pool_limit_stays_out_of_run_environment() {
+	$if linux {
+		root := os.join_path(os.vtmp_dir(), 'v3_driver_pool_environment_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		v3_bin := build_driver_cli_v3_with_flags(root, ['-prealloc', '-parallel-cc'])
+		source := os.join_path(root, 'pool_environment.v')
+		os.write_file(source, "import os
+
+const compile_pool_limit = \$env('V3_INTERNAL_POOL_SIZE_LIMIT')
+
+fn main() {
+	println(compile_pool_limit + '|' + os.getenv('V3_INTERNAL_POOL_SIZE_LIMIT'))
+}
+")!
+		mut environment := os.environ()
+		environment.delete('V3_INTERNAL_POOL_SIZE_LIMIT')
+		environment['VJOBS'] = '8'
+		run := run_driver_with_environment(v3_bin, ['-nocache', '-no-memory-limit', '-v', 'run',
+			source], environment)
+		assert run.exit_code == 0, run.output
+		assert run.output.split_into_lines().any(it == '|'), run.output
+		assert run.output.contains('persistent worker threads    3 threads'), run.output
+	}
+}
+
 fn test_driver_requests_macos_compatibility_for_language_errors() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_language_fallback_${os.getpid()}')
 	os.rmdir_all(root) or {}

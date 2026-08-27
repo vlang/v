@@ -4,6 +4,7 @@ import os
 import os.cmdline
 import v.pref
 import v.util.recompilation
+import v.util.vflags
 
 const args_ = arguments()
 const is_debug = args_.contains('-debug')
@@ -30,16 +31,17 @@ fn main() {
 	command_index := os.getenv('VSELF_COMMAND_INDEX').int()
 	os.unsetenv('VSELF_COMMAND_INDEX')
 	repeat_count, mut args := extract_repeat_count(args_[1..], command_index)
-	fastc_self_build := uses_fastc_backend(args)
-	if fastc_self_build && '-prod' in args {
+	mut effective_args := effective_self_build_args(args)
+	fastc_self_build := uses_fastc_backend(effective_args)
+	if fastc_self_build && '-prod' in effective_args {
 		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
 		exit(1)
 	}
 	if fastc_self_build {
 		args = normalize_fastc_backend_args(args)
+		effective_args = effective_self_build_args(args)
 	}
-	if !fastc_self_build
-		&& (args.len == 0 || ('-cc' !in args && '-prod' !in args && '-parallel-cc' !in args)) {
+	if !fastc_self_build && !has_self_build_configuration_arg(effective_args) {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()
 		uname := os.uname()
@@ -54,8 +56,16 @@ fn main() {
 			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
 		}
 	}
-	if !has_gc_arg(args) {
+	if !has_gc_arg(effective_args) {
 		args << ['-gc', 'none']
+	}
+	effective_args = effective_self_build_args(args)
+	if !fastc_self_build && os.user_os() == 'linux' && self_build_supports_prealloc(effective_args)
+		&& !has_prealloc_arg(effective_args) {
+		// The embedded V3 compiler uses disposable preallocation scopes. Pass the
+		// flag explicitly so the first `v up` built by an older Linux compiler gets
+		// the bounded-memory implementation too.
+		args << '-prealloc'
 	}
 	obinary := self_build_output(args)
 	if fastc_self_build && repeat_count > 1 && obinary == '' {
@@ -204,6 +214,22 @@ fn unsupported_fastc_repeat_args(args []string) []string {
 	return unsupported
 }
 
+fn effective_self_build_args(args []string) []string {
+	mut effective_args := vflags.tokenize_to_args(os.getenv('VFLAGS'))
+	effective_args << args
+	return effective_args
+}
+
+fn has_self_build_configuration_arg(args []string) bool {
+	for arg in args {
+		if arg in ['-cc', '-prod', '-parallel-cc'] || arg.starts_with('-cc=')
+			|| arg.starts_with('-cc ') {
+			return true
+		}
+	}
+	return false
+}
+
 fn repeat_count_arg(arg string) int {
 	if arg.len < 2 || arg[0] != `x` {
 		return 0
@@ -261,6 +287,52 @@ fn has_gc_arg(args []string) bool {
 		}
 	}
 	return false
+}
+
+fn has_prealloc_arg(args []string) bool {
+	return args.any(it in ['-prealloc', '-no-prealloc'])
+}
+
+fn self_build_supports_prealloc(args []string) bool {
+	mut target_os := 'linux'
+	mut ccompiler := ''
+	mut gc := 'none'
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg == '-os' {
+			if i + 1 < args.len {
+				target_os = args[i + 1]
+				i++
+			}
+		} else if arg.starts_with('-os=') {
+			target_os = arg.all_after('=')
+		} else if arg == '-cc' {
+			if i + 1 < args.len {
+				ccompiler = args[i + 1]
+				i++
+			}
+		} else if arg.starts_with('-cc=') {
+			ccompiler = arg.all_after('=')
+		} else if arg.starts_with('-cc ') {
+			ccompiler = arg.all_after('-cc ')
+		} else if arg == '-gc' {
+			if i + 1 < args.len {
+				gc = args[i + 1]
+				i++
+			}
+		} else if arg.starts_with('-gc=') {
+			gc = arg.all_after('=')
+		}
+		i++
+	}
+	return target_os == 'linux' && gc == 'none' && self_ccompiler_supports_prealloc(ccompiler)
+}
+
+fn self_ccompiler_supports_prealloc(ccompiler string) bool {
+	cc := os.file_name(ccompiler.trim_space()).to_lower_ascii()
+	return !cc.contains('tcc') && !cc.contains('tinyc') && !cc.contains('tinygcc')
+		&& !cc.contains('tiny_gcc') && !cc.contains('tiny-gcc')
 }
 
 fn has_profile_cflag(args []string) bool {

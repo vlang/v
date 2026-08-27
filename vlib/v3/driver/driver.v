@@ -77,6 +77,7 @@ const embedded_parallel_transform_node_limit = 10_000_000
 const scoped_serial_user_check_node_threshold = 400_000
 const scoped_serial_user_transform_node_threshold = 400_000
 const scoped_serial_user_cgen_node_threshold = 500_000
+const scoped_linux_user_job_limit = 4
 const scoped_transform_signature_headroom = 2048
 const v3_vvmrc_file_name = '.vvmrc'
 const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
@@ -7656,6 +7657,14 @@ pub fn run(args []string) {
 	// serial, keep that pool in the compilation arena so close_workers never
 	// observes a pool allocated in a released markused scope.
 	scope_prealloc_markused := scope_prealloc_stages && !current_no_parallel
+	$if linux {
+		// Large preallocated user graphs retain worker-local arenas between phases.
+		// Bound Linux pools to the configuration used for the scoped-memory path;
+		// high VJOBS values otherwise multiply both RSS and shared-cache pressure.
+		if !building_v && scope_prealloc_stages && runtime.nr_jobs() > scoped_linux_user_job_limit {
+			workers.limit_pool_size(scoped_linux_user_job_limit - 1)
+		}
+	}
 	if building_v || cmd_v_build {
 		if no_parallel {
 			user_defines = user_defines.filter(it != 'parallel')

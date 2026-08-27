@@ -1,3 +1,4 @@
+@[has_globals]
 module workers
 
 import os
@@ -16,6 +17,15 @@ const compiler_worker_stack_size = 64 * 1024 * 1024
 // or that need more headroom. Values below min_worker_stack_size are clamped so
 // a mistuned setting cannot hand the recursive phases a too-small stack.
 const min_worker_stack_size = 4 * 1024 * 1024
+
+__global v3_pool_size_limit int
+
+// limit_pool_size caps pools created after this call to at most `size` workers.
+pub fn limit_pool_size(size int) {
+	if size > 0 && (v3_pool_size_limit == 0 || size < v3_pool_size_limit) {
+		v3_pool_size_limit = size
+	}
+}
 
 // worker_stack_size resolves the per-worker stack size, honoring the
 // V3_WORKER_STACK_MB override and falling back to the default when it is unset,
@@ -125,7 +135,10 @@ fn pool_worker(arg voidptr) voidptr {
 // new creates up to size persistent workers. Failed launches simply reduce
 // the available parallelism; run executes synchronously if none launch.
 pub fn new(size int) &Pool {
-	wanted := if size < 0 { 0 } else { size }
+	mut wanted := if size < 0 { 0 } else { size }
+	if v3_pool_size_limit > 0 && wanted > v3_pool_size_limit {
+		wanted = v3_pool_size_limit
+	}
 	// Compiler phases deliberately oversubscribe the workers with small chunks
 	// so that uneven AST bodies do not leave cores idle. Buffer the whole normal
 	// batch: otherwise Pool.run has to wait for early completions while it is
