@@ -2,7 +2,6 @@ module main
 
 import os
 import testing
-import v.util.vflags
 
 struct Config {
 	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
@@ -446,10 +445,9 @@ fn main() {
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
 	}
-	// V3-only regression sources may intentionally fail to compile with V1.
-	if '-old-compiler' in vflags.join_env_vflags_and_os_args() {
-		tsession.skip_files << v3_only_self_test_files.map(os.join_path(vroot, it))
-	}
+	// `test-self` can route builds to V1 in several modes. Exclude V3-only regressions
+	// rather than duplicating the compiler-routing policy here.
+	tsession.skip_files << v3_only_self_test_files.map(os.join_path(vroot, it))
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'
 	}

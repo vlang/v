@@ -1,9 +1,33 @@
 $if macos || linux {
-	import db.pg
+	import orm
+
+	struct TestDB {}
+
+	fn (db TestDB) select(_ orm.SelectConfig, _ orm.QueryData, _ orm.QueryData) ![][]orm.Primitive {
+		return []
+	}
+
+	fn (db TestDB) insert(_ orm.Table, _ orm.QueryData) ! {}
+
+	fn (db TestDB) update(_ orm.Table, _ orm.QueryData, _ orm.QueryData) ! {}
+
+	fn (db TestDB) delete(_ orm.Table, _ orm.QueryData) ! {}
+
+	fn (db TestDB) create(_ orm.Table, _ []orm.TableField) ! {}
+
+	fn (db TestDB) drop(_ orm.Table) ! {}
+
+	fn (db TestDB) last_id() int {
+		return 0
+	}
+
+	fn (db TestDB) execute(_ string) ![]orm.Row {
+		return []
+	}
 
 	struct App {
 	pub:
-		db &pg.DB
+		db &TestDB
 	mut:
 		post    Repo[Post]
 		profile Repo[Profile]
