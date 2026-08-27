@@ -32,8 +32,9 @@ fn build_v3_for_heap_attr() string {
 	if os.exists(v3_bin) {
 		return v3_bin
 	}
+	module_path := os.quoted_path('${heap_attr_vlib_dir}|@vlib|@vmodules')
 	build :=
-		os.execute('${os.quoted_path(heap_attr_vexe)} -gc none -path "${heap_attr_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(heap_attr_v3_src)}')
+		os.execute('${os.quoted_path(heap_attr_vexe)} -gc none -path ${module_path} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(heap_attr_v3_src)}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
