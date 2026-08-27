@@ -899,6 +899,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 		}
 		cond_sym := g.table.final_sym(node.cond_type)
 		info := cond_sym.info as ast.ArrayFixed
+		elem_is_fn := g.table.final_sym(info.elem_type).kind == .function
 		g.writeln('for (${ast.int_type_name} ${idx} = 0; ${idx} != ${info.size}; ${plus_plus_idx}) {')
 		if node.val_var != '_' {
 			val_sym := g.table.sym(node.val_type)
@@ -918,7 +919,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			}
 			if !is_fixed_array {
 				addr := if (node.val_is_mut || node.val_is_ref)
-					&& !info.elem_type.is_any_kind_of_pointer() {
+					&& !info.elem_type.is_any_kind_of_pointer() && !elem_is_fn {
 					'&'
 				} else {
 					''

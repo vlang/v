@@ -51,3 +51,25 @@ fn test_for_in_ref_fixed_array_of_pointers() {
 		}
 	}
 }
+
+fn for_in_ref_first_callback() int {
+	return 10
+}
+
+fn for_in_ref_second_callback() int {
+	return 20
+}
+
+fn test_for_in_ref_fixed_array_of_functions() {
+	callbacks := [for_in_ref_first_callback, for_in_ref_second_callback]!
+	mut results := []int{}
+
+	// Referencing a stack-allocated fixed array requires an explicit unsafe scope.
+	unsafe {
+		for callback in &callbacks {
+			direct_callback := *callback
+			results << direct_callback()
+		}
+	}
+	assert results == [10, 20]
+}
