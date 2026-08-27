@@ -28,7 +28,9 @@ fn main() {
 		'Please install V from source, to use `${vexe_name} self` .')
 	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
-	repeat_count, mut args := extract_repeat_count(args_[1..])
+	vflags_count := os.getenv('VSELF_VFLAGS_COUNT').int()
+	os.unsetenv('VSELF_VFLAGS_COUNT')
+	repeat_count, mut args := extract_repeat_count(args_[1..], vflags_count)
 	fastc_self_build := uses_fastc_backend(args)
 	if fastc_self_build && '-prod' in args {
 		eprintln('`v self -b fastc` does not support `-prod`; remove `-prod`.')
@@ -64,14 +66,19 @@ fn main() {
 	if fastc_self_build {
 		compile_args << '-selfhost'
 	}
-	options := if args.len > 0 { '(${compile_args.join(' ')})' } else { '' }
 	final_binary := if obinary != '' { obinary } else { 'v2' }
 	pgo_cc_kind := if fastc_self_build { '' } else { pgo_compiler_kind(args) }
 	compilation_source := if fastc_self_build { 'vlib/v3/v3.v' } else { 'cmd/v' }
 	for run_idx in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_idx + 1}/${repeat_count}]' } else { '' }
+		run_compile_args := if fastc_self_build && obinary == '' && run_idx > 0 {
+			fastc_descendant_compile_args(compile_args, final_binary)
+		} else {
+			compile_args
+		}
+		options := if args.len > 0 { '(${run_compile_args.join(' ')})' } else { '' }
 		println('V self compiling${run_label} ${options}...')
-		cmd := compose_v_cmd(vexe, compile_args, compilation_source)
+		cmd := compose_v_cmd(vexe, run_compile_args, compilation_source)
 		mut used_pgo := false
 		if pgo_cc_kind != '' {
 			used_pgo = compile_with_pgo(vroot, vexe, args, final_binary, pgo_cc_kind)
@@ -131,6 +138,19 @@ fn normalize_fastc_backend_args(args []string) []string {
 	return normalized
 }
 
+fn fastc_descendant_compile_args(args []string, output string) []string {
+	// The standalone FastC driver has a deliberately narrow CLI. Once it replaces
+	// v, retain only the self-build arguments that it can honor.
+	mut descendant_args := []string{cap: 9}
+	for arg in args {
+		if arg in ['-silent', '-keepc'] && arg !in descendant_args {
+			descendant_args << arg
+		}
+	}
+	descendant_args << ['-b', 'fastc', '-gc', 'none', '-o', output, '-selfhost']
+	return descendant_args
+}
+
 fn repeat_count_arg(arg string) int {
 	if arg.len < 2 || arg[0] != `x` {
 		return 0
@@ -144,12 +164,14 @@ fn repeat_count_arg(arg string) int {
 	return if count > 0 { count } else { 0 }
 }
 
-fn extract_repeat_count(args []string) (int, []string) {
+fn extract_repeat_count(args []string, protected_prefix_count int) (int, []string) {
 	mut repeat_count := 1
 	mut filtered := []string{cap: args.len}
 	mut should_skip_repeat_check := false
 	mut removed_self_command := false
-	for arg in args {
+	prefix_count := int_min(int_max(protected_prefix_count, 0), args.len)
+	filtered << args[..prefix_count]
+	for arg in args[prefix_count..] {
 		if should_skip_repeat_check {
 			filtered << arg
 			should_skip_repeat_check = false
