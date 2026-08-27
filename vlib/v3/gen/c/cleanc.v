@@ -7908,6 +7908,9 @@ fn c_preserved_system_include_typedef_names(include_arg string) []string {
 	if include_arg.starts_with('<X11/') {
 		return c_preserved_system_include_struct_names(include_arg)
 	}
+	if include_arg in ['<Cocoa/Cocoa.h>', '<Foundation/Foundation.h>', '<objc/objc.h>'] {
+		return ['BOOL']
+	}
 	return []string{}
 }
 
@@ -8073,15 +8076,21 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 	}
 }
 
-// collect_cache_native_c_symbols records type names declared by a native header
-// that cache splitting preserves as an include. Empty C placeholders discovered
-// while checking selector expressions must not be emitted before a real typedef,
-// tag, or Objective-C type declaration. Ordinary identifiers such as parameters,
-// fields, and enum values do not declare types and must not suppress placeholders.
+// collect_cache_native_c_symbols records names declared by a native header that
+// cache splitting preserves as an include. Empty C placeholders discovered while
+// checking selector expressions must not be emitted before a real typedef, tag,
+// Objective-C type declaration, or enum constant. Ordinary identifiers such as
+// parameters and fields must not suppress placeholders.
 fn (mut g FlatGen) collect_cache_native_c_symbols(text string) {
 	declarations, _ := modulecache.c_source_type_declarations_with_status(text)
 	clean_declarations := c_strip_comments(declarations)
 	for name, _ in modulecache.c_source_type_identifiers(clean_declarations) {
+		g.cache_native_c_symbols[name] = true
+	}
+	// Selector expressions expose C enum constants as placeholder types until C
+	// generation resolves them. Only collect identifiers in actual enum bodies;
+	// scanning every header token also mistakes parameters and fields for types.
+	for name in c_cache_native_enum_constants(declarations) {
 		g.cache_native_c_symbols[name] = true
 	}
 	// The shared identifier extractor records aggregate tags and the final alias
@@ -8116,6 +8125,175 @@ fn (mut g FlatGen) collect_cache_native_c_symbols(text string) {
 			}
 		}
 	}
+}
+
+fn c_cache_native_enum_constants(text string) []string {
+	mut names := []string{}
+	mut i := 0
+	for i < text.len {
+		comment_end := c_cache_native_comment_end(text, i)
+		if comment_end != i {
+			i = comment_end
+			continue
+		}
+		if text[i] in [`'`, `"`] {
+			quote := text[i]
+			i++
+			for i < text.len {
+				if text[i] == quote && !c_flag_quote_is_escaped(text, i) {
+					i++
+					break
+				}
+				i++
+			}
+			continue
+		}
+		if !c_identifier_start(text[i]) {
+			i++
+			continue
+		}
+		token_start := i
+		i++
+		for i < text.len && c_identifier_continue(text[i]) {
+			i++
+		}
+		if text[token_start..i] != 'enum' {
+			continue
+		}
+		resume := i
+		mut brace := i
+		for brace < text.len && text[brace] !in [`{`, `;`] {
+			comment_end_at_brace := c_cache_native_comment_end(text, brace)
+			if comment_end_at_brace != brace {
+				brace = comment_end_at_brace
+				continue
+			}
+			if text[brace] in [`'`, `"`] {
+				quote := text[brace]
+				brace++
+				for brace < text.len {
+					if text[brace] == quote && !c_flag_quote_is_escaped(text, brace) {
+						brace++
+						break
+					}
+					brace++
+				}
+				continue
+			}
+			brace++
+		}
+		if brace >= text.len || text[brace] != `{` {
+			i = resume
+			continue
+		}
+		mut depth := 1
+		mut paren_depth := 0
+		mut bracket_depth := 0
+		mut expect_name := true
+		i = brace + 1
+		for i < text.len && depth > 0 {
+			comment_end_in_body := c_cache_native_comment_end(text, i)
+			if comment_end_in_body != i {
+				i = comment_end_in_body
+				continue
+			}
+			if text[i] in [`'`, `"`] {
+				quote := text[i]
+				i++
+				for i < text.len {
+					if text[i] == quote && !c_flag_quote_is_escaped(text, i) {
+						i++
+						break
+					}
+					i++
+				}
+				continue
+			}
+			if text[i] == `#` && c_cache_native_line_prefix_is_space(text, i) {
+				for i < text.len && text[i] != `\n` {
+					i++
+				}
+				continue
+			}
+			match text[i] {
+				`{` {
+					depth++
+					i++
+					continue
+				}
+				`}` {
+					depth--
+					i++
+					continue
+				}
+				`(` {
+					paren_depth++
+				}
+				`)` {
+					if paren_depth > 0 {
+						paren_depth--
+					}
+				}
+				`[` {
+					bracket_depth++
+				}
+				`]` {
+					if bracket_depth > 0 {
+						bracket_depth--
+					}
+				}
+				`,` {
+					if depth == 1 && paren_depth == 0 && bracket_depth == 0 {
+						expect_name = true
+					}
+				}
+				else {}
+			}
+			if expect_name && depth == 1 && paren_depth == 0 && bracket_depth == 0
+				&& c_identifier_start(text[i]) {
+				name_start := i
+				i++
+				for i < text.len && c_identifier_continue(text[i]) {
+					i++
+				}
+				names << text[name_start..i]
+				expect_name = false
+				continue
+			}
+			i++
+		}
+		i = resume
+	}
+	return names
+}
+
+fn c_cache_native_comment_end(text string, start int) int {
+	if start + 1 >= text.len || text[start] != `/` {
+		return start
+	}
+	if text[start + 1] == `/` {
+		mut i := start + 2
+		for i < text.len && text[i] != `\n` {
+			i++
+		}
+		return i
+	}
+	if text[start + 1] == `*` {
+		mut i := start + 2
+		for i + 1 < text.len && !(text[i] == `*` && text[i + 1] == `/`) {
+			i++
+		}
+		return if i + 1 < text.len { i + 2 } else { text.len }
+	}
+	return start
+}
+
+fn c_cache_native_line_prefix_is_space(text string, pos int) bool {
+	mut start := pos
+	for start > 0 && text[start - 1] != `\n` {
+		start--
+	}
+	return text[start..pos].trim_space().len == 0
 }
 
 fn (g &FlatGen) c_source_defines_used_c_type(text string) bool {

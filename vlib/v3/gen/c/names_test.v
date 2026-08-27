@@ -139,6 +139,7 @@ fn test_collect_cache_native_c_symbols_only_records_type_declarations() {
 	tc.structs['C.StringOnly'] = []types.StructField{}
 	tc.structs['C.UnrelatedOpaque'] = []types.StructField{}
 	tc.structs['C.HEADER_ENUM_VALUE'] = []types.StructField{}
+	tc.structs['C.BOOL'] = []types.StructField{}
 
 	g.collect_cache_native_c_symbols('// typedef int CommentOnly;\n"typedef int StringOnly;";\nint f(int UnrelatedOpaque);\ntypedef struct HeaderTag { int field_name; } HeaderAlias;\nenum HeaderEnum { HEADER_ENUM_VALUE };\ntypedef int HeaderScalar, HeaderOther;')
 
@@ -150,10 +151,21 @@ fn test_collect_cache_native_c_symbols_only_records_type_declarations() {
 	assert !g.cache_native_c_symbols['CommentOnly']
 	assert !g.cache_native_c_symbols['StringOnly']
 	assert !g.cache_native_c_symbols['UnrelatedOpaque']
-	assert !g.cache_native_c_symbols['HEADER_ENUM_VALUE']
+	assert g.cache_native_c_symbols['HEADER_ENUM_VALUE']
 	assert !g.cache_native_c_symbols['field_name']
 	assert g.skip_builtin_struct('C.HeaderScalar')
 	assert !g.skip_builtin_struct('C.UnrelatedOpaque')
+	g.inlined_c_typedef_names['BOOL'] = true
+	assert g.skip_builtin_struct('C.BOOL')
+}
+
+fn test_collect_cache_native_c_symbols_records_sokol_enum_constants() {
+	mut g := FlatGen.new()
+	header := os.read_file(os.join_path(@VEXEROOT, 'thirdparty', 'sokol', 'sokol_app.h')) or {
+		panic(err)
+	}
+	g.collect_cache_native_c_symbols(header)
+	assert g.cache_native_c_symbols['SAPP_MOUSECURSOR_DEFAULT']
 }
 
 fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
@@ -576,6 +588,10 @@ fn test_x11_system_headers_preserve_external_structs() {
 	assert 'XcursorImage' in c_preserved_system_include_struct_names('<X11/Xcursor/Xcursor.h>')
 	assert 'XRRCrtcInfo' in c_preserved_system_include_struct_names('<X11/extensions/Xrandr.h>')
 	assert 'XRRCrtcInfo' in c_preserved_system_include_typedef_names('<X11/extensions/Xrandr.h>')
+}
+
+fn test_apple_framework_typedef_names_are_preserved() {
+	assert 'BOOL' in c_preserved_system_include_typedef_names('<Cocoa/Cocoa.h>')
 }
 
 fn test_large_transitive_header_tree_is_preserved() {
