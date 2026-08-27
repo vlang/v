@@ -134,12 +134,17 @@ fn uses_fastc_backend(args []string) bool {
 	mut backend := ''
 	mut i := 0
 	for i < args.len {
-		if args[i] in ['-b', '-backend'] && i + 1 < args.len {
+		arg := args[i]
+		if arg in ['-b', '-backend'] && i + 1 < args.len {
 			backend = args[i + 1]
 			i += 2
 			continue
 		}
-		i++
+		if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
+			i += 2
+		} else {
+			i++
+		}
 	}
 	return backend == 'fastc'
 }
@@ -148,12 +153,18 @@ fn normalize_fastc_backend_args(args []string) []string {
 	mut normalized := []string{cap: args.len}
 	mut i := 0
 	for i < args.len {
-		if args[i] in ['-b', '-backend'] && i + 1 < args.len {
+		arg := args[i]
+		if arg in ['-b', '-backend'] && i + 1 < args.len {
 			i += 2
 			continue
 		}
-		normalized << args[i]
-		i++
+		normalized << arg
+		if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
+			normalized << args[i + 1]
+			i += 2
+		} else {
+			i++
+		}
 	}
 	normalized << ['-b', 'fastc']
 	return normalized

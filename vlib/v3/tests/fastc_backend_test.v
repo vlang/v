@@ -74,6 +74,16 @@ fn test_v_self_accepts_fastc_backend() {
 	assert vflags_self_build.output.contains('-b fastc'), vflags_self_build.output
 	assert os.is_executable(vflags_binary)
 
+	vflags_backend_value_binary := os.join_path(root, 'v fastc backend value')
+	vflags_backend_value_build := run_with_v_environment(@VEXE, ['self', '-b', 'fastc', '-o',
+		vflags_backend_value_binary], '-exclude -b', @VEXE)
+	assert vflags_backend_value_build.exit_code != 0
+	assert vflags_backend_value_build.output.count('V self compiling') == 1, vflags_backend_value_build.output
+	assert vflags_backend_value_build.output.contains('-exclude -b'), vflags_backend_value_build.output
+	assert !vflags_backend_value_build.output.contains('-exclude fastc'), vflags_backend_value_build.output
+	assert vflags_backend_value_build.output.contains('only supported by the V1 compiler'), vflags_backend_value_build.output
+	assert !os.exists(vflags_backend_value_binary)
+
 	selfhost_binary := os.join_path(root, 'v fastc')
 	self_build := cmdexec.run(@VEXE, ['self', '-silent', '-backend', 'fastc', 'x2', '-o',
 		selfhost_binary])
