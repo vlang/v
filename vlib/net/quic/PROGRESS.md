@@ -1457,11 +1457,119 @@ stacked-PR convention as Phase 12's 12a-12d.
       ship without full migration support, same as the client structurally
       deferred it.
 
-Still out of scope regardless: 0-RTT (Phase 14, separate); server push stays
-permanently disabled (RFC 9114 §7.2.7, a Phase 12 decision independent of
-server support existing at all).
+Still out of scope regardless: 0-RTT (see the renumbered entry below); server
+push stays permanently disabled (RFC 9114 §7.2.7, a Phase 12 decision
+independent of server support existing at all).
 
-14. 0-RTT — explicitly out of committed scope.
+## Phase 14: Connection migration (RFC 9000 §5.1, §9) — SCOPED, not started
+
+Opened following a scoping pass over every deferred/TODO/"out of scope"
+comment left across `vlib/net/quic/*.v` and `h3_server.v` (13a-13e's own
+scope-limit notes plus everything predating them), same convention as
+Phase 13's own opening. Migration is the one item this scoping pass singled
+out to bundle into a phase of its own — it is the single largest remaining
+protocol-conformance gap, it is cohesive (every sub-item below is part of
+the same RFC 9000 §5.1/§9 feature area), and it's already what PR #28164's
+own closing note flagged as "the" deferred follow-up, not an arbitrary pick.
+
+**What's already in place, from earlier phases:**
+- 13c shipped the `NewConnectionIdFrame`/`RetireConnectionIdFrame` wire codec
+  (`frame.v`) and `generate_stateless_reset_token` (`stateless_reset.v`) —
+  cross-checked against `StatelessResetTracker.is_stateless_reset` already.
+  Neither is wired into any connection-state machine yet (13c's own note:
+  "deferred to the caller").
+- `transport_parameters.v` already parses/encodes/validates
+  `active_connection_id_limit` (RFC 9000 §18.2, min 2) — the parameter
+  plumbing exists, nothing consumes the value yet.
+- `QuicListener` already demuxes by connection ID, not 4-tuple (13d-2's own
+  design choice, made explicitly "since QUIC supports migration") — the
+  routing layer doesn't need rework, only extension (14d below).
+- 13b's `AntiAmplificationLimiter` is a directly reusable shape for the new
+  path's own pre-validation send budget (RFC 9000 §9.3).
+
+**What's fully missing:**
+- `PATH_CHALLENGE`/`PATH_RESPONSE` (RFC 9000 §19.17/§19.18, types 0x1a/0x1b)
+  have no wire codec at all — `parse_frame` falls through to the generic
+  "not yet implemented" error for both (confirmed by grep, 2026-08-26).
+- No active CID set on either role: nothing issues local CIDs via
+  NEW_CONNECTION_ID up to the peer's advertised limit, nothing consumes a
+  peer's issued CIDs into a usable pool, no `CONNECTION_ID_LIMIT_ERROR`
+  enforcement (RFC 9000 §5.1.1/§5.1.2).
+- No path-validation state machine — nothing reacts to a packet arriving
+  from an unexpected remote address on an established connection.
+- `conn.v`'s own module doc comment (line ~27) is now **stale**: it still
+  says "no NEW_CONNECTION_ID/RETIRE_CONNECTION_ID" as a blanket v1-scope
+  statement, which 13c's wire codec already partially contradicts (the
+  codec exists; only the state machine consuming it doesn't). Needs
+  updating as part of 14b, not left to drift further.
+
+**Sub-phases (same one-sub-phase-per-stacked-PR convention as 12/13):**
+- [ ] **14a** — `PATH_CHALLENGE`/`PATH_RESPONSE` frame wire codec: 8-byte
+      opaque data each, both are probing frames (RFC 9000 §9.1's
+      probing/non-probing frame classification matters for 14c's migration
+      detection). Paired `_test.v`, RFC vector or round-trip cross-check
+      per this project's established convention.
+- [ ] **14b** — Active connection ID set: issue local CIDs via
+      NEW_CONNECTION_ID up to the peer's `active_connection_id_limit`;
+      consume the peer's issued CIDs into a pool this endpoint can migrate
+      to; send/receive RETIRE_CONNECTION_ID; enforce
+      `CONNECTION_ID_LIMIT_ERROR`. Update `conn.v`'s stale module doc
+      comment in the same change.
+- [ ] **14c** — Path validation state machine: detect a new remote address
+      on an established connection (distinguish probing-only traffic —
+      simple NAT rebinding, RFC 9000 §9.3 — from an intentional migration);
+      send PATH_CHALLENGE, validate the PATH_RESPONSE; gate any non-probing
+      use of the new path behind validation plus a fresh anti-amplification
+      budget (reusing 13b's limiter shape) until validated; rotate to a
+      fresh local CID on migration per §9.5's linkability guidance.
+- [ ] **14d** — `QuicListener` wiring: once a path validates, re-pin the
+      connection's recorded peer address (extends 13d-2's fix, which
+      pinned it once at accept() time and never revisits it); handle a
+      connection's packets legitimately arriving from either the old or
+      new address during the validation window.
+- [ ] **14e** *(stretch, split out if 14a-14d already ran long)* —
+      this endpoint proactively initiating its own migration (§9.1),
+      as opposed to only validating and accepting a peer-initiated one.
+      A NAT-rebinding-only endpoint (react to address changes, no CID
+      rotation, no active probing) may be a smaller, separately-shippable
+      subset if 14c/14d alone prove to be enough for a first PR.
+
+**Explicitly out of Phase 14's scope** (flagged during this pass, deliberately
+NOT bundled in — each is independent of migration and better scoped as its
+own later follow-up):
+- 0-RTT / session resumption / PSK — still explicitly out of committed
+  project scope (originally "Phase 14" in the tracking issue's own numbering;
+  renumbered here since migration claimed the 14 slot — see the note below).
+- HelloRetryRequest, both handshake directions (`tls13_handshake.v`,
+  `tls13_server_handshake.v`) — a self-contained TLS-layer gap, unrelated to
+  transport-layer migration despite both sounding like "handshake edge
+  cases."
+- RSA-PSS `CertificateVerify` signing (`tls13_certificate.v`) — only
+  `ecdsa_secp256r1_sha256` is wired; a separate crypto-capability gap.
+- NEW_TOKEN frame issuance (RFC 9000 §8.1.3, `retry_token.v`'s own noted
+  scope limit) — a separate address-validation mechanism; Retry-based
+  validation already exists and migration doesn't need this.
+- The preferred_address transport parameter (RFC 9000 §9.6) — a distinct,
+  optional migration-*adjacent* feature; a candidate follow-up to Phase 14,
+  not part of it.
+- `h3_server.v`'s three documented v1 limits (request trailers not
+  delivered to the Handler, no per-stream RST/STOP_SENDING, no graceful
+  GOAWAY-on-shutdown) — HTTP/3-layer hardening, orthogonal to transport-layer
+  migration.
+- Large certificate chain fragmentation across multiple Handshake CRYPTO
+  packets (13d-1's own noted limit) — a handshake-robustness gap, separate
+  axis from migration.
+- `dial()`'s non-crypto `rand.bytes` for `original_dcid`/`scid`/
+  `client_random` (flagged in 13b) — already fixed and merged to master
+  independently of this branch: vlang/v#28165 (`a7e86f537f`, 2026-08-26).
+  This branch should pick it up on its next rebase; not Phase 14 work.
+
+**Numbering note:** the tracking issue's original phase list reserved "14"
+for 0-RTT specifically. Phase 13 grew far beyond the issue's one-line
+"server support" into 13a-13e, and migration — not 0-RTT, which stays out
+of committed scope — is what PR #28164's own closing note flagged as the
+natural next step. This phase reuses the "14" slot for migration; 0-RTT, if
+ever picked up, takes a later number (15+) rather than reclaiming this one.
 
 ## Scope decisions in effect (see tracking issue for rationale)
 
