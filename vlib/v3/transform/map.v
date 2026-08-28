@@ -709,8 +709,12 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
 		cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned,
 			info.key_type, map_expr, info.base_type, key_name, mut result)
-		t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
-			result)
+		// Skip destroying the existing value when the new value aliases it (a self-referential
+		// store such as `m[k] = arr` where `arr` borrows `m[k]`); the checker records this.
+		if isnil(t.tc) || !t.tc.ownership_assignment_reinitializes_moved_value(id) {
+			t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
+				result)
+		}
 		result << t.make_map_set_stmt(map_expr, info.base_type, key_name, value_name)
 		if int(id) in t.local_closure_field_cleanups {
 			result << t.make_local_closure_cleanup_defer(value_name)

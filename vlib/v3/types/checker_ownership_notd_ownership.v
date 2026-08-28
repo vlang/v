@@ -71,6 +71,10 @@ pub fn (tc &TypeChecker) ownership_index_read_moves_value(_ flat.NodeId) bool {
 	return false
 }
 
+pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(_ flat.NodeId) bool {
+	return false
+}
+
 pub fn (tc &TypeChecker) ownership_guard_read_moves_value(_ flat.NodeId) bool {
 	return false
 }

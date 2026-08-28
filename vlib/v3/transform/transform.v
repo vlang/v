@@ -10360,10 +10360,12 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		if resolved_payload_type in t.sum_types {
 			return t.wrap_sum_value(return_child_id, resolved_payload_type)
 		}
-		return t.transform_expr_for_type(return_child_id, payload_type)
+		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id,
+			payload_type), payload_type)
 	}
 	if target_type.len > 0 && target_type !in t.sum_types && !t.is_optional_type_name(target_type) {
-		return t.transform_expr_for_type(return_child_id, target_type)
+		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id,
+			target_type), target_type)
 	}
 	return t.wrap_sum_return_expr(return_child_id)
 }
@@ -13716,9 +13718,15 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
 			if sum_target.len > 0 && !t.expr_has_smartcast(child_id) {
-				new_children << t.transform_sum_value_for_type(child_id, sum_target)
+				new_children << t.clone_borrowed_projection(child_id, t.transform_sum_value_for_type(child_id,
+					sum_target), sum_target)
 			} else {
-				new_children << t.transform_expr_for_type(child_id, lhs_type)
+				mut clone_type := lhs_type
+				if clone_type.len == 0 {
+					clone_type = t.original_expr_type(child_id)
+				}
+				new_children << t.clone_borrowed_projection(child_id, t.transform_expr_for_type(child_id,
+					lhs_type), clone_type)
 			}
 		}
 	}

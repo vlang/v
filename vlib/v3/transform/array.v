@@ -1295,6 +1295,7 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
 		rhs = t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
+		rhs = t.clone_borrowed_projection(rhs_id, rhs, elem_type)
 	}
 	t.drain_pending(mut result)
 	if rhs_type.len == 0 {
@@ -1497,6 +1498,7 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
 		rhs = t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
+		rhs = t.clone_borrowed_projection(rhs_id, rhs, elem_type)
 	}
 	t.drain_pending(mut result)
 	if rhs_type.len == 0 {
@@ -1539,6 +1541,49 @@ fn (mut t Transformer) clone_borrowed_array_append_value(source_id flat.NodeId, 
 		return value
 	}
 	return t.make_compiler_default_clone_value(value, elem_type, true)
+}
+
+// clone_borrowed_projection clones `value` when ownership analysis decided the read at
+// `source_id` copies borrowed storage (a field or slice read) rather than moving it. The
+// decision is made in the checker so its move/drop bookkeeping stays consistent with the
+// clone emitted here; this only materializes it.
+fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value flat.NodeId, typ string) flat.NodeId {
+	if isnil(t.tc) {
+		return value
+	}
+	// The checker resolves the field/slice/cast shapes from node-annotated types alone, so it
+	// and the transformer agree without a shared map. A `const` read is resolved separately:
+	// the checker qualifies the name from the current module context, which is unavailable
+	// here, so the transformer detects it with its own module-independent const resolver.
+	if !t.tc.ownership_expr_is_borrowed_projection(source_id) && !t.expr_reads_owned_const(source_id) {
+		return value
+	}
+	if !t.compiler_default_clone_type_needs_work(typ) {
+		return value
+	}
+	return t.make_compiler_default_clone_value(value, typ, true)
+}
+
+// expr_reads_owned_const reports whether `id` (after peeling parentheses/casts) is a bare
+// reference to a module constant, which holds shared immutable storage that must be cloned
+// rather than aliased when copied into an owned binding.
+fn (t &Transformer) expr_reads_owned_const(id flat.NodeId) bool {
+	mut cur := id
+	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
+		node := t.a.nodes[int(cur)]
+		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+			cur = t.a.child(&node, 0)
+			continue
+		}
+		if node.kind == .ident {
+			if _ := t.const_type_key(node.value) {
+				return true
+			}
+			return false
+		}
+		return false
+	}
+	return false
 }
 
 // clean_array_append_lhs_type transforms clean array append lhs type data for transform.

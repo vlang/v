@@ -224,6 +224,7 @@ mut:
 	pending_loop_label               string
 	deferred_aggregate_consumption   map[int]int
 	index_move_reads                 map[int]bool
+	pointer_index_aliases            map[string]string
 	guard_move_reads                 map[int]bool
 	skip_drop_before_assign          map[int]bool
 	scope_frames                     []OwnershipScopeFrame
@@ -310,6 +311,7 @@ fn new_ownership_state() &OwnershipState {
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
 		index_move_reads:                 map[int]bool{}
+		pointer_index_aliases:            map[string]string{}
 		guard_move_reads:                 map[int]bool{}
 		skip_drop_before_assign:          map[int]bool{}
 		scope_frames:                     []OwnershipScopeFrame{}
@@ -418,6 +420,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
 		index_move_reads:                 map[int]bool{}
+		pointer_index_aliases:            map[string]string{}
 		guard_move_reads:                 map[int]bool{}
 		skip_drop_before_assign:          map[int]bool{}
 		scope_frames:                     []OwnershipScopeFrame{}
@@ -662,6 +665,7 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	ownership_merge_bool_map(mut dst.drop_type_names, src.drop_type_names)
 	ownership_merge_bool_map(mut dst.value_receiver_methods, src.value_receiver_methods)
 	ownership_merge_string_map(mut dst.owned_globals, src.owned_globals)
+	ownership_merge_string_map(mut dst.pointer_index_aliases, src.pointer_index_aliases)
 	for id, moved in src.index_move_reads {
 		if moved {
 			dst.index_move_reads[id] = true
@@ -1381,7 +1385,13 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			if tc.ownership_type_has_clone_method(typ) {
 				return none
 			}
-			if !tc.autofree_mode && !tc.named_type_implements_marker(name, 'IClone') {
+			// A struct owning a custom resource (an explicit `Drop`) needs bespoke duplication
+			// logic and so must opt into cloning via `IClone`. A plain-data struct with no
+			// `Drop` is structurally cloneable whenever each of its owned fields is, matching
+			// V's ordinary value-copy semantics; requiring `IClone` for it would reject code
+			// that only ever copies such values.
+			if !tc.autofree_mode && !tc.named_type_implements_marker(name, 'IClone')
+				&& tc.ownership_type_has_explicit_drop(name) {
 				return name
 			}
 			if seen[name] {
@@ -1702,6 +1712,13 @@ fn (mut tc TypeChecker) ownership_note_binding(name string, typ Type, pos flat.N
 	st.moved_vars.delete(name)
 	source_id := tc.ownership_guard_source_for_binding(pos, name)
 	source_name := tc.ownership_expr_ident_name(source_id)
+	// A guard binding `val := t[k]` copies the slot's value while sharing its heap storage, so
+	// note the alias; a later `&val` re-stored to `t[k]` then resolves back to that slot.
+	if source_name.contains('[') {
+		st.pointer_index_aliases[name] = source_name
+	} else {
+		st.pointer_index_aliases.delete(name)
+	}
 	source_participates := source_name.len > 0 && tc.ownership_storage_participates(source_name)
 	mutable_owned_source := source_name.len > 0 && tc.expr_root_is_mutable_lvalue(source_id)
 		&& tc.ownership_type_requires_destruction(typ)
@@ -6628,6 +6645,14 @@ fn (mut tc TypeChecker) ownership_after_decl_assign(lhs_id flat.NodeId, rhs_id f
 		}
 	}
 	tc.ownership_note_decl(lhs_name)
+	// Record `local := &(index [as T])` so a later self-referential store `index = local`
+	// (as `toml`'s array-of-tables append does) can skip destroying the storage it aliases.
+	mut alias_st := tc.ownership_state()
+	if target := tc.ownership_pointer_alias_target(rhs_id) {
+		alias_st.pointer_index_aliases[lhs_name] = target
+	} else {
+		alias_st.pointer_index_aliases.delete(lhs_name)
+	}
 	if tc.ownership_assign_shadowing_same_name(lhs_name, rhs_id, lhs_type, assign_id) {
 		tc.ownership_track_fn_value_binding(lhs_name, rhs_id)
 		return
@@ -6742,6 +6767,21 @@ fn (mut tc TypeChecker) ownership_after_assign(lhs_id flat.NodeId, rhs_id flat.N
 		if _ := tc.ownership_moved_conflict(lhs_name) {
 			tc.ownership_state().skip_drop_before_assign[int(assign_id)] = true
 		}
+	}
+	// Track `local := &(index [as T])` so a later self-referential store `index = local` is
+	// recognized; drop any stale alias when the name is reassigned to something else. A
+	// self-referential store like `m[k] = arr` where `arr` aliases `m[k]` (as `toml`'s
+	// array-of-tables append does: `arr := &(m[k] as []T); arr << ...; m[k] = arr`) reassigns
+	// storage to a value that points into it, so the destructive drop of the old value must
+	// be skipped or it frees the very storage the new value points at.
+	mut alias_st := tc.ownership_state()
+	if target := tc.ownership_pointer_alias_target(rhs_id) {
+		alias_st.pointer_index_aliases[lhs_name] = target
+	} else {
+		alias_st.pointer_index_aliases.delete(lhs_name)
+	}
+	if tc.ownership_rhs_borrows_lhs(rhs_id, lhs_name) {
+		alias_st.skip_drop_before_assign[int(assign_id)] = true
 	}
 	tc.ownership_check_reassign(lhs_name, assign_id)
 	tc.ownership_assign_to_name(lhs_name, rhs_id, tc.ownership_assignment_type(lhs_type, rhs_type),
@@ -6888,6 +6928,13 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	if tc.ownership_method_value_clones_receiver(rhs_id) {
 		st.owned_vars.delete(lhs_name)
 		st.owned_var_types.delete(lhs_name)
+		return
+	}
+	// Binding a field or slice read of borrowed storage copies it, so the new local
+	// owns an independent clone; the source is not moved and both are dropped
+	// separately (see ownership_expr_is_borrowed_projection).
+	if tc.ownership_expr_is_borrowed_projection(rhs_id) {
+		tc.ownership_mark_owned(lhs_name, tc.resolve_type(rhs_id), assign_id)
 		return
 	}
 	tc.ownership_update_array_length(lhs_name, rhs_id)
@@ -9548,6 +9595,12 @@ fn (mut tc TypeChecker) ownership_consume_expr(expr_id flat.NodeId, target strin
 	if tc.ownership_consume_array_element_method_result(expr_id, target, at) {
 		return
 	}
+	// Consuming a field or slice read of borrowed storage copies it: the consumer
+	// receives an independent clone and the source is not moved, so both are dropped
+	// separately (see ownership_expr_is_borrowed_projection).
+	if tc.ownership_expr_is_borrowed_projection(expr_id) {
+		return
+	}
 	mut st := tc.ownership_state()
 	name := tc.ownership_expr_ident_name(expr_id)
 	if name.len == 0 {
@@ -10634,6 +10687,64 @@ pub fn (tc &TypeChecker) ownership_expr_moves_storage(source_id flat.NodeId, tar
 	return tc.ownership_expr_moves_named_storage(source_id, target)
 }
 
+// ownership_rhs_borrows_lhs reports whether the assignment RHS at `rhs_id` is (or borrows) a
+// reference into the storage named by `lhs_name`. It resolves the RHS through the active
+// borrow set, so an aliasing local such as `arr := &(m[k] as []T)` is recognized as pointing
+// back at `m[k]`.
+fn (tc &TypeChecker) ownership_rhs_borrows_lhs(rhs_id flat.NodeId, lhs_name string) bool {
+	if lhs_name.len == 0 || tc.ownership == unsafe { nil } {
+		return false
+	}
+	rhs_name := tc.ownership_expr_ident_name(rhs_id)
+	if rhs_name.len == 0 || rhs_name == lhs_name {
+		return false
+	}
+	// Follow the alias chain (`arr -> val -> t[k]`) up to a small bound, stopping as soon as a
+	// link overlaps the store target.
+	mut cur := rhs_name
+	for _ in 0 .. 8 {
+		source := tc.ownership.pointer_index_aliases[cur] or { return false }
+		if ownership_storage_keys_overlap(source, lhs_name) {
+			return true
+		}
+		if source == cur {
+			return false
+		}
+		cur = source
+	}
+	return false
+}
+
+// ownership_pointer_alias_target returns the storage a `&(index [as T])` expression points
+// into, if `id` has that shape. Such an address-of is how code takes a mutable reference into
+// a map/array slot (for example `arr := &(m[k] as []T)`); the checker records it so a later
+// self-referential store `m[k] = arr` is recognized (see ownership_rhs_borrows_lhs).
+fn (tc &TypeChecker) ownership_pointer_alias_target(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+		return none
+	}
+	mut cur := tc.a.child(&node, 0)
+	for tc.valid_node_id(cur) {
+		n := tc.a.nodes[int(cur)]
+		if n.kind in [.paren, .cast_expr, .expr_stmt, .as_expr] && n.children_count > 0 {
+			cur = tc.a.child(&n, 0)
+			continue
+		}
+		// `&(index as T)` points into that slot; `&(local as T)` points into a local that may
+		// itself alias a slot (a guard binding such as `val := t[k]`), resolved transitively.
+		if (n.kind == .index && n.value != 'range') || n.kind == .ident {
+			name := tc.ownership_expr_ident_name(cur)
+			return if name.len > 0 { name } else { none }
+		}
+		break
+	}
+	return none
+}
+
 fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, target string) bool {
 	if !tc.valid_node_id(source_id) {
 		return false
@@ -10917,6 +11028,104 @@ fn (mut tc TypeChecker) ownership_mark_index_move_read_in(id flat.NodeId, name s
 // materializing the moved value.
 pub fn (tc &TypeChecker) ownership_index_read_moves_value(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil } && tc.ownership.index_move_reads[int(id)]
+}
+
+// ownership_expr_is_borrowed_projection reports whether `id` reads storage another value
+// keeps owning and so must be cloned rather than moved. Three shapes qualify:
+//
+//   * a slice (`s[a..b]`), which always shares its source's backing and can never be moved
+//     out;
+//   * a sum-type/interface cast (`v as T`), which extracts a copy of the variant while the
+//     source keeps its value; and
+//   * a field read (`obj.field`) reached through a pointer/reference base — a `mut` receiver
+//     or `&` binding whose fields are owned elsewhere and can be rotated or freed later (as a
+//     parser rotates its token fields), so a bare alias would dangle.
+//
+// A field read of a directly-held value (a plain local or an owned global) keeps its
+// Rust-like move semantics, diagnosed by the existing move analysis. Only cloneable
+// owned-storage types qualify; anything the compiler cannot structurally clone is left to the
+// move path. The predicate depends only on node shape and node-annotated types, so the
+// checker and the transformer reach the same decision without threading a per-node map across
+// module boundaries.
+pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) bool {
+	if tc.ownership == unsafe { nil } {
+		return false
+	}
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.nodes[int(clean_id)]
+	is_field := node.kind == .selector && node.children_count > 0 && node.value.len > 0
+	is_slice := node.kind == .index && node.value == 'range'
+	// A sum-type/interface cast (`v as T`) of a directly-held value extracts an independent
+	// copy of the variant while the source keeps its value, so an owned-storage payload must
+	// be cloned. A cast reached through a pointer/reference base (`(&sum) as T`) only reads
+	// storage the pointee owns — a borrow, as in a read-only AST walk — and is left alone so a
+	// traversal does not deep-clone the whole tree at every level.
+	is_variant_cast := node.kind == .as_expr && node.children_count > 0
+		&& unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) == tc.resolve_type(tc.a.child(&node, 0))
+	// A `const` holds immutable, shared storage that is never dropped; reading it into a
+	// local copies the value, so an owned-storage const must be cloned rather than aliased
+	// (a bare alias would later free the const's static storage on the binding's drop).
+	is_const_read := node.kind == .ident && tc.ownership_ident_names_const(node.value)
+	if !is_field && !is_slice && !is_variant_cast && !is_const_read {
+		return false
+	}
+	typ := tc.resolve_type(clean_id)
+	if !tc.ownership_type_requires_destruction(typ) {
+		return false
+	}
+	if _ := tc.ownership_default_clone_missing_method(typ) {
+		return false
+	}
+	if is_slice || is_variant_cast || is_const_read {
+		return true
+	}
+	return tc.ownership_projection_reads_through_pointer(clean_id)
+}
+
+// ownership_ident_names_const reports whether `name` (qualified or not) refers to a module
+// constant.
+fn (tc &TypeChecker) ownership_ident_names_const(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	if name in tc.const_types {
+		return true
+	}
+	qname := tc.qualify_name(name)
+	return qname != name && qname in tc.const_types
+}
+
+// ownership_projection_reads_through_pointer reports whether the field read at `id` projects
+// through a pointer/reference base — a `mut` receiver or `&`/`mut` binding whose storage is
+// owned elsewhere and can be rotated or freed later. Such a field is copied (cloned); a field
+// of a directly-held value keeps its move semantics. The check uses only node-annotated types
+// so the checker and transformer agree without a shared per-node map.
+fn (tc &TypeChecker) ownership_projection_reads_through_pointer(id flat.NodeId) bool {
+	mut cur := id
+	for tc.valid_node_id(cur) {
+		node := tc.a.nodes[int(cur)]
+		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+			cur = tc.a.child(&node, 0)
+			continue
+		}
+		if node.kind in [.selector, .index] && node.children_count > 0 {
+			base := tc.a.child(&node, 0)
+			base_type := tc.resolve_type(base)
+			if unwrap_pointer(base_type) != base_type {
+				return true
+			}
+			cur = base
+			continue
+		}
+		if node.kind == .prefix && node.op == .mul {
+			return true
+		}
+		break
+	}
+	return false
 }
 
 // ownership_guard_read_moves_value reports whether an optional/result guard binding

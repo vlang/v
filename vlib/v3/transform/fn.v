@@ -2943,7 +2943,13 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 			return boxed
 		}
 	}
-	return t.transform_expr_for_type(arg_id, param_type)
+	value := t.transform_expr_for_type(arg_id, param_type)
+	if param_type.starts_with('&') {
+		return value
+	}
+	// A by-value argument copies a field or slice read the caller keeps owning, so
+	// clone it into an independent value the callee owns (see clone_borrowed_projection).
+	return t.clone_borrowed_projection(arg_id, value, param_type)
 }
 
 fn (t &Transformer) call_arg_is_zero_pointer_literal(id flat.NodeId) bool {
@@ -8075,7 +8081,11 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		t.default_clone_expansion_stack.delete_last()
 	}
 	if t.is_sum_type_name(clean) {
-		return t.make_compiler_default_sum_clone_value(source, clean)
+		// Call the shared clone helper rather than inlining the variant switch at every read
+		// site: a recursive sum type such as `toml.Any` would otherwise expand a large switch
+		// (one arm per variant, recursively) at each site and overflow the AST. The helper body
+		// is synthesized exactly once (see build_default_clone_helper_fn).
+		return t.request_default_clone_helper(source, clean)
 	}
 	info := t.lookup_struct_info(clean) or { return source }
 	mut owning_fields := []FieldInfo{}
@@ -8258,7 +8268,15 @@ fn (mut t Transformer) build_default_clone_helper_fn(typ string) {
 	typed_pointer := t.make_cast('&${typ}', t.make_ident(param_name), '&${typ}')
 	source := t.make_prefix(.mul, typed_pointer)
 	t.set_node_typ(int(source), typ)
-	cloned := t.make_compiler_default_clone_value(source, typ, false)
+	// The helper body inlines the clone directly; for a sum type that means the variant
+	// switch itself (make_compiler_default_clone_value would otherwise route straight back
+	// to this helper and never emit a body). Nested owned payloads still recurse through the
+	// helper, keeping every use site compact.
+	cloned := if t.is_sum_type_name(typ) {
+		t.make_compiler_default_sum_clone_value(source, typ)
+	} else {
+		t.make_compiler_default_clone_value(source, typ, false)
+	}
 	mut body := t.pending_stmts.clone()
 	body << t.make_return(cloned, typ)
 	t.pending_stmts = saved_pending
@@ -13236,9 +13254,55 @@ fn (mut t Transformer) transform_receiver_method_args(node flat.Node, base_id fl
 // transform_receiver_method_args_with_base
 // transforms helper data for transform.
 @[direct_array_access]
+// expr_root_ident_name walks selector/index/paren chains down to the base identifier and
+// returns its name, or an empty string if the root is not a plain identifier.
+fn (t &Transformer) expr_root_ident_name(id flat.NodeId) string {
+	mut cur := id
+	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
+		node := t.a.nodes[int(cur)]
+		match node.kind {
+			.ident {
+				return node.value
+			}
+			.selector, .index, .paren, .cast_expr, .expr_stmt {
+				if node.children_count == 0 {
+					return ''
+				}
+				cur = t.a.child(&node, 0)
+			}
+			else {
+				return ''
+			}
+		}
+	}
+	return ''
+}
+
+// clone_receiver_aliased_arg clones a by-value argument that reads storage from the retained
+// method receiver (its root identifier matches the receiver's). V passes such an argument as a
+// shallow copy sharing the receiver's backing, so a callee that moves out of its parameter —
+// as `toml`'s recursive `value_` lookup does with its map/array element — would otherwise
+// mutate the receiver the caller still holds (e.g. clearing a `Doc` map slot on lookup).
+// Cloning gives the callee an independent value. Arguments that do not alias the receiver keep
+// their move semantics, so this leaves the ordinary "move out of an owned parameter" path
+// untouched.
+fn (mut t Transformer) clone_receiver_aliased_arg(recv_root string, arg_id flat.NodeId, value flat.NodeId, param_type string) flat.NodeId {
+	if recv_root.len == 0 || param_type.len == 0 || param_type.starts_with('&') {
+		return value
+	}
+	if t.expr_root_ident_name(arg_id) != recv_root {
+		return value
+	}
+	if !t.compiler_default_clone_type_needs_work(param_type) {
+		return value
+	}
+	return t.make_compiler_default_clone_value(value, param_type, true)
+}
+
 fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, base flat.NodeId, method_name string) []flat.NodeId {
 	mut args := []flat.NodeId{cap: int(node.children_count)}
 	args << base
+	recv_root := t.expr_root_ident_name(base)
 	params := t.call_param_types(method_name)
 	param_offset := t.receiver_method_param_offset(base, node, params, method_name)
 	explicit_args := int(node.children_count) - 1
@@ -13357,7 +13421,8 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 				continue
 			}
 		}
-		args << t.transform_call_arg_for_param(arg_id, param_type)
+		args << t.clone_receiver_aliased_arg(recv_root, arg_id, t.transform_call_arg_for_param(arg_id,
+			param_type), param_type)
 		i++
 	}
 	if variadic_idx >= 0 && !variadic_tail_supplied && explicit_args == variadic_idx - param_offset {
