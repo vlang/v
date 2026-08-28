@@ -122,6 +122,10 @@ single-module `main` program, a smaller **self-contained reproducer** — the
 failing declaration plus the closure of declarations it references, which may be
 assembled from several files in that module — is preferred over the whole file
 and is reported as a bounded excerpt rather than the complete source.
+This full-file selection applies only to verified V3 fallback reports. When the
+established compiler is used directly, its automatic C-error reports retain a
+bounded strict subset of mapped source and omit source when no strict subset is
+possible.
 A directory build (such as `v .`) submits metadata only for an **internal V3
 compiler error**: that path uploads a snapshot of the single input file, which a
 directory build does not have. A **generated-C compilation error** is instead

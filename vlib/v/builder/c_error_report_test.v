@@ -1441,7 +1441,7 @@ fn test_new_c_error_bug_report_with_vlines_is_skipped_when_already_vlines() {
 			is_vlines: true
 		}
 	}
-	if _ := b.new_c_error_bug_report_with_vlines('cc') {
+	if _ := b.new_c_error_bug_report_with_vlines('cc', false) {
 		assert false, 'expected none when the C source is already #line annotated'
 	}
 }
@@ -1453,9 +1453,40 @@ fn test_new_c_error_bug_report_with_vlines_is_skipped_without_a_recorded_command
 		pref:        &pref.Preferences{}
 		last_cc_cmd: ''
 	}
-	if _ := b.new_c_error_bug_report_with_vlines('cc') {
+	if _ := b.new_c_error_bug_report_with_vlines('cc', false) {
 		assert false, 'expected none when no C compiler command was recorded'
 	}
+}
+
+fn test_new_c_error_bug_report_limits_full_source_to_v3_fallbacks() {
+	dir := os.join_path(os.vtmp_dir(), 'c_error_source_scope_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	mut lines := []string{}
+	for i in 1 .. 201 {
+		lines << 'fn source_${i}() { println(${i}) }'
+	}
+	source := lines.join('\n')
+	v_path := os.join_path(dir, 'source.v')
+	os.write_file(v_path, source)!
+	generated_c := os.join_path(dir, 'program.tmp.c')
+	os.write_file(generated_c, '#line 100 "${v_path}"\nint b = missing;\n')!
+	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
+	mut b := Builder{
+		pref:       &pref.Preferences{}
+		out_name_c: generated_c
+	}
+	direct_report := b.new_c_error_bug_report('clang', c_output, false)
+	assert direct_report.v_source != ''
+	assert direct_report.v_source != source
+	assert direct_report.v_source_truncated
+	assert direct_report.v_source.contains('fn source_100()')
+	fallback_report := b.new_c_error_bug_report('clang', c_output, true)
+	assert fallback_report.v_source == source
+	assert !fallback_report.v_source_truncated
 }
 
 fn clear_v3_report_env() {

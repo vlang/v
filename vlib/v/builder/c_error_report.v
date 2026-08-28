@@ -73,7 +73,7 @@ pub:
 	v_file         string
 	v_line         int
 	v_context      []CErrorReportLine
-	v_source       string // the full failing V file, so the report is reproducible (bounded only when larger than the byte budget)
+	v_source       string // full mapped source for a V3 fallback, or a bounded excerpt for a direct stable-compiler report
 	// v_source_truncated records, explicitly, whether v_source is a bounded excerpt rather than
 	// the complete file, so the fallback notice states accurately how much source was uploaded
 	// without having to sniff for the in-band truncation marker.
@@ -193,12 +193,12 @@ fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output
 	// Snapshot the user's real flags now: the vlines fallback below temporarily flips
 	// `pref.is_vlines`, so computing this after it would misreport `vlines` for plain builds.
 	build_options := c_error_report_build_options(v.pref, tag)
-	mut raw_report := v.new_c_error_bug_report(ccompiler, c_output)
+	mut raw_report := v.new_c_error_bug_report(ccompiler, c_output, is_v3_fallback)
 	if retry_with_vlines && raw_report.v_file == '' {
 		// The default `.tmp.c` has no `#line` directives, so the C error could not be
 		// traced back to a V line. Regenerate the C with `#line` info (as `-g` would),
 		// recompile, and reuse the richer report when it does map to a V source line.
-		if vlines_report := v.new_c_error_bug_report_with_vlines(ccompiler) {
+		if vlines_report := v.new_c_error_bug_report_with_vlines(ccompiler, is_v3_fallback) {
 			raw_report = vlines_report
 		}
 	}
@@ -1057,7 +1057,7 @@ fn c_error_report_build_options(prefs &pref.Preferences, tag string) string {
 	return '${trimmed_tag} ${options}'
 }
 
-fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CErrorBugReport {
+fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string, include_full_source bool) CErrorBugReport {
 	c_source := os.read_file(v.out_name_c) or { '' }
 	c_lines := c_source.split_into_lines()
 	mut c_file := v.out_name_c
@@ -1086,22 +1086,28 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// declarations it references). It already keeps itself within the byte budget, returning ''
 	// when it cannot, so it is uploaded verbatim; otherwise fall back to a plain source window.
 	repro := v.v_source_reproducer(v_file, v_line, c_error_bug_report_max_v_source_bytes)
-	v_source := if repro != '' {
+	mut v_source := if repro != '' {
 		repro
-	} else if is_v_source_file(v_file) {
+	} else if include_full_source && is_v_source_file(v_file) {
 		// No self-contained reproducer (multi-module or non-`main` program): upload the full
 		// failing file so the report is reproducible, bounding only a file larger than the
 		// byte budget to a window around the failing line.
 		bounded_v_source(mapped_source, c_error_bug_report_max_v_source_bytes, v_line)
 	} else {
-		''
+		// Direct stable-compiler reports retain their established privacy boundary: select only
+		// a local window, and below drop it if that window would expose the complete file.
+		v_chunk := selected_v_source(v_file, mapped_lines, v_line)
+		bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes, v_chunk.focus)
+	}
+	if !include_full_source && v_source_exposes_whole_file(v_source, mapped_source, mapped_lines) {
+		v_source = ''
 	}
 	// A reproducer is a synthesized subset of the module's declarations (possibly assembled from
 	// several files), not the whole file, so it is a bounded excerpt. The full-file branch is
 	// truncated only when the mapped file is larger than the byte budget. Record that explicitly
 	// for the notice.
-	v_source_truncated := repro != ''
-		|| (is_v_source_file(v_file) && mapped_source.len > c_error_bug_report_max_v_source_bytes)
+	v_source_truncated := v_source != '' && (repro != '' || !include_full_source
+		|| (is_v_source_file(v_file) && mapped_source.len > c_error_bug_report_max_v_source_bytes))
 	// v_context is a separate uploaded payload; for a short mapped file its radius
 	// window can also span every line, so apply the same strict-subset rule to it.
 	mut v_context := numbered_context_lines(mapped_lines, v_line, c_error_context_radius)
@@ -1115,21 +1121,21 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		v_context = []CErrorReportLine{}
 	}
 	return CErrorBugReport{
-		kind:           'v-c-compiler-error'
-		v_version:      version.full_v_version(true)
-		target_os:      v.pref.os.str()
-		target_backend: v.pref.backend.str()
-		arch:           v.pref.arch.str()
-		ccompiler:      ccompiler
-		build_options:  codegen_build_options(v.pref)
-		c_error:        c_output
-		c_file:         c_file
-		c_line:         c_line
-		c_context:      numbered_context_lines(c_lines, c_line, c_error_context_radius)
-		v_file:         v_file
-		v_line:         v_line
-		v_context:      v_context
-		v_source:       v_source
+		kind:               'v-c-compiler-error'
+		v_version:          version.full_v_version(true)
+		target_os:          v.pref.os.str()
+		target_backend:     v.pref.backend.str()
+		arch:               v.pref.arch.str()
+		ccompiler:          ccompiler
+		build_options:      codegen_build_options(v.pref)
+		c_error:            c_output
+		c_file:             c_file
+		c_line:             c_line
+		c_context:          numbered_context_lines(c_lines, c_line, c_error_context_radius)
+		v_file:             v_file
+		v_line:             v_line
+		v_context:          v_context
+		v_source:           v_source
 		v_source_truncated: v_source_truncated
 	}
 }
@@ -1469,7 +1475,7 @@ fn bounded_v_source_with_focus(source string, max_bytes int, focus_line int) (st
 // Because the regenerated C carries `#line` annotations, the C error can be mapped back
 // to the exact V source line that produced it. It returns none when the V mapping still
 // cannot be produced, so the caller keeps the original, C-only report.
-fn (mut v Builder) new_c_error_bug_report_with_vlines(ccompiler string) ?CErrorBugReport {
+fn (mut v Builder) new_c_error_bug_report_with_vlines(ccompiler string, include_full_source bool) ?CErrorBugReport {
 	if v.pref.is_vlines || v.pref.parallel_cc || v.pref.generate_c_project != ''
 		|| v.last_cc_cmd == '' || v.parsed_files.len == 0 || v.out_name_c == '' {
 		return none
@@ -1492,7 +1498,7 @@ fn (mut v Builder) new_c_error_bug_report_with_vlines(ccompiler string) ?CErrorB
 	os.chdir(vdir) or {}
 	recompiled := os.execute(v.last_cc_cmd)
 	os.chdir(original_pwd) or {}
-	report := v.new_c_error_bug_report(ccompiler, recompiled.output)
+	report := v.new_c_error_bug_report(ccompiler, recompiled.output, include_full_source)
 	// Restore the C source that the user actually compiled, now that the report is built.
 	os.write_file(v.out_name_c, original_c) or {}
 	if report.v_file == '' {
