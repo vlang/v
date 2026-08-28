@@ -74,7 +74,7 @@ struct MacosV3CErrorReport {
 	// and deleted the directory, so the retry never reads a path or deletes a directory
 	// named by the (inheritable, forgeable) environment.
 	v_file                 string // informational base filename (no directory)
-	v_source               string // already-bounded source snippet; never a whole file
+	v_source               string // the full failing file (bounded only when larger than the byte budget)
 	input_digests          map[string]string
 	input_digests_complete bool
 }

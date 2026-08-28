@@ -1756,11 +1756,11 @@ fn main() {}
 	}
 }
 
-// The compiler-error fallback bounds the input V source into content in the trusted
-// process, uploading a bounded strict subset for a single source file and nothing (a
-// metadata-only report) for a directory build or a non-V / missing input. Runs wherever
-// the dispatcher is embedded (macOS and Linux) without triggering a real V3 failure
-// (PR #28131 review).
+// The compiler-error fallback captures the input V source into content in the trusted
+// process, uploading the full file (so the report is reproducible) for a single source
+// file and nothing (a metadata-only report) for a directory build or a non-V / missing
+// input. Runs wherever the dispatcher is embedded (macOS and Linux) without triggering a
+// real V3 failure (PR #28131 review).
 fn test_macos_v3_compiler_error_content_extraction() {
 	$if macos || linux {
 		root := os.join_path(os.real_path(os.vtmp_dir()), 'macos_v3_ce_content_${os.getpid()}')
@@ -1769,7 +1769,7 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		defer {
 			os.rmdir_all(root) or {}
 		}
-		// A single V source file is uploaded as a bounded snippet.
+		// A single V source file is uploaded in full so the report is reproducible.
 		source := os.join_path(root, 'prog.v')
 		mut lines := []string{}
 		for i in 0 .. 200 {
@@ -1781,10 +1781,9 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		snapshot := macos_v3_compiler_error_input_snapshot(source)
 		v_file, v_source := snapshot.current_report_source()
 		assert v_file == 'prog.v'
-		assert v_source != ''
 		assert compiler_error.contains('during source parsing')
-		// A bounded strict subset — never the whole file.
-		assert v_source.len < whole.len
+		// The full file is captured (it fits the byte budget), so the report reproduces.
+		assert v_source == whole
 		// Rewriting the file after the pre-V3 snapshot suppresses source completely: the
 		// fallback must not upload bytes that V3 never parsed.
 		os.write_file(source, whole + '\nfn changed_after_snapshot() {}')!

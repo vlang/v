@@ -318,18 +318,17 @@ fn test_external_v3_report_env_round_trip() {
 		os.rmdir_all(dir) or {}
 	}
 	c_file := os.join_path(dir, 'main.v')
-	// A program large enough to yield a bounded head+tail snippet (short files upload no
-	// source at all, per the no-whole-file guarantee).
+	// The full failing file is captured as content so the report is reproducible.
 	mut lines := []string{}
 	for i in 0 .. 4 * c_error_v_source_radius {
 		lines << 'fn f${i}() { println(${i}) }'
 	}
-	os.write_file(c_file, lines.join('\n'))!
-	// The owning process bounds the source into content...
-	v_file, v_source := bounded_v3_internal_fallback_source(c_file, lines.join('\n'))
+	source := lines.join('\n')
+	os.write_file(c_file, source)!
+	// The owning process captures the source as content...
+	v_file, v_source := bounded_v3_internal_fallback_source(c_file, source)
 	assert v_file == 'main.v'
-	assert v_source != ''
-	assert v_source.contains(c_error_v_source_truncation_notice)
+	assert v_source == source
 	// The path-based extractor must never reopen an internal-error input after V3 fails.
 	late_file, late_source := bounded_v3_fallback_source(external_v3_compiler_error_kind,
 		'error: v3 failed', c_file, map[string]string{})
@@ -722,35 +721,32 @@ fn test_v_source_and_context_expose_whole_file_checks_the_union() {
 	assert !v_source_and_context_expose_whole_file('', [], mapped)
 }
 
-fn test_v3_report_v_source_bounds_large_files() {
-	// A program at or below the window (2 * c_error_v_source_radius lines) cannot be
-	// reduced to a strict subset, so no source is uploaded for it at all — the whole
-	// file is never sent.
+fn test_v3_report_v_source_returns_full_source_and_bounds_oversized() {
+	// An internal V3 failure has no mapped failing line, so the whole captured input is
+	// uploaded to make the report reproducible. A short program is uploaded verbatim.
 	small := 'fn main() {\n\tprintln(1)\n}\n'
-	assert v3_report_v_source(small) == ''
-	// A larger program is reduced to a bounded head+tail window; the middle (which
-	// could hold unrelated proprietary code) is dropped and never uploaded.
+	assert v3_report_v_source(small) == small
+	// A larger program that still fits the byte budget is uploaded whole.
 	mut lines := []string{}
 	for i in 0 .. 4 * c_error_v_source_radius {
 		lines << 'fn f${i}() { println(${i}) }'
 	}
-	big := lines.join('\n')
+	medium := lines.join('\n')
+	assert medium.len < c_error_bug_report_max_v_source_bytes
+	assert v3_report_v_source(medium) == medium
+	// Only a program larger than the byte budget is reduced to a bounded head+tail window.
+	mut big_lines := []string{}
+	for i in 0 .. 4000 {
+		big_lines << 'fn f${i}() { println(${i}) }'
+	}
+	big := big_lines.join('\n')
+	assert big.len > c_error_bug_report_max_v_source_bytes
 	snippet := v3_report_v_source(big)
-	assert snippet != ''
+	assert snippet.len <= c_error_bug_report_max_v_source_bytes
 	assert snippet.len < big.len
 	assert snippet.contains(c_error_v_source_truncation_notice)
 	assert snippet.contains('fn f0() ') // head kept
-	assert snippet.contains('fn f${4 * c_error_v_source_radius - 1}() ') // tail kept
-	assert !snippet.contains('fn f${2 * c_error_v_source_radius}() ') // middle dropped
-	assert snippet.split_into_lines().len <= 2 * c_error_v_source_radius + 3
-	// A program just over the window whose only dropped (middle) line is blank still
-	// exposes every nonblank line via head+tail, so no source is uploaded even though
-	// the file is over 80 lines (PR #28131 review).
-	mut blank_middle := []string{}
-	for i in 0 .. 2 * c_error_v_source_radius + 1 {
-		blank_middle << if i == c_error_v_source_radius { '' } else { 'fn g${i}() {}' }
-	}
-	assert v3_report_v_source(blank_middle.join('\n')) == ''
+	assert snippet.contains('fn f3999() ') // tail kept
 }
 
 fn test_selected_v_source_only_uploads_mapped_v_source_chunk() {
@@ -859,9 +855,9 @@ fn test_v_source_location_mapping_from_line_directives() {
 }
 
 fn test_bounded_v3_fallback_source_maps_generated_c_error() {
-	// A generated-C compilation error is mapped back to its V source line (via the #line
-	// directives in the trusted staged C) and a bounded window of that V file is returned
-	// — a strict subset, never the whole file (PR #28131 review).
+	// A generated-C compilation error is mapped back to its V source file (via the #line
+	// directives in the trusted staged C) and the full file is returned, so the report is
+	// reproducible.
 	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_map_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
@@ -883,18 +879,15 @@ fn test_bounded_v3_fallback_source_maps_generated_c_error() {
 		v_path: sha256.hexhash(whole)
 	})
 	assert v_file == 'source.v'
-	assert v_source != ''
-	// A bounded strict subset centered on the mapped V line (~100), never the whole file.
-	assert v_source.len < whole.len
+	// The full mapped file is uploaded (it fits the byte budget), so the report reproduces.
+	assert v_source == whole
 	assert v_source.contains('fn f100()')
 }
 
-fn test_bounded_v3_fallback_source_rejects_nonblank_whole_file_generated_c() {
-	// A generated-C error mapping near line 40 of an 81-line file whose omitted final line
-	// is only whitespace: the window (lines 1..80) covers every nonblank line, so exact
-	// line-array equality misses it but the nonblank coverage check must still drop the
-	// excerpt rather than upload the whole program (doc/docs.md, PR #28131 review).
-	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_nonblank_${os.getpid()}')
+fn test_bounded_v3_fallback_source_uploads_whole_mapped_file_generated_c() {
+	// A generated-C error mapping into a small file uploads the whole file (it is the
+	// reproducer), so the report reproduces rather than dropping to metadata-only.
+	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_wholefile_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -915,8 +908,8 @@ fn test_bounded_v3_fallback_source_rejects_nonblank_whole_file_generated_c() {
 		v_path: sha256.hexhash(whole)
 	})
 	assert v_file == 'source.v'
-	// The mapped window exposes every nonblank line, so no source is uploaded.
-	assert v_source == '', v_source
+	// The full file is uploaded so the failure can be reproduced from the report.
+	assert v_source == whole, v_source
 }
 
 fn test_bounded_v3_fallback_source_rejects_unparsed_mapped_file() {

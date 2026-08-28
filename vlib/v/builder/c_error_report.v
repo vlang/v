@@ -73,7 +73,7 @@ pub:
 	v_file         string
 	v_line         int
 	v_context      []CErrorReportLine
-	v_source       string // a small chunk of V source around the failing line (bounded), never the whole file
+	v_source       string // the full failing V file, so the report is reproducible (bounded only when larger than the byte budget)
 }
 
 // external_v3_compiler_error_kind marks an ExternalCErrorBugReport that describes a
@@ -110,7 +110,7 @@ pub:
 	// environment. When source_inline is set, v_file/v_source are used verbatim and no
 	// path from the report is ever read or removed.
 	v_file        string // informational base filename of the failing source (no directory)
-	v_source      string // already-bounded source snippet; never a whole file
+	v_source      string // the full failing file (bounded only when larger than the byte budget)
 	source_inline bool   // true: use v_file/v_source as-is and touch no filesystem path
 	// Untagged path/digest pairs below describe source bytes V3 actually parsed. The
 	// stable parser compares them only with its own parsed-file paths and scanner
@@ -494,8 +494,9 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 // `allowed_v_sources` maps every source file V3 actually parsed to the SHA-256 digest
 // captured from those exact parser bytes. Generated-C mappings outside that set, or
 // files whose current contents no longer match the captured digest, contribute no
-// source. The returned snippet is always a bounded strict subset (never a whole file);
-// ('', '') means no source is available, so the report stays metadata-only.
+// source. The returned source is the full mapped file, so the report is reproducible
+// (bounded to a window only when the file is larger than the byte budget); ('', '')
+// means no source is available, so the report stays metadata-only.
 pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string, allowed_v_sources map[string]string) (string, string) {
 	if kind == external_v3_compiler_error_kind {
 		return '', ''
@@ -518,8 +519,10 @@ pub fn bounded_v3_internal_fallback_source(source_name string, source string) (s
 
 // bounded_v_source_for_generated_c maps a generated-C compilation error back to the V
 // source line it came from (via the #line directives in the trusted staged C) and returns
-// a bounded window of that V file. The generated C was staged by this process's own V3
-// run, while its mapped V path is trusted only when it matches a parsed compiler input.
+// the full mapped V file (bounded to a window around the failing line only when the file
+// is larger than the byte budget), so the report is reproducible. The generated C was
+// staged by this process's own V3 run, while its mapped V path is trusted only when it
+// matches a parsed compiler input.
 fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, allowed_v_sources map[string]string) (string, string) {
 	c_source := os.read_file(generated_c_file) or { return '', '' }
 	c_lines := c_source.split_into_lines()
@@ -553,17 +556,14 @@ fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, al
 		// report metadata-only rather than uploading bytes unrelated to the failure.
 		return os.base(v_file), ''
 	}
-	mapped_lines := mapped_source.split_into_lines()
-	chunk := selected_v_source(v_file, mapped_lines, v_line)
-	mut v_source := bounded_v_source(chunk.text, c_error_bug_report_max_v_source_bytes, chunk.focus)
-	if v_source_exposes_whole_file(v_source, mapped_source, mapped_lines) {
-		// Strict-subset rule (doc/docs.md): a short mapped file makes the window cover the
-		// whole file. Exact line-array equality misses a window that omits only
-		// whitespace-only lines yet still exposes every nonblank source line, so apply the
-		// nonblank-line coverage check as well and drop the excerpt rather than upload the
-		// whole program.
-		v_source = ''
+	// Upload the full failing file so the report is reproducible. The digest check above
+	// guarantees these are exactly the bytes V3 parsed, and only files V3 actually parsed
+	// (always V source, never a mapped header) reach this point. A file larger than the byte
+	// budget is reduced to a window around the failing line so the report still fits.
+	if !is_v_source_file(v_file) {
+		return os.base(v_file), ''
 	}
+	v_source := bounded_v_source(mapped_source, c_error_bug_report_max_v_source_bytes, v_line)
 	return os.base(v_file), v_source
 }
 
@@ -857,35 +857,13 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 	eprintln('='.repeat('================== V3 compiler bug report =============='.len))
 }
 
-// v3_report_v_source returns the bounded V source snippet uploaded for an internal
-// V3 failure. A C error maps to a failing line, so its window is centered there
-// (see selected_v_source); a V3 internal failure has no such line, so a bounded
-// head+tail window of whole lines is kept instead — the leading declarations plus
-// the trailing code, where the failure usually is. A program larger than the
-// window (2 * c_error_v_source_radius lines) is therefore never uploaded whole
-// (see the privacy note in doc/docs.md).
+// v3_report_v_source returns the V source uploaded for an internal V3 failure. An
+// internal failure has no mapped failing line, so the whole captured input is uploaded
+// to make the report reproducible; the dispatcher only forwards it when the input still
+// has the exact digest V3 parsed. Only an input larger than the byte budget is reduced
+// to a bounded head+tail window.
 fn v3_report_v_source(source string) string {
-	lines := source.split_into_lines()
-	if lines.len <= 2 * c_error_v_source_radius {
-		// A program this short cannot be reduced to a strict subset — any head+tail
-		// window would cover the whole file. The privacy guarantee in doc/docs.md is
-		// that the whole file is never auto-uploaded, so upload no source for it at
-		// all rather than disclose it in full. Larger programs still yield the
-		// bounded window below.
-		return ''
-	}
-	head := lines[..c_error_v_source_radius].join('\n')
-	tail := lines[lines.len - c_error_v_source_radius..].join('\n')
-	snippet := '${head}\n${c_error_v_source_truncation_notice}\n${tail}'
-	bounded := bounded_v_source(snippet, c_error_bug_report_max_v_source_bytes, 0)
-	if v_source_and_context_expose_whole_file(bounded, []CErrorReportLine{}, lines) {
-		// The dropped middle lines were all blank, so head+tail together still expose
-		// every nonblank source line and reconstruct the file. Apply the same
-		// nonblank-line coverage check as the combined C-error payload and send no
-		// source rather than the whole program (doc/docs.md).
-		return ''
-	}
-	return bounded
+	return bounded_v_source(source, c_error_bug_report_max_v_source_bytes, 0)
 }
 
 // v_source_is_whole_file reports whether the selected excerpt is the entire mapped
@@ -1013,17 +991,15 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// declarations it references). It already keeps itself within the byte budget, returning ''
 	// when it cannot, so it is uploaded verbatim; otherwise fall back to a plain source window.
 	repro := v.v_source_reproducer(v_file, v_line, c_error_bug_report_max_v_source_bytes)
-	mut v_source := if repro != '' {
+	v_source := if repro != '' {
 		repro
+	} else if is_v_source_file(v_file) {
+		// No self-contained reproducer (multi-module or non-`main` program): upload the full
+		// failing file so the report is reproducible, bounding only a file larger than the
+		// byte budget to a window around the failing line.
+		bounded_v_source(mapped_source, c_error_bug_report_max_v_source_bytes, v_line)
 	} else {
-		v_chunk := selected_v_source(v_file, mapped_lines, v_line)
-		bounded_v_source(v_chunk.text, c_error_bug_report_max_v_source_bytes, v_chunk.focus)
-	}
-	if v_source_exposes_whole_file(v_source, mapped_source, mapped_lines) {
-		// Strict-subset rule (doc/docs.md): a short mapped file, or a window that
-		// omits only whitespace, exposes the entire substantive file. Drop the
-		// excerpt rather than upload it whole.
-		v_source = ''
+		''
 	}
 	// v_context is a separate uploaded payload; for a short mapped file its radius
 	// window can also span every line, so apply the same strict-subset rule to it.

@@ -112,18 +112,15 @@ embedded in your `v`).
 
 To help close the remaining gaps, a successful fallback (V3 fails to build a
 program that the established compiler then builds) normally submits the V
-version, target OS/arch, and build options to `https://bugs.vlang.io`. When a
-source excerpt is included it is always a **bounded strict subset** of the failing
-file — a window around the failure, or a head+tail window — and the whole file is
-never uploaded.
-An internal V3 compiler error on a short program (and any directory build such as
-`v .`) submits metadata only. If the input selected for a source excerpt changes
-after V3 parses it, that report also submits metadata only rather than source V3
-did not parse. Before submitting any report, the stable compiler also verifies
-that it parsed the same bytes for every captured project input; if it did not, no
-fallback report is submitted. An unchanged input mapped from a generated-C error
-can still upload a strict-subset excerpt of that file plus a few lines of context
-around the failing line, even when the file is short. Inline-assembly fallbacks
+version, target OS/arch, and build options to `https://bugs.vlang.io`. The
+**full failing source file** is included so the report is reproducible; it is
+bounded to a window around the failure only when the file is larger than the
+upload byte budget.
+A directory build (such as `v .`) submits metadata only. If the input selected
+for the source changes after V3 parses it, that report also submits metadata only
+rather than source V3 did not parse. Before submitting any report, the stable
+compiler also verifies that it parsed the same bytes for every captured project
+input; if it did not, no fallback report is submitted. Inline-assembly fallbacks
 and reports that cannot fit safely through the retry's process environment are
 notice-only and do not submit a report. Reporting is also skipped for test
 compilations and to the default endpoint in GitHub CI. A custom fallback endpoint
