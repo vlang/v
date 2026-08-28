@@ -3200,6 +3200,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		unsafe { const_code.free() }
 		g.sb.ensure_cap(fn_code.len + 262_144)
 		g.writeln('#define V3CACHE_PROGRAM_UNIT 1')
+		json_decode_pointer_helpers := g.prepare_json_decode_pointer_helpers()
 		json_encode_pointer_helpers := g.prepare_json_encode_pointer_helpers()
 		g.string_literals()
 		if g.incremental_fn_names.len > 0 {
@@ -3215,10 +3216,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_END */')
 		}
+		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, false)
 		g.release_scoped_fn_items()
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
 		g.writeln('/* V3CACHE_MODULE main */')
+		g.gen_json_decode_pointer_helper_defs(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_defs(json_encode_pointer_helpers, false)
 		for segment in g.fn_segs {
 			g.sb.write_string(segment)
@@ -3297,11 +3300,15 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.callback_wrapper_decls()
 	g.spawn_wrapper_decls()
 	g.register_interface_strings()
+	json_decode_pointer_helpers := g.prepare_json_decode_pointer_helpers()
 	json_encode_pointer_helpers := g.prepare_json_encode_pointer_helpers()
 	g.string_literals()
 	if g.cache_split {
+		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, false)
 	} else {
+		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, true)
+		g.gen_json_decode_pointer_helper_defs(json_decode_pointer_helpers, true)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, true)
 		g.gen_json_encode_pointer_helper_defs(json_encode_pointer_helpers, true)
 	}
@@ -3333,6 +3340,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// program specialization cache instead of regenerating module globals in
 		// every edited translation unit.
 		g.writeln('/* V3CACHE_MODULE __v3_program_support */')
+		g.gen_json_decode_pointer_helper_defs(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_defs(json_encode_pointer_helpers, false)
 	}
 	if g.parallel_init_defs.len > 0 {

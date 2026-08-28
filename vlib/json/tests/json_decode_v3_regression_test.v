@@ -67,3 +67,20 @@ fn test_json_decode_v3_recursive_pointer_and_generic_fixed_array() {
 	assert box.values == [4, 5]!
 	assert box.hidden == ''
 }
+
+fn test_json_decode_v3_recursive_pointer_has_no_static_depth_cap() {
+	mut source := 'null'
+	for i := 47; i >= 0; i-- {
+		source = '{"value":${i},"next":${source}}'
+	}
+	node := decode_v3_generic[DecodeV3Node](source)!
+	assert node.value == 0
+	mut expected := 1
+	mut cursor := node.next
+	for cursor != unsafe { nil } {
+		assert cursor.value == expected
+		expected++
+		cursor = cursor.next
+	}
+	assert expected == 48
+}

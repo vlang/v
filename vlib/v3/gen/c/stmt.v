@@ -3380,6 +3380,9 @@ fn c_inline_asm_quoted_label(source string) ?string {
 		return none
 	}
 	label := source[1..source.len - 1]
+	if label.len >= 2 && label[0] == `%` && label[1..].bytes().all(it.is_digit()) {
+		return label
+	}
 	if is_c_inline_asm_ident(label) {
 		return label
 	}

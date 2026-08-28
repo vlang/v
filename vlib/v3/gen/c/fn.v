@@ -8440,6 +8440,15 @@ struct JsonEncodePointerHelper {
 	body       string
 }
 
+struct JsonDecodePointerHelper {
+	name        string
+	pointer_ct  string
+	base_ct     string
+	valid_expr  string
+	assign_body string
+	copy_expr   string
+}
+
 fn json_encode_pointer_helper_name(pointer_ct string) string {
 	hex := '0123456789abcdef'
 	mut b := strings.new_builder(19 + pointer_ct.len * 2)
@@ -8451,7 +8460,7 @@ fn json_encode_pointer_helper_name(pointer_ct string) string {
 	return b.str()
 }
 
-fn (mut g FlatGen) collect_json_encode_pointer_types(typ types.Type, seen []string, mut pointer_types map[string]types.Pointer) {
+fn (mut g FlatGen) collect_json_pointer_types(typ types.Type, seen []string, mut pointer_types map[string]types.Pointer) {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if clean is types.Pointer {
 		pointer_ct := g.value_c_type(clean)
@@ -8462,23 +8471,23 @@ fn (mut g FlatGen) collect_json_encode_pointer_types(typ types.Type, seen []stri
 		}
 		mut next_seen := seen.clone()
 		next_seen << pointer_key
-		g.collect_json_encode_pointer_types(clean.base_type, next_seen, mut pointer_types)
+		g.collect_json_pointer_types(clean.base_type, next_seen, mut pointer_types)
 		return
 	}
 	if clean is types.OptionType {
-		g.collect_json_encode_pointer_types(clean.base_type, seen, mut pointer_types)
+		g.collect_json_pointer_types(clean.base_type, seen, mut pointer_types)
 		return
 	}
 	if clean is types.Array {
-		g.collect_json_encode_pointer_types(clean.elem_type, seen, mut pointer_types)
+		g.collect_json_pointer_types(clean.elem_type, seen, mut pointer_types)
 		return
 	}
 	if clean is types.ArrayFixed {
-		g.collect_json_encode_pointer_types(clean.elem_type, seen, mut pointer_types)
+		g.collect_json_pointer_types(clean.elem_type, seen, mut pointer_types)
 		return
 	}
 	if clean is types.Map {
-		g.collect_json_encode_pointer_types(clean.value_type, seen, mut pointer_types)
+		g.collect_json_pointer_types(clean.value_type, seen, mut pointer_types)
 		return
 	}
 	if clean is types.SumType {
@@ -8490,7 +8499,7 @@ fn (mut g FlatGen) collect_json_encode_pointer_types(typ types.Type, seen []stri
 		mut next_seen := seen.clone()
 		next_seen << sum_key
 		for variant in g.tc.sum_types[sum_name] or { []string{} } {
-			g.collect_json_encode_pointer_types(g.json_sum_variant_type(variant), next_seen, mut
+			g.collect_json_pointer_types(g.json_sum_variant_type(variant), next_seen, mut
 				pointer_types)
 		}
 		return
@@ -8510,7 +8519,7 @@ fn (mut g FlatGen) collect_json_encode_pointer_types(typ types.Type, seen []stri
 		if json_attrs_skip_field(attrs) {
 			continue
 		}
-		g.collect_json_encode_pointer_types(field.typ, next_seen, mut pointer_types)
+		g.collect_json_pointer_types(field.typ, next_seen, mut pointer_types)
 	}
 }
 
@@ -8530,7 +8539,7 @@ fn (mut g FlatGen) prepare_json_encode_pointer_helpers() []JsonEncodePointerHelp
 			arg := g.a.nodes[int(arg_id)]
 			typ = g.tc.parse_type(arg.typ)
 		}
-		g.collect_json_encode_pointer_types(typ, []string{}, mut pointer_types)
+		g.collect_json_pointer_types(typ, []string{}, mut pointer_types)
 	}
 	mut pointer_cts := pointer_types.keys()
 	pointer_cts.sort()
@@ -8564,6 +8573,88 @@ fn (mut g FlatGen) gen_json_encode_pointer_helper_defs(helpers []JsonEncodePoint
 	linkage := if internal { 'static ' } else { '' }
 	for helper in helpers {
 		g.writeln('${linkage}string ${helper.name}(${helper.pointer_ct} value) { if (value == NULL) return v3_c_lit("null", 4); return ${helper.body}; }')
+	}
+}
+
+fn json_decode_pointer_helper_name(pointer_ct string) string {
+	hex := '0123456789abcdef'
+	mut b := strings.new_builder(19 + pointer_ct.len * 2)
+	b.write_string('v3_json_decode_ptr_')
+	for c in pointer_ct.bytes() {
+		b.write_u8(hex[c >> 4])
+		b.write_u8(hex[c & 15])
+	}
+	return b.str()
+}
+
+fn (mut g FlatGen) prepare_json_decode_pointer_helpers() []JsonDecodePointerHelper {
+	mut pointer_types := map[string]types.Pointer{}
+	for idx, node in g.a.nodes {
+		if node.kind != .call || node.children_count < 2 {
+			continue
+		}
+		resolved := g.tc.resolved_call_name(flat.NodeId(idx)) or { continue }
+		if resolved !in ['json.decode', 'json__decode'] {
+			continue
+		}
+		ret_type := g.json_decode_result_type_for_call(node) or { continue }
+		if ret_type !is types.ResultType {
+			continue
+		}
+		result_type := ret_type as types.ResultType
+		if !g.json_decode_value_supported(result_type.base_type, 0) {
+			continue
+		}
+		g.collect_json_pointer_types(result_type.base_type, []string{}, mut pointer_types)
+	}
+	mut pointer_cts := pointer_types.keys()
+	pointer_cts.sort()
+	mut helpers := []JsonDecodePointerHelper{cap: pointer_cts.len}
+	for pointer_ct in pointer_cts {
+		pointer_type := pointer_types[pointer_ct]
+		base_type := pointer_type.base_type
+		base_ct := g.value_c_type(base_type)
+		valid_expr := g.json_decode_value_valid_expr_at_depth('value', base_type, 0)
+		old_sb := g.sb
+		old_line_start := g.line_start
+		g.sb = strings.new_builder(256)
+		g.line_start = true
+		g.gen_json_decode_value_assign('decoded', 'value', base_type, 0)
+		assign_body := g.sb.str()
+		unsafe { g.sb.free() }
+		g.sb = old_sb
+		g.line_start = old_line_start
+		helpers << JsonDecodePointerHelper{
+			name:        json_decode_pointer_helper_name(pointer_ct)
+			pointer_ct:  pointer_ct
+			base_ct:     base_ct
+			valid_expr:  valid_expr
+			assign_body: assign_body
+			copy_expr:   g.heap_local_memdup_expr('decoded', base_type, base_ct, false)
+		}
+	}
+	return helpers
+}
+
+fn (mut g FlatGen) gen_json_decode_pointer_helper_decls(helpers []JsonDecodePointerHelper, internal bool) {
+	if helpers.len == 0 {
+		return
+	}
+	linkage := if internal { 'static ' } else { '' }
+	for helper in helpers {
+		g.writeln('${linkage}bool ${helper.name}_valid(cJSON* value);')
+		g.writeln('${linkage}${helper.pointer_ct} ${helper.name}(cJSON* value);')
+	}
+}
+
+fn (mut g FlatGen) gen_json_decode_pointer_helper_defs(helpers []JsonDecodePointerHelper, internal bool) {
+	if helpers.len == 0 {
+		return
+	}
+	linkage := if internal { 'static ' } else { '' }
+	for helper in helpers {
+		g.writeln('${linkage}bool ${helper.name}_valid(cJSON* value) { return value == NULL || cJSON_IsNull(value) || (${helper.valid_expr}); }')
+		g.writeln('${linkage}${helper.pointer_ct} ${helper.name}(cJSON* value) { if (value == NULL || cJSON_IsNull(value)) return NULL; ${helper.base_ct} decoded = {0}; ${helper.assign_body} return ${helper.copy_expr}; }')
 	}
 }
 
@@ -9408,11 +9499,8 @@ fn (mut g FlatGen) json_decode_value_valid_expr_at_depth(item string, typ types.
 		return body
 	}
 	if clean is types.Pointer {
-		if depth >= 32 {
-			return '(${item} == NULL || cJSON_IsNull(${item}))'
-		}
-		inner := g.json_decode_value_valid_expr_at_depth(item, clean.base_type, depth + 1)
-		return '(${item} == NULL || cJSON_IsNull(${item}) || ${inner})'
+		pointer_ct := g.value_c_type(clean)
+		return '${json_decode_pointer_helper_name(pointer_ct)}_valid(${item})'
 	}
 	if clean is types.Struct {
 		fields := g.tc.structs[clean.name] or { return 'false' }
@@ -9976,18 +10064,8 @@ fn (mut g FlatGen) gen_json_decode_value_expr_at_depth(item string, typ types.Ty
 		return
 	}
 	if clean is types.Pointer {
-		if depth >= 32 {
-			g.write('NULL')
-			return
-		}
-		item_name := g.tmp_name()
-		out_name := g.tmp_name()
-		value_name := g.tmp_name()
-		base_ct := g.value_c_type(clean.base_type)
-		g.write('({ cJSON* ${item_name} = ${item}; ${base_ct}* ${out_name} = NULL; if (${item_name} != NULL && !cJSON_IsNull(${item_name})) { ${base_ct} ${value_name} = {0}; ')
-		g.gen_json_decode_value_assign(value_name, item_name, clean.base_type, depth + 1)
-		g.write('${out_name} = ${g.heap_local_memdup_expr(value_name, clean.base_type, base_ct,
-			false)}; } ${out_name}; })')
+		pointer_ct := g.value_c_type(clean)
+		g.write('${json_decode_pointer_helper_name(pointer_ct)}(${item})')
 		return
 	}
 	if clean is types.Struct {

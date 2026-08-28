@@ -33,6 +33,10 @@ fn test_inline_asm_quoted_label_references_drop_v_quotes() {
 	assert lower_c_inline_asm_template("jmp 'x'", 'amd64', map[string]bool{}, false) == 'jmp x'
 }
 
+fn test_inline_asm_quoted_numbered_operands_drop_v_quotes() {
+	assert lower_c_inline_asm_template("lock cmpxchgq '%1', '%2'", 'amd64', map[string]bool{}, true) == 'lock cmpxchgq %2, %1'
+}
+
 fn test_inline_asm_i386_uses_x86_att_operand_lowering() {
 	aliases := map[string]bool{}
 	assert lower_c_inline_asm_template('mov eax, ebx', 'i386', aliases, false) == 'mov %ebx, %eax'
