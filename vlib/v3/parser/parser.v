@@ -7868,7 +7868,8 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	// An empty template with only a memory clobber is architecture independent;
 	// it lowers to a compiler barrier even when the block names another ISA.
 	can_lower := (!has_unsupported_content && has_memory_clobber)
-		|| (p.supports_c_inline_asm_lowering() && asm_arch == p.prefs.target.arch)
+		|| (p.supports_c_inline_asm_lowering()
+		&& comptime_flag_is_target_arch(asm_arch, p.prefs.target.arch))
 	if !p.prefs.supports_inline_asm && !can_lower && (has_memory_clobber || has_unsupported_content) {
 		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
 	}
@@ -7880,7 +7881,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 }
 
 fn (p &Parser) supports_c_inline_asm_lowering() bool {
-	return p.prefs.backend == 'c' && p.prefs.target.arch in ['amd64', 'arm64']
+	return p.prefs.backend == 'c' && p.prefs.target.arch in ['amd64', 'arm64', 'x86']
 }
 
 // ==================== expressions (Pratt parser) ====================

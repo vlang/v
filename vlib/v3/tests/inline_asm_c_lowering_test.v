@@ -131,3 +131,20 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '10\n6\n7'
 }
+
+fn test_i386_inline_asm_reaches_c_lowering() {
+	v3_bin := build_v3_inline_asm()
+	source_path := '${inline_asm_tmp_path('i386_program')}.v'
+	c_path := '${inline_asm_tmp_path('i386_program')}.c'
+	os.write_file(source_path, 'fn main() {
+	asm i386 {
+		mov eax, ebx
+	}
+}
+') or { panic(err) }
+	generate := os.execute('${v3_bin} -os linux -arch i386 -cc clang -o ${c_path} ${source_path}')
+	assert generate.exit_code == 0, generate.output
+	assert !generate.output.contains('inline assembly is not supported'), generate.output
+	c_source := os.read_file(c_path) or { panic(err) }
+	assert c_source.contains('"mov %ebx, %eax\\n\\t"'), c_source
+}
