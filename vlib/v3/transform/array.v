@@ -2801,7 +2801,7 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 		return t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, 0), name)
 	}
 	match node.kind {
-		.paren, .cast_expr, .as_expr, .expr_stmt, .field_init {
+		.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init {
 			return node.children_count > 0
 				&& t.array_map_expr_result_retains_element_address(t.a.child(&node, 0), name)
 		}
@@ -2827,9 +2827,16 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 			return false
 		}
 		.selector {
-			return node.children_count > 0
-				&& t.array_map_selector_result_retains_element_address(t.a.child(&node, 0),
-					node.value, name)
+			if node.children_count == 0 {
+				return false
+			}
+			for source_arg in t.tc.ownership_call_result_source_args(id) {
+				if t.array_map_expr_result_retains_element_address(source_arg, name) {
+					return true
+				}
+			}
+			return t.array_map_selector_result_retains_element_address(t.a.child(&node, 0),
+				node.value, name)
 		}
 		.index {
 			return t.array_map_index_result_retains_element_address(node, name)
@@ -2896,6 +2903,10 @@ fn (mut t Transformer) array_map_selector_result_retains_element_address(base_id
 				return t.array_map_expr_result_retains_element_address(t.a.child(&field, 0),
 					elem_name)
 			}
+		}
+		if base.kind == .assoc && base.children_count > 0 {
+			return t.array_map_selector_result_retains_element_address(t.a.child(&base, 0),
+				field_name, elem_name)
 		}
 		return false
 	}

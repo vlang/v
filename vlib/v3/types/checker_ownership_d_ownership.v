@@ -10536,7 +10536,8 @@ pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []
 	if tc.ownership == unsafe { nil } {
 		return []flat.NodeId{}
 	}
-	call_id := tc.ownership_unwrap_expr(id)
+	projection := tc.ownership_call_projection(id) or { return []flat.NodeId{} }
+	call_id := projection.call_id
 	if !tc.valid_node_id(call_id) {
 		return []flat.NodeId{}
 	}
@@ -10553,11 +10554,20 @@ pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []
 		}
 	}
 	for slot in tc.ownership_state().ownership_fn_return_params[call_name] {
+		if projection.suffix.len > 0 && slot.slot_idx != 0 {
+			continue
+		}
 		if slot.param_idx !in param_indices {
 			param_indices << slot.param_idx
 		}
 	}
 	for desc in tc.ownership_state().ownership_fn_return_param_descs[call_name] {
+		if projection.suffix.len > 0
+			&& (desc.slot_idx != 0
+			|| (desc.target_suffix.len > 0
+			&& !ownership_storage_keys_overlap(desc.target_suffix, projection.suffix))) {
+			continue
+		}
 		if desc.param_idx !in param_indices {
 			param_indices << desc.param_idx
 		}

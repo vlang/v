@@ -5551,6 +5551,108 @@ fn main() {
 	assert out == 'four\nfour'
 }
 
+fn test_array_map_keeps_temporary_source_through_dump_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	values := make_items().map(dump(&it))
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dump_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+}
+
+fn test_array_map_keeps_temporary_source_through_inherited_struct_update_field() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+	other int
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	values := make_items().map(PointerBox{
+		...PointerBox{
+			value: &it
+		}
+		other: 1
+	}.value)
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_assoc_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_assoc_pointer_result', '-ownership', source)
+	assert out == 'four'
+}
+
+fn test_array_map_drops_source_for_unselected_helper_result_field() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerPair {
+	source   &Item
+	external &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn pair(source &Item, external &Item) PointerPair {
+	return unsafe {
+		PointerPair{
+			source: source
+			external: external
+		}
+	}
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(pair(&it, &external).external)
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_helper_external_field_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_helper_external_field', '-ownership', source)
+	assert out == 'external'
+}
+
 fn test_array_map_drops_source_for_unrelated_pointer_result() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
