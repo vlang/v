@@ -60,15 +60,24 @@ fn test_immediate_closure_result_error_may_alias_capture() {
 	assert fallback.immediate_closure_result_may_alias_capture('[]int')
 	assert fallback.immediate_closure_result_may_alias_capture('map[string]int')
 	assert fallback.immediate_closure_result_may_alias_capture('chan int')
+	assert fallback.immediate_closure_result_may_alias_capture('string')
+	assert fallback.immediate_closure_result_may_alias_capture('?string')
 
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
+	tc.structs['TextBox'] = [types.StructField{
+		name: 'text'
+		typ:  types.Type(types.String{})
+	}]
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.immediate_closure_result_may_alias_capture('!int')
 	assert t.immediate_closure_result_may_alias_capture('[]int')
 	assert t.immediate_closure_result_may_alias_capture('map[string]int')
 	assert t.immediate_closure_result_may_alias_capture('chan int')
+	assert t.immediate_closure_result_may_alias_capture('string')
+	assert t.immediate_closure_result_may_alias_capture('?string')
+	assert t.immediate_closure_result_may_alias_capture('TextBox')
 }
 
 fn test_normalize_function_type_preserves_mut_parameter() {

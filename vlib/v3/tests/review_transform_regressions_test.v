@@ -2869,6 +2869,28 @@ fn test_immediately_invoked_closure_keeps_aliased_slice_result_alive() {
 	assert out == '[41, 42, 43]'
 }
 
+fn test_immediately_invoked_closure_keeps_aliased_string_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut bytes := [2]u8{}
+	bytes[0] = `O`
+	bytes[1] = `K`
+	text := (fn [bytes] () string {
+		return unsafe { tos(&bytes[0], bytes.len) }
+	})()
+	println(text)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_string_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_string', source)
+	assert out == 'OK'
+}
+
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]

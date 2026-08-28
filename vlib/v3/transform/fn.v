@@ -1338,7 +1338,8 @@ fn (t &Transformer) immediate_closure_result_may_alias_capture(type_name string)
 	}
 	if isnil(t.tc) {
 		clean := t.normalize_type_alias(type_name)
-		return clean.starts_with('!') || clean.starts_with('&')
+		return clean == 'string' || clean.starts_with('!') || clean.starts_with('?')
+			|| clean.starts_with('&')
 			|| clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('chan ')
 			|| clean in ['voidptr', 'byteptr', 'charptr']
 	}
@@ -1360,7 +1361,7 @@ fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut se
 			// when the successful payload is scalar.
 			true
 		}
-		types.Array, types.Channel, types.Map { true }
+		types.String, types.Array, types.Channel, types.Map { true }
 		types.ArrayFixed {
 			t.closure_result_type_may_alias_capture(typ.elem_type, mut seen)
 		}
@@ -10014,9 +10015,48 @@ fn (mut t Transformer) try_lower_move_method_call(call_id flat.NodeId, node flat
 	return none
 }
 
+fn (t &Transformer) fn_literal_expr_takes_address_of_capture(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || name.len == 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0
+		&& t.fn_literal_lvalue_is_rooted_at_capture(t.a.child(&node, 0), name) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.fn_literal_expr_takes_address_of_capture(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) fn_literal_lvalue_is_rooted_at_capture(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value == name
+	}
+	if node.kind in [.selector, .index, .paren] && node.children_count > 0 {
+		return t.fn_literal_lvalue_is_rooted_at_capture(t.a.child(&node, 0), name)
+	}
+	return false
+}
+
 // lift_fn_literal supports lift fn literal handling for Transformer.
 fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.NodeId {
 	name := t.new_fn_literal_name()
+	// A checked literal can carry its complete function-value type here; the
+	// synthesized declaration itself needs only that signature's return type.
+	ret_type := if node.typ.len > 0 {
+		fn_type_return_type_text(node.typ) or { node.typ }
+	} else {
+		'void'
+	}
+	result_may_alias_capture := t.immediate_closure_result_may_alias_capture(ret_type)
 	mut param_types := []types.Type{}
 	mut param_type_texts := []string{}
 	mut param_ids := []flat.NodeId{}
@@ -10025,6 +10065,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_types := map[string]string{}
 	mut context_field_types := map[string]string{}
 	mut capture_by_ref := map[string]bool{}
+	mut capture_from_context := map[string]bool{}
 	mut capture_from_heap := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -10104,7 +10145,27 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			body_ids << child_id
 		}
 	}
-	ret_type := if node.typ.len > 0 { node.typ } else { 'void' }
+	if result_may_alias_capture {
+		for capture_name in capture_names {
+			capture_type := capture_types[capture_name] or { continue }
+			if capture_by_ref[capture_name] or { false } || capture_type.starts_with('&') {
+				continue
+			}
+			mut aliases_capture := t.is_fixed_array_type(capture_type)
+			if !aliases_capture {
+				for body_id in body_ids {
+					if t.fn_literal_expr_takes_address_of_capture(body_id, capture_name) {
+						aliases_capture = true
+						break
+					}
+				}
+			}
+			if aliases_capture {
+				capture_types[capture_name] = '&${capture_type}'
+				capture_from_context[capture_name] = true
+			}
+		}
+	}
 	file_module := t.current_source_module()
 	generated_module := if file_module.len > 0 { file_module } else { 'main' }
 	context_type := '${name}_Ctx'
@@ -10153,14 +10214,15 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		}
 		capture_type := capture_types[capture_name] or { continue }
 		is_ref_capture := capture_by_ref[capture_name] or { false }
+		is_context_capture := capture_from_context[capture_name] or { false }
 		t.set_var_type(capture_name, capture_type)
-		// Only captures that were rewritten into a synthetic `&T` pointer-value local
-		// (`capture_by_ref`) need pointer-value lvalue/rvalue lowering. A mut capture
-		// whose original type is already a pointer (`&S`) stays a genuine `&S` local:
+		// Captures rewritten into synthetic `&T` pointer-value locals need pointer-value
+		// lvalue/rvalue lowering. A mut capture whose original type is already a pointer
+		// (`&S`) stays a genuine `&S` local:
 		// dereferencing its rvalue uses would corrupt `&S` -> `S` and break calls that
 		// expect the pointer (e.g. `takes_ptr(p)`), and its assignments must not become
 		// `*p = ...`.
-		if is_ref_capture {
+		if is_ref_capture || is_context_capture {
 			saved_capture_pointer_flags[capture_name] = t.pointer_value_lvalues[capture_name] or {
 				false
 			}
@@ -10174,7 +10236,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		t.set_node_typ(int(context_ident), '&${context_type}')
 		context_field_type := context_field_types[capture_name] or { capture_type }
 		mut capture_decl_rhs := t.make_selector(context_ident, capture_name, context_field_type)
-		if is_ref_capture && !context_field_type.starts_with('&') {
+		if (is_ref_capture || is_context_capture) && !context_field_type.starts_with('&') {
 			capture_decl_rhs = t.make_prefix(.amp, capture_decl_rhs)
 			t.set_node_typ(int(capture_decl_rhs), capture_type)
 		}
@@ -10193,7 +10255,8 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	new_body := t.transform_stmts(lifted_body)
 	t.pending_stmts = outer_pending
 	for capture_name in capture_names {
-		if capture_by_ref[capture_name] or { false } {
+		if (capture_by_ref[capture_name] or { false })
+			|| (capture_from_context[capture_name] or { false }) {
 			if saved_capture_pointer_flags[capture_name] or { false } {
 				t.pointer_value_lvalues[capture_name] = true
 			} else {
@@ -10239,6 +10302,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	})
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(fn_decl, generated_module, t.cur_file)
+	t.set_fn_ret_type(name, ret_type)
 	if !isnil(t.tc) {
 		t.tc.ensure_private_transform_signatures()
 		ret := t.tc.parse_type(ret_type)
@@ -10249,6 +10313,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		t.tc_signature_names_log << name
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qname := '${t.cur_module}.${name}'
+			t.set_fn_ret_type(qname, ret_type)
 			t.tc.fn_ret_types[qname] = ret
 			t.tc.register_generated_fn_param_types(qname, param_types.clone())
 			t.tc.fn_variadic[qname] = false
