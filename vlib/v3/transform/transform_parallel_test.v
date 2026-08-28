@@ -124,6 +124,50 @@ fn test_map_expansion_estimate_includes_owned_value_cleanup() {
 	assert t.map_init_expansion_estimate(owned_id, a.nodes[int(owned_id)]) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_includes_nested_array_lowering() {
+	mut a := flat.FlatAst.new()
+	mut inner_arrays := []flat.NodeId{cap: 130}
+	for i in 0 .. 130 {
+		value := a.add_node(flat.Node{
+			kind:  .int_literal
+			value: i.str()
+		})
+		inner_start := a.children.len
+		a.children << value
+		inner_arrays << a.add_node(flat.Node{
+			kind:           .array_literal
+			children_start: inner_start
+			children_count: 1
+		})
+	}
+	outer_start := a.children.len
+	for inner in inner_arrays {
+		a.children << inner
+	}
+	outer := a.add_node(flat.Node{
+		kind:           .array_literal
+		children_start: outer_start
+		children_count: flat.child_count(inner_arrays.len)
+	})
+	key := a.add_node(flat.Node{
+		kind:  .string_literal
+		value: 'items'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << outer
+	root := a.add_node(flat.Node{
+		kind:           .map_init
+		typ:            'map[string][][]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{

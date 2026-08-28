@@ -10,6 +10,8 @@ const map_init_base_expansion_estimate = 12
 const map_init_entry_expansion_estimate = 16
 const map_init_owned_key_cleanup_expansion_estimate = 16
 const map_init_owned_value_cleanup_expansion_estimate = 24
+const array_literal_base_expansion_estimate = 12
+const array_literal_entry_expansion_estimate = 16
 
 // A larger expansion is deliberately lowered after the bounded shared-worker
 // phase. Large const maps can be referenced from a tiny function while their
@@ -61,9 +63,17 @@ fn (t &Transformer) map_init_expansion_estimate(id flat.NodeId, node flat.Node) 
 	return map_init_base_expansion_estimate + entry_count * entry_estimate
 }
 
-// external_map_tree_expansion_estimate counts map literals reachable through
-// an initializer that lives outside the current function's contiguous node
-// range. The transformer recursively lowers each nested map at the use site.
+fn (t &Transformer) array_literal_expansion_estimate(node flat.Node) int {
+	if node.kind != .array_literal || t.array_literal_can_emit_direct(node) {
+		return 0
+	}
+	return array_literal_base_expansion_estimate + int(node.children_count) * array_literal_entry_expansion_estimate
+}
+
+// external_map_tree_expansion_estimate counts collection literals reachable
+// through an initializer that lives outside the current function's contiguous
+// node range. The transformer recursively lowers each nested collection at the
+// use site.
 fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo int, hi int) int {
 	if int(root) < 0 || int(root) >= t.a.nodes.len {
 		return 0
@@ -83,6 +93,9 @@ fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo in
 		node := t.a.nodes[int(id)]
 		if node.kind == .map_init {
 			estimate += t.map_init_expansion_estimate(id, node)
+		}
+		if node.kind == .array_literal {
+			estimate += t.array_literal_expansion_estimate(node)
 		}
 		for ci in 0 .. int(node.children_count) {
 			child := t.a.child(&node, ci)
@@ -126,6 +139,9 @@ fn (t &Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 		node := t.a.nodes[idx]
 		if node.kind == .map_init {
 			estimate += t.map_init_expansion_estimate(flat.NodeId(idx), node)
+		}
+		if node.kind == .array_literal {
+			estimate += t.array_literal_expansion_estimate(node)
 		}
 		// Map index lowering replaces a constant identifier with its initializer
 		// through const_expr_for_ident(). That edge is semantic and is not present
