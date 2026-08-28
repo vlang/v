@@ -56,9 +56,15 @@ fn inline_asm_runtime_source() string {
 		; w0
 		  memory
 	}
+	mut character := u64(0)
+	asm arm64 {
+		mov character, `A`
+		; =r (character)
+	}
 	println(b)
 	println(loops)
 	println(value)
+	println(character)
 }
 '
 	} $else $if amd64 {
@@ -91,9 +97,25 @@ fn inline_asm_runtime_source() string {
 		; ; r (ptr)
 		; memory
 	}
+	mut character := u64(0)
+	asm amd64 {
+		mov character, `A`
+		; =r (character)
+	}
+	values := [u64(11), 22]!
+	base := &values[0]
+	index := u64(8)
+	mut indexed := u64(0)
+	asm amd64 {
+		movq indexed, [base + index + 0]
+		; =r (indexed)
+		; r (base) r (index)
+	}
 	println(b)
 	println(loops)
 	println(value)
+	println(character)
+	println(indexed)
 }
 '
 	} $else {
@@ -121,15 +143,22 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	$if arm64 {
 		assert c_source.contains('"mov x0, %[a]\\n\\t"'), c_source
 		assert c_source.contains('"str w0, [%[ptr]]\\n\\t"'), c_source
+		assert c_source.contains('"mov %[character], \'A\'\\n\\t"'), c_source
 	} $else $if amd64 {
 		assert c_source.contains('"mov %[a], %%rax\\n\\t"'), c_source
 		assert c_source.contains('"movq \\$7, (%[ptr])\\n\\t"'), c_source
+		assert c_source.contains('"mov \'A\', %[character]\\n\\t"'), c_source
+		assert c_source.contains('"movq 0(%[base], %[index], 1), %[indexed]\\n\\t"'), c_source
 	}
 	compile := os.execute('${v3_bin} -cc clang -o ${bin_path} ${source_path}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin_path)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '10\n6\n7'
+	$if arm64 {
+		assert run.output.trim_space() == '10\n6\n7\n65'
+	} $else $if amd64 {
+		assert run.output.trim_space() == '10\n6\n7\n65\n22'
+	}
 }
 
 fn test_i386_inline_asm_reaches_c_lowering() {

@@ -3339,7 +3339,7 @@ fn split_c_inline_asm_operands(source string) []string {
 			if c == quote {
 				quote = 0
 			}
-		} else if c in [`'`, `"`] {
+		} else if c in [`'`, `"`, `\``] {
 			quote = c
 		} else if c in [`[`, `(`] {
 			depth++
@@ -3357,6 +3357,9 @@ fn split_c_inline_asm_operands(source string) []string {
 
 fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]bool, is_extended bool) string {
 	operand := source.trim_space()
+	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
+		return "'${operand[1..operand.len - 1]}'"
+	}
 	if label := c_inline_asm_quoted_label(operand) {
 		return label
 	}
@@ -3421,6 +3424,9 @@ fn lower_c_inline_asm_address(source string, arch string, aliases map[string]boo
 			displacement = part
 		} else if base.len == 0 {
 			base = lower_c_inline_asm_atoms(part, arch, aliases, is_extended)
+		} else if index.len == 0 && (is_c_inline_asm_x86_register(part) || aliases[part]) {
+			index = lower_c_inline_asm_atoms(part, arch, aliases, is_extended)
+			scale = '1'
 		} else {
 			displacement = lower_c_inline_asm_atoms(part, arch, aliases, is_extended)
 		}

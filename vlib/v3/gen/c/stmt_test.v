@@ -37,6 +37,20 @@ fn test_inline_asm_quoted_numbered_operands_drop_v_quotes() {
 	assert lower_c_inline_asm_template("lock cmpxchgq '%1', '%2'", 'amd64', map[string]bool{}, true) == 'lock cmpxchgq %2, %1'
 }
 
+fn test_inline_asm_character_tokens_use_assembly_quotes() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('mov rax, `A`', 'amd64', aliases, false) == "mov 'A', %rax"
+	assert lower_c_inline_asm_template('mov rax, `,`', 'amd64', aliases, false) == "mov ',', %rax"
+	assert lower_c_inline_asm_template('mov x0, `A`', 'arm64', aliases, false) == "mov x0, 'A'"
+}
+
+fn test_inline_asm_x86_addresses_preserve_unscaled_indexes() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('mov rax, [rbx + rcx + 8]', 'amd64', aliases, false) == 'mov 8(%rbx, %rcx, 1), %rax'
+	assert lower_c_inline_asm_template('mov eax, [ebx + ecx + 4]', 'i386', aliases, false) == 'mov 4(%ebx, %ecx, 1), %eax'
+	assert lower_c_inline_asm_template('lea rax, [rip + named_target]', 'amd64', aliases, false) == 'lea named_target(%rip), %rax'
+}
+
 fn test_inline_asm_i386_uses_x86_att_operand_lowering() {
 	aliases := map[string]bool{}
 	assert lower_c_inline_asm_template('mov eax, ebx', 'i386', aliases, false) == 'mov %ebx, %eax'
