@@ -75,3 +75,10 @@ fn test_global_arrays_fill_nested_fixed_array_defaults() {
 		"struct Config {\nmut:\n\tretries int = 7\n\tnames []string\n\tscores map[string]int\n}\n\n__global rows = [][2]map[string]int{len: 1}\n__global config_rows = [][2]Config{len: 1}\n__global grids = [][2][2]map[string]int{len: 1}\n\nfn main() {\n\trows[0][0]['x'] = 13\n\tconfig_rows[0][0].names << 'fixed'\n\tconfig_rows[0][0].scores['x'] = 17\n\tgrids[0][1][1]['x'] = 19\n\tprintln(int_str(rows[0][0]['x']))\n\tprintln(int_str(config_rows[0][0].retries) + ':' + config_rows[0][0].names[0] + ':' + int_str(config_rows[0][0].scores['x']))\n\tprintln(int_str(grids[0][1][1]['x']))\n\tprintln(int_str(rows[0][1].len) + ':' + int_str(config_rows[0][1].retries) + ':' + int_str(grids[0][0][0].len))\n}\n")
 	assert out == '13\n7:fixed:17\n19\n0:7:0'
 }
+
+fn test_global_array_initializer_call_preserves_fixed_array_elements() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'global_fixed_array_elements_from_call',
+		"fn make_rows() [][2]int {\n\treturn [[1, 2]!, [3, 4]!]\n}\n\n__global rows = make_rows()\n\nfn main() {\n\tprintln(int_str(rows[0][0]) + ':' + int_str(rows[0][1]))\n\tprintln(int_str(rows[1][0]) + ':' + int_str(rows[1][1]))\n}\n")
+	assert out == '1:2\n3:4'
+}

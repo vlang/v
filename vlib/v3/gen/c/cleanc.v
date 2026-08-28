@@ -21914,6 +21914,13 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 	}
 	node := g.a.nodes[int(val_id)]
 	if node.kind != .array_init {
+		if node.kind != .call || node.children_count == 0 {
+			return false
+		}
+		callee := g.a.child_node(&node, 0)
+		if callee.kind != .ident || callee.value != 'array_new' {
+			return false
+		}
 		if _ := array_fixed_type(default_init_unalias_type(typ.elem_type)) {
 			if default_expr := g.global_array_default_elem_expr(typ.elem_type) {
 				allocation_expr := g.expr_to_string_with_expected_type(val_id, types.Type(typ))
