@@ -759,3 +759,35 @@ fn main() {
 ")
 	assert out == '4:5'
 }
+
+fn test_json_decode_nested_structs_preserve_skipped_defaults() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'json_decode_nested_struct_defaults', 'import json
+
+struct NestedDefault {
+	hidden int = 7 @[skip]
+}
+
+struct NestedDefaultEnvelope {
+	direct  NestedDefault
+	items   []NestedDefault
+	by_name map[string]NestedDefault
+	pointer &NestedDefault
+}
+
+type NestedDefaultPayload = NestedDefault | string
+
+fn main() {
+	value := json.decode(NestedDefaultEnvelope, \'{"direct":{},"items":[{}],"by_name":{"first":{}},"pointer":{}}\') or {
+		panic(err)
+	}
+	payload := json.decode(NestedDefaultPayload, \'{}\') or { panic(err) }
+	if payload is NestedDefault {
+		println(\'\${value.direct.hidden}:\${value.items[0].hidden}:\${value.by_name[\'first\'].hidden}:\${value.pointer.hidden}:\${payload.hidden}\')
+	} else {
+		println(\'wrong variant\')
+	}
+}
+')
+	assert out == '7:7:7:7:7'
+}

@@ -10223,7 +10223,8 @@ fn (mut g FlatGen) gen_json_decode_value_expr_at_depth(item string, typ types.Ty
 		}
 		struct_ct := g.value_c_type(clean)
 		out_name := g.tmp_name()
-		g.write('({ ${struct_ct} ${out_name} = (${struct_ct}){0}; ')
+		struct_default := g.default_value_to_string(clean)
+		g.write('({ ${struct_ct} ${out_name} = ${struct_default}; ')
 		for field in fields {
 			attrs := g.json_struct_field_attrs(clean.name, field.name)
 			if json_attrs_skip_field(attrs) {
