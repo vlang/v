@@ -63,9 +63,15 @@ fn (t &Transformer) map_init_expansion_estimate(id flat.NodeId, node flat.Node) 
 	return map_init_base_expansion_estimate + entry_count * entry_estimate
 }
 
-fn (t &Transformer) array_literal_expansion_estimate(node flat.Node) int {
-	if node.kind != .array_literal || t.array_literal_can_emit_direct(node) {
+fn (t &Transformer) array_literal_expansion_estimate(node flat.Node, is_external bool) int {
+	if node.kind != .array_literal {
 		return 0
+	}
+	if t.array_literal_can_emit_direct(node) {
+		// Direct literals already inside the function reuse their parsed storage.
+		// An external const initializer is rebuilt at the use site, including its
+		// child-ID span, so it must still fit in the bounded worker arena.
+		return if is_external { int(node.children_count) + 1 } else { 0 }
 	}
 	return array_literal_base_expansion_estimate + int(node.children_count) * array_literal_entry_expansion_estimate
 }
@@ -95,7 +101,7 @@ fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo in
 			estimate += t.map_init_expansion_estimate(id, node)
 		}
 		if node.kind == .array_literal {
-			estimate += t.array_literal_expansion_estimate(node)
+			estimate += t.array_literal_expansion_estimate(node, true)
 		}
 		for ci in 0 .. int(node.children_count) {
 			child := t.a.child(&node, ci)
@@ -141,7 +147,7 @@ fn (t &Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			estimate += t.map_init_expansion_estimate(flat.NodeId(idx), node)
 		}
 		if node.kind == .array_literal {
-			estimate += t.array_literal_expansion_estimate(node)
+			estimate += t.array_literal_expansion_estimate(node, false)
 		}
 		// Map index lowering replaces a constant identifier with its initializer
 		// through const_expr_for_ident(). That edge is semantic and is not present
