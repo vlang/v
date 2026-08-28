@@ -29,6 +29,22 @@ fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_
 	g.write('))')
 }
 
+fn (g &FlatGen) is_map_entry_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind in [.paren, .selector] && node.children_count > 0 {
+		return g.is_map_entry_lvalue(g.a.child(&node, 0))
+	}
+	if node.kind != .index || node.children_count == 0 {
+		return false
+	}
+	base_id := g.a.child(&node, 0)
+	base_type := map_str_clean_type(g.usable_expr_type(base_id))
+	return base_type is types.Map
+}
+
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	node := g.a.nodes[int(id)]
@@ -44,29 +60,22 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base_id := g.a.child(&node, 0)
-		base := g.a.nodes[int(base_id)]
-		if base.kind == .index && base.children_count > 0 {
-			index_base_id := g.a.child(&base, 0)
-			index_base_type := map_str_clean_type(g.usable_expr_type(index_base_id))
-			if index_base_type is types.Map {
-				gen_expr_lvalue(mut g, base_id)
-				base_type := g.usable_expr_type(base_id)
-				mut is_ptr := base_type is types.Pointer
-					|| cgen_unalias_type(base_type) is types.Pointer
-				if embedded_path := g.embedded_field_path_for_promoted_selector(base_type,
-					node.value)
-				{
-					for embedded in embedded_path {
-						op := if is_ptr { '->' } else { '.' }
-						g.write('${op}${g.cname(embedded.name)}')
-						is_ptr = embedded.typ is types.Pointer
-							|| cgen_unalias_type(embedded.typ) is types.Pointer
-					}
+		if g.is_map_entry_lvalue(base_id) {
+			gen_expr_lvalue(mut g, base_id)
+			base_type := g.usable_expr_type(base_id)
+			mut is_ptr := base_type is types.Pointer
+				|| cgen_unalias_type(base_type) is types.Pointer
+			if embedded_path := g.embedded_field_path_for_promoted_selector(base_type, node.value) {
+				for embedded in embedded_path {
+					op := if is_ptr { '->' } else { '.' }
+					g.write('${op}${g.cname(embedded.name)}')
+					is_ptr = embedded.typ is types.Pointer
+						|| cgen_unalias_type(embedded.typ) is types.Pointer
 				}
-				op := if is_ptr { '->' } else { '.' }
-				g.write('${op}${g.cname(node.value)}')
-				return
 			}
+			op := if is_ptr { '->' } else { '.' }
+			g.write('${op}${g.cname(node.value)}')
+			return
 		}
 	}
 	if node.kind == .index {

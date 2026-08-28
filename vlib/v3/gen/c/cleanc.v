@@ -15752,17 +15752,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_expr(g.a.child(&child, 0))
 				return
 			}
-			if node.op == .amp && child.kind == .selector && child.children_count > 0 {
-				base_id := g.a.child(&child, 0)
-				base := g.a.nodes[int(base_id)]
-				if base.kind == .index && base.children_count > 0 {
-					index_base_type := map_str_clean_type(g.usable_expr_type(g.a.child(&base, 0)))
-					if index_base_type is types.Map {
-						g.write('&')
-						gen_expr_lvalue(mut g, child_id)
-						return
-					}
-				}
+			if node.op == .amp && child.kind == .selector && child.children_count > 0
+				&& g.is_map_entry_lvalue(g.a.child(&child, 0)) {
+				g.write('&')
+				gen_expr_lvalue(mut g, child_id)
+				return
 			}
 			if node.op == .amp && g.gen_amp_c_string_literal(child_id, child) {
 				return
