@@ -105,12 +105,117 @@ fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int 
 	return jobs
 }
 
+fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+	mut v2_path := ''
+	mut v1_memory_path := ''
+	for line in cgroups.split_into_lines() {
+		parts := line.split(':')
+		if parts.len != 3 {
+			continue
+		}
+		if parts[1] == '' {
+			v2_path = parts[2]
+		} else if 'memory' in parts[1].split(',') {
+			v1_memory_path = parts[2]
+		}
+	}
+	for line in mountinfo.split_into_lines() {
+		parts := line.split(' - ')
+		if parts.len != 2 {
+			continue
+		}
+		mount_parts := parts[0].fields()
+		fs_parts := parts[1].fields()
+		if mount_parts.len < 5 || fs_parts.len < 3 {
+			continue
+		}
+		mount_root := mount_parts[3]
+		mount_point := mount_parts[4]
+		if fs_parts[0] == 'cgroup2' && v2_path != '' {
+			return cgroup_memory_limit_in_hierarchy(mount_root, mount_point, v2_path,
+				'memory.max')
+		}
+		if fs_parts[0] == 'cgroup' && 'memory' in fs_parts[2].split(',') && v1_memory_path != '' {
+			return cgroup_memory_limit_in_hierarchy(mount_root, mount_point, v1_memory_path,
+				'memory.limit_in_bytes')
+		}
+	}
+	return error('no cgroup memory limit found')
+}
+
+fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, limit_file string) !u64 {
+	mut relative_path := cgroup_path.trim_left('/')
+	trimmed_root := mount_root.trim_right('/')
+	if trimmed_root != '' {
+		if cgroup_path == trimmed_root {
+			relative_path = ''
+		} else if cgroup_path.starts_with(trimmed_root + '/') {
+			relative_path = cgroup_path[trimmed_root.len..].trim_left('/')
+		} else {
+			return error('cgroup path is outside its mount')
+		}
+	}
+	mut current_path := os.join_path(mount_point, relative_path)
+	mut memory_limit := u64(0)
+	for {
+		if content := os.read_file(os.join_path(current_path, limit_file)) {
+			if limit := cgroup_memory_limit_value(content) {
+				if memory_limit == 0 || limit < memory_limit {
+					memory_limit = limit
+				}
+			}
+		}
+		if current_path == mount_point {
+			break
+		}
+		parent_path := os.dir(current_path)
+		if parent_path == current_path || !parent_path.starts_with(mount_point) {
+			break
+		}
+		current_path = parent_path
+	}
+	if memory_limit == 0 {
+		return error('cgroup memory limit is unlimited')
+	}
+	return memory_limit
+}
+
+fn cgroup_memory_limit_value(content string) !u64 {
+	value := content.trim_space()
+	if value == '' || value == 'max' {
+		return error('cgroup memory limit is unlimited')
+	}
+	limit := value.u64()
+	if limit == 0 {
+		return error('invalid cgroup memory limit')
+	}
+	return limit
+}
+
+fn effective_test_memory(physical_memory u64, cgroup_memory_limit u64) u64 {
+	if cgroup_memory_limit > 0 && cgroup_memory_limit < physical_memory {
+		return cgroup_memory_limit
+	}
+	return physical_memory
+}
+
+fn test_runner_memory() !u64 {
+	physical_memory := u64(runtime.total_memory()!)
+	$if linux {
+		cgroup_memory_limit := cgroup_memory_limit_from_contents(os.read_file('/proc/self/cgroup')!, os.read_file('/proc/self/mountinfo')!) or {
+			return physical_memory
+		}
+		return effective_test_memory(physical_memory, cgroup_memory_limit)
+	}
+	return physical_memory
+}
+
 fn test_runner_jobs() int {
 	configured_jobs := os.getenv('VJOBS').int()
-	total_memory := runtime.total_memory() or {
+	total_memory := test_runner_memory() or {
 		return automatic_test_jobs(runtime.nr_jobs(), 0, configured_jobs)
 	}
-	return automatic_test_jobs(runtime.nr_jobs(), u64(total_memory), configured_jobs)
+	return automatic_test_jobs(runtime.nr_jobs(), total_memory, configured_jobs)
 }
 
 fn get_fail_retry_delay_ms() time.Duration {
