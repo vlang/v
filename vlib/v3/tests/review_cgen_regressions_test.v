@@ -741,3 +741,21 @@ fn main() {
 ")
 	assert out == '[1,{"two":2}]\ntrue'
 }
+
+fn test_json_decode_fixed_array_sum_variant_assigns_elements() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'json_decode_fixed_array_sum_variant', "import json
+
+type Payload = [2]int | string
+
+fn main() {
+	payload := json.decode(Payload, '[4, 5]') or { panic(err) }
+	if payload is [2]int {
+		println('\${payload[0]}:\${payload[1]}')
+	} else {
+		println('wrong variant')
+	}
+}
+")
+	assert out == '4:5'
+}

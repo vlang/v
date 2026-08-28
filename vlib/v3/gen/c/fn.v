@@ -10268,16 +10268,23 @@ fn (mut g FlatGen) gen_json_decode_sum_variant_expr(item string, sum_name string
 	inner_type := if variant_type is types.Pointer { variant_type.base_type } else { variant_type }
 	inner_ct := g.value_c_type(inner_type)
 	sum_ct := g.value_c_type(g.tc.parse_type(sum_name))
+	decode_item := if json_is_time_type(variant_type) {
+		'cJSON_GetObjectItemCaseSensitive(${item}, "value")'
+	} else {
+		item
+	}
+	if variant_type !is types.Pointer && default_init_unalias_type(inner_type) is types.ArrayFixed {
+		decoded_name := g.tmp_name()
+		g.write('({ ${inner_ct} ${decoded_name}; ')
+		g.gen_json_decode_value_assign(decoded_name, decode_item, variant_type, 0)
+		g.write('(${sum_ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = (${inner_ct}*)memdup(${decoded_name}, sizeof(${inner_ct}))}; })')
+		return
+	}
 	g.write('(${sum_ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = ')
 	if variant_type is types.Pointer {
 		g.gen_json_decode_value_expr(item, variant_type)
 	} else {
 		g.write('(${inner_ct}*)memdup(&(${inner_ct}[]){')
-		decode_item := if json_is_time_type(variant_type) {
-			'cJSON_GetObjectItemCaseSensitive(${item}, "value")'
-		} else {
-			item
-		}
 		g.gen_json_decode_value_expr(decode_item, variant_type)
 		g.write('}, sizeof(${inner_ct}))')
 	}
