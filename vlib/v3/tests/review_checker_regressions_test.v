@@ -1964,3 +1964,29 @@ fn main() {
 ')
 	assert out == '2'
 }
+
+fn test_forwarded_pointer_result_preserves_immutable_alias() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'forwarded_pointer_preserves_immutable_alias', 'struct State {
+mut:
+	values []int
+}
+
+fn identity(state &State) &State {
+	return state
+}
+
+fn forward(state &State) &State {
+	return identity(state)
+}
+
+fn main() {
+	state := State{
+		values: [1]
+	}
+	mut alias := forward(state)
+	alias.values[0] = 2
+}
+',
+		'aliases mutable data from an immutable value')
+}

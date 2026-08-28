@@ -13732,20 +13732,37 @@ fn (mut tc TypeChecker) check_mutable_alias_assignment_lhs(id flat.NodeId, rhs_i
 }
 
 fn (mut tc TypeChecker) call_immutable_alias_source(id flat.NodeId) ?flat.NodeId {
+	mut visiting := map[int]bool{}
+	for source_id in tc.call_returned_alias_arguments(id, mut visiting) {
+		if immutable := tc.immutable_alias_argument(source_id) {
+			return immutable
+		}
+	}
+	return none
+}
+
+fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiting map[int]bool) []flat.NodeId {
 	if !tc.valid_node_id(id) {
-		return none
+		return []flat.NodeId{}
 	}
 	call := tc.a.node(id)
 	if call.kind != .call || call.children_count == 0 {
-		return none
+		return []flat.NodeId{}
 	}
 	return_type := unalias_type(tc.resolve_type(id))
 	if return_type !is Array && return_type !is Map && return_type !is Pointer {
-		return none
+		return []flat.NodeId{}
 	}
-	info := tc.resolve_call_info(id, *call) or { return none }
+	info := tc.resolve_call_info(id, *call) or {
+		return tc.conservative_call_alias_arguments(*call, false)
+	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
-	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or { return none }
+	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
+		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
+	}
+	if visiting[decl.idx] {
+		return tc.conservative_call_alias_arguments(*call, info.has_receiver)
+	}
 	fn_node := tc.a.node(flat.NodeId(decl.idx))
 	mut callee := tc.a.child_node(call, 0)
 	if callee.kind == .index && callee.children_count > 0 {
@@ -13769,6 +13786,8 @@ fn (mut tc TypeChecker) call_immutable_alias_source(id flat.NodeId) ?flat.NodeId
 		}
 		param_index++
 	}
+	visiting[decl.idx] = true
+	mut sources := []flat.NodeId{}
 	mut stack := []flat.NodeId{}
 	for i in 0 .. fn_node.children_count {
 		child_id := tc.a.child(fn_node, i)
@@ -13782,13 +13801,7 @@ fn (mut tc TypeChecker) call_immutable_alias_source(id flat.NodeId) ?flat.NodeId
 		if node.kind == .return_stmt {
 			for i in 0 .. node.children_count {
 				returned_id := tc.a.child(node, i)
-				param_name := tc.returned_alias_param_name(returned_id, args_by_param) or {
-					continue
-				}
-				arg_id := args_by_param[param_name] or { continue }
-				if immutable := tc.immutable_alias_argument(arg_id) {
-					return immutable
-				}
+				sources << tc.returned_alias_arguments(returned_id, args_by_param, mut visiting)
 			}
 			continue
 		}
@@ -13799,22 +13812,44 @@ fn (mut tc TypeChecker) call_immutable_alias_source(id flat.NodeId) ?flat.NodeId
 			stack << tc.a.child(node, i)
 		}
 	}
-	return none
+	visiting.delete(decl.idx)
+	return sources
 }
 
-fn (tc &TypeChecker) returned_alias_param_name(id flat.NodeId, args_by_param map[string]flat.NodeId) ?string {
+fn (mut tc TypeChecker) returned_alias_arguments(id flat.NodeId, args_by_param map[string]flat.NodeId, mut visiting map[int]bool) []flat.NodeId {
 	if !tc.valid_node_id(id) {
-		return none
+		return []flat.NodeId{}
 	}
 	node := tc.a.node(id)
 	if node.kind == .ident && node.value in args_by_param {
-		return node.value
+		return [args_by_param[node.value]]
 	}
 	if node.kind in [.index, .selector, .prefix, .paren, .cast_expr, .as_expr, .expr_stmt]
 		&& node.children_count > 0 {
-		return tc.returned_alias_param_name(tc.a.child(node, 0), args_by_param)
+		return tc.returned_alias_arguments(tc.a.child(node, 0), args_by_param, mut visiting)
 	}
-	return none
+	if node.kind == .call {
+		mut sources := []flat.NodeId{}
+		for source_id in tc.call_returned_alias_arguments(id, mut visiting) {
+			sources << tc.returned_alias_arguments(source_id, args_by_param, mut visiting)
+		}
+		return sources
+	}
+	return []flat.NodeId{}
+}
+
+fn (tc &TypeChecker) conservative_call_alias_arguments(call flat.Node, has_receiver bool) []flat.NodeId {
+	mut sources := []flat.NodeId{}
+	if has_receiver && call.children_count > 0 {
+		callee := tc.a.child_node(&call, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			sources << tc.a.child(callee, 0)
+		}
+	}
+	for i in 1 .. call.children_count {
+		sources << tc.call_arg_value(tc.a.child(&call, i))
+	}
+	return sources
 }
 
 fn (tc &TypeChecker) immutable_alias_argument(id flat.NodeId) ?flat.NodeId {
