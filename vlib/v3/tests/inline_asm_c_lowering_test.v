@@ -104,6 +104,11 @@ fn main() {
 	asm arm64 {
 		; ; ; memory
 	}
+	asm amd64 {
+		jmp after_inline_bytes
+		.byte 0x27, 0x35, 0x0f, 0x48
+		after_inline_bytes:
+	}
 	a := 10
 	mut b := 0
 	asm amd64 {
@@ -184,6 +189,8 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 		assert c_source.contains('"movq \\$7, (%[ptr])\\n\\t"'), c_source
 		assert c_source.contains('"mov \'A\', %[character]\\n\\t"'), c_source
 		assert c_source.contains('"movq 0(%[base], %[index], 1), %[indexed]\\n\\t"'), c_source
+		assert c_source.contains('".byte 0x27, 0x35, 0x0f, 0x48\\n\\t"'), c_source
+		assert !c_source.contains('.byte \\$0x27'), c_source
 	}
 	compile := os.execute('${v3_bin} -enable-globals -cc clang -o ${bin_path} ${source_path}')
 	assert compile.exit_code == 0, compile.output
@@ -203,12 +210,17 @@ fn test_i386_inline_asm_reaches_c_lowering() {
 	os.write_file(source_path, 'fn main() {
 	asm i386 {
 		mov eax, ebx
+		.byte 0x27, 0x35
 	}
 }
-') or { panic(err) }
+') or {
+		panic(err)
+	}
 	generate := os.execute('${v3_bin} -os linux -arch i386 -cc clang -o ${c_path} ${source_path}')
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('"mov %ebx, %eax\\n\\t"'), c_source
+	assert c_source.contains('".byte 0x27, 0x35\\n\\t"'), c_source
+	assert !c_source.contains('.byte \\$0x27'), c_source
 }

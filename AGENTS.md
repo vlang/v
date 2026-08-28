@@ -401,6 +401,7 @@ Common mistakes:
   compiler unrolls it into concrete code for each field/method/variant.
 
 ### Compile-time functions
+
 Only the following `$`-prefixed functions are supported:
 * `$embed_file('path')` - embed a file's contents into the binary.
   Paths can be absolute, relative to the source file, or use pseudo
@@ -413,11 +414,13 @@ Only the following `$`-prefixed functions are supported:
 * `$compile_error('msg')` - emit a compile-time error.
 * `$compile_warn('msg')` - emit a compile-time warning.
 * `$pkgconfig('name')` - query pkg-config at compile time.
+* `$typeof(expr)` - compatibility alias for `typeof(expr)`.
+* `$sizeof(Type)` - compatibility alias for `sizeof(Type)`.
 
 Common mistakes:
-* Inventing comptime functions that do not exist (e.g. `$typeof`,
-  `$sizeof` as comptime calls). Use `typeof(expr).name` and
-  `sizeof(Type)` instead; these are builtins, not `$`-prefixed.
+* Prefer `typeof(expr)` and `sizeof(Type)` in new code. Their
+  `$typeof(expr)` and `$sizeof(Type)` compatibility aliases are also
+  accepted.
 * Assuming `$embed_file` returns a string. It returns an
   `EmbedFileData` object; use `.to_string()` or `.to_bytes()`.
 * Using `$env` where a runtime `os.getenv` is appropriate, or vice

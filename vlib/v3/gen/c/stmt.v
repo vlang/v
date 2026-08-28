@@ -3311,14 +3311,16 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 		return instruction
 	}
 	mut operands := split_c_inline_asm_operands(operands_source)
-	if is_c_inline_asm_x86_arch(arch) && !instruction.starts_with('.') && operands.len > 1 {
+	is_directive := instruction.starts_with('.')
+	if is_c_inline_asm_x86_arch(arch) && !is_directive && operands.len > 1 {
 		last := operands.last()
 		operands.delete(operands.len - 1)
 		operands.prepend(last)
 	}
 	mut lowered := []string{cap: operands.len}
 	for operand in operands {
-		mut lowered_operand := lower_c_inline_asm_operand(operand, arch, aliases, is_extended)
+		mut lowered_operand := lower_c_inline_asm_operand(operand, arch, aliases, is_extended,
+			is_directive)
 		if is_c_inline_asm_indirect_x86_branch_operand(instruction, operand, arch, aliases) {
 			lowered_operand = '*' + lowered_operand
 		}
@@ -3368,7 +3370,7 @@ fn split_c_inline_asm_operands(source string) []string {
 	return operands
 }
 
-fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]bool, is_extended bool) string {
+fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]bool, is_extended bool, is_directive bool) string {
 	operand := source.trim_space()
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
 		return "'${operand[1..operand.len - 1]}'"
@@ -3380,7 +3382,9 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 		return lower_c_inline_asm_address(operand[1..operand.len - 1], arch, aliases, is_extended)
 	}
 	if is_c_inline_asm_number(operand) {
-		return if arch == 'arm64' {
+		return if is_directive {
+			operand
+		} else if arch == 'arm64' {
 			'#${operand}'
 		} else if is_c_inline_asm_x86_arch(arch) {
 			'\$${operand}'
