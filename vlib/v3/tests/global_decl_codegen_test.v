@@ -62,6 +62,13 @@ fn test_explicit_shared_and_fixed_array_global_initializers() {
 	assert out == '7\n34\n1:2'
 }
 
+fn test_aliased_fixed_array_global_initializer_uses_copy() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'aliased_fixed_array_global_initializer',
+		'type Pair = [2]int\n\n__global pair Pair = [2]int{init: 7}\n\nfn main() {\n\tprintln(int_str(pair[0]) + ":" + int_str(pair[1]))\n}\n')
+	assert out == '7:7'
+}
+
 fn test_explicit_shared_array_constructor_preserves_length_capacity_and_initializer() {
 	v3_bin := global_decl_build_v3()
 	out := global_decl_run_good(v3_bin, 'shared_array_constructor_initializer', "__global values shared []int = []int{len: 2, cap: 4, init: 7}

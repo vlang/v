@@ -21872,12 +21872,12 @@ fn (mut g FlatGen) emit_global_inits() {
 			continue
 		}
 		if typ := g.global_types[qname] {
-			if typ is types.ArrayFixed {
+			clean_type := default_init_unalias_type(typ)
+			if clean_type is types.ArrayFixed {
 				target := g.global_c_name(qname)
-				g.queue_fixed_array_runtime_init(target, val_id, typ)
+				g.queue_fixed_array_runtime_init(target, val_id, clean_type)
 				continue
 			}
-			clean_type := default_init_unalias_type(typ)
 			if clean_type is types.Array {
 				if g.queue_global_array_init(g.global_c_name(qname), val_id, clean_type) {
 					continue
