@@ -165,6 +165,18 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
+	mut bare_ct := ct
+	mut pointer_suffix := ''
+	for bare_ct.ends_with('*') {
+		bare_ct = bare_ct[..bare_ct.len - 1]
+		pointer_suffix += '*'
+	}
+	// Specialized generic bodies can retain a stale bare concrete type spelling.
+	if is_bare_struct_type(clean_type) {
+		if qualified := g.unique_qualified_struct_c_type(bare_ct) {
+			return qualified + pointer_suffix
+		}
+	}
 	for candidate in [ct, 'main.${ct}'] {
 		if target := g.tc.type_aliases[candidate] {
 			return g.tc.c_type(cgen_unalias_type(g.tc.parse_type(target)))
@@ -354,7 +366,7 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 	// (`StructKeyDecodeResult_T` vs `json2__StructKeyDecodeResult_T`). Resolve
 	// the unique declaration here so we neither emit an unusable phantom
 	// Optional typedef nor duplicate the correctly qualified one.
-	if optional_payload_is_bare_struct(t) {
+	if is_bare_struct_type(t) {
 		if qualified := g.unique_qualified_struct_c_type(ct) {
 			return qualified + pointer_suffix
 		}
@@ -379,7 +391,7 @@ fn optional_payload_may_have_stale_interface_spelling(t types.Type) bool {
 	return clean is types.Interface || (clean is types.Struct && !clean.name.contains('.'))
 }
 
-fn optional_payload_is_bare_struct(t types.Type) bool {
+fn is_bare_struct_type(t types.Type) bool {
 	mut clean := t
 	for clean is types.Pointer {
 		clean = clean.base_type

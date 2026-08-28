@@ -659,6 +659,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		markused_program_needs_closure_runtime(a, tc)
 	}
 	if !trivial_literal_output && needs_closure_runtime {
+		enqueue('closure.closure_init', mut used, mut queue)
 		enqueue('closure.closure_create_with_data', mut used, mut queue)
 		enqueue('closure.closure_try_destroy', mut used, mut queue)
 	}
@@ -757,6 +758,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			// the checker per enclosing function) are reachable too -- mark them so they
 			// survive pruning (cgen emits a wrapper that calls them).
 			if mvs := tc.method_values_by_fn[node_key] {
+				enqueue('closure.closure_init', mut used, mut queue)
 				enqueue('closure.closure_create_with_data', mut used, mut queue)
 				enqueue('closure.closure_try_destroy', mut used, mut queue)
 				for mkey in mvs {

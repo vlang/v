@@ -54,6 +54,24 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	assert g.needed_optional_types['Optional_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
 }
 
+fn test_value_type_qualifies_concrete_generic_struct() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.structs['orm.QueryBuilder_User'] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	value_type := types.Type(types.Struct{
+		name: 'QueryBuilder_User'
+	})
+	pointer_type := types.Type(types.Pointer{
+		base_type: value_type
+	})
+	assert g.value_c_type(value_type) == 'orm__QueryBuilder_User'
+	assert g.value_c_type(pointer_type) == 'orm__QueryBuilder_User*'
+}
+
 fn test_optional_payload_qualifies_interface() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)

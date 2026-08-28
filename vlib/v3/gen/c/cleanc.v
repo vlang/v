@@ -3513,8 +3513,9 @@ fn (mut g FlatGen) write_type_declaration_block() {
 }
 
 fn (mut g FlatGen) gen_vinit() {
+	needs_closure_init := g.used_fn_contains_in_module('closure_init', 'closure')
 	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
-		&& g.global_inits.len == 0 {
+		&& g.global_inits.len == 0 && !needs_closure_init {
 		return
 	}
 	fn_start_pos := g.sb.len
@@ -3530,6 +3531,9 @@ fn (mut g FlatGen) gen_vinit() {
 		}
 	}
 	g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
+	if needs_closure_init {
+		g.writeln('\tclosure__closure_init();')
+	}
 	g.writeln('}')
 	g.writeln('')
 	if '_vinit' in g.print_fn_names {
