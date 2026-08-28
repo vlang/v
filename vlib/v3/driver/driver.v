@@ -6197,6 +6197,10 @@ fn v3_test_modern_openssl_present() bool {
 	return major > 3 || (major == 3 && (minor > 5 || (minor == 5 && patch >= 0)))
 }
 
+fn v3_test_openssl_probe_allowed(github_job string, user_os string) bool {
+	return github_job.len == 0 || user_os != 'windows'
+}
+
 fn v3_test_build_defines(expression string, user_defines []string) []string {
 	mut defines := map[string]bool{}
 	for define in os.getenv('VBUILD_DEFINES').split_any(',') {
@@ -6231,10 +6235,12 @@ fn v3_test_build_defines(expression string, user_defines []string) []string {
 		|| v3_test_command_succeeds('pkg-config', ['sqlite3', '--libs'])) {
 		defines['present_sqlite3'] = true
 	}
-	if expression.contains('present_openssl?') && v3_test_openssl_present() {
+	openssl_probe_allowed := v3_test_openssl_probe_allowed(github_job, os.user_os())
+	if openssl_probe_allowed && expression.contains('present_openssl?') && v3_test_openssl_present() {
 		defines['present_openssl'] = true
 	}
-	if expression.contains('has_modern_openssl?') && v3_test_modern_openssl_present() {
+	if openssl_probe_allowed && expression.contains('has_modern_openssl?')
+		&& v3_test_modern_openssl_present() {
 		defines['has_modern_openssl'] = true
 	}
 	if expression.contains('os_id_') && os.is_file('/etc/os-release') {

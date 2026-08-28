@@ -3286,7 +3286,7 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 	}
 	mut instruction := line[..split]
 	mut operands_source := line[split..].trim_space()
-	if arch == 'amd64' && instruction == 'lock' && operands_source.len > 0 {
+	if is_c_inline_asm_x86_arch(arch) && instruction == 'lock' && operands_source.len > 0 {
 		mut next := 0
 		for next < operands_source.len && !operands_source[next].is_space() {
 			next++
@@ -3298,16 +3298,29 @@ fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bo
 		return instruction
 	}
 	mut operands := split_c_inline_asm_operands(operands_source)
-	if arch == 'amd64' && !instruction.starts_with('.') && operands.len > 1 {
+	if is_c_inline_asm_x86_arch(arch) && !instruction.starts_with('.') && operands.len > 1 {
 		last := operands.last()
 		operands.delete(operands.len - 1)
 		operands.prepend(last)
 	}
 	mut lowered := []string{cap: operands.len}
 	for operand in operands {
-		lowered << lower_c_inline_asm_operand(operand, arch, aliases, is_extended)
+		mut lowered_operand := lower_c_inline_asm_operand(operand, arch, aliases, is_extended)
+		if is_c_inline_asm_indirect_x86_branch_operand(instruction, operand, arch, aliases) {
+			lowered_operand = '*' + lowered_operand
+		}
+		lowered << lowered_operand
 	}
 	return instruction + ' ' + lowered.join(', ')
+}
+
+fn is_c_inline_asm_indirect_x86_branch_operand(instruction string, operand string, arch string, aliases map[string]bool) bool {
+	if !is_c_inline_asm_x86_arch(arch)
+		|| (!instruction.starts_with('call') && !instruction.starts_with('j')) {
+		return false
+	}
+	target := operand.trim_space()
+	return aliases[target] || is_c_inline_asm_x86_register(target)
 }
 
 fn split_c_inline_asm_operands(source string) []string {
@@ -3353,7 +3366,7 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 	if is_c_inline_asm_number(operand) {
 		return if arch == 'arm64' {
 			'#${operand}'
-		} else if arch == 'amd64' {
+		} else if is_c_inline_asm_x86_arch(arch) {
 			'\$${operand}'
 		} else {
 			operand
@@ -3378,7 +3391,7 @@ fn lower_c_inline_asm_address(source string, arch string, aliases map[string]boo
 	if arch == 'arm64' {
 		return '[${lower_c_inline_asm_atoms(source.trim_space(), arch, aliases, is_extended)}]'
 	}
-	if arch != 'amd64' {
+	if !is_c_inline_asm_x86_arch(arch) {
 		return '[${source}]'
 	}
 	parts := source.split('+')
@@ -3444,7 +3457,7 @@ fn lower_c_inline_asm_atoms(source string, arch string, aliases map[string]bool,
 			word := source[start..i]
 			if aliases[word] {
 				out.write_string('%[${word}]')
-			} else if arch == 'amd64' && is_c_inline_asm_amd64_register(word) {
+			} else if is_c_inline_asm_x86_arch(arch) && is_c_inline_asm_x86_register(word) {
 				out.write_string(if is_extended { '%%${word}' } else { '%${word}' })
 			} else {
 				out.write_string(word)
@@ -3457,7 +3470,11 @@ fn lower_c_inline_asm_atoms(source string, arch string, aliases map[string]bool,
 	return out.str()
 }
 
-fn is_c_inline_asm_amd64_register(name string) bool {
+fn is_c_inline_asm_x86_arch(arch string) bool {
+	return arch in ['amd64', 'i386']
+}
+
+fn is_c_inline_asm_x86_register(name string) bool {
 	if name in ['al', 'ah', 'ax', 'eax', 'rax', 'bl', 'bh', 'bx', 'ebx', 'rbx', 'cl', 'ch', 'cx',
 		'ecx', 'rcx', 'dl', 'dh', 'dx', 'edx', 'rdx', 'sil', 'si', 'esi', 'rsi', 'dil', 'di', 'edi',
 		'rdi', 'spl', 'sp', 'esp', 'rsp', 'bpl', 'bp', 'ebp', 'rbp', 'rip', 'eflags', 'flags'] {

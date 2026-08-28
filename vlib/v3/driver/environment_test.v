@@ -333,6 +333,12 @@ fn test_v3_effective_warns_are_errors_includes_prod() {
 	assert v3_effective_warns_are_errors(true, true)
 }
 
+fn test_v3_test_openssl_probe_matches_windows_ci_suppression() {
+	assert !v3_test_openssl_probe_allowed('windows-test', 'windows')
+	assert v3_test_openssl_probe_allowed('', 'windows')
+	assert v3_test_openssl_probe_allowed('linux-test', 'linux')
+}
+
 fn test_v3_prod_c_optimization_flags_skip_lto_for_tcc() {
 	assert v3_prod_c_optimization_flags(true, false, false, false, false) == ['-O3', '-flto']
 	assert v3_prod_c_optimization_flags(true, false, false, false, true) == ['-O3']
