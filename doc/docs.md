@@ -112,10 +112,12 @@ embedded in your `v`).
 
 To help close the remaining gaps, a successful fallback (V3 fails to build a
 program that the established compiler then builds) normally submits the V
-version, target OS/arch, and build options to `https://bugs.vlang.io`. The
-**full failing source file** is included so the report is reproducible; it is
-bounded to a window around the failure only when the file is larger than the
-upload byte budget. One exception: when the failure is inside an ordinary
+version, target OS/arch, and build options to `https://bugs.vlang.io`. When a
+generated-C diagnostic maps to a verified V source, the **full mapped source
+file** is included so the report is reproducible; a failure without such a
+mapping submits metadata only. The source is bounded to a window around the
+failure only when the file is larger than the upload byte budget. One exception:
+when the failure is inside an ordinary
 single-module `main` program, a smaller **self-contained reproducer** — the
 failing declaration plus the closure of declarations it references, which may be
 assembled from several files in that module — is preferred over the whole file
