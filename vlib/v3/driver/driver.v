@@ -6201,6 +6201,15 @@ fn v3_test_openssl_probe_allowed(github_job string, user_os string) bool {
 	return github_job.len == 0 || user_os != 'windows'
 }
 
+fn v3_test_sqlite_present(user_os string, vexeroot string) bool {
+	if user_os == 'windows' {
+		return os.exists(os.join_path(vexeroot, 'thirdparty', 'sqlite', 'sqlite3.c'))
+	}
+	return v3_test_command_succeeds('sqlite3', ['--version'])
+		&& (v3_test_command_succeeds('pkgconf', ['sqlite3', '--libs'])
+		|| v3_test_command_succeeds('pkg-config', ['sqlite3', '--libs']))
+}
+
 fn v3_test_build_defines(expression string, user_defines []string) []string {
 	mut defines := map[string]bool{}
 	for define in os.getenv('VBUILD_DEFINES').split_any(',') {
@@ -6230,9 +6239,7 @@ fn v3_test_build_defines(expression string, user_defines []string) []string {
 			defines[define] = true
 		}
 	}
-	if expression.contains('present_sqlite3?') && v3_test_command_succeeds('sqlite3', ['--version'])
-		&& (v3_test_command_succeeds('pkgconf', ['sqlite3', '--libs'])
-		|| v3_test_command_succeeds('pkg-config', ['sqlite3', '--libs'])) {
+	if expression.contains('present_sqlite3?') && v3_test_sqlite_present(os.user_os(), @VEXEROOT) {
 		defines['present_sqlite3'] = true
 	}
 	openssl_probe_allowed := v3_test_openssl_probe_allowed(github_job, os.user_os())

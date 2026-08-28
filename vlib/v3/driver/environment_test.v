@@ -339,6 +339,18 @@ fn test_v3_test_openssl_probe_matches_windows_ci_suppression() {
 	assert v3_test_openssl_probe_allowed('linux-test', 'linux')
 }
 
+fn test_v3_test_sqlite_present_uses_bundled_windows_source() {
+	root := os.join_path(os.temp_dir(), 'v3_test_sqlite_present_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'thirdparty', 'sqlite'))!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	assert !v3_test_sqlite_present('windows', root)
+	os.write_file(os.join_path(root, 'thirdparty', 'sqlite', 'sqlite3.c'), '')!
+	assert v3_test_sqlite_present('windows', root)
+}
+
 fn test_v3_prod_c_optimization_flags_skip_lto_for_tcc() {
 	assert v3_prod_c_optimization_flags(true, false, false, false, false) == ['-O3', '-flto']
 	assert v3_prod_c_optimization_flags(true, false, false, false, true) == ['-O3']
