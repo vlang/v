@@ -8323,11 +8323,11 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next()
 			or_body := p.block_stmt()
 			ostart := p.add_children2(lhs, or_body)
-			lhs = p.add_node(flat.Node{
+			lhs = p.add_node_from(flat.Node{
 				kind:           .or_expr
 				children_start: ostart
 				children_count: 2
-			})
+			}, lhs)
 			continue
 		}
 		// selector / method call
