@@ -114,8 +114,12 @@ pub:
 	// environment. When source_inline is set, v_file/v_source are used verbatim and no
 	// path from the report is ever read or removed.
 	v_file        string // informational base filename of the failing source (no directory)
-	v_source      string // the full failing file (bounded only when larger than the byte budget)
-	source_inline bool   // true: use v_file/v_source as-is and touch no filesystem path
+	v_source      string // the full failing file; the byte bound is applied once, at export
+	// v_source_focus is the 1-based failing line within v_source (0 for none). export applies
+	// the byte bound once, centered on it, so a file larger than the environment budget keeps
+	// the exact failing code instead of losing it to a second head+tail truncation.
+	v_source_focus int
+	source_inline  bool // true: use v_file/v_source as-is and touch no filesystem path
 	// Untagged path/digest pairs below describe source bytes V3 actually parsed. The
 	// stable parser compares them only with its own parsed-file paths and scanner
 	// digests. Tagged native inputs describe resolved #include/#insert dependencies;
@@ -481,10 +485,18 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	payload['COUTPUT'] = truncated_report_text(report.c_output, c_output_budget)
 	content_budget = budget - v3_report_env_payload_bytes(payload)
 	v_source_budget := if content_budget < value_limit { content_budget } else { value_limit }
-	payload['VSOURCE'] = if v_source_budget > 0 {
-		bounded_v_source(report.v_source, v_source_budget, 0)
-	} else {
+	// Apply the byte bound once, here, centered on the failing line the producer identified, so a
+	// file larger than the environment budget still keeps the exact failing code instead of
+	// losing it to a second head+tail truncation. Omit source when the budget cannot hold real
+	// content plus a truncation marker: bounded_v_source would otherwise return a markerless
+	// prefix that both drops the failing line and misreports the excerpt as complete.
+	v_source_marker_min := c_error_v_source_truncation_notice.len + 2
+	payload['VSOURCE'] = if v_source_budget <= 0 {
 		''
+	} else if report.v_source.len > v_source_budget && v_source_budget <= v_source_marker_min {
+		''
+	} else {
+		bounded_v_source(report.v_source, v_source_budget, report.v_source_focus)
 	}
 	set_v3_report_env_payload(payload)
 }
@@ -499,27 +511,30 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 // `allowed_v_sources` maps every source file V3 actually parsed to the SHA-256 digest
 // captured from those exact parser bytes. Generated-C mappings outside that set, or
 // files whose current contents no longer match the captured digest, contribute no
-// source. The returned source is the full mapped file, so the report is reproducible
-// (bounded to a window only when the file is larger than the byte budget); ('', '')
-// means no source is available, so the report stays metadata-only.
-pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string, allowed_v_sources map[string]string) (string, string) {
+// source. The returned source is the full mapped file plus the 1-based failing line to focus
+// on; the byte bound is applied once, at the handoff, centered on that line, so it is never
+// dropped by a second truncation. ('', '', 0) means no source is available, so the report
+// stays metadata-only.
+pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string, allowed_v_sources map[string]string) (string, string, int) {
 	if kind == external_v3_compiler_error_kind {
-		return '', ''
+		return '', '', 0
 	}
 	if c_file == '' || !os.is_file(c_file) {
-		return '', ''
+		return '', '', 0
 	}
 	return bounded_v_source_for_generated_c(c_output, c_file, allowed_v_sources)
 }
 
-// bounded_v3_internal_fallback_source bounds source CONTENT captured before V3 starts.
-// It never opens `source_name`; the dispatcher separately verifies that the input still
-// has the captured digest before forwarding this snippet to the stable retry.
-pub fn bounded_v3_internal_fallback_source(source_name string, source string) (string, string) {
+// bounded_v3_internal_fallback_source returns the source CONTENT captured before V3 starts,
+// with focus 0 (a head+tail window is kept if it must be bounded at export). It never opens
+// `source_name`; the dispatcher separately verifies that the input still has the captured
+// digest before forwarding this content to the stable retry. The byte bound is applied once,
+// at the handoff, rather than here.
+pub fn bounded_v3_internal_fallback_source(source_name string, source string) (string, string, int) {
 	if source_name == '' {
-		return '', ''
+		return '', '', 0
 	}
-	return os.base(source_name), v3_report_v_source(source)
+	return os.base(source_name), source, 0
 }
 
 // bounded_v_source_for_generated_c maps a generated-C compilation error back to the V
@@ -528,8 +543,8 @@ pub fn bounded_v3_internal_fallback_source(source_name string, source string) (s
 // is larger than the byte budget), so the report is reproducible. The generated C was
 // staged by this process's own V3 run, while its mapped V path is trusted only when it
 // matches a parsed compiler input.
-fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, allowed_v_sources map[string]string) (string, string) {
-	c_source := os.read_file(generated_c_file) or { return '', '' }
+fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, allowed_v_sources map[string]string) (string, string, int) {
+	c_source := os.read_file(generated_c_file) or { return '', '', 0 }
 	c_lines := c_source.split_into_lines()
 	mut v_file := ''
 	mut v_line := 0
@@ -543,7 +558,7 @@ fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, al
 		v_line = source_loc.line
 	}
 	if v_file == '' || !os.is_file(v_file) {
-		return '', ''
+		return '', '', 0
 	}
 	mut parsed_digest := ''
 	for parsed_file, digest in allowed_v_sources {
@@ -553,23 +568,23 @@ fn bounded_v_source_for_generated_c(c_output string, generated_c_file string, al
 		}
 	}
 	if parsed_digest == '' {
-		return '', ''
+		return '', '', 0
 	}
-	mapped_source := os.read_file(v_file) or { return '', '' }
+	mapped_source := os.read_file(v_file) or { return '', '', 0 }
 	if sha256.hexhash(mapped_source) != parsed_digest {
 		// An editor/build watcher rewrote this input after V3 parsed it. Keep the
 		// report metadata-only rather than uploading bytes unrelated to the failure.
-		return os.base(v_file), ''
+		return os.base(v_file), '', 0
 	}
-	// Upload the full failing file so the report is reproducible. The digest check above
-	// guarantees these are exactly the bytes V3 parsed, and only files V3 actually parsed
-	// (always V source, never a mapped header) reach this point. A file larger than the byte
-	// budget is reduced to a window around the failing line so the report still fits.
+	// Return the full failing file plus the failing line so the report is reproducible. The
+	// digest check above guarantees these are exactly the bytes V3 parsed, and only files V3
+	// actually parsed (always V source, never a mapped header) reach this point. The byte bound
+	// is applied once, at the handoff (export_external_v3_report_to_env), centered on this line,
+	// so a file larger than the environment budget still keeps the exact failing code.
 	if !is_v_source_file(v_file) {
-		return os.base(v_file), ''
+		return os.base(v_file), '', 0
 	}
-	v_source := bounded_v_source(mapped_source, c_error_bug_report_max_v_source_bytes, v_line)
-	return os.base(v_file), v_source
+	return os.base(v_file), mapped_source, v_line
 }
 
 // take_external_v3_report_from_env returns the content-only fallback report exported by
@@ -862,15 +877,6 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 	}
 	eprintln('V ${report.v_version}, ${report.target_os}/${report.arch}, build options: ${report.build_options}')
 	eprintln('='.repeat('================== V3 compiler bug report =============='.len))
-}
-
-// v3_report_v_source returns the V source uploaded for an internal V3 failure. An
-// internal failure has no mapped failing line, so the whole captured input is uploaded
-// to make the report reproducible; the dispatcher only forwards it when the input still
-// has the exact digest V3 parsed. Only an input larger than the byte budget is reduced
-// to a bounded head+tail window.
-fn v3_report_v_source(source string) string {
-	return bounded_v_source(source, c_error_bug_report_max_v_source_bytes, 0)
 }
 
 // v_source_is_whole_file reports whether the selected excerpt is the entire mapped

@@ -348,12 +348,13 @@ fn test_external_v3_report_env_round_trip() {
 	}
 	source := lines.join('\n')
 	os.write_file(c_file, source)!
-	// The owning process captures the source as content...
-	v_file, v_source := bounded_v3_internal_fallback_source(c_file, source)
+	// The owning process captures the source as content, with focus 0 (head+tail if bounded)...
+	v_file, v_source, v_source_focus := bounded_v3_internal_fallback_source(c_file, source)
 	assert v_file == 'main.v'
 	assert v_source == source
+	assert v_source_focus == 0
 	// The path-based extractor must never reopen an internal-error input after V3 fails.
-	late_file, late_source := bounded_v3_fallback_source(external_v3_compiler_error_kind,
+	late_file, late_source, _ := bounded_v3_fallback_source(external_v3_compiler_error_kind,
 		'error: v3 failed', c_file, map[string]string{})
 	assert late_file == ''
 	assert late_source == ''
@@ -620,6 +621,50 @@ fn test_export_external_v3_report_bounds_combined_exec_payload() {
 	assert got.v_source.contains(c_error_v_source_truncation_notice)
 }
 
+fn test_export_external_v3_report_preserves_failing_line_through_handoff() {
+	// A generated-C failure into a file larger than the environment budget must keep the exact
+	// failing line. The byte bound is applied once, at the handoff, centered on it, instead of a
+	// second head+tail truncation that would drop the middle — including the failing line
+	// (PR #28234 review). It is also never forwarded as a silent markerless prefix.
+	clear_v3_report_env()
+	mut lines := []string{}
+	for i in 0 .. 3000 {
+		lines << 'fn head_${i}() { println(${i}) }'
+	}
+	failing_line := lines.len + 1 // 1-based line of the unique failing marker inserted next
+	lines << 'fn the_unique_failing_line_marker() {}'
+	for i in 0 .. 3000 {
+		lines << 'fn tail_${i}() { println(${i}) }'
+	}
+	source := lines.join('\n')
+	// Far larger than the environment value limit, so export must truncate it.
+	assert source.len > c_error_bug_report_max_v_source_bytes
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:           '' // generated-C compilation error
+		ccompiler:      'clang'
+		c_output:       'error: use of undeclared identifier missing'
+		v_file:         'main.v'
+		v_source:       source
+		v_source_focus: failing_line
+		source_inline:  true
+		tag:            'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	if got.kind == external_v3_transport_limited_kind {
+		return // environment too small to forward any manifest; nothing to assert
+	}
+	// Either source was omitted (a budget too small to hold even the marker) or it was
+	// truncated with the marker present, keeping the failing line — never a markerless prefix.
+	if got.v_source != '' {
+		assert got.v_source.len < source.len
+		assert got.v_source.contains(c_error_v_source_truncation_notice)
+		assert got.v_source.contains('the_unique_failing_line_marker')
+	}
+}
+
 fn test_v3_report_env_budget_reserves_existing_argv_and_environment() {
 	assert v3_report_env_budget({
 		'EXISTING': 'x'.repeat(v3_report_conservative_exec_bytes)
@@ -744,33 +789,6 @@ fn test_v_source_and_context_expose_whole_file_checks_the_union() {
 	assert !v_source_and_context_expose_whole_file('', [], mapped)
 }
 
-fn test_v3_report_v_source_returns_full_source_and_bounds_oversized() {
-	// An internal V3 failure has no mapped failing line, so the whole captured input is
-	// uploaded to make the report reproducible. A short program is uploaded verbatim.
-	small := 'fn main() {\n\tprintln(1)\n}\n'
-	assert v3_report_v_source(small) == small
-	// A larger program that still fits the byte budget is uploaded whole.
-	mut lines := []string{}
-	for i in 0 .. 4 * c_error_v_source_radius {
-		lines << 'fn f${i}() { println(${i}) }'
-	}
-	medium := lines.join('\n')
-	assert medium.len < c_error_bug_report_max_v_source_bytes
-	assert v3_report_v_source(medium) == medium
-	// Only a program larger than the byte budget is reduced to a bounded head+tail window.
-	mut big_lines := []string{}
-	for i in 0 .. 4000 {
-		big_lines << 'fn f${i}() { println(${i}) }'
-	}
-	big := big_lines.join('\n')
-	assert big.len > c_error_bug_report_max_v_source_bytes
-	snippet := v3_report_v_source(big)
-	assert snippet.len <= c_error_bug_report_max_v_source_bytes
-	assert snippet.len < big.len
-	assert snippet.contains(c_error_v_source_truncation_notice)
-	assert snippet.contains('fn f0() ') // head kept
-	assert snippet.contains('fn f3999() ') // tail kept
-}
 
 fn test_selected_v_source_only_uploads_mapped_v_source_chunk() {
 	// a mapped V file yields a small chunk around the failing line
@@ -898,13 +916,16 @@ fn test_bounded_v3_fallback_source_maps_generated_c_error() {
 	os.write_file(generated_c, '#line 100 "${v_path}"\nint a = 1;\nint b = missing;\n')!
 	c_output := '${generated_c}:3:9: error: use of undeclared identifier missing'
 	// kind '' selects the generated-C mapping path.
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+	v_file, v_source, focus := bounded_v3_fallback_source('', c_output, generated_c, {
 		v_path: sha256.hexhash(whole)
 	})
 	assert v_file == 'source.v'
-	// The full mapped file is uploaded (it fits the byte budget), so the report reproduces.
+	// The full mapped file is returned, plus the failing line to focus on, so the byte bound is
+	// applied once at the handoff without dropping the failing code.
 	assert v_source == whole
 	assert v_source.contains('fn f100()')
+	// `#line 100` makes the next C line map to V line 100, so the error one line later is 101.
+	assert focus == 101
 }
 
 fn test_bounded_v3_fallback_source_uploads_whole_mapped_file_generated_c() {
@@ -927,7 +948,7 @@ fn test_bounded_v3_fallback_source_uploads_whole_mapped_file_generated_c() {
 	generated_c := os.join_path(dir, 'program.tmp.c')
 	os.write_file(generated_c, '#line 40 "${v_path}"\nint b = missing;\n')!
 	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+	v_file, v_source, _ := bounded_v3_fallback_source('', c_output, generated_c, {
 		v_path: sha256.hexhash(whole)
 	})
 	assert v_file == 'source.v'
@@ -952,7 +973,7 @@ fn test_bounded_v3_fallback_source_rejects_unparsed_mapped_file() {
 	generated_c := os.join_path(dir, 'program.tmp.c')
 	os.write_file(generated_c, '#line 1 "${unrelated_path}"\nint exposed = missing;\n')!
 	c_output := '${generated_c}:2:15: error: use of undeclared identifier missing'
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+	v_file, v_source, _ := bounded_v3_fallback_source('', c_output, generated_c, {
 		parsed_path: sha256.hexhash(os.read_file(parsed_path)!)
 	})
 	assert v_file == ''
@@ -979,7 +1000,7 @@ fn test_bounded_v3_fallback_source_rejects_changed_parsed_source() {
 	// Simulate an editor/build watcher replacing the mapped input after V3 parsed it.
 	os.write_file(v_path, original.replace('original_', 'new_private_'))!
 	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+	v_file, v_source, _ := bounded_v3_fallback_source('', c_output, generated_c, {
 		v_path: parsed_digest
 	})
 	assert v_file == 'source.v'

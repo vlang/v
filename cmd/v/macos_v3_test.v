@@ -1779,15 +1779,17 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		os.write_file(source, whole)!
 		compiler_error := macos_v3_compiler_error_message('source parsing')
 		snapshot := macos_v3_compiler_error_input_snapshot(source)
-		v_file, v_source := snapshot.current_report_source()
+		v_file, v_source, v_source_focus := snapshot.current_report_source()
 		assert v_file == 'prog.v'
 		assert compiler_error.contains('during source parsing')
-		// The full file is captured (it fits the byte budget), so the report reproduces.
+		// The full file is captured (it fits the byte budget), so the report reproduces. An
+		// internal error has no mapped failing line, so its focus is 0 (head+tail if bounded).
 		assert v_source == whole
+		assert v_source_focus == 0
 		// Rewriting the file after the pre-V3 snapshot suppresses source completely: the
 		// fallback must not upload bytes that V3 never parsed.
 		os.write_file(source, whole + '\nfn changed_after_snapshot() {}')!
-		changed_file, changed_source := snapshot.current_report_source()
+		changed_file, changed_source, _ := snapshot.current_report_source()
 		assert changed_file == ''
 		assert changed_source == ''
 		// A directory build, a non-V file, or a missing input yields no source, so the
@@ -1796,7 +1798,7 @@ fn test_macos_v3_compiler_error_content_extraction() {
 		os.write_file(note, 'not v source')!
 		for empty in [root, note, os.join_path(root, 'missing.v'), ''] {
 			empty_snapshot := macos_v3_compiler_error_input_snapshot(empty)
-			ef, es := empty_snapshot.current_report_source()
+			ef, es, _ := empty_snapshot.current_report_source()
 			assert ef == '', empty
 			assert es == '', empty
 		}
