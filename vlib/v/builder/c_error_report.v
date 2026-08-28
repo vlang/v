@@ -1082,17 +1082,18 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string, inc
 	// included header, not V source).
 	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
 	mapped_lines := mapped_source.split_into_lines()
-	// Prefer a self-contained reproducer (the failing declaration plus the closure of the user
-	// declarations it references). It already keeps itself within the byte budget, returning ''
-	// when it cannot, so it is uploaded verbatim; otherwise fall back to a plain source window.
-	repro := v.v_source_reproducer(v_file, v_line, c_error_bug_report_max_v_source_bytes)
-	mut v_source := if repro != '' {
-		repro
-	} else if include_full_source && is_v_source_file(v_file) {
-		// No self-contained reproducer (multi-module or non-`main` program): upload the full
-		// failing file so the report is reproducible, bounding only a file larger than the
-		// byte budget to a window around the failing line.
+	// Tagged V3 fallbacks always upload the verified mapped file, matching the normal inline
+	// handoff path. Direct stable-compiler reports retain their prior strict-subset selection:
+	// prefer a self-contained reproducer, then fall back to a local source window.
+	repro := if include_full_source {
+		''
+	} else {
+		v.v_source_reproducer(v_file, v_line, c_error_bug_report_max_v_source_bytes)
+	}
+	mut v_source := if include_full_source && is_v_source_file(v_file) {
 		bounded_v_source(mapped_source, c_error_bug_report_max_v_source_bytes, v_line)
+	} else if repro != '' {
+		repro
 	} else {
 		// Direct stable-compiler reports retain their established privacy boundary: select only
 		// a local window, and below drop it if that window would expose the complete file.
@@ -1102,12 +1103,10 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string, inc
 	if !include_full_source && v_source_exposes_whole_file(v_source, mapped_source, mapped_lines) {
 		v_source = ''
 	}
-	// A reproducer is a synthesized subset of the module's declarations (possibly assembled from
-	// several files), not the whole file, so it is a bounded excerpt. The full-file branch is
-	// truncated only when the mapped file is larger than the byte budget. Record that explicitly
-	// for the notice.
-	v_source_truncated := v_source != '' && (repro != '' || !include_full_source
-		|| (is_v_source_file(v_file) && mapped_source.len > c_error_bug_report_max_v_source_bytes))
+	// Direct stable-compiler payloads are always strict subsets. A tagged V3 source is truncated
+	// only when the mapped file is larger than the byte budget.
+	v_source_truncated := v_source != ''
+		&& (!include_full_source || mapped_source.len > c_error_bug_report_max_v_source_bytes)
 	// v_context is a separate uploaded payload; for a short mapped file its radius
 	// window can also span every line, so apply the same strict-subset rule to it.
 	mut v_context := numbered_context_lines(mapped_lines, v_line, c_error_context_radius)

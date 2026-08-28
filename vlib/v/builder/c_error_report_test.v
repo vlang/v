@@ -4,6 +4,7 @@ import os
 import crypto.sha256
 import v.ast
 import v.gen.c as cgen
+import v.parser
 import v.pref
 
 fn restore_env_var(name string, old_value ?string) {
@@ -1465,25 +1466,25 @@ fn test_new_c_error_bug_report_limits_full_source_to_v3_fallbacks() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	mut lines := []string{}
-	for i in 1 .. 201 {
-		lines << 'fn source_${i}() { println(${i}) }'
-	}
-	source := lines.join('\n')
+	source := "module main\n\nfn helper() {\n\tprintln('needed')\n}\n\nfn main() {\n\thelper()\n}\n\nfn unrelated() {\n\tprintln('private')\n}"
 	v_path := os.join_path(dir, 'source.v')
 	os.write_file(v_path, source)!
 	generated_c := os.join_path(dir, 'program.tmp.c')
-	os.write_file(generated_c, '#line 100 "${v_path}"\nint b = missing;\n')!
+	os.write_file(generated_c, '#line 8 "${v_path}"\nint b = missing;\n')!
 	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
 	mut b := Builder{
 		pref:       &pref.Preferences{}
 		out_name_c: generated_c
+		table:      ast.new_table()
 	}
+	b.parsed_files = [parser.parse_file(v_path, mut b.table, .skip_comments, b.pref)]
+	repro := b.v_source_reproducer(v_path, 8, c_error_bug_report_max_v_source_bytes)
+	assert repro != ''
+	assert repro.contains('fn helper()')
+	assert !repro.contains('fn unrelated()')
 	direct_report := b.new_c_error_bug_report('clang', c_output, false)
-	assert direct_report.v_source != ''
-	assert direct_report.v_source != source
+	assert direct_report.v_source == repro
 	assert direct_report.v_source_truncated
-	assert direct_report.v_source.contains('fn source_100()')
 	fallback_report := b.new_c_error_bug_report('clang', c_output, true)
 	assert fallback_report.v_source == source
 	assert !fallback_report.v_source_truncated

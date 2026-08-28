@@ -116,12 +116,7 @@ version, target OS/arch, and build options to `https://bugs.vlang.io`. When a
 generated-C diagnostic maps to a verified V source, the **full mapped source
 file** is included so the report is reproducible; a failure without such a
 mapping submits metadata only. The source is bounded to a window around the
-failure only when the file is larger than the upload byte budget. One exception:
-when the failure is inside an ordinary
-single-module `main` program, a smaller **self-contained reproducer** — the
-failing declaration plus the closure of declarations it references, which may be
-assembled from several files in that module — is preferred over the whole file
-and is reported as a bounded excerpt rather than the complete source.
+failure only when the file is larger than the upload byte budget.
 This full-file selection applies only to verified V3 fallback reports. When the
 established compiler is used directly, its automatic C-error reports retain a
 bounded strict subset of mapped source and omit source when no strict subset is
