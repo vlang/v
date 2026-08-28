@@ -1,5 +1,14 @@
 module c
 
+fn test_thread_local_decl_uses_portable_c_dialects() {
+	mut g := FlatGen.new()
+	g.emit_thread_local_decl_after_tinyc('int state;')
+	c_code := g.sb.str()
+	assert c_code.contains('#elif defined(_MSC_VER)\n__declspec(thread) int state;')
+	assert c_code.contains('#elif defined(__cplusplus)\nthread_local int state;')
+	assert c_code.contains('#else\n_Thread_local int state;\n#endif')
+}
+
 fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	headers := manual_stdlib_c_headers()
 	for name in ['memcpy', 'memmove', 'memset'] {
