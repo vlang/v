@@ -717,6 +717,8 @@ fn compile_good_project(v3_bin string, name string, flags string, files map[stri
 	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
+	assert !compile.output.contains('gen_node: unsupported node kind'),
+		'${name}: unsupported node reached C generation\n${compile.output}'
 	return good_bin
 }
 
