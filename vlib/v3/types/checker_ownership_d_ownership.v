@@ -10530,6 +10530,47 @@ pub fn (tc &TypeChecker) ownership_fn_value_returns_owned(id flat.NodeId, enclos
 	return false
 }
 
+// ownership_call_result_source_args returns call arguments that the ownership return analysis
+// found may flow into the call result, either directly or into one of its descendants.
+pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []flat.NodeId {
+	if tc.ownership == unsafe { nil } {
+		return []flat.NodeId{}
+	}
+	call_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(call_id) {
+		return []flat.NodeId{}
+	}
+	node := tc.a.nodes[int(call_id)]
+	if node.kind != .call {
+		return []flat.NodeId{}
+	}
+	info := tc.resolve_call_info(call_id, node) or { return []flat.NodeId{} }
+	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(call_id) }
+	mut param_indices := []int{}
+	for param_idx in tc.ownership_state().ownership_fn_returns_param[call_name] {
+		if param_idx !in param_indices {
+			param_indices << param_idx
+		}
+	}
+	for slot in tc.ownership_state().ownership_fn_return_params[call_name] {
+		if slot.param_idx !in param_indices {
+			param_indices << slot.param_idx
+		}
+	}
+	for desc in tc.ownership_state().ownership_fn_return_param_descs[call_name] {
+		if desc.param_idx !in param_indices {
+			param_indices << desc.param_idx
+		}
+	}
+	mut args := []flat.NodeId{cap: param_indices.len}
+	for param_idx in param_indices {
+		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, param_idx) {
+			args << arg_id
+		}
+	}
+	return args
+}
+
 fn (tc &TypeChecker) ownership_clone_receiver_name(id flat.NodeId) string {
 	recv_id := tc.ownership_clone_receiver_id(id)
 	if !tc.valid_node_id(recv_id) {

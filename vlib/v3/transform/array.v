@@ -2649,6 +2649,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	base_id := t.a.child(&fn_node, 0)
 	map_result_retains_elem_address := mapper_takes_elem_address
 		&& t.array_map_result_can_retain_element_address(result_elem_type)
+		&& t.array_map_expr_result_retains_element_address(map_source_id, 'it')
 	source_needs_drop := !map_result_retains_elem_address && !t.expr_can_take_address(base_id)
 		&& !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
@@ -2791,6 +2792,66 @@ fn (t &Transformer) array_map_lvalue_is_rooted_at_ident(id flat.NodeId, name str
 	return false
 }
 
+fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || name.len == 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1 {
+		return t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, 0), name)
+	}
+	match node.kind {
+		.paren, .cast_expr, .as_expr, .expr_stmt, .field_init {
+			return node.children_count > 0
+				&& t.array_map_expr_result_retains_element_address(t.a.child(&node, 0), name)
+		}
+		.block, .match_branch {
+			return node.children_count > 0
+				&& t.array_map_expr_result_retains_element_address(t.a.child(&node,
+					node.children_count - 1), name)
+		}
+		.if_expr, .match_stmt {
+			for i in 1 .. node.children_count {
+				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
+		.or_expr {
+			for i in 0 .. node.children_count {
+				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
+		.call {
+			call_type := t.checker_expr_type_name(id) or { t.node_type(id) }
+			if !t.array_map_result_can_retain_element_address(call_type) {
+				return false
+			}
+			for source_arg in t.tc.ownership_call_result_source_args(id) {
+				if t.array_map_expr_result_retains_element_address(source_arg, name) {
+					return true
+				}
+			}
+			return false
+		}
+		.struct_init, .array_literal, .array_init, .map_init, .assoc {
+			for i in 0 .. node.children_count {
+				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (t &Transformer) array_map_result_can_retain_element_address(type_name string) bool {
 	if type_name.len == 0 {
 		return false
@@ -2834,7 +2895,7 @@ fn (t &Transformer) array_map_type_can_hold_pointer(typ types.Type, mut seen map
 			} else {
 				seen[typ.name] = true
 				mut has_pointer := false
-				for field in t.tc.structs[typ.name] or { []types.StructField{} } {
+				for field in t.tc.struct_fields_for_type(typ.name) {
 					if t.array_map_type_can_hold_pointer(field.typ, mut seen) {
 						has_pointer = true
 						break
@@ -3688,7 +3749,7 @@ fn (t &Transformer) array_sort_compare_arg_type(cmp flat.NodeId, elem_type strin
 	if raw_type.len == 0 {
 		return default_type
 	}
-	cmp_type := t.tc.parse_type(raw_type)
+	cmp_type := types.unalias_type(t.tc.parse_type(raw_type))
 	if cmp_type is types.FnType && cmp_type.params.len >= 2
 		&& cmp_type.params[0].name() == elem_type && cmp_type.params[1].name() == elem_type {
 		return elem_type

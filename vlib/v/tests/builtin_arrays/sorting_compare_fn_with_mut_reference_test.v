@@ -73,3 +73,12 @@ fn test_sort_compare_selector_fn_with_pointer_values() {
 	items.sort_with_compare(comparators.compare)
 	assert items.map(it.a) == [1, 2, 3]
 }
+
+type ThingCompare = fn (&Thing, &Thing) int
+
+fn test_sort_compare_alias_fn_with_pointer_values() {
+	mut items := [&Thing{a: 3}, &Thing{a: 1}, &Thing{a: 2}]
+	compare := ThingCompare(compare_thing_values)
+	items.sort_with_compare(compare)
+	assert items.map(it.a) == [1, 2, 3]
+}

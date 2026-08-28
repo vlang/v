@@ -5453,6 +5453,78 @@ fn main() {
 	assert out == '[4]'
 }
 
+fn test_array_map_keeps_temporary_source_for_generic_pointer_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct Box[T] {
+	value T
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	boxes := make_items().map(Box[&Item]{
+		value: &it
+	})
+	println(boxes[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_generic_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_generic_pointer_result', '-ownership', source)
+	assert out == 'four'
+}
+
+fn test_array_map_drops_source_for_unrelated_pointer_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct Result {
+	external &int
+	length   int
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn text_len(item &Item) int {
+	return item.text.len
+}
+
+fn main() {
+	external := 42
+	results := make_items().map(Result{
+		external: &external
+		length:   text_len(&it)
+	})
+	println(results[0].length)
+	println(*results[0].external)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_unrelated_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array results = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_unrelated_pointer_result', '-ownership', source)
+	assert out == '4\n42'
+}
+
 fn test_array_filter_and_map_reclaim_branch_selected_bound_methods() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
