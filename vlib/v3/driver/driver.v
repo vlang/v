@@ -2681,8 +2681,14 @@ fn register_headerless_c_types(mut tc types.TypeChecker) {
 fn c_typedef_is_function_pointer(source string, name string) bool {
 	mut offset := 0
 	for offset < source.len {
-		relative := source[offset..].index(name) or { return false }
-		start := offset + relative
+		// index_after scans in place from `offset`. `source[offset..].index(name)`
+		// allocated a fresh copy of the whole remaining tail of `source` on every
+		// iteration; this function runs once per typedef name per native header, so
+		// under -prealloc (allocations in a stage scope are not freed until the
+		// scope ends) those tail copies accumulated to multiple GB of transient
+		// RSS on a build pulling large native headers (sokol, stb, mbedtls,
+		// openssl) — enough to trip v3's memory ceiling and fall back to V1.
+		start := source.index_after(name, offset) or { return false }
 		end := start + name.len
 		if (start == 0 || (!source[start - 1].is_alnum() && source[start - 1] != `_`))
 			&& (end == source.len || (!source[end].is_alnum() && source[end] != `_`)) {

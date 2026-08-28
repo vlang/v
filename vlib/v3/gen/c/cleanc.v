@@ -1860,6 +1860,14 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 	mut need_objc := false
 	mut need_cpp := false
 	mut cur_file := ''
+	// A header's Objective-C classification depends only on the resolved header
+	// plus c_flags/c99_mode/target, all constant across this loop, so memoize it:
+	// a system `<...>` argument resolves identically no matter which file
+	// included it; a quoted argument is keyed with its including file since it
+	// resolves relative to that file. Without this a header pulled by N modules
+	// is fully inlined N times. Values: 1 = needs Objective-C, 2 = checked and
+	// does not (0 / absent = not yet checked).
+	mut header_objc_cache := map[string]int{}
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
@@ -1890,10 +1898,41 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 			}
 			continue
 		}
-		if header := c_inline_header_text(include_arg, vroot, cur_file, include_dirs, false) {
-			if c_header_text_needs_objective_c_for_target(header.text, c_flags, c99_mode, target) {
+		// This branch can only ever set need_objc (never need_cpp), so once
+		// need_objc is known there is nothing left for it to discover.
+		if need_objc {
+			continue
+		}
+		memo_key := if include_arg.starts_with('<') {
+			include_arg
+		} else {
+			cur_file + '\x00' + include_arg
+		}
+		if cached := header_objc_cache[memo_key] {
+			if cached == 1 {
 				need_objc = true
 			}
+			continue
+		}
+		// Inlining a header expands its whole transitive #include closure into a
+		// builder just to text-scan it. Under -prealloc that scratch is retained
+		// until the enclosing stage scope ends; a disposable scope here frees
+		// each header's closure as soon as the boolean is read, bounding peak
+		// RSS to one closure at a time instead of the sum of all of them.
+		mut this_objc := false
+		lang_scope := cgen_worker_scope_begin(true)
+		if header := c_inline_header_text(include_arg, vroot, cur_file, include_dirs, false) {
+			if c_header_text_needs_objective_c_for_target(header.text, c_flags, c99_mode,
+				target)
+			{
+				this_objc = true
+			}
+		}
+		cgen_worker_scope_leave(lang_scope)
+		cgen_worker_scope_free(lang_scope)
+		header_objc_cache[memo_key] = if this_objc { 1 } else { 2 }
+		if this_objc {
+			need_objc = true
 		}
 	}
 	return c_native_language_from_features(need_objc, need_cpp)
@@ -2060,7 +2099,17 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		}
 	}
 	mut has_untracked_include := false
-	mut possible_source := strings.new_builder(text.len)
+	// Collect active (non-`#if`-excluded) lines as cheap string references while
+	// this scan and any nested-include recursion it triggers are in flight,
+	// instead of copying each line's bytes into a growing builder immediately.
+	// The single byte-copying pass that builds `possible_text` for the
+	// static-storage check runs once, after this file's own recursion finishes,
+	// so a deeply nested include chain never keeps a second full-size copy of
+	// this file's active content alive for the whole descent. Under -prealloc
+	// (nothing in the stage scope is freed until it exits) this trims real
+	// transient RSS, though it is not the dominant cost of a heavy-native-header
+	// build — see c_typedef_is_function_pointer for that.
+	mut kept_lines := []string{}
 	mut in_block_comment := false
 	mut conditionals := []CCacheConditional{}
 	defer {
@@ -2116,7 +2165,7 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		if conditionals.any(it.inactive) {
 			continue
 		}
-		possible_source.writeln(line)
+		kept_lines << line
 		if directive_name !in ['include', 'import'] {
 			mutation_is_ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
 			c_record_include_macro_definition(clean, mutation_is_ambiguous, mut include_macros, mut
@@ -2176,6 +2225,11 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			}
 		}
 	}
+	mut possible_source := strings.new_builder(text.len)
+	for kept in kept_lines {
+		possible_source.writeln(kept)
+	}
+	unsafe { kept_lines.free() }
 	possible_text := possible_source.str()
 	if modulecache.c_source_has_static_storage(possible_text) {
 		active_static_storage_paths[collection_key] = true
