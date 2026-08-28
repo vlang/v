@@ -1433,6 +1433,14 @@ fn (mut t Transformer) make_none_return_stmt_with_err_expr(err_expr flat.NodeId)
 		t.cur_fn_ret_type)
 }
 
+fn (mut t Transformer) make_or_else_block(mode string, stmts []flat.NodeId) flat.NodeId {
+	// `!` and `?` lower to a branch the source never wrote, so it has no checker scope.
+	if mode == '!' || mode == '?' {
+		return t.make_block_skip_scope_drops(stmts)
+	}
+	return t.make_block(stmts)
+}
+
 // lower_or_expr_to_temp converts lower or expr to temp data for transform.
 fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
@@ -1500,7 +1508,8 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 		prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
 		opt_ident := t.make_ident(opt_tmp)
 		not_ok := t.make_prefix(.not, t.make_selector(opt_ident, 'ok', 'bool'))
-		else_block := t.make_block(t.lower_or_body_to_stmts(body_id, '', '', node.value, opt_tmp))
+		else_block := t.make_or_else_block(node.value, t.lower_or_body_to_stmts(body_id, '', '',
+			node.value, opt_tmp))
 		if_stmt := t.make_if(not_ok, else_block, t.make_empty())
 		t.pending_stmts = outer_pending
 		for stmt in prelude {
@@ -1530,7 +1539,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	} else {
 		t.lower_or_body_to_stmts(body_id, val_tmp, storage_value_type, node.value, opt_tmp)
 	}
-	else_block := t.make_block(else_stmts)
+	else_block := t.make_or_else_block(node.value, else_stmts)
 	if_stmt := t.make_if(ok_cond, then_block, else_block)
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
@@ -1939,7 +1948,8 @@ fn (mut t Transformer) lower_or_expr_to_stmt(node flat.Node) {
 
 	opt_ident := t.make_ident(opt_tmp)
 	not_ok := t.make_prefix(.not, t.make_selector(opt_ident, 'ok', 'bool'))
-	else_block := t.make_block(t.lower_or_body_to_stmts(body_id, '', '', node.value, opt_tmp))
+	else_block := t.make_or_else_block(node.value, t.lower_or_body_to_stmts(body_id, '', '',
+		node.value, opt_tmp))
 	if_stmt := t.make_if(not_ok, else_block, t.make_empty())
 
 	t.pending_stmts = outer_pending

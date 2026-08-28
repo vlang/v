@@ -2682,7 +2682,8 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 				err_expr := t.make_selector(opt_expr, 'err', 'IError')
 				else_stmts := t.lower_or_body_to_stmts_with_err_expr(flat.empty_node, '',
 					payload_type, '?', err_expr)
-				t.pending_stmts << t.make_if(not_ok, t.make_block(else_stmts), t.make_empty())
+				t.pending_stmts << t.make_if(not_ok, t.make_block_skip_scope_drops(else_stmts),
+					t.make_empty())
 			} else {
 				// Comptime option-payload-mut (e.g. `decode(mut result.field?)` in a
 				// `$for` decoder): the callee fills the payload, so mark it present and

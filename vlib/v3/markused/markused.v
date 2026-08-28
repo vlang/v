@@ -447,6 +447,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		for seed in ['builtin.none__', 'builtin.error_sentinel'] {
 			enqueue(seed, mut used, mut queue)
 		}
+		// The `_result` destructor names every IError implementer's destructor, with no
+		// source-AST call site to follow. The branch below emits it too, so root them here.
+		ierror_destructor := if tc.autofree_mode { 'free' } else { 'drop' }
+		for impl in tc.ierror_impl_names() {
+			for alias in interface_implementer_method_aliases(impl, ierror_destructor, tc) {
+				enqueue(alias, mut used, mut queue)
+			}
+		}
 	}
 	enqueue_main_module_roots(fn_decls, mut used, mut queue)
 	if use_prepared {

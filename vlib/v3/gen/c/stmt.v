@@ -676,6 +676,18 @@ fn (mut g FlatGen) gen_current_return_ownership_drops() {
 	g.gen_ownership_drops(g.cur_return_drops)
 }
 
+// take_return_ownership_drops_for_node answers from the node-keyed list, but still takes
+// the positional one to keep its counter in step. A lowering that adds or removes a
+// return shifts every later positional index; the node id does not move.
+fn (mut g FlatGen) take_return_ownership_drops_for_node(id flat.NodeId) []types.OwnershipDropEntry {
+	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
+	positional := g.take_return_ownership_drops()
+	if g.tc.ownership_has_return_node(fn_name, id) {
+		return g.take_return_node_ownership_drops(id)
+	}
+	return positional
+}
+
 fn (mut g FlatGen) take_return_ownership_drops() []types.OwnershipDropEntry {
 	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
 	entries := g.tc.ownership_drop_entries_at_return(fn_name, g.ownership_return_index)
@@ -732,18 +744,18 @@ fn (mut g FlatGen) take_propagation_ownership_drops() []types.OwnershipDropEntry
 	return entries
 }
 
-fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node) []types.OwnershipDropEntry {
+fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node, id flat.NodeId) []types.OwnershipDropEntry {
 	mut entries := []types.OwnershipDropEntry{}
 	if source_id := transformed_return_source_id(node.value) {
 		entries = g.take_transformed_return_ownership_drops(source_id)
 	} else if node.typ.len == 0 {
-		entries = g.take_return_ownership_drops()
+		entries = g.take_return_ownership_drops_for_node(id)
 	} else if node.typ[0] !in [`!`, `?`] {
 		entries = []types.OwnershipDropEntry{}
 	} else if return_node_is_direct_optional_forward(node.value)
 		|| node.value == optional_success_return_value
 		|| g.return_stmt_is_explicit_optional_failure(node) {
-		entries = g.take_return_ownership_drops()
+		entries = g.take_return_ownership_drops_for_node(id)
 	} else {
 		entries = g.take_propagation_ownership_drops()
 	}
@@ -756,6 +768,14 @@ fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node) []types.Owne
 	}
 	g.pending_return_scope_drops = []types.OwnershipDropEntry{}
 	return combined
+}
+
+fn (g &FlatGen) call_is_optional_failure_constructor(node flat.Node) bool {
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	fn_n := g.a.child_node(&node, 0)
+	return fn_n.value == 'error' || fn_n.value == 'error_with_code'
 }
 
 fn (g &FlatGen) return_stmt_is_explicit_optional_failure(node flat.Node) bool {
@@ -891,13 +911,33 @@ fn (g &FlatGen) ownership_recursive_drop_helper_types() map[string]string {
 	return representatives
 }
 
+// ownership_live_drop_value_type_names drops the destructors only dead functions needed.
+// The checker records cleanup sites for every function it saw, markused-removed ones too.
+fn (g &FlatGen) ownership_live_drop_value_type_names() []string {
+	filter := g.has_used_fn_filter()
+	mut names := map[string]bool{}
+	for fn_name, type_names in g.tc.ownership_drop_value_type_names_by_fn() {
+		// A closure is emitted with its enclosing function, which is the name markused knows.
+		owner := fn_name.all_before('__fn_literal_').all_before('__lambda_')
+		if filter && owner.len > 0 && !g.used_fn_contains_in_module(owner, '') {
+			continue
+		}
+		for type_name in type_names {
+			names[type_name] = true
+		}
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
 fn (mut g FlatGen) precompute_ownership_recursive_drop_helpers() {
 	g.recursive_drop_helpers.clear()
 	$if !ownership ? {
 		return
 	}
 	mut drop_struct_names := map[string]bool{}
-	for type_name in g.tc.ownership_drop_value_type_names() {
+	for type_name in g.ownership_live_drop_value_type_names() {
 		mut seen := map[string]bool{}
 		g.ownership_collect_drop_struct_names(g.tc.parse_type(type_name), 0, mut drop_struct_names, mut
 			seen)
@@ -2501,7 +2541,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			old_return_node_id := g.cur_return_node_id
 			old_return_drops := g.cur_return_drops.clone()
 			g.cur_return_node_id = int(id)
-			g.cur_return_drops = g.take_return_stmt_ownership_drops(node)
+			g.cur_return_drops = g.take_return_stmt_ownership_drops(node, id)
 			defer {
 				g.cur_return_node_id = old_return_node_id
 				g.cur_return_drops = old_return_drops
@@ -4507,6 +4547,11 @@ fn (mut g FlatGen) gen_autofree_discarded_owned_call(id flat.NodeId, node flat.N
 	}
 	typ := g.usable_expr_type(id)
 	if typ is types.Void || typ is types.Unknown || !g.tc.ownership_type_requires_destruction(typ) {
+		return false
+	}
+	if g.call_is_optional_failure_constructor(node) && g.cur_fn_ret_is_optional {
+		// gen_expr wraps a bare `error(...)` in the function's `Optional_T`, so a temp
+		// declared as the call's own type would be initialised from the wrapper.
 		return false
 	}
 	tmp := '__discarded_owned_${g.tmp_count}'
