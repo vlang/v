@@ -848,7 +848,7 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		return false
 	}
 	bare_val_type := val_type.trim_right('*')
-	if !bare_val_type.contains('__') && g.ambiguous_qualified_interface_c_type(bare_val_type) {
+	if !bare_val_type.contains('__') && g.stale_ambiguous_qualified_interface_c_type(bare_val_type) {
 		// A stale unqualified signature cannot identify which imported interface it
 		// belongs to. Its concrete, module-qualified signature registers the usable
 		// typedef; do not emit an invalid C type for the ambiguous collector entry.

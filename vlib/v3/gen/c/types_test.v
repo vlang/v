@@ -86,7 +86,7 @@ fn test_optional_payload_does_not_qualify_ambiguous_interface() {
 		name: 'Value'
 	})
 	assert g.optional_payload_c_type(value_type) == 'Value'
-	assert g.ambiguous_qualified_interface_c_type('Value')
+	assert g.stale_ambiguous_qualified_interface_c_type('Value')
 }
 
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {

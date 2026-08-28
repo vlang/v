@@ -761,8 +761,9 @@ fn (g &FlatGen) qualified_interface_c_types(short_ct string) []string {
 	return matches
 }
 
-fn (g &FlatGen) ambiguous_qualified_interface_c_type(short_ct string) bool {
-	return g.qualified_interface_c_types(short_ct).len > 1
+fn (g &FlatGen) stale_ambiguous_qualified_interface_c_type(short_ct string) bool {
+	matches := g.qualified_interface_c_types(short_ct)
+	return matches.len > 1 && short_ct !in matches
 }
 
 fn (g &FlatGen) generic_struct_init_context_matches(init_name string, expected_name string) bool {

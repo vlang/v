@@ -60,11 +60,31 @@ pub fn show_ref(err &IError) string {
 	src := os.join_path(root, 'main.v')
 	os.write_file(src, 'import pkg
 
+struct BuiltinErr {
+	text string
+}
+
+fn (err BuiltinErr) msg() string {
+	return err.text
+}
+
+fn (err BuiltinErr) code() int {
+	return 7
+}
+
+fn payload() !IError {
+	return BuiltinErr{
+		text: "builtin"
+	}
+}
+
 fn main() {
 	err := pkg.make()
 	println(pkg.show(err))
 	ref := pkg.make_ref()
 	println(pkg.show_ref(ref))
+	builtin := payload() or { panic(err) }
+	println(builtin.msg())
 }
 	') or {
 		panic(err)
@@ -84,8 +104,9 @@ fn main() {
 	assert !c_code.contains('string pkg__show(IError err)'), c_code
 	assert !c_code.contains('\nIError* pkg__make_ref'), c_code
 	assert !c_code.contains('string pkg__show_ref(IError* err)'), c_code
+	assert c_code.contains('typedef struct Optional_IError {'), c_code
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'local\nlocal-ref'
+	assert run.output.trim_space() == 'local\nlocal-ref\nbuiltin'
 }
