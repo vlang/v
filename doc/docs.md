@@ -121,10 +121,13 @@ This full-file selection applies only to verified V3 fallback reports. When the
 established compiler is used directly, its automatic C-error reports retain a
 bounded strict subset of mapped source and omit source when no strict subset is
 possible.
-A directory build (such as `v .`) submits metadata only for an **internal V3
-compiler error**: that path uploads a snapshot of the single input file, which a
-directory build does not have. A **generated-C compilation error** is instead
-mapped back to the specific failing file through the staged C's `#line`
+A single-file build that hits an **internal V3 compiler error** uploads the
+complete captured input when it fits the 64 KiB source and process-environment
+transport budgets. Larger snapshots are truncated to a bounded head-and-tail
+window, and source is omitted when the transport cannot safely carry an excerpt.
+A directory build (such as `v .`) submits metadata only for this failure type
+because it has no single input snapshot. A **generated-C compilation error** is
+instead mapped back to the specific failing file through the staged C's `#line`
 directives, so even a directory build can upload that one failing file (still
 only when its current bytes match what V3 parsed). If the input selected for the
 source changes after V3 parses it, that report submits metadata only rather than
