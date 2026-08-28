@@ -72,6 +72,23 @@ fn test_optional_payload_qualifies_interface() {
 	assert g.concrete_optional_type_name(result_type) == 'Optional_firebird__Value'
 }
 
+fn test_optional_payload_does_not_qualify_ambiguous_interface() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.cur_module = 'json2'
+	tc.interface_names['firebird.Value'] = true
+	tc.interface_names['json2.Value'] = true
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	value_type := types.Type(types.Interface{
+		name: 'Value'
+	})
+	assert g.optional_payload_c_type(value_type) == 'Value'
+	assert g.ambiguous_qualified_interface_c_type('Value')
+}
+
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{

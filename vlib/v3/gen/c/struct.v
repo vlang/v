@@ -738,10 +738,6 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 
 fn (g &FlatGen) unique_qualified_interface_c_type(short_ct string) ?string {
 	matches := g.qualified_interface_c_types(short_ct)
-	local_ct := g.cname(qualify_name_in_module(g.tc.cur_module, short_ct))
-	if local_ct in matches {
-		return local_ct
-	}
 	if matches.len == 1 && matches[0] != short_ct {
 		return matches[0]
 	}
