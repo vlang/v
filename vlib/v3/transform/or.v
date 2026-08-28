@@ -1368,7 +1368,9 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 		return t.make_optional_none(clean)
 	}
 	_, _, is_generic_app := generic_app_parts(clean)
-	if !is_generic_app {
+	if expanded := t.expand_generic_type_alias(clean) {
+		clean = t.normalize_type_alias(expanded)
+	} else if !is_generic_app {
 		clean = t.normalize_type_alias(clean)
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') || clean.starts_with('fn_ptr:') {
