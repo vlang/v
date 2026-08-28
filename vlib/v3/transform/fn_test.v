@@ -18,6 +18,19 @@ fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
 	assert c_args == ['C.sg_pass_action']
 }
 
+fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['orm.QueryBuilder'] = []types.StructField{}
+	tc.struct_generic_params['orm.QueryBuilder'] = ['T']
+	tc.struct_generic_params['QueryBuilder'] = ['T']
+	tc.struct_modules['orm.QueryBuilder'] = 'orm'
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.qualify_or_storage_type('&QueryBuilder[main.User]') == '&orm.QueryBuilder[main.User]'
+	assert t.qualify_or_storage_type('(string, []string)') == '(string, []string)'
+}
+
 fn test_normalize_function_type_preserves_mut_parameter() {
 	t := Transformer{}
 	assert t.normalize_type_in_module('fn (mut Item)', 'main') == 'fn (&Item)'

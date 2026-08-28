@@ -1094,6 +1094,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	immediate_bound_method := t.immediate_bound_method_value_allocates_runtime_closure(callee_id)
 	immediate_fresh_closure := immediate_bound_method || t.call_returns_exclusive_closure(callee_id)
 	mut immediate_closure_type := ''
+	mut immediate_closure_cleanup := ''
 	if immediate_fresh_closure {
 		immediate_closure_type = t.fresh_runtime_closure_type(callee_id) or { '' }
 		if immediate_closure_type.len > 0 {
@@ -1137,7 +1138,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 				// has invoked it.
 				t.mark_fn_used_name('closure.closure_try_destroy')
 			} else {
-				t.pending_stmts << t.make_local_closure_cleanup_defer(closure_name)
+				immediate_closure_cleanup = closure_name
 			}
 			transformed_callee = t.make_ident(closure_name)
 			t.set_node_typ(int(transformed_callee), closure_type)
@@ -1264,12 +1265,14 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	concrete_ret := t.concrete_generic_call_return_type(id, node)
 	if concrete_ret.len > 0 {
 		typ = concrete_ret
+	} else if typ.len == 0 && immediate_closure_type.len > 0 {
+		typ = fn_type_return_type_text(immediate_closure_type) or { '' }
 	}
 	if t.rewrite_children_in_place(id, new_children) {
 		if typ != t.a.nodes[int(id)].typ {
 			t.set_node_typ(int(id), typ)
 		}
-		return id
+		return t.finish_immediate_closure_call(id, immediate_closure_cleanup, typ)
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -1304,7 +1307,25 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			args:     cached_args
 		}
 	}
-	return new_id
+	return t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, typ)
+}
+
+fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closure_name string, typ string) flat.NodeId {
+	if closure_name.len == 0 {
+		return call_id
+	}
+	if typ.len == 0 || typ == 'void' {
+		t.pending_stmts << t.make_expr_stmt(call_id)
+		t.pending_stmts << t.make_local_closure_destroy_stmt(closure_name)
+		return t.make_int_literal(0)
+	}
+	result_name := t.new_temp('immediate_closure_result')
+	t.set_var_type(result_name, typ)
+	t.pending_stmts << t.make_decl_assign_typed(result_name, call_id, typ)
+	t.pending_stmts << t.make_local_closure_destroy_stmt(closure_name)
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), typ)
+	return result
 }
 
 fn (mut t Transformer) transform_cgen_json_encode_call(id flat.NodeId, node flat.Node) flat.NodeId {
@@ -6067,6 +6088,15 @@ fn (t &Transformer) generic_aggregate_base_exists(base string, arg_count int) bo
 	}
 	if params := t.tc.sum_generic_params[base] {
 		return params.len == arg_count
+	}
+	if base.starts_with('main.') {
+		short := base['main.'.len..]
+		if params := t.tc.struct_generic_params[short] {
+			return params.len == arg_count
+		}
+		if params := t.tc.sum_generic_params[short] {
+			return params.len == arg_count
+		}
 	}
 	if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {

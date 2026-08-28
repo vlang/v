@@ -1535,8 +1535,9 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	} else {
 		t.shared_alias_storage_type(value_type)
 	}
-	mut storage_value_type := storage_value_type0
-	storage_normalized := t.normalize_type_in_module(storage_value_type0, t.cur_module)
+	qualified_storage_type := t.qualify_or_storage_type(storage_value_type0)
+	storage_normalized := t.normalize_type_in_module(qualified_storage_type, t.cur_module)
+	mut storage_value_type := qualified_storage_type
 	if t.is_optional_type_name(t.cur_fn_ret_type) {
 		return_value_type := t.optional_base_type(t.qualify_optional_type(t.cur_fn_ret_type))
 		if return_value_type != storage_value_type0
@@ -1573,6 +1574,35 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	}
 	t.pending_stmts << if_stmt
 	return t.make_ident(val_tmp)
+}
+
+fn (t &Transformer) qualify_or_storage_type(typ string) string {
+	clean := typ.trim_space()
+	if clean.len == 0 {
+		return clean
+	}
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
+		if clean.starts_with(prefix) {
+			return prefix + t.qualify_or_storage_type(clean[prefix.len..])
+		}
+	}
+	if clean.ends_with(']') {
+		base, args, is_generic_app := generic_app_parts(clean)
+		if is_generic_app {
+			mut qualified_args := []string{cap: args.len}
+			for arg_type in args {
+				qualified_args << t.qualify_or_storage_type(arg_type)
+			}
+			mut qualified_base := t.qualify_type(base)
+			if qualified_base == base && !t.bare_struct_name_is_local_to_current_module(base) {
+				if imported_base := t.unique_qualified_struct_for_short(base) {
+					qualified_base = imported_base
+				}
+			}
+			return '${qualified_base}[${qualified_args.join(', ')}]'
+		}
+	}
+	return clean
 }
 
 fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.Node) flat.NodeId {
