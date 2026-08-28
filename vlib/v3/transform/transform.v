@@ -17745,7 +17745,61 @@ fn stringify_type_has_generic_placeholder(typ string) bool {
 	return false
 }
 
+// borrow_first_last_accessor lowers a `first()`/`last()` array accessor used as a borrow
+// (e.g. the base of a field selector `arr.last().field`) into an in-place element access
+// `arr[0]` / `arr[len - 1]`. The stored element stays owned by the array, so this avoids
+// the independent-clone path `first()`/`last()` otherwise takes for ownership-bearing
+// element types — a path that has no valid lowering when the element has no `clone()`
+// method and would otherwise emit an empty placeholder (`(0)`). Restricted to that owned
+// case so non-owned elements keep their existing accessor lowering. Applied unconditionally
+// for owned elements so it stays in lock-step with the checker, which likewise treats every
+// `first()`/`last()` field read as a borrow. Returns none when the base is not such an
+// accessor.
+fn (mut t Transformer) borrow_first_last_accessor(call_id flat.NodeId) ?flat.NodeId {
+	if int(call_id) < 0 || int(call_id) >= t.a.nodes.len || isnil(t.tc) {
+		return none
+	}
+	node := t.a.nodes[int(call_id)]
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.value !in ['first', 'last'] || callee.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(callee, 0)
+	base_type := t.normalize_type_alias(t.lvalue_type(base_id))
+	clean_base_type := base_type.trim_left('&')
+	if !clean_base_type.starts_with('[]') {
+		return none
+	}
+	elem_type := clean_base_type[2..]
+	if !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+		return none
+	}
+	mut base := t.transform_lvalue(base_id)
+	if base_type.starts_with('&') {
+		base = t.make_prefix(.mul, base)
+		t.set_node_typ(int(base), clean_base_type)
+	}
+	if callee.value == 'last' {
+		base = t.stabilize_transformed_lvalue_for_reuse(base)
+	}
+	index := if callee.value == 'first' {
+		t.make_int_literal(0)
+	} else {
+		t.make_infix(.minus, t.make_selector(base, 'len', 'int'), t.make_int_literal(1))
+	}
+	return t.make_index(base, index, elem_type)
+}
+
 fn (mut t Transformer) transform_selector_base_expr(id flat.NodeId) flat.NodeId {
+	// A `first()`/`last()` accessor used as a selector base (`arr.last().field`) borrows
+	// the stored element rather than returning an independent copy; lower it in place so
+	// ownership-bearing element types without a `clone()` method still resolve.
+	if borrowed := t.borrow_first_last_accessor(id) {
+		return borrowed
+	}
 	// `in_selector_base` suppresses the pointer-value rvalue deref in
 	// transform_ident_expr, but that must apply only to the *direct* receiver ident of
 	// a selector (`x.field`, where `x` stays `&T` so the selector emits arrow access).
