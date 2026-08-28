@@ -6024,6 +6024,32 @@ fn (tc &TypeChecker) known_sum_constructor_name(name string) ?string {
 	return none
 }
 
+// array_accessor_result_is_borrowed reports whether a `first()`/`last()` call result is
+// consumed as a borrow — the base of a field selector (`arr.last().field`) — rather than
+// escaping as an independent value. A borrowed field read keeps the element owned by the
+// array, so it needs no `clone()` even when the element type has no clone method; the
+// transformer lowers such a base to an in-place `arr[..]` access. A bound method value
+// (`arr.last().method`) is excluded: it is not a field read, and closure generation
+// shallow-copies the receiver, so it must keep the copying accessor semantics.
+fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool {
+	mut current := id
+	for {
+		parent_id := tc.direct_parent_id(current)
+		if parent_id == flat.empty_node || int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		// See through transparent parens: `(arr.last()).field`.
+		if parent.kind == .paren {
+			current = parent_id
+			continue
+		}
+		return parent.kind == .selector && parent.children_count > 0
+			&& tc.a.child(parent, 0) == current && !tc.expr_is_method_value(parent_id)
+	}
+	return false
+}
+
 // should_diagnose reports whether should diagnose applies in types.
 fn (tc &TypeChecker) should_diagnose(id flat.NodeId) bool {
 	if tc.valid_diagnostic_fast {
@@ -6843,7 +6869,8 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		if clean_array := array_like_type_for_method(clean, fn_node.value) {
 			match fn_node.value {
 				'first', 'last', 'pop', 'pop_left' {
-					if fn_node.value in ['first', 'last'] {
+					if fn_node.value in ['first', 'last']
+						&& !tc.array_accessor_result_is_borrowed(id) {
 						if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
 							tc.record_error(.call_arg_mismatch,
 								'cannot return an independent array element: `${bad_type}` requires ownership destruction but has no `clone()` method',
