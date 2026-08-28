@@ -3378,6 +3378,13 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 	if label := c_inline_asm_quoted_label(operand) {
 		return label
 	}
+	if is_c_inline_asm_x86_arch(arch) {
+		if segment_address := lower_c_inline_asm_x86_segment_address(operand, arch, aliases,
+			is_extended)
+		{
+			return segment_address
+		}
+	}
 	if operand.len >= 2 && operand[0] == `[` && operand[operand.len - 1] == `]` {
 		return lower_c_inline_asm_address(operand[1..operand.len - 1], arch, aliases, is_extended)
 	}
@@ -3393,6 +3400,24 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 		}
 	}
 	return lower_c_inline_asm_atoms(operand, arch, aliases, is_extended)
+}
+
+fn lower_c_inline_asm_x86_segment_address(source string, arch string, aliases map[string]bool, is_extended bool) ?string {
+	colon := source.index_u8(`:`)
+	if colon <= 0 {
+		return none
+	}
+	segment := source[..colon].trim_space()
+	if segment !in ['cs', 'ds', 'es', 'fs', 'gs', 'ss'] {
+		return none
+	}
+	address := source[colon + 1..].trim_space()
+	if address.len < 2 || address[0] != `[` || address[address.len - 1] != `]` {
+		return none
+	}
+	prefix := if is_extended { '%%' } else { '%' }
+	return '${prefix}${segment}:${lower_c_inline_asm_address(address[1..address.len - 1], arch,
+		aliases, is_extended)}'
 }
 
 fn c_inline_asm_quoted_label(source string) ?string {

@@ -224,3 +224,23 @@ fn test_i386_inline_asm_reaches_c_lowering() {
 	assert c_source.contains('".byte 0x27, 0x35\\n\\t"'), c_source
 	assert !c_source.contains('.byte \\$0x27'), c_source
 }
+
+fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
+	v3_bin := build_v3_inline_asm()
+	source_path := '${inline_asm_tmp_path('segment_program')}.v'
+	c_path := '${inline_asm_tmp_path('segment_program')}.c'
+	os.write_file(source_path, 'fn main() {
+	mut value := u64(0)
+	asm amd64 {
+		mov value, fs:[value]
+		; +r (value)
+	}
+}
+') or {
+		panic(err)
+	}
+	generate := os.execute('${v3_bin} -os linux -arch amd64 -cc clang -o ${c_path} ${source_path}')
+	assert generate.exit_code == 0, generate.output
+	c_source := os.read_file(c_path) or { panic(err) }
+	assert c_source.contains('"mov %%fs:(%[value]), %[value]\\n\\t"'), c_source
+}
