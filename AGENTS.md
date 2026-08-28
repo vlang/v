@@ -416,11 +416,15 @@ Only the following `$`-prefixed functions are supported:
 * `$pkgconfig('name')` - query pkg-config at compile time.
 * `$typeof(expr)` - compatibility alias for `typeof(expr)`.
 * `$sizeof(Type)` - compatibility alias for `sizeof(Type)`.
+* `$isreftype(expr)` - compatibility alias for `isreftype(expr)`.
+* `$__offsetof(Struct, field_name)` - compatibility alias for
+  `__offsetof(Struct, field_name)`.
+* `$dump(expr)` - compatibility alias for `dump(expr)`.
 
 Common mistakes:
-* Prefer `typeof(expr)` and `sizeof(Type)` in new code. Their
-  `$typeof(expr)` and `$sizeof(Type)` compatibility aliases are also
-  accepted.
+* Prefer the unprefixed `typeof`, `sizeof`, `isreftype`, `__offsetof`,
+  and `dump` forms in new code. Their `$`-prefixed compatibility aliases
+  are also accepted.
 * Assuming `$embed_file` returns a string. It returns an
   `EmbedFileData` object; use `.to_string()` or `.to_bytes()`.
 * Using `$env` where a runtime `os.getenv` is appropriate, or vice
