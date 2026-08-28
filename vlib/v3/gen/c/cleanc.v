@@ -21996,13 +21996,18 @@ fn (mut g FlatGen) queue_shared_global_explicit_init(name string, inner string, 
 		return false
 	}
 	clean_type := default_init_unalias_type(typ)
+	qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
+	wrapper := g.shared_wrapper_c_name(qualified)
+	target := g.global_c_name(name)
+	node := g.a.nodes[int(val_id)]
+	if clean_type is types.Array && node.kind == .array_init {
+		g.queue_runtime_init('\t${target} = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = (${g.tc.c_type(clean_type)}){0}}, sizeof(${wrapper}));')
+		return g.queue_global_array_init('${target}->val', val_id, clean_type)
+	}
 	value_expr := g.expr_to_string_with_expected_type(val_id, clean_type)
 	if trimmed_space(value_expr).len == 0 {
 		return false
 	}
-	qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
-	wrapper := g.shared_wrapper_c_name(qualified)
-	target := g.global_c_name(name)
 	if clean_type is types.ArrayFixed {
 		g.queue_runtime_init('\t{ ${target} = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = {0}}, sizeof(${wrapper})); memmove(${target}->val, ${value_expr}, sizeof(${target}->val)); }')
 		return true

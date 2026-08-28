@@ -62,6 +62,20 @@ fn test_explicit_shared_and_fixed_array_global_initializers() {
 	assert out == '7\n34\n1:2'
 }
 
+fn test_explicit_shared_array_constructor_preserves_length_capacity_and_initializer() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'shared_array_constructor_initializer', "__global values shared []int = []int{len: 2, cap: 4, init: 7}
+
+fn main() {
+	summary := rlock values {
+		int_str(values.len) + ':' + int_str(values.cap) + ':' + int_str(values[0]) + ':' + int_str(values[1])
+	}
+	println(summary)
+}
+")
+	assert out == '2:4:7:7'
+}
+
 fn test_implicit_shared_fixed_array_container_elements_are_initialized() {
 	v3_bin := global_decl_build_v3()
 	out := global_decl_run_good(v3_bin, 'implicit_shared_fixed_array_containers', "struct Config {
