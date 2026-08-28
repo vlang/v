@@ -76,10 +76,11 @@ fn (t &Transformer) array_literal_expansion_estimate(node flat.Node, is_external
 	return array_literal_base_expansion_estimate + int(node.children_count) * array_literal_entry_expansion_estimate
 }
 
-// external_map_tree_expansion_estimate counts collection literals reachable
+// external_map_tree_expansion_estimate counts collection and struct literals reachable
 // through an initializer that lives outside the current function's contiguous
-// node range. The transformer recursively lowers each nested collection at the
-// use site.
+// node range. The transformer recursively lowers each nested initializer at the
+// use site. Struct reconstruction can also synthesize field defaults, so defer it
+// rather than trying to predict an expansion that is not represented in this AST.
 fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo int, hi int) int {
 	if int(root) < 0 || int(root) >= t.a.nodes.len {
 		return 0
@@ -97,6 +98,9 @@ fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo in
 			continue
 		}
 		node := t.a.nodes[int(id)]
+		if node.kind in [.struct_init, .assoc] {
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if node.kind == .map_init {
 			estimate += t.map_init_expansion_estimate(id, node)
 		}
