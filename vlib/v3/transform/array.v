@@ -3575,9 +3575,9 @@ fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type 
 	cur := t.make_index(base, t.make_ident(idx_name), elem_type)
 	prev := t.make_index(base, t.make_infix(.minus, t.make_ident(idx_name), t.make_int_literal(1)),
 		elem_type)
-	cmp_elem_type := '&${elem_type}'
-	cur_arg := t.make_prefix(.amp, cur)
-	prev_arg := t.make_prefix(.amp, prev)
+	cmp_elem_type := t.array_sort_compare_arg_type(cmp, elem_type)
+	cur_arg := if cmp_elem_type == elem_type { cur } else { t.make_prefix(.amp, cur) }
+	prev_arg := if cmp_elem_type == elem_type { prev } else { t.make_prefix(.amp, prev) }
 	if int(cmp) >= 0 {
 		cmp_node := t.a.nodes[int(cmp)]
 		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
@@ -3588,6 +3588,27 @@ fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type 
 	}
 	call := t.make_call_expr_typed(cmp, [cur_arg, prev_arg], 'int')
 	return t.make_infix(.lt, call, t.make_int_literal(0))
+}
+
+fn (t &Transformer) array_sort_compare_arg_type(cmp flat.NodeId, elem_type string) string {
+	default_type := '&${elem_type}'
+	if !elem_type.starts_with('&') || isnil(t.tc) || int(cmp) < 0 {
+		return default_type
+	}
+	cmp_node := t.a.nodes[int(cmp)]
+	if cmp_node.kind != .ident {
+		return default_type
+	}
+	raw_type := t.raw_var_type(cmp_node.value)
+	if raw_type.len == 0 {
+		return default_type
+	}
+	cmp_type := t.tc.parse_type(raw_type)
+	if cmp_type is types.FnType && cmp_type.params.len >= 2
+		&& cmp_type.params[0].name() == elem_type && cmp_type.params[1].name() == elem_type {
+		return elem_type
+	}
+	return default_type
 }
 
 fn (mut t Transformer) array_sort_lambda_expr(node flat.Node, a_expr flat.NodeId, b_expr flat.NodeId, elem_type string) ?flat.NodeId {

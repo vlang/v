@@ -48,3 +48,14 @@ fn test_sort_compare_fn_with_pointer_slots() {
 	items.sort_with_compare(compare_thing_slots)
 	assert items.map(it.a) == [1, 2, 3]
 }
+
+fn compare_thing_values(a &Thing, b &Thing) int {
+	return a.a - b.a
+}
+
+fn test_sort_compare_local_fn_with_pointer_values() {
+	mut items := [&Thing{a: 3}, &Thing{a: 1}, &Thing{a: 2}]
+	compare := compare_thing_values
+	items.sort_with_compare(compare)
+	assert items.map(it.a) == [1, 2, 3]
+}
