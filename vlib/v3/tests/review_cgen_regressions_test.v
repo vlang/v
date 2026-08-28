@@ -716,3 +716,28 @@ fn main() {
 ")
 	assert out == 'after false\ninitialized\nfalse\ninitialized\ntrue'
 }
+
+fn test_recursive_json_sum_generation_is_cycle_safe() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'recursive_json_sum_generation', "import json
+
+type RecursiveAny = []RecursiveAny | int | map[string]RecursiveAny
+
+fn main() {
+	value := RecursiveAny([
+		RecursiveAny(1),
+		RecursiveAny({
+			'two': RecursiveAny(2)
+		}),
+	])
+	println(json.encode(value))
+	mut decode_rejected := false
+	_ := json.decode(RecursiveAny, '[1]') or {
+		decode_rejected = true
+		RecursiveAny(0)
+	}
+	println(decode_rejected)
+}
+")
+	assert out == '[1,{"two":2}]\ntrue'
+}

@@ -8442,6 +8442,12 @@ struct JsonEncodePointerHelper {
 	body       string
 }
 
+struct JsonEncodeSumHelper {
+	name   string
+	sum_ct string
+	body   string
+}
+
 struct JsonDecodePointerHelper {
 	name        string
 	pointer_ct  string
@@ -8456,6 +8462,17 @@ fn json_encode_pointer_helper_name(pointer_ct string) string {
 	mut b := strings.new_builder(19 + pointer_ct.len * 2)
 	b.write_string('v3_json_encode_ptr_')
 	for c in pointer_ct.bytes() {
+		b.write_u8(hex[c >> 4])
+		b.write_u8(hex[c & 15])
+	}
+	return b.str()
+}
+
+fn json_encode_sum_helper_name(sum_ct string) string {
+	hex := '0123456789abcdef'
+	mut b := strings.new_builder(19 + sum_ct.len * 2)
+	b.write_string('v3_json_encode_sum_')
+	for c in sum_ct.bytes() {
 		b.write_u8(hex[c >> 4])
 		b.write_u8(hex[c & 15])
 	}
@@ -8525,6 +8542,62 @@ fn (mut g FlatGen) collect_json_pointer_types(typ types.Type, seen []string, mut
 	}
 }
 
+fn (mut g FlatGen) collect_json_encode_sum_types(typ types.Type, seen []string, mut sum_types map[string]types.SumType) {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	if clean is types.Pointer {
+		g.collect_json_encode_sum_types(clean.base_type, seen, mut sum_types)
+		return
+	}
+	if clean is types.OptionType {
+		g.collect_json_encode_sum_types(clean.base_type, seen, mut sum_types)
+		return
+	}
+	if clean is types.Array {
+		g.collect_json_encode_sum_types(clean.elem_type, seen, mut sum_types)
+		return
+	}
+	if clean is types.ArrayFixed {
+		g.collect_json_encode_sum_types(clean.elem_type, seen, mut sum_types)
+		return
+	}
+	if clean is types.Map {
+		g.collect_json_encode_sum_types(clean.value_type, seen, mut sum_types)
+		return
+	}
+	if clean is types.SumType {
+		sum_name := g.resolve_sum_name(clean.name)
+		sum_key := 'sum:${sum_name}'
+		if sum_key in seen {
+			sum_types[g.value_c_type(clean)] = clean
+			return
+		}
+		mut next_seen := seen.clone()
+		next_seen << sum_key
+		for variant in g.tc.sum_types[sum_name] or { []string{} } {
+			g.collect_json_encode_sum_types(g.json_sum_variant_type(variant), next_seen, mut
+				sum_types)
+		}
+		return
+	}
+	if clean !is types.Struct {
+		return
+	}
+	struct_type := clean as types.Struct
+	struct_key := 'struct:${struct_type.name}'
+	if struct_key in seen {
+		return
+	}
+	mut next_seen := seen.clone()
+	next_seen << struct_key
+	for field in g.tc.structs[struct_type.name] or { []types.StructField{} } {
+		attrs := g.json_struct_field_attrs(struct_type.name, field.name)
+		if json_attrs_skip_field(attrs) {
+			continue
+		}
+		g.collect_json_encode_sum_types(field.typ, next_seen, mut sum_types)
+	}
+}
+
 fn (mut g FlatGen) prepare_json_encode_pointer_helpers() []JsonEncodePointerHelper {
 	mut pointer_types := map[string]types.Pointer{}
 	for idx, node in g.a.nodes {
@@ -8558,6 +8631,39 @@ fn (mut g FlatGen) prepare_json_encode_pointer_helpers() []JsonEncodePointerHelp
 	return helpers
 }
 
+fn (mut g FlatGen) prepare_json_encode_sum_helpers() []JsonEncodeSumHelper {
+	mut sum_types := map[string]types.SumType{}
+	for idx, node in g.a.nodes {
+		if node.kind != .call || node.children_count < 2 {
+			continue
+		}
+		resolved := g.tc.resolved_call_name(flat.NodeId(idx)) or { continue }
+		if resolved !in ['json.encode', 'json__encode', 'json.encode_pretty', 'json__encode_pretty'] {
+			continue
+		}
+		arg_id := g.a.child(&node, 1)
+		mut typ := g.usable_expr_type(arg_id)
+		if typ is types.Void || typ is types.Unknown {
+			arg := g.a.nodes[int(arg_id)]
+			typ = g.tc.parse_type(arg.typ)
+		}
+		g.collect_json_encode_sum_types(typ, []string{}, mut sum_types)
+	}
+	mut sum_cts := sum_types.keys()
+	sum_cts.sort()
+	mut helpers := []JsonEncodeSumHelper{cap: sum_cts.len}
+	for sum_ct in sum_cts {
+		sum_type := sum_types[sum_ct]
+		body := g.json_encode_value_c_expr(sum_type, 'value') or { continue }
+		helpers << JsonEncodeSumHelper{
+			name:   json_encode_sum_helper_name(sum_ct)
+			sum_ct: sum_ct
+			body:   body
+		}
+	}
+	return helpers
+}
+
 fn (mut g FlatGen) gen_json_encode_pointer_helper_decls(helpers []JsonEncodePointerHelper, internal bool) {
 	if helpers.len == 0 {
 		return
@@ -8575,6 +8681,26 @@ fn (mut g FlatGen) gen_json_encode_pointer_helper_defs(helpers []JsonEncodePoint
 	linkage := if internal { 'static ' } else { '' }
 	for helper in helpers {
 		g.writeln('${linkage}string ${helper.name}(${helper.pointer_ct} value) { if (value == NULL) return v3_c_lit("null", 4); return ${helper.body}; }')
+	}
+}
+
+fn (mut g FlatGen) gen_json_encode_sum_helper_decls(helpers []JsonEncodeSumHelper, internal bool) {
+	if helpers.len == 0 {
+		return
+	}
+	linkage := if internal { 'static ' } else { '' }
+	for helper in helpers {
+		g.writeln('${linkage}string ${helper.name}(${helper.sum_ct} value);')
+	}
+}
+
+fn (mut g FlatGen) gen_json_encode_sum_helper_defs(helpers []JsonEncodeSumHelper, internal bool) {
+	if helpers.len == 0 {
+		return
+	}
+	linkage := if internal { 'static ' } else { '' }
+	for helper in helpers {
+		g.writeln('${linkage}string ${helper.name}(${helper.sum_ct} value) { return ${helper.body}; }')
 	}
 }
 
@@ -8759,10 +8885,10 @@ fn (mut g FlatGen) json_encode_add_sum_discriminator_c_expr(encoded string, labe
 	return '({ string ${object_name} = ${encoded}; string ${out_name} = ${object_name}; if (${object_name}.len >= 2 && ${object_name}.str[0] == 123 && ${object_name}.str[${object_name}.len - 1] == 125) { string ${head_name} = (string){.str = ${object_name}.str, .len = ${object_name}.len - 1, .is_lit = ${object_name}.is_lit}; ${out_name} = string__plus(string__plus(string__plus(${head_name}, ${object_name}.len == 2 ? _str_${plain_prefix} : _str_${comma_prefix}), v3_json_encode_string(_str_${label_id})), _str_${close}); } ${out_name}; })'
 }
 
-fn (mut g FlatGen) json_encode_sum_variant_c_expr(typ types.Type, expr string) ?string {
+fn (mut g FlatGen) json_encode_sum_variant_c_expr(typ types.Type, expr string, seen []string) ?string {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if clean is types.OptionType {
-		encoded := g.json_encode_sum_variant_c_expr(clean.base_type, '(${expr}).value') or {
+		encoded := g.json_encode_sum_variant_c_expr(clean.base_type, '(${expr}).value', seen) or {
 			return none
 		}
 		return '((${expr}).ok ? ${encoded} : v3_c_lit("null", 4))'
@@ -8778,24 +8904,24 @@ fn (mut g FlatGen) json_encode_sum_variant_c_expr(typ types.Type, expr string) ?
 			clean.base_type
 		}
 		if base_clean is types.Struct {
-			encoded := g.json_encode_value_c_expr(clean, expr) or { return none }
+			encoded := g.json_encode_value_c_expr_inner(clean, expr, seen) or { return none }
 			return g.json_encode_add_sum_discriminator_c_expr(encoded,
 				base_clean.name.all_after_last('.'))
 		}
 		if base_clean is types.Array || base_clean is types.ArrayFixed {
 			pointer_ct := g.value_c_type(clean)
 			pointer_name := g.tmp_name()
-			encoded := g.json_encode_sum_variant_c_expr(clean.base_type, '(*${pointer_name})') or {
+			encoded := g.json_encode_sum_variant_c_expr(clean.base_type, '(*${pointer_name})', seen) or {
 				return none
 			}
 			return '({ ${pointer_ct} ${pointer_name} = (${pointer_ct})(${expr}); ${pointer_name} == NULL ? v3_c_lit("null", 4) : ${encoded}; })'
 		}
-		return g.json_encode_value_c_expr(clean, expr)
+		return g.json_encode_value_c_expr_inner(clean, expr, seen)
 	}
 	if clean is types.ArrayFixed {
 		out_name := g.tmp_name()
 		idx_name := g.tmp_name()
-		encoded := g.json_encode_sum_variant_c_expr(clean.elem_type, '(${expr})[${idx_name}]') or {
+		encoded := g.json_encode_sum_variant_c_expr(clean.elem_type, '(${expr})[${idx_name}]', seen) or {
 			return none
 		}
 		return '({ string ${out_name} = v3_c_lit("[", 1); for (int ${idx_name} = 0; ${idx_name} < ${g.fixed_array_len_value(clean)}; ++${idx_name}) { if (${idx_name} > 0) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); ${out_name} = string__plus(${out_name}, ${encoded}); } string__plus(${out_name}, v3_c_lit("]", 1)); })'
@@ -8805,12 +8931,12 @@ fn (mut g FlatGen) json_encode_sum_variant_c_expr(typ types.Type, expr string) ?
 		out_name := g.tmp_name()
 		idx_name := g.tmp_name()
 		elem_name := g.tmp_name()
-		encoded := g.json_encode_sum_variant_c_expr(clean.elem_type, '(*${elem_name})') or {
+		encoded := g.json_encode_sum_variant_c_expr(clean.elem_type, '(*${elem_name})', seen) or {
 			return none
 		}
 		return '({ string ${out_name} = v3_c_lit("[", 1); for (int ${idx_name} = 0; ${idx_name} < (${expr}).len; ++${idx_name}) { if (${idx_name} > 0) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); ${elem_ct}* ${elem_name} = (${elem_ct}*)array_get(${expr}, ${idx_name}); ${out_name} = string__plus(${out_name}, ${encoded}); } string__plus(${out_name}, v3_c_lit("]", 1)); })'
 	}
-	encoded := g.json_encode_value_c_expr(clean, expr) or { return none }
+	encoded := g.json_encode_value_c_expr_inner(clean, expr, seen) or { return none }
 	if clean is types.Struct {
 		return g.json_encode_add_sum_discriminator_c_expr(encoded, clean.name.all_after_last('.'))
 	}
@@ -8818,6 +8944,10 @@ fn (mut g FlatGen) json_encode_sum_variant_c_expr(typ types.Type, expr string) ?
 }
 
 fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string {
+	return g.json_encode_value_c_expr_inner(typ, expr, []string{})
+}
+
+fn (mut g FlatGen) json_encode_value_c_expr_inner(typ types.Type, expr string, seen []string) ?string {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if json_is_time_type(clean) {
 		return 'i64__str(time__Time__unix(${expr}))'
@@ -8863,13 +8993,15 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		return 'v3_json_encode_string(${expr})'
 	}
 	if clean is types.OptionType {
-		encoded := g.json_encode_value_c_expr(clean.base_type, '(${expr}).value') or { return none }
+		encoded := g.json_encode_value_c_expr_inner(clean.base_type, '(${expr}).value', seen) or {
+			return none
+		}
 		return '((${expr}).ok ? ${encoded} : v3_c_lit("null", 4))'
 	}
 	if clean is types.ArrayFixed {
 		out_name := g.tmp_name()
 		idx_name := g.tmp_name()
-		encoded := g.json_encode_value_c_expr(clean.elem_type, '(${expr})[${idx_name}]') or {
+		encoded := g.json_encode_value_c_expr_inner(clean.elem_type, '(${expr})[${idx_name}]', seen) or {
 			return none
 		}
 		return '({ string ${out_name} = v3_c_lit("[", 1); for (int ${idx_name} = 0; ${idx_name} < ${g.fixed_array_len_value(clean)}; ++${idx_name}) { if (${idx_name} > 0) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); ${out_name} = string__plus(${out_name}, ${encoded}); } string__plus(${out_name}, v3_c_lit("]", 1)); })'
@@ -8879,7 +9011,9 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		out_name := g.tmp_name()
 		idx_name := g.tmp_name()
 		elem_name := g.tmp_name()
-		encoded := g.json_encode_value_c_expr(clean.elem_type, '(*${elem_name})') or { return none }
+		encoded := g.json_encode_value_c_expr_inner(clean.elem_type, '(*${elem_name})', seen) or {
+			return none
+		}
 		return '({ string ${out_name} = v3_c_lit("[", 1); for (int ${idx_name} = 0; ${idx_name} < (${expr}).len; ++${idx_name}) { if (${idx_name} > 0) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); ${elem_ct}* ${elem_name} = (${elem_ct}*)array_get(${expr}, ${idx_name}); ${out_name} = string__plus(${out_name}, ${encoded}); } string__plus(${out_name}, v3_c_lit("]", 1)); })'
 	}
 	if clean is types.Map {
@@ -8897,7 +9031,7 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		idx_name := g.tmp_name()
 		key_name := g.tmp_name()
 		value_name := g.tmp_name()
-		encoded := g.json_encode_value_c_expr(clean.value_type, '(*${value_name})') or {
+		encoded := g.json_encode_value_c_expr_inner(clean.value_type, '(*${value_name})', seen) or {
 			return none
 		}
 		return '({ map ${map_name} = ${expr}; string ${out_name} = v3_c_lit("{", 1); bool ${out_name}_first = true; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.key_values.len; ++${idx_name}) { if (${map_name}.key_values.deletes != 0 && ${map_name}.key_values.all_deleted != 0 && ${map_name}.key_values.all_deleted[${idx_name}] != 0) continue; if (!${out_name}_first) ${out_name} = string__plus(${out_name}, v3_c_lit(",", 1)); string* ${key_name} = (string*)(${map_name}.key_values.keys + ${idx_name} * ${map_name}.key_values.key_bytes); ${value_ct}* ${value_name} = (${value_ct}*)(${map_name}.key_values.values + ${idx_name} * ${map_name}.key_values.value_bytes); ${out_name} = string__plus(string__plus(string__plus(${out_name}, v3_json_encode_string(*${key_name})), v3_c_lit(":", 1)), ${encoded}); ${out_name}_first = false; } string__plus(${out_name}, v3_c_lit("}", 1)); })'
@@ -8924,16 +9058,22 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 	}
 	if clean is types.SumType {
 		sum_name := g.resolve_sum_name(clean.name)
+		sum_key := 'sum:${sum_name}'
+		if sum_key in seen {
+			sum_ct := g.value_c_type(clean)
+			return '${json_encode_sum_helper_name(sum_ct)}((${sum_ct})(${expr}))'
+		}
 		variants := g.tc.sum_types[sum_name] or { return none }
+		mut next_seen := seen.clone()
+		next_seen << sum_key
 		null_sid := g.intern_string('null')
 		mut result := '_str_${null_sid}'
 		for i := variants.len - 1; i >= 0; i-- {
 			variant := variants[i]
 			variant_type := g.json_sum_variant_type(variant)
 			field := g.sum_field_name(variant)
-			encoded := g.json_encode_sum_variant_c_expr(variant_type, '(*(${expr}).${field})') or {
-				return none
-			}
+			encoded := g.json_encode_sum_variant_c_expr(variant_type, '(*(${expr}).${field})',
+				next_seen) or { return none }
 			index := g.sum_type_index(sum_name, variant)
 			result = '((${expr}).typ == ${index} ? ${encoded} : ${result})'
 		}
@@ -8975,7 +9115,9 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 				prefix := g.intern_string(json_struct_field_label_prefix(label, ''))
 				prefix_with_separator := g.intern_string(json_struct_field_label_prefix(label, ','))
 				field_expr := field.expr
-				encoded := g.json_encode_value_c_expr(field.typ, field_expr) or { return none }
+				encoded := g.json_encode_value_c_expr_inner(field.typ, field_expr, seen) or {
+					return none
+				}
 				append := '${res} = string__plus(string__plus(${res}, (${count} == 0 ? _str_${prefix} : _str_${prefix_with_separator})), ${encoded}); ${count}++;'
 				field_clean := if field.typ is types.Alias {
 					field.typ.base_type
@@ -9007,7 +9149,9 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 			separator := if emitted_fields == 0 { '' } else { ',' }
 			prefix := g.intern_string(json_struct_field_label_prefix(label, separator))
 			field_expr := field.expr
-			encoded := g.json_encode_value_c_expr(field.typ, field_expr) or { return none }
+			encoded := g.json_encode_value_c_expr_inner(field.typ, field_expr, seen) or {
+				return none
+			}
 			result = 'string__plus(string__plus(${result}, _str_${prefix}), ${encoded})'
 			emitted_fields++
 		}
@@ -9029,9 +9173,8 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		comma := g.intern_string(',')
 		colon := g.intern_string(':')
 		empty := g.intern_string('')
-		value_expr := g.json_encode_value_c_expr(clean.value_type, '(*(${value_ct}*)${value_name})') or {
-			return none
-		}
+		value_expr := g.json_encode_value_c_expr_inner(clean.value_type,
+			'(*(${value_ct}*)${value_name})', seen) or { return none }
 		return '({ map ${map_name} = ${expr}; string ${out_name} = _str_${open}; int ${count_name} = 0; for (int ${idx_name} = 0; ${idx_name} < ${map_name}.key_values.len; ++${idx_name}) { if (${map_name}.key_values.deletes != 0 && ${map_name}.key_values.all_deleted != 0 && ${map_name}.key_values.all_deleted[${idx_name}] != 0) continue; string ${key_name} = *(string*)(${map_name}.key_values.keys + ${idx_name} * ${map_name}.key_values.key_bytes); void* ${value_name} = (void*)(${map_name}.key_values.values + ${idx_name} * ${map_name}.key_values.value_bytes); ${out_name} = string__plus(${out_name}, ${count_name} == 0 ? _str_${empty} : _str_${comma}); ${out_name} = string__plus(${out_name}, v3_json_encode_string(${key_name})); ${out_name} = string__plus(${out_name}, _str_${colon}); ${out_name} = string__plus(${out_name}, ${value_expr}); ${count_name}++; } string__plus(${out_name}, _str_${close}); })'
 	}
 	return none
@@ -9748,7 +9891,10 @@ fn (g &FlatGen) json_decode_value_supported_inner(typ types.Type, depth int, see
 		sum_name := g.resolve_sum_name(clean.name)
 		key := 'sum:${sum_name}'
 		if key in seen {
-			return true
+			// Recursive sums need runtime decode helpers. Until those are emitted,
+			// decline the fast path instead of recursively expanding validation and
+			// assignment expressions until the compiler exhausts its stack.
+			return false
 		}
 		variants := g.tc.sum_types[sum_name] or { return false }
 		if variants.len == 0 {

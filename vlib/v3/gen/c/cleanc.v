@@ -3202,6 +3202,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('#define V3CACHE_PROGRAM_UNIT 1')
 		json_decode_pointer_helpers := g.prepare_json_decode_pointer_helpers()
 		json_encode_pointer_helpers := g.prepare_json_encode_pointer_helpers()
+		json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 		g.string_literals()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
@@ -3218,11 +3219,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		}
 		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, false)
+		g.gen_json_encode_sum_helper_decls(json_encode_sum_helpers, false)
 		g.release_scoped_fn_items()
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
 		g.writeln('/* V3CACHE_MODULE main */')
 		g.gen_json_decode_pointer_helper_defs(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_defs(json_encode_pointer_helpers, false)
+		g.gen_json_encode_sum_helper_defs(json_encode_sum_helpers, false)
 		for segment in g.fn_segs {
 			g.sb.write_string(segment)
 			unsafe { segment.free() }
@@ -3302,15 +3305,19 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.register_interface_strings()
 	json_decode_pointer_helpers := g.prepare_json_decode_pointer_helpers()
 	json_encode_pointer_helpers := g.prepare_json_encode_pointer_helpers()
+	json_encode_sum_helpers := g.prepare_json_encode_sum_helpers()
 	g.string_literals()
 	if g.cache_split {
 		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, false)
+		g.gen_json_encode_sum_helper_decls(json_encode_sum_helpers, false)
 	} else {
 		g.gen_json_decode_pointer_helper_decls(json_decode_pointer_helpers, true)
-		g.gen_json_decode_pointer_helper_defs(json_decode_pointer_helpers, true)
 		g.gen_json_encode_pointer_helper_decls(json_encode_pointer_helpers, true)
+		g.gen_json_encode_sum_helper_decls(json_encode_sum_helpers, true)
+		g.gen_json_decode_pointer_helper_defs(json_decode_pointer_helpers, true)
 		g.gen_json_encode_pointer_helper_defs(json_encode_pointer_helpers, true)
+		g.gen_json_encode_sum_helper_defs(json_encode_sum_helpers, true)
 	}
 	if !g.cache_split {
 		if g.parallel_interface_stubs.len > 0 {
@@ -3342,6 +3349,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('/* V3CACHE_MODULE __v3_program_support */')
 		g.gen_json_decode_pointer_helper_defs(json_decode_pointer_helpers, false)
 		g.gen_json_encode_pointer_helper_defs(json_encode_pointer_helpers, false)
+		g.gen_json_encode_sum_helper_defs(json_encode_sum_helpers, false)
 	}
 	if g.parallel_init_defs.len > 0 {
 		g.sb.write_string(g.parallel_init_defs)
