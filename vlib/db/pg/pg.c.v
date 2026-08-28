@@ -386,14 +386,7 @@ fn connect_slot(conninfo string) !IdleSlot {
 	}
 	status := unsafe { ConnStatusType(C.PQstatus(conn)) }
 	if status != .ok {
-		// `PQerrorMessage` returns a pointer to libpq's internal buffer, and
-		// `vstring()` only does a zero-copy wrap (no ownership transfer). The
-		// buffer is freed by the `PQfinish` call below, so we must take a
-		// deep copy now, before the handle is destroyed, otherwise the error
-		// message is a dangling pointer (garbled / null bytes in the output).
-		// Note: a plain `'${msg}'` interpolation is optimized by the compiler
-		// to a no-op assignment, so an explicit `.clone()` is required.
-		c_error_msg := unsafe { C.PQerrorMessage(conn).vstring().clone() }
+		c_error_msg := unsafe { cstring_to_vstring(C.PQerrorMessage(conn)) }
 		C.PQfinish(conn)
 		return error('Connection to a PG database failed: ${c_error_msg}')
 	}

@@ -1,3 +1,4 @@
+// vtest build: !windows && !musl?
 module main
 
 import db.pg
