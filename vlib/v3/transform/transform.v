@@ -377,8 +377,8 @@ mut:
 	stringify_depth_cap                int = max_stringify_nesting_depth
 	struct_autostr_recurse_types       map[string]bool
 	str_expansion_memo                 map[string]int
-	deferred_str_items                 []FnWorkItem
-	deferred_str_count                 int
+	deferred_expansion_items           []FnWorkItem
+	deferred_expansion_count           int
 	node_module_map_cache              []string
 	node_file_map_cache                []string
 	node_module_map_nodes              int = -1
@@ -3204,7 +3204,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 				pure_items := t.transform_serial_then_collect_pure(literal_decls)
 				t.prepare_parallel_call_param_types()
 				t.transform_scoped_helper_batches(pure_items, scoped_transform_batches)
-				t.transform_deferred_str_items()
+				t.transform_deferred_expansion_items()
 				if !has_entry_main {
 					t.transform_top_level_user_stmts()
 				}
@@ -3237,11 +3237,10 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	was_parallel := t.run_parallel_transform(pure_items, base_nodes, base_children)
 	t.timing_profile('  [ttime] parallel run       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ttsw.restart()
-	// Aggregate-interpolating functions were held back from the parallel regions
-	// (their inline autostr expansion overflows cost-proportional worker slots);
-	// lower them now against the freely growable master arena.
-	t.transform_deferred_str_items()
-	t.timing_profile('  [ttime] deferred str       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${t.deferred_str_count})')
+	// Functions with oversized auto-str or const-map expansion were held back
+	// from cost-proportional worker slots; lower them against the growable arena.
+	t.transform_deferred_expansion_items()
+	t.timing_profile('  [ttime] deferred expansion ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${t.deferred_expansion_count})')
 	ttsw.restart()
 	if !has_entry_main {
 		t.transform_top_level_user_stmts()
@@ -3362,30 +3361,29 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				t.item_range_lo = old_range_lo
 				t.item_range_hi = old_range_hi
 			} else {
-				// Interpolating an auto-str struct/sum expands inline to node counts
-				// wildly out of proportion to parse cost. Estimate that expansion:
-				// a large one would overflow a cost-proportional worker append region
-				// in the shared parallel transform, so defer such functions to a
-				// serial pass over the freely growable master arena; a small one just
-				// folds into this item's cost so its region is sized to fit. The
-				// estimate is 0 for every type v3 self-host interpolates, so its work
-				// items and node numbering are untouched.
+				// Some lowering expands far beyond the parsed subtree cost. Aggregate
+				// interpolation emits inline autostr trees, while a const map reference
+				// can point outside this function's range at a map with thousands of
+				// entries. Fold bounded expansion into the worker cost, but defer an
+				// unbounded item to the growable master arena: the shared workers use
+				// fixed .nogrow regions, and even the complete reserved pool can be
+				// smaller than one expanded constant map.
+				if sc_profile {
+					scsw.restart()
+				}
 				str_est := if t.building_v && t.parallel_enabled {
 					// The compiler's interpolated types are all bounded primitives and
 					// metadata names; none can trigger aggregate auto-str expansion.
 					0
 				} else {
-					if sc_profile {
-						scsw.restart()
-					}
-					estimate := t.fn_span_interp_estimate(range_lo, i)
-					if sc_profile {
-						est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
-					}
-					estimate
+					t.fn_span_interp_estimate(range_lo, i)
 				}
-				if str_est > deferred_str_expansion_threshold {
-					t.deferred_str_items << FnWorkItem{
+				map_est := t.fn_span_map_expansion_estimate(range_lo, i)
+				if sc_profile {
+					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+				}
+				if str_est > deferred_str_expansion_threshold || map_est > deferred_map_expansion_threshold {
+					t.deferred_expansion_items << FnWorkItem{
 						fn_idx:             i
 						range_lo:           range_lo
 						file:               t.cur_file
@@ -3396,7 +3394,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				} else {
-					adj_cost := cost + str_est
+					adj_cost := cost + str_est + map_est
 					pure << FnWorkItem{
 						fn_idx:             i
 						range_lo:           range_lo
@@ -3421,7 +3419,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 	}
 	t.fn_scan_costs = []int{}
 	t.fn_escape_scan_flags = []u8{}
-	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, interp est ${est_ms:.2f} ms')
+	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, expansion est ${est_ms:.2f} ms')
 	return pure
 }
 
@@ -3528,19 +3526,16 @@ fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
 	t.item_escape_scan_needed = false
 }
 
-// transform_deferred_str_items lowers the functions held back from the parallel
-// regions because they interpolate struct/sum values (see
-// transform_serial_then_collect_pure). They run serially against the master
-// arena, which grows freely, so their large inline autostr expansion cannot
-// overflow a bounded worker append region. The list is empty unless the program
-// actually interpolates aggregates, so common builds (v3 self-host) skip it.
-fn (mut t Transformer) transform_deferred_str_items() {
-	t.deferred_str_count = t.deferred_str_items.len
-	if t.deferred_str_items.len == 0 {
+// transform_deferred_expansion_items lowers functions whose auto-str or const-map
+// expansion cannot fit safely in a bounded parallel worker region. They run
+// serially against the growable master arena after the workers finish.
+fn (mut t Transformer) transform_deferred_expansion_items() {
+	t.deferred_expansion_count = t.deferred_expansion_items.len
+	if t.deferred_expansion_items.len == 0 {
 		return
 	}
-	items := t.deferred_str_items
-	t.deferred_str_items = []FnWorkItem{}
+	items := t.deferred_expansion_items
+	t.deferred_expansion_items = []FnWorkItem{}
 	t.transform_pure_items_serial(items)
 }
 

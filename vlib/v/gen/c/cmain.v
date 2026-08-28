@@ -400,11 +400,14 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_${tnumber}, tcmod_${tnumber}, tcfile_${tnumber}, ${lnum});')
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
 		g.writeln('\tbool failed_${tnumber} = false;')
+		if g.pref.show_asserts {
+			// `longjmp` makes non-volatile automatic locals modified after `setjmp`
+			// indeterminate. Initialize the benchmark step first so `bt` remains valid
+			// when testing_step_end reads it after a failed assertion.
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
+		}
 		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
 		//
-		if g.pref.show_asserts {
-			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
-		}
 		if is_test_fn && before_each_fn != '' {
 			g.writeln('\t\t${before_each_fn}();')
 		}
