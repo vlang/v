@@ -59,6 +59,50 @@ mut:
 	next &Circular
 }
 
+struct DeepCircular {
+	value int
+mut:
+	next &DeepCircular = unsafe { nil }
+}
+
+fn test_autostr_address_guard_bounds_cycles_beyond_stack_capacity() {
+	mut root := &DeepCircular{}
+	mut cursor := root
+	for i in 1 .. 80 {
+		next := &DeepCircular{
+			value: i
+		}
+		cursor.next = next
+		cursor = next
+	}
+	cursor.next = cursor
+	s := '${root}'
+	assert s.contains('<circular>')
+	assert s.len < 20_000
+}
+
+fn render_circular_concurrently() bool {
+	for _ in 0 .. 200 {
+		mut elem := &Circular{unsafe { nil }}
+		elem.next = elem
+		s := '${elem}'.replace('\n', '|')
+		if s != '&Circular{|    next: &<circular>|}' {
+			return false
+		}
+	}
+	return true
+}
+
+fn test_autostr_address_guard_state_is_thread_local() {
+	mut threads := []thread bool{cap: 8}
+	for _ in 0 .. 8 {
+		threads << spawn render_circular_concurrently()
+	}
+	for ok in threads.wait() {
+		assert ok
+	}
+}
+
 struct AcyclicNode {
 	value int
 	next  &AcyclicNode = unsafe { nil }

@@ -21490,10 +21490,12 @@ fn (mut g FlatGen) global_decls() {
 		}
 		decl_typ := g.global_storage_type(name, typ)
 		is_fn_capture := name.contains('__anon_fn_')
+		is_thread_local := is_fn_capture || name == 'g_autostr_addr_state'
+			|| name.ends_with('.g_autostr_addr_state')
 		if decl_typ is types.ArrayFixed {
 			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
-			if is_fn_capture {
+			if is_thread_local {
 				g.writeln('#if defined(__TINYC__)')
 				g.writeln('static pthread_key_t ${g.cname(name)}_key;')
 				g.writeln('static void ${g.cname(name)}_key_init(void) __attribute__((constructor));')
@@ -21531,12 +21533,11 @@ fn (mut g FlatGen) global_decls() {
 			continue
 		}
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
-		// Capturing fn literals are immediately consumed callbacks in the V3
-		// frontend. Their lifted capture slots must nevertheless be per-thread:
-		// a process-global slot lets concurrent invocations overwrite one
-		// another before the callback runs. Native C compilers use TLS directly;
-		// TinyCC uses pthread keys because it does not implement `_Thread_local`.
-		if is_fn_capture {
+		// Lifted capture slots and the recursive autostr address guard must be
+		// per-thread. A process-global slot lets concurrent invocations overwrite
+		// one another. Native C compilers use TLS directly; TinyCC uses pthread
+		// keys because it does not implement `_Thread_local`.
+		if is_thread_local {
 			cname := g.cname(name)
 			if shared_ct := g.fn_capture_shared_global_c_type(name) {
 				g.writeln('#if defined(__TINYC__)')
