@@ -9222,7 +9222,7 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	err_name := g.tmp_name()
 	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} == NULL) { string ${out_name}_msg = _str_${failed_sid}; if (${json_name}.len > 0) ${out_name}_msg = string__plus(string__plus(${out_name}_msg, _str_${context_sid}), ${json_name}); ')
 	g.gen_json_decode_error_assignment(out_name, '${out_name}_msg')
-	g.write(' } else if (!cJSON_IsObject(${root_name}) && !cJSON_IsNull(${root_name}) && !cJSON_IsArray(${root_name})) { string ${out_name}_msg = string__plus(_str_${not_object_sid}, json__json_print(${root_name})); ')
+	g.write(' } else if (!cJSON_IsObject(${root_name})) { string ${out_name}_msg = string__plus(_str_${not_object_sid}, json__json_print(${root_name})); ')
 	g.gen_json_decode_error_assignment(out_name, '${out_name}_msg')
 	g.write(' } else { bool ${valid_name} = true; string ${err_name} = _str_${empty_sid}; ')
 	for field in fields {

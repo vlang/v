@@ -54,3 +54,10 @@ fn test_global_runtime_initializers_preserve_channels_arrays_and_fn_values() {
 		"__global (\n\tch chan int\n\tvalues = []int{len: 3, init: 7}\n\tcallback = fn (n int) int {\n\t\treturn n + 1\n\t}\n)\n\nfn send_value() {\n\tch <- 9\n}\n\nfn main() {\n\tt := spawn send_value()\n\tgot := <-ch\n\tt.wait()\n\tprintln(int_str(got))\n\tprintln(int_str(values.len) + ':' + int_str(values[2]))\n\tprintln(int_str(callback(4)))\n}\n")
 	assert out == '9\n3:7\n5'
 }
+
+fn test_explicit_shared_and_fixed_array_global_initializers() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'shared_and_fixed_array_global_initializers',
+		"struct Counter {\n\tvalue int\n}\n\n__global counter shared Counter = Counter{value: 7}\n__global values = [][2]int{len: 1, init: [1, 2]!}\n\nfn main() {\n\tvalue := rlock counter {\n\t\tcounter.value\n\t}\n\tprintln(int_str(value))\n\tprintln(int_str(values[0][0]) + ':' + int_str(values[0][1]))\n}\n")
+	assert out == '7\n1:2'
+}
