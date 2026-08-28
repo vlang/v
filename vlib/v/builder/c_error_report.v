@@ -313,7 +313,7 @@ const v3_report_env_prefix = 'V_MACOS_V3_REPORT_'
 // only and no directory path is accepted. Tagged native paths can only be hashed after
 // the receiver constrains them to roots selected by its own successful build.
 const v3_report_env_suffixes = ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE',
-	'VSOURCE_TRUNCATED', 'INPUT_DIGESTS', 'INPUT_DIGESTS_COMPLETE']
+	'VSOURCE_TRUNCATED', 'VSOURCE_FOCUS', 'INPUT_DIGESTS', 'INPUT_DIGESTS_COMPLETE']
 
 // encode_v3_report_input_digests serializes arbitrary input paths without allowing a
 // newline or separator in a filename to corrupt the manifest. Untagged paths are matched
@@ -474,6 +474,7 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 		'VFILE':                  report.v_file
 		'VSOURCE':                ''
 		'VSOURCE_TRUNCATED':      '0'
+		'VSOURCE_FOCUS':          '0'
 		'INPUT_DIGESTS':          encoded_digests
 		'INPUT_DIGESTS_COMPLETE': if input_digests_complete { '1' } else { '0' }
 	}
@@ -499,6 +500,9 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	// rather than from (user-controlled) source content, so the retry's notice is accurate even
 	// when a complete file legitimately contains the truncation marker text.
 	payload['VSOURCE_TRUNCATED'] = if plan.v_source_truncated { '1' } else { '0' }
+	// Carry the failing line's position within the forwarded excerpt so a later re-bound (the wasm
+	// re-export) centers on it instead of dropping it with a head+tail window.
+	payload['VSOURCE_FOCUS'] = plan.v_source_focus.str()
 	set_v3_report_env_payload(payload)
 }
 
@@ -506,6 +510,9 @@ struct EnvContentPlan {
 	c_output           string
 	v_source           string
 	v_source_truncated bool
+	// v_source_focus is the failing line's 1-based position within the produced v_source, carried
+	// through the handoff so a further re-bound (e.g. the wasm re-export) keeps the failing line.
+	v_source_focus int
 }
 
 // plan_env_report_content splits `content_budget` (the aggregate environment capacity left after
@@ -532,6 +539,7 @@ fn plan_env_report_content(report ExternalCErrorBugReport, content_budget int, v
 	v_source_marker_min := c_error_v_source_truncation_notice.len + 2
 	mut v_source_truncated := report.v_source_truncated
 	mut source_omitted := false
+	mut v_source_focus := 0
 	v_source := if v_source_budget <= 0 {
 		source_omitted = report.v_source != ''
 		''
@@ -540,8 +548,13 @@ fn plan_env_report_content(report ExternalCErrorBugReport, content_budget int, v
 		''
 	} else if report.v_source.len > v_source_budget {
 		v_source_truncated = true
-		bounded_v_source(report.v_source, v_source_budget, report.v_source_focus)
+		bounded, focus := bounded_v_source_with_focus(report.v_source, v_source_budget,
+			report.v_source_focus)
+		v_source_focus = focus
+		bounded
 	} else {
+		// Fits whole: the complete file is forwarded, with the failing line unchanged.
+		v_source_focus = report.v_source_focus
 		report.v_source
 	}
 	if source_omitted && c_output_budget < full_c_output_budget {
@@ -552,6 +565,7 @@ fn plan_env_report_content(report ExternalCErrorBugReport, content_budget int, v
 		c_output:           c_output
 		v_source:           v_source
 		v_source_truncated: v_source_truncated
+		v_source_focus:     v_source_focus
 	}
 }
 
@@ -662,6 +676,7 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 		v_file:                 os.getenv('${v3_report_env_prefix}VFILE')
 		v_source:               os.getenv('${v3_report_env_prefix}VSOURCE')
 		v_source_truncated:     os.getenv('${v3_report_env_prefix}VSOURCE_TRUNCATED') == '1'
+		v_source_focus:         os.getenv('${v3_report_env_prefix}VSOURCE_FOCUS').int()
 		source_inline:          true
 		input_digests:          input_digests
 		input_digests_complete: os.getenv('${v3_report_env_prefix}INPUT_DIGESTS_COMPLETE') == '1'
@@ -1363,16 +1378,25 @@ fn v_source_for_report(lines []string, center int, radius int) VSourceChunk {
 // failing line is never dropped even inside a declaration larger than `max_bytes`. Otherwise it
 // keeps the start (declarations/imports) and the end (usually where the failing code lives).
 fn bounded_v_source(source string, max_bytes int, focus_line int) string {
+	result, _ := bounded_v_source_with_focus(source, max_bytes, focus_line)
+	return result
+}
+
+// bounded_v_source_with_focus bounds `source` to `max_bytes` and also returns the 1-based line of
+// `focus_line` within the produced excerpt (0 when there is no meaningful focus). A later handoff
+// that must re-bound the excerpt (e.g. the wasm re-export with a smaller budget) uses that focus
+// to keep centering on the failing line instead of dropping it with a head+tail window.
+fn bounded_v_source_with_focus(source string, max_bytes int, focus_line int) (string, int) {
 	if max_bytes <= 0 {
-		return ''
+		return '', 0
 	}
 	if source.len <= max_bytes {
-		return source
+		return source, focus_line
 	}
 	marker := '\n${c_error_v_source_truncation_notice}\n'
 	if max_bytes <= marker.len {
 		// no room for both content and the marker: fall back to a hard prefix cut
-		return source[..max_bytes]
+		return source[..max_bytes], 0
 	}
 	if focus_line <= 0 {
 		kept_bytes := max_bytes - marker.len
@@ -1387,7 +1411,7 @@ fn bounded_v_source(source string, max_bytes int, focus_line int) string {
 		tail_region_start := source.len - tail_budget
 		next_nl := source[tail_region_start..].index_u8(`\n`)
 		tail_start := if next_nl >= 0 { tail_region_start + next_nl + 1 } else { source.len }
-		return source[..head_end] + marker + source[tail_start..]
+		return source[..head_end] + marker + source[tail_start..], 0
 	}
 	// keep a window of whole lines centered on the failing line, growing outward until the budget
 	// (minus room for a marker on each dropped side) is exhausted.
@@ -1413,6 +1437,10 @@ fn bounded_v_source(source string, max_bytes int, focus_line int) string {
 			break
 		}
 	}
+	// The failing line's 1-based position in the excerpt: a leading truncation-marker line (present
+	// when the window does not reach the file start) shifts it down by one.
+	leading_marker_lines := if lo > 0 { 1 } else { 0 }
+	adjusted_focus := leading_marker_lines + (fi - lo) + 1
 	mut parts := []string{}
 	if lo > 0 {
 		parts << c_error_v_source_truncation_notice
@@ -1423,7 +1451,7 @@ fn bounded_v_source(source string, max_bytes int, focus_line int) string {
 	}
 	result := parts.join('\n')
 	if result.len <= max_bytes {
-		return result
+		return result, adjusted_focus
 	}
 	// A single line longer than the whole budget still overflows the window. Hard-clamp it,
 	// but keep the truncation marker so a truncated upload is never a silently complete-looking
@@ -1431,7 +1459,7 @@ fn bounded_v_source(source string, max_bytes int, focus_line int) string {
 	// bytes self-describing too).
 	marker_tail := '\n${c_error_v_source_truncation_notice}'
 	clamp := if max_bytes > marker_tail.len { max_bytes - marker_tail.len } else { 0 }
-	return result[..clamp] + marker_tail
+	return result[..clamp] + marker_tail, adjusted_focus
 }
 
 // new_c_error_bug_report_with_vlines regenerates the program's C source with `#line`

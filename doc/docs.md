@@ -115,7 +115,11 @@ program that the established compiler then builds) normally submits the V
 version, target OS/arch, and build options to `https://bugs.vlang.io`. The
 **full failing source file** is included so the report is reproducible; it is
 bounded to a window around the failure only when the file is larger than the
-upload byte budget.
+upload byte budget. One exception: when the failure is inside an ordinary
+single-module `main` program, a smaller **self-contained reproducer** — the
+failing declaration plus the closure of declarations it references, which may be
+assembled from several files in that module — is preferred over the whole file
+and is reported as a bounded excerpt rather than the complete source.
 A directory build (such as `v .`) submits metadata only for an **internal V3
 compiler error**: that path uploads a snapshot of the single input file, which a
 directory build does not have. A **generated-C compilation error** is instead

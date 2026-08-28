@@ -380,6 +380,77 @@ fn test_plan_env_report_content_bounds_source_and_diagnostic_when_both_fit() {
 	assert bounded.v_source_truncated
 }
 
+fn test_bounded_v_source_with_focus_reports_failing_line_in_excerpt() {
+	// A large file bounded around a middle failing line keeps that line and reports its new 1-based
+	// position within the excerpt, so a later re-bound can stay centered on it (PR #28234 review).
+	mut lines := []string{}
+	for i in 0 .. 4000 {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	failing := 2000 // 1-based
+	lines[failing - 1] = 'fn the_failing_line() {}'
+	source := lines.join('\n')
+	excerpt, focus := bounded_v_source_with_focus(source, 4096, failing)
+	assert excerpt.len < source.len
+	assert excerpt.contains('fn the_failing_line() {}')
+	assert focus > 0
+	excerpt_lines := excerpt.split_into_lines()
+	assert excerpt_lines[focus - 1] == 'fn the_failing_line() {}'
+	// A whole file that fits keeps the focus unchanged; a head+tail window reports no focus.
+	whole, whole_focus := bounded_v_source_with_focus('module main\nfn main() {}', 4096, 2)
+	assert whole == 'module main\nfn main() {}'
+	assert whole_focus == 2
+	_, headtail_focus := bounded_v_source_with_focus(source, 4096, 0)
+	assert headtail_focus == 0
+}
+
+fn test_plan_env_report_content_reports_excerpt_focus_for_rebound() {
+	// When source is bounded, the plan reports the failing line's position within the excerpt so
+	// the wasm re-export re-bounds around it instead of dropping it (PR #28234 review).
+	value_limit := v3_report_max_env_payload_bytes
+	mut lines := []string{}
+	for i in 0 .. 400 {
+		lines << 'fn f${i}() {}'
+	}
+	failing := 200
+	lines[failing - 1] = 'fn the_failing_line() {}'
+	source := lines.join('\n')
+	plan := plan_env_report_content(ExternalCErrorBugReport{
+		c_output:       'error: x'
+		v_source:       source
+		v_source_focus: failing
+	}, 512, value_limit)
+	assert plan.v_source_truncated
+	assert plan.v_source.contains('fn the_failing_line() {}')
+	assert plan.v_source_focus > 0
+	plan_lines := plan.v_source.split_into_lines()
+	assert plan_lines[plan.v_source_focus - 1] == 'fn the_failing_line() {}'
+}
+
+fn test_export_external_v3_report_round_trips_v_source_focus() {
+	// The failing-line focus is carried through the environment handoff (PR #28234 review).
+	clear_v3_report_env()
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:           '' // generated-C compilation error
+		ccompiler:      'clang'
+		c_output:       'error: use of undeclared identifier missing'
+		v_file:         'main.v'
+		v_source:       'module main\nfn main() {}'
+		v_source_focus: 2
+		source_inline:  true
+		tag:            'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	if got.kind == external_v3_transport_limited_kind {
+		return
+	}
+	assert got.v_source == 'module main\nfn main() {}'
+	assert got.v_source_focus == 2
+}
+
 fn test_bounded_v_source_marks_single_oversized_line_hard_clamp() {
 	// The failing V line is the whole file and is longer than the byte budget. The safety
 	// hard-clamp used to drop a markerless prefix (PR #28234 review); it must now carry the

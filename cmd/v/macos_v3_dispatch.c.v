@@ -403,6 +403,7 @@ fn take_macos_v3_report_content() ?MacosV3CErrorReport {
 		v_file:                 report.v_file
 		v_source:               report.v_source
 		v_source_truncated:     report.v_source_truncated
+		v_source_focus:         report.v_source_focus
 		input_digests:          report.input_digests
 		input_digests_complete: report.input_digests_complete
 	}
