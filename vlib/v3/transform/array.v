@@ -2826,6 +2826,15 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 			}
 			return false
 		}
+		.selector {
+			return node.children_count > 0
+				&& t.array_map_selector_result_retains_element_address(t.a.child(&node, 0),
+					node.value, name)
+		}
+		.index {
+			return node.children_count > 0
+				&& t.array_map_expr_result_retains_element_address(t.a.child(&node, 0), name)
+		}
 		.call {
 			call_type := t.checker_expr_type_name(id) or { t.node_type(id) }
 			if !t.array_map_result_can_retain_element_address(call_type) {
@@ -2850,6 +2859,29 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 			return false
 		}
 	}
+}
+
+fn (mut t Transformer) array_map_selector_result_retains_element_address(base_id flat.NodeId, field_name string, elem_name string) bool {
+	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len {
+		return false
+	}
+	base := t.a.nodes[int(base_id)]
+	if base.kind in [.paren, .cast_expr, .as_expr, .expr_stmt] && base.children_count > 0 {
+		return t.array_map_selector_result_retains_element_address(t.a.child(&base, 0),
+			field_name, elem_name)
+	}
+	if base.kind in [.struct_init, .assoc] {
+		for i in 0 .. base.children_count {
+			field_id := t.a.child(&base, i)
+			field := t.a.nodes[int(field_id)]
+			if field.kind == .field_init && field.value == field_name && field.children_count > 0 {
+				return t.array_map_expr_result_retains_element_address(t.a.child(&field, 0),
+					elem_name)
+			}
+		}
+		return false
+	}
+	return t.array_map_expr_result_retains_element_address(base_id, elem_name)
 }
 
 fn (t &Transformer) array_map_result_can_retain_element_address(type_name string) bool {

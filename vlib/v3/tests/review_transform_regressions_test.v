@@ -5518,6 +5518,39 @@ fn main() {
 	assert out == 'four'
 }
 
+fn test_array_map_keeps_temporary_source_through_index_and_selector_results() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	indexed := make_items().map([&it][0])
+	selected := make_items().map(PointerBox{
+		value: &it
+	}.value)
+	println(indexed[0].text)
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_wrapped_pointer_results_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_wrapped_pointer_results', '-ownership', source)
+	assert out == 'four\nfour'
+}
+
 fn test_array_map_drops_source_for_unrelated_pointer_result() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
