@@ -14,6 +14,22 @@ const pending_loop_label_marker = '__v_pending_loop_label:'
 const skip_scope_drops_block_value = '__v3_skip_scope_drops'
 const prefix_scope_drops_block_value = '__v3_prefix_scope_drops'
 
+struct CInlineAsmIO {
+	constraint string
+	expr       string
+	alias      string
+}
+
+struct CInlineAsmBlock {
+	arch          string
+	is_volatile   bool
+	templates     []string
+	output        []CInlineAsmIO
+	input         []CInlineAsmIO
+	clobbered     []string
+	section_count int
+}
+
 fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_type types.Map, base_is_pointer bool) {
 	c_key := g.map_key_temp_c_type(map_type.key_type)
 	c_val := g.tc.c_type(map_type.value_type)
@@ -2940,9 +2956,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.pending_loop_label = node.value
 		}
 		.asm_stmt {
-			if node.value == 'memory' {
-				g.writeln('__asm__ __volatile__("" ::: "memory");')
-			}
+			g.gen_c_inline_asm_stmt(node)
 		}
 		.empty {}
 		else {
@@ -2957,6 +2971,542 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			eprintln('gen_node: unsupported node kind: ${node.kind}; fn=${g.cur_fn_name}; source=${source_name}:${node.pos.offset}; value=${node.value}; typ=${node.typ}; op=${node.op}; children=${node.children_count}')
 		}
 	}
+}
+
+fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
+	if node.value == 'memory' {
+		// Compatibility for flat trees produced before asm source preservation.
+		g.writeln('__asm__ __volatile__("" ::: "memory");')
+		return
+	}
+	block := parse_c_inline_asm_block(node.value) or { return }
+	if block.templates.len == 0 && block.output.len == 0 && block.input.len == 0
+		&& block.clobbered.len == 0 && !block.is_volatile {
+		return
+	}
+	mut aliases := map[string]bool{}
+	for io in block.output {
+		if io.alias.len > 0 {
+			aliases[io.alias] = true
+		}
+	}
+	for io in block.input {
+		if io.alias.len > 0 {
+			aliases[io.alias] = true
+		}
+	}
+	is_extended := block.section_count > 1
+	g.write('__asm__')
+	if block.is_volatile {
+		g.write(' volatile')
+	}
+	g.writeln(' (')
+	g.indent++
+	if block.templates.len == 0 {
+		g.writeln('""')
+	} else {
+		for template in block.templates {
+			lowered := lower_c_inline_asm_template(template, block.arch, aliases, is_extended)
+			g.writeln('"${c_escape(lowered + '\n\t')}"')
+		}
+	}
+	if block.section_count > 1 {
+		g.write(': ')
+		g.gen_c_inline_asm_ios(block.output)
+	}
+	if block.section_count > 2 {
+		g.write(': ')
+		g.gen_c_inline_asm_ios(block.input)
+	}
+	if block.section_count > 3 {
+		g.write(': ')
+		for i, clobber in block.clobbered {
+			g.write('"${c_escape(clobber)}"')
+			if i + 1 < block.clobbered.len {
+				g.writeln(',')
+			} else {
+				g.writeln('')
+			}
+		}
+	}
+	g.indent--
+	g.writeln(');')
+}
+
+fn (mut g FlatGen) gen_c_inline_asm_ios(ios []CInlineAsmIO) {
+	for i, io in ios {
+		if io.alias.len > 0 {
+			g.write('[${io.alias}] ')
+		}
+		g.write('"${c_escape(io.constraint)}" (')
+		g.write(g.c_inline_asm_expr(io.expr))
+		g.write(')')
+		if i + 1 < ios.len {
+			g.writeln(',')
+		} else {
+			g.writeln('')
+		}
+	}
+}
+
+fn (g &FlatGen) c_inline_asm_expr(source string) string {
+	expr := source.trim_space()
+	if expr.len == 0 {
+		return '0'
+	}
+	mut root_end := 0
+	if !c_inline_asm_ident_start(expr[0]) {
+		return expr
+	}
+	for root_end < expr.len && c_inline_asm_ident_char(expr[root_end]) {
+		root_end++
+	}
+	root := expr[..root_end]
+	mut croot := g.cname(root)
+	typ := g.local_ident_type(root) or { types.Type(types.void_) }
+	storage_is_indirect := g.local_storage_is_pointer(root) && typ !is types.Pointer
+	if storage_is_indirect {
+		croot = '(*${croot})'
+	}
+	if root_end == expr.len {
+		return croot
+	}
+	rest := expr[root_end..]
+	if rest.starts_with('.') && typ is types.Pointer {
+		return '${croot}->${rest[1..]}'
+	}
+	return croot + rest
+}
+
+fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
+	open := source.index_u8(`{`)
+	close := source.last_index('}') or { return none }
+	if open < 0 || close <= open {
+		return none
+	}
+	header := source[..open].fields()
+	mut arch := ''
+	mut is_volatile := false
+	for word in header {
+		if word == 'asm' {
+			continue
+		}
+		if word == 'volatile' {
+			is_volatile = true
+			continue
+		}
+		if arch.len == 0 {
+			arch = word
+		}
+	}
+	body := strip_c_inline_asm_comments(source[open + 1..close])
+	sections := split_c_inline_asm_sections(body)
+	mut templates := []string{}
+	if sections.len > 0 {
+		for line in sections[0].split_into_lines() {
+			trimmed := line.trim_space()
+			if trimmed.len > 0 {
+				templates << trimmed
+			}
+		}
+	}
+	mut clobbered := []string{}
+	if sections.len > 3 {
+		for name in sections[3].replace(',', ' ').fields() {
+			clobbered << name
+		}
+	}
+	return CInlineAsmBlock{
+		arch:          arch
+		is_volatile:   is_volatile
+		templates:     templates
+		output:        if sections.len > 1 { parse_c_inline_asm_ios(sections[1], true) } else { [] }
+		input:         if sections.len > 2 { parse_c_inline_asm_ios(sections[2], false) } else { [] }
+		clobbered:     clobbered
+		section_count: sections.len
+	}
+}
+
+fn strip_c_inline_asm_comments(source string) string {
+	mut out := strings.new_builder(source.len)
+	mut i := 0
+	mut quote := u8(0)
+	for i < source.len {
+		c := source[i]
+		if quote != 0 {
+			out.write_u8(c)
+			if c == `\\` && i + 1 < source.len {
+				i++
+				out.write_u8(source[i])
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			out.write_u8(c)
+			i++
+			continue
+		}
+		if c == `/` && i + 1 < source.len && source[i + 1] == `/` {
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		out.write_u8(c)
+		i++
+	}
+	return out.str()
+}
+
+fn split_c_inline_asm_sections(source string) []string {
+	mut sections := []string{}
+	mut start := 0
+	mut i := 0
+	mut quote := u8(0)
+	for i < source.len {
+		c := source[i]
+		if quote != 0 {
+			if c == `\\` && i + 1 < source.len {
+				i += 2
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c == `;` {
+			sections << source[start..i]
+			start = i + 1
+		}
+		i++
+	}
+	sections << source[start..]
+	return sections
+}
+
+fn parse_c_inline_asm_ios(source string, is_output bool) []CInlineAsmIO {
+	mut ios := []CInlineAsmIO{}
+	mut i := 0
+	for i < source.len {
+		for i < source.len && source[i].is_space() {
+			i++
+		}
+		if i >= source.len {
+			break
+		}
+		mut constraint := if is_output { '+r' } else { 'r' }
+		if source[i] != `(` {
+			constraint_start := i
+			for i < source.len && !source[i].is_space() && source[i] != `(` {
+				i++
+			}
+			constraint = source[constraint_start..i]
+			for i < source.len && source[i].is_space() {
+				i++
+			}
+		}
+		if i >= source.len || source[i] != `(` {
+			break
+		}
+		i++
+		expr_start := i
+		mut depth := 1
+		mut quote := u8(0)
+		for i < source.len && depth > 0 {
+			c := source[i]
+			if quote != 0 {
+				if c == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				if c == quote {
+					quote = 0
+				}
+			} else if c in [`'`, `"`] {
+				quote = c
+			} else if c == `(` {
+				depth++
+			} else if c == `)` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			i++
+		}
+		if i >= source.len {
+			break
+		}
+		expr := source[expr_start..i].trim_space()
+		i++
+		for i < source.len && source[i].is_space() {
+			i++
+		}
+		mut alias := if is_c_inline_asm_ident(expr) { expr } else { '' }
+		if i + 2 <= source.len && source[i..i + 2] == 'as'
+			&& (i + 2 == source.len || source[i + 2].is_space()) {
+			i += 2
+			for i < source.len && source[i].is_space() {
+				i++
+			}
+			alias_start := i
+			for i < source.len && c_inline_asm_ident_char(source[i]) {
+				i++
+			}
+			alias = source[alias_start..i]
+		}
+		ios << CInlineAsmIO{
+			constraint: constraint
+			expr:       expr
+			alias:      alias
+		}
+	}
+	return ios
+}
+
+fn lower_c_inline_asm_template(source string, arch string, aliases map[string]bool, is_extended bool) string {
+	line := source.trim_space()
+	if line.len == 0 || line.ends_with(':') {
+		return line
+	}
+	mut split := 0
+	for split < line.len && !line[split].is_space() {
+		split++
+	}
+	mut instruction := line[..split]
+	mut operands_source := line[split..].trim_space()
+	if arch == 'amd64' && instruction == 'lock' && operands_source.len > 0 {
+		mut next := 0
+		for next < operands_source.len && !operands_source[next].is_space() {
+			next++
+		}
+		instruction += ' ' + operands_source[..next]
+		operands_source = operands_source[next..].trim_space()
+	}
+	if operands_source.len == 0 {
+		return instruction
+	}
+	mut operands := split_c_inline_asm_operands(operands_source)
+	if arch == 'amd64' && !instruction.starts_with('.') && operands.len > 1 {
+		last := operands.last()
+		operands.delete(operands.len - 1)
+		operands.prepend(last)
+	}
+	mut lowered := []string{cap: operands.len}
+	for operand in operands {
+		lowered << lower_c_inline_asm_operand(operand, arch, aliases, is_extended)
+	}
+	return instruction + ' ' + lowered.join(', ')
+}
+
+fn split_c_inline_asm_operands(source string) []string {
+	mut operands := []string{}
+	mut start := 0
+	mut depth := 0
+	mut quote := u8(0)
+	mut i := 0
+	for i < source.len {
+		c := source[i]
+		if quote != 0 {
+			if c == `\\` && i + 1 < source.len {
+				i += 2
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+		} else if c in [`'`, `"`] {
+			quote = c
+		} else if c in [`[`, `(`] {
+			depth++
+		} else if c in [`]`, `)`] {
+			depth--
+		} else if c == `,` && depth == 0 {
+			operands << source[start..i].trim_space()
+			start = i + 1
+		}
+		i++
+	}
+	operands << source[start..].trim_space()
+	return operands
+}
+
+fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]bool, is_extended bool) string {
+	operand := source.trim_space()
+	if local_label := c_inline_asm_quoted_local_label(operand) {
+		return local_label
+	}
+	if operand.len >= 2 && operand[0] == `[` && operand[operand.len - 1] == `]` {
+		return lower_c_inline_asm_address(operand[1..operand.len - 1], arch, aliases, is_extended)
+	}
+	if is_c_inline_asm_number(operand) {
+		return if arch == 'arm64' {
+			'#${operand}'
+		} else if arch == 'amd64' {
+			'\$${operand}'
+		} else {
+			operand
+		}
+	}
+	return lower_c_inline_asm_atoms(operand, arch, aliases, is_extended)
+}
+
+fn c_inline_asm_quoted_local_label(source string) ?string {
+	if source.len < 4 || source[0] !in [`'`, `"`] || source[source.len - 1] != source[0] {
+		return none
+	}
+	label := source[1..source.len - 1]
+	if label.len < 2 || label[label.len - 1] !in [`f`, `b`]
+		|| !label[..label.len - 1].bytes().all(it.is_digit()) {
+		return none
+	}
+	return label
+}
+
+fn lower_c_inline_asm_address(source string, arch string, aliases map[string]bool, is_extended bool) string {
+	if arch == 'arm64' {
+		return '[${lower_c_inline_asm_atoms(source.trim_space(), arch, aliases, is_extended)}]'
+	}
+	if arch != 'amd64' {
+		return '[${source}]'
+	}
+	parts := source.split('+')
+	if parts.len == 1 {
+		base := lower_c_inline_asm_atoms(parts[0].trim_space(), arch, aliases, is_extended)
+		return '(${base})'
+	}
+	mut base := ''
+	mut index := ''
+	mut scale := ''
+	mut displacement := ''
+	for raw_part in parts {
+		part := raw_part.trim_space()
+		if part.contains('*') {
+			pair := part.split('*')
+			if pair.len == 2 {
+				index = lower_c_inline_asm_atoms(pair[0].trim_space(), arch, aliases, is_extended)
+				scale = pair[1].trim_space()
+			}
+		} else if is_c_inline_asm_number(part) {
+			displacement = part
+		} else if base.len == 0 {
+			base = lower_c_inline_asm_atoms(part, arch, aliases, is_extended)
+		} else {
+			displacement = lower_c_inline_asm_atoms(part, arch, aliases, is_extended)
+		}
+	}
+	if index.len > 0 {
+		return '${displacement}(${base}, ${index}, ${scale})'
+	}
+	return '${displacement}(${base})'
+}
+
+fn lower_c_inline_asm_atoms(source string, arch string, aliases map[string]bool, is_extended bool) string {
+	mut out := strings.new_builder(source.len + 8)
+	mut i := 0
+	mut quote := u8(0)
+	for i < source.len {
+		c := source[i]
+		if quote != 0 {
+			out.write_u8(c)
+			if c == `\\` && i + 1 < source.len {
+				i++
+				out.write_u8(source[i])
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			out.write_u8(c)
+			i++
+			continue
+		}
+		if c_inline_asm_ident_start(c) {
+			start := i
+			i++
+			for i < source.len && c_inline_asm_ident_char(source[i]) {
+				i++
+			}
+			word := source[start..i]
+			if aliases[word] {
+				out.write_string('%[${word}]')
+			} else if arch == 'amd64' && is_c_inline_asm_amd64_register(word) {
+				out.write_string(if is_extended { '%%${word}' } else { '%${word}' })
+			} else {
+				out.write_string(word)
+			}
+			continue
+		}
+		out.write_u8(c)
+		i++
+	}
+	return out.str()
+}
+
+fn is_c_inline_asm_amd64_register(name string) bool {
+	if name in ['al', 'ah', 'ax', 'eax', 'rax', 'bl', 'bh', 'bx', 'ebx', 'rbx', 'cl', 'ch', 'cx',
+		'ecx', 'rcx', 'dl', 'dh', 'dx', 'edx', 'rdx', 'sil', 'si', 'esi', 'rsi', 'dil', 'di', 'edi',
+		'rdi', 'spl', 'sp', 'esp', 'rsp', 'bpl', 'bp', 'ebp', 'rbp', 'rip', 'eflags', 'flags'] {
+		return true
+	}
+	for prefix in ['r', 'xmm', 'ymm', 'zmm', 'mm', 'st'] {
+		if name.starts_with(prefix) && name.len > prefix.len {
+			mut end := name.len
+			if prefix == 'r' && name[end - 1] in [`b`, `w`, `d`] {
+				end--
+			}
+			if end > prefix.len && name[prefix.len..end].bytes().all(it.is_digit()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn is_c_inline_asm_ident(source string) bool {
+	if source.len == 0 || !c_inline_asm_ident_start(source[0]) {
+		return false
+	}
+	return source[1..].bytes().all(c_inline_asm_ident_char(it))
+}
+
+fn is_c_inline_asm_number(source string) bool {
+	if source.len == 0 {
+		return false
+	}
+	mut start := 0
+	if source[0] in [`+`, `-`] {
+		start = 1
+	}
+	if start >= source.len {
+		return false
+	}
+	if source[start..].starts_with('0x') {
+		return source[start + 2..].bytes().all(it.is_hex_digit())
+	}
+	return source[start..].bytes().all(it.is_digit())
+}
+
+fn c_inline_asm_ident_start(c u8) bool {
+	return c == `_` || c.is_letter()
+}
+
+fn c_inline_asm_ident_char(c u8) bool {
+	return c_inline_asm_ident_start(c) || c.is_digit()
 }
 
 fn (g &FlatGen) assert_failure_detail(assert_node flat.Node, condition_id flat.NodeId) ?string {
@@ -4866,6 +5416,12 @@ fn (g &FlatGen) specialized_selector_method_call_return_type(node flat.Node, fn_
 		if receiver_name.len == 0 {
 			continue
 		}
+		if decl_key := g.tc.interface_method_signature_key(receiver_name, fn_node.value) {
+			_, ret := g.tc.specialized_interface_method_signature(receiver_name, decl_key)
+			if ret !is types.Unknown && ret !is types.Void {
+				return ret
+			}
+		}
 		resolved_method := g.resolve_method_name(receiver_name, fn_node.value)
 		method_name := if resolved_method.len > 0 {
 			resolved_method
@@ -5531,7 +6087,15 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				g.usable_expr_type(rhs_id)
 			}
 			if rhs.kind == .call && lhs.typ.starts_with('(') && lhs.typ.contains(',') {
-				declared_ret := g.declared_call_return_type(rhs_id)
+				mut declared_ret := g.declared_call_return_type(rhs_id)
+				if rhs.children_count > 0 {
+					callee := g.a.child_node(&rhs, 0)
+					if specialized_ret := g.specialized_selector_method_call_return_type(rhs,
+						callee)
+					{
+						declared_ret = specialized_ret
+					}
+				}
 				if declared_ret is types.MultiReturn {
 					v_type = declared_ret
 				}
@@ -6838,7 +7402,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					continue
 				}
 				if node.op == .assign
-					&& g.gen_local_optional_abi_assignment(lhs_id, rhs_id, lhs, lhs_type, rhs_type) {
+					&& g.gen_optional_abi_assignment(lhs_id, rhs_id, lhs, lhs_type, rhs_type) {
 					g.expected_enum = ''
 					i += 2
 					continue
@@ -6872,8 +7436,8 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 	}
 }
 
-fn (mut g FlatGen) gen_local_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs flat.Node, lhs_type types.Type, rhs_type types.Type) bool {
-	if lhs.kind != .ident {
+fn (mut g FlatGen) gen_optional_abi_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs flat.Node, lhs_type types.Type, rhs_type types.Type) bool {
+	if lhs.kind !in [.ident, .selector] {
 		return false
 	}
 	lhs_optional := optional_result_unalias_type(lhs_type)
@@ -6882,11 +7446,26 @@ fn (mut g FlatGen) gen_local_optional_abi_assignment(lhs_id flat.NodeId, rhs_id 
 		|| !(rhs_optional is types.OptionType || rhs_optional is types.ResultType) {
 		return false
 	}
-	destination_ct := g.local_storage_c_type(lhs.value) or { return false }
+	destination_ct := if lhs.kind == .ident {
+		g.local_storage_c_type(lhs.value) or { return false }
+	} else {
+		// Struct fields use the ordinary optional ABI (`?int` is `Optional`),
+		// while a specialized generic callee deliberately returns the concrete
+		// ABI (`Optional_int`). Convert at the assignment boundary just as local
+		// storage does above.
+		g.optional_type_name(lhs_optional)
+	}
 	if destination_ct != 'Optional' && !destination_ct.starts_with('Optional_') {
 		return false
 	}
-	source_ct := g.optional_type_name_for_expr(rhs_id, rhs_optional)
+	rhs := g.a.nodes[int(rhs_id)]
+	source_ct := if rhs.kind == .struct_init {
+		concrete_struct_init := g.cur_fn_is_specialized && g.cur_fn_ret_is_optional
+			&& g.type_names_match(rhs_optional, g.cur_fn_ret)
+		g.optional_type_name_for_context(rhs_optional, concrete_struct_init)
+	} else {
+		g.optional_type_name_for_expr(rhs_id, rhs_optional)
+	}
 	if source_ct == destination_ct {
 		return false
 	}

@@ -25,6 +25,12 @@ fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.Node
 	})
 }
 
+fn test_inline_asm_numeric_local_label_references_drop_v_quotes() {
+	assert lower_c_inline_asm_template("jz '1f'", 'amd64', map[string]bool{}, false) == 'jz 1f'
+	assert lower_c_inline_asm_template("jnz '23b'", 'amd64', map[string]bool{}, false) == 'jnz 23b'
+	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', map[string]bool{}, false) == "call 'named_target'"
+}
+
 fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

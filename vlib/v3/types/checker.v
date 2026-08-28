@@ -740,6 +740,7 @@ pub mut:
 
 	c_globals               map[string]Type
 	global_names            map[string]bool
+	shared_global_names     map[string]bool
 	const_types             map[string]Type
 	const_exprs             map[string]flat.NodeId
 	const_modules           map[string]string
@@ -1042,6 +1043,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		interface_impl_indexes:                map[string]&InterfaceImplIndex{}
 		c_globals:                             map[string]Type{}
 		global_names:                          map[string]bool{}
+		shared_global_names:                   map[string]bool{}
 		const_types:                           map[string]Type{}
 		const_exprs:                           map[string]flat.NodeId{}
 		const_modules:                         map[string]string{}
@@ -1199,6 +1201,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		interface_query_indexes_ready:      tc.interface_query_indexes_ready
 		c_globals:                          tc.c_globals
 		global_names:                       tc.global_names
+		shared_global_names:                tc.shared_global_names
 		const_types:                        tc.const_types
 		const_exprs:                        tc.const_exprs
 		const_modules:                      tc.const_modules
@@ -3645,6 +3648,10 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 						tc.global_names[f.value] = true
 						tc.file_scope.insert(qname, ft)
 						tc.global_names[qname] = true
+						if param_type_text_is_shared(f.typ) {
+							tc.shared_global_names[f.value] = true
+							tc.shared_global_names[qname] = true
+						}
 					}
 				}
 			}
@@ -4469,6 +4476,11 @@ fn (tc &TypeChecker) global_type_for_selector(node flat.Node) ?Type {
 // selector_const_type returns the declared type for a selector const expression.
 pub fn (tc &TypeChecker) selector_const_type(node flat.Node) ?Type {
 	return tc.const_type_for_selector(node)
+}
+
+// selector_value_type returns the declared type for a selector value expression.
+pub fn (tc &TypeChecker) selector_value_type(node flat.Node) ?Type {
+	return tc.selector_declared_value_type(node)
 }
 
 // const_owner_module returns the declaration module for a checker-resolved constant key.
@@ -5972,10 +5984,7 @@ fn (tc &TypeChecker) unqualified_resolved_type_symbol_is_builtin(name string) bo
 
 fn (tc &TypeChecker) type_from_known_symbol(name string) ?Type {
 	if name in tc.type_aliases {
-		return Type(Alias{
-			name:      name
-			base_type: tc.parse_type(tc.type_aliases[name])
-		})
+		return tc.parse_alias_type(name, tc.type_aliases[name])
 	}
 	if name in tc.structs {
 		return Type(Struct{
@@ -6345,11 +6354,10 @@ fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
 	owner := tc.cur_scope.insert_with_owner(p.value, typ)
 	tc.initialize_pointer_parameter_binding(owner, typ)
 	if p.is_mut {
-		tc.fn_context.mut_param_base_types[p.value] = if p.op == .amp {
-			typ
-		} else {
-			mut_param_base_type(typ)
-		}
+		// A `mut value &T` parameter still has one implicit caller-reference
+		// layer: its binding is `&T` at the ABI boundary, but reads and writes in
+		// the function body operate on `T`.
+		tc.fn_context.mut_param_base_types[p.value] = mut_param_base_type(typ)
 		tc.fn_context.mut_param_owners[p.value] = owner
 	}
 	if param_type_text_is_shared(p.typ) {
@@ -7734,6 +7742,16 @@ fn (tc &TypeChecker) resolved_call_type(id flat.NodeId) ?Type {
 	node := tc.a.nodes[int(id)]
 	if node.kind != .call {
 		return none
+	}
+	if node.children_count == 3 && tc.call_display_name(node) == 'C.va_arg' {
+		type_arg_id := tc.call_arg_value(tc.a.child(&node, 1))
+		type_name := tc.generic_call_type_arg_name(type_arg_id)
+		if type_name.len > 0 {
+			target_type := tc.parse_type(type_name)
+			if target_type !is Unknown && !type_contains_unknown(target_type) {
+				return target_type
+			}
+		}
 	}
 	if t := tc.cached_expr_type(id) {
 		if t !is Void {
@@ -11138,10 +11156,10 @@ fn (mut tc TypeChecker) check_fn_decl_unmentioned_generic_types(node_id flat.Nod
 				receiver_text = receiver_text[7..].trim_space()
 			}
 			receiver_type := unwrap_pointer(tc.parse_type(receiver_text))
-			// Generic struct receiver parameters belong to the method declaration.
+			// Generic struct and interface receiver parameters belong to the method declaration.
 			// Alias and sum-type receivers still have to repeat their generic names,
 			// matching the v1 declaration rules.
-			if receiver_type is Struct {
+			if receiver_type is Struct || receiver_type is Interface {
 				tc.collect_generic_receiver_params(node, mut explicit_params)
 			}
 		}
@@ -11558,6 +11576,9 @@ fn (mut tc TypeChecker) check_missing_struct_field_generic_type(node_id flat.Nod
 	} else {
 		return
 	}
+	if kind == 'interface' && bare_generic_type_is_inside_container(type_text) {
+		return
+	}
 	mut context_name := 'int'
 	if target_params.len > 0 {
 		context_name = target_params[0]
@@ -11575,6 +11596,20 @@ fn (mut tc TypeChecker) check_missing_struct_field_generic_type(node_id flat.Nod
 	tc.record_error_at(.unknown_type,
 		'`${name}` type is generic ${kind}, must specify the generic type names, e.g. ${name}[${context_name}], ${name}[int]',
 		node_id, pos)
+}
+
+fn bare_generic_type_is_inside_container(type_text string) bool {
+	mut clean := trimmed_space(type_text)
+	for clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+		clean = trimmed_space(clean[1..])
+	}
+	for prefix in ['shared ', 'atomic ', 'mut '] {
+		if clean.starts_with(prefix) {
+			clean = trimmed_space(clean[prefix.len..])
+		}
+	}
+	return clean.starts_with('[]') || clean.starts_with('...') || clean.starts_with('map[')
+		|| clean.starts_with('[')
 }
 
 fn (tc &TypeChecker) bare_generic_decl_type_name(type_text string) ?string {
@@ -14323,7 +14358,30 @@ pub fn (tc &TypeChecker) fn_body_definitely_returns(node flat.Node) bool {
 		if child.kind == .param {
 			continue
 		}
-		if tc.stmt_definitely_returns(child_id) {
+		if tc.stmt_definitely_returns(child_id)
+			|| tc.stmt_has_v1_compatible_returning_or_fallback(child_id) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) stmt_has_v1_compatible_returning_or_fallback(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .or_expr && node.value !in ['?', '!'] && node.children_count >= 2 {
+		return tc.stmt_definitely_returns(tc.a.child(node, 1))
+	}
+	if node.kind in [.expr_stmt, .paren] && node.children_count > 0 {
+		return tc.stmt_has_v1_compatible_returning_or_fallback(tc.a.child(node, 0))
+	}
+	if node.kind !in [.decl_assign, .assign, .selector_assign, .index_assign] {
+		return false
+	}
+	for i := 1; i < node.children_count; i += 2 {
+		if tc.stmt_has_v1_compatible_returning_or_fallback(tc.a.child(node, i)) {
 			return true
 		}
 	}

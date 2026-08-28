@@ -259,6 +259,16 @@ fn test_fused_parallel_prep_interns_body_string_literals() {
 	assert g.str_lit_ids['worker literal'] == 0
 }
 
+fn test_serial_prep_interns_ast_string_literals_in_source_order() {
+	mut g, _ := parallel_worker_test_gen(false)
+	g.ast_string_literals = ['first', 'second']
+	g.ast_string_literals_ready = true
+	g.prepare_serial_fn_tables()
+	assert g.str_lits == ['first', 'second']
+	assert g.str_lit_ids['first'] == 0
+	assert g.str_lit_ids['second'] == 1
+}
+
 fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 	mut g, _ := parallel_worker_test_gen(true)
 	fn_id := g.a.add_node(flat.Node{

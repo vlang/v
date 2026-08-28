@@ -224,6 +224,22 @@ fn test_address_of_capitalized_index_keeps_postfix_on_operand() {
 	assert has_addressed_index_base(a, 'Foo')
 }
 
+fn test_address_expression_inside_index_is_not_parsed_as_a_type() {
+	a := parse_parser_regression_source('address_expression_inside_index',
+		'fn main() {\n\tmut values := map[voidptr]string{}\n\tvalue := 5\n\tvalues[&value] = "value"\n\t_ = values[&value]\n}\n')
+	mut addressed_values := 0
+	for node in a.nodes {
+		if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+			continue
+		}
+		child := a.child_node(&node, 0)
+		if child.kind == .ident && child.value == 'value' {
+			addressed_values++
+		}
+	}
+	assert addressed_values == 2
+}
+
 fn test_isreftype_qualified_type_names_parse_as_types() {
 	a := parse_parser_regression_source('isreftype_qualified_type_names',
 		'module main\n\nfn main() {\n\t_ = isreftype(foo.Bar)\n\t_ = isreftype(&foo.Bar)\n}\n')
@@ -262,15 +278,10 @@ fn run() int {
 	assert saw_index_assign
 }
 
-fn test_dollar_prefixed_pseudo_functions_are_rejected() {
+fn test_dollar_prefixed_pseudo_functions_are_accepted() {
 	diagnostics := parse_parser_regression_diagnostics('dollar_pseudo_functions',
 		'struct Item {\n\tvalue int\n}\n\nfn main() {\n\tx := Item{}\n\t_ = $sizeof(int)\n\t_ = $typeof(x)\n\t_ = $isreftype(x)\n\t_ = $__offsetof(Item, value)\n\t_ = $dump(x)\n}\n')
-	assert diagnostics.len == 5, '${diagnostics}'
-	assert diagnostics[0].message.contains('`$sizeof` is not supported'), '${diagnostics}'
-	assert diagnostics[1].message.contains('`$typeof` is not supported'), '${diagnostics}'
-	assert diagnostics[2].message.contains('`$isreftype` is not supported'), '${diagnostics}'
-	assert diagnostics[3].message.contains('`$__offsetof` is not supported'), '${diagnostics}'
-	assert diagnostics[4].message.contains('`$dump` is not supported'), '${diagnostics}'
+	assert diagnostics.len == 0, '${diagnostics}'
 }
 
 fn test_res_is_rejected_outside_the_active_defer_body() {
@@ -355,13 +366,13 @@ fn main() {
 	}
 }
 
-fn test_memory_only_inline_assembly_is_not_treated_as_empty() {
-	barrier := parse_parser_regression_diagnostics('asm_memory_barrier',
+fn test_memory_only_inline_assembly_is_preserved_for_c_lowering() {
+	a := parse_parser_regression_source('asm_memory_barrier',
 		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t\t;\n\t\t;\n\t\tmemory\n\t}\n}\n')
-	assert barrier.any(it.message.contains('inline assembly is not supported')), '${barrier}'
-	empty := parse_parser_regression_diagnostics('asm_truly_empty',
-		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t}\n}\n')
-	assert !empty.any(it.message.contains('inline assembly is not supported')), '${empty}'
+	asm_nodes := a.nodes.filter(it.kind == .asm_stmt)
+	assert asm_nodes.len == 1
+	assert asm_nodes[0].value.contains('volatile amd64')
+	assert asm_nodes[0].value.contains('memory')
 }
 
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {
@@ -765,6 +776,75 @@ fn test_parenthesized_statement_after_call_is_not_call_continuation() {
 	assert nested_call_continuations == 0
 	assert println_calls == 1
 	assert foo_calls == 1
+}
+
+fn test_generic_call_function_type_arguments_stay_type_expressions() {
+	source := 'fn accept[T]() bool {
+	return true
+}
+
+fn main() {
+	_ = accept[fn (int) int]()
+	_ = accept[&fn (int) int]()
+	_ = accept[shared fn (int) int]()
+	_ = accept[atomic fn (int) int]()
+	_ = accept[fn ([4]int) bool]()
+}
+'
+	a := parse_parser_regression_source('generic_call_function_type_args', source)
+	mut type_args := []string{}
+	for node in a.nodes {
+		if node.kind != .index || node.children_count != 2 {
+			continue
+		}
+		callee := a.child_node(&node, 0)
+		arg := a.child_node(&node, 1)
+		if callee.kind == .ident && callee.value == 'accept' && arg.kind == .ident {
+			type_args << arg.value
+		}
+	}
+	assert type_args == [
+		'fn(int) int',
+		'&fn(int) int',
+		'shared fn(int) int',
+		'atomic fn(int) int',
+		'fn([4]int) bool',
+	]
+}
+
+fn test_generic_method_chain_on_struct_init_is_not_parsed_as_cast() {
+	source := 'struct Seq[T] {}
+
+type Wrapper[T] = T
+
+fn main() {
+	_ := Seq[string]{}.map[int](fn (value string) int {
+		return value.len
+	}).map[string](fn (value int) string {
+		return value.str()
+	})
+	_ := Wrapper[int](1)
+}
+'
+	a := parse_parser_regression_source('generic_method_chain_on_struct_init', source)
+	casts := cast_expr_values(a)
+	assert 'Wrapper[int]' in casts
+	assert !casts.any(it.contains('.map[')), '${casts}'
+	mut map_calls := 0
+	for node in a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		callee := a.child_node(&node, 0)
+		if callee.kind != .index || callee.children_count == 0 {
+			continue
+		}
+		selector := a.child_node(callee, 0)
+		if selector.kind == .selector && selector.value == 'map' {
+			map_calls++
+		}
+	}
+	assert map_calls == 2
 }
 
 fn test_normalized_option_result_fixed_array_type_names_parse_as_wrapped_arrays() {

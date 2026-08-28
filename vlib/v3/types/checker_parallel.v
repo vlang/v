@@ -1095,6 +1095,16 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					tc.check_const_field_values(node)
 				}
 			}
+			.global_decl {
+				if do_values {
+					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
+						tc.record_error_at(.duplicate_decl,
+							'use `v -enable-globals ...` to enable globals', flat.NodeId(i),
+							node.pos)
+					}
+					tc.check_const_global_initializers(node)
+				}
+			}
 			.fn_decl {
 				if !do_signatures {
 					continue
@@ -1147,7 +1157,11 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		}
 		if items.len < min_parallel_check_items || n_jobs <= 1 {
 			tc.check_top_level_declarations()
-			tc.check_fn_items_serial(items)
+			if tc.scope_parallel_check_workers {
+				tc.check_scoped_batches(items, scoped_check_serial_batches)
+			} else {
+				tc.check_fn_items_serial(items)
+			}
 			return false
 		}
 		// Initializer-value checks can mutate compilation-wide state that the

@@ -302,7 +302,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.has_veb_template = false
 	p.may_have_local_types = stable_src.contains('struct') || stable_src.contains('union')
 	p.unsupported_inline_asm_guards.clear()
-	if !p.prefs.supports_inline_asm {
+	if !p.prefs.supports_inline_asm && !p.supports_c_inline_asm_lowering() {
 		p.precollect_unsupported_inline_asm_guards(stable_src, p.prefs.target.arch)
 	}
 	if path.ends_with('.v') || path.ends_with('.vv') {
@@ -5328,25 +5328,18 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	p.next() // skip $
 	match p.tok {
 		.key_typeof {
-			p.record_diagnostic('`$typeof` is not supported; use `typeof(...)` instead', dollar_pos)
 			return p.typeof_expr()
 		}
 		.key_sizeof {
-			p.record_diagnostic('`$sizeof` is not supported; use `sizeof(...)` instead', dollar_pos)
 			return p.sizeof_expr()
 		}
 		.key_isreftype {
-			p.record_diagnostic('`$isreftype` is not supported; use `isreftype(...)` instead',
-				dollar_pos)
 			return p.isreftype_expr()
 		}
 		.key_offsetof {
-			p.record_diagnostic('`$__offsetof` is not supported; use `__offsetof(...)` instead',
-				dollar_pos)
 			return p.offsetof_expr()
 		}
 		.key_dump {
-			p.record_diagnostic('`$dump` is not supported; use `dump(...)` instead', dollar_pos)
 			return p.dump_expr()
 		}
 		else {}
@@ -7833,14 +7826,16 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 		p.next()
 	}
 	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`).
-	// The C backend intentionally ignores the block and uses the source fallback, so the
-	// architecture token must be consumed with the block instead of becoming stray statements.
+	mut asm_arch := ''
 	for p.tok == .name {
+		if asm_arch.len == 0 {
+			asm_arch = p.lit
+		}
 		p.next()
 	}
-	// Consume the asm block. A truly empty block has no backend work and is a
-	// portable no-op. A `memory` clobber is not empty: it is a compiler barrier,
-	// so keep diagnosing it until the selected V3 backend can emit that barrier.
+	// Consume the asm block while retaining its exact source. Inline assembly uses
+	// a line-sensitive syntax that cannot be reconstructed from the normal token
+	// stream after comments and automatic semicolons have been discarded.
 	mut has_memory_clobber := false
 	mut has_unsupported_content := false
 	if p.tok == .lcbr {
@@ -7868,14 +7863,24 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
-	if !p.prefs.supports_inline_asm && (has_memory_clobber || has_unsupported_content) {
+	asm_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+	raw_source := if asm_pos >= 0 && asm_pos < asm_end { p.s.src[asm_pos..asm_end] } else { '' }
+	// An empty template with only a memory clobber is architecture independent;
+	// it lowers to a compiler barrier even when the block names another ISA.
+	can_lower := (!has_unsupported_content && has_memory_clobber)
+		|| (p.supports_c_inline_asm_lowering() && asm_arch == p.prefs.target.arch)
+	if !p.prefs.supports_inline_asm && !can_lower && (has_memory_clobber || has_unsupported_content) {
 		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
 	}
 	return p.add_node(flat.Node{
 		kind:  .asm_stmt
-		value: if has_memory_clobber { 'memory' } else { '' }
+		value: raw_source
 		pos:   p.span_to(asm_pos)
 	})
+}
+
+fn (p &Parser) supports_c_inline_asm_lowering() bool {
+	return p.prefs.backend == 'c' && p.prefs.target.arch in ['amd64', 'arm64']
 }
 
 // ==================== expressions (Pratt parser) ====================
@@ -9967,6 +9972,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			}
 		}
 	}
+	p.annotate_short_struct_call_arg(ids)
 	cstart := p.add_children(ids)
 	// Anchor the completed call at its callee (fn_expr) so unknown-function and
 	// argument diagnostics point at the call, not the token after `)`.
@@ -9975,6 +9981,45 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		children_start: cstart
 		children_count: flat.child_count(ids.len)
 	}, fn_expr)
+}
+
+// annotate_short_struct_call_arg records the aggregate type of a trailing
+// `field: value` call argument on its first field. The flat call shape keeps the
+// fields as separate children for contextual struct parameters; a bare generic
+// parameter still needs the single anonymous aggregate type that V assigns to
+// the short struct literal.
+fn (mut p Parser) annotate_short_struct_call_arg(ids []flat.NodeId) {
+	mut first_field := -1
+	mut field_names := []string{}
+	mut field_types := []string{}
+	mut field_positions := []token.Pos{}
+	for i in 1 .. ids.len {
+		field := p.a.node(ids[i])
+		if field.kind != .field_init {
+			if first_field >= 0 {
+				return
+			}
+			continue
+		}
+		if first_field < 0 {
+			first_field = i
+		}
+		if field.value.len == 0 || field.value in field_names || field.children_count != 1 {
+			return
+		}
+		value_id := p.a.child(field, 0)
+		field_type := p.anonymous_struct_literal_field_type(value_id) or { return }
+		field_names << field.value
+		field_types << field_type
+		field_positions << field.pos
+	}
+	if first_field < 0 {
+		return
+	}
+	aggregate := p.register_anonymous_struct_type(field_names, field_types, field_positions, false) or {
+		return
+	}
+	p.a.nodes[int(ids[first_field])].typ = aggregate
 }
 
 fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
@@ -10118,7 +10163,11 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 }
 
 fn (mut p Parser) index_part_expr() flat.NodeId {
-	if p.tok == .question || p.tok == .not {
+	// A generic call is initially parsed through the same bracket path as an index.
+	// Preserve type-only heads as a single type expression so `f[fn (int) int]()`
+	// does not turn the function signature into a body-less anonymous function.
+	if p.tok in [.question, .not, .amp, .and, .key_fn, .key_shared, .key_atomic]
+		&& (p.tok !in [.not, .amp, .and] || p.isreftype_prefix_arg_starts_type()) {
 		start := p.span_start()
 		type_name := p.parse_type_name()
 		return p.add_node(flat.Node{
@@ -10214,6 +10263,9 @@ fn (mut p Parser) generic_call_type_arg_id(id flat.NodeId) flat.NodeId {
 }
 
 fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
+	if !p.generic_type_target_has_static_path(id) {
+		return none
+	}
 	type_name := p.resolve_local_type_name(p.type_expr_name(id))
 	if !generic_type_name_can_init(type_name) {
 		if p.index_expr_is_lifetime_erased_type_name(id) && type_name_can_init(type_name) {
@@ -10222,6 +10274,41 @@ fn (p &Parser) generic_struct_init_type_name(id flat.NodeId) ?string {
 		return none
 	}
 	return type_name
+}
+
+// generic_type_target_has_static_path distinguishes `Type[T]` from a generic
+// call on a runtime receiver. The latter can otherwise look like a type after
+// type_expr_name reconstructs `Type[T]{}.method[U]` through its selectors.
+fn (p &Parser) generic_type_target_has_static_path(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	target := p.a.nodes[int(id)]
+	if target.kind != .index || target.children_count < 2 || target.value == 'range' {
+		return false
+	}
+	mut path_id := p.a.child(&target, 0)
+	for _ in 0 .. 64 {
+		if int(path_id) < 0 {
+			return false
+		}
+		path := p.a.nodes[int(path_id)]
+		match path.kind {
+			.ident {
+				return true
+			}
+			.selector {
+				if path.children_count != 1 {
+					return false
+				}
+				path_id = p.a.child(&path, 0)
+			}
+			else {
+				return false
+			}
+		}
+	}
+	return false
 }
 
 fn (p &Parser) index_expr_is_lifetime_erased_type_name(id flat.NodeId) bool {
@@ -12162,6 +12249,7 @@ fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?string {
 fn (mut p Parser) create_anonymous_struct_type_for_literal(init flat.Node) ?string {
 	mut field_names := []string{cap: int(init.children_count)}
 	mut field_types := []string{cap: int(init.children_count)}
+	mut field_positions := []token.Pos{cap: int(init.children_count)}
 	for i in 0 .. init.children_count {
 		field := p.a.child_node(&init, i)
 		if field.kind != .field_init || field.value.len == 0 || field.children_count == 0 {
@@ -12171,11 +12259,12 @@ fn (mut p Parser) create_anonymous_struct_type_for_literal(init flat.Node) ?stri
 		field_type := p.infer_anonymous_struct_literal_type(value) or { return none }
 		field_names << field.value
 		field_types << field_type
+		field_positions << field.pos
 	}
 	if p.anonymous_struct_literal_has_contextual_candidate(init, field_names) {
 		return none
 	}
-	return p.register_anonymous_struct_type(field_names, field_types, false)
+	return p.register_anonymous_struct_type(field_names, field_types, field_positions, false)
 }
 
 fn (p &Parser) anonymous_struct_literal_has_contextual_candidate(init flat.Node, field_names []string) bool {
@@ -12253,15 +12342,17 @@ fn (mut p Parser) create_anonymous_struct_type_from_type_init(init flat.Node) ?s
 	}
 	mut field_names := []string{cap: int(init.children_count) / 2}
 	mut field_types := []string{cap: int(init.children_count) / 2}
+	mut field_positions := []token.Pos{cap: int(init.children_count) / 2}
 	mut i := 0
 	for i < init.children_count {
 		field_name_node := p.anonymous_type_init_positional_ident(init, i) or { return none }
 		field_type_node := p.anonymous_type_init_positional_ident(init, i + 1) or { return none }
 		field_names << field_name_node.value
 		field_types << p.resolve_local_type_name(field_type_node.value)
+		field_positions << field_name_node.pos
 		i += 2
 	}
-	return p.register_anonymous_struct_type(field_names, field_types, true)
+	return p.register_anonymous_struct_type(field_names, field_types, field_positions, true)
 }
 
 fn (p &Parser) anonymous_type_init_positional_ident(init flat.Node, idx int) ?flat.Node {
@@ -12276,8 +12367,9 @@ fn (p &Parser) anonymous_type_init_positional_ident(init flat.Node, idx int) ?fl
 	return *child
 }
 
-fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_types []string, allow_name_shape bool) ?string {
-	if field_names.len == 0 || field_names.len != field_types.len {
+fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_types []string, field_positions []token.Pos, allow_name_shape bool) ?string {
+	if field_names.len == 0 || field_names.len != field_types.len
+		|| field_names.len != field_positions.len {
 		return none
 	}
 	for name in field_names {
@@ -12297,6 +12389,7 @@ fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_typ
 			kind:  .field_decl
 			value: field_name
 			typ:   field_types[i]
+			pos:   field_positions[i]
 		})
 	}
 	return p.register_anonymous_aggregate_type(ids, field_names, field_types, !allow_name_shape,

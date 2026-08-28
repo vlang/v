@@ -1357,6 +1357,11 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 }
 
 fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
+	for name, methods in worker.interfaces {
+		if name !in g.interfaces {
+			g.interfaces[name.clone()] = methods.clone()
+		}
+	}
 	g.interface_boxed_types = worker.interface_boxed_types.move()
 	g.interface_boxed_types_done = worker.interface_boxed_types_done
 	g.iface_impls = worker.iface_impls.move()
@@ -1378,6 +1383,16 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			if items.len < min_flat_cgen_parallel_items {
 				g.gen_fn_items(items)
 			} else {
+				// Scoped batches publish their bodies through fn_segs, while the
+				// master's builder is appended afterwards as fn_code. Preserve the
+				// test failure globals ahead of those bodies before resetting the
+				// builder for the synthetic test main.
+				if g.sb.len > 0 {
+					prefix := g.sb.str()
+					unsafe { g.sb.free() }
+					g.sb = strings.new_builder(4096)
+					g.fn_segs << prefix
+				}
 				g.gen_fn_items_scoped_master_batches(items)
 			}
 		} else {
@@ -1622,6 +1637,11 @@ fn (mut g FlatGen) prepare_serial_fn_tables() {
 	if g.parallel_prepared {
 		return
 	}
+	// Parallel pre-dispatch interns the complete source literal table before
+	// selecting functions, because generated bodies can reference declaration
+	// metadata outside their own subtrees. Do the same in the serial path so
+	// `-no-parallel` preserves identical literal IDs and generated C.
+	g.preintern_ast_string_literals()
 	g.want_parallel_prep = true
 	items := g.ensure_fn_gen_items()
 	g.want_parallel_prep = false
@@ -2354,6 +2374,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		top_level_node_ids:             g.top_level_node_ids
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
 		show_test_stats:                g.show_test_stats
+		print_fn_names:                 g.print_fn_names
 		is_prod:                        g.is_prod
 		check_overflow:                 g.check_overflow
 		force_bounds_checking:          g.force_bounds_checking
@@ -3000,6 +3021,10 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		optional_worker.tc.verbose = g.tc.verbose
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		if fail.len > 0 {
+			// prepare_pre_dispatch_master can submit its own selection/cost batches to
+			// this pool. Do not run it as the caller-side task of an outer Pool.run:
+			// the untagged completion channel would let the nested batch consume the
+			// support tasks' completions and return while its payloads are still live.
 			g.a.worker_pool.run([
 				workers.Task{
 					run:        fixed_storage_scan_thread
@@ -3016,12 +3041,8 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 					arg:        voidptr(optional_worker)
 					force_sync: fail == 'cgen:all' || fail == 'cgen:pre:all'
 				},
-				workers.Task{
-					run:        pre_dispatch_master_thread
-					arg:        voidptr(g)
-					force_sync: true
-				},
 			])
+			g.prepare_pre_dispatch_master()
 			g.refine_fn_item_costs(no_parallel, false)
 		} else {
 			// Item selection only reads the AST and immutable checker tables, so let

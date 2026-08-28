@@ -383,7 +383,11 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 			return []flat.NodeId{}
 		}
 		// One block per iteration so per-field temps get their own scope.
-		out << t.make_block(t.transform_stmts(cloned))
+		old_allow_enum_int := t.allow_comptime_enum_int_assign
+		t.allow_comptime_enum_int_assign = old_allow_enum_int || fm.is_enum
+		transformed := t.transform_stmts(cloned)
+		t.allow_comptime_enum_int_assign = old_allow_enum_int
+		out << t.make_block(transformed)
 	}
 	return out
 }
@@ -2943,7 +2947,8 @@ fn (mut t Transformer) comptime_field_metas(base_type string) []FieldMeta {
 				is_pub: true
 			}
 		}
-		metas << t.field_meta_for(f.name, ftyp, f.typ, info.module, f.is_embedded, extra)
+		field_name := comptime_reflected_field_name(f.name, ftyp, f.is_embedded)
+		metas << t.field_meta_for(field_name, ftyp, f.typ, info.module, f.is_embedded, extra)
 	}
 	t.comptime_field_metas_cache[cache_key] = metas
 	return metas
@@ -3150,8 +3155,6 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		indir++
 		core = core[1..]
 	}
-	// `resolved_typ` is already alias-resolved in the declaring module and still carries wrappers
-	// like `?`, `shared`, and `&`; preserve them for `FieldData.unaliased_typ`.
 	unaliased := if resolved_typ.len > 0 {
 		resolved_typ.trim_space()
 	} else {
@@ -3174,7 +3177,7 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		is_map:             unaliased_core.starts_with('map[')
 		is_chan:            unaliased_core.starts_with('chan ')
 		is_struct:          t.comptime_field_type_is_struct(unaliased_core)
-		is_enum:            unaliased_core in t.enum_types
+		is_enum:            t.comptime_enum_type_known(unaliased_core)
 		is_alias:           is_alias
 		is_shared:          is_shared
 		is_atomic:          is_atomic
@@ -3183,6 +3186,22 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		attrs:              extra.attrs
 		indirections:       indir
 	}
+}
+
+fn (t &Transformer) comptime_enum_type_known(raw string) bool {
+	clean := raw.trim_space()
+	if clean in t.enum_types || (!isnil(t.tc) && clean in t.tc.enum_names) {
+		return true
+	}
+	// Main-module declarations are stored under their bare source names in the checker and
+	// transform authority tables, while reflected field types use the canonical `main.Type`
+	// spelling. Treat only that explicit qualification as equivalent; imported modules remain
+	// distinct.
+	if clean.starts_with('main.') {
+		short := clean[5..]
+		return short in t.enum_types || (!isnil(t.tc) && short in t.tc.enum_names)
+	}
+	return false
 }
 
 fn (t &Transformer) comptime_field_type_is_struct(typ string) bool {
@@ -3391,6 +3410,21 @@ fn comptime_strip_field_wrappers(typ string) string {
 		core = core[1..]
 	}
 	return core
+}
+
+// comptime_reflected_field_name returns V's source-level name for an embedded field. Generic
+// embedded fields are stored internally under their full type application, but reflection exposes
+// only the base type's last name segment (for example `veb.Middleware[Context]` as `Middleware`).
+fn comptime_reflected_field_name(name string, typ string, is_embed bool) string {
+	if !is_embed {
+		return name
+	}
+	mut core := comptime_strip_field_wrappers(typ)
+	idx := core.index_u8(`[`)
+	if idx > 0 {
+		core = core[..idx]
+	}
+	return core.all_after_last('.')
 }
 
 // field_type_is_alias reports whether `core` names a `type X = Y` alias. An unqualified name is

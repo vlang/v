@@ -198,6 +198,9 @@ fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 	if !isnil(t.tc) {
 		node := t.a.nodes[int(id)]
 		if node.kind == .call {
+			if decode_ret := t.json_decode_or_expr_type(id, node) {
+				return decode_ret
+			}
 			concrete_ret := t.concrete_generic_call_return_type(id, node)
 			if t.is_optional_type_name(concrete_ret) {
 				return concrete_ret
@@ -649,6 +652,10 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ string, stale_typ s
 	if stale_typ in ['array', 'map', 'unknown'] {
 		return true
 	}
+	if t.is_optional_type_name(stale_typ) && !t.is_optional_type_name(branch_typ) {
+		stale_payload := t.optional_base_type(stale_typ)
+		return t.normalize_type_alias(stale_payload) == t.normalize_type_alias(branch_typ)
+	}
 	if stale_typ in t.enum_types && branch_typ == 'int' {
 		return false
 	}
@@ -747,6 +754,23 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
+		.call {
+			if node.children_count > 0 {
+				callee := t.a.child_node(&node, 0)
+				if callee.kind == .selector && callee.value == 'clone' && callee.children_count > 0 {
+					base_id := t.a.child(callee, 0)
+					raw_base_type := t.node_type(base_id)
+					narrowed_base_type := t.node_type_with_smartcasts(base_id, contexts)
+					call_type := t.node_type(id)
+					if t.is_optional_type_name(raw_base_type) && t.is_optional_type_name(call_type)
+						&& !t.is_optional_type_name(narrowed_base_type)
+						&& t.normalize_type_alias(t.optional_base_type(call_type)) == t.normalize_type_alias(narrowed_base_type) {
+						return narrowed_base_type
+					}
+				}
+			}
+			return t.node_type(id)
+		}
 		.ident {
 			if sc := t.find_smartcast_in_context(node.value, contexts) {
 				return t.smartcast_target_type(sc)

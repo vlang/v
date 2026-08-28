@@ -86,10 +86,10 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.sanitize = false
 		prefs.is_livemain = true
-		assert !is_macos_v3_relevant_command('main.v', prefs)
+		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_livemain = false
 		prefs.is_liveshared = true
-		assert !is_macos_v3_relevant_command('main.v', prefs)
+		assert is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_liveshared = false
 		prefs.is_prof = true
 		assert is_macos_v3_relevant_command('main.v', prefs)

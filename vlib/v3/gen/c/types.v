@@ -462,6 +462,25 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 	if g.decl_types_ready {
 		return
 	}
+	// Specialized generic-interface wrappers are synthesized from the interface
+	// declaration instead of appearing as standalone AST declarations. Discover
+	// their applications here as well so tuple and option return ABIs are defined
+	// before the wrapper forward declarations use them.
+	g.register_specialized_interface_applications()
+	for iface_name, methods in g.interfaces {
+		_, _, is_specialized := parse_shared_generic_app_parts(iface_name)
+		if !is_specialized {
+			continue
+		}
+		for method in methods {
+			decl_key := g.interface_method_signature_key(iface_name, method) or { continue }
+			params, ret := g.tc.specialized_interface_method_signature(iface_name, decl_key)
+			g.collect_declaration_signature_type_for_context(ret, true)
+			for param in params {
+				g.collect_declaration_signature_type_for_context(param, true)
+			}
+		}
+	}
 	// Parallel monomorph workers can append concrete declarations before their
 	// checker signature maps are merged. Read declaration nodes directly too, so
 	// an option/result used only by a worker specialization still gets a typedef.

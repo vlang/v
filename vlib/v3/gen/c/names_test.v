@@ -61,6 +61,23 @@ fn test_struct_init_main_type_lock_matches_only_a_type_component() {
 	assert !struct_init_has_main_type_lock('some.main.Context')
 }
 
+fn test_struct_init_main_alias_target_keeps_declaration_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Context'] = []types.StructField{}
+	tc.struct_modules['Context'] = 'main'
+	tc.structs['veb.Context'] = []types.StructField{}
+	tc.struct_modules['veb.Context'] = 'veb'
+	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_alias_modules['AliasContext'] = 'main'
+	tc.cur_module = 'veb'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+
+	assert g.struct_type_alias_target('main.AliasContext') or { '' } == 'main.Context'
+}
+
 fn test_c_name_generated_string_symbol_collision() {
 	assert c_name('_str_1') == 'v__str_1'
 	assert c_name('_str_002') == 'v__str_002'

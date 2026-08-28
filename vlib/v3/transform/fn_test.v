@@ -24,6 +24,128 @@ fn test_normalize_function_type_preserves_mut_parameter() {
 	assert t.normalize_type_in_module('fn (mut item Item) bool', 'main') == 'fn (&Item) bool'
 }
 
+fn test_or_payload_type_qualifies_imported_generic_base() {
+	mut t := Transformer{
+		cur_module: 'main'
+	}
+	info := StructInfo{
+		name:   'QueryBuilder'
+		module: 'orm'
+	}
+	t.structs['QueryBuilder'] = info
+	t.structs['orm.QueryBuilder'] = info
+	t.qualified_types['QueryBuilder'] = 'orm.QueryBuilder'
+	assert t.normalize_or_expr_value_type('&QueryBuilder[AggregateEntry]') == '&orm.QueryBuilder[AggregateEntry]'
+}
+
+fn test_or_payload_type_qualifies_generic_base_in_own_module() {
+	mut t := Transformer{
+		cur_module: 'orm'
+	}
+	info := StructInfo{
+		name:   'QueryBuilder'
+		module: 'orm'
+	}
+	t.structs['QueryBuilder'] = info
+	t.structs['orm.QueryBuilder'] = info
+	assert t.normalize_or_expr_value_type('&QueryBuilder[AggregateEntry]') == '&orm.QueryBuilder[AggregateEntry]'
+	expr_type, value_type := t.specialized_or_expr_types('!QueryBuilder[sapp.Event]')
+	assert expr_type == '!orm.QueryBuilder[sapp.Event]'
+	assert value_type == 'orm.QueryBuilder[sapp.Event]'
+}
+
+fn test_specialized_receiver_method_qualifies_imported_generic_base() {
+	mut t := Transformer{
+		cur_module: 'main'
+	}
+	info := StructInfo{
+		name:   'QueryBuilder'
+		module: 'orm'
+	}
+	t.structs['QueryBuilder'] = info
+	t.structs['orm.QueryBuilder'] = info
+	t.qualified_types['QueryBuilder'] = 'orm.QueryBuilder'
+	t.fn_ret_types['orm.QueryBuilder_Foo.v_sql_insert'] = '!int'
+	assert t.resolve_specialized_generic_receiver_method('QueryBuilder[Foo]', 'v_sql_insert') or {
+		''
+	} == 'orm.QueryBuilder_Foo.v_sql_insert'
+	assert t.resolve_receiver_method_for_type('QueryBuilder_Foo', 'v_sql_insert') or { '' } == 'orm.QueryBuilder_Foo.v_sql_insert'
+}
+
+fn test_receiver_method_resolution_follows_main_locked_struct_alias() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['AliasApp'] = 'App'
+	tc.type_aliases['AliasContext'] = 'Context'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'veb'
+	t.structs['App'] = StructInfo{}
+	t.structs['Context'] = StructInfo{
+		name:   'Context'
+		fields: [
+			FieldInfo{
+				name:        'Context'
+				typ:         'veb.Context'
+				raw_typ:     'veb.Context'
+				is_embedded: true
+			},
+		]
+	}
+	t.structs['veb.Context'] = StructInfo{
+		name:   'Context'
+		module: 'veb'
+		fields: [
+			FieldInfo{
+				name:    'req'
+				typ:     'http.Request'
+				raw_typ: 'http.Request'
+			},
+		]
+	}
+	t.embedded_fields['Context'] = [
+		FieldInfo{
+			name:    'Context'
+			typ:     'veb.Context'
+			raw_typ: 'veb.Context'
+		},
+	]
+	t.fn_ret_types['App.before_accept_loop'] = 'void'
+	t.fn_ret_types['veb.Context.before_request'] = 'void'
+
+	assert t.alias_target_type_preserving_main_lock('main.AliasApp') or { '' } == 'main.App'
+	assert t.resolve_receiver_method_for_type('main.AliasApp', 'before_accept_loop') or { '' } == 'App.before_accept_loop'
+	assert t.resolve_embedded_receiver_method('main.AliasContext', 'before_request') or { '' } == 'veb.Context.before_request'
+	assert t.receiver_method_matches_type_name('App.before_accept_loop', 'main.AliasApp')
+	path := t.embedded_receiver_path('main.AliasContext', 'veb.Context') or {
+		assert false, 'expected the embedded veb.Context path through AliasContext'
+		return
+	}
+	assert path.len == 1
+	assert path[0].name == 'Context'
+	promoted_path := t.struct_field_path_for_field('main.AliasContext', 'req') or {
+		assert false, 'expected the promoted req path through AliasContext'
+		return
+	}
+	assert promoted_path.len == 1
+	assert promoted_path[0].name == 'Context'
+}
+
+fn test_sql_table_name_substitutes_active_generic_parameter() {
+	t := Transformer{
+		active_generic_params:      ['T']
+		active_specialization_args: ['User']
+	}
+	assert t.sql_resolved_table_name('T') == 'User'
+	assert t.sql_table_type_names_match('main.User', 'User')
+}
+
+fn test_sql_table_name_keeps_main_lock_outside_main_module() {
+	t := Transformer{
+		cur_module: 'orm'
+	}
+	assert !t.sql_table_type_names_match('main.User', 'User')
+}
+
 fn test_normalize_type_in_module_cache_tracks_current_file() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -319,6 +441,8 @@ fn test_frozen_interface_boxed_types_are_read_only_in_skip_generics_workers() {
 	worker.mark_interface_boxed_type('main.Reader', 'main.Other')
 	assert 'main.Reader\nmain.Other' !in master.interface_boxed_types
 	assert 'main.Reader\nmain.Other' !in worker.interface_boxed_types
+	assert worker.interface_boxed_types_late['main.Reader\nmain.Other']
+	assert worker.interface_boxed_type_marked('main.Reader', 'main.Other')
 
 	master.interface_boxed_types_frozen = false
 	master.mark_interface_boxed_type('main.Reader', 'main.Other')

@@ -19,7 +19,7 @@ fn global_decl_run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -enable-globals ${src} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(bin)
@@ -46,4 +46,11 @@ fn test_implicit_global_containers_keep_synthesized_runtime_helpers() {
 	out := global_decl_run_good(v3_bin, 'implicit_global_container_helpers',
 		"__global names []string\n__global lookup map[string]int\n\nfn main() {\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
+}
+
+fn test_global_runtime_initializers_preserve_channels_arrays_and_fn_values() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'global_runtime_initializers',
+		"__global (\n\tch chan int\n\tvalues = []int{len: 3, init: 7}\n\tcallback = fn (n int) int {\n\t\treturn n + 1\n\t}\n)\n\nfn send_value() {\n\tch <- 9\n}\n\nfn main() {\n\tt := spawn send_value()\n\tgot := <-ch\n\tt.wait()\n\tprintln(int_str(got))\n\tprintln(int_str(values.len) + ':' + int_str(values[2]))\n\tprintln(int_str(callback(4)))\n}\n")
+	assert out == '9\n3:7\n5'
 }
