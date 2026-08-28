@@ -6249,6 +6249,20 @@ fn test_parallel_transform_defers_large_const_map_expansion() {
 	assert out == '511'
 }
 
+fn test_parallel_transform_defers_large_const_map_membership_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut entries := []string{cap: 512}
+	for i in 0 .. 512 {
+		entries << "\t'key_${i}': ${i}"
+	}
+	source := "const large_lookup = {\n${entries.join('\n')}\n}\n\nfn has_key(key string) bool {\n\treturn key in large_lookup\n}\n\nfn lacks_key(key string) bool {\n\treturn key !in large_lookup\n}\n\nfn main() {\n\tprintln(has_key('key_511'))\n\tprintln(lacks_key('missing'))\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_large_const_map_membership', 'VJOBS=4', source)
+	assert out == 'true\ntrue'
+}
+
 fn test_parallel_transform_merges_generic_call_metadata() {
 	v3_bin := build_v3_review_transform()
 	mut source := 'fn identity[T](value T) T {\n\treturn value\n}\n\n'
