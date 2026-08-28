@@ -9072,8 +9072,14 @@ fn (mut g FlatGen) json_encode_value_c_expr_inner(typ types.Type, expr string, s
 			variant := variants[i]
 			variant_type := g.json_sum_variant_type(variant)
 			field := g.sum_field_name(variant)
-			encoded := g.json_encode_sum_variant_c_expr(variant_type, '(*(${expr}).${field})',
-				next_seen) or { return none }
+			variant_expr := if variant_type is types.Pointer {
+				'((${expr}).${field})'
+			} else {
+				'(*(${expr}).${field})'
+			}
+			encoded := g.json_encode_sum_variant_c_expr(variant_type, variant_expr, next_seen) or {
+				return none
+			}
 			index := g.sum_type_index(sum_name, variant)
 			result = '((${expr}).typ == ${index} ? ${encoded} : ${result})'
 		}
@@ -10284,6 +10290,7 @@ fn (mut g FlatGen) gen_json_decode_sum_variant_expr(item string, sum_name string
 	g.write('(${sum_ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = ')
 	if variant_type is types.Pointer {
 		g.gen_json_decode_value_expr(item, variant_type)
+		g.write(', ._pointer_variant_is_owned = true')
 	} else {
 		g.write('(${inner_ct}*)memdup(&(${inner_ct}[]){')
 		g.gen_json_decode_value_expr(decode_item, variant_type)
