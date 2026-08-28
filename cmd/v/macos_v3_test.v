@@ -86,10 +86,10 @@ fn test_macos_v3_relevant_command_selects_user_compilation_and_tests() {
 		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.sanitize = false
 		prefs.is_livemain = true
-		assert is_macos_v3_relevant_command('main.v', prefs)
+		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_livemain = false
 		prefs.is_liveshared = true
-		assert is_macos_v3_relevant_command('main.v', prefs)
+		assert !is_macos_v3_relevant_command('main.v', prefs)
 		prefs.is_liveshared = false
 		prefs.is_prof = true
 		assert is_macos_v3_relevant_command('main.v', prefs)
@@ -2543,6 +2543,16 @@ fn test_explicit_v3_rejects_structured_v1_only_preferences() {
 		gc_set_by_flag: true
 		gc_mode:        .boehm_full_opt
 		path:           'main.v'
+	})
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler: true
+		is_livemain:  true
+		path:         'main.v'
+	})
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler:  true
+		is_liveshared: true
+		path:          'main.v'
 	})
 	assert !macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
 		new_compiler: true
