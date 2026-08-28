@@ -304,27 +304,16 @@ fn test_report_includes_v_source_counts_v_context() {
 	})
 }
 
-fn test_bounded_v_source_content_is_truncated_detects_marked_excerpts() {
-	// A whole file that fit the byte budget carries no truncation marker: complete upload.
-	assert !bounded_v_source_content_is_truncated('module main\nfn main() {\n\tprintln(1)\n}')
-	// A bounded excerpt carries the marker.
-	truncated := 'module main\n${c_error_v_source_truncation_notice}\nfn main() {}'
-	assert bounded_v_source_content_is_truncated(truncated)
-	assert !bounded_v_source_content_is_truncated('')
-}
-
 fn test_bounded_v_source_marks_single_oversized_line_hard_clamp() {
 	// The failing V line is the whole file and is longer than the byte budget. The safety
-	// hard-clamp used to drop a markerless prefix, so a truncated upload was reported as the
-	// complete source (PR #28234 review). It must now carry the truncation marker, and
-	// bounded_v_source_content_is_truncated must therefore report it as an excerpt.
+	// hard-clamp used to drop a markerless prefix (PR #28234 review); it must now carry the
+	// truncation marker so a truncated upload is never a silently complete-looking prefix.
 	long_line := 'const x = "' + 'a'.repeat(200) + '"'
 	budget := 64
 	out := bounded_v_source(long_line, budget, 1) // focus on line 1 (the only line)
 	assert out.len <= budget
 	assert out.len < long_line.len
 	assert out.contains(c_error_v_source_truncation_notice)
-	assert bounded_v_source_content_is_truncated(out)
 }
 
 fn test_external_v3_report_env_round_trip() {
@@ -388,6 +377,8 @@ fn test_external_v3_report_env_round_trip() {
 	assert got.cleanup_dir == ''
 	assert got.v_file == 'main.v'
 	assert got.v_source == v_source
+	// The small source fit the budget, so it round-trips complete and untruncated.
+	assert !got.v_source_truncated
 	assert got.input_digests_complete
 	assert got.input_digests == {
 		parsed_path: parsed_digest
@@ -619,6 +610,8 @@ fn test_export_external_v3_report_bounds_combined_exec_payload() {
 	assert got.v_source.len < huge_source.len
 	assert got.c_output.contains(c_error_bug_report_truncation_notice)
 	assert got.v_source.contains(c_error_v_source_truncation_notice)
+	// The excerpt is flagged truncated explicitly through the handoff.
+	assert got.v_source_truncated
 }
 
 fn test_export_external_v3_report_preserves_failing_line_through_handoff() {
@@ -663,6 +656,35 @@ fn test_export_external_v3_report_preserves_failing_line_through_handoff() {
 		assert got.v_source.contains(c_error_v_source_truncation_notice)
 		assert got.v_source.contains('the_unique_failing_line_marker')
 	}
+}
+
+fn test_export_external_v3_report_marks_complete_file_containing_marker_text_as_untruncated() {
+	// A complete file that legitimately contains the truncation-marker comment text must NOT be
+	// classified as truncated. Truncation is carried explicitly through the handoff, computed
+	// from the byte budget, not inferred from (user-controlled) source content (PR #28234 review).
+	clear_v3_report_env()
+	source := 'fn main() {\n\t${c_error_v_source_truncation_notice}\n\tprintln(1)\n}'
+	assert source.contains(c_error_v_source_truncation_notice)
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:          '' // generated-C compilation error
+		ccompiler:     'clang'
+		c_output:      'error: use of undeclared identifier missing'
+		v_file:        'main.v'
+		v_source:      source
+		source_inline: true
+		tag:           'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	if got.kind == external_v3_transport_limited_kind {
+		return // environment too small to forward the manifest; nothing to assert
+	}
+	// The whole file fit the budget, so it was forwarded complete and reported as untruncated,
+	// even though its content contains the marker text.
+	assert got.v_source == source
+	assert !got.v_source_truncated
 }
 
 fn test_v3_report_env_budget_reserves_existing_argv_and_environment() {
@@ -711,7 +733,8 @@ fn test_build_inline_c_error_report_classifies_and_filters() {
 	// (`v-c-compiler-error`) report carrying the bounded content — not misreported as an
 	// internal V3 error (which would emit `v3-compiler-error`) (PR #28131 review).
 	report := build_inline_c_error_report(&prefs, 'clang',
-		'main.tmp.c:3:9: error: use of undeclared identifier x', 'main.v', 'fn main() {}', 'V3') or {
+		'main.tmp.c:3:9: error: use of undeclared identifier x', 'main.v', 'fn main() {}',
+		false, 'V3') or {
 		assert false, 'an ordinary generated-C diagnostic must be reportable'
 		return
 	}
@@ -719,11 +742,13 @@ fn test_build_inline_c_error_report_classifies_and_filters() {
 	assert report.c_error.contains('undeclared identifier')
 	assert report.v_file == 'main.v'
 	assert report.v_source == 'fn main() {}'
+	// The explicit truncation flag is carried through, not inferred from source content.
+	assert !report.v_source_truncated
 	assert report.build_options.split(' ').first() == 'V3'
 	// An expected missing-library diagnostic is filtered out (not uploaded), exactly as
 	// the in-process generated-C path already does.
 	if _ := build_inline_c_error_report(&prefs, 'clang', "ld: library 'macos_v3_absent' not found",
-		'main.v', 'fn main() {}', 'V3')
+		'main.v', 'fn main() {}', false, 'V3')
 	{
 		assert false, 'a missing-library diagnostic must not be reported'
 	}

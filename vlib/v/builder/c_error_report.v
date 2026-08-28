@@ -119,7 +119,12 @@ pub:
 	// the byte bound once, centered on it, so a file larger than the environment budget keeps
 	// the exact failing code instead of losing it to a second head+tail truncation.
 	v_source_focus int
-	source_inline  bool // true: use v_file/v_source as-is and touch no filesystem path
+	// v_source_truncated records, explicitly, whether the forwarded v_source is a bounded
+	// excerpt rather than the complete file. export sets it from the byte-budget comparison it
+	// performs, and it rides through the environment so the retry states truncation accurately
+	// without ever inferring it from (user-controlled) source content.
+	v_source_truncated bool
+	source_inline      bool // true: use v_file/v_source as-is and touch no filesystem path
 	// Untagged path/digest pairs below describe source bytes V3 actually parsed. The
 	// stable parser compares them only with its own parsed-file paths and scanner
 	// digests. Tagged native inputs describe resolved #include/#insert dependencies;
@@ -276,10 +281,10 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 		}
 		if report.kind == external_v3_compiler_error_kind {
 			submit_inline_v3_compiler_error_bug_report(prefs, report.ccompiler, report.c_output,
-				report.v_file, report.v_source, report.tag)
+				report.v_file, report.v_source, report.v_source_truncated, report.tag)
 		} else {
 			submit_inline_c_error_bug_report(prefs, report.ccompiler, report.c_output,
-				report.v_file, report.v_source, report.tag)
+				report.v_file, report.v_source, report.v_source_truncated, report.tag)
 		}
 		return
 	}
@@ -305,7 +310,7 @@ const v3_report_env_prefix = 'V_MACOS_V3_REPORT_'
 // only and no directory path is accepted. Tagged native paths can only be hashed after
 // the receiver constrains them to roots selected by its own successful build.
 const v3_report_env_suffixes = ['PRESENT', 'KIND', 'CCOMPILER', 'COUTPUT', 'TAG', 'VFILE', 'VSOURCE',
-	'INPUT_DIGESTS', 'INPUT_DIGESTS_COMPLETE']
+	'VSOURCE_TRUNCATED', 'INPUT_DIGESTS', 'INPUT_DIGESTS_COMPLETE']
 
 // encode_v3_report_input_digests serializes arbitrary input paths without allowing a
 // newline or separator in a filename to corrupt the manifest. Untagged paths are matched
@@ -452,6 +457,7 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 		'TAG':                    report.tag
 		'VFILE':                  report.v_file
 		'VSOURCE':                ''
+		'VSOURCE_TRUNCATED':      '0'
 		'INPUT_DIGESTS':          encoded_digests
 		'INPUT_DIGESTS_COMPLETE': if input_digests_complete { '1' } else { '0' }
 	}
@@ -491,13 +497,23 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	// content plus a truncation marker: bounded_v_source would otherwise return a markerless
 	// prefix that both drops the failing line and misreports the excerpt as complete.
 	v_source_marker_min := c_error_v_source_truncation_notice.len + 2
+	mut v_source_truncated := false
 	payload['VSOURCE'] = if v_source_budget <= 0 {
 		''
 	} else if report.v_source.len > v_source_budget && v_source_budget <= v_source_marker_min {
 		''
-	} else {
+	} else if report.v_source.len > v_source_budget {
+		// Larger than the budget: a bounded excerpt centered on the failing line.
+		v_source_truncated = true
 		bounded_v_source(report.v_source, v_source_budget, report.v_source_focus)
+	} else {
+		// Fits whole: the complete file is forwarded.
+		report.v_source
 	}
+	// Carry the truncation state explicitly through the handoff, computed from the byte budget
+	// rather than from (user-controlled) source content, so the retry's notice is accurate even
+	// when a complete file legitimately contains the truncation marker text.
+	payload['VSOURCE_TRUNCATED'] = if v_source_truncated { '1' } else { '0' }
 	set_v3_report_env_payload(payload)
 }
 
@@ -607,6 +623,7 @@ pub fn take_external_v3_report_from_env() ?ExternalCErrorBugReport {
 		tag:                    os.getenv('${v3_report_env_prefix}TAG')
 		v_file:                 os.getenv('${v3_report_env_prefix}VFILE')
 		v_source:               os.getenv('${v3_report_env_prefix}VSOURCE')
+		v_source_truncated:     os.getenv('${v3_report_env_prefix}VSOURCE_TRUNCATED') == '1'
 		source_inline:          true
 		input_digests:          input_digests
 		input_digests_complete: os.getenv('${v3_report_env_prefix}INPUT_DIGESTS_COMPLETE') == '1'
@@ -772,7 +789,7 @@ pub fn submit_external_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_
 		''
 	} else {
 		os.base(v_file)
-	}, '', tag)
+	}, '', false, tag)
 }
 
 // submit_inline_v3_compiler_error_bug_report reports a V3 internal compiler error whose
@@ -780,9 +797,10 @@ pub fn submit_external_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_
 // file is identified only by the base name `v_file_label`. It reads no filesystem path,
 // so it is safe to drive from the environment handoff, where every value is caller-
 // controlled (a forged handoff can therefore only submit attacker-supplied text).
-fn submit_inline_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_stage string, v3_output string, v_file_label string, v_source string, tag string) {
+fn submit_inline_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_stage string, v3_output string, v_file_label string, v_source string, v_source_truncated bool, tag string) {
 	mut b := new_builder(prefs)
-	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, v_file_label, v_source, tag)
+	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, v_file_label, v_source, v_source_truncated,
+		tag)
 }
 
 // build_inline_c_error_report constructs the generated-C fallback report to upload from
@@ -790,7 +808,7 @@ fn submit_inline_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_stage 
 // submission (an expected missing-library / missing-libatomic error). No generated C is
 // available inline, so there is no C context or C/V line mapping — only the bounded V
 // source snippet — but the `v-c-compiler-error` classification matches the in-process path.
-fn build_inline_c_error_report(prefs &pref.Preferences, ccompiler string, c_output string, v_file string, v_source string, tag string) ?CErrorBugReport {
+fn build_inline_c_error_report(prefs &pref.Preferences, ccompiler string, c_output string, v_file string, v_source string, v_source_truncated bool, tag string) ?CErrorBugReport {
 	if !c_error_should_send_bug_report(c_output) {
 		return none
 	}
@@ -805,7 +823,7 @@ fn build_inline_c_error_report(prefs &pref.Preferences, ccompiler string, c_outp
 		c_error:        c_output
 		v_file:         v_file
 		v_source:       v_source
-		v_source_truncated: bounded_v_source_content_is_truncated(v_source)
+		v_source_truncated: v_source_truncated
 	}
 }
 
@@ -815,9 +833,10 @@ fn build_inline_c_error_report(prefs &pref.Preferences, ccompiler string, c_outp
 // c_error_should_send_bug_report filter (so expected missing-library / missing-libatomic
 // diagnostics are not uploaded) and the `v-c-compiler-error` classification. It reads no
 // filesystem path, so it is safe to drive from the environment handoff.
-fn submit_inline_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c_output string, v_file_label string, v_source string, tag string) {
+fn submit_inline_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c_output string, v_file_label string, v_source string, v_source_truncated bool, tag string) {
 	is_v3_fallback := tag != ''
-	raw_report := build_inline_c_error_report(prefs, ccompiler, c_output, v_file_label, v_source, tag) or {
+	raw_report := build_inline_c_error_report(prefs, ccompiler, c_output, v_file_label, v_source,
+		v_source_truncated, tag) or {
 		// Not eligible for automatic submission (e.g. a missing library), but V3 still
 		// fell back to the stable compiler, so the user is told about the fallback.
 		if is_v3_fallback {
@@ -835,18 +854,17 @@ fn submit_inline_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c
 	b.send_prepared_c_error_bug_report(raw_report, tag)
 }
 
-fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_output string, v_file string, v_source string, tag string) {
+fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_output string, v_file string, v_source string, v_source_truncated bool, tag string) {
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
 		print_v3_fallback_notice('', false, false, false)
 		return
 	}
 	build_options := c_error_report_build_options(v.pref, tag)
-	// A V3 internal failure has no mapped failing line to center a window on, so
-	// only a bounded head+tail window of the source is uploaded (never the whole
-	// file, which could hold unrelated proprietary code or secrets), mirroring the
-	// C-error report path. A directory build (`v .`) stages an empty source and so
-	// contributes no source at all — but the version/target/build-option metadata is
-	// still reported rather than dropped entirely. See the privacy note in doc/docs.md.
+	// A V3 internal failure has no mapped failing line, so the whole captured input is uploaded
+	// (bounded to a head+tail window at the handoff only when larger than the byte budget); the
+	// dispatcher forwards it and its explicit truncation state through the environment. A
+	// directory build (`v .`) stages an empty source and so contributes no source at all — but
+	// the version/target/build-option metadata is still reported. See doc/docs.md.
 	raw_report := CErrorBugReport{
 		kind:           'v3-compiler-error'
 		v_version:      version.full_v_version(true)
@@ -858,7 +876,7 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 		c_error:        v3_output
 		v_file:         v_file
 		v_source:       v_source
-		v_source_truncated: bounded_v_source_content_is_truncated(v_source)
+		v_source_truncated: v_source_truncated
 	}
 	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
@@ -945,18 +963,6 @@ fn v_source_and_context_expose_whole_file(v_source string, context []CErrorRepor
 // metadata-only report carries neither.
 fn report_includes_v_source(report CErrorBugReport) bool {
 	return report.v_source != '' || report.v_context.len > 0
-}
-
-// bounded_v_source_content_is_truncated reports whether already-bounded source *content* is a
-// bounded excerpt rather than the complete file. It is used only where the original source is
-// no longer available — reconstructing a report from bytes forwarded across the V3->V1 retry —
-// so truncation cannot be recomputed from the byte budget. bounded_v_source guarantees the
-// truncation marker on every truncation (including the single-oversized-line hard clamp), so
-// its presence is a reliable record there. In-process construction records truncation directly
-// from the byte budget instead (see new_c_error_bug_report), and the notice reads the resulting
-// explicit `CErrorBugReport.v_source_truncated` field rather than sniffing the bytes itself.
-fn bounded_v_source_content_is_truncated(v_source string) bool {
-	return v_source.contains(c_error_v_source_truncation_notice)
 }
 
 // print_v3_fallback_notice explains, in plain language, that V3 could not build the
