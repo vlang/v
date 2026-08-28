@@ -206,6 +206,11 @@ mut:
 	expected_expr_node              int = -1
 	expected_expr_type              string
 	in_selector_base                bool
+	// Set while transforming the base of a bound-method-value selector, where a
+	// `first()`/`last()` accessor base must keep its copying semantics instead of being
+	// borrowed in place (see borrow_first_last_accessor / transform_selector_expr).
+	suppress_first_last_accessor_borrow bool
+
 	autolock_depth                  int
 	alias_cache                     &AliasCache              = unsafe { nil }
 	sum_cache                       &AliasCache              = unsafe { nil }
@@ -17751,12 +17756,15 @@ fn stringify_type_has_generic_placeholder(typ string) bool {
 // the independent-clone path `first()`/`last()` otherwise takes for ownership-bearing
 // element types — a path that has no valid lowering when the element has no `clone()`
 // method and would otherwise emit an empty placeholder (`(0)`). Restricted to that owned
-// case so non-owned elements keep their existing accessor lowering. Applied unconditionally
-// for owned elements so it stays in lock-step with the checker, which likewise treats every
-// `first()`/`last()` field read as a borrow. Returns none when the base is not such an
-// accessor.
+// case so non-owned elements keep their existing accessor lowering. Applied for every owned
+// field read so it stays in lock-step with the checker, which likewise treats such a read as
+// a borrow — but NOT for a bound-method-value receiver (`suppress_first_last_accessor_borrow`):
+// there closure generation shallow-copies the receiver, so an aliased array element would
+// share heap fields with the array and double-free. Returns none when the base is not such
+// an accessor.
 fn (mut t Transformer) borrow_first_last_accessor(call_id flat.NodeId) ?flat.NodeId {
-	if int(call_id) < 0 || int(call_id) >= t.a.nodes.len || isnil(t.tc) {
+	if int(call_id) < 0 || int(call_id) >= t.a.nodes.len || isnil(t.tc)
+		|| t.suppress_first_last_accessor_borrow {
 		return none
 	}
 	node := t.a.nodes[int(call_id)]
@@ -17783,7 +17791,10 @@ fn (mut t Transformer) borrow_first_last_accessor(call_id flat.NodeId) ?flat.Nod
 		t.set_node_typ(int(base), clean_base_type)
 	}
 	if callee.value == 'last' {
-		base = t.stabilize_transformed_lvalue_for_reuse(base)
+		// `last()` reads the base twice (`arr[arr.len - 1]`), so it must evaluate once.
+		// A plain lvalue (`t.entries`) is left untouched; a non-lvalue receiver such as
+		// `make_entries()` is bound to a temp instead of being duplicated.
+		base = t.stable_transformed_expr_for_reuse(base, clean_base_type, 'first_last_borrow_base')
 	}
 	index := if callee.value == 'first' {
 		t.make_int_literal(0)
@@ -18154,9 +18165,16 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		new_base := t.selector_base_for_field(transformed_base, base_type0)
 		return t.lower_sum_shared_field_selector(new_base, base_type0, node.value, shared_typ)
 	}
+	// A bound method value keeps the copying `first()`/`last()` accessor semantics for its
+	// receiver; only a field read borrows the element in place. The field-specific branches
+	// above never reach here for a method value, so gating this one call site suffices.
+	is_method_value := !isnil(t.tc) && t.tc.expr_is_method_value(id)
+	old_suppress_borrow := t.suppress_first_last_accessor_borrow
+	t.suppress_first_last_accessor_borrow = is_method_value
 	mut new_base := t.transform_selector_base_expr(base_id)
+	t.suppress_first_last_accessor_borrow = old_suppress_borrow
 	mut selector_generic_params := node.generic_params().clone()
-	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
+	if is_method_value {
 		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
 		method_params := t.call_param_types(method_value_name)
 		if method_params.len > 0 && method_params[0] !is types.Pointer {

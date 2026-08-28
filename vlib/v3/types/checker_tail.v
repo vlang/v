@@ -6028,7 +6028,9 @@ fn (tc &TypeChecker) known_sum_constructor_name(name string) ?string {
 // consumed as a borrow — the base of a field selector (`arr.last().field`) — rather than
 // escaping as an independent value. A borrowed field read keeps the element owned by the
 // array, so it needs no `clone()` even when the element type has no clone method; the
-// transformer lowers such a base to an in-place `arr[..]` access.
+// transformer lowers such a base to an in-place `arr[..]` access. A bound method value
+// (`arr.last().method`) is excluded: it is not a field read, and closure generation
+// shallow-copies the receiver, so it must keep the copying accessor semantics.
 fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool {
 	mut current := id
 	for {
@@ -6043,7 +6045,7 @@ fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool {
 			continue
 		}
 		return parent.kind == .selector && parent.children_count > 0
-			&& tc.a.child(parent, 0) == current
+			&& tc.a.child(parent, 0) == current && !tc.expr_is_method_value(parent_id)
 	}
 	return false
 }

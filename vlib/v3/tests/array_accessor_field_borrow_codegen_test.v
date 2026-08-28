@@ -85,3 +85,71 @@ fn test_first_last_field_borrow_in_imported_module() {
 		"module main\n\nimport mymod\n\nfn main() {\n\tmut t := mymod.Tbl{}\n\tt.add('a', 'b')\n\tt.add('c', 'd')\n\tprintln(int_str(t.total()))\n}\n")
 	assert out == '68'
 }
+
+// The in-place borrow only fires with the ownership checker (`-d ownership`); it is where
+// the accessor would otherwise take its independent-clone path. These cases exercise that
+// path directly. The build compiler must itself embed the ownership checker.
+fn build_v3_array_accessor_borrow_ownership() ?string {
+	v3_bin := tmp_array_accessor_borrow_path('array_accessor_borrow_ownership')
+	build :=
+		os.execute('${os.quoted_path(array_accessor_borrow_vexe)} -gc none -d ownership -path "${array_accessor_borrow_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(array_accessor_borrow_v3_src)}')
+	if build.output.contains('ownership support is not compiled into this v3 executable') {
+		// The bootstrap compiler running this test lacks the ownership checker, so it
+		// cannot build an ownership-enabled v3. Skip rather than fail on such a host.
+		return none
+	}
+	assert build.exit_code == 0, build.output
+	return v3_bin
+}
+
+fn compile_v3_ownership_program(v3_bin string, name string, src string, extra_args string) os.Result {
+	src_path := '${tmp_array_accessor_borrow_path(name)}.v'
+	bin_path := tmp_array_accessor_borrow_path('${name}_bin')
+	os.write_file(src_path, src) or { panic(err) }
+	return os.execute('${os.quoted_path(v3_bin)} -ownership -d ownership -no-parallel ${extra_args} -o ${os.quoted_path(bin_path)} ${os.quoted_path(src_path)}')
+}
+
+// Concern: `last()` reads its receiver twice (`arr[arr.len - 1]`), so a non-lvalue receiver
+// such as `make_entries()` must be evaluated exactly once. The borrow lowering binds it to a
+// temp instead of duplicating the call.
+fn test_owned_first_last_receiver_evaluated_once() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_eval_once',
+		"struct E {\n\tname string\n\tsize int\n}\n\n__global (\n\tmake_calls = 0\n)\n\nfn make_entries() []E {\n\tmake_calls++\n\treturn [E{ name: 'a', size: 5 }, E{ name: 'b', size: 9 }]\n}\n\nfn main() {\n\ts := make_entries().last().size\n\tprintln(int_str(s) + ':' + int_str(make_calls))\n}\n",
+		'-enable-globals')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unsupported node kind'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_eval_once_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	// size == 9 (last element), make_entries() invoked once (not twice).
+	assert run.output.trim_space() == '9:1', run.output
+}
+
+// Concern: a bound method value (`arr.last().method`) is not a field read. Closure
+// generation shallow-copies the receiver, so it must keep the copying accessor semantics
+// instead of borrowing the array element. For an owned element with no `clone()` method the
+// accessor is genuinely impossible, so this must be rejected rather than silently miscompiled.
+fn test_owned_method_value_receiver_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value',
+		"struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'b', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n",
+		'')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
+// A method value whose element type does provide `clone()` keeps working: the receiver is
+// cloned (an independent copy), never an alias of the live array element.
+fn test_owned_method_value_with_clone_runs() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_method_value_clone',
+		"struct E {\n\tname string\n\tsize int\n}\n\nfn (e E) clone() E {\n\treturn E{ name: e.name.clone(), size: e.size }\n}\n\nfn (e E) describe() string {\n\treturn e.name\n}\n\nfn main() {\n\tarr := [E{ name: 'a', size: 1 }, E{ name: 'bb', size: 2 }]\n\tf := arr.last().describe\n\tprintln(f())\n}\n",
+		'')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unsupported node kind'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_method_value_clone_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'bb', run.output
+}
