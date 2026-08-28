@@ -72,6 +72,25 @@ fn test_optional_payload_qualifies_interface() {
 	assert g.concrete_optional_type_name(result_type) == 'Optional_firebird__Value'
 }
 
+fn test_optional_payload_keeps_concrete_c_type_with_interface_collision() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.interface_names['pkg.Value'] = true
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	value_type := types.Type(types.Struct{
+		name: 'C.Value'
+	})
+	assert g.value_c_type(value_type) == 'Value'
+	assert g.optional_payload_c_type(value_type) == 'Value'
+	result_type := types.Type(types.ResultType{
+		base_type: value_type
+	})
+	assert g.concrete_optional_type_name(result_type) == 'Optional_Value'
+}
+
 fn test_optional_payload_does_not_qualify_ambiguous_interface() {
 	mut ast := &flat.FlatAst{}
 	mut tc := types.TypeChecker.new(ast)

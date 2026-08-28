@@ -309,6 +309,97 @@ fn main() {
 	assert out == '42'
 }
 
+fn test_interface_field_receiver_preserves_smartcast_projection() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_field_receiver_smartcast', 'interface Reader {
+	read() int
+}
+
+struct Source {
+	n int
+}
+
+fn (source Source) read() int {
+	return source.n
+}
+
+struct Holder {
+	reader Reader
+}
+
+type Value = Holder | string
+
+fn read_value(value Value) int {
+	return match value {
+		Holder { value.reader.read() }
+		else { -1 }
+	}
+}
+
+fn main() {
+	value := Value(Holder{
+		reader: Reader(Source{
+			n: 37
+		})
+	})
+	println(read_value(value))
+}
+')
+	assert out == '37'
+}
+
+fn test_result_c_payload_does_not_use_colliding_interface() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'result_c_payload_interface_collision', {
+		'v.mod':     "Module { name: 'result_c_payload_interface_collision' }\n"
+		'native.h':  'typedef struct { int value; } Value;\n'
+		'pkg/pkg.v': 'module pkg
+
+pub interface Value {
+	number() int
+}
+
+pub fn read(value Value) int {
+	return value.number()
+}
+'
+		'main.v':    'module main
+
+#insert "native.h"
+
+import pkg
+
+@[typedef]
+struct C.Value {
+	value int
+}
+
+struct Box {
+	n int
+}
+
+fn (box Box) number() int {
+	return box.n
+}
+
+fn load() !C.Value {
+	return C.Value{
+		value: 41
+	}
+}
+
+fn main() {
+	native := load() or { panic(err) }
+	println(native.value)
+	println(pkg.read(Box{
+		n: 43
+	}))
+}
+'
+	}, 'main.v')
+	assert out == '41\n43'
+}
+
 fn test_issue_28180_module_collisions_and_embedded_generic_middleware() {
 	v3_bin := build_v3_review_transform()
 	// The reported regression is a compiler failure; keep unrelated runtime

@@ -991,7 +991,9 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 	} else {
 		base_node
 	}
-	typed_receiver := if original_base.kind == .selector && original_base.children_count > 0
+	typed_receiver := if t.interface_receiver_has_variant_projection(base) {
+		t.retype_interface_receiver(base, interface_receiver_type)
+	} else if original_base.kind == .selector && original_base.children_count > 0
 		&& t.a.child_node(&original_base, 0).kind == .ident {
 		original_ident := t.a.child_node(&original_base, 0)
 		ident := t.make_ident(original_ident.value)
@@ -1017,4 +1019,29 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 		args << t.a.child(&transformed, i)
 	}
 	return t.make_call_expr_typed(typed_callee, args, transformed.typ)
+}
+
+fn (t &Transformer) interface_receiver_has_variant_projection(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	if _ := t.generated_variant_access_type(id) {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.selector, .prefix, .paren] && node.children_count > 0 {
+		return t.interface_receiver_has_variant_projection(t.a.child(&node, 0))
+	}
+	return false
+}
+
+fn (mut t Transformer) retype_interface_receiver(id flat.NodeId, typ string) flat.NodeId {
+	node := t.a.nodes[int(id)]
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		children << t.a.child(&node, i)
+	}
+	retyped := t.copy_node_with_children(node, children)
+	t.set_node_typ(int(retyped), typ)
+	return retyped
 }

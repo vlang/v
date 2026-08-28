@@ -360,12 +360,23 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 		}
 	}
 	// A stale declaration spelling can also lose the nominal kind and represent
-	// an interface as a bare struct. Check the interface registry independently
-	// so `!Value` from another module still uses that module's interface typedef.
-	if qualified := g.unique_qualified_interface_c_type(ct) {
-		return qualified + pointer_suffix
+	// an interface as a bare struct. Only consult the interface registry for
+	// interface-like semantic types; concrete qualified types such as `C.Value`
+	// can legitimately share their bare C spelling with a V interface.
+	if optional_payload_may_have_stale_interface_spelling(t) {
+		if qualified := g.unique_qualified_interface_c_type(ct) {
+			return qualified + pointer_suffix
+		}
 	}
 	return ct + pointer_suffix
+}
+
+fn optional_payload_may_have_stale_interface_spelling(t types.Type) bool {
+	mut clean := cgen_unalias_type(t)
+	for clean is types.Pointer {
+		clean = cgen_unalias_type(clean.base_type)
+	}
+	return clean is types.Interface || (clean is types.Struct && !clean.name.contains('.'))
 }
 
 fn optional_payload_is_bare_struct(t types.Type) bool {
