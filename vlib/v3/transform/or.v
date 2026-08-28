@@ -1586,6 +1586,12 @@ fn (t &Transformer) qualify_or_storage_type(typ string) string {
 			return prefix + t.qualify_or_storage_type(clean[prefix.len..])
 		}
 	}
+	if clean.starts_with('map[') {
+		key_type, value_type := t.map_type_parts(clean)
+		if key_type.len > 0 && value_type.len > 0 {
+			return 'map[${t.qualify_or_storage_type(key_type)}]${t.qualify_or_storage_type(value_type)}'
+		}
+	}
 	if clean.ends_with(']') {
 		base, args, is_generic_app := generic_app_parts(clean)
 		if is_generic_app {

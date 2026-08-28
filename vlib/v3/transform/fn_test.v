@@ -31,6 +31,16 @@ fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
 	assert t.qualify_or_storage_type('(string, []string)') == '(string, []string)'
 }
 
+fn test_immediate_closure_generic_sum_pointer_result_may_alias_capture() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['Maybe'] = ['T', 'IError']
+	tc.sum_generic_params['Maybe'] = ['T']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.immediate_closure_result_may_alias_capture('Maybe[&int]')
+}
+
 fn test_normalize_function_type_preserves_mut_parameter() {
 	t := Transformer{}
 	assert t.normalize_type_in_module('fn (mut Item)', 'main') == 'fn (&Item)'

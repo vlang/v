@@ -1390,7 +1390,7 @@ fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut se
 			} else {
 				seen[typ.name] = true
 				mut may_alias := false
-				for variant in t.tc.sum_types[typ.name] or { []string{} } {
+				for variant in t.concrete_sum_variants_for_candidate(typ.name) {
 					if t.closure_result_type_may_alias_capture(t.tc.parse_type(variant), mut seen) {
 						may_alias = true
 						break

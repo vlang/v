@@ -184,6 +184,13 @@ fn test_channel_send_or_binds_error_during_fallback_transform() {
 	assert out == 'channel closed\n7'
 }
 
+fn test_or_storage_preserves_generic_map_value_type() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'or_storage_generic_map_value',
+		'struct Box[T] {\n\tvalue T\n}\n\nfn make_map() ?map[string]Box[int] {\n\treturn {"answer": Box[int]{value: 42}}\n}\n\nfn main() {\n\titems := make_map() or { map[string]Box[int]{} }\n\tprintln(int_str(items["answer"].value))\n}\n')
+	assert out == '42'
+}
+
 fn test_optional_result_pointers_or_are_rejected() {
 	v3_bin := build_v3_or_review()
 	option_output := or_review_compile_bad(v3_bin, 'optional_pointer_or_rejected',
