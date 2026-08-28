@@ -8,6 +8,8 @@ import v3.types
 // more, and it is used only for parallel worker sizing/deferral.
 const map_init_base_expansion_estimate = 12
 const map_init_entry_expansion_estimate = 16
+const map_init_owned_key_cleanup_expansion_estimate = 16
+const map_init_owned_value_cleanup_expansion_estimate = 24
 
 // A larger expansion is deliberately lowered after the bounded shared-worker
 // phase. Large const maps can be referenced from a tiny function while their
@@ -31,12 +33,32 @@ struct MapFixedArrayIndexInfo {
 	elem_type string
 }
 
-fn map_init_expansion_estimate(node flat.Node) int {
+fn (t &Transformer) map_init_expansion_estimate(id flat.NodeId, node flat.Node) int {
 	if node.kind != .map_init {
 		return 0
 	}
 	entry_count := int(node.children_count) / 2
-	return map_init_base_expansion_estimate + entry_count * map_init_entry_expansion_estimate
+	mut entry_estimate := map_init_entry_expansion_estimate
+	if !isnil(t.tc) {
+		mut map_type := if node.value.len > 0 {
+			node.value
+		} else if node.typ.len > 0 {
+			node.typ
+		} else {
+			t.node_type(id)
+		}
+		map_type = t.normalize_type_alias(t.resolve_type_text_import_aliases(map_type))
+		if map_type.starts_with('map[') {
+			key_type, value_type := t.map_type_parts(map_type)
+			if t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type)) {
+				entry_estimate += map_init_owned_key_cleanup_expansion_estimate
+			}
+			if t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type)) {
+				entry_estimate += map_init_owned_value_cleanup_expansion_estimate
+			}
+		}
+	}
+	return map_init_base_expansion_estimate + entry_count * entry_estimate
 }
 
 // external_map_tree_expansion_estimate counts map literals reachable through
@@ -60,7 +82,7 @@ fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo in
 		}
 		node := t.a.nodes[int(id)]
 		if node.kind == .map_init {
-			estimate += map_init_expansion_estimate(node)
+			estimate += t.map_init_expansion_estimate(id, node)
 		}
 		for ci in 0 .. int(node.children_count) {
 			child := t.a.child(&node, ci)
@@ -103,7 +125,7 @@ fn (t &Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 		}
 		node := t.a.nodes[idx]
 		if node.kind == .map_init {
-			estimate += map_init_expansion_estimate(node)
+			estimate += t.map_init_expansion_estimate(flat.NodeId(idx), node)
 		}
 		// Map index lowering replaces a constant identifier with its initializer
 		// through const_expr_for_ident(). That edge is semantic and is not present

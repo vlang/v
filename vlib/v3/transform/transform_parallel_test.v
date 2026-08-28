@@ -101,6 +101,29 @@ fn test_const_map_expansion_estimate_ignores_stale_transformer_local() {
 	assert t.collection_const_expr_for_ident(ident)? == const_id
 }
 
+fn test_map_expansion_estimate_includes_owned_value_cleanup() {
+	$if !ownership ? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	plain_id := a.add_node(flat.Node{
+		kind:           .map_init
+		typ:            'map[int]int'
+		children_count: 254
+	})
+	owned_id := a.add_node(flat.Node{
+		kind:           .map_init
+		typ:            'map[int]string'
+		children_count: 254
+	})
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.map_init_expansion_estimate(plain_id, a.nodes[int(plain_id)]) < deferred_map_expansion_threshold
+	assert t.map_init_expansion_estimate(owned_id, a.nodes[int(owned_id)]) > deferred_map_expansion_threshold
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{
