@@ -149,12 +149,15 @@ fn (mut p Parser) next() ! {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	if p.tokens.len > 0 {
-		p.peek_tok = p.tokens.first()
+		// Take the front token out and drop the emptied slot. Indexing (instead of
+		// `first()`) moves the element in `-ownership` mode, so `token.Token` needs no
+		// clone; in the default backend it is an ordinary copy followed by a delete.
+		p.peek_tok = p.tokens[0]
 		p.tokens.delete(0)
 		p.peek(1)!
 	} else {
 		p.peek(1)!
-		p.peek_tok = p.tokens.first()
+		p.peek_tok = p.tokens[0]
 		p.tokens.delete(0)
 	}
 }
