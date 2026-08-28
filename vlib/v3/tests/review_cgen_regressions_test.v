@@ -791,3 +791,24 @@ fn main() {
 ')
 	assert out == '7:7:7:7:7'
 }
+
+fn test_json_encode_pretty_preserves_exact_integers() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'json_encode_pretty_exact_integers', 'import json
+
+struct ExactNumbers {
+	signed   i64
+	unsigned u64
+	values   []u64
+}
+
+fn main() {
+	println(json.encode_pretty(ExactNumbers{
+		signed: 9007199254740993
+		unsigned: 18446744073709551615
+		values: [u64(9007199254740993), 18446744073709551615]
+	}))
+}
+')
+	assert out == '{\n\t"signed":\t9007199254740993,\n\t"unsigned":\t18446744073709551615,\n\t"values":\t[9007199254740993, 18446744073709551615]\n}'
+}
