@@ -281,6 +281,34 @@ fn main() {
 	assert out == '7\n9'
 }
 
+fn test_interface_pointer_receiver_dispatch_preserves_pointer_depth() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_pointer_receiver_dispatch', 'interface Reader {
+	read() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) read() int {
+	return value.n
+}
+
+fn use(reader &Reader) int {
+	return reader.read()
+}
+
+fn main() {
+	reader := Reader(Value{
+		n: 42
+	})
+	println(use(&reader))
+}
+')
+	assert out == '42'
+}
+
 fn test_issue_28180_module_collisions_and_embedded_generic_middleware() {
 	v3_bin := build_v3_review_transform()
 	// The reported regression is a compiler failure; keep unrelated runtime
