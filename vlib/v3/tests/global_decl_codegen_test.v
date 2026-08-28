@@ -27,6 +27,15 @@ fn global_decl_run_good(v3_bin string, name string, source string) string {
 	return run.output.trim_space()
 }
 
+fn global_decl_generate_c(v3_bin string, name string, source string) string {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	os.write_file(src, source) or { panic(err) }
+	generate := os.execute('${v3_bin} -enable-globals -cc clang -o ${c_path} ${src}')
+	assert generate.exit_code == 0, generate.output
+	return os.read_file(c_path) or { panic(err) }
+}
+
 fn test_typed_global_initializers_in_group_keep_type_and_value() {
 	v3_bin := global_decl_build_v3()
 	out := global_decl_run_good(v3_bin, 'typed_global_initializers_in_group',
@@ -81,6 +90,30 @@ fn main() {
 }
 ")
 	assert out == '2:4:7:7'
+}
+
+fn test_shared_array_literal_preserves_left_to_right_evaluation() {
+	v3_bin := global_decl_build_v3()
+	source := '__global sequence int
+__global values shared []int = [next(1), next(2)]
+
+fn next(digit int) int {
+	sequence = sequence * 10 + digit
+	return sequence
+}
+
+fn main() {
+	summary := rlock values {
+		int_str(values[0]) + ":" + int_str(values[1])
+	}
+	println(summary + ":" + int_str(sequence))
+}
+'
+	c_source := global_decl_generate_c(v3_bin, 'shared_array_literal_eval_order', source)
+	assert c_source.contains('array_get(values->val, 0)) = next(1);'), c_source
+	assert c_source.contains('array_get(values->val, 1)) = next(2);'), c_source
+	out := global_decl_run_good(v3_bin, 'shared_array_literal_eval_order', source)
+	assert out == '1:12:12'
 }
 
 fn test_implicit_shared_fixed_array_container_elements_are_initialized() {

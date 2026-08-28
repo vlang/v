@@ -22000,9 +22000,14 @@ fn (mut g FlatGen) queue_shared_global_explicit_init(name string, inner string, 
 	wrapper := g.shared_wrapper_c_name(qualified)
 	target := g.global_c_name(name)
 	node := g.a.nodes[int(val_id)]
-	if clean_type is types.Array && node.kind == .array_init {
-		g.queue_runtime_init('\t${target} = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = (${g.tc.c_type(clean_type)}){0}}, sizeof(${wrapper}));')
-		return g.queue_global_array_init('${target}->val', val_id, clean_type)
+	if clean_type is types.Array {
+		if node.kind == .array_init {
+			g.queue_runtime_init('\t${target} = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = (${g.tc.c_type(clean_type)}){0}}, sizeof(${wrapper}));')
+			return g.queue_global_array_init('${target}->val', val_id, clean_type)
+		}
+		if node.kind == .array_literal {
+			return g.queue_shared_global_array_literal_init(target, wrapper, node, clean_type)
+		}
 	}
 	value_expr := g.expr_to_string_with_expected_type(val_id, clean_type)
 	if trimmed_space(value_expr).len == 0 {
@@ -22013,6 +22018,35 @@ fn (mut g FlatGen) queue_shared_global_explicit_init(name string, inner string, 
 		return true
 	}
 	g.queue_runtime_init('\t${target} = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = ${value_expr}}, sizeof(${wrapper}));')
+	return true
+}
+
+fn (mut g FlatGen) queue_shared_global_array_literal_init(target string, wrapper string, node flat.Node, typ types.Array) bool {
+	clean_elem_type := default_init_unalias_type(typ.elem_type)
+	mut elem_exprs := []string{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		child_id := g.a.child(&node, i)
+		expr := if clean_elem_type is types.ArrayFixed {
+			g.fixed_array_runtime_copy_source_expr(child_id, clean_elem_type)
+		} else {
+			g.expr_to_string_with_expected_type(child_id, typ.elem_type)
+		}
+		if trimmed_space(expr).len == 0 {
+			return false
+		}
+		elem_exprs << expr
+	}
+	g.queue_runtime_init('\t${target} = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = (${g.tc.c_type(typ)}){0}}, sizeof(${wrapper}));')
+	elem_ct := g.value_c_type(typ.elem_type)
+	count := int(node.children_count)
+	g.queue_runtime_init('\t${target}->val = array_new(sizeof(${elem_ct}), ${count}, ${count});')
+	for i, expr in elem_exprs {
+		if clean_elem_type is types.ArrayFixed {
+			g.queue_runtime_init('\tmemcpy(array_get(${target}->val, ${i}), ${expr}, sizeof(${elem_ct}));')
+		} else {
+			g.queue_runtime_init('\t*((${elem_ct}*)array_get(${target}->val, ${i})) = ${expr};')
+		}
+	}
 	return true
 }
 
