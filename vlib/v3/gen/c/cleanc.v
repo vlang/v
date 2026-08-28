@@ -18507,6 +18507,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('DWORD WaitForSingleObject(HANDLE handle, DWORD milliseconds);')
 	g.writeln('BOOL CloseHandle(HANDLE handle);')
 	g.writeln('DWORD GetLastError(void);')
+	g.writeln('DWORD WINAPI TlsAlloc(void);')
+	g.writeln('void* WINAPI TlsGetValue(DWORD index);')
+	g.writeln('BOOL WINAPI TlsSetValue(DWORD index, void* value);')
 	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
@@ -21480,6 +21483,25 @@ fn (mut g FlatGen) emit_fixed_array_optional_elem_deps(elem types.Type, needed m
 	}
 }
 
+fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
+	return name == 'g_autostr_addr_state'
+		&& (g.global_modules[name] or { '' }) == 'builtin'
+}
+
+fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string, dims string) {
+	g.writeln('#if defined(__TINYC__) && defined(_WIN32)')
+	g.writeln('static DWORD ${cname}_key = TLS_OUT_OF_INDEXES;')
+	g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
+	g.writeln('static void ${cname}_key_init(void) { ${cname}_key = TlsAlloc(); }')
+	if dims.len > 0 {
+		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { void* p = TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); TlsSetValue(${cname}_key, p); } return p; }')
+	} else {
+		g.writeln('static ${ct}* ${cname}_slot(void) { void* p = TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); TlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
+	}
+	g.writeln('#define ${cname} (*${cname}_slot())')
+	g.writeln('#elif defined(__TINYC__)')
+}
+
 fn (mut g FlatGen) global_decls() {
 	old_module := g.tc.cur_module
 	for name, typ in g.global_types {
@@ -21490,13 +21512,12 @@ fn (mut g FlatGen) global_decls() {
 		}
 		decl_typ := g.global_storage_type(name, typ)
 		is_fn_capture := name.contains('__anon_fn_')
-		is_thread_local := is_fn_capture || name == 'g_autostr_addr_state'
-			|| name.ends_with('.g_autostr_addr_state')
+		is_thread_local := is_fn_capture || g.is_builtin_autostr_addr_state(name)
 		if decl_typ is types.ArrayFixed {
 			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
 			if is_thread_local {
-				g.writeln('#if defined(__TINYC__)')
+				g.emit_tinyc_windows_thread_local_slot(g.cname(name), c_elem, dims)
 				g.writeln('static pthread_key_t ${g.cname(name)}_key;')
 				g.writeln('static void ${g.cname(name)}_key_init(void) __attribute__((constructor));')
 				g.writeln('static void ${g.cname(name)}_key_init(void) { pthread_key_create(&${g.cname(name)}_key, free); }')
@@ -21533,12 +21554,12 @@ fn (mut g FlatGen) global_decls() {
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
 		// Lifted capture slots and the recursive autostr address guard must be
 		// per-thread. A process-global slot lets concurrent invocations overwrite
-		// one another. Native C compilers use TLS directly; TinyCC uses pthread
-		// keys because it does not implement `_Thread_local`.
+		// one another. Native C compilers use TLS directly; TinyCC uses Win32 TLS
+		// on Windows and pthread keys elsewhere because it lacks `_Thread_local`.
 		if is_thread_local {
 			cname := g.cname(name)
 			if shared_ct := g.fn_capture_shared_global_c_type(name) {
-				g.writeln('#if defined(__TINYC__)')
+				g.emit_tinyc_windows_thread_local_slot(cname, shared_ct, '')
 				g.writeln('static pthread_key_t ${cname}_key;')
 				g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
 				g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
@@ -21547,7 +21568,7 @@ fn (mut g FlatGen) global_decls() {
 				g.emit_thread_local_decl_after_tinyc('${shared_ct} ${cname};')
 				continue
 			}
-			g.writeln('#if defined(__TINYC__)')
+			g.emit_tinyc_windows_thread_local_slot(cname, ct, '')
 			g.writeln('static pthread_key_t ${cname}_key;')
 			g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
 			g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
@@ -21560,11 +21581,11 @@ fn (mut g FlatGen) global_decls() {
 		// would make all threads bump the same block without synchronization.
 		// The block-recycle cache hangs off this TLS root, keeping bootstrap
 		// compilers that only know about g_memory_block safe as well.
-		// cc gets real TLS; tcc implements no _Thread_local, so it gets a
-		// pthread-key emulation behind an lvalue macro.
+		// cc gets real TLS; tcc implements no _Thread_local, so it gets a native
+		// Win32 slot or a pthread-key emulation behind an lvalue macro.
 		if g.prealloc && name == 'g_memory_block' {
 			cn := g.cname(name)
-			g.writeln('#if defined(__TINYC__)')
+			g.emit_tinyc_windows_thread_local_slot(cn, ct, '')
 			g.writeln('static pthread_key_t ${cn}_key;')
 			g.writeln('static void ${cn}_key_init(void) __attribute__((constructor));')
 			g.writeln('static void ${cn}_key_init(void) { pthread_key_create(&${cn}_key, 0); }')
