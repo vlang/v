@@ -114,3 +114,29 @@ fn test_global_array_initializer_call_preserves_fixed_array_elements() {
 		"fn make_rows() [][2]int {\n\treturn [[1, 2]!, [3, 4]!]\n}\n\n__global rows = make_rows()\n\nfn main() {\n\tprintln(int_str(rows[0][0]) + ':' + int_str(rows[0][1]))\n\tprintln(int_str(rows[1][0]) + ':' + int_str(rows[1][1]))\n}\n")
 	assert out == '1:2\n3:4'
 }
+
+fn test_global_channel_containers_are_initialized() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'global_channel_containers', '__global channels = []chan int{len: 1}
+__global events shared chan int
+
+fn send_value_to(channel chan int, value int) {
+	channel <- value
+}
+
+fn main() {
+	array_channel := channels[0]
+	array_thread := spawn send_value_to(array_channel, 11)
+	println(int_str(<-array_channel))
+	array_thread.wait()
+
+	shared_channel := rlock events {
+		events
+	}
+	shared_thread := spawn send_value_to(shared_channel, 13)
+	println(int_str(<-shared_channel))
+	shared_thread.wait()
+}
+')
+	assert out == '11\n13'
+}

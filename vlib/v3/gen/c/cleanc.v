@@ -21921,14 +21921,16 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 		if callee.kind != .ident || callee.value != 'array_new' {
 			return false
 		}
-		if _ := array_fixed_type(default_init_unalias_type(typ.elem_type)) {
-			if default_expr := g.global_array_default_elem_expr(typ.elem_type) {
-				allocation_expr := g.expr_to_string_with_expected_type(val_id, types.Type(typ))
-				if trimmed_space(allocation_expr).len > 0 {
-					elem_ct := g.value_c_type(typ.elem_type)
+		if default_expr := g.global_array_default_elem_expr(typ.elem_type) {
+			allocation_expr := g.expr_to_string_with_expected_type(val_id, types.Type(typ))
+			if trimmed_space(allocation_expr).len > 0 {
+				elem_ct := g.value_c_type(typ.elem_type)
+				if _ := array_fixed_type(default_init_unalias_type(typ.elem_type)) {
 					g.queue_runtime_init('\t{ ${target} = ${allocation_expr}; for (int index = 0; index < ${target}.len; index++) { memcpy(array_get(${target}, index), ${default_expr}, sizeof(${elem_ct})); } }')
-					return true
+				} else {
+					g.queue_runtime_init('\t{ ${target} = ${allocation_expr}; for (int index = 0; index < ${target}.len; index++) { *((${elem_ct}*)array_get(${target}, index)) = ${default_expr}; } }')
 				}
+				return true
 			}
 		}
 		return false
@@ -21978,7 +21980,7 @@ fn (mut g FlatGen) global_array_default_elem_expr(elem_type types.Type) ?string 
 		c_elem, dims := g.fixed_array_decl_parts(clean_type)
 		return '(${c_elem}${dims})${initializer}'
 	}
-	if clean_type is types.Array || clean_type is types.Map {
+	if clean_type is types.Array || clean_type is types.Map || clean_type is types.Channel {
 		return g.default_value_to_string(elem_type)
 	}
 	if clean_type is types.Struct && !clean_type.name.starts_with('C.')
@@ -22027,6 +22029,8 @@ fn (mut g FlatGen) queue_shared_global_zero_init(name string, inner string, typ 
 		value_expr = g.sb.str()
 		g.sb = old_sb
 		g.line_start = old_line_start
+	} else if clean_type is types.Channel {
+		value_expr = g.default_value_to_string(typ)
 	}
 	target := g.global_c_name(name)
 	g.queue_runtime_init('\t${target} = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = ${value_expr}}, sizeof(${wrapper}));')
