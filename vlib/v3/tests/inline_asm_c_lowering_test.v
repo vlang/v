@@ -40,14 +40,21 @@ fn update_local() u64 {
 
 struct AsmOperand {
 	index int
+	ptr   &AsmNestedOperand
+}
+
+struct AsmNestedOperand {
+	index int
 }
 
 fn selector_operand() int {
-	mut value := AsmOperand{index: 9}
+	mut nested := AsmNestedOperand{index: 11}
+	mut value := AsmOperand{index: 9, ptr: &nested}
+	mut values := [5, 6]
 	asm volatile arm64 {
-		; +r (value.index)
+		; +r (value.index) +r (values[0]) +r (value.ptr.index)
 	}
-	return value.index
+	return value.index + values[0] + value.ptr.index
 }
 
 fn main() {
@@ -115,14 +122,21 @@ fn update_local() u64 {
 
 struct AsmOperand {
 	index int
+	ptr   &AsmNestedOperand
+}
+
+struct AsmNestedOperand {
+	index int
 }
 
 fn selector_operand() int {
-	mut value := AsmOperand{index: 9}
+	mut nested := AsmNestedOperand{index: 11}
+	mut value := AsmOperand{index: 9, ptr: &nested}
+	mut values := [5, 6]
 	asm volatile amd64 {
-		; +r (value.index)
+		; +r (value.index) +r (values[0]) +r (value.ptr.index)
 	}
-	return value.index
+	return value.index + values[0] + value.ptr.index
 }
 
 fn main() {
@@ -207,6 +221,8 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	assert c_source.contains('[a] "r" (a)'), c_source
 	assert c_source.contains('[x] "+r" (x__local)'), c_source
 	assert c_source.contains('"+r" (value.v_index)'), c_source
+	assert c_source.contains('array_get(values, 0)'), c_source
+	assert c_source.contains('"+r" (value.ptr->v_index)'), c_source
 	$if arm64 {
 		assert c_source.contains('"mov x0, %[a]\\n\\t"'), c_source
 		assert c_source.contains('"str w0, [%[ptr]]\\n\\t"'), c_source
@@ -224,9 +240,9 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	run := os.execute(bin_path)
 	assert run.exit_code == 0, run.output
 	$if arm64 {
-		assert run.output.trim_space() == '8\n10\n6\n7\n65\n9\n100'
+		assert run.output.trim_space() == '8\n10\n6\n7\n65\n25\n100'
 	} $else $if amd64 {
-		assert run.output.trim_space() == '8\n10\n6\n7\n65\n22\n9\n100'
+		assert run.output.trim_space() == '8\n10\n6\n7\n65\n22\n25\n100'
 	}
 }
 

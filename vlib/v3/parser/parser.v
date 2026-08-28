@@ -7838,6 +7838,8 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	// stream after comments and automatic semicolons have been discarded.
 	mut has_memory_clobber := false
 	mut has_unsupported_content := false
+	mut section := 0
+	mut io_exprs := []flat.NodeId{}
 	if p.tok == .lcbr {
 		mut depth := 1
 		p.next()
@@ -7850,6 +7852,19 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 					p.next()
 					break
 				}
+			} else if depth == 1 && p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
+				&& p.s.src[p.tok_pos] == `;` {
+				section++
+				p.next()
+				continue
+			} else if depth == 1 && section in [1, 2] && p.tok == .lpar {
+				has_unsupported_content = true
+				p.next()
+				if p.tok != .rpar && p.tok != .eof {
+					io_exprs << p.expr(.lowest)
+				}
+				p.check(.rpar)
+				continue
 			} else if depth == 1 && p.tok != .semicolon {
 				if p.tok == .name && p.lit == 'memory' {
 					has_memory_clobber = true
@@ -7874,9 +7889,11 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
 	}
 	return p.add_node(flat.Node{
-		kind:  .asm_stmt
-		value: raw_source
-		pos:   p.span_to(asm_pos)
+		kind:           .asm_stmt
+		value:          raw_source
+		children_start: p.add_children(io_exprs)
+		children_count: flat.child_count(io_exprs.len)
+		pos:            p.span_to(asm_pos)
 	})
 }
 

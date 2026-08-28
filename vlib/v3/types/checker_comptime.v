@@ -10810,6 +10810,9 @@ fn (mut tc TypeChecker) check_defer_stmt(node flat.Node) {
 }
 
 fn (mut tc TypeChecker) check_asm_stmt(id flat.NodeId, node flat.Node) {
+	for i in 0 .. node.children_count {
+		tc.check_node(tc.a.child(&node, i))
+	}
 	if !node.pos.is_valid() {
 		return
 	}

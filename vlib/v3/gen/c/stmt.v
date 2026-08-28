@@ -3012,11 +3012,11 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 	}
 	if block.section_count > 1 {
 		g.write(': ')
-		g.gen_c_inline_asm_ios(block.output)
+		g.gen_c_inline_asm_ios(block.output, node, 0)
 	}
 	if block.section_count > 2 {
 		g.write(': ')
-		g.gen_c_inline_asm_ios(block.input)
+		g.gen_c_inline_asm_ios(block.input, node, block.output.len)
 	}
 	if block.section_count > 3 {
 		g.write(': ')
@@ -3033,13 +3033,20 @@ fn (mut g FlatGen) gen_c_inline_asm_stmt(node flat.Node) {
 	g.writeln(');')
 }
 
-fn (mut g FlatGen) gen_c_inline_asm_ios(ios []CInlineAsmIO) {
+fn (mut g FlatGen) gen_c_inline_asm_ios(ios []CInlineAsmIO, node flat.Node, child_offset int) {
 	for i, io in ios {
 		if io.alias.len > 0 {
 			g.write('[${io.alias}] ')
 		}
 		g.write('"${c_escape(io.constraint)}" (')
-		g.write(g.c_inline_asm_expr(io.expr))
+		child_index := child_offset + i
+		if child_index < int(node.children_count) {
+			g.gen_expr(g.a.child(&node, child_index))
+		} else {
+			// Compatibility with flat trees serialized before asm I/O expressions
+			// became children of the statement node.
+			g.write(g.c_inline_asm_expr(io.expr))
+		}
 		g.write(')')
 		if i + 1 < ios.len {
 			g.writeln(',')
