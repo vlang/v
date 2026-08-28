@@ -37,12 +37,68 @@ fn test_const_map_expansion_estimate_ignores_shadowing_local() {
 	const_id := a.add_node(flat.Node{
 		kind: .map_init
 	})
+	param := a.add_node(flat.Node{
+		kind:  .param
+		value: 'lookup'
+		typ:   'map[string]int'
+	})
+	ident := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'lookup'
+	})
+	block_start := a.children.len
+	a.children << ident
+	block := a.add_node(flat.Node{
+		kind:           .block
+		children_start: block_start
+		children_count: 1
+	})
+	fn_start := a.children.len
+	a.children << param
+	a.children << block
+	a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          'shadowed'
+		children_start: fn_start
+		children_count: 2
+	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.const_exprs['lookup'] = const_id
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	ident := t.make_ident('lookup')
-	t.set_var_type('lookup', 'map[string]int')
+	t.build_source_parent_index()
 	assert t.collection_const_expr_for_ident(ident) == none
+}
+
+fn test_const_map_expansion_estimate_ignores_stale_transformer_local() {
+	mut a := flat.FlatAst.new()
+	const_id := a.add_node(flat.Node{
+		kind: .map_init
+	})
+	ident := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'lookup'
+	})
+	block_start := a.children.len
+	a.children << ident
+	block := a.add_node(flat.Node{
+		kind:           .block
+		children_start: block_start
+		children_count: 1
+	})
+	fn_start := a.children.len
+	a.children << block
+	a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          'uses_const'
+		children_start: fn_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.const_exprs['lookup'] = const_id
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+	t.set_var_type('lookup', 'map[string]int')
+	assert t.collection_const_expr_for_ident(ident)? == const_id
 }
 
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {

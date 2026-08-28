@@ -80,7 +80,7 @@ fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId
 	if node.kind != .ident || node.value.len == 0 {
 		return none
 	}
-	if t.var_type(node.value).len > 0 {
+	if _ := t.local_binding_before(node.value, id) {
 		return none
 	}
 	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {

@@ -15394,6 +15394,16 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 	if t.source_parent_ids.len > 0 && !t.shared_local_decl_names[name] {
 		return false
 	}
+	return t.local_binding_before(name, before) or { false }
+}
+
+// local_binding_before reports whether `name` resolves to a visible parameter or local at
+// `before`; the returned bool records whether that binding is shared. It follows the use's
+// ancestor path so declarations in sibling blocks do not leak into the lookup.
+fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool {
+	if name.len == 0 || int(before) < 0 || int(before) >= t.a.nodes.len {
+		return none
+	}
 	// Follow the mutation's ancestor path and inspect only declarations preceding that
 	// path in each enclosing scope; bindings inside sibling blocks must not leak out.
 	mut path := [int(before)]
@@ -15413,7 +15423,7 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 		cursor = parent_id
 	}
 	if !found_fn_scope {
-		return false
+		return none
 	}
 	mut found := false
 	mut is_shared := false
@@ -15440,7 +15450,10 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 			}
 		}
 	}
-	return found && is_shared
+	if !found {
+		return none
+	}
+	return is_shared
 }
 
 fn (mut t Transformer) build_source_parent_index() {
