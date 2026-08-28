@@ -38,3 +38,13 @@ fn test_sort_compare_fn_with_mut_ref_param() {
 	assert t.items[1] == &Thing{2, 4, 3}
 	assert t.items[2] == &Thing{5, 7, 6}
 }
+
+fn compare_thing_slots(a &&Thing, b &&Thing) int {
+	return (*a).a - (*b).a
+}
+
+fn test_sort_compare_fn_with_pointer_slots() {
+	mut items := [&Thing{a: 3}, &Thing{a: 1}, &Thing{a: 2}]
+	items.sort_with_compare(compare_thing_slots)
+	assert items.map(it.a) == [1, 2, 3]
+}

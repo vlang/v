@@ -2494,13 +2494,18 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	mut map_fn_name := ''
 	elem_name := if lambda_param.len > 0 { lambda_param } else { t.new_temp('map_it') }
-	old_elem := t.var_type(elem_name)
-	t.set_var_type(elem_name, elem_type)
 	mapped_source := if lambda_param.len > 0 {
 		map_source_id
 	} else {
 		t.substitute_ident(map_source_id, 'it', elem_name)
 	}
+	// The implicit `it` binding denotes the source slot when its address is taken.
+	// Binding a copied value here would return pointers to a loop-local temporary.
+	mapper_takes_elem_address := lambda_param.len == 0
+		&& t.array_map_expr_takes_address_of_ident(mapped_source, elem_name)
+	elem_var_type := if mapper_takes_elem_address { '&${elem_type}' } else { elem_type }
+	old_elem := t.var_type(elem_name)
+	t.set_var_type(elem_name, elem_var_type)
 	checker_result_elem_type := t.checker_expr_type_name(map_expr_id) or { '' }
 	checker_result_elem_type_is_usable := decl_type_is_usable(checker_result_elem_type)
 		&& checker_result_elem_type != 'void'
@@ -2557,6 +2562,12 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	saved_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	mut callback_setup := []flat.NodeId{}
+	had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
+	had_pointer_value_rvalue := t.pointer_value_rvalues[elem_name] or { false }
+	if mapper_takes_elem_address {
+		t.pointer_value_lvalues[elem_name] = true
+		t.pointer_value_rvalues[elem_name] = true
+	}
 	mapped_expr := if map_fn_name.len > 0 {
 		t.make_call_typed(map_fn_name, [t.make_ident(elem_name)], result_elem_type)
 	} else if map_expr_is_fn_value || map_callback_allocates_closure {
@@ -2580,6 +2591,18 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.transform_expr_for_type(mapped_source, result_elem_type)
 	} else {
 		t.transform_expr(mapped_source)
+	}
+	if mapper_takes_elem_address {
+		if had_pointer_value_lvalue {
+			t.pointer_value_lvalues[elem_name] = true
+		} else {
+			t.pointer_value_lvalues.delete(elem_name)
+		}
+		if had_pointer_value_rvalue {
+			t.pointer_value_rvalues[elem_name] = true
+		} else {
+			t.pointer_value_rvalues.delete(elem_name)
+		}
 	}
 	mapped_pending := t.pending_stmts.clone()
 	t.pending_stmts = saved_pending
@@ -2624,7 +2647,8 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	out_type := '[]${result_elem_type}'
 	base_id := t.a.child(&fn_node, 0)
-	source_needs_drop := !t.expr_can_take_address(base_id) && !isnil(t.tc)
+	source_needs_drop := !mapper_takes_elem_address && !t.expr_can_take_address(base_id)
+		&& !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
 	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type, 'map_source')
 	mut prefix := []flat.NodeId{}
@@ -2659,8 +2683,12 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	elem_expr := t.array_get_value(base, t.make_ident(idx_name), elem_type)
-	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_type)
+	elem_expr := if mapper_takes_elem_address {
+		t.array_get_ptr(base, t.make_ident(idx_name), elem_type)
+	} else {
+		t.array_get_value(base, t.make_ident(idx_name), elem_type)
+	}
+	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_var_type)
 	mut loop_body := []flat.NodeId{}
 	loop_body << elem_decl
 	for stmt in mapped_pending {
@@ -2726,6 +2754,37 @@ fn (t &Transformer) array_map_expr_references_ident(id flat.NodeId, name string)
 		if t.array_map_expr_references_ident(t.a.child(&node, i), name) {
 			return true
 		}
+	}
+	return false
+}
+
+fn (t &Transformer) array_map_expr_takes_address_of_ident(id flat.NodeId, name string) bool {
+	if int(id) < 0 || name.len == 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .amp && node.children_count == 1
+		&& t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, 0), name) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.array_map_expr_takes_address_of_ident(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) array_map_lvalue_is_rooted_at_ident(id flat.NodeId, name string) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value == name
+	}
+	if node.kind in [.selector, .index, .paren] && node.children_count > 0 {
+		return t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, 0), name)
 	}
 	return false
 }
@@ -3516,9 +3575,9 @@ fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type 
 	cur := t.make_index(base, t.make_ident(idx_name), elem_type)
 	prev := t.make_index(base, t.make_infix(.minus, t.make_ident(idx_name), t.make_int_literal(1)),
 		elem_type)
-	cmp_elem_type := if elem_type.starts_with('&') { elem_type } else { '&${elem_type}' }
-	cur_arg := if elem_type.starts_with('&') { cur } else { t.make_prefix(.amp, cur) }
-	prev_arg := if elem_type.starts_with('&') { prev } else { t.make_prefix(.amp, prev) }
+	cmp_elem_type := '&${elem_type}'
+	cur_arg := t.make_prefix(.amp, cur)
+	prev_arg := t.make_prefix(.amp, prev)
 	if int(cmp) >= 0 {
 		cmp_node := t.a.nodes[int(cmp)]
 		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
