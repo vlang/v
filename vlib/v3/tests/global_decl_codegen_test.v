@@ -68,3 +68,10 @@ fn test_global_array_initializers_fill_runtime_defaults() {
 		"struct Config {\nmut:\n\tretries int = 7\n\tnames []string\n\tscores map[string]int\n}\n\n__global configs = []Config{len: 2}\n__global nested = [][]int{len: 2}\n__global lookups = []map[string]int{len: 2}\n\nfn main() {\n\tconfigs[0].names << 'ok'\n\tconfigs[0].scores['x'] = 5\n\tnested[0] << 9\n\tlookups[0]['x'] = 11\n\tprintln(int_str(configs[0].retries))\n\tprintln(configs[0].names[0])\n\tprintln(int_str(configs[0].scores['x']))\n\tprintln(int_str(nested[0][0]))\n\tprintln(int_str(lookups[0]['x']))\n\tprintln(int_str(configs[1].names.len) + ':' + int_str(configs[1].scores.len) + ':' + int_str(nested[1].len) + ':' + int_str(lookups[1].len))\n}\n")
 	assert out == '7\nok\n5\n9\n11\n0:0:0:0'
 }
+
+fn test_global_arrays_fill_nested_fixed_array_defaults() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'global_nested_fixed_array_defaults',
+		"struct Config {\nmut:\n\tretries int = 7\n\tnames []string\n\tscores map[string]int\n}\n\n__global rows = [][2]map[string]int{len: 1}\n__global config_rows = [][2]Config{len: 1}\n__global grids = [][2][2]map[string]int{len: 1}\n\nfn main() {\n\trows[0][0]['x'] = 13\n\tconfig_rows[0][0].names << 'fixed'\n\tconfig_rows[0][0].scores['x'] = 17\n\tgrids[0][1][1]['x'] = 19\n\tprintln(int_str(rows[0][0]['x']))\n\tprintln(int_str(config_rows[0][0].retries) + ':' + config_rows[0][0].names[0] + ':' + int_str(config_rows[0][0].scores['x']))\n\tprintln(int_str(grids[0][1][1]['x']))\n\tprintln(int_str(rows[0][1].len) + ':' + int_str(config_rows[0][1].retries) + ':' + int_str(grids[0][0][0].len))\n}\n")
+	assert out == '13\n7:fixed:17\n19\n0:7:0'
+}

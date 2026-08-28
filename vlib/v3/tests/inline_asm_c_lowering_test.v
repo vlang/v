@@ -23,7 +23,22 @@ fn build_v3_inline_asm() string {
 
 fn inline_asm_runtime_source() string {
 	$if arm64 {
-		return 'fn main() {
+		return '__global x = u64(100)
+
+fn global_x() u64 {
+	return x
+}
+
+fn update_local() u64 {
+	mut x := u64(7)
+	asm arm64 {
+		add x, x, 1
+		; +r (x)
+	}
+	return x
+}
+
+fn main() {
 	asm amd64 {
 		; ; ; memory
 	}
@@ -61,14 +76,31 @@ fn inline_asm_runtime_source() string {
 		mov character, `A`
 		; =r (character)
 	}
+	println(update_local())
 	println(b)
 	println(loops)
 	println(value)
 	println(character)
+	println(global_x())
 }
 '
 	} $else $if amd64 {
-		return 'fn main() {
+		return '__global x = u64(100)
+
+fn global_x() u64 {
+	return x
+}
+
+fn update_local() u64 {
+	mut x := u64(7)
+	asm amd64 {
+		add x, 1
+		; +r (x)
+	}
+	return x
+}
+
+fn main() {
 	asm arm64 {
 		; ; ; memory
 	}
@@ -111,11 +143,13 @@ fn inline_asm_runtime_source() string {
 		; =r (indexed)
 		; r (base) r (index)
 	}
+	println(update_local())
 	println(b)
 	println(loops)
 	println(value)
 	println(character)
 	println(indexed)
+	println(global_x())
 }
 '
 	} $else {
@@ -133,13 +167,14 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	c_path := '${inline_asm_tmp_path('program')}.c'
 	bin_path := inline_asm_tmp_path('program')
 	os.write_file(source_path, source) or { panic(err) }
-	generate := os.execute('${v3_bin} -cc clang -o ${c_path} ${source_path}')
+	generate := os.execute('${v3_bin} -enable-globals -cc clang -o ${c_path} ${source_path}')
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('__asm__ ('), c_source
 	assert c_source.contains('[b] "+r" (b)'), c_source
 	assert c_source.contains('[a] "r" (a)'), c_source
+	assert c_source.contains('[x] "+r" (x__local)'), c_source
 	$if arm64 {
 		assert c_source.contains('"mov x0, %[a]\\n\\t"'), c_source
 		assert c_source.contains('"str w0, [%[ptr]]\\n\\t"'), c_source
@@ -150,14 +185,14 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 		assert c_source.contains('"mov \'A\', %[character]\\n\\t"'), c_source
 		assert c_source.contains('"movq 0(%[base], %[index], 1), %[indexed]\\n\\t"'), c_source
 	}
-	compile := os.execute('${v3_bin} -cc clang -o ${bin_path} ${source_path}')
+	compile := os.execute('${v3_bin} -enable-globals -cc clang -o ${bin_path} ${source_path}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin_path)
 	assert run.exit_code == 0, run.output
 	$if arm64 {
-		assert run.output.trim_space() == '10\n6\n7\n65'
+		assert run.output.trim_space() == '8\n10\n6\n7\n65\n100'
 	} $else $if amd64 {
-		assert run.output.trim_space() == '10\n6\n7\n65\n22'
+		assert run.output.trim_space() == '8\n10\n6\n7\n65\n22\n100'
 	}
 }
 

@@ -3062,8 +3062,21 @@ fn (g &FlatGen) c_inline_asm_expr(source string) string {
 		root_end++
 	}
 	root := expr[..root_end]
-	mut croot := g.cname(root)
-	typ := g.local_ident_type(root) or { types.Type(types.void_) }
+	mut croot := ''
+	mut typ := types.Type(types.void_)
+	if local_type := g.local_ident_type(root) {
+		croot = g.local_decl_cname(root)
+		typ = local_type
+	} else {
+		if global_name := g.global_name_for_ident(root) {
+			croot = g.global_c_name(global_name)
+		} else {
+			croot = g.cname(root)
+		}
+		if global_type := g.global_type_for_ident(root) {
+			typ = global_type
+		}
+	}
 	storage_is_indirect := g.local_storage_is_pointer(root) && typ !is types.Pointer
 	if storage_is_indirect {
 		croot = '(*${croot})'
