@@ -1375,7 +1375,7 @@ fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut se
 			} else {
 				seen[typ.name] = true
 				mut may_alias := false
-				for field in t.tc.structs[typ.name] or { []types.StructField{} } {
+				for field in t.tc.struct_fields_for_type(typ.name) {
 					if t.closure_result_type_may_alias_capture(field.typ, mut seen) {
 						may_alias = true
 						break
