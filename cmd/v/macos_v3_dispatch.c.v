@@ -47,11 +47,12 @@ const macos_v3_c_error_kind_file = 'kind'
 const macos_v3_compiler_error_message_base = 'error: the experimental V3 compiler hit an internal compiler error building this program'
 
 struct MacosV3InputSnapshot {
-	path     string
-	digest   string
-	v_file   string
-	v_source string
-	focus    int // 1-based failing line within v_source (0 = none); export bounds once, centered here
+	path               string
+	digest             string
+	v_file             string
+	v_source           string
+	v_source_truncated bool
+	focus              int // 1-based failing line within v_source (0 = none)
 }
 
 struct MacosV3RetryState {
@@ -351,7 +352,8 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		// digest; otherwise send metadata only, never bytes that V3 did not parse. Once the
 		// retry succeeds it prints the fallback notice and files the report. A directory
 		// build (`v .`) or non-V input also remains metadata-only, but never silent.
-		v_file, v_source, v_source_focus := input_snapshot.current_report_source()
+		v_file, v_source, v_source_focus, v_source_truncated :=
+			input_snapshot.current_report_source()
 		// Post-parse V3 stages write exact parser and resolved-native digests into the
 		// owned staging directory. If that complete manifest is unavailable (for example,
 		// after an early parser crash), the retry still runs but its report is not submitted
@@ -361,7 +363,7 @@ fn retry_macos_v3_with_old_compiler(caller_environment map[string]string, fallba
 		}
 		export_macos_v3_bounded_report_content(macos_v3_compiler_error_fallback, 'v3',
 			macos_v3_compiler_error_message(fallback_stage), v_file, v_source, v_source_focus,
-			input_digests, input_digests.len > 0)
+			v_source_truncated, input_digests, input_digests.len > 0)
 		os.rmdir_all(c_error_dir) or {}
 		if should_report {
 			eprintln('V3 compilation failed; retrying with `-old-compiler`.')
@@ -415,11 +417,11 @@ fn take_macos_v3_report_content() ?MacosV3CErrorReport {
 fn export_macos_v3_report_content(kind string, ccompiler string, c_output string, c_file string, v_sources map[string]string, input_digests_complete bool) {
 	v_file, v_source, v_source_focus := builder.bounded_v3_fallback_source(kind, c_output, c_file,
 		v_sources)
-	export_macos_v3_bounded_report_content(kind, ccompiler, c_output, v_file, v_source, v_source_focus,
-		v_sources, input_digests_complete)
+	export_macos_v3_bounded_report_content(kind, ccompiler, c_output, v_file, v_source,
+		v_source_focus, false, v_sources, input_digests_complete)
 }
 
-fn export_macos_v3_bounded_report_content(kind string, ccompiler string, c_output string, v_file string, v_source string, v_source_focus int, input_digests map[string]string, input_digests_complete bool) {
+fn export_macos_v3_bounded_report_content(kind string, ccompiler string, c_output string, v_file string, v_source string, v_source_focus int, v_source_truncated bool, input_digests map[string]string, input_digests_complete bool) {
 	builder.export_external_v3_report_to_env(builder.ExternalCErrorBugReport{
 		kind:                   kind
 		ccompiler:              ccompiler
@@ -427,6 +429,7 @@ fn export_macos_v3_bounded_report_content(kind string, ccompiler string, c_outpu
 		v_file:                 v_file
 		v_source:               v_source
 		v_source_focus:         v_source_focus
+		v_source_truncated:     v_source_truncated
 		source_inline:          true
 		input_digests:          input_digests
 		input_digests_complete: input_digests_complete
@@ -443,26 +446,26 @@ fn macos_v3_compiler_error_input_snapshot(input_path string) MacosV3InputSnapsho
 	// working-directory changes inside V3.
 	v_path := os.abs_path(candidate)
 	source := os.read_file(v_path) or { return MacosV3InputSnapshot{} }
-	v_file, v_source, v_source_focus := builder.bounded_v3_internal_fallback_source(v_path,
-		source)
+	v_file, v_source, v_source_focus := builder.bounded_v3_internal_fallback_source(v_path, source)
 	return MacosV3InputSnapshot{
-		path:     v_path
-		digest:   sha256.hexhash(source)
-		v_file:   v_file
-		v_source: v_source
-		focus:    v_source_focus
+		path:               v_path
+		digest:             sha256.hexhash(source)
+		v_file:             v_file
+		v_source:           v_source
+		v_source_truncated: v_source.len < source.len
+		focus:              v_source_focus
 	}
 }
 
-fn (snapshot MacosV3InputSnapshot) current_report_source() (string, string, int) {
+fn (snapshot MacosV3InputSnapshot) current_report_source() (string, string, int, bool) {
 	if snapshot.path == '' || snapshot.digest == '' {
-		return '', '', 0
+		return '', '', 0, false
 	}
-	current := os.read_file(snapshot.path) or { return '', '', 0 }
+	current := os.read_file(snapshot.path) or { return '', '', 0, false }
 	if sha256.hexhash(current) != snapshot.digest {
-		return '', '', 0
+		return '', '', 0, false
 	}
-	return snapshot.v_file, snapshot.v_source, snapshot.focus
+	return snapshot.v_file, snapshot.v_source, snapshot.focus, snapshot.v_source_truncated
 }
 
 // macos_v3_compiler_error_input_source returns `input_path` when it is a single V source

@@ -427,6 +427,27 @@ fn test_plan_env_report_content_reports_excerpt_focus_for_rebound() {
 	assert plan_lines[plan.v_source_focus - 1] == 'fn the_failing_line() {}'
 }
 
+fn test_plan_env_report_content_omits_focused_source_until_code_fits() {
+	// A focused middle excerpt needs two markers and at least one byte from the failing line.
+	// Smaller budgets must omit source instead of forwarding marker-only text whose focus points
+	// at a marker (PR #28234 review).
+	minimum := 2 * c_error_v_source_truncation_notice.len + 3
+	source := 'a'.repeat(100) + '\nX\n' + 'b'.repeat(100)
+	omitted := plan_env_report_content(ExternalCErrorBugReport{
+		v_source:       source
+		v_source_focus: 2
+	}, minimum - 1, v3_report_max_env_payload_bytes)
+	assert omitted.v_source == ''
+	assert omitted.v_source_focus == 0
+	kept := plan_env_report_content(ExternalCErrorBugReport{
+		v_source:       source
+		v_source_focus: 2
+	}, minimum, v3_report_max_env_payload_bytes)
+	assert kept.v_source_truncated
+	assert kept.v_source_focus > 0
+	assert kept.v_source.split_into_lines()[kept.v_source_focus - 1] == 'X'
+}
+
 fn test_export_external_v3_report_round_trips_v_source_focus() {
 	// The failing-line focus is carried through the environment handoff (PR #28234 review).
 	clear_v3_report_env()
@@ -461,6 +482,20 @@ fn test_bounded_v_source_marks_single_oversized_line_hard_clamp() {
 	assert out.len <= budget
 	assert out.len < long_line.len
 	assert out.contains(c_error_v_source_truncation_notice)
+}
+
+fn test_bounded_v_source_focused_hard_clamp_keeps_code_between_markers() {
+	// A long focused line in the middle needs both markers plus actual source. A smaller budget
+	// must omit it, while the smallest useful budget keeps one source byte at the reported focus.
+	long_line := 'const x = "' + 'a'.repeat(200) + '"'
+	source := 'module main\n${long_line}\nfn main() {}'
+	minimum := 2 * c_error_v_source_truncation_notice.len + 3
+	too_small, too_small_focus := bounded_v_source_with_focus(source, minimum - 1, 2)
+	assert too_small == ''
+	assert too_small_focus == 0
+	out, focus := bounded_v_source_with_focus(source, minimum, 2)
+	assert out.len == minimum
+	assert out.split_into_lines()[focus - 1] == 'c'
 }
 
 fn test_external_v3_report_env_round_trip() {

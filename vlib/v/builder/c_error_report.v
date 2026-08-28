@@ -113,16 +113,14 @@ pub:
 	// a directory to delete — both of which would be forgeable by an inherited or hostile
 	// environment. When source_inline is set, v_file/v_source are used verbatim and no
 	// path from the report is ever read or removed.
-	v_file        string // informational base filename of the failing source (no directory)
-	v_source      string // the full failing file; the byte bound is applied once, at export
-	// v_source_focus is the 1-based failing line within v_source (0 for none). export applies
-	// the byte bound once, centered on it, so a file larger than the environment budget keeps
-	// the exact failing code instead of losing it to a second head+tail truncation.
+	v_file   string // informational base filename of the failing source (no directory)
+	v_source string // the full failing file, or an already bounded internal-error snapshot
+	// v_source_focus is the 1-based failing line within v_source (0 for none). export applies or
+	// tightens the byte bound centered on it, so a generated-C failure keeps the exact failing code.
 	v_source_focus int
-	// v_source_truncated records, explicitly, whether the forwarded v_source is a bounded
-	// excerpt rather than the complete file. export sets it from the byte-budget comparison it
-	// performs, and it rides through the environment so the retry states truncation accurately
-	// without ever inferring it from (user-controlled) source content.
+	// v_source_truncated records, explicitly, whether v_source is already a bounded excerpt.
+	// Export preserves it and also sets it when tightening the byte bound; it rides through the
+	// environment so the retry states truncation accurately without sniffing source content.
 	v_source_truncated bool
 	source_inline      bool // true: use v_file/v_source as-is and touch no filesystem path
 	// Untagged path/digest pairs below describe source bytes V3 actually parsed. The
@@ -455,10 +453,9 @@ fn env_c_output_budget(available int, value_limit int) int {
 }
 
 pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
-	// `report` is already content-only: its v_source was bounded by the process that owns
-	// the staged directory (bounded_v3_fallback_source), and that process deletes the
-	// directory itself. This function only forwards that content, so nothing here reads a
-	// path or deletes a directory named by the (inheritable, forgeable) environment.
+	// `report` is already content-only: its source was captured by the process that owns the staged
+	// directory, and that process deletes the directory itself. This function bounds and forwards
+	// that content, so nothing here reads a path or deletes a directory named by the environment.
 	mut encoded_digests := ''
 	mut input_digests_complete := false
 	if encoded := encode_v3_report_input_digests(report.input_digests) {
@@ -520,10 +517,9 @@ struct EnvContentPlan {
 // env payload counts value bytes, so the diagnostic and source consume exactly their lengths.
 //
 // When both are present it halves the capacity so a short missing-library/libatomic diagnostic
-// stays intact and the receiver's filter stays accurate. Source is bounded once, centered on the
-// failing line, or omitted when the budget cannot even hold the truncation marker (a markerless
-// prefix would drop the failing line and misreport the excerpt as complete). When source is
-// omitted the half reserved for it is reclaimed for the diagnostic, so the linker failure remains
+// stays intact and the receiver's filter stays accurate. Source is bounded around the failing line,
+// or omitted when the budget cannot hold the required marker(s) plus actual source content. When
+// source is omitted, its half is reclaimed for the diagnostic so the linker failure remains
 // recognizable rather than being misclassified as a compiler bug. Any truncation recorded upstream
 // (e.g. the first handoff before a wasm re-export) is preserved; further bounding only sets it.
 fn plan_env_report_content(report ExternalCErrorBugReport, content_budget int, value_limit int) EnvContentPlan {
@@ -536,22 +532,23 @@ fn plan_env_report_content(report ExternalCErrorBugReport, content_budget int, v
 	mut c_output := truncated_report_text(report.c_output, c_output_budget)
 	remaining := content_budget - c_output.len
 	v_source_budget := if remaining < value_limit { remaining } else { value_limit }
-	v_source_marker_min := c_error_v_source_truncation_notice.len + 2
 	mut v_source_truncated := report.v_source_truncated
 	mut source_omitted := false
 	mut v_source_focus := 0
 	v_source := if v_source_budget <= 0 {
 		source_omitted = report.v_source != ''
 		''
-	} else if report.v_source.len > v_source_budget && v_source_budget <= v_source_marker_min {
-		source_omitted = true
-		''
 	} else if report.v_source.len > v_source_budget {
-		v_source_truncated = true
 		bounded, focus := bounded_v_source_with_focus(report.v_source, v_source_budget,
 			report.v_source_focus)
-		v_source_focus = focus
-		bounded
+		if bounded == '' {
+			source_omitted = true
+			''
+		} else {
+			v_source_truncated = true
+			v_source_focus = focus
+			bounded
+		}
 	} else {
 		// Fits whole: the complete file is forwarded, with the failing line unchanged.
 		v_source_focus = report.v_source_focus
@@ -594,15 +591,15 @@ pub fn bounded_v3_fallback_source(kind string, c_output string, c_file string, a
 }
 
 // bounded_v3_internal_fallback_source returns the source CONTENT captured before V3 starts,
-// with focus 0 (a head+tail window is kept if it must be bounded at export). It never opens
-// `source_name`; the dispatcher separately verifies that the input still has the captured
-// digest before forwarding this content to the stable retry. The byte bound is applied once,
-// at the handoff, rather than here.
+// with focus 0. It never opens `source_name`; the dispatcher separately verifies that the input
+// still has the captured digest before forwarding this content to the stable retry. The snapshot
+// is bounded here so a successful V3 compile does not retain an unbounded source copy until exit;
+// export may tighten the bound further to fit the process environment.
 pub fn bounded_v3_internal_fallback_source(source_name string, source string) (string, string, int) {
 	if source_name == '' {
 		return '', '', 0
 	}
-	return os.base(source_name), source, 0
+	return os.base(source_name), bounded_v_source(source, c_error_bug_report_max_v_source_bytes, 0), 0
 }
 
 // bounded_v_source_for_generated_c maps a generated-C compilation error back to the V
@@ -1394,11 +1391,12 @@ fn bounded_v_source_with_focus(source string, max_bytes int, focus_line int) (st
 		return source, focus_line
 	}
 	marker := '\n${c_error_v_source_truncation_notice}\n'
-	if max_bytes <= marker.len {
-		// no room for both content and the marker: fall back to a hard prefix cut
-		return source[..max_bytes], 0
-	}
 	if focus_line <= 0 {
+		// A head+tail excerpt needs the marker plus at least two retained bytes: the split can
+		// assign one byte to each side, and line-boundary clamping may discard one side.
+		if max_bytes < marker.len + 2 {
+			return '', 0
+		}
 		kept_bytes := max_bytes - marker.len
 		head_budget := kept_bytes / 2
 		tail_budget := kept_bytes - head_budget
@@ -1453,13 +1451,16 @@ fn bounded_v_source_with_focus(source string, max_bytes int, focus_line int) (st
 	if result.len <= max_bytes {
 		return result, adjusted_focus
 	}
-	// A single line longer than the whole budget still overflows the window. Hard-clamp it,
-	// but keep the truncation marker so a truncated upload is never a silently complete-looking
-	// prefix (the notice's truncation state is tracked explicitly, and this keeps the uploaded
-	// bytes self-describing too).
+	// A single focused line longer than the whole budget still overflows the window. Build the
+	// clamp explicitly from its markers and line prefix, rather than slicing `result`: when there
+	// is a leading marker, slicing can spend the entire budget on marker text and retain no source.
+	leading_marker := if lo > 0 { '${c_error_v_source_truncation_notice}\n' } else { '' }
 	marker_tail := '\n${c_error_v_source_truncation_notice}'
-	clamp := if max_bytes > marker_tail.len { max_bytes - marker_tail.len } else { 0 }
-	return result[..clamp] + marker_tail, adjusted_focus
+	clamp := max_bytes - leading_marker.len - marker_tail.len
+	if clamp <= 0 {
+		return '', 0
+	}
+	return leading_marker + lines[fi][..clamp] + marker_tail, adjusted_focus
 }
 
 // new_c_error_bug_report_with_vlines regenerates the program's C source with `#line`
