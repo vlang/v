@@ -47,6 +47,10 @@ recursively.
 `v -stats test folder` - same, but will also produce timing reports
 about how fast each test_ function in each _test.v file ran.
 
+By default, `v test` uses at most four parallel workers and budgets one worker per 8 GiB
+of physical memory. Set `VJOBS` to a positive value to explicitly choose a different worker
+count when your test workload and machine capacity are known.
+
 ## `v test vlib/v/tests`:
 
 This folder contains _test.v files, testing the different features of the V

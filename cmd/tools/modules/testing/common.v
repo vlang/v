@@ -78,9 +78,39 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 pub const max_compilation_retries = get_max_compilation_retries()
 
 const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
+// Each worker compiles a separate test program, so bound automatic parallelism
+// by a conservative memory budget. VJOBS remains an explicit override.
+const test_job_memory_budget = u64(8) * 1024 * 1024 * 1024
+const max_automatic_test_jobs = 4
 
 fn get_max_compilation_retries() int {
 	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
+}
+
+fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int {
+	if configured_jobs > 0 {
+		return configured_jobs
+	}
+	mut jobs := if cpu_jobs > 0 { cpu_jobs } else { 1 }
+	mut memory_jobs := int(total_memory / test_job_memory_budget)
+	if memory_jobs < 1 {
+		memory_jobs = 1
+	}
+	if jobs > memory_jobs {
+		jobs = memory_jobs
+	}
+	if jobs > max_automatic_test_jobs {
+		jobs = max_automatic_test_jobs
+	}
+	return jobs
+}
+
+fn test_runner_jobs() int {
+	configured_jobs := os.getenv('VJOBS').int()
+	total_memory := runtime.total_memory() or {
+		return automatic_test_jobs(runtime.nr_jobs(), 0, configured_jobs)
+	}
+	return automatic_test_jobs(runtime.nr_jobs(), u64(total_memory), configured_jobs)
 }
 
 fn get_fail_retry_delay_ms() time.Duration {
@@ -505,7 +535,7 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut njobs := runtime.nr_jobs()
+	mut njobs := test_runner_jobs()
 	if remaining_files.len < njobs {
 		njobs = remaining_files.len
 	}
