@@ -25,10 +25,12 @@ fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.Node
 	})
 }
 
-fn test_inline_asm_numeric_local_label_references_drop_v_quotes() {
+fn test_inline_asm_quoted_label_references_drop_v_quotes() {
 	assert lower_c_inline_asm_template("jz '1f'", 'amd64', map[string]bool{}, false) == 'jz 1f'
 	assert lower_c_inline_asm_template("jnz '23b'", 'amd64', map[string]bool{}, false) == 'jnz 23b'
-	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', map[string]bool{}, false) == "call 'named_target'"
+	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', map[string]bool{}, false) == 'call named_target'
+	assert lower_c_inline_asm_template("jmp 'next_block'", 'i386', map[string]bool{}, false) == 'jmp next_block'
+	assert lower_c_inline_asm_template("jmp 'x'", 'amd64', map[string]bool{}, false) == 'jmp x'
 }
 
 fn test_inline_asm_i386_uses_x86_att_operand_lowering() {
@@ -46,7 +48,7 @@ fn test_inline_asm_x86_register_branch_targets_are_indirect() {
 	assert lower_c_inline_asm_template('call rax', 'amd64', aliases, true) == 'call *%%rax'
 	assert lower_c_inline_asm_template('jmp callback', 'amd64', aliases, true) == 'jmp *%[callback]'
 	assert lower_c_inline_asm_template('jmp eax', 'i386', aliases, false) == 'jmp *%eax'
-	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', aliases, false) == "call 'named_target'"
+	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', aliases, false) == 'call named_target'
 }
 
 fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {

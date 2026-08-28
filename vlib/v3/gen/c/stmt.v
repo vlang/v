@@ -3357,8 +3357,8 @@ fn split_c_inline_asm_operands(source string) []string {
 
 fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]bool, is_extended bool) string {
 	operand := source.trim_space()
-	if local_label := c_inline_asm_quoted_local_label(operand) {
-		return local_label
+	if label := c_inline_asm_quoted_label(operand) {
+		return label
 	}
 	if operand.len >= 2 && operand[0] == `[` && operand[operand.len - 1] == `]` {
 		return lower_c_inline_asm_address(operand[1..operand.len - 1], arch, aliases, is_extended)
@@ -3375,16 +3375,19 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 	return lower_c_inline_asm_atoms(operand, arch, aliases, is_extended)
 }
 
-fn c_inline_asm_quoted_local_label(source string) ?string {
-	if source.len < 4 || source[0] !in [`'`, `"`] || source[source.len - 1] != source[0] {
+fn c_inline_asm_quoted_label(source string) ?string {
+	if source.len < 3 || source[0] !in [`'`, `"`] || source[source.len - 1] != source[0] {
 		return none
 	}
 	label := source[1..source.len - 1]
-	if label.len < 2 || label[label.len - 1] !in [`f`, `b`]
-		|| !label[..label.len - 1].bytes().all(it.is_digit()) {
-		return none
+	if is_c_inline_asm_ident(label) {
+		return label
 	}
-	return label
+	if label.len >= 2 && label[label.len - 1] in [`f`, `b`]
+		&& label[..label.len - 1].bytes().all(it.is_digit()) {
+		return label
+	}
+	return none
 }
 
 fn lower_c_inline_asm_address(source string, arch string, aliases map[string]bool, is_extended bool) string {
