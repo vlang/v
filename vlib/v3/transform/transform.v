@@ -1448,7 +1448,7 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 	// A specialization can make a previously dead non-generic body reachable, and
 	// transforming that body can expose another generic call. Keep the templates
 	// intact and alternate both passes until late reachability stops growing.
-	for _ in 0 .. 16 {
+	for {
 		generated_names := t.monomorphize_pass()
 		t.materialize_monomorph_signature_types(t.sorted_monomorph_cache_specs())
 		t.monomorph_profile('mono wrapper pass: ${time.ticks() - debug_started} ms')
