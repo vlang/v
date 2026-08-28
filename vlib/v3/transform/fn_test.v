@@ -57,12 +57,18 @@ fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
 fn test_immediate_closure_result_error_may_alias_capture() {
 	fallback := Transformer{}
 	assert fallback.immediate_closure_result_may_alias_capture('!int')
+	assert fallback.immediate_closure_result_may_alias_capture('[]int')
+	assert fallback.immediate_closure_result_may_alias_capture('map[string]int')
+	assert fallback.immediate_closure_result_may_alias_capture('chan int')
 
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.immediate_closure_result_may_alias_capture('!int')
+	assert t.immediate_closure_result_may_alias_capture('[]int')
+	assert t.immediate_closure_result_may_alias_capture('map[string]int')
+	assert t.immediate_closure_result_may_alias_capture('chan int')
 }
 
 fn test_normalize_function_type_preserves_mut_parameter() {

@@ -1339,6 +1339,7 @@ fn (t &Transformer) immediate_closure_result_may_alias_capture(type_name string)
 	if isnil(t.tc) {
 		clean := t.normalize_type_alias(type_name)
 		return clean.starts_with('!') || clean.starts_with('&')
+			|| clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('chan ')
 			|| clean in ['voidptr', 'byteptr', 'charptr']
 	}
 	mut seen := map[string]bool{}
@@ -1359,18 +1360,9 @@ fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut se
 			// when the successful payload is scalar.
 			true
 		}
-		types.Array {
-			t.closure_result_type_may_alias_capture(typ.elem_type, mut seen)
-		}
+		types.Array, types.Channel, types.Map { true }
 		types.ArrayFixed {
 			t.closure_result_type_may_alias_capture(typ.elem_type, mut seen)
-		}
-		types.Channel {
-			t.closure_result_type_may_alias_capture(typ.elem_type, mut seen)
-		}
-		types.Map {
-			t.closure_result_type_may_alias_capture(typ.key_type, mut seen)
-				|| t.closure_result_type_may_alias_capture(typ.value_type, mut seen)
 		}
 		types.Struct {
 			if typ.name in seen {

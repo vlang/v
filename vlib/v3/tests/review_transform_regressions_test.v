@@ -2855,6 +2855,20 @@ fn main() {
 	assert out == '42'
 }
 
+fn test_immediately_invoked_closure_keeps_aliased_slice_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	fixed := [3]int{41, 42, 43}
+	slice := (fn [fixed] () []int {
+		return fixed[..]
+	})()
+	println(slice)
+}
+'
+	out := run_good(v3_bin, 'immediate_closure_aliased_slice', source)
+	assert out == '[41, 42, 43]'
+}
+
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
