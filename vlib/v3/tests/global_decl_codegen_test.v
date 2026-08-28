@@ -62,6 +62,38 @@ fn test_explicit_shared_and_fixed_array_global_initializers() {
 	assert out == '7\n34\n1:2'
 }
 
+fn test_implicit_shared_fixed_array_container_elements_are_initialized() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'implicit_shared_fixed_array_containers', "struct Config {
+	value int = 7
+}
+
+__global slots shared [2]map[string]int
+__global lists shared [2][]int
+__global configs shared [2]Config
+
+fn main() {
+	lock slots {
+		slots[0]['k'] = 1
+	}
+	lock lists {
+		lists[1] << 2
+	}
+	map_value := rlock slots {
+		slots[0]['k']
+	}
+	array_value := rlock lists {
+		lists[1][0]
+	}
+	default_value := rlock configs {
+		configs[0].value
+	}
+	println(int_str(map_value) + ':' + int_str(array_value) + ':' + int_str(default_value))
+}
+")
+	assert out == '1:2:7'
+}
+
 fn test_global_array_initializers_fill_runtime_defaults() {
 	v3_bin := global_decl_build_v3()
 	out := global_decl_run_good(v3_bin, 'global_array_runtime_defaults',

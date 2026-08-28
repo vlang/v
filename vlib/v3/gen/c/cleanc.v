@@ -21974,11 +21974,7 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 fn (mut g FlatGen) global_array_default_elem_expr(elem_type types.Type) ?string {
 	clean_type := default_init_unalias_type(elem_type)
 	if clean_type is types.ArrayFixed {
-		mut builder := strings.new_builder(64)
-		g.write_empty_fixed_array_initializer(mut builder, clean_type)
-		initializer := builder.str()
-		// `str` retains the result; only the builder's scratch allocation is released.
-		unsafe { builder.free() }
+		initializer := g.empty_fixed_array_initializer_string(clean_type)
 		c_elem, dims := g.fixed_array_decl_parts(clean_type)
 		return '(${c_elem}${dims})${initializer}'
 	}
@@ -22017,7 +22013,9 @@ fn (mut g FlatGen) queue_shared_global_zero_init(name string, inner string, typ 
 	wrapper := g.shared_wrapper_c_name(qualified)
 	clean_type := default_init_unalias_type(typ)
 	mut value_expr := '(${g.tc.c_type(clean_type)}){0}'
-	if clean_type is types.Array {
+	if clean_type is types.ArrayFixed {
+		value_expr = g.empty_fixed_array_initializer_string(clean_type)
+	} else if clean_type is types.Array {
 		value_expr = 'array_new(sizeof(${g.value_c_type(clean_type.elem_type)}), 0, 0)'
 	} else if clean_type is types.Map {
 		g.register_fixed_array_map_key_type(clean_type.key_type)
@@ -22846,15 +22844,16 @@ fn (mut g FlatGen) write_empty_fixed_array_initializer(mut builder strings.Build
 		return
 	}
 	len := len_text.int()
+	clean_elem_type := default_init_unalias_type(fixed.elem_type)
 	builder.write_u8(`{`)
 	for i in 0 .. len {
 		if i > 0 {
 			builder.write_string(', ')
 		}
-		if fixed.elem_type is types.ArrayFixed {
-			g.write_empty_fixed_array_initializer(mut builder, fixed.elem_type)
+		if clean_elem_type is types.ArrayFixed {
+			g.write_empty_fixed_array_initializer(mut builder, clean_elem_type)
 		} else {
-			g.write_fixed_array_default_elem_initializer(mut builder, fixed.elem_type)
+			g.write_fixed_array_default_elem_initializer(mut builder, clean_elem_type)
 		}
 	}
 	builder.write_u8(`}`)
