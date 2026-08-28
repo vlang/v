@@ -337,6 +337,49 @@ fn test_env_c_output_budget_caps_at_value_limit_and_max() {
 	assert env_c_output_budget(big, big) == c_error_bug_report_max_env_c_output_bytes
 }
 
+fn test_plan_env_report_content_reclaims_omitted_source_budget_for_diagnostic() {
+	// A tiny content budget that cannot hold even the truncation marker omits the source; the half
+	// that was reserved for it must be reclaimed so a short missing-library diagnostic survives
+	// intact, staying recognizable to the receiver's filter instead of being reported as a compiler
+	// bug (PR #28234 review).
+	marker_min := c_error_v_source_truncation_notice.len + 2
+	short_diagnostic := "ld: library 'macos_v3_absent' not found"
+	value_limit := v3_report_max_env_payload_bytes
+	// A budget below marker_min forces omission; the source is larger than the budget.
+	tiny_budget := marker_min - 2
+	plan := plan_env_report_content(ExternalCErrorBugReport{
+		c_output: short_diagnostic
+		v_source: 'module main\nfn main() {}\n' + 'x'.repeat(1000)
+	}, tiny_budget, value_limit)
+	// Source is omitted (the budget cannot hold the marker)...
+	assert plan.v_source == ''
+	assert !plan.v_source_truncated
+	// ...and the reclaimed capacity keeps the whole short diagnostic (no truncation notice).
+	assert plan.c_output == short_diagnostic
+	assert !plan.c_output.contains(c_error_bug_report_truncation_notice)
+}
+
+fn test_plan_env_report_content_bounds_source_and_diagnostic_when_both_fit() {
+	// With ample budget both are forwarded whole; a source larger than its half-share is bounded
+	// (marked truncated) while the diagnostic stays intact.
+	value_limit := v3_report_max_env_payload_bytes
+	small := plan_env_report_content(ExternalCErrorBugReport{
+		c_output: 'error: use of undeclared identifier missing'
+		v_source: 'module main\nfn main() {}'
+	}, 4096, value_limit)
+	assert small.v_source == 'module main\nfn main() {}'
+	assert !small.v_source_truncated
+	assert small.c_output == 'error: use of undeclared identifier missing'
+	// A source that overflows its half-share is bounded and flagged truncated.
+	big_source := 'module main\n' + 'fn f() {}\n'.repeat(400)
+	bounded := plan_env_report_content(ExternalCErrorBugReport{
+		c_output: 'error: x'
+		v_source: big_source
+	}, 512, value_limit)
+	assert bounded.v_source.len < big_source.len
+	assert bounded.v_source_truncated
+}
+
 fn test_bounded_v_source_marks_single_oversized_line_hard_clamp() {
 	// The failing V line is the whole file and is longer than the byte budget. The safety
 	// hard-clamp used to drop a markerless prefix (PR #28234 review); it must now carry the

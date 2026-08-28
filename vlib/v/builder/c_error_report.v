@@ -490,57 +490,69 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 		set_v3_report_env_payload(payload)
 		return
 	}
-	mut content_budget := budget - v3_report_env_payload_bytes(payload)
-	// Share the remaining aggregate capacity when both fields are present. A short
-	// missing-library/libatomic diagnostic remains intact, keeping the receiver's filter
-	// accurate, while large diagnostics and excerpts are both bounded.
-	// The full capacity the diagnostic may use when no source is forwarded.
+	// The aggregate capacity left after the base payload, split between the diagnostic and source.
+	content_budget := budget - v3_report_env_payload_bytes(payload)
+	plan := plan_env_report_content(report, content_budget, value_limit)
+	payload['COUTPUT'] = plan.c_output
+	payload['VSOURCE'] = plan.v_source
+	// Carry the truncation state explicitly through the handoff, computed from the byte budget
+	// rather than from (user-controlled) source content, so the retry's notice is accurate even
+	// when a complete file legitimately contains the truncation marker text.
+	payload['VSOURCE_TRUNCATED'] = if plan.v_source_truncated { '1' } else { '0' }
+	set_v3_report_env_payload(payload)
+}
+
+struct EnvContentPlan {
+	c_output           string
+	v_source           string
+	v_source_truncated bool
+}
+
+// plan_env_report_content splits `content_budget` (the aggregate environment capacity left after
+// the base payload) between the C diagnostic and the V source, each capped by `value_limit`. The
+// env payload counts value bytes, so the diagnostic and source consume exactly their lengths.
+//
+// When both are present it halves the capacity so a short missing-library/libatomic diagnostic
+// stays intact and the receiver's filter stays accurate. Source is bounded once, centered on the
+// failing line, or omitted when the budget cannot even hold the truncation marker (a markerless
+// prefix would drop the failing line and misreport the excerpt as complete). When source is
+// omitted the half reserved for it is reclaimed for the diagnostic, so the linker failure remains
+// recognizable rather than being misclassified as a compiler bug. Any truncation recorded upstream
+// (e.g. the first handoff before a wasm re-export) is preserved; further bounding only sets it.
+fn plan_env_report_content(report ExternalCErrorBugReport, content_budget int, value_limit int) EnvContentPlan {
 	full_c_output_budget := env_c_output_budget(content_budget, value_limit)
 	mut c_output_budget := content_budget
 	if report.v_source != '' {
 		c_output_budget /= 2
 	}
 	c_output_budget = env_c_output_budget(c_output_budget, value_limit)
-	payload['COUTPUT'] = truncated_report_text(report.c_output, c_output_budget)
-	content_budget = budget - v3_report_env_payload_bytes(payload)
-	v_source_budget := if content_budget < value_limit { content_budget } else { value_limit }
-	// Apply the byte bound once, here, centered on the failing line the producer identified, so a
-	// file larger than the environment budget still keeps the exact failing code instead of
-	// losing it to a second head+tail truncation. Omit source when the budget cannot hold real
-	// content plus a truncation marker: bounded_v_source would otherwise return a markerless
-	// prefix that both drops the failing line and misreports the excerpt as complete.
+	mut c_output := truncated_report_text(report.c_output, c_output_budget)
+	remaining := content_budget - c_output.len
+	v_source_budget := if remaining < value_limit { remaining } else { value_limit }
 	v_source_marker_min := c_error_v_source_truncation_notice.len + 2
-	// Preserve any truncation already recorded upstream (e.g. the first handoff bounded the source
-	// before the wasm re-export in cmd/v). Further bounding below only sets it, never clears it, so
-	// an already-bounded excerpt that fits this budget is not re-announced as the complete file.
 	mut v_source_truncated := report.v_source_truncated
 	mut source_omitted := false
-	payload['VSOURCE'] = if v_source_budget <= 0 {
+	v_source := if v_source_budget <= 0 {
 		source_omitted = report.v_source != ''
 		''
 	} else if report.v_source.len > v_source_budget && v_source_budget <= v_source_marker_min {
 		source_omitted = true
 		''
 	} else if report.v_source.len > v_source_budget {
-		// Larger than the budget: a bounded excerpt centered on the failing line.
 		v_source_truncated = true
 		bounded_v_source(report.v_source, v_source_budget, report.v_source_focus)
 	} else {
-		// Fits whole: the complete file is forwarded.
 		report.v_source
 	}
-	// The report had source, but the budget could not hold even the marker, so it was omitted.
-	// The half of the content budget that was reserved for it is now free: recompute COUTPUT with
-	// the full capacity so a short missing-library/libatomic diagnostic is not truncated past the
-	// receiver's recognizable form (which would misclassify it as a compiler bug).
 	if source_omitted && c_output_budget < full_c_output_budget {
-		payload['COUTPUT'] = truncated_report_text(report.c_output, full_c_output_budget)
+		// The half reserved for the omitted source is now free; give it back to the diagnostic.
+		c_output = truncated_report_text(report.c_output, full_c_output_budget)
 	}
-	// Carry the truncation state explicitly through the handoff, computed from the byte budget
-	// rather than from (user-controlled) source content, so the retry's notice is accurate even
-	// when a complete file legitimately contains the truncation marker text.
-	payload['VSOURCE_TRUNCATED'] = if v_source_truncated { '1' } else { '0' }
-	set_v3_report_env_payload(payload)
+	return EnvContentPlan{
+		c_output:           c_output
+		v_source:           v_source
+		v_source_truncated: v_source_truncated
+	}
 }
 
 // bounded_v3_fallback_source extracts the bounded V source snippet to upload for a V3->V1
