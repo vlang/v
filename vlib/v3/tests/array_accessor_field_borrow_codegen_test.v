@@ -171,3 +171,34 @@ fn test_owned_method_value_with_clone_runs() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'bb', run.output
 }
+
+// Concern: only the chain's *final* value is read out, so the borrow is safe only when that
+// value does not own heap data. `arr.last().name` returns the `string` field itself; borrowing
+// would alias the array element's storage, so a returned reference could dangle once the array
+// is destroyed. A clone-less owned element must therefore be rejected, not borrowed.
+fn test_owned_escaping_field_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_escaping_field',
+		"struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(t.last_name())\n}\n",
+		'')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
+// The exclusion is limited to the chain's final value: an owned *intermediate* field whose
+// own final value is non-owned stays borrowable. `arr.last().name.len` reads only the length
+// (an int), so nothing owned escapes and it must still lower to the in-place borrow.
+fn test_owned_intermediate_field_chain_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_intermediate_chain',
+		"struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name_len() int {\n\treturn t.entries.last().name.len\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello', size: 5 }\n\tprintln(int_str(t.last_name_len()))\n}\n",
+		'')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unsupported node kind'), compile.output
+	assert !compile.output.contains('cannot return an independent array element'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_intermediate_chain_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '5', run.output
+}

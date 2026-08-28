@@ -6025,18 +6025,23 @@ fn (tc &TypeChecker) known_sum_constructor_name(name string) ?string {
 }
 
 // array_accessor_result_is_borrowed reports whether a `first()`/`last()` call result is
-// consumed as a borrow — the base of a field selector (`arr.last().field`) — rather than
-// escaping as an independent value. A borrowed field read keeps the element owned by the
-// array, so it needs no `clone()` even when the element type has no clone method; the
-// transformer lowers such a base to an in-place `arr[..]` access. A bound method value
-// (`arr.last().method`) is excluded: it is not a field read, and closure generation
-// shallow-copies the receiver, so it must keep the copying accessor semantics.
-fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool {
+// consumed as a borrow — read through a chain of field selectors whose final value does not
+// own heap data (`arr.last().size`, `arr.last().name.len`) — rather than escaping as an
+// independent value. Such a read keeps the element owned by the array, so the accessor needs
+// no `clone()` and the transformer can lower it to an in-place `arr[..]` access. Two shapes
+// are excluded so the copying accessor semantics are kept instead:
+//   * a bound method value (`arr.last().method`) — closure generation shallow-copies the
+//     receiver, so a borrowed element would share heap fields with the array;
+//   * a chain whose final value itself owns heap data (`arr.last().name`, where `name` is a
+//     string) — a borrowed alias of that field could outlive the array element's storage.
+// The transformer calls this too, so the two stay in lock-step.
+pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool {
 	mut current := id
+	mut final_field := flat.empty_node
 	for {
 		parent_id := tc.direct_parent_id(current)
 		if parent_id == flat.empty_node || int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len {
-			return false
+			break
 		}
 		parent := tc.a.node(parent_id)
 		// See through transparent parens: `(arr.last()).field`.
@@ -6044,10 +6049,20 @@ fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool {
 			current = parent_id
 			continue
 		}
-		return parent.kind == .selector && parent.children_count > 0
-			&& tc.a.child(parent, 0) == current && !tc.expr_is_method_value(parent_id)
+		// A field read of `current`; a bound method value is not a field read.
+		if parent.kind == .selector && parent.children_count > 0
+			&& tc.a.child(parent, 0) == current && !tc.expr_is_method_value(parent_id) {
+			final_field = parent_id
+			current = parent_id
+			continue
+		}
+		break
 	}
-	return false
+	if final_field == flat.empty_node {
+		return false
+	}
+	// The value that ultimately escapes the chain must not own heap data.
+	return !tc.ownership_type_requires_destruction(tc.resolve_type(final_field))
 }
 
 // should_diagnose reports whether should diagnose applies in types.
