@@ -13,8 +13,15 @@ fn put_macho_test_u32(mut data []u8, offset int, value u32) {
 	data[offset + 3] = u8(value >> 24)
 }
 
-fn test_normalize_macho_uuid_is_content_derived_and_idempotent() {
-	mut binary := []u8{len: 80, init: u8(index)}
+fn put_macho_test_u32_be(mut data []u8, offset int, value u32) {
+	data[offset] = u8(value >> 24)
+	data[offset + 1] = u8(value >> 16)
+	data[offset + 2] = u8(value >> 8)
+	data[offset + 3] = u8(value)
+}
+
+fn macho_test_thin_binary(seed u8) []u8 {
+	mut binary := []u8{len: 80, init: seed + u8(index)}
 	put_macho_test_u32(mut binary, 0, 0xfeedfacf)
 	put_macho_test_u32(mut binary, 16, 2)
 	put_macho_test_u32(mut binary, 20, 32)
@@ -22,6 +29,11 @@ fn test_normalize_macho_uuid_is_content_derived_and_idempotent() {
 	put_macho_test_u32(mut binary, 36, 8)
 	put_macho_test_u32(mut binary, 40, 0x1b)
 	put_macho_test_u32(mut binary, 44, 24)
+	return binary
+}
+
+fn test_normalize_macho_uuid_is_content_derived_and_idempotent() {
+	mut binary := macho_test_thin_binary(0)
 	mut normalized_input := binary.clone()
 	for i in 48 .. 64 {
 		normalized_input[i] = 0
@@ -35,6 +47,32 @@ fn test_normalize_macho_uuid_is_content_derived_and_idempotent() {
 	first_uuid := binary[48..64].clone()
 	normalize_macho_uuid(mut binary)!
 	assert binary[48..64] == first_uuid
+}
+
+fn test_normalize_macho_uuid_normalizes_each_universal_slice() {
+	mut first := macho_test_thin_binary(1)
+	mut second := macho_test_thin_binary(17)
+	normalize_macho_uuid(mut first)!
+	normalize_macho_uuid(mut second)!
+
+	mut universal := []u8{len: 208}
+	put_macho_test_u32_be(mut universal, 0, 0xcafebabe)
+	put_macho_test_u32_be(mut universal, 4, 2)
+	put_macho_test_u32_be(mut universal, 16, 48)
+	put_macho_test_u32_be(mut universal, 20, 80)
+	put_macho_test_u32_be(mut universal, 36, 128)
+	put_macho_test_u32_be(mut universal, 40, 80)
+	copy(mut universal[48..128], macho_test_thin_binary(1))
+	copy(mut universal[128..208], macho_test_thin_binary(17))
+
+	normalize_macho_uuid(mut universal)!
+	assert universal[48..128] == first
+	assert universal[128..208] == second
+	first_uuid := universal[96..112].clone()
+	second_uuid := universal[176..192].clone()
+	normalize_macho_uuid(mut universal)!
+	assert universal[96..112] == first_uuid
+	assert universal[176..192] == second_uuid
 }
 
 fn create_macos_debug_cache_entry(cache_dir string, name string, contents string, last_used i64) !string {
