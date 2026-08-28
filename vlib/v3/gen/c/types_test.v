@@ -54,6 +54,24 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	assert g.needed_optional_types['Optional_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
 }
 
+fn test_optional_payload_qualifies_interface() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.interface_names['firebird.Value'] = true
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	value_type := types.Type(types.Interface{
+		name: 'Value'
+	})
+	assert g.optional_payload_c_type(value_type) == 'firebird__Value'
+	result_type := types.Type(types.ResultType{
+		base_type: value_type
+	})
+	assert g.concrete_optional_type_name(result_type) == 'Optional_firebird__Value'
+}
+
 fn test_declaration_signature_scan_ignores_unscoped_regular_fn_nodes() {
 	mut ast := flat.FlatAst.new()
 	ast.add_node(flat.Node{

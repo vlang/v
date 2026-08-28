@@ -170,6 +170,175 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_array_append_to_map_value_struct_field_uses_mutable_map_entry() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_append_to_map_value_struct_field', 'struct Item {
+mut:
+	values []int
+}
+
+fn append_value(mut items map[string]Item, key string, value int) {
+	items[key].values << value
+}
+
+fn main() {
+	mut items := {
+		"first": Item{}
+	}
+	append_value(mut items, "first", 7)
+	println(items["first"].values)
+}
+')
+	assert out == '[7]'
+}
+
+fn test_or_block_match_with_break_has_no_value_assignment() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'or_block_match_break', 'struct NoIdle {}
+
+fn (_ NoIdle) msg() string {
+	return "no idle value"
+}
+
+fn (_ NoIdle) code() int {
+	return 0
+}
+
+fn pop_idle() !int {
+	return NoIdle{}
+}
+
+fn get() !int {
+	for {
+		value := pop_idle() or {
+			match err {
+				NoIdle {
+					break
+				}
+				else {
+					return err
+				}
+			}
+		}
+		return value
+	}
+	return 7
+}
+
+fn main() {
+	println(get() or { panic(err) })
+}
+')
+	assert out == '7'
+}
+
+fn test_result_payload_converts_to_interface_and_sum_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'result_interface_and_sum_payload', 'interface Number {
+	number() int
+}
+
+struct Item {
+	value int
+}
+
+fn (item Item) number() int {
+	return item.value
+}
+
+struct ArrayValue {
+	value int
+}
+
+type Value = ArrayValue | string
+
+fn load_item() !Item {
+	return Item{7}
+}
+
+fn load_number() !Number {
+	return load_item()!
+}
+
+fn load_array() !ArrayValue {
+	return ArrayValue{9}
+}
+
+fn load_value() !Value {
+	return load_array()!
+}
+
+fn main() {
+	number := load_number() or { panic(err) }
+	value := load_value() or { panic(err) }
+	println(number.number())
+	match value {
+		ArrayValue { println(value.value) }
+		else {}
+	}
+}
+')
+	assert out == '7\n9'
+}
+
+fn test_issue_28180_module_collisions_and_embedded_generic_middleware() {
+	v3_bin := build_v3_review_transform()
+	// The reported regression is a compiler failure; keep unrelated runtime
+	// deinitialization outside this coverage.
+	_ = compile_good_project(v3_bin, 'issue_28180_module_collisions', '-nocache', {
+		'v.mod':     'Module {
+	name: "issue_28180"
+}
+'
+		'main.v':    'module main
+
+import app
+
+fn main() {
+	_ = app.new()
+	println("ok")
+}
+'
+		'app/app.v': 'module app
+
+import context
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+@[heap]
+pub struct App {
+	veb.Middleware[Context]
+}
+
+struct Params {
+	name ?string
+}
+
+fn (mut app App) middleware(mut ctx Context) bool {
+	return true
+}
+
+pub fn new() &App {
+	mut base_ctx := context.background()
+	_ = base_ctx.done()
+	params := Params{
+		name: "item"
+	}
+	if name := params.name {
+		assert name == "item"
+	}
+	mut app := &App{}
+	app.use(handler: app.middleware)
+	app.route_use("/admin", handler: app.middleware, after: true)
+	return app
+}
+'
+	}, '')
+}
+
 fn test_return_match_map_lookup_guard_keeps_presence_check() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_with_flags(v3_bin, 'return_match_map_lookup_guard', '-building-v', 'struct Local {
@@ -409,6 +578,13 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 }
 
 fn run_good_project_with_flags(v3_bin string, name string, flags string, files map[string]string, input string) string {
+	good_bin := compile_good_project(v3_bin, name, flags, files, input)
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
+	return run.output.trim_space()
+}
+
+fn compile_good_project(v3_bin string, name string, flags string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -422,9 +598,7 @@ fn run_good_project_with_flags(v3_bin string, name string, flags string, files m
 	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(good_bin)
-	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
-	return run.output.trim_space()
+	return good_bin
 }
 
 fn gen_c_from_project(v3_bin string, name string, files map[string]string, input string) string {

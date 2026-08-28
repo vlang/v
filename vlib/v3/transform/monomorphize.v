@@ -4888,6 +4888,12 @@ fn (mut t Transformer) concrete_generic_call_is_variadic(id flat.NodeId, node fl
 	return generic_param_text_is_variadic(last_param)
 }
 
+fn (mut t Transformer) concrete_generic_call_is_method(id flat.NodeId) bool {
+	spec := t.generic_call_spec_cache[int(id)] or { return false }
+	decl := t.cached_generic_fn_decls()[spec.decl_key] or { return false }
+	return t.generic_decl_is_receiver_method(decl.node)
+}
+
 fn (mut t Transformer) cached_generic_fn_decls() map[string]GenericFnDecl {
 	if t.skip_generics {
 		if !t.generic_fn_decls_ready {
@@ -6481,7 +6487,14 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		}
 		for key in method_keys {
 			if decl := decls[key] {
-				if !t.generic_receiver_decl_matches_type(base_type, decl, module_name) {
+				mut receiver_matches := t.generic_receiver_decl_matches_type(base_type, decl,
+					module_name)
+				if !receiver_matches {
+					mut seen := map[string]bool{}
+					receiver_matches = t.generic_decl_matches_embedded_receiver(base_type, decl,
+						module_name, mut seen)
+				}
+				if !receiver_matches {
 					continue
 				}
 				if !t.generic_call_arg_count_matches_decl(node, decl) {
@@ -7768,9 +7781,12 @@ fn (t &Transformer) generic_arg_for_decl_module(arg string, module_name string) 
 
 fn (t &Transformer) inherited_generic_arg_for_decl_module(arg string, module_name string, outer_args []string) string {
 	clean := arg.trim_space()
+	normalized := t.normalize_type_in_module(clean, module_name)
 	for outer_arg in outer_args {
-		if outer_arg.trim_space() == clean {
-			return arg
+		outer_clean := outer_arg.trim_space()
+		if outer_clean == clean
+			|| t.normalize_type_in_module(outer_clean, module_name) == normalized {
+			return outer_arg
 		}
 	}
 	return t.generic_arg_for_decl_module(arg, module_name)

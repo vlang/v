@@ -6320,7 +6320,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						}
 					}
 					{
-						base_type := g.usable_expr_type(g.a.child(fn_node, 0))
+						base_type := g.receiver_base_type(g.a.child(fn_node, 0))
 						clean_type := concrete_receiver_type(base_type)
 						if g.gen_thread_wait_call(fn_node) {
 							return
@@ -6479,7 +6479,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					g.write(')')
 					return
 				} else {
-					base_type := g.usable_expr_type(g.a.child(fn_node, 0))
+					base_type := g.receiver_base_type(g.a.child(fn_node, 0))
 					clean_type := concrete_receiver_type(base_type)
 					if cgen_is_channel_close_receiver_type(clean_type) && fn_node.value == 'close' {
 						g.gen_channel_close_call(g.a.child(fn_node, 0), node)
@@ -7509,8 +7509,26 @@ fn (g &FlatGen) receiver_base_type(base_id flat.NodeId) types.Type {
 		return types.Type(types.void_)
 	}
 	base := g.a.nodes[int(base_id)]
+	if base.kind == .paren && base.typ.len > 0 {
+		declared := g.parse_node_type(&base)
+		if declared !is types.Unknown && declared !is types.Void {
+			return declared
+		}
+	}
+	if base.kind == .selector {
+		if typ := g.selector_declared_type(base_id) {
+			return typ
+		}
+	}
 	if base.kind == .ident {
 		if typ := g.current_param_type(base.value) {
+			if base.typ.len > 0 {
+				declared := g.parse_node_type(&base)
+				if declared !is types.Unknown && declared !is types.Void
+					&& declared.name() != typ.name() && base.typ.contains('.') {
+					return declared
+				}
+			}
 			return typ
 		}
 		if typ := g.current_param_map_type(base.value) {
@@ -11526,6 +11544,29 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 		return true
 	}
 	arg_node := g.a.nodes[int(arg_id)]
+	if arg_node.kind == .selector && arg_node.typ.len > 0
+		&& (arg_node.typ.starts_with('?') || arg_node.typ.starts_with('!')) {
+		g.gen_expr(arg_id)
+		return true
+	}
+	if !concrete_abi && arg_node.kind in [.selector, .paren, .expr_stmt] {
+		declared := optional_result_unalias_type(g.or_expr_source_type(arg_id, arg_node))
+		if declared is types.OptionType || declared is types.ResultType {
+			if g.optional_type_name(declared) == g.optional_type_name(expected) {
+				g.gen_expr(arg_id)
+				return true
+			}
+		}
+	}
+	if arg_node.kind == .selector {
+		if declared_type := g.selector_declared_type(arg_id) {
+			declared := optional_result_unalias_type(declared_type)
+			if declared is types.OptionType || declared is types.ResultType {
+				g.gen_expr(arg_id)
+				return true
+			}
+		}
+	}
 	// The checker can contextually type a plain call as `?T` when it is used
 	// where an option is expected. The callee's declared return type remains
 	// authoritative: only treat a call as an already materialized option when
@@ -11564,7 +11605,14 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 			}
 		}
 	}
-	arg_type := g.usable_expr_type(arg_id)
+	mut arg_type := g.usable_expr_type(arg_id)
+	if arg_node.kind == .selector {
+		if arg_node.typ.len > 0 && (arg_node.typ.starts_with('?') || arg_node.typ.starts_with('!')) {
+			arg_type = g.tc.parse_resolution_type(arg_node.typ)
+		} else if declared_type := g.selector_declared_type(arg_id) {
+			arg_type = declared_type
+		}
+	}
 	arg_optional_type := optional_result_unalias_type(arg_type)
 	if !plain_call_in_optional_context
 		&& (arg_optional_type is types.OptionType || arg_optional_type is types.ResultType) {
@@ -12861,6 +12909,21 @@ fn (g &FlatGen) resolved_receiver_method_for_call(resolved string, node flat.Nod
 	params := g.tc.fn_param_types[resolved] or { return none }
 	if params.len != node.children_count {
 		return none
+	}
+	if params.len > 0 && node.children_count > 0 {
+		callee := g.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.children_count > 0 {
+			base_id := g.a.child(callee, 0)
+			base_type := g.receiver_base_type(base_id)
+			base_name := g.type_lookup_name(types.unwrap_pointer(base_type))
+			expected_name := g.embedded_receiver_expected_name(params[0])
+			if base_name.len > 0 && expected_name.len > 0 && base_name != expected_name {
+				if _ := g.embedded_receiver_path_for_expected(base_type, params[0]) {
+				} else {
+					return none
+				}
+			}
+		}
 	}
 	return resolved
 }

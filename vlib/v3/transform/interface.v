@@ -140,6 +140,14 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 }
 
 fn (t &Transformer) resolve_interface_type_name_uncached(name string) string {
+	raw_clean := t.trim_pointer_type(name)
+	raw_base, _, raw_is_generic := generic_app_parts(raw_clean)
+	if raw_is_generic && raw_base in t.tc.interface_names {
+		return raw_base
+	}
+	if raw_clean in t.tc.interface_names {
+		return raw_clean
+	}
 	mut clean := t.trim_pointer_type(t.normalize_type_alias(name))
 	base, _, is_generic := generic_app_parts(clean)
 	if is_generic {
@@ -926,10 +934,17 @@ fn (mut t Transformer) transform_interface_cast(id flat.NodeId, node flat.Node) 
 // transform_interface_method_call transforms the arguments of a vtable-dispatched
 // interface call using the abstract method's signature.
 fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat.Node) flat.NodeId {
+	mut interface_name := ''
+	mut interface_base := flat.empty_node
 	if node.children_count > 0 {
 		callee := t.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.children_count > 0 {
 			base_id := t.a.child(callee, 0)
+			interface_base = base_id
+			interface_name = t.resolve_interface_type_name(t.original_expr_type(base_id))
+			if interface_name.len == 0 {
+				interface_name = t.resolve_interface_type_name(t.node_type(base_id))
+			}
 			if _ := t.raw_const_type_name_for_expr(base_id) {
 				// A module-qualified interface constant (`net.err_foo.code()`) is
 				// syntactically a selector chain. Lower it to the interface wrapper
@@ -945,5 +960,48 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 			}
 		}
 	}
-	return t.transform_call_args(id, node)
+	transformed_id := t.transform_call_args(id, node)
+	if interface_name.len == 0 {
+		return transformed_id
+	}
+	transformed := t.a.nodes[int(transformed_id)]
+	if transformed.kind != .call || transformed.children_count == 0 {
+		return transformed_id
+	}
+	callee := t.a.child_node(&transformed, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return transformed_id
+	}
+	base := t.a.child(callee, 0)
+	base_node := t.a.nodes[int(base)]
+	original_base := if interface_base != flat.empty_node {
+		t.a.nodes[int(interface_base)]
+	} else {
+		base_node
+	}
+	typed_receiver := if original_base.kind == .selector && original_base.children_count > 0
+		&& t.a.child_node(&original_base, 0).kind == .ident {
+		original_ident := t.a.child_node(&original_base, 0)
+		ident := t.make_ident(original_ident.value)
+		if original_ident.typ.len > 0 {
+			t.set_node_typ(int(ident), original_ident.typ)
+		}
+		t.make_selector_op(ident, original_base.value, interface_name, original_base.op)
+	} else if original_base.kind == .ident {
+		ident := t.make_ident(original_base.value)
+		t.set_node_typ(int(ident), interface_name)
+		ident
+	} else if base_node.kind == .selector && base_node.children_count > 0 {
+		t.make_selector_op(t.a.child(&base_node, 0), base_node.value, interface_name, base_node.op)
+	} else {
+		base
+	}
+	typed_base := t.make_paren(typed_receiver)
+	t.set_node_typ(int(typed_base), interface_name)
+	typed_callee := t.make_selector(typed_base, callee.value, callee.typ)
+	mut args := []flat.NodeId{cap: int(transformed.children_count) - 1}
+	for i in 1 .. transformed.children_count {
+		args << t.a.child(&transformed, i)
+	}
+	return t.make_call_expr_typed(typed_callee, args, transformed.typ)
 }

@@ -226,12 +226,12 @@ fn (t &Transformer) resolve_receiver_method_name(base_id flat.NodeId, method str
 		raw_var_clean = raw_clean
 		if raw_clean.len > 0 && raw_clean != base_type {
 			if alias_method := t.resolve_alias_receiver_method(raw_clean, method) {
-				if t.receiver_method_matches_base_type(alias_method, base_id) {
+				if t.receiver_method_matches_type_name(alias_method, raw_clean) {
 					return alias_method
 				}
 			}
 			if method_name := t.resolve_receiver_method_for_type(raw_clean, method) {
-				if t.receiver_method_matches_base_type(method_name, base_id) {
+				if t.receiver_method_matches_type_name(method_name, raw_clean) {
 					return method_name
 				}
 			}
@@ -1068,7 +1068,11 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			param_type_names = t.call_param_type_names(params)
 		}
 	}
-	param_offset := t.call_param_offset_for_node(call_name, node, params)
+	param_offset := if t.call_is_selector_form(node) && t.concrete_generic_call_is_method(id) {
+		1
+	} else {
+		t.call_param_offset_for_node(call_name, node, params)
+	}
 	explicit_args := int(node.children_count) - 1
 	expected_explicit := params.len - param_offset
 	variadic_arg_pos := 1 + params.len - 1 - param_offset
@@ -11454,10 +11458,13 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	smartcast_method := t.resolve_smartcast_sum_receiver_method(base_id, method) or { '' }
 	if !isnil(t.tc) && smartcast_method.len == 0 {
 		if resolved_method := t.tc.resolved_call_name(id) {
-			if t.receiver_method_name_is_open_generic(resolved_method) {
+			direct_method := t.resolve_receiver_method_name(base_id, method)
+			if direct_method.len > 0 && direct_method != resolved_method {
+				// The declared receiver type is newer than a checker call entry captured
+				// through a colliding short name. Resolve it through the normal path below.
+			} else if t.receiver_method_name_is_open_generic(resolved_method) {
 				return none
-			}
-			if t.is_known_fn_name(resolved_method) {
+			} else if t.is_known_fn_name(resolved_method) {
 				params := t.call_param_types(resolved_method)
 				if t.resolved_call_uses_receiver_type(base_id, base_type, params) {
 					if !t.validate_resolved_receiver_method_args(node, base_id, resolved_method) {
@@ -12294,6 +12301,19 @@ fn (t &Transformer) resolved_call_uses_receiver_type(base_id flat.NodeId, receiv
 	mut base_type := receiver_type
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
+	}
+	if raw_type := t.raw_var_type_for_expr(base_id) {
+		raw_base_type := t.trim_pointer_type(raw_type)
+		if raw_base_type.len > 0 && !t.generic_arg_is_unresolved(raw_base_type)
+			&& t.normalize_type_alias(raw_base_type) != t.normalize_type_alias(base_type) {
+			if t.normalize_type_alias(raw_base_type) == t.normalize_type_alias(param_type) {
+				return true
+			}
+			if _ := t.embedded_receiver_path(raw_base_type, param_type) {
+				return true
+			}
+			return false
+		}
 	}
 	if base_type.len == 0 {
 		return true

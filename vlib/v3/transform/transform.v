@@ -10326,12 +10326,6 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 	if copied := t.heap_copy_local_address_return(child_id) {
 		return copied
 	}
-	if int(child_id) >= 0 && int(child_id) < t.a.nodes.len {
-		child := t.a.nodes[int(child_id)]
-		if child.kind == .or_expr {
-			return t.transform_expr(child_id)
-		}
-	}
 	target_type := t.return_child_target_type(child_index, total_children)
 	mut return_child_id := child_id
 	if rewritten := t.rewrite_escaping_interface_box_return_expr(child_id) {
@@ -10348,15 +10342,18 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		if child.kind in [.lambda_expr, .fn_literal] {
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}
+		payload_type := t.optional_base_type(t.qualify_optional_type(target_type))
+		resolved_payload_type := t.resolve_sum_name(payload_type)
 		if child.kind == .or_expr {
+			if resolved_payload_type in t.sum_types {
+				return t.wrap_sum_value(t.transform_expr(return_child_id), resolved_payload_type)
+			}
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}
 		if child.kind in [.if_expr, .match_stmt]
 			&& t.return_expr_is_optional_result(return_child_id) {
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}
-		payload_type := t.optional_base_type(t.qualify_optional_type(target_type))
-		resolved_payload_type := t.resolve_sum_name(payload_type)
 		if resolved_payload_type in t.sum_types {
 			return t.wrap_sum_value(return_child_id, resolved_payload_type)
 		}
@@ -12870,7 +12867,8 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 		return none
 	}
 	mut actual_result_type := t.match_expr_type(node)
-	if actual_result_type.len == 0 || actual_result_type == 'void' {
+	if actual_result_type.len == 0 || actual_result_type == 'void'
+		|| t.generic_arg_is_unresolved(actual_result_type) {
 		actual_result_type = target_type
 	}
 	if t.is_fn_pointer_type_name(target_type) {

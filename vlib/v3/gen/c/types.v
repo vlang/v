@@ -359,6 +359,12 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 			return qualified + pointer_suffix
 		}
 	}
+	// A stale declaration spelling can also lose the nominal kind and represent
+	// an interface as a bare struct. Check the interface registry independently
+	// so `!Value` from another module still uses that module's interface typedef.
+	if qualified := g.unique_qualified_interface_c_type(ct) {
+		return qualified + pointer_suffix
+	}
 	return ct + pointer_suffix
 }
 
@@ -838,6 +844,14 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		return false
 	}
 	if g.cached_support_identifiers[opt_name] {
+		g.emitted_optional_types[opt_name] = true
+		return false
+	}
+	bare_val_type := val_type.trim_right('*')
+	if !bare_val_type.contains('__') && g.ambiguous_qualified_interface_c_type(bare_val_type) {
+		// A stale unqualified signature cannot identify which imported interface it
+		// belongs to. Its concrete, module-qualified signature registers the usable
+		// typedef; do not emit an invalid C type for the ambiguous collector entry.
 		g.emitted_optional_types[opt_name] = true
 		return false
 	}
