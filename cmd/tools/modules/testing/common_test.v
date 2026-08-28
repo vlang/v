@@ -53,6 +53,17 @@ fn test_automatic_test_jobs_preserves_vjobs_override() {
 	assert automatic_test_jobs(18, u64(16) * 1024 * 1024 * 1024, 7) == 7
 }
 
+fn test_noncompiling_test_sessions_use_cpu_jobs() {
+	assert test_session_jobs(false, 18, u64(8) * 1024 * 1024 * 1024, 0) == 18
+	assert test_session_jobs(false, 7, u64(8) * 1024 * 1024 * 1024, 7) == 7
+	assert test_session_jobs(true, 18, u64(8) * 1024 * 1024 * 1024, 0) == 1
+}
+
+fn test_decode_mountinfo_path() {
+	assert decode_mountinfo_path(r'/docker/my\040container') == '/docker/my container'
+	assert decode_mountinfo_path(r'/docker/my\134container') == r'/docker/my\container'
+}
+
 fn test_cgroup_v2_memory_limit_uses_parent_limit() {
 	mount_point := os.join_path(os.vtmp_dir(), 'testing_cgroup_memory_limit_${os.getpid()}')
 	defer {
@@ -102,6 +113,20 @@ fn test_cgroup_namespace_relative_path_uses_non_root_mount() {
 	os.write_file(os.join_path(mount_point, 'memory.max'), '8589934592')!
 	cgroups := '0::/'
 	mountinfo := '36 25 0:32 /docker/container ${mount_point} rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw'
+	assert cgroup_memory_limit_from_contents(cgroups, mountinfo)! == u64(8) * 1024 * 1024 * 1024
+}
+
+fn test_cgroup_memory_limit_decodes_mountinfo_paths() {
+	mount_point := os.join_path(os.vtmp_dir(), 'testing cgroup memory limit ${os.getpid()}')
+	defer {
+		os.rmdir_all(mount_point) or {}
+	}
+	os.mkdir_all(os.join_path(mount_point, 'work'))!
+	os.write_file(os.join_path(mount_point, 'work', 'memory.max'), '8589934592')!
+	cgroups := '0::/docker container/work'
+	escaped_mount_root := r'/docker\040container'
+	escaped_mount_point := mount_point.replace(' ', r'\040')
+	mountinfo := '36 25 0:32 ${escaped_mount_root} ${escaped_mount_point} rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw'
 	assert cgroup_memory_limit_from_contents(cgroups, mountinfo)! == u64(8) * 1024 * 1024 * 1024
 }
 

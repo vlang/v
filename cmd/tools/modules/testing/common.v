@@ -142,8 +142,8 @@ fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_ty
 		if mount_parts.len < 5 || fs_parts.len < 3 {
 			continue
 		}
-		mount_root := mount_parts[3]
-		mount_point := mount_parts[4]
+		mount_root := decode_mountinfo_path(mount_parts[3])
+		mount_point := decode_mountinfo_path(mount_parts[4])
 		if fs_parts[0] != fs_type || (fs_type == 'cgroup' && 'memory' !in fs_parts[2].split(',')) {
 			continue
 		}
@@ -152,6 +152,23 @@ fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_ty
 		}
 	}
 	return error('no cgroup memory limit found')
+}
+
+fn decode_mountinfo_path(path string) string {
+	mut result := strings.new_builder(path.len)
+	mut i := 0
+	for i < path.len {
+		if path[i] == `\\` && i + 3 < path.len && path[i + 1] >= `0` && path[i + 1] <= `7`
+			&& path[i + 2] >= `0` && path[i + 2] <= `7` && path[i + 3] >= `0` && path[i + 3] <= `7` {
+			value := (path[i + 1] - `0`) * 64 + (path[i + 2] - `0`) * 8 + path[i + 3] - `0`
+			result.write_u8(value)
+			i += 4
+			continue
+		}
+		result.write_u8(path[i])
+		i++
+	}
+	return result.str()
 }
 
 fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, limit_file string) !u64 {
@@ -221,12 +238,23 @@ fn test_runner_memory() !u64 {
 	return physical_memory
 }
 
-fn test_runner_jobs() int {
+fn test_session_jobs(will_compile bool, cpu_jobs int, total_memory u64, configured_jobs int) int {
+	if !will_compile {
+		return cpu_jobs
+	}
+	return automatic_test_jobs(cpu_jobs, total_memory, configured_jobs)
+}
+
+fn test_runner_jobs(will_compile bool) int {
+	cpu_jobs := runtime.nr_jobs()
+	if !will_compile {
+		return test_session_jobs(false, cpu_jobs, 0, 0)
+	}
 	configured_jobs := os.getenv('VJOBS').int()
 	total_memory := test_runner_memory() or {
-		return automatic_test_jobs(runtime.nr_jobs(), 0, configured_jobs)
+		return test_session_jobs(true, cpu_jobs, 0, configured_jobs)
 	}
-	return automatic_test_jobs(runtime.nr_jobs(), total_memory, configured_jobs)
+	return test_session_jobs(true, cpu_jobs, total_memory, configured_jobs)
 }
 
 fn get_fail_retry_delay_ms() time.Duration {
@@ -268,6 +296,7 @@ pub struct TestSession {
 pub mut:
 	files         []string
 	skip_files    []string
+	will_compile  bool
 	vexe          string
 	vroot         string
 	vtmp_dir      string
@@ -534,6 +563,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		os.setenv('VCOLORS', 'always', true)
 	}
 	mut ts := TestSession{
+		will_compile:  will_compile
 		vexe:          vexe
 		vroot:         vroot
 		skip_files:    skip_files
@@ -651,7 +681,7 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut njobs := test_runner_jobs()
+	mut njobs := test_runner_jobs(ts.will_compile)
 	if remaining_files.len < njobs {
 		njobs = remaining_files.len
 	}
