@@ -93,6 +93,18 @@ fn test_cgroup_v1_memory_limit_is_preferred_on_hybrid_hosts() {
 	assert cgroup_memory_limit_from_contents(cgroups, mountinfo)! == u64(8) * 1024 * 1024 * 1024
 }
 
+fn test_cgroup_namespace_relative_path_uses_non_root_mount() {
+	mount_point := os.join_path(os.vtmp_dir(), 'testing_cgroup_memory_limit_${os.getpid()}')
+	defer {
+		os.rmdir_all(mount_point) or {}
+	}
+	os.mkdir_all(mount_point)!
+	os.write_file(os.join_path(mount_point, 'memory.max'), '8589934592')!
+	cgroups := '0::/'
+	mountinfo := '36 25 0:32 /docker/container ${mount_point} rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw'
+	assert cgroup_memory_limit_from_contents(cgroups, mountinfo)! == u64(8) * 1024 * 1024 * 1024
+}
+
 fn test_effective_test_memory_uses_lower_cgroup_limit() {
 	physical_memory := u64(32) * 1024 * 1024 * 1024
 	cgroup_memory_limit := u64(8) * 1024 * 1024 * 1024

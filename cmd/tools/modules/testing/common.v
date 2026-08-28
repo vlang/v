@@ -162,9 +162,9 @@ fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgrou
 			relative_path = ''
 		} else if cgroup_path.starts_with(trimmed_root + '/') {
 			relative_path = cgroup_path[trimmed_root.len..].trim_left('/')
-		} else {
-			return error('cgroup path is outside its mount')
 		}
+		// Otherwise cgroup_path is relative to a cgroup namespace rooted at
+		// mount_root, so relative_path already maps from the visible mount point.
 	}
 	mut current_path := os.join_path(mount_point, relative_path)
 	mut memory_limit := u64(0)
