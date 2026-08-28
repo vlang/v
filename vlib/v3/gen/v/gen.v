@@ -1519,7 +1519,7 @@ fn (mut g Gen) assoc(id flat.NodeId) {
 	children := g.a.children_of(n)
 	if g.source_line(n.pos.offset) == g.source_line(n.pos.end)
 		&& !g.comments_inside(n.pos.offset, n.pos.end) {
-		g.write('${n.value}{ ...')
+		g.write('${g.type_text(n.value)}{ ...')
 		if children.len > 0 {
 			g.expr(children[0])
 		}
@@ -1531,7 +1531,7 @@ fn (mut g Gen) assoc(id flat.NodeId) {
 		g.write(' }')
 		return
 	}
-	g.write(n.value)
+	g.write(g.type_text(n.value))
 	g.writeln('{')
 	g.indent++
 	if children.len > 0 {
@@ -2837,7 +2837,7 @@ fn (mut g Gen) struct_decl(id flat.NodeId) {
 	tags := n.typ
 	kw := if tag_has(tags, 'union') { 'union ' } else { 'struct ' }
 	g.write(kw)
-	g.write(n.value)
+	g.write(g.type_text(n.value))
 	gp := n.generic_params()
 	if gp.len > 0 {
 		g.write('[${gp.join(', ')}]')
@@ -2888,7 +2888,7 @@ fn (mut g Gen) struct_fields(fields []flat.NodeId, end int) {
 		}
 		is_embed := f.value == f.typ && f.children_count == 0
 		if is_embed {
-			g.write(f.value)
+			g.write(g.type_text(f.value))
 		} else {
 			if flags.contains('v') {
 				g.write('volatile ')
@@ -3915,18 +3915,40 @@ fn access_label(flags string) string {
 	return ''
 }
 
+fn demangle_formatter_local_types(typ string) string {
+	marker := '@local@'
+	if !typ.contains(marker) {
+		return typ
+	}
+	mut out := strings.new_builder(typ.len)
+	mut i := 0
+	for i < typ.len {
+		marker_start := typ.index_after(marker, i) or {
+			out.write_string(typ[i..])
+			break
+		}
+		out.write_string(typ[i..marker_start])
+		i = marker_start + marker.len
+		for i < typ.len && is_type_ident_char(typ[i]) {
+			i++
+		}
+	}
+	return out.str()
+}
+
 fn (mut g Gen) type_text(typ string) string {
-	mut expanded := typ
+	demangled := demangle_formatter_local_types(typ)
+	mut expanded := demangled
 	if g.formatter_types.len > 0 {
-		mut out := strings.new_builder(typ.len)
+		mut out := strings.new_builder(demangled.len)
 		mut i := 0
-		for i < typ.len {
-			if is_type_ident_char(typ[i]) {
+		for i < demangled.len {
+			if is_type_ident_char(demangled[i]) {
 				start := i
-				for i < typ.len && is_type_ident_char(typ[i]) {
+				for i < demangled.len && is_type_ident_char(demangled[i]) {
 					i++
 				}
-				name := typ[start..i]
+				name := demangled[start..i]
 				if source := g.formatter_types[name] {
 					out.write_string(source.text)
 					g.skip_comments_in_source(source.start, source.end)
@@ -3936,7 +3958,7 @@ fn (mut g Gen) type_text(typ string) string {
 				}
 				continue
 			}
-			out.write_u8(typ[i])
+			out.write_u8(demangled[i])
 			i++
 		}
 		expanded = out.str()

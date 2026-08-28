@@ -1291,3 +1291,44 @@ fn test_formatter_preserves_function_parameter_comments() {
 	assert out == expected, out
 	assert vfmt('function_parameter_comments_twice', out) == out
 }
+
+fn test_formatter_demangles_function_local_aggregate_types() {
+	source := 'fn local_types() {
+	struct Tick {
+		next  &Tick = unsafe { nil }
+		value int
+	}
+	union Number {
+		integer int
+		decimal f64
+	}
+	struct Wrapper {
+		Tick
+		numbers map[string]Number
+	}
+
+	mut ticks := []Tick{}
+	first := Tick{
+		value: 1
+	}
+	ticks << Tick{
+		...first
+		value: 2
+	}
+	wrapper := Wrapper{
+		Tick: first
+		numbers: {
+			\'one\': Number{
+				integer: 1
+			}
+		}
+	}
+	_ = ticks
+	_ = wrapper
+}
+'
+	out := vfmt('function_local_aggregate_types', source)
+	assert out == source, out
+	assert !out.contains('@local@'), out
+	assert vfmt('function_local_aggregate_types_twice', out) == out
+}

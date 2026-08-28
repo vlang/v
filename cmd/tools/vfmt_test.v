@@ -1447,3 +1447,49 @@ fn test_fmt_preserves_declaration_list_layout_with_v3() {
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
+
+fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
+	source := 'fn local_types() {
+	struct Tick {
+		next  &Tick = unsafe { nil }
+		value int
+	}
+	union Number {
+		integer int
+		decimal f64
+	}
+	struct Wrapper {
+		Tick
+		numbers map[string]Number
+	}
+
+	mut ticks := []Tick{}
+	first := Tick{
+		value: 1
+	}
+	ticks << Tick{
+		...first
+		value: 2
+	}
+	wrapper := Wrapper{
+		Tick: first
+		numbers: {
+			\'one\': Number{
+				integer: 1
+			}
+		}
+	}
+	_ = ticks
+	_ = wrapper
+}
+'
+	res, formatted := run_vfmt_write('function_local_aggregate_types', source, '')
+
+	assert res.exit_code == 0, res.output
+	assert formatted == source, formatted
+	assert !formatted.contains('@local@'), formatted
+	second_res, formatted_twice := run_vfmt_write('function_local_aggregate_types_twice',
+		formatted, '')
+	assert second_res.exit_code == 0, second_res.output
+	assert formatted_twice == formatted
+}
