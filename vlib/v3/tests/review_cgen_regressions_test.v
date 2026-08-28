@@ -812,3 +812,22 @@ fn main() {
 ')
 	assert out == '{\n\t"signed":\t9007199254740993,\n\t"unsigned":\t18446744073709551615,\n\t"values":\t[9007199254740993, 18446744073709551615]\n}'
 }
+
+fn test_recursive_json_value_struct_declines_fast_path() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'recursive_json_value_struct', 'import json
+
+struct ValueNode {
+	value    int
+	children []ValueNode
+}
+
+fn main() {
+	_ := json.decode(ValueNode, \'{"value":1,"children":[{"value":2,"children":[]}]}\') or {
+		ValueNode{}
+	}
+	println(\'compiled\')
+}
+')
+	assert out == 'compiled'
+}

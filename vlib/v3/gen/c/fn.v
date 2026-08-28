@@ -9917,18 +9917,37 @@ fn (g &FlatGen) json_decode_value_supported_inner(typ types.Type, depth int, see
 		return true
 	}
 	if clean is types.Pointer {
-		return g.json_decode_value_supported_inner(clean.base_type, depth + 1, seen)
+		pointer_key := 'pointer:${g.tc.c_type(clean)}'
+		if pointer_key in seen {
+			// A repeated pointer reaches the runtime helper generated for this pointer
+			// type instead of expanding its pointee again.
+			return true
+		}
+		// Pointer helpers generate their pointee as a separate function body. Keep
+		// only active helper keys so value-type cycles within that body are still
+		// rejected, while mutually recursive pointer helpers terminate normally.
+		mut helper_seen := []string{cap: seen.len + 1}
+		for key in seen {
+			if key.starts_with('pointer:') {
+				helper_seen << key
+			}
+		}
+		helper_seen << pointer_key
+		return g.json_decode_value_supported_inner(clean.base_type, depth + 1, helper_seen)
 	}
 	if clean is types.Struct {
-		if clean.name in seen {
-			return true
+		struct_key := 'struct:${clean.name}'
+		if struct_key in seen {
+			// Recursive value structs have no runtime decode helper, so validation and
+			// assignment would recursively expand forever.
+			return false
 		}
 		fields := g.tc.structs[clean.name] or { return false }
 		if !g.json_decode_struct_fields_supported(clean.name, fields) {
 			return false
 		}
 		mut next_seen := seen.clone()
-		next_seen << clean.name
+		next_seen << struct_key
 		for field in fields {
 			attrs := g.json_struct_field_attrs(clean.name, field.name)
 			if json_attrs_skip_field(attrs) {
