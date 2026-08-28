@@ -2910,7 +2910,7 @@ fn (t &Transformer) array_map_type_can_hold_pointer(typ types.Type, mut seen map
 			} else {
 				seen[typ.name] = true
 				mut has_pointer := false
-				for variant in t.tc.sum_types[typ.name] or { []string{} } {
+				for variant in t.concrete_sum_variants_for_candidate(typ.name) {
 					if t.array_map_type_can_hold_pointer(t.tc.parse_type(variant), mut seen) {
 						has_pointer = true
 						break

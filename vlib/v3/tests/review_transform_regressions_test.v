@@ -5484,6 +5484,40 @@ fn main() {
 	assert out == 'four'
 }
 
+fn test_array_map_keeps_temporary_source_for_generic_sum_pointer_result() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct Empty {}
+
+type Maybe[T] = T | Empty
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn main() {
+	values := make_items().map(Maybe[&Item](&it))
+	for value in values {
+		if value is &Item {
+			println(value.text)
+		}
+	}
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_generic_sum_pointer_result_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_generic_sum_pointer_result', '-ownership',
+		source)
+	assert out == 'four'
+}
+
 fn test_array_map_drops_source_for_unrelated_pointer_result() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
