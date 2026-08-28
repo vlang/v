@@ -7893,7 +7893,12 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
 				g.write(';')
-			} else if g.stmt_tail_exits(expr_id) {
+			} else if g.stmt_tail_exits(expr_id) && !g.is_noreturn_call(expr_id) {
+				// A control-flow tail that always exits (e.g. a lowered exhaustive
+				// match rendered as an if/else chain) is emitted as a statement.
+				// A bare noreturn call (`panic(..)`/`exit(..)`) is not a statement
+				// node, so it is left to the branch below, which emits it as an
+				// expression statement; gen_node cannot render a bare `.call`.
 				g.gen_node(expr_id)
 			} else if g.is_noreturn_call(expr_id) || g.tc.resolve_type(expr_id) is types.Void {
 				// A diverging/void or-body tail (e.g. `panic(..)`/`exit(..)`) yields no
