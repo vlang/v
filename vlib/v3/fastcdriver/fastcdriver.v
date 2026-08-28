@@ -183,13 +183,11 @@ fn run_self_compiler(compiler string, compile_args []string, output string, sour
 	}
 }
 
-// self_replacement_path returns a collision-free sibling where the freshly
-// self-built binary can be written before it is swapped onto the compiler.
-fn self_replacement_path(compiler string) string {
+fn unique_self_sibling_path(compiler string, role string) string {
 	dir := os.dir(compiler)
 	base := os.file_name(compiler)
 	for counter := 0; true; counter++ {
-		candidate := os.join_path_single(dir, '.${base}.self-new.${os.getpid()}.${counter}')
+		candidate := os.join_path_single(dir, '.${base}.${role}.${os.getpid()}.${counter}')
 		if !os.exists(candidate) {
 			return candidate
 		}
@@ -197,9 +195,26 @@ fn self_replacement_path(compiler string) string {
 	return compiler
 }
 
+// self_replacement_path returns a collision-free sibling where the freshly
+// self-built binary can be written before it is swapped onto the compiler.
+fn self_replacement_path(compiler string) string {
+	return unique_self_sibling_path(compiler, 'self-new')
+}
+
 fn replace_self_compiler(compiler string, replacement string) {
 	backup_name := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
 	backup := os.join_path_single(os.dir(compiler), backup_name)
+	if backup == compiler {
+		staging := unique_self_sibling_path(compiler, 'self-old')
+		os.mv(compiler, staging) or { fail(err.msg()) }
+		os.mv_by_cp(replacement, compiler) or {
+			message := err.msg()
+			os.mv(staging, compiler) or {}
+			fail(message)
+		}
+		os.rm(staging) or {}
+		return
+	}
 	if os.exists(backup) {
 		os.rm(backup) or { fail(err.msg()) }
 	}
