@@ -540,7 +540,10 @@ pub fn (mut ts TestSession) test() {
 		njobs = remaining_files.len
 	}
 	ts.benchmark.njobs = njobs
-	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
+	mut pool_of_test_runners := pool.new_pool_processor(
+		callback: worker_trunner
+		maxjobs:  njobs
+	)
 	// ensure that the nmessages queue/channel, has enough capacity for handling many messages across threads, without blocking
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nmessage_idx = 0
