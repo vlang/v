@@ -133,6 +133,19 @@ fn test_v_self_accepts_fastc_backend() {
 	assert compiling_lines.len == 2, repeated_build.output
 	assert os.is_executable(isolated_vexe)
 
+	deep_self_build := run_with_v_environment(isolated_vexe, ['self', '-silent', 'x5'], '',
+		isolated_vexe)
+	assert deep_self_build.exit_code == 0, deep_self_build.output
+	assert deep_self_build.output.count('V self compiling') == 5, deep_self_build.output
+	assert os.is_executable(isolated_vexe)
+	assert os.is_executable(os.join_path(isolated_vroot, 'v_old'))
+	deep_self_output := os.join_path(root, 'v_fastc_after_five_self_builds')
+	deep_self_output_build := run_with_v_environment(isolated_vexe, ['self', '-silent', '-o',
+		deep_self_output], '', isolated_vexe)
+	assert deep_self_output_build.exit_code == 0, deep_self_output_build.output
+	assert deep_self_output_build.output.count('V self compiling') == 1, deep_self_output_build.output
+	assert os.is_executable(deep_self_output)
+
 	prod_build := cmdexec.run(@VEXE, ['self', '-silent', '-prod', '-b', 'fastc', '-o',
 		os.join_path(root, 'v prod')])
 	assert prod_build.exit_code != 0
