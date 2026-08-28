@@ -9443,7 +9443,6 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	root_name := g.tmp_name()
 	out_name := g.tmp_name()
 	opt_ct := g.optional_type_name(ret_type)
-	struct_ct := g.value_c_type(struct_type)
 	g.write('({ string ${json_name} = ')
 	g.gen_expr_with_expected_type(json_id, types.Type(types.string_))
 	g.write('; cJSON* ${root_name} = cJSON_ParseWithLength((char*)${json_name}.str, (size_t)${json_name}.len); ')
@@ -9488,7 +9487,8 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 			g.write('if (${valid_name} && ${item_name} != NULL && !(${field_valid})) { ${valid_name} = false; ${err_name} = string__plus(_str_${mismatch_sid}, json__json_print(${item_name})); } ')
 		}
 	}
-	g.write('if (${valid_name}) { ${out_name}.ok = true; ${out_name}.value = (${struct_ct}){0}; ')
+	struct_default := g.default_value_to_string(struct_type)
+	g.write('if (${valid_name}) { ${out_name}.ok = true; ${out_name}.value = ${struct_default}; ')
 	for field in fields {
 		attrs := g.json_struct_field_attrs(struct_type.name, field.name)
 		if json_attrs_skip_field(attrs) {

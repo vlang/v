@@ -21997,6 +21997,10 @@ fn (mut g FlatGen) queue_shared_global_explicit_init(name string, inner string, 
 	qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
 	wrapper := g.shared_wrapper_c_name(qualified)
 	target := g.global_c_name(name)
+	if clean_type is types.ArrayFixed {
+		g.queue_runtime_init('\t{ ${target} = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = {0}}, sizeof(${wrapper})); memmove(${target}->val, ${value_expr}, sizeof(${target}->val)); }')
+		return true
+	}
 	g.queue_runtime_init('\t${target} = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = ${value_expr}}, sizeof(${wrapper}));')
 	return true
 }

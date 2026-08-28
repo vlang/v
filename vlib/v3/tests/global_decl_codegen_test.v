@@ -58,8 +58,8 @@ fn test_global_runtime_initializers_preserve_channels_arrays_and_fn_values() {
 fn test_explicit_shared_and_fixed_array_global_initializers() {
 	v3_bin := global_decl_build_v3()
 	out := global_decl_run_good(v3_bin, 'shared_and_fixed_array_global_initializers',
-		"struct Counter {\n\tvalue int\n}\n\n__global counter shared Counter = Counter{value: 7}\n__global values = [][2]int{len: 1, init: [1, 2]!}\n\nfn main() {\n\tvalue := rlock counter {\n\t\tcounter.value\n\t}\n\tprintln(int_str(value))\n\tprintln(int_str(values[0][0]) + ':' + int_str(values[0][1]))\n}\n")
-	assert out == '7\n1:2'
+		"struct Counter {\n\tvalue int\n}\n\n__global counter shared Counter = Counter{value: 7}\n__global fixed_values shared [2]int = [3, 4]!\n__global values = [][2]int{len: 1, init: [1, 2]!}\n\nfn main() {\n\tvalue := rlock counter {\n\t\tcounter.value\n\t}\n\tfixed_value := rlock fixed_values {\n\t\tfixed_values[0] * 10 + fixed_values[1]\n\t}\n\tprintln(int_str(value))\n\tprintln(int_str(fixed_value))\n\tprintln(int_str(values[0][0]) + ':' + int_str(values[0][1]))\n}\n")
+	assert out == '7\n34\n1:2'
 }
 
 fn test_global_array_initializers_fill_runtime_defaults() {

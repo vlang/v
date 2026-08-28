@@ -21,6 +21,11 @@ struct DecodeV3Plain {
 	age  int
 }
 
+struct DecodeV3SkippedDefault {
+	visible string
+	hidden  int = 7 @[skip]
+}
+
 type DecodeV3DeepI64 = [][][][][][][][][][][][][]i64
 
 fn decode_v3_generic[T](source string) !T {
@@ -58,6 +63,12 @@ fn test_json_decode_v3_struct_rejects_non_object_roots() {
 		}
 		assert failed
 	}
+}
+
+fn test_json_decode_v3_skipped_fields_keep_struct_defaults() {
+	decoded := json.decode(DecodeV3SkippedDefault, '{"visible":"ok","hidden":99}')!
+	assert decoded.visible == 'ok'
+	assert decoded.hidden == 7
 }
 
 fn test_json_decode_v3_recursive_pointer_and_generic_fixed_array() {
