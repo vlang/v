@@ -5370,7 +5370,8 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 		}
 	}
 	resolved_base := t.alias_str_resolved_base_type(base_type)
-	if is_ref && t.alias_str_needs_name_wrapper(base_type) {
+	if is_ref && !t.is_optional_type_name(resolved_base)
+		&& t.alias_str_needs_name_wrapper(base_type) {
 		return t.lower_ref_str_guarded(expr, alias_name, false, '', '&nil')
 	}
 	inner_type := if is_ref { '&${resolved_base}' } else { resolved_base }
