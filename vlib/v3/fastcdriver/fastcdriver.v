@@ -183,6 +183,20 @@ fn run_self_compiler(compiler string, compile_args []string, output string, sour
 	}
 }
 
+// self_replacement_path returns a collision-free sibling where the freshly
+// self-built binary can be written before it is swapped onto the compiler.
+fn self_replacement_path(compiler string) string {
+	dir := os.dir(compiler)
+	base := os.file_name(compiler)
+	for counter := 0; true; counter++ {
+		candidate := os.join_path_single(dir, '.${base}.self-new.${os.getpid()}.${counter}')
+		if !os.exists(candidate) {
+			return candidate
+		}
+	}
+	return compiler
+}
+
 fn replace_self_compiler(compiler string, replacement string) {
 	backup_name := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
 	backup := os.join_path_single(os.dir(compiler), backup_name)
@@ -222,8 +236,7 @@ fn run_self(args []string, command_index int) {
 		run_self_compiler(compiler, compile_args, output, source)
 		return
 	}
-	replacement_name := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
-	replacement := os.join_path_single(os.dir(compiler), replacement_name)
+	replacement := self_replacement_path(compiler)
 	for run_index in 0 .. repeat_count {
 		run_label := if repeat_count > 1 { ' [${run_index + 1}/${repeat_count}]' } else { '' }
 		println('V self compiling${run_label} (-b fastc)...')
