@@ -12358,6 +12358,13 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 			actual = local_type
 		}
 	}
+	if node.kind == .selector {
+		if node.typ.len > 0 && (node.typ.starts_with('?') || node.typ.starts_with('!')) {
+			actual = g.tc.parse_resolution_type(node.typ)
+		} else if declared_type := g.selector_declared_type(id) {
+			actual = declared_type
+		}
+	}
 	if expected is types.String && actual is types.Pointer
 		&& g.pointer_stringifies_as_address(actual.base_type)
 		&& !g.type_names_match(actual.base_type, expected) {
@@ -13269,6 +13276,14 @@ fn (g &FlatGen) selector_declared_type(id flat.NodeId) ?types.Type {
 fn (g &FlatGen) selector_base_expr_type(id flat.NodeId) types.Type {
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node := g.a.nodes[int(id)]
+		if node.kind == .ident {
+			if typ := g.current_param_type(node.value) {
+				return typ
+			}
+			if typ := g.local_ident_type(node.value) {
+				return typ
+			}
+		}
 		if node.kind == .or_expr && node.children_count > 0 {
 			source_id := g.a.child(&node, 0)
 			source_type := g.or_expr_source_type(source_id, g.a.nodes[int(source_id)])
@@ -15737,6 +15752,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_expr(g.a.child(&child, 0))
 				return
 			}
+			if node.op == .amp && child.kind == .selector && child.children_count > 0
+				&& g.is_map_entry_lvalue(g.a.child(&child, 0)) {
+				g.write('&')
+				gen_expr_lvalue(mut g, child_id)
+				return
+			}
 			if node.op == .amp && g.gen_amp_c_string_literal(child_id, child) {
 				return
 			} else if node.op == .amp && g.gen_current_mut_param_address(id) {
@@ -15946,7 +15967,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			mut base_type0 := g.usable_expr_type(base_id)
+			mut base_type0 := g.selector_base_expr_type(base_id)
 			base_is_source_mut_pointer_deref := g.source_mut_pointer_param_deref_type(base_id) != none
 			if deref_type := g.source_mut_pointer_param_deref_type(base_id) {
 				base_type0 = deref_type
@@ -16211,6 +16232,24 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			} else if g.gen_struct_default_global_selector(base, node.value, node.op) {
 				// handled
+			} else if g.selector_declared_type(id) != none {
+				// An explicitly declared field shadows any same-named field promoted
+				// through an embedded struct. Use the declared receiver type rather
+				// than a stale short-name lookup from another module.
+				needs_paren := base.kind !in [.ident, .selector]
+				if needs_paren {
+					g.write('(')
+				}
+				g.gen_expr(base_id)
+				if needs_paren {
+					g.write(')')
+				}
+				if node.op == .arrow || base_type0 is types.Pointer {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.write(g.cname(node.value))
 			} else if embedded := g.direct_embedded_field_for_selector(base_type0, node.value) {
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {

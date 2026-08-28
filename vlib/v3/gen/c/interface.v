@@ -1339,6 +1339,14 @@ fn (mut g FlatGen) gen_interface_pointer_value_expr(id flat.NodeId, expected typ
 
 fn (mut g FlatGen) interface_source_type(id flat.NodeId) types.Type {
 	node := g.a.node(id)
+	if node.kind == .ident {
+		if local_type := g.local_ident_type(node.value) {
+			return local_type
+		}
+		if param_type := g.current_param_type(node.value) {
+			return param_type
+		}
+	}
 	if node.kind == .ident && g.current_param_type(node.value) == none
 		&& !g.cur_scope_has_local_name(node.value) {
 		current_global_name := qualify_name_in_module(g.tc.cur_module, node.value)

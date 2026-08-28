@@ -29,12 +29,54 @@ fn gen_map_index_lvalue(mut g FlatGen, node flat.Node, base_id flat.NodeId, map_
 	g.write('))')
 }
 
+fn (g &FlatGen) is_map_entry_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind in [.paren, .selector] && node.children_count > 0 {
+		return g.is_map_entry_lvalue(g.a.child(&node, 0))
+	}
+	if node.kind != .index || node.children_count == 0 {
+		return false
+	}
+	base_id := g.a.child(&node, 0)
+	base_type := map_str_clean_type(g.usable_expr_type(base_id))
+	return base_type is types.Map
+}
+
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	node := g.a.nodes[int(id)]
 	if node.kind == .ident && g.current_param_is_mut_pointer(node.value) {
 		g.gen_mut_pointer_slot_expr(id)
 		return
+	}
+	if node.kind == .paren && node.children_count > 0 {
+		g.write('(')
+		gen_expr_lvalue(mut g, g.a.child(&node, 0))
+		g.write(')')
+		return
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base_id := g.a.child(&node, 0)
+		if g.is_map_entry_lvalue(base_id) {
+			gen_expr_lvalue(mut g, base_id)
+			base_type := g.usable_expr_type(base_id)
+			mut is_ptr := base_type is types.Pointer
+				|| cgen_unalias_type(base_type) is types.Pointer
+			if embedded_path := g.embedded_field_path_for_promoted_selector(base_type, node.value) {
+				for embedded in embedded_path {
+					op := if is_ptr { '->' } else { '.' }
+					g.write('${op}${g.cname(embedded.name)}')
+					is_ptr = embedded.typ is types.Pointer
+						|| cgen_unalias_type(embedded.typ) is types.Pointer
+				}
+			}
+			op := if is_ptr { '->' } else { '.' }
+			g.write('${op}${g.cname(node.value)}')
+			return
+		}
 	}
 	if node.kind == .index {
 		base_id := g.a.child(&node, 0)
@@ -2743,7 +2785,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								&& !g.or_value_temp_matches_array_return(ret_node, base)
 								&& !g.call_constructs_type(ret_id, base)
 								&& !g.clone_call_matches_base(ret_node, base)
-								&& expr_value_type !is types.Primitive
+								&& base !is types.Interface && expr_value_type !is types.Primitive
 								&& expr_value_type !is types.Unknown {
 								if g.cur_fn_ret is types.ResultType {
 									if result_err := g.result_error_from_expr_string(ret_id) {
@@ -7495,6 +7537,39 @@ fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
 	return false
 }
 
+// stmt_tail_exits reports whether a statement or expression always leaves the
+// enclosing control-flow scope. Lowered exhaustive matches are represented as
+// if/else chains, and do not produce a value when every arm exits.
+fn (g &FlatGen) stmt_tail_exits(id flat.NodeId) bool {
+	if !g.valid_node_id(id) {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.return_stmt, .break_stmt, .continue_stmt {
+			return true
+		}
+		.block, .expr_stmt {
+			if node.children_count == 0 {
+				return false
+			}
+			return g.stmt_tail_exits(g.a.child(&node, node.children_count - 1))
+		}
+		.call {
+			return g.is_noreturn_call(id)
+		}
+		.if_expr {
+			if node.children_count < 3 {
+				return false
+			}
+			return g.stmt_tail_exits(g.a.child(&node, 1)) && g.stmt_tail_exits(g.a.child(&node, 2))
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // tmp_name supports tmp name handling for FlatGen.
 fn (mut g FlatGen) tmp_name() string {
 	g.tmp_count++
@@ -7818,6 +7893,8 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
 				g.write(';')
+			} else if g.stmt_tail_exits(expr_id) {
+				g.gen_node(expr_id)
 			} else if g.is_noreturn_call(expr_id) || g.tc.resolve_type(expr_id) is types.Void {
 				// A diverging/void or-body tail (e.g. `panic(..)`/`exit(..)`) yields no
 				// value; emit it as a bare statement instead of assigning void.

@@ -60,7 +60,13 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 		rhs_expr = t.transform_expr(rhs_id)
 	}
 	if !t.is_optional_type_name(t.node_type(rhs_expr)) {
-		t.set_node_typ(int(rhs_expr), rhs_type)
+		rhs_node := t.a.nodes[int(rhs_expr)]
+		if rhs_node.kind == .selector && rhs_node.children_count > 0 {
+			rhs_expr = t.make_selector_op(t.a.child(&rhs_node, 0), rhs_node.value, rhs_type,
+				rhs_node.op)
+		} else {
+			t.set_node_typ(int(rhs_expr), rhs_type)
+		}
 	}
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
