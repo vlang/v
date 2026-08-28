@@ -510,7 +510,10 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	// content plus a truncation marker: bounded_v_source would otherwise return a markerless
 	// prefix that both drops the failing line and misreports the excerpt as complete.
 	v_source_marker_min := c_error_v_source_truncation_notice.len + 2
-	mut v_source_truncated := false
+	// Preserve any truncation already recorded upstream (e.g. the first handoff bounded the source
+	// before the wasm re-export in cmd/v). Further bounding below only sets it, never clears it, so
+	// an already-bounded excerpt that fits this budget is not re-announced as the complete file.
+	mut v_source_truncated := report.v_source_truncated
 	mut source_omitted := false
 	payload['VSOURCE'] = if v_source_budget <= 0 {
 		source_omitted = report.v_source != ''
@@ -1069,10 +1072,12 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	} else {
 		''
 	}
-	// The reproducer already fits the byte budget; the full-file branch is truncated only when
-	// the mapped file is larger than the budget. Record that explicitly for the notice.
-	v_source_truncated := repro == '' && is_v_source_file(v_file)
-		&& mapped_source.len > c_error_bug_report_max_v_source_bytes
+	// A reproducer is a synthesized subset of the module's declarations (possibly assembled from
+	// several files), not the whole file, so it is a bounded excerpt. The full-file branch is
+	// truncated only when the mapped file is larger than the byte budget. Record that explicitly
+	// for the notice.
+	v_source_truncated := repro != ''
+		|| (is_v_source_file(v_file) && mapped_source.len > c_error_bug_report_max_v_source_bytes)
 	// v_context is a separate uploaded payload; for a short mapped file its radius
 	// window can also span every line, so apply the same strict-subset rule to it.
 	mut v_context := numbered_context_lines(mapped_lines, v_line, c_error_context_radius)

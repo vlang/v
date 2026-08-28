@@ -720,6 +720,35 @@ fn test_export_external_v3_report_marks_complete_file_containing_marker_text_as_
 	assert !got.v_source_truncated
 }
 
+fn test_export_external_v3_report_preserves_incoming_truncation_flag() {
+	// A wasm re-export forwards a report whose source was already bounded by the first handoff.
+	// If that excerpt fits the second budget (no further bounding), the exporter must still mark
+	// it truncated rather than re-announce it as the complete file (PR #28234 review).
+	clear_v3_report_env()
+	excerpt := 'module main\n${c_error_v_source_truncation_notice}\nfn main() {}'
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:               '' // generated-C compilation error
+		ccompiler:          'clang'
+		c_output:           'error: use of undeclared identifier missing'
+		v_file:             'main.v'
+		v_source:           excerpt
+		v_source_truncated: true
+		source_inline:      true
+		tag:                'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	if got.kind == external_v3_transport_limited_kind {
+		return // environment too small to forward the manifest; nothing to assert
+	}
+	// The small excerpt fits the budget (forwarded whole), but its incoming truncation flag is
+	// preserved through the re-export.
+	assert got.v_source == excerpt
+	assert got.v_source_truncated
+}
+
 fn test_v3_report_env_budget_reserves_existing_argv_and_environment() {
 	assert v3_report_env_budget({
 		'EXISTING': 'x'.repeat(v3_report_conservative_exec_bytes)
