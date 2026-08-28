@@ -44,6 +44,13 @@ fn parse_parser_regression_backend_diagnostics(name string, source string, backe
 	return p.diagnostics
 }
 
+fn test_assert_message_requires_a_comma() {
+	diagnostics := parse_parser_regression_diagnostics('assert_message_comma',
+		"fn main() {\n\tassert false 'bye'\n}\n")
+	assert diagnostics.len == 1, diagnostics.str()
+	assert diagnostics[0].message == 'unexpected string `bye`, expecting `,`', diagnostics.str()
+}
+
 fn test_vv_input_is_counted_as_v_source() {
 	path := os.join_path(os.temp_dir(), 'v3_parser_source_count_${os.getpid()}.vv')
 	os.write_file(path, 'fn main() {}\n') or { panic(err) }

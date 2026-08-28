@@ -9,6 +9,10 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+The `v fmt` command uses `v3.parser` and `v3.gen.v`. Formatter-mode parsing retains comments,
+compile-time branches, inline assembly, SQL bodies, and literal prefixes so they round-trip
+without a legacy formatter path.
+
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
 global definitions. `$if` compile-time conditionals are resolved directly in the
