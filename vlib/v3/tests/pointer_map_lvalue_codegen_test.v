@@ -24,6 +24,15 @@ fn test_pointer_map_index_is_preserved_in_multi_return_lvalue() {
 	return [7], 9
 }
 
+struct Inner {
+mut:
+	values []int
+}
+
+struct Item {
+	Inner
+}
+
 fn update(m_ref &map[string][]int, ch chan []int) int {
 	mut x := 0
 	unsafe {
@@ -43,6 +52,9 @@ fn main() {
 	ch := chan []int{cap: 1}
 	ch <- [13]
 	x := update(&values, ch)
+	mut items := map[string]Item{}
+	items['key'].values << 17
+	assert items['key'].values == [17]
 	println('\${values['key'][0] + values['key'][1]}:\${x}')
 }
 ") or {
@@ -57,5 +69,6 @@ fn main() {
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('map__get_or_set(m_ref,'), generated
+	assert compact.contains('.Inner.values'), generated
 	assert !compact.contains('(m_ref)[_str_'), generated
 }

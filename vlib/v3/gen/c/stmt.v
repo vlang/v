@@ -51,12 +51,20 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 			if index_base_type is types.Map {
 				gen_expr_lvalue(mut g, base_id)
 				base_type := g.usable_expr_type(base_id)
-				if base_type is types.Pointer || cgen_unalias_type(base_type) is types.Pointer {
-					g.write('->')
-				} else {
-					g.write('.')
+				mut is_ptr := base_type is types.Pointer
+					|| cgen_unalias_type(base_type) is types.Pointer
+				if embedded_path := g.embedded_field_path_for_promoted_selector(base_type,
+					node.value)
+				{
+					for embedded in embedded_path {
+						op := if is_ptr { '->' } else { '.' }
+						g.write('${op}${g.cname(embedded.name)}')
+						is_ptr = embedded.typ is types.Pointer
+							|| cgen_unalias_type(embedded.typ) is types.Pointer
+					}
 				}
-				g.write(g.cname(node.value))
+				op := if is_ptr { '->' } else { '.' }
+				g.write('${op}${g.cname(node.value)}')
 				return
 			}
 		}
