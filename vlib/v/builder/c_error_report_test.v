@@ -304,6 +304,39 @@ fn test_report_includes_v_source_counts_v_context() {
 	})
 }
 
+fn test_report_uploaded_complete_source_distinguishes_context_only() {
+	// A context-only upload (v_source empty, v_context present) is a bounded excerpt, not the
+	// complete file, even though report_includes_v_source is true — so the notice must not claim
+	// the complete source was submitted (PR #28234 review).
+	context_only := CErrorBugReport{
+		v_context: [CErrorReportLine{
+			line: 6
+			text: 'x := 1'
+		}]
+	}
+	assert report_includes_v_source(context_only)
+	assert !report_uploaded_complete_source(context_only)
+	// A nonempty, non-truncated v_source is the complete file.
+	assert report_uploaded_complete_source(CErrorBugReport{
+		v_source: 'fn main() {}'
+	})
+	// A truncated v_source is a bounded excerpt, not complete.
+	assert !report_uploaded_complete_source(CErrorBugReport{
+		v_source:           'fn main() {}'
+		v_source_truncated: true
+	})
+	assert !report_uploaded_complete_source(CErrorBugReport{})
+}
+
+fn test_env_c_output_budget_caps_at_value_limit_and_max() {
+	// The diagnostic budget is capped at both the per-variable value limit and the fixed maximum.
+	assert env_c_output_budget(1000, 500) == 500 // value limit binds
+	assert env_c_output_budget(500, 1000) == 500 // available binds
+	// The fixed maximum binds when both are larger.
+	big := 4 * c_error_bug_report_max_env_c_output_bytes
+	assert env_c_output_budget(big, big) == c_error_bug_report_max_env_c_output_bytes
+}
+
 fn test_bounded_v_source_marks_single_oversized_line_hard_clamp() {
 	// The failing V line is the whole file and is longer than the byte budget. The safety
 	// hard-clamp used to drop a markerless prefix (PR #28234 review); it must now carry the

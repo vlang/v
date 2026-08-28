@@ -229,8 +229,11 @@ fn (mut v Builder) send_prepared_c_error_bug_report(raw_report CErrorBugReport, 
 	// `-o -` output for exactly the programs that needed the fallback.
 	eprintln('================== C compiler bug report ==============')
 	if is_v3_fallback {
+		// A report can carry source as the full `v_source` OR only a few `v_context` lines (a
+		// context-only upload for a mapped non-V file / legacy external report). Only a nonempty,
+		// non-truncated `v_source` is the complete file; context-only is a bounded excerpt.
 		print_v3_fallback_notice(report_url, true, report_includes_v_source(report),
-			!report.v_source_truncated)
+			report_uploaded_complete_source(report))
 	}
 	if tool_output != '' {
 		eprintln(tool_output)
@@ -438,6 +441,19 @@ fn v3_transport_limited_notice_payload() map[string]string {
 // it only hashes tagged native dependencies after constraining them to roots selected by
 // its own successful build. A forged handoff therefore cannot disclose a victim's file
 // or recursively delete a victim's directory.
+// env_c_output_budget caps the diagnostic's environment budget at both the per-variable value
+// limit and the fixed maximum, so a single V_MACOS_V3_REPORT_COUTPUT value never risks E2BIG.
+fn env_c_output_budget(available int, value_limit int) int {
+	mut b := available
+	if b > c_error_bug_report_max_env_c_output_bytes {
+		b = c_error_bug_report_max_env_c_output_bytes
+	}
+	if b > value_limit {
+		b = value_limit
+	}
+	return b
+}
+
 pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	// `report` is already content-only: its v_source was bounded by the process that owns
 	// the staged directory (bounded_v3_fallback_source), and that process deletes the
@@ -478,16 +494,13 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	// Share the remaining aggregate capacity when both fields are present. A short
 	// missing-library/libatomic diagnostic remains intact, keeping the receiver's filter
 	// accurate, while large diagnostics and excerpts are both bounded.
+	// The full capacity the diagnostic may use when no source is forwarded.
+	full_c_output_budget := env_c_output_budget(content_budget, value_limit)
 	mut c_output_budget := content_budget
 	if report.v_source != '' {
 		c_output_budget /= 2
 	}
-	if c_output_budget > c_error_bug_report_max_env_c_output_bytes {
-		c_output_budget = c_error_bug_report_max_env_c_output_bytes
-	}
-	if c_output_budget > value_limit {
-		c_output_budget = value_limit
-	}
+	c_output_budget = env_c_output_budget(c_output_budget, value_limit)
 	payload['COUTPUT'] = truncated_report_text(report.c_output, c_output_budget)
 	content_budget = budget - v3_report_env_payload_bytes(payload)
 	v_source_budget := if content_budget < value_limit { content_budget } else { value_limit }
@@ -498,9 +511,12 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	// prefix that both drops the failing line and misreports the excerpt as complete.
 	v_source_marker_min := c_error_v_source_truncation_notice.len + 2
 	mut v_source_truncated := false
+	mut source_omitted := false
 	payload['VSOURCE'] = if v_source_budget <= 0 {
+		source_omitted = report.v_source != ''
 		''
 	} else if report.v_source.len > v_source_budget && v_source_budget <= v_source_marker_min {
+		source_omitted = true
 		''
 	} else if report.v_source.len > v_source_budget {
 		// Larger than the budget: a bounded excerpt centered on the failing line.
@@ -509,6 +525,13 @@ pub fn export_external_v3_report_to_env(report ExternalCErrorBugReport) {
 	} else {
 		// Fits whole: the complete file is forwarded.
 		report.v_source
+	}
+	// The report had source, but the budget could not hold even the marker, so it was omitted.
+	// The half of the content budget that was reserved for it is now free: recompute COUTPUT with
+	// the full capacity so a short missing-library/libatomic diagnostic is not truncated past the
+	// receiver's recognizable form (which would misclassify it as a compiler bug).
+	if source_omitted && c_output_budget < full_c_output_budget {
+		payload['COUTPUT'] = truncated_report_text(report.c_output, full_c_output_budget)
 	}
 	// Carry the truncation state explicitly through the handoff, computed from the byte budget
 	// rather than from (user-controlled) source content, so the retry's notice is accurate even
@@ -889,7 +912,7 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 	// C is already on stdout, so appending this banner there would corrupt the documented
 	// `-o -` output for exactly the programs that needed the fallback.
 	eprintln('================== V3 compiler bug report ==============')
-	print_v3_fallback_notice(report_url, true, report.v_source != '', !report.v_source_truncated)
+	print_v3_fallback_notice(report_url, true, report.v_source != '', report_uploaded_complete_source(report))
 	if tool_output != '' {
 		eprintln(tool_output)
 	}
@@ -963,6 +986,14 @@ fn v_source_and_context_expose_whole_file(v_source string, context []CErrorRepor
 // metadata-only report carries neither.
 fn report_includes_v_source(report CErrorBugReport) bool {
 	return report.v_source != '' || report.v_context.len > 0
+}
+
+// report_uploaded_complete_source reports whether the report's uploaded source is the complete
+// failing file, as opposed to a bounded excerpt or a context-only upload (v_source empty while
+// v_context still carries a few mapped lines). Used to pick the disclosure notice so a
+// context-only or truncated upload is never announced as the complete source.
+fn report_uploaded_complete_source(report CErrorBugReport) bool {
+	return report.v_source != '' && !report.v_source_truncated
 }
 
 // print_v3_fallback_notice explains, in plain language, that V3 could not build the
