@@ -147,6 +147,11 @@ compiler uses the small `v3.fastcdriver` entry point and can build further FastC
 the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
 turn any attempted compatibility fallback into a hard failure.
 
+The standalone compiler supports `self` directly and defaults that command to FastC. For example,
+`./v self x5` replaces the compiler through five descendant FastC generations, with each installed
+generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,
+and a single-generation `-o` destination are accepted.
+
 In selfhost mode, `t := spawn f(args)` and `t.wait()` lower to a generated pthread creator, run
 wrapper, and join helper per spawned function: `thread` values are a typed wrapper around
 `pthread_t` plus a heap block that packs the arguments and receives the result. Spawned threads

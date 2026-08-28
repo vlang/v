@@ -71,6 +71,196 @@ fn parse_arguments(args []string) (string, string, bool) {
 	return input, output, keep_c
 }
 
+fn self_command_index(args []string) int {
+	mut index := 0
+	for index < args.len {
+		arg := args[index]
+		if arg in ['-o', '-output', '-b', '-backend', '-gc', '-cc', '-d'] {
+			index += 2
+			continue
+		}
+		if arg == 'self' {
+			return index
+		}
+		index++
+	}
+	return -1
+}
+
+fn repeat_count_arg(arg string) int {
+	if arg.len < 2 || arg[0] != `x` {
+		return 0
+	}
+	for ch in arg[1..].bytes() {
+		if !ch.is_digit() {
+			return 0
+		}
+	}
+	count := arg[1..].int()
+	return if count > 0 { count } else { 0 }
+}
+
+fn parse_self_arguments(args []string, command_index int) (int, []string, string) {
+	mut repeat_count := 1
+	mut has_repeat_count := false
+	mut compile_args := []string{}
+	mut output := ''
+	mut index := 0
+	for index < args.len {
+		if index == command_index {
+			index++
+			continue
+		}
+		arg := args[index]
+		if arg in ['-o', '-output', '-b', '-backend', '-gc', '-cc', '-d'] {
+			if index + 1 >= args.len {
+				fail('fastc self: missing value after `${arg}`')
+			}
+			value := args[index + 1]
+			match arg {
+				'-o', '-output' {
+					output = value
+				}
+				'-b', '-backend' {
+					if value != 'fastc' {
+						fail('fastc self only supports `-b fastc`')
+					}
+				}
+				'-gc' {
+					if value != 'none' {
+						fail('fastc self only supports `-gc none`')
+					}
+				}
+				'-cc' {
+					if value !in ['tinyc', 'tcc'] {
+						fail('fastc self only supports bundled TinyCC')
+					}
+					compile_args << ['-cc', value]
+				}
+				'-d' {
+					fail('fastc self does not support custom `-d ${value}` defines')
+				}
+				else {}
+			}
+			index += 2
+			continue
+		}
+		if arg in ['-silent', '-keepc'] {
+			compile_args << arg
+			index++
+			continue
+		}
+		if arg == '-selfhost' {
+			index++
+			continue
+		}
+		count := repeat_count_arg(arg)
+		if count > 0 && !has_repeat_count {
+			repeat_count = count
+			has_repeat_count = true
+			index++
+			continue
+		}
+		fail('fastc self does not support `${arg}`')
+	}
+	compile_args << ['-b', 'fastc', '-gc', 'none', '-selfhost']
+	return repeat_count, compile_args, output
+}
+
+fn run_self_compiler(compiler string, compile_args []string, output string, source string) {
+	mut command := []string{cap: compile_args.len + 4}
+	command << os.quoted_path(compiler)
+	for arg in compile_args {
+		command << os.quoted_path(arg)
+	}
+	command << ['-o', os.quoted_path(output), os.quoted_path(source)]
+	result := os.execute(command.join(' '))
+	if result.exit_code != 0 {
+		fail(result.output)
+	}
+	if result.output.len > 0 {
+		println(result.output.trim_space())
+	}
+}
+
+fn unique_self_sibling_path(compiler string, role string) string {
+	dir := os.dir(compiler)
+	base := os.file_name(compiler)
+	for counter := 0; true; counter++ {
+		candidate := os.join_path_single(dir, '.${base}.${role}.${os.getpid()}.${counter}')
+		if !os.exists(candidate) {
+			return candidate
+		}
+	}
+	return compiler
+}
+
+// self_replacement_path returns a collision-free sibling where the freshly
+// self-built binary can be written before it is swapped onto the compiler.
+fn self_replacement_path(compiler string) string {
+	return unique_self_sibling_path(compiler, 'self-new')
+}
+
+fn replace_self_compiler(compiler string, replacement string) {
+	backup_name := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
+	backup := os.join_path_single(os.dir(compiler), backup_name)
+	if backup == compiler {
+		staging := unique_self_sibling_path(compiler, 'self-old')
+		os.mv(compiler, staging) or { fail(err.msg()) }
+		os.mv_by_cp(replacement, compiler) or {
+			message := err.msg()
+			os.mv(staging, compiler) or {}
+			fail(message)
+		}
+		os.rm(staging) or {}
+		return
+	}
+	if os.exists(backup) {
+		os.rm(backup) or { fail(err.msg()) }
+	}
+	os.mv(compiler, backup) or { fail(err.msg()) }
+	os.mv_by_cp(replacement, compiler) or {
+		message := err.msg()
+		os.mv(backup, compiler) or {}
+		fail(message)
+	}
+}
+
+fn run_self(args []string, command_index int) {
+	$if windows {
+		fail('fastc self is not yet supported on Windows')
+	}
+	repeat_count, compile_args, output := parse_self_arguments(args, command_index)
+	if output != '' && repeat_count > 1 {
+		fail('fastc self does not support xN together with `-o`')
+	}
+	prefs := pref.new_preferences()
+	if prefs.vroot == '' {
+		fail('fastc self could not locate the V source tree')
+	}
+	source := os.join_path(prefs.vroot, 'vlib', 'v3', 'v3.v')
+	if !os.is_file(source) {
+		fail('fastc self could not find `${source}`')
+	}
+	compiler := os.real_path(os.executable())
+	if compiler == '' || !os.is_executable(compiler) {
+		fail('fastc self could not locate its compiler executable')
+	}
+	if output != '' {
+		println('V self compiling (-b fastc)...')
+		run_self_compiler(compiler, compile_args, output, source)
+		return
+	}
+	replacement := self_replacement_path(compiler)
+	for run_index in 0 .. repeat_count {
+		run_label := if repeat_count > 1 { ' [${run_index + 1}/${repeat_count}]' } else { '' }
+		println('V self compiling${run_label} (-b fastc)...')
+		run_self_compiler(compiler, compile_args, replacement, source)
+		replace_self_compiler(compiler, replacement)
+	}
+	println('V built successfully as executable "${os.file_name(compiler)}".')
+}
+
 fn canonical_output_path(path string) string {
 	if os.exists(path) {
 		return os.real_path(path)
@@ -84,8 +274,13 @@ fn fastc_tcc_backtrace_enabled(target_os string, target_arch string) bool {
 	return !(target_os == 'macos' && target_arch == 'arm64')
 }
 
-// run builds a program using only FastC's scanner-to-C pipeline.
+// run invokes the standalone FastC compiler or its self-build command.
 pub fn run(args []string) {
+	command_index := self_command_index(args)
+	if command_index >= 0 {
+		run_self(args, command_index)
+		return
+	}
 	input, output, keep_c := parse_arguments(args)
 	real_input := os.real_path(input)
 	if pref.is_test_file_for_backend(real_input, 'fastc')
