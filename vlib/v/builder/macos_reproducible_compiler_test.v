@@ -6,6 +6,37 @@ import os.filelock
 
 const macos_reproducible_compiler_vexe = @VEXE
 
+fn put_macho_test_u32(mut data []u8, offset int, value u32) {
+	data[offset] = u8(value)
+	data[offset + 1] = u8(value >> 8)
+	data[offset + 2] = u8(value >> 16)
+	data[offset + 3] = u8(value >> 24)
+}
+
+fn test_normalize_macho_uuid_is_content_derived_and_idempotent() {
+	mut binary := []u8{len: 80, init: u8(index)}
+	put_macho_test_u32(mut binary, 0, 0xfeedfacf)
+	put_macho_test_u32(mut binary, 16, 2)
+	put_macho_test_u32(mut binary, 20, 32)
+	put_macho_test_u32(mut binary, 32, 1)
+	put_macho_test_u32(mut binary, 36, 8)
+	put_macho_test_u32(mut binary, 40, 0x1b)
+	put_macho_test_u32(mut binary, 44, 24)
+	mut normalized_input := binary.clone()
+	for i in 48 .. 64 {
+		normalized_input[i] = 0
+	}
+	mut expected_uuid := sha256.sum(normalized_input)
+	expected_uuid[6] = (expected_uuid[6] & 0x0f) | 0x30
+	expected_uuid[8] = (expected_uuid[8] & 0x3f) | 0x80
+
+	normalize_macho_uuid(mut binary)!
+	assert binary[48..64] == expected_uuid[..16]
+	first_uuid := binary[48..64].clone()
+	normalize_macho_uuid(mut binary)!
+	assert binary[48..64] == first_uuid
+}
+
 fn create_macos_debug_cache_entry(cache_dir string, name string, contents string, last_used i64) !string {
 	object_dir := os.join_path(cache_dir, name)
 	os.mkdir_all(object_dir)!

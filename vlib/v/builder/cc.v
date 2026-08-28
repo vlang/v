@@ -2090,6 +2090,7 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
+	v.normalize_reproducible_macos_debug_compiler_uuid()
 	v.generate_reproducible_macos_debug_compiler_dsym(reproducible_debug_object)
 	if v.pref.compress {
 		ret := os.system('strip ${os.quoted_path(v.pref.out_name)}')
@@ -2349,6 +2350,85 @@ fn (v &Builder) should_finalize_reproducible_macos_debug_compiler() bool {
 			&& v.pref.build_mode != .build_module && !v.pref.is_o
 	}
 	return false
+}
+
+fn macho_little_endian_u32(data []u8, offset int) u32 {
+	return u32(data[offset]) | (u32(data[offset + 1]) << 8) | (u32(data[offset + 2]) << 16) |
+		(u32(data[offset + 3]) << 24)
+}
+
+fn normalize_macho_uuid(mut data []u8) ! {
+	if data.len < 28 {
+		return error('Mach-O header is truncated')
+	}
+	magic := macho_little_endian_u32(data, 0)
+	header_size := match magic {
+		u32(0xfeedface) { 28 }
+		u32(0xfeedfacf) { 32 }
+		else { return }
+	}
+	if data.len < header_size {
+		return error('Mach-O header is truncated')
+	}
+	ncommands := int(macho_little_endian_u32(data, 16))
+	commands_size := int(macho_little_endian_u32(data, 20))
+	commands_end := header_size + commands_size
+	if commands_size < 0 || commands_end < header_size || commands_end > data.len {
+		return error('Mach-O load commands are truncated')
+	}
+	mut command_offset := header_size
+	for _ in 0 .. ncommands {
+		if command_offset + 8 > commands_end {
+			return error('Mach-O load command header is truncated')
+		}
+		command := macho_little_endian_u32(data, command_offset)
+		command_size := int(macho_little_endian_u32(data, command_offset + 4))
+		if command_size < 8 || command_offset + command_size > commands_end {
+			return error('Mach-O load command is truncated')
+		}
+		if command == 0x1b {
+			if command_size < 24 {
+				return error('Mach-O LC_UUID command is truncated')
+			}
+			uuid_offset := command_offset + 8
+			for i in 0 .. 16 {
+				data[uuid_offset + i] = 0
+			}
+			mut digest := sha256.sum(data)
+			// Match the version and variant bits emitted by ld64 for content UUIDs.
+			digest[6] = (digest[6] & 0x0f) | 0x30
+			digest[8] = (digest[8] & 0x3f) | 0x80
+			for i in 0 .. 16 {
+				data[uuid_offset + i] = digest[i]
+			}
+			return
+		}
+		command_offset += command_size
+	}
+	// A caller can explicitly link with `-Wl,-no_uuid`; there is nothing to
+	// normalize in that case.
+	return
+}
+
+fn (v &Builder) normalize_reproducible_macos_debug_compiler_uuid() {
+	$if macos {
+		if !v.should_finalize_reproducible_macos_debug_compiler() {
+			return
+		}
+		// Older ld64 releases include the output path in LC_UUID even with
+		// `-reproducible`. Replace it before dsymutil and codesign consume it.
+		mut binary := os.read_bytes(v.pref.out_name) or {
+			verror('could not read the reproducible macOS compiler binary: ${err}')
+			return
+		}
+		normalize_macho_uuid(mut binary) or {
+			verror('could not normalize the reproducible macOS compiler UUID: ${err}')
+			return
+		}
+		os.write_file_array(v.pref.out_name, binary) or {
+			verror('could not write the reproducible macOS compiler binary: ${err}')
+		}
+	}
 }
 
 fn (v &Builder) generate_reproducible_macos_debug_compiler_dsym(debug_object string) {
