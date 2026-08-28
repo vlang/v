@@ -658,11 +658,15 @@ pub fn values() string {
 }
 
 fn gen_c_from_source(v3_bin string, name string, src string) string {
+	return gen_c_from_source_with_flags(v3_bin, name, '', src)
+}
+
+fn gen_c_from_source_with_flags(v3_bin string, name string, flags string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.execute('${v3_bin} ${flags} ${src_path} -b c -o ${c_path}')
 	assert compile.exit_code == 0, '${name}: ${compile.output}'
 	assert os.exists(c_path)
 	return os.read_file(c_path) or { panic(err) }
@@ -5416,6 +5420,37 @@ fn main() {
 '
 	out := run_good(v3_bin, 'array_branch_selected_function_values', source)
 	assert out == '8'
+}
+
+fn test_array_map_drops_temporary_source_after_transient_element_address() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "four"
+	}]
+}
+
+fn text_len(item &Item) int {
+	return item.text.len
+}
+
+fn main() {
+	lengths := make_items().map(text_len(&it))
+	println(lengths)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_transient_address_drop_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array lengths = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_transient_address_drop', '-ownership', source)
+	assert out == '[4]'
 }
 
 fn test_array_filter_and_map_reclaim_branch_selected_bound_methods() {

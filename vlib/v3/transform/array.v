@@ -2647,7 +2647,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	out_type := '[]${result_elem_type}'
 	base_id := t.a.child(&fn_node, 0)
-	source_needs_drop := !mapper_takes_elem_address && !t.expr_can_take_address(base_id)
+	map_result_retains_elem_address := mapper_takes_elem_address
+		&& t.array_map_result_can_retain_element_address(result_elem_type)
+	source_needs_drop := !map_result_retains_elem_address && !t.expr_can_take_address(base_id)
 		&& !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
 	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type, 'map_source')
@@ -2787,6 +2789,88 @@ fn (t &Transformer) array_map_lvalue_is_rooted_at_ident(id flat.NodeId, name str
 		return t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, 0), name)
 	}
 	return false
+}
+
+fn (t &Transformer) array_map_result_can_retain_element_address(type_name string) bool {
+	if type_name.len == 0 {
+		return false
+	}
+	if isnil(t.tc) {
+		clean := t.normalize_type_alias(type_name)
+		return clean.starts_with('&') || clean in ['voidptr', 'byteptr', 'charptr']
+	}
+	mut seen := map[string]bool{}
+	return t.array_map_type_can_hold_pointer(t.tc.parse_type(type_name), mut seen)
+}
+
+fn (t &Transformer) array_map_type_can_hold_pointer(typ types.Type, mut seen map[string]bool) bool {
+	return match typ {
+		types.Pointer { true }
+		types.Alias {
+			t.array_map_type_can_hold_pointer(typ.base_type, mut seen)
+		}
+		types.OptionType {
+			t.array_map_type_can_hold_pointer(typ.base_type, mut seen)
+		}
+		types.ResultType {
+			t.array_map_type_can_hold_pointer(typ.base_type, mut seen)
+		}
+		types.Array {
+			t.array_map_type_can_hold_pointer(typ.elem_type, mut seen)
+		}
+		types.ArrayFixed {
+			t.array_map_type_can_hold_pointer(typ.elem_type, mut seen)
+		}
+		types.Channel {
+			t.array_map_type_can_hold_pointer(typ.elem_type, mut seen)
+		}
+		types.Map {
+			t.array_map_type_can_hold_pointer(typ.key_type, mut seen)
+				|| t.array_map_type_can_hold_pointer(typ.value_type, mut seen)
+		}
+		types.Struct {
+			if typ.name in seen {
+				false
+			} else {
+				seen[typ.name] = true
+				mut has_pointer := false
+				for field in t.tc.structs[typ.name] or { []types.StructField{} } {
+					if t.array_map_type_can_hold_pointer(field.typ, mut seen) {
+						has_pointer = true
+						break
+					}
+				}
+				has_pointer
+			}
+		}
+		types.SumType {
+			if typ.name in seen {
+				false
+			} else {
+				seen[typ.name] = true
+				mut has_pointer := false
+				for variant in t.tc.sum_types[typ.name] or { []string{} } {
+					if t.array_map_type_can_hold_pointer(t.tc.parse_type(variant), mut seen) {
+						has_pointer = true
+						break
+					}
+				}
+				has_pointer
+			}
+		}
+		types.MultiReturn {
+			mut has_pointer := false
+			for item in typ.types {
+				if t.array_map_type_can_hold_pointer(item, mut seen) {
+					has_pointer = true
+					break
+				}
+			}
+			has_pointer
+		}
+		types.FnType, types.Interface { true }
+		else { false }
+	}
 }
 
 fn (t &Transformer) resolve_fn_value_expr(id flat.NodeId, node flat.Node) ?string {
@@ -3596,10 +3680,11 @@ fn (t &Transformer) array_sort_compare_arg_type(cmp flat.NodeId, elem_type strin
 		return default_type
 	}
 	cmp_node := t.a.nodes[int(cmp)]
-	if cmp_node.kind != .ident {
-		return default_type
+	raw_type := if cmp_node.kind == .ident {
+		t.raw_var_type(cmp_node.value)
+	} else {
+		t.raw_checker_node_type(cmp)
 	}
-	raw_type := t.raw_var_type(cmp_node.value)
 	if raw_type.len == 0 {
 		return default_type
 	}
