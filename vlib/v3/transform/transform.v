@@ -13084,6 +13084,10 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		}
 		return expr
 	}
+	// `voidptr` receives the pointer value itself, even when its pointee is also `voidptr`.
+	if target == 'voidptr' && expr_type.starts_with('&') {
+		return t.make_cast(target, expr, target)
+	}
 	if expr_type.starts_with('&') {
 		expr_value_type := t.normalize_type_alias(expr_type[1..])
 		if expr_value_type == target || t.type_alias_targets_type(expr_type[1..], target) {

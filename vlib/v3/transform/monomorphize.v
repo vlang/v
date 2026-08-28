@@ -9683,11 +9683,6 @@ fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []str
 		}
 	}
 	target := t.generic_comptime_base_type(child_id, args) or { return none }
-	if child.kind == .ident && t.mut_param_values[child.value] && !target.starts_with('&') {
-		// A `mut value T` parameter is stored indirectly. `typeof(value)` observes
-		// that pointer shape even though ordinary value uses infer T itself.
-		return '&${target}'
-	}
 	return target
 }
 
