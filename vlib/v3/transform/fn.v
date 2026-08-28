@@ -1338,7 +1338,8 @@ fn (t &Transformer) immediate_closure_result_may_alias_capture(type_name string)
 	}
 	if isnil(t.tc) {
 		clean := t.normalize_type_alias(type_name)
-		return clean.starts_with('&') || clean in ['voidptr', 'byteptr', 'charptr']
+		return clean.starts_with('!') || clean.starts_with('&')
+			|| clean in ['voidptr', 'byteptr', 'charptr']
 	}
 	mut seen := map[string]bool{}
 	return t.closure_result_type_may_alias_capture(t.tc.parse_type(type_name), mut seen)
@@ -1354,7 +1355,9 @@ fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut se
 			t.closure_result_type_may_alias_capture(typ.base_type, mut seen)
 		}
 		types.ResultType {
-			t.closure_result_type_may_alias_capture(typ.base_type, mut seen)
+			// A custom IError implementation can retain a pointer into the capture even
+			// when the successful payload is scalar.
+			true
 		}
 		types.Array {
 			t.closure_result_type_may_alias_capture(typ.elem_type, mut seen)

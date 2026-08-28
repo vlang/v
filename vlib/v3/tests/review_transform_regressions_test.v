@@ -2826,6 +2826,35 @@ fn test_immediately_invoked_closure_keeps_aliased_pointer_result_alive() {
 	assert out == '42'
 }
 
+fn test_immediately_invoked_closure_keeps_aliased_result_error_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct CaptureError {
+	ptr &int
+}
+
+fn (err CaptureError) msg() string {
+	return "capture error"
+}
+
+fn main() {
+	x := 41
+	value := (fn [x] () !int {
+		return CaptureError{
+			ptr: unsafe { &x }
+		}
+	})() or {
+		if err is CaptureError {
+			println(int_str(unsafe { *err.ptr + 1 }))
+		}
+		return
+	}
+	println(int_str(value))
+}
+'
+	out := run_good(v3_bin, 'immediate_closure_aliased_result_error', source)
+	assert out == '42'
+}
+
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
