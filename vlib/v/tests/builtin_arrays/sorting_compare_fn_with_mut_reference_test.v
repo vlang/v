@@ -60,6 +60,16 @@ fn test_sort_compare_local_fn_with_pointer_values() {
 	assert items.map(it.a) == [1, 2, 3]
 }
 
+fn get_thing_comparator() fn (&Thing, &Thing) int {
+	return compare_thing_values
+}
+
+fn test_sort_compare_call_fn_with_pointer_values() {
+	mut items := [&Thing{a: 3}, &Thing{a: 1}, &Thing{a: 2}]
+	items.sort_with_compare(get_thing_comparator())
+	assert items.map(it.a) == [1, 2, 3]
+}
+
 struct ThingComparators {
 	@[required]
 	compare fn (&Thing, &Thing) int

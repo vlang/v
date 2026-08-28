@@ -2832,8 +2832,7 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 					node.value, name)
 		}
 		.index {
-			return node.children_count > 0
-				&& t.array_map_expr_result_retains_element_address(t.a.child(&node, 0), name)
+			return t.array_map_index_result_retains_element_address(node, name)
 		}
 		.call {
 			call_type := t.checker_expr_type_name(id) or { t.node_type(id) }
@@ -2859,6 +2858,25 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 			return false
 		}
 	}
+}
+
+fn (mut t Transformer) array_map_index_result_retains_element_address(node flat.Node, name string) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(&node, 0)
+	if node.children_count > 1 {
+		base := t.a.nodes[int(base_id)]
+		index := t.a.child_node(&node, 1)
+		if base.kind == .array_literal && index.kind == .int_literal {
+			selected := index.value.int()
+			if selected >= 0 && selected < int(base.children_count) {
+				return t.array_map_expr_result_retains_element_address(t.a.child(&base, selected),
+					name)
+			}
+		}
+	}
+	return t.array_map_expr_result_retains_element_address(base_id, name)
 }
 
 fn (mut t Transformer) array_map_selector_result_retains_element_address(base_id flat.NodeId, field_name string, elem_name string) bool {
@@ -3583,9 +3601,29 @@ fn (mut t Transformer) stable_array_compare_fn(cmp_id flat.NodeId, elem_type str
 	if int(cmp_id) >= 0 && t.a.nodes[int(cmp_id)].kind == .lambda_expr {
 		return cmp_id
 	}
+	cmp_type := t.array_compare_fn_type(cmp_id, elem_type)
 	cmp := t.transform_expr(cmp_id)
-	cmp_type := 'fn (&${elem_type}, &${elem_type}) int'
 	return t.stable_transformed_expr_for_reuse(cmp, cmp_type, 'sort_cmp')
+}
+
+fn (t &Transformer) array_compare_fn_type(cmp_id flat.NodeId, elem_type string) string {
+	default_type := 'fn (&${elem_type}, &${elem_type}) int'
+	if isnil(t.tc) || int(cmp_id) < 0 || int(cmp_id) >= t.a.nodes.len {
+		return default_type
+	}
+	cmp_node := t.a.nodes[int(cmp_id)]
+	raw_type := if cmp_node.kind == .ident {
+		t.raw_var_type(cmp_node.value)
+	} else {
+		t.raw_checker_node_type(cmp_id)
+	}
+	if raw_type.len == 0 {
+		return default_type
+	}
+	if types.unalias_type(t.tc.parse_type(raw_type)) is types.FnType {
+		return raw_type
+	}
+	return default_type
 }
 
 // make_array_default_sort_stmt builds make array default sort stmt data for transform.
