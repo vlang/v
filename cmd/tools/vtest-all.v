@@ -29,7 +29,7 @@ fn main() {
 	mut requested_args := vflags.tokenize_to_args(raw_vflags)
 	requested_args << vflags.tokenize_to_args(vargs)
 	strict_v3 := '-new-compiler' in requested_args && '-old-compiler' !in requested_args
-	strict_flags := if raw_vflags.len > 0 { raw_vflags } else { vargs }
+	strict_flags := requested_args.map(os.quoted_path(it)).join(' ')
 	if strict_v3 {
 		os.unsetenv('VFLAGS')
 	}

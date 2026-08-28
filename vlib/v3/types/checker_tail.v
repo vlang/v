@@ -10417,14 +10417,16 @@ fn (tc &TypeChecker) call_mut_param_can_retag(info CallInfo, param_idx int) bool
 		return fn_node.is_mut
 	}
 	for i in param_count .. fn_node.children_count {
-		if tc.subtree_can_rebind_mut_parameter(tc.a.child(&fn_node, i), param.value) {
+		if tc.subtree_can_rebind_mut_parameter(tc.a.child(&fn_node, i), param.value,
+			info.params[param_idx])
+		{
 			return true
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) subtree_can_rebind_mut_parameter(id flat.NodeId, name string) bool {
+fn (tc &TypeChecker) subtree_can_rebind_mut_parameter(id flat.NodeId, name string, typ Type) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -10441,8 +10443,24 @@ fn (tc &TypeChecker) subtree_can_rebind_mut_parameter(id flat.NodeId, name strin
 			i += 2
 		}
 	}
+	// Forwarding the same storage through a mutable argument or receiver lets the
+	// nested callee rebind it even when this function has no direct assignment.
+	if node.kind == .call && node.children_count > 0 {
+		callee := tc.a.child_node(node, 0)
+		if callee.kind == .selector && callee.children_count > 0
+			&& tc.expr_key(tc.a.child(callee, 0)) == name
+			&& tc.sum_type_has_mut_receiver_method(typ, callee.value) {
+			return true
+		}
+		for i in 1 .. node.children_count {
+			arg_id := tc.call_arg_value(tc.a.child(node, i))
+			if tc.a.node(arg_id).is_mut && tc.expr_key(arg_id) == name {
+				return true
+			}
+		}
+	}
 	for i in 0 .. node.children_count {
-		if tc.subtree_can_rebind_mut_parameter(tc.a.child(node, i), name) {
+		if tc.subtree_can_rebind_mut_parameter(tc.a.child(node, i), name, typ) {
 			return true
 		}
 	}

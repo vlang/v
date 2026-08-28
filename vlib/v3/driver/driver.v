@@ -7975,14 +7975,14 @@ pub fn run(args []string) {
 	} else {
 		effective_c_compiler_name(c_compiler, target)
 	}
-	incompatible_test_platform := pref.is_test_file_for_backend(input_file, 'c')
+	incompatible_test_platform := is_test_file_for_any_backend(input_file)
 		&& !pref.is_test_file_for_platform(input_file, backend, target)
 	incompatible_test_constraint := !v3_test_matches_build_constraint(input_file, target,
 		constraint_ccompiler, is_prod, user_defines)
 	if is_test_command && os.is_file(input_file)
 		&& (incompatible_test_platform || incompatible_test_constraint) {
-		// Directory test discovery already excludes incompatible platform files.
-		// Apply the same platform and `// vtest build:` rules to a direct single-file
+		// Directory test discovery already excludes incompatible backend/platform files.
+		// Apply the same backend, platform, and `// vtest build:` rules to a direct single-file
 		// test before parsing it; otherwise unavailable symbols and dependencies emit
 		// misleading diagnostics instead of reporting a skip.
 		if !silent {
@@ -13747,6 +13747,21 @@ fn test_input_files(user_files []string, backend string, target pref.Target) []s
 		}
 	}
 	return files
+}
+
+fn is_test_file_for_any_backend(file string) bool {
+	name := os.file_name(file)
+	if name.contains('_d_test.') || name.contains('_notd_test.') {
+		return false
+	}
+	if name.ends_with('_test.v') {
+		return true
+	}
+	if !name.ends_with('.v') {
+		return false
+	}
+	base := name[..name.len - 2]
+	return base.contains('.') && base.all_before_last('.').ends_with('_test')
 }
 
 fn is_v3_test_file(file string, backend string, target pref.Target) bool {

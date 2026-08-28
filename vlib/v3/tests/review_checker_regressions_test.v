@@ -132,6 +132,64 @@ fn main() {
 12'
 }
 
+fn test_forwarded_mut_sum_parameter_invalidates_smartcast() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'forwarded_mut_sum_argument_invalidates_smartcast', 'struct First {
+	value int
+}
+
+struct Second {}
+
+type Expr = First | Second
+
+fn retag(mut value Expr) {
+	value = Expr(Second{})
+}
+
+fn wrapper(mut value Expr) {
+	retag(mut value)
+}
+
+fn main() {
+	mut expr := Expr(First{
+		value: 7
+	})
+	if mut expr is First {
+		wrapper(mut expr)
+		println(expr.value)
+	}
+}
+',
+		'field `value` does not exist')
+	run_bad(v3_bin, 'forwarded_mut_sum_receiver_invalidates_smartcast', 'struct First {
+	value int
+}
+
+struct Second {}
+
+type Expr = First | Second
+
+fn (mut value Expr) retag() {
+	value = Expr(Second{})
+}
+
+fn wrapper(mut value Expr) {
+	value.retag()
+}
+
+fn main() {
+	mut expr := Expr(First{
+		value: 7
+	})
+	if mut expr is First {
+		wrapper(mut expr)
+		println(expr.value)
+	}
+}
+',
+		'field `value` does not exist')
+}
+
 fn test_mut_index_alias_updates_original_storage() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'mut_index_alias', 'struct Item {

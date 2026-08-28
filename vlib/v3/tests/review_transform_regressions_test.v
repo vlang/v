@@ -6258,15 +6258,38 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
-fn test_test_command_skips_incompatible_single_platform_file() {
+fn test_test_command_skips_incompatible_single_file() {
 	v3_bin := build_v3_review_transform()
-	test_src := os.join_path(os.temp_dir(), 'v3_incompatible_windows_test.v')
+	test_dir := os.join_path(os.temp_dir(), 'v3_incompatible_test_${os.getpid()}')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	test_src := os.join_path(test_dir, 'v3_incompatible_windows_test.v')
 	os.write_file(test_src, 'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or {
 		panic(err)
 	}
 	result := os.execute('${v3_bin} -nocache -os linux test ${test_src}')
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('SKIP ${test_src}'), result.output
+
+	backend_test_src := os.join_path(test_dir, 'v3_incompatible_backend_test.js.v')
+	os.write_file(backend_test_src,
+		'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or { panic(err) }
+	backend_result := os.execute('${v3_bin} -nocache test ${backend_test_src}')
+	assert backend_result.exit_code == 0, backend_result.output
+	assert backend_result.output.contains('SKIP ${backend_test_src}'), backend_result.output
+
+	compatible_test_src := os.join_path(test_dir, 'v3_compatible_backend_test.c.v')
+	os.write_file(compatible_test_src,
+		"module main\n\nfn test_test_command_skips_incompatible_single_file() {\n\tprintln('compatible backend test')\n}\n") or {
+		panic(err)
+	}
+	compatible_result := os.execute('${v3_bin} -nocache test ${compatible_test_src}')
+	assert compatible_result.exit_code == 0, compatible_result.output
+	assert !compatible_result.output.contains('SKIP ${compatible_test_src}'), compatible_result.output
+	assert compatible_result.output.contains('compatible backend test'), compatible_result.output
 }
 
 fn test_test_command_honors_vtest_build_constraint() {
