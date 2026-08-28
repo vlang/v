@@ -38,6 +38,18 @@ fn update_local() u64 {
 	return x
 }
 
+struct AsmOperand {
+	index int
+}
+
+fn selector_operand() int {
+	mut value := AsmOperand{index: 9}
+	asm volatile arm64 {
+		; +r (value.index)
+	}
+	return value.index
+}
+
 fn main() {
 	asm amd64 {
 		; ; ; memory
@@ -81,6 +93,7 @@ fn main() {
 	println(loops)
 	println(value)
 	println(character)
+	println(selector_operand())
 	println(global_x())
 }
 '
@@ -98,6 +111,18 @@ fn update_local() u64 {
 		; +r (x)
 	}
 	return x
+}
+
+struct AsmOperand {
+	index int
+}
+
+fn selector_operand() int {
+	mut value := AsmOperand{index: 9}
+	asm volatile amd64 {
+		; +r (value.index)
+	}
+	return value.index
 }
 
 fn main() {
@@ -154,6 +179,7 @@ fn main() {
 	println(value)
 	println(character)
 	println(indexed)
+	println(selector_operand())
 	println(global_x())
 }
 '
@@ -180,6 +206,7 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	assert c_source.contains('[b] "+r" (b)'), c_source
 	assert c_source.contains('[a] "r" (a)'), c_source
 	assert c_source.contains('[x] "+r" (x__local)'), c_source
+	assert c_source.contains('"+r" (value.v_index)'), c_source
 	$if arm64 {
 		assert c_source.contains('"mov x0, %[a]\\n\\t"'), c_source
 		assert c_source.contains('"str w0, [%[ptr]]\\n\\t"'), c_source
@@ -197,9 +224,9 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	run := os.execute(bin_path)
 	assert run.exit_code == 0, run.output
 	$if arm64 {
-		assert run.output.trim_space() == '8\n10\n6\n7\n65\n100'
+		assert run.output.trim_space() == '8\n10\n6\n7\n65\n9\n100'
 	} $else $if amd64 {
-		assert run.output.trim_space() == '8\n10\n6\n7\n65\n22\n100'
+		assert run.output.trim_space() == '8\n10\n6\n7\n65\n22\n9\n100'
 	}
 }
 

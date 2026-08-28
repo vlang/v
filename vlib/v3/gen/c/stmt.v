@@ -3085,10 +3085,41 @@ fn (g &FlatGen) c_inline_asm_expr(source string) string {
 		return croot
 	}
 	rest := expr[root_end..]
-	if rest.starts_with('.') && typ is types.Pointer {
-		return '${croot}->${rest[1..]}'
+	return croot + lower_c_inline_asm_selector_fields(rest, typ is types.Pointer)
+}
+
+fn lower_c_inline_asm_selector_fields(source string, root_is_pointer bool) string {
+	mut out := strings.new_builder(source.len + 4)
+	mut i := 0
+	for i < source.len {
+		if source[i] != `.` || i + 1 >= source.len {
+			out.write_u8(source[i])
+			i++
+			continue
+		}
+		field_start := i + 1
+		mut field_end := field_start
+		if source[field_end] == `@` {
+			field_end++
+		}
+		if field_end >= source.len || !c_inline_asm_ident_start(source[field_end]) {
+			out.write_u8(source[i])
+			i++
+			continue
+		}
+		field_end++
+		for field_end < source.len && c_inline_asm_ident_char(source[field_end]) {
+			field_end++
+		}
+		if root_is_pointer && i == 0 {
+			out.write_string('->')
+		} else {
+			out.write_u8(`.`)
+		}
+		out.write_string(c_field_name(source[field_start..field_end]))
+		i = field_end
 	}
-	return croot + rest
+	return out.str()
 }
 
 fn parse_c_inline_asm_block(source string) ?CInlineAsmBlock {
