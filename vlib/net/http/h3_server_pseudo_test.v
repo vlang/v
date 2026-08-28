@@ -111,6 +111,34 @@ fn test_h3_validate_request_pseudo_rejects_connect_missing_authority() {
 	assert false, 'expected an error for a CONNECT request missing :authority'
 }
 
+// Extended CONNECT (RFC 9220-style WebSockets-over-HTTP/3, a `:protocol`
+// pseudo-header) is explicitly out of scope for this fix -- see
+// h3_validate_request_pseudo's own doc comment (h3_server.v). This is the
+// regression test that scope-limit claim needs: :protocol must still fall
+// through the generic "unknown request pseudo-header" rejection, not be
+// silently accepted as if it were a recognized field. Without this test,
+// a future change adding a `:protocol` match arm while implementing
+// Extended CONNECT -- without also wiring up its required semantics --
+// would compile and ship with :protocol-bearing requests silently passing
+// validation instead of being rejected.
+fn test_h3_validate_request_pseudo_rejects_protocol_pseudo_header() {
+	h3_validate_request_pseudo([
+		quic.QpackFieldLine{
+			name:  ':method'
+			value: 'CONNECT'
+		},
+		quic.QpackFieldLine{
+			name:  ':protocol'
+			value: 'websocket'
+		},
+		quic.QpackFieldLine{
+			name:  ':authority'
+			value: 'example.com:443'
+		},
+	]) or { return }
+	assert false, 'expected an error for a request carrying the unimplemented :protocol pseudo-header'
+}
+
 // h3_build_request end-to-end for CONNECT: method decodes correctly and
 // url stays empty (there is no :path to populate it from) -- the Handler,
 // not this layer, is responsible for CONNECT-specific behavior.

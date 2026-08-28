@@ -55,6 +55,46 @@ fn h3_now_ns() u64 {
 	return time.sys_mono_now()
 }
 
+// h3_driver_next_wait computes how long a caller-driven poll loop
+// (h3_server.v's serve(), h3_mux_conn.v's driver_loop) should block on its
+// next transport read: `default_wait` unless `next_timeout` (an h3_now_ns-
+// scale absolute deadline, or none if nothing is currently armed) is
+// sooner, floored at 1ms so a same-or-past-due deadline still yields a
+// real, non-blocking-forever wait rather than 0 or a negative Duration.
+//
+// Extracted as its OWN function, shared by both call sites, specifically
+// BECAUSE this exact computation was fixed in one copy and not the other
+// during the h3_now_ns/h3_now_ms round (PR #28164): `remaining` is already
+// nanosecond-scale (`next_timeout`/`now_ns` are both raw time.sys_mono_
+// now() instants; time.Duration IS nanoseconds, vlib/time/duration.v), so
+// it must NOT be multiplied by time.millisecond again -- an earlier
+// version of both call sites did exactly that, inflating an already-huge
+// nanosecond `remaining` by another 1e6x, so `candidate < wait` was never
+// true and next_timeout never actually shortened the poll wait. A single
+// shared function makes that class of drift (one copy fixed, its sibling
+// silently left behind) structurally impossible instead of relying on a
+// reviewer to notice both call sites every time; see this file's own test
+// (h3_udp_dial_test.v) for deterministic, non-threaded coverage of the
+// computation itself -- a real driver_loop's own PTO-timing-dependent
+// behavior is comparatively expensive and flaky to pin down directly.
+fn h3_driver_next_wait(next_timeout ?u64, now_ns u64, default_wait time.Duration) time.Duration {
+	mut wait := default_wait
+	if nt := next_timeout {
+		mut remaining := i64(0)
+		if nt > now_ns {
+			remaining = i64(nt - now_ns)
+		}
+		candidate := time.Duration(remaining)
+		if candidate < wait {
+			wait = candidate
+		}
+	}
+	if wait <= 0 {
+		wait = 1 * time.millisecond
+	}
+	return wait
+}
+
 // h3_default_own_settings builds this client's own outgoing SETTINGS
 // frame contents (RFC 9114 §7.2.4): just the two QPACK parameters RFC 9204
 // §5 defines, at this file's own chosen defaults above. An H3Conn does not

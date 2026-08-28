@@ -489,30 +489,7 @@ fn (mut c H3MuxConn) driver_loop() {
 			c.start_request(mut p)
 		}
 
-		mut wait := h3_driver_poll_interval
-		if nt := next_timeout {
-			now_ns := h3_now_ns()
-			mut remaining := i64(0)
-			if nt > now_ns {
-				remaining = i64(nt - now_ns)
-			}
-			// `remaining` is already a nanosecond count (nt/now_ns are both
-			// raw time.sys_mono_now() instants) -- time.Duration IS
-			// nanoseconds (vlib/time/duration.v), so no further scaling.
-			// An earlier version multiplied by time.millisecond here, on
-			// the mistaken assumption that now_ns was millisecond-scale;
-			// that inflated an already-huge nanosecond `remaining` by
-			// another 1e6x, so `candidate < wait` was never true and
-			// next_timeout never actually shortened the poll wait below
-			// h3_driver_poll_interval.
-			candidate := time.Duration(remaining)
-			if candidate < wait {
-				wait = candidate
-			}
-		}
-		if wait <= 0 {
-			wait = 1 * time.millisecond
-		}
+		wait := h3_driver_next_wait(next_timeout, h3_now_ns(), h3_driver_poll_interval)
 		c.transport.set_read_timeout(wait)
 
 		n := c.transport.read(mut buf) or {

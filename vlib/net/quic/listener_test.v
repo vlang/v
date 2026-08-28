@@ -195,6 +195,60 @@ fn test_listener_always_retry_then_accepts_full_handshake() {
 	assert listener.connection_count() == 1
 }
 
+// test_listener_retry_token_validates_at_realistic_nanosecond_scale is the
+// dedicated regression test for handle_new_attempt/send_retry's `now /
+// 1_000_000` conversion (see their own doc comments): every OTHER retry-
+// token test in this file drives the Retry-then-accept flow with tiny
+// synthetic `now` values (0, 10, 20, ...), all far below 1_000_000 -- for
+// which `now / 1_000_000` is IDENTICALLY 0 whether or not the conversion
+// is even applied, so those tests cannot distinguish the fixed call sites
+// from the pre-fix bug (raw `now` passed straight into a millisecond-
+// shaped API with no conversion). This test instead uses billion-scale
+// `now` values matching what a real `time.sys_mono_now()` instant looks
+// like (h3_now_ns's own convention, net.http) -- a real 100ms gap between
+// issuance and validation, well within the 30-second default expiry
+// window ONLY once correctly converted to milliseconds; the reverted, pre-
+// fix code would see a raw 100_000_000-nanosecond delta, ~3333x the 30000
+// default `retry_token_max_age_ms`, and reject the token as expired.
+fn test_listener_retry_token_validates_at_realistic_nanosecond_scale() {
+	mut signing_key := ecdsa.new_key_from_seed(listener_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+
+	dial_params := DialParams{
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: listener_test_transport_parameters()
+	}
+	mut client, client_dg := dial(dial_params, 0)!
+	mut client_hs := client.client_handshake()
+	defer {
+		client_hs.free()
+	}
+
+	mut listener := new_quic_listener(listener_test_params(signing_key))!
+	peer := 'realistic-now-peer'.bytes()
+
+	issue_now := u64(5_000_000_000) // 5s of real nanosecond-scale uptime
+	retry_result := listener.poll(client_dg.bytes, peer, issue_now)!
+	assert retry_result.outgoing.len == 1
+	assert listener.connection_count() == 0
+
+	resend_result := client.poll(retry_result.outgoing[0].bytes, issue_now + 1_000_000)!
+	assert resend_result.outgoing.len > 0
+
+	// 100ms of real elapsed time (100_000_000ns) later -- trivially within
+	// the 30s window once correctly treated as milliseconds; the pre-fix
+	// bug (no conversion) would see this raw nanosecond delta compared
+	// directly against a millisecond-shaped 30000 threshold and reject.
+	validate_now := issue_now + 100_000_000
+	server_result := listener.poll(resend_result.outgoing[0].bytes, peer, validate_now)!
+	assert listener.connection_count() == 1
+	assert server_result.outgoing.len > 0
+}
+
 // test_listener_direct_accept_without_retry covers the always_retry=false
 // policy: the FIRST datagram itself (no token, no Retry round-trip) must
 // reach do_accept directly.
@@ -623,4 +677,102 @@ fn test_pto_probe_respects_anti_amplification_limit() {
 	far_future := u64(10) * 1_000_000_000
 	timeout_result := listener.process_timeouts(far_future)!
 	assert timeout_result.outgoing.len == 0
+}
+
+// test_pto_probe_fires_with_positive_budget is the positive-case sibling
+// of test_pto_probe_respects_anti_amplification_limit above: that test
+// only proves a probe is WITHHELD at exactly zero budget, on whichever
+// arm (.initial, ties broken toward it) a fresh accept()-only connection
+// happens to reach -- it says nothing about whether a probe is actually
+// SENT when budget genuinely allows, and nothing about the ordinary
+// post-handshake .application_data arm specifically (the highest-value
+// gap: real deployments spend almost all their time here, not in the
+// brief handshake window). Drives a connection all the way to a real,
+// quiescent .established state (mirroring test_listener_always_retry_
+// then_accepts_full_handshake's own pattern), has the SERVER proactively
+// write to a fresh stream (queuing a real ack-eliciting 1-RTT STREAM
+// frame), flushes it out via one process_timeouts call WITHOUT ever
+// delivering that datagram to the client (simulating a peer that stops
+// responding), then advances far into the future and asserts a PTO probe
+// genuinely goes out. By this point Initial/Handshake keys are long
+// discarded (handshake is confirmed), so any outgoing datagram here can
+// only be an .application_data-space send -- either the retransmitted
+// STREAM frame itself or send_pto_probe's own PING, either way proving
+// this arm is not silently gated shut.
+fn test_pto_probe_fires_with_positive_budget() {
+	mut signing_key := ecdsa.new_key_from_seed(listener_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+
+	dial_params := DialParams{
+		server_name:          'localhost'
+		ca_bundle_pem:        listener_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: listener_test_transport_parameters()
+	}
+	mut client, client_dg := dial(dial_params, 0)!
+	mut client_hs := client.client_handshake()
+	defer {
+		client_hs.free()
+	}
+
+	mut listener := new_quic_listener(listener_test_params(signing_key))!
+	peer := 'positive-budget-peer'.bytes()
+
+	retry_result := listener.poll(client_dg.bytes, peer, 0)!
+	resend_result := client.poll(retry_result.outgoing[0].bytes, 10)!
+	mut server_result := listener.poll(resend_result.outgoing[0].bytes, peer, 20)!
+	assert listener.connection_count() == 1
+
+	mut client_outgoing := []QuicDatagram{}
+	mut server_outgoing := server_result.outgoing.map(QuicDatagram{ bytes: it.bytes })
+	mut now := u64(20)
+	mut rounds := 0
+	for (client_outgoing.len > 0 || server_outgoing.len > 0) && rounds < 20 {
+		rounds += 1
+		now += 10
+		mut next_client_outgoing := []QuicDatagram{}
+		mut next_server_outgoing := []QuicListenerDatagram{}
+		for dg in server_outgoing {
+			r := client.poll(dg.bytes, now)!
+			next_client_outgoing << r.outgoing
+		}
+		for dg in client_outgoing {
+			r := listener.poll(dg.bytes, peer, now)!
+			next_server_outgoing << r.outgoing
+		}
+		client_outgoing = next_client_outgoing.clone()
+		server_outgoing = next_server_outgoing.map(QuicDatagram{ bytes: it.bytes })
+	}
+	assert rounds < 20, 'handshake did not converge within 20 rounds'
+	assert client.state() == .established
+
+	// Grab the accepted connection via touched_conns (populated even for
+	// a no-op process_timeouts call -- see that field's own doc comment)
+	// rather than a second accept-shaped call, since one already exists.
+	now += 10
+	mut grab := listener.process_timeouts(now)!
+	assert grab.touched_conns.len == 1
+	mut server_conn := grab.touched_conns[0]
+	assert server_conn.amplification.available_to_send() > 0
+
+	stream_id := server_conn.open_stream(true)!
+	server_conn.write_stream(stream_id, 'unacked-probe-bait'.bytes(), true)!
+	now += 10
+	// Flushes the freshly-queued STREAM frame into an outgoing datagram
+	// (drain_outgoing runs unconditionally at the end of process_timeouts,
+	// regardless of whether any timer literally fired -- conn.v's own
+	// process_timeouts, right after the loss-detection-timeout check).
+	// Deliberately never delivered to `client`: simulating a peer that
+	// stops responding after this point, leaving it ack-eliciting and
+	// unacked.
+	flush_result := listener.process_timeouts(now)!
+	assert flush_result.outgoing.len > 0
+
+	// Far enough past `now` that on_loss_detection_timeout's PTO deadline
+	// has certainly elapsed for a still-unacked ack-eliciting send.
+	far_future := now + 10 * 1_000_000_000
+	pto_result := listener.process_timeouts(far_future)!
+	assert pto_result.outgoing.len > 0
 }

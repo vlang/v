@@ -8,7 +8,6 @@ import net.quic
 import crypto.ecdsa
 import crypto.rand
 import sync
-import time
 
 // h3_server.v: Phase 13e -- a minimal HTTP/3 server driver bridging one UDP
 // socket to quic.QuicListener/quic.H3Conn's caller-driven poll()/
@@ -207,24 +206,7 @@ pub fn (mut s H3Server) serve() ! {
 		if should_stop {
 			return
 		}
-		mut wait := h3_driver_poll_interval
-		if nt := next_timeout {
-			now_ns := h3_now_ns()
-			mut remaining := i64(0)
-			if nt > now_ns {
-				remaining = i64(nt - now_ns)
-			}
-			// See h3_mux_conn.v's driver_loop -- identical fix, same
-			// reasoning: `remaining` is already nanosecond-scale, so no
-			// further multiplication by time.millisecond.
-			candidate := time.Duration(remaining)
-			if candidate < wait {
-				wait = candidate
-			}
-		}
-		if wait <= 0 {
-			wait = 1 * time.millisecond
-		}
+		wait := h3_driver_next_wait(next_timeout, h3_now_ns(), h3_driver_poll_interval)
 		s.socket.set_read_timeout(wait)
 
 		n, addr := s.socket.read(mut buf) or {

@@ -52,6 +52,56 @@ fn test_h3_now_ns_returns_a_nanosecond_scale_instant_not_milliseconds() {
 	assert got <= after
 }
 
+// h3_driver_next_wait is the ONE shared computation behind both
+// h3_server.v's serve() and h3_mux_conn.v's driver_loop -- extracted
+// specifically because it was fixed in one call site and initially left
+// unfixed-and-untested in the other during the h3_now_ns/h3_now_ms round
+// (PR #28164). Deterministic, synthetic-value unit tests here are the
+// right level for this: a real driver_loop's own PTO-timing-dependent
+// behavior is comparatively expensive and flaky to pin down directly (an
+// earlier version of this coverage tried exactly that, driving a real
+// H3MuxConn.driver_loop against a fake transport and sleeping past a real
+// PTO deadline -- correct in principle, but slow and fiddly to get the
+// timing margins right for no real benefit over testing the pure
+// computation directly).
+
+fn test_h3_driver_next_wait_uses_default_when_no_timeout_armed() {
+	got := h3_driver_next_wait(none, 1_000_000, 50 * time.millisecond)
+	assert got == 50 * time.millisecond
+}
+
+// The load-bearing regression case: a deadline a small, nanosecond-scale
+// amount ahead of `now` must shorten the wait to roughly THAT SAME small
+// amount -- not that amount multiplied by another 1e6x (the pre-fix bug:
+// `remaining` is already nanosecond-scale, since both `next_timeout` and
+// `now_ns` are raw time.sys_mono_now() instants; time.Duration IS
+// nanoseconds, so multiplying by time.millisecond again turned a 5ms
+// remaining into roughly 5000 SECONDS).
+fn test_h3_driver_next_wait_shortens_to_a_near_deadline_in_nanoseconds() {
+	now_ns := u64(10_000_000_000) // 10 real seconds of uptime
+	deadline := now_ns + 5_000_000 // 5ms away
+	got := h3_driver_next_wait(deadline, now_ns, 50 * time.millisecond)
+	assert got == 5 * time.millisecond
+}
+
+fn test_h3_driver_next_wait_keeps_default_when_deadline_is_farther_off() {
+	now_ns := u64(10_000_000_000)
+	deadline := now_ns + 200_000_000 // 200ms away -- farther than the 50ms default
+	got := h3_driver_next_wait(deadline, now_ns, 50 * time.millisecond)
+	assert got == 50 * time.millisecond
+}
+
+// A same-or-already-past-due deadline must floor to 1ms, never 0 or
+// negative (which would starve every other goroutine via a zero/negative
+// read timeout, or panic/block-forever depending on the transport).
+fn test_h3_driver_next_wait_floors_a_past_due_deadline_to_one_millisecond() {
+	now_ns := u64(10_000_000_000)
+	got_equal := h3_driver_next_wait(now_ns, now_ns, 50 * time.millisecond)
+	assert got_equal == 1 * time.millisecond
+	got_past := h3_driver_next_wait(now_ns - 1_000_000, now_ns, 50 * time.millisecond)
+	assert got_past == 1 * time.millisecond
+}
+
 fn test_h3_udp_conn_transport_read_reports_the_underlying_close() {
 	// A minimal smoke test for H3UdpConnTransport's own close() plumbing:
 	// double-closing an already-closed net.UdpConn must not panic (mirrors

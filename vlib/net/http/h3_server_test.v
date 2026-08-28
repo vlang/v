@@ -225,6 +225,167 @@ fn test_h3_server_real_udp_request_response_round_trip() {
 	assert got_body == 'pong:hi'
 }
 
+// test_h3_server_request_split_across_two_datagrams_still_completes is the
+// dedicated regression test for the touched_conns fix (h3_server.v
+// absorb_and_dispatch / listener.v QuicListenerPollResult.touched_conns):
+// unlike the round-trip test above (which sends HEADERS then immediately,
+// same-iteration, DATA -- both get flushed together on the NEXT poll/
+// process_timeouts call, so they very likely coalesce into ONE UDP
+// datagram and never exercise the bug at all), this test deliberately
+// forces the client to flush and physically WRITE the HEADERS frame as
+// its own UDP datagram BEFORE queuing the DATA(fin) frame, guaranteeing
+// the server receives them as two separate socket.read() calls. UDP
+// preserves datagram boundaries (no TCP-style coalescing), so this is
+// deterministic, not timing-dependent.
+//
+// The server's FIRST read (HEADERS only) fires peer_stream_opened -- a
+// real QuicEvent, so absorb_and_dispatch would dispatch it even with the
+// bug present (this is the SAME path the always-passing round-trip test
+// above exercises). The server's SECOND read (DATA+fin on the
+// already-open stream) produces ZERO new QuicEvents -- this is the exact
+// condition the bug depended on: without touched_conns, that second
+// poll() call would never reach H3Conn.drive_events at all, and the
+// request would never complete. Phase-R'd: reverting absorb_and_dispatch
+// to drop the touched_conns-seeding block makes this test hang until the
+// 200-round budget is exhausted; restoring the fix makes it complete in
+// a handful of rounds, same as the round-trip test above.
+fn test_h3_server_request_split_across_two_datagrams_still_completes() {
+	mut signing_key := ecdsa.new_key_from_seed(h3_server_test_key_seed, fixed_size: true)!
+	defer {
+		signing_key.free()
+	}
+
+	mut server := new_h3_server(':0', H3ServerParams{
+		alpn_protocols:       ['h3']
+		certificate_chain:    [
+			quic.CertificateEntry{
+				cert_data: h3_server_test_pem_to_der(h3_server_test_cert_pem)
+			},
+		]
+		signing_key:          signing_key
+		transport_parameters: h3_server_test_transport_parameters()
+		handler:              H3ServerTestEchoHandler{}
+	})!
+	server_addr := server.local_addr()!
+	port := server_addr.port()!
+
+	server_thread := spawn h3_server_test_run(mut server)
+	defer {
+		server.close() or {}
+		server_thread.wait()
+	}
+
+	mut udp := net.dial_udp('127.0.0.1:${port}')!
+	defer {
+		udp.close() or {}
+	}
+	udp.set_read_timeout(500 * time.millisecond)
+
+	now0 := h3_now_ns()
+	mut qc, first_dg := quic.dial(quic.DialParams{
+		server_name:          'localhost'
+		ca_bundle_pem:        h3_server_test_cert_pem
+		alpn_protocols:       ['h3']
+		transport_parameters: h3_server_test_transport_parameters()
+	}, now0)!
+	udp.write(first_dg.bytes)!
+	mut h3 := quic.new_h3_conn(mut qc, quic.H3ConnParams{
+		settings:                     [
+			quic.H3Setting{
+				identifier: quic.qpack_settings_max_table_capacity_id
+				value:      4096
+			},
+		]
+		own_qpack_max_table_capacity: 4096
+	})
+
+	mut buf := []u8{len: 65535}
+	mut stream_id := u64(0)
+	mut data_sent := false
+	mut got_body := ''
+	mut got_status := ''
+	mut done := false
+	mut rounds := 0
+	mut read_failed := false
+	for !done && rounds < 200 {
+		rounds += 1
+		n, _ := udp.read(mut buf) or {
+			if err.code() != net.err_timed_out_code {
+				read_failed = true
+			}
+			0, net.Addr{}
+		}
+		if read_failed {
+			break
+		}
+		now := h3_now_ns()
+		result := if n > 0 {
+			h3.poll(buf[..n].clone(), now)!
+		} else {
+			h3.process_timeouts(now)!
+		}
+		for dg in result.outgoing {
+			udp.write(dg.bytes)!
+		}
+		if h3.established() && stream_id == 0 {
+			stream_id = h3.open_request_stream()!
+			// fin: false -- queues HEADERS only. Deliberately NOT
+			// followed by send_request_data in this same iteration (see
+			// this test's own doc comment): that queued frame isn't
+			// flushed into result.outgoing until the NEXT iteration's
+			// poll()/process_timeouts() call, at the TOP of the loop --
+			// so it goes out as its own, headers-only UDP datagram
+			// before send_request_data is ever called.
+			h3.send_request_headers(stream_id, [
+				quic.QpackFieldLine{
+					name:  ':method'
+					value: 'GET'
+				},
+				quic.QpackFieldLine{
+					name:  ':path'
+					value: '/echo'
+				},
+				quic.QpackFieldLine{
+					name:  ':scheme'
+					value: 'https'
+				},
+				quic.QpackFieldLine{
+					name:  ':authority'
+					value: 'localhost'
+				},
+			], false)!
+		} else if stream_id != 0 && !data_sent {
+			// Reached on the round AFTER the headers-only datagram above
+			// was already flushed and written (at the top of THIS same
+			// iteration) -- queuing DATA(fin) here guarantees it flushes
+			// as its own separate datagram on the round after this one.
+			h3.send_request_data(stream_id, 'hi'.bytes(), true)!
+			data_sent = true
+		}
+		for ev in result.events {
+			match ev.kind {
+				.response_headers {
+					for f in ev.headers {
+						if f.name == ':status' {
+							got_status = f.value
+						}
+					}
+				}
+				.response_data {
+					got_body += ev.data.bytestr()
+				}
+				.response_ended {
+					done = true
+				}
+				else {}
+			}
+		}
+	}
+	assert done, 'expected a response within ${rounds} rounds'
+	assert got_status == '200'
+	assert got_body == 'pong:hi'
+}
+
 // test_h3_server_local_addr_reports_os_assigned_port is a small,
 // dedicated regression test for local_addr() itself, independent of the
 // full round-trip test above -- a caller binding with ':0' has no other
