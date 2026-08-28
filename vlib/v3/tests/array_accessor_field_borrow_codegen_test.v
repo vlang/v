@@ -126,6 +126,24 @@ fn test_owned_first_last_receiver_evaluated_once() {
 	assert run.output.trim_space() == '9:1', run.output
 }
 
+// Concern: `(arr.last()).field` must lower to the same in-place borrow as `arr.last().field`.
+// The checker's borrowed-field predicate sees through transparent parentheses to suppress the
+// diagnostic, so the transformer must unwrap them too; otherwise the accessor follows its
+// independent-copy path and emits an empty `(0)` placeholder that fails C compilation.
+fn test_owned_parenthesized_field_borrow() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_paren_borrow',
+		"struct E {\n\tname string\n\tsize int\n}\n\nstruct T {\nmut:\n\tentries []E\n\ttotal   int\n}\n\nfn (mut t T) shrink() {\n\tfor t.entries.len > 0 {\n\t\tt.total -= (t.entries.last()).size\n\t\tt.entries.delete_last()\n\t}\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'a', size: 5 }\n\tt.entries << E{ name: 'b', size: 7 }\n\tt.total = 12\n\tt.shrink()\n\tprintln(int_str(t.total))\n}\n",
+		'')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('unsupported node kind'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_paren_borrow_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '0', run.output
+}
+
 // Concern: a bound method value (`arr.last().method`) is not a field read. Closure
 // generation shallow-copies the receiver, so it must keep the copying accessor semantics
 // instead of borrowing the array element. For an owned element with no `clone()` method the

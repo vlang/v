@@ -17767,7 +17767,14 @@ fn (mut t Transformer) borrow_first_last_accessor(call_id flat.NodeId) ?flat.Nod
 		|| t.suppress_first_last_accessor_borrow {
 		return none
 	}
-	node := t.a.nodes[int(call_id)]
+	mut node := t.a.nodes[int(call_id)]
+	// `(arr.last()).field` is the same borrow as `arr.last().field`; the checker's
+	// borrowed-field predicate (array_accessor_result_is_borrowed) looks through
+	// transparent parentheses, so this must too — otherwise the suppressed diagnostic
+	// leaks an empty `(0)` placeholder and the C compilation fails.
+	for node.kind == .paren && node.children_count > 0 {
+		node = t.a.nodes[int(t.a.child(&node, 0))]
+	}
 	if node.kind != .call || node.children_count == 0 {
 		return none
 	}
