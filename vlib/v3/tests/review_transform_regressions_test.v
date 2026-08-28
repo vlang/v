@@ -2803,6 +2803,8 @@ fn main() {
 	c_source := gen_c_from_source(v3_bin, 'immediate_bound_method_hot_loop_c', source)
 	init_body := c_fn_body(c_source, 'void _vinit() {')
 	assert init_body.contains('closure__closure_init();'), init_body
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body.contains('_vinit();'), main_body
 	assert c_source.contains('closure__closure_try_destroy(__immediate_closure_'), c_source
 	out := run_good(v3_bin, 'immediate_bound_method_hot_loop', source)
 	assert out == '1249975000'
