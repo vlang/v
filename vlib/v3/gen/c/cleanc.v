@@ -21934,8 +21934,24 @@ fn (mut g FlatGen) queue_global_array_init(target string, val_id flat.NodeId, ty
 		}
 		return true
 	}
+	if default_expr := g.global_array_default_elem_expr(typ.elem_type) {
+		g.queue_runtime_init('\t{ ${target} = array_new(sizeof(${elem_ct}), ${len_expr}, ${cap_expr}); for (int index = 0; index < ${target}.len; index++) { *((${elem_ct}*)array_get(${target}, index)) = ${default_expr}; } }')
+		return true
+	}
 	g.queue_runtime_init('\t${target} = array_new(sizeof(${elem_ct}), ${len_expr}, ${cap_expr});')
 	return true
+}
+
+fn (mut g FlatGen) global_array_default_elem_expr(elem_type types.Type) ?string {
+	clean_type := default_init_unalias_type(elem_type)
+	if clean_type is types.Array || clean_type is types.Map {
+		return g.default_value_to_string(elem_type)
+	}
+	if clean_type is types.Struct && !clean_type.name.starts_with('C.')
+		&& g.struct_needs_default_init(clean_type.name) {
+		return g.default_value_to_string(elem_type)
+	}
+	return none
 }
 
 fn (mut g FlatGen) queue_shared_global_explicit_init(name string, inner string, typ types.Type, val_id flat.NodeId) bool {

@@ -6,6 +6,8 @@ import v3.flat
 import v3.gen.c.naming
 import v3.types
 
+const json_decode_max_type_depth = 64
+
 struct TestHarnessFn {
 	node_id      flat.NodeId
 	name         string
@@ -9707,7 +9709,7 @@ fn (g &FlatGen) json_decode_value_supported(typ types.Type, depth int) bool {
 }
 
 fn (g &FlatGen) json_decode_value_supported_inner(typ types.Type, depth int, seen []string) bool {
-	if depth > 64 {
+	if depth > json_decode_max_type_depth {
 		return false
 	}
 	clean := if typ is types.Alias { typ.base_type } else { typ }
@@ -9790,7 +9792,7 @@ fn (g &FlatGen) json_decode_value_supported_inner(typ types.Type, depth int, see
 }
 
 fn (g &FlatGen) json_decode_value_needs_exact_integer(typ types.Type, depth int) bool {
-	if depth > 12 {
+	if depth > json_decode_max_type_depth {
 		return false
 	}
 	clean := if typ is types.Alias { typ.base_type } else { typ }

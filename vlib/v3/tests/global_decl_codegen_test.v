@@ -61,3 +61,10 @@ fn test_explicit_shared_and_fixed_array_global_initializers() {
 		"struct Counter {\n\tvalue int\n}\n\n__global counter shared Counter = Counter{value: 7}\n__global values = [][2]int{len: 1, init: [1, 2]!}\n\nfn main() {\n\tvalue := rlock counter {\n\t\tcounter.value\n\t}\n\tprintln(int_str(value))\n\tprintln(int_str(values[0][0]) + ':' + int_str(values[0][1]))\n}\n")
 	assert out == '7\n1:2'
 }
+
+fn test_global_array_initializers_fill_runtime_defaults() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'global_array_runtime_defaults',
+		"struct Config {\nmut:\n\tretries int = 7\n\tnames []string\n\tscores map[string]int\n}\n\n__global configs = []Config{len: 2}\n__global nested = [][]int{len: 2}\n__global lookups = []map[string]int{len: 2}\n\nfn main() {\n\tconfigs[0].names << 'ok'\n\tconfigs[0].scores['x'] = 5\n\tnested[0] << 9\n\tlookups[0]['x'] = 11\n\tprintln(int_str(configs[0].retries))\n\tprintln(configs[0].names[0])\n\tprintln(int_str(configs[0].scores['x']))\n\tprintln(int_str(nested[0][0]))\n\tprintln(int_str(lookups[0]['x']))\n\tprintln(int_str(configs[1].names.len) + ':' + int_str(configs[1].scores.len) + ':' + int_str(nested[1].len) + ':' + int_str(lookups[1].len))\n}\n")
+	assert out == '7\nok\n5\n9\n11\n0:0:0:0'
+}

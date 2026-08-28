@@ -21,6 +21,8 @@ struct DecodeV3Plain {
 	age  int
 }
 
+type DecodeV3DeepI64 = [][][][][][][][][][][][][]i64
+
 fn decode_v3_generic[T](source string) !T {
 	return json.decode(T, source)
 }
@@ -83,4 +85,13 @@ fn test_json_decode_v3_recursive_pointer_has_no_static_depth_cap() {
 		cursor = cursor.next
 	}
 	assert expected == 48
+}
+
+fn test_json_decode_v3_preserves_deep_exact_integer() {
+	mut source := '9007199254740993'
+	for _ in 0 .. 13 {
+		source = '[${source}]'
+	}
+	decoded := decode_v3_generic[DecodeV3DeepI64](source)!
+	assert decoded[0][0][0][0][0][0][0][0][0][0][0][0][0] == i64(9007199254740993)
 }
