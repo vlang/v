@@ -109,14 +109,14 @@ fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 	mut v2_path := ''
 	mut v1_memory_path := ''
 	for line in cgroups.split_into_lines() {
-		parts := line.split(':')
-		if parts.len != 3 {
-			continue
-		}
-		if parts[1] == '' {
-			v2_path = parts[2]
-		} else if 'memory' in parts[1].split(',') {
-			v1_memory_path = parts[2]
+		first_separator := line.index(':') or { continue }
+		second_separator := line.index_after(':', first_separator + 1) or { continue }
+		controllers := line[first_separator + 1..second_separator]
+		cgroup_path := line[second_separator + 1..]
+		if controllers == '' {
+			v2_path = cgroup_path
+		} else if 'memory' in controllers.split(',') {
+			v1_memory_path = cgroup_path
 		}
 	}
 	if v1_memory_path != '' {
