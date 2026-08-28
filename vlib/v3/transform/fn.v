@@ -5370,6 +5370,9 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 		}
 	}
 	resolved_base := t.alias_str_resolved_base_type(base_type)
+	if is_ref && t.alias_str_needs_name_wrapper(base_type) {
+		return t.lower_ref_str_guarded(expr, alias_name, false, '', '&nil')
+	}
 	inner_type := if is_ref { '&${resolved_base}' } else { resolved_base }
 	inner := t.wrap_string_conversion(expr, inner_type)
 	if is_ref && t.is_optional_type_name(resolved_base) {
@@ -10724,6 +10727,10 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 		return none
 	}
 	base_type := t.pointer_str_receiver_type(base_id) or { return none }
+	raw_alias_type := t.raw_alias_type_for_expr(base_id)
+	if raw_alias_type.starts_with('&') {
+		return t.wrap_string_conversion(t.transform_expr(base_id), raw_alias_type)
+	}
 	clean_type := base_type[1..]
 	if aggregate := t.stringify_aggregate_type_name(clean_type) {
 		if t.checker_selected_custom_receiver_method(call_id, 'str') {
@@ -11420,6 +11427,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		// `(&Struct).str()` keeps the reference so the pointee is stringified with V's `&`
 		// prefix (or `&nil`); primitive/alias pointers keep their existing ptr_str behavior.
 		if base_is_pointer {
+			raw_alias_type := t.raw_alias_type_for_expr(base_id)
+			if raw_alias_type.starts_with('&') {
+				return t.wrap_string_conversion(t.transform_expr(base_id), raw_alias_type)
+			}
 			if aggregate := t.stringify_aggregate_type_name(base_type) {
 				if selected := t.checker_selected_receiver_method_name(id, 'str') {
 					args := t.transform_receiver_method_args(node, base_id, selected)
@@ -11434,7 +11445,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 			return t.wrap_string_conversion(t.transform_expr(base_id), '&${base_type}')
 		}
-		stringify_type := t.raw_var_type_for_expr(base_id) or { base_type }
+		mut stringify_type := t.raw_alias_type_for_expr(base_id)
+		if stringify_type.len == 0 {
+			stringify_type = t.raw_var_type_for_expr(base_id) or { base_type }
+		}
 		return t.wrap_string_conversion(t.transform_expr(base_id), stringify_type)
 	}
 	if builtin_base_type == 'string' && method == 'hex' && !base_is_pointer {
