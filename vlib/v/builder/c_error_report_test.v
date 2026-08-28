@@ -304,6 +304,18 @@ fn test_report_includes_v_source_counts_v_context() {
 	})
 }
 
+fn test_v_source_upload_is_complete_distinguishes_full_file_from_excerpt() {
+	// A whole file that fit the byte budget carries no truncation marker, so the notice
+	// must report it as the complete source rather than a bounded excerpt (PR #28234 review).
+	assert v_source_upload_is_complete('module main\nfn main() {\n\tprintln(1)\n}')
+	// A file larger than the budget (or an internal-error head+tail window) carries the
+	// truncation marker, so it is a bounded excerpt.
+	truncated := 'module main\n${c_error_v_source_truncation_notice}\nfn main() {}'
+	assert !v_source_upload_is_complete(truncated)
+	// No source at all (context-only or metadata-only) is not a complete upload.
+	assert !v_source_upload_is_complete('')
+}
+
 fn test_external_v3_report_env_round_trip() {
 	// The fallback report is handed to the external builder as self-contained content
 	// through the environment: the owning process bounds the source (reading its own

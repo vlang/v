@@ -175,7 +175,7 @@ fn (mut v Builder) submit_c_error_bug_report_with_tag(ccompiler string, c_output
 	is_v3_fallback := tag != ''
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
 		if is_v3_fallback {
-			print_v3_fallback_notice('', false, false)
+			print_v3_fallback_notice('', false, false, false)
 		}
 		return
 	}
@@ -207,7 +207,7 @@ fn (mut v Builder) send_prepared_c_error_bug_report(raw_report CErrorBugReport, 
 	tool_output := send_c_error_bug_report(report, report_url) or {
 		eprintln('C compiler bug report was not sent to ${report_url}: ${err}')
 		if is_v3_fallback {
-			print_v3_fallback_notice('', false, false)
+			print_v3_fallback_notice('', false, false, false)
 		}
 		return
 	}
@@ -216,7 +216,8 @@ fn (mut v Builder) send_prepared_c_error_bug_report(raw_report CErrorBugReport, 
 	// `-o -` output for exactly the programs that needed the fallback.
 	eprintln('================== C compiler bug report ==============')
 	if is_v3_fallback {
-		print_v3_fallback_notice(report_url, true, report_includes_v_source(report))
+		print_v3_fallback_notice(report_url, true, report_includes_v_source(report),
+			v_source_upload_is_complete(report.v_source))
 	}
 	if tool_output != '' {
 		eprintln(tool_output)
@@ -236,7 +237,7 @@ pub fn submit_external_c_error_bug_report(prefs &pref.Preferences, ccompiler str
 		// `submit_c_error_bug_report_with_tag` would normally emit this, but the
 		// filter returns before reaching it. A non-empty tag marks the V3 fallback.
 		if tag != '' {
-			print_v3_fallback_notice('', false, false)
+			print_v3_fallback_notice('', false, false, false)
 		}
 		return
 	}
@@ -262,7 +263,7 @@ fn consume_external_c_error_bug_report(prefs &pref.Preferences, report ExternalC
 			// A known V3 limitation or a report omitted to keep the retry transport safe:
 			// the stable build has just succeeded, so tell the user V3 fell back — matching
 			// the documented notice (doc/docs.md) — but file no bug report.
-			print_v3_fallback_notice('', false, false)
+			print_v3_fallback_notice('', false, false, false)
 			return
 		}
 		if report.kind == external_v3_compiler_error_kind {
@@ -800,14 +801,14 @@ fn submit_inline_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c
 		// Not eligible for automatic submission (e.g. a missing library), but V3 still
 		// fell back to the stable compiler, so the user is told about the fallback.
 		if is_v3_fallback {
-			print_v3_fallback_notice('', false, false)
+			print_v3_fallback_notice('', false, false, false)
 		}
 		return
 	}
 	mut b := new_builder(prefs)
 	if !should_submit_c_error_bug_report(b.pref.c_error_bug_report_url) {
 		if is_v3_fallback {
-			print_v3_fallback_notice('', false, false)
+			print_v3_fallback_notice('', false, false, false)
 		}
 		return
 	}
@@ -816,7 +817,7 @@ fn submit_inline_c_error_bug_report(prefs &pref.Preferences, ccompiler string, c
 
 fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_output string, v_file string, v_source string, tag string) {
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
-		print_v3_fallback_notice('', false, false)
+		print_v3_fallback_notice('', false, false, false)
 		return
 	}
 	build_options := c_error_report_build_options(v.pref, tag)
@@ -842,14 +843,14 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
 	tool_output := send_c_error_bug_report(report, report_url) or {
 		eprintln('V3 compiler bug report was not sent to ${report_url}: ${err}')
-		print_v3_fallback_notice('', false, false)
+		print_v3_fallback_notice('', false, false, false)
 		return
 	}
 	// Report diagnostics go to stderr, never stdout: with `v -o - source.v` the generated
 	// C is already on stdout, so appending this banner there would corrupt the documented
 	// `-o -` output for exactly the programs that needed the fallback.
 	eprintln('================== V3 compiler bug report ==============')
-	print_v3_fallback_notice(report_url, true, report.v_source != '')
+	print_v3_fallback_notice(report_url, true, report.v_source != '', v_source_upload_is_complete(report.v_source))
 	if tool_output != '' {
 		eprintln(tool_output)
 	}
@@ -934,16 +935,31 @@ fn report_includes_v_source(report CErrorBugReport) bool {
 	return report.v_source != '' || report.v_context.len > 0
 }
 
+// v_source_upload_is_complete reports whether the uploaded `v_source` is the complete
+// failing source rather than a bounded excerpt. The whole file is uploaded when it fits
+// the byte budget; only a larger file (or the head+tail internal-error window) carries the
+// truncation marker, and an empty `v_source` means nothing but context lines were sent.
+// Used so the fallback notice states accurately how much source reached the report service.
+fn v_source_upload_is_complete(v_source string) bool {
+	return v_source != '' && !v_source.contains(c_error_v_source_truncation_notice)
+}
+
 // print_v3_fallback_notice explains, in plain language, that V3 could not build the
 // program so the stable compiler was used instead. `submitted` selects whether a bug
 // report was actually filed; `report_url` is where it went (empty when not filed).
-fn print_v3_fallback_notice(report_url string, submitted bool, source_uploaded bool) {
+// `complete_source` distinguishes a full-file upload from a bounded excerpt so users are
+// told accurately how much source was disclosed.
+fn print_v3_fallback_notice(report_url string, submitted bool, source_uploaded bool, complete_source bool) {
 	eprintln('note: V3 could not build this program, so V used the stable compiler instead.')
 	if !submitted {
 		return
 	}
 	if source_uploaded {
-		eprintln('A bug report with a bounded excerpt of the failing V source was submitted to ${report_url} so this can be fixed.')
+		if complete_source {
+			eprintln('A bug report with the complete failing V source was submitted to ${report_url} so this can be fixed.')
+		} else {
+			eprintln('A bug report with a bounded excerpt of the failing V source was submitted to ${report_url} so this can be fixed.')
+		}
 	} else {
 		eprintln('A metadata-only bug report (no source) was submitted to ${report_url} so this can be fixed.')
 	}
