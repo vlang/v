@@ -32,6 +32,19 @@ fn test_generated_calls_publish_exact_resolution_except_cgen_intrinsics() {
 	assert tc.resolved_call_name(intrinsic_id) == none
 }
 
+fn test_const_map_expansion_estimate_ignores_shadowing_local() {
+	mut a := flat.FlatAst.new()
+	const_id := a.add_node(flat.Node{
+		kind: .map_init
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.const_exprs['lookup'] = const_id
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	ident := t.make_ident('lookup')
+	t.set_var_type('lookup', 'map[string]int')
+	assert t.collection_const_expr_for_ident(ident) == none
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{
