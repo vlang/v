@@ -2806,6 +2806,26 @@ fn main() {
 	assert out == '1249975000'
 }
 
+fn test_immediately_invoked_closure_keeps_aliased_pointer_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	x := 41
+	p := (fn [x] () &int {
+		return unsafe { &x }
+	})()
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_pointer_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_pointer', source)
+	assert out == '42'
+}
+
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]

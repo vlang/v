@@ -1314,6 +1314,10 @@ fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closur
 	if closure_name.len == 0 {
 		return call_id
 	}
+	if t.immediate_closure_result_may_alias_capture(typ) {
+		t.pending_stmts << t.make_local_closure_cleanup_defer(closure_name)
+		return call_id
+	}
 	if typ.len == 0 || typ == 'void' {
 		t.pending_stmts << t.make_expr_stmt(call_id)
 		t.pending_stmts << t.make_local_closure_destroy_stmt(closure_name)
@@ -1326,6 +1330,88 @@ fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closur
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), typ)
 	return result
+}
+
+fn (t &Transformer) immediate_closure_result_may_alias_capture(type_name string) bool {
+	if type_name.len == 0 {
+		return false
+	}
+	if isnil(t.tc) {
+		clean := t.normalize_type_alias(type_name)
+		return clean.starts_with('&') || clean in ['voidptr', 'byteptr', 'charptr']
+	}
+	mut seen := map[string]bool{}
+	return t.closure_result_type_may_alias_capture(t.tc.parse_type(type_name), mut seen)
+}
+
+fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut seen map[string]bool) bool {
+	return match typ {
+		types.Pointer { true }
+		types.Alias {
+			t.closure_result_type_may_alias_capture(typ.base_type, mut seen)
+		}
+		types.OptionType {
+			t.closure_result_type_may_alias_capture(typ.base_type, mut seen)
+		}
+		types.ResultType {
+			t.closure_result_type_may_alias_capture(typ.base_type, mut seen)
+		}
+		types.Array {
+			t.closure_result_type_may_alias_capture(typ.elem_type, mut seen)
+		}
+		types.ArrayFixed {
+			t.closure_result_type_may_alias_capture(typ.elem_type, mut seen)
+		}
+		types.Channel {
+			t.closure_result_type_may_alias_capture(typ.elem_type, mut seen)
+		}
+		types.Map {
+			t.closure_result_type_may_alias_capture(typ.key_type, mut seen)
+				|| t.closure_result_type_may_alias_capture(typ.value_type, mut seen)
+		}
+		types.Struct {
+			if typ.name in seen {
+				false
+			} else {
+				seen[typ.name] = true
+				mut may_alias := false
+				for field in t.tc.structs[typ.name] or { []types.StructField{} } {
+					if t.closure_result_type_may_alias_capture(field.typ, mut seen) {
+						may_alias = true
+						break
+					}
+				}
+				may_alias
+			}
+		}
+		types.SumType {
+			if typ.name in seen {
+				false
+			} else {
+				seen[typ.name] = true
+				mut may_alias := false
+				for variant in t.tc.sum_types[typ.name] or { []string{} } {
+					if t.closure_result_type_may_alias_capture(t.tc.parse_type(variant), mut seen) {
+						may_alias = true
+						break
+					}
+				}
+				may_alias
+			}
+		}
+		types.MultiReturn {
+			mut may_alias := false
+			for item in typ.types {
+				if t.closure_result_type_may_alias_capture(item, mut seen) {
+					may_alias = true
+					break
+				}
+			}
+			may_alias
+		}
+		types.FnType, types.Interface { true }
+		else { false }
+	}
 }
 
 fn (mut t Transformer) transform_cgen_json_encode_call(id flat.NodeId, node flat.Node) flat.NodeId {
