@@ -4771,13 +4771,15 @@ fn (mut t Transformer) lower_interface_auto_str_with_nil(expr flat.NodeId, iface
 			mut then_body := render_body.clone()
 			if t.interface_autostr_impl_needs_address_guard(inner_type) {
 				object_addr := t.make_selector(value, '_object', 'voidptr')
+				object_type := t.make_int_literal(t.type_index_for_type_name(inner_type))
 				mut live_body := [
-					t.make_expr_stmt(t.make_call_typed('autostr_addr_push', [object_addr],
-						'void')),
+					t.make_expr_stmt(t.make_call_typed('autostr_addr_type_push', [object_addr,
+						object_type], 'void')),
 				]
 				live_body << render_body
 				live_body << t.make_expr_stmt(t.make_call_typed('autostr_addr_pop', [], 'void'))
-				seen := t.make_call_typed('autostr_addr_in_stack', [object_addr], 'bool')
+				seen := t.make_call_typed('autostr_addr_type_in_stack', [object_addr,
+					object_type], 'bool')
 				seen_body := t.make_block([
 					t.make_assign(t.make_ident(result_name), t.make_string_literal('<circular>')),
 				])
@@ -4931,15 +4933,17 @@ fn (mut t Transformer) request_auto_str_helper(expr flat.NodeId, aggregate strin
 	}
 	value := t.stable_expr_for_reuse(expr)
 	address := t.make_cast('voidptr', t.make_prefix(.amp, value), 'voidptr')
+	address_type := t.make_int_literal(t.type_index_for_type_name(aggregate))
 	result_name := t.new_temp('autostr')
 	t.pending_stmts << t.make_decl_assign_typed(result_name,
 		t.make_string_literal('<circular>'), 'string')
 	live_body := t.make_block([
-		t.make_expr_stmt(t.make_call_typed('autostr_addr_push', [address], 'void')),
+		t.make_expr_stmt(t.make_call_typed('autostr_addr_type_push', [address, address_type],
+			'void')),
 		t.make_assign(t.make_ident(result_name), t.make_call_typed(helper, [value], 'string')),
 		t.make_expr_stmt(t.make_call_typed('autostr_addr_pop', [], 'void')),
 	])
-	seen := t.make_call_typed('autostr_addr_in_stack', [address], 'bool')
+	seen := t.make_call_typed('autostr_addr_type_in_stack', [address, address_type], 'bool')
 	t.pending_stmts << t.make_if(seen, t.make_empty(), live_body)
 	return t.make_ident(result_name)
 }
@@ -5161,8 +5165,10 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 	then_body << t.make_assign(t.make_ident(res_name), non_nil)
 	if str_fn.len == 0 || str_fn.starts_with('__v3_autostr_') {
 		address := t.make_cast('voidptr', t.make_ident(ptr_name), 'voidptr')
+		address_type := t.make_int_literal(t.type_index_for_type_name(aggregate))
 		mut live_body := [
-			t.make_expr_stmt(t.make_call_typed('autostr_addr_push', [address], 'void')),
+			t.make_expr_stmt(t.make_call_typed('autostr_addr_type_push', [address, address_type],
+				'void')),
 		]
 		live_body << then_body
 		live_body << t.make_expr_stmt(t.make_call_typed('autostr_addr_pop', [], 'void'))
@@ -5170,7 +5176,8 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 		seen_body := t.make_block([
 			t.make_assign(t.make_ident(res_name), t.make_string_literal(circular_text)),
 		])
-		seen := t.make_call_typed('autostr_addr_in_stack', [address], 'bool')
+		seen := t.make_call_typed('autostr_addr_type_in_stack', [address, address_type],
+			'bool')
 		then_body = [t.make_if(seen, seen_body, t.make_block(live_body))]
 	}
 	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
@@ -5274,15 +5281,18 @@ fn (mut t Transformer) lower_ref_value_str_with_custom_prefix(expr flat.NodeId, 
 		value_str))
 	if _ := t.stringify_aggregate_type_name(elem_type) {
 		address := t.make_cast('voidptr', t.make_ident(ptr_name), 'voidptr')
+		address_type := t.make_int_literal(t.type_index_for_type_name(elem_type))
 		mut live_body := [
-			t.make_expr_stmt(t.make_call_typed('autostr_addr_push', [address], 'void')),
+			t.make_expr_stmt(t.make_call_typed('autostr_addr_type_push', [address, address_type],
+				'void')),
 		]
 		live_body << then_body
 		live_body << t.make_expr_stmt(t.make_call_typed('autostr_addr_pop', [], 'void'))
 		seen_body := t.make_block([
 			t.make_assign(t.make_ident(res_name), t.make_string_literal('&<circular>')),
 		])
-		seen := t.make_call_typed('autostr_addr_in_stack', [address], 'bool')
+		seen := t.make_call_typed('autostr_addr_type_in_stack', [address, address_type],
+			'bool')
 		then_body = [t.make_if(seen, seen_body, t.make_block(live_body))]
 	}
 	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
@@ -5644,8 +5654,9 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 			address_source = t.a.child(&expr_node, 0)
 		}
 		address := t.make_cast('voidptr', address_source, 'voidptr')
-		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('autostr_addr_push', [address],
-			'void'))
+		address_type := t.make_int_literal(t.type_index_for_type_name(struct_type))
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('autostr_addr_type_push', [address,
+			address_type], 'void'))
 	}
 	display := struct_string_display_name(struct_type)
 	mut result := t.make_string_literal('${display}{\n')

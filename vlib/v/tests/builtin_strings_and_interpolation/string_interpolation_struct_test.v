@@ -76,6 +76,27 @@ fn test_acyclic_recursive_pointer_auto_str_keeps_nested_value() {
 	assert s == 'AcyclicNode{|    value: 1|    next: &AcyclicNode{|        value: 2|        next: &nil|    }|}'
 }
 
+struct AddressChild {
+	value int
+}
+
+struct AddressOuter {
+mut:
+	child AddressChild
+	ref   &AddressChild = unsafe { nil }
+}
+
+fn test_autostr_address_guard_distinguishes_first_field_type() {
+	mut outer := AddressOuter{
+		child: AddressChild{
+			value: 7
+		}
+	}
+	outer.ref = &outer.child
+	s := '${outer}'.replace('\n', '|')
+	assert s == 'AddressOuter{|    child: AddressChild{|        value: 7|    }|    ref: &AddressChild{|        value: 7|    }|}'
+}
+
 fn test_stack_circular_elem_auto_str() {
 	mut elem := Circular{unsafe { nil }}
 	elem.next = &elem
