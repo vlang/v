@@ -304,16 +304,27 @@ fn test_report_includes_v_source_counts_v_context() {
 	})
 }
 
-fn test_v_source_upload_is_complete_distinguishes_full_file_from_excerpt() {
-	// A whole file that fit the byte budget carries no truncation marker, so the notice
-	// must report it as the complete source rather than a bounded excerpt (PR #28234 review).
-	assert v_source_upload_is_complete('module main\nfn main() {\n\tprintln(1)\n}')
-	// A file larger than the budget (or an internal-error head+tail window) carries the
-	// truncation marker, so it is a bounded excerpt.
+fn test_bounded_v_source_content_is_truncated_detects_marked_excerpts() {
+	// A whole file that fit the byte budget carries no truncation marker: complete upload.
+	assert !bounded_v_source_content_is_truncated('module main\nfn main() {\n\tprintln(1)\n}')
+	// A bounded excerpt carries the marker.
 	truncated := 'module main\n${c_error_v_source_truncation_notice}\nfn main() {}'
-	assert !v_source_upload_is_complete(truncated)
-	// No source at all (context-only or metadata-only) is not a complete upload.
-	assert !v_source_upload_is_complete('')
+	assert bounded_v_source_content_is_truncated(truncated)
+	assert !bounded_v_source_content_is_truncated('')
+}
+
+fn test_bounded_v_source_marks_single_oversized_line_hard_clamp() {
+	// The failing V line is the whole file and is longer than the byte budget. The safety
+	// hard-clamp used to drop a markerless prefix, so a truncated upload was reported as the
+	// complete source (PR #28234 review). It must now carry the truncation marker, and
+	// bounded_v_source_content_is_truncated must therefore report it as an excerpt.
+	long_line := 'const x = "' + 'a'.repeat(200) + '"'
+	budget := 64
+	out := bounded_v_source(long_line, budget, 1) // focus on line 1 (the only line)
+	assert out.len <= budget
+	assert out.len < long_line.len
+	assert out.contains(c_error_v_source_truncation_notice)
+	assert bounded_v_source_content_is_truncated(out)
 }
 
 fn test_external_v3_report_env_round_trip() {

@@ -74,6 +74,10 @@ pub:
 	v_line         int
 	v_context      []CErrorReportLine
 	v_source       string // the full failing V file, so the report is reproducible (bounded only when larger than the byte budget)
+	// v_source_truncated records, explicitly, whether v_source is a bounded excerpt rather than
+	// the complete file, so the fallback notice states accurately how much source was uploaded
+	// without having to sniff for the in-band truncation marker.
+	v_source_truncated bool
 }
 
 // external_v3_compiler_error_kind marks an ExternalCErrorBugReport that describes a
@@ -217,7 +221,7 @@ fn (mut v Builder) send_prepared_c_error_bug_report(raw_report CErrorBugReport, 
 	eprintln('================== C compiler bug report ==============')
 	if is_v3_fallback {
 		print_v3_fallback_notice(report_url, true, report_includes_v_source(report),
-			v_source_upload_is_complete(report.v_source))
+			!report.v_source_truncated)
 	}
 	if tool_output != '' {
 		eprintln(tool_output)
@@ -786,6 +790,7 @@ fn build_inline_c_error_report(prefs &pref.Preferences, ccompiler string, c_outp
 		c_error:        c_output
 		v_file:         v_file
 		v_source:       v_source
+		v_source_truncated: bounded_v_source_content_is_truncated(v_source)
 	}
 }
 
@@ -838,6 +843,7 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 		c_error:        v3_output
 		v_file:         v_file
 		v_source:       v_source
+		v_source_truncated: bounded_v_source_content_is_truncated(v_source)
 	}
 	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
@@ -850,7 +856,7 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 	// C is already on stdout, so appending this banner there would corrupt the documented
 	// `-o -` output for exactly the programs that needed the fallback.
 	eprintln('================== V3 compiler bug report ==============')
-	print_v3_fallback_notice(report_url, true, report.v_source != '', v_source_upload_is_complete(report.v_source))
+	print_v3_fallback_notice(report_url, true, report.v_source != '', !report.v_source_truncated)
 	if tool_output != '' {
 		eprintln(tool_output)
 	}
@@ -935,13 +941,16 @@ fn report_includes_v_source(report CErrorBugReport) bool {
 	return report.v_source != '' || report.v_context.len > 0
 }
 
-// v_source_upload_is_complete reports whether the uploaded `v_source` is the complete
-// failing source rather than a bounded excerpt. The whole file is uploaded when it fits
-// the byte budget; only a larger file (or the head+tail internal-error window) carries the
-// truncation marker, and an empty `v_source` means nothing but context lines were sent.
-// Used so the fallback notice states accurately how much source reached the report service.
-fn v_source_upload_is_complete(v_source string) bool {
-	return v_source != '' && !v_source.contains(c_error_v_source_truncation_notice)
+// bounded_v_source_content_is_truncated reports whether already-bounded source *content* is a
+// bounded excerpt rather than the complete file. It is used only where the original source is
+// no longer available — reconstructing a report from bytes forwarded across the V3->V1 retry —
+// so truncation cannot be recomputed from the byte budget. bounded_v_source guarantees the
+// truncation marker on every truncation (including the single-oversized-line hard clamp), so
+// its presence is a reliable record there. In-process construction records truncation directly
+// from the byte budget instead (see new_c_error_bug_report), and the notice reads the resulting
+// explicit `CErrorBugReport.v_source_truncated` field rather than sniffing the bytes itself.
+fn bounded_v_source_content_is_truncated(v_source string) bool {
+	return v_source.contains(c_error_v_source_truncation_notice)
 }
 
 // print_v3_fallback_notice explains, in plain language, that V3 could not build the
@@ -1017,6 +1026,10 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	} else {
 		''
 	}
+	// The reproducer already fits the byte budget; the full-file branch is truncated only when
+	// the mapped file is larger than the budget. Record that explicitly for the notice.
+	v_source_truncated := repro == '' && is_v_source_file(v_file)
+		&& mapped_source.len > c_error_bug_report_max_v_source_bytes
 	// v_context is a separate uploaded payload; for a short mapped file its radius
 	// window can also span every line, so apply the same strict-subset rule to it.
 	mut v_context := numbered_context_lines(mapped_lines, v_line, c_error_context_radius)
@@ -1045,6 +1058,7 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		v_line:         v_line
 		v_context:      v_context
 		v_source:       v_source
+		v_source_truncated: v_source_truncated
 	}
 }
 
@@ -1348,8 +1362,16 @@ fn bounded_v_source(source string, max_bytes int, focus_line int) string {
 		parts << c_error_v_source_truncation_notice
 	}
 	result := parts.join('\n')
-	// safety clamp in case a single very long line still exceeds the budget
-	return if result.len > max_bytes { result[..max_bytes] } else { result }
+	if result.len <= max_bytes {
+		return result
+	}
+	// A single line longer than the whole budget still overflows the window. Hard-clamp it,
+	// but keep the truncation marker so a truncated upload is never a silently complete-looking
+	// prefix (the notice's truncation state is tracked explicitly, and this keeps the uploaded
+	// bytes self-describing too).
+	marker_tail := '\n${c_error_v_source_truncation_notice}'
+	clamp := if max_bytes > marker_tail.len { max_bytes - marker_tail.len } else { 0 }
+	return result[..clamp] + marker_tail
 }
 
 // new_c_error_bug_report_with_vlines regenerates the program's C source with `#line`
