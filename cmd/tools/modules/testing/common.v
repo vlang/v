@@ -119,6 +119,19 @@ fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 			v1_memory_path = parts[2]
 		}
 	}
+	if v1_memory_path != '' {
+		if limit := cgroup_memory_limit_for_hierarchy(mountinfo, v1_memory_path, 'cgroup',
+			'memory.limit_in_bytes') {
+			return limit
+		}
+	}
+	if v2_path != '' {
+		return cgroup_memory_limit_for_hierarchy(mountinfo, v2_path, 'cgroup2', 'memory.max')
+	}
+	return error('no cgroup memory limit found')
+}
+
+fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_type string, limit_file string) !u64 {
 	for line in mountinfo.split_into_lines() {
 		parts := line.split(' - ')
 		if parts.len != 2 {
@@ -131,13 +144,11 @@ fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 		}
 		mount_root := mount_parts[3]
 		mount_point := mount_parts[4]
-		if fs_parts[0] == 'cgroup2' && v2_path != '' {
-			return cgroup_memory_limit_in_hierarchy(mount_root, mount_point, v2_path,
-				'memory.max')
+		if fs_parts[0] != fs_type || (fs_type == 'cgroup' && 'memory' !in fs_parts[2].split(',')) {
+			continue
 		}
-		if fs_parts[0] == 'cgroup' && 'memory' in fs_parts[2].split(',') && v1_memory_path != '' {
-			return cgroup_memory_limit_in_hierarchy(mount_root, mount_point, v1_memory_path,
-				'memory.limit_in_bytes')
+		if limit := cgroup_memory_limit_in_hierarchy(mount_root, mount_point, cgroup_path, limit_file) {
+			return limit
 		}
 	}
 	return error('no cgroup memory limit found')

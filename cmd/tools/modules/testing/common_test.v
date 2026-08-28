@@ -78,6 +78,21 @@ fn test_cgroup_v1_memory_limit_is_used() {
 	assert cgroup_memory_limit_from_contents(cgroups, mountinfo)! == u64(8) * 1024 * 1024 * 1024
 }
 
+fn test_cgroup_v1_memory_limit_is_preferred_on_hybrid_hosts() {
+	test_root := os.join_path(os.vtmp_dir(), 'testing_cgroup_memory_limit_${os.getpid()}')
+	v1_mount_point := os.join_path(test_root, 'v1')
+	v2_mount_point := os.join_path(test_root, 'v2')
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	os.mkdir_all(os.join_path(v1_mount_point, 'container'))!
+	os.mkdir_all(os.join_path(v2_mount_point, 'container'))!
+	os.write_file(os.join_path(v1_mount_point, 'container', 'memory.limit_in_bytes'), '8589934592')!
+	cgroups := '0::/container\n5:memory:/container'
+	mountinfo := '36 25 0:32 / ${v2_mount_point} rw,nosuid,nodev,noexec,relatime - cgroup2 cgroup rw\n' + '29 23 0:26 / ${v1_mount_point} rw,relatime - cgroup cgroup rw,memory'
+	assert cgroup_memory_limit_from_contents(cgroups, mountinfo)! == u64(8) * 1024 * 1024 * 1024
+}
+
 fn test_effective_test_memory_uses_lower_cgroup_limit() {
 	physical_memory := u64(32) * 1024 * 1024 * 1024
 	cgroup_memory_limit := u64(8) * 1024 * 1024 * 1024
