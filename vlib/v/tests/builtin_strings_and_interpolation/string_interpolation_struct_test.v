@@ -59,6 +59,23 @@ mut:
 	next &Circular
 }
 
+struct AcyclicNode {
+	value int
+	next  &AcyclicNode = unsafe { nil }
+}
+
+fn test_acyclic_recursive_pointer_auto_str_keeps_nested_value() {
+	child := &AcyclicNode{
+		value: 2
+	}
+	root := AcyclicNode{
+		value: 1
+		next:  child
+	}
+	s := '${root}'.replace('\n', '|')
+	assert s == 'AcyclicNode{|    value: 1|    next: &AcyclicNode{|        value: 2|        next: &nil|    }|}'
+}
+
 fn test_stack_circular_elem_auto_str() {
 	mut elem := Circular{unsafe { nil }}
 	elem.next = &elem
@@ -89,7 +106,7 @@ fn test_cross_reference_field_auto_str() {
 	widget.parent = window
 	window.widgets << widget
 	s := '${window}'.replace('\n', '|')
-	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &CrossRefWindow{|            widgets: [CrossRefWidget{|                parent: &<circular>|            }]|        }|    }]|}'
+	assert s == '&CrossRefWindow{|    widgets: [CrossRefWidget{|        parent: &<circular>|    }]|}'
 }
 
 interface FamilyMember {

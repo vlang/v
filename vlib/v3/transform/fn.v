@@ -4926,7 +4926,22 @@ fn (mut t Transformer) request_auto_str_helper(expr flat.NodeId, aggregate strin
 		}
 	}
 	t.mark_fn_used_name(helper)
-	return t.make_call_typed(helper, [expr], 'string')
+	if t.stringify_stack.len > 0 || !t.expr_can_take_address(expr) {
+		return t.make_call_typed(helper, [expr], 'string')
+	}
+	value := t.stable_expr_for_reuse(expr)
+	address := t.make_cast('voidptr', t.make_prefix(.amp, value), 'voidptr')
+	result_name := t.new_temp('autostr')
+	t.pending_stmts << t.make_decl_assign_typed(result_name,
+		t.make_string_literal('<circular>'), 'string')
+	live_body := t.make_block([
+		t.make_expr_stmt(t.make_call_typed('autostr_addr_push', [address], 'void')),
+		t.make_assign(t.make_ident(result_name), t.make_call_typed(helper, [value], 'string')),
+		t.make_expr_stmt(t.make_call_typed('autostr_addr_pop', [], 'void')),
+	])
+	seen := t.make_call_typed('autostr_addr_in_stack', [address], 'bool')
+	t.pending_stmts << t.make_if(seen, t.make_empty(), live_body)
+	return t.make_ident(result_name)
 }
 
 fn (t &Transformer) has_pending_auto_str_helpers() bool {
@@ -5144,6 +5159,20 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 		value_str
 	}
 	then_body << t.make_assign(t.make_ident(res_name), non_nil)
+	if str_fn.len == 0 || str_fn.starts_with('__v3_autostr_') {
+		address := t.make_cast('voidptr', t.make_ident(ptr_name), 'voidptr')
+		mut live_body := [
+			t.make_expr_stmt(t.make_call_typed('autostr_addr_push', [address], 'void')),
+		]
+		live_body << then_body
+		live_body << t.make_expr_stmt(t.make_call_typed('autostr_addr_pop', [], 'void'))
+		circular_text := if prefix_non_nil { '&<circular>' } else { '<circular>' }
+		seen_body := t.make_block([
+			t.make_assign(t.make_ident(res_name), t.make_string_literal(circular_text)),
+		])
+		seen := t.make_call_typed('autostr_addr_in_stack', [address], 'bool')
+		then_body = [t.make_if(seen, seen_body, t.make_block(live_body))]
+	}
 	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
 	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
 	return t.make_ident(res_name)
@@ -5221,16 +5250,6 @@ fn (mut t Transformer) lower_ref_value_str_with_custom_prefix(expr flat.NodeId, 
 	t.pending_stmts << t.make_decl_assign_typed(ptr_name, expr, typ)
 	t.set_var_type(ptr_name, typ)
 	t.pending_stmts << t.make_decl_assign_typed(res_name, t.make_string_literal(nil_text), 'string')
-	if t.array_elem_str_is_direct_circular(elem_type)
-		|| t.ref_value_str_reaches_large_circular_graph(elem_type) {
-		then_body := t.make_block([
-			t.make_assign(t.make_ident(res_name), t.make_string_literal('&<circular>')),
-		])
-		cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
-		t.pending_stmts << t.make_if(cond, then_body, t.make_empty())
-		t.unset_var_type(ptr_name)
-		return t.make_ident(res_name)
-	}
 	saved := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	value := t.make_prefix(.mul, t.make_ident(ptr_name))
@@ -5253,6 +5272,19 @@ fn (mut t Transformer) lower_ref_value_str_with_custom_prefix(expr flat.NodeId, 
 	t.unset_var_type(ptr_name)
 	then_body << t.make_assign(t.make_ident(res_name), t.string_plus(t.make_string_literal('&'),
 		value_str))
+	if _ := t.stringify_aggregate_type_name(elem_type) {
+		address := t.make_cast('voidptr', t.make_ident(ptr_name), 'voidptr')
+		mut live_body := [
+			t.make_expr_stmt(t.make_call_typed('autostr_addr_push', [address], 'void')),
+		]
+		live_body << then_body
+		live_body << t.make_expr_stmt(t.make_call_typed('autostr_addr_pop', [], 'void'))
+		seen_body := t.make_block([
+			t.make_assign(t.make_ident(res_name), t.make_string_literal('&<circular>')),
+		])
+		seen := t.make_call_typed('autostr_addr_in_stack', [address], 'bool')
+		then_body = [t.make_if(seen, seen_body, t.make_block(live_body))]
+	}
 	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
 	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
 	return t.make_ident(res_name)
@@ -5377,7 +5409,7 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 	inner_type := if is_ref { '&${resolved_base}' } else { resolved_base }
 	inner := t.wrap_string_conversion(expr, inner_type)
 	if is_ref && t.is_optional_type_name(resolved_base) {
-		return t.string_plus(t.make_string_literal('&'), inner)
+		return inner
 	}
 	if t.alias_str_suppress_wrapper_for_mut_param_deref(expr) {
 		return inner
@@ -5600,6 +5632,21 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 		return t.make_string_literal('${struct_string_display_name(struct_type)}{}')
 	}
 	base := t.stable_transformed_expr_for_reuse(expr, struct_type, 'struct_str')
+	guard_root_address := stack_count == 0 && t.expr_can_take_address(base)
+	if guard_root_address {
+		mut address_source := t.make_prefix(.amp, base)
+		expr_node := t.a.nodes[int(expr)]
+		if expr_node.kind == .ident && (t.pointer_value_rvalues[expr_node.value]
+			|| t.mut_param_values[expr_node.value]) {
+			address_source = t.transform_expr_preserving_pointer_value(expr)
+		} else if expr_node.kind == .prefix && expr_node.op == .mul
+			&& expr_node.children_count == 1 {
+			address_source = t.a.child(&expr_node, 0)
+		}
+		address := t.make_cast('voidptr', address_source, 'voidptr')
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('autostr_addr_push', [address],
+			'void'))
+	}
 	display := struct_string_display_name(struct_type)
 	mut result := t.make_string_literal('${display}{\n')
 	for field in info.fields {
@@ -5633,7 +5680,14 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 		result = t.string_plus(result, field_str)
 		result = t.string_plus(result, t.make_string_literal('\n'))
 	}
-	return t.string_plus(result, t.make_string_literal('}'))
+	final_result := t.string_plus(result, t.make_string_literal('}'))
+	if guard_root_address {
+		result_name := t.new_temp('struct_str')
+		t.pending_stmts << t.make_decl_assign_typed(result_name, final_result, 'string')
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('autostr_addr_pop', [], 'void'))
+		return t.make_ident(result_name)
+	}
+	return final_result
 }
 
 fn (t &Transformer) stringify_stack_count(typ string) int {
@@ -10730,6 +10784,12 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 	base_type := t.pointer_str_receiver_type(base_id) or { return none }
 	raw_alias_type := t.raw_alias_type_for_expr(base_id)
 	if raw_alias_type.starts_with('&') {
+		if method_name := t.checker_selected_receiver_method_name(call_id, 'str') {
+			args := t.transform_receiver_method_args(node, base_id, method_name)
+			ret_type := t.receiver_method_return_type(method_name, node.typ)
+			t.mark_fn_used_name(method_name)
+			return t.make_call_typed(method_name, args, ret_type)
+		}
 		return t.wrap_string_conversion(t.transform_expr(base_id), raw_alias_type)
 	}
 	clean_type := base_type[1..]
@@ -11430,6 +11490,12 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		if base_is_pointer {
 			raw_alias_type := t.raw_alias_type_for_expr(base_id)
 			if raw_alias_type.starts_with('&') {
+				if selected := t.checker_selected_receiver_method_name(id, 'str') {
+					args := t.transform_receiver_method_args(node, base_id, selected)
+					ret_type := t.receiver_method_return_type(selected, node.typ)
+					t.mark_fn_used_name(selected)
+					return t.make_call_typed(selected, args, ret_type)
+				}
 				return t.wrap_string_conversion(t.transform_expr(base_id), raw_alias_type)
 			}
 			if aggregate := t.stringify_aggregate_type_name(base_type) {
