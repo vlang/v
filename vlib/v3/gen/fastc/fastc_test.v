@@ -10365,6 +10365,38 @@ fn main() {
 	assert fastc_infer_generic_type_from_parameter('Map_string_Array_voidptr', 'Map_string_Array_example__Item_ptr') == 'example__Item*'
 }
 
+fn test_selfhost_on_demand_generic_does_not_partially_infer_multiple_type_parameters() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	util_source := 'module util
+
+pub fn pair[T, U](left T, right U) T {
+	_ = right
+	return left
+}
+'
+	main_source := 'module main
+import util
+
+fn main() {
+	_ := util.pair(1, "right")
+}
+'
+	c_source, _, _ := generate_source_files([
+		FastcSourceFile{
+			path: 'util/util.v'
+			source: util_source
+			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
+		},
+		FastcSourceFile{
+			path: 'main.v'
+			source: main_source
+			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	assert !c_source.contains('util__pair_mono_'), c_source
+}
+
 fn test_selfhost_user_voidptr_generic_method_named_check_element_type_valid_keeps_body() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

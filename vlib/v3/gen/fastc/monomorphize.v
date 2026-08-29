@@ -254,15 +254,15 @@ fn (mut g Parser) queue_explicit_mono_function(tokens []FastcExpressionToken) ?s
 	return g.queue_mono_function(function_key, concrete)
 }
 
-// queue_implicit_mono_function specializes a generic free function whose first argument
-// reveals its type, such as json2's `encode(value)`.
+// queue_implicit_mono_function specializes a single-parameter generic free function whose
+// argument reveals its type, such as json2's `encode(value)`.
 fn (mut g Parser) queue_implicit_mono_function(tokens []FastcExpressionToken) ?string {
 	if tokens.len == 0 || tokens.last().tok != .name {
 		return none
 	}
 	function_key := g.function_key_for_call(tokens, tokens.len - 1)
 	source := g.generic_method_sources[function_key] or { return none }
-	if source.receiver_type != '' || source.type_param_parameter_index < 0 {
+	if source.receiver_type != '' || source.type_param.contains(',') || source.type_param_parameter_index < 0 {
 		return none
 	}
 	mut look := g.s
