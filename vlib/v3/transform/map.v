@@ -175,6 +175,20 @@ fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo in
 		if node.kind == .array_init {
 			estimate += t.fixed_array_init_expansion_estimate(id, node)
 		}
+		// External constant initializers can themselves index another constant map.
+		// That substitution edge is semantic rather than a physical FlatAst child.
+		if node.kind == .index && node.children_count > 0 {
+			base_id := t.a.child(&node, 0)
+			if const_expr := t.collection_const_expr_for_ident(base_id) {
+				pending << const_expr
+			}
+		}
+		if node.kind == .in_expr && node.children_count > 1 {
+			rhs_id := t.a.child(&node, 1)
+			if const_expr := t.collection_const_expr_for_ident(rhs_id) {
+				pending << const_expr
+			}
+		}
 		for ci in 0 .. int(node.children_count) {
 			child := t.a.child(&node, ci)
 			if int(child) >= 0 && int(child) < t.a.nodes.len && (int(child) < lo || int(child) >= hi) {
