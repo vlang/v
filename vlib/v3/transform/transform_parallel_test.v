@@ -255,6 +255,7 @@ fn test_external_map_expansion_estimate_follows_nested_const_index() {
 	large_ident := a.add_node(flat.Node{
 		kind: .ident
 		value: 'large'
+		typ: 'map[int]int'
 	})
 	large_key := a.add_node(flat.Node{
 		kind: .int_literal
@@ -286,6 +287,48 @@ fn test_external_map_expansion_estimate_follows_nested_const_index() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(outer, 0, 0) > deferred_map_expansion_threshold
+}
+
+fn test_fn_span_map_expansion_estimate_ignores_const_array_index() {
+	mut a := flat.FlatAst.new()
+	entry := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+	})
+	array_start := a.children.len
+	for _ in 0 .. deferred_map_expansion_threshold + 1 {
+		a.children << entry
+	}
+	large := a.add_node(flat.Node{
+		kind: .array_literal
+		typ: '[]int'
+		children_start: array_start
+		children_count: flat.child_count(deferred_map_expansion_threshold + 1)
+	})
+	large_ident := a.add_node(flat.Node{
+		kind: .ident
+		value: 'large'
+		typ: '[]int'
+	})
+	large_key := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+	})
+	index_start := a.children.len
+	a.children << large_ident
+	a.children << large_key
+	large_index := a.add_node(flat.Node{
+		kind: .index
+		typ: 'int'
+		children_start: index_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.const_exprs['large'] = large
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	estimate := t.fn_span_map_expansion_estimate(int(large_index), int(large_index) + 1)
+	assert estimate < deferred_map_expansion_threshold
 }
 
 fn test_external_map_expansion_estimate_includes_direct_array_copy() {
@@ -448,6 +491,42 @@ fn test_external_map_expansion_estimate_includes_string_interpolation() {
 		name: 'Wide'
 		fields: fields
 	}
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
+fn test_external_map_expansion_estimate_includes_interpolation_concatenation() {
+	mut a := flat.FlatAst.new()
+	part := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'part'
+	})
+	part_count := deferred_map_expansion_threshold / 2 + 2
+	interp_start := a.children.len
+	for _ in 0 .. part_count {
+		a.children << part
+	}
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: flat.child_count(part_count)
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'wide'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << interp
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]string'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }

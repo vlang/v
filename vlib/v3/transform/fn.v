@@ -5923,7 +5923,9 @@ fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) int {
 }
 
 fn (mut t Transformer) string_interp_expansion_estimate(node flat.Node) int {
-	mut estimate := 0
+	// transform_string_interp joins every part after the first with string__plus.
+	// Each join appends the function identifier and call nodes.
+	mut estimate := if node.children_count > 1 { 2 * (int(node.children_count) - 1) } else { 0 }
 	for ci in 0 .. int(node.children_count) {
 		part_id := t.a.child(&node, ci)
 		mut expr_id := part_id
