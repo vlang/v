@@ -1613,16 +1613,35 @@ fn (mut g FlatGen) gen_fn(node flat.Node) {
 	g.gen_fn_in_module(flat.empty_node, node, g.tc.cur_module, false)
 }
 
+fn (g &FlatGen) fn_decl_attributes(node_id flat.NodeId) []string {
+	if int(node_id) < 0 {
+		return []string{}
+	}
+	if attrs := g.decl_attrs[int(node_id)] {
+		return attrs
+	}
+	if g.a.specialized_fn_nodes[int(node_id)] {
+		node := g.a.nodes[int(node_id)]
+		if node.pos.is_valid() {
+			return g.decl_attrs_by_source_position[flat_fn_source_position_key(node)] or {
+				[]string{}
+			}
+		}
+	}
+	return []string{}
+}
+
 fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 	if int(node_id) < 0 || g.ccompiler == 'msvc' {
 		return ''
 	}
-	attrs := g.decl_attrs[int(node_id)] or { return '' }
+	attrs := g.fn_decl_attributes(node_id)
 	mut c_attrs := []string{}
 	for raw_attr in attrs {
 		match raw_attr.all_before(':').trim_space() {
 			'_constructor' { c_attrs << 'constructor' }
 			'_destructor' { c_attrs << 'destructor' }
+			'noinline' { c_attrs << 'noinline' }
 			else {}
 		}
 	}
@@ -1630,6 +1649,18 @@ fn (g &FlatGen) fn_decl_c_attribute(node_id flat.NodeId) string {
 		return ''
 	}
 	return ' __attribute__((${c_attrs.join(', ')}))'
+}
+
+fn (g &FlatGen) fn_decl_msvc_noinline_prefix(node_id flat.NodeId) string {
+	if g.ccompiler != 'msvc' {
+		return ''
+	}
+	for raw_attr in g.fn_decl_attributes(node_id) {
+		if raw_attr.all_before(':').trim_space() == 'noinline' {
+			return '__declspec(noinline) '
+		}
+	}
+	return ''
 }
 
 fn (g &FlatGen) fn_decl_noreturn_prefix(node_id flat.NodeId) string {
@@ -4421,6 +4452,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	} else {
 		ret_type := g.fn_node_return_type(node, module_name)
 		g.set_cur_fn_ret(ret_type)
+		g.write(g.fn_decl_msvc_noinline_prefix(node_id))
 		if export_name := g.export_fn_name_in_module(module_name, node.value) {
 			if export_name == generated_fn_name {
 				g.write(g.exported_symbol_attribute())

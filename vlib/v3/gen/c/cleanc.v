@@ -458,6 +458,7 @@ mut:
 	struct_decl_infos            map[string]StructDeclInfo
 	struct_decl_short_infos      map[string]StructDeclInfo
 	decl_attrs                   map[int][]string
+	decl_attrs_by_source_position map[u64][]string
 	c_decl_abi_names             map[string]string
 	c_extern_global_names        map[string]string
 	shared_type_names            map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
@@ -1132,6 +1133,7 @@ pub fn FlatGen.new() FlatGen {
 		struct_decl_infos:               map[string]StructDeclInfo{}
 		struct_decl_short_infos:         map[string]StructDeclInfo{}
 		decl_attrs:                      map[int][]string{}
+		decl_attrs_by_source_position:   map[u64][]string{}
 		c_decl_abi_names:                map[string]string{}
 		c_extern_global_names:           map[string]string{}
 		shared_type_names:               map[string]SharedTypeInfo{}
@@ -2966,6 +2968,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.struct_decl_infos.clear()
 	g.struct_decl_short_infos.clear()
 	g.decl_attrs.clear()
+	g.decl_attrs_by_source_position.clear()
 	g.c_decl_abi_names.clear()
 	g.c_extern_global_names.clear()
 	g.shared_type_names.clear()
@@ -4022,6 +4025,14 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			target_idx := node.value['@attributes:'.len..].int()
 			attrs := node.generic_params().clone()
 			g.decl_attrs[target_idx] = attrs
+			if target_idx >= 0 && target_idx < g.a.nodes.len {
+				target := g.a.nodes[target_idx]
+				// Monomorphization erases the generic template node but preserves
+				// its source position, which is also retained by its specializations.
+				if target.pos.is_valid() {
+					g.decl_attrs_by_source_position[flat_fn_source_position_key(target)] = attrs
+				}
+			}
 			g.index_c_decl_attributes(target_idx, cur_module, attrs)
 			continue
 		}

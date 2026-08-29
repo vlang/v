@@ -2444,6 +2444,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		struct_decl_infos:              g.struct_decl_infos
 		struct_decl_short_infos:        g.struct_decl_short_infos
 		decl_attrs:                     g.decl_attrs
+		decl_attrs_by_source_position:  g.decl_attrs_by_source_position
 		shared_type_names:              g.shared_type_names
 		shared_alias_pointer_shorts:    g.shared_alias_pointer_shorts
 		const_runtime_inits:            if result_only {

@@ -729,6 +729,28 @@ fn struct_field_should_encode[T](field_info EncoderFieldInfo, val T) bool {
 	return true
 }
 
+// encode_struct_field_key keeps the non-type-specific part of struct field
+// encoding out of the comptime field loop. Otherwise every field gets its own
+// copy of the key-collision scan and key selection code.
+@[noinline]
+fn (mut encoder Encoder) encode_struct_field_key(mut used_keys []string, old_used_keys []string, prefix string, field_info EncoderFieldInfo, is_first bool) bool {
+	if field_info.key_name in old_used_keys {
+		return encoder.encode_object_key(is_first, prefix + field_info.key_name)
+	}
+	used_keys << field_info.key_name
+	return encoder.encode_object_key(is_first, field_info.key_name)
+}
+
+@[noinline]
+fn (mut encoder Encoder) encode_embedded_struct_field_key(mut used_keys []string, reserved_keys []string, prefix string, field_info EncoderFieldInfo, is_first bool) bool {
+	should_prefix := field_info.key_name in used_keys || field_info.key_name in reserved_keys
+	json_key := if should_prefix { prefix + field_info.key_name } else { field_info.key_name }
+	if !should_prefix {
+		used_keys << field_info.key_name
+	}
+	return encoder.encode_object_key(is_first, json_key)
+}
+
 @[unsafe]
 fn (mut encoder Encoder) encode_struct_with_embeds[T](val T) {
 	encoder.output << `{`
@@ -772,13 +794,8 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 						write_field = struct_field_should_encode(field_info, field_value)
 
 						if write_field {
-							if field_info.key_name in old_used_keys {
-								is_first = encoder.encode_object_key(is_first, prefix +
-									field_info.key_name)
-							} else {
-								is_first = encoder.encode_object_key(is_first, field_info.key_name)
-								used_keys << field_info.key_name
-							}
+							is_first = encoder.encode_struct_field_key(mut used_keys, old_used_keys,
+								prefix, field_info, is_first)
 							encoder.encode_struct_field_value(field_value)
 						}
 					}
@@ -786,13 +803,8 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 					write_field = struct_field_should_encode(field_info, val.$(field.name))
 
 					if write_field {
-						if field_info.key_name in old_used_keys {
-							is_first = encoder.encode_object_key(is_first, prefix +
-								field_info.key_name)
-						} else {
-							is_first = encoder.encode_object_key(is_first, field_info.key_name)
-							used_keys << field_info.key_name
-						}
+						is_first = encoder.encode_struct_field_key(mut used_keys, old_used_keys,
+							prefix, field_info, is_first)
 						encoder.encode_struct_field_value(val.$(field.name))
 					}
 				}
@@ -858,34 +870,16 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 					rlock field_value {
 						write_field = struct_field_should_encode(field_info, field_value)
 						if write_field {
-							should_prefix := field_info.key_name in used_keys
-								|| field_info.key_name in reserved_keys
-							json_key := if should_prefix {
-								prefix + field_info.key_name
-							} else {
-								field_info.key_name
-							}
-							is_first = encoder.encode_object_key(is_first, json_key)
-							if !should_prefix {
-								used_keys << field_info.key_name
-							}
+							is_first = encoder.encode_embedded_struct_field_key(mut used_keys,
+								reserved_keys, prefix, field_info, is_first)
 							encoder.encode_struct_field_value(field_value)
 						}
 					}
 				} $else {
 					write_field = struct_field_should_encode(field_info, val.$(field.name))
 					if write_field {
-						should_prefix := field_info.key_name in used_keys
-							|| field_info.key_name in reserved_keys
-						json_key := if should_prefix {
-							prefix + field_info.key_name
-						} else {
-							field_info.key_name
-						}
-						is_first = encoder.encode_object_key(is_first, json_key)
-						if !should_prefix {
-							used_keys << field_info.key_name
-						}
+						is_first = encoder.encode_embedded_struct_field_key(mut used_keys,
+							reserved_keys, prefix, field_info, is_first)
 						encoder.encode_struct_field_value(val.$(field.name))
 					}
 				}

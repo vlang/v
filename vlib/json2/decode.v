@@ -417,6 +417,25 @@ fn mark_struct_field_decoded(decoded_mask u64, mut decoded_fields []bool, field_
 	return decoded_mask
 }
 
+// find_struct_field centralizes the runtime part of struct key matching. Keeping
+// this loop outside the comptime field loop avoids emitting the same skip,
+// omitempty, length, and memory-comparison checks once for every struct field.
+@[noinline]
+fn (decoder &Decoder) find_struct_field(field_infos []StructFieldInfo, key_ptr voidptr, key_len int) int {
+	for field_idx, field_info in field_infos {
+		field_can_match := (!field_info.is_skip || field_info.is_required)
+			&& !(field_info.is_omitempty
+			&& decoder.is_empty_value(decoder.current_node.next.value))
+		field_name_matches := key_len == field_info.json_name_len && unsafe {
+			vmemcmp(key_ptr, field_info.json_name_ptr, field_info.json_name_len) == 0
+		}
+		if field_can_match && field_name_matches {
+			return field_idx
+		}
+	}
+	return -1
+}
+
 // key_has_escape reports whether the JSON string key described by `key_info`
 // contains a `\` escape sequence.
 @[direct_array_access; inline]
@@ -880,19 +899,12 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							key_len = unescaped_key.len
 						}
 
+						matched_field_idx := decoder.find_struct_field(field_infos, key_ptr, key_len)
 						mut matched := false
 						field_idx = 0
 						$for field in T.fields {
 							if field.attrs.contains('skip') {
-								if !matched {
-									field_info := field_infos[field_idx]
-									field_can_match := field_info.is_required
-										&& !(field_info.is_omitempty
-										&& decoder.is_empty_value(decoder.current_node.next.value))
-									field_name_matches := key_len == field_info.json_name_len && unsafe {
-										vmemcmp(key_ptr, field_info.json_name_ptr, field_info.json_name_len) == 0
-									}
-									if field_can_match && field_name_matches {
+								if !matched && field_idx == matched_field_idx {
 										decoder.current_node = decoder.current_node.next
 										decoded_mask = mark_struct_field_decoded(decoded_mask, mut
 											decoded_fields, field_idx)
@@ -900,17 +912,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 											decoder.current_node = decoder.current_node.next
 										}
 										matched = true
-									}
 								}
-							} else if !matched {
+							} else if !matched && field_idx == matched_field_idx {
 								field_info := field_infos[field_idx]
-								field_can_match := (!field_info.is_skip || field_info.is_required)
-									&& !(field_info.is_omitempty
-									&& decoder.is_empty_value(decoder.current_node.next.value))
-								field_name_matches := key_len == field_info.json_name_len && unsafe {
-									vmemcmp(key_ptr, field_info.json_name_ptr, field_info.json_name_len) == 0
-								}
-								if field_can_match && field_name_matches {
 									// value node
 									decoder.current_node = decoder.current_node.next
 
@@ -1039,7 +1043,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 									decoded_mask = mark_struct_field_decoded(decoded_mask, mut
 										decoded_fields, field_idx)
 									matched = true
-								}
 							}
 							field_idx++
 						}
