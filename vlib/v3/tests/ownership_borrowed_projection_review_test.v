@@ -109,6 +109,10 @@ fn get_optional_entry(holder &EntryHolder) ?Entry {
 	return holder.entry
 }
 
+fn apply_entry_map(mut entries map[string]Entry, callback fn (mut map[string]Entry)) {
+	callback(mut entries)
+}
+
 fn test_reassign(holder &Holder) {
 	mut target := Payload{
 		values: ["old"]
@@ -314,6 +318,70 @@ fn test_copied_index_alias_is_cloned() {
 	assert (entries[key] as Payload).values[0] == "retained"
 }
 
+fn test_shadowed_index_alias_is_restored() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	alias := &(entries[key] as Payload)
+	{
+		alias := &Payload{
+			values: ["shadow"]
+		}
+		assert alias.values[0] == "shadow"
+	}
+	entries[key] = alias
+	assert (entries[key] as Payload).values[0] == "retained"
+}
+
+fn test_multi_assigned_index_alias_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	mut alias := &Payload{
+		values: ["placeholder"]
+	}
+	mut n := 0
+	alias, n = &(entries[key] as Payload), 1
+	assert n == 1
+	entries[key] = alias
+	assert (entries[key] as Payload).values[0] == "retained"
+}
+
+fn test_fn_literal_captured_index_alias_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	alias := &(entries[key] as Payload)
+	callback := fn [mut entries, alias, key] () {
+		entries[key] = alias
+		assert (entries[key] as Payload).values[0] == "retained"
+	}
+	callback()
+}
+
+fn test_lambda_captured_index_alias_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	alias := &(entries[key] as Payload)
+	apply_entry_map(mut entries, |mut entries| {
+		entries[key] = alias
+		assert (entries[key] as Payload).values[0] == "retained"
+	})
+}
+
 fn test_distinct_dynamic_moved_map_slot_is_dropped() {
 	mut left_drops := 0
 	mut right_drops := 0
@@ -375,6 +443,10 @@ fn main() {
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
 	test_borrowed_sum_projection_is_cloned()
 	test_copied_index_alias_is_cloned()
+	test_shadowed_index_alias_is_restored()
+	test_multi_assigned_index_alias_is_cloned()
+	test_fn_literal_captured_index_alias_is_cloned()
+	test_lambda_captured_index_alias_is_cloned()
 	test_distinct_dynamic_moved_map_slot_is_dropped()
 	test_same_module_const_shadow_is_moved()
 }
@@ -382,7 +454,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 16, out.output
+		assert out.output.count('clone') == 20, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

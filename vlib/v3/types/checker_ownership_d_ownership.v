@@ -159,16 +159,18 @@ mut:
 }
 
 struct OwnershipNameSnapshot {
-	had_owned bool
-	owned_pos flat.NodeId
-	had_type  bool
-	type_name string
-	had_moved bool
-	moved     MovedVar
-	borrows   []OwnershipBorrowerSnapshot
-	children  []OwnershipKeySnapshot
-	had_fn    bool
-	fn_name   string
+	had_owned         bool
+	owned_pos         flat.NodeId
+	had_type          bool
+	type_name         string
+	had_moved         bool
+	moved             MovedVar
+	borrows           []OwnershipBorrowerSnapshot
+	children          []OwnershipKeySnapshot
+	had_fn            bool
+	fn_name           string
+	had_pointer_alias bool
+	pointer_alias     string
 }
 
 struct OwnershipScopeFrame {
@@ -241,16 +243,18 @@ fn ownership_clone_name_snapshots(names map[string]OwnershipNameSnapshot) map[st
 	mut cloned := map[string]OwnershipNameSnapshot{}
 	for name, snap in names {
 		cloned[name] = OwnershipNameSnapshot{
-			had_owned: snap.had_owned
-			owned_pos: snap.owned_pos
-			had_type:  snap.had_type
-			type_name: snap.type_name
-			had_moved: snap.had_moved
-			moved:     snap.moved
-			borrows:   snap.borrows.clone()
-			children:  snap.children.clone()
-			had_fn:    snap.had_fn
-			fn_name:   snap.fn_name
+			had_owned:         snap.had_owned
+			owned_pos:         snap.owned_pos
+			had_type:          snap.had_type
+			type_name:         snap.type_name
+			had_moved:         snap.had_moved
+			moved:             snap.moved
+			borrows:           snap.borrows.clone()
+			children:          snap.children.clone()
+			had_fn:            snap.had_fn
+			fn_name:           snap.fn_name
+			had_pointer_alias: snap.had_pointer_alias
+			pointer_alias:     snap.pointer_alias
 		}
 	}
 	return cloned
@@ -1091,6 +1095,11 @@ fn (mut tc TypeChecker) ownership_pop_scope() {
 		} else {
 			st.ownership_fn_value_vars.delete(name)
 		}
+		if snap.had_pointer_alias {
+			st.pointer_index_aliases[name] = snap.pointer_alias
+		} else {
+			st.pointer_index_aliases.delete(name)
+		}
 		for saved in snap.borrows {
 			mut borrows := st.borrowed_vars[saved.var_name] or { []BorrowInfo{} }
 			borrows << saved.borrow
@@ -1625,16 +1634,18 @@ fn (mut tc TypeChecker) ownership_note_decl(name string) {
 	}
 	children := tc.ownership_child_snapshots(name)
 	st.scope_frames[scope_idx].names[name] = OwnershipNameSnapshot{
-		had_owned: name in st.owned_vars
-		owned_pos: st.owned_vars[name] or { flat.NodeId(-1) }
-		had_type:  name in st.owned_var_types
-		type_name: st.owned_var_types[name] or { '' }
-		had_moved: name in st.moved_vars
-		moved:     st.moved_vars[name] or { MovedVar{} }
-		borrows:   borrows
-		children:  children
-		had_fn:    name in st.ownership_fn_value_vars
-		fn_name:   st.ownership_fn_value_vars[name] or { '' }
+		had_owned:         name in st.owned_vars
+		owned_pos:         st.owned_vars[name] or { flat.NodeId(-1) }
+		had_type:          name in st.owned_var_types
+		type_name:         st.owned_var_types[name] or { '' }
+		had_moved:         name in st.moved_vars
+		moved:             st.moved_vars[name] or { MovedVar{} }
+		borrows:           borrows
+		children:          children
+		had_fn:            name in st.ownership_fn_value_vars
+		fn_name:           st.ownership_fn_value_vars[name] or { '' }
+		had_pointer_alias: name in st.pointer_index_aliases
+		pointer_alias:     st.pointer_index_aliases[name] or { '' }
 	}
 	st.scope_frames[scope_idx].decl_order << name
 }
@@ -1650,16 +1661,18 @@ fn (mut tc TypeChecker) ownership_refresh_scope_snapshot(name string) {
 	scope_idx := st.scope_frames.len - 1
 	snap := st.scope_frames[scope_idx].names[name] or { return }
 	st.scope_frames[scope_idx].names[name] = OwnershipNameSnapshot{
-		had_owned: name in st.owned_vars
-		owned_pos: st.owned_vars[name] or { flat.NodeId(-1) }
-		had_type:  name in st.owned_var_types
-		type_name: st.owned_var_types[name] or { '' }
-		had_moved: name in st.moved_vars
-		moved:     st.moved_vars[name] or { MovedVar{} }
-		borrows:   snap.borrows
-		children:  tc.ownership_child_snapshots(name)
-		had_fn:    name in st.ownership_fn_value_vars
-		fn_name:   st.ownership_fn_value_vars[name] or { '' }
+		had_owned:         name in st.owned_vars
+		owned_pos:         st.owned_vars[name] or { flat.NodeId(-1) }
+		had_type:          name in st.owned_var_types
+		type_name:         st.owned_var_types[name] or { '' }
+		had_moved:         name in st.moved_vars
+		moved:             st.moved_vars[name] or { MovedVar{} }
+		borrows:           snap.borrows
+		children:          tc.ownership_child_snapshots(name)
+		had_fn:            name in st.ownership_fn_value_vars
+		fn_name:           st.ownership_fn_value_vars[name] or { '' }
+		had_pointer_alias: name in st.pointer_index_aliases
+		pointer_alias:     st.pointer_index_aliases[name] or { '' }
 	}
 }
 
@@ -4928,7 +4941,7 @@ fn (mut tc TypeChecker) ownership_begin_fn_literal(id flat.NodeId, node flat.Nod
 	}
 	mut st := tc.ownership_state()
 	fn_name := ownership_fn_literal_name(st.cur_fn, id)
-	captures := tc.ownership_consume_fn_literal_captures(node, fn_name)
+	captures, captured_pointer_aliases := tc.ownership_consume_fn_literal_captures(node, fn_name)
 	st.frames << OwnershipFrame{
 		cur_fn:          st.cur_fn
 		owned_vars:      st.owned_vars.clone()
@@ -4950,7 +4963,7 @@ fn (mut tc TypeChecker) ownership_begin_fn_literal(id flat.NodeId, node flat.Nod
 	st.borrowed_vars = map[string][]BorrowInfo{}
 	st.array_lengths = map[string]int{}
 	st.ownership_fn_value_vars = map[string]string{}
-	st.pointer_index_aliases = map[string]string{}
+	st.pointer_index_aliases = captured_pointer_aliases.clone()
 	st.path_active = true
 	for capture in captures {
 		tc.ownership_mark_owned_name(capture.name, capture.type_name, capture.pos)
@@ -4971,17 +4984,21 @@ fn (mut tc TypeChecker) ownership_begin_fn_literal(id flat.NodeId, node flat.Nod
 	}
 }
 
-fn (mut tc TypeChecker) ownership_consume_fn_literal_captures(node flat.Node, fn_name string) []OwnershipCaptureBinding {
+fn (mut tc TypeChecker) ownership_consume_fn_literal_captures(node flat.Node, fn_name string) ([]OwnershipCaptureBinding, map[string]string) {
 	mut captures := []OwnershipCaptureBinding{}
+	mut pointer_aliases := map[string]string{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.nodes[int(child_id)]
 		if child.kind != .ident || child.value.len == 0 {
 			continue
 		}
+		if target := tc.ownership_state().pointer_index_aliases[child.value] {
+			pointer_aliases[child.value] = target
+		}
 		captures << tc.ownership_consume_fn_literal_capture(child.value, fn_name, child_id)
 	}
-	return captures
+	return captures, pointer_aliases
 }
 
 fn (mut tc TypeChecker) ownership_consume_fn_literal_capture(name string, fn_name string, pos flat.NodeId) []OwnershipCaptureBinding {
@@ -5037,7 +5054,7 @@ fn (mut tc TypeChecker) ownership_begin_lambda_expr(id flat.NodeId, node flat.No
 	}
 	mut st := tc.ownership_state()
 	fn_name := ownership_lambda_name(st.cur_fn, id)
-	captures := tc.ownership_consume_lambda_captures(node, fn_name)
+	captures, captured_pointer_aliases := tc.ownership_consume_lambda_captures(node, fn_name)
 	st.frames << OwnershipFrame{
 		cur_fn:          st.cur_fn
 		owned_vars:      st.owned_vars.clone()
@@ -5057,16 +5074,16 @@ fn (mut tc TypeChecker) ownership_begin_lambda_expr(id flat.NodeId, node flat.No
 	st.borrowed_vars = map[string][]BorrowInfo{}
 	st.array_lengths = map[string]int{}
 	st.ownership_fn_value_vars = map[string]string{}
-	st.pointer_index_aliases = map[string]string{}
+	st.pointer_index_aliases = captured_pointer_aliases.clone()
 	st.path_active = true
 	for capture in captures {
 		tc.ownership_mark_owned_name(capture.name, capture.type_name, capture.pos)
 	}
 }
 
-fn (mut tc TypeChecker) ownership_consume_lambda_captures(node flat.Node, fn_name string) []OwnershipCaptureBinding {
+fn (mut tc TypeChecker) ownership_consume_lambda_captures(node flat.Node, fn_name string) ([]OwnershipCaptureBinding, map[string]string) {
 	if node.children_count == 0 {
-		return []OwnershipCaptureBinding{}
+		return []OwnershipCaptureBinding{}, map[string]string{}
 	}
 	mut params := map[string]bool{}
 	for i in 0 .. node.children_count - 1 {
@@ -5079,12 +5096,16 @@ fn (mut tc TypeChecker) ownership_consume_lambda_captures(node flat.Node, fn_nam
 	mut names := map[string]flat.NodeId{}
 	tc.ownership_collect_lambda_capture_names(body_id, params, mut names)
 	mut captures := []OwnershipCaptureBinding{}
+	mut pointer_aliases := map[string]string{}
 	mut sorted_names := names.keys()
 	sorted_names.sort()
 	for name in sorted_names {
+		if target := tc.ownership_state().pointer_index_aliases[name] {
+			pointer_aliases[name] = target
+		}
 		captures << tc.ownership_consume_fn_literal_capture(name, fn_name, names[name])
 	}
-	return captures
+	return captures, pointer_aliases
 }
 
 fn (mut tc TypeChecker) ownership_collect_lambda_capture_names(id flat.NodeId, locals map[string]bool, mut names map[string]flat.NodeId) {
@@ -6903,6 +6924,8 @@ fn (mut tc TypeChecker) ownership_after_assign_pairs(lhs_ids []flat.NodeId, rhs_
 		return
 	}
 	mut temp_names := []string{cap: lhs_ids.len}
+	mut pointer_alias_targets := []string{len: lhs_ids.len}
+	mut has_pointer_alias_target := []bool{len: lhs_ids.len}
 	for i, lhs_id in lhs_ids {
 		if i >= rhs_ids.len || i >= lhs_types.len {
 			temp_names << ''
@@ -6927,6 +6950,10 @@ fn (mut tc TypeChecker) ownership_after_assign_pairs(lhs_ids []flat.NodeId, rhs_
 			&& tc.ownership_rhs_borrows_indexed_storage(rhs_ids[i]) {
 			tc.ownership_state().borrowed_storage_clone_reads[int(rhs_ids[i])] = true
 		}
+		if target := tc.ownership_pointer_alias_target(rhs_ids[i]) {
+			pointer_alias_targets[i] = target
+			has_pointer_alias_target[i] = true
+		}
 		temp_name := tc.ownership_multi_assign_temp_name(assign_id, i)
 		tc.ownership_assign_to_name(temp_name, rhs_ids[i], lhs_types[i], assign_id)
 		temp_names << temp_name
@@ -6942,6 +6969,12 @@ fn (mut tc TypeChecker) ownership_after_assign_pairs(lhs_ids []flat.NodeId, rhs_
 		tc.ownership_check_reassign(lhs_name, assign_id)
 		tc.ownership_commit_multi_assign_temp(temp_names[i], lhs_name, assign_id)
 		tc.ownership_track_fn_value_binding(lhs_name, rhs_ids[i])
+		mut alias_st := tc.ownership_state()
+		if has_pointer_alias_target[i] {
+			alias_st.pointer_index_aliases[lhs_name] = pointer_alias_targets[i]
+		} else {
+			alias_st.pointer_index_aliases.delete(lhs_name)
+		}
 	}
 	for temp_name in temp_names {
 		tc.ownership_clear_temp_storage(temp_name)
