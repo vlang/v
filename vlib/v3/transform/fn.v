@@ -3809,7 +3809,7 @@ fn (mut t Transformer) append_trailing_args_to_variadic_tail(tail flat.NodeId, n
 fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.NodeId, elem_type types.Type) {
 	expected_elem := t.semantic_type_name(elem_type)
 	arg := t.a.nodes[int(arg_id)]
-	value := if specialized := t.specialize_generic_fn_value_arg(arg_id, expected_elem, true) {
+	mut value := if specialized := t.specialize_generic_fn_value_arg(arg_id, expected_elem, true) {
 		specialized
 	} else if arg.kind == .enum_val && expected_elem in t.enum_types {
 		t.transform_enum_shorthand(arg_id, arg, expected_elem)
@@ -3820,6 +3820,7 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 	} else {
 		t.transform_expr(arg_id)
 	}
+	value = t.clone_checker_marked_receiver_alias_arg(arg_id, value, expected_elem)
 	t.append_variadic_value_push(tmp_name, value, arg_id, elem_type)
 }
 
@@ -13287,7 +13288,16 @@ fn (t &Transformer) expr_root_ident_name(id flat.NodeId) string {
 // their move semantics, so this leaves the ordinary "move out of an owned parameter" path
 // untouched.
 fn (mut t Transformer) clone_receiver_aliased_arg(recv_root string, arg_id flat.NodeId, value flat.NodeId, param_type string) flat.NodeId {
-	if recv_root.len == 0 || param_type.len == 0 || param_type.starts_with('&') {
+	if recv_root.len == 0 || t.expr_root_ident_name(arg_id) != recv_root {
+		return value
+	}
+	return t.clone_checker_marked_receiver_alias_arg(arg_id, value, param_type)
+}
+
+// clone_checker_marked_receiver_alias_arg materializes the clone decision shared by direct
+// arguments and elements packed into a variadic array.
+fn (mut t Transformer) clone_checker_marked_receiver_alias_arg(arg_id flat.NodeId, value flat.NodeId, param_type string) flat.NodeId {
+	if param_type.len == 0 || param_type.starts_with('&') {
 		return value
 	}
 	// transform_call_arg_for_param already clones borrowed projections and extracts index
@@ -13299,9 +13309,6 @@ fn (mut t Transformer) clone_receiver_aliased_arg(recv_root string, arg_id flat.
 		return value
 	}
 	if isnil(t.tc) || !t.tc.ownership_receiver_alias_arg_is_cloned(arg_id) {
-		return value
-	}
-	if t.expr_root_ident_name(arg_id) != recv_root {
 		return value
 	}
 	if !t.compiler_default_clone_type_needs_work(param_type) {

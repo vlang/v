@@ -52,6 +52,11 @@ struct EntryCopy {
 	entry Entry
 }
 
+struct OptionalPayloads {
+mut:
+	items ?[]Payload
+}
+
 type PayloadMap = map[string]Payload
 
 interface Drop {
@@ -89,6 +94,11 @@ fn (holder &Holder) accept_entry(value Entry) string {
 		return value.values[0]
 	}
 	return ""
+}
+
+fn (holder &Holder) consume(values ...Payload) string {
+	assert values.len == 1
+	return values[0].values[0]
 }
 
 fn get_entry(holder &EntryHolder) Entry {
@@ -240,6 +250,33 @@ fn test_direct_receiver_field_clone_is_retained() {
 	assert holder.left.values[0] == "retained"
 }
 
+fn test_variadic_receiver_field_clone_is_retained() {
+	holder := Holder{
+		left: Payload{
+			values: ["retained"]
+		}
+		right: Payload{
+			values: ["other"]
+		}
+	}
+	assert holder.consume(holder.left) == "retained"
+	assert holder.left.values[0] == "retained"
+}
+
+fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
+	mut items := []Payload{}
+	items << (*holder).left
+	items[0].values[0] = "ordinary append"
+	assert holder.left.values[0] == "left"
+
+	mut optional := OptionalPayloads{}
+	optional.items = []
+	optional.items? << (*holder).left
+	optional_items := optional.items or { panic(err) }
+	assert optional_items[0].values[0] == "left"
+	assert holder.left.values[0] == "left"
+}
+
 fn test_borrowed_sum_projection_is_cloned() {
 	holder := &EntryHolder{
 		entry: Payload{
@@ -334,6 +371,8 @@ fn main() {
 	test_branch_alias_merge_is_conservative()
 	test_receiver_index_move_is_not_cloned()
 	test_direct_receiver_field_clone_is_retained()
+	test_variadic_receiver_field_clone_is_retained()
+	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
 	test_borrowed_sum_projection_is_cloned()
 	test_copied_index_alias_is_cloned()
 	test_distinct_dynamic_moved_map_slot_is_dropped()
@@ -343,7 +382,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 13, out.output
+		assert out.output.count('clone') == 16, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

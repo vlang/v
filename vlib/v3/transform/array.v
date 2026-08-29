@@ -1294,8 +1294,12 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
-		rhs = t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
-		rhs = t.clone_borrowed_projection(rhs_id, rhs, elem_type)
+		cloned_append := t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
+		rhs = if cloned_append == rhs {
+			t.clone_borrowed_projection(rhs_id, rhs, elem_type)
+		} else {
+			cloned_append
+		}
 	}
 	t.drain_pending(mut result)
 	if rhs_type.len == 0 {
@@ -1497,8 +1501,12 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
-		rhs = t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
-		rhs = t.clone_borrowed_projection(rhs_id, rhs, elem_type)
+		cloned_append := t.clone_borrowed_array_append_value(rhs_id, rhs, elem_type)
+		rhs = if cloned_append == rhs {
+			t.clone_borrowed_projection(rhs_id, rhs, elem_type)
+		} else {
+			cloned_append
+		}
 	}
 	t.drain_pending(mut result)
 	if rhs_type.len == 0 {
