@@ -179,9 +179,9 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 		if node.kind == .string_interp {
 			estimate += t.string_interp_expansion_estimate(node)
 		}
-		if node.kind == .infix && node.op == .plus && node.children_count >= 2 && (t.is_string_type(t.a.child(&node, 0)) || t.is_string_type(t.a.child(&node, 1))) {
-			// String concatenation emits a fresh literal or an identifier/call pair.
-			// Keep extra room for conversions applied to char and rune operands.
+		if node.kind == .infix && node.op in [.plus, .eq, .ne, .lt, .gt, .le, .ge] && node.children_count >= 2 && (t.is_string_type(t.a.child(&node, 0)) || t.is_string_type(t.a.child(&node, 1))) {
+			// String infix lowering emits a fresh literal or an identifier/call pair,
+			// sometimes with conversions or a negating prefix.
 			estimate += external_string_infix_expansion_estimate
 		}
 		// External constant initializers can themselves index another constant map.
