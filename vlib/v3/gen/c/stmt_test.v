@@ -69,6 +69,26 @@ fn test_inline_asm_x86_register_branch_targets_are_indirect() {
 	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', aliases, false) == 'call named_target'
 }
 
+fn test_inline_asm_block_comments_do_not_create_operand_sections() {
+	source := 'mov rax, "/* ; quoted */"
+/* outer ; /* nested ; */ still a comment ; */
+mov rbx, "// ; quoted"
+// line comment ;
+; +r (value)'
+	clean := strip_c_inline_asm_comments(source)
+	assert clean.contains('"/* ; quoted */"')
+	assert clean.contains('"// ; quoted"')
+	assert !clean.contains('outer')
+	assert !clean.contains('line comment')
+	sections := split_c_inline_asm_sections(clean)
+	assert sections.len == 2
+	assert sections[0].split_into_lines().filter(it.trim_space().len > 0) == [
+		'mov rax, "/* ; quoted */"',
+		'mov rbx, "// ; quoted"',
+	]
+	assert sections[1].trim_space() == '+r (value)'
+}
+
 fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

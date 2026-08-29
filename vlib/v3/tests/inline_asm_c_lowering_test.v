@@ -64,6 +64,7 @@ fn main() {
 	a := 10
 	mut b := 0
 	asm arm64 {
+		/* comment section markers ; ; must be ignored */
 		mov x0, a
 		mov b, x0
 		; +r (b)
@@ -151,6 +152,7 @@ fn main() {
 	a := 10
 	mut b := 0
 	asm amd64 {
+		/* comment section markers ; ; must be ignored */
 		mov rax, a
 		mov b, rax
 		; +r (b)

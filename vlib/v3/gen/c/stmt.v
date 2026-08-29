@@ -3289,6 +3289,31 @@ fn strip_c_inline_asm_comments(source string) string {
 			}
 			continue
 		}
+		if c == `/` && i + 1 < source.len && source[i + 1] == `*` {
+			out.write_u8(` `)
+			i += 2
+			mut depth := 1
+			for i < source.len && depth > 0 {
+				if source[i] == `\n` {
+					out.write_u8(`\n`)
+					i++
+					continue
+				}
+				if source[i] == `/` && i + 1 < source.len && source[i + 1] == `*`
+					&& (i + 2 >= source.len || source[i + 2] != `/`) {
+					depth++
+					i += 2
+					continue
+				}
+				if source[i] == `*` && i + 1 < source.len && source[i + 1] == `/` {
+					depth--
+					i += 2
+					continue
+				}
+				i++
+			}
+			continue
+		}
 		out.write_u8(c)
 		i++
 	}
