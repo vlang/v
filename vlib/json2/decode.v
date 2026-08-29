@@ -47,6 +47,37 @@ struct StructFieldInfo {
 	is_raw        bool
 }
 
+// Keep runtime attribute parsing outside the compile-time field loop. This is called only while
+// a struct type's field metadata cache is initialized.
+@[noinline]
+fn struct_field_info(field_name string, attrs []string) StructFieldInfo {
+	mut json_name_str := field_name.str
+	mut json_name_len := field_name.len
+	mut is_json_skip := false
+	for attr in attrs {
+		if start, end := json_attr_value_range(attr) {
+			if end <= start {
+				continue
+			}
+			if end == start + 1 && attr[start] == `-` {
+				is_json_skip = true
+				break
+			}
+			json_name_str = unsafe { attr.str + start }
+			json_name_len = end - start
+			break
+		}
+	}
+	return StructFieldInfo{
+		json_name_ptr: voidptr(json_name_str)
+		json_name_len: json_name_len
+		is_omitempty:  attrs.contains('omitempty')
+		is_skip:       attrs.contains('skip') || is_json_skip
+		is_required:   attrs.contains('required')
+		is_raw:        attrs.contains('raw')
+	}
+}
+
 struct StructKeyDecodeResult[T] {
 	matched bool
 	value   T
@@ -370,31 +401,7 @@ fn (mut decoder Decoder) cached_struct_field_infos[T]() []StructFieldInfo {
 	if field_infos == nil {
 		field_infos = &[]StructFieldInfo{}
 		$for field in T.fields {
-			mut json_name_str := field.name.str
-			mut json_name_len := field.name.len
-			mut is_json_skip := false
-			for attr in field.attrs {
-				if start, end := json_attr_value_range(attr) {
-					if end <= start {
-						continue
-					}
-					if end == start + 1 && attr[start] == `-` {
-						is_json_skip = true
-						break
-					}
-					json_name_str = unsafe { attr.str + start }
-					json_name_len = end - start
-					break
-				}
-			}
-			field_infos << StructFieldInfo{
-				json_name_ptr: voidptr(json_name_str)
-				json_name_len: json_name_len
-				is_omitempty:  field.attrs.contains('omitempty')
-				is_skip:       field.attrs.contains('skip') || is_json_skip
-				is_required:   field.attrs.contains('required')
-				is_raw:        field.attrs.contains('raw')
-			}
+			field_infos << struct_field_info(field.name, field.attrs)
 		}
 	}
 	return *field_infos

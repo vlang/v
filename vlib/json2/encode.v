@@ -575,6 +575,51 @@ struct EncoderFieldInfo {
 	is_json_null bool
 }
 
+// Keep runtime attribute parsing outside the compile-time field loop. This is called only while
+// a struct type's field metadata cache is initialized.
+@[noinline]
+fn encoder_field_info(field_name string, attrs []string) EncoderFieldInfo {
+	mut is_skip := false
+	mut key_name := ''
+	mut is_omitempty := false
+	mut is_required := false
+	mut is_json_null := false
+	for attr in attrs {
+		match attr {
+			'skip' {
+				is_skip = true
+				break
+			}
+			'omitempty' {
+				is_omitempty = true
+			}
+			'required' {
+				is_required = true
+			}
+			'json_null' {
+				is_json_null = true
+			}
+			else {}
+		}
+
+		if attr.starts_with('json:') {
+			json_attr := json_attr_value(attr) or { continue }
+			if json_attr == '-' {
+				is_skip = true
+				break
+			}
+			key_name = json_attr
+		}
+	}
+	return EncoderFieldInfo{
+		key_name:     if key_name == '' { field_name } else { key_name }
+		is_skip:      is_skip
+		is_omitempty: is_omitempty
+		is_required:  is_required
+		is_json_null: is_json_null
+	}
+}
+
 fn get_value_from_optional[T](val ?T) T {
 	return val or { T{} }
 }
@@ -629,45 +674,7 @@ fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
 	if field_infos == nil {
 		field_infos = &[]EncoderFieldInfo{}
 		$for field in T.fields {
-			mut is_skip := false
-			mut key_name := ''
-			mut is_omitempty := false
-			mut is_required := false
-			mut is_json_null := false
-			for attr in field.attrs {
-				match attr {
-					'skip' {
-						is_skip = true
-						break
-					}
-					'omitempty' {
-						is_omitempty = true
-					}
-					'required' {
-						is_required = true
-					}
-					'json_null' {
-						is_json_null = true
-					}
-					else {}
-				}
-
-				if attr.starts_with('json:') {
-					json_attr := json_attr_value(attr) or { continue }
-					if json_attr == '-' {
-						is_skip = true
-						break
-					}
-					key_name = json_attr
-				}
-			}
-			field_infos << EncoderFieldInfo{
-				key_name:     if key_name == '' { field.name } else { key_name }
-				is_skip:      is_skip
-				is_omitempty: is_omitempty
-				is_required:  is_required
-				is_json_null: is_json_null
-			}
+			field_infos << encoder_field_info(field.name, field.attrs)
 		}
 	}
 	return *field_infos
