@@ -9940,6 +9940,30 @@ fn (mut tc TypeChecker) ownership_aggregate_index_expr(id flat.NodeId, index_par
 	return none
 }
 
+fn (mut tc TypeChecker) ownership_aggregate_projection_expr(id flat.NodeId, suffix string) ?flat.NodeId {
+	if suffix.len == 0 {
+		return id
+	}
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) {
+		return none
+	}
+	if suffix.starts_with('.') {
+		field_name, rest := ownership_split_first_field_suffix(suffix)
+		if field_name.len == 0 {
+			return none
+		}
+		field_id := tc.ownership_aggregate_field_expr(clean_id, field_name) or { return none }
+		return tc.ownership_aggregate_projection_expr(field_id, rest)
+	}
+	index_part, rest := ownership_split_first_index_suffix(suffix)
+	if index_part.len == 0 {
+		return none
+	}
+	elem_id := tc.ownership_aggregate_index_expr(clean_id, index_part) or { return none }
+	return tc.ownership_aggregate_projection_expr(elem_id, rest)
+}
+
 fn ownership_split_first_field_suffix(suffix string) (string, string) {
 	if suffix.len < 2 || suffix[0] != `.` {
 		return '', suffix
@@ -10548,7 +10572,9 @@ pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []
 	info := tc.resolve_call_info(call_id, node) or { return []flat.NodeId{} }
 	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(call_id) }
 	mut param_indices := []int{}
+	mut direct_param_indices := map[int]bool{}
 	for param_idx in tc.ownership_state().ownership_fn_returns_param[call_name] {
+		direct_param_indices[param_idx] = true
 		if param_idx !in param_indices {
 			param_indices << param_idx
 		}
@@ -10557,6 +10583,7 @@ pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []
 		if projection.suffix.len > 0 && slot.slot_idx != 0 {
 			continue
 		}
+		direct_param_indices[slot.param_idx] = true
 		if slot.param_idx !in param_indices {
 			param_indices << slot.param_idx
 		}
@@ -10575,6 +10602,12 @@ pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []
 	mut args := []flat.NodeId{cap: param_indices.len}
 	for param_idx in param_indices {
 		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, param_idx) {
+			if projection.suffix.len > 0 && param_idx in direct_param_indices {
+				if projected_id := tc.ownership_aggregate_projection_expr(arg_id, projection.suffix) {
+					args << projected_id
+					continue
+				}
+			}
 			args << arg_id
 		}
 	}

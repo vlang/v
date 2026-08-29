@@ -5942,6 +5942,96 @@ fn main() {
 	assert out == 'source'
 }
 
+fn test_array_map_keeps_temporary_source_through_nested_local_selector_chain() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+struct Outer {
+	inner PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			outer := Outer{
+				inner: PointerBox{
+					value: unsafe { &it }
+				}
+			}
+			outer.inner.value
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_local_selector_chain_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_local_selector_chain', '-ownership', source)
+	assert out == 'source'
+}
+
+fn test_array_map_drops_temporary_source_for_projected_passthrough_parameter() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerPair {
+	source &Item
+	external &Item
+}
+
+fn pass(pair PointerPair) PointerPair {
+	return pair
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(pass(PointerPair{
+		source: unsafe { &it }
+		external: unsafe { &external }
+	}).external)
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_projected_passthrough_parameter_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_projected_passthrough_parameter', '-ownership', source)
+	assert out == 'external'
+}
+
 fn test_array_map_drops_temporary_source_after_nested_alias_overwrite() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
