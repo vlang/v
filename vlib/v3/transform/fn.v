@@ -1095,6 +1095,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	immediate_fresh_closure := immediate_bound_method || t.call_returns_exclusive_closure(callee_id)
 	mut immediate_closure_type := ''
 	mut immediate_closure_cleanup := ''
+	immediate_closure_spawns_capture := t.immediate_fn_literal_spawns_capture(callee_id)
 	if immediate_fresh_closure {
 		immediate_closure_type = t.fresh_runtime_closure_type(callee_id) or { '' }
 		if immediate_closure_type.len > 0 {
@@ -1272,7 +1273,8 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		if typ != t.a.nodes[int(id)].typ {
 			t.set_node_typ(int(id), typ)
 		}
-		return t.finish_immediate_closure_call(id, immediate_closure_cleanup, typ)
+		return t.finish_immediate_closure_call(id, immediate_closure_cleanup, typ,
+			immediate_closure_spawns_capture)
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -1307,14 +1309,15 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			args:     cached_args
 		}
 	}
-	return t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, typ)
+	return t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, typ,
+		immediate_closure_spawns_capture)
 }
 
-fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closure_name string, typ string) flat.NodeId {
+fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closure_name string, typ string, spawns_capture bool) flat.NodeId {
 	if closure_name.len == 0 {
 		return call_id
 	}
-	if t.immediate_closure_result_may_alias_capture(typ) {
+	if spawns_capture || t.immediate_closure_result_may_alias_capture(typ) {
 		t.pending_stmts << t.make_local_closure_cleanup_defer(closure_name)
 		return call_id
 	}
@@ -1330,6 +1333,70 @@ fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closur
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), typ)
 	return result
+}
+
+fn (t &Transformer) immediate_fn_literal_spawns_capture(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
+		return t.immediate_fn_literal_spawns_capture(t.a.child(&node, 0))
+	}
+	if node.kind != .fn_literal {
+		return false
+	}
+	mut captures := map[string]bool{}
+	for i in 0 .. node.children_count {
+		child := t.a.child_node(&node, i)
+		if child.kind == .ident && child.value.len > 0 && child.value !in t.active_generic_params {
+			captures[child.value] = true
+		}
+	}
+	if captures.len == 0 {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		child := t.a.nodes[int(child_id)]
+		if child.kind !in [.ident, .param]
+			&& t.expr_spawns_any_named_capture(child_id, captures) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) expr_spawns_any_named_capture(id flat.NodeId, captures map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .spawn_expr && t.expr_mentions_any_name(id, captures) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.expr_spawns_any_named_capture(t.a.child(&node, i), captures) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) expr_mentions_any_name(id flat.NodeId, names map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value in names {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.expr_mentions_any_name(t.a.child(&node, i), names) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) immediate_closure_result_may_alias_capture(type_name string) bool {
