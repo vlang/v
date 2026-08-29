@@ -1781,7 +1781,7 @@ fn (g &Parser) shared_token_is_identifier() bool {
 		return offset == start
 	}
 	return g.s.src[offset] in [`.`, `[`, `)`, `]`, `,`, `;`, `:`, `+`, `-`,
-		`*`, `/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`]
+		`*`, `/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`, `^`]
 }
 
 fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source string) string {

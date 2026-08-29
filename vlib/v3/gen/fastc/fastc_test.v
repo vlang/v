@@ -23,8 +23,14 @@ fn use_immutable_shared() Box {
 	return shared
 }
 
+fn xor_shared() int {
+	shared := 1
+	return shared ^ 2
+}
+
 fn main() {
 	_ = use_immutable_shared()
+	_ = xor_shared()
 	unsafe {
 		mut shared := Box{}
 		shared.value = 1
@@ -40,6 +46,7 @@ fn main() {
 	assert c_source.contains('consume(&((shared)));'), c_source
 	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
 	assert c_source.contains('return shared;'), c_source
+	assert c_source.contains('return shared^2;'), c_source
 }
 
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
