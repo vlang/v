@@ -108,11 +108,12 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			value_type := t.node_type(val_id)
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
 			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
+			fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
 			// Check if the value is an enum shorthand and the field type is an enum
 			mut new_val := if val_node.kind == .enum_val && enum_field_type.len > 0 {
 				t.transform_enum_shorthand(val_id, val_node, enum_field_type)
-			} else if field_type.starts_with('[]') && t.is_fixed_array_type(value_type) {
-				t.fixed_array_value_to_array(val_id, value_type, field_type)
+			} else if fixed_to_dynamic {
+				t.fixed_array_value_to_owned_array(val_id, value_type, field_type)
 			} else if sum_field_type.len > 0 {
 				t.wrap_sum_value(val_id, sum_field_type)
 			} else if inferred_sum := t.sum_type_for_field_variant(field_name, val_id, val_node) {
@@ -127,7 +128,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			if sum_field_type.len == 0 && field_type.len > 0 {
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
 			}
-			if field_type.len > 0 {
+			if field_type.len > 0 && !fixed_to_dynamic {
 				new_val = t.clone_borrowed_projection(val_id, new_val, field_type)
 			}
 			t.drain_pending(mut prelude)
@@ -1217,7 +1218,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
 		} else if field_type.starts_with('[]') && t.is_fixed_array_type(value_type) {
-			t.fixed_array_value_to_array(value_id, value_type, field_type)
+			t.fixed_array_value_to_owned_array(value_id, value_type, field_type)
 		} else if sum_field_type.len > 0 {
 			t.wrap_sum_value(value_id, sum_field_type)
 		} else if field_type.len > 0 {
@@ -1461,6 +1462,43 @@ fn (t &Transformer) sum_type_for_field_variant(field_name string, val_id flat.No
 // fixed_array_value_to_array converts fixed array value to array data for transform.
 fn (mut t Transformer) fixed_array_value_to_array(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	return t.fixed_array_data_to_array(t.transform_expr(value_id), fixed_type, array_type)
+}
+
+// fixed_array_value_to_owned_array converts a fixed-array value whose dynamic destination
+// takes ownership. A borrowed projection keeps its fixed source alive, so clone its elements
+// directly into the dynamic array instead of cloning and dropping a shallow converted array.
+fn (mut t Transformer) fixed_array_value_to_owned_array(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
+	if isnil(t.tc) || !t.tc.ownership_expr_is_borrowed_projection(value_id) {
+		return t.fixed_array_value_to_array(value_id, fixed_type, array_type)
+	}
+	elem_type := fixed_array_elem_type(fixed_type)
+	len_expr := t.make_fixed_array_len_expr(fixed_type)
+	source := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), fixed_type,
+		'borrowed_fixed_array_source')
+	out_name := t.new_temp('borrowed_fixed_array')
+	idx_name := t.new_temp('borrowed_fixed_array_idx')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_array_new_call(elem_type,
+		t.make_int_literal(0), len_expr), array_type)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	source_elem := t.make_index(source, t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
+	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	value_name := t.new_temp('borrowed_fixed_array_value')
+	body << t.make_decl_assign_typed(value_name, cloned_elem, elem_type)
+	body << t.make_expr_stmt(t.make_call_typed('array_push', [
+		t.make_prefix(.amp, t.make_ident(out_name)),
+		t.make_prefix(.amp, t.make_ident(value_name)),
+	], 'void'))
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
+		skip_ownership_drops: true
+	})
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), array_type)
+	return result
 }
 
 fn (mut t Transformer) fixed_array_value_to_array_no_alloc(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {

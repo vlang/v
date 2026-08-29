@@ -58,6 +58,15 @@ struct Holder {
 	right Payload
 }
 
+struct FixedHolder {
+	items [1]Payload
+}
+
+struct DynamicCopy {
+mut:
+	items []Payload
+}
+
 struct ObservedPair {
 	left  ObservedPayload
 	right ObservedPayload
@@ -138,6 +147,10 @@ fn get_entry(holder &EntryHolder) Entry {
 
 fn get_optional_entry(holder &EntryHolder) ?Entry {
 	return holder.entry
+}
+
+fn get_fixed_items(holder &FixedHolder) []Payload {
+	return holder.items
 }
 
 fn apply_entry_map(mut entries map[string]Entry, callback fn (mut map[string]Entry)) {
@@ -320,6 +333,25 @@ fn test_disjoint_receiver_fields_are_not_cloned() {
 	assert pair.left.values[0] == "left"
 }
 
+fn test_borrowed_fixed_array_conversions_are_cloned() {
+	holder := &FixedHolder{
+		items: [Payload{
+			values: ["original"]
+		}]!
+	}
+	mut copied := DynamicCopy{
+		items: holder.items
+	}
+	mut copied_item := copied.items[0]
+	copied_item.values[0] = "struct copy"
+	assert holder.items[0].values[0] == "original"
+
+	mut returned := get_fixed_items(holder)
+	mut returned_item := returned[0]
+	returned_item.values[0] = "return copy"
+	assert holder.items[0].values[0] == "original"
+}
+
 fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
 	mut items := []Payload{}
 	items << (*holder).left
@@ -495,6 +527,7 @@ fn main() {
 	test_variadic_receiver_field_clone_is_retained()
 	test_free_variadic_borrowed_projection_is_cloned(holder)
 	test_disjoint_receiver_fields_are_not_cloned()
+	test_borrowed_fixed_array_conversions_are_cloned()
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
 	test_borrowed_sum_projection_is_cloned()
 	test_copied_index_alias_is_cloned()
@@ -509,7 +542,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 21, out.output
+		assert out.output.count('clone') == 23, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

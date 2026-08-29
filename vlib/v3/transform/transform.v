@@ -10711,7 +10711,7 @@ fn (mut t Transformer) fixed_array_value_to_dynamic(value_id flat.NodeId, target
 		t.set_node_typ(int(data), '&${child_type}')
 		return t.fixed_array_data_to_array(data, child_type, array_type)
 	}
-	return t.fixed_array_value_to_array(value_id, child_type, array_type)
+	return t.fixed_array_value_to_owned_array(value_id, child_type, array_type)
 }
 
 fn (mut t Transformer) const_array_literal_storage_type_name_for_expr(id flat.NodeId) ?string {
