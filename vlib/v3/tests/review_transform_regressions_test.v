@@ -5613,6 +5613,46 @@ fn main() {
 	assert out == 'source'
 }
 
+fn test_array_map_keeps_temporary_source_through_conditional_result_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	values := make_items().map(match flag {
+		true {
+			mut p := unsafe { &external }
+			if flag {
+				p = unsafe { &it }
+			}
+			p
+		}
+		else {
+			&external
+		}
+	})
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_conditional_pointer_alias_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_conditional_pointer_alias', '-ownership', source)
+	assert out == 'source'
+}
+
 fn test_array_map_keeps_temporary_source_through_inherited_struct_update_field() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
@@ -5708,6 +5748,30 @@ fn main() {
 }
 '
 	out := run_good(v3_bin, 'array_sort_mixed_pointer_depth_comparator', source)
+	assert out == '1,2,3'
+}
+
+fn test_array_sort_pointer_alias_comparator_arguments() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Thing {
+	value int
+}
+
+type ThingRef = &Thing
+
+fn main() {
+	mut first := Thing{value: 3}
+	mut second := Thing{value: 1}
+	mut third := Thing{value: 2}
+	mut items := [ThingRef(&first), ThingRef(&second), ThingRef(&third)]
+	compare := fn (a ThingRef, b ThingRef) int {
+		return a.value - b.value
+	}
+	items.sort_with_compare(compare)
+	println(int_str(items[0].value) + "," + int_str(items[1].value) + "," + int_str(items[2].value))
+}
+'
+	out := run_good(v3_bin, 'array_sort_pointer_alias_comparator', source)
 	assert out == '1,2,3'
 }
 
