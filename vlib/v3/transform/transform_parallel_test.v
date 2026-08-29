@@ -231,7 +231,7 @@ fn test_external_map_expansion_estimate_includes_nested_array_lowering() {
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	t := new_transformer(mut a, &tc, map[string]bool{})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
@@ -283,7 +283,7 @@ fn test_external_map_expansion_estimate_follows_nested_const_index() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.const_exprs['large'] = large
-	t := new_transformer(mut a, &tc, map[string]bool{})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(outer, 0, 0) > deferred_map_expansion_threshold
 }
@@ -316,7 +316,7 @@ fn test_external_map_expansion_estimate_includes_direct_array_copy() {
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	t := new_transformer(mut a, &tc, map[string]bool{})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.array_literal_can_emit_direct(a.nodes[int(array)])
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
@@ -342,7 +342,7 @@ fn test_external_map_expansion_estimate_defers_struct_reconstruction() {
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	t := new_transformer(mut a, &tc, map[string]bool{})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
@@ -371,7 +371,7 @@ fn test_external_map_expansion_estimate_includes_fixed_array_init() {
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	t := new_transformer(mut a, &tc, map[string]bool{})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
@@ -383,7 +383,7 @@ fn test_external_map_expansion_estimate_includes_empty_fixed_array_runtime_init(
 		typ:  '[4096][]int'
 	})
 	mut tc := types.TypeChecker.new(&a)
-	t := new_transformer(mut a, &tc, map[string]bool{})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	estimate := t.external_map_tree_expansion_estimate(root, 0, 0)
 	assert estimate > deferred_map_expansion_threshold
@@ -402,7 +402,52 @@ fn test_external_map_expansion_estimate_defers_nested_empty_fixed_array_runtime_
 		typ: '[64][64][]int'
 	})
 	mut tc := types.TypeChecker.new(&a)
-	t := new_transformer(mut a, &tc, map[string]bool{})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
+fn test_external_map_expansion_estimate_includes_string_interpolation() {
+	mut a := flat.FlatAst.new()
+	wide_value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'wide'
+		typ: 'Wide'
+	})
+	interp_start := a.children.len
+	a.children << wide_value
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 1
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'wide'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << interp
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]string'
+		children_start: map_start
+		children_count: 2
+	})
+	mut fields := []FieldInfo{cap: 256}
+	for i in 0 .. 256 {
+		fields << FieldInfo{
+			name: 'value_${i}'
+			typ: 'int'
+		}
+	}
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Wide'] = StructInfo{
+		name: 'Wide'
+		fields: fields
+	}
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }

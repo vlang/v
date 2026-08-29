@@ -5917,29 +5917,34 @@ fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) int {
 		if node.kind != .string_interp {
 			continue
 		}
-		for ci in 0 .. int(node.children_count) {
-			part_id := t.a.child(&node, ci)
-			mut expr_id := part_id
-			part := t.a.nodes[int(part_id)]
-			if part.kind == .directive && part.value == 'string_interp_format'
-				&& part.children_count > 0 {
-				expr_id = t.a.child(&part, 0)
-			}
-			part_expr := t.a.nodes[int(expr_id)]
-			// Literal segments of the interpolation are always plain strings.
-			if part_expr.kind in [.string_literal, .int_literal, .float_literal, .bool_literal,
-				.char_literal] {
-				continue
-			}
-			typ := t.reliable_stringify_type(expr_id)
-			if typ.len == 0 {
-				est += unresolved_interp_expansion_estimate
-			} else {
-				est += t.stringify_expansion_estimate(typ)
-			}
-		}
+		est += t.string_interp_expansion_estimate(node)
 	}
 	return est
+}
+
+fn (mut t Transformer) string_interp_expansion_estimate(node flat.Node) int {
+	mut estimate := 0
+	for ci in 0 .. int(node.children_count) {
+		part_id := t.a.child(&node, ci)
+		mut expr_id := part_id
+		part := t.a.nodes[int(part_id)]
+		if part.kind == .directive && part.value == 'string_interp_format' && part.children_count > 0 {
+			expr_id = t.a.child(&part, 0)
+		}
+		part_expr := t.a.nodes[int(expr_id)]
+		// Literal segments of the interpolation are always plain strings.
+		if part_expr.kind in [.string_literal, .int_literal, .float_literal, .bool_literal,
+			.char_literal] {
+			continue
+		}
+		typ := t.reliable_stringify_type(expr_id)
+		if typ.len == 0 {
+			estimate += unresolved_interp_expansion_estimate
+		} else {
+			estimate += t.stringify_expansion_estimate(typ)
+		}
+	}
+	return estimate
 }
 
 fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {

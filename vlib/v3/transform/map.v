@@ -146,7 +146,7 @@ fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type string) bool {
 // node range. The transformer recursively lowers each nested initializer at the
 // use site. Struct reconstruction can also synthesize field defaults, so defer it
 // rather than trying to predict an expansion that is not represented in this AST.
-fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo int, hi int) int {
+fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo int, hi int) int {
 	if int(root) < 0 || int(root) >= t.a.nodes.len {
 		return 0
 	}
@@ -174,6 +174,9 @@ fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo in
 		}
 		if node.kind == .array_init {
 			estimate += t.fixed_array_init_expansion_estimate(id, node)
+		}
+		if node.kind == .string_interp {
+			estimate += t.string_interp_expansion_estimate(node)
 		}
 		// External constant initializers can themselves index another constant map.
 		// That substitution edge is semantic rather than a physical FlatAst child.
@@ -222,7 +225,7 @@ fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId
 // function. Most literals are inside [lo, hi), but map-index and membership
 // lowering can substitute a constant identifier with a large initializer
 // outside that range.
-fn (t &Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
+fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 	mut estimate := 0
 	for idx in lo .. hi {
 		if idx < 0 || idx >= t.a.nodes.len {
