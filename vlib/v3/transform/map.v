@@ -835,7 +835,7 @@ fn (mut t Transformer) clone_map_assignment_rhs_if_overlapping(value flat.NodeId
 	if _ := t.tc.ownership_default_clone_missing_method(value_type) {
 		return value, false
 	}
-	return t.make_compiler_default_clone_value(value, value_type_name, true), true
+	return t.make_compiler_default_borrowed_clone_value(value, value_type_name, true), true
 }
 
 // append_map_value_drop_before_set destroys an existing owned map value before

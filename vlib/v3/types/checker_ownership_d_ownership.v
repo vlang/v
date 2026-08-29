@@ -11272,6 +11272,8 @@ pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(id flat.NodeId) 
 //     out;
 //   * a sum-type/interface cast (`v as T`), which extracts a copy of the variant while the
 //     source keeps its value; and
+//   * an explicit pointer dereference (`*p`), which reads the pointee without transferring
+//     ownership away from the pointer's owner; and
 //   * a field read (`obj.field`) reached through a pointer/reference base — a `mut` receiver
 //     or `&` binding whose fields are owned elsewhere and can be rotated or freed later (as a
 //     parser rotates its token fields), so a bare alias would dangle.
@@ -11293,6 +11295,7 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	node := tc.a.nodes[int(clean_id)]
 	is_field := node.kind == .selector && node.children_count > 0 && node.value.len > 0
 	is_slice := node.kind == .index && node.value == 'range'
+	is_deref := node.kind == .prefix && node.op == .mul && node.children_count > 0
 	// A sum-type/interface cast (`v as T`) of a directly-held value extracts an independent
 	// copy of the variant while the source keeps its value, so an owned-storage payload must
 	// be cloned. A cast reached through a pointer/reference base (`(&sum) as T`) only reads
@@ -11304,7 +11307,7 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	// local copies the value, so an owned-storage const must be cloned rather than aliased
 	// (a bare alias would later free the const's static storage on the binding's drop).
 	is_const_read := node.kind == .ident && tc.ownership_ident_names_const(node.value)
-	if !is_field && !is_slice && !is_variant_cast && !is_const_read {
+	if !is_field && !is_slice && !is_deref && !is_variant_cast && !is_const_read {
 		return false
 	}
 	typ := tc.resolve_type(clean_id)
@@ -11314,7 +11317,7 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	if _ := tc.ownership_default_clone_missing_method(typ) {
 		return false
 	}
-	if is_slice || is_variant_cast || is_const_read {
+	if is_slice || is_deref || is_variant_cast || is_const_read {
 		return true
 	}
 	return tc.ownership_projection_reads_through_pointer(clean_id)

@@ -2927,7 +2927,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 			return converted
 		}
 		if t.is_fixed_array_type(arg_type) {
-			return t.fixed_array_value_to_array(arg_id, arg_type, param_type)
+			return t.fixed_array_value_to_owned_array(arg_id, arg_type, param_type)
 		}
 		if const_arg := t.transform_const_array_arg_for_param(arg_id, param_type) {
 			return const_arg
@@ -7985,6 +7985,22 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	return t.make_compiler_default_clone_value(receiver, base_type, false)
 }
 
+// make_compiler_default_borrowed_clone_value prevents a non-owning sum wrapper from being
+// cleaned up as though it were an owned rvalue after the clone helper reads it.
+fn (mut t Transformer) make_compiler_default_borrowed_clone_value(source flat.NodeId, typ string, allow_method bool) flat.NodeId {
+	mut stable_source := source
+	clean := t.normalize_type_alias(typ).trim_space()
+	// Converting a borrowed variant to its destination sum can produce a non-addressable
+	// wrapper. Stabilize that non-owning wrapper so helper lowering borrows it rather than
+	// mistaking it for an owned rvalue that must be destroyed after cloning.
+	if t.is_sum_type_name(clean) && !t.expr_can_take_address(source) {
+		source_name := t.new_temp('borrowed_clone_source')
+		t.pending_stmts << t.make_decl_assign_typed(source_name, source, clean)
+		stable_source = t.make_ident(source_name)
+	}
+	return t.make_compiler_default_clone_value(stable_source, typ, allow_method)
+}
+
 // make_compiler_default_clone_value recursively clones the storage-owning fields of a
 // compiler-provided IClone value. The initial aggregate copy preserves scalar/reference
 // fields, and each owning field is then replaced with its independent clone.
@@ -8184,9 +8200,27 @@ fn (mut t Transformer) request_default_clone_helper(source flat.NodeId, typ stri
 		}
 	}
 	t.mark_fn_used_name(helper)
-	address := t.runtime_addr(source, typ)
+	if t.expr_can_take_address(source) {
+		address := t.runtime_addr(source, typ)
+		argument := t.make_cast('voidptr', address, 'voidptr')
+		return t.make_call_typed(helper, [argument], typ)
+	}
+	// The helper only borrows its pointer argument. Stabilize an owned rvalue ourselves so
+	// the clone is saved before the original temporary is destroyed; runtime_addr's ordinary
+	// compiler temporary is not tracked by ownership cleanup.
+	source_name := t.new_temp('default_clone_source')
+	stable_source := t.make_ident(source_name)
+	t.pending_stmts << t.make_decl_assign_typed(source_name, source, typ)
+	address := t.runtime_addr(stable_source, typ)
 	argument := t.make_cast('voidptr', address, 'voidptr')
-	return t.make_call_typed(helper, [argument], typ)
+	cloned_name := t.new_temp('default_clone_result')
+	t.pending_stmts << t.make_decl_assign_typed(cloned_name, t.make_call_typed(helper, [
+		argument,
+	], typ), typ)
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [
+		stable_source,
+	], 'void'))
+	return t.make_ident(cloned_name)
 }
 
 // synthesize_default_clone_helpers drains recursive compiler-provided IClone
@@ -13315,7 +13349,7 @@ fn (mut t Transformer) clone_checker_marked_receiver_alias_arg(arg_id flat.NodeI
 	if !t.compiler_default_clone_type_needs_work(param_type) {
 		return value
 	}
-	return t.make_compiler_default_clone_value(value, param_type, true)
+	return t.make_compiler_default_borrowed_clone_value(value, param_type, true)
 }
 
 // transform_receiver_method_args_with_base transforms helper data for transform.

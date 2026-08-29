@@ -471,6 +471,10 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		t.pending_stmts.clear()
 		indexed_init := t.substitute_ident_expr(init_expr_id, 'index', t.make_ident(idx_name))
 		init_expr = t.transform_expr(indexed_init)
+		// The source-level initializer is evaluated once for every generated element.
+		// Keep a borrowed projection owned by its source by cloning it inside this loop,
+		// so each element also receives independent owned storage.
+		init_expr = t.clone_borrowed_projection(init_expr_id, init_expr, elem_type)
 		init_pending := t.pending_stmts.clone()
 		t.pending_stmts = saved_pending
 		for stmt in init_pending {
@@ -1548,7 +1552,7 @@ fn (mut t Transformer) clone_borrowed_array_append_value(source_id flat.NodeId, 
 	if !t.compiler_default_clone_type_needs_work(elem_type) {
 		return value
 	}
-	return t.make_compiler_default_clone_value(value, elem_type, true)
+	return t.make_compiler_default_borrowed_clone_value(value, elem_type, true)
 }
 
 // clone_borrowed_projection clones `value` when ownership analysis decided the read at
@@ -1575,7 +1579,7 @@ fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value fl
 	if !t.compiler_default_clone_type_needs_work(typ) {
 		return value
 	}
-	return t.make_compiler_default_clone_value(value, typ, true)
+	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
 }
 
 fn (t &Transformer) expr_is_local_ident_read(id flat.NodeId) bool {
@@ -1600,7 +1604,7 @@ fn (mut t Transformer) clone_borrowed_assignment_value(source_id flat.NodeId, va
 		|| !t.compiler_default_clone_type_needs_work(typ) {
 		return cloned
 	}
-	return t.make_compiler_default_clone_value(value, typ, true)
+	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
 }
 
 // expr_reads_owned_const reports whether `id` (after peeling parentheses/casts) is a bare

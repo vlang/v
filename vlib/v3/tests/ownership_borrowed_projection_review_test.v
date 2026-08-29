@@ -153,6 +153,23 @@ fn get_fixed_items(holder &FixedHolder) []Payload {
 	return holder.items
 }
 
+fn consume_fixed_items(items []Payload) {
+	mut item := items[0]
+	item.values[0] = "argument copy"
+}
+
+fn copy_payload_pointer(value &Payload) Payload {
+	return *value
+}
+
+fn select_payload(holder &Holder, pick_left bool) Payload {
+	return if pick_left {
+		holder.left
+	} else {
+		holder.right
+	}
+}
+
 fn apply_entry_map(mut entries map[string]Entry, callback fn (mut map[string]Entry)) {
 	callback(mut entries)
 }
@@ -350,6 +367,9 @@ fn test_borrowed_fixed_array_conversions_are_cloned() {
 	mut returned_item := returned[0]
 	returned_item.values[0] = "return copy"
 	assert holder.items[0].values[0] == "original"
+
+	consume_fixed_items(holder.items)
+	assert holder.items[0].values[0] == "original"
 }
 
 fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
@@ -364,6 +384,34 @@ fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
 	optional_items := optional.items or { panic(err) }
 	assert optional_items[0].values[0] == "left"
 	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_array_initializer_is_cloned_per_element(holder &Holder) {
+	mut items := []Payload{len: 2, init: holder.left}
+	items[0].values[0] = "first"
+	assert items[1].values[0] == "left"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_pointer_dereferences_are_cloned(holder &Holder) {
+	left_pointer := &holder.left
+	mut left_copy := *left_pointer
+	left_copy.values[0] = "dereference copy"
+	assert holder.left.values[0] == "left"
+
+	mut right_copy := copy_payload_pointer(&holder.right)
+	right_copy.values[0] = "return copy"
+	assert holder.right.values[0] == "right"
+}
+
+fn test_conditional_borrowed_branches_are_cloned(holder &Holder) {
+	mut left := select_payload(holder, true)
+	left.values[0] = "conditional left"
+	assert holder.left.values[0] == "left"
+
+	mut right := select_payload(holder, false)
+	right.values[0] = "conditional right"
+	assert holder.right.values[0] == "right"
 }
 
 fn test_borrowed_sum_projection_is_cloned() {
@@ -529,6 +577,9 @@ fn main() {
 	test_disjoint_receiver_fields_are_not_cloned()
 	test_borrowed_fixed_array_conversions_are_cloned()
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
+	test_borrowed_array_initializer_is_cloned_per_element(holder)
+	test_pointer_dereferences_are_cloned(holder)
+	test_conditional_borrowed_branches_are_cloned(holder)
 	test_borrowed_sum_projection_is_cloned()
 	test_copied_index_alias_is_cloned()
 	test_shadowed_index_alias_is_restored()
@@ -542,7 +593,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 23, out.output
+		assert out.output.count('clone') == 30, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

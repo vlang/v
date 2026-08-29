@@ -1328,12 +1328,12 @@ fn (t &Transformer) if_value_branch_tail_has_no_value(id flat.NodeId) bool {
 // transform_if_branch_value transforms transform if branch value data for transform.
 fn (mut t Transformer) transform_if_branch_value(id flat.NodeId, target_type string) flat.NodeId {
 	if t.is_sum_type_name(target_type) {
-		return t.wrap_sum_value(id, target_type)
+		return t.clone_borrowed_projection(id, t.wrap_sum_value(id, target_type), target_type)
 	}
 	if converted := t.fixed_array_value_to_dynamic(id, target_type) {
 		return converted
 	}
-	return t.transform_expr_for_type(id, target_type)
+	return t.clone_borrowed_projection(id, t.transform_expr_for_type(id, target_type), target_type)
 }
 
 // transform_is_condition transforms an `x is Type` condition node into the
