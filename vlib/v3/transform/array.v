@@ -3010,6 +3010,35 @@ fn (t &Transformer) array_map_block_scope_limit(node flat.Node, name string) int
 	return int(node.children_count)
 }
 
+fn (t &Transformer) array_map_call_mutates_target(node flat.Node, target string) bool {
+	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
+		return false
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return false
+	}
+	receiver_id := t.a.child(callee, 0)
+	if !t.array_map_lvalue_is_rooted_at_ident(receiver_id, target) {
+		return false
+	}
+	method_name := t.resolve_receiver_method_name(receiver_id, callee.value)
+	return method_name.len > 0 && t.tc.mut_receiver_methods[method_name]
+}
+
+fn (mut t Transformer) array_map_mutating_call_retains_element_address(node flat.Node, target string, block flat.Node, before_idx int, name string, seen map[string]bool) bool {
+	if !t.array_map_call_mutates_target(node, target) {
+		return false
+	}
+	for i in 1 .. node.children_count {
+		mut arg_seen := seen.clone()
+		if t.array_map_block_value_retains_element_address(block, before_idx, t.a.child(&node, i), name, mut arg_seen) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut t Transformer) array_map_nested_assignment_retains_element_address(id flat.NodeId, target string, block flat.Node, before_idx int, name string, seen map[string]bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -3017,6 +3046,9 @@ fn (mut t Transformer) array_map_nested_assignment_retains_element_address(id fl
 	node := t.a.nodes[int(id)]
 	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
 		return false
+	}
+	if t.array_map_mutating_call_retains_element_address(node, target, block, before_idx, name, seen) {
+		return true
 	}
 	if node.kind in [.block, .match_branch] {
 		scope_limit := t.array_map_block_scope_limit(node, target)
