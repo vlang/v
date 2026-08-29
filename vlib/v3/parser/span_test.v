@@ -346,8 +346,10 @@ fn main() {
 
 fn test_shared_keyword_identifier_in_mut_declaration() {
 	ast, src := parse_span_source('shared_keyword_ident', 'fn main() {
-	mut shared := 1
-	shared++
+	mut shared := [1]
+	shared[0]++
+	_ = shared[0]
+	shared()
 	println(shared)
 }
 ')
@@ -357,7 +359,7 @@ fn test_shared_keyword_identifier_in_mut_declaration() {
 			shared_spans << span_text(src, node)
 		}
 	}
-	assert shared_spans.len >= 2, shared_spans.str()
+	assert shared_spans.len >= 4, shared_spans.str()
 	assert shared_spans.all(it == 'shared')
 }
 

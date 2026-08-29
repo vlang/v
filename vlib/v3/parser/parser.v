@@ -6280,7 +6280,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return stmt_id
 		}
 		.key_shared {
-			if !token_can_start_type_name(p.peek()) && p.peek() != .key_union {
+			if p.shared_token_is_identifier() {
 				return p.assign_or_expr_stmt()
 			}
 			p.next()
@@ -9370,7 +9370,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return id
 		}
 		.key_shared {
-			if !token_can_start_type_name(p.peek()) && p.peek() != .key_union {
+			if p.shared_token_is_identifier() {
 				name_pos := p.tok_pos
 				name_end := p.tok_end
 				p.next()
@@ -10365,7 +10365,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		mut arg_is_shared := false
 		mut arg_is_mut := false
-		if p.tok == .key_shared && token_can_start_type_name(p.peek()) {
+		if p.tok == .key_shared && !p.shared_token_is_identifier() {
 			arg_is_shared = true
 			p.next()
 		} else if p.tok == .key_mut {
@@ -12424,6 +12424,16 @@ fn (mut p Parser) lbr_starts_array_type_from_offset(offset int) bool {
 // can_start_type_name reports whether can start type name applies in parser.
 fn (p &Parser) can_start_type_name() bool {
 	return token_can_start_type_name(p.tok)
+}
+
+fn (mut p Parser) shared_token_is_identifier() bool {
+	next := p.peek()
+	if !token_can_start_type_name(next) && next != .key_union {
+		return true
+	}
+	// Calls and indexes attach directly to an identifier. A shared modifier is
+	// separated from the value it qualifies (`shared value`).
+	return p.tok_end == p.peek_pos && next in [.lpar, .lsbr]
 }
 
 fn token_can_start_type_name(tok token.Token) bool {

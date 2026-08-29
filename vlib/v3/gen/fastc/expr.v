@@ -588,7 +588,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.pos
 			continue
 		}
-		if g.tok == .key_shared && (g.lit in g.locals || g.shared_token_is_identifier()) {
+		if g.tok == .key_shared && g.shared_token_is_identifier() {
 			result.write_string(g.lit)
 			expression_tokens << FastcExpressionToken{
 				tok: .name
@@ -1768,7 +1768,7 @@ fn (g &Parser) shared_token_is_identifier() bool {
 	for offset < g.s.src.len && g.s.src[offset].is_space() {
 		offset++
 	}
-	return offset >= g.s.src.len || g.s.src[offset] in [`.`, `[`, `)`, `]`, `,`, `;`, `+`, `-`,
+	return offset >= g.s.src.len || g.s.src[offset] in [`.`, `[`, `(`, `)`, `]`, `,`, `;`, `+`, `-`,
 		`*`, `/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`]
 }
 
