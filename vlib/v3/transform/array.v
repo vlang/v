@@ -2854,6 +2854,9 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 			}
 			return false
 		}
+		.fn_literal {
+			return t.fn_literal_captures_name(id, name)
+		}
 		.struct_init, .array_literal, .array_init, .map_init, .assoc {
 			for i in 0 .. node.children_count {
 				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
@@ -2888,6 +2891,53 @@ fn (mut t Transformer) array_map_block_result_retains_element_address(node flat.
 		t.a.child(&node, node.children_count - 1), name, mut seen)
 }
 
+fn (mut t Transformer) array_map_block_expr_result_retains_element_address(block flat.Node, before_idx int, id flat.NodeId, name string, mut seen map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init {
+			return node.children_count > 0 && t.array_map_block_expr_result_retains_element_address(block, before_idx, t.a.child(&node, 0), name, mut seen)
+		}
+		.selector {
+			return node.children_count > 0 && t.array_map_block_selector_result_retains_element_address(block, before_idx, t.a.child(&node, 0), node.value, name, mut seen)
+		}
+		.index {
+			return node.children_count > 0 && t.array_map_block_index_result_retains_element_address(block, before_idx, node, name, mut seen)
+		}
+		.fn_literal {
+			for i in 0 .. node.children_count {
+				capture_id := t.a.child(&node, i)
+				capture := t.a.nodes[int(capture_id)]
+				if capture.kind != .ident || capture.value.len == 0 || capture.value in t.active_generic_params {
+					continue
+				}
+				if capture.value == name {
+					return true
+				}
+				mut capture_seen := seen.clone()
+				if t.array_map_block_value_retains_element_address(block, before_idx, capture_id, name, mut capture_seen) {
+					return true
+				}
+			}
+			return false
+		}
+		.struct_init, .array_literal, .array_init, .map_init, .assoc {
+			for i in 0 .. node.children_count {
+				mut child_seen := seen.clone()
+				if t.array_map_block_expr_result_retains_element_address(block, before_idx, t.a.child(&node, i), name, mut child_seen) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return t.array_map_expr_result_retains_element_address(id, name)
+		}
+	}
+}
+
 fn (mut t Transformer) array_map_block_value_retains_element_address(node flat.Node, before_idx int, id flat.NodeId, name string, mut seen map[string]bool) bool {
 	mut result_id := id
 	mut result := t.a.nodes[int(result_id)]
@@ -2905,7 +2955,7 @@ fn (mut t Transformer) array_map_block_value_retains_element_address(node flat.N
 		return t.array_map_block_index_result_retains_element_address(node, before_idx, result, name, mut seen)
 	}
 	if result.kind != .ident || result.value.len == 0 {
-		return t.array_map_expr_result_retains_element_address(result_id, name)
+		return t.array_map_block_expr_result_retains_element_address(node, before_idx, result_id, name, mut seen)
 	}
 	if result.value in seen {
 		return false
@@ -3022,6 +3072,37 @@ fn (t &Transformer) array_map_selector_lhs_targets_field(lhs flat.Node, target s
 	return base.kind == .ident && base.value == target
 }
 
+fn (t &Transformer) array_map_selector_lhs_targets_path(lhs flat.Node, target string, field_path []string) bool {
+	if field_path.len == 0 {
+		return false
+	}
+	mut current := lhs
+	mut path_idx := field_path.len
+	for path_idx > 0 {
+		for current.kind in [.paren, .cast_expr, .as_expr] {
+			if current.children_count == 0 {
+				return false
+			}
+			current = t.a.nodes[int(t.a.child(&current, 0))]
+		}
+		if current.kind != .selector || current.children_count == 0 {
+			return false
+		}
+		path_idx--
+		if current.value != field_path[path_idx] {
+			return false
+		}
+		current = t.a.nodes[int(t.a.child(&current, 0))]
+	}
+	for current.kind in [.paren, .cast_expr, .as_expr] {
+		if current.children_count == 0 {
+			return false
+		}
+		current = t.a.nodes[int(t.a.child(&current, 0))]
+	}
+	return current.kind == .ident && current.value == target
+}
+
 fn (mut t Transformer) array_map_block_selector_path_retains_element_address(block flat.Node, before_idx int, base_id flat.NodeId, field_path []string, elem_name string, mut seen map[string]bool) bool {
 	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len || field_path.len == 0 {
 		return false
@@ -3057,11 +3138,14 @@ fn (mut t Transformer) array_map_block_selector_path_retains_element_address(blo
 					return t.array_map_block_selector_path_retains_element_address(block, stmt_idx, t.a.child(stmt, 1), resolved_path, elem_name, mut seen)
 				}
 			}
-			if stmt.kind == .assign {
+			if stmt.kind in [.assign, .selector_assign] {
 				for i := 0; i + 1 < int(stmt.children_count); i += 2 {
 					lhs := t.a.child_node(stmt, i)
 					if lhs.kind == .ident && lhs.value == source.value {
 						return t.array_map_block_selector_path_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), resolved_path, elem_name, mut seen)
+					}
+					if t.array_map_selector_lhs_targets_path(lhs, source.value, resolved_path) {
+						return t.array_map_block_value_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), elem_name, mut seen)
 					}
 				}
 			}
