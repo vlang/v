@@ -6251,3 +6251,26 @@ fn test_parallel_transform_merges_generic_call_metadata() {
 	out := run_good_with_env(v3_bin, 'parallel_transform_generic_calls', 'VJOBS=4', source)
 	assert out == expected.str()
 }
+
+fn test_struct_stringification_evaluates_dereferenced_pointer_call_once() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_str_dereferenced_call_once', 'struct Node {
+	value int
+}
+
+__global calls int
+
+fn next_node() &Node {
+	calls++
+	return &Node{
+		value: calls
+	}
+}
+
+fn main() {
+	println("\${*next_node()}")
+	println(int_str(calls))
+}
+')
+	assert out == 'Node{\n    value: 1\n}\n1'
+}

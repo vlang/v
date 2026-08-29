@@ -5641,17 +5641,28 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 	if info.fields.len == 0 {
 		return t.make_string_literal('${struct_string_display_name(struct_type)}{}')
 	}
-	base := t.stable_transformed_expr_for_reuse(expr, struct_type, 'struct_str')
+	expr_node := t.a.nodes[int(expr)]
+	mut value_expr := expr
+	mut deref_address_source := flat.empty_node
+	if expr_node.kind == .prefix && expr_node.op == .mul && expr_node.children_count == 1 {
+		pointer_id := t.a.child(&expr_node, 0)
+		mut pointer_type := t.node_type(pointer_id)
+		if pointer_type.len == 0 {
+			pointer_type = '&${struct_type}'
+		}
+		deref_address_source = t.stable_transformed_expr_for_reuse(pointer_id, pointer_type, 'struct_str_ptr')
+		value_expr = t.make_prefix(.mul, deref_address_source)
+		t.set_node_typ(int(value_expr), struct_type)
+	}
+	base := t.stable_transformed_expr_for_reuse(value_expr, struct_type, 'struct_str')
 	guard_root_address := stack_count == 0 && t.expr_can_take_address(base)
 	if guard_root_address {
 		mut address_source := t.make_prefix(.amp, base)
-		expr_node := t.a.nodes[int(expr)]
 		if expr_node.kind == .ident && (t.pointer_value_rvalues[expr_node.value]
 			|| t.mut_param_values[expr_node.value]) {
 			address_source = t.transform_expr_preserving_pointer_value(expr)
-		} else if expr_node.kind == .prefix && expr_node.op == .mul
-			&& expr_node.children_count == 1 {
-			address_source = t.a.child(&expr_node, 0)
+		} else if int(deref_address_source) >= 0 {
+			address_source = deref_address_source
 		}
 		address := t.make_cast('voidptr', address_source, 'voidptr')
 		address_type := t.make_int_literal(t.type_index_for_type_name(struct_type))
