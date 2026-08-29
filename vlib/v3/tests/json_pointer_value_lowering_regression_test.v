@@ -21,6 +21,21 @@ fn test_json_voidptr_autoref_keeps_value_equality_semantics() {
 
 	os.write_file(src, 'import json
 
+@[json_as_number]
+enum JsonExactSigned as i64 {
+	exact = 9_007_199_254_740_993
+}
+
+@[json_as_number]
+enum JsonExactUnsigned as u64 {
+	exact = 0xffff_ffff_ffff_ffff
+}
+
+struct JsonExactEnums {
+	signed   JsonExactSigned
+	unsigned JsonExactUnsigned
+}
+
 struct JsonPointerValueRegression {
 	value i32
 }
@@ -52,6 +67,13 @@ fn ordinary_alias_result() !JsonPointerValueAlias {
 }
 
 fn main() {
+	exact_enums := json.decode(JsonExactEnums,
+		\'{"signed":9007199254740993,"unsigned":18446744073709551615}\')!
+	assert i64(exact_enums.signed) == i64(9_007_199_254_740_993)
+	assert u64(exact_enums.unsigned) == u64(0xffff_ffff_ffff_ffff)
+	default_enums := json.decode(JsonExactEnums, \'{}\')!
+	assert default_enums.signed == .exact
+	assert default_enums.unsigned == .exact
 	mut decoded := json.decode(JsonPointerValueRegression, \'{"value":42}\')!
 	assert decoded == JsonPointerValueRegression{
 		value: 42

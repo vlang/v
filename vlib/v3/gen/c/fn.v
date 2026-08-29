@@ -10045,6 +10045,12 @@ fn (g &FlatGen) json_decode_value_needs_exact_integer(typ types.Type, depth int)
 	if clean is types.Primitive {
 		return clean.props.has(.integer) && clean.size == 64
 	}
+	if clean is types.Enum {
+		backing := g.json_enum_number_backing(clean.name) or { return false }
+		backing_type := g.tc.parse_type(backing)
+		return backing_type is types.Primitive && backing_type.props.has(.integer)
+			&& backing_type.size == 64
+	}
 	if clean is types.Array {
 		return g.json_decode_value_needs_exact_integer(clean.elem_type, depth + 1)
 	}
@@ -10209,9 +10215,14 @@ fn (mut g FlatGen) gen_json_decode_value_expr_at_depth(item string, typ types.Ty
 		default_value := g.enum_value_expr_for_type(clean.name, names[0]) or {
 			'${g.cname(clean.name)}__${g.cname(names[0])}'
 		}
-		if _ := g.json_enum_number_cast(clean.name) {
+		if backing := g.json_enum_number_backing(clean.name) {
 			// `@[json_as_number]`: the JSON value is a number, not a label string.
-			g.write('(${item} != NULL ? (${g.value_c_type(clean)})${item}->valuedouble : ${default_value})')
+			item_name := g.tmp_name()
+			out_name := g.tmp_name()
+			enum_ct := g.value_c_type(clean)
+			g.write('({ cJSON* ${item_name} = ${item}; ${enum_ct} ${out_name} = ${default_value}; if (${item_name} != NULL) { ${out_name} = (${enum_ct})(')
+			g.gen_json_decode_value_expr_at_depth(item_name, g.tc.parse_type(backing), depth + 1)
+			g.write('); } ${out_name}; })')
 			return
 		}
 		mut result := default_value
@@ -10580,10 +10591,7 @@ fn json_string_content_escape(value string) string {
 	return out.str()
 }
 
-// json_enum_number_cast returns the integer cast (`i64`/`u64`) to use when an enum is
-// declared `@[json_as_number]`, so json.encode emits its numeric value rather than a
-// quoted label; returns none for a plain enum.
-fn (g &FlatGen) json_enum_number_cast(enum_name string) ?string {
+fn (g &FlatGen) json_enum_number_backing(enum_name string) ?string {
 	mut cur_module := ''
 	for node_idx in g.top_level_nodes() {
 		node := g.a.nodes[node_idx]
@@ -10606,13 +10614,26 @@ fn (g &FlatGen) json_enum_number_cast(enum_name string) ?string {
 			return none
 		}
 		backing := if node.generic_params().len > 0 { node.generic_params()[0] } else { '' }
-		return if backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
-			'u64'
+		return if backing in ['i8', 'i16', 'i32', 'int', 'i64', 'u8', 'byte', 'u16', 'u32', 'u64',
+			'usize'] {
+			backing
 		} else {
-			'i64'
+			'int'
 		}
 	}
 	return none
+}
+
+// json_enum_number_cast returns the integer cast (`i64`/`u64`) to use when an enum is
+// declared `@[json_as_number]`, so json.encode emits its numeric value rather than a
+// quoted label; returns none for a plain enum.
+fn (g &FlatGen) json_enum_number_cast(enum_name string) ?string {
+	backing := g.json_enum_number_backing(enum_name) or { return none }
+	return if backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+		'u64'
+	} else {
+		'i64'
+	}
 }
 
 fn (g &FlatGen) json_enum_labels(enum_name string) ([]string, map[string]string) {
