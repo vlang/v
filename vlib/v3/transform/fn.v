@@ -1407,10 +1407,11 @@ fn (t &Transformer) expr_may_escape_any_named_capture(id flat.NodeId, captures m
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	// Calls can retain arguments in external storage, and assignments can project a
-	// capture-derived value into storage outside the immediate closure. Conservatively
-	// keep the context through the enclosing scope for either escape boundary.
-	if node.kind in [.call, .spawn_expr] && t.expr_mentions_any_name(id, captures) {
+	// Calls and channel sends can retain values outside the immediate closure, and
+	// assignments can project a capture-derived value into external storage.
+	// Conservatively keep the context through the enclosing scope at these boundaries.
+	if (node.kind in [.call, .spawn_expr] || (node.kind == .infix && node.op == .arrow))
+		&& t.expr_mentions_any_name(id, captures) {
 		return true
 	}
 	if node.kind == .assign && node.children_count >= 2 {

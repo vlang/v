@@ -2968,6 +2968,28 @@ fn main() {
 	assert out == '42'
 }
 
+fn test_immediately_invoked_closure_keeps_channel_sent_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	ch := chan &int{cap: 1}
+	mut value := 42
+	(fn [ch, mut value] () {
+		ch <- unsafe { &value }
+	})()
+	p := <-ch
+	println(int_str(unsafe { *p }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_channel_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_channel_escape', source)
+	assert out == '42'
+}
+
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
