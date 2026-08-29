@@ -350,6 +350,9 @@ fn test_shared_keyword_identifier_in_mut_declaration() {
 	shared[0]++
 	_ = shared[0]
 	shared()
+	shared?
+	shared!
+	_ = shared & 1
 	println(shared)
 }
 ')
@@ -359,7 +362,7 @@ fn test_shared_keyword_identifier_in_mut_declaration() {
 			shared_spans << span_text(src, node)
 		}
 	}
-	assert shared_spans.len >= 4, shared_spans.str()
+	assert shared_spans.len >= 7, shared_spans.str()
 	assert shared_spans.all(it == 'shared')
 }
 

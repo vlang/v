@@ -811,7 +811,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 	if g.tok == .key_assert {
 		return g.parse_assert_statement()
 	}
-	if g.tok == .name {
+	if g.tok == .name || (g.tok == .key_shared && g.shared_token_is_identifier()) {
 		name := g.lit
 		global_key := fastc_global_key(g.module_name, name)
 		is_global := global_key in g.globals

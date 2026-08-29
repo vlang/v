@@ -12431,9 +12431,12 @@ fn (mut p Parser) shared_token_is_identifier() bool {
 	if !token_can_start_type_name(next) && next != .key_union {
 		return true
 	}
+	if next == .amp {
+		return true
+	}
 	// Calls and indexes attach directly to an identifier. A shared modifier is
 	// separated from the value it qualifies (`shared value`).
-	return p.tok_end == p.peek_pos && next in [.lpar, .lsbr]
+	return p.tok_end == p.peek_pos && next in [.lpar, .lsbr, .question, .not]
 }
 
 fn token_can_start_type_name(tok token.Token) bool {
