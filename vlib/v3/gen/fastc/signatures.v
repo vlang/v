@@ -591,7 +591,7 @@ fn fastc_collect_type_default_references(mut scan scanner.Scanner, first token.T
 	return tok
 }
 
-fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {
+fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut interface_field_paths map[string]string, mut embed_embedders []string, mut embed_embeddeds []string) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines_without_digest(source)
@@ -608,7 +608,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				if selected.source != '' {
 					collect_interface_method_signatures(selected.source, path, header, prefs,
 						declared_types, mut functions, mut interface_methods, mut interface_fields, mut
-						embed_embedders, mut embed_embeddeds)!
+						interface_field_paths, mut embed_embedders, mut embed_embeddeds)!
 				}
 				tok = selected.tok
 				continue
@@ -724,6 +724,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 						typ:        field_type
 						is_mutable: members_are_mutable
 					}
+					interface_field_paths[field_key] = path
 				}
 				tok = next_token
 				if tok == .semicolon {
@@ -808,6 +809,91 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 			tok = scan.scan()
 		}
 		next_declaration_is_enabled = true
+	}
+}
+
+struct FastcSignaturePartial {
+mut:
+	functions             map[string]FastcFunctionSignature
+	interface_methods     map[string]bool
+	interface_fields      map[string]FastcInterfaceField
+	interface_field_paths map[string]string
+	embed_embedders       []string
+	embed_embeddeds       []string
+	failed                bool
+	error_message         string
+}
+
+fn fastc_collect_signature_chunk(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, start int, end int) FastcSignaturePartial {
+	mut partial := FastcSignaturePartial{
+		functions:             map[string]FastcFunctionSignature{}
+		interface_methods:     map[string]bool{}
+		interface_fields:      map[string]FastcInterfaceField{}
+		interface_field_paths: map[string]string{}
+		embed_embedders:       []string{}
+		embed_embeddeds:       []string{}
+	}
+	for idx in start .. end {
+		source_file := sources[idx]
+		collect_function_signatures(source_file.source, source_file.path, source_file.header,
+			prefs, declared_types, declared_type_c_names, params_structs, mut partial.functions) or {
+			partial.failed = true
+			partial.error_message = err.msg()
+			return partial
+		}
+		collect_interface_method_signatures(source_file.source, source_file.path,
+			source_file.header, prefs, declared_types, mut partial.functions, mut
+			partial.interface_methods, mut partial.interface_fields, mut
+			partial.interface_field_paths, mut partial.embed_embedders, mut
+			partial.embed_embeddeds) or {
+			partial.failed = true
+			partial.error_message = err.msg()
+			return partial
+		}
+	}
+	return partial
+}
+
+fn fastc_merge_signature_partial(partial FastcSignaturePartial, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {
+	if partial.failed {
+		return error(partial.error_message)
+	}
+	for key, signature in partial.functions {
+		if key !in partial.interface_methods {
+			if previous := functions[key] {
+				if !key.starts_with('C.') {
+					is_c_override := previous.path.ends_with('.c.v') || signature.path.ends_with('.c.v')
+					if previous.path == signature.path || !is_c_override
+						|| !fastc_string_types_equal(previous.parameter_types,
+							signature.parameter_types)
+						|| !fastc_bool_types_equal(previous.parameter_mutability,
+							signature.parameter_mutability)
+						|| previous.last_parameter_is_params != signature.last_parameter_is_params
+						|| previous.return_type != signature.return_type {
+						return error('fastc parser does not support duplicate function `${key.all_after_last('.')}` in ${signature.path}')
+					}
+					if previous.path.ends_with('.c.v') {
+						continue
+					}
+				}
+			}
+		}
+		functions[key] = signature
+	}
+	for key, _ in partial.interface_methods {
+		interface_methods[key] = true
+	}
+	for key, field in partial.interface_fields {
+		if key in interface_fields {
+			return error('fastc parser does not support duplicate interface field `${field.name}` in ${partial.interface_field_paths[key]}')
+		}
+		interface_fields[key] = field
+	}
+	for embedder in partial.embed_embedders {
+		embed_embedders << embedder
+	}
+	for embedded in partial.embed_embeddeds {
+		embed_embeddeds << embedded
 	}
 }
 

@@ -5,7 +5,7 @@ import v3.pref
 import v3.scanner
 import v3.token
 
-fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool) ! {
+fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines_without_digest(source)
@@ -25,7 +25,8 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
 					collect_declared_types(selected.source, path, module_name, prefs, mut
-						declared_types, mut declared_kinds, mut enum_flags, mut params_structs)!
+						declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut
+						declaration_paths, mut declaration_modules)!
 				}
 				tok = selected.tok
 				previous_tok = .unknown
@@ -64,7 +65,10 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 				if name == 'C' && tok == .dot {
 					tok = scan.scan()
 					if tok == .name && !next_c_struct_is_typedef {
-						declared_types['#Cstruct#${scan.lit}'] = true
+						key := '#Cstruct#${scan.lit}'
+						declared_types[key] = true
+						declaration_paths[key] = path
+						declaration_modules[key] = module_name
 					}
 					next_c_struct_is_typedef = false
 					next_enum_is_flag = false
@@ -77,6 +81,8 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 				}
 				declared_types[key] = is_public
 				declared_kinds[key] = kind
+				declaration_paths[key] = path
+				declaration_modules[key] = module_name
 				if kind == .enum_ && next_enum_is_flag {
 					enum_flags[key] = true
 				}
@@ -100,7 +106,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	}
 }
 
-fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, mut constants map[string]string, mut public_constants map[string]bool) ! {
+fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, mut constants map[string]string, mut public_constants map[string]bool, mut constant_paths map[string]string) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines_without_digest(source)
@@ -116,7 +122,7 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
 					collect_constant_names(selected.source, path, module_name, prefs, mut
-						constants, mut public_constants)!
+						constants, mut public_constants, mut constant_paths)!
 				}
 				tok = selected.tok
 				previous_tok = .unknown
@@ -145,7 +151,7 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 						// headers already provide the symbol, so FastC does not track it.
 						if scan.lit != 'C' {
 							fastc_register_constant(module_name, scan.lit, is_public, path, mut
-								constants, mut public_constants)!
+								constants, mut public_constants, mut constant_paths)!
 						}
 						at_declaration_start = false
 					}
@@ -165,7 +171,7 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 			// already provide the symbol, so FastC does not track it.
 			if scan.lit != 'C' {
 				fastc_register_constant(module_name, scan.lit, is_public, path, mut constants, mut
-					public_constants)!
+					public_constants, mut constant_paths)!
 			}
 			continue
 		}
@@ -179,18 +185,19 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 	}
 }
 
-fn fastc_register_constant(module_name string, name string, is_public bool, path string, mut constants map[string]string, mut public_constants map[string]bool) ! {
+fn fastc_register_constant(module_name string, name string, is_public bool, path string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_paths map[string]string) ! {
 	key := fastc_constant_key(module_name, name)
 	if key in constants {
 		return error('fastc parser does not support duplicate constant `${name}` in ${path}')
 	}
 	constants[key] = fastc_c_constant_name(module_name, name)
+	constant_paths[key] = path
 	if is_public {
 		public_constants[key] = true
 	}
 }
 
-fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool) ! {
+fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool, mut global_paths map[string]string) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines_without_digest(source)
@@ -206,7 +213,7 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
 					collect_global_names(selected.source, path, header, prefs, mut globals, mut
-						public_globals)!
+						public_globals, mut global_paths)!
 				}
 				tok = selected.tok
 				previous_tok = .unknown
@@ -225,7 +232,7 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 					} else if at_start && tok == .name {
 						if scan.lit != 'C' {
 							fastc_register_global(header, scan.lit, is_public, path, prefs, mut
-								globals, mut public_globals)!
+								globals, mut public_globals, mut global_paths)!
 						}
 						at_start = false
 					}
@@ -235,7 +242,7 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 			}
 			if tok == .name && scan.lit != 'C' {
 				fastc_register_global(header, scan.lit, is_public, path, prefs, mut globals, mut
-					public_globals)!
+					public_globals, mut global_paths)!
 			}
 			continue
 		}
@@ -249,7 +256,7 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 	}
 }
 
-fn fastc_register_global(header FastcSourceHeader, name string, is_public bool, path string, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool) ! {
+fn fastc_register_global(header FastcSourceHeader, name string, is_public bool, path string, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool, mut global_paths map[string]string) ! {
 	if !prefs.enable_globals && !prefs.building_v && header.module_name != 'builtin'
 		&& !header.has_globals {
 		return error('use `v -enable-globals ...` to enable globals in ${path}')
@@ -259,7 +266,107 @@ fn fastc_register_global(header FastcSourceHeader, name string, is_public bool, 
 		return error('fastc parser does not support duplicate global `${name}` in ${path}')
 	}
 	globals[key] = fastc_c_global_name(key)
+	global_paths[key] = path
 	if is_public {
+		public_globals[key] = true
+	}
+}
+
+struct FastcDeclarationPartial {
+mut:
+	declared_types      map[string]bool
+	declared_kinds      map[string]FastcDeclaredTypeKind
+	enum_flags          map[string]bool
+	params_structs      map[string]bool
+	declaration_paths   map[string]string
+	declaration_modules map[string]string
+	constants           map[string]string
+	public_constants    map[string]bool
+	constant_paths      map[string]string
+	globals             map[string]string
+	public_globals      map[string]bool
+	global_paths        map[string]string
+	failed              bool
+	error_message       string
+}
+
+fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) FastcDeclarationPartial {
+	mut partial := FastcDeclarationPartial{
+		declared_types:      map[string]bool{}
+		declared_kinds:      map[string]FastcDeclaredTypeKind{}
+		enum_flags:          map[string]bool{}
+		params_structs:      map[string]bool{}
+		declaration_paths:   map[string]string{}
+		declaration_modules: map[string]string{}
+		constants:           map[string]string{}
+		public_constants:    map[string]bool{}
+		constant_paths:      map[string]string{}
+		globals:             map[string]string{}
+		public_globals:      map[string]bool{}
+		global_paths:        map[string]string{}
+	}
+	for idx in start .. end {
+		source_file := sources[idx]
+		collect_declared_types(source_file.source, source_file.path,
+			source_file.header.module_name, prefs, mut partial.declared_types, mut
+			partial.declared_kinds, mut partial.enum_flags, mut partial.params_structs, mut
+			partial.declaration_paths, mut partial.declaration_modules) or {
+			partial.failed = true
+			partial.error_message = err.msg()
+			return partial
+		}
+		collect_constant_names(source_file.source, source_file.path,
+			source_file.header.module_name, prefs, mut partial.constants, mut
+			partial.public_constants, mut partial.constant_paths) or {
+			partial.failed = true
+			partial.error_message = err.msg()
+			return partial
+		}
+		collect_global_names(source_file.source, source_file.path, source_file.header, prefs, mut
+			partial.globals, mut partial.public_globals, mut partial.global_paths) or {
+			partial.failed = true
+			partial.error_message = err.msg()
+			return partial
+		}
+	}
+	return partial
+}
+
+fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut constants map[string]string, mut public_constants map[string]bool, mut globals map[string]string, mut public_globals map[string]bool) ! {
+	if partial.failed {
+		return error(partial.error_message)
+	}
+	for key, is_public in partial.declared_types {
+		if key in declared_types && !key.starts_with('#Cstruct#') {
+			return error('fastc parser does not support duplicate type declaration `${key.all_after_last('.')}` in module `${partial.declaration_modules[key]}` in ${partial.declaration_paths[key]}')
+		}
+		declared_types[key] = is_public
+	}
+	for key, kind in partial.declared_kinds {
+		declared_kinds[key] = kind
+	}
+	for key, _ in partial.enum_flags {
+		enum_flags[key] = true
+	}
+	for key, _ in partial.params_structs {
+		params_structs[key] = true
+	}
+	for key, c_name in partial.constants {
+		if key in constants {
+			return error('fastc parser does not support duplicate constant `${key.all_after_last('.')}` in ${partial.constant_paths[key]}')
+		}
+		constants[key] = c_name
+	}
+	for key, _ in partial.public_constants {
+		public_constants[key] = true
+	}
+	for key, c_name in partial.globals {
+		if key in globals {
+			return error('fastc parser does not support duplicate global `${key.all_after_last('.')}` in ${partial.global_paths[key]}')
+		}
+		globals[key] = c_name
+	}
+	for key, _ in partial.public_globals {
 		public_globals[key] = true
 	}
 }

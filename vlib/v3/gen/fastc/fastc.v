@@ -1110,14 +1110,10 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut public_constants := map[string]bool{}
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
-	for source_file in sources {
-		collect_declared_types(source_file.source, source_file.path, source_file.header.module_name, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs)!
-	}
+	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut
+		enum_flags, mut params_structs, mut constants, mut public_constants, mut globals, mut
+		public_globals)!
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
-	for source_file in sources {
-		collect_constant_names(source_file.source, source_file.path, source_file.header.module_name, prefs, mut constants, mut public_constants)!
-		collect_global_names(source_file.source, source_file.path, source_file.header, prefs, mut globals, mut public_globals)!
-	}
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
 	mut interface_fields := map[string]FastcInterfaceField{}
@@ -1125,10 +1121,9 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	// interface it embeds), kept flat to stay in FastC's self-hostable subset.
 	mut embed_embedders := []string{}
 	mut embed_embeddeds := []string{}
-	for source_file in sources {
-		collect_function_signatures(source_file.source, source_file.path, source_file.header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
-		collect_interface_method_signatures(source_file.source, source_file.path, source_file.header, prefs, declared_types, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
-	}
+	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut
+		functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut
+		embed_embeddeds)!
 	// An interface that embeds another (`interface B { A; ... }`) inherits A's
 	// methods. Copy them onto B (with the receiver re-keyed to B) so calls on a B
 	// value resolve and B gets its own dispatch table entries.
@@ -1151,6 +1146,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		}
 	}
 	type_output := fastc_generate_type_declarations(sources, prefs, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
+	declared_composite_types := composite_types.clone()
 	type_declarations := type_output.declarations
 	enum_field_types := type_output.enum_field_types.clone()
 	mut constant_types := map[string]string{}
@@ -1269,12 +1265,12 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		// (1..N) and the primitive ids (0x40000000+). Only unique/consistent values
 		// matter: construction and `match` both reference `__v_typeid_<composite>`.
 		late_composite_declarations.writeln('#define __v_typeid_${composite_name} ${u32(0x50000000) + u32(index)}')
-		declaration := 'typedef ${if composite_name.starts_with('Array_') {
-			'array'
-		} else {
-			'map'
-		}} ${composite_name};'
-		if !type_declarations.contains(declaration) {
+		if composite_name !in declared_composite_types {
+			declaration := 'typedef ${if composite_name.starts_with('Array_') {
+				'array'
+			} else {
+				'map'
+			}} ${composite_name};'
 			late_composite_declarations.writeln(declaration)
 		}
 	}
