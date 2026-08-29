@@ -158,6 +158,11 @@ fn consume_fixed_items(items []Payload) {
 	item.values[0] = "argument copy"
 }
 
+fn consume_fixed_entries(items []Entry) {
+	mut item := &(items[0] as Payload)
+	item.values[0] = "converted argument copy"
+}
+
 fn copy_payload_pointer(value &Payload) Payload {
 	return *value
 }
@@ -369,6 +374,9 @@ fn test_borrowed_fixed_array_conversions_are_cloned() {
 	assert holder.items[0].values[0] == "original"
 
 	consume_fixed_items(holder.items)
+	assert holder.items[0].values[0] == "original"
+
+	consume_fixed_entries(holder.items)
 	assert holder.items[0].values[0] == "original"
 }
 
@@ -593,7 +601,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 30, out.output
+		assert out.output.count('clone') == 31, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

@@ -643,6 +643,11 @@ fn forwarded_array_elems_storage_identical(actual_elem types.Type, expected_elem
 
 fn (mut t Transformer) convert_forwarded_array_to_dynamic(value_id flat.NodeId, actual_type types.Type, actual_elem types.Type, expected_type types.Type, expected_elem types.Type, actual_is_fixed bool) flat.NodeId {
 	src := t.a.nodes[int(value_id)]
+	actual_elem_type := t.semantic_type_name(actual_elem)
+	// Preserve a borrowed fixed array by cloning its elements before target wrapping/conversion.
+	clone_borrowed_fixed_elems := actual_is_fixed && !isnil(t.tc)
+		&& t.tc.ownership_expr_is_borrowed_projection(value_id)
+		&& t.compiler_default_clone_type_needs_work(actual_elem_type)
 	pending_start := t.pending_stmts.len
 	base := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id),
 		t.semantic_type_name(actual_type), 'return_array')
@@ -661,12 +666,17 @@ fn (mut t Transformer) convert_forwarded_array_to_dynamic(value_id flat.NodeId, 
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	elem := if actual_is_fixed {
-		t.make_index(base, t.make_ident(idx_name), t.semantic_type_name(actual_elem))
+		t.make_index(base, t.make_ident(idx_name), actual_elem_type)
 	} else {
-		t.array_get_value(base, t.make_ident(idx_name), t.semantic_type_name(actual_elem))
+		t.array_get_value(base, t.make_ident(idx_name), actual_elem_type)
 	}
 	body_pending_start := t.pending_stmts.len
-	converted := t.transform_forwarded_return_slot(elem, actual_elem, expected_elem)
+	converted_source := if clone_borrowed_fixed_elems {
+		t.make_compiler_default_borrowed_clone_value(elem, actual_elem_type, true)
+	} else {
+		elem
+	}
+	converted := t.transform_forwarded_return_slot(converted_source, actual_elem, expected_elem)
 	mut body := t.pending_stmts[body_pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..body_pending_start].clone()
 	value_name := t.new_temp('return_array_value')
