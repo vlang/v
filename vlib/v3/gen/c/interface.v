@@ -698,6 +698,9 @@ fn (g &FlatGen) interface_impl_is_open_generic(name string) bool {
 }
 
 fn (mut g FlatGen) register_specialized_interface_applications() {
+	if g.tc.interface_generic_params.len == 0 {
+		return
+	}
 	mut applications := map[string]string{}
 	for _, implemented_interfaces in g.tc.struct_implements {
 		for iface in implemented_interfaces {

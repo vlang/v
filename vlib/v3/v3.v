@@ -1,8 +1,13 @@
 module main
 
 import os
-import v3.driver
-import v3.fastcdriver
+
+$if !fastc_selfhost ? {
+	import v3.driver
+}
+$if fastc_selfhost ? {
+	import v3.fastcdriver
+}
 
 $if gcboehm ? {
 	$compile_error('v3 must be built without a garbage collector; use `-gc none` or `-prealloc`')
