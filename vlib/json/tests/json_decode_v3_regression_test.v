@@ -1,5 +1,6 @@
 // vtest vflags: -w
 import json
+import time
 
 struct DecodeV3Required {
 	name string @[required]
@@ -24,6 +25,20 @@ struct DecodeV3Plain {
 struct DecodeV3SkippedDefault {
 	visible string
 	hidden  int = 7 @[skip]
+}
+
+struct DecodeV3DefaultElem {
+	value int = 7
+}
+
+struct DecodeV3FixedDefaults {
+mut:
+	maps  [2]map[string]int
+	elems [2]DecodeV3DefaultElem
+}
+
+struct DecodeV3Event {
+	at time.Time
 }
 
 type DecodeV3DeepI64 = [][][][][][][][][][][][][]i64
@@ -69,6 +84,44 @@ fn test_json_decode_v3_skipped_fields_keep_struct_defaults() {
 	decoded := json.decode(DecodeV3SkippedDefault, '{"visible":"ok","hidden":99}')!
 	assert decoded.visible == 'ok'
 	assert decoded.hidden == 7
+}
+
+fn test_json_decode_v3_fixed_arrays_keep_recursive_defaults() {
+	mut omitted := json.decode(DecodeV3FixedDefaults, '{}')!
+	omitted.maps[0]['first'] = 1
+	omitted.maps[1]['second'] = 2
+	assert omitted.maps[0]['first'] == 1
+	assert omitted.maps[1]['second'] == 2
+	assert omitted.elems[0].value == 7
+	assert omitted.elems[1].value == 7
+
+	mut partial := json.decode(DecodeV3FixedDefaults,
+		'{"maps":[{"decoded":3}],"elems":[{"value":4}]}')!
+	partial.maps[1]['defaulted'] = 5
+	assert partial.maps[0]['decoded'] == 3
+	assert partial.maps[1]['defaulted'] == 5
+	assert partial.elems[0].value == 4
+	assert partial.elems[1].value == 7
+
+	mut nulls := json.decode(DecodeV3FixedDefaults, '{"maps":null,"elems":null}')!
+	nulls.maps[0]['ready'] = 6
+	assert nulls.maps[0]['ready'] == 6
+	assert nulls.elems[0].value == 7
+}
+
+fn test_json_decode_v3_propagates_invalid_time_errors() {
+	mut failed := false
+	mut message := ''
+	_ := json.decode(DecodeV3Event, '{"at":"not-a-time"}') or {
+		failed = true
+		message = err.msg()
+		DecodeV3Event{}
+	}
+	assert failed
+	assert message.contains('Expected iso8601/rfc3339/unix time')
+
+	valid := json.decode(DecodeV3Event, '{"at":"2001-01-01"}')!
+	assert valid.at.str() == '2001-01-01 00:00:00'
 }
 
 fn test_json_decode_v3_recursive_pointer_and_generic_fixed_array() {

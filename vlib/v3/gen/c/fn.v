@@ -9421,25 +9421,25 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 		out_name := g.tmp_name()
 		opt_ct := g.optional_type_name(ret_type)
 		valid := g.json_decode_value_valid_expr(root_name, base)
-		failed_sid := g.intern_string('failed to decode JSON string')
-		context_sid := g.intern_string(': ')
+		failed_lit := json_decode_c_string_literal('failed to decode JSON string')
+		context_lit := json_decode_c_string_literal(': ')
 		mismatch_message := if sum_name := g.json_decode_nested_sum_name(base, 0) {
 			'cannot decode `${sum_name}` sum type from JSON value: '
 		} else {
 			'type mismatch, expecting `${base.name()}` type, got: '
 		}
-		mismatch_sid := g.intern_string(mismatch_message)
+		mismatch_lit := json_decode_c_string_literal(mismatch_message)
 		g.write('({ string ${json_name} = ')
 		g.gen_expr_with_expected_type(json_id, types.Type(types.string_))
 		g.write('; cJSON* ${root_name} = cJSON_ParseWithLength((char*)${json_name}.str, (size_t)${json_name}.len); ')
 		if g.json_decode_value_needs_exact_integer(base, 0) {
 			g.write('v3_json_preserve_number_tokens(${json_name}.str, ${json_name}.len, ${root_name}); ')
 		}
-		g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} == NULL) { string ${out_name}_msg = _str_${failed_sid}; if (${json_name}.len > 0) ${out_name}_msg = string__plus(string__plus(${out_name}_msg, _str_${context_sid}), ${json_name}); ')
+		g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} == NULL) { string ${out_name}_msg = ${failed_lit}; if (${json_name}.len > 0) ${out_name}_msg = string__plus(string__plus(${out_name}_msg, ${context_lit}), ${json_name}); ')
 		g.gen_json_decode_error_assignment(out_name, '${out_name}_msg')
 		g.write(' } else { if (${valid}) { ${out_name}.ok = true; ')
 		g.gen_json_decode_value_assign('${out_name}.value', root_name, base, 0)
-		g.write(' } else { string ${out_name}_msg = string__plus(_str_${mismatch_sid}, json__json_print(${root_name})); ')
+		g.write(' } else { string ${out_name}_msg = string__plus(${mismatch_lit}, json__json_print(${root_name})); ')
 		g.gen_json_decode_error_assignment(out_name, '${out_name}_msg')
 		g.write(' } cJSON_Delete(${root_name}); } ${out_name}; })')
 		return true
@@ -9458,7 +9458,8 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 		if json_attrs_skip_field(attrs) {
 			continue
 		}
-		if !g.json_decode_value_supported(field.typ, 0) {
+		field_clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
+		if !json_is_time_type(field_clean) && !g.json_decode_value_supported(field.typ, 0) {
 			return false
 		}
 		if g.json_decode_value_needs_exact_integer(field.typ, 0) {
@@ -9476,17 +9477,21 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	if needs_exact_integer {
 		g.write('v3_json_preserve_number_tokens(${json_name}.str, ${json_name}.len, ${root_name}); ')
 	}
-	not_object_sid := g.intern_string('Json element is not an object: ')
-	failed_sid := g.intern_string('failed to decode JSON string')
-	context_sid := g.intern_string(': ')
-	empty_sid := g.intern_string('')
+	not_object_lit := json_decode_c_string_literal('Json element is not an object: ')
+	failed_lit := json_decode_c_string_literal('failed to decode JSON string')
+	context_lit := json_decode_c_string_literal(': ')
+	empty_lit := json_decode_c_string_literal('')
 	valid_name := g.tmp_name()
 	err_name := g.tmp_name()
-	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} == NULL) { string ${out_name}_msg = _str_${failed_sid}; if (${json_name}.len > 0) ${out_name}_msg = string__plus(string__plus(${out_name}_msg, _str_${context_sid}), ${json_name}); ')
+	has_decode_err_name := g.tmp_name()
+	decode_err_name := g.tmp_name()
+	mut decoded_time_values := map[string]string{}
+	mut decoded_time_items := map[string]string{}
+	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} == NULL) { string ${out_name}_msg = ${failed_lit}; if (${json_name}.len > 0) ${out_name}_msg = string__plus(string__plus(${out_name}_msg, ${context_lit}), ${json_name}); ')
 	g.gen_json_decode_error_assignment(out_name, '${out_name}_msg')
-	g.write(' } else if (!cJSON_IsObject(${root_name})) { string ${out_name}_msg = string__plus(_str_${not_object_sid}, json__json_print(${root_name})); ')
+	g.write(' } else if (!cJSON_IsObject(${root_name})) { string ${out_name}_msg = string__plus(${not_object_lit}, json__json_print(${root_name})); ')
 	g.gen_json_decode_error_assignment(out_name, '${out_name}_msg')
-	g.write(' } else { bool ${valid_name} = true; string ${err_name} = _str_${empty_sid}; ')
+	g.write(' } else { bool ${valid_name} = true; string ${err_name} = ${empty_lit}; bool ${has_decode_err_name} = false; IError ${decode_err_name} = (IError){0}; ')
 	for field in fields {
 		attrs := g.json_struct_field_attrs(struct_type.name, field.name)
 		if json_attrs_skip_field(attrs) {
@@ -9497,8 +9502,16 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 		label := json_struct_field_label(field.name, attrs)
 		g.write('cJSON* ${item_name} = ${item}; ')
 		if json_attrs_have_name(attrs, 'required') {
-			missing_sid := g.intern_string("expected field '${label}' is missing")
-			g.write('if (${valid_name} && ${item_name} == NULL) { ${valid_name} = false; ${err_name} = _str_${missing_sid}; } ')
+			missing_lit := json_decode_c_string_literal("expected field '${label}' is missing")
+			g.write('if (${valid_name} && ${item_name} == NULL) { ${valid_name} = false; ${err_name} = ${missing_lit}; } ')
+		}
+		field_clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
+		if json_is_time_type(field_clean) {
+			decoded_name := g.tmp_name()
+			decoded_time_values[field.name] = decoded_name
+			decoded_time_items[field.name] = item_name
+			g.write('Optional_time__Time ${decoded_name} = json__decode_time(${item_name}); if (${valid_name} && !${decoded_name}.ok) { ${valid_name} = false; ${has_decode_err_name} = true; ${decode_err_name} = ${decoded_name}.err; } ')
+			continue
 		}
 		if !json_attrs_have_name(attrs, 'raw') {
 			field_valid := g.json_decode_field_valid_expr(item_name, field.typ, json_attrs_have_name(attrs,
@@ -9510,8 +9523,8 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 			} else {
 				"type mismatch for field '${field.name}', expecting `${field.typ.name()}` type, got: "
 			}
-			mismatch_sid := g.intern_string(mismatch_message)
-			g.write('if (${valid_name} && ${item_name} != NULL && !(${field_valid})) { ${valid_name} = false; ${err_name} = string__plus(_str_${mismatch_sid}, json__json_print(${item_name})); } ')
+			mismatch_lit := json_decode_c_string_literal(mismatch_message)
+			g.write('if (${valid_name} && ${item_name} != NULL && !(${field_valid})) { ${valid_name} = false; ${err_name} = string__plus(${mismatch_lit}, json__json_print(${item_name})); } ')
 		}
 	}
 	struct_default := g.default_value_to_string(struct_type)
@@ -9522,11 +9535,17 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 			continue
 		}
 		target := '${out_name}.value.${g.cname(field.name)}'
+		if field.name in decoded_time_values {
+			item_name := decoded_time_items[field.name]
+			decoded_name := decoded_time_values[field.name]
+			g.write('if (${item_name} != NULL) ${target} = ${decoded_name}.value; ')
+			continue
+		}
 		g.gen_json_decode_field_assign(target, root_name, struct_type.name, field, 0)
 	}
-	g.write(' } else { ')
+	g.write(' } else { if (${has_decode_err_name}) { ${out_name}.err = ${decode_err_name}; } else { ')
 	g.gen_json_decode_error_assignment(out_name, err_name)
-	g.write(' } } if (${root_name} != NULL) cJSON_Delete(${root_name}); ${out_name}; })')
+	g.write(' } } } if (${root_name} != NULL) cJSON_Delete(${root_name}); ${out_name}; })')
 	return true
 }
 
@@ -9551,6 +9570,10 @@ fn json_decode_container_mismatch_message(typ types.Type) ?string {
 	}
 }
 
+fn json_decode_c_string_literal(value string) string {
+	return 'v3_c_lit("${c_escape(value)}", ${value.len})'
+}
+
 fn (g &FlatGen) json_decode_struct_fields_supported(struct_name string, fields []types.StructField) bool {
 	for field in fields {
 		attrs := g.json_struct_field_attrs(struct_name, field.name)
@@ -9569,8 +9592,7 @@ fn (g &FlatGen) json_decode_struct_fields_supported(struct_name string, fields [
 
 fn (mut g FlatGen) gen_json_decode_error_assignment(out_name string, message_expr string) {
 	message_error_type_id := g.ierror_type_id_for_pattern('MessageError')
-	empty_sid := g.intern_string('')
-	g.write('${out_name}.err = (IError){._typ = ${message_error_type_id}, ._object = (MessageError*)memdup(&(MessageError){.msg = ${message_expr}, .code = 0}, sizeof(MessageError)), ._object_is_boxed = true, .message = _str_${empty_sid}, .code = 0};')
+	g.write('${out_name}.err = (IError){._typ = ${message_error_type_id}, ._object = (MessageError*)memdup(&(MessageError){.msg = ${message_expr}, .code = 0}, sizeof(MessageError)), ._object_is_boxed = true, .message = v3_c_lit("", 0), .code = 0};')
 }
 
 // json_decode_field_valid_expr returns a C boolean expression that is true when the
@@ -9884,7 +9906,9 @@ fn (g &FlatGen) json_decode_value_supported_inner(typ types.Type, depth int, see
 	}
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if json_is_time_type(clean) {
-		return true
+		// Direct struct fields have a fallible assignment path. Nested values need
+		// equivalent helpers before they can preserve json__decode_time errors.
+		return false
 	}
 	if clean is types.String {
 		return true
@@ -10104,7 +10128,9 @@ fn (mut g FlatGen) gen_json_decode_value_assign(target string, item string, typ 
 		elem_name := g.tmp_name()
 		idx_name := g.tmp_name()
 		len := g.fixed_array_len_value(clean)
-		g.write('{ cJSON* ${item_name} = ${item}; memset(${target}, 0, sizeof(${target})); if (${item_name} != NULL && cJSON_IsArray(${item_name})) { int ${idx_name} = 0; cJSON* ${elem_name} = NULL; cJSON_ArrayForEach(${elem_name}, ${item_name}) { if (${idx_name} >= ${len}) break; ')
+		c_elem, dims := g.fixed_array_decl_parts(clean)
+		default_init := g.empty_fixed_array_initializer_string(clean)
+		g.write('{ cJSON* ${item_name} = ${item}; memmove(${target}, (${c_elem}${dims})${default_init}, sizeof(${target})); if (${item_name} != NULL && cJSON_IsArray(${item_name})) { int ${idx_name} = 0; cJSON* ${elem_name} = NULL; cJSON_ArrayForEach(${elem_name}, ${item_name}) { if (${idx_name} >= ${len}) break; ')
 		g.gen_json_decode_value_assign('${target}[${idx_name}]', elem_name, clean.elem_type,
 
 			depth + 1)
@@ -10138,11 +10164,10 @@ fn (mut g FlatGen) gen_json_decode_value_expr_at_depth(item string, typ types.Ty
 		return
 	}
 	if clean is types.String {
-		empty := g.intern_string('')
 		item_name := g.tmp_name()
 		out_name := g.tmp_name()
 		raw_name := g.tmp_name()
-		g.write('({ cJSON* ${item_name} = ${item}; string ${out_name} = _str_${empty}; if (${item_name} != NULL && cJSON_IsString(${item_name}) && ${item_name}->valuestring != NULL) { ${out_name} = tos_clone((u8*)${item_name}->valuestring); } else if (${item_name} != NULL && (cJSON_IsObject(${item_name}) || cJSON_IsArray(${item_name}))) { char* ${raw_name} = cJSON_PrintUnformatted(${item_name}); if (${raw_name} != NULL) { ${out_name} = tos_clone((u8*)${raw_name}); cJSON_free(${raw_name}); } } ${out_name}; })')
+		g.write('({ cJSON* ${item_name} = ${item}; string ${out_name} = v3_c_lit("", 0); if (${item_name} != NULL && cJSON_IsString(${item_name}) && ${item_name}->valuestring != NULL) { ${out_name} = tos_clone((u8*)${item_name}->valuestring); } else if (${item_name} != NULL && (cJSON_IsObject(${item_name}) || cJSON_IsArray(${item_name}))) { char* ${raw_name} = cJSON_PrintUnformatted(${item_name}); if (${raw_name} != NULL) { ${out_name} = tos_clone((u8*)${raw_name}); cJSON_free(${raw_name}); } } ${out_name}; })')
 		return
 	}
 	if clean is types.Enum {
