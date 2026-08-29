@@ -101,6 +101,54 @@ fn test_const_map_expansion_estimate_ignores_stale_transformer_local() {
 	assert t.collection_const_expr_for_ident(ident)? == const_id
 }
 
+fn test_const_map_expansion_estimate_recognizes_for_in_bindings_only_in_body() {
+	mut a := flat.FlatAst.new()
+	const_id := a.add_node(flat.Node{
+		kind: .map_init
+	})
+	empty := a.add_node(flat.Node{
+		kind: .empty
+	})
+	binding := a.add_node(flat.Node{
+		kind: .ident
+		value: 'lookup'
+	})
+	container := a.add_node(flat.Node{
+		kind: .ident
+		value: 'lookup'
+	})
+	body_ident := a.add_node(flat.Node{
+		kind: .ident
+		value: 'lookup'
+	})
+	loop_start := a.children.len
+	a.children << empty
+	a.children << binding
+	a.children << container
+	a.children << body_ident
+	loop := a.add_node(flat.Node{
+		kind: .for_in_stmt
+		value: '3'
+		children_start: loop_start
+		children_count: 4
+	})
+	fn_start := a.children.len
+	a.children << loop
+	a.add_node(flat.Node{
+		kind: .fn_decl
+		value: 'shadowed_in_loop'
+		children_start: fn_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.const_exprs['lookup'] = const_id
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+
+	assert t.collection_const_expr_for_ident(container)? == const_id
+	assert t.collection_const_expr_for_ident(body_ident) == none
+}
+
 fn test_const_map_expansion_estimate_keeps_if_guard_shadow_out_of_else_branch() {
 	mut a := flat.FlatAst.new()
 	const_id := a.add_node(flat.Node{
@@ -820,6 +868,55 @@ fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruct
 	base := t.map_init_expansion_estimate(root, a.nodes[int(root)])
 	estimate := t.external_map_tree_expansion_estimate(root, 0, 0)
 	assert estimate == base + 1024 * 2 + 1023 * 3
+	assert estimate > deferred_map_expansion_threshold
+}
+
+fn test_external_map_expansion_estimate_includes_unary_wrapper_reconstruction() {
+	mut a := flat.FlatAst.new()
+	mut wrapped := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+		typ: 'int'
+	})
+	for i in 0 .. 1024 {
+		wrapper_start := a.children.len
+		a.children << wrapped
+		wrapped = if i % 2 == 0 {
+			a.add_node(flat.Node{
+				kind: .paren
+				typ: 'int'
+				children_start: wrapper_start
+				children_count: 1
+			})
+		} else {
+			a.add_node(flat.Node{
+				kind: .prefix
+				op: .bit_not
+				typ: 'int'
+				children_start: wrapper_start
+				children_count: 1
+			})
+		}
+	}
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << wrapped
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	base := t.map_init_expansion_estimate(root, a.nodes[int(root)])
+	estimate := t.external_map_tree_expansion_estimate(root, 0, 0)
+	assert estimate == base + 1024 * 2
 	assert estimate > deferred_map_expansion_threshold
 }
 

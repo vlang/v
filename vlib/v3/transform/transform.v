@@ -15430,6 +15430,18 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 	for path_idx := path.len - 1; path_idx > 0; path_idx-- {
 		parent := t.a.nodes[path[path_idx]]
 		next_id := path[path_idx - 1]
+		mut inside_for_in_body := false
+		if parent.kind == .for_in_stmt {
+			header_count := parent.value.int()
+			if header_count >= 3 && header_count < parent.children_count {
+				for i in header_count .. parent.children_count {
+					if int(t.a.child(&parent, i)) == next_id {
+						inside_for_in_body = true
+						break
+					}
+				}
+			}
+		}
 		for i in 0 .. parent.children_count {
 			child_id := int(t.a.child(&parent, i))
 			if child_id == next_id {
@@ -15445,6 +15457,9 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 			}
 			child := t.a.nodes[child_id]
 			if child.kind == .param && child.value == name {
+				found = true
+				is_shared = false
+			} else if parent.kind == .for_in_stmt && inside_for_in_body && i < 2 && child.kind == .ident && child.value == name {
 				found = true
 				is_shared = false
 			} else if child.kind == .decl_assign {
