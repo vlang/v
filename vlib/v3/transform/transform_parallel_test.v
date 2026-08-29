@@ -669,6 +669,55 @@ fn test_external_map_expansion_estimate_includes_logical_rewrites() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_includes_call_reconstruction() {
+	mut a := flat.FlatAst.new()
+	mut level := []flat.NodeId{cap: 4096}
+	for i in 0 .. 4096 {
+		level << a.add_node(flat.Node{
+			kind: .int_literal
+			value: i.str()
+			typ: 'int'
+		})
+	}
+	for level.len > 1 {
+		mut next := []flat.NodeId{cap: level.len / 2}
+		for i := 0; i < level.len; i += 2 {
+			callee := a.add_node(flat.Node{
+				kind: .ident
+				value: 'combine'
+			})
+			call_start := a.children.len
+			a.children << callee
+			a.children << level[i]
+			a.children << level[i + 1]
+			next << a.add_node(flat.Node{
+				kind: .call
+				typ: 'int'
+				children_start: call_start
+				children_count: 3
+			})
+		}
+		level = next.clone()
+	}
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << level[0]
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{

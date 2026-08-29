@@ -179,6 +179,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 		if node.kind == .string_interp {
 			estimate += t.string_interp_expansion_estimate(node)
 		}
+		if node.kind == .call {
+			// Calls outside the writable function span are always reconstructed by
+			// transform_call_args, including a new child-ID span.
+			estimate += int(node.children_count) + 1
+		}
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] {
 			// Logical conditions are rebuilt through make_infix during smartcast lowering.
 			estimate++
