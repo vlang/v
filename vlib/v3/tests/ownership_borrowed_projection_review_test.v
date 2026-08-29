@@ -417,6 +417,12 @@ fn test_borrowed_array_literal_element_is_cloned(holder &Holder) {
 	assert holder.left.values[0] == "left"
 }
 
+fn test_borrowed_fixed_array_literal_element_is_cloned(holder &Holder) {
+	mut items := [holder.left]!
+	items[0].values[0] = "fixed literal copy"
+	assert holder.left.values[0] == "left"
+}
+
 fn test_borrowed_fixed_array_initializer_is_cloned_per_element(holder &Holder) {
 	mut items := [2]Payload{init: holder.left}
 	items[0].values[0] = "fixed first"
@@ -659,6 +665,7 @@ fn main() {
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
 	test_borrowed_array_initializer_is_cloned_per_element(holder)
 	test_borrowed_array_literal_element_is_cloned(holder)
+	test_borrowed_fixed_array_literal_element_is_cloned(holder)
 	test_borrowed_fixed_array_initializer_is_cloned_per_element(holder)
 	test_borrowed_channel_send_is_cloned(holder)
 	test_borrowed_map_literal_entries_are_cloned(holder)
@@ -678,7 +685,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 39, out.output
+		assert out.output.count('clone') == 40, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

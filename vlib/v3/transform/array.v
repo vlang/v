@@ -932,7 +932,8 @@ fn (mut t Transformer) transform_fixed_array_literal_for_type(_id flat.NodeId, n
 	mut values := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		elem_id := t.a.child(&node, i)
-		value := t.transform_expr_for_type(elem_id, elem_type)
+		transformed := t.transform_expr_for_type(elem_id, elem_type)
+		value := t.clone_borrowed_projection(elem_id, transformed, elem_type)
 		if ordered_temps {
 			tmp_name := t.new_temp('fixed_arr_val')
 			t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, elem_type)
