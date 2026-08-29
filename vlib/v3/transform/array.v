@@ -2816,6 +2816,18 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 			}
 			return false
 		}
+		.comptime_if {
+			if take_then := t.comptime_type_condition_value(node.value) {
+				branch_idx := if take_then { 0 } else { 1 }
+				return branch_idx < node.children_count && t.array_map_expr_result_retains_element_address(t.a.child(&node, branch_idx), name)
+			}
+			for i in 0 .. node.children_count {
+				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
+					return true
+				}
+			}
+			return false
+		}
 		.or_expr {
 			for i in 0 .. node.children_count {
 				if t.array_map_expr_result_retains_element_address(t.a.child(&node, i), name) {
@@ -2905,6 +2917,19 @@ fn (mut t Transformer) array_map_block_expr_result_retains_element_address(block
 		}
 		.index {
 			return node.children_count > 0 && t.array_map_block_index_result_retains_element_address(block, before_idx, node, name, mut seen)
+		}
+		.comptime_if {
+			if take_then := t.comptime_type_condition_value(node.value) {
+				branch_idx := if take_then { 0 } else { 1 }
+				return branch_idx < node.children_count && t.array_map_block_expr_result_retains_element_address(block, before_idx, t.a.child(&node, branch_idx), name, mut seen)
+			}
+			for i in 0 .. node.children_count {
+				mut child_seen := seen.clone()
+				if t.array_map_block_expr_result_retains_element_address(block, before_idx, t.a.child(&node, i), name, mut child_seen) {
+					return true
+				}
+			}
+			return false
 		}
 		.fn_literal {
 			for i in 0 .. node.children_count {

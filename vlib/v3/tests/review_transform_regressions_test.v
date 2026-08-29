@@ -6398,6 +6398,47 @@ fn main() {
 	assert out == 'external'
 }
 
+fn test_array_map_traces_only_selected_comptime_if_branch() {
+	v3_bin := build_v3_review_transform_ownership()
+	source_true := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map($if true {
+		unsafe { &it }
+	} $else {
+		unsafe { &external }
+	})
+	println(selected[0].text)
+}
+'
+	c_source_true := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_if_true_c', '-ownership', source_true)
+	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
+	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
+	out_true := run_good_with_flags(v3_bin, 'array_map_comptime_if_true', '-ownership', source_true)
+	assert out_true == 'source'
+
+	source_false := source_true.replace('\$if true {', '\$if false {')
+	c_source_false := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_if_false_c', '-ownership', source_false)
+	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
+	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
+	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_if_false', '-ownership', source_false)
+	assert out_false == 'external'
+}
+
 fn test_array_map_drops_temporary_source_after_transient_mutating_method_argument() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
