@@ -1764,6 +1764,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 }
 
 fn (g &Parser) shared_token_is_identifier() bool {
+	mut lookahead := g.s
+	if lookahead.scan() in [.key_or, .key_in, .key_as, .key_is] {
+		return true
+	}
 	start := g.s.offset
 	mut offset := start
 	// Horizontal whitespace separates a modifier from its operand, but a newline
