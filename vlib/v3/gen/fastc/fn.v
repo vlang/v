@@ -28,7 +28,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 			continue
 		}
 		instance = g.erase_mono_generic_type_arguments(instance, src)
-		if req.concrete == 'voidptr' && req.source_key.ends_with('.check_element_type_valid') {
+		if fastc_is_json2_voidptr_element_check(req, src) {
 			if body_open := instance.index('{') {
 				instance = instance[..body_open + 1] + '\nreturn false\n}'
 			}
@@ -49,6 +49,14 @@ fn (mut g Parser) drain_pending_mono() ! {
 			g.mono_definitions[c_name] = definition
 		}
 	}
+}
+
+// fastc_is_json2_voidptr_element_check scopes the erased-placeholder fallback to
+// json2's internal decoder helper. A user method with the same ordinary name must
+// retain its specialized body.
+fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMethodSource) bool {
+	normalized_path := src.path.replace('\\', '/')
+	return req.concrete == 'voidptr' && src.name == 'check_element_type_valid' && (src.receiver_type == 'json2__Decoder' || src.receiver_type.ends_with('__json2__Decoder')) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
 }
 
 // parse_mono_instance re-parses one concrete instance in its defining module, so its body
@@ -139,8 +147,7 @@ fn (mut g Parser) parse_top_level_items(stop_at_block_end bool) ! {
 fn (mut g Parser) parse_c_directive() ! {
 	directive := g.lit.trim_space()
 	g.next()
-	if directive == 'flag' || directive.starts_with('flag ') || directive == 'pkgconfig'
-		|| directive.starts_with('pkgconfig ') {
+	if directive == 'flag' || directive.starts_with('flag ') || directive == 'pkgconfig' || directive.starts_with('pkgconfig ') {
 		// FastC's compiler invocation supplies its own target flags. The bootstrap
 		// dependency set only uses these directives for optional libraries.
 		if g.prefs.selfhost {
@@ -152,8 +159,8 @@ fn (mut g Parser) parse_c_directive() ! {
 			// inert for this build; skip it instead of rejecting the whole program,
 			// mirroring the `#include <os>` target filtering below.
 			qualifier := rest.all_before(' ')
-			if qualifier in ['windows', 'macos', 'darwin', 'ios', 'mac', 'linux', 'freebsd',
-				'openbsd', 'netbsd', 'dragonfly', 'solaris', 'android'] {
+			if qualifier in ['windows', 'macos', 'darwin', 'ios', 'mac', 'linux', 'freebsd', 'openbsd',
+				'netbsd', 'dragonfly', 'solaris', 'android'] {
 				if !pref.comptime_flag_value(g.prefs, qualifier) {
 					return
 				}
@@ -235,8 +242,7 @@ fn fastc_c_flag_args(raw string, vroot string, source_file string) ![]string {
 				break
 			}
 		}
-		if (arg.ends_with('.o') || arg.ends_with('.a') || arg.ends_with('.obj')
-			|| arg.ends_with('.lib')) && !os.is_abs_path(arg) {
+		if (arg.ends_with('.o') || arg.ends_with('.a') || arg.ends_with('.obj') || arg.ends_with('.lib')) && !os.is_abs_path(arg) {
 			args[i] = os.join_path(base_dir, arg)
 		}
 		resolved_arg := args[i]
@@ -287,9 +293,7 @@ fn fastc_flag_is_skippable(flag string) bool {
 			i += 2
 			continue
 		}
-		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl')
-			|| part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F')
-			|| part == '-pthread' {
+		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part == '-pthread' {
 			i++
 			continue
 		}
@@ -301,8 +305,7 @@ fn fastc_flag_is_skippable(flag string) bool {
 		// A bare object / static-library link input (`@VEXEROOT/.../cJSON.o`): FastC drives
 		// its own tcc link line and does not add these, so skip it. If a live reference to
 		// its symbols survives reachability, the link fails explicitly instead.
-		if part.ends_with('.o') || part.ends_with('.a') || part.ends_with('.obj')
-			|| part.ends_with('.lib') {
+		if part.ends_with('.o') || part.ends_with('.a') || part.ends_with('.obj') || part.ends_with('.lib') {
 			i++
 			continue
 		}
@@ -335,8 +338,7 @@ fn fastc_flag_defines(flag string) ?[]string {
 			}
 			continue
 		}
-		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-I')
-			|| part.starts_with('-Wl') || part.starts_with('-rpath') || part == '-pthread' {
+		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-I') || part.starts_with('-Wl') || part.starts_with('-rpath') || part == '-pthread' {
 			continue
 		}
 		return none
@@ -617,9 +619,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 		params << '${receiver_parameter_type} ${fastc_c_identifier(receiver_name)}'
 		g.locals[receiver_name] = FastcLocal{
-			is_mut:       receiver_is_mut
+			is_mut: receiver_is_mut
 			is_reference: receiver_is_reference
-			typ:          receiver_parameter_type
+			typ: receiver_parameter_type
 		}
 	}
 	if g.tok != .name && !(g.tok.is_overloadable() || g.tok.is_keyword()) {
@@ -699,8 +701,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	} else {
 		'${receiver_key}.${name}'
 	}
-	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main']
-		&& name == 'main'
+	is_main := !is_static_method && receiver_type == '' && g.module_name in ['', 'main'] && name == 'main'
 	is_module_init := !is_static_method && receiver_type == '' && name == 'init'
 	is_module_cleanup := !is_static_method && receiver_type == '' && name == 'cleanup'
 	if is_main {
@@ -718,17 +719,17 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.next()
 		return
 	}
-	is_fastc_source := name.starts_with('fastc_') || g.path.ends_with('/fastc/fastc.v')
-		|| g.module_name.ends_with('fastc')
-	if g.selfhost && name != 'fastc_collect_referenced_function_names' && !is_fastc_source
-		&& name !in ['main', 'init', 'cleanup'] && name !in g.used_function_names && name.len > 0
-		&& (name[0].is_letter() || name[0] == `_`) && !g.in_mono_drain {
+	is_fastc_source := name.starts_with('fastc_') || g.path.ends_with('/fastc/fastc.v') || g.module_name.ends_with('fastc')
+	if g.selfhost && name != 'fastc_collect_referenced_function_names' && !is_fastc_source && name !in [
+		'main',
+		'init',
+		'cleanup',
+	] && name !in g.used_function_names && name.len > 0 && (name[0].is_letter() || name[0] == `_`) && !g.in_mono_drain {
 		g.skip_balanced(.lcbr, .rcbr)!
 		return
 	}
 	if signature := g.functions[function_key] {
-		if signature.path != g.path && name != 'fastc_collect_referenced_function_names'
-			&& !is_fastc_source {
+		if signature.path != g.path && name != 'fastc_collect_referenced_function_names' && !is_fastc_source {
 			g.skip_balanced(.lcbr, .rcbr)!
 			return
 		}
@@ -865,8 +866,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		}
 		previous_placeholder := g.in_generic_placeholder
 		g.in_generic_placeholder = true
-		terminates = g.parse_generic_body_or_stub(return_type, out_checkpoint, saved_indent,
-			body_end, force_stub)
+		terminates = g.parse_generic_body_or_stub(return_type, out_checkpoint, saved_indent, body_end, force_stub)
 		g.in_generic_placeholder = previous_placeholder
 	} else {
 		terminates = g.parse_block_body()!
@@ -1091,17 +1091,17 @@ fn (mut g Parser) parse_parameters() ![]string {
 				// compiles as a direct call; the return C type is recovered above.
 				params << '${fn_return_type} (*${c_name})()'
 				g.locals[parameter_name] = FastcLocal{
-					is_mut:               is_mut
-					typ:                  type_name
-					fn_return_type:       fn_return_type
+					is_mut: is_mut
+					typ: type_name
+					fn_return_type: fn_return_type
 					fn_option_value_type: fn_option_value_type
 				}
 			} else {
 				params << '${type_name} ${c_name}'
 				g.locals[parameter_name] = FastcLocal{
-					is_mut:            is_mut
-					is_reference:      is_reference
-					typ:               type_name
+					is_mut: is_mut
+					is_reference: is_reference
+					typ: type_name
 					option_value_type: option_value_type
 				}
 			}
@@ -1141,8 +1141,7 @@ fn (mut g Parser) parse_type() !string {
 		// declared with unspecified args), so only the return type is recovered.
 		g.peek_fn_pointer_signature()
 	}
-	type_name, next_token := fastc_scan_type(mut g.s, g.tok, g.path, g.module_name, g.imports,
-		g.declared_types, g.selfhost) or { return g.unsupported(err.msg()) }
+	type_name, next_token := fastc_scan_type(mut g.s, g.tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return g.unsupported(err.msg()) }
 	g.tok = next_token
 	g.lit = g.s.lit
 	if !g.selfhost && (first_lit in ['charptr', 'rune'] || type_name == 'char*') {
@@ -1154,8 +1153,7 @@ fn (mut g Parser) parse_type() !string {
 // peek_option_value_type scans an option type's wrapped value type from a lookahead
 // scanner, returning '' if it cannot be determined.
 fn (g &Parser) peek_option_value_type(mut look scanner.Scanner, first token.Token) string {
-	value_type, _ := fastc_scan_type(mut look, first, g.path, g.module_name, g.imports,
-		g.declared_types, g.selfhost) or { return '' }
+	value_type, _ := fastc_scan_type(mut look, first, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return '' }
 	return value_type
 }
 
@@ -1188,8 +1186,7 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 			g.pending_fn_option_value_type = g.peek_option_value_type(mut look, value_tok)
 		}
 	} else if tok !in [.lcbr, .semicolon, .comma, .rpar, .eof] {
-		scanned, _ := fastc_scan_type(mut look, tok, g.path, g.module_name, g.imports,
-			g.declared_types, g.selfhost) or { return }
+		scanned, _ := fastc_scan_type(mut look, tok, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return }
 		return_type = scanned
 	}
 	g.pending_fn_pointer = true
