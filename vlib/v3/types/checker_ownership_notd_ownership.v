@@ -75,6 +75,11 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(_ flat.NodeId) bo
 	return false
 }
 
+// ownership_expr_clones_borrowed_storage reports no clone metadata when ownership is disabled.
+pub fn (tc &TypeChecker) ownership_expr_clones_borrowed_storage(_ flat.NodeId) bool {
+	return false
+}
+
 pub fn (tc &TypeChecker) ownership_guard_read_moves_value(_ flat.NodeId) bool {
 	return false
 }

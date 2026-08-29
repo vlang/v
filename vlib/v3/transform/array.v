@@ -1552,14 +1552,27 @@ fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value fl
 		return value
 	}
 	// The checker resolves the field/slice/cast shapes from node-annotated types alone, so it
-	// and the transformer agree without a shared map. A `const` read is resolved separately:
-	// the checker qualifies the name from the current module context, which is unavailable
-	// here, so the transformer detects it with its own module-independent const resolver.
-	if !t.tc.ownership_expr_is_borrowed_projection(source_id) && !t.expr_reads_owned_const(source_id) {
+	// and the transformer agree without a shared map. A `const` read is resolved separately in
+	// transformer contexts that need the suffix fallback, so exclude active locals before using
+	// that module-independent resolver.
+	if !t.tc.ownership_expr_is_borrowed_projection(source_id)
+		&& !t.expr_reads_owned_const(source_id) {
 		return value
 	}
 	if !t.compiler_default_clone_type_needs_work(typ) {
 		return value
+	}
+	return t.make_compiler_default_clone_value(value, typ, true)
+}
+
+// clone_borrowed_assignment_value also handles a local pointer alias that may refer to the
+// assignment target's indexed storage. Such replacements must be independent before the old
+// target is destroyed.
+fn (mut t Transformer) clone_borrowed_assignment_value(source_id flat.NodeId, value flat.NodeId, typ string) flat.NodeId {
+	cloned := t.clone_borrowed_projection(source_id, value, typ)
+	if cloned != value || isnil(t.tc) || !t.tc.ownership_expr_clones_borrowed_storage(source_id)
+		|| !t.compiler_default_clone_type_needs_work(typ) {
+		return cloned
 	}
 	return t.make_compiler_default_clone_value(value, typ, true)
 }
@@ -1576,6 +1589,9 @@ fn (t &Transformer) expr_reads_owned_const(id flat.NodeId) bool {
 			continue
 		}
 		if node.kind == .ident {
+			if t.var_type_index(node.value) >= 0 {
+				return false
+			}
 			if _ := t.const_type_key(node.value) {
 				return true
 			}

@@ -11158,11 +11158,17 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
 			if node.op == .assign && sum_target.len > 0 {
-				new_children << t.transform_sum_value_for_type(child_id, sum_target)
+				new_children << t.clone_borrowed_assignment_value(child_id, t.transform_sum_value_for_type(child_id,
+					sum_target), sum_target)
 			} else if node.op in [.plus_assign, .minus_assign] && lhs_type.starts_with('&') {
 				new_children << t.transform_expr(child_id)
 			} else {
-				new_children << t.transform_expr_for_type(child_id, lhs_type)
+				value := t.transform_expr_for_type(child_id, lhs_type)
+				new_children << if node.op == .assign {
+					t.clone_borrowed_assignment_value(child_id, value, lhs_type)
+				} else {
+					value
+				}
 			}
 		}
 	}
@@ -14259,10 +14265,13 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		if lhs.kind == .ident && t.pointer_value_lvalues[lhs.value] && lhs_type.starts_with('&') {
 			lhs_type = lhs_type[1..]
 		}
-		rhs := if lhs_type.len > 0 {
+		mut rhs := if lhs_type.len > 0 {
 			t.transform_expr_for_type(rhs_id, lhs_type)
 		} else {
 			t.transform_expr(rhs_id)
+		}
+		if lhs_type.len > 0 {
+			rhs = t.clone_borrowed_assignment_value(rhs_id, rhs, lhs_type)
 		}
 		t.drain_pending(mut result)
 		if lhs.kind == .ident && lhs.value == '_' {

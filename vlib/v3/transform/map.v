@@ -709,8 +709,8 @@ fn (mut t Transformer) try_lower_map_index_assign(id flat.NodeId, node flat.Node
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
 		cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned,
 			info.key_type, map_expr, info.base_type, key_name, mut result)
-		// Skip destroying the existing value when the new value aliases it (a self-referential
-		// store such as `m[k] = arr` where `arr` borrows `m[k]`); the checker records this.
+		// A map-derived or possibly aliasing replacement was cloned above. The old slot can now
+		// be destroyed normally; only a true move/reinitialization suppresses this drop.
 		if isnil(t.tc) || !t.tc.ownership_assignment_reinitializes_moved_value(id) {
 			t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
 				result)
@@ -824,7 +824,8 @@ fn (t &Transformer) map_literal_key_expr_creates_owned_value(id flat.NodeId, key
 // before the stored owner is destroyed. The checker rejects an overlapping move that cannot
 // be cloned, and the false result prevents unsafe lowering of that invalid assignment.
 fn (mut t Transformer) clone_map_assignment_rhs_if_overlapping(value flat.NodeId, rhs_id flat.NodeId, lhs_id flat.NodeId, value_type_name string) (flat.NodeId, bool) {
-	if isnil(t.tc) || !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
+	if isnil(t.tc) || (!t.tc.ownership_expr_moves_storage(rhs_id, lhs_id)
+		&& !t.tc.ownership_expr_clones_borrowed_storage(rhs_id)) {
 		return value, true
 	}
 	value_type := t.tc.parse_type(value_type_name)

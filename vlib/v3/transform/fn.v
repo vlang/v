@@ -2914,10 +2914,12 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		if t.has_smartcast(arg_key) {
 			raw_arg_type := t.raw_expr_type_without_smartcast(arg_id)
 			if t.resolve_sum_name(t.trim_pointer_type(raw_arg_type)) == t.resolve_sum_name(param_type) {
-				return t.make_plain_expr_for_smartcast(arg_id)
+				value := t.make_plain_expr_for_smartcast(arg_id)
+				return t.clone_borrowed_projection(arg_id, value, param_type)
 			}
 		}
-		return t.wrap_sum_value(arg_id, param_type)
+		value := t.wrap_sum_value(arg_id, param_type)
+		return t.clone_borrowed_projection(arg_id, value, param_type)
 	}
 	if param_type.starts_with('[]') {
 		arg_type := t.node_type(arg_id)
@@ -13251,11 +13253,9 @@ fn (mut t Transformer) transform_receiver_method_args(node flat.Node, base_id fl
 		method_name), method_name)
 }
 
-// transform_receiver_method_args_with_base
-// transforms helper data for transform.
-@[direct_array_access]
 // expr_root_ident_name walks selector/index/paren chains down to the base identifier and
 // returns its name, or an empty string if the root is not a plain identifier.
+@[direct_array_access]
 fn (t &Transformer) expr_root_ident_name(id flat.NodeId) string {
 	mut cur := id
 	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
@@ -13290,6 +13290,14 @@ fn (mut t Transformer) clone_receiver_aliased_arg(recv_root string, arg_id flat.
 	if recv_root.len == 0 || param_type.len == 0 || param_type.starts_with('&') {
 		return value
 	}
+	// transform_call_arg_for_param already clones borrowed projections and extracts index
+	// moves into an owned temporary. Cloning either transformed result again would leak the
+	// first independent value.
+	if (!isnil(t.tc) && (t.tc.ownership_expr_is_borrowed_projection(arg_id)
+		|| t.tc.ownership_index_read_moves_value(arg_id)))
+		|| t.expr_reads_owned_const(arg_id) {
+		return value
+	}
 	if t.expr_root_ident_name(arg_id) != recv_root {
 		return value
 	}
@@ -13299,6 +13307,7 @@ fn (mut t Transformer) clone_receiver_aliased_arg(recv_root string, arg_id flat.
 	return t.make_compiler_default_clone_value(value, param_type, true)
 }
 
+// transform_receiver_method_args_with_base transforms helper data for transform.
 fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, base flat.NodeId, method_name string) []flat.NodeId {
 	mut args := []flat.NodeId{cap: int(node.children_count)}
 	args << base
