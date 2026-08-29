@@ -10358,12 +10358,18 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		payload_type := t.optional_base_type(t.qualify_optional_type(target_type))
 		resolved_payload_type := t.resolve_sum_name(payload_type)
 		if resolved_payload_type in t.sum_types {
-			return t.wrap_sum_value(return_child_id, resolved_payload_type)
+			return t.clone_borrowed_projection(return_child_id, t.wrap_sum_value(return_child_id,
+				resolved_payload_type), resolved_payload_type)
 		}
 		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id,
 			payload_type), payload_type)
 	}
-	if target_type.len > 0 && target_type !in t.sum_types && !t.is_optional_type_name(target_type) {
+	resolved_target_type := t.resolve_sum_name(target_type)
+	if target_type.len > 0 && resolved_target_type in t.sum_types {
+		return t.clone_borrowed_projection(return_child_id, t.transform_sum_value_for_type(return_child_id,
+			resolved_target_type), resolved_target_type)
+	}
+	if target_type.len > 0 && !t.is_optional_type_name(target_type) {
 		return t.clone_borrowed_projection(return_child_id, t.transform_expr_for_type(return_child_id,
 			target_type), target_type)
 	}

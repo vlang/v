@@ -71,6 +71,11 @@ pub fn (tc &TypeChecker) ownership_index_read_moves_value(_ flat.NodeId) bool {
 	return false
 }
 
+// ownership_receiver_alias_arg_is_cloned reports no receiver clone metadata when ownership is disabled.
+pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(_ flat.NodeId) bool {
+	return false
+}
+
 pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(_ flat.NodeId) bool {
 	return false
 }

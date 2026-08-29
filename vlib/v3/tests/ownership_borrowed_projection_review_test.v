@@ -44,6 +44,14 @@ struct Holder {
 
 type Entry = Payload | int
 
+struct EntryHolder {
+	entry Entry
+}
+
+struct EntryCopy {
+	entry Entry
+}
+
 type PayloadMap = map[string]Payload
 
 interface Drop {
@@ -81,6 +89,14 @@ fn (holder &Holder) accept_entry(value Entry) string {
 		return value.values[0]
 	}
 	return ""
+}
+
+fn get_entry(holder &EntryHolder) Entry {
+	return holder.entry
+}
+
+fn get_optional_entry(holder &EntryHolder) ?Entry {
+	return holder.entry
 }
 
 fn test_reassign(holder &Holder) {
@@ -211,6 +227,56 @@ fn test_receiver_index_move_is_not_cloned() {
 	entries.to_owned(entries["item"])
 }
 
+fn test_direct_receiver_field_clone_is_retained() {
+	holder := Holder{
+		left: Payload{
+			values: ["retained"]
+		}
+		right: Payload{
+			values: ["other"]
+		}
+	}
+	assert holder.accept(holder.left) == "retained"
+	assert holder.left.values[0] == "retained"
+}
+
+fn test_borrowed_sum_projection_is_cloned() {
+	holder := &EntryHolder{
+		entry: Payload{
+			values: ["original"]
+		}
+	}
+	mut copied := EntryCopy{
+		entry: holder.entry
+	}
+	mut copied_payload := &(copied.entry as Payload)
+	copied_payload.values[0] = "struct copy"
+	assert (holder.entry as Payload).values[0] == "original"
+
+	mut returned := get_entry(holder)
+	mut returned_payload := &(returned as Payload)
+	returned_payload.values[0] = "return copy"
+	assert (holder.entry as Payload).values[0] == "original"
+
+	mut optional := get_optional_entry(holder) or { panic(err) }
+	mut optional_payload := &(optional as Payload)
+	optional_payload.values[0] = "optional copy"
+	assert (holder.entry as Payload).values[0] == "original"
+}
+
+fn test_copied_index_alias_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	alias := &(entries[key] as Payload)
+	alias2 := alias
+	entries[key] = alias2
+	assert (entries[key] as Payload).values[0] == "retained"
+}
+
 fn test_distinct_dynamic_moved_map_slot_is_dropped() {
 	mut left_drops := 0
 	mut right_drops := 0
@@ -267,6 +333,9 @@ fn main() {
 	test_sibling_branch_alias_scope()
 	test_branch_alias_merge_is_conservative()
 	test_receiver_index_move_is_not_cloned()
+	test_direct_receiver_field_clone_is_retained()
+	test_borrowed_sum_projection_is_cloned()
+	test_copied_index_alias_is_cloned()
 	test_distinct_dynamic_moved_map_slot_is_dropped()
 	test_same_module_const_shadow_is_moved()
 }
@@ -274,7 +343,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 8, out.output
+		assert out.output.count('clone') == 13, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

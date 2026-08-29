@@ -127,7 +127,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			if sum_field_type.len == 0 && field_type.len > 0 {
 				new_val = t.coerce_transformed_expr_to_type(new_val, val_id, field_type)
 			}
-			if sum_field_type.len == 0 && field_type.len > 0 {
+			if field_type.len > 0 {
 				new_val = t.clone_borrowed_projection(val_id, new_val, field_type)
 			}
 			t.drain_pending(mut prelude)

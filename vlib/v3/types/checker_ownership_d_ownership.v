@@ -227,6 +227,7 @@ mut:
 	pending_loop_label               string
 	deferred_aggregate_consumption   map[int]int
 	index_move_reads                 map[int]bool
+	receiver_alias_clone_reads       map[int]bool
 	pointer_index_aliases            map[string]string
 	borrowed_storage_clone_reads     map[int]bool
 	guard_move_reads                 map[int]bool
@@ -315,6 +316,7 @@ fn new_ownership_state() &OwnershipState {
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
 		index_move_reads:                 map[int]bool{}
+		receiver_alias_clone_reads:       map[int]bool{}
 		pointer_index_aliases:            map[string]string{}
 		borrowed_storage_clone_reads:     map[int]bool{}
 		guard_move_reads:                 map[int]bool{}
@@ -425,6 +427,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
 		index_move_reads:                 map[int]bool{}
+		receiver_alias_clone_reads:       map[int]bool{}
 		pointer_index_aliases:            map[string]string{}
 		borrowed_storage_clone_reads:     map[int]bool{}
 		guard_move_reads:                 map[int]bool{}
@@ -674,6 +677,11 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	for id, moved in src.index_move_reads {
 		if moved {
 			dst.index_move_reads[id] = true
+		}
+	}
+	for id, cloned in src.receiver_alias_clone_reads {
+		if cloned {
+			dst.receiver_alias_clone_reads[id] = true
 		}
 	}
 	for id, cloned in src.borrowed_storage_clone_reads {
@@ -4474,6 +4482,9 @@ fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, n
 			variadic_elem_idx)
 		target_suffix := ownership_call_arg_variadic_suffix(variadic_elem_idx)
 		expected := tc.ownership_call_arg_expected_type(info, type_param_idx, variadic_elem_idx)
+		if tc.ownership_call_arg_clones_receiver_storage(node, info, arg_id, expected) {
+			continue
+		}
 		if expected !is Void && expected !is Pointer && !tc.ownership_expr_is_borrow(arg_id)
 			&& tc.ownership_prescan_param_aggregate_literal_descendants(info.name, target_param_idx, target_suffix, arg_id, mut owned_locals, mut local_types) {
 			continue
@@ -9184,6 +9195,10 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 		if tc.ownership_mark_array_insert_prepend_arg(node, call_name, param_idx, arg_id, id) {
 			continue
 		}
+		if tc.ownership_call_arg_clones_receiver_storage(node, info, arg_id, expected) {
+			st.receiver_alias_clone_reads[int(arg_id)] = true
+			continue
+		}
 		borrow_param_idx := if variadic_elem_idx >= 0 { info.params.len - 1 } else { type_param_idx }
 		borrow_name := if expected is Pointer {
 			explicit := tc.ownership_borrowed_name(arg_id)
@@ -9303,6 +9318,74 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 	for name in call_borrows {
 		tc.ownership_release_borrow(name, call_name)
 	}
+}
+
+fn (tc &TypeChecker) ownership_call_arg_clones_receiver_storage(node flat.Node, info CallInfo, arg_id flat.NodeId, expected Type) bool {
+	if !info.has_receiver || node.children_count == 0 || info.params.len == 0 || expected is Void
+		|| expected is Pointer {
+		return false
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return false
+	}
+	recv_id := tc.a.child(fn_node, 0)
+	receiver_is_retained := info.params[0] is Pointer
+		|| tc.ownership_method_keeps_receiver(fn_node.value)
+		|| tc.ownership_array_builtin_keeps_receiver(recv_id, fn_node.value)
+		|| tc.ownership_map_builtin_keeps_receiver(recv_id, fn_node.value)
+		|| tc.ownership_string_builtin_keeps_receiver(recv_id, fn_node.value)
+	if !receiver_is_retained {
+		return false
+	}
+	recv_root := tc.ownership_expr_root_ident_name(recv_id)
+	if recv_root.len == 0 || tc.ownership_expr_root_ident_name(arg_id) != recv_root
+		|| tc.ownership_expr_has_index_projection(arg_id)
+		|| tc.ownership_expr_is_borrowed_projection(arg_id) {
+		return false
+	}
+	arg_type := tc.resolve_type(arg_id)
+	return tc.ownership_type_requires_destruction(arg_type)
+		&& tc.ownership_default_clone_missing_method(arg_type) == none
+}
+
+fn (tc &TypeChecker) ownership_expr_root_ident_name(id flat.NodeId) string {
+	mut cur := id
+	for tc.valid_node_id(cur) {
+		node := tc.a.nodes[int(cur)]
+		match node.kind {
+			.ident {
+				return node.value
+			}
+			.selector, .index, .paren, .cast_expr, .expr_stmt {
+				if node.children_count == 0 {
+					return ''
+				}
+				cur = tc.a.child(&node, 0)
+			}
+			else {
+				return ''
+			}
+		}
+	}
+	return ''
+}
+
+fn (tc &TypeChecker) ownership_expr_has_index_projection(id flat.NodeId) bool {
+	mut cur := id
+	for tc.valid_node_id(cur) {
+		node := tc.a.nodes[int(cur)]
+		if node.kind == .index && node.value != 'range' {
+			return true
+		}
+		if node.kind in [.selector, .index, .paren, .cast_expr, .expr_stmt]
+			&& node.children_count > 0 {
+			cur = tc.a.child(&node, 0)
+			continue
+		}
+		break
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) ownership_consume_method_value_receiver(arg_id flat.NodeId, call_name string, pos flat.NodeId) OwnershipMethodValueReceiverResult {
@@ -10826,20 +10909,40 @@ pub fn (tc &TypeChecker) ownership_expr_clones_borrowed_storage(id flat.NodeId) 
 		&& tc.ownership.borrowed_storage_clone_reads[int(id)]
 }
 
-// ownership_pointer_alias_target returns the storage a `&(index [as T])` expression points
-// into, if `id` has that shape. Such an address-of is how code takes a mutable reference into
-// a map/array slot (for example `arr := &(m[k] as []T)`); the checker records it so a later
-// store `m[k] = arr` is recognized and cloned (see
+// ownership_pointer_alias_target returns the indexed storage a pointer expression aliases.
+// It follows both `&(index [as T])` expressions and identifier copies of a recorded alias.
+// Such an address-of is how code takes a mutable reference into a map/array slot (for example
+// `arr := &(m[k] as []T)`); the checker records it so a later store `m[k] = arr` is recognized
+// and cloned (see
 // ownership_rhs_borrows_indexed_storage).
 fn (tc &TypeChecker) ownership_pointer_alias_target(id flat.NodeId) ?string {
 	if !tc.valid_node_id(id) {
 		return none
 	}
-	node := tc.a.nodes[int(id)]
+	mut cur := id
+	for tc.valid_node_id(cur) {
+		n := tc.a.nodes[int(cur)]
+		if n.kind in [.paren, .cast_expr, .expr_stmt] && n.children_count > 0 {
+			cur = tc.a.child(&n, 0)
+			continue
+		}
+		break
+	}
+	if !tc.valid_node_id(cur) {
+		return none
+	}
+	node := tc.a.nodes[int(cur)]
+	if node.kind == .ident && tc.resolve_type(cur) is Pointer {
+		name := tc.ownership_expr_ident_name(cur)
+		if name.len > 0 {
+			return tc.ownership.pointer_index_aliases[name] or { none }
+		}
+		return none
+	}
 	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
 		return none
 	}
-	mut cur := tc.a.child(&node, 0)
+	cur = tc.a.child(&node, 0)
 	for tc.valid_node_id(cur) {
 		n := tc.a.nodes[int(cur)]
 		if n.kind in [.paren, .cast_expr, .expr_stmt, .as_expr] && n.children_count > 0 {
@@ -11140,6 +11243,13 @@ fn (mut tc TypeChecker) ownership_mark_index_move_read_in(id flat.NodeId, name s
 // materializing the moved value.
 pub fn (tc &TypeChecker) ownership_index_read_moves_value(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil } && tc.ownership.index_move_reads[int(id)]
+}
+
+// ownership_receiver_alias_arg_is_cloned reports whether ownership analysis retained a
+// by-value argument because lowering clones it away from the pointer receiver it projects from.
+pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(id flat.NodeId) bool {
+	return int(id) >= 0 && tc.ownership != unsafe { nil }
+		&& tc.ownership.receiver_alias_clone_reads[int(id)]
 }
 
 // ownership_expr_is_borrowed_projection reports whether `id` reads storage another value

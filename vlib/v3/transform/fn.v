@@ -13298,6 +13298,9 @@ fn (mut t Transformer) clone_receiver_aliased_arg(recv_root string, arg_id flat.
 		|| t.expr_reads_owned_const(arg_id) {
 		return value
 	}
+	if isnil(t.tc) || !t.tc.ownership_receiver_alias_arg_is_cloned(arg_id) {
+		return value
+	}
 	if t.expr_root_ident_name(arg_id) != recv_root {
 		return value
 	}
