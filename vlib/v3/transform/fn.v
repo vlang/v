@@ -7985,15 +7985,16 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	return t.make_compiler_default_clone_value(receiver, base_type, false)
 }
 
-// make_compiler_default_borrowed_clone_value prevents a non-owning sum wrapper from being
-// cleaned up as though it were an owned rvalue after the clone helper reads it.
+// make_compiler_default_borrowed_clone_value prevents a non-owning sum, option, or result
+// wrapper from being cleaned up as though it were an owned rvalue after cloning reads it.
 fn (mut t Transformer) make_compiler_default_borrowed_clone_value(source flat.NodeId, typ string, allow_method bool) flat.NodeId {
 	mut stable_source := source
 	clean := t.normalize_type_alias(typ).trim_space()
-	// Converting a borrowed variant to its destination sum can produce a non-addressable
-	// wrapper. Stabilize that non-owning wrapper so helper lowering borrows it rather than
-	// mistaking it for an owned rvalue that must be destroyed after cloning.
-	if t.is_sum_type_name(clean) && !t.expr_can_take_address(source) {
+	// Converting a borrowed value to its destination wrapper can produce a non-addressable
+	// shallow value. Stabilize that non-owning wrapper so clone lowering borrows it rather
+	// than mistaking it for an owned rvalue that must be destroyed after cloning.
+	if (t.is_sum_type_name(clean) || clean.starts_with('?')
+		|| clean.starts_with('!')) && !t.expr_can_take_address(source) {
 		source_name := t.new_temp('borrowed_clone_source')
 		t.pending_stmts << t.make_decl_assign_typed(source_name, source, clean)
 		stable_source = t.make_ident(source_name)

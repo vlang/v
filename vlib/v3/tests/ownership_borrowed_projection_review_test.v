@@ -97,6 +97,11 @@ mut:
 	items ?[]Payload
 }
 
+struct OptionalCopy {
+mut:
+	value ?Payload
+}
+
 type PayloadMap = map[string]Payload
 
 interface Drop {
@@ -117,6 +122,34 @@ fn (mut value Tracked) drop() {
 			*value.drops += 1
 		}
 	}
+}
+
+struct DropObservedPayload implements IClone, Drop {
+mut:
+	values []string
+	drops  &int
+}
+
+fn (value &DropObservedPayload) clone() DropObservedPayload {
+	return DropObservedPayload{
+		values: value.values.clone()
+		drops:  value.drops
+	}
+}
+
+fn (mut value DropObservedPayload) drop() {
+	unsafe {
+		*value.drops += 1
+	}
+	value.values = []
+}
+
+struct DropObservedHolder {
+	value DropObservedPayload
+}
+
+struct DropObservedOptionalCopy {
+	value ?DropObservedPayload
 }
 
 // A `to_owned` method retains its receiver while the by-value parameter consumes the map slot.
@@ -430,6 +463,30 @@ fn test_borrowed_fixed_array_initializer_is_cloned_per_element(holder &Holder) {
 	assert holder.left.values[0] == "left"
 }
 
+fn test_borrowed_optional_struct_field_is_cloned(holder &Holder) {
+	optional_copy := OptionalCopy{
+		value: holder.left
+	}
+	mut value := optional_copy.value or { panic(err) }
+	value.values[0] = "optional copy"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_optional_wrapper_is_not_dropped() {
+	mut drops := 0
+	holder := &DropObservedHolder{
+		value: DropObservedPayload{
+			values: ["owned"]
+			drops:  &drops
+		}
+	}
+	optional_copy := DropObservedOptionalCopy{
+		value: holder.value
+	}
+	assert optional_copy.value != none
+	assert drops == 0
+}
+
 fn test_borrowed_channel_send_is_cloned(holder &Holder) {
 	ch := chan Payload{cap: 1}
 	ch <- holder.left
@@ -667,6 +724,8 @@ fn main() {
 	test_borrowed_array_literal_element_is_cloned(holder)
 	test_borrowed_fixed_array_literal_element_is_cloned(holder)
 	test_borrowed_fixed_array_initializer_is_cloned_per_element(holder)
+	test_borrowed_optional_struct_field_is_cloned(holder)
+	test_borrowed_optional_wrapper_is_not_dropped()
 	test_borrowed_channel_send_is_cloned(holder)
 	test_borrowed_map_literal_entries_are_cloned(holder)
 	test_borrowed_assoc_overrides_are_cloned(holder)
@@ -685,7 +744,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 40, out.output
+		assert out.output.count('clone') == 41, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')
