@@ -31,6 +31,10 @@ const deferred_str_expansion_threshold = 0
 // serial deferred path in case the transform expands it inline.
 const unresolved_interp_expansion_estimate = 1000
 
+// A hoisted interpolation part adds two identifiers, a declaration node, and
+// the declaration's two child IDs.
+const string_interp_hoisted_part_expansion_estimate = 5
+
 // recursive_pointer_str_expansion_threshold bounds an indirect recursive pointer
 // expansion before it is rendered as circular. Small recursive structs retain the
 // normal auto-str depth, while large object graphs avoid generating every branch
@@ -5926,6 +5930,7 @@ fn (mut t Transformer) string_interp_expansion_estimate(node flat.Node) int {
 	// transform_string_interp joins every part after the first with string__plus.
 	// Each join appends the function identifier and call nodes.
 	mut estimate := if node.children_count > 1 { 2 * (int(node.children_count) - 1) } else { 0 }
+	mut may_hoist := false
 	for ci in 0 .. int(node.children_count) {
 		part_id := t.a.child(&node, ci)
 		mut expr_id := part_id
@@ -5933,6 +5938,7 @@ fn (mut t Transformer) string_interp_expansion_estimate(node flat.Node) int {
 		if part.kind == .directive && part.value == 'string_interp_format' && part.children_count > 0 {
 			expr_id = t.a.child(&part, 0)
 		}
+		may_hoist = may_hoist || t.string_interp_expr_may_hoist(expr_id)
 		part_expr := t.a.nodes[int(expr_id)]
 		// Literal segments of the interpolation are always plain strings.
 		if part_expr.kind in [.string_literal, .int_literal, .float_literal, .bool_literal,
@@ -5946,7 +5952,34 @@ fn (mut t Transformer) string_interp_expansion_estimate(node flat.Node) int {
 			estimate += t.stringify_expansion_estimate(typ)
 		}
 	}
+	if may_hoist {
+		// Once one part emits pending statements, transform_string_interp binds
+		// every part to a temp so evaluation order remains stable.
+		estimate += int(node.children_count) * string_interp_hoisted_part_expansion_estimate
+	}
 	return estimate
+}
+
+fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.ident] {
+		return false
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr, .prefix, .postfix, .selector] {
+		for i in 0 .. node.children_count {
+			if t.string_interp_expr_may_hoist(t.a.child(&node, i)) {
+				return true
+			}
+		}
+		return false
+	}
+	// Calls, indexing, control-flow expressions, and collection/aggregate lowering
+	// can all append pending statements depending on their resolved types.
+	return true
 }
 
 fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {

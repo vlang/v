@@ -531,6 +531,54 @@ fn test_external_map_expansion_estimate_includes_interpolation_concatenation() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_string_interp_expansion_estimate_includes_possible_temp_hoisting() {
+	mut a := flat.FlatAst.new()
+	literal := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'part'
+		typ: 'string'
+	})
+	base := a.add_node(flat.Node{
+		kind: .ident
+		value: 'values'
+		typ: 'map[string]string'
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'key'
+		typ: 'string'
+	})
+	index_start := a.children.len
+	a.children << base
+	a.children << key
+	index := a.add_node(flat.Node{
+		kind: .index
+		typ: 'string'
+		children_start: index_start
+		children_count: 2
+	})
+	part_count := 1001
+	interp_start := a.children.len
+	for _ in 0 .. part_count - 1 {
+		a.children << literal
+	}
+	a.children << index
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: flat.child_count(part_count)
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	estimate := t.string_interp_expansion_estimate(a.nodes[int(interp)])
+	join_estimate := 2 * (part_count - 1)
+	assert join_estimate < deferred_map_expansion_threshold
+	assert estimate == join_estimate + part_count * string_interp_hoisted_part_expansion_estimate
+	assert estimate > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_string_concatenation() {
 	mut a := flat.FlatAst.new()
 	mut concat := a.add_node(flat.Node{
@@ -723,16 +771,16 @@ fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruct
 	mut level := []flat.NodeId{cap: 1024}
 	for i in 0 .. 1024 {
 		value := a.add_node(flat.Node{
-			kind:  .int_literal
+			kind: .int_literal
 			value: i.str()
-			typ:   'int'
+			typ: 'int'
 		})
 		cast_start := a.children.len
 		a.children << value
 		level << a.add_node(flat.Node{
-			kind:           .cast_expr
-			value:          'int'
-			typ:            'int'
+			kind: .cast_expr
+			value: 'int'
+			typ: 'int'
 			children_start: cast_start
 			children_count: 1
 		})
@@ -744,9 +792,9 @@ fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruct
 			a.children << level[i]
 			a.children << level[i + 1]
 			next << a.add_node(flat.Node{
-				kind:           .infix
-				op:             .plus
-				typ:            'int'
+				kind: .infix
+				op: .plus
+				typ: 'int'
 				children_start: infix_start
 				children_count: 2
 			})
@@ -754,15 +802,15 @@ fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruct
 		level = next.clone()
 	}
 	key := a.add_node(flat.Node{
-		kind:  .string_literal
+		kind: .string_literal
 		value: 'value'
 	})
 	map_start := a.children.len
 	a.children << key
 	a.children << level[0]
 	root := a.add_node(flat.Node{
-		kind:           .map_init
-		typ:            'map[string]int'
+		kind: .map_init
+		typ: 'map[string]int'
 		children_start: map_start
 		children_count: 2
 	})
