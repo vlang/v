@@ -18,12 +18,13 @@ mut:
 
 fn consume(shared value Box) {}
 
-fn use_immutable_shared() {
+fn use_immutable_shared() Box {
 	shared := Box{}
-	println(shared.value)
+	return shared
 }
 
 fn main() {
+	_ = use_immutable_shared()
 	unsafe {
 		mut shared := Box{}
 		shared.value = 1
@@ -38,6 +39,7 @@ fn main() {
 	assert c_source.contains('consume(&(shared));'), c_source
 	assert c_source.contains('consume(&((shared)));'), c_source
 	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
+	assert c_source.contains('return shared;'), c_source
 }
 
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {

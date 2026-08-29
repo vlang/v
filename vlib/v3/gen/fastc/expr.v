@@ -1766,10 +1766,15 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 fn (g &Parser) shared_token_is_identifier() bool {
 	start := g.s.offset
 	mut offset := start
-	for offset < g.s.src.len && g.s.src[offset].is_space() {
+	// Horizontal whitespace separates a modifier from its operand, but a newline
+	// terminates an expression and must leave a keyword-named local intact.
+	for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`] {
 		offset++
 	}
 	if offset >= g.s.src.len {
+		return true
+	}
+	if g.s.src[offset] in [`\n`, `\r`] {
 		return true
 	}
 	if g.s.src[offset] == `(` {
