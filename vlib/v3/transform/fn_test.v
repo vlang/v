@@ -138,6 +138,24 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
 }
 
+fn test_immediate_closure_thread_result_may_alias_capture() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Worker'] = [types.StructField{
+		name: 'handle'
+		typ: tc.parse_type('thread int')
+	}]
+	with_checker := Transformer{
+		a: &a
+		tc: &tc
+	}
+	assert with_checker.immediate_closure_result_may_alias_capture('thread int')
+	assert with_checker.immediate_closure_result_may_alias_capture('Worker')
+
+	without_checker := Transformer{}
+	assert without_checker.immediate_closure_result_may_alias_capture('thread int')
+}
+
 fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

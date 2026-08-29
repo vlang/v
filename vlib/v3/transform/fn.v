@@ -1440,8 +1440,11 @@ fn (t &Transformer) immediate_closure_result_may_alias_capture(type_name string)
 	if type_name.len == 0 {
 		return false
 	}
+	clean := t.normalize_type_alias(type_name)
+	if clean == 'thread' || clean.starts_with('thread ') {
+		return true
+	}
 	if isnil(t.tc) {
-		clean := t.normalize_type_alias(type_name)
 		return clean == 'string' || clean.starts_with('!') || clean.starts_with('?')
 			|| clean.starts_with('&')
 			|| clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('chan ')
@@ -1452,6 +1455,10 @@ fn (t &Transformer) immediate_closure_result_may_alias_capture(type_name string)
 }
 
 fn (t &Transformer) closure_result_type_may_alias_capture(typ types.Type, mut seen map[string]bool) bool {
+	type_name := typ.name()
+	if type_name == 'thread' || type_name.starts_with('thread ') {
+		return true
+	}
 	return match typ {
 		types.Pointer { true }
 		types.Alias {
