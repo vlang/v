@@ -1,4 +1,7 @@
 // vtest vflags: -w
+@[has_globals]
+module main
+
 import json
 import time
 
@@ -41,10 +44,27 @@ struct DecodeV3Event {
 	at time.Time
 }
 
+struct DecodeV3ThrowawayFirst {
+	value int = decode_v3_sum_default_value()
+}
+
+struct DecodeV3SelectedVariant {
+	name string
+}
+
+type DecodeV3NoThrowawaySum = DecodeV3ThrowawayFirst | DecodeV3SelectedVariant
+
+__global decode_v3_sum_default_calls int
+
 type DecodeV3DeepI64 = [][][][][][][][][][][][][]i64
 
 fn decode_v3_generic[T](source string) !T {
 	return json.decode(T, source)
+}
+
+fn decode_v3_sum_default_value() int {
+	decode_v3_sum_default_calls++
+	return 7
 }
 
 fn test_json_decode_v3_required_and_type_errors() {
@@ -122,6 +142,30 @@ fn test_json_decode_v3_propagates_invalid_time_errors() {
 
 	valid := json.decode(DecodeV3Event, '{"at":"2001-01-01"}')!
 	assert valid.at.str() == '2001-01-01 00:00:00'
+}
+
+fn test_json_decode_v3_root_time_roundtrip() {
+	original := time.new(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
+	encoded := json.encode(original)
+	decoded := json.decode(time.Time, encoded)!
+	assert decoded.unix() == original.unix()
+
+	mut message := ''
+	_ := json.decode(time.Time, '"not-a-time"') or {
+		message = err.msg()
+		time.Time{}
+	}
+	assert message.contains('Expected iso8601/rfc3339/unix time')
+}
+
+fn test_json_decode_v3_sum_constructs_only_selected_variant() {
+	decode_v3_sum_default_calls = 0
+	decoded := json.decode(DecodeV3NoThrowawaySum,
+		'{"name":"selected","_type":"DecodeV3SelectedVariant"}')!
+	assert (decoded as DecodeV3SelectedVariant).name == 'selected'
+	// Result unwrapping may construct one default sum value. The decoder must not
+	// construct another first-variant payload before selecting the second variant.
+	assert decode_v3_sum_default_calls <= 1
 }
 
 fn test_json_decode_v3_recursive_pointer_and_generic_fixed_array() {

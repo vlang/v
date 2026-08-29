@@ -9410,6 +9410,9 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 		return false
 	}
 
+	if json_is_time_type(cgen_unalias_type(result_base)) {
+		return g.gen_json_decode_root_time_call(node, ret_type)
+	}
 	base := cgen_unalias_type(types.unwrap_pointer(result_base))
 	if base !is types.Struct {
 		if !g.json_decode_value_supported(base, 0) {
@@ -9546,6 +9549,23 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	g.write(' } else { if (${has_decode_err_name}) { ${out_name}.err = ${decode_err_name}; } else { ')
 	g.gen_json_decode_error_assignment(out_name, err_name)
 	g.write(' } } } if (${root_name} != NULL) cJSON_Delete(${root_name}); ${out_name}; })')
+	return true
+}
+
+fn (mut g FlatGen) gen_json_decode_root_time_call(node flat.Node, ret_type types.Type) bool {
+	json_id := g.a.child(&node, 2)
+	json_name := g.tmp_name()
+	root_name := g.tmp_name()
+	out_name := g.tmp_name()
+	decoded_name := g.tmp_name()
+	opt_ct := g.optional_type_name(ret_type)
+	failed_lit := json_decode_c_string_literal('failed to decode JSON string')
+	context_lit := json_decode_c_string_literal(': ')
+	g.write('({ string ${json_name} = ')
+	g.gen_expr_with_expected_type(json_id, types.Type(types.string_))
+	g.write('; cJSON* ${root_name} = cJSON_ParseWithLength((char*)${json_name}.str, (size_t)${json_name}.len); ${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} == NULL) { string ${out_name}_msg = ${failed_lit}; if (${json_name}.len > 0) ${out_name}_msg = string__plus(string__plus(${out_name}_msg, ${context_lit}), ${json_name}); ')
+	g.gen_json_decode_error_assignment(out_name, '${out_name}_msg')
+	g.write(' } else { v3_json_preserve_number_tokens(${json_name}.str, ${json_name}.len, ${root_name}); Optional_time__Time ${decoded_name} = json__decode_time(${root_name}); if (${decoded_name}.ok) { ${out_name}.ok = true; ${out_name}.value = ${decoded_name}.value; } else { ${out_name}.err = ${decoded_name}.err; } cJSON_Delete(${root_name}); } ${out_name}; })')
 	return true
 }
 
@@ -10323,9 +10343,7 @@ fn (mut g FlatGen) gen_json_decode_sum_value_expr(item string, sum_type types.Su
 	out_name := g.tmp_name()
 	matched_name := g.tmp_name()
 	sum_ct := g.value_c_type(sum_type)
-	g.write('({ ${sum_ct} ${out_name} = ')
-	g.gen_json_decode_sum_variant_expr(item, sum_name, variants[0])
-	g.write('; bool ${matched_name} = false; ')
+	g.write('({ ${sum_ct} ${out_name} = (${sum_ct}){0}; bool ${matched_name} = false; ')
 	for variant in g.json_decode_sum_variants_in_match_order(variants) {
 		condition := g.json_decode_sum_variant_match_expr(item, variant, variants, 0)
 		g.write('if (!${matched_name} && (${condition})) { ${out_name} = ')
