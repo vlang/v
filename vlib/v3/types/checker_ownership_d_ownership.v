@@ -6845,8 +6845,13 @@ fn (mut tc TypeChecker) ownership_after_assign(lhs_id flat.NodeId, rhs_id flat.N
 	// storage now belongs to the move destination. Record the assignment for
 	// lowering before `ownership_assign_to_name` installs the new value.
 	if !tc.ownership_storage_participates(lhs_name) {
-		if _ := tc.ownership_moved_conflict(lhs_name) {
-			tc.ownership_state().skip_drop_before_assign[int(assign_id)] = true
+		if moved := tc.ownership_moved_conflict(lhs_name) {
+			// Dynamic indexes collapse to `[*]`, so equal ownership names do not prove that
+			// the assignment targets the slot that was moved and cleared. Dropping a cleared
+			// same-slot value is safe; suppress the drop only for an exact static slot.
+			if moved.name == lhs_name && !ownership_storage_key_has_dynamic_index(lhs_name) {
+				tc.ownership_state().skip_drop_before_assign[int(assign_id)] = true
+			}
 		}
 	}
 	assignment_type := tc.ownership_assignment_type(lhs_type, rhs_type)
@@ -11196,6 +11201,9 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 // constant.
 fn (tc &TypeChecker) ownership_ident_names_const(name string) bool {
 	if name.len == 0 {
+		return false
+	}
+	if tc.ident_resolves_to_value(name) {
 		return false
 	}
 	if name in tc.const_types {

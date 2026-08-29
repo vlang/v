@@ -26,6 +26,10 @@ mut:
 	values []string
 }
 
+const cache = Payload{
+	values: ["constant"]
+}
+
 fn (value &Payload) clone() Payload {
 	println("clone")
 	return Payload{
@@ -41,6 +45,26 @@ struct Holder {
 type Entry = Payload | int
 
 type PayloadMap = map[string]Payload
+
+interface Drop {
+mut:
+	drop()
+}
+
+struct Tracked implements Drop {
+	id    int
+	drops &int
+}
+
+type TrackedMap = map[string]Tracked
+
+fn (mut value Tracked) drop() {
+	if value.drops != unsafe { nil } {
+		unsafe {
+			*value.drops += 1
+		}
+	}
+}
 
 // A `to_owned` method retains its receiver while the by-value parameter consumes the map slot.
 fn (entries PayloadMap) to_owned(value Payload) {
@@ -187,6 +211,43 @@ fn test_receiver_index_move_is_not_cloned() {
 	entries.to_owned(entries["item"])
 }
 
+fn test_distinct_dynamic_moved_map_slot_is_dropped() {
+	mut left_drops := 0
+	mut right_drops := 0
+	mut replacement_drops := 0
+	mut entries := TrackedMap(map[string]Tracked{})
+	left_key := "left"
+	right_key := "right"
+	entries[left_key] = Tracked{
+		id:    1
+		drops: &left_drops
+	}
+	entries[right_key] = Tracked{
+		id:    2
+		drops: &right_drops
+	}
+	assert left_drops == 0
+	assert right_drops == 0
+	moved := entries[left_key]
+	replacement := Tracked{
+		id:    3
+		drops: &replacement_drops
+	}
+	entries[right_key] = replacement
+	assert moved.id == 1
+	assert left_drops == 0
+	assert right_drops == 1
+	assert replacement_drops == 0
+}
+
+fn test_same_module_const_shadow_is_moved() {
+	cache := Payload{
+		values: ["local"]
+	}
+	dst := cache
+	assert dst.values[0] == "local"
+}
+
 fn main() {
 	holder := &Holder{
 		left: Payload{
@@ -206,6 +267,8 @@ fn main() {
 	test_sibling_branch_alias_scope()
 	test_branch_alias_merge_is_conservative()
 	test_receiver_index_move_is_not_cloned()
+	test_distinct_dynamic_moved_map_slot_is_dropped()
+	test_same_module_const_shadow_is_moved()
 }
 ')!
 	for mode in ['-no-parallel', ''] {

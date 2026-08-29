@@ -1551,6 +1551,11 @@ fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value fl
 	if isnil(t.tc) {
 		return value
 	}
+	// The checker resolves a bare identifier against its lexical scope before constants.
+	// Preserve that decision after checking, when its active scope is no longer available.
+	if t.expr_is_local_ident_read(source_id) {
+		return value
+	}
 	// The checker resolves the field/slice/cast shapes from node-annotated types alone, so it
 	// and the transformer agree without a shared map. A `const` read is resolved separately in
 	// transformer contexts that need the suffix fallback, so exclude active locals before using
@@ -1563,6 +1568,19 @@ fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value fl
 		return value
 	}
 	return t.make_compiler_default_clone_value(value, typ, true)
+}
+
+fn (t &Transformer) expr_is_local_ident_read(id flat.NodeId) bool {
+	mut cur := id
+	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
+		node := t.a.nodes[int(cur)]
+		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+			cur = t.a.child(&node, 0)
+			continue
+		}
+		return node.kind == .ident && t.var_type_index(node.value) >= 0
+	}
+	return false
 }
 
 // clone_borrowed_assignment_value also handles a local pointer alias that may refer to the
@@ -1589,7 +1607,7 @@ fn (t &Transformer) expr_reads_owned_const(id flat.NodeId) bool {
 			continue
 		}
 		if node.kind == .ident {
-			if t.var_type_index(node.value) >= 0 {
+			if t.expr_is_local_ident_read(cur) {
 				return false
 			}
 			if _ := t.const_type_key(node.value) {
