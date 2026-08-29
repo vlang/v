@@ -227,6 +227,35 @@ fn test_external_map_expansion_estimate_defers_struct_reconstruction() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_includes_fixed_array_init() {
+	mut a := flat.FlatAst.new()
+	index := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'index'
+		typ:   'int'
+	})
+	field_start := a.children.len
+	a.children << index
+	init_field := a.add_node(flat.Node{
+		kind:           .field_init
+		value:          'init'
+		children_start: field_start
+		children_count: 1
+	})
+	array_start := a.children.len
+	a.children << init_field
+	root := a.add_node(flat.Node{
+		kind:           .array_init
+		typ:            'int[4096]'
+		children_start: array_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{

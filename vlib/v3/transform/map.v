@@ -76,6 +76,32 @@ fn (t &Transformer) array_literal_expansion_estimate(node flat.Node, is_external
 	return array_literal_base_expansion_estimate + int(node.children_count) * array_literal_entry_expansion_estimate
 }
 
+fn (t &Transformer) fixed_array_init_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .array_init || node.children_count == 0 {
+		return 0
+	}
+	raw_type := if node.typ.len > 0 {
+		node.typ
+	} else if node.value.len > 0 {
+		node.value
+	} else {
+		t.node_type(id)
+	}
+	fixed_type := t.resolved_fixed_array_canonical_type(t.normalize_type_alias(raw_type))
+	if !t.is_fixed_array_type(fixed_type) {
+		return 0
+	}
+	len_text := fixed_array_len_text(fixed_type)
+	if !is_decimal_text(len_text) {
+		return deferred_map_expansion_threshold + 1
+	}
+	len := len_text.int()
+	if len > deferred_map_expansion_threshold / array_literal_entry_expansion_estimate {
+		return deferred_map_expansion_threshold + 1
+	}
+	return array_literal_base_expansion_estimate + len * array_literal_entry_expansion_estimate
+}
+
 // external_map_tree_expansion_estimate counts collection and struct literals reachable
 // through an initializer that lives outside the current function's contiguous
 // node range. The transformer recursively lowers each nested initializer at the
@@ -106,6 +132,9 @@ fn (t &Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo in
 		}
 		if node.kind == .array_literal {
 			estimate += t.array_literal_expansion_estimate(node, true)
+		}
+		if node.kind == .array_init {
+			estimate += t.fixed_array_init_expansion_estimate(id, node)
 		}
 		for ci in 0 .. int(node.children_count) {
 			child := t.a.child(&node, ci)
