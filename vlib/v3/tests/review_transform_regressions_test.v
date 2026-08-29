@@ -5696,6 +5696,52 @@ fn main() {
 	assert out == 'source'
 }
 
+fn test_array_map_drops_temporary_source_for_shadowed_nested_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	other := Item{
+		text: "other"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			mut p := unsafe { &external }
+			if flag {
+				mut p := unsafe { &other }
+				p = unsafe { &it }
+			}
+			p
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_shadowed_nested_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_shadowed_nested_alias', '-ownership', source)
+	assert out == 'external'
+}
+
 fn test_array_map_keeps_temporary_source_through_local_aggregate_selector_alias() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {

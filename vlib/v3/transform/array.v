@@ -2924,6 +2924,19 @@ fn (mut t Transformer) array_map_block_value_retains_element_address(node flat.N
 	return false
 }
 
+fn (t &Transformer) array_map_block_stmt_declares_name(stmt flat.Node, name string) bool {
+	if stmt.kind != .decl_assign {
+		return false
+	}
+	for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+		lhs := t.a.child_node(&stmt, i)
+		if lhs.kind == .ident && lhs.value == name {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut t Transformer) array_map_nested_assignment_retains_element_address(id flat.NodeId, target string, block flat.Node, before_idx int, name string, seen map[string]bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -2934,7 +2947,12 @@ fn (mut t Transformer) array_map_nested_assignment_retains_element_address(id fl
 	}
 	if node.kind in [.block, .match_branch] {
 		for stmt_idx in 0 .. node.children_count {
-			if t.array_map_nested_assignment_retains_element_address(t.a.child(&node, stmt_idx), target, node, int(stmt_idx), name, seen) {
+			stmt_id := t.a.child(&node, stmt_idx)
+			stmt := t.a.nodes[int(stmt_id)]
+			if t.array_map_block_stmt_declares_name(stmt, target) {
+				break
+			}
+			if t.array_map_nested_assignment_retains_element_address(stmt_id, target, node, int(stmt_idx), name, seen) {
 				return true
 			}
 		}
@@ -3013,7 +3031,12 @@ fn (mut t Transformer) array_map_nested_selector_assignment_retains_element_addr
 	}
 	if node.kind in [.block, .match_branch] {
 		for stmt_idx in 0 .. node.children_count {
-			if t.array_map_nested_selector_assignment_retains_element_address(t.a.child(&node, stmt_idx), target, node, int(stmt_idx), field_name, elem_name, seen) {
+			stmt_id := t.a.child(&node, stmt_idx)
+			stmt := t.a.nodes[int(stmt_id)]
+			if t.array_map_block_stmt_declares_name(stmt, target) {
+				break
+			}
+			if t.array_map_nested_selector_assignment_retains_element_address(stmt_id, target, node, int(stmt_idx), field_name, elem_name, seen) {
 				return true
 			}
 		}
@@ -3111,7 +3134,12 @@ fn (mut t Transformer) array_map_nested_index_assignment_retains_element_address
 	}
 	if node.kind in [.block, .match_branch] {
 		for stmt_idx in 0 .. node.children_count {
-			if t.array_map_nested_index_assignment_retains_element_address(t.a.child(&node, stmt_idx), target, node, int(stmt_idx), index_id, elem_name, seen) {
+			stmt_id := t.a.child(&node, stmt_idx)
+			stmt := t.a.nodes[int(stmt_id)]
+			if t.array_map_block_stmt_declares_name(stmt, target) {
+				break
+			}
+			if t.array_map_nested_index_assignment_retains_element_address(stmt_id, target, node, int(stmt_idx), index_id, elem_name, seen) {
 				return true
 			}
 		}
