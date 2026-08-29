@@ -386,6 +386,8 @@ mut:
 	module_cleanup_fn_modules      map[string]string   // C cleanup fn name -> V module name
 	module_imports                 map[string][]string // module -> imported modules
 	c_directives                   []CDirective
+	header_owned_c_typedefs        map[string]bool
+	header_owned_macro_context     CHeaderOwnedMacroContext
 	preinclude_directives          []string
 	postinclude_directives         []string
 	early_c_source_directives      map[string]bool
@@ -1084,6 +1086,7 @@ pub fn FlatGen.new() FlatGen {
 		module_cleanup_fn_modules:       map[string]string{}
 		module_imports:                  map[string][]string{}
 		c_directives:                    []CDirective{}
+		header_owned_c_typedefs:         map[string]bool{}
 		preinclude_directives:           []string{}
 		postinclude_directives:          []string{}
 		early_c_source_directives:       map[string]bool{}
@@ -2910,6 +2913,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.module_cleanup_fn_modules.clear()
 	g.module_imports.clear()
 	g.c_directives = []CDirective{}
+	g.header_owned_c_typedefs.clear()
+	g.header_owned_macro_context = CHeaderOwnedMacroContext{}
 	g.preinclude_directives = []string{}
 	g.postinclude_directives = []string{}
 	g.early_c_source_directives.clear()
@@ -4627,6 +4632,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		directive := '#include ${include_arg}'
 		if node.value == 'preinclude' {
 			if directive !in g.preinclude_directives {
+				g.collect_header_owned_c_typedefs(include_arg, source_file)
 				if !g.preinclude_state_initialized {
 					g.preinclude_macro_state = c_header_macro_state_for_flags(g.c_flags)
 					g.preinclude_state_initialized = true
@@ -4728,12 +4734,14 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		// materializing every header body into the generated translation unit.
 		if trimmed_space(include_arg).starts_with('<')
 			&& g.collect_preserved_header_tree(include_arg, source_file, include_dirs) {
+			g.collect_header_owned_c_typedefs(include_arg, source_file)
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 			return true
 		}
 		if header := c_inline_header_text_scoped(include_arg, g.compiler_vroot, source_file,
 			include_dirs, g.use_system_stdint, g.scope_parallel_workers)
 		{
+			g.collect_header_owned_c_typedefs(include_arg, source_file)
 			header_text := header.text
 			late_source := c_include_is_late_source(include_arg)
 			mut scoped_native_header_path := ''
@@ -4788,6 +4796,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			}
 		} else if c_should_preserve_uninlined_include(include_arg) || (g.cache_split
 			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>']) {
+			g.collect_header_owned_c_typedefs(include_arg, source_file)
 			// The preserved header is emitted before generated externs. Suppress known
 			// declarations from it by symbol; unrelated C declarations from the same V
 			// file still need generated extern prototypes.
@@ -4801,11 +4810,282 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
 		'error', 'warning'] {
 		directive := c_preprocessor_directive_line(node.value, node.typ)
+		g.collect_header_owned_source_macro_directive(directive)
 		g.add_native_source_context_directive(module_name, directive, before_import)
 		g.add_c_directive(module_name, directive, before_import)
 		return true
 	}
 	return false
+}
+
+fn (mut g FlatGen) collect_header_owned_c_typedefs(include_arg string, source_file string) {
+	if source_file.len == 0 || c_include_arg_is_source_file(include_arg) {
+		return
+	}
+	g.ensure_header_owned_macro_context()
+	if g.header_owned_macro_context.conditionals.any(it.inactive) {
+		return
+	}
+	if g.header_owned_macro_context.conditionals.any(it.ambiguous) {
+		g.header_owned_macro_context.state = c_header_macro_state_after_unknown_include(
+			g.header_owned_macro_context.state)
+		return
+	}
+	include_dirs := c_flag_include_dirs(g.c_flags)
+	mut seen := map[string]bool{}
+	mut found := false
+	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		if !os.is_file(path) {
+			continue
+		}
+		g.header_owned_macro_context.state = g.collect_header_owned_c_typedef_file(path,
+			include_dirs, g.header_owned_macro_context.state, mut seen, mut
+			g.header_owned_macro_context.include_macros, mut
+			g.header_owned_macro_context.dynamic_include_macros, mut
+			g.header_owned_macro_context.literal_include_macros)
+		found = true
+		break
+	}
+	if !found {
+		g.header_owned_macro_context.state = c_header_macro_state_after_unknown_include(
+			g.header_owned_macro_context.state)
+	}
+}
+
+fn (mut g FlatGen) ensure_header_owned_macro_context() {
+	if g.header_owned_macro_context.initialized {
+		return
+	}
+	include_macros, dynamic_include_macros := c_flag_include_macro_definitions(g.c_flags,
+		map[string]string{})
+	g.header_owned_macro_context = CHeaderOwnedMacroContext{
+		initialized:            true
+		state:                  c_header_macro_state_for_flags(g.c_flags)
+		include_macros:         include_macros
+		dynamic_include_macros: dynamic_include_macros
+		literal_include_macros: map[string][]string{}
+		conditionals:           []CCacheConditional{}
+	}
+}
+
+fn (mut g FlatGen) collect_header_owned_source_macro_directive(directive string) {
+	g.ensure_header_owned_macro_context()
+	name := c_directive_name(directive)
+	if name in ['if', 'ifdef', 'ifndef'] {
+		parent_inactive := g.header_owned_macro_context.conditionals.any(it.inactive)
+		parent_ambiguous := g.header_owned_macro_context.conditionals.any(it.ambiguous)
+		condition := c_header_owned_source_condition(directive, g.header_owned_macro_context.state,
+			c_effective_strict_iso_mode(g.c_flags, g.c99_mode), g.target)
+		g.header_owned_macro_context.conditionals << CCacheConditional{
+			parent_inactive: parent_inactive
+			condition:       condition
+			inactive:        parent_inactive || condition < 0
+			ambiguous:       parent_ambiguous || condition == 0
+		}
+		return
+	}
+	if name in ['else', 'elif'] && g.header_owned_macro_context.conditionals.len > 0 {
+		conditional_idx := g.header_owned_macro_context.conditionals.len - 1
+		mut conditional := g.header_owned_macro_context.conditionals[conditional_idx]
+		if name == 'else' {
+			conditional.inactive = conditional.parent_inactive || conditional.condition > 0
+		} else if conditional.condition > 0 {
+			conditional.inactive = true
+		} else {
+			next_condition := c_header_owned_source_condition(directive,
+				g.header_owned_macro_context.state,
+				c_effective_strict_iso_mode(g.c_flags, g.c99_mode), g.target)
+			conditional.condition = next_condition
+			conditional.ambiguous = conditional.ambiguous || next_condition == 0
+			conditional.inactive = conditional.parent_inactive || next_condition < 0
+		}
+		g.header_owned_macro_context.conditionals[conditional_idx] = conditional
+		return
+	}
+	if name == 'endif' {
+		if g.header_owned_macro_context.conditionals.len > 0 {
+			g.header_owned_macro_context.conditionals.delete_last()
+		}
+		return
+	}
+	if name !in ['define', 'undef']
+		|| g.header_owned_macro_context.conditionals.any(it.inactive) {
+		return
+	}
+	parts := c_directive_arg(directive).fields()
+	if parts.len == 0 {
+		return
+	}
+	macro_name := parts[0].all_before('(')
+	is_ambiguous := g.header_owned_macro_context.conditionals.any(it.ambiguous)
+	mut defined := g.header_owned_macro_context.state.defined.clone()
+	mut undefined := g.header_owned_macro_context.state.undefined.clone()
+	mut uncertain := g.header_owned_macro_context.state.uncertain.clone()
+	if is_ambiguous {
+		defined.delete(macro_name)
+		undefined.delete(macro_name)
+		uncertain[macro_name] = true
+	} else {
+		uncertain.delete(macro_name)
+		if name == 'define' {
+			undefined.delete(macro_name)
+			defined[macro_name] = true
+			c_record_literal_include_macro_definition(directive, mut
+				g.header_owned_macro_context.literal_include_macros)
+		} else {
+			defined.delete(macro_name)
+			undefined[macro_name] = true
+		}
+	}
+	g.header_owned_macro_context.state = CHeaderMacroState{
+		defined:                  defined
+		undefined:                undefined
+		uncertain:                uncertain
+		external_macros_possible: g.header_owned_macro_context.state.external_macros_possible
+	}
+	c_record_include_macro_definition(directive, is_ambiguous, mut
+		g.header_owned_macro_context.include_macros, mut
+		g.header_owned_macro_context.dynamic_include_macros, false)
+}
+
+fn c_header_owned_source_condition(directive string, state CHeaderMacroState, strict_iso_mode bool, target pref.Target) int {
+	name := c_directive_name(directive)
+	known, mut active := if name in ['ifdef', 'ifndef'] {
+		macro_name := c_directive_arg(directive).fields()[0] or { '' }
+		c_preprocessor_ifdef_macro_state(macro_name, state.defined, state.undefined, state.uncertain,
+			state.external_macros_possible, strict_iso_mode, target)
+	} else {
+		c_preprocessor_condition_state(c_directive_arg(directive), state.defined, state.undefined,
+			state.uncertain, state.external_macros_possible, strict_iso_mode, target)
+	}
+	if name == 'ifndef' {
+		active = !active
+	}
+	if !known {
+		return 0
+	}
+	return if active { 1 } else { -1 }
+}
+
+fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs []string, state CHeaderMacroState, mut seen map[string]bool, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut literal_include_macros map[string][]string) CHeaderMacroState {
+	real_path := os.real_path(path)
+	if real_path.len == 0 || seen[real_path] {
+		return c_header_macro_state_clone(state)
+	}
+	seen[real_path] = true
+	text := os.read_file(real_path) or { return c_header_macro_state_clone(state) }
+	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
+	mut include_results := map[string]CHeaderIncludeResult{}
+	mut macro_line_index := 0
+	// Resolve includes from left to right so child macro effects determine later
+	// branches. Only the final definitely active text can own a typedef name.
+	for _ in 0 .. c_join_continued_lines(text).len + 2 {
+		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
+			g.target, include_results)
+		mut unresolved_include := -1
+		for i, include_key in scan.include_keys {
+			include_state_signature := c_header_macro_state_signature(scan.include_states[i])
+			if include_key !in include_results
+				|| include_results[include_key].input_signature != include_state_signature {
+				unresolved_include = i
+				break
+			}
+		}
+		if unresolved_include < 0 {
+			c_record_active_include_macro_definitions(scan.text, macro_line_index, -1, mut
+				include_macros, mut dynamic_include_macros, mut literal_include_macros)
+			g.collect_header_owned_c_typedef_text(scan.text)
+			return c_header_macro_state_clone(scan.final_state)
+		}
+		include_key := scan.include_keys[unresolved_include]
+		include_line_index := include_key.all_before(':').int()
+		c_record_active_include_macro_definitions(scan.text, macro_line_index, include_line_index,
+			mut include_macros, mut dynamic_include_macros, mut literal_include_macros)
+		macro_line_index = include_line_index + 1
+		include_state := scan.include_states[unresolved_include]
+		include_is_definitely_active := scan.include_definitely_active[unresolved_include]
+		raw_include_arg := scan.include_args[unresolved_include]
+		mut include_args := [c_include_arg(raw_include_arg, g.compiler_vroot, real_path)]
+		if !c_include_arg_is_literal(include_args[0]) {
+			macro_name := include_args[0].trim_space()
+			include_args = []string{}
+			if macro_name in include_state.defined && macro_name !in include_state.uncertain
+				&& macro_name !in include_state.undefined {
+				include_args = if macro_name in dynamic_include_macros {
+					literal_include_macros[macro_name].clone()
+				} else {
+					include_macros[macro_name].clone()
+				}
+				if include_args.len == 0 {
+					include_args = literal_include_macros[macro_name].clone()
+				}
+			}
+		}
+		mut found := false
+		mut result_state := CHeaderMacroState{}
+		if include_is_definitely_active {
+			for nested_include_arg in include_args {
+				for nested_path in c_include_file_paths(nested_include_arg, g.compiler_vroot,
+					real_path, include_dirs) {
+					if !os.is_file(nested_path) {
+						continue
+					}
+					result_state = g.collect_header_owned_c_typedef_file(nested_path, include_dirs,
+						include_state, mut seen, mut include_macros, mut dynamic_include_macros, mut
+						literal_include_macros)
+					found = true
+					break
+				}
+				if found {
+					break
+				}
+			}
+		}
+		if !found {
+			result_state = c_header_macro_state_after_unknown_include(include_state)
+		}
+		include_results[include_key] = CHeaderIncludeResult{
+			input_signature: c_header_macro_state_signature(include_state)
+			output_state:    result_state
+		}
+	}
+	fallback_scan := c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
+	c_record_active_include_macro_definitions(fallback_scan.text, macro_line_index, -1, mut
+		include_macros, mut dynamic_include_macros, mut literal_include_macros)
+	g.collect_header_owned_c_typedef_text(fallback_scan.text)
+	return c_header_macro_state_clone(fallback_scan.final_state)
+}
+
+fn (mut g FlatGen) collect_header_owned_c_typedef_text(text string) {
+	for alias in c_typedef_all_aggregate_aliases(text) {
+		if 'C.${alias}' in g.tc.c_typedef_structs {
+			g.header_owned_c_typedefs[alias] = true
+		}
+	}
+	for alias in c_typedef_plain_aliases(text) {
+		if 'C.${alias}' in g.tc.c_typedef_structs {
+			g.header_owned_c_typedefs[alias] = true
+		}
+	}
+}
+
+fn c_record_active_include_macro_definitions(text string, start_line int, end_line int, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut literal_include_macros map[string][]string) {
+	mut in_block_comment := false
+	for line_index, line in c_join_continued_lines(text) {
+		if end_line >= 0 && line_index >= end_line {
+			break
+		}
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		if line_index < start_line {
+			continue
+		}
+		if c_directive_name(clean) == 'define' {
+			c_record_literal_include_macro_definition(clean, mut literal_include_macros)
+		}
+		c_record_include_macro_definition(clean, false, mut include_macros, mut
+			dynamic_include_macros, false)
+	}
 }
 
 // c_builtin_abi_helper_header_paths are the superseded helper headers whose
@@ -5137,6 +5417,16 @@ struct CHeaderMacroState {
 	undefined                map[string]bool
 	uncertain                map[string]bool
 	external_macros_possible bool
+}
+
+struct CHeaderOwnedMacroContext {
+mut:
+	initialized            bool
+	state                  CHeaderMacroState
+	include_macros         map[string][]string
+	dynamic_include_macros map[string]bool
+	literal_include_macros map[string][]string
+	conditionals           []CCacheConditional
 }
 
 struct CHeaderActiveScan {
@@ -7963,7 +8253,10 @@ fn c_preserved_system_include_typedef_names(include_arg string) []string {
 	if include_arg.starts_with('<X11/') {
 		return c_preserved_system_include_struct_names(include_arg)
 	}
-	if include_arg in ['<Cocoa/Cocoa.h>', '<Foundation/Foundation.h>', '<objc/objc.h>'] {
+	if include_arg in ['<Cocoa/Cocoa.h>', '<Foundation/Foundation.h>', '<AppKit/AppKit.h>'] {
+		return ['BOOL', 'NSRange', 'NSRect']
+	}
+	if include_arg == '<objc/objc.h>' {
 		return ['BOOL']
 	}
 	return []string{}

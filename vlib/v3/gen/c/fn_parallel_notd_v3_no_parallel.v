@@ -2443,6 +2443,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		generic_fn_key_ordinal:         g.generic_fn_key_ordinal
 		struct_decl_infos:              g.struct_decl_infos
 		struct_decl_short_infos:        g.struct_decl_short_infos
+		header_owned_c_typedefs:        g.header_owned_c_typedefs
 		decl_attrs:                     g.decl_attrs
 		shared_type_names:              g.shared_type_names
 		shared_alias_pointer_shorts:    g.shared_alias_pointer_shorts

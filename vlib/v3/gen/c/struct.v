@@ -4979,21 +4979,28 @@ fn (g &FlatGen) fixed_array_map_key_free_stmt(typ types.Type, expr string) ?stri
 
 // skip_builtin_struct supports skip builtin struct handling for FlatGen.
 fn (g &FlatGen) skip_builtin_struct(name string) bool {
-	if g.inlined_c_structs[name] {
+	mut plain_c_typedef := false
+	if name.starts_with('C.') && name in g.tc.c_typedef_structs {
+		if info := g.struct_decl_infos[name] {
+			plain_c_typedef = !info.file.ends_with('.c.v')
+		}
+	}
+	if g.inlined_c_structs[name] && !plain_c_typedef {
 		return true
 	}
 	if name.starts_with('C.') {
 		if g.cache_native_c_symbols[name[2..]] {
 			return true
 		}
-		if g.inlined_c_typedef_names[name[2..]] {
+		if g.inlined_c_typedef_names[name[2..]] && !plain_c_typedef {
 			return true
 		}
 		if info := g.struct_decl_infos[name] {
 			// Platform binding files describe types supplied by their C/Objective-C
-			// headers. Emitting a fallback body can redefine Objective-C classes such
-			// as NSFont, while V1 deliberately leaves these declarations header-owned.
-			if info.file.ends_with('.c.v') {
+			// headers. For plain V binding files, only suppress an explicit typedef view
+			// when an early header actually declares that typedef name.
+			if info.file.ends_with('.c.v')
+				|| (name in g.tc.c_typedef_structs && g.header_owned_c_typedefs[name[2..]]) {
 				return true
 			}
 		}
@@ -5002,10 +5009,10 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	if resolved_name == 'mach_timebase_info_data_t' {
 		return true
 	}
-	if g.inlined_c_structs[resolved_name] {
+	if g.inlined_c_structs[resolved_name] && !plain_c_typedef {
 		return true
 	}
-	if name.starts_with('C.') && g.inlined_c_structs[name[2..]] {
+	if name.starts_with('C.') && g.inlined_c_structs[name[2..]] && !plain_c_typedef {
 		return true
 	}
 	if name.starts_with('C.') {

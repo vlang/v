@@ -591,7 +591,10 @@ fn test_x11_system_headers_preserve_external_structs() {
 }
 
 fn test_apple_framework_typedef_names_are_preserved() {
-	assert 'BOOL' in c_preserved_system_include_typedef_names('<Cocoa/Cocoa.h>')
+	names := c_preserved_system_include_typedef_names('<Cocoa/Cocoa.h>')
+	assert 'BOOL' in names
+	assert 'NSRange' in names
+	assert 'NSRect' in names
 }
 
 fn test_large_transitive_header_tree_is_preserved() {
