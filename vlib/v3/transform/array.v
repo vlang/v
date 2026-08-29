@@ -3124,6 +3124,32 @@ fn (mut t Transformer) array_map_block_index_result_retains_element_address(bloc
 	return t.array_map_block_index_base_retains_element_address(block, before_idx, base_id, index_id, elem_name, mut seen)
 }
 
+fn (t &Transformer) array_map_index_lhs_targets_index(lhs flat.Node, target string, index_id flat.NodeId) bool {
+	if lhs.kind != .index || lhs.children_count < 2 {
+		return false
+	}
+	mut base := t.a.child_node(&lhs, 0)
+	for base.kind in [.paren, .cast_expr, .as_expr] {
+		if base.children_count == 0 {
+			return false
+		}
+		base = t.a.child_node(base, 0)
+	}
+	if base.kind != .ident || base.value != target {
+		return false
+	}
+	if int(index_id) < 0 || int(index_id) >= t.a.nodes.len {
+		return true
+	}
+	lhs_index := t.a.child_node(&lhs, 1)
+	result_index := t.a.nodes[int(index_id)]
+	if lhs_index.kind == .int_literal && result_index.kind == .int_literal && is_decimal_text(lhs_index.value) && is_decimal_text(result_index.value) {
+		return lhs_index.value.int() == result_index.value.int()
+	}
+	// Dynamic indices can select the same slot at runtime.
+	return true
+}
+
 fn (mut t Transformer) array_map_block_index_base_retains_element_address(block flat.Node, before_idx int, base_id flat.NodeId, index_id flat.NodeId, elem_name string, mut seen map[string]bool) bool {
 	if int(base_id) < 0 || int(base_id) >= t.a.nodes.len {
 		return false
@@ -3146,22 +3172,25 @@ fn (mut t Transformer) array_map_block_index_base_retains_element_address(block 
 			stmt_idx := before_idx - offset
 			stmt_id := t.a.child(&block, stmt_idx)
 			stmt := t.a.nodes[int(stmt_id)]
-			if t.array_map_nested_index_assignment_retains_element_address(stmt_id, source.value, block, stmt_idx, index_id, elem_name, seen) {
-				return true
-			}
 			if stmt.kind == .decl_assign && stmt.children_count == 2 {
 				lhs := t.a.child_node(stmt, 0)
 				if lhs.kind == .ident && lhs.value == source.value {
 					return t.array_map_block_index_base_retains_element_address(block, stmt_idx, t.a.child(stmt, 1), index_id, elem_name, mut seen)
 				}
 			}
-			if stmt.kind == .assign {
+			if stmt.kind in [.assign, .index_assign] {
 				for i := 0; i + 1 < int(stmt.children_count); i += 2 {
 					lhs := t.a.child_node(stmt, i)
 					if lhs.kind == .ident && lhs.value == source.value {
 						return t.array_map_block_index_base_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), index_id, elem_name, mut seen)
 					}
+					if t.array_map_index_lhs_targets_index(lhs, source.value, index_id) {
+						return t.array_map_block_value_retains_element_address(block, stmt_idx, t.a.child(stmt, i + 1), elem_name, mut seen)
+					}
 				}
+			}
+			if t.array_map_nested_index_assignment_retains_element_address(stmt_id, source.value, block, stmt_idx, index_id, elem_name, seen) {
+				return true
 			}
 		}
 	}
@@ -3186,24 +3215,42 @@ fn (mut t Transformer) array_map_nested_index_assignment_retains_element_address
 		return false
 	}
 	if node.kind in [.block, .match_branch] {
-		for stmt_idx in 0 .. node.children_count {
+		scope_limit := t.array_map_block_scope_limit(node, target)
+		for offset in 0 .. scope_limit {
+			stmt_idx := scope_limit - 1 - offset
 			stmt_id := t.a.child(&node, stmt_idx)
 			stmt := t.a.nodes[int(stmt_id)]
-			if t.array_map_block_stmt_declares_name(stmt, target) {
-				break
+			if stmt.kind in [.assign, .index_assign] {
+				for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+					lhs := t.a.child_node(stmt, i)
+					if lhs.kind == .ident && lhs.value == target {
+						mut branch_seen := seen.clone()
+						return t.array_map_block_index_base_retains_element_address(node, stmt_idx, t.a.child(stmt, i + 1), index_id, elem_name, mut branch_seen)
+					}
+					if t.array_map_index_lhs_targets_index(lhs, target, index_id) {
+						mut branch_seen := seen.clone()
+						return t.array_map_block_value_retains_element_address(node, stmt_idx, t.a.child(stmt, i + 1), elem_name, mut branch_seen)
+					}
+				}
 			}
-			if t.array_map_nested_index_assignment_retains_element_address(stmt_id, target, node, int(stmt_idx), index_id, elem_name, seen) {
+			if t.array_map_nested_index_assignment_retains_element_address(stmt_id, target, node, stmt_idx, index_id, elem_name, seen) {
 				return true
 			}
 		}
 		return false
 	}
-	if node.kind == .assign {
+	if node.kind in [.assign, .index_assign] {
 		for i := 0; i + 1 < int(node.children_count); i += 2 {
 			lhs := t.a.child_node(&node, i)
 			if lhs.kind == .ident && lhs.value == target {
 				mut branch_seen := seen.clone()
 				if t.array_map_block_index_base_retains_element_address(block, before_idx, t.a.child(&node, i + 1), index_id, elem_name, mut branch_seen) {
+					return true
+				}
+			}
+			if t.array_map_index_lhs_targets_index(lhs, target, index_id) {
+				mut branch_seen := seen.clone()
+				if t.array_map_block_value_retains_element_address(block, before_idx, t.a.child(&node, i + 1), elem_name, mut branch_seen) {
 					return true
 				}
 			}
