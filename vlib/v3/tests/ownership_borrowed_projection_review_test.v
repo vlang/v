@@ -401,6 +401,33 @@ fn test_borrowed_array_initializer_is_cloned_per_element(holder &Holder) {
 	assert holder.left.values[0] == "left"
 }
 
+fn test_borrowed_array_literal_element_is_cloned(holder &Holder) {
+	mut items := [holder.left]
+	items[0].values[0] = "literal copy"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_fixed_array_initializer_is_cloned_per_element(holder &Holder) {
+	mut items := [2]Payload{init: holder.left}
+	items[0].values[0] = "fixed first"
+	assert items[1].values[0] == "left"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_borrowed_channel_send_is_cloned(holder &Holder) {
+	ch := chan Payload{cap: 1}
+	ch <- holder.left
+	mut received := <-ch
+	received.values[0] = "channel copy"
+	assert holder.left.values[0] == "left"
+
+	handled_ch := chan Payload{cap: 1}
+	handled_ch <- holder.right or { panic(err) }
+	mut handled := <-handled_ch
+	handled.values[0] = "handled channel copy"
+	assert holder.right.values[0] == "right"
+}
+
 fn test_pointer_dereferences_are_cloned(holder &Holder) {
 	left_pointer := &holder.left
 	mut left_copy := *left_pointer
@@ -586,6 +613,9 @@ fn main() {
 	test_borrowed_fixed_array_conversions_are_cloned()
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
 	test_borrowed_array_initializer_is_cloned_per_element(holder)
+	test_borrowed_array_literal_element_is_cloned(holder)
+	test_borrowed_fixed_array_initializer_is_cloned_per_element(holder)
+	test_borrowed_channel_send_is_cloned(holder)
 	test_pointer_dereferences_are_cloned(holder)
 	test_conditional_borrowed_branches_are_cloned(holder)
 	test_borrowed_sum_projection_is_cloned()
@@ -601,7 +631,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 31, out.output
+		assert out.output.count('clone') == 36, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

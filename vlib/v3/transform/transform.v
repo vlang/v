@@ -16648,6 +16648,15 @@ fn (mut t Transformer) transform_children_expr(id flat.NodeId, node flat.Node) f
 	})
 }
 
+fn (mut t Transformer) transform_channel_send_value(value_id flat.NodeId) flat.NodeId {
+	value := t.transform_expr(value_id)
+	mut value_type := t.node_type(value_id)
+	if value_type.len == 0 {
+		value_type = t.checker_node_type(value_id)
+	}
+	return t.clone_borrowed_projection(value_id, value, value_type)
+}
+
 // transform_infix_expr transforms transform infix expr data for transform.
 fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
@@ -16660,7 +16669,7 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			t.mark_fn_used('sync__Channel__try_push_priv')
 			t.mark_fn_used('sync__Channel__closed_error')
 			lhs := t.transform_expr(t.a.child(&node, 0))
-			value := t.transform_expr(t.a.child(&rhs, 0))
+			value := t.transform_channel_send_value(t.a.child(&rhs, 0))
 			saved_var_types := t.var_types.clone()
 			t.set_implicit_err_var_type()
 			body := t.transform_expr(t.a.child(&rhs, 1))
@@ -16769,7 +16778,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		lhs_pending = t.pending_stmts[pending_start..].clone()
 		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}
-	new_rhs := if preserve_pointer_values && t.infix_operand_is_language_pointer(rhs_id) {
+	new_rhs := if node.op == .arrow {
+		t.transform_channel_send_value(rhs_id)
+	} else if preserve_pointer_values && t.infix_operand_is_language_pointer(rhs_id) {
 		t.transform_expr_preserving_pointer_value(rhs_id)
 	} else {
 		t.transform_expr(rhs_id)
@@ -19681,7 +19692,7 @@ fn (mut t Transformer) transform_array_literal(id flat.NodeId, node flat.Node) f
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		new_children << if elem_type.len > 0 {
-			t.transform_expr_for_type(child_id, elem_type)
+			t.transform_owned_array_literal_element(child_id, elem_type)
 		} else {
 			t.transform_expr(child_id)
 		}

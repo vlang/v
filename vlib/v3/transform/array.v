@@ -602,6 +602,15 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 	})
 }
 
+fn (mut t Transformer) transform_owned_array_literal_element(elem_id flat.NodeId, elem_type string) flat.NodeId {
+	value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
+		t.wrap_sum_value(elem_id, elem_type)
+	} else {
+		t.transform_expr_for_type(elem_id, elem_type)
+	}
+	return t.clone_borrowed_projection(elem_id, value, elem_type)
+}
+
 // lower_array_literal_to_runtime converts lower array literal to runtime data for transform.
 fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
 	if t.in_const_init {
@@ -635,11 +644,7 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 			continue
 		}
 		value_name := t.new_temp('arr_val')
-		value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-			t.wrap_sum_value(elem_id, elem_type)
-		} else {
-			t.transform_expr_for_type(elem_id, elem_type)
-		}
+		value := t.transform_owned_array_literal_element(elem_id, elem_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
 		call := t.make_call_typed('array_push', [
 			t.make_prefix(.amp, t.make_ident(tmp_name)),
@@ -889,11 +894,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 		mut values := []flat.NodeId{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
 			elem_id := t.a.child(&node, i)
-			values << if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-				t.wrap_sum_value(elem_id, elem_type)
-			} else {
-				t.transform_expr_for_type(elem_id, elem_type)
-			}
+			values << t.transform_owned_array_literal_element(elem_id, elem_type)
 		}
 		return t.make_array_literal_typed(values, array_type)
 	}
@@ -908,11 +909,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 			continue
 		}
 		value_name := t.new_temp('arr_val')
-		value := if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-			t.wrap_sum_value(elem_id, elem_type)
-		} else {
-			t.transform_expr_for_type(elem_id, elem_type)
-		}
+		value := t.transform_owned_array_literal_element(elem_id, elem_type)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, elem_type)
 		call := t.make_call_typed('array_push', [
 			t.make_prefix(.amp, t.make_ident(tmp_name)),
@@ -1004,7 +1001,8 @@ fn (mut t Transformer) transform_fixed_array_init_expr(node flat.Node) ?flat.Nod
 	mut values := []flat.NodeId{cap: len}
 	for i in 0 .. len {
 		indexed_init := t.substitute_ident_expr(init_id, 'index', t.make_int_literal(i))
-		values << t.transform_expr_for_type(indexed_init, elem_type)
+		value := t.transform_expr_for_type(indexed_init, elem_type)
+		values << t.clone_borrowed_projection(init_id, value, elem_type)
 	}
 	return t.make_array_literal_typed(values, fixed_type)
 }
