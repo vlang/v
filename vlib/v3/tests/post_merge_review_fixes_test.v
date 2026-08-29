@@ -2292,15 +2292,15 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_without_context',
 		'fn fallible() !int {\n\treturn 2\n}\n\nfn main() {\n\tflag := true\n\tx := if flag { none } else { fallible() }\n\tprintln(int_str(x or { -1 }))\n}\n',
 		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'if_error_branch_rejected_for_option_payload',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\t_ := f(false) or { 0 }\n}\n",
-		'if-expression branch type mismatch')
+	option_error_out := run_good(v3_bin, 'if_error_branch_infers_option',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert option_error_out == '1\nbad'
 	run_bad(v3_bin, 'if_none_branch_rejected_for_result_payload',
 		'fn g(ok bool) !int {\n\treturn if ok { none } else { 1 }\n}\n\nfn main() {\n\t_ := g(false) or { 0 }\n}\n',
 		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'match_error_branch_rejected_for_option_payload',
-		"fn f(n int) ?int {\n\treturn match n {\n\t\t0 { error('bad') }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := f(1) or { 0 }\n}\n",
-		'cannot return')
+	match_option_error_out := run_good(v3_bin, 'match_error_branch_infers_option',
+		"fn f(n int) ?int {\n\treturn match n {\n\t\t0 { error('bad') }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(f(1) or { -1 }))\n\t_ := f(0) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert match_option_error_out == '1\nbad'
 	run_bad(v3_bin, 'match_none_branch_rejected_for_result_payload',
 		'fn g(n int) !int {\n\treturn match n {\n\t\t0 { none }\n\t\telse { 1 }\n\t}\n}\n\nfn main() {\n\t_ := g(1) or { 0 }\n}\n',
 		'cannot return')
@@ -3253,12 +3253,12 @@ fn main() {
 	println(json.encode(data))
 }
 ')
-	assert out == '{"embed":2.0,"inner":[1.0,2.0],"test":1.0}'
+	assert out == '{"embed":2,"inner":[1,2],"test":1}'
 	qualified := run_good_project(v3_bin, 'json_qualified_embedded_struct_flattening', {
 		'other/other.v': 'module other\n\npub struct Inner {\npub:\n\tembed f64\n\tname string\n}\n'
 		'main.v':        'module main\n\nimport json\nimport other\n\nstruct Outer {\n\tother.Inner\n\tn int\n}\n\nfn main() {\n\tdata := Outer{\n\t\tother.Inner{\n\t\t\tembed: 2.0\n\t\t\tname:  "Ada"\n\t\t}\n\t\tn: 3\n\t}\n\tprintln(json.encode(data))\n\tdecoded := json.decode(Outer, "{\\"embed\\":4.0,\\"name\\":\\"Bea\\",\\"n\\":5}")!\n\tprintln(decoded.name)\n\tprintln(int_str(int(decoded.embed)) + ":" + int_str(decoded.n))\n}\n'
 	}, 'main.v')
-	assert qualified == '{"embed":2.0,"name":"Ada","n":3}\nBea\n4:5'
+	assert qualified == '{"embed":2,"name":"Ada","n":3}\nBea\n4:5'
 }
 
 fn test_json_encode_omitempty_field_attr_preserves_omission() {
@@ -3331,7 +3331,7 @@ fn main() {
 	}))
 }
 ')
-	assert out == '{}\n{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}}\n[{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}},"trace"]\n{"items":[{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}},"trace"],"lookup":{"trace":{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}}}}\n{}\n{"value":{"values":[1.0,2.0],"lookup":{"kind":"line"},"style":{"width":4.0,"dash":"solid"}}}'
+	assert out == '{}\n{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"}}\n[{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"},"trace"]\n{"items":[{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"},"trace"],"lookup":{"trace":{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"}}}\n{}\n{"value":{"values":[1,2],"lookup":{"kind":"line"},"style":{"width":4,"dash":"solid"},"_type":"Payload"}}'
 }
 
 fn test_json_encode_json_dash_label_skips_fast_path_field() {
@@ -3716,6 +3716,20 @@ fn test_formatted_interpolation_integer_alias_character_code() {
 	out := run_good(v3_bin, 'formatted_interpolation_integer_alias_character_code',
 		"type Code = u8\ntype SignedCode = i16\ntype NestedCode = Code\n\nfn main() {\n\tprintln('\${Code(65):c}\${SignedCode(66):c}\${NestedCode(67):c}')\n}\n")
 	assert out == 'ABC'
+}
+
+fn test_formatted_interpolation_alias_uses_string_representation() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'formatted_interpolation_alias_string',
+		'import time\n\nfn main() {\n\tduration := time.Duration(10)\n\tprintln("|\${duration:10s}|")\n}\n')
+	assert out == '|      10ns|'
+}
+
+fn test_callback_pointer_return_is_compatible_with_voidptr_return() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'callback_pointer_return_to_voidptr',
+		'struct Item {\n\tvalue int\n}\n\nstruct Config {\n\tcallback fn () voidptr\n}\n\nfn make_item() &Item {\n\treturn &Item{value: 42}\n}\n\nfn main() {\n\tconfig := Config{callback: make_item}\n\titem := unsafe { &Item(config.callback()) }\n\tprintln(item.value)\n}\n')
+	assert out == '42'
 }
 
 fn test_stats_reports_failed_test_status_and_passed_total() {
@@ -4443,6 +4457,9 @@ fn test_interface_cast_rejects_pointer_shape_mismatch() {
 	nil_out := run_good(v3_bin, 'interface_pointer_nil_cast',
 		"interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := Sink(nil)\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n")
 	assert nil_out == 'ok'
+	nil_arg_out := run_good(v3_bin, 'interface_pointer_nil_argument',
+		"interface Item {\n\tname string\n}\n\nfn take(item &Item) {\n\tassert item == unsafe { nil }\n}\n\nfn main() {\n\tvalue := unsafe { nil }\n\ttake(value)\n\ttake(unsafe { nil })\n\tprintln('ok')\n}\n")
+	assert nil_arg_out == 'ok'
 }
 
 fn test_interface_is_unqualified_local_uses_exact_impl_id() {

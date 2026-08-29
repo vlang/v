@@ -2555,6 +2555,16 @@ fn test_explicit_v3_rejects_structured_v1_only_preferences() {
 		gc_mode:        .boehm_full_opt
 		path:           'main.v'
 	})
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler: true
+		is_livemain:  true
+		path:         'main.v'
+	})
+	assert macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
+		new_compiler:  true
+		is_liveshared: true
+		path:          'main.v'
+	})
 	assert !macos_v3_explicit_v1_preferences_are_unsupported(&pref.Preferences{
 		new_compiler: true
 		path:         'main.v'

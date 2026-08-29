@@ -45,11 +45,11 @@ fn main() {
 		// compiling by default, i.e. `v self`:
 		uos := os.user_os()
 		uname := os.uname()
-		if uos == 'macos' && uname.machine == 'arm64' {
-			// Apple silicon, like m1, m2 etc
-			// Use tcc by default for V, since tinycc is much faster and also
-			// it already supports compiling many programs like V itself, that do not depend on inlined objective-C code
-			args << ['-cc', 'tcc']
+		if uos == 'macos' {
+			// V3 relies on native thread-local preallocation scopes to keep
+			// compiler self-builds below the memory limit. TCC does not support
+			// that implementation on macOS, so use the system compiler.
+			args << ['-cc', os.getenv_opt('CC') or { 'cc' }]
 		} else if uos == 'linux' && uname.machine in ['arm64', 'aarch64'] {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
 			// prefer the system compiler for self-builds there.
@@ -60,10 +60,10 @@ fn main() {
 		args << ['-gc', 'none']
 	}
 	effective_args = effective_self_build_args(args)
-	if !fastc_self_build && os.user_os() == 'linux' && self_build_supports_prealloc(effective_args)
-		&& !has_prealloc_arg(effective_args) {
+	if !fastc_self_build && os.user_os() in ['linux', 'macos']
+		&& self_build_supports_prealloc(effective_args) && !has_prealloc_arg(effective_args) {
 		// The embedded V3 compiler uses disposable preallocation scopes. Pass the
-		// flag explicitly so the first `v up` built by an older Linux compiler gets
+		// flag explicitly so the first `v up` built by an older compiler gets
 		// the bounded-memory implementation too.
 		args << '-prealloc'
 	}
@@ -294,7 +294,7 @@ fn has_prealloc_arg(args []string) bool {
 }
 
 fn self_build_supports_prealloc(args []string) bool {
-	mut target_os := 'linux'
+	mut target_os := os.user_os()
 	mut ccompiler := ''
 	mut gc := 'none'
 	mut i := 0
@@ -326,7 +326,8 @@ fn self_build_supports_prealloc(args []string) bool {
 		}
 		i++
 	}
-	return target_os == 'linux' && gc == 'none' && self_ccompiler_supports_prealloc(ccompiler)
+	return target_os in ['linux', 'macos'] && gc == 'none'
+		&& self_ccompiler_supports_prealloc(ccompiler)
 }
 
 fn self_ccompiler_supports_prealloc(ccompiler string) bool {

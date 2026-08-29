@@ -1095,6 +1095,16 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					tc.check_const_field_values(node)
 				}
 			}
+			.global_decl {
+				if do_values {
+					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
+						tc.record_error_at(.duplicate_decl,
+							'use `v -enable-globals ...` to enable globals', flat.NodeId(i),
+							node.pos)
+					}
+					tc.check_const_global_initializers(node)
+				}
+			}
 			.fn_decl {
 				if !do_signatures {
 					continue
@@ -1147,7 +1157,11 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		}
 		if items.len < min_parallel_check_items || n_jobs <= 1 {
 			tc.check_top_level_declarations()
-			tc.check_fn_items_serial(items)
+			if tc.scope_parallel_check_workers {
+				tc.check_scoped_batches(items, scoped_check_serial_batches)
+			} else {
+				tc.check_fn_items_serial(items)
+			}
 			return false
 		}
 		// Initializer-value checks can mutate compilation-wide state that the
@@ -2808,6 +2822,10 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 }
 
 fn clone_parallel_type_error(err TypeError) TypeError {
+	mut details := []string{cap: err.details.len}
+	for detail in err.details {
+		details << detail.clone()
+	}
 	return TypeError{
 		msg:        err.msg.clone()
 		kind:       err.kind
@@ -2817,7 +2835,7 @@ fn clone_parallel_type_error(err TypeError) TypeError {
 		node_value: err.node_value.clone()
 		node_pos:   err.node_pos.clone()
 		pos:        err.pos
-		details:    err.details.clone()
+		details:    details
 		severity:   err.severity.clone()
 	}
 }
@@ -2882,24 +2900,43 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		tc.ownership_merge_parallel_check_worker(w)
 	}
 	for idx, name in w.sparse_resolved_call_names {
-		tc.resolved_call_names[idx] = if scoped { name.clone() } else { name }
-		tc.resolved_call_set[idx] = true
+		owned_name := if scoped { name.clone() } else { name }
+		if tc.parallel_check_sparse {
+			tc.sparse_resolved_call_names[idx] = owned_name
+		} else {
+			tc.resolved_call_names[idx] = owned_name
+			tc.resolved_call_set[idx] = true
+		}
 	}
 	for idx, name in w.sparse_resolved_fn_values {
-		tc.resolved_fn_value_names[idx] = if scoped { name.clone() } else { name }
-		tc.resolved_fn_value_set[idx] = true
+		owned_name := if scoped { name.clone() } else { name }
+		if tc.parallel_check_sparse {
+			tc.sparse_resolved_fn_values[idx] = owned_name
+		} else {
+			tc.resolved_fn_value_names[idx] = owned_name
+			tc.resolved_fn_value_set[idx] = true
+		}
 	}
 	for idx, _ in w.sparse_statement_nodes {
-		tc.statement_nodes[idx] = true
+		if tc.parallel_check_sparse {
+			tc.sparse_statement_nodes[idx] = true
+		} else {
+			tc.statement_nodes[idx] = true
+		}
 	}
 	for idx, typ in w.sparse_expr_type_values {
-		if scoped {
+		owned_type := if scoped {
 			_, canonical := tc.intern_type(clone_owned_type(typ))
-			tc.expr_type_values[idx] = canonical
+			canonical
 		} else {
-			tc.expr_type_values[idx] = typ
+			typ
 		}
-		tc.expr_type_set[idx] = true
+		if tc.parallel_check_sparse {
+			tc.sparse_expr_type_values[idx] = owned_type
+		} else {
+			tc.expr_type_values[idx] = owned_type
+			tc.expr_type_set[idx] = true
+		}
 	}
 	for fn_idx, dependencies in w.direct_dependencies_by_fn {
 		if fn_idx !in tc.direct_dependencies_by_fn {

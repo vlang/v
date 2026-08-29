@@ -88,9 +88,12 @@ currently supported collector mode. Directory builds read `subdirs` through the 
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
-The driver monitors compiler memory throughout the build and exits when it reaches 10 GiB.
+The driver monitors compiler memory throughout the build and exits when it reaches 3840 MiB,
+leaving sampling headroom below a 4 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
+On macOS and Linux, `make` and the default `v self` build the compiler with `-prealloc`, enabling
+the disposable stage arenas that keep compiler self-hosting within that ceiling.
 Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.

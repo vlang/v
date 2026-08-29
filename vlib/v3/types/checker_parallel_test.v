@@ -64,6 +64,63 @@ fn test_parallel_checker_dependencies_are_private_and_merged() {
 	transform_worker.free_parallel_transform_caches()
 }
 
+fn test_nested_parallel_checker_merge_keeps_out_of_range_caches_sparse() {
+	mut a := flat.FlatAst.new()
+	for _ in 0 .. 4 {
+		a.add(.ident)
+	}
+	mut tc := TypeChecker.new(&a)
+	tc.extend_node_caches(a.nodes.len)
+	tc.parallel_check_sparse = true
+	mut worker := tc.fork_for_parallel_check()
+	worker.sparse_resolved_call_names[2] = 'main.answer'
+	worker.sparse_resolved_fn_values[2] = 'main.callback'
+	worker.sparse_statement_nodes[2] = true
+	worker.sparse_expr_type_values[2] = Type(bool_)
+
+	tc.merge_parallel_check_worker_scoped(worker, true)
+	assert tc.sparse_resolved_call_names[2] == 'main.answer'
+	assert tc.sparse_resolved_fn_values[2] == 'main.callback'
+	assert tc.sparse_statement_nodes[2]
+	if typ := tc.sparse_expr_type_values[2] {
+		assert typ is Primitive
+	} else {
+		assert false
+	}
+	assert !tc.resolved_call_set[2]
+	assert !tc.resolved_fn_value_set[2]
+	assert !tc.statement_nodes[2]
+	assert !tc.expr_type_set[2]
+
+	tc.parallel_check_sparse = false
+	tc.merge_own_sparse_caches()
+	assert tc.resolved_call_names[2] == 'main.answer'
+	assert tc.resolved_fn_value_names[2] == 'main.callback'
+	assert tc.statement_nodes[2]
+	assert tc.expr_type_values[2] is Primitive
+	worker.free_parallel_check_worker_cache()
+}
+
+fn test_scoped_checker_merge_deep_clones_diagnostic_details() {
+	$if prealloc {
+		a := flat.FlatAst.new()
+		mut tc := TypeChecker.new(&a)
+		scope := unsafe { prealloc_scope_begin() }
+		mut worker := tc.fork_for_parallel_check()
+		worker.notices << TypeError{
+			msg:     'scoped notice'.clone()
+			details: ['scoped detail'.clone()]
+		}
+		unsafe { prealloc_scope_leave(scope) }
+		tc.merge_parallel_check_worker_scoped(worker, true)
+		unsafe { prealloc_scope_free_after(scope) }
+
+		assert tc.notices.len == 1
+		assert tc.notices[0].msg == 'scoped notice'
+		assert tc.notices[0].details == ['scoped detail']
+	}
+}
+
 fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes() {
 	mut a := flat.FlatAst.new()
 	child := a.add_val(.ident, 'child')
