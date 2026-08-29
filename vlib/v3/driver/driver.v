@@ -2719,6 +2719,13 @@ fn register_headerless_c_types(mut tc types.TypeChecker) {
 fn c_typedef_is_function_pointer(source string, name string) bool {
 	mut offset := 0
 	for offset < source.len {
+		// index_after scans in place from `offset`. `source[offset..].index(name)`
+		// allocated a fresh copy of the whole remaining tail of `source` on every
+		// iteration; this function runs once per typedef name per native header, so
+		// under -prealloc (allocations in a stage scope are not freed until the
+		// scope ends) those tail copies accumulated to multiple GB of transient
+		// RSS on a build pulling large native headers (sokol, stb, mbedtls,
+		// openssl) — enough to trip v3's memory ceiling and fall back to V1.
 		start := source.index_after(name, offset) or { return false }
 		end := start + name.len
 		if (start == 0 || (!source[start - 1].is_alnum() && source[start - 1] != `_`))
@@ -9311,7 +9318,6 @@ pub fn run(args []string) {
 		b.metric('type parse cache misses', type_cache_stats.parse_misses, 'lookups')
 		b.metric('C type cache hits', type_cache_stats.c_hits, 'lookups')
 		b.metric('C type cache misses', type_cache_stats.c_misses, 'lookups')
-
 		if backend == 'eval' {
 			$if !skip_eval ? {
 				mut runner := eval.new(prefs)
@@ -9333,7 +9339,6 @@ pub fn run(args []string) {
 			&& !cache_state.manager.enabled
 		prepared_transform_thread := spawn transform.prepare_selfhost_transform(a, &pre_tc,
 			prepare_transform_overlap)
-
 		// Mark used functions (dead-code elimination). This is done before transform
 		// so the transformer can skip function bodies that the C backend will prune.
 		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
@@ -9564,7 +9569,7 @@ pub fn run(args []string) {
 			prealloc_scope_leave_for_v3(transform_scope)
 			retain_transform_scope := building_v && current_parallel_transform && backend == 'c'
 				&& !cache_state.manager.enabled && retained_transform_regions.len == 0
-				&& os.getenv('V3_NO_RETAIN_TRANSFORM_SCOPE') == ''
+				&& os.getenv('V3_RETAIN_TRANSFORM_SCOPE') != ''
 			if retain_transform_scope {
 				// Cgen is the only remaining semantic consumer in this no-cache self-host
 				// path. Keep the typed transform arena alive through it instead of cloning
@@ -14297,6 +14302,7 @@ fn implicit_known_field_selectors(a &flat.FlatAst, start int, end int, index Imp
 fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut index ImplicitFieldScanIndex) {
 	for idx in start .. end {
 		node := a.nodes[idx]
+		node_ref := a.node(flat.NodeId(idx))
 		match node.kind {
 			.type_decl {
 				if node.value.len > 0 && node.typ.len > 0 {
@@ -14306,7 +14312,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			.struct_decl {
 				mut declared := map[string]string{}
 				for child_idx in 0 .. node.children_count {
-					field := a.child_node(&node, child_idx)
+					field := a.child_node(node_ref, child_idx)
 					if field.kind == .field_decl && field.value.len > 0 {
 						declared[field.value] = field.typ
 					}
@@ -14318,7 +14324,7 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 			.enum_decl {
 				mut declared := map[string]bool{}
 				for child_idx in 0 .. node.children_count {
-					field := a.child_node(&node, child_idx)
+					field := a.child_node(node_ref, child_idx)
 					if field.kind == .enum_field && field.value.len > 0 {
 						declared[field.value] = true
 					}
@@ -14344,11 +14350,12 @@ fn implicit_field_scan_index_append(a &flat.FlatAst, start int, end int, mut ind
 	}
 	for idx in start .. end {
 		node := a.nodes[idx]
+		node_ref := a.node(flat.NodeId(idx))
 		if node.kind !in [.const_decl, .global_decl] {
 			continue
 		}
 		for child_idx in 0 .. node.children_count {
-			field := a.child_node(&node, child_idx)
+			field := a.child_node(node_ref, child_idx)
 			if field.kind != .const_field || field.children_count == 0 {
 				continue
 			}

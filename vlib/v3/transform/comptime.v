@@ -3014,7 +3014,9 @@ fn (mut t Transformer) build_struct_field_decl_metas_cache() {
 		&& t.tc.top_level_idx_nodes_len == t.a.nodes.len
 	count := if use_idx { t.tc.top_level_idx.len } else { t.a.nodes.len }
 	for ii in 0 .. count {
-		node := if use_idx { t.a.nodes[t.tc.top_level_idx[ii]] } else { t.a.nodes[ii] }
+		node_idx := if use_idx { t.tc.top_level_idx[ii] } else { ii }
+		node := t.a.nodes[node_idx]
+		node_ref := t.a.node(flat.NodeId(node_idx))
 		if use_idx && node.kind == .file {
 			cur_mod = t.tc.file_modules[node.value] or { 'main' }
 			continue
@@ -3033,7 +3035,7 @@ fn (mut t Transformer) build_struct_field_decl_metas_cache() {
 		}
 		mut fields := map[string]FieldDeclMeta{}
 		for i in 0 .. node.children_count {
-			field := t.a.child_node(&node, i)
+			field := t.a.child_node(node_ref, i)
 			if field.kind == .field_decl {
 				fields[field.value] = field_decl_meta(field)
 			}

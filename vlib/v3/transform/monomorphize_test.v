@@ -32,6 +32,27 @@ fn test_generic_unresolved_type_detects_multi_return_placeholders() {
 	assert !t.generic_arg_is_unresolved('(f64, f64)')
 }
 
+fn test_zero_value_normalizes_generic_alias_but_preserves_generic_struct() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Values'] = '[]T'
+	tc.type_alias_generic_params['Values'] = ['T']
+	tc.structs['Box'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	alias_zero_id := t.zero_value_for_type('Values[int]')
+	alias_zero := t.a.nodes[int(alias_zero_id)]
+	assert alias_zero.kind == .array_init
+	assert alias_zero.value == 'int'
+	assert alias_zero.typ == '[]int'
+
+	struct_zero_id := t.zero_value_for_type('Box[int]')
+	struct_zero := t.a.nodes[int(struct_zero_id)]
+	assert struct_zero.kind == .struct_init
+	assert struct_zero.value == 'Box[int]'
+	assert struct_zero.typ == 'Box[int]'
+}
+
 fn test_explicit_generic_fn_value_candidates_resolve_selective_import() {
 	mut a := flat.FlatAst.new()
 	base_id := a.add_node(flat.Node{

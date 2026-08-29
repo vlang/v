@@ -962,6 +962,11 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 			if thread_ret := t.thread_wait_or_expr_type(expr_node) {
 				return t.canonical_or_expr_types(thread_ret)
 			}
+			if t.is_optional_type_name(expr_node.typ)
+				&& t.generic_type_text_contains_alias(expr_node.typ, t.cur_module)
+				&& !t.generic_arg_is_unresolved(expr_node.typ) {
+				return t.specialized_or_expr_types(expr_node.typ)
+			}
 			if expr_node.children_count > 0 {
 				callee := t.a.child_node(&expr_node, 0)
 				if callee.kind == .ident && t.generic_callee_is_specialization(callee.value)
@@ -1441,7 +1446,12 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
 		return t.make_optional_none(clean)
 	}
-	clean = t.normalize_type_alias(clean)
+	_, _, is_generic_app := generic_app_parts(clean)
+	if expanded := t.expand_generic_type_alias(clean) {
+		clean = t.normalize_type_alias(expanded)
+	} else if !is_generic_app {
+		clean = t.normalize_type_alias(clean)
+	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') || clean.starts_with('fn_ptr:') {
 		return t.make_cast(clean, t.make_int_literal(0), clean)
 	}
@@ -1512,6 +1522,14 @@ fn (mut t Transformer) make_none_return_stmt_with_err_expr(err_expr flat.NodeId)
 		t.cur_fn_ret_type)
 }
 
+fn (mut t Transformer) make_or_else_block(mode string, stmts []flat.NodeId) flat.NodeId {
+	// `!` and `?` lower to a branch the source never wrote, so it has no checker scope.
+	if mode == '!' || mode == '?' {
+		return t.make_block_skip_scope_drops(stmts)
+	}
+	return t.make_block(stmts)
+}
+
 // lower_or_expr_to_temp converts lower or expr to temp data for transform.
 fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
@@ -1579,7 +1597,8 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 		prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
 		opt_ident := t.make_ident(opt_tmp)
 		not_ok := t.make_prefix(.not, t.make_selector(opt_ident, 'ok', 'bool'))
-		else_block := t.make_block(t.lower_or_body_to_stmts(body_id, '', '', node.value, opt_tmp))
+		else_block := t.make_or_else_block(node.value, t.lower_or_body_to_stmts(body_id, '', '',
+			node.value, opt_tmp))
 		if_stmt := t.make_if(not_ok, else_block, t.make_empty())
 		t.pending_stmts = outer_pending
 		for stmt in prelude {
@@ -1590,10 +1609,26 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	}
 
 	prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
-	storage_value_type := if t.is_fixed_array_type(value_type) {
+	storage_value_type0 := if t.is_fixed_array_type(value_type) {
 		t.resolved_fixed_array_canonical_type(value_type)
 	} else {
 		t.shared_alias_storage_type(value_type)
+	}
+	mut storage_value_type := storage_value_type0
+	storage_normalized := t.normalize_type_in_module(storage_value_type0, t.cur_module)
+	if t.is_optional_type_name(t.cur_fn_ret_type) {
+		return_value_type := t.optional_base_type(t.qualify_optional_type(t.cur_fn_ret_type))
+		if return_value_type != storage_value_type0
+			&& t.normalize_type_in_module(return_value_type, t.cur_module) == storage_normalized {
+			storage_value_type = return_value_type
+		}
+	}
+	for active_arg in t.active_specialization_args {
+		if active_arg != storage_value_type0
+			&& t.normalize_type_in_module(active_arg, t.cur_module) == storage_normalized {
+			storage_value_type = active_arg
+			break
+		}
 	}
 	prelude << t.make_stack_value_decl_assign_typed(val_tmp,
 		t.zero_value_for_type(storage_value_type), storage_value_type)
@@ -1609,7 +1644,7 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	} else {
 		t.lower_or_body_to_stmts(body_id, val_tmp, storage_value_type, node.value, opt_tmp)
 	}
-	else_block := t.make_block(else_stmts)
+	else_block := t.make_or_else_block(node.value, else_stmts)
 	if_stmt := t.make_if(ok_cond, then_block, else_block)
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
@@ -2018,7 +2053,8 @@ fn (mut t Transformer) lower_or_expr_to_stmt(node flat.Node) {
 
 	opt_ident := t.make_ident(opt_tmp)
 	not_ok := t.make_prefix(.not, t.make_selector(opt_ident, 'ok', 'bool'))
-	else_block := t.make_block(t.lower_or_body_to_stmts(body_id, '', '', node.value, opt_tmp))
+	else_block := t.make_or_else_block(node.value, t.lower_or_body_to_stmts(body_id, '', '',
+		node.value, opt_tmp))
 	if_stmt := t.make_if(not_ok, else_block, t.make_empty())
 
 	t.pending_stmts = outer_pending

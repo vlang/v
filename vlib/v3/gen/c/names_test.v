@@ -30,6 +30,14 @@ fn test_c_name_pre_sanitized_classifier() {
 	assert !c_name_is_pre_sanitized('_str_1')
 }
 
+fn test_cached_cname_fast_paths_match_canonical_naming() {
+	mut g := FlatGen.new()
+	for name in ['run', 'int', 'send', 'malloc', 'int_str', 'exit', '_str_42', '_str_value',
+		'main.run', 'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=', 'pkg.Box[int].value'] {
+		assert g.cname(name) == c_name(name)
+	}
+}
+
 fn test_c_name_sanitizes_compound_generic_type_arguments() {
 	name :=
 		c_name('json2.StructKeyDecodeResult[fn(&mbedtls.SSLListener, string) !&mbedtls.SSLCerts]')

@@ -9,6 +9,10 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+The `v fmt` command uses `v3.parser` and `v3.gen.v`. Formatter-mode parsing retains comments,
+compile-time branches, inline assembly, SQL bodies, and literal prefixes so they round-trip
+without a legacy formatter path.
+
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
 global definitions. `$if` compile-time conditionals are resolved directly in the
@@ -145,6 +149,11 @@ rejected.
 compiler uses the small `v3.fastcdriver` entry point and can build further FastC generations without
 the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
 turn any attempted compatibility fallback into a hard failure.
+
+The standalone compiler supports `self` directly and defaults that command to FastC. For example,
+`./v self x5` replaces the compiler through five descendant FastC generations, with each installed
+generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,
+and a single-generation `-o` destination are accepted.
 
 In selfhost mode, `t := spawn f(args)` and `t.wait()` lower to a generated pthread creator, run
 wrapper, and join helper per spawned function: `thread` values are a typed wrapper around

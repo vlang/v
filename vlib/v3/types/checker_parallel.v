@@ -2822,6 +2822,10 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 }
 
 fn clone_parallel_type_error(err TypeError) TypeError {
+	mut details := []string{cap: err.details.len}
+	for detail in err.details {
+		details << detail.clone()
+	}
 	return TypeError{
 		msg:        err.msg.clone()
 		kind:       err.kind
@@ -2831,7 +2835,7 @@ fn clone_parallel_type_error(err TypeError) TypeError {
 		node_value: err.node_value.clone()
 		node_pos:   err.node_pos.clone()
 		pos:        err.pos
-		details:    err.details.clone()
+		details:    details
 		severity:   err.severity.clone()
 	}
 }
@@ -2896,24 +2900,43 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		tc.ownership_merge_parallel_check_worker(w)
 	}
 	for idx, name in w.sparse_resolved_call_names {
-		tc.resolved_call_names[idx] = if scoped { name.clone() } else { name }
-		tc.resolved_call_set[idx] = true
+		owned_name := if scoped { name.clone() } else { name }
+		if tc.parallel_check_sparse {
+			tc.sparse_resolved_call_names[idx] = owned_name
+		} else {
+			tc.resolved_call_names[idx] = owned_name
+			tc.resolved_call_set[idx] = true
+		}
 	}
 	for idx, name in w.sparse_resolved_fn_values {
-		tc.resolved_fn_value_names[idx] = if scoped { name.clone() } else { name }
-		tc.resolved_fn_value_set[idx] = true
+		owned_name := if scoped { name.clone() } else { name }
+		if tc.parallel_check_sparse {
+			tc.sparse_resolved_fn_values[idx] = owned_name
+		} else {
+			tc.resolved_fn_value_names[idx] = owned_name
+			tc.resolved_fn_value_set[idx] = true
+		}
 	}
 	for idx, _ in w.sparse_statement_nodes {
-		tc.statement_nodes[idx] = true
+		if tc.parallel_check_sparse {
+			tc.sparse_statement_nodes[idx] = true
+		} else {
+			tc.statement_nodes[idx] = true
+		}
 	}
 	for idx, typ in w.sparse_expr_type_values {
-		if scoped {
+		owned_type := if scoped {
 			_, canonical := tc.intern_type(clone_owned_type(typ))
-			tc.expr_type_values[idx] = canonical
+			canonical
 		} else {
-			tc.expr_type_values[idx] = typ
+			typ
 		}
-		tc.expr_type_set[idx] = true
+		if tc.parallel_check_sparse {
+			tc.sparse_expr_type_values[idx] = owned_type
+		} else {
+			tc.expr_type_values[idx] = owned_type
+			tc.expr_type_set[idx] = true
+		}
 	}
 	for fn_idx, dependencies in w.direct_dependencies_by_fn {
 		if fn_idx !in tc.direct_dependencies_by_fn {

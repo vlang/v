@@ -13,7 +13,10 @@ const max_flat_cgen_jobs = 18
 const max_flat_cgen_select_jobs = 15
 const min_flat_cgen_parallel_items = 128
 // Bound each worker's retained scratch while generating compiler-sized ASTs.
-const scoped_cgen_worker_batches = 32
+// V3-generated compilers allocate temporary sum payloads while lowering each
+// expression. Keep self-host body batches narrow so those values are released
+// throughout cgen instead of accumulating across hundreds of functions.
+const scoped_cgen_worker_batches = 256
 const flat_cgen_chunks_per_job = 12
 
 // FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -925,7 +928,7 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 	if g.scope_parallel_workers {
 		mut pmsw := time.new_stopwatch()
 		selection_scope := cgen_worker_scope_begin(true)
-		retain_selection := os.getenv('V3_NO_RETAIN_CGEN_PREP_SCOPE') == ''
+		retain_selection := os.getenv('V3_RETAIN_CGEN_PREP_SCOPE') != ''
 		master_tc := g.tc
 		g.tc = g.clone_parallel_type_checker()
 		g.tc.verbose = master_tc.verbose
@@ -948,6 +951,12 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 		g.register_interface_strings()
 		g.tc = master_tc
 		cgen_worker_scope_leave(selection_scope)
+		if !retain_selection && g.parallel_worker_scopes.len > 0 {
+			// Candidate collection records helper scopes while selection_scope is
+			// current. Re-own the list before releasing that arena; the scopes it
+			// points to remain live until final cgen cleanup.
+			g.parallel_worker_scopes = g.parallel_worker_scopes.clone()
+		}
 		if retain_selection {
 			// The selected items and predispatch tables are immutable from here on.
 			// Keep their arena through final output so they can move straight into
@@ -2826,7 +2835,7 @@ fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, 
 		g.output_error = w.output_error.clone()
 	}
 	string_id_remap := g.publish_worker_string_literals(w)
-	borrow_worker_segments := os.getenv('V3_NO_RETAIN_CGEN_RESULT_SCOPES') == ''
+	borrow_worker_segments := os.getenv('V3_RETAIN_CGEN_RESULT_SCOPES') != ''
 		&& w.worker_scope != unsafe { nil } && !g.cache_split && string_id_remap.len == 0
 	user_c_symbols := if string_id_remap.len > 0 {
 		g.cache_user_c_string_symbols()
@@ -2979,7 +2988,7 @@ fn (mut g FlatGen) finish_parallel_worker_scope(mut w FlatGen) {
 	if w.worker_scope == unsafe { nil } {
 		return
 	}
-	if os.getenv('V3_NO_RETAIN_CGEN_RESULT_SCOPES') == '' {
+	if os.getenv('V3_RETAIN_CGEN_RESULT_SCOPES') != '' {
 		g.parallel_worker_scopes << w.worker_scope
 	} else {
 		cgen_worker_scope_free(w.worker_scope)

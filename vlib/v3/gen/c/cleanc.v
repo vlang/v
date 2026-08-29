@@ -1873,6 +1873,14 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 	mut need_objc := false
 	mut need_cpp := false
 	mut cur_file := ''
+	// A header's Objective-C classification depends only on the resolved header
+	// plus c_flags/c99_mode/target, all constant across this loop, so memoize it:
+	// a system `<...>` argument resolves identically no matter which file
+	// included it; a quoted argument is keyed with its including file since it
+	// resolves relative to that file. Without this a header pulled by N modules
+	// is fully inlined N times. Values: 1 = needs Objective-C, 2 = checked and
+	// does not (0 / absent = not yet checked).
+	mut header_objc_cache := map[string]int{}
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
@@ -1903,10 +1911,39 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 			}
 			continue
 		}
-		if header := c_inline_header_text(include_arg, vroot, cur_file, include_dirs, false) {
-			if c_header_text_needs_objective_c_for_target(header.text, c_flags, c99_mode, target) {
+		// This branch can only ever set need_objc (never need_cpp), so once
+		// need_objc is known there is nothing left for it to discover.
+		if need_objc {
+			continue
+		}
+		memo_key := if include_arg.starts_with('<') {
+			include_arg
+		} else {
+			cur_file + '\x00' + include_arg
+		}
+		if cached := header_objc_cache[memo_key] {
+			if cached == 1 {
 				need_objc = true
 			}
+			continue
+		}
+		// Inlining a header expands its whole transitive #include closure into a
+		// builder just to text-scan it. Under -prealloc that scratch is retained
+		// until the enclosing stage scope ends; a disposable scope here frees
+		// each header's closure as soon as the boolean is read, bounding peak
+		// RSS to one closure at a time instead of the sum of all of them.
+		mut this_objc := false
+		lang_scope := cgen_worker_scope_begin(true)
+		if header := c_inline_header_text(include_arg, vroot, cur_file, include_dirs, false) {
+			if c_header_text_needs_objective_c_for_target(header.text, c_flags, c99_mode, target) {
+				this_objc = true
+			}
+		}
+		cgen_worker_scope_leave(lang_scope)
+		cgen_worker_scope_free(lang_scope)
+		header_objc_cache[memo_key] = if this_objc { 1 } else { 2 }
+		if this_objc {
+			need_objc = true
 		}
 	}
 	return c_native_language_from_features(need_objc, need_cpp)
@@ -2073,7 +2110,17 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		}
 	}
 	mut has_untracked_include := false
-	mut possible_source := strings.new_builder(text.len)
+	// Collect active (non-`#if`-excluded) lines as cheap string references while
+	// this scan and any nested-include recursion it triggers are in flight,
+	// instead of copying each line's bytes into a growing builder immediately.
+	// The single byte-copying pass that builds `possible_text` for the
+	// static-storage check runs once, after this file's own recursion finishes,
+	// so a deeply nested include chain never keeps a second full-size copy of
+	// this file's active content alive for the whole descent. Under -prealloc
+	// (nothing in the stage scope is freed until it exits) this trims real
+	// transient RSS, though it is not the dominant cost of a heavy-native-header
+	// build — see c_typedef_is_function_pointer for that.
+	mut kept_lines := []string{}
 	mut in_block_comment := false
 	mut conditionals := []CCacheConditional{}
 	defer {
@@ -2129,7 +2176,7 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		if conditionals.any(it.inactive) {
 			continue
 		}
-		possible_source.writeln(line)
+		kept_lines << line
 		if directive_name !in ['include', 'import'] {
 			mutation_is_ambiguous := ambient_ambiguous || conditionals.any(it.ambiguous)
 			c_record_include_macro_definition(clean, mutation_is_ambiguous, mut include_macros, mut
@@ -2189,6 +2236,11 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			}
 		}
 	}
+	mut possible_source := strings.new_builder(text.len)
+	for kept in kept_lines {
+		possible_source.writeln(kept)
+	}
+	unsafe { kept_lines.free() }
 	possible_text := possible_source.str()
 	if modulecache.c_source_has_static_storage(possible_text) {
 		active_static_storage_paths[collection_key] = true
@@ -3997,6 +4049,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	has_parallel_fn_preps := fn_preps.len == top_level_nodes.len
 	for top_level_pos, node_idx in top_level_nodes {
 		node := g.a.nodes[node_idx]
+		node_ref := g.a.node(flat.NodeId(node_idx))
 		kind_id := node_kind_id(node)
 		if node.kind == .directive && node.value.starts_with('@attributes:') {
 			target_idx := node.value['@attributes:'.len..].int()
@@ -4136,7 +4189,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
 			for i in 0 .. node.children_count {
-				f := g.a.child_node(&node, i)
+				f := g.a.child_node(node_ref, i)
 				if f.value.starts_with('C.') {
 					if f.children_count > 0 {
 						mut ft := g.tc.parse_type(f.typ)
@@ -4190,14 +4243,14 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			is_backed_enum := backing.len > 0
 			mut field_exprs := map[string]flat.NodeId{}
 			for i in 0 .. node.children_count {
-				f := g.a.child_node(&node, i)
+				f := g.a.child_node(node_ref, i)
 				if f.children_count > 0 {
 					field_exprs[f.value] = g.a.child(f, 0)
 				}
 			}
 			mut field_values := map[string]i64{}
 			for i in 0 .. node.children_count {
-				f := g.a.child_node(&node, i)
+				f := g.a.child_node(node_ref, i)
 				if f.children_count > 0 {
 					mut resolving := map[string]bool{}
 					if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module,
@@ -4232,7 +4285,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 		if kind_id == 65 {
 			for i in 0 .. node.children_count {
-				f := g.a.child_node(&node, i)
+				f := g.a.child_node(node_ref, i)
 				if node_kind_id(f) == 66 && f.children_count > 0 {
 					qname := g.const_storage_name(cur_module, f.value)
 					g.const_vals[qname] = g.a.child(f, 0)
@@ -12392,6 +12445,13 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 			actual = local_type
 		}
 	}
+	if node.kind == .selector {
+		if node.typ.len > 0 && (node.typ.starts_with('?') || node.typ.starts_with('!')) {
+			actual = g.tc.parse_resolution_type(node.typ)
+		} else if declared_type := g.selector_declared_type(id) {
+			actual = declared_type
+		}
+	}
 	if expected is types.String && actual is types.Pointer
 		&& g.pointer_stringifies_as_address(actual.base_type)
 		&& !g.type_names_match(actual.base_type, expected) {
@@ -13303,6 +13363,14 @@ fn (g &FlatGen) selector_declared_type(id flat.NodeId) ?types.Type {
 fn (g &FlatGen) selector_base_expr_type(id flat.NodeId) types.Type {
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
 		node := g.a.nodes[int(id)]
+		if node.kind == .ident {
+			if typ := g.current_param_type(node.value) {
+				return typ
+			}
+			if typ := g.local_ident_type(node.value) {
+				return typ
+			}
+		}
 		if node.kind == .or_expr && node.children_count > 0 {
 			source_id := g.a.child(&node, 0)
 			source_type := g.or_expr_source_type(source_id, g.a.nodes[int(source_id)])
@@ -13860,9 +13928,10 @@ fn (mut g FlatGen) optional_none_type(id flat.NodeId) types.Type {
 		return expected
 	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
+		node_ref := g.a.node(id)
 		node := g.a.nodes[int(id)]
 		if node.typ.starts_with('?') || node.typ.starts_with('!') {
-			return g.parse_node_type(&node)
+			return g.parse_node_type(node_ref)
 		}
 	}
 	if typ := g.tc.expr_type(id) {
@@ -15267,9 +15336,10 @@ fn (g &FlatGen) infix_channel_type(id flat.NodeId, fallback types.Type) types.Ty
 		return clean_fallback
 	}
 	if int(id) >= 0 && int(id) < g.a.nodes.len {
+		node_ref := g.a.node(id)
 		node := g.a.nodes[int(id)]
 		if node.typ.len > 0 {
-			annotated := concrete_receiver_type(g.parse_node_type(&node))
+			annotated := concrete_receiver_type(g.parse_node_type(node_ref))
 			if annotated is types.Channel {
 				return annotated
 			}
@@ -15768,6 +15838,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_expr(g.a.child(&child, 0))
 				return
 			}
+			if node.op == .amp && child.kind == .selector && child.children_count > 0
+				&& g.is_map_entry_lvalue(g.a.child(&child, 0)) {
+				g.write('&')
+				gen_expr_lvalue(mut g, child_id)
+				return
+			}
 			if node.op == .amp && g.gen_amp_c_string_literal(child_id, child) {
 				return
 			} else if node.op == .amp && g.gen_current_mut_param_address(id) {
@@ -15977,7 +16053,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			mut base_type0 := g.usable_expr_type(base_id)
+			mut base_type0 := g.selector_base_expr_type(base_id)
 			base_is_source_mut_pointer_deref := g.source_mut_pointer_param_deref_type(base_id) != none
 			if deref_type := g.source_mut_pointer_param_deref_type(base_id) {
 				base_type0 = deref_type
@@ -16251,6 +16327,24 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			} else if g.gen_struct_default_global_selector(base, node.value, node.op) {
 				// handled
+			} else if g.selector_declared_type(id) != none {
+				// An explicitly declared field shadows any same-named field promoted
+				// through an embedded struct. Use the declared receiver type rather
+				// than a stale short-name lookup from another module.
+				needs_paren := base.kind !in [.ident, .selector]
+				if needs_paren {
+					g.write('(')
+				}
+				g.gen_expr(base_id)
+				if needs_paren {
+					g.write(')')
+				}
+				if node.op == .arrow || base_type0 is types.Pointer {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.write(g.cname(node.value))
 			} else if embedded := g.direct_embedded_field_for_selector(base_type0, node.value) {
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {

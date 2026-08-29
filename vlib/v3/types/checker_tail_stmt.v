@@ -15112,6 +15112,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return unknown_type('missing node')
 	}
+	node_ref := tc.a.node(id)
 	node := tc.a.nodes[int(id)]
 	if node.kind == .ident && tc.errors.any(it.node == id && it.kind == .unknown_ident) {
 		return Type(void_)
@@ -15132,7 +15133,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if node.children_count == 0 {
 				return Type(void_)
 			}
-			index_node := tc.a.child_node(&node, 0)
+			index_node := tc.a.child_node(node_ref, 0)
 			if index_node.kind != .int_literal {
 				return Type(void_)
 			}
@@ -15374,7 +15375,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			return unknown_type('unknown identifier `${node.value}`')
 		}
 		.call {
-			fn_node := tc.a.child_node(&node, 0)
+			fn_node := tc.a.child_node(node_ref, 0)
 			if _ := tc.builtin_isreftype_call_arg(node) {
 				return Type(bool_)
 			}
@@ -15919,7 +15920,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if smart_type := tc.smartcast_type(id) {
 				return smart_type
 			}
-			if typ := tc.enum_selector_type(&node) {
+			if typ := tc.enum_selector_type(node_ref) {
 				return typ
 			}
 			if key := tc.selector_fn_value_key(node) {
@@ -15928,7 +15929,7 @@ fn (tc &TypeChecker) resolve_type_uncached(id flat.NodeId) Type {
 			if tc.unknown_import_selector(node) {
 				return Type(void_)
 			}
-			base_node := tc.a.child_node(&node, 0)
+			base_node := tc.a.child_node(node_ref, 0)
 			if base_node.kind == .typeof_expr {
 				if node.value == 'name' {
 					return Type(String{})

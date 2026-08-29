@@ -3103,6 +3103,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	// Pass 1: collect type-level names (aliases, enums, sum types)
 	for tl_idx in tc.top_level_idx {
 		node := a.nodes[tl_idx]
+		node_ref := a.node(flat.NodeId(tl_idx))
 		tc.register_declaration_visibility(node)
 		match node.kind {
 			.file {
@@ -3121,7 +3122,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				tc.enum_names[qn] = true
 				mut fields := []string{}
 				for i in 0 .. node.children_count {
-					f := a.child_node(&node, i)
+					f := a.child_node(node_ref, i)
 					if f.kind == .enum_field {
 						fields << escaped_identifier_name(f.value)
 					}
@@ -3166,7 +3167,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				if node.children_count > 0 {
 					mut variants := []string{}
 					for i in 0 .. node.children_count {
-						v := a.child_node(&node, i)
+						v := a.child_node(node_ref, i)
 						variants << tc.qualify_sum_variant_name(v.value, node.generic_params())
 					}
 					qname := tc.qualify_decl_name(node.value)
@@ -3294,6 +3295,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 	}
 	for pi, tl_idx in tc.top_level_idx {
 		node := a.nodes[tl_idx]
+		node_ref := a.node(flat.NodeId(tl_idx))
 		if p2_profile {
 			p2_t0 = time.sys_mono_now()
 		}
@@ -3436,7 +3438,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				mut shared_element_field_names := []string{}
 				mut shadows_builtin_error_embed := false
 				for i in 0 .. node.children_count {
-					f := a.child_node(&node, i)
+					f := a.child_node(node_ref, i)
 					if f.kind != .field_decl {
 						continue
 					}
@@ -3516,7 +3518,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				mut ptypes := []Type{}
 				mut is_variadic := false
 				for i in 0 .. node.children_count {
-					child := a.child_node(&node, i)
+					child := a.child_node(node_ref, i)
 					if child.kind != .param {
 						if tc.prefix_param_scan {
 							break
@@ -3557,7 +3559,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 				iface_name := tc.qualify_decl_name(node.value)
 				iface_generic_params := node.generic_params()
 				for i in 0 .. node.children_count {
-					f := a.child_node(&node, i)
+					f := a.child_node(node_ref, i)
 					if f.kind != .interface_field {
 						continue
 					}
@@ -3635,7 +3637,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 			}
 			.global_decl {
 				for i in 0 .. node.children_count {
-					f := a.child_node(&node, i)
+					f := a.child_node(node_ref, i)
 					if f.value.len > 0 && f.value.starts_with('C.') {
 						tc.c_globals[f.value] = tc.parse_type(f.typ)
 					} else if f.value.len > 0 {
@@ -3657,7 +3659,7 @@ fn (mut tc TypeChecker) collect_after_index(a &flat.FlatAst) {
 			}
 			.const_decl {
 				for i in 0 .. node.children_count {
-					f := a.child_node(&node, i)
+					f := a.child_node(node_ref, i)
 					if f.kind == .const_field && f.children_count > 0 {
 						qname := tc.qualify_name(f.value)
 						tc.const_types[qname] = unknown_type('pending const `${qname}`')

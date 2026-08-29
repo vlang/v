@@ -208,42 +208,47 @@ mut:
 	expected_expr_node              int = -1
 	expected_expr_type              string
 	in_selector_base                bool
-	autolock_depth                  int
-	alias_cache                     &AliasCache              = unsafe { nil }
-	sum_cache                       &AliasCache              = unsafe { nil }
-	module_type_cache               &AliasCache              = unsafe { nil }
-	struct_guess_cache              &AliasCache              = unsafe { nil }
-	generic_unresolved_cache        &GenericUnresolvedCache  = unsafe { nil }
-	struct_field_type_cache         &LookupCache             = unsafe { nil }
-	variant_short_name_cache        &AliasCache              = unsafe { nil }
-	selector_type_cache             &SelectorTypeCache       = unsafe { nil }
-	resolved_call_return_cache      &ResolvedCallReturnCache = unsafe { nil }
-	variant_match_cache             &VariantMatchCache       = unsafe { nil }
-	interface_type_cache            &ContextLookupCache      = unsafe { nil }
-	enum_expected_cache             &LookupCache             = unsafe { nil }
-	type_alias_name_cache           &ContextBoolLookupCache  = unsafe { nil }
-	interface_box_param_cache       &BoolLookupCache         = unsafe { nil }
-	alias_receiver_method_cache     &LookupCache             = unsafe { nil }
-	receiver_method_cache           &ReceiverMethodCache     = unsafe { nil }
-	promote_text_cache              &PromoteTextCache        = unsafe { nil }
-	call_variadic_cache             &BoolLookupCache         = unsafe { nil }
-	str_alias_cache                 &LookupCache             = unsafe { nil }
-	generic_alias_names             map[string]bool
-	type_alias_suffixes             map[string]string
-	local_decl_nodes_by_name        map[string][]int
-	struct_field_decl_metas_cache   map[string]map[string]FieldDeclMeta
-	comptime_field_metas_cache      map[string][]FieldMeta
-	comptime_reflected_for_roles    map[string]u8
-	comptime_reflected_for_ready    bool
-	call_param_types_decl_cache     map[int][]types.Type
-	call_param_types_decl_misses    map[string]bool
-	call_param_types_decl_index     map[string]FnParamDeclRef
-	call_param_types_index_ready    bool
-	call_param_types_prepared       bool
-	used_fns                        map[string]bool
-	used_fns_parent                 &map[string]bool = unsafe { nil }
-	used_fns_root                   &map[string]bool = unsafe { nil }
-	comptime_reflected_params       map[string][]ParamMeta
+	// Set while transforming the base of a bound-method-value selector, where a
+	// `first()`/`last()` accessor base must keep its copying semantics instead of being
+	// borrowed in place (see borrow_first_last_accessor / transform_selector_expr).
+	suppress_first_last_accessor_borrow bool
+
+	autolock_depth                int
+	alias_cache                   &AliasCache              = unsafe { nil }
+	sum_cache                     &AliasCache              = unsafe { nil }
+	module_type_cache             &AliasCache              = unsafe { nil }
+	struct_guess_cache            &AliasCache              = unsafe { nil }
+	generic_unresolved_cache      &GenericUnresolvedCache  = unsafe { nil }
+	struct_field_type_cache       &LookupCache             = unsafe { nil }
+	variant_short_name_cache      &AliasCache              = unsafe { nil }
+	selector_type_cache           &SelectorTypeCache       = unsafe { nil }
+	resolved_call_return_cache    &ResolvedCallReturnCache = unsafe { nil }
+	variant_match_cache           &VariantMatchCache       = unsafe { nil }
+	interface_type_cache          &ContextLookupCache      = unsafe { nil }
+	enum_expected_cache           &LookupCache             = unsafe { nil }
+	type_alias_name_cache         &ContextBoolLookupCache  = unsafe { nil }
+	interface_box_param_cache     &BoolLookupCache         = unsafe { nil }
+	alias_receiver_method_cache   &LookupCache             = unsafe { nil }
+	receiver_method_cache         &ReceiverMethodCache     = unsafe { nil }
+	promote_text_cache            &PromoteTextCache        = unsafe { nil }
+	call_variadic_cache           &BoolLookupCache         = unsafe { nil }
+	str_alias_cache               &LookupCache             = unsafe { nil }
+	generic_alias_names           map[string]bool
+	type_alias_suffixes           map[string]string
+	local_decl_nodes_by_name      map[string][]int
+	struct_field_decl_metas_cache map[string]map[string]FieldDeclMeta
+	comptime_field_metas_cache    map[string][]FieldMeta
+	comptime_reflected_for_roles  map[string]u8
+	comptime_reflected_for_ready  bool
+	call_param_types_decl_cache   map[int][]types.Type
+	call_param_types_decl_misses  map[string]bool
+	call_param_types_decl_index   map[string]FnParamDeclRef
+	call_param_types_index_ready  bool
+	call_param_types_prepared     bool
+	used_fns                      map[string]bool
+	used_fns_parent               &map[string]bool = unsafe { nil }
+	used_fns_root                 &map[string]bool = unsafe { nil }
+	comptime_reflected_params     map[string][]ParamMeta
 	// sum_eq_types records sum types whose deep-equality helper fn
 	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
 	// module/file context of the requesting call site (type resolution inside
@@ -8138,6 +8143,13 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 				// pointer cannot alias the source stack local.
 				return []string{}
 			}
+			if !isnil(t.tc) && escape_type_is_scalar_value(t.tc.resolve_type(id)) {
+				// A scalar result cannot carry an address argument through the call.
+				// Without this guard, returning `child(&node)` heap-promotes `node`
+				// even though `child` returns only an integer node id. That pattern is
+				// ubiquitous in the compiler and makes each temporary an allocation.
+				return []string{}
+			}
 			mut sources := []string{}
 			// The callee selector is consumed by the call; only argument addresses
 			// can flow through a returned pointer value.
@@ -8168,6 +8180,14 @@ fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources
 	}
 
 	return []string{}
+}
+
+fn escape_type_is_scalar_value(typ types.Type) bool {
+	return match typ {
+		types.Alias { escape_type_is_scalar_value(typ.base_type) }
+		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum { true }
+		else { false }
+	}
 }
 
 fn (t &Transformer) escape_call_is_allocation_helper(id flat.NodeId, node flat.Node) bool {
@@ -10091,8 +10111,8 @@ fn (mut t Transformer) transform_pointer_optional_unwrap_lvalue(id flat.NodeId) 
 	err_expr := t.make_selector(wrapper, 'err', 'IError')
 	not_ok := t.make_prefix(.not, t.make_selector(wrapper, 'ok', 'bool'))
 	body_id := t.a.child(&node, 1)
-	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', node.value,
-		err_expr))
+	else_block := t.make_or_else_block(node.value, t.lower_or_body_to_stmts_with_err_expr(body_id,
+		'', '', node.value, err_expr))
 	t.pending_stmts << t.make_if(not_ok, else_block, t.make_empty())
 	return t.make_selector(wrapper, 'value', value_type)
 }
@@ -10354,12 +10374,6 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 	if copied := t.heap_copy_local_address_return(child_id) {
 		return copied
 	}
-	if int(child_id) >= 0 && int(child_id) < t.a.nodes.len {
-		child := t.a.nodes[int(child_id)]
-		if child.kind == .or_expr {
-			return t.transform_expr(child_id)
-		}
-	}
 	target_type := t.return_child_target_type(child_index, total_children)
 	mut return_child_id := child_id
 	if rewritten := t.rewrite_escaping_interface_box_return_expr(child_id) {
@@ -10376,15 +10390,18 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		if child.kind in [.lambda_expr, .fn_literal] {
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}
+		payload_type := t.optional_base_type(t.qualify_optional_type(target_type))
+		resolved_payload_type := t.resolve_sum_name(payload_type)
 		if child.kind == .or_expr {
+			if resolved_payload_type in t.sum_types {
+				return t.wrap_sum_value(t.transform_expr(return_child_id), resolved_payload_type)
+			}
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}
 		if child.kind in [.if_expr, .match_stmt]
 			&& t.return_expr_is_optional_result(return_child_id) {
 			return t.transform_expr_for_type(return_child_id, target_type)
 		}
-		payload_type := t.optional_base_type(t.qualify_optional_type(target_type))
-		resolved_payload_type := t.resolve_sum_name(payload_type)
 		if resolved_payload_type in t.sum_types {
 			return t.wrap_sum_value(return_child_id, resolved_payload_type)
 		}
@@ -11693,7 +11710,7 @@ fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node)
 	t.drain_pending(mut result)
 	not_ok := t.make_prefix(.not, t.make_selector(guard_source, 'ok', 'bool'))
 	guard_stmts := t.optional_selector_lvalue_guard_stmts(guard_body, guard_mode, guard_source)
-	result << t.make_if(not_ok, t.make_block(guard_stmts), t.make_empty())
+	result << t.make_if(not_ok, t.make_or_else_block(guard_mode, guard_stmts), t.make_empty())
 	lhs_type := t.lvalue_type(lhs_id)
 	sum_target := t.assignment_sum_target(lhs_id, rhs_id, lhs_type)
 	rhs := if node.op == .assign && sum_target.len > 0 {
@@ -12915,7 +12932,8 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 		return none
 	}
 	mut actual_result_type := t.match_expr_type(node)
-	if actual_result_type.len == 0 || actual_result_type == 'void' {
+	if actual_result_type.len == 0 || actual_result_type == 'void'
+		|| t.generic_arg_is_unresolved(actual_result_type) {
 		actual_result_type = target_type
 	}
 	if t.is_fn_pointer_type_name(target_type) {
@@ -17852,7 +17870,74 @@ fn stringify_type_has_generic_placeholder(typ string) bool {
 	return false
 }
 
+// borrow_first_last_accessor lowers a `first()`/`last()` array accessor used as a borrow
+// (e.g. the base of a field selector `arr.last().field`) into an in-place element access
+// `arr[0]` / `arr[len - 1]`. The stored element stays owned by the array, so this avoids
+// the independent-clone path `first()`/`last()` otherwise takes for ownership-bearing
+// element types — a path that has no valid lowering when the element has no `clone()`
+// method and would otherwise emit an empty placeholder (`(0)`). Restricted to that owned
+// case so non-owned elements keep their existing accessor lowering. Applied for every owned
+// field read so it stays in lock-step with the checker, which likewise treats such a read as
+// a borrow — but NOT for a bound-method-value receiver (`suppress_first_last_accessor_borrow`):
+// there closure generation shallow-copies the receiver, so an aliased array element would
+// share heap fields with the array and double-free. Returns none when the base is not such
+// an accessor.
+fn (mut t Transformer) borrow_first_last_accessor(call_id flat.NodeId) ?flat.NodeId {
+	if int(call_id) < 0 || int(call_id) >= t.a.nodes.len || isnil(t.tc)
+		|| t.suppress_first_last_accessor_borrow {
+		return none
+	}
+	mut node := t.a.nodes[int(call_id)]
+	// `(arr.last()).field` is the same borrow as `arr.last().field`; the checker's
+	// borrowed-field predicate (array_accessor_result_is_borrowed) looks through
+	// transparent parentheses, so this must too — otherwise the suppressed diagnostic
+	// leaks an empty `(0)` placeholder and the C compilation fails.
+	for node.kind == .paren && node.children_count > 0 {
+		node = t.a.nodes[int(t.a.child(&node, 0))]
+	}
+	if node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.value !in ['first', 'last'] || callee.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(callee, 0)
+	base_type := t.normalize_type_alias(t.lvalue_type(base_id))
+	clean_base_type := base_type.trim_left('&')
+	if !clean_base_type.starts_with('[]') {
+		return none
+	}
+	elem_type := clean_base_type[2..]
+	if !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+		return none
+	}
+	mut base := t.transform_lvalue(base_id)
+	if base_type.starts_with('&') {
+		base = t.make_prefix(.mul, base)
+		t.set_node_typ(int(base), clean_base_type)
+	}
+	if callee.value == 'last' {
+		// `last()` reads the base twice (`arr[arr.len - 1]`), so it must evaluate once.
+		// A plain lvalue (`t.entries`) is left untouched; a non-lvalue receiver such as
+		// `make_entries()` is bound to a temp instead of being duplicated.
+		base = t.stable_transformed_expr_for_reuse(base, clean_base_type, 'first_last_borrow_base')
+	}
+	index := if callee.value == 'first' {
+		t.make_int_literal(0)
+	} else {
+		t.make_infix(.minus, t.make_selector(base, 'len', 'int'), t.make_int_literal(1))
+	}
+	return t.make_index(base, index, elem_type)
+}
+
 fn (mut t Transformer) transform_selector_base_expr(id flat.NodeId) flat.NodeId {
+	// A `first()`/`last()` accessor used as a selector base (`arr.last().field`) borrows
+	// the stored element rather than returning an independent copy; lower it in place so
+	// ownership-bearing element types without a `clone()` method still resolve.
+	if borrowed := t.borrow_first_last_accessor(id) {
+		return borrowed
+	}
 	// `in_selector_base` suppresses the pointer-value rvalue deref in
 	// transform_ident_expr, but that must apply only to the *direct* receiver ident of
 	// a selector (`x.field`, where `x` stays `&T` so the selector emits arrow access).
@@ -18217,9 +18302,16 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		new_base := t.selector_base_for_field(transformed_base, base_type0)
 		return t.lower_sum_shared_field_selector(new_base, base_type0, node.value, shared_typ)
 	}
+	// A bound method value keeps the copying `first()`/`last()` accessor semantics for its
+	// receiver; only a field read borrows the element in place. The field-specific branches
+	// above never reach here for a method value, so gating this one call site suffices.
+	is_method_value := !isnil(t.tc) && t.tc.expr_is_method_value(id)
+	old_suppress_borrow := t.suppress_first_last_accessor_borrow
+	t.suppress_first_last_accessor_borrow = is_method_value
 	mut new_base := t.transform_selector_base_expr(base_id)
+	t.suppress_first_last_accessor_borrow = old_suppress_borrow
 	mut selector_generic_params := node.generic_params().clone()
-	if !isnil(t.tc) && t.tc.expr_is_method_value(id) {
+	if is_method_value {
 		method_value_name := t.resolve_receiver_method_name(new_base, node.value)
 		method_params := t.call_param_types(method_value_name)
 		if method_params.len > 0 && method_params[0] !is types.Pointer {
@@ -19194,8 +19286,8 @@ fn (mut t Transformer) transform_amp_optional_unwrap(node flat.Node, child flat.
 	}
 	not_ok := t.make_prefix(.not, t.make_selector(source, 'ok', 'bool'))
 	err_expr := t.make_selector(source, 'err', 'IError')
-	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', child.value,
-		err_expr))
+	else_block := t.make_or_else_block(child.value, t.lower_or_body_to_stmts_with_err_expr(body_id,
+		'', '', child.value, err_expr))
 	t.pending_stmts << t.make_if(not_ok, else_block, t.make_empty())
 	value := t.make_selector(source, 'value', value_type)
 	addr := t.make_prefix(.amp, value)

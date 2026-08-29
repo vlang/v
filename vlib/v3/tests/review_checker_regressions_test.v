@@ -1650,6 +1650,25 @@ fn main() {
 	assert out == '2\n1'
 }
 
+fn test_mutable_map_clone_is_fresh() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_mutable_map_clone', "fn clone_and_extend(source map[string]bool) int {
+	mut cloned := source.clone()
+	cloned['new'] = true
+	return cloned.len
+}
+
+fn main() {
+	source := {
+		'old': true
+	}
+	println(int_str(clone_and_extend(source)))
+	println(int_str(source.len))
+}
+")
+	assert out == '2\n1'
+}
+
 fn test_pr_review_parser_and_checker_safety_batch() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_shared_parameter_missing_marker', 'struct State {}

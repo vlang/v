@@ -1598,7 +1598,15 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 			}
 		}
 		if expr.kind == .selector {
-			selector_type := t.resolve_selector_type(expr)
+			selector_type := t.raw_selector_type_without_smartcast(expr_id)
+			if t.resolve_sum_name(t.trim_pointer_type(selector_type)) == resolved_sum {
+				// A smartcast narrows the selector's expression type to its active
+				// variant, but the field still stores the complete sum value. Preserve
+				// that storage when the surrounding context expects the same sum.
+				plain := t.make_plain_expr_for_smartcast(expr_id)
+				t.set_node_typ(int(plain), storage_sum)
+				return plain
+			}
 			if selector_type.len > 0
 				&& t.sum_target_accepts_variant_type(resolved_sum, selector_type) {
 				expr_type = selector_type

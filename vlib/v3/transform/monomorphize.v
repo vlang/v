@@ -5066,6 +5066,12 @@ fn (mut t Transformer) concrete_generic_call_is_variadic(id flat.NodeId, node fl
 	return generic_param_text_is_variadic(last_param)
 }
 
+fn (mut t Transformer) concrete_generic_call_is_method(id flat.NodeId) bool {
+	spec := t.generic_call_spec_cache[int(id)] or { return false }
+	decl := t.cached_generic_fn_decls()[spec.decl_key] or { return false }
+	return t.generic_decl_is_receiver_method(decl.node)
+}
+
 fn (mut t Transformer) cached_generic_fn_decls() map[string]GenericFnDecl {
 	if t.skip_generics {
 		if !t.generic_fn_decls_ready {
@@ -6637,6 +6643,7 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 		if base_type.len == 0 {
 			base_type = t.node_type(base_id)
 		}
+		base_type = transform_unshared_receiver_type(base_type)
 		if base_type.starts_with('&') {
 			base_type = base_type[1..]
 		}
@@ -6671,6 +6678,13 @@ fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, mod
 						receiver_matches = true
 						break
 					}
+					mut seen := map[string]bool{}
+					if t.generic_decl_matches_embedded_receiver(receiver_type, decl, module_name, mut
+						seen)
+					{
+						receiver_matches = true
+						break
+					}
 				}
 				if !receiver_matches {
 					continue
@@ -6690,7 +6704,7 @@ fn (t &Transformer) generic_receiver_decl_matches_type(base_type string, decl Ge
 	if decl_receiver.len == 0 {
 		return false
 	}
-	mut clean_base := base_type.trim_space()
+	mut clean_base := transform_unshared_receiver_type(base_type)
 	if clean_base.starts_with('&') {
 		clean_base = clean_base[1..]
 	}
@@ -8030,9 +8044,12 @@ fn (t &Transformer) generic_arg_for_decl_module(arg string, module_name string) 
 
 fn (t &Transformer) inherited_generic_arg_for_decl_module(arg string, module_name string, outer_args []string) string {
 	clean := arg.trim_space()
+	normalized := t.normalize_type_in_module(clean, module_name)
 	for outer_arg in outer_args {
-		if outer_arg.trim_space() == clean {
-			return arg
+		outer_clean := outer_arg.trim_space()
+		if outer_clean == clean
+			|| t.normalize_type_in_module(outer_clean, module_name) == normalized {
+			return outer_arg
 		}
 	}
 	return t.generic_arg_for_decl_module(arg, module_name)
@@ -11074,11 +11091,18 @@ fn (t &Transformer) generic_decl_is_receiver_method(node flat.Node) bool {
 		return false
 	}
 	mut first_type := first.typ.trim_space()
-	if first_type.starts_with('mut ') {
-		first_type = first_type[4..].trim_space()
-	}
-	if first_type.starts_with('&') {
-		first_type = first_type[1..].trim_space()
+	for {
+		if first_type.starts_with('mut ') {
+			first_type = first_type[4..].trim_space()
+		} else if first_type.starts_with('shared ') {
+			first_type = first_type[7..].trim_space()
+		} else if first_type.starts_with('atomic ') {
+			first_type = first_type[7..].trim_space()
+		} else if first_type.starts_with('&') {
+			first_type = first_type[1..].trim_space()
+		} else {
+			break
+		}
 	}
 	method_name := generic_fn_decl_base_value(node.value)
 	clean_first := t.normalize_type_alias(first_type)
@@ -12380,7 +12404,10 @@ fn generic_arg_type_for_param(param_type string, arg_type string) string {
 }
 
 fn generic_inference_param_type(param &flat.Node) string {
-	clean := param.typ.trim_space()
+	mut clean := param.typ.trim_space()
+	for clean.starts_with('shared ') || clean.starts_with('atomic ') {
+		clean = clean[7..].trim_space()
+	}
 	// `mut value T` is represented as `&T` for storage, so that synthetic
 	// pointer must not become part of T. An explicitly declared `value &T`
 	// keeps its pointer: inferring it from an `&int` argument must bind T to

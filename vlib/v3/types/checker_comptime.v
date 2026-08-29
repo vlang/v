@@ -13759,6 +13759,16 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 	info := tc.resolve_call_info(id, *call) or {
 		return tc.conservative_call_alias_arguments(*call, false)
 	}
+	// The builtin map clone has no source-level declaration to inspect, but it
+	// always returns independent storage. User-defined clone methods have a
+	// nonempty resolved name and continue through the normal body analysis.
+	if info.name.len == 0 && info.has_receiver {
+		callee := tc.a.child_node(call, 0)
+		if callee.kind == .selector && callee.value == 'clone' && callee.children_count > 0
+			&& map_type_from_receiver(unalias_type(tc.resolve_type(tc.a.child(callee, 0)))) != none {
+			return []flat.NodeId{}
+		}
+	}
 	decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
 	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or {
 		return tc.conservative_call_alias_arguments(*call, info.has_receiver)

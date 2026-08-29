@@ -50,6 +50,8 @@ pub mut:
 	is_prod               bool
 	is_debug              bool
 	is_test               bool // at least one compatible user test file is being compiled
+	is_fmt                bool // preserve source-only syntax needed by the V formatter
+	migrate_json2         bool // rewrite supported legacy json calls while formatting
 	is_livemain           bool
 	is_liveshared         bool
 	is_shared             bool
@@ -59,7 +61,8 @@ pub mut:
 	thread_stack_size     int = 8 * 1024 * 1024
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
-	supports_inline_asm bool
+	supports_inline_asm            bool
+	preserve_comptime_conditionals bool
 pub:
 	build_date      string
 	build_time      string

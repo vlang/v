@@ -214,6 +214,294 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_array_append_to_map_value_struct_field_uses_mutable_map_entry() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_append_to_map_value_struct_field', 'struct Item {
+mut:
+	values []int
+}
+
+fn append_value(mut items map[string]Item, key string, value int) {
+	items[key].values << value
+}
+
+fn main() {
+	mut items := {
+		"first": Item{}
+	}
+	append_value(mut items, "first", 7)
+	println(items["first"].values)
+}
+')
+	assert out == '[7]'
+}
+
+fn test_or_block_match_with_break_has_no_value_assignment() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'or_block_match_break', 'struct NoIdle {}
+
+fn (_ NoIdle) msg() string {
+	return "no idle value"
+}
+
+fn (_ NoIdle) code() int {
+	return 0
+}
+
+fn pop_idle() !int {
+	return NoIdle{}
+}
+
+fn get() !int {
+	for {
+		value := pop_idle() or {
+			match err {
+				NoIdle {
+					break
+				}
+				else {
+					return err
+				}
+			}
+		}
+		return value
+	}
+	return 7
+}
+
+fn main() {
+	println(get() or { panic(err) })
+}
+')
+	assert out == '7'
+}
+
+fn test_result_payload_converts_to_interface_and_sum_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'result_interface_and_sum_payload', 'interface Number {
+	number() int
+}
+
+struct Item {
+	value int
+}
+
+fn (item Item) number() int {
+	return item.value
+}
+
+struct ArrayValue {
+	value int
+}
+
+type Value = ArrayValue | string
+
+fn load_item() !Item {
+	return Item{7}
+}
+
+fn load_number() !Number {
+	return load_item()!
+}
+
+fn load_array() !ArrayValue {
+	return ArrayValue{9}
+}
+
+fn load_value() !Value {
+	return load_array()!
+}
+
+fn main() {
+	number := load_number() or { panic(err) }
+	value := load_value() or { panic(err) }
+	println(number.number())
+	match value {
+		ArrayValue { println(value.value) }
+		else {}
+	}
+}
+')
+	assert out == '7\n9'
+}
+
+fn test_interface_pointer_receiver_dispatch_preserves_pointer_depth() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_pointer_receiver_dispatch', 'interface Reader {
+	read() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) read() int {
+	return value.n
+}
+
+fn use(reader &Reader) int {
+	return reader.read()
+}
+
+fn main() {
+	reader := Reader(Value{
+		n: 42
+	})
+	println(use(&reader))
+}
+')
+	assert out == '42'
+}
+
+fn test_interface_field_receiver_preserves_smartcast_projection() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_field_receiver_smartcast', 'interface Reader {
+	read() int
+}
+
+struct Source {
+	n int
+}
+
+fn (source Source) read() int {
+	return source.n
+}
+
+struct Holder {
+	reader Reader
+}
+
+type Value = Holder | string
+
+fn read_value(value Value) int {
+	return match value {
+		Holder { value.reader.read() }
+		else { -1 }
+	}
+}
+
+fn main() {
+	value := Value(Holder{
+		reader: Reader(Source{
+			n: 37
+		})
+	})
+	println(read_value(value))
+}
+')
+	assert out == '37'
+}
+
+fn test_result_c_payload_does_not_use_colliding_interface() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'result_c_payload_interface_collision', {
+		'v.mod':     "Module { name: 'result_c_payload_interface_collision' }\n"
+		'native.h':  'typedef struct { int value; } Value;\n'
+		'pkg/pkg.v': 'module pkg
+
+pub interface Value {
+	number() int
+}
+
+pub fn read(value Value) int {
+	return value.number()
+}
+'
+		'main.v':    'module main
+
+#insert "native.h"
+
+import pkg
+
+@[typedef]
+struct C.Value {
+	value int
+}
+
+struct Box {
+	n int
+}
+
+fn (box Box) number() int {
+	return box.n
+}
+
+fn load() !C.Value {
+	return C.Value{
+		value: 41
+	}
+}
+
+fn main() {
+	native := load() or { panic(err) }
+	println(native.value)
+	println(pkg.read(Box{
+		n: 43
+	}))
+}
+'
+	}, 'main.v')
+	assert out == '41\n43'
+}
+
+fn test_issue_28180_module_collisions_and_embedded_generic_middleware() {
+	v3_bin := build_v3_review_transform()
+	// The reported regression is a compiler failure; keep unrelated runtime
+	// deinitialization outside this coverage.
+	_ = compile_good_project(v3_bin, 'issue_28180_module_collisions', '-nocache', {
+		'v.mod':     'Module {
+	name: "issue_28180"
+}
+'
+		'main.v':    'module main
+
+import app
+
+fn main() {
+	_ = app.new()
+	println("ok")
+}
+'
+		'app/app.v': 'module app
+
+import context
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+@[heap]
+pub struct App {
+	veb.Middleware[Context]
+}
+
+struct Params {
+	name ?string
+}
+
+fn (mut app App) middleware(mut ctx Context) bool {
+	return true
+}
+
+pub fn new() &App {
+	mut base_ctx := context.background()
+	_ = base_ctx.done()
+	params := Params{
+		name: "item"
+	}
+	if name := params.name {
+		assert name == "item"
+	}
+	mut app := &App{}
+	app.use(handler: app.middleware)
+	app.route_use("/admin", handler: app.middleware, after: true)
+	return app
+}
+'
+	}, '')
+}
+
 fn test_return_match_map_lookup_guard_keeps_presence_check() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_with_flags(v3_bin, 'return_match_map_lookup_guard', '-building-v', 'struct Local {
@@ -453,6 +741,13 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 }
 
 fn run_good_project_with_flags(v3_bin string, name string, flags string, files map[string]string, input string) string {
+	good_bin := compile_good_project(v3_bin, name, flags, files, input)
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
+	return run.output.trim_space()
+}
+
+fn compile_good_project(v3_bin string, name string, flags string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -466,9 +761,7 @@ fn run_good_project_with_flags(v3_bin string, name string, flags string, files m
 	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(good_bin)
-	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
-	return run.output.trim_space()
+	return good_bin
 }
 
 fn gen_c_from_project(v3_bin string, name string, files map[string]string, input string) string {
@@ -3411,6 +3704,68 @@ fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	out := run_good(v3_bin, 'heap_escaping_amp_alias',
 		'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
 	assert out == '2'
+}
+
+fn test_scalar_return_call_does_not_heap_promote_address_argument() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'scalar_return_address_arg', 'struct Item {
+	value int
+}
+
+fn inspect(item &Item) int {
+	return item.value
+}
+
+fn forward() int {
+	item := Item{
+		value: 7
+	}
+	return inspect(&item)
+}
+
+fn main() {
+	println(int_str(forward()))
+}
+')
+	body := c_fn_body(c_source, 'int forward(void) {')
+	assert body.contains('main__Item item ='), body
+	assert !body.contains('main__Item* item ='), body
+	assert !body.contains('memdup(&__esc'), body
+}
+
+fn test_smartcast_selector_return_keeps_existing_sum_box() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'smartcast_selector_sum_return', 'struct First {
+	value int
+}
+
+struct Second {
+	value int
+}
+
+type Value = First | Second
+
+struct Holder {
+	value Value
+}
+
+fn selected(holder &Holder) Value {
+	if holder.value is First {
+		return holder.value
+	}
+	return holder.value
+}
+
+fn main() {
+	holder := Holder{
+		value: First{value: 7}
+	}
+	println(selected(&holder))
+}
+')
+	body := c_fn_body(c_source, 'Value selected(main__Holder* holder) {')
+	assert body.contains('return holder->value;'), body
+	assert !body.contains('memdup('), body
 }
 
 fn test_returned_closure_alias_heap_promotes_captured_pointer_source() {
