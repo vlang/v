@@ -82,6 +82,16 @@ struct EntryCopy {
 	entry Entry
 }
 
+struct AssocCopy {
+mut:
+	left  Payload
+	entry Entry
+}
+
+struct KeyHolder {
+	key string
+}
+
 struct OptionalPayloads {
 mut:
 	items ?[]Payload
@@ -428,6 +438,41 @@ fn test_borrowed_channel_send_is_cloned(holder &Holder) {
 	assert holder.right.values[0] == "right"
 }
 
+fn test_borrowed_map_literal_entries_are_cloned(holder &Holder) {
+	mut items := {"payload": holder.left}
+	mut item := items["payload"]
+	item.values[0] = "map copy"
+	assert holder.left.values[0] == "left"
+
+	key_holder := &KeyHolder{
+		key: ["borrowed", "key"].join("-")
+	}
+	{
+		keyed := {key_holder.key: 1}
+		assert keyed[key_holder.key] == 1
+	}
+	assert key_holder.key == "borrowed-key"
+}
+
+fn test_borrowed_assoc_overrides_are_cloned(holder &Holder) {
+	base := AssocCopy{
+		left: Payload{
+			values: ["base"]
+		}
+		entry: 0
+	}
+	mut copied := AssocCopy{
+		...base
+		left:  holder.left
+		entry: holder.right
+	}
+	copied.left.values[0] = "assoc copy"
+	mut entry := &(copied.entry as Payload)
+	entry.values[0] = "assoc sum copy"
+	assert holder.left.values[0] == "left"
+	assert holder.right.values[0] == "right"
+}
+
 fn test_pointer_dereferences_are_cloned(holder &Holder) {
 	left_pointer := &holder.left
 	mut left_copy := *left_pointer
@@ -616,6 +661,8 @@ fn main() {
 	test_borrowed_array_literal_element_is_cloned(holder)
 	test_borrowed_fixed_array_initializer_is_cloned_per_element(holder)
 	test_borrowed_channel_send_is_cloned(holder)
+	test_borrowed_map_literal_entries_are_cloned(holder)
+	test_borrowed_assoc_overrides_are_cloned(holder)
 	test_pointer_dereferences_are_cloned(holder)
 	test_conditional_borrowed_branches_are_cloned(holder)
 	test_borrowed_sum_projection_is_cloned()
@@ -631,7 +678,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 36, out.output
+		assert out.output.count('clone') == 39, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

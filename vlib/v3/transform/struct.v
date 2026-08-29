@@ -1215,9 +1215,10 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		value_type := t.node_type(value_id)
 		enum_field_type := t.enum_type_name_for_expected(field_type, assoc_module)
 		sum_field_type := t.struct_field_sum_type(field_type, assoc_module)
-		value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
+		fixed_to_dynamic := field_type.starts_with('[]') && t.is_fixed_array_type(value_type)
+		mut value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
-		} else if field_type.starts_with('[]') && t.is_fixed_array_type(value_type) {
+		} else if fixed_to_dynamic {
 			t.fixed_array_value_to_owned_array(value_id, value_type, field_type)
 		} else if sum_field_type.len > 0 {
 			t.wrap_sum_value(value_id, sum_field_type)
@@ -1225,6 +1226,9 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 			t.transform_expr_for_type(value_id, field_type)
 		} else {
 			t.transform_expr(value_id)
+		}
+		if field_type.len > 0 && !fixed_to_dynamic {
+			value = t.clone_borrowed_projection(value_id, value, field_type)
 		}
 		t.drain_pending(mut prelude)
 		prelude << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.value, field_type),
