@@ -194,3 +194,40 @@ fn main() {
 ')
 	assert out == '11\n13'
 }
+
+fn test_global_enum_and_sum_values_use_v_defaults() {
+	v3_bin := global_decl_build_v3()
+	out := global_decl_run_good(v3_bin, 'global_enum_and_sum_defaults', "enum Mode {
+	ready = 7
+	waiting
+}
+
+type Payload = string | int
+
+__global modes = []Mode{len: 2}
+__global shared_mode shared Mode
+__global payloads = []Payload{len: 1}
+__global payload shared Payload
+
+fn describe(value Payload) string {
+	return match value {
+		string { 'string:' + value }
+		int { 'int:' + int_str(value) }
+	}
+}
+
+fn main() {
+	println(if modes[0] == .ready { 'ready' } else { 'wrong' })
+	shared_mode_description := rlock shared_mode {
+		if shared_mode == .ready { 'shared-ready' } else { 'shared-wrong' }
+	}
+	println(shared_mode_description)
+	println(describe(payloads[0]))
+	shared_description := rlock payload {
+		describe(payload)
+	}
+	println(shared_description)
+}
+")
+	assert out == 'ready\nshared-ready\nstring:\nstring:'
+}

@@ -22075,7 +22075,8 @@ fn (mut g FlatGen) global_array_default_elem_expr(elem_type types.Type) ?string 
 		c_elem, dims := g.fixed_array_decl_parts(clean_type)
 		return '(${c_elem}${dims})${initializer}'
 	}
-	if clean_type is types.Array || clean_type is types.Map || clean_type is types.Channel {
+	if clean_type is types.Array || clean_type is types.Map || clean_type is types.Channel
+		|| clean_type is types.Enum || clean_type is types.SumType {
 		return g.default_value_to_string(elem_type)
 	}
 	if clean_type is types.Struct && !clean_type.name.starts_with('C.')
@@ -22163,7 +22164,7 @@ fn (mut g FlatGen) queue_shared_global_zero_init(name string, inner string, typ 
 		value_expr = g.sb.str()
 		g.sb = old_sb
 		g.line_start = old_line_start
-	} else if clean_type is types.Channel {
+	} else if clean_type is types.Channel || clean_type is types.Enum || clean_type is types.SumType {
 		value_expr = g.default_value_to_string(typ)
 	}
 	target := g.global_c_name(name)
