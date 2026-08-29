@@ -5574,6 +5574,45 @@ fn main() {
 	assert !main_body.contains('array__free(&(__map_source_'), main_body
 }
 
+fn test_array_map_keeps_temporary_source_through_local_result_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	values := make_items().map(match flag {
+		true {
+			p := &it
+			q := p
+			q
+		}
+		else {
+			&external
+		}
+	})
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_local_pointer_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_local_pointer_alias', '-ownership', source)
+	assert out == 'source'
+}
+
 fn test_array_map_keeps_temporary_source_through_inherited_struct_update_field() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
@@ -5651,6 +5690,25 @@ fn main() {
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
 	out := run_good_with_flags(v3_bin, 'array_map_helper_external_field', '-ownership', source)
 	assert out == 'external'
+}
+
+fn test_array_sort_mixed_pointer_depth_comparator_arguments() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Thing {
+	value int
+}
+
+fn main() {
+	mut items := [&Thing{value: 3}, &Thing{value: 1}, &Thing{value: 2}]
+	compare := fn (a &Thing, b &&Thing) int {
+		return a.value - (*b).value
+	}
+	items.sort_with_compare(compare)
+	println(int_str(items[0].value) + "," + int_str(items[1].value) + "," + int_str(items[2].value))
+}
+'
+	out := run_good(v3_bin, 'array_sort_mixed_pointer_depth_comparator', source)
+	assert out == '1,2,3'
 }
 
 fn test_array_map_drops_source_for_unrelated_pointer_result() {

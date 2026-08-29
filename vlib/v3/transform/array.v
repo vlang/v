@@ -2806,9 +2806,7 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 				&& t.array_map_expr_result_retains_element_address(t.a.child(&node, 0), name)
 		}
 		.block, .match_branch {
-			return node.children_count > 0
-				&& t.array_map_expr_result_retains_element_address(t.a.child(&node,
-					node.children_count - 1), name)
+			return t.array_map_block_result_retains_element_address(node, name)
 		}
 		.if_expr, .match_stmt {
 			for i in 1 .. node.children_count {
@@ -2865,6 +2863,55 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 			return false
 		}
 	}
+}
+
+fn (mut t Transformer) array_map_block_result_retains_element_address(node flat.Node, name string) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	mut seen := map[string]bool{}
+	return t.array_map_block_value_retains_element_address(node, int(node.children_count) - 1,
+		t.a.child(&node, node.children_count - 1), name, mut seen)
+}
+
+fn (mut t Transformer) array_map_block_value_retains_element_address(node flat.Node, before_idx int, id flat.NodeId, name string, mut seen map[string]bool) bool {
+	mut result_id := id
+	mut result := t.a.nodes[int(result_id)]
+	for result.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init] {
+		if result.children_count == 0 {
+			break
+		}
+		result_id = t.a.child(&result, 0)
+		result = t.a.nodes[int(result_id)]
+	}
+	if result.kind != .ident || result.value.len == 0 {
+		return t.array_map_expr_result_retains_element_address(result_id, name)
+	}
+	if result.value in seen {
+		return false
+	}
+	seen[result.value] = true
+	for offset in 1 .. before_idx + 1 {
+		stmt_idx := before_idx - offset
+		stmt := t.a.child_node(&node, stmt_idx)
+		if stmt.kind == .decl_assign && stmt.children_count == 2 {
+			lhs := t.a.child_node(stmt, 0)
+			if lhs.kind == .ident && lhs.value == result.value {
+				return t.array_map_block_value_retains_element_address(node, stmt_idx,
+					t.a.child(stmt, 1), name, mut seen)
+			}
+		}
+		if stmt.kind == .assign {
+			for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+				lhs := t.a.child_node(stmt, i)
+				if lhs.kind == .ident && lhs.value == result.value {
+					return t.array_map_block_value_retains_element_address(node, stmt_idx,
+						t.a.child(stmt, i + 1), name, mut seen)
+				}
+			}
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) array_map_index_result_retains_element_address(node flat.Node, name string) bool {
@@ -3716,7 +3763,7 @@ fn (mut t Transformer) array_sort_less_expr(base flat.NodeId, elem_type string, 
 	if int(cmp_id) >= 0 {
 		cmp_node := t.a.nodes[int(cmp_id)]
 		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
-			if cmp := t.array_sort_lambda_expr(cmp_node, cur, prev, elem_type) {
+			if cmp := t.array_sort_lambda_expr(cmp_node, cur, prev, elem_type, elem_type) {
 				return cmp
 			}
 		}
@@ -3801,13 +3848,15 @@ fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type 
 	cur := t.make_index(base, t.make_ident(idx_name), elem_type)
 	prev := t.make_index(base, t.make_infix(.minus, t.make_ident(idx_name), t.make_int_literal(1)),
 		elem_type)
-	cmp_elem_type := t.array_sort_compare_arg_type(cmp, elem_type)
-	cur_arg := if cmp_elem_type == elem_type { cur } else { t.make_prefix(.amp, cur) }
-	prev_arg := if cmp_elem_type == elem_type { prev } else { t.make_prefix(.amp, prev) }
+	cmp_cur_type, cmp_prev_type := t.array_sort_compare_arg_types(cmp, elem_type)
+	cur_arg := if cmp_cur_type == elem_type { cur } else { t.make_prefix(.amp, cur) }
+	prev_arg := if cmp_prev_type == elem_type { prev } else { t.make_prefix(.amp, prev) }
 	if int(cmp) >= 0 {
 		cmp_node := t.a.nodes[int(cmp)]
 		if cmp_node.kind == .lambda_expr && cmp_node.children_count >= 3 {
-			if call_value := t.array_sort_lambda_expr(cmp_node, cur_arg, prev_arg, cmp_elem_type) {
+			if call_value := t.array_sort_lambda_expr(cmp_node, cur_arg, prev_arg, cmp_cur_type,
+				cmp_prev_type)
+			{
 				return t.make_infix(.lt, call_value, t.make_int_literal(0))
 			}
 		}
@@ -3816,10 +3865,10 @@ fn (mut t Transformer) array_sort_compare_less_expr(base flat.NodeId, elem_type 
 	return t.make_infix(.lt, call, t.make_int_literal(0))
 }
 
-fn (t &Transformer) array_sort_compare_arg_type(cmp flat.NodeId, elem_type string) string {
+fn (t &Transformer) array_sort_compare_arg_types(cmp flat.NodeId, elem_type string) (string, string) {
 	default_type := '&${elem_type}'
 	if !elem_type.starts_with('&') || isnil(t.tc) || int(cmp) < 0 {
-		return default_type
+		return default_type, default_type
 	}
 	cmp_node := t.a.nodes[int(cmp)]
 	raw_type := if cmp_node.kind == .ident {
@@ -3828,17 +3877,18 @@ fn (t &Transformer) array_sort_compare_arg_type(cmp flat.NodeId, elem_type strin
 		t.raw_checker_node_type(cmp)
 	}
 	if raw_type.len == 0 {
-		return default_type
+		return default_type, default_type
 	}
 	cmp_type := types.unalias_type(t.tc.parse_type(raw_type))
-	if cmp_type is types.FnType && cmp_type.params.len >= 2
-		&& cmp_type.params[0].name() == elem_type && cmp_type.params[1].name() == elem_type {
-		return elem_type
+	if cmp_type is types.FnType && cmp_type.params.len >= 2 {
+		first_type := if cmp_type.params[0].name() == elem_type { elem_type } else { default_type }
+		second_type := if cmp_type.params[1].name() == elem_type { elem_type } else { default_type }
+		return first_type, second_type
 	}
-	return default_type
+	return default_type, default_type
 }
 
-fn (mut t Transformer) array_sort_lambda_expr(node flat.Node, a_expr flat.NodeId, b_expr flat.NodeId, elem_type string) ?flat.NodeId {
+fn (mut t Transformer) array_sort_lambda_expr(node flat.Node, a_expr flat.NodeId, b_expr flat.NodeId, a_type string, b_type string) ?flat.NodeId {
 	if node.kind != .lambda_expr || node.children_count < 3 {
 		return none
 	}
@@ -3851,8 +3901,8 @@ fn (mut t Transformer) array_sort_lambda_expr(node flat.Node, a_expr flat.NodeId
 	body_id := t.a.child(&node, node.children_count - 1)
 	old_a := t.var_type(first.value)
 	old_b := t.var_type(second.value)
-	t.set_var_type(first.value, elem_type)
-	t.set_var_type(second.value, elem_type)
+	t.set_var_type(first.value, a_type)
+	t.set_var_type(second.value, b_type)
 	raw_cmp := t.substitute_array_sort_vars_named(body_id, first.value, second.value, a_expr,
 		b_expr)
 	cmp := t.transform_expr(raw_cmp)
