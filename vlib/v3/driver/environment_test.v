@@ -388,6 +388,24 @@ fn test_v3_test_build_defines_populates_referenced_standard_dependencies() {
 	}
 }
 
+fn test_v3_build_constraints_are_evaluated_only_for_direct_tests() {
+	root := os.join_path(os.temp_dir(), 'v3_test_constraint_routing_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	malformed_file := os.join_path(root, 'ordinary.v')
+	false_test_file := os.join_path(root, 'false_test.v')
+	os.write_file(malformed_file, '// vtest build: ((malformed\nmodule main\n')!
+	os.write_file(false_test_file, '// vtest build: windows && linux\nmodule main\n')!
+	target := pref.host_target()
+	assert !v3_direct_test_input_is_incompatible(false, malformed_file, 'c', target, 'clang',
+		false, [])
+	assert v3_direct_test_input_is_incompatible(true, false_test_file, 'c', target, 'clang', false,
+		[])
+}
+
 fn test_v3_test_sqlite_present_uses_bundled_windows_source() {
 	root := os.join_path(os.temp_dir(), 'v3_test_sqlite_present_${os.getpid()}')
 	os.rmdir_all(root) or {}

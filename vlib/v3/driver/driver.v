@@ -6350,6 +6350,17 @@ fn v3_test_matches_build_constraint(file string, target pref.Target, ccompiler s
 	}
 }
 
+fn v3_direct_test_input_is_incompatible(is_test_command bool, input_file string, backend string, target pref.Target, ccompiler string, is_prod bool, user_defines []string) bool {
+	if !is_test_command || !os.is_file(input_file) {
+		return false
+	}
+	if is_test_file_for_any_backend(input_file)
+		&& !pref.is_test_file_for_platform(input_file, backend, target) {
+		return true
+	}
+	return !v3_test_matches_build_constraint(input_file, target, ccompiler, is_prod, user_defines)
+}
+
 fn v3_cache_compiler_signature(vroot string) string {
 	dir := os.join_path(vroot, 'vlib', 'v3')
 	if !os.is_dir(dir) {
@@ -8061,12 +8072,9 @@ pub fn run(args []string) {
 	} else {
 		effective_c_compiler_name(c_compiler, target)
 	}
-	incompatible_test_platform := is_test_file_for_any_backend(input_file)
-		&& !pref.is_test_file_for_platform(input_file, backend, target)
-	incompatible_test_constraint := !v3_test_matches_build_constraint(input_file, target,
-		constraint_ccompiler, is_prod, user_defines)
-	if is_test_command && os.is_file(input_file)
-		&& (incompatible_test_platform || incompatible_test_constraint) {
+	incompatible_direct_test := v3_direct_test_input_is_incompatible(is_test_command, input_file,
+		backend, target, constraint_ccompiler, is_prod, user_defines)
+	if incompatible_direct_test {
 		// Directory test discovery already excludes incompatible backend/platform files.
 		// Apply the same backend, platform, and `// vtest build:` rules to a direct single-file
 		// test before parsing it; otherwise unavailable symbols and dependencies emit
