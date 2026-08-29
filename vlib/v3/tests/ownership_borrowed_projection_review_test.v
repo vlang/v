@@ -37,9 +37,30 @@ fn (value &Payload) clone() Payload {
 	}
 }
 
+struct ObservedPayload implements IClone {
+mut:
+	values []string
+	clones &int
+}
+
+fn (value &ObservedPayload) clone() ObservedPayload {
+	unsafe {
+		*value.clones += 1
+	}
+	return ObservedPayload{
+		values: value.values.clone()
+		clones: value.clones
+	}
+}
+
 struct Holder {
 	left  Payload
 	right Payload
+}
+
+struct ObservedPair {
+	left  ObservedPayload
+	right ObservedPayload
 }
 
 type Entry = Payload | int
@@ -99,6 +120,16 @@ fn (holder &Holder) accept_entry(value Entry) string {
 fn (holder &Holder) consume(values ...Payload) string {
 	assert values.len == 1
 	return values[0].values[0]
+}
+
+fn consume_payloads(values ...Payload) string {
+	assert values.len == 1
+	return values[0].values[0]
+}
+
+fn (value &ObservedPayload) accept(other ObservedPayload) string {
+	assert value.values[0] == "left"
+	return other.values[0]
 }
 
 fn get_entry(holder &EntryHolder) Entry {
@@ -265,6 +296,28 @@ fn test_variadic_receiver_field_clone_is_retained() {
 	}
 	assert holder.consume(holder.left) == "retained"
 	assert holder.left.values[0] == "retained"
+}
+
+fn test_free_variadic_borrowed_projection_is_cloned(holder &Holder) {
+	assert consume_payloads(holder.left) == "left"
+	assert holder.left.values[0] == "left"
+}
+
+fn test_disjoint_receiver_fields_are_not_cloned() {
+	mut clones := 0
+	pair := ObservedPair{
+		left: ObservedPayload{
+			values: ["left"]
+			clones: &clones
+		}
+		right: ObservedPayload{
+			values: ["right"]
+			clones: &clones
+		}
+	}
+	assert pair.left.accept(pair.right) == "right"
+	assert clones == 0
+	assert pair.left.values[0] == "left"
 }
 
 fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
@@ -440,6 +493,8 @@ fn main() {
 	test_receiver_index_move_is_not_cloned()
 	test_direct_receiver_field_clone_is_retained()
 	test_variadic_receiver_field_clone_is_retained()
+	test_free_variadic_borrowed_projection_is_cloned(holder)
+	test_disjoint_receiver_fields_are_not_cloned()
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
 	test_borrowed_sum_projection_is_cloned()
 	test_copied_index_alias_is_cloned()
@@ -454,7 +509,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 20, out.output
+		assert out.output.count('clone') == 21, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

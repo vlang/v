@@ -3820,6 +3820,7 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 	} else {
 		t.transform_expr(arg_id)
 	}
+	value = t.clone_borrowed_projection(arg_id, value, expected_elem)
 	value = t.clone_checker_marked_receiver_alias_arg(arg_id, value, expected_elem)
 	t.append_variadic_value_push(tmp_name, value, arg_id, elem_type)
 }

@@ -9371,8 +9371,10 @@ fn (tc &TypeChecker) ownership_call_arg_clones_receiver_storage(node flat.Node, 
 	if !receiver_is_retained {
 		return false
 	}
-	recv_root := tc.ownership_expr_root_ident_name(recv_id)
-	if recv_root.len == 0 || tc.ownership_expr_root_ident_name(arg_id) != recv_root
+	recv_name := tc.ownership_expr_ident_name(recv_id)
+	arg_name := tc.ownership_expr_ident_name(arg_id)
+	if recv_name.len == 0 || arg_name.len == 0
+		|| !ownership_storage_keys_overlap(recv_name, arg_name)
 		|| tc.ownership_expr_has_index_projection(arg_id)
 		|| tc.ownership_expr_is_borrowed_projection(arg_id) {
 		return false
@@ -9380,28 +9382,6 @@ fn (tc &TypeChecker) ownership_call_arg_clones_receiver_storage(node flat.Node, 
 	arg_type := tc.resolve_type(arg_id)
 	return tc.ownership_type_requires_destruction(arg_type)
 		&& tc.ownership_default_clone_missing_method(arg_type) == none
-}
-
-fn (tc &TypeChecker) ownership_expr_root_ident_name(id flat.NodeId) string {
-	mut cur := id
-	for tc.valid_node_id(cur) {
-		node := tc.a.nodes[int(cur)]
-		match node.kind {
-			.ident {
-				return node.value
-			}
-			.selector, .index, .paren, .cast_expr, .expr_stmt {
-				if node.children_count == 0 {
-					return ''
-				}
-				cur = tc.a.child(&node, 0)
-			}
-			else {
-				return ''
-			}
-		}
-	}
-	return ''
 }
 
 fn (tc &TypeChecker) ownership_expr_has_index_projection(id flat.NodeId) bool {
