@@ -1764,11 +1764,18 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 }
 
 fn (g &Parser) shared_token_is_identifier() bool {
-	mut offset := g.s.offset
+	start := g.s.offset
+	mut offset := start
 	for offset < g.s.src.len && g.s.src[offset].is_space() {
 		offset++
 	}
-	return offset >= g.s.src.len || g.s.src[offset] in [`.`, `[`, `(`, `)`, `]`, `,`, `;`, `+`, `-`,
+	if offset >= g.s.src.len {
+		return true
+	}
+	if g.s.src[offset] == `(` {
+		return offset == start
+	}
+	return g.s.src[offset] in [`.`, `[`, `)`, `]`, `,`, `;`, `+`, `-`,
 		`*`, `/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`]
 }
 

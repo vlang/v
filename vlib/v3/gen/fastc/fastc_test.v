@@ -24,12 +24,14 @@ fn main() {
 		shared.value = 1
 		println(shared.value)
 		consume(shared shared)
+		consume(shared (shared))
 	}
 }
 ', 'shared_keyword_local.v', prefs) or { panic(err) }
 	assert c_source.contains('shared.value=1;'), c_source
 	assert c_source.contains('println(shared.value)'), c_source
 	assert c_source.contains('consume(&(shared));'), c_source
+	assert c_source.contains('consume(&((shared)));'), c_source
 }
 
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
