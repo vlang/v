@@ -452,6 +452,47 @@ fn test_external_map_expansion_estimate_includes_string_interpolation() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_includes_string_concatenation() {
+	mut a := flat.FlatAst.new()
+	mut concat := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'a'
+	})
+	for _ in 0 .. deferred_map_expansion_threshold / external_string_infix_expansion_estimate + 1 {
+		rhs := a.add_node(flat.Node{
+			kind: .string_literal
+			value: 'b'
+		})
+		infix_start := a.children.len
+		a.children << concat
+		a.children << rhs
+		concat = a.add_node(flat.Node{
+			kind: .infix
+			op: .plus
+			typ: 'string'
+			children_start: infix_start
+			children_count: 2
+		})
+	}
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << concat
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]string'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{

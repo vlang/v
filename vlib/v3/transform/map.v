@@ -12,6 +12,7 @@ const map_init_owned_key_cleanup_expansion_estimate = 16
 const map_init_owned_value_cleanup_expansion_estimate = 24
 const array_literal_base_expansion_estimate = 12
 const array_literal_entry_expansion_estimate = 16
+const external_string_infix_expansion_estimate = 8
 
 // A larger expansion is deliberately lowered after the bounded shared-worker
 // phase. Large const maps can be referenced from a tiny function while their
@@ -177,6 +178,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 		}
 		if node.kind == .string_interp {
 			estimate += t.string_interp_expansion_estimate(node)
+		}
+		if node.kind == .infix && node.op == .plus && node.children_count >= 2 && (t.is_string_type(t.a.child(&node, 0)) || t.is_string_type(t.a.child(&node, 1))) {
+			// String concatenation emits a fresh literal or an identifier/call pair.
+			// Keep extra room for conversions applied to char and rune operands.
+			estimate += external_string_infix_expansion_estimate
 		}
 		// External constant initializers can themselves index another constant map.
 		// That substitution edge is semantic rather than a physical FlatAst child.
