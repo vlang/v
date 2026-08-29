@@ -3010,27 +3010,39 @@ fn (t &Transformer) array_map_block_scope_limit(node flat.Node, name string) int
 	return int(node.children_count)
 }
 
-fn (t &Transformer) array_map_call_mutates_target(node flat.Node, target string) bool {
+fn (mut t Transformer) array_map_mutating_call_retains_element_address(id flat.NodeId, node flat.Node, target string, block flat.Node, before_idx int, name string, seen map[string]bool) bool {
 	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
 		return false
 	}
+	call_name := t.call_name_for_node(id, node)
+	params := t.call_param_types_for_node(call_name, node)
+	param_offset := t.call_param_offset_for_node(call_name, node, params)
+	mut target_param_idx := -1
 	callee := t.a.child_node(&node, 0)
-	if callee.kind != .selector || callee.children_count == 0 {
+	if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 {
+		receiver_id := t.a.child(callee, 0)
+		if t.array_map_lvalue_is_rooted_at_ident(receiver_id, target) && t.tc.mut_receiver_methods[call_name] {
+			target_param_idx = 0
+		}
+	}
+	if target_param_idx < 0 {
+		for i in 1 .. node.children_count {
+			arg_id := t.a.child(&node, i)
+			arg := t.a.nodes[int(arg_id)]
+			if arg.is_mut && t.array_map_lvalue_is_rooted_at_ident(arg_id, target) {
+				target_param_idx = i - 1 + param_offset
+				break
+			}
+		}
+	}
+	if target_param_idx < 0 {
 		return false
 	}
-	receiver_id := t.a.child(callee, 0)
-	if !t.array_map_lvalue_is_rooted_at_ident(receiver_id, target) {
-		return false
-	}
-	method_name := t.resolve_receiver_method_name(receiver_id, callee.value)
-	return method_name.len > 0 && t.tc.mut_receiver_methods[method_name]
-}
-
-fn (mut t Transformer) array_map_mutating_call_retains_element_address(node flat.Node, target string, block flat.Node, before_idx int, name string, seen map[string]bool) bool {
-	if !t.array_map_call_mutates_target(node, target) {
-		return false
-	}
-	for i in 1 .. node.children_count {
+	for source_param_idx in t.tc.call_param_storage_source_params(id, target_param_idx) {
+		i := source_param_idx - param_offset + 1
+		if i < 1 || i >= node.children_count {
+			continue
+		}
 		mut arg_seen := seen.clone()
 		if t.array_map_block_value_retains_element_address(block, before_idx, t.a.child(&node, i), name, mut arg_seen) {
 			return true
@@ -3047,7 +3059,7 @@ fn (mut t Transformer) array_map_nested_assignment_retains_element_address(id fl
 	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
 		return false
 	}
-	if t.array_map_mutating_call_retains_element_address(node, target, block, before_idx, name, seen) {
+	if t.array_map_mutating_call_retains_element_address(id, node, target, block, before_idx, name, seen) {
 		return true
 	}
 	if node.kind in [.block, .match_branch] {

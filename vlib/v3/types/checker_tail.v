@@ -8970,6 +8970,98 @@ fn (tc &TypeChecker) visible_mutation_fn_param(decl VisibleMutationFnDecl, param
 	return none
 }
 
+fn (tc &TypeChecker) storage_lvalue_is_rooted_at_param(id flat.NodeId, name string) bool {
+	if !tc.valid_node_id(id) || name.len == 0 {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value == name
+	}
+	if node.kind in [.selector, .index, .paren] && node.children_count > 0 {
+		return tc.storage_lvalue_is_rooted_at_param(tc.a.child(&node, 0), name)
+	}
+	return false
+}
+
+fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, param_names []string, target_param_idx int, mut sources []int) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .ident {
+		for i, name in param_names {
+			if i != target_param_idx && node.value == name && i !in sources {
+				sources << i
+				return
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_storage_source_params(tc.a.child(&node, i), param_names, target_param_idx, mut sources)
+	}
+}
+
+fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name string, param_names []string, target_param_idx int, mut sources []int) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return
+	}
+	if node.kind in [.assign, .selector_assign, .index_assign] {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			lhs_id := tc.a.child(&node, i)
+			if tc.storage_lvalue_is_rooted_at_param(lhs_id, target_name) {
+				tc.collect_storage_source_params(tc.a.child(&node, i + 1), param_names, target_param_idx, mut sources)
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, param_names, target_param_idx, mut sources)
+	}
+}
+
+// call_param_storage_source_params returns parameters whose values a source function
+// may assign into the mutable target parameter or one of its descendants.
+pub fn (tc &TypeChecker) call_param_storage_source_params(id flat.NodeId, target_param_idx int) []int {
+	if !tc.valid_node_id(id) || target_param_idx < 0 {
+		return []int{}
+	}
+	call := tc.a.nodes[int(id)]
+	if call.kind != .call {
+		return []int{}
+	}
+	call_name := tc.resolved_call_name(id) or { return []int{} }
+	decl_module := tc.fn_type_modules[call_name] or { '' }
+	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or { return []int{} }
+	target_param := tc.visible_mutation_fn_param(decl, target_param_idx) or { return []int{} }
+	if !target_param.is_mut {
+		return []int{}
+	}
+	fn_node := tc.a.nodes[decl.idx]
+	mut param_names := []string{}
+	mut body_start := 0
+	for i in 0 .. fn_node.children_count {
+		child := tc.a.child_node(&fn_node, i)
+		if child.kind != .param {
+			body_start = i
+			break
+		}
+		param_names << child.value
+		body_start = i + 1
+	}
+	if target_param_idx >= param_names.len {
+		return []int{}
+	}
+	mut sources := []int{}
+	for i in body_start .. fn_node.children_count {
+		tc.collect_param_storage_sources(tc.a.child(&fn_node, i), target_param.value, param_names, target_param_idx, mut sources)
+	}
+	return sources
+}
+
 fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node {
 	decl_module := if info.name.starts_with('C.') {
 		tc.cur_module
