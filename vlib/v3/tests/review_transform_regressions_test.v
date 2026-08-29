@@ -5653,6 +5653,104 @@ fn main() {
 	assert out == 'source'
 }
 
+fn test_array_map_keeps_temporary_source_through_branch_local_result_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	values := make_items().map(match flag {
+		true {
+			mut p := unsafe { &external }
+			if flag {
+				q := unsafe { &it }
+				p = q
+			}
+			p
+		}
+		else {
+			&external
+		}
+	})
+	println(values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_branch_local_pointer_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_branch_local_pointer_alias', '-ownership',
+		source)
+	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_local_aggregate_selector_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected := make_items().map(match flag {
+		true {
+			box := PointerBox{
+				value: unsafe { &it }
+			}
+			box.value
+		}
+		else {
+			&external
+		}
+	})
+	indexed := make_items().map(match flag {
+		true {
+			pointers := [unsafe { &it }]!
+			pointers[0]
+		}
+		else {
+			&external
+		}
+	})
+	println(selected[0].text)
+	println(indexed[0].text)
+}
+'
+	selected_c := gen_c_from_source_with_flags(v3_bin, 'array_map_local_aggregate_selector_alias_c',
+		'-ownership', source)
+	main_body := c_fn_body(selected_c, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_local_aggregate_selector_alias', '-ownership',
+		source)
+	assert out == 'source\nsource'
+}
+
 fn test_array_map_keeps_temporary_source_through_inherited_struct_update_field() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
