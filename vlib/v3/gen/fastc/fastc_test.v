@@ -929,7 +929,7 @@ pub fn ping() {}
 	}
 	assert resolved_modules == ['main', 'alpha']
 	prefs.building_v = true
-	c_source, _ := generate_source_files(sources, aliases, prefs) or { panic(err) }
+	c_source, _, _ := generate_source_files(sources, aliases, prefs) or { panic(err) }
 	assert c_source.contains('\talpha__init();'), c_source
 	assert c_source.contains('\talpha__cleanup();'), c_source
 	assert !c_source.contains('beta__init'), c_source
@@ -972,7 +972,7 @@ fn main() {
 pub type Duration = i64
 pub fn (d Duration) microseconds() i64 { return i64(d) / 1000 }
 '
-	c_source, _ := generate_source_files([
+	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
 			path: 'main.v'
 			source: main_source
@@ -1778,7 +1778,7 @@ pub fn make() Settings {
 		'module main\nimport records\nfn main() { value := records.Settings{secret: 1}; println(value.visible) }\n',
 	] {
 		mut message := ''
-		unused_source, _ := generate_source_files([
+		if _, _, _ := generate_source_files([
 			FastcSourceFile{
 				path: main_file
 				source: source
@@ -1790,19 +1790,16 @@ pub fn make() Settings {
 				header: fastc_scan_source_header(module_source, module_file, prefs) or {
 					panic(err)}
 			},
-		], map[string]string{}, prefs) or {
+		], map[string]string{}, prefs) {
+			assert false, 'private field access unexpectedly compiled'
+		} else {
 			message = err.msg()
-			{
-				''
-				false
-			}
 		}
-		_ = unused_source
 		assert message.contains('private field `Settings.secret` from imported module `records`'), message
 	}
 
 	valid_source := 'module main\nimport records\nfn main() { value := records.Settings{visible: 2}; println(value.visible) }\n'
-	c_source, _ := generate_source_files([
+	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
 			path: main_file
 			source: valid_source
@@ -1847,7 +1844,7 @@ fn main() {
 }
 '
 	mut message := ''
-	unused_source, _ := generate_source_files([
+	if _, _, _ := generate_source_files([
 		FastcSourceFile{
 			path: main_file
 			source: invalid_source
@@ -1858,14 +1855,11 @@ fn main() {
 			source: module_source
 			header: fastc_scan_source_header(module_source, module_file, prefs) or { panic(err) }
 		},
-	], map[string]string{}, prefs) or {
+	], map[string]string{}, prefs) {
+		assert false, 'immutable field mutation unexpectedly compiled'
+	} else {
 		message = err.msg()
-		{
-			''
-			false
-		}
 	}
-	_ = unused_source
 	assert message.contains('mutation of immutable field `Config.read_only`'), message
 
 	valid_source := 'module main
@@ -1877,7 +1871,7 @@ fn main() {
 	config.writable = 2
 }
 '
-	c_source, _ := generate_source_files([
+	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
 			path: main_file
 			source: valid_source
@@ -3175,7 +3169,7 @@ fn main() {
 }
 '
 	mut field_message := ''
-	unused_source, _ := generate_source_files([
+	if _, _, _ := generate_source_files([
 		FastcSourceFile{
 			path: 'immutable_flag_field.v'
 			source: main_source
@@ -3187,14 +3181,11 @@ fn main() {
 			source: module_source
 			header: fastc_scan_source_header(module_source, 'settings.v', prefs) or { panic(err) }
 		},
-	], map[string]string{}, prefs) or {
+	], map[string]string{}, prefs) {
+		assert false, 'immutable flag receiver unexpectedly compiled'
+	} else {
 		field_message = err.msg()
-		{
-			''
-			false
-		}
 	}
-	_ = unused_source
 	assert field_message.contains('receiver field `Config.permissions` is not `pub mut`'), field_message
 
 	c_source := generate('module main
@@ -4940,7 +4931,7 @@ fn main() {
 	copy_byte(mut file, []u8{}, 0)
 }
 '
-	c_source, _ := generate_source_files([
+	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
 			path: 'main.v'
 			source: main_source
@@ -6856,7 +6847,7 @@ pub struct Config {
 pub fn run[A, B](mut app A, config Config) ! {
 }
 '
-	c_source, _ := generate_source_files([
+	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
 			path: 'main.v'
 			source: main_source
@@ -9857,10 +9848,11 @@ fn main() {
 	assert c_source.contains('take((Option){.state=2})'), c_source
 }
 
-fn test_selfhost_anonymous_function_stub() {
+fn test_selfhost_anonymous_function_is_rejected() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
-	c_source := generate('module main
+	mut message := ''
+	if _ := generate('module main
 
 fn apply(f fn (int) int, x int) int {
 	return f(x)
@@ -9872,14 +9864,12 @@ fn main() {
 	}
 	_ := apply(g, 5)
 }
-', 'selfhost_anon_fn.v', prefs) or { panic(err) }
-	// A function literal `fn (x int) int { … }` in expression position lowers to a
-	// compile-only stub: a top-level `int …__anonfn_N(int) { return (int){0}; }` whose
-	// address is taken as the function-pointer value. FastC has no closure runtime, so
-	// the stub is non-functional (mirrors the channel stubs).
-	assert c_source.contains('__anonfn_'), c_source
-	assert c_source.contains('return (int){0};'), c_source
-	assert !c_source.contains('main.main.'), c_source
+', 'selfhost_anon_fn.v', prefs) {
+		assert false, 'function literal unexpectedly compiled'
+	} else {
+		message = err.msg()
+	}
+	assert message.contains('function literals and closures'), message
 }
 
 fn test_selfhost_c_struct_keyword_field_name() {
@@ -10074,6 +10064,29 @@ fn main() {
 	assert c_source.contains('inner_mono_int'), c_source
 }
 
+fn test_selfhost_nested_explicit_generic_rewrite_is_emitted_in_outer_copy() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn helper[T](value T) T {
+	return value
+}
+
+fn outer[T](value T) int {
+	_ = value
+	return helper[int](1)
+}
+
+fn main() {
+	_ := outer(true)
+}
+', 'selfhost_nested_explicit_generic.v', prefs) or { panic(err) }
+	assert c_source.contains('int helper_mono_int(int value)'), c_source
+	assert c_source.contains('return helper_mono_int(1);'), c_source
+	assert !c_source.contains('helper[int]'), c_source
+}
+
 fn test_selfhost_comptime_unaliased_typ() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -10234,6 +10247,151 @@ fn main() {
 	], map[string]string{}, prefs) or { panic(err) }
 	definition := 'string util__identity_mono_string(string value) {'
 	assert c_source.count(definition) == 1, c_source
+}
+
+fn test_selfhost_on_demand_generic_specializes_composite_return_type() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	util_source := 'module util
+
+pub fn wrap[T](value T) []T {
+	return [value]
+}
+
+pub fn maybe[T](value T) ?[]T {
+	return [value]
+}
+
+pub fn lookup[T](value T) map[string]T {
+	return {
+		"value": value
+	}
+}
+
+pub fn pair[T](value T) (T, []T) {
+	return value, [value]
+}
+
+pub struct Wrapper {}
+
+pub fn (wrapper Wrapper) wrap_method[T](value T) []T {
+	_ = wrapper
+	return [value]
+}
+'
+	main_source := 'module main
+import util
+
+fn main() {
+	values := util.wrap[int](1)
+	_ := values[0]
+	maybe_values := util.maybe[int](1) or { []int{} }
+	_ := maybe_values[0]
+	mapped := util.lookup[int](1)
+	_ := mapped["value"]
+	left, right := util.pair[int](1)
+	_ = left
+	_ := right[0]
+	wrapper := util.Wrapper{}
+	method_values := wrapper.wrap_method[int](1)
+	_ := method_values[0]
+}
+'
+	c_source, _, _ := generate_source_files([
+		FastcSourceFile{
+			path: 'util/util.v'
+			source: util_source
+			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
+		},
+		FastcSourceFile{
+			path: 'main.v'
+			source: main_source
+			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('Array_int util__wrap_mono_int(int value)'), c_source
+	assert c_source.contains('Option util__maybe_mono_int(int value)'), c_source
+	assert c_source.contains('Map_string_int util__lookup_mono_int(int value)'), c_source
+	assert c_source.contains('MultiReturn util__pair_mono_int(int value)'), c_source
+	assert c_source.contains('Array_int util__Wrapper_wrap_method_mono_int('), c_source
+	assert c_source.contains('__typeof__((util__wrap_mono_int(1))) values'), c_source
+	assert !c_source.contains('Array_voidptr values'), c_source
+	assert fastc_specialized_generic_result_type('Map_string_Array_voidptr', 'int') == 'Map_string_Array_int'
+	assert fastc_specialized_generic_result_type('voidptr*', 'int') == 'int*'
+}
+
+fn test_selfhost_on_demand_generic_infers_composite_parameter_type() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	util_source := 'module util
+
+pub fn head[T](items []T) T {
+	return items[0]
+}
+
+pub fn lookup[T](items map[string]T) T {
+	return items["value"]
+}
+'
+	main_source := 'module main
+import util
+
+fn main() {
+	items := [11, 22]
+	_ := util.head(items)
+	mapped := {
+		"value": 33
+	}
+	_ := util.lookup(mapped)
+}
+'
+	c_source, _, _ := generate_source_files([
+		FastcSourceFile{
+			path: 'util/util.v'
+			source: util_source
+			header: fastc_scan_source_header(util_source, 'util/util.v', prefs) or { panic(err) }
+		},
+		FastcSourceFile{
+			path: 'main.v'
+			source: main_source
+			header: fastc_scan_source_header(main_source, 'main.v', prefs) or { panic(err) }
+		},
+	], map[string]string{}, prefs) or { panic(err) }
+	assert c_source.contains('int util__head_mono_int(Array_int items)'), c_source
+	assert c_source.contains('int util__lookup_mono_int(Map_string_int items)'), c_source
+	assert c_source.contains('util__head_mono_int(items)'), c_source
+	assert c_source.contains('util__lookup_mono_int(mapped)'), c_source
+	assert fastc_infer_generic_type_from_parameter('Array_voidptr', 'Array_int') == 'int'
+	assert fastc_infer_generic_type_from_parameter('Map_string_Array_voidptr', 'Map_string_Array_example__Item_ptr') == 'example__Item*'
+}
+
+fn test_selfhost_user_voidptr_generic_method_named_check_element_type_valid_keeps_body() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Validator {}
+
+fn (v Validator) check_element_type_valid[T](element T) bool {
+	_ = v
+	_ = element
+	return true
+}
+
+fn validate(value voidptr) bool {
+	validator := Validator{}
+	return validator.check_element_type_valid(value)
+}
+
+fn main() {
+	_ := validate(unsafe { nil })
+}
+', 'selfhost_user_check_element_type_valid.v', prefs) or { panic(err) }
+	marker := '\nbool Validator_check_element_type_valid_mono_voidptr('
+	definition_start := c_source.last_index(marker) or { -1 }
+	assert definition_start >= 0, c_source
+	definition := c_source[definition_start..]
+	assert definition.contains('return ((bool)true);'), definition
 }
 
 fn test_selfhost_on_demand_generic_erases_imported_generic_struct_arguments() {
