@@ -91,8 +91,14 @@ fn (t &Transformer) fixed_array_init_expansion_estimate(id flat.NodeId, node fla
 	if !t.is_fixed_array_type(fixed_type) {
 		return 0
 	}
-	if node.children_count == 0 && !t.fixed_array_empty_init_may_expand(fixed_array_elem_type(fixed_type)) {
-		return 0
+	if node.children_count == 0 {
+		elem_type := fixed_array_elem_type(fixed_type)
+		if !t.fixed_array_empty_init_may_expand(elem_type) {
+			return 0
+		}
+		if t.fixed_array_empty_init_requires_deferral(elem_type) {
+			return deferred_map_expansion_threshold + 1
+		}
 	}
 	len_text := fixed_array_len_text(fixed_type)
 	if !is_decimal_text(len_text) {
@@ -103,6 +109,19 @@ fn (t &Transformer) fixed_array_init_expansion_estimate(id flat.NodeId, node fla
 		return deferred_map_expansion_threshold + 1
 	}
 	return array_literal_base_expansion_estimate + len * array_literal_entry_expansion_estimate
+}
+
+fn (t &Transformer) fixed_array_empty_init_requires_deferral(elem_type string) bool {
+	clean_type := t.normalize_type_alias(elem_type)
+	if t.is_fixed_array_type(clean_type) {
+		return true
+	}
+	if isnil(t.tc) {
+		return false
+	}
+	// Struct defaults can recursively synthesize collection literals that are not
+	// represented by children of the external initializer.
+	return types.unalias_type(t.tc.parse_type(clean_type)) is types.Struct
 }
 
 fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type string) bool {

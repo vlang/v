@@ -275,6 +275,18 @@ fn test_external_map_expansion_estimate_includes_empty_fixed_array_runtime_init(
 	assert t.fixed_array_init_expansion_estimate(plain, a.nodes[int(plain)]) == 0
 }
 
+fn test_external_map_expansion_estimate_defers_nested_empty_fixed_array_runtime_init() {
+	mut a := flat.FlatAst.new()
+	root := a.add_node(flat.Node{
+		kind: .array_init
+		typ: '[64][64][]int'
+	})
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{
