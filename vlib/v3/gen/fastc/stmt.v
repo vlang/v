@@ -792,7 +792,7 @@ fn (g &Parser) interface_value_expression(interface_type string, actual_type str
 
 fn (mut g Parser) parse_mutable_declaration() ! {
 	g.next()
-	if g.tok != .name {
+	if g.tok != .name && !g.tok.is_keyword() {
 		return g.unsupported('mutable declaration')
 	}
 	name := g.lit

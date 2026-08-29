@@ -344,6 +344,23 @@ fn main() {
 	assert type_ident_count >= 5
 }
 
+fn test_shared_keyword_identifier_in_mut_declaration() {
+	ast, src := parse_span_source('shared_keyword_ident', 'fn main() {
+	mut shared := 1
+	shared++
+	println(shared)
+}
+')
+	mut shared_spans := []string{}
+	for node in ast.nodes {
+		if node.kind == .ident && node.value == 'shared' {
+			shared_spans << span_text(src, node)
+		}
+	}
+	assert shared_spans.len >= 2, shared_spans.str()
+	assert shared_spans.all(it == 'shared')
+}
+
 // Address-of expressions (`&Foo{}`, `&[]T{}`, `&T(x)`) span from the `&` through
 // the whole operand; the pointer/array-init variants build their nodes directly
 // on the flat AST, so they must still carry a valid, full span.

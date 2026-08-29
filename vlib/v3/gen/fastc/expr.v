@@ -588,6 +588,19 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.pos
 			continue
 		}
+		if g.tok == .key_shared && (g.lit in g.locals || g.shared_token_is_identifier()) {
+			result.write_string(g.lit)
+			expression_tokens << FastcExpressionToken{
+				tok: .name
+				lit: g.lit
+			}
+			previous_token = .name
+			previous_lit = g.lit
+			previous_module_separator = false
+			previous_token_end = g.s.pos
+			g.next()
+			continue
+		}
 		if g.tok in [.key_mut, .key_shared] {
 			g.next()
 			if g.tok in [.amp, .and] {
@@ -1748,6 +1761,15 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		return '((bool)(${rendered_expression}))'
 	}
 	return rendered_expression
+}
+
+fn (g &Parser) shared_token_is_identifier() bool {
+	mut offset := g.s.offset
+	for offset < g.s.src.len && g.s.src[offset].is_space() {
+		offset++
+	}
+	return offset >= g.s.src.len || g.s.src[offset] in [`.`, `[`, `)`, `]`, `,`, `;`, `+`, `-`,
+		`*`, `/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`]
 }
 
 fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source string) string {

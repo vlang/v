@@ -6,6 +6,28 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+fn test_selfhost_shared_keyword_local_is_preserved() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Box {
+mut:
+	value int
+}
+
+fn main() {
+	unsafe {
+		mut shared := Box{}
+		shared.value = 1
+		println(shared.value)
+	}
+}
+', 'shared_keyword_local.v', prefs) or { panic(err) }
+	assert c_source.contains('shared.value = 1;'), c_source
+	assert c_source.contains('println(shared.value)'), c_source
+}
+
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	sources := [
 		FastcSourceFile{

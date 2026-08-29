@@ -6280,6 +6280,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return stmt_id
 		}
 		.key_shared {
+			if !token_can_start_type_name(p.peek()) && p.peek() != .key_union {
+				return p.assign_or_expr_stmt()
+			}
 			p.next()
 			stmt_id := p.assign_or_expr_stmt()
 			p.mark_node_shared(stmt_id)
@@ -8308,7 +8311,7 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 }
 
 fn (mut p Parser) stmt_expr() flat.NodeId {
-	is_stmt_ident := p.tok == .name
+	is_stmt_ident := p.tok_can_be_decl_name()
 	lhs := p.prefix_expr()
 	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident, false)
 }
@@ -9367,6 +9370,16 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return id
 		}
 		.key_shared {
+			if !token_can_start_type_name(p.peek()) && p.peek() != .key_union {
+				name_pos := p.tok_pos
+				name_end := p.tok_end
+				p.next()
+				return p.add_node(flat.Node{
+					kind:  .ident
+					value: 'shared'
+					pos:   token.new_span(p.cur_file_id, name_pos, name_end)
+				})
+			}
 			p.next()
 			return p.prefix_expr()
 		}
@@ -10352,7 +10365,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		mut arg_is_shared := false
 		mut arg_is_mut := false
-		if p.tok == .key_shared {
+		if p.tok == .key_shared && token_can_start_type_name(p.peek()) {
 			arg_is_shared = true
 			p.next()
 		} else if p.tok == .key_mut {
