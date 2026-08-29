@@ -2913,6 +2913,29 @@ fn test_immediately_invoked_closure_keeps_spawned_nested_capture_alive() {
 	assert out == '42'
 }
 
+fn test_immediately_invoked_closure_keeps_aliased_spawn_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 42
+	worker := (fn [value] () thread int {
+		p := unsafe { &value }
+		return spawn fn [p] () int {
+			return unsafe { *p }
+		}()
+	})()
+	println(int_str(worker.wait()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_spawn_capture_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	wait_pos := main_body.index('__v_thread_join') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert wait_pos >= 0, main_body
+	assert destroy_pos > wait_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_spawn_capture', source)
+	assert out == '42'
+}
+
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]

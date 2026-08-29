@@ -1356,15 +1356,52 @@ fn (t &Transformer) immediate_fn_literal_spawns_capture(id flat.NodeId) bool {
 	if captures.len == 0 {
 		return false
 	}
+	mut capture_aliases := captures.clone()
+	for {
+		alias_count := capture_aliases.len
+		for i in 0 .. node.children_count {
+			child_id := t.a.child(&node, i)
+			child := t.a.nodes[int(child_id)]
+			if child.kind !in [.ident, .param] {
+				t.collect_capture_derived_names(child_id, mut capture_aliases)
+			}
+		}
+		if capture_aliases.len == alias_count {
+			break
+		}
+	}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		child := t.a.nodes[int(child_id)]
-		if child.kind !in [.ident, .param]
-			&& t.expr_spawns_any_named_capture(child_id, captures) {
+		if child.kind !in [.ident, .param] && t.expr_spawns_any_named_capture(child_id, capture_aliases) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) collect_capture_derived_names(id flat.NodeId, mut names map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return
+	}
+	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
+		mut i := 0
+		for i + 1 < node.children_count {
+			lhs := t.a.child_node(&node, i)
+			rhs_id := t.a.child(&node, i + 1)
+			if lhs.kind == .ident && lhs.value.len > 0 && t.expr_mentions_any_name(rhs_id, names) {
+				names[lhs.value] = true
+			}
+			i += 2
+		}
+	}
+	for i in 0 .. node.children_count {
+		t.collect_capture_derived_names(t.a.child(&node, i), mut names)
+	}
 }
 
 fn (t &Transformer) expr_spawns_any_named_capture(id flat.NodeId, captures map[string]bool) bool {
