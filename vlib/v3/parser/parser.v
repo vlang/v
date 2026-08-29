@@ -12428,6 +12428,9 @@ fn (p &Parser) can_start_type_name() bool {
 
 fn (mut p Parser) shared_token_is_identifier() bool {
 	next := p.peek()
+	if next.is_keyword() && next !in [.key_or, .key_in, .key_as, .key_is] {
+		return false
+	}
 	if !token_can_start_type_name(next) && next != .key_union {
 		return true
 	}

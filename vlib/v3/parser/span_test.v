@@ -353,6 +353,8 @@ fn test_shared_keyword_identifier_in_mut_declaration() {
 	shared?
 	shared!
 	_ = shared & 1
+	shared type := 1
+	println(shared type)
 	println(shared)
 }
 ')
