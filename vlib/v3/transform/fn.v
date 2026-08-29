@@ -1095,7 +1095,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	immediate_fresh_closure := immediate_bound_method || t.call_returns_exclusive_closure(callee_id)
 	mut immediate_closure_type := ''
 	mut immediate_closure_cleanup := ''
-	immediate_closure_spawns_capture := t.immediate_fn_literal_spawns_capture(callee_id)
+	immediate_closure_capture_may_escape := t.immediate_fn_literal_capture_may_escape(callee_id)
 	if immediate_fresh_closure {
 		immediate_closure_type = t.fresh_runtime_closure_type(callee_id) or { '' }
 		if immediate_closure_type.len > 0 {
@@ -1273,8 +1273,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		if typ != t.a.nodes[int(id)].typ {
 			t.set_node_typ(int(id), typ)
 		}
-		return t.finish_immediate_closure_call(id, immediate_closure_cleanup, typ,
-			immediate_closure_spawns_capture)
+		return t.finish_immediate_closure_call(id, immediate_closure_cleanup, typ, immediate_closure_capture_may_escape)
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -1309,15 +1308,14 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 			args:     cached_args
 		}
 	}
-	return t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, typ,
-		immediate_closure_spawns_capture)
+	return t.finish_immediate_closure_call(new_id, immediate_closure_cleanup, typ, immediate_closure_capture_may_escape)
 }
 
-fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closure_name string, typ string, spawns_capture bool) flat.NodeId {
+fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closure_name string, typ string, capture_may_escape bool) flat.NodeId {
 	if closure_name.len == 0 {
 		return call_id
 	}
-	if spawns_capture || t.immediate_closure_result_may_alias_capture(typ) {
+	if capture_may_escape || t.immediate_closure_result_may_alias_capture(typ) {
 		t.pending_stmts << t.make_local_closure_cleanup_defer(closure_name)
 		return call_id
 	}
@@ -1335,13 +1333,13 @@ fn (mut t Transformer) finish_immediate_closure_call(call_id flat.NodeId, closur
 	return result
 }
 
-fn (t &Transformer) immediate_fn_literal_spawns_capture(id flat.NodeId) bool {
+fn (t &Transformer) immediate_fn_literal_capture_may_escape(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind in [.paren, .cast_expr] && node.children_count == 1 {
-		return t.immediate_fn_literal_spawns_capture(t.a.child(&node, 0))
+		return t.immediate_fn_literal_capture_may_escape(t.a.child(&node, 0))
 	}
 	if node.kind != .fn_literal {
 		return false
@@ -1373,7 +1371,7 @@ fn (t &Transformer) immediate_fn_literal_spawns_capture(id flat.NodeId) bool {
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		child := t.a.nodes[int(child_id)]
-		if child.kind !in [.ident, .param] && t.expr_spawns_any_named_capture(child_id, capture_aliases) {
+		if child.kind !in [.ident, .param] && t.expr_may_escape_any_named_capture(child_id, capture_aliases) {
 			return true
 		}
 	}
@@ -1404,16 +1402,26 @@ fn (t &Transformer) collect_capture_derived_names(id flat.NodeId, mut names map[
 	}
 }
 
-fn (t &Transformer) expr_spawns_any_named_capture(id flat.NodeId, captures map[string]bool) bool {
+fn (t &Transformer) expr_may_escape_any_named_capture(id flat.NodeId, captures map[string]bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .spawn_expr && t.expr_mentions_any_name(id, captures) {
+	// Calls can retain arguments in external storage, and assignments can project a
+	// capture-derived value into storage outside the immediate closure. Conservatively
+	// keep the context through the enclosing scope for either escape boundary.
+	if node.kind in [.call, .spawn_expr] && t.expr_mentions_any_name(id, captures) {
 		return true
 	}
+	if node.kind == .assign && node.children_count >= 2 {
+		for i := 1; i < node.children_count; i += 2 {
+			if t.expr_mentions_any_name(t.a.child(&node, i), captures) {
+				return true
+			}
+		}
+	}
 	for i in 0 .. node.children_count {
-		if t.expr_spawns_any_named_capture(t.a.child(&node, i), captures) {
+		if t.expr_may_escape_any_named_capture(t.a.child(&node, i), captures) {
 			return true
 		}
 	}
