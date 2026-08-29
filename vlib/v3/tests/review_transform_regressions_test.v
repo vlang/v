@@ -2806,6 +2806,43 @@ fn main() {
 	assert out == '1249975000'
 }
 
+fn test_immediately_invoked_bound_method_keeps_escaped_receiver_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+struct State {
+	value int
+}
+
+fn (state &State) install(registry &Registry) {
+	unsafe {
+		registry.callbacks << fn [state] () int {
+			return state.value
+		}
+	}
+}
+
+fn main() {
+	registry := &Registry{}
+	(State{
+		value: 42
+	}.install)(registry)
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_bound_method_escaped_receiver_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	call_pos := main_body.index('println(int__str') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert call_pos >= 0, main_body
+	assert destroy_pos > call_pos, main_body
+	out := run_good(v3_bin, 'immediate_bound_method_escaped_receiver', source)
+	assert out == '42'
+}
+
 fn test_immediately_invoked_closure_keeps_aliased_pointer_result_alive() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn main() {
