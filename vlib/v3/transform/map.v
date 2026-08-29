@@ -77,7 +77,7 @@ fn (t &Transformer) array_literal_expansion_estimate(node flat.Node, is_external
 }
 
 fn (t &Transformer) fixed_array_init_expansion_estimate(id flat.NodeId, node flat.Node) int {
-	if node.kind != .array_init || node.children_count == 0 {
+	if node.kind != .array_init {
 		return 0
 	}
 	raw_type := if node.typ.len > 0 {
@@ -91,6 +91,9 @@ fn (t &Transformer) fixed_array_init_expansion_estimate(id flat.NodeId, node fla
 	if !t.is_fixed_array_type(fixed_type) {
 		return 0
 	}
+	if node.children_count == 0 && !t.fixed_array_empty_init_may_expand(fixed_array_elem_type(fixed_type)) {
+		return 0
+	}
 	len_text := fixed_array_len_text(fixed_type)
 	if !is_decimal_text(len_text) {
 		return deferred_map_expansion_threshold + 1
@@ -100,6 +103,23 @@ fn (t &Transformer) fixed_array_init_expansion_estimate(id flat.NodeId, node fla
 		return deferred_map_expansion_threshold + 1
 	}
 	return array_literal_base_expansion_estimate + len * array_literal_entry_expansion_estimate
+}
+
+fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type string) bool {
+	clean_type := t.normalize_type_alias(elem_type)
+	if clean_type.starts_with('[]') || clean_type.ends_with('[]') || clean_type.starts_with('map[') || clean_type.starts_with('chan ') {
+		return true
+	}
+	if t.is_fixed_array_type(clean_type) {
+		fixed_type := t.resolved_fixed_array_canonical_type(clean_type)
+		return t.fixed_array_empty_init_may_expand(fixed_array_elem_type(fixed_type))
+	}
+	if isnil(t.tc) {
+		return false
+	}
+	// Struct fields can carry runtime defaults. Treat every struct conservatively here;
+	// this estimate only decides whether lowering should leave the bounded worker arena.
+	return types.unalias_type(t.tc.parse_type(clean_type)) is types.Struct
 }
 
 // external_map_tree_expansion_estimate counts collection and struct literals reachable
