@@ -47,6 +47,14 @@ fn test_json_pointer_sum_variants_use_direct_owned_payloads() {
 	}
 	assert encoded.contains('(value).${pointer_field}'), encoded
 	assert !encoded.contains('(*(value).${pointer_field})'), encoded
+	equal := encode_gen.json_encode_equal_c_expr(payload_type, 'left', 'right', []string{}) or {
+		assert false, 'pointer sum equality was not generated'
+		return
+	}
+	assert equal.contains('(left).${pointer_field}'), equal
+	assert equal.contains('(right).${pointer_field}'), equal
+	assert !equal.contains('(*(left).${pointer_field})'), equal
+	assert !equal.contains('(*(right).${pointer_field})'), equal
 
 	mut decode_gen := FlatGen.new()
 	decode_gen.a = &ast

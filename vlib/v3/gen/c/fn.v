@@ -9368,8 +9368,18 @@ fn (mut g FlatGen) json_encode_equal_c_expr(typ types.Type, left string, right s
 			variant := variants[i]
 			variant_type := g.json_sum_variant_type(variant)
 			field := g.sum_field_name(variant)
-			variant_equal := g.json_encode_equal_c_expr(variant_type, '(*(${left}).${field})',
-				'(*(${right}).${field})', next_seen) or { return none }
+			left_variant := if variant_type is types.Pointer {
+				'((${left}).${field})'
+			} else {
+				'(*(${left}).${field})'
+			}
+			right_variant := if variant_type is types.Pointer {
+				'((${right}).${field})'
+			} else {
+				'(*(${right}).${field})'
+			}
+			variant_equal := g.json_encode_equal_c_expr(variant_type, left_variant, right_variant,
+				next_seen) or { return none }
 			index := g.sum_type_index(sum_name, variant)
 			active_equal = '((${left}).typ == ${index} ? ${variant_equal} : ${active_equal})'
 		}
