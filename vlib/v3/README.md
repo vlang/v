@@ -146,6 +146,9 @@ Production, test, shared/live, ownership/autofree, object-file, profiling/covera
 custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL modes are currently
 rejected.
 
+A conventional C-backend self-host prunes FastC along with the other optional backends. Pass
+`-compile-backend fastc` or `-all-backends` when the generated compiler should retain `-b fastc`.
+
 `-selfhost -b fastc -o v4 vlib/v3/v3.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v3.fastcdriver` entry point and can build further FastC generations without
 the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
