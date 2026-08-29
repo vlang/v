@@ -74,7 +74,9 @@ struct MacosV3CErrorReport {
 	// and deleted the directory, so the retry never reads a path or deletes a directory
 	// named by the (inheritable, forgeable) environment.
 	v_file                 string // informational base filename (no directory)
-	v_source               string // already-bounded source snippet; never a whole file
+	v_source               string // the full failing file (bounded only when larger than the byte budget)
+	v_source_truncated     bool   // true when v_source is a bounded excerpt rather than the whole file
+	v_source_focus         int    // failing line's 1-based position within v_source (0 = none)
 	input_digests          map[string]string
 	input_digests_complete bool
 }
@@ -442,6 +444,8 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 					c_output:               failed.c_output
 					v_file:                 failed.v_file
 					v_source:               failed.v_source
+					v_source_truncated:     failed.v_source_truncated
+					v_source_focus:         failed.v_source_focus
 					source_inline:          true
 					input_digests:          failed.input_digests
 					input_digests_complete: failed.input_digests_complete
@@ -475,6 +479,8 @@ fn rebuild(prefs &pref.Preferences, macos_v3_c_error_report ?MacosV3CErrorReport
 					c_output:               failed.c_output
 					v_file:                 failed.v_file
 					v_source:               failed.v_source
+					v_source_truncated:     failed.v_source_truncated
+					v_source_focus:         failed.v_source_focus
 					source_inline:          true
 					input_digests:          failed.input_digests
 					input_digests_complete: failed.input_digests_complete
