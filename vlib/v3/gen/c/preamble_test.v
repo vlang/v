@@ -15,9 +15,10 @@ fn test_tinyc_windows_thread_local_slot_uses_win32_tls() {
 	c_code := g.sb.str()
 	windows_code := c_code.all_before('#elif defined(__TINYC__)')
 	assert windows_code.contains('#if defined(__TINYC__) && defined(_WIN32)')
-	assert windows_code.contains('state_key = TlsAlloc();')
-	assert windows_code.contains('TlsGetValue(state_key)')
-	assert windows_code.contains('TlsSetValue(state_key, p)')
+	assert windows_code.contains('state_key = FlsAlloc(state_slot_free);')
+	assert windows_code.contains('FlsGetValue(state_key)')
+	assert windows_code.contains('FlsSetValue(state_key, p)')
+	assert windows_code.contains('state_slot_free(void* p) { free(p); }')
 	assert !windows_code.contains('pthread_')
 }
 
@@ -82,6 +83,9 @@ fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
 	assert c_code.contains('DWORD WINAPI TlsAlloc(void);'), c_code
 	assert c_code.contains('void* WINAPI TlsGetValue(DWORD index);'), c_code
 	assert c_code.contains('BOOL WINAPI TlsSetValue(DWORD index, void* value);'), c_code
+	assert c_code.contains('DWORD WINAPI FlsAlloc(void (WINAPI *callback)(void*));'), c_code
+	assert c_code.contains('void* WINAPI FlsGetValue(DWORD index);'), c_code
+	assert c_code.contains('BOOL WINAPI FlsSetValue(DWORD index, void* value);'), c_code
 }
 
 fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {

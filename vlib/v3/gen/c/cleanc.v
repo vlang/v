@@ -18510,6 +18510,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('DWORD WINAPI TlsAlloc(void);')
 	g.writeln('void* WINAPI TlsGetValue(DWORD index);')
 	g.writeln('BOOL WINAPI TlsSetValue(DWORD index, void* value);')
+	g.writeln('DWORD WINAPI FlsAlloc(void (WINAPI *callback)(void*));')
+	g.writeln('void* WINAPI FlsGetValue(DWORD index);')
+	g.writeln('BOOL WINAPI FlsSetValue(DWORD index, void* value);')
 	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
@@ -21490,13 +21493,14 @@ fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
 
 fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string, dims string) {
 	g.writeln('#if defined(__TINYC__) && defined(_WIN32)')
-	g.writeln('static DWORD ${cname}_key = TLS_OUT_OF_INDEXES;')
+	g.writeln('static DWORD ${cname}_key = 0xFFFFFFFF;')
+	g.writeln('static void WINAPI ${cname}_slot_free(void* p) { free(p); }')
 	g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
-	g.writeln('static void ${cname}_key_init(void) { ${cname}_key = TlsAlloc(); }')
+	g.writeln('static void ${cname}_key_init(void) { ${cname}_key = FlsAlloc(${cname}_slot_free); }')
 	if dims.len > 0 {
-		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { void* p = TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); TlsSetValue(${cname}_key, p); } return p; }')
+		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { void* p = FlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); FlsSetValue(${cname}_key, p); } return p; }')
 	} else {
-		g.writeln('static ${ct}* ${cname}_slot(void) { void* p = TlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); TlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
+		g.writeln('static ${ct}* ${cname}_slot(void) { void* p = FlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); FlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
 	}
 	g.writeln('#define ${cname} (*${cname}_slot())')
 	g.writeln('#elif defined(__TINYC__)')
