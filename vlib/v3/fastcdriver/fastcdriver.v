@@ -2,6 +2,7 @@ module fastcdriver
 
 import os
 import time
+import v3.cmdexec
 import v3.gen.fastc
 import v3.pref
 
@@ -274,6 +275,27 @@ fn fastc_tcc_backtrace_enabled(target_os string, target_arch string) bool {
 	return !(target_os == 'macos' && target_arch == 'arm64')
 }
 
+fn tcc_host_system_flags(target_os string) []string {
+	if target_os != os.user_os() || target_os == 'windows' {
+		return []
+	}
+	mut flags := ['-I/usr/local/include', '-L/usr/local/lib']
+	if target_os == 'macos' {
+		mut sdk_root := os.getenv('SDKROOT')
+		if !os.is_dir(sdk_root) {
+			result := cmdexec.run('xcrun', ['--show-sdk-path'])
+			if result.exit_code == 0 {
+				sdk_root = result.output.trim_space()
+			}
+		}
+		if os.is_dir(sdk_root) {
+			flags << '-I${os.join_path(sdk_root, 'usr', 'include')}'
+			flags << '-L${os.join_path(sdk_root, 'usr', 'lib')}'
+		}
+	}
+	return flags
+}
+
 // run invokes the standalone FastC compiler or its self-build command.
 pub fn run(args []string) {
 	command_index := self_command_index(args)
@@ -283,8 +305,7 @@ pub fn run(args []string) {
 	}
 	input, output, keep_c := parse_arguments(args)
 	real_input := os.real_path(input)
-	if pref.is_test_file_for_backend(real_input, 'fastc')
-		|| pref.is_test_file_for_backend(real_input, 'c') {
+	if pref.is_test_file_for_backend(real_input, 'fastc') || pref.is_test_file_for_backend(real_input, 'c') {
 		fail('fastc self-host compiler does not support test files')
 	}
 	if canonical_output_path(output) == real_input {
@@ -299,8 +320,7 @@ pub fn run(args []string) {
 	prefs.building_v = real_input.ends_with('/vlib/v3/v3.v')
 	prefs.selfhost = prefs.building_v
 	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_wasm', 'skip_eval']
-	backtrace_enabled := fastc_tcc_backtrace_enabled(prefs.normalized_target_os(),
-		prefs.target.arch)
+	backtrace_enabled := fastc_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.target.arch)
 	// Mirror the driver's TinyCC compatibility plan (add_v3_tcc_compat_defines):
 	// TCC's backtrace runtime cannot be linked on macOS arm64, so builtin must
 	// not reference tcc_backtrace there. Descendant generations then compile
@@ -373,16 +393,20 @@ pub fn run(args []string) {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc := os.join_path_single(tcc_dir, 'tcc.exe')
 	tcc_lib := os.join_path_single(tcc_dir, 'lib')
-	// The emitted spawn runtime calls pthread functions, which live outside
-	// libc on Linux with glibc before 2.34 and on the BSDs.
-	mut thread_link_flag := ''
-	if generation.uses_threads {
-		thread_link_flag = '-lpthread '
+	mut cc_args := ['-std=gnu11', '-I${os.join_path_single(tcc_lib, 'include')}', '-L${tcc_lib}']
+	cc_args << tcc_host_system_flags(prefs.normalized_target_os())
+	cc_args << generation.c_flags
+	if backtrace_enabled {
+		cc_args << '-bt25'
 	}
-	backtrace_flag := if backtrace_enabled { '-bt25 ' } else { '' }
-	command := '${os.quoted_path(tcc)} -std=gnu11 ${backtrace_flag}-I${os.quoted_path(os.join_path_single(tcc_lib,
-		'include'))} -L${os.quoted_path(tcc_lib)} -w -o ${os.quoted_path(staged_output)} ${os.quoted_path(c_path)} ${thread_link_flag}-lm'
-	result := os.execute(command)
+	cc_args << ['-w', '-o', staged_output, c_path]
+	if generation.uses_threads {
+		// The emitted spawn runtime calls pthread functions, which live outside
+		// libc on Linux with glibc before 2.34 and on the BSDs.
+		cc_args << '-lpthread'
+	}
+	cc_args << '-lm'
+	result := cmdexec.run(tcc, cc_args)
 	if result.exit_code != 0 {
 		fail(result.output)
 	}
