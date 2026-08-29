@@ -142,11 +142,11 @@ fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type string) bool {
 	return types.unalias_type(t.tc.parse_type(clean_type)) is types.Struct
 }
 
-// external_map_tree_expansion_estimate counts collection and struct literals reachable
-// through an initializer that lives outside the current function's contiguous
-// node range. The transformer recursively lowers each nested initializer at the
-// use site. Struct reconstruction can also synthesize field defaults, so defer it
-// rather than trying to predict an expansion that is not represented in this AST.
+// external_map_tree_expansion_estimate counts writes caused by lowering an initializer
+// that lives outside the current function's contiguous node range. The transformer
+// recursively lowers each nested initializer at the use site. Struct reconstruction
+// can also synthesize field defaults, so defer it rather than trying to predict an
+// expansion that is not represented in this AST.
 fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo int, hi int) int {
 	if int(root) < 0 || int(root) >= t.a.nodes.len {
 		return 0
@@ -184,14 +184,26 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// transform_call_args, including a new child-ID span.
 			estimate += int(node.children_count) + 1
 		}
+		if node.kind == .cast_expr {
+			// External casts cannot rewrite their child IDs in place, so even an
+			// otherwise unchanged cast appends a replacement node and child span.
+			estimate += int(node.children_count) + 1
+		}
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] {
 			// Logical conditions are rebuilt through make_infix during smartcast lowering.
 			estimate++
 		}
-		if node.kind == .infix && node.op in [.plus, .eq, .ne, .lt, .gt, .le, .ge] && node.children_count >= 2 && (t.is_string_type(t.a.child(&node, 0)) || t.is_string_type(t.a.child(&node, 1))) {
+		is_string_infix := node.kind == .infix && node.op in [.plus, .eq, .ne, .lt, .gt, .le, .ge] && node.children_count >= 2 && (t.is_string_type(t.a.child(&node, 0)) || t.is_string_type(t.a.child(&node, 1)))
+		if is_string_infix {
 			// String infix lowering emits a fresh literal or an identifier/call pair,
 			// sometimes with conversions or a negating prefix.
 			estimate += external_string_infix_expansion_estimate
+		}
+		if node.kind == .infix && node.op !in [.logical_and, .logical_or] && !is_string_infix {
+			// A changed external operand makes ordinary infix lowering append both
+			// the rebuilt node and its child span. Counting every external infix is
+			// intentionally conservative; unchanged ones will simply reuse their ID.
+			estimate += int(node.children_count) + 1
 		}
 		// External constant initializers can themselves index another constant map.
 		// That substitution edge is semantic rather than a physical FlatAst child.
