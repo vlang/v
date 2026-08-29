@@ -15435,6 +15435,11 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 			if child_id == next_id {
 				break
 			}
+			// An if-guard declaration is visible only in the guarded (then) branch.
+			// Do not let it shadow a constant while resolving an else-branch use.
+			if parent.kind == .if_expr && i == 0 && parent.children_count > 1 && next_id != int(t.a.child(&parent, 1)) {
+				continue
+			}
 			if child_id < 0 || child_id >= t.a.nodes.len {
 				continue
 			}

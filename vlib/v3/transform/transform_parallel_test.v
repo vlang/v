@@ -101,6 +101,74 @@ fn test_const_map_expansion_estimate_ignores_stale_transformer_local() {
 	assert t.collection_const_expr_for_ident(ident)? == const_id
 }
 
+fn test_const_map_expansion_estimate_keeps_if_guard_shadow_out_of_else_branch() {
+	mut a := flat.FlatAst.new()
+	const_id := a.add_node(flat.Node{
+		kind: .map_init
+	})
+	guard_lhs := a.add_node(flat.Node{
+		kind: .ident
+		value: 'lookup'
+	})
+	guard_rhs := a.add_node(flat.Node{
+		kind: .call
+	})
+	guard_start := a.children.len
+	a.children << guard_lhs
+	a.children << guard_rhs
+	guard := a.add_node(flat.Node{
+		kind: .decl_assign
+		children_start: guard_start
+		children_count: 2
+	})
+	then_ident := a.add_node(flat.Node{
+		kind: .ident
+		value: 'lookup'
+	})
+	then_start := a.children.len
+	a.children << then_ident
+	then_block := a.add_node(flat.Node{
+		kind: .block
+		children_start: then_start
+		children_count: 1
+	})
+	else_ident := a.add_node(flat.Node{
+		kind: .ident
+		value: 'lookup'
+	})
+	else_start := a.children.len
+	a.children << else_ident
+	else_block := a.add_node(flat.Node{
+		kind: .block
+		children_start: else_start
+		children_count: 1
+	})
+	if_start := a.children.len
+	a.children << guard
+	a.children << then_block
+	a.children << else_block
+	if_expr := a.add_node(flat.Node{
+		kind: .if_expr
+		children_start: if_start
+		children_count: 3
+	})
+	fn_start := a.children.len
+	a.children << if_expr
+	a.add_node(flat.Node{
+		kind: .fn_decl
+		value: 'guarded_lookup'
+		children_start: fn_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.const_exprs['lookup'] = const_id
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+
+	assert t.collection_const_expr_for_ident(then_ident) == none
+	assert t.collection_const_expr_for_ident(else_ident)? == const_id
+}
+
 fn test_map_expansion_estimate_includes_owned_value_cleanup() {
 	$if !ownership ? {
 		return
