@@ -8984,25 +8984,47 @@ fn (tc &TypeChecker) storage_lvalue_is_rooted_at_param(id flat.NodeId, name stri
 	return false
 }
 
-fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, param_names []string, target_param_idx int, mut sources []int) {
+fn storage_param_sources_clone(source map[string][]int) map[string][]int {
+	mut cloned := map[string][]int{}
+	for name, params in source {
+		cloned[name] = params.clone()
+	}
+	return cloned
+}
+
+fn storage_param_sources_merge(mut target map[string][]int, source map[string][]int) {
+	for name, params in source {
+		if name !in target {
+			continue
+		}
+		mut merged := target[name].clone()
+		for param_idx in params {
+			if param_idx !in merged {
+				merged << param_idx
+			}
+		}
+		target[name] = merged
+	}
+}
+
+fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, aliases map[string][]int, target_param_idx int, mut sources []int) {
 	if !tc.valid_node_id(id) {
 		return
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .ident {
-		for i, name in param_names {
-			if i != target_param_idx && node.value == name && i !in sources {
-				sources << i
-				return
+		for param_idx in aliases[node.value] {
+			if param_idx != target_param_idx && param_idx !in sources {
+				sources << param_idx
 			}
 		}
 	}
 	for i in 0 .. node.children_count {
-		tc.collect_storage_source_params(tc.a.child(&node, i), param_names, target_param_idx, mut sources)
+		tc.collect_storage_source_params(tc.a.child(&node, i), aliases, target_param_idx, mut sources)
 	}
 }
 
-fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name string, target_type string, param_names []string, target_param_idx int, decl_mod string, mut visiting map[u64]bool, mut sources []int) {
+fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name string, target_type string, target_param_idx int, decl_mod string, mut aliases map[string][]int, mut visiting map[u64]bool, mut sources []int) {
 	if !tc.valid_node_id(id) {
 		return
 	}
@@ -9010,13 +9032,89 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
 		return
 	}
-	if node.kind in [.assign, .selector_assign, .index_assign] {
-		for i := 0; i + 1 < int(node.children_count); i += 2 {
-			lhs_id := tc.a.child(&node, i)
-			if tc.storage_lvalue_is_rooted_at_param(lhs_id, target_name) {
-				tc.collect_storage_source_params(tc.a.child(&node, i + 1), param_names, target_param_idx, mut sources)
+	if node.kind == .block {
+		before := storage_param_sources_clone(aliases)
+		mut scoped := storage_param_sources_clone(aliases)
+		mut declared := map[string]bool{}
+		for i in 0 .. node.children_count {
+			child_id := tc.a.child(&node, i)
+			child := tc.a.nodes[int(child_id)]
+			if child.kind == .decl_assign {
+				for j := 0; j + 1 < int(child.children_count); j += 2 {
+					lhs := tc.a.child_node(&child, j)
+					if lhs.kind == .ident {
+						declared[lhs.value] = true
+					}
+				}
+			}
+			tc.collect_param_storage_sources(child_id, target_name, target_type, target_param_idx, decl_mod, mut scoped, mut visiting, mut sources)
+		}
+		for name, _ in before {
+			if !declared[name] {
+				aliases[name] = scoped[name].clone()
 			}
 		}
+		return
+	}
+	if node.kind == .if_expr {
+		if node.children_count > 0 {
+			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut sources)
+		}
+		before := storage_param_sources_clone(aliases)
+		mut merged := storage_param_sources_clone(aliases)
+		if node.children_count > 1 {
+			mut then_aliases := storage_param_sources_clone(before)
+			tc.collect_param_storage_sources(tc.a.child(&node, 1), target_name, target_type, target_param_idx, decl_mod, mut then_aliases, mut visiting, mut sources)
+			storage_param_sources_merge(mut merged, then_aliases)
+		}
+		if node.children_count > 2 {
+			mut else_aliases := storage_param_sources_clone(before)
+			tc.collect_param_storage_sources(tc.a.child(&node, 2), target_name, target_type, target_param_idx, decl_mod, mut else_aliases, mut visiting, mut sources)
+			storage_param_sources_merge(mut merged, else_aliases)
+		}
+		aliases = merged.move()
+		return
+	}
+	if node.kind == .match_stmt {
+		if node.children_count > 0 {
+			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut sources)
+		}
+		before := storage_param_sources_clone(aliases)
+		mut merged := storage_param_sources_clone(aliases)
+		for i in 1 .. node.children_count {
+			mut branch_aliases := storage_param_sources_clone(before)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut branch_aliases, mut visiting, mut sources)
+			storage_param_sources_merge(mut merged, branch_aliases)
+		}
+		aliases = merged.move()
+		return
+	}
+	if node.kind in [.for_stmt, .for_in_stmt] {
+		before := storage_param_sources_clone(aliases)
+		mut loop_aliases := storage_param_sources_clone(aliases)
+		for i in 0 .. node.children_count {
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut loop_aliases, mut visiting, mut sources)
+		}
+		storage_param_sources_merge(mut aliases, before)
+		storage_param_sources_merge(mut aliases, loop_aliases)
+		return
+	}
+	if node.kind in [.decl_assign, .assign, .selector_assign, .index_assign] {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			lhs_id := tc.a.child(&node, i)
+			rhs_id := tc.a.child(&node, i + 1)
+			tc.collect_param_storage_sources(rhs_id, target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut sources)
+			if tc.storage_lvalue_is_rooted_at_param(lhs_id, target_name) {
+				tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut sources)
+			}
+			lhs := tc.a.nodes[int(lhs_id)]
+			if lhs.kind == .ident && lhs.value != target_name {
+				mut alias_sources := []int{}
+				tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut alias_sources)
+				aliases[lhs.value] = alias_sources
+			}
+		}
+		return
 	}
 	if node.kind == .call && node.children_count > 0 {
 		call_name := tc.resolved_call_name(id) or {
@@ -9059,7 +9157,7 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 							}
 						}
 						if tc.valid_node_id(source_id) {
-							tc.collect_storage_source_params(source_id, param_names, target_param_idx, mut sources)
+							tc.collect_storage_source_params(source_id, aliases, target_param_idx, mut sources)
 						}
 					}
 				}
@@ -9067,7 +9165,7 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		}
 	}
 	for i in 0 .. node.children_count {
-		tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, param_names, target_param_idx, decl_mod, mut visiting, mut sources)
+		tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut sources)
 	}
 }
 
@@ -9095,10 +9193,16 @@ fn (tc &TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFn
 	if target_param_idx >= param_names.len {
 		return []int{}
 	}
+	mut aliases := map[string][]int{}
+	for i, name in param_names {
+		if i != target_param_idx {
+			aliases[name] = [i]
+		}
+	}
 	visiting[cache_id] = true
 	mut sources := []int{}
 	for i in body_start .. fn_node.children_count {
-		tc.collect_param_storage_sources(tc.a.child(&fn_node, i), target_param.value, target_param.typ, param_names, target_param_idx, decl.mod, mut visiting, mut sources)
+		tc.collect_param_storage_sources(tc.a.child(&fn_node, i), target_param.value, target_param.typ, target_param_idx, decl.mod, mut aliases, mut visiting, mut sources)
 	}
 	visiting.delete(cache_id)
 	return sources
