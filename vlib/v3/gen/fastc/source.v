@@ -40,10 +40,27 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 		dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
 		result = result.replace('@DIR', os.real_path(dir))
 	}
+	// A quoted C include is relative to the V file that declared it. FastC hoists
+	// directives into one generated C file, so preserve that original include base
+	// by making the path absolute before hoisting.
+	if result.starts_with('include "') || result.starts_with('insert "') {
+		quote_start := result.index_u8(`"`)
+		quote_end := result.last_index_u8(`"`)
+		if quote_start >= 0 && quote_end > quote_start {
+			include_path := result[quote_start + 1..quote_end]
+			if !os.is_abs_path(include_path) {
+				dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
+				resolved := os.join_path(os.real_path(dir), include_path)
+				if os.exists(resolved) {
+					result = result[..quote_start + 1] + resolved + result[quote_end..]
+				}
+			}
+		}
+	}
 	return result
 }
 
-fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcSourceFile {
+fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]FastcSourceFile, map[string]string) {
 	mut queue := []FastcQueuedSource{}
 	if prefs.building_v {
 		builtin_dir := prefs.get_vlib_module_path('builtin')
@@ -61,9 +78,30 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 		queue << FastcQueuedSource{
 			path: path
 		}
+		// A V module spans every source file in its directory, plus any `subdirs`
+		// its v.mod lists that belong to the same module (e.g. gitly's `ssh/`,
+		// `repo/`, ... all declare `module main`). The entry file names only one of
+		// them, so gather the rest of the entry module here. Only the real-builtin
+		// path does this: the bootstrap runtime compiles single entry files, and its
+		// tests place several independent programs in one scratch directory.
+		if prefs.building_v {
+			for module_file in fastc_entry_module_files(path, prefs) {
+				if fastc_source_file_matches_backend(module_file) {
+					queue << FastcQueuedSource{
+						path: module_file
+					}
+				}
+			}
+		}
 	}
 	mut seen := map[string]bool{}
 	mut sources := []FastcSourceFile{}
+	// path -> the module_name a file was first loaded under, and the resulting alias map:
+	// the SAME file reached via a second import name (a module re-exported at another path,
+	// e.g. `json2` also importable as `x.json2` via `@[alias]`) records that second name as
+	// an alias of the first, so `<second>.<sym>` references resolve to the loaded `<first>`.
+	mut path_module := map[string]string{}
+	mut module_aliases := map[string]string{}
 	// Modules are re-discovered once per importing file; canonicalization and
 	// directory enumeration are syscalls, so both are memoized for the walk.
 	mut real_path_cache := map[string]string{}
@@ -79,6 +117,10 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 			real_path_cache[queued.path] = path
 		}
 		if seen[path] {
+			loaded := path_module[path] or { '' }
+			if queued.module_name != '' && loaded != '' && loaded != queued.module_name {
+				module_aliases[queued.module_name] = loaded
+			}
 			continue
 		}
 		if !os.is_file(path) {
@@ -105,6 +147,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 			source: source
 			header: header
 		}
+		path_module[path] = header.module_name
 		mut discovered_imports := map[string]bool{}
 		for imported_module in fastc_header_imported_modules(header) {
 			if discovered_imports[imported_module] {
@@ -144,7 +187,52 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) ![]FastcS
 			}
 		}
 	}
-	return sources
+	return sources, module_aliases
+}
+
+// fastc_entry_module_files returns the other source files of the entry file's
+// module: its directory siblings, plus the files of any `subdirs` its v.mod
+// declares (which V compiles as part of the same module). The entry file itself
+// and duplicates are filtered by the caller's seen-set.
+fn fastc_entry_module_files(entry_path string, prefs &pref.Preferences) []string {
+	entry_dir := os.dir(os.real_path(entry_path))
+	if entry_dir == '' {
+		return []string{}
+	}
+	mut files := pref.get_v_files_from_dir_for_target(entry_dir, prefs.user_defines, prefs.target)
+	// Only the module root (where v.mod lives) pulls in the declared subdirs, so
+	// an entry file already inside a subdir does not re-expand the whole project.
+	vmod_root := fastc_vmod_root_for_file(entry_path)
+	if vmod_root != '' && os.real_path(vmod_root) == entry_dir {
+		for subdir in fastc_vmod_subdirs(vmod_root) {
+			subdir_path := os.join_path(vmod_root, subdir)
+			if os.is_dir(subdir_path) {
+				files << pref.get_v_files_from_dir_for_target(subdir_path, prefs.user_defines,
+					prefs.target)
+			}
+		}
+	}
+	return files
+}
+
+// fastc_vmod_subdirs extracts the `subdirs: ['a', 'b']` list from a v.mod file.
+fn fastc_vmod_subdirs(vmod_root string) []string {
+	content := os.read_file(os.join_path(vmod_root, 'v.mod')) or { return []string{} }
+	subdirs_index := content.index('subdirs') or { return []string{} }
+	rest := content[subdirs_index..]
+	open_bracket := rest.index('[') or { return []string{} }
+	close_bracket := rest.index(']') or { return []string{} }
+	if close_bracket <= open_bracket {
+		return []string{}
+	}
+	mut subdirs := []string{}
+	for part in rest[open_bracket + 1..close_bracket].split(',') {
+		name := part.trim_space().trim("'").trim('"')
+		if name != '' {
+			subdirs << name
+		}
+	}
+	return subdirs
 }
 
 fn fastc_header_imported_modules(header FastcSourceHeader) []string {
@@ -366,6 +454,17 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	if module_name == '' {
 		module_name = 'main'
 	}
+	// V auto-injects `import orm` for files that use `sql <conn> { ... }` blocks.
+	// Mirror that so the ORM lowering resolves `orm.Table`/`orm.QueryData`/... and the
+	// `orm` module is pulled into the source set. Only the real-builtin path has the
+	// runtime the ORM needs; the toy runtime cannot compile `orm`.
+	if prefs.building_v && module_name != 'orm' && 'orm' !in imports
+		&& fastc_source_uses_sql(source, prefs) {
+		imports['orm'] = 'orm'
+		if 'orm' !in import_order {
+			import_order << 'orm'
+		}
+	}
 	if prefs.building_v && prefs.backend == 'fastc' && imports['driver'] == 'v3.driver'
 		&& 'fastcdriver' in imports {
 		fastcdriver_module := imports['fastcdriver']
@@ -383,6 +482,40 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		blank_imports: blank_imports
 		has_globals:   has_globals
 	}
+}
+
+// fastc_source_uses_sql reports whether a file contains a `sql <conn> { ... }` ORM
+// block (statement or expression form). `sql` is not a keyword, so it is matched as a
+// name not preceded by `.` and followed by a connection expression and then `{`.
+fn fastc_source_uses_sql(source string, prefs &pref.Preferences) bool {
+	if !source.contains('sql') {
+		return false
+	}
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('orm_sql_probe', source.len)
+	file.index_lines_without_digest(source)
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(file, source)
+	mut previous := token.Token.eof
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .name && scan.lit == 'sql' && previous != .dot {
+			mut look := scan
+			mut next := look.scan()
+			if next == .name {
+				// Scan the connection expression (`db`, `app.db`, ...) to its `{`.
+				for next !in [token.Token.eof, .lcbr, .semicolon, .rcbr] {
+					next = look.scan()
+				}
+				if next == .lcbr {
+					return true
+				}
+			}
+		}
+		previous = tok
+		tok = scan.scan()
+	}
+	return false
 }
 
 fn fastc_merge_source_header_imports(header FastcSourceHeader, path string, mut destination_imports map[string]string, mut destination_import_order []string, mut destination_blank_imports []string) ! {

@@ -133,8 +133,9 @@ float printing, C-string and embedded-NUL string literals, runes, assertions, `s
 division, modulo, indexing, parallel assignment, mixed-precedence expressions, oversized decimal
 literals, and high-bit hexadecimal or binary literals. These restrictions avoid emitting C that
 cannot provide the required runtime behavior.
-`#flag` and `#pkgconfig` are rejected because FastC does not yet transport source build options to
-its fixed TinyCC invocation.
+FastC transports header paths, link inputs, frameworks, and preprocessor defines from `#flag`, and
+resolves `#pkgconfig` options into its fixed TinyCC invocation. Other compile options remain
+unsupported.
 
 FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
 permits an explicit cross target and publishes its generated C without host TinyCC validation.

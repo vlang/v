@@ -1878,7 +1878,21 @@ fn v3_tcc_host_system_flags(target_os string) []string {
 	}
 	// The bundled TCC resource root replaces its configured search root. Restore
 	// the standard local prefix used by native packages such as wkhtmltox.
-	return ['-I/usr/local/include', '-L/usr/local/lib']
+	mut flags := ['-I/usr/local/include', '-L/usr/local/lib']
+	if target_os == 'macos' {
+		mut sdk_root := os.getenv('SDKROOT')
+		if !os.is_dir(sdk_root) {
+			result := cmdexec.run('xcrun', ['--show-sdk-path'])
+			if result.exit_code == 0 {
+				sdk_root = result.output.trim_space()
+			}
+		}
+		if os.is_dir(sdk_root) {
+			flags << '-I${os.join_path(sdk_root, 'usr', 'include')}'
+			flags << '-L${os.join_path(sdk_root, 'usr', 'lib')}'
+		}
+	}
+	return flags
 }
 
 fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
@@ -7028,7 +7042,7 @@ fn canonical_v3_fastc_output_path(path string) string {
 	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 }
 
-fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool, uses_threads bool) V3FastCCompileResult {
+fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool, uses_threads bool) V3FastCCompileResult {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 	if !os.is_executable(tcc_path) {
@@ -7047,6 +7061,7 @@ fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferenc
 	mut cc_args := environment_c_flags.clone()
 	cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
 	cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os())
+	cc_args << source_c_flags
 	cc_args << '-w'
 	if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
 		cc_args << '-bt25'
@@ -7794,6 +7809,12 @@ pub fn run(args []string) {
 	if input_implies_building_v(input_file) || cmd_v_build {
 		building_v = true
 	}
+	if backend == 'fastc' && 'fastc_real_builtin' in user_defines {
+		// Opt-in: compile an ordinary program through FastC's real-`builtin` path
+		// (real `struct string`, error system, and the full runtime) instead of the
+		// bootstrap `const char*` runtime. This is how FastC reaches real apps.
+		building_v = true
+	}
 	// Large serial compiler-module builds create the same transform and C-generation
 	// scratch state as parallel builds. Keep that state disposable; `-no-parallel`
 	// controls worker creation independently from arena lifetime.
@@ -8140,8 +8161,8 @@ pub fn run(args []string) {
 			bin_file
 		}
 		fastc_result := compile_v3_fastc_source(fastc_source, fastc_bin_file, prefs,
-			environment_c_flags, user_c_flags, environment_ld_flags, is_debug,
-			fastc_generation.uses_threads)
+			environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags,
+			is_debug, fastc_generation.uses_threads)
 		if (!silent || show_cc) && fastc_result.command.len > 0 {
 			if c_to_stdout {
 				eprintln('  > ${fastc_result.command}')
