@@ -1784,7 +1784,7 @@ fn (g &Parser) shared_token_is_identifier() bool {
 	if g.s.src[offset] == `(` {
 		return offset == start
 	}
-	return g.s.src[offset] in [`.`, `[`, `)`, `]`, `,`, `;`, `:`, `+`, `-`,
+	return g.s.src[offset] in [`.`, `[`, `)`, `]`, `}`, `,`, `;`, `:`, `+`, `-`,
 		`*`, `/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`, `^`]
 }
 

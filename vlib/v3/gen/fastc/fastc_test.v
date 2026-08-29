@@ -38,11 +38,14 @@ fn contains_shared() bool {
 	return shared in [1]
 }
 
+fn same_line_shared() int { shared := 1; return shared }
+
 fn main() {
 	_ = use_immutable_shared()
 	_ = xor_shared()
 	_ = unwrap_shared(1)
 	_ = contains_shared()
+	_ = same_line_shared()
 	unsafe {
 		mut shared := Box{}
 		shared.value = 1
@@ -62,6 +65,7 @@ fn main() {
 	assert !c_source.contains('return &shared'), c_source
 	assert c_source.contains('Option __v_fastc_option_0 = (shared);'), c_source
 	assert c_source.contains('__v_fastc_membership_item = (shared);'), c_source
+	assert c_source.count('return shared;') == 2, c_source
 }
 
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
