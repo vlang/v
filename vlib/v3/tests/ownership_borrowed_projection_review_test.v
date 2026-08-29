@@ -594,6 +594,26 @@ fn test_copied_index_alias_is_cloned() {
 	assert (entries[key] as Payload).values[0] == "retained"
 }
 
+fn test_long_index_alias_chain_is_cloned() {
+	mut entries := {
+		"item": Entry(Payload{
+			values: ["retained"]
+		})
+	}
+	key := "item"
+	p0 := &(entries[key] as Payload)
+	p1 := p0
+	p2 := p1
+	p3 := p2
+	p4 := p3
+	p5 := p4
+	p6 := p5
+	p7 := p6
+	p8 := p7
+	entries[key] = p8
+	assert (entries[key] as Payload).values[0] == "retained"
+}
+
 fn test_shadowed_index_alias_is_restored() {
 	mut entries := {
 		"item": Entry(Payload{
@@ -733,6 +753,7 @@ fn main() {
 	test_conditional_borrowed_branches_are_cloned(holder)
 	test_borrowed_sum_projection_is_cloned()
 	test_copied_index_alias_is_cloned()
+	test_long_index_alias_chain_is_cloned()
 	test_shadowed_index_alias_is_restored()
 	test_multi_assigned_index_alias_is_cloned()
 	test_fn_literal_captured_index_alias_is_cloned()
@@ -744,7 +765,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 41, out.output
+		assert out.output.count('clone') == 42, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

@@ -10889,18 +10889,26 @@ fn (tc &TypeChecker) ownership_rhs_borrows_indexed_storage(rhs_id flat.NodeId) b
 	if rhs_name.len == 0 {
 		return false
 	}
-	// Follow the alias chain (`arr -> val -> t[k]`) up to a small bound.
+	return ownership_alias_chain_borrows_indexed_storage(tc.ownership.pointer_index_aliases,
+		rhs_name)
+}
+
+fn ownership_alias_chain_borrows_indexed_storage(aliases map[string]string, rhs_name string) bool {
+	// Follow the complete alias chain (`arr -> val -> t[k]`). Cycles represent unresolved
+	// alias state, so treat them conservatively as borrowed storage.
 	mut cur := rhs_name
-	for _ in 0 .. 8 {
-		source := tc.ownership.pointer_index_aliases[cur] or { return false }
+	mut seen := map[string]bool{}
+	for {
+		if seen[cur] {
+			return true
+		}
+		seen[cur] = true
+		source := aliases[cur] or { return false }
 		if source == ownership_unknown_pointer_index_alias {
 			return true
 		}
 		if source.contains('[') {
 			return true
-		}
-		if source == cur {
-			return false
 		}
 		cur = source
 	}
