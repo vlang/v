@@ -3005,6 +3005,43 @@ fn main() {
 	assert out == '42'
 }
 
+fn test_immediately_invoked_closure_keeps_projected_capture_escapes_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct PointerHolder {
+mut:
+	value &int
+}
+
+fn main() {
+	external := 0
+	mut holder := &PointerHolder{
+		value: unsafe { &external }
+	}
+	mut selector_value := 40
+	(fn [mut holder, mut selector_value] () {
+		holder.value = unsafe { &selector_value }
+	})()
+
+	mut pointers := [unsafe { &external }]!
+	mut index_value := 41
+	(fn [mut pointers, mut index_value] () {
+		pointers[0] = unsafe { &index_value }
+	})()
+
+	println(int_str(unsafe { *holder.value }))
+	println(int_str(unsafe { *pointers[0] }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_projected_escapes_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.last_index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_projected_escapes', source)
+	assert out == '40\n41'
+}
+
 fn test_immediately_invoked_closure_keeps_channel_sent_capture_alive() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn main() {

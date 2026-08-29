@@ -1414,7 +1414,7 @@ fn (t &Transformer) expr_may_escape_any_named_capture(id flat.NodeId, captures m
 		&& t.expr_mentions_any_name(id, captures) {
 		return true
 	}
-	if node.kind == .assign && node.children_count >= 2 {
+	if node.kind in [.assign, .selector_assign, .index_assign] && node.children_count >= 2 {
 		for i := 1; i < node.children_count; i += 2 {
 			if t.expr_mentions_any_name(t.a.child(&node, i), captures) {
 				return true
