@@ -339,6 +339,55 @@ fn test_v3_test_openssl_probe_matches_windows_ci_suppression() {
 	assert v3_test_openssl_probe_allowed('linux-test', 'linux')
 }
 
+fn test_v3_test_openssl_probe_uses_version_subcommand() {
+	probe := v3_test_openssl_dependency_probe('openssl', 'openssl')
+	assert probe.command == 'openssl'
+	assert probe.args == ['version']
+	assert probe.pkgconfig_name == 'openssl'
+}
+
+fn test_v3_test_standard_dependency_probes_match_test_runner() {
+	node := v3_test_standard_dependency_probe('present_node') or { panic('missing Node probe') }
+	assert node.command == 'node'
+	assert node.args == ['--version']
+	assert node.pkgconfig_name == ''
+
+	python := v3_test_standard_dependency_probe('present_python') or {
+		panic('missing Python probe')
+	}
+	assert python.command == 'python'
+	assert python.args == ['--version']
+	assert python.pkgconfig_name == 'python3'
+
+	ruby := v3_test_standard_dependency_probe('present_ruby') or { panic('missing Ruby probe') }
+	assert ruby.command == 'ruby'
+	assert ruby.args == ['--version']
+	assert ruby.pkgconfig_name == 'ruby'
+
+	go_probe := v3_test_standard_dependency_probe('present_go') or { panic('missing Go probe') }
+	assert go_probe.command == 'go'
+	assert go_probe.args == ['version']
+	assert go_probe.pkgconfig_name == ''
+}
+
+fn test_v3_test_build_defines_populates_referenced_standard_dependencies() {
+	name := 'VBUILD_DEFINES'
+	old_value := os.getenv(name)
+	was_set := name in os.environ()
+	defer {
+		restore_driver_environment(name, old_value, was_set)
+	}
+	os.unsetenv(name)
+	for define in ['present_node', 'present_python', 'present_ruby', 'present_go'] {
+		probe := v3_test_standard_dependency_probe(define) or {
+			assert false, 'missing dependency probe for ${define}'
+			continue
+		}
+		defines := v3_test_build_defines('${define}?', [])
+		assert (define in defines) == v3_test_dependency_probe_present(probe)
+	}
+}
+
 fn test_v3_test_sqlite_present_uses_bundled_windows_source() {
 	root := os.join_path(os.temp_dir(), 'v3_test_sqlite_present_${os.getpid()}')
 	os.rmdir_all(root) or {}

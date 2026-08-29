@@ -6171,15 +6171,72 @@ fn v3_test_command_succeeds(command string, args []string) bool {
 	return cmdexec.run(path, args).exit_code == 0
 }
 
+struct V3TestDependencyProbe {
+	command        string
+	args           []string
+	pkgconfig_name string
+}
+
+fn v3_test_dependency_probe_present(probe V3TestDependencyProbe) bool {
+	if !v3_test_command_succeeds(probe.command, probe.args) {
+		return false
+	}
+	if probe.pkgconfig_name.len == 0 {
+		return true
+	}
+	return v3_test_command_succeeds('pkgconf', [probe.pkgconfig_name, '--libs'])
+		|| v3_test_command_succeeds('pkg-config', [probe.pkgconfig_name, '--libs'])
+}
+
+fn v3_test_openssl_dependency_probe(command string, pkgconfig_name string) V3TestDependencyProbe {
+	return V3TestDependencyProbe{
+		command:        command
+		args:           ['version']
+		pkgconfig_name: pkgconfig_name
+	}
+}
+
+fn v3_test_standard_dependency_probe(define string) ?V3TestDependencyProbe {
+	match define {
+		'present_node' {
+			return V3TestDependencyProbe{
+				command: 'node'
+				args:    ['--version']
+			}
+		}
+		'present_python' {
+			return V3TestDependencyProbe{
+				command:        'python'
+				args:           ['--version']
+				pkgconfig_name: 'python3'
+			}
+		}
+		'present_ruby' {
+			return V3TestDependencyProbe{
+				command:        'ruby'
+				args:           ['--version']
+				pkgconfig_name: 'ruby'
+			}
+		}
+		'present_go' {
+			return V3TestDependencyProbe{
+				command: 'go'
+				args:    ['version']
+			}
+		}
+		else {
+			return none
+		}
+	}
+}
+
 fn v3_test_openssl_present() bool {
 	$if openbsd {
-		return v3_test_command_succeeds('eopenssl35', ['--version'])
-			&& (v3_test_command_succeeds('pkgconf', ['eopenssl35', '--libs'])
-			|| v3_test_command_succeeds('pkg-config', ['eopenssl35', '--libs']))
+		return v3_test_dependency_probe_present(v3_test_openssl_dependency_probe('eopenssl35',
+			'eopenssl35'))
 	} $else {
-		return v3_test_command_succeeds('openssl', ['--version'])
-			&& (v3_test_command_succeeds('pkgconf', ['openssl', '--libs'])
-			|| v3_test_command_succeeds('pkg-config', ['openssl', '--libs']))
+		return v3_test_dependency_probe_present(v3_test_openssl_dependency_probe('openssl',
+			'openssl'))
 	}
 }
 
@@ -6243,6 +6300,15 @@ fn v3_test_build_defines(expression string, user_defines []string) []string {
 	}
 	for define, process_name in process_defines {
 		if expression.contains('${define}?') && v3_test_process_running(process_name) {
+			defines[define] = true
+		}
+	}
+	for define in ['present_node', 'present_python', 'present_ruby', 'present_go'] {
+		if !expression.contains('${define}?') {
+			continue
+		}
+		probe := v3_test_standard_dependency_probe(define) or { continue }
+		if v3_test_dependency_probe_present(probe) {
 			defines[define] = true
 		}
 	}
