@@ -3290,6 +3290,9 @@ fn (mut t Transformer) array_map_nested_selector_assignment_retains_element_addr
 	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
 		return false
 	}
+	if t.array_map_mutating_call_retains_element_address(id, node, target, block, before_idx, elem_name, seen) {
+		return true
+	}
 	if node.kind in [.block, .match_branch] {
 		scope_limit := t.array_map_block_scope_limit(node, target)
 		for offset in 0 .. scope_limit {
@@ -3440,6 +3443,9 @@ fn (mut t Transformer) array_map_nested_index_assignment_retains_element_address
 	node := t.a.nodes[int(id)]
 	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
 		return false
+	}
+	if t.array_map_mutating_call_retains_element_address(id, node, target, block, before_idx, elem_name, seen) {
+		return true
 	}
 	if node.kind in [.block, .match_branch] {
 		scope_limit := t.array_map_block_scope_limit(node, target)
