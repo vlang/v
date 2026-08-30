@@ -811,7 +811,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 	if g.tok == .key_assert {
 		return g.parse_assert_statement()
 	}
-	if g.tok == .name || (g.tok == .key_shared && g.shared_token_is_identifier()) {
+	if g.tok == .name || (g.tok == .key_shared && g.shared_token_is_identifier(.unknown)) {
 		name := g.lit
 		global_key := fastc_global_key(g.module_name, name)
 		is_global := global_key in g.globals
@@ -1137,7 +1137,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			is_mut = true
 			g.next()
 		}
-		if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier()) {
+		if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.unknown)) {
 			return g.unsupported('parallel assignment target')
 		}
 		names << g.lit

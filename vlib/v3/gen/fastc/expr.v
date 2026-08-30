@@ -588,7 +588,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.pos
 			continue
 		}
-		if g.tok == .key_shared && g.shared_token_is_identifier() {
+		if g.tok == .key_shared && g.shared_token_is_identifier(previous_token) {
+			mut following := g.s
+			_ = following.scan()
+			ends_expression := following.pos > g.s.offset && g.s.src[g.s.offset..following.pos].contains_any('\r\n')
 			result.write_string(g.lit)
 			expression_tokens << FastcExpressionToken{
 				tok: .name
@@ -599,6 +602,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_module_separator = false
 			previous_token_end = g.s.pos
 			g.next()
+			if ends_expression && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && unsafe_expression_depth == 0 {
+				break
+			}
 			continue
 		}
 		if g.tok in [.key_mut, .key_shared] {
@@ -1763,17 +1769,30 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	return rendered_expression
 }
 
-fn (g &Parser) shared_token_is_identifier() bool {
+fn fastc_shared_modifier_operand_start(tok token.Token) bool {
+	return tok in [.name, .amp, .and, .question, .not, .lpar, .lsbr]
+}
+
+fn fastc_shared_modifier_may_cross_line(previous token.Token, next token.Token) bool {
+	return previous in [.lpar, .lsbr, .comma, .colon] && fastc_shared_modifier_operand_start(next)
+}
+
+fn (g &Parser) shared_token_is_identifier(previous token.Token) bool {
 	mut lookahead := g.s
-	if lookahead.scan() in [.key_or, .key_in, .key_as, .key_is] {
+	next := lookahead.scan()
+	if next in [.key_or, .key_in, .key_as, .key_is] {
 		return true
 	}
 	start := g.s.offset
 	mut offset := start
-	// Horizontal whitespace and block comments separate a modifier from its operand. A
+	mut crossed_line := false
+	// Whitespace and block comments separate a modifier from its operand. A
 	// line comment ends the expression and must leave a keyword-named local intact.
 	for {
-		for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`] {
+		for offset < g.s.src.len && g.s.src[offset].is_space() {
+			if g.s.src[offset] in [`\r`, `\n`] {
+				crossed_line = true
+			}
 			offset++
 		}
 		if offset + 1 >= g.s.src.len || g.s.src[offset] != `/` {
@@ -1786,18 +1805,28 @@ fn (g &Parser) shared_token_is_identifier() bool {
 			break
 		}
 		offset += 2
-		for offset + 1 < g.s.src.len && !(g.s.src[offset] == `*` && g.s.src[offset + 1] == `/`) {
+		mut depth := 1
+		for offset + 1 < g.s.src.len && depth > 0 {
+			if g.s.src[offset] == `/` && g.s.src[offset + 1] == `*` {
+				depth++
+				offset += 2
+				continue
+			}
+			if g.s.src[offset] == `*` && g.s.src[offset + 1] == `/` {
+				depth--
+				offset += 2
+				continue
+			}
 			offset++
 		}
-		if offset + 1 >= g.s.src.len {
+		if depth > 0 {
 			return true
 		}
-		offset += 2
 	}
 	if offset >= g.s.src.len {
 		return true
 	}
-	if g.s.src[offset] in [`\n`, `\r`] {
+	if crossed_line && !fastc_shared_modifier_may_cross_line(previous, next) {
 		return true
 	}
 	if g.s.src[offset] == `(` {

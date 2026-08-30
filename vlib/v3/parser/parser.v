@@ -6280,7 +6280,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return stmt_id
 		}
 		.key_shared {
-			if p.shared_token_is_identifier() {
+			if p.shared_token_is_identifier(false) {
 				return p.assign_or_expr_stmt()
 			}
 			p.next()
@@ -9370,7 +9370,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return id
 		}
 		.key_shared {
-			if p.shared_token_is_identifier() {
+			if p.shared_token_is_identifier(false) {
 				name_pos := p.tok_pos
 				name_end := p.tok_end
 				p.next()
@@ -10365,7 +10365,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		mut arg_is_shared := false
 		mut arg_is_mut := false
-		if p.tok == .key_shared && !p.shared_token_is_identifier() {
+		if p.tok == .key_shared && !p.shared_token_is_identifier(true) {
 			arg_is_shared = true
 			p.next()
 		} else if p.tok == .key_mut {
@@ -12426,10 +12426,13 @@ fn (p &Parser) can_start_type_name() bool {
 	return token_can_start_type_name(p.tok)
 }
 
-fn (mut p Parser) shared_token_is_identifier() bool {
+fn (mut p Parser) shared_token_is_identifier(allow_multiline_modifier bool) bool {
 	next := p.peek()
 	if next.is_keyword() && next !in [.key_or, .key_in, .key_as, .key_is] {
 		return false
+	}
+	if !allow_multiline_modifier && next == .name && p.peek_pos > p.tok_end && p.s.src[p.tok_end..p.peek_pos].contains_any('\r\n') {
+		return true
 	}
 	if !token_can_start_type_name(next) && next != .key_union {
 		return true

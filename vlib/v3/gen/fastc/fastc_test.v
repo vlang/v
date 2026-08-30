@@ -66,6 +66,18 @@ fn parallel_shared() int {
 	return x + shared
 }
 
+fn following_line_shared() int {
+	shared := 3
+	x := shared
+	println(x)
+	return x
+}
+
+fn nested_comment_shared() int {
+	shared := 1
+	return shared /* outer /* inner */ tail */ + 1
+}
+
 fn main() {
 	_ = use_immutable_shared()
 	_ = xor_shared()
@@ -76,6 +88,8 @@ fn main() {
 	_ = propagate_shared(1)
 	_ = sum_shared([1, 2])
 	_ = parallel_shared()
+	_ = following_line_shared()
+	_ = nested_comment_shared()
 	unsafe {
 		mut shared := Box{}
 		value := Box{}
@@ -84,6 +98,8 @@ fn main() {
 		consume(shared shared)
 		consume(shared (shared))
 		consume(shared /* ownership */ value)
+		consume(shared
+			value)
 	}
 }
 ', 'shared_keyword_local.v', prefs) or { panic(err) }
@@ -92,6 +108,7 @@ fn main() {
 	assert c_source.contains('consume(&(shared));'), c_source
 	assert c_source.contains('consume(&((shared)));'), c_source
 	assert c_source.contains('consume(&(value));'), c_source
+	assert c_source.count('consume(&(value));') == 2, c_source
 	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
 	assert c_source.contains('return shared;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
@@ -102,6 +119,8 @@ fn main() {
 	assert c_source.contains('if (shared)'), c_source
 	assert c_source.contains('total+=shared;'), c_source
 	assert c_source.contains('return x+shared;'), c_source
+	assert c_source.contains('return shared+1;'), c_source
+	assert c_source.contains('println(x);'), c_source
 	assert !c_source.contains('(&shared)'), c_source
 }
 

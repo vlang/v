@@ -355,6 +355,8 @@ fn test_shared_keyword_identifier_in_mut_declaration() {
 	_ = shared & 1
 	shared type := 1
 	println(shared type)
+	x := shared
+	println(x)
 	println(shared)
 }
 ')
@@ -366,6 +368,29 @@ fn test_shared_keyword_identifier_in_mut_declaration() {
 	}
 	assert shared_spans.len >= 7, shared_spans.str()
 	assert shared_spans.all(it == 'shared')
+}
+
+fn test_multiline_shared_call_argument_stays_a_modifier() {
+	ast, _ := parse_span_source('multiline_shared_argument', 'struct Box {}
+
+fn consume(shared value Box) {}
+
+fn main() {
+	value := Box{}
+	consume(shared
+		value)
+}
+')
+	mut saw_shared_prefix := false
+	for node in ast.nodes {
+		if node.kind == .prefix && node.value == 'shared' && node.children_count == 1 {
+			child := ast.nodes[int(ast.children[int(node.children_start)])]
+			if child.kind == .ident && child.value == 'value' {
+				saw_shared_prefix = true
+			}
+		}
+	}
+	assert saw_shared_prefix
 }
 
 // Address-of expressions (`&Foo{}`, `&[]T{}`, `&T(x)`) span from the `&` through
