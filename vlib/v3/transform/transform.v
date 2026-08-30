@@ -13606,9 +13606,9 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 					t.set_node_typ(int(rhs_id), typ)
 				}
 			}
-			if amp_vt := t.mut_param_amp_decl_type(rhs_id) {
-				// `mut t := &table` where table is a `mut` value param: the RHS
-				// IS the caller's pointer, so the local is single-`&`, not `&&`.
+			if amp_vt := t.pointer_storage_amp_decl_type(rhs_id) {
+				// Mut parameters, mutable captures, and heap-promoted value locals use
+				// pointer storage. Their source-level address is that pointer itself.
 				typ = amp_vt
 			}
 			if typ.len > 0 {
@@ -18497,9 +18497,9 @@ fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node fl
 }
 
 // transform_prefix_expr transforms transform prefix expr data for transform.
-// mut_param_amp_decl_type detects `&param` (possibly as an unsafe-block tail)
-// over a `mut` value param and returns the param's pointer type for the decl.
-fn (t &Transformer) mut_param_amp_decl_type(rhs_id flat.NodeId) ?string {
+// pointer_storage_amp_decl_type detects `&value` (possibly as an unsafe-block tail)
+// when `value` is a source-level value backed by pointer storage.
+fn (t &Transformer) pointer_storage_amp_decl_type(rhs_id flat.NodeId) ?string {
 	if int(rhs_id) < 0 {
 		return none
 	}
@@ -18523,7 +18523,7 @@ fn (t &Transformer) mut_param_amp_decl_type(rhs_id flat.NodeId) ?string {
 		return none
 	}
 	child := t.a.child_node(&node, 0)
-	if child.kind != .ident || !t.mut_param_values[child.value] {
+	if child.kind != .ident || (!t.mut_param_values[child.value] && !t.pointer_value_rvalues[child.value]) {
 		return none
 	}
 	mut vt := t.var_type(child.value)
@@ -18626,22 +18626,12 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 				return expr
 			}
 		}
-		// `&param` where `param` is a `mut` value param IS the pointer the
-		// caller passed; adding another `&` would take the address of the
-		// parameter slot (`map** t = table` + `*t = ...` clobbers the caller).
-		if child.kind == .ident && t.mut_param_values[child.value] {
-			mut vt := t.var_type(child.value)
-			if vt.starts_with('mut ') {
-				vt = '&' + vt[4..].trim_space()
-			}
-			if !vt.starts_with('&') && vt.len > 0 {
-				vt = '&${vt}'
-			}
-			if vt.starts_with('&') {
-				new_id := t.transform_expr(child_id)
-				t.set_node_typ(int(new_id), vt)
-				return new_id
-			}
+		// Pointer-backed values already name their storage address. Preserve that
+		// pointer instead of taking the address of the pointer slot and forming `&&T`.
+		if vt := t.pointer_storage_amp_decl_type(id) {
+			new_id := t.transform_expr_preserving_pointer_value(child_id)
+			t.set_node_typ(int(new_id), vt)
+			return new_id
 		}
 		if child.kind == .struct_init {
 			// `&T{...}` (address of a struct literal) is ALWAYS a heap allocation in V,
