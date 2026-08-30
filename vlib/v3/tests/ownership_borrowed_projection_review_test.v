@@ -30,6 +30,10 @@ const cache = Payload{
 	values: ["constant"]
 }
 
+const cached_payloads = [Payload{
+	values: ["cached"]
+}]
+
 fn (value &Payload) clone() Payload {
 	println("clone")
 	return Payload{
@@ -226,6 +230,10 @@ fn get_fixed_items(holder &FixedHolder) []Payload {
 fn consume_fixed_items(items []Payload) {
 	mut item := items[0]
 	item.values[0] = "argument copy"
+}
+
+fn consume_cached_payloads(items []Payload) string {
+	return items[0].values[0]
 }
 
 fn consume_fixed_entries(items []Entry) {
@@ -915,6 +923,11 @@ fn test_same_module_const_shadow_is_moved() {
 	assert dst.values[0] == "local"
 }
 
+fn test_same_typed_const_array_argument_is_cloned() {
+	assert consume_cached_payloads(cached_payloads) == "cached"
+	assert consume_cached_payloads(cached_payloads) == "cached"
+}
+
 fn main() {
 	holder := &Holder{
 		left: Payload{
@@ -971,12 +984,13 @@ fn main() {
 	test_lambda_captured_index_alias_is_cloned()
 	test_distinct_dynamic_moved_map_slot_is_dropped()
 	test_same_module_const_shadow_is_moved()
+	test_same_typed_const_array_argument_is_cloned()
 }
 ')!
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.split_into_lines().filter(it == 'clone').len == 59, out.output
+		assert out.output.split_into_lines().filter(it == 'clone').len == 61, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

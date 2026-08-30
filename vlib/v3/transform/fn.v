@@ -3621,7 +3621,8 @@ fn (t &Transformer) is_named_fn_value_arg(arg_id flat.NodeId) bool {
 fn (mut t Transformer) transform_const_array_arg_for_param(arg_id flat.NodeId, param_type string) ?flat.NodeId {
 	if raw_const_type := t.raw_const_type_name_for_expr(arg_id) {
 		if t.normalize_type_alias(raw_const_type) == t.normalize_type_alias(param_type) {
-			return t.transform_expr(arg_id)
+			value := t.transform_expr(arg_id)
+			return t.clone_borrowed_projection(arg_id, value, param_type)
 		}
 	}
 	expr_id := t.const_expr_for_arg(arg_id) or { return none }
