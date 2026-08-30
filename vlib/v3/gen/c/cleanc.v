@@ -5173,9 +5173,16 @@ fn c_header_compiler_predefined_compile_flags(c_flags []string) []string {
 			skip_operand = true
 			continue
 		}
-		if part in ['-I', '-F', '-D', '-U', '-std', '-include', '-imacros', '-isystem', '-iquote',
-			'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot',
-			'-target', '-arch'] {
+		if part == '-include' {
+			skip_operand = true
+			continue
+		}
+		if part.starts_with('-include=') {
+			continue
+		}
+		if part in ['-I', '-F', '-D', '-U', '-std', '-imacros', '-isystem', '-iquote', '-idirafter',
+			'-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot', '-target',
+			'-arch'] {
 			flags << flag
 			preserve_operand = true
 			continue
@@ -10576,7 +10583,8 @@ fn c_matching_brace_end(text string, open_idx int) int {
 
 fn c_typedef_declarator_aliases(decl string) []string {
 	mut aliases := []string{}
-	for part in decl.split(',') {
+	clean := c_strip_typedef_declarator_attributes(decl)
+	for part in clean.split(',') {
 		alias := c_typedef_alias_ident(part)
 		if alias.len > 0 {
 			aliases << alias
@@ -10586,16 +10594,47 @@ fn c_typedef_declarator_aliases(decl string) []string {
 }
 
 fn c_typedef_alias_ident(text string) string {
-	mut clean := text
-	for marker in ['__attribute__', '__attribute', '__declspec'] {
-		if idx := clean.index(marker) {
-			clean = clean[..idx]
-		}
-	}
-	if idx := clean.index('[[') {
-		clean = clean[..idx]
-	}
+	clean := c_strip_typedef_declarator_attributes(text)
 	return c_last_ident(clean)
+}
+
+fn c_strip_typedef_declarator_attributes(text string) string {
+	mut result := strings.new_builder(text.len)
+	mut i := 0
+	for i < text.len {
+		mut marker_len := 0
+		for marker in ['__attribute__', '__attribute', '__declspec'] {
+			marker_end := i + marker.len
+			if text[i..].starts_with(marker) && (i == 0 || !c_identifier_continue(text[i - 1])) && (marker_end == text.len || !c_identifier_continue(text[marker_end])) {
+				marker_len = marker.len
+				break
+			}
+		}
+		if marker_len > 0 {
+			mut attr_open := i + marker_len
+			for attr_open < text.len && text[attr_open].is_space() {
+				attr_open++
+			}
+			if attr_open < text.len && text[attr_open] == `(` {
+				attr_close := fixed_array_len_matching_paren(text, attr_open)
+				if attr_close >= 0 {
+					result.write_u8(` `)
+					i = attr_close + 1
+					continue
+				}
+			}
+		}
+		if i + 1 < text.len && text[i] == `[` && text[i + 1] == `[` {
+			if close_offset := text[i + 2..].index(']]') {
+				result.write_u8(` `)
+				i += close_offset + 4
+				continue
+			}
+		}
+		result.write_u8(text[i])
+		i++
+	}
+	return result.str()
 }
 
 fn c_last_ident(text string) string {

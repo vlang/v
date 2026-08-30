@@ -633,10 +633,10 @@ fn test_header_owned_include_aliases_expand_lazily() {
 	assert c_header_owned_include_args('A', state, '', '/tmp/source.h') == ['"two.h"']
 }
 
-fn test_header_owned_typedef_scan_ignores_non_declarations_and_trailing_attributes() {
-	clean := c_header_owned_typedef_scan_text('// typedef struct Wrong CommentAlias;\n#define MAKE_ALIAS typedef struct Wrong MacroAlias;\nconst char *example = "typedef struct Wrong StringAlias;";\ntypedef struct Impl RealAlias __attribute__((deprecated));\n')
+fn test_header_owned_typedef_scan_ignores_non_declarations_and_declarator_attributes() {
+	clean := c_header_owned_typedef_scan_text('// typedef struct Wrong CommentAlias;\n#define MAKE_ALIAS typedef struct Wrong MacroAlias;\nconst char *example = "typedef struct Wrong StringAlias;";\ntypedef struct Impl RealAlias __attribute__((deprecated));\ntypedef struct Impl __attribute__((deprecated, aligned(8))) PrefixAlias;\ntypedef struct Impl keep__attribute__Alias;\ntypedef struct Impl __attribute__Alias;\n')
 	aliases := c_typedef_all_aggregate_aliases(clean)
-	assert aliases == ['RealAlias']
+	assert aliases == ['RealAlias', 'PrefixAlias', 'keep__attribute__Alias', '__attribute__Alias']
 }
 
 fn test_top_level_include_deduplication_resets_after_macro_changes() {
@@ -656,7 +656,7 @@ fn test_header_owned_compiler_state_includes_clang_guards() {
 fn test_header_owned_compiler_macro_probe_uses_effective_compile_context() {
 	args := c_header_compiler_predefined_macro_args(['-fopenmp', '-std=c17', '-m32', '-target',
 		'riscv64-linux-gnu', '-D', 'FEATURE=1', '-fobjc-arc', '-x', 'none', '-L', '/tmp/lib', '-lssl',
-		'/tmp/native.c'], false, pref.Target{}, '/tmp/probe.c')
+		'-include', 'types.h', '-imacros', 'macros.h', '/tmp/native.c'], false, pref.Target{}, '/tmp/probe.c')
 	assert '-fopenmp' in args
 	assert '-std=c17' in args
 	assert '-m32' in args
@@ -667,6 +667,10 @@ fn test_header_owned_compiler_macro_probe_uses_effective_compile_context() {
 	assert args.contains('objective-c')
 	assert '-L' !in args
 	assert '-lssl' !in args
+	assert '-include' !in args
+	assert 'types.h' !in args
+	assert '-imacros' in args
+	assert 'macros.h' in args
 	assert '/tmp/native.c' !in args
 	assert args.last() == '/tmp/probe.c'
 
@@ -816,7 +820,7 @@ fn test_header_owned_scan_collects_forced_include_typedefs() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	os.write_file(os.join_path(dir, 'types.h'), 'typedef struct ForcedType ForcedAlias;\n')!
+	os.write_file(os.join_path(dir, 'types.h'), '#ifndef TYPES_H\n#define TYPES_H\ntypedef struct ForcedType ForcedAlias;\n#endif\n')!
 	os.write_file(os.join_path(dir, 'macros.h'), 'typedef struct MacrosOnly MacrosOnlyAlias;\n')!
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
