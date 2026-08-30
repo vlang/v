@@ -5965,7 +5965,10 @@ fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
 		return false
 	}
 	if node.kind == .ident {
-		return t.raw_var_type(node.value).trim_space().starts_with('shared ') || t.local_decl_is_shared_before(node.value, id)
+		if t.source_parent_ids.len > 0 {
+			return t.local_binding_before(node.value, id) or { false }
+		}
+		return t.raw_var_type(node.value).trim_space().starts_with('shared ')
 	}
 	if node.kind in [.paren, .cast_expr, .as_expr, .prefix, .postfix, .selector] {
 		for i in 0 .. node.children_count {

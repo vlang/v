@@ -755,6 +755,86 @@ fn test_string_interp_expansion_estimate_includes_shared_ident_hoisting() {
 	assert !needs_deferred_lowering
 }
 
+fn test_string_interp_expansion_estimate_ignores_stale_shared_binding() {
+	mut a := flat.FlatAst.new()
+	stale_lhs := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'counter'
+	})
+	stale_rhs := a.add_node(flat.Node{
+		kind:  .int_literal
+		value: '0'
+		typ:   'int'
+	})
+	stale_decl_start := a.children.len
+	a.children << stale_lhs
+	a.children << stale_rhs
+	stale_decl := a.add_node(flat.Node{
+		kind:           .decl_assign
+		value:          'shared'
+		children_start: stale_decl_start
+		children_count: 2
+	})
+	stale_fn_start := a.children.len
+	a.children << stale_decl
+	a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          'stale'
+		children_start: stale_fn_start
+		children_count: 1
+	})
+
+	param := a.add_node(flat.Node{
+		kind:  .param
+		value: 'counter'
+		typ:   'int'
+	})
+	literal := a.add_node(flat.Node{
+		kind:  .string_literal
+		value: 'part'
+		typ:   'string'
+	})
+	plain_value := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'counter'
+		typ:   'int'
+	})
+	interp_start := a.children.len
+	a.children << literal
+	a.children << plain_value
+	interp := a.add_node(flat.Node{
+		kind:           .string_interp
+		typ:            'string'
+		children_start: interp_start
+		children_count: 2
+	})
+	block_start := a.children.len
+	a.children << interp
+	block := a.add_node(flat.Node{
+		kind:           .block
+		children_start: block_start
+		children_count: 1
+	})
+	current_fn_start := a.children.len
+	a.children << param
+	a.children << block
+	a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          'current'
+		children_start: current_fn_start
+		children_count: 2
+	})
+
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+	t.set_var_type('counter', 'shared int')
+
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert estimate == 3
+	assert !needs_deferred_lowering
+}
+
 fn test_string_interp_expansion_estimate_defers_unresolved_values() {
 	mut a := flat.FlatAst.new()
 	unresolved := a.add_node(flat.Node{
