@@ -590,11 +590,12 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		}
 		shared_classification := g.classify_shared_token(previous_token)
 		if g.tok == .key_shared && shared_classification.is_identifier {
-			result.write_string(g.lit)
 			expression_tokens << FastcExpressionToken{
 				tok: .name
 				lit: g.lit
 			}
+			piece := g.reference_local_value_piece(g.lit, g.lit, previous_token, expression_tokens, stops)
+			result.write_string(piece)
 			previous_token = .name
 			previous_lit = g.lit
 			previous_module_separator = false
@@ -1335,30 +1336,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		if g.tok == .name && previous_token != .dot {
 			// A name after `.` is a field or method: never substitute a local
 			// (a mut parameter's deref form) that happens to share its name.
-			if local := g.locals[g.lit] {
-				mut lookahead := g.s
-				next_token := lookahead.scan()
-				is_single_value := expression_tokens.len == 1 && (next_token in stops || next_token == .eof)
-				// An explicit deref of a reference local (`*b` where `b` is a `mut` receiver,
-				// C type `T*`): the leading `*` already dereferences, so auto-deref would
-				// double it (`*(*(b))`). Skip the auto-deref so `*b` renders as `*(b)`. Only a
-				// PREFIX `*` counts — a binary `a * b` still needs `b`'s value.
-				is_deref_prefix := previous_token == .mul && expression_tokens.len > 0 && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 1)
-				cast_type := if previous_token == .lpar && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 3].tok == .name {
-					fastc_primitive_c_type(expression_tokens[expression_tokens.len - 3].lit) or {
-						''
-					}
-				} else {
-					''
-				}
-				is_pointer_cast_operand := cast_type != '' && fastc_is_pointer_type(cast_type)
-				if local.is_reference && !expression_tokens.last().is_mut_argument && next_token !in [
-					.dot,
-					.lsbr,
-				] && !is_single_value && !is_deref_prefix && !is_pointer_cast_operand {
-					piece = '(*(${piece}))'
-				}
-			}
+			piece = g.reference_local_value_piece(g.lit, piece, previous_token, expression_tokens, stops)
 		}
 		if module_separator && piece == '.' {
 			piece = '__'
@@ -1765,6 +1743,31 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		return '((bool)(${rendered_expression}))'
 	}
 	return rendered_expression
+}
+
+fn (g &Parser) reference_local_value_piece(name string, piece string, previous_token token.Token, expression_tokens []FastcExpressionToken, stops []token.Token) string {
+	local := g.locals[name] or { return piece }
+	mut lookahead := g.s
+	next_token := lookahead.scan()
+	is_single_value := expression_tokens.len == 1 && (next_token in stops || next_token == .eof)
+	// An explicit deref of a reference local (`*b` where `b` is a `mut` receiver,
+	// C type `T*`): the leading `*` already dereferences, so auto-deref would
+	// double it (`*(*(b))`). Skip the auto-deref so `*b` renders as `*(b)`. Only a
+	// PREFIX `*` counts — a binary `a * b` still needs `b`'s value.
+	is_deref_prefix := previous_token == .mul && expression_tokens.len > 0 && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 1)
+	cast_type := if previous_token == .lpar && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 3].tok == .name {
+		fastc_primitive_c_type(expression_tokens[expression_tokens.len - 3].lit) or { '' }
+	} else {
+		''
+	}
+	is_pointer_cast_operand := cast_type != '' && fastc_is_pointer_type(cast_type)
+	if local.is_reference && !expression_tokens.last().is_mut_argument && next_token !in [
+		.dot,
+		.lsbr,
+	] && !is_single_value && !is_deref_prefix && !is_pointer_cast_operand {
+		return '(*(${piece}))'
+	}
+	return piece
 }
 
 fn fastc_shared_modifier_operand_start(tok token.Token) bool {

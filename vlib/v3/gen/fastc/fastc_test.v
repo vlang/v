@@ -158,6 +158,22 @@ fn main() {
 	assert !c_source.contains('(&shared)'), c_source
 }
 
+fn test_selfhost_mutable_shared_loop_binding_is_dereferenced() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn main() {
+	mut values := [1, 2]
+	for mut shared in values {
+		println(shared + 1)
+	}
+}
+', 'selfhost_mutable_shared_loop_binding.v', prefs) or { panic(err) }
+	assert c_source.contains('println((*(shared))+1)'), c_source
+	assert !c_source.contains('println(shared+1)'), c_source
+}
+
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	sources := [
 		FastcSourceFile{
