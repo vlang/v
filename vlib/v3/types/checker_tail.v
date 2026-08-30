@@ -6316,6 +6316,9 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 	if node.kind == .field_init {
 		return node.children_count == 1 && tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, 0))
 	}
+	if node.kind == .struct_init && !tc.array_accessor_struct_init_defaults_are_stable(id, node) {
+		return false
+	}
 	if node.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init] {
 		for i in 0 .. node.children_count {
 			if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
@@ -6359,6 +6362,40 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 	}
 	for i in 0 .. node.children_count {
 		if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (tc &TypeChecker) array_accessor_struct_init_defaults_are_stable(id flat.NodeId, node &flat.Node) bool {
+	init_struct := struct_type_from_type(unalias_type(tc.resolve_type(id))) or { return true }
+	init_name := tc.struct_init_field_lookup_name(node.value, init_struct.name)
+	fields := tc.struct_fields_for_init(init_name)
+	mut supplied := map[string]bool{}
+	for i in 0 .. node.children_count {
+		field := tc.a.child_node(node, i)
+		if field.kind != .field_init {
+			continue
+		}
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < fields.len {
+			fields[i].name
+		} else {
+			''
+		}
+		if field_name.len > 0 {
+			supplied[field_name] = true
+		}
+	}
+	decl := tc.source_struct_decl_for_name(init_name) or { return true }
+	for i in 0 .. decl.children_count {
+		field := tc.a.child_node(decl, i)
+		if field.kind != .field_decl || field.children_count == 0 || field.value in supplied {
+			continue
+		}
+		if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(field, 0)) {
 			return false
 		}
 	}

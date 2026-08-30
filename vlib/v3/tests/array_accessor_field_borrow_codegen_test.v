@@ -1103,6 +1103,41 @@ fn main() {
 	assert or_compile.output.contains('cannot return an independent array element'), or_compile.output
 }
 
+fn test_owned_scalar_consumer_with_mutating_struct_default_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_mutating_struct_default_sibling', "struct E {
+	name string
+}
+
+struct Pair {
+	n int = delete_last()
+}
+
+__global entries []E
+
+fn delete_last() int {
+	entries.delete_last()
+	return 0
+}
+
+fn consume(length int, pair Pair) int {
+	_ = pair
+	return length
+}
+
+fn last_length() int {
+	return consume(entries.last().name.len, Pair{})
+}
+
+fn main() {
+	entries = [E{ name: 'hello' }]
+	println(last_length())
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
 fn test_owned_scalar_consumer_with_cloning_method_value_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_cloning_method_value_sibling', "struct E {
