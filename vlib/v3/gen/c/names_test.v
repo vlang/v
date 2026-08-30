@@ -687,6 +687,27 @@ fn test_header_owned_compiler_macro_probe_uses_effective_compile_context() {
 	assert c_header_compiler_predefined_target_args(mac_target, mac_host) == ['-arch', 'arm64']
 }
 
+fn test_header_owned_scan_resolves_ambient_include_dirs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_ambient_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source_dir := os.join_path(dir, 'source')
+	os.mkdir_all(source_dir)!
+	os.write_file(os.join_path(dir, 'types.h'), 'typedef struct Ambient AmbientAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.AmbientAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.macro_probe_c_flags = ['-I', dir]
+	g.collect_header_owned_c_typedefs('"types.h"', os.join_path(source_dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['AmbientAlias']
+}
+
 fn test_header_owned_compiler_state_preserves_version_values() {
 	values := c_header_compiler_predefined_macro_values_from_output('#define unrelated 9\n#define __GNUC__ 12\n#define __GNUC_MINOR__ 2\n#define __clang_major__ 18\n#define __x86_64__ 1\n#define __aarch64__ 1\n#define __STDC_VERSION__ 201710L\n#define __has_builtin(x) __builtin_has_attribute(x)\n')
 	assert values == {
@@ -883,6 +904,34 @@ typedef struct Missing MissingAlias;
 	assert g.header_owned_c_typedefs['IncludedImplAlias']
 	assert g.header_owned_c_typedefs['NextWrapperAlias']
 	assert !g.header_owned_c_typedefs['MissingAlias']
+}
+
+fn test_header_owned_include_next_uses_exact_overlapping_search_dir() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_include_next_overlap_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	root_dir := os.join_path(dir, 'root')
+	nested_dir := os.join_path(root_dir, 'sub')
+	third_dir := os.join_path(dir, 'third')
+	os.mkdir_all(nested_dir)!
+	os.mkdir_all(third_dir)!
+	os.write_file(os.join_path(nested_dir, 'wrapper.h'), '#include_next <next.h>\n')!
+	os.write_file(os.join_path(nested_dir, 'next.h'), 'typedef struct Wrong WrongAlias;\n')!
+	os.write_file(os.join_path(third_dir, 'next.h'), 'typedef struct Exact ExactAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	for alias in ['WrongAlias', 'ExactAlias'] {
+		tc.c_typedef_structs['C.${alias}'] = true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-I', root_dir, '-I', nested_dir, '-I', third_dir]
+	g.collect_header_owned_c_typedefs('"wrapper.h"', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['ExactAlias']
+	assert !g.header_owned_c_typedefs['WrongAlias']
 }
 
 fn test_header_owned_scan_retains_alias_from_source_conditional_includes() {

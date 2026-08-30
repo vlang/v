@@ -4991,7 +4991,7 @@ fn (g &FlatGen) visit_header_owned_directive_module(mod string, directives_by_mo
 }
 
 fn (mut g FlatGen) collect_header_owned_c_typedefs(include_arg string, source_file string) {
-	g.collect_header_owned_c_typedefs_with_include_dirs(include_arg, source_file, c_flag_include_dirs(g.c_flags))
+	g.collect_header_owned_c_typedefs_with_include_dirs(include_arg, source_file, c_flag_include_dirs(g.header_owned_effective_c_flags()))
 }
 
 fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg string, source_file string, include_dirs []string) {
@@ -11157,13 +11157,24 @@ fn c_header_include_file_paths(include_arg string, vroot string, source_file str
 		}
 	}
 	if !found_search_dir {
+		normalized_current_dir := current_dir.replace('\\', '/').trim_right('/')
+		for i, dir in include_dirs {
+			normalized_dir := os.real_path(dir).replace('\\', '/').trim_right('/')
+			if normalized_dir.len > 0 && normalized_current_dir == normalized_dir {
+				start = i + 1
+				found_search_dir = true
+				break
+			}
+		}
+	}
+	if !found_search_dir {
+		mut best_search_dir_len := -1
 		for i, dir in include_dirs {
 			normalized_dir := os.real_path(dir).replace('\\', '/').trim_right('/')
 			normalized_source := source_path.replace('\\', '/')
-			if normalized_dir.len > 0 && (current_dir.replace('\\', '/').trim_right('/') == normalized_dir
-				|| normalized_source.starts_with(normalized_dir + '/')) {
+			if normalized_dir.len > best_search_dir_len && normalized_source.starts_with(normalized_dir + '/') {
 				start = i + 1
-				break
+				best_search_dir_len = normalized_dir.len
 			}
 		}
 	}
