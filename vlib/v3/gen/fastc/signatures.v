@@ -5,6 +5,10 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+fn fastc_token_can_be_decl_name(tok token.Token) bool {
+	return tok == .name || (tok.is_keyword() && tok != .key_volatile)
+}
+
 fn fastc_skip_attribute(mut scan scanner.Scanner) !token.Token {
 	mut tok := scan.scan()
 	mut depth := 1
@@ -302,7 +306,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				}
 				for tok == .comma {
 					tok = scan.scan()
-					if tok !in [.name, .key_shared] {
+					if !fastc_token_can_be_decl_name(tok) {
 						return error('fastc parser does not support grouped function parameter token `${tok.str()}` in ${path}')
 					}
 					parameter_name_count++

@@ -172,6 +172,15 @@ fn main() {
 	assert !c_source.contains('(&shared)'), c_source
 }
 
+fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	mut functions := map[string]FastcFunctionSignature{}
+	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, map[string]bool{}, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
+	signature := functions['pair'] or { panic('missing pair signature') }
+	assert signature.parameter_types == ['int', 'int']
+}
+
 fn test_selfhost_generic_calls_named_shared_are_monomorphized() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

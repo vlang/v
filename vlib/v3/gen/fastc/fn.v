@@ -1069,7 +1069,7 @@ fn (mut g Parser) parse_parameters() ![]string {
 		mut names := [name]
 		for g.tok == .comma {
 			g.next()
-			if g.tok != .name && !g.tok.is_keyword() {
+			if !fastc_token_can_be_decl_name(g.tok) {
 				return g.unsupported('grouped parameter names')
 			}
 			names << g.lit
