@@ -888,6 +888,7 @@ fn main() {
 	test_disjoint_receiver_fields_are_not_cloned()
 	test_borrowed_fixed_array_conversions_are_cloned()
 	test_borrowed_dynamic_array_conversion_is_cloned()
+	test_pointer_backed_index_read_is_cloned()
 	test_borrowed_array_push_many_is_cloned() or { panic(err) }
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
 	test_borrowed_prepend_and_insert_are_cloned(holder)
@@ -920,7 +921,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 57, out.output
+		assert out.output.count('clone') == 58, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')
