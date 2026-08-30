@@ -1019,6 +1019,66 @@ fn main() {
 	assert safe_run.output.trim_space() == '5', safe_run.output
 }
 
+fn test_owned_field_membership_with_stable_array_literal_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_field_stable_array_membership', "struct E {
+	name string
+}
+
+fn has_known_last_name(entries []E) bool {
+	return entries.last().name in ['hello', 'other']
+}
+
+fn main() {
+	entries := [E{ name: 'hello' }]
+	println(has_known_last_name(entries))
+}
+", '')
+	assert compile.exit_code == 0, compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_field_stable_array_membership_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'true', run.output
+}
+
+fn test_owned_scalar_consumer_with_alias_clone_method_value_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_alias_clone_method_value_sibling', "struct E {
+	name string
+}
+
+type Reader = string
+
+__global entries []E
+
+fn (reader Reader) clone() Reader {
+	entries.delete_last()
+	return Reader(string(reader).clone())
+}
+
+fn (reader Reader) run() string {
+	return reader
+}
+
+fn consume(length int, callback fn () string) int {
+	_ = callback()
+	return length
+}
+
+fn last_length_with_bound_method(reader Reader) int {
+	return consume(entries.last().name.len, reader.run)
+}
+
+fn main() {
+	entries = [E{ name: 'hello' }]
+	reader := Reader('run')
+	println(last_length_with_bound_method(reader))
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
 fn test_owned_field_overloaded_index_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_index', "struct Name {

@@ -6291,6 +6291,14 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 	if node.kind == .field_init {
 		return node.children_count == 1 && tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, 0))
 	}
+	if node.kind == .array_literal {
+		for i in 0 .. node.children_count {
+			if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
+				return false
+			}
+		}
+		return true
+	}
 	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
 		.ident, .enum_val, .nil_literal, .none_expr, .sizeof_expr, .typeof_expr, .offsetof_expr] {
 		return true
@@ -6355,7 +6363,13 @@ fn (tc &TypeChecker) array_accessor_method_value_clone_can_run_user_code(id flat
 
 fn (tc &TypeChecker) array_accessor_clone_can_run_user_code(typ Type, mut seen map[string]bool) bool {
 	match typ {
-		Alias, OptionType {
+		Alias {
+			if tc.ownership_type_has_clone_method(typ) {
+				return true
+			}
+			return tc.array_accessor_clone_can_run_user_code(typ.base_type, mut seen)
+		}
+		OptionType {
 			return tc.array_accessor_clone_can_run_user_code(typ.base_type, mut seen)
 		}
 		ResultType, Interface {
