@@ -125,8 +125,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	mut real_path_cache := map[string]string{}
 	mut module_dir_files := map[string][]string{}
 	mut module_path_cache := map[string]string{}
-	mut module_dir_modules := map[string]string{}
-	mut scheduled_paths := map[string]bool{}
+	mut scheduled_path_modules := map[string]string{}
 	mut queue_index := 0
 	for queue_index < queue.len {
 		// Freeze the current discovery wave. Its files are independent until their
@@ -168,7 +167,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 				return error('fastc source file `${path}` does not exist')
 			}
 			seen[path] = true
-			scheduled_paths[path] = true
+			scheduled_path_modules[path] = queued.module_name
 			wave_paths << path
 			wave_modules << queued.module_name
 		}
@@ -223,7 +222,6 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 					os.dir(source_file.path) + '\x00' + imported_module
 				}
 				mut module_dir := ''
-				mut newly_resolved_module := false
 				if module_cache_key in module_path_cache {
 					module_dir = module_path_cache[module_cache_key]
 				} else {
@@ -240,19 +238,9 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 						module_dir = prefs.get_module_path(imported_module, source_file.path)
 					}
 					module_path_cache[module_cache_key] = module_dir
-					newly_resolved_module = true
 				}
 				if module_dir == '' {
 					return error('fastc cannot resolve imported module `${imported_module}` from `${source_file.path}`')
-				}
-				if newly_resolved_module {
-					if loaded_module := module_dir_modules[module_dir] {
-						if loaded_module != imported_module {
-							module_aliases[imported_module] = loaded_module
-						}
-					} else {
-						module_dir_modules[module_dir] = imported_module
-					}
 				}
 				mut module_files := []string{}
 				if cached := module_dir_files[module_dir] {
@@ -275,12 +263,17 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 						module_file_real = os.real_path(module_file)
 						real_path_cache[module_file] = module_file_real
 					}
-					if !scheduled_paths[module_file_real] {
-						scheduled_paths[module_file_real] = true
-						queue << FastcQueuedSource{
-							path: module_file
-							module_name: imported_module
+					if scheduled_module := scheduled_path_modules[module_file_real] {
+						loaded_module := path_module[module_file_real] or { scheduled_module }
+						if loaded_module != '' && loaded_module != imported_module {
+							module_aliases[imported_module] = loaded_module
 						}
+						continue
+					}
+					scheduled_path_modules[module_file_real] = imported_module
+					queue << FastcQueuedSource{
+						path: module_file
+						module_name: imported_module
 					}
 				}
 			}

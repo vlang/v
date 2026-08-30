@@ -947,6 +947,31 @@ fn test_source_resolver_preserves_aliases_for_scheduled_files() {
 	assert aliases['legacy'] == 'canonical'
 }
 
+fn test_source_resolver_preserves_aliases_for_symlinked_module_dirs() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_symlinked_alias_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	canonical_dir := os.join_path(root, 'canonical')
+	legacy_dir := os.join_path(root, 'legacy')
+	os.mkdir_all(canonical_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.symlink(canonical_dir, legacy_dir) or { return }
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'module main\nimport canonical\nimport legacy\nfn main() { canonical.ping(); legacy.ping() }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'),
+		'module canonical\npub fn ping() {}\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	sources, aliases := fastc_resolve_source_files([main_file], prefs) or { panic(err) }
+	assert sources.len == 2
+	assert aliases['legacy'] == 'canonical'
+}
+
 fn test_header_discovers_imports_only_from_selected_comptime_branches() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_comptime_imports_${os.getpid()}')
 	os.rmdir_all(root) or {}
