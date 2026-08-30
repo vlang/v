@@ -2912,12 +2912,16 @@ fn (t &Transformer) array_map_lvalue_local_path(id flat.NodeId) ?string {
 	if node.kind == .index && node.children_count > 1 {
 		base := t.array_map_lvalue_local_path(t.a.child(&node, 0)) or { return none }
 		index := t.a.child_node(&node, 1)
-		if index.kind in [.ident, .int_literal, .string_literal, .char_literal, .bool_literal] {
-			return '${base}[${index.kind}:${index.value}]'
-		}
-		return '${base}[*]'
+		return array_map_local_index_path(base, index)
 	}
 	return none
+}
+
+fn array_map_local_index_path(base string, index &flat.Node) string {
+	if index.kind in [.ident, .int_literal, .string_literal, .char_literal, .bool_literal] {
+		return '${base}[${index.kind}:${index.value}]'
+	}
+	return '${base}[*]'
 }
 
 fn array_map_local_path_is_projection(path string, base string) bool {
@@ -3032,6 +3036,14 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 	if node.kind == .array_literal {
 		for i in 0 .. node.children_count {
 			t.array_map_record_local_pointer_origins('${path}[int_literal:${i}]', t.a.child(&node, i), elem_name, origins, mut locals)
+		}
+		return
+	}
+	if node.kind == .map_init {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			key := t.a.child_node(&node, i)
+			entry_path := array_map_local_index_path(path, key)
+			t.array_map_record_local_pointer_origins(entry_path, t.a.child(&node, i + 1), elem_name, origins, mut locals)
 		}
 		return
 	}
@@ -3249,6 +3261,16 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 	}
 	if t.array_map_call_side_effect_retains_element_address(id, node, elem_name, locals, block, before_idx) {
 		return true
+	}
+	if node.kind == .spawn_expr && node.children_count > 0 {
+		call := t.a.child_node(&node, 0)
+		if call.kind == .call {
+			for i in 1 .. call.children_count {
+				if t.array_map_side_effect_source_retains_element_address(t.a.child(call, i), elem_name, block, before_idx) {
+					return true
+				}
+			}
+		}
 	}
 	if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
 		array_id := t.a.child(&node, 0)
