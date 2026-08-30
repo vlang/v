@@ -6329,14 +6329,21 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 	}
 	if node.kind == .prefix && node.value == '...' && node.children_count > 0 {
 		spread_type := unalias_type(tc.resolve_type(tc.a.child(node, 0)))
-		elem_type := match spread_type {
-			Array { spread_type.elem_type }
-			ArrayFixed { spread_type.elem_type }
-			else { unknown_type('non-array spread') }
+		mut clone_types := []Type{}
+		match spread_type {
+			Array { clone_types << spread_type.elem_type }
+			ArrayFixed { clone_types << spread_type.elem_type }
+			Map {
+				clone_types << spread_type.key_type
+				clone_types << spread_type.value_type
+			}
+			else {}
 		}
-		mut seen := map[string]bool{}
-		if tc.array_accessor_clone_can_run_user_code(elem_type, mut seen) {
-			return false
+		for clone_type in clone_types {
+			mut seen := map[string]bool{}
+			if tc.array_accessor_clone_can_run_user_code(clone_type, mut seen) {
+				return false
+			}
 		}
 	}
 	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
