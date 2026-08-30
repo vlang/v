@@ -1079,6 +1079,66 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
+fn test_owned_scalar_consumer_with_cloning_array_spread_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_cloning_array_spread_sibling', "struct E {
+	name string
+}
+
+struct Mutator {
+	label string
+}
+
+__global entries []E
+
+fn (mutator Mutator) clone() Mutator {
+	entries.delete_last()
+	return Mutator{ label: mutator.label.clone() }
+}
+
+fn consume(length int, mutators []Mutator) int {
+	_ = mutators
+	return length
+}
+
+fn last_length_with_spread(mutators []Mutator) int {
+	return consume(entries.last().name.len, [...mutators])
+}
+
+fn main() {
+	entries = [E{ name: 'hello' }]
+	println(last_length_with_spread([Mutator{ label: 'delete' }]))
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
+fn test_owned_scalar_multi_return_with_mutating_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_multi_return_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut entries []E) string {
+	entries.delete_last()
+	return 'deleted'
+}
+
+fn last_length_then_delete(mut entries []E) (int, string) {
+	return entries.last().name.len, delete_last(mut entries)
+}
+
+fn main() {
+	mut entries := [E{ name: 'hello' }]
+	length, action := last_length_then_delete(mut entries)
+	println(int_str(length) + ':' + action)
+}
+", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
 fn test_owned_field_overloaded_index_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_index', "struct Name {

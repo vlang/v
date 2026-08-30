@@ -6157,6 +6157,9 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			current = parent_id
 			continue
 		}
+		if parent.kind == .return_stmt {
+			return parent.children_count <= 1 || tc.array_accessor_consumer_siblings_are_stable(parent, current)
+		}
 		if parent.kind in [.prefix, .cast_expr, .is_expr] {
 			wrapper_type := unalias_type(tc.resolve_type(parent_id))
 			if tc.ownership_type_requires_destruction(wrapper_type) || tc.array_accessor_type_contains_pointer(wrapper_type) || !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
@@ -6298,6 +6301,18 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 			}
 		}
 		return true
+	}
+	if node.kind == .prefix && node.value == '...' && node.children_count > 0 {
+		spread_type := unalias_type(tc.resolve_type(tc.a.child(node, 0)))
+		elem_type := match spread_type {
+			Array { spread_type.elem_type }
+			ArrayFixed { spread_type.elem_type }
+			else { unknown_type('non-array spread') }
+		}
+		mut seen := map[string]bool{}
+		if tc.array_accessor_clone_can_run_user_code(elem_type, mut seen) {
+			return false
+		}
 	}
 	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
 		.ident, .enum_val, .nil_literal, .none_expr, .sizeof_expr, .typeof_expr, .offsetof_expr] {
