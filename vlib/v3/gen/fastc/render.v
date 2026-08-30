@@ -385,11 +385,15 @@ fn (g &Parser) render_struct_literal_field_names(tokens []FastcExpressionToken, 
 		return none
 	}
 	c_type := g.type_from_expression_tokens(tokens[..open]) or { return none }
-	// This is a read-only view of program metadata owned by the generation context.
-	fields := unsafe { g.struct_fields[c_type.trim_right('*')] }
+	mut field_names := []string{}
+	if fields := g.struct_fields[c_type.trim_right('*')] {
+		field_names = fields.keys()
+	} else {
+		return none
+	}
 	mut rendered := rendered_expression
 	mut changed := false
-	for field_name in fields.keys() {
+	for field_name in field_names {
 		for module_name in [g.module_name, 'builtin'] {
 			constant_name := g.constants[fastc_constant_key(module_name, field_name)] or { '' }
 			mut resolved_names := []string{}
@@ -1101,8 +1105,7 @@ fn fastc_trim_expression_parentheses(tokens []FastcExpressionToken) []FastcExpre
 		start++
 		end--
 	}
-	// Callers only inspect the trimmed range while the original expression is alive.
-	return unsafe { tokens[start..end] }
+	return tokens[start..end].clone()
 }
 
 // render_refined_enum_logical_expression lowers `x is Enum && x == .value`.

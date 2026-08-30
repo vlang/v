@@ -1731,20 +1731,7 @@ fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports 
 }
 
 fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
-	if cached := g.declared_type_key_memo[raw_type] {
-		return if cached == '' { none } else { cached }
-	}
-	mut resolved := ''
-	if type_key := fastc_resolve_declared_type_key(g.module_name, raw_type, g.imports,
-		g.declared_types) {
-		resolved = type_key
-	}
-	mut parser := unsafe { &Parser(g) }
-	if parser.declared_type_key_memo.len == 0 {
-		parser.declared_type_key_memo = map[string]string{}
-	}
-	parser.declared_type_key_memo[raw_type] = resolved
-	return if resolved == '' { none } else { resolved }
+	return fastc_resolve_declared_type_key(g.module_name, raw_type, g.imports, g.declared_types)
 }
 
 fn fastc_semantic_declared_type_key(c_type string, declared_type_c_names map[string]string) string {

@@ -92,7 +92,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		if fixed_arguments < 0 || fixed_arguments > rendered_arguments.len {
 			return none
 		}
-		variadic_arguments := unsafe { rendered_arguments[fixed_arguments..] }
+		variadic_arguments := rendered_arguments[fixed_arguments..].clone()
 		packed := if variadic_arguments.len == 0 {
 			'(${variadic_type}){0}'
 		} else {
@@ -431,7 +431,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			variadic_type := signature.parameter_types.last()
 			element_type := g.array_element_type(variadic_type) or { continue }
-			variadic_arguments := unsafe { direct_arguments[fixed_arguments..] }
+			variadic_arguments := direct_arguments[fixed_arguments..].clone()
 			packed := if variadic_arguments.len == 0 {
 				'(${variadic_type}){0}'
 			} else {

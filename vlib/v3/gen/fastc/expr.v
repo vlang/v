@@ -298,7 +298,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				higher_order_method := lookahead.lit
 				if higher_order_method in ['map', 'filter', 'any', 'all', 'count'] && lookahead.scan() == .lpar {
 					receiver_start := fastc_method_receiver_start(expression_tokens, expression_tokens.len)
-					receiver_tokens := unsafe { expression_tokens[receiver_start..] }
+					receiver_tokens := expression_tokens[receiver_start..].clone()
 					receiver_type := g.infer_expression_type(receiver_tokens) or { '' }
 					// Array-literal receivers (`[.a, .b].map(...)`) do not round-trip
 					// through the receiver renderer yet; leave them to the normal path.
@@ -412,7 +412,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				// `.sort()` (no argument) keeps its existing builtin lowering (the `!= .rpar`).
 				if higher_order_method == 'sort' && lookahead.scan() == .lpar && lookahead.scan() != .rpar {
 					receiver_start := fastc_method_receiver_start(expression_tokens, expression_tokens.len)
-					receiver_tokens := unsafe { expression_tokens[receiver_start..] }
+					receiver_tokens := expression_tokens[receiver_start..].clone()
 					receiver_type := g.infer_expression_type(receiver_tokens) or { '' }
 					if receiver_type.starts_with('Array_') {
 						element_type := g.array_element_type(receiver_type) or {
@@ -1563,9 +1563,11 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			.comma,
 			.semicolon,
 		] && struct_types.len > 0 {
-			// The current program's field metadata is immutable while expressions render.
-			fields := unsafe { g.struct_fields[struct_types.last()] }
-			expected_struct_field_type = fields[g.lit] or { '' }
+			if fields := g.struct_fields[struct_types.last()] {
+				expected_struct_field_type = fields[g.lit] or { '' }
+			} else {
+				expected_struct_field_type = ''
+			}
 			piece = '.${piece}'
 		} else if g.selfhost && g.tok == .dot && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 1) {
 			mut contextual_type := if expected_struct_field_type != '' {
