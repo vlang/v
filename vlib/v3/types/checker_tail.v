@@ -6293,11 +6293,109 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op fl
 fn (tc &TypeChecker) array_accessor_consumer_siblings_are_stable(consumer &flat.Node, consumed_id flat.NodeId) bool {
 	for i in 0 .. consumer.children_count {
 		child_id := tc.a.child(consumer, i)
-		if child_id != consumed_id && !tc.array_accessor_borrow_sibling_is_stable(child_id) {
-			return false
+		if child_id != consumed_id {
+			if consumer.kind == .string_interp && tc.array_accessor_string_interp_part_can_run_user_code(child_id) {
+				return false
+			}
+			if !tc.array_accessor_borrow_sibling_is_stable(child_id) {
+				return false
+			}
 		}
 	}
 	return true
+}
+
+fn (tc &TypeChecker) array_accessor_string_interp_part_can_run_user_code(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return true
+	}
+	mut expr_id := id
+	node := tc.a.node(id)
+	if node.kind == .directive && node.value == 'string_interp_format' {
+		if node.children_count == 0 {
+			return true
+		}
+		expr_id = tc.a.child(node, 0)
+	}
+	mut seen := map[string]bool{}
+	return tc.array_accessor_stringifier_can_run_user_code(tc.resolve_type(expr_id), mut seen)
+}
+
+fn (tc &TypeChecker) array_accessor_stringifier_can_run_user_code(typ Type, mut seen map[string]bool) bool {
+	clean := unwrap_pointer(typ)
+	key := clean.name()
+	if seen[key] {
+		return false
+	}
+	seen[key] = true
+	match clean {
+		Alias, Array, ArrayFixed, Map, Struct, Interface, SumType, Enum {
+			if tc.array_accessor_type_has_custom_str_method(clean) {
+				return true
+			}
+		}
+		else {}
+	}
+	match clean {
+		Unknown {
+			return true
+		}
+		Alias, OptionType {
+			return tc.array_accessor_stringifier_can_run_user_code(clean.base_type, mut seen)
+		}
+		ResultType {
+			// A result can dispatch through the concrete IError payload's str method.
+			return true
+		}
+		Array, ArrayFixed {
+			return tc.array_accessor_stringifier_can_run_user_code(clean.elem_type, mut seen)
+		}
+		Map {
+			return tc.array_accessor_stringifier_can_run_user_code(clean.key_type, mut seen) || tc.array_accessor_stringifier_can_run_user_code(clean.value_type, mut seen)
+		}
+		Struct {
+			for field in tc.struct_fields_for_type(clean.name) {
+				if tc.array_accessor_stringifier_can_run_user_code(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+		Interface {
+			for impl_name in tc.interface_impl_names(clean.name) {
+				if tc.array_accessor_stringifier_can_run_user_code(tc.parse_type(impl_name), mut seen) {
+					return true
+				}
+			}
+		}
+		SumType {
+			base := tc.sum_base_name(clean.name)
+			for variant in tc.sum_types[base] or { return true } {
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(clean.name, variant))
+				if tc.array_accessor_stringifier_can_run_user_code(variant_type, mut seen) {
+					return true
+				}
+			}
+		}
+		MultiReturn {
+			for item in clean.types {
+				if tc.array_accessor_stringifier_can_run_user_code(item, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) array_accessor_type_has_custom_str_method(typ Type) bool {
+	name := resolve_type_name_for_method(typ)
+	if name.len == 0 {
+		return false
+	}
+	method_name := tc.concrete_method_signature_key(name, 'str') or { return false }
+	method_module := tc.fn_type_modules[method_name] or { return true }
+	return method_module != 'builtin'
 }
 
 fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) bool {

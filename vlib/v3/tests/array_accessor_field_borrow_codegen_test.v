@@ -493,6 +493,80 @@ fn main() {
 	assert interp.exit_code != 0, interp.output
 	assert interp.output.contains('cannot return an independent array element'), interp.output
 
+	stringifier := compile_v3_ownership_program(v3_bin, 'owned_string_interp_mutating_stringifier', "struct E {
+	name string
+}
+
+struct Mutator {}
+
+__global entries []E
+
+fn (Mutator) str() string {
+	entries.delete_last()
+	return '!'
+}
+
+fn last_name_then_stringify(mutator Mutator) string {
+	return '\${entries.last().name}\${mutator}'
+}
+
+fn main() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_then_stringify(Mutator{}))
+}
+", '-enable-globals')
+	assert stringifier.exit_code != 0, stringifier.output
+	assert stringifier.output.contains('cannot return an independent array element'), stringifier.output
+
+	nested_stringifier := compile_v3_ownership_program(v3_bin, 'owned_string_interp_nested_mutating_stringifier', "struct E {
+	name string
+}
+
+struct Mutator {}
+
+struct Wrapper {
+	mutator Mutator
+}
+
+__global entries []E
+
+fn (Mutator) str() string {
+	entries.delete_last()
+	return '!'
+}
+
+fn last_name_then_stringify(wrapper Wrapper) string {
+	return '\${entries.last().name}\${wrapper}'
+}
+
+fn main() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_then_stringify(Wrapper{}))
+}
+", '-enable-globals')
+	assert nested_stringifier.exit_code != 0, nested_stringifier.output
+	assert nested_stringifier.output.contains('cannot return an independent array element'), nested_stringifier.output
+
+	stable_stringifier := compile_v3_ownership_program(v3_bin, 'owned_string_interp_stable_auto_stringifier', "struct E {
+	name string
+}
+
+struct Stable {
+	n int
+}
+
+fn last_name_then_stringify(entries []E, stable Stable) string {
+	return '\${entries.last().name}\${stable}'
+}
+
+fn main() {
+	entries := [E{ name: 'hello' }]
+	println(last_name_then_stringify(entries, Stable{ n: 1 }))
+}
+", '')
+	assert stable_stringifier.exit_code == 0, stable_stringifier.output
+	assert !stable_stringifier.output.contains('cannot return an independent array element'), stable_stringifier.output
+
 	comparison := compile_v3_ownership_program(v3_bin, 'owned_string_comparison_mutating_sibling', "struct E {
 	name string
 }
