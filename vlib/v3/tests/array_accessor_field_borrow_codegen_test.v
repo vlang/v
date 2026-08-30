@@ -629,6 +629,56 @@ fn main() {
 	assert wrapped_comparison_call.exit_code != 0, wrapped_comparison_call.output
 	assert wrapped_comparison_call.output.contains('cannot return an independent array element'), wrapped_comparison_call.output
 
+	scalar_selector_call := compile_v3_ownership_program(v3_bin, 'owned_scalar_selector_call_argument_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn consume(value int, suffix string) int {
+	return value
+}
+
+fn last_name_len_then_delete(mut arr []E) int {
+	return consume(arr.last().name.len, delete_last(mut arr))
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_len_then_delete(mut arr))
+}
+", '')
+	assert scalar_selector_call.exit_code != 0, scalar_selector_call.output
+	assert scalar_selector_call.output.contains('cannot return an independent array element'), scalar_selector_call.output
+
+	logical_wrapper_call := compile_v3_ownership_program(v3_bin, 'owned_logical_wrapper_call_argument_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn consume(value bool, suffix string) bool {
+	return value
+}
+
+fn last_name_then_delete(mut arr []E) bool {
+	return consume((arr.last().name == 'hello') && true, delete_last(mut arr))
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert logical_wrapper_call.exit_code != 0, logical_wrapper_call.output
+	assert logical_wrapper_call.output.contains('cannot return an independent array element'), logical_wrapper_call.output
+
 	nested_call := compile_v3_ownership_program(v3_bin, 'owned_nested_call_argument_mutating_outer_sibling', "struct E {
 	name string
 }

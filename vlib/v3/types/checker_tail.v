@@ -6067,7 +6067,7 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	raw_final_type := tc.resolve_type(final_field)
 	final_type := unalias_type(raw_final_type)
 	if !tc.ownership_type_requires_destruction(final_type) && !tc.array_accessor_type_contains_pointer(final_type) {
-		return true
+		return tc.array_accessor_enclosing_consumers_are_stable(current)
 	}
 	// An owned or pointer field remains borrowed when a comparison or scalar index consumes it
 	// immediately. Calls, assignments, and owned/pointer index results stay on the copying path
@@ -6143,6 +6143,14 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			continue
 		}
 		is_string_plus := parent.kind == .infix && parent.op == .plus && unalias_type(tc.resolve_type(parent_id)) is String
+		if parent.kind == .infix && !is_string_plus {
+			wrapper_type := unalias_type(tc.resolve_type(parent_id))
+			if tc.ownership_type_requires_destruction(wrapper_type) || tc.array_accessor_type_contains_pointer(wrapper_type) || tc.array_accessor_consumer_has_overloaded_operator(parent) || !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+				return false
+			}
+			current = parent_id
+			continue
+		}
 		if !is_string_plus && parent.kind != .string_interp {
 			return true
 		}
