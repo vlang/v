@@ -116,6 +116,50 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_array_method_on_imported_global_keeps_global_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_method_on_imported_global', 'import os
+
+fn main() {
+	println(os.args.last().len > 0)
+}
+')
+	assert out == 'true'
+}
+
+fn test_explicit_generic_call_keeps_container_and_imported_struct_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'explicit_generic_call_result_context', 'import time
+
+fn identity[T](value T) T {
+	return value
+}
+
+fn generic_map[M]() map[string]M {
+	return map[string]M{}
+}
+
+struct Box[T] {
+	value T
+}
+
+fn main() {
+	values := identity[map[string]string]({
+		"answer": "yes"
+	})
+	moment := identity[time.Time](time.Time{
+		year: 2024
+	})
+	box := Box[int]{}
+	println(values["answer"])
+	println(moment.year)
+	println(typeof(box.value).name)
+	println(typeof(generic_map[string]()).name)
+}
+')
+	assert out == 'yes\n2024\nint\nmap[string]string'
+}
+
 fn test_sum_equality_uses_canonical_struct_field_types() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_with_flags(v3_bin, 'sum_equality_canonical_struct_field_types', '-building-v', 'import v.token
@@ -1025,6 +1069,36 @@ fn main() {
 	assert out == '7'
 }
 
+fn test_imported_struct_zero_fields_use_declaration_module_aliases() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_struct_field_alias_scope', {
+		'v.mod':       "Module { name: 'imported_struct_field_alias_scope' }\n"
+		'other/mod.v': 'module other
+
+pub type Type = u32
+
+pub struct Holder {
+pub:
+	typ Type
+}
+'
+		'main.v':      'module main
+
+import other
+
+struct Type {
+	sym &int @[required]
+}
+
+fn main() {
+	holder := other.Holder{}
+	println(holder.typ)
+}
+'
+	}, 'main.v')
+	assert out == '0'
+}
+
 fn test_for_in_smartcast_interface_field_keeps_interface_element_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'for_in_smartcast_interface_field',
@@ -1283,6 +1357,62 @@ fn test_shared_field_without_sync_import_compiles_and_locks() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'shared_field_without_sync_import',
 		'struct S {\nmut:\n\ta shared int\n}\n\nfn main() {\n\tmut s := S{}\n\tlock s.a {\n\t\ts.a = 7\n\t\tprintln(int_str(s.a))\n\t}\n}\n')
+	assert out == '7'
+}
+
+fn test_direct_shared_field_lock_allows_mut_receiver_and_branch_tail_append() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'direct_shared_lock_mut_receiver_and_append', 'struct State {
+mut:
+	values shared []string
+	count int
+}
+
+fn (mut state State) touch() {
+	state.count++
+}
+
+fn main() {
+	mut state := State{}
+	lock state.values {
+		state.touch()
+		if true {
+			state.values << "ok"
+		}
+	}
+	mut len := 0
+	rlock state.values {
+		len = state.values.len
+	}
+	println(int_str(state.count))
+	println(int_str(len))
+}
+')
+	assert out == '1\n1'
+}
+
+fn test_unsafe_block_tail_keeps_lexical_smartcast() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'unsafe_block_tail_lexical_smartcast', 'struct LambdaNode {
+mut:
+	value int
+}
+
+struct OtherNode {}
+
+type Expr = LambdaNode | OtherNode
+
+fn main() {
+	expr := Expr(LambdaNode{
+		value: 6
+	})
+	if expr is LambdaNode {
+		mut node := unsafe { expr }
+		node.value++
+		println(int_str(node.value))
+	}
+}
+')
 	assert out == '7'
 }
 
@@ -3584,6 +3714,68 @@ fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	assert out == '2'
 }
 
+fn test_scalar_return_call_does_not_heap_promote_address_argument() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'scalar_return_address_arg', 'struct Item {
+	value int
+}
+
+fn inspect(item &Item) int {
+	return item.value
+}
+
+fn forward() int {
+	item := Item{
+		value: 7
+	}
+	return inspect(&item)
+}
+
+fn main() {
+	println(int_str(forward()))
+}
+')
+	body := c_fn_body(c_source, 'int forward(void) {')
+	assert body.contains('main__Item item ='), body
+	assert !body.contains('main__Item* item ='), body
+	assert !body.contains('memdup(&__esc'), body
+}
+
+fn test_smartcast_selector_return_keeps_existing_sum_box() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_source(v3_bin, 'smartcast_selector_sum_return', 'struct First {
+	value int
+}
+
+struct Second {
+	value int
+}
+
+type Value = First | Second
+
+struct Holder {
+	value Value
+}
+
+fn selected(holder &Holder) Value {
+	if holder.value is First {
+		return holder.value
+	}
+	return holder.value
+}
+
+fn main() {
+	holder := Holder{
+		value: First{value: 7}
+	}
+	println(selected(&holder))
+}
+')
+	body := c_fn_body(c_source, 'Value selected(main__Holder* holder) {')
+	assert body.contains('return holder->value;'), body
+	assert !body.contains('memdup('), body
+}
+
 fn test_returned_closure_alias_heap_promotes_captured_pointer_source() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct Value {
@@ -4850,6 +5042,13 @@ fn test_late_inferred_generic_call_emits_specialization() {
 	assert out == '42'
 }
 
+fn test_late_reachable_body_generic_call_emits_specialization() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'late_reachable_body_generic_call_emits_specialization',
+		'fn identity[T](value T) T {\n\treturn value\n}\n\nfn late_helper() int {\n\treturn identity[int](42)\n}\n\nfn outer[T]() int {\n\treturn late_helper()\n}\n\nfn main() {\n\tprintln(int_str(outer[int]()))\n}\n')
+	assert out == '42'
+}
+
 fn test_module_qualified_panic_keeps_module_symbol() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'module_qualified_panic_symbol', {
@@ -5195,6 +5394,55 @@ fn main() {
 }
 ')
 	assert out == 'value\ntrue\ntrue\nmain_attr'
+}
+
+fn test_comptime_generic_embedded_field_uses_short_reflected_name() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_generic_embedded_field_name', 'struct Embedded[T] {
+	value T
+}
+
+struct Container {
+	Embedded[int]
+}
+
+fn main() {
+	$for field in Container.fields {
+		$if field.is_embed {
+			println(field.name)
+		}
+	}
+}
+')
+	assert out == 'Embedded'
+}
+
+fn test_comptime_main_enum_field_matches_enum_type_group() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_main_enum_field_type_group', 'enum State {
+	idle
+	running
+}
+
+struct Job {
+	state State
+}
+
+fn enum_fields[T]() int {
+	mut count := 0
+	$for field in T.fields {
+		$if field.unaliased_typ is $enum {
+			count++
+		}
+	}
+	return count
+}
+
+fn main() {
+	println(enum_fields[Job]())
+}
+')
+	assert out == '1'
 }
 
 fn test_json2_encode_keeps_independent_array_element_specializations() {
@@ -10489,4 +10737,184 @@ fn main() {
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
 	out := run_good_with_flags(v3_bin, 'array_map_labeled_continue_inner_fixed_point', '-ownership', source)
 	assert out == '0\nexternal'
+}
+
+fn test_specialized_generic_match_expression_ignores_unresolved_branch_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'specialized_generic_match_expression_type', "type Value = []u8 | i64 | string
+
+struct Reader {}
+
+fn (Reader) load[T]() !map[string]T {
+	\$if T is string {
+		return {
+			'answer': 'ready'
+		}
+	}
+	return map[string]T{}
+}
+
+fn normalize[T](value Value) T {
+	\$if T is string {
+		result := match value {
+			[]u8 { value.bytestr() }
+			string { value }
+			i64 { value.str() }
+		}
+		return result
+	}
+	return T{}
+}
+
+fn main() {
+	println(normalize[string](Value('ready')))
+	result := Reader{}.load[string]() or { panic(err) }
+	println(result['answer'])
+}
+")
+	assert out == 'ready\nready'
+}
+
+fn test_comptime_reflected_enum_field_accepts_integer_decoder_result() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_reflected_enum_integer_assignment', 'enum Role {
+	worker
+	manager
+}
+
+struct Config {
+	role Role
+}
+
+fn decoded_number() int {
+	return 1
+}
+
+fn decode[T]() T {
+	mut value := T{}
+	$for field in T.fields {
+		$if field.is_enum {
+			value.$(field.name) = decoded_number()
+		}
+	}
+	return value
+}
+
+fn main() {
+	println(decode[Config]().role)
+}
+')
+	assert out == 'manager'
+}
+
+fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_collision() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_main_default_short_name_collision', {
+		'v.mod':       "Module { name: 'generic_main_default_short_name_collision' }\n"
+		'factory/x.v': 'module factory\n\nstruct Doc {\n\tast &int\n}\n\npub fn make[T]() T {\n\treturn T{}\n}\n'
+		'main.v':      'module main\n\nimport factory\n\nstruct Doc {\n\titems []int\n}\n\nfn main() {\n\tvalue := factory.make[Doc]()\n\tprintln(value.items.len)\n}\n'
+	}, 'main.v')
+	assert out == '0'
+}
+
+fn test_address_of_nil_pointer_cast_provides_pointer_value_storage() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'address_of_nil_pointer_cast_storage', 'struct Holder {
+	ptr voidptr
+}
+
+fn main() {
+	value := Holder{
+		ptr: unsafe { &voidptr(nil) }
+	}
+	println(value.ptr == unsafe { nil })
+}
+')
+	assert out == 'true'
+}
+
+fn test_later_block_call_arg_does_not_capture_earlier_sum_temporary() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'call_arg_sum_temp_before_block', 'struct Item {}
+
+type Node = Item
+
+fn inspect(node &Node, data voidptr) {
+	println(node is Item)
+	println(data == unsafe { nil })
+}
+
+fn main() {
+	item := &Item{}
+	inspect(item, unsafe { nil })
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_test_command_skips_incompatible_single_file() {
+	v3_bin := build_v3_review_transform()
+	test_dir := os.join_path(os.temp_dir(), 'v3_incompatible_test_${os.getpid()}')
+	os.rmdir_all(test_dir) or {}
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	test_src := os.join_path(test_dir, 'v3_incompatible_windows_test.v')
+	os.write_file(test_src, 'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or {
+		panic(err)
+	}
+	result := os.execute('${v3_bin} -nocache -os linux test ${test_src}')
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('SKIP ${test_src}'), result.output
+
+	backend_test_src := os.join_path(test_dir, 'v3_incompatible_backend_test.js.v')
+	os.write_file(backend_test_src,
+		'module main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or { panic(err) }
+	backend_result := os.execute('${v3_bin} -nocache test ${backend_test_src}')
+	assert backend_result.exit_code == 0, backend_result.output
+	assert backend_result.output.contains('SKIP ${backend_test_src}'), backend_result.output
+
+	compatible_test_src := os.join_path(test_dir, 'v3_compatible_backend_test.c.v')
+	os.write_file(compatible_test_src,
+		"module main\n\nfn test_test_command_skips_incompatible_single_file() {\n\tprintln('compatible backend test')\n}\n") or {
+		panic(err)
+	}
+	compatible_result := os.execute('${v3_bin} -nocache test ${compatible_test_src}')
+	assert compatible_result.exit_code == 0, compatible_result.output
+	assert !compatible_result.output.contains('SKIP ${compatible_test_src}'), compatible_result.output
+	assert compatible_result.output.contains('compatible backend test'), compatible_result.output
+}
+
+fn test_test_command_honors_vtest_build_constraint() {
+	v3_bin := build_v3_review_transform()
+	test_src := os.join_path(os.temp_dir(), 'v3_constrained_test.v')
+	os.write_file(test_src,
+		'// vtest build: windows\nmodule main\n\nfn test_never_checked() {\n\tmissing_symbol()\n}\n') or {
+		panic(err)
+	}
+	result := os.execute('${v3_bin} -nocache -os linux test ${test_src}')
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('SKIP ${test_src}'), result.output
+}
+
+fn test_module_can_import_package_with_its_own_short_name() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'same_named_import', {
+		'v.mod':                        "Module { name: 'same_named_import' }\n"
+		'nested/time/same_name_test.v': 'module time
+
+import time
+
+struct Time {
+	local int
+}
+
+fn test_imported_time_type_is_available() {
+	assert time.Time{}.year == 0
+	assert Time{}.local == 0
+}
+'
+	}, 'nested/time/same_name_test.v')
+	assert out == ''
 }

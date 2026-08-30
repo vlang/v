@@ -633,7 +633,7 @@ fn test_formatter_preserves_three_value_if_guard_bindings() {
 }
 
 fn check() {
-	if r1, r2, r3 := create() {
+	if mut r1, mut r2, r3 := create() {
 		_ = r1
 		_ = r2
 		_ = r3
@@ -643,6 +643,46 @@ fn check() {
 	out := vfmt('three_value_if_guard', source)
 	assert out == source, out
 	assert vfmt('three_value_if_guard_twice', out) == out
+}
+
+fn test_formatter_preserves_mut_if_guard_binding() {
+	source := 'struct Item {
+mut:
+	value int
+}
+
+struct Holder {
+mut:
+	items map[u32]&Item
+}
+
+fn (mut holder Holder) update(id u32) {
+	if mut item := holder.items[id] {
+		item.value++
+	}
+}
+'
+	out := vfmt('mut_if_guard_binding', source)
+	assert out == source, out
+	assert vfmt('mut_if_guard_binding_twice', out) == out
+}
+
+fn test_formatter_keeps_or_block_leading_comment_inside_block() {
+	source := 'fn read_frame() ?int {
+	return 1
+}
+
+fn process() {
+	frame := read_frame() or {
+		// Treat a clean transport close as end of session.
+		return
+	}
+	println(frame)
+}
+'
+	out := vfmt('or_block_leading_comment', source)
+	assert out == source, out
+	assert vfmt('or_block_leading_comment_twice', out) == out
 }
 
 fn test_formatter_retains_expanded_call_argument_layout() {

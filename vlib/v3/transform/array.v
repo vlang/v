@@ -2624,8 +2624,8 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		t.unset_var_type(elem_name)
 	}
 	mapped_type := t.node_type(mapped_expr)
-	if !checker_result_elem_type_is_usable && decl_type_is_usable(mapped_type)
-		&& mapped_type != 'void' {
+	if decl_type_is_usable(mapped_type) && mapped_type != 'void'
+		&& (!checker_result_elem_type_is_usable || t.active_specialization_args.len > 0) {
 		result_elem_type = mapped_type
 	}
 	if direct_selector_type.len > 0 && map_fn_name.len == 0 {

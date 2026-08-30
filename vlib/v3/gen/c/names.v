@@ -55,6 +55,35 @@ fn c_name_is_pre_sanitized(name string) bool {
 	return has_double_underscore
 }
 
+@[direct_array_access; inline]
+fn c_name_is_plain_dotted(name string) bool {
+	mut has_dot := false
+	for i in 0 .. name.len {
+		c := name[i]
+		if c == `.` {
+			has_dot = true
+			continue
+		}
+		if (c < `a` || c > `z`) && (c < `A` || c > `Z`) && (c < `0` || c > `9`) && c != `_` {
+			return false
+		}
+	}
+	return has_dot
+}
+
+@[direct_array_access; inline]
+fn c_name_is_string_literal_symbol(name string) bool {
+	if name.len <= 5 || !name.starts_with('_str_') {
+		return false
+	}
+	for i in 5 .. name.len {
+		if name[i] < `0` || name[i] > `9` {
+			return false
+		}
+	}
+	return true
+}
+
 @[inline]
 fn (c &CNameCache) recent(name string) ?string {
 	if name.len > 65535 {
@@ -261,6 +290,14 @@ fn (g &FlatGen) cname(name string) string {
 		cache.remember(name, name)
 		return name
 	}
+	if naming.is_plain_identifier(name) && name != 'malloc' && name != 'int_str' && name != 'exit'
+		&& !c_name_is_string_literal_symbol(name) && !naming.is_reserved_word(name)
+		&& !naming.is_libc_collision(name) {
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
+	}
 	if cached := cache.entries[name] {
 		cache.last_name = name
 		cache.last_value = cached
@@ -280,6 +317,14 @@ fn (g &FlatGen) cname(name string) string {
 			cache.remember(name, cached)
 			return cached
 		}
+	}
+	if !name.starts_with('C.') && c_name_is_plain_dotted(name) {
+		result := naming.sanitize(name)
+		cache.entries[name] = result
+		cache.last_name = name
+		cache.last_value = result
+		cache.remember(name, result)
+		return result
 	}
 	result := naming.c_name(name)
 	cache.entries[name] = result

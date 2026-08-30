@@ -345,15 +345,15 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
-		nodes:                  []Node{cap: 256}
-		children:               []NodeId{cap: 512}
-		disabled_fns:           map[string]bool{}
-		export_fn_names:        map[string]string{}
-		noreturn_fns:           map[string]bool{}
-		source_files:           map[int]&token.File{}
-		template_call_sites:    map[int]token.Pos{}
-		template_actions:       map[int]string{}
-		missing_imports:        map[int]string{}
+		nodes:                    []Node{cap: 256}
+		children:                 []NodeId{cap: 512}
+		disabled_fns:             map[string]bool{}
+		export_fn_names:          map[string]string{}
+		noreturn_fns:             map[string]bool{}
+		source_files:             map[int]&token.File{}
+		template_call_sites:      map[int]token.Pos{}
+		template_actions:         map[int]string{}
+		missing_imports:          map[int]string{}
 		formatter_sources:        map[int]string{}
 		formatter_file_sources:   map[int]string{}
 		formatter_node_ends:      map[int]int{}
@@ -362,10 +362,10 @@ pub fn FlatAst.new() FlatAst {
 		formatter_param_list_end: map[int]int{}
 		formatter_for_in_mut:     map[int]u8{}
 		formatter_local_sels:     map[int]bool{}
-		text_ids:               map[string]TextId{}
-		specialized_fn_nodes:   map[int]bool{}
-		specialized_fn_modules: map[int]string{}
-		specialized_fn_files:   map[int]string{}
+		text_ids:                 map[string]TextId{}
+		specialized_fn_nodes:     map[int]bool{}
+		specialized_fn_modules:   map[int]string{}
+		specialized_fn_files:     map[int]string{}
 	}
 }
 
