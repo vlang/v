@@ -219,6 +219,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// otherwise unchanged cast appends a replacement node and child span.
 			estimate += int(node.children_count) + 1
 		}
+		if node.kind == .index {
+			// A changed external index appends a replacement node and child span;
+			// semantic constant-map edges below do not account for those writes.
+			estimate += int(node.children_count) + 1
+		}
 		if node.kind == .selector {
 			if t.external_selector_expands_from_type_metadata(node) {
 				// Shared sum/interface fields expand into conditional trees whose size

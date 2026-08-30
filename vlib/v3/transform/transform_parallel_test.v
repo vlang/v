@@ -779,6 +779,37 @@ fn test_external_map_expansion_estimate_defers_metadata_driven_equality() {
 	assert external_map_equality_expansion_estimate('Value', true) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_includes_index_reconstruction() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{
+		kind: .ident
+		value: 'make_items'
+	})
+	call_start := a.children.len
+	a.children << callee
+	base := a.add_node(flat.Node{
+		kind: .call
+		children_start: call_start
+		children_count: 1
+	})
+	index_value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'i'
+	})
+	index_start := a.children.len
+	a.children << base
+	a.children << index_value
+	root := a.add_node(flat.Node{
+		kind: .index
+		children_start: index_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) == 5
+}
+
 fn test_external_map_expansion_estimate_includes_selector_reconstruction() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{
