@@ -84,6 +84,10 @@ struct ObservedPair {
 	right ObservedPayload
 }
 
+struct ObservedOptionalHolder {
+	value ?ObservedPayload
+}
+
 type Entry = Payload | int
 
 struct EntryHolder {
@@ -773,6 +777,25 @@ fn test_borrowed_or_fallback_is_cloned(holder &Holder) {
 	assert holder.right.values[0] == "right"
 }
 
+fn test_borrowed_or_success_is_cloned() {
+	mut clones := 0
+	holder := &ObservedOptionalHolder{
+		value: ObservedPayload{
+			values: ["success"]
+			clones: &clones
+		}
+	}
+	mut copied := holder.value or {
+		ObservedPayload{
+			values: ["fallback"]
+			clones: &clones
+		}
+	}
+	assert clones == 1
+	copied.values[0] = "success copy"
+	assert copied.values[0] == "success copy"
+}
+
 fn test_borrowed_sum_projection_is_cloned() {
 	holder := &EntryHolder{
 		entry: Payload{
@@ -1046,6 +1069,7 @@ fn main() {
 	test_conditional_borrowed_branches_are_cloned(holder)
 	test_multi_conditional_borrowed_branches_are_cloned(holder, true)
 	test_borrowed_or_fallback_is_cloned(holder)
+	test_borrowed_or_success_is_cloned()
 	test_borrowed_sum_projection_is_cloned()
 	test_owned_rvalue_sum_projection_is_moved()
 	test_owned_rvalue_slice_projection_is_consumed()

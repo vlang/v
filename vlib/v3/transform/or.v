@@ -1531,7 +1531,8 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	opt_ident := t.make_ident(opt_tmp)
 	ok_cond := t.make_selector(opt_ident, 'ok', 'bool')
 	value_expr := t.make_selector(t.make_ident(opt_tmp), 'value', storage_value_type)
-	then_assign := t.make_assign(t.make_ident(val_tmp), value_expr)
+	then_value := t.clone_borrowed_projection(expr_id, value_expr, storage_value_type)
+	then_assign := t.make_assign(t.make_ident(val_tmp), then_value)
 	then_block := t.make_block_skip_scope_drops([then_assign])
 	else_stmts := if multi_types := t.multi_return_types_for_expr(expr_id, 0) {
 		t.lower_or_body_to_multi_return_stmts(body_id, val_tmp, storage_value_type, multi_types,
