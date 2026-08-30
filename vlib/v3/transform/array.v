@@ -2894,9 +2894,72 @@ fn (t &Transformer) array_map_lvalue_root_ident(id flat.NodeId) ?string {
 	return none
 }
 
-fn (t &Transformer) array_map_side_effect_target_is_external(id flat.NodeId, elem_name string, locals map[string]bool) bool {
+fn (t &Transformer) array_map_lvalue_is_plain_ident(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.array_map_lvalue_is_plain_ident(t.a.child(&node, 0))
+	}
+	return node.kind == .ident
+}
+
+// `locals[name]` records whether a mapper-local pointer currently aliases
+// storage rooted outside the mapper. A bare assignment to the pointer variable
+// itself stays local; selector/index writes and mutating calls follow the alias.
+fn (t &Transformer) array_map_side_effect_target_is_external(id flat.NodeId, elem_name string, locals map[string]bool, follow_local_pointer bool) bool {
 	root := t.array_map_lvalue_root_ident(id) or { return false }
-	return root != elem_name && root !in locals
+	if root == elem_name {
+		return false
+	}
+	if root !in locals {
+		return true
+	}
+	return locals[root] && (follow_local_pointer || !t.array_map_lvalue_is_plain_ident(id))
+}
+
+fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId, elem_name string, locals map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		root := t.array_map_lvalue_root_ident(t.a.child(&node, 0)) or { return true }
+		return root != elem_name && (root !in locals || locals[root])
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] && node.children_count > 0 {
+		return t.array_map_pointer_alias_origin_is_external(t.a.child(&node, 0), elem_name, locals)
+	}
+	if node.kind == .block && node.children_count > 0 {
+		return t.array_map_pointer_alias_origin_is_external(t.a.child(&node, node.children_count - 1), elem_name, locals)
+	}
+	typ := t.checker_expr_type_name(id) or { t.node_type(id) }
+	if !t.normalize_type_alias(typ).starts_with('&') {
+		return false
+	}
+	root := t.array_map_lvalue_root_ident(id) or { return true }
+	return root != elem_name && (root !in locals || locals[root])
+}
+
+fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, elem_name string, mut locals map[string]bool) {
+	if stmt.kind == .decl_assign {
+		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+			lhs := t.a.child_node(&stmt, i)
+			if lhs.kind == .ident && lhs.value.len > 0 {
+				locals[lhs.value] = t.array_map_pointer_alias_origin_is_external(t.a.child(&stmt, i + 1), elem_name, locals)
+			}
+		}
+		return
+	}
+	if stmt.kind == .assign {
+		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+			lhs := t.a.child_node(&stmt, i)
+			if lhs.kind == .ident && lhs.value in locals {
+				locals[lhs.value] = t.array_map_pointer_alias_origin_is_external(t.a.child(&stmt, i + 1), elem_name, locals)
+			}
+		}
+	}
 }
 
 fn (mut t Transformer) array_map_side_effect_source_retains_element_address(id flat.NodeId, elem_name string, block flat.Node, before_idx int) bool {
@@ -2929,7 +2992,7 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 		}
 	}
 	for target_i, target_param_idx in target_param_idxs {
-		if !t.array_map_side_effect_target_is_external(target_ids[target_i], elem_name, locals) {
+		if !t.array_map_side_effect_target_is_external(target_ids[target_i], elem_name, locals, true) {
 			continue
 		}
 		for source_param_idx in t.tc.call_param_storage_source_params(id, target_param_idx) {
@@ -2971,14 +3034,7 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 				return true
 			}
 			stmt := t.a.nodes[int(stmt_id)]
-			if stmt.kind == .decl_assign {
-				for j := 0; j + 1 < int(stmt.children_count); j += 2 {
-					lhs := t.a.child_node(&stmt, j)
-					if lhs.kind == .ident && lhs.value.len > 0 {
-						scoped[lhs.value] = true
-					}
-				}
-			}
+			t.array_map_update_local_pointer_origins(stmt, elem_name, mut scoped)
 		}
 		return false
 	}
@@ -2994,7 +3050,7 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 	if node.kind in [.assign, .selector_assign, .index_assign] {
 		for i := 0; i + 1 < int(node.children_count); i += 2 {
 			lhs_id := t.a.child(&node, i)
-			if t.array_map_side_effect_target_is_external(lhs_id, elem_name, locals) && t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i + 1), elem_name, block, before_idx) {
+			if t.array_map_side_effect_target_is_external(lhs_id, elem_name, locals, false) && t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i + 1), elem_name, block, before_idx) {
 				return true
 			}
 		}
