@@ -3076,6 +3076,15 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 		}
 		return
 	}
+	if node.kind == .array_init {
+		for i in 0 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_init && field.value == 'init' && field.children_count > 0 {
+				t.array_map_record_local_pointer_origins('${path}[*]', t.a.child(field, 0), elem_name, origins, mut locals)
+			}
+		}
+		return
+	}
 	if node.kind == .map_init {
 		for i := 0; i + 1 < int(node.children_count); i += 2 {
 			key := t.a.child_node(&node, i)
@@ -3095,14 +3104,31 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 }
 
 fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, elem_name string, mut locals map[string]bool) {
+	mut loop_exits := []map[string]bool{}
+	t.array_map_update_local_pointer_origins_flow(stmt, elem_name, mut locals, mut loop_exits)
+}
+
+fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Node, elem_name string, mut locals map[string]bool, mut loop_exits []map[string]bool) bool {
+	if stmt.kind in [.break_stmt, .continue_stmt] {
+		exit_origins := locals.clone()
+		loop_exits << exit_origins
+		return false
+	}
+	if stmt.kind == .return_stmt {
+		return false
+	}
 	if stmt.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] && stmt.children_count > 0 {
-		t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, 0), elem_name, mut locals)
-		return
+		return t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, 0), elem_name,
+			mut locals, mut loop_exits)
 	}
 	if stmt.kind in [.block, .match_branch, .select_branch] {
 		mut scoped := locals.clone()
 		mut declared := map[string]bool{}
+		mut continues := true
 		for i in 0 .. stmt.children_count {
+			if !continues {
+				break
+			}
 			child := t.a.child_node(&stmt, i)
 			if child.kind == .decl_assign {
 				for j := 0; j + 1 < int(child.children_count); j += 2 {
@@ -3112,96 +3138,133 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 					}
 				}
 			}
-			t.array_map_update_local_pointer_origins(*child, elem_name, mut scoped)
+			continues = t.array_map_update_local_pointer_origins_flow(*child, elem_name,
+				mut scoped, mut loop_exits)
 		}
-		for path, external in scoped {
-			root := array_map_local_path_root(path)
-			if root in locals && root !in declared {
-				locals[path] = external
+		if continues {
+			for path, external in scoped {
+				root := array_map_local_path_root(path)
+				if root in locals && root !in declared {
+					locals[path] = external
+				}
 			}
 		}
-		return
+		return continues
 	}
 	if stmt.kind == .comptime_if {
 		if take_then := t.comptime_type_condition_value(stmt.value) {
 			branch_idx := if take_then { 0 } else { 1 }
 			if branch_idx < stmt.children_count {
-				t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, branch_idx), elem_name, mut locals)
+				return t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt,
+					branch_idx), elem_name, mut locals, mut loop_exits)
 			}
-			return
+			return true
 		}
 	}
 	if stmt.kind == .or_expr {
 		if stmt.children_count == 0 {
-			return
+			return true
 		}
 		// The source is evaluated on both paths. A continuing fallback is conditional, so
 		// preserve every pointer origin possible after either success or fallback execution.
-		t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, 0), elem_name, mut locals)
+		if !t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, 0), elem_name,
+			mut locals, mut loop_exits) {
+			return false
+		}
 		before := locals.clone()
 		mut merged := before.clone()
 		for i in 1 .. stmt.children_count {
 			mut fallback := before.clone()
-			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut fallback)
-			array_map_merge_local_pointer_origins(mut merged, fallback, before)
+			if t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, i), elem_name,
+				mut fallback, mut loop_exits) {
+				array_map_merge_local_pointer_origins(mut merged, fallback, before)
+			}
 		}
 		locals = merged.move()
-		return
+		return true
 	}
 	if stmt.kind == .if_expr {
 		before := locals.clone()
 		mut merged := map[string]bool{}
+		mut continues := stmt.children_count <= 2
 		for name, origin in before {
 			merged[name] = if stmt.children_count > 2 { false } else { origin }
 		}
 		for i in 1 .. stmt.children_count {
 			mut branch := before.clone()
-			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut branch)
-			array_map_merge_local_pointer_origins(mut merged, branch, before)
+			if t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, i), elem_name,
+				mut branch, mut loop_exits) {
+				continues = true
+				array_map_merge_local_pointer_origins(mut merged, branch, before)
+			}
 		}
-		locals = merged.move()
-		return
+		if continues {
+			locals = merged.move()
+		}
+		return continues
 	}
 	if stmt.kind == .match_stmt {
 		before := locals.clone()
 		mut merged := map[string]bool{}
+		mut continues := false
 		for name, _ in before {
 			merged[name] = false
 		}
 		for i in 1 .. stmt.children_count {
 			mut branch := before.clone()
-			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut branch)
-			array_map_merge_local_pointer_origins(mut merged, branch, before)
+			if t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, i), elem_name,
+				mut branch, mut loop_exits) {
+				continues = true
+				array_map_merge_local_pointer_origins(mut merged, branch, before)
+			}
 		}
-		locals = merged.move()
-		return
+		if continues {
+			locals = merged.move()
+		}
+		return continues
 	}
 	if stmt.kind == .select_stmt {
 		before := locals.clone()
 		mut merged := map[string]bool{}
+		mut continues := false
 		for name, _ in before {
 			merged[name] = false
 		}
 		for i in 0 .. stmt.children_count {
 			mut branch := before.clone()
-			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name,
-				mut branch)
-			array_map_merge_local_pointer_origins(mut merged, branch, before)
+			if t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, i), elem_name,
+				mut branch, mut loop_exits) {
+				continues = true
+				array_map_merge_local_pointer_origins(mut merged, branch, before)
+			}
 		}
-		locals = merged.move()
-		return
+		if continues {
+			locals = merged.move()
+		}
+		return continues
 	}
 	if stmt.kind in [.for_stmt, .for_in_stmt] {
 		before := locals.clone()
 		mut loop_origins := before.clone()
+		mut exits := []map[string]bool{}
+		mut continues := true
 		for i in 0 .. stmt.children_count {
-			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut loop_origins)
+			if !continues {
+				break
+			}
+			continues = t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt,
+				i), elem_name, mut loop_origins, mut exits)
 		}
 		for name, origin in before {
-			locals[name] = origin || loop_origins[name]
+			locals[name] = origin || (continues && loop_origins[name])
 		}
-		array_map_merge_local_pointer_origins(mut locals, loop_origins, before)
-		return
+		if continues {
+			array_map_merge_local_pointer_origins(mut locals, loop_origins, before)
+		}
+		for exit_origins in exits {
+			array_map_merge_local_pointer_origins(mut locals, exit_origins, before)
+		}
+		return true
 	}
 	if stmt.kind == .decl_assign {
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
@@ -3212,7 +3275,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 				t.array_map_record_local_pointer_origins(lhs.value, t.a.child(&stmt, i + 1), elem_name, origins, mut locals)
 			}
 		}
-		return
+		return true
 	}
 	if stmt.kind in [.assign, .selector_assign, .index_assign] {
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
@@ -3227,6 +3290,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 			}
 		}
 	}
+	return true
 }
 
 fn (mut t Transformer) array_map_side_effect_source_retains_element_address(id flat.NodeId, elem_name string, block flat.Node, before_idx int) bool {
