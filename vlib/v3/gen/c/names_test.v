@@ -597,6 +597,62 @@ fn test_apple_framework_typedef_names_are_preserved() {
 	assert 'NSRect' in names
 }
 
+fn test_header_owned_macro_flags_preserve_values() {
+	state := c_header_macro_state_for_flags(['-DFEATURE=7', '-D', 'HEADER="types.h"', '-UOLD_FEATURE'])
+	assert state.defined['FEATURE']
+	assert state.macro_values['FEATURE'] == '7'
+	assert state.macro_values['HEADER'] == '"types.h"'
+	assert state.undefined['OLD_FEATURE']
+}
+
+fn test_header_owned_source_condition_merges_equal_branch_macros() {
+	mut g := FlatGen.new()
+	g.collect_header_owned_source_macro_directive('#if UNKNOWN_FEATURE')
+	g.collect_header_owned_source_macro_directive('#define HAS_ALIAS 3')
+	g.collect_header_owned_source_macro_directive('#else')
+	g.collect_header_owned_source_macro_directive('#define HAS_ALIAS 3')
+	g.collect_header_owned_source_macro_directive('#endif')
+	state := g.header_owned_macro_context.state
+	assert state.defined['HAS_ALIAS']
+	assert state.macro_values['HAS_ALIAS'] == '3'
+}
+
+fn test_header_owned_include_aliases_expand_lazily() {
+	state := CHeaderMacroState{
+		defined: {
+			'A': true
+			'B': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'A': 'B'
+			'B': '"two.h"'
+		}
+	}
+	assert c_header_owned_include_args('A', state, '', '/tmp/source.h') == ['"two.h"']
+}
+
+fn test_header_owned_typedef_scan_ignores_non_declarations_and_trailing_attributes() {
+	clean := c_header_owned_typedef_scan_text('// typedef struct Wrong CommentAlias;\n#define MAKE_ALIAS typedef struct Wrong MacroAlias;\nconst char *example = "typedef struct Wrong StringAlias;";\ntypedef struct Impl RealAlias __attribute__((deprecated));\n')
+	aliases := c_typedef_all_aggregate_aliases(clean)
+	assert aliases == ['RealAlias']
+}
+
+fn test_top_level_include_deduplication_resets_after_macro_changes() {
+	directives := dedupe_top_level_c_includes(['#include <types.h>', '#include <types.h>',
+		'#define FEATURE 1', '#include <types.h>'])
+	assert directives == ['#include <types.h>', '#define FEATURE 1', '#include <types.h>']
+}
+
+fn test_header_owned_compiler_state_includes_clang_guards() {
+	mut g := FlatGen.new()
+	g.ccompiler = 'clang'
+	state := g.header_owned_initial_macro_state()
+	assert state.defined['__clang__']
+	assert state.defined['__GNUC__']
+}
+
 fn test_large_transitive_header_tree_is_preserved() {
 	root := os.join_path(os.temp_dir(), 'v3_large_transitive_header_tree_test')
 	os.rmdir_all(root) or {}
