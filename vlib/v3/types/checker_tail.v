@@ -6288,9 +6288,15 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 		return false
 	}
 	node := tc.a.node(id)
+	if node.kind == .field_init {
+		return node.children_count == 1 && tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, 0))
+	}
 	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
 		.ident, .enum_val, .nil_literal, .none_expr, .sizeof_expr, .typeof_expr, .offsetof_expr] {
 		return true
+	}
+	if node.kind == .selector && tc.array_accessor_method_value_clone_can_run_user_code(id) {
+		return false
 	}
 	if node.kind !in [.paren, .selector, .index, .prefix, .cast_expr, .as_expr, .is_expr, .in_expr,
 		.range] {
@@ -6312,6 +6318,89 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 		}
 	}
 	return true
+}
+
+fn (tc &TypeChecker) array_accessor_method_value_clone_can_run_user_code(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind != .selector || node.children_count == 0 || !tc.expr_is_method_value(id) {
+		return false
+	}
+	receiver_id := tc.a.child(node, 0)
+	receiver_type := tc.resolve_type(receiver_id)
+	mut receiver_is_by_value := false
+	for method_name in receiver_method_name_candidates(unwrap_pointer(receiver_type), node.value, tc.cur_module) {
+		if method_name !in tc.fn_param_types || !tc.method_can_be_called_on_receiver(receiver_type, node.value, method_name) {
+			continue
+		}
+		params := tc.fn_param_types[method_name]
+		receiver_is_by_value = params.len > 0 && params[0] !is Pointer
+		break
+	}
+	if !receiver_is_by_value {
+		if receiver_struct := struct_type_from_type(unwrap_pointer(receiver_type)) {
+			if info := tc.resolve_generic_struct_method(receiver_struct.name, node.value) {
+				receiver_is_by_value = info.params.len > 0 && info.params[0] !is Pointer
+			}
+		}
+	}
+	if !receiver_is_by_value || !tc.ownership_type_requires_destruction(receiver_type) || tc.ownership_default_clone_missing_method(receiver_type) != none {
+		return false
+	}
+	mut seen := map[string]bool{}
+	return tc.array_accessor_clone_can_run_user_code(receiver_type, mut seen)
+}
+
+fn (tc &TypeChecker) array_accessor_clone_can_run_user_code(typ Type, mut seen map[string]bool) bool {
+	match typ {
+		Alias, OptionType {
+			return tc.array_accessor_clone_can_run_user_code(typ.base_type, mut seen)
+		}
+		ResultType, Interface {
+			// Result error payloads and interface payloads use dynamic clone dispatch.
+			return true
+		}
+		Array, ArrayFixed {
+			return tc.array_accessor_clone_can_run_user_code(typ.elem_type, mut seen)
+		}
+		Map {
+			return tc.array_accessor_clone_can_run_user_code(typ.key_type, mut seen) || tc.array_accessor_clone_can_run_user_code(typ.value_type, mut seen)
+		}
+		Struct {
+			if tc.ownership_type_has_clone_method(typ) {
+				return true
+			}
+			if seen[typ.name] {
+				return false
+			}
+			seen[typ.name] = true
+			for field in tc.struct_fields_for_type(typ.name) {
+				if tc.array_accessor_clone_can_run_user_code(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+		SumType {
+			if tc.ownership_type_has_clone_method(typ) {
+				return true
+			}
+			if seen[typ.name] {
+				return false
+			}
+			seen[typ.name] = true
+			base := tc.sum_base_name(typ.name)
+			for variant in tc.sum_types[base] or { return true } {
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(typ.name, variant))
+				if tc.array_accessor_clone_can_run_user_code(variant_type, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) array_accessor_type_contains_pointer(typ Type) bool {

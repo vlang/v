@@ -921,6 +921,104 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
+fn test_owned_scalar_consumer_in_aggregate_with_stable_field_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_aggregate_stable_field', "struct E {
+	name string
+}
+
+struct Pair {
+	n int
+	s string
+}
+
+fn last_length(arr []E) Pair {
+	return Pair{ n: arr.last().name.len, s: 'ok' }
+}
+
+fn main() {
+	arr := [E{ name: 'hello' }]
+	println(last_length(arr).n)
+}
+", '')
+	assert compile.exit_code == 0, compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_scalar_aggregate_stable_field_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '5', run.output
+}
+
+fn test_owned_scalar_consumer_with_cloning_method_value_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_cloning_method_value_sibling', "struct E {
+	name string
+}
+
+struct Mutator {
+	label string
+}
+
+__global entries []E
+
+fn (mutator Mutator) clone() Mutator {
+	entries.delete_last()
+	return Mutator{ label: mutator.label.clone() }
+}
+
+fn (mutator Mutator) run() string {
+	return mutator.label
+}
+
+fn consume(length int, callback fn () string) int {
+	_ = callback()
+	return length
+}
+
+fn last_length_with_bound_method(mutator Mutator) int {
+	return consume(entries.last().name.len, mutator.run)
+}
+
+fn main() {
+	entries = [E{ name: 'hello' }]
+	println(last_length_with_bound_method(Mutator{ label: 'run' }))
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+	safe := compile_v3_ownership_program(v3_bin, 'owned_scalar_default_clone_method_value_sibling', "struct E {
+	name string
+}
+
+struct Reader implements IClone {
+	label string
+}
+
+fn (reader Reader) run() string {
+	return reader.label
+}
+
+fn consume(length int, callback fn () string) int {
+	_ = callback()
+	return length
+}
+
+fn last_length_with_bound_method(arr []E, reader Reader) int {
+	return consume(arr.last().name.len, reader.run)
+}
+
+fn main() {
+	arr := [E{ name: 'hello' }]
+	println(last_length_with_bound_method(arr, Reader{ label: 'run' }))
+}
+", '')
+	assert safe.exit_code == 0, safe.output
+	safe_bin_path := tmp_array_accessor_borrow_path('owned_scalar_default_clone_method_value_sibling_bin')
+	safe_run := os.execute(os.quoted_path(safe_bin_path))
+	assert safe_run.exit_code == 0, safe_run.output
+	assert safe_run.output.trim_space() == '5', safe_run.output
+}
+
 fn test_owned_field_overloaded_index_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_index', "struct Name {
