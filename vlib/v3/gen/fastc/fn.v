@@ -1057,11 +1057,11 @@ fn (mut g Parser) parse_parameters() ![]string {
 	g.skip_semicolons()
 	for g.tok != .rpar {
 		mut is_mut := false
-		if g.tok in [.key_mut, .key_shared] {
+		if g.tok == .key_mut || (g.tok == .key_shared && !fastc_shared_parameter_is_name(g.s, g.path, g.module_name, g.imports, g.declared_types, g.prefs.building_v)) {
 			is_mut = true
 			g.next()
 		}
-		if g.tok != .name {
+		if g.tok !in [.name, .key_shared] {
 			return g.unsupported('function parameters')
 		}
 		name := g.lit

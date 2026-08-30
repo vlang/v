@@ -1641,7 +1641,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		is_mut = true
 		p.next()
 	}
-	if p.tok == .key_shared {
+	if p.tok == .key_shared && !p.shared_parameter_token_is_identifier() {
 		is_shared = true
 		p.next()
 	}
@@ -12443,6 +12443,56 @@ fn (mut p Parser) shared_token_is_identifier(allow_multiline_modifier bool) bool
 	// Calls and indexes attach directly to an identifier. A shared modifier is
 	// separated from the value it qualifies (`shared value`).
 	return p.tok_end == p.peek_pos && next in [.lpar, .lsbr, .question, .not]
+}
+
+fn (mut p Parser) shared_parameter_token_is_identifier() bool {
+	if p.tok != .key_shared {
+		return false
+	}
+	first := p.peek()
+	if first in [.comma, .semicolon, .rpar, .eof] {
+		return false
+	}
+	start := p.peek_pos
+	mut end := p.peek_end
+	mut lookahead := p.s
+	mut tok := first
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut brace_depth := 0
+	for tok != .eof {
+		if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0
+			&& tok in [.comma, .semicolon, .rpar] {
+			break
+		}
+		end = if tok == first { p.peek_end } else { lookahead.offset }
+		match tok {
+			.lpar { paren_depth++ }
+			.rpar {
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			}
+			.lsbr { bracket_depth++ }
+			.rsbr {
+				if bracket_depth > 0 {
+					bracket_depth--
+				}
+			}
+			.lcbr { brace_depth++ }
+			.rcbr {
+				if brace_depth > 0 {
+					brace_depth--
+				}
+			}
+			else {}
+		}
+		tok = lookahead.scan()
+	}
+	if start < 0 || end <= start || end > p.s.src.len {
+		return false
+	}
+	return generic_struct_init_suffix_arg_can_be_type(p.s.src[start..end])
 }
 
 fn (p &Parser) shared_token_gap_has_line_boundary() bool {

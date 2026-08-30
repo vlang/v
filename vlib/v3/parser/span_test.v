@@ -397,6 +397,15 @@ fn test_shared_keyword_identifier_in_fn_literal_capture() {
 	assert saw_capture
 }
 
+fn test_shared_keyword_identifier_as_parameter_name() {
+	ast, _ := parse_span_source('shared_parameter_name', 'fn id(shared int) int {
+	return shared
+}
+')
+	assert ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ == 'int'
+		&& !it.is_mut)
+}
+
 fn test_multiline_shared_call_argument_stays_a_modifier() {
 	ast, _ := parse_span_source('multiline_shared_argument', 'struct Box {}
 

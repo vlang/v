@@ -18,6 +18,10 @@ mut:
 
 fn consume(shared value Box) {}
 
+fn id(shared int) int {
+	return shared
+}
+
 fn use_immutable_shared() Box {
 	shared := Box{}
 	return shared
@@ -100,6 +104,7 @@ fn multiline_shared_operator(enabled bool) bool {
 }
 
 fn main() {
+	_ = id(1)
 	_ = use_immutable_shared()
 	_ = xor_shared()
 	_ = unwrap_shared(1)
@@ -135,6 +140,8 @@ fn main() {
 }
 ', 'shared_keyword_local.v', prefs) or { panic(err) }
 	assert c_source.contains('shared.value=1;'), c_source
+	assert c_source.contains('int id(int shared);'), c_source
+	assert c_source.contains('int id(int shared) {'), c_source
 	assert c_source.contains('println(shared.value)'), c_source
 	assert c_source.contains('consume(&(shared));'), c_source
 	assert c_source.contains('consume(&((shared)));'), c_source
@@ -148,7 +155,7 @@ fn main() {
 	assert !c_source.contains('return &shared'), c_source
 	assert c_source.contains('Option __v_fastc_option_0 = (shared);'), c_source
 	assert c_source.contains('__v_fastc_membership_item = (shared);'), c_source
-	assert c_source.count('return shared;') == 2, c_source
+	assert c_source.count('return shared;') == 3, c_source
 	assert c_source.contains('if (shared)'), c_source
 	assert c_source.contains('total+=shared;'), c_source
 	assert c_source.contains('return x+shared;'), c_source
