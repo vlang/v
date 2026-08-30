@@ -6570,6 +6570,19 @@ fn main() {
 	loop_out := run_good_with_flags(v3_bin, 'array_map_loop_external_pointer_alias', '-ownership',
 		loop_source)
 	assert loop_out == '0\nsource'
+
+	or_source := source.replace('fn make_items() []Item {', "fn may_fail() ! {
+	return error('failed')
+}
+
+fn make_items() []Item {").replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}', 'may_fail() or {\n\t\t\t\talias = &saved\n\t\t\t}')
+	assert or_source != source
+	or_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_or_external_pointer_alias_c', '-ownership', or_source)
+	or_main_body := c_fn_body(or_c_source, 'int main(int argc, char** argv) {')
+	compact_or_main := or_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_or_main.contains('array__free(&(__map_source_'), or_main_body
+	or_out := run_good_with_flags(v3_bin, 'array_map_or_external_pointer_alias', '-ownership', or_source)
+	assert or_out == '0\nsource'
 }
 
 fn test_array_map_tracks_pointer_origin_through_selected_comptime_branch() {
@@ -6830,6 +6843,65 @@ fn main() {
 	loop_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_loop_break', '-ownership',
 		loop_source)
 	assert loop_out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_mutator_or_success() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn may_fail(ok bool) ! {
+	if !ok {
+		return error("failed")
+	}
+}
+
+fn (mut box PointerBox) store_or_replace(value &Item, replacement &Item, ok bool) {
+	box.value = value
+	may_fail(ok) or {
+		box.value = replacement
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	selected := make_items().map(match true {
+		true {
+			mut box := PointerBox{
+				value: unsafe { &external }
+			}
+			box.store_or_replace(unsafe { &it }, unsafe { &external }, true)
+			box
+		}
+		else {
+			PointerBox{
+				value: unsafe { &external }
+			}
+		}
+	})
+	println(selected[0].value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_or_success_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_mutator_or_success', '-ownership', source)
+	assert out == 'source'
 }
 
 fn test_array_map_keeps_temporary_source_through_mutator_target_alias() {

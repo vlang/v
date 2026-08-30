@@ -2943,6 +2943,10 @@ fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId
 }
 
 fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, elem_name string, mut locals map[string]bool) {
+	if stmt.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] && stmt.children_count > 0 {
+		t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, 0), elem_name, mut locals)
+		return
+	}
 	if stmt.kind in [.block, .match_branch] {
 		mut scoped := locals.clone()
 		mut declared := map[string]bool{}
@@ -2973,6 +2977,25 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 			}
 			return
 		}
+	}
+	if stmt.kind == .or_expr {
+		if stmt.children_count == 0 {
+			return
+		}
+		// The source is evaluated on both paths. A continuing fallback is conditional, so
+		// preserve every pointer origin possible after either success or fallback execution.
+		t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, 0), elem_name, mut locals)
+		before := locals.clone()
+		mut merged := before.clone()
+		for i in 1 .. stmt.children_count {
+			mut fallback := before.clone()
+			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut fallback)
+			for name, origin in before {
+				merged[name] = origin || fallback[name]
+			}
+		}
+		locals = merged.move()
+		return
 	}
 	if stmt.kind == .if_expr {
 		before := locals.clone()

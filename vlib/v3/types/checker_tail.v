@@ -9106,6 +9106,28 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 		}
 		return
 	}
+	if node.kind == .or_expr {
+		if node.children_count == 0 {
+			return
+		}
+		// The wrapped expression runs on both paths. The fallback runs only on failure, so
+		// retain storage sources written either by the success state or by the fallback.
+		tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exit_writes)
+		before := storage_param_sources_clone(aliases)
+		mut merged := storage_param_sources_clone(aliases)
+		before_writes := storage_param_sources_clone(writes)
+		mut merged_writes := storage_param_sources_clone(writes)
+		for i in 1 .. node.children_count {
+			mut fallback_aliases := storage_param_sources_clone(before)
+			mut fallback_writes := storage_param_sources_clone(before_writes)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut fallback_aliases, mut visiting, mut fallback_writes, mut exited_writes, mut loop_exit_writes)
+			storage_param_sources_merge(mut merged, fallback_aliases)
+			storage_param_writes_merge(mut merged_writes, fallback_writes)
+		}
+		aliases = merged.move()
+		writes = merged_writes.move()
+		return
+	}
 	if node.kind == .if_expr {
 		if node.children_count > 0 {
 			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type,
