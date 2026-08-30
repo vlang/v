@@ -104,6 +104,19 @@ fn test_fmt_checks_accept_legacy_formatted_source() {
 	}
 }
 
+fn test_fmt_checks_accept_legacy_source_when_v3_parsing_fails() {
+	source_path := os.join_path(vfmt_test_tdir, 'legacy_only_parser.v')
+	source := 'fn render(path string) string {\n\treturn \$tmpl(path)\n}\n'
+	os.write_file(source_path, source)!
+
+	for check_args in ['-verify -inprocess', '-verify', '-c'] {
+		res :=
+			os.execute('${os.quoted_path(vexe)} fmt ${check_args} ${os.quoted_path(source_path)}')
+		assert res.exit_code == 0, '${check_args}: ${res.output}'
+		assert os.read_file(source_path)! == source
+	}
+}
+
 fn test_fmt_debug_reports_v3_node_kinds() {
 	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter_debug.v')
 	os.write_file(source_path, 'fn main() { println(1) }\n')!

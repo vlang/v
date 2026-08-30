@@ -206,7 +206,13 @@ fn main() {
 // transitions to V3 formatting.
 fn (foptions &FormatOptions) verify_file(fpath string) bool {
 	content := os.read_file(fpath) or { return false }
-	fcontent := foptions.formatted_content_from_file(fpath) or { return false }
+	fcontent := foptions.formatted_content_from_file(fpath, false) or {
+		if foptions.is_legacy_formatted(fpath, content) {
+			return true
+		}
+		_ = foptions.formatted_content_from_file(fpath, true) or { return false }
+		return false
+	}
 	return fcontent == content || foptions.is_legacy_formatted(fpath, content)
 }
 
@@ -256,7 +262,7 @@ fn (foptions &FormatOptions) should_migrate_json2(file string) bool {
 	return !file.ends_with('_test.v') && !file.ends_with('.vv')
 }
 
-fn (foptions &FormatOptions) formatted_content_from_file(file string) !string {
+fn (foptions &FormatOptions) formatted_content_from_file(file string, report_diagnostics bool) !string {
 	foptions.vlog('vfmt running v3.gen.v over file: ${file}')
 	mut prefs := v3pref.new_preferences()
 	prefs.is_fmt = true
@@ -265,7 +271,7 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string) !string {
 	prefs.supports_inline_asm = true
 	mut p := v3parser.Parser.new(prefs)
 	a := p.parse_file(file)
-	if report_v3_parser_diagnostics(p.diagnostics, a) {
+	if report_v3_parser_diagnostics(p.diagnostics, a, report_diagnostics) {
 		return error('the file contains parser errors')
 	}
 	return v3fmt.format_with_options(a,
@@ -275,7 +281,7 @@ fn (foptions &FormatOptions) formatted_content_from_file(file string) !string {
 	)
 }
 
-fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatAst) bool {
+fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatAst, should_report bool) bool {
 	mut has_errors := false
 	for diagnostic in diagnostics {
 		severity := if diagnostic.severity == '' { 'error:' } else { diagnostic.severity }
@@ -283,6 +289,9 @@ fn report_v3_parser_diagnostics(diagnostics []v3parser.Diagnostic, a &flat.FlatA
 			continue
 		}
 		has_errors = true
+		if !should_report {
+			continue
+		}
 		if diagnostic.pos.is_valid() && diagnostic.pos.id in a.source_files {
 			eprintln(v3errors.formatted_parser_diagnostic(severity, diagnostic.message, a,
 				diagnostic.pos))
@@ -303,7 +312,19 @@ fn (foptions &FormatOptions) format_file(file string) {
 		eprintln('${formatted_file_token}${vfmt_output_path}')
 		return
 	}
-	formatted_content := foptions.formatted_content_from_file(file) or { exit(2) }
+	formatted_content := foptions.formatted_content_from_file(file, !foptions.is_verify
+		&& !foptions.is_c) or {
+		if foptions.is_verify || foptions.is_c {
+			content := os.read_file(file) or { exit(2) }
+			if foptions.is_legacy_formatted(file, content) {
+				os.cp(file, vfmt_output_path) or { exit(2) }
+				eprintln('${formatted_file_token}${vfmt_output_path}')
+				return
+			}
+			_ = foptions.formatted_content_from_file(file, true) or { exit(2) }
+		}
+		exit(2)
+	}
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
 	foptions.vlog('vfmt wrote ${formatted_content.len} bytes to ${vfmt_output_path}.')
 	eprintln('${formatted_file_token}${vfmt_output_path}')
@@ -319,7 +340,7 @@ fn (foptions &FormatOptions) format_pipe() {
 	defer {
 		os.rm(stdin_path) or {}
 	}
-	formatted_content := foptions.formatted_content_from_file(stdin_path) or { exit(1) }
+	formatted_content := foptions.formatted_content_from_file(stdin_path, true) or { exit(1) }
 	print(formatted_content)
 	flush_stdout()
 	foptions.vlog('vfmt wrote ${formatted_content.len} bytes to stdout.')
