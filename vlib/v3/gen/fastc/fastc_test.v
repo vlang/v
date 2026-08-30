@@ -158,6 +158,56 @@ fn main() {
 	assert !c_source.contains('(&shared)'), c_source
 }
 
+fn test_selfhost_generic_calls_named_shared_are_monomorphized() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn shared[T](value T) T {
+	return value
+}
+
+fn (worker Worker) shared[T](value T) T {
+	_ = worker
+	return value
+}
+
+fn main() {
+	worker := Worker{}
+	_ := shared[int](1)
+	_ := worker.shared[int](2)
+}
+', 'selfhost_generic_shared_calls.v', prefs) or { panic(err) }
+	assert c_source.contains('shared_mono_int'), c_source
+	assert c_source.contains('Worker_shared_mono_int'), c_source
+	assert !c_source.contains('shared[int]'), c_source
+}
+
+fn test_selfhost_multiline_result_propagation_after_shared_identifier() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn maybe_value() !int {
+	return 7
+}
+
+fn propagate() !int {
+	shared := maybe_value()
+	return shared
+	!
+}
+
+fn main() {
+	_ := propagate() or { 0 }
+}
+', 'selfhost_multiline_shared_result_propagation.v', prefs) or { panic(err) }
+	assert c_source.contains('Option __v_fastc_option_propagate = (shared);'), c_source
+	assert !c_source.contains('shared!'), c_source
+}
+
 fn test_selfhost_mutable_shared_loop_binding_is_dereferenced() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

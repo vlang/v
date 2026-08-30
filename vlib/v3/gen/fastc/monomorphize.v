@@ -203,6 +203,20 @@ fn (mut g Parser) queue_mono_method(receiver_type string, method string, concret
 	return mono
 }
 
+// queue_expression_monomorphization specializes the current call-name token when possible.
+fn (mut g Parser) queue_expression_monomorphization(tokens []FastcExpressionToken) ?string {
+	if !g.selfhost || g.in_generic_placeholder || g.generic_method_sources.len == 0 {
+		return none
+	}
+	if mono := g.queue_explicit_mono_method(tokens) {
+		return mono
+	}
+	if mono := g.queue_explicit_mono_function(tokens) {
+		return mono
+	}
+	return g.queue_implicit_mono_function(tokens)
+}
+
 // queue_explicit_mono_method recognizes `receiver.method[Type](...)` and queues the
 // concrete generic-method body before ordinary method rendering validates the call.
 fn (mut g Parser) queue_explicit_mono_method(tokens []FastcExpressionToken) ?string {

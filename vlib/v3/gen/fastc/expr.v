@@ -596,10 +596,14 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				unsafe_depth: g.unsafe_depth
 			}
 			source_token_count++
-			piece := if previous_token == .dot {
+			mut piece := if previous_token == .dot {
 				g.lit
 			} else {
 				g.reference_local_value_piece(g.lit, g.lit, previous_token, expression_tokens, stops)
+			}
+			if mono := g.queue_expression_monomorphization(expression_tokens) {
+				piece = mono
+				expression_tokens[expression_tokens.len - 1].lit = mono
 			}
 			result.write_string(piece)
 			previous_token = .name
@@ -1327,14 +1331,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			''
 		}
 		mut piece := g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!
-		if g.selfhost && !g.in_generic_placeholder && g.tok == .name && g.generic_method_sources.len > 0 {
-			if mono := g.queue_explicit_mono_method(expression_tokens) {
-				piece = mono
-				expression_tokens[expression_tokens.len - 1].lit = mono
-			} else if mono := g.queue_explicit_mono_function(expression_tokens) {
-				piece = mono
-				expression_tokens[expression_tokens.len - 1].lit = mono
-			} else if mono := g.queue_implicit_mono_function(expression_tokens) {
+		if g.tok == .name {
+			if mono := g.queue_expression_monomorphization(expression_tokens) {
 				piece = mono
 				expression_tokens[expression_tokens.len - 1].lit = mono
 			}
@@ -1793,6 +1791,7 @@ fn fastc_token_continues_expression_after_operand(tok token.Token) bool {
 		.key_or,
 		.key_as,
 		.question,
+		.not,
 		.dot,
 		.lpar,
 		.lsbr,
