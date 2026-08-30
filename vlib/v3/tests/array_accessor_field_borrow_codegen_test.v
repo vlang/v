@@ -566,6 +566,56 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
+fn test_owned_string_comparison_with_infix_sibling_checks_overloads() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	builtin := compile_v3_ownership_program(v3_bin, 'owned_builtin_infix_sibling', "struct E {
+	name string
+}
+
+fn last_name_matches(entries []E) bool {
+	return entries.last().name == ('he' + 'llo')
+}
+
+fn main() {
+	entries := [E{ name: 'hello' }]
+	println(last_name_matches(entries))
+}
+", '')
+	assert builtin.exit_code == 0, builtin.output
+	assert !builtin.output.contains('cannot return an independent array element'), builtin.output
+	builtin_bin_path := tmp_array_accessor_borrow_path('owned_builtin_infix_sibling_bin')
+	builtin_run := os.execute(os.quoted_path(builtin_bin_path))
+	assert builtin_run.exit_code == 0, builtin_run.output
+	assert builtin_run.output.trim_space() == 'true', builtin_run.output
+
+	overloaded := compile_v3_ownership_program(v3_bin, 'owned_overloaded_infix_sibling', "struct E {
+	name string
+}
+
+struct Mutator {}
+
+__global entries []E
+
+fn (left Mutator) + (right Mutator) string {
+	_ = left
+	_ = right
+	entries.delete_last()
+	return 'hello'
+}
+
+fn last_name_matches(left Mutator, right Mutator) bool {
+	return entries.last().name == (left + right)
+}
+
+fn main() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_matches(Mutator{}, Mutator{}))
+}
+", '-enable-globals')
+	assert overloaded.exit_code != 0, overloaded.output
+	assert overloaded.output.contains('cannot return an independent array element'), overloaded.output
+}
+
 fn test_owned_aggregate_field_overloaded_comparison_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_comparison', "struct Name {

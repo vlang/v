@@ -6347,7 +6347,7 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 		return false
 	}
 	if node.kind !in [.paren, .selector, .index, .prefix, .cast_expr, .as_expr, .is_expr, .in_expr,
-		.range] {
+		.infix, .range] {
 		return false
 	}
 	if node.kind == .index && node.children_count > 0 {
@@ -6359,6 +6359,9 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 		if tc.array_accessor_membership_has_overloaded_equality(node) {
 			return false
 		}
+	}
+	if node.kind == .infix && tc.array_accessor_consumer_has_overloaded_operator(node) {
+		return false
 	}
 	for i in 0 .. node.children_count {
 		if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
