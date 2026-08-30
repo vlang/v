@@ -24,11 +24,23 @@ fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	assert fastc_chunk_bounds(sources, 2) == [0, 3, 3, 4]
 }
 
-fn test_fastc_source_contains_word_respects_identifier_boundaries() {
-	assert fastc_source_contains_word('module main\nconst answer = 42\n', 'const')
-	assert fastc_source_contains_word('module main\n__global count int\n', '__global')
-	assert !fastc_source_contains_word('module main\nfn key_const() {}\n', 'const')
-	assert !fastc_source_contains_word('module main\nfn use__global_value() {}\n', '__global')
+fn test_fastc_file_generation_jobs_balance_largest_files_first() {
+	sources := [
+		FastcSourceFile{source: 'a'.repeat(60)},
+		FastcSourceFile{source: 'b'.repeat(50)},
+		FastcSourceFile{source: 'c'.repeat(40)},
+		FastcSourceFile{source: 'd'.repeat(30)},
+	]
+	assert fastc_file_generation_job_indices(sources, 2) == [[0, 3], [1, 2]]
+}
+
+fn test_fastc_source_declaration_flags_respect_identifier_boundaries() {
+	has_constants, has_global_declarations := fastc_source_declaration_flags('module main\nconst answer = 42\n__global count int\n')
+	assert has_constants
+	assert has_global_declarations
+	identifier_constants, identifier_globals := fastc_source_declaration_flags('module main\nfn key_const() {}\nfn use__global_value() {}\n')
+	assert !identifier_constants
+	assert !identifier_globals
 }
 
 fn test_fastc_generic_source_collection_matches_serial_scan() {
@@ -908,6 +920,58 @@ fn test_generate_files_resolves_modules_without_an_ast() {
 	assert run_result.output.trim_space() == '42'
 }
 
+fn test_source_resolver_preserves_aliases_for_scheduled_files() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_scheduled_alias_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	canonical_dir := os.join_path(root, 'canonical')
+	os.mkdir_all(canonical_dir) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'legacy')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'module main\nimport canonical\nimport legacy\nfn main() {}\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'legacy', 'alias.v'),
+		"@[alias: '${canonical_dir}'] module legacy\n") or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	sources, aliases := fastc_resolve_source_files([main_file], prefs) or { panic(err) }
+	assert sources.len == 2
+	assert aliases['legacy'] == 'canonical'
+}
+
+fn test_source_resolver_preserves_aliases_for_symlinked_module_dirs() {
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_symlinked_alias_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	canonical_dir := os.join_path(root, 'canonical')
+	legacy_dir := os.join_path(root, 'legacy')
+	os.mkdir_all(canonical_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.symlink(canonical_dir, legacy_dir) or { return }
+	main_file := os.join_path(root, 'main.v')
+	os.write_file(main_file, 'module main\nimport canonical\nimport legacy\nfn main() { canonical.ping(); legacy.ping() }\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'),
+		'module canonical\npub fn ping() {}\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	sources, aliases := fastc_resolve_source_files([main_file], prefs) or { panic(err) }
+	assert sources.len == 2
+	assert aliases['legacy'] == 'canonical'
+}
+
 fn test_header_discovers_imports_only_from_selected_comptime_branches() {
 	root := os.join_path(os.vtmp_dir(), 'v3_fastc_comptime_imports_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1106,6 +1170,21 @@ fn main() {
 ', 'static_array_argument.v', prefs) or { panic(err) }
 	assert c_source.contains('Tool_run(((Array_string)builtin__new_array_from_c_array'), c_source
 	assert !c_source.contains('Tool_run(['), c_source
+}
+
+fn test_selfhost_primitive_cast_array_literal_argument_is_lowered() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn take(values []u64) {}
+
+fn main() {
+	take([u64(0x8000000000000000), u64(1)])
+}
+', 'selfhost_primitive_cast_array_argument.v', prefs) or { panic(err) }
+	assert c_source.contains('0x8000000000000000ULL'), c_source
+	assert !c_source.contains('take(['), c_source
 }
 
 fn test_selfhost_static_method_named_options_argument_is_lowered() {

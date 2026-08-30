@@ -993,6 +993,10 @@ fn (g &Parser) constant_expression_dependencies(tokens []FastcExpressionToken) [
 		if item.tok != .name || (i > 0 && tokens[i - 1].tok == .dot) {
 			continue
 		}
+		if i + 1 < tokens.len && tokens[i + 1].tok == .lpar
+			&& fastc_primitive_c_type(item.lit) != none {
+			continue
+		}
 		mut key := ''
 		if i + 2 < tokens.len && tokens[i + 1].tok == .dot && tokens[i + 2].tok == .name {
 			if imported_module := g.imports[item.lit] {
@@ -1170,7 +1174,7 @@ fn fastc_order_c_composite_definitions(source string, struct_fields map[string]m
 				if dependency_start < dependent_start {
 					continue
 				}
-				next := fastc_move_c_composite_before(ordered, dependency, dependent)
+				next := fastc_move_c_composite_before(ordered, dependency_start, dependent_start)
 				if next != ordered {
 					ordered = next
 					changed = true
@@ -1183,8 +1187,7 @@ fn fastc_order_c_composite_definitions(source string, struct_fields map[string]m
 }
 
 // fastc_composite_definition_positions maps each C composite name to the start
-// offset of its `struct NAME {` / `union NAME {` definition, matching the first
-// occurrence that fastc_c_composite_definition_start would find via `.index`.
+// offset of the first `struct NAME {` / `union NAME {` definition.
 @[direct_array_access]
 fn fastc_composite_definition_positions(source string) map[string]int {
 	mut positions := map[string]int{}
@@ -1246,9 +1249,7 @@ fn fastc_by_value_composite_type(field_type string, by_value_composite_names map
 	return ''
 }
 
-fn fastc_move_c_composite_before(source string, dependency string, dependent string) string {
-	dependency_start := fastc_c_composite_definition_start(source, dependency) or { return source }
-	dependent_start := fastc_c_composite_definition_start(source, dependent) or { return source }
+fn fastc_move_c_composite_before(source string, dependency_start int, dependent_start int) string {
 	if dependency_start < dependent_start {
 		return source
 	}
@@ -1260,19 +1261,7 @@ fn fastc_move_c_composite_before(source string, dependency string, dependent str
 		end++
 	}
 	block := source[dependency_start..end]
-	without := source[..dependency_start] + source[end..]
-	insert_at := fastc_c_composite_definition_start(without, dependent) or { return source }
-	return without[..insert_at] + block + without[insert_at..]
-}
-
-fn fastc_c_composite_definition_start(source string, name string) ?int {
-	if start := source.index('struct ${name} {') {
-		return int(start)
-	}
-	if start := source.index('union ${name} {') {
-		return int(start)
-	}
-	return none
+	return source[..dependent_start] + block + source[dependent_start..dependency_start] + source[end..]
 }
 
 fn fastc_c_composite_definition_end(source string, start int) ?int {
