@@ -7725,6 +7725,15 @@ fn main() {
 		'-ownership', deferred_source)
 	assert deferred_out == 'source'
 
+	deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement', 'mut alias := unsafe { value }\n\tdefer {\n\t\tbox.value = alias\n\t}\n\tif true {\n\t\treturn\n\t}\n\talias = unsafe { replacement }')
+	assert deferred_exit_alias_source != source
+	deferred_exit_alias_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_deferred_exit_alias_c', '-ownership', deferred_exit_alias_source)
+	deferred_exit_alias_main := c_fn_body(deferred_exit_alias_c_source, 'int main(int argc, char** argv) {')
+	compact_deferred_exit_alias_main := deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_deferred_exit_alias_main.contains('array__free(&(__map_source_'), deferred_exit_alias_main
+	deferred_exit_alias_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_deferred_exit_alias', '-ownership', deferred_exit_alias_source)
+	assert deferred_exit_alias_out == 'source'
+
 	select_source := source.replace('box.value = value\n\tbox.value = replacement',
 		'signal := chan bool{cap: 1}\n\tsignal <- true\n\tselect {\n\t\t<-signal {\n\t\t\tbox.value = value\n\t\t}\n\t\telse {\n\t\t\tbox.value = replacement\n\t\t}\n\t}')
 	assert select_source != source
@@ -7736,6 +7745,58 @@ fn main() {
 	select_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_select', '-ownership',
 		select_source)
 	assert select_out == 'source'
+
+	direct_exit_source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn map_or_return(mut saved PointerBox, early bool) []int {
+	return make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: saved.value
+			}
+			mut alias := &saved
+			defer {
+				alias.value = unsafe { &it }
+			}
+			if early {
+				return [7]
+			}
+			alias = &local
+			0
+		}
+		else {
+			0
+		}
+	})
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := map_or_return(mut saved, true)
+	println(result[0])
+	println(saved.value.text)
+}
+'
+	direct_exit_out := run_good_with_flags(v3_bin, 'array_map_deferred_direct_exit_alias', '-ownership', direct_exit_source)
+	assert direct_exit_out == '7\nsource'
 }
 
 fn test_array_map_keeps_temporary_source_through_mutator_or_success() {
