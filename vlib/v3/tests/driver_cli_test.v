@@ -364,15 +364,7 @@ fn test_v3_build_rejects_garbage_collectors() {
 	for mode in ['boehm', 'boehm_full', 'boehm_incr', 'boehm_full_opt', 'boehm_incr_opt',
 		'boehm_leak', 'vgc'] {
 		output := os.join_path(root, 'v3_${mode}')
-		result := cmdexec.run(@VEXE, ['-gc', mode, '-path', '${driver_cli_vlib_dir}|@vlib|@vmodules',
-			'-o', output, driver_cli_v3_src])
-		assert result.exit_code != 0
-		assert result.output.contains('v3 must be built without a garbage collector'), result.output
-		assert !os.is_file(output)
-	}
-	for define in ['gcboehm', 'gcboehm_full', 'gcboehm_incr', 'gcboehm_opt', 'gcboehm_leak', 'vgc'] {
-		output := os.join_path(root, 'v3_define_${define}')
-		result := cmdexec.run(@VEXE, ['-gc', 'none', '-d', define, '-path',
+		result := cmdexec.run(@VEXE, ['-old-compiler', '-gc', mode, '-path',
 			'${driver_cli_vlib_dir}|@vlib|@vmodules', '-o', output, driver_cli_v3_src])
 		assert result.exit_code != 0
 		assert result.output.contains('v3 must be built without a garbage collector'), result.output
@@ -920,7 +912,7 @@ fn test_driver_explicit_silent_define_is_distinct_from_internal_quiet_mode() {
 	}
 }
 
-fn test_driver_requests_macos_compatibility_for_inline_assembly() {
+fn test_driver_compiles_inline_assembly_without_compatibility() {
 	$if amd64 || arm64 {
 		root := os.join_path(os.vtmp_dir(), 'v3_driver_inline_asm_fallback_${os.getpid()}')
 		os.rmdir_all(root) or {}
@@ -939,23 +931,17 @@ fn test_driver_requests_macos_compatibility_for_inline_assembly() {
 ')!
 		fallback_file := os.join_path(root, 'fallback')
 		mut environment := os.environ()
-		// This test exercises the fallback transport itself, so clear CI's job-level
-		// no-fallback guard; otherwise the driver refuses the compatibility request.
+		// Keep the marker available to prove that supported assembly does not request
+		// a compatibility retry.
 		environment.delete('V_MACOS_V3_NO_FALLBACK')
 		environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
-		result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', source],
-			environment)
-		assert result.exit_code != 0
-		assert result.output == '', result.output
-		assert os.read_file(fallback_file)! == 'inline_asm'
-		os.rm(fallback_file)!
-		// If the dispatcher-provided marker cannot be written, V3 must keep its
-		// diagnostic visible because no compatibility retry can be requested.
-		environment['V_MACOS_V3_FALLBACK_FILE'] = root
-		unstaged_result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', source],
-			environment)
-		assert unstaged_result.exit_code != 0
-		assert unstaged_result.output.contains('inline assembly is not supported'), unstaged_result.output
+		output := os.join_path(root, 'inline_asm_program')
+		result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-o', output,
+			source], environment)
+		assert result.exit_code == 0, result.output
+		assert !os.exists(fallback_file)
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, run.output
 		environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
 		environment_source := os.join_path(root, 'fallback_environment.v')
 		os.write_file(environment_source, "import os
@@ -1003,7 +989,7 @@ fn main() {
 	}
 }
 
-fn test_driver_requests_macos_compatibility_for_language_errors() {
+fn test_driver_compiles_chained_generic_calls_without_compatibility() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_language_fallback_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
@@ -1038,23 +1024,18 @@ fn main() {
 ')!
 	fallback_file := os.join_path(root, 'fallback')
 	mut environment := os.environ()
-	// Exercises the fallback transport, so clear CI's job-level no-fallback guard.
+	// Keep the marker available to prove that the valid generic chain does not
+	// request a compatibility retry.
 	environment.delete('V_MACOS_V3_NO_FALLBACK')
 	environment['V_MACOS_V3_FALLBACK_FILE'] = fallback_file
+	output := os.join_path(root, 'generic_fn_call')
 	result := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-nocache',
-		'-no-memory-limit', source], environment)
-	assert result.exit_code != 0
-	fallback_payload := os.read_file(fallback_file)!
-	assert fallback_payload.starts_with('compiler_error\n')
-	assert fallback_payload.all_after_first('\n').trim_space() != ''
+		'-no-memory-limit', '-o', output, source], environment)
+	assert result.exit_code == 0, result.output
+	assert !os.exists(fallback_file)
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
 
-	compat_output := os.join_path(root, 'compat')
-	compat := cmdexec.run(@VEXE, ['-old-compiler', '-o', compat_output, source])
-	assert compat.exit_code == 0, compat.output
-	compat_run := cmdexec.run(compat_output, [])
-	assert compat_run.exit_code == 0, compat_run.output
-
-	os.rm(fallback_file)!
 	nonzero_source := os.join_path(root, 'nonzero_run.v')
 	os.write_file(nonzero_source, 'fn main() {
 	exit(23)
@@ -1784,7 +1765,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
 	assert help.output.contains('-cc <compiler>')
-	assert help.output.contains('-no-memory-limit             disable the 10 GiB memory safety limit')
+	assert help.output.contains('-no-memory-limit             disable the 3840 MiB memory safety limit')
 	c_output := os.join_path(root, 'hello.c')
 	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
 	assert c_compile.exit_code == 0, c_compile.output

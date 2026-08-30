@@ -425,11 +425,12 @@ fn test_macos_and_linux_v_compiler_target_defaults_to_prealloc() {
 	if pref.get_host_os() !in [.macos, .linux] {
 		return
 	}
-	target := os.join_path(vroot, 'cmd', 'v')
-	prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
-	assert prefs.building_v
-	assert prefs.prealloc
-	assert prefs.gc_mode == .no_gc
+	for target in [os.join_path(vroot, 'cmd', 'v'), os.join_path(vroot, 'vlib', 'v3', 'v3.v')] {
+		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
+		assert prefs.building_v
+		assert prefs.prealloc
+		assert prefs.gc_mode == .no_gc
+	}
 }
 
 fn test_linux_explicit_tinyc_v_compiler_target_skips_prealloc() {

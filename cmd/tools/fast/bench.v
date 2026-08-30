@@ -244,7 +244,7 @@ fn build_v3_stage_compiler(dir string, date time.Time, args []string) !string {
 	stage_v := os.join_path(dir, exe_name('fastv3'))
 	os.rm(stage_v) or {}
 	prod := if args.contains('-noprod') { '' } else { '-prod' }
-	cmd := '${os.quoted_path(vprod)} -gc none ${prod} -o ${os.quoted_path(stage_v)} vlib/v3/v3.v'
+	cmd := '${os.quoted_path(vprod)} -gc none ${prod} -d skip_fastc -o ${os.quoted_path(stage_v)} vlib/v3/v3.v'
 	elog('  building standalone v3 self-compiler ...')
 	res := os.execute(cmd)
 	if res.exit_code != 0 || !os.is_executable(stage_v) {

@@ -386,12 +386,9 @@ fn connect_slot(conninfo string) !IdleSlot {
 	}
 	status := unsafe { ConnStatusType(C.PQstatus(conn)) }
 	if status != .ok {
-		// We force the construction of a new string as the
-		// error message will be freed by the next `PQfinish` call
-		c_error_msg := unsafe { C.PQerrorMessage(conn).vstring() }
-		error_msg := '${c_error_msg}'
+		c_error_msg := unsafe { cstring_to_vstring(C.PQerrorMessage(conn)) }
 		C.PQfinish(conn)
-		return error('Connection to a PG database failed: ${error_msg}')
+		return error('Connection to a PG database failed: ${c_error_msg}')
 	}
 	return IdleSlot{
 		handle:     conn
