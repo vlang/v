@@ -296,6 +296,63 @@ fn tcc_host_system_flags(target_os string) []string {
 	return flags
 }
 
+struct FastcBenchSample {
+	gen_us i64
+	files  int
+	lines  int
+}
+
+fn fastc_bench_source_line_count(paths []string) int {
+	mut total_lines := 0
+	for source_path in paths {
+		content := os.read_file(source_path) or { '' }
+		for ch in content {
+			if ch == `\n` {
+				total_lines++
+			}
+		}
+	}
+	return total_lines
+}
+
+fn fastc_measure_generation(real_input string, prefs &pref.Preferences) !FastcBenchSample {
+	mut sw := time.new_stopwatch()
+	generation := fastc.generate_files_with_source_paths([real_input], prefs)!
+	return FastcBenchSample{
+		gen_us: sw.elapsed().microseconds()
+		files: generation.source_paths.len
+		lines: fastc_bench_source_line_count(generation.source_paths)
+	}
+}
+
+fn fastc_parse_bench_child_output(output string) ?FastcBenchSample {
+	for line in output.split_into_lines() {
+		if !line.starts_with('fastc-bench-child ') {
+			continue
+		}
+		parts := line.split(' ')
+		if parts.len != 4 {
+			return none
+		}
+		return FastcBenchSample{
+			gen_us: parts[1].i64()
+			files: parts[2].int()
+			lines: parts[3].int()
+		}
+	}
+	return none
+}
+
+fn fastc_run_bench_child(args []string) FastcBenchSample {
+	result := cmdexec.run(os.executable(), args)
+	if result.exit_code != 0 {
+		fail(result.output)
+	}
+	return fastc_parse_bench_child_output(result.output) or {
+		fail('fastc benchmark child returned no timing sample:\n${result.output}')
+	}
+}
+
 // run invokes the standalone FastC compiler or its self-build command.
 pub fn run(args []string) {
 	command_index := self_command_index(args)
@@ -334,47 +391,36 @@ pub fn run(args []string) {
 	if repeat < 1 {
 		repeat = 1
 	}
+	if bench && os.getenv('FASTC_BENCH_CHILD') != '' {
+		sample := fastc_measure_generation(real_input, prefs) or { fail(err.msg()) }
+		println('fastc-bench-child ${sample.gen_us} ${sample.files} ${sample.lines}')
+		return
+	}
 	if bench && repeat > 1 {
-		mut warm := fastc.generate_files_with_source_paths([real_input], prefs) or {
-			fail(err.msg())
-		}
-		warm = warm
+		old_child_marker := os.getenv_opt('FASTC_BENCH_CHILD')
+		os.setenv('FASTC_BENCH_CHILD', '1', true)
+		warm := fastc_run_bench_child(args)
 		mut best_us := i64(0)
-		mut sw2 := time.new_stopwatch()
 		for iteration in 0 .. repeat {
-			sw2.restart()
-			fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
-			iter_us := sw2.elapsed().microseconds()
-			if iteration == 0 || iter_us < best_us {
-				best_us = iter_us
+			sample := fastc_run_bench_child(args)
+			if iteration == 0 || sample.gen_us < best_us {
+				best_us = sample.gen_us
 			}
 		}
-		mut total_lines := 0
-		for source_path in warm.source_paths {
-			content := os.read_file(source_path) or { '' }
-			for ch in content {
-				if ch == `\n` {
-					total_lines++
-				}
-			}
+		if old_child_marker_value := old_child_marker {
+			os.setenv('FASTC_BENCH_CHILD', old_child_marker_value, true)
+		} else {
+			os.unsetenv('FASTC_BENCH_CHILD')
 		}
 		gen_ms := f64(best_us) / 1000.0
-		loc_per_s := f64(total_lines) * 1_000_000.0 / f64(best_us)
-		eprintln('fastc-bench: files=${warm.source_paths.len} lines=${total_lines} best_gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f} (repeat=${repeat})')
+		loc_per_s := f64(warm.lines) * 1_000_000.0 / f64(best_us)
+		eprintln('fastc-bench: files=${warm.files} lines=${warm.lines} best_gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f} (repeat=${repeat})')
 	}
 	mut sw := time.new_stopwatch()
 	generation := fastc.generate_files_with_source_paths([real_input], prefs) or { fail(err.msg()) }
 	if bench && repeat == 1 {
 		gen_us := sw.elapsed().microseconds()
-		mut total_lines := 0
-		for source_path in generation.source_paths {
-			content := os.read_file(source_path) or { '' }
-			for ch in content {
-				if ch == `\n` {
-					total_lines++
-				}
-			}
-		}
+		total_lines := fastc_bench_source_line_count(generation.source_paths)
 		gen_ms := f64(gen_us) / 1000.0
 		loc_per_s := f64(total_lines) * 1_000_000.0 / f64(gen_us)
 		eprintln('fastc-bench: files=${generation.source_paths.len} lines=${total_lines} gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f}')

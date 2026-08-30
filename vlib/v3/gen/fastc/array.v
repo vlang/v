@@ -768,7 +768,9 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 					if item_start == i {
 						return error('empty expression-list item')
 					}
-					result << tokens[item_start..i]
+					// Items are consumed while `tokens` is alive and never mutated, so views are safe.
+					item := unsafe { tokens[item_start..i] }
+					result << item
 					item_start = i + 1
 				}
 			}
@@ -778,6 +780,7 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 	if item_start == end {
 		return result
 	}
-	result << tokens[item_start..end]
+	item := unsafe { tokens[item_start..end] }
+	result << item
 	return result
 }

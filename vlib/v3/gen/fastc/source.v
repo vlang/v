@@ -60,15 +60,33 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 	return result
 }
 
+fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
+	source := os.read_file(path) or {
+		return FastcLoadedSource{
+			failed:        true
+			error_message: err.msg()
+		}
+	}
+	header := fastc_scan_source_header(source, path, prefs) or {
+		return FastcLoadedSource{
+			failed:        true
+			error_message: err.msg()
+		}
+	}
+	return FastcLoadedSource{
+		source: source
+		header: header
+	}
+}
+
 fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]FastcSourceFile, map[string]string) {
 	mut queue := []FastcQueuedSource{}
 	if prefs.building_v {
 		builtin_dir := prefs.get_vlib_module_path('builtin')
-		for builtin_file in pref.get_v_files_from_dir_for_target(builtin_dir, prefs.user_defines,
-			prefs.target) {
+		for builtin_file in pref.get_v_files_from_dir_for_target(builtin_dir, prefs.user_defines, prefs.target) {
 			if fastc_source_file_matches_backend(builtin_file) {
 				queue << FastcQueuedSource{
-					path:        builtin_file
+					path: builtin_file
 					module_name: 'builtin'
 				}
 			}
@@ -106,84 +124,163 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	// directory enumeration are syscalls, so both are memoized for the walk.
 	mut real_path_cache := map[string]string{}
 	mut module_dir_files := map[string][]string{}
-	for queue.len > 0 {
-		queued := queue[0]
-		queue.delete(0)
-		mut path := ''
-		if cached := real_path_cache[queued.path] {
-			path = cached
-		} else {
-			path = os.real_path(queued.path)
-			real_path_cache[queued.path] = path
-		}
-		if seen[path] {
-			loaded := path_module[path] or { '' }
-			if queued.module_name != '' && loaded != '' && loaded != queued.module_name {
-				module_aliases[queued.module_name] = loaded
-			}
-			continue
-		}
-		if !os.is_file(path) {
-			return error('fastc source file `${path}` does not exist')
-		}
-		seen[path] = true
-		source := os.read_file(path)!
-		mut header := fastc_scan_source_header(source, path, prefs)!
-		if queued.module_name != '' {
-			expected_module_name := queued.module_name.all_after_last('.')
-			if header.module_name != expected_module_name {
-				return error('fastc imported source `${path}` declares module `${header.module_name}` instead of `${expected_module_name}`')
-			}
-			header = FastcSourceHeader{
-				module_name:             queued.module_name
-				imports:                 header.imports
-				import_order:            header.import_order
-				blank_imports:           header.blank_imports
-				has_globals:             header.has_globals
-				has_constants:           header.has_constants
-				has_global_declarations: header.has_global_declarations
-			}
-		}
-		sources << FastcSourceFile{
-			path:   path
-			source: source
-			header: header
-		}
-		path_module[path] = header.module_name
-		mut discovered_imports := map[string]bool{}
-		for imported_module in fastc_header_imported_modules(header) {
-			if discovered_imports[imported_module] {
-				continue
-			}
-			discovered_imports[imported_module] = true
-			module_dir := prefs.get_module_path(imported_module, path)
-			if module_dir == '' {
-				return error('fastc cannot resolve imported module `${imported_module}` from `${path}`')
-			}
-			mut module_files := []string{}
-			if cached := module_dir_files[module_dir] {
-				module_files = cached.clone()
+	mut module_path_cache := map[string]string{}
+	mut module_dir_modules := map[string]string{}
+	mut scheduled_paths := map[string]bool{}
+	mut queue_index := 0
+	for queue_index < queue.len {
+		// Freeze the current discovery wave. Its files are independent until their
+		// headers have been scanned, so load them concurrently and merge in queue order.
+		wave_end := queue.len
+		mut wave_paths := []string{cap: wave_end - queue_index}
+		mut wave_modules := []string{cap: wave_end - queue_index}
+		mut pending_alias_paths := []string{}
+		mut pending_alias_modules := []string{}
+		for queue_index < wave_end {
+			queued := queue[queue_index]
+			queue_index++
+			mut path := ''
+			if prefs.building_v {
+				// The self-host driver canonicalizes its entry path and derives vroot
+				// from it, so every queued vlib path is already absolute and canonical.
+				path = queued.path
+			} else if cached := real_path_cache[queued.path] {
+				path = cached
 			} else {
-				for module_file in pref.get_v_files_from_dir_for_target(module_dir,
-					prefs.user_defines, prefs.target) {
-					if fastc_source_file_matches_backend(module_file) {
-						module_files << module_file
+				path = os.real_path(queued.path)
+				real_path_cache[queued.path] = path
+			}
+			if seen[path] {
+				loaded := path_module[path] or { '' }
+				if queued.module_name != '' && loaded != queued.module_name {
+					if loaded != '' {
+						module_aliases[queued.module_name] = loaded
+					} else {
+						// The duplicate belongs to this same wave; resolve its alias after
+						// the first occurrence's header has supplied the canonical module.
+						pending_alias_paths << path
+						pending_alias_modules << queued.module_name
 					}
 				}
-				module_dir_files[module_dir] = module_files
+				continue
 			}
-			for module_file in module_files {
-				mut module_file_real := ''
-				if cached := real_path_cache[module_file] {
-					module_file_real = cached
-				} else {
-					module_file_real = os.real_path(module_file)
-					real_path_cache[module_file] = module_file_real
+			if !os.is_file(path) {
+				return error('fastc source file `${path}` does not exist')
+			}
+			seen[path] = true
+			scheduled_paths[path] = true
+			wave_paths << path
+			wave_modules << queued.module_name
+		}
+		loaded_sources := fastc_load_source_headers(wave_paths, prefs)
+		wave_source_start := sources.len
+		for i, loaded_source in loaded_sources {
+			if loaded_source.failed {
+				return error(loaded_source.error_message)
+			}
+			path := wave_paths[i]
+			queued_module := wave_modules[i]
+			mut header := loaded_source.header
+			if queued_module != '' {
+				expected_module_name := queued_module.all_after_last('.')
+				if header.module_name != expected_module_name {
+					return error('fastc imported source `${path}` declares module `${header.module_name}` instead of `${expected_module_name}`')
 				}
-				if !seen[module_file_real] {
-					queue << FastcQueuedSource{
-						path:        module_file
-						module_name: imported_module
+				header = FastcSourceHeader{
+					module_name: queued_module
+					imports: header.imports
+					import_order: header.import_order
+					blank_imports: header.blank_imports
+					has_globals: header.has_globals
+					has_constants: header.has_constants
+					has_global_declarations: header.has_global_declarations
+				}
+			}
+			sources << FastcSourceFile{
+				path: path
+				source: loaded_source.source
+				header: header
+			}
+			path_module[path] = header.module_name
+		}
+		for i, alias_path in pending_alias_paths {
+			loaded := path_module[alias_path] or { '' }
+			alias_module := pending_alias_modules[i]
+			if loaded != '' && loaded != alias_module {
+				module_aliases[alias_module] = loaded
+			}
+		}
+		for source_file in sources[wave_source_start..] {
+			mut discovered_imports := map[string]bool{}
+			for imported_module in fastc_header_imported_modules(source_file.header) {
+				if discovered_imports[imported_module] {
+					continue
+				}
+				discovered_imports[imported_module] = true
+				module_cache_key := if prefs.building_v {
+					imported_module
+				} else {
+					os.dir(source_file.path) + '\x00' + imported_module
+				}
+				mut module_dir := ''
+				mut newly_resolved_module := false
+				if module_cache_key in module_path_cache {
+					module_dir = module_path_cache[module_cache_key]
+				} else {
+					if prefs.building_v {
+						vlib_module_dir := prefs.get_vlib_module_path(imported_module)
+						// Alias modules need the generic resolver to follow `alias.v`.
+						if os.is_dir(vlib_module_dir)
+							&& !os.is_file(os.join_path_single(vlib_module_dir, 'alias.v')) {
+							module_dir = vlib_module_dir
+						} else {
+							module_dir = prefs.get_module_path(imported_module, source_file.path)
+						}
+					} else {
+						module_dir = prefs.get_module_path(imported_module, source_file.path)
+					}
+					module_path_cache[module_cache_key] = module_dir
+					newly_resolved_module = true
+				}
+				if module_dir == '' {
+					return error('fastc cannot resolve imported module `${imported_module}` from `${source_file.path}`')
+				}
+				if newly_resolved_module {
+					if loaded_module := module_dir_modules[module_dir] {
+						if loaded_module != imported_module {
+							module_aliases[imported_module] = loaded_module
+						}
+					} else {
+						module_dir_modules[module_dir] = imported_module
+					}
+				}
+				mut module_files := []string{}
+				if cached := module_dir_files[module_dir] {
+					module_files = cached.clone()
+				} else {
+					for module_file in pref.get_v_files_from_dir_for_target(module_dir, prefs.user_defines, prefs.target) {
+						if fastc_source_file_matches_backend(module_file) {
+							module_files << module_file
+						}
+					}
+					module_dir_files[module_dir] = module_files
+				}
+				for module_file in module_files {
+					mut module_file_real := ''
+					if prefs.building_v {
+						module_file_real = module_file
+					} else if cached := real_path_cache[module_file] {
+						module_file_real = cached
+					} else {
+						module_file_real = os.real_path(module_file)
+						real_path_cache[module_file] = module_file_real
+					}
+					if !scheduled_paths[module_file_real] {
+						scheduled_paths[module_file_real] = true
+						queue << FastcQueuedSource{
+							path: module_file
+							module_name: imported_module
+						}
 					}
 				}
 			}
@@ -477,33 +574,37 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 			}
 		}
 	}
+	has_constants, has_global_declarations := fastc_source_declaration_flags(source)
 	return FastcSourceHeader{
 		module_name:             module_name
 		imports:                 imports
 		import_order:            import_order
 		blank_imports:           blank_imports
 		has_globals:             has_globals
-		has_constants:           fastc_source_contains_word(source, 'const')
-		has_global_declarations: fastc_source_contains_word(source, '__global')
+		has_constants:           has_constants
+		has_global_declarations: has_global_declarations
 	}
 }
 
-fn fastc_source_contains_word(source string, word string) bool {
-	mut start := 0
-	for start < source.len {
-		index := source.index_after_(word, start)
-		if index < 0 {
-			return false
+fn fastc_source_declaration_flags(source string) (bool, bool) {
+	mut has_constants := false
+	mut has_global_declarations := false
+	for i := 0; i < source.len && (!has_constants || !has_global_declarations); i++ {
+		if i > 0 && fastc_identifier_byte(source[i - 1]) {
+			continue
 		}
-		end := index + word.len
-		before_is_identifier := index > 0 && fastc_identifier_byte(source[index - 1])
-		after_is_identifier := end < source.len && fastc_identifier_byte(source[end])
-		if !before_is_identifier && !after_is_identifier {
-			return true
+		if !has_constants && source[i] == `c` && i + 5 <= source.len
+			&& source[i..i + 5] == 'const'
+			&& (i + 5 == source.len || !fastc_identifier_byte(source[i + 5])) {
+			has_constants = true
 		}
-		start = end
+		if !has_global_declarations && source[i] == `_` && i + 8 <= source.len
+			&& source[i..i + 8] == '__global'
+			&& (i + 8 == source.len || !fastc_identifier_byte(source[i + 8])) {
+			has_global_declarations = true
+		}
 	}
-	return false
+	return has_constants, has_global_declarations
 }
 
 fn fastc_identifier_byte(value u8) bool {

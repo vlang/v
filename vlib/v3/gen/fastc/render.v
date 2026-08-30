@@ -3085,7 +3085,11 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 	}
 	mut rendered_items := []string{cap: items.len}
 	for item in items {
-		rendered_items << g.render_call_argument_expression(item, element_type) or { return none }
+		if simple := g.render_selfhost_simple_array_literal_item(item, element_type) {
+			rendered_items << simple
+		} else {
+			rendered_items << g.render_call_argument_expression(item, element_type) or { return none }
+		}
 	}
 	normalized_element := fastc_normalize_inferred_type(element_type)
 	if is_fixed {
@@ -3099,6 +3103,55 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 	return FastcRenderedExpression{
 		source: '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${normalized_element}), (${normalized_element}[]){${rendered_items.join(',')}}))'
 		typ:    array_type
+	}
+}
+
+fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressionToken, expected_type string) ?string {
+	if !g.selfhost || expected_type in ['Option', 'voidptr'] {
+		return none
+	}
+	if tokens.len == 4 && tokens[0].tok == .name && tokens[1].tok == .lpar
+		&& tokens[3].tok == .rpar && tokens[2].source == '' {
+		cast_type := fastc_primitive_c_type(tokens[0].lit) or { return none }
+		if cast_type != expected_type.trim_right('*') || expected_type.ends_with('*') {
+			return none
+		}
+		inner := g.render_selfhost_simple_array_literal_item(tokens[2..3], cast_type) or {
+			return none
+		}
+		return '((${cast_type})(${inner}))'
+	}
+	if tokens.len != 1 || tokens[0].source != '' {
+		return none
+	}
+	item := tokens[0]
+	return match item.tok {
+		.number {
+			if expected_type.ends_with('*') {
+				if item.lit == '0' {
+					'NULL'
+				} else {
+					return none
+				}
+			} else {
+				fastc_c_selfhost_number(item.lit)
+			}
+		}
+		.string {
+			literal := fastc_c_string(item.lit) or { return none }
+			'_S(${literal})'
+		}
+		.char {
+			if item.lit.starts_with('c:') {
+				fastc_c_string("'" + item.lit['c:'.len..] + "'") or { return none }
+			} else {
+				fastc_c_rune(item.lit) or { return none }
+			}
+		}
+		.key_true { '((bool)true)' }
+		.key_false { '((bool)false)' }
+		.key_nil { 'NULL' }
+		else { return none }
 	}
 }
 
