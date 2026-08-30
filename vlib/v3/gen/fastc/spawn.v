@@ -54,7 +54,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 		return g.unsupported('spawn for windows targets')
 	}
 	g.next()
-	if g.tok != .name {
+	if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.key_spawn)) {
 		return g.unsupported('spawn callee token `${g.token_source()}`')
 	}
 	mut callee := g.lit

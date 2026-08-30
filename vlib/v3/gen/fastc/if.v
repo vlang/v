@@ -55,14 +55,14 @@ fn (mut g Parser) parse_if() !bool {
 	// `if a, b := opt_fn() { ... }` unwraps an option whose value is a multi-return
 	// tuple and binds each component. The comma would otherwise trip the condition
 	// reader as a parallel assignment, so detect the `name (, name)+ :=` prefix here.
-	if g.tok == .name {
+	if g.tok == .name || (g.tok == .key_shared && g.shared_token_is_identifier(.key_if)) {
 		mut probe := g.s
 		mut guard_names := [g.lit]
 		mut is_multi_guard := false
 		for {
 			t := probe.scan()
 			if t == .comma {
-				if probe.scan() != .name {
+				if probe.scan() !in [.name, .key_shared] {
 					break
 				}
 				guard_names << probe.lit

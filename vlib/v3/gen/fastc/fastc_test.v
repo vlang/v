@@ -7470,6 +7470,32 @@ fn main() {
 	assert c_source.contains('args->result = Worker_run(args->arg0);'), c_source
 }
 
+fn test_selfhost_spawn_method_call_with_shared_receiver_name() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	source := 'module main
+
+struct Worker {
+	id int
+}
+
+fn (w Worker) run() int {
+	return w.id
+}
+
+fn main() {
+	shared := Worker{ id: 5 }
+	h := spawn shared.run()
+	println(h.wait())
+}
+'
+	c_source := generate(source, 'selfhost_spawn_shared_receiver.v', prefs) or { panic(err) }
+	assert c_source.contains('args->result = Worker_run(args->arg0);'), c_source
+}
+
 fn test_selfhost_or_block_with_trailing_value_fallback() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -8005,6 +8031,37 @@ fn main() {
 	assert c_source.contains('MultiReturn'), c_source
 	assert c_source.contains('.values[0].data'), c_source
 	assert c_source.contains('.values[1].data'), c_source
+}
+
+fn test_selfhost_if_multi_return_option_guard_with_shared_bindings() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn split_pair() ?(int, int) {
+	return 1, 2
+}
+
+fn shared_first() int {
+	if shared, other := split_pair() {
+		return shared + other
+	}
+	return 0
+}
+
+fn shared_second() int {
+	if other, shared := split_pair() {
+		return other + shared
+	}
+	return 0
+}
+
+fn main() {
+	println(shared_first() + shared_second())
+}
+', 'selfhost_multi_guard_shared_bindings.v', prefs) or { panic(err) }
+	assert c_source.contains('int shared ='), c_source
+	assert c_source.contains('int other ='), c_source
 }
 
 fn test_selfhost_multi_return_interface_component_is_macro_safe() {
