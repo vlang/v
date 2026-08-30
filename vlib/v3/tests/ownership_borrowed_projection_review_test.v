@@ -1091,6 +1091,20 @@ fn test_same_module_const_shadow_is_moved() {
 	assert dst.values[0] == "local"
 }
 
+fn drop_same_module_const_field_projection() {
+	values := cache.values
+	assert values[0] == "constant"
+}
+
+fn test_same_module_const_projections_are_cloned() {
+	drop_same_module_const_field_projection()
+	assert cache.values[0] == "constant"
+
+	mut payload := cached_payloads[0]
+	payload.values[0] = "index copy"
+	assert cached_payloads[0].values[0] == "cached"
+}
+
 fn test_same_typed_const_array_argument_is_cloned() {
 	assert consume_cached_payloads(cached_payloads) == "cached"
 	assert consume_cached_payloads(cached_payloads) == "cached"
@@ -1158,13 +1172,14 @@ fn main() {
 	test_lambda_captured_index_alias_is_cloned()
 	test_distinct_dynamic_moved_map_slot_is_dropped()
 	test_same_module_const_shadow_is_moved()
+	test_same_module_const_projections_are_cloned()
 	test_same_typed_const_array_argument_is_cloned()
 }
 ')!
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.split_into_lines().filter(it == 'clone').len == 62, out.output
+		assert out.output.split_into_lines().filter(it == 'clone').len == 63, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')
@@ -1198,18 +1213,30 @@ module main
 
 import cachemod
 
+fn drop_imported_const_projection() {
+	values := cachemod.cache.values
+	assert values[0] == "constant"
+}
+
 fn main() {
 	cache := cachemod.Payload{
 		values: ["local"]
 	}
 	dst := cache
 	assert dst.values[0] == "local"
+
+	mut imported := cachemod.cache
+	imported.values[0] = "selector copy"
+	assert cachemod.cache.values[0] == "constant"
+
+	drop_imported_const_projection()
+	assert cachemod.cache.values[0] == "constant"
 }
 ')!
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${os.join_path(project,
 			'main.v')}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 0, out.output
+		assert out.output.count('clone') == 1, out.output
 	}
 }

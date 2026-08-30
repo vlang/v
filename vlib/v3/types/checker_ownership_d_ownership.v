@@ -11288,11 +11288,12 @@ pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(id flat.NodeId) 
 //   * an indexed read (`obj.items[i]`) reached through such a pointer/reference base.
 //
 // A field read of a directly-held value (a plain local or an owned global) keeps its
-// Rust-like move semantics, diagnosed by the existing move analysis. Only cloneable
-// owned-storage types qualify; anything the compiler cannot structurally clone is left to the
-// move path. The predicate depends only on node shape and node-annotated types, so the
-// checker and the transformer reach the same decision without threading a per-node map across
-// module boundaries.
+// Rust-like move semantics, diagnosed by the existing move analysis. Reads from immutable
+// constants, including imported selectors and field/index projections rooted in constants,
+// are borrowed instead. Only cloneable owned-storage types qualify; anything the compiler
+// cannot structurally clone is left to the move path. The predicate depends only on node shape
+// and node-annotated types, so the checker and the transformer reach the same decision without
+// threading a per-node map across module boundaries.
 pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) bool {
 	if tc.ownership == unsafe { nil } {
 		return false
@@ -11324,7 +11325,7 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	// A `const` holds immutable, shared storage that is never dropped; reading it into a
 	// local copies the value, so an owned-storage const must be cloned rather than aliased
 	// (a bare alias would later free the const's static storage on the binding's drop).
-	is_const_read := node.kind == .ident && tc.ownership_ident_names_const(node.value)
+	is_const_read := tc.ownership_expr_reads_const_storage(clean_id)
 	if !is_field && !is_slice && !is_index && !is_deref && !is_variant_cast && !is_const_read {
 		return false
 	}
@@ -11339,6 +11340,37 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 		return true
 	}
 	return tc.ownership_projection_reads_through_pointer(clean_id)
+}
+
+// ownership_expr_reads_const_storage reports whether an expression directly names a constant
+// or projects through storage rooted in one. Module selectors are resolved through the
+// checker's constant table, while local identifiers retain precedence over same-named consts.
+fn (tc &TypeChecker) ownership_expr_reads_const_storage(id flat.NodeId) bool {
+	clean_id := tc.ownership_unwrap_expr(id)
+	if !tc.valid_node_id(clean_id) {
+		return false
+	}
+	node := tc.a.nodes[int(clean_id)]
+	if node.kind == .ident {
+		return tc.ownership_ident_names_const(node.value)
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base_id := tc.a.child(&node, 0)
+		if !tc.valid_node_id(base_id) {
+			return false
+		}
+		base_node := tc.a.nodes[int(base_id)]
+		if base_node.kind == .ident && !tc.ident_resolves_to_value(base_node.value) {
+			if _ := tc.selector_const_type(node) {
+				return true
+			}
+		}
+		return tc.ownership_expr_reads_const_storage(base_id)
+	}
+	if node.kind == .index && node.children_count > 0 {
+		return tc.ownership_expr_reads_const_storage(tc.a.child(&node, 0))
+	}
+	return false
 }
 
 // ownership_ident_names_const reports whether `name` (qualified or not) refers to a module
