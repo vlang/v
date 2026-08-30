@@ -9029,6 +9029,7 @@ fn (tc &TypeChecker) storage_lvalue_path_from_param(id flat.NodeId, name string,
 		if index.kind in [.ident, .int_literal, .string_literal, .char_literal, .bool_literal] {
 			return '${base}[${index.kind}:${index.value}]'
 		}
+		return '${base}[*]'
 	}
 	return none
 }
@@ -9251,8 +9252,9 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 			lhs := tc.a.nodes[int(lhs_id)]
 			if lhs.kind == .ident && lhs.value != target_name {
 				mut alias_sources := []int{}
-				tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut
-					alias_sources)
+				if unalias_type(tc.resolve_type(rhs_id)) is Pointer {
+					tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut alias_sources)
+				}
 				aliases[lhs.value] = alias_sources
 			}
 		}

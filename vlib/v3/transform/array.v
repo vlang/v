@@ -3322,35 +3322,37 @@ fn (mut t Transformer) array_map_mutating_call_retains_element_address(id flat.N
 	call_name := t.call_name_for_node(id, node)
 	params := t.call_param_types_for_node(call_name, node)
 	param_offset := t.call_param_offset_for_node(call_name, node, params)
-	mut target_param_idx := -1
+	mut target_param_idxs := []int{}
 	callee := t.a.child_node(&node, 0)
 	if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 {
 		receiver_id := t.a.child(callee, 0)
 		if t.array_map_lvalue_is_rooted_at_ident(receiver_id, target) && t.tc.mut_receiver_methods[call_name] {
-			target_param_idx = 0
+			target_param_idxs << 0
 		}
 	}
-	if target_param_idx < 0 {
-		for i in 1 .. node.children_count {
-			arg_id := t.a.child(&node, i)
-			arg := t.a.nodes[int(arg_id)]
-			if arg.is_mut && t.array_map_lvalue_is_rooted_at_ident(arg_id, target) {
-				target_param_idx = i - 1 + param_offset
-				break
+	for i in 1 .. node.children_count {
+		arg_id := t.a.child(&node, i)
+		arg := t.a.nodes[int(arg_id)]
+		if arg.is_mut && t.array_map_lvalue_is_rooted_at_ident(arg_id, target) {
+			target_param_idx := i - 1 + param_offset
+			if target_param_idx !in target_param_idxs {
+				target_param_idxs << target_param_idx
 			}
 		}
 	}
-	if target_param_idx < 0 {
+	if target_param_idxs.len == 0 {
 		return false
 	}
-	for source_param_idx in t.tc.call_param_storage_source_params(id, target_param_idx) {
-		i := source_param_idx - param_offset + 1
-		if i < 1 || i >= node.children_count {
-			continue
-		}
-		mut arg_seen := seen.clone()
-		if t.array_map_block_value_retains_element_address(block, before_idx, t.a.child(&node, i), name, mut arg_seen) {
-			return true
+	for target_param_idx in target_param_idxs {
+		for source_param_idx in t.tc.call_param_storage_source_params(id, target_param_idx) {
+			i := source_param_idx - param_offset + 1
+			if i < 1 || i >= node.children_count {
+				continue
+			}
+			mut arg_seen := seen.clone()
+			if t.array_map_block_value_retains_element_address(block, before_idx, t.a.child(&node, i), name, mut arg_seen) {
+				return true
+			}
 		}
 	}
 	return false

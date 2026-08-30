@@ -6955,6 +6955,92 @@ fn main() {
 	assert out == 'source'
 }
 
+fn test_array_map_keeps_temporary_source_for_all_mutator_targets_and_computed_indices() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Pair {
+mut:
+	first  PointerBox
+	second PointerBox
+}
+
+struct IndexedBox {
+mut:
+	values []&Item
+}
+
+fn route(mut first PointerBox, mut second PointerBox, value &Item) {
+	_ = first
+	second.value = value
+}
+
+fn pick_index() int {
+	return 0
+}
+
+fn store_at_computed_index(mut box IndexedBox, value &Item) {
+	box.values[pick_index()] = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	pairs := make_items().map(match true {
+		true {
+			mut pair := Pair{
+				first: PointerBox{
+					value: unsafe { &external }
+				}
+				second: PointerBox{
+					value: unsafe { &external }
+				}
+			}
+			route(mut pair.first, mut pair.second, unsafe { &it })
+			pair
+		}
+		else {
+			Pair{}
+		}
+	})
+	indexed := make_items().map(match true {
+		true {
+			mut box := IndexedBox{
+				values: [unsafe { &external }]
+			}
+			store_at_computed_index(mut box, unsafe { &it })
+			box
+		}
+		else {
+			IndexedBox{}
+		}
+	})
+	println(pairs[0].second.value.text)
+	println(indexed[0].values[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_all_mutator_targets_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_all_mutator_targets', '-ownership', source)
+	assert out == 'source\nsource'
+}
+
 fn test_array_map_traces_only_selected_comptime_mutator_branch() {
 	v3_bin := build_v3_review_transform_ownership()
 	source_true := 'struct Item {
