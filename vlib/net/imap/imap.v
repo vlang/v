@@ -502,6 +502,16 @@ fn (mut c Client) read_greeting() ! {
 // mail and removals during whatever command happens to be running, so these
 // arrive attached to a reply that has nothing to do with them.
 fn (mut c Client) absorb(res Response) {
+	// Each EXPUNGE takes one message out of the mailbox and renumbers what
+	// follows it. Servers are not obliged to send a fresh EXISTS afterwards,
+	// and Dovecot does not, so a client that waited for one would go on
+	// reporting a count that includes messages it just watched being removed.
+	for _ in res.expunged {
+		if c.exists > 0 {
+			c.exists--
+		}
+	}
+	// An EXISTS the server did send is authoritative over that arithmetic.
 	if res.has_exists {
 		c.exists = res.exists
 	}

@@ -132,14 +132,19 @@ fn mock_reply(tag string, cmd string, line string) string {
 	if cmd == 'EXPUNGE' {
 		return '* 3 EXPUNGE\r\n* 3 EXPUNGE\r\n* 5 EXPUNGE\r\n* 8 EXISTS\r\n' + '${tag} OK EXPUNGE completed\r\n'
 	}
+	if cmd == 'CLOSE' {
+		// Dovecot reports the removals and sends no fresh count behind them,
+		// which is what a client has to cope with.
+		return '* 1 EXPUNGE\r\n* 1 EXPUNGE\r\n${tag} OK CLOSE completed\r\n'
+	}
 	if cmd == 'APPEND' {
 		return '${tag} OK [APPENDUID 3857529045 45] APPEND completed\r\n'
 	}
 	if cmd == 'LOGOUT' {
 		return '* BYE mock signing off\r\n${tag} OK LOGOUT completed\r\n'
 	}
-	if cmd in ['CREATE', 'DELETE', 'RENAME', 'CLOSE', 'CHECK', 'SUBSCRIBE', 'UNSUBSCRIBE', 'UNSELECT',
-		'COPY', 'MOVE'] {
+	if cmd in ['CREATE', 'DELETE', 'RENAME', 'CHECK', 'SUBSCRIBE', 'UNSUBSCRIBE', 'UNSELECT', 'COPY',
+		'MOVE'] {
 		return '${tag} OK ${cmd} completed\r\n'
 	}
 	return '${tag} BAD unknown command\r\n'
@@ -348,6 +353,28 @@ fn test_unsolicited_updates_reach_the_client() {
 	c.noop()!
 	assert c.exists == 9
 	assert c.recent == 2
+	// Two removals with no fresh count behind them, the way Dovecot answers.
+	// The client has to do the arithmetic itself, or it goes on reporting
+	// messages it just watched being taken out.
+	c.close_mailbox()!
+	assert c.exists == 7
+	c.close()!
+	th.wait()
+	l.close() or {}
+	drain(seen)
+}
+
+fn test_an_explicit_count_wins_over_the_arithmetic() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+
+	mut c := new_client(server: '127.0.0.1', port: port)!
+	c.select_mailbox('INBOX')!
+	// Three removals and an EXISTS of 8. The server's own number is the one
+	// to trust, not 172 minus three.
+	c.expunge()!
+	assert c.exists == 8
 	c.close()!
 	th.wait()
 	l.close() or {}
