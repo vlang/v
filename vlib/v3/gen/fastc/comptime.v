@@ -288,7 +288,7 @@ fn (mut g Parser) parse_comptime_if_statement() !bool {
 fn (mut g Parser) parse_comptime_match_statement() !bool {
 	g.expect(.dollar)!
 	g.expect(.key_match)!
-	if g.tok != .name {
+	if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.key_match)) {
 		return g.unsupported('compile-time `$match` subject')
 	}
 	subject_name := g.lit

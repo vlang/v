@@ -10778,6 +10778,23 @@ fn main() {
 	assert !c_source.contains('_S("wrong")'), c_source
 }
 
+fn test_selfhost_comptime_match_subject_named_shared() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn main() {
+	shared := 1
+	\$match shared {
+		int { println("int") }
+		\$else { println("other") }
+	}
+}
+', 'selfhost_comptime_match_shared.v', prefs) or { panic(err) }
+	assert c_source.contains('println(_S("int"))'), c_source
+	assert !c_source.contains('println(_S("other"))'), c_source
+}
+
 fn test_selfhost_on_demand_comptime_recursion() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
