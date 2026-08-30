@@ -220,6 +220,32 @@ fn main() {
 	assert c_source.contains('Worker_shared_mono_int(worker,2)'), c_source
 }
 
+fn test_selfhost_implicit_generic_named_shared_parameter_is_monomorphized() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn id[T](shared T) T {
+	return shared
+}
+
+fn (worker Worker) id[T](shared T) T {
+	_ = worker
+	return shared
+}
+
+fn main() {
+	worker := Worker{}
+	_ := id(1)
+	_ := worker.id(2)
+}
+', 'selfhost_implicit_generic_named_shared_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('id_mono_int(1)'), c_source
+	assert c_source.contains('Worker_id_mono_int(worker,2)'), c_source
+}
+
 fn test_selfhost_multiline_result_propagation_after_shared_identifier() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

@@ -1024,6 +1024,7 @@ fn fastc_params_type_param_index(params_source string, type_param string, prefs 
 	for name in type_param.split(',') {
 		type_params[name] = true
 	}
+	no_imports := map[string]string{}
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file('params', params_source.len)
 	file.index_lines_without_digest(params_source)
@@ -1036,10 +1037,11 @@ fn fastc_params_type_param_index(params_source string, type_param string, prefs 
 	tok = s.scan()
 	mut parameter_index := 0
 	for tok !in [.rpar, .eof] {
-		if tok in [.key_mut, .key_shared] {
+		shared_is_name := tok == .key_shared && fastc_shared_parameter_is_name(s, 'params', '', no_imports, type_params, prefs.building_v)
+		if tok == .key_mut || (tok == .key_shared && !shared_is_name) {
 			tok = s.scan()
 		}
-		if tok != .name {
+		if tok !in [.name, .key_shared] {
 			return -1
 		}
 		tok = s.scan()
