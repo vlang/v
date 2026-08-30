@@ -6063,8 +6063,9 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	if final_field == flat.empty_node {
 		return false
 	}
-	final_type := unalias_type(tc.resolve_type(final_field))
-	if !tc.ownership_type_requires_destruction(final_type) && final_type !is Pointer {
+	raw_final_type := tc.resolve_type(final_field)
+	final_type := unalias_type(raw_final_type)
+	if !tc.ownership_type_requires_destruction(final_type) && !tc.array_accessor_type_contains_pointer(final_type) {
 		return true
 	}
 	// An owned or pointer field remains borrowed when a comparison or scalar index consumes it
@@ -6083,11 +6084,53 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	if consumer.kind == .infix && consumer.op in [.eq, .ne, .lt, .gt, .le, .ge] {
 		return true
 	}
+	if consumer.kind == .infix && consumer.op == .plus && final_type is String && (raw_final_type !is Alias || !tc.type_has_infix_operator_method(raw_final_type, .plus)) {
+		return true
+	}
 	if consumer.kind != .index || consumer.children_count == 0 || tc.a.child(consumer, 0) != consumed_id {
 		return false
 	}
 	index_type := unalias_type(tc.resolve_type(consumer_id))
-	return !tc.ownership_type_requires_destruction(index_type) && index_type !is Pointer
+	return !tc.ownership_type_requires_destruction(index_type) && !tc.array_accessor_type_contains_pointer(index_type)
+}
+
+fn (tc &TypeChecker) array_accessor_type_contains_pointer(typ Type) bool {
+	mut seen := map[string]bool{}
+	return tc.array_accessor_type_contains_pointer_inner(typ, mut seen)
+}
+
+fn (tc &TypeChecker) array_accessor_type_contains_pointer_inner(typ Type, mut seen map[string]bool) bool {
+	match typ {
+		Pointer {
+			return true
+		}
+		Alias, OptionType, ResultType {
+			return tc.array_accessor_type_contains_pointer_inner(typ.base_type, mut seen)
+		}
+		ArrayFixed {
+			return tc.array_accessor_type_contains_pointer_inner(typ.elem_type, mut seen)
+		}
+		MultiReturn {
+			for item in typ.types {
+				if tc.array_accessor_type_contains_pointer_inner(item, mut seen) {
+					return true
+				}
+			}
+		}
+		Struct {
+			if seen[typ.name] {
+				return false
+			}
+			seen[typ.name] = true
+			for field in tc.struct_fields_for_type(typ.name) {
+				if tc.array_accessor_type_contains_pointer_inner(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
 }
 
 // should_diagnose reports whether should diagnose applies in types.
