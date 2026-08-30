@@ -2423,6 +2423,28 @@ fn main() {
 	assert c_source.contains('void Worker_update(Worker value, int* arg1)'), c_source
 }
 
+fn test_selfhost_interface_preserves_type_only_shared_parameter() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Box {}
+
+interface User {
+	use(shared Box)
+}
+
+struct Impl {}
+
+fn (value Impl) use(shared box Box) {}
+
+fn main() {
+	_ := User(Impl{})
+}
+', 'selfhost_interface_type_only_shared_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('void User_use(User value, Box* arg1)'), c_source
+}
+
 fn test_selfhost_unused_interface_dispatches_do_not_reference_pruned_methods() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

@@ -764,7 +764,9 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 			tok = scan.scan()
 			for tok != .rpar {
 				mut parameter_is_mut := false
-				if tok == .key_mut || (tok == .key_shared && !fastc_shared_parameter_is_name(scan, path, header.module_name, header.imports, declared_types, prefs.building_v)) {
+				// Interface parameters may be type-only, so `shared T` is always the
+				// shared modifier followed by the type, matching the main parser.
+				if tok in [.key_mut, .key_shared] {
 					parameter_is_mut = true
 					tok = scan.scan()
 				}
