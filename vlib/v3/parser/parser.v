@@ -10652,8 +10652,10 @@ fn (mut p Parser) index_part_expr() flat.NodeId {
 	// A generic call is initially parsed through the same bracket path as an index.
 	// Preserve type-only heads as a single type expression so `f[fn (int) int]()`
 	// does not turn the function signature into a body-less anonymous function.
-	if p.tok in [.question, .not, .amp, .and, .key_fn, .key_shared, .key_atomic]
-		&& (p.tok !in [.not, .amp, .and] || p.isreftype_prefix_arg_starts_type()) {
+	is_type_only_head := p.tok in [.question, .not, .amp, .and, .key_fn, .key_shared, .key_atomic]
+	shared_starts_type := p.tok != .key_shared || !p.shared_token_is_identifier(false)
+	reference_starts_type := p.tok !in [.not, .amp, .and] || p.isreftype_prefix_arg_starts_type()
+	if is_type_only_head && shared_starts_type && reference_starts_type {
 		start := p.span_start()
 		type_name := p.parse_type_name()
 		return p.add_node(flat.Node{

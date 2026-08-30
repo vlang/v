@@ -277,6 +277,22 @@ fn test_isreftype_shared_local_parses_as_expression() {
 	assert saw_shared_argument
 }
 
+fn test_shared_local_index_parses_as_expression() {
+	a := parse_parser_regression_source('shared_local_index_expression', 'fn main() {\n\titems := [10, 20]\n\tshared := 1\n\t_ = items[shared]\n}\n')
+	mut saw_shared_index := false
+	for node in a.nodes {
+		if node.kind != .index || node.children_count != 2 {
+			continue
+		}
+		base := a.child_node(&node, 0)
+		index := a.child_node(&node, 1)
+		if base.kind == .ident && base.value == 'items' && index.kind == .ident && index.value == 'shared' {
+			saw_shared_index = true
+		}
+	}
+	assert saw_shared_index
+}
+
 fn test_or_block_inside_index_stays_in_index_expression() {
 	a := parse_parser_regression_source('or_block_inside_index', 'fn idx() ?int {
 	return none
