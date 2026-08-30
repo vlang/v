@@ -3250,6 +3250,13 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 	if t.array_map_call_side_effect_retains_element_address(id, node, elem_name, locals, block, before_idx) {
 		return true
 	}
+	if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
+		array_id := t.a.child(&node, 0)
+		value_id := t.a.child(&node, 1)
+		if t.array_map_side_effect_target_is_external(array_id, elem_name, locals, false) && t.array_map_side_effect_source_retains_element_address(value_id, elem_name, block, before_idx) {
+			return true
+		}
+	}
 	if node.kind == .infix && node.op == .arrow && node.children_count >= 2 {
 		channel_id := t.a.child(&node, 0)
 		value_id := t.a.child(&node, 1)
