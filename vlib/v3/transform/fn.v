@@ -1414,6 +1414,13 @@ fn (t &Transformer) expr_may_escape_any_named_capture(id flat.NodeId, captures m
 		&& t.expr_mentions_any_name(id, captures) {
 		return true
 	}
+	if node.kind == .return_stmt {
+		for name, _ in captures {
+			if t.fn_literal_expr_takes_address_of_capture(id, name) {
+				return true
+			}
+		}
+	}
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.children_count >= 2 {
 		for i := 1; i < node.children_count; i += 2 {
 			if t.expr_mentions_any_name(t.a.child(&node, i), captures) {
