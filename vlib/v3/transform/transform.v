@@ -11682,10 +11682,14 @@ fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node)
 	result << t.make_if(not_ok, t.make_or_else_block(guard_mode, guard_stmts), t.make_empty())
 	lhs_type := t.lvalue_type(lhs_id)
 	sum_target := t.assignment_sum_target(lhs_id, rhs_id, lhs_type)
-	rhs := if node.op == .assign && sum_target.len > 0 {
+	mut rhs := if node.op == .assign && sum_target.len > 0 {
 		t.wrap_sum_value(rhs_id, sum_target)
 	} else {
 		t.transform_expr_for_type(rhs_id, lhs_type)
+	}
+	if node.op == .assign {
+		clone_type := if sum_target.len > 0 { sum_target } else { lhs_type }
+		rhs = t.clone_borrowed_assignment_value(rhs_id, rhs, clone_type)
 	}
 	t.drain_pending(mut result)
 	if node.op == .assign && lhs_type.len > 0 && !isnil(t.tc) {
@@ -12005,7 +12009,8 @@ fn (mut t Transformer) try_lower_sum_shared_field_assign(node flat.Node) ?[]flat
 		sum_type = ptr_type
 	}
 	mut rhs := if node.op == .assign {
-		t.transform_expr_for_type(rhs_id, field_type)
+		value := t.transform_expr_for_type(rhs_id, field_type)
+		t.clone_borrowed_assignment_value(rhs_id, value, field_type)
 	} else {
 		t.transform_expr(rhs_id)
 	}

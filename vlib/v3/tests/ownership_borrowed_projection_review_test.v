@@ -88,6 +88,27 @@ struct ObservedOptionalHolder {
 	value ?ObservedPayload
 }
 
+struct ObservedAssignmentTarget {
+mut:
+	payload ObservedPayload
+}
+
+struct ObservedOptionalNode {
+	parent ?&ObservedAssignmentTarget
+}
+
+struct ObservedSharedLeft {
+mut:
+	payload ObservedPayload
+}
+
+struct ObservedSharedRight {
+mut:
+	payload ObservedPayload
+}
+
+type ObservedSharedEntry = ObservedSharedLeft | ObservedSharedRight
+
 type Entry = Payload | int
 
 struct EntryHolder {
@@ -796,6 +817,59 @@ fn test_borrowed_or_success_is_cloned() {
 	assert copied.values[0] == "success copy"
 }
 
+fn test_optional_selector_assignment_clones_borrowed_rhs() {
+	mut clones := 0
+	mut target := ObservedAssignmentTarget{
+		payload: ObservedPayload{
+			values: ["old"]
+			clones: &clones
+		}
+	}
+	node := &ObservedOptionalNode{
+		parent: &target
+	}
+	holder := &ObservedPair{
+		left: ObservedPayload{
+			values: ["source"]
+			clones: &clones
+		}
+		right: ObservedPayload{
+			values: ["other"]
+			clones: &clones
+		}
+	}
+	node.parent or { return }.payload = holder.left
+	assert clones == 1
+	target.payload.values[0] = "assigned"
+	assert holder.left.values[0] == "source"
+}
+
+fn test_sum_shared_field_assignment_clones_borrowed_rhs() {
+	mut clones := 0
+	holder := &ObservedPair{
+		left: ObservedPayload{
+			values: ["source"]
+			clones: &clones
+		}
+		right: ObservedPayload{
+			values: ["other"]
+			clones: &clones
+		}
+	}
+	mut entry := ObservedSharedEntry(ObservedSharedLeft{
+		payload: ObservedPayload{
+			values: ["old"]
+			clones: &clones
+		}
+	})
+	entry.payload = holder.left
+	assert clones == 1
+	if mut entry is ObservedSharedLeft {
+		entry.payload.values[0] = "assigned"
+	}
+	assert holder.left.values[0] == "source"
+}
+
 fn test_borrowed_sum_projection_is_cloned() {
 	holder := &EntryHolder{
 		entry: Payload{
@@ -1070,6 +1144,8 @@ fn main() {
 	test_multi_conditional_borrowed_branches_are_cloned(holder, true)
 	test_borrowed_or_fallback_is_cloned(holder)
 	test_borrowed_or_success_is_cloned()
+	test_optional_selector_assignment_clones_borrowed_rhs()
+	test_sum_shared_field_assignment_clones_borrowed_rhs()
 	test_borrowed_sum_projection_is_cloned()
 	test_owned_rvalue_sum_projection_is_moved()
 	test_owned_rvalue_slice_projection_is_consumed()
