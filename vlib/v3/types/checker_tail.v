@@ -9193,6 +9193,7 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 		before := storage_param_sources_clone(aliases)
 		mut scoped := storage_param_sources_clone(aliases)
 		mut declared := map[string]bool{}
+		mut deferred_stmts := []flat.NodeId{}
 		for i in 0 .. node.children_count {
 			child_id := tc.a.child(&node, i)
 			child := tc.a.nodes[int(child_id)]
@@ -9204,10 +9205,32 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 					}
 				}
 			}
+			if child.kind == .defer_stmt {
+				deferred_stmts << child_id
+			}
 			tc.collect_param_storage_sources(child_id, target_name, target_type, target_param_idx, decl_mod, mut scoped, mut visiting, mut writes, mut exited_writes, mut loop_exit_writes, mut exited_aliases, active_defer_count, mut exited_defer_counts)
 			if child.kind in [.return_stmt, .break_stmt, .continue_stmt] {
 				break
 			}
+		}
+		if deferred_stmts.len > 0 {
+			// A nested defer can be registered conditionally, so preserve its possible
+			// registration-time writes above and also analyze it with scope-exit aliases.
+			mut deferred_aliases := storage_param_sources_clone(scoped)
+			mut deferred_writes := storage_param_sources_clone(writes)
+			for i := deferred_stmts.len; i > 0; i-- {
+				defer_node := tc.a.nodes[int(deferred_stmts[i - 1])]
+				mut deferred_exited_writes := map[string][]int{}
+				mut deferred_loop_exit_writes := map[string][]int{}
+				mut deferred_exited_aliases := []map[string][]int{}
+				mut deferred_exited_defer_counts := []int{}
+				for j in 0 .. defer_node.children_count {
+					tc.collect_param_storage_sources(tc.a.child(&defer_node, j), target_name, target_type, target_param_idx, decl_mod, mut deferred_aliases, mut visiting, mut deferred_writes, mut deferred_exited_writes, mut deferred_loop_exit_writes, mut deferred_exited_aliases, 0, mut deferred_exited_defer_counts)
+				}
+				storage_param_writes_merge(mut deferred_writes, deferred_exited_writes)
+				storage_param_writes_merge(mut deferred_writes, deferred_loop_exit_writes)
+			}
+			storage_param_writes_merge(mut exited_writes, deferred_writes)
 		}
 		for name, _ in before {
 			if !declared[name] {

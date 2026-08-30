@@ -8368,6 +8368,15 @@ fn main() {
 	deferred_exit_alias_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_deferred_exit_alias', '-ownership', deferred_exit_alias_source)
 	assert deferred_exit_alias_out == 'source'
 
+	nested_deferred_exit_alias_source := source.replace('box.value = value\n\tbox.value = replacement', 'if true {\n\t\tmut local := PointerBox{\n\t\t\tvalue: unsafe { replacement }\n\t\t}\n\t\tmut alias := &local\n\t\tdefer {\n\t\t\talias.value = value\n\t\t}\n\t\talias = &box\n\t}')
+	assert nested_deferred_exit_alias_source != source
+	nested_deferred_exit_alias_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_nested_deferred_exit_alias_c', '-ownership', nested_deferred_exit_alias_source)
+	nested_deferred_exit_alias_main := c_fn_body(nested_deferred_exit_alias_c_source, 'int main(int argc, char** argv) {')
+	compact_nested_deferred_exit_alias_main := nested_deferred_exit_alias_main.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_nested_deferred_exit_alias_main.contains('array__free(&(__map_source_'), nested_deferred_exit_alias_main
+	nested_deferred_exit_alias_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_nested_deferred_exit_alias', '-ownership', nested_deferred_exit_alias_source)
+	assert nested_deferred_exit_alias_out == 'source'
+
 	late_defer_source := source.replace('box.value = value\n\tbox.value = replacement', 'box.value = value\n\tif value.text.len > 0 {\n\t\treturn\n\t}\n\tdefer {\n\t\tbox.value = replacement\n\t}')
 	assert late_defer_source != source
 	late_defer_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_late_defer_c', '-ownership', late_defer_source)
@@ -8862,6 +8871,54 @@ fn main() {
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	out := run_good_with_flags(v3_bin, 'array_map_returned_closure_capture', '-ownership', source)
 	assert out == 'source'
+}
+
+fn test_array_map_keeps_temporary_source_through_invoked_closure_capture() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := &PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			p := unsafe { &it }
+			fn [p, mut saved] () {
+				saved.value = p
+			}()
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_invoked_closure_capture_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_invoked_closure_capture', '-ownership', source)
+	assert out == '0\nsource'
 }
 
 fn test_array_map_drops_temporary_source_for_projected_passthrough_parameter() {

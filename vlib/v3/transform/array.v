@@ -3502,8 +3502,9 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 	}
 	if call_is_unresolved {
 		// A function value has no visible body or attributes at this call site. Any
-		// pointer-bearing argument may therefore escape even when it is not `mut`.
-		for i in 1 .. node.children_count {
+		// pointer-bearing argument or captured callee state may therefore escape
+		// even when it is not `mut`.
+		for i in 0 .. node.children_count {
 			if t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i), elem_name, block, before_idx) {
 				return true
 			}
