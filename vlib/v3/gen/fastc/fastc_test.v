@@ -259,6 +259,24 @@ fn main() {
 	assert c_source.contains('shared.value=1;'), c_source
 }
 
+fn test_selfhost_contextual_shared_struct_field_uses_designated_initializer() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Box {
+	shared int
+}
+
+fn main() {
+	box := Box{shared: 1}
+	println(box.shared)
+}
+', 'selfhost_contextual_shared_struct_field.v', prefs) or { panic(err) }
+	assert c_source.contains('(Box){.shared='), c_source
+	assert !c_source.contains('(Box){shared='), c_source
+}
+
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	sources := [
 		FastcSourceFile{

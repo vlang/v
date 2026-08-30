@@ -589,7 +589,12 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			continue
 		}
 		shared_classification := g.classify_shared_token(previous_token)
-		if g.tok == .key_shared && shared_classification.is_identifier {
+		shared_is_struct_field := shared_classification.is_identifier && g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && previous_token in [
+			.lcbr,
+			.comma,
+			.semicolon,
+		]
+		if g.tok == .key_shared && shared_classification.is_identifier && !shared_is_struct_field {
 			expression_tokens << FastcExpressionToken{
 				tok: .name
 				lit: g.lit
@@ -616,7 +621,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			continue
 		}
-		if g.tok in [.key_mut, .key_shared] {
+		if g.tok in [.key_mut, .key_shared] && !shared_is_struct_field {
 			g.next()
 			if g.tok in [.amp, .and] {
 				next_token_is_mut_argument = true
@@ -1312,7 +1317,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		// A word that is also a keyword (`conn.select(...)`, `x.lock`) is a member
 		// name, not a keyword, once it follows `.`; store it as a plain name so the
 		// method-call and inference paths recognize it like any other member.
-		stored_tok := if previous_token == .dot && g.tok.is_keyword() {
+		stored_tok := if (previous_token == .dot && g.tok.is_keyword()) || shared_is_struct_field {
 			token.Token.name
 		} else {
 			g.tok
@@ -1584,7 +1589,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			pending_field_value_mark = true
 		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && g.tok == .semicolon {
 			piece = ','
-		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && g.tok == .name && previous_token in [
+		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && (g.tok == .name || shared_is_struct_field) && previous_token in [
 			.lcbr,
 			.comma,
 			.semicolon,

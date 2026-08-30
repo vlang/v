@@ -812,23 +812,21 @@ fn fastc_render_generic_instance_with_call_rewrites(source string, generic Fastc
 	mut tok := s.scan()
 	mut renamed := false
 	for tok != .eof {
-		if tok == .name {
-			if !renamed && s.lit == generic.name {
+		if !renamed && tok in [.name, .key_shared] && s.lit == generic.name {
+			edits << FastcSourceEdit{
+				start: s.pos
+				end: s.offset
+				replacement: fastc_monomorphized_name(generic.name, concrete)
+			}
+			renamed = true
+		} else if tok == .name && !(s.pos >= bracket_low && s.pos < bracket_high) {
+			// Substitute each type parameter everywhere except inside `[...]`, which
+			// is removed by the edit above (overlapping edits would corrupt it).
+			if replacement := substitutions[s.lit] {
 				edits << FastcSourceEdit{
 					start: s.pos
 					end: s.offset
-					replacement: fastc_monomorphized_name(generic.name, concrete)
-				}
-				renamed = true
-			} else if !(s.pos >= bracket_low && s.pos < bracket_high) {
-				// Substitute each type parameter everywhere except inside `[...]`, which
-				// is removed by the edit above (overlapping edits would corrupt it).
-				if replacement := substitutions[s.lit] {
-					edits << FastcSourceEdit{
-						start: s.pos
-						end: s.offset
-						replacement: replacement
-					}
+					replacement: replacement
 				}
 			}
 		}
@@ -888,7 +886,7 @@ fn fastc_scan_generic_fns(source string, path string, prefs &pref.Preferences, s
 			}
 			tok = s.scan()
 		}
-		if tok != .name {
+		if tok !in [.name, .key_shared] {
 			continue
 		}
 		name := s.lit
