@@ -6148,6 +6148,12 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			continue
 		}
 		if parent.kind in [.if_expr, .match_stmt, .or_expr] {
+			if parent.children_count > 0 {
+				prerequisite_id := tc.a.child(parent, 0)
+				if prerequisite_id != current && !tc.array_accessor_borrow_sibling_is_stable(prerequisite_id) {
+					return false
+				}
+			}
 			current = parent_id
 			continue
 		}
@@ -6310,7 +6316,7 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 	if node.kind == .field_init {
 		return node.children_count == 1 && tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, 0))
 	}
-	if node.kind == .array_literal {
+	if node.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init] {
 		for i in 0 .. node.children_count {
 			if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
 				return false

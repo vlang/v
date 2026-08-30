@@ -982,6 +982,127 @@ fn main() {
 	assert run.output.trim_space() == '5', run.output
 }
 
+fn test_owned_scalar_consumer_with_stable_aggregate_argument_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_stable_aggregate_argument', "struct E {
+	name string
+}
+
+struct Pair {
+	n int
+}
+
+fn consume_struct(length int, pair Pair) int {
+	_ = pair
+	return length
+}
+
+fn consume_map(length int, values map[string]int) int {
+	_ = values
+	return length
+}
+
+fn consume_array(length int, values []int) int {
+	_ = values
+	return length
+}
+
+fn last_struct_length(entries []E) int {
+	return consume_struct(entries.last().name.len, Pair{ n: 1 })
+}
+
+fn last_map_length(entries []E) int {
+	return consume_map(entries.last().name.len, { 'n': 1 })
+}
+
+fn last_array_length(entries []E) int {
+	return consume_array(entries.last().name.len, []int{len: 1, init: 1})
+}
+
+fn main() {
+	entries1 := [E{ name: 'hello' }]
+	entries2 := [E{ name: 'hello' }]
+	entries3 := [E{ name: 'hello' }]
+	println(last_struct_length(entries1) + last_map_length(entries2) + last_array_length(entries3))
+}
+", '')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('cannot return an independent array element'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_scalar_stable_aggregate_argument_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '15', run.output
+}
+
+fn test_owned_conditional_prerequisites_that_mutate_source_are_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	if_compile := compile_v3_ownership_program(v3_bin, 'owned_mutating_if_prerequisite', "struct E {
+	name string
+}
+
+fn delete_last(mut entries []E) bool {
+	entries.delete_last()
+	return true
+}
+
+fn last_length(mut entries []E) int {
+	return if delete_last(mut entries) { entries.last().name.len } else { 0 }
+}
+
+fn main() {
+	mut entries := [E{ name: 'hello' }]
+	println(last_length(mut entries))
+}
+", '')
+	assert if_compile.exit_code != 0, if_compile.output
+	assert if_compile.output.contains('cannot return an independent array element'), if_compile.output
+
+	match_compile := compile_v3_ownership_program(v3_bin, 'owned_mutating_match_prerequisite', "struct E {
+	name string
+}
+
+fn delete_last(mut entries []E) bool {
+	entries.delete_last()
+	return true
+}
+
+fn last_length(mut entries []E) int {
+	return match delete_last(mut entries) {
+		true { entries.last().name.len }
+		else { 0 }
+	}
+}
+
+fn main() {
+	mut entries := [E{ name: 'hello' }]
+	println(last_length(mut entries))
+}
+", '')
+	assert match_compile.exit_code != 0, match_compile.output
+	assert match_compile.output.contains('cannot return an independent array element'), match_compile.output
+
+	or_compile := compile_v3_ownership_program(v3_bin, 'owned_mutating_or_prerequisite', "struct E {
+	name string
+}
+
+fn delete_last(mut entries []E) !int {
+	entries.delete_last()
+	return error('deleted')
+}
+
+fn last_length(mut entries []E) int {
+	return delete_last(mut entries) or { entries.last().name.len }
+}
+
+fn main() {
+	mut entries := [E{ name: 'hello' }]
+	println(last_length(mut entries))
+}
+", '')
+	assert or_compile.exit_code != 0, or_compile.output
+	assert or_compile.output.contains('cannot return an independent array element'), or_compile.output
+}
+
 fn test_owned_scalar_consumer_with_cloning_method_value_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_cloning_method_value_sibling', "struct E {
