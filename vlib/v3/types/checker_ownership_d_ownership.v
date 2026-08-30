@@ -11278,8 +11278,8 @@ pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(id flat.NodeId) 
 //
 //   * a slice (`s[a..b]`), which always shares its source's backing and can never be moved
 //     out;
-//   * a sum-type/interface cast (`v as T`), which extracts a copy of the variant while the
-//     source keeps its value; and
+//   * a sum-type/interface cast (`v as T`) from named storage, which extracts a copy of the
+//     variant while the source keeps its value; and
 //   * an explicit pointer dereference (`*p`), which reads the pointee without transferring
 //     ownership away from the pointer's owner; and
 //   * a field read (`obj.field`) reached through a pointer/reference base — a `mut` receiver
@@ -11306,13 +11306,21 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	is_slice := node.kind == .index && node.value == 'range'
 	is_index := node.kind == .index && node.value != 'range' && node.children_count > 0
 	is_deref := node.kind == .prefix && node.op == .mul && node.children_count > 0
-	// A sum-type/interface cast (`v as T`) of a directly-held value extracts an independent
-	// copy of the variant while the source keeps its value, so an owned-storage payload must
-	// be cloned. A cast reached through a pointer/reference base (`(&sum) as T`) only reads
-	// storage the pointee owns — a borrow, as in a read-only AST walk — and is left alone so a
-	// traversal does not deep-clone the whole tree at every level.
-	is_variant_cast := node.kind == .as_expr && node.children_count > 0
-		&& unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) == tc.resolve_type(tc.a.child(&node, 0))
+	// A sum-type/interface cast (`v as T`) from named storage extracts an independent copy
+	// while the source keeps its value, so an owned-storage payload must be cloned. An owned
+	// rvalue such as `make_entry() as T` instead transfers its projected payload and must not
+	// be stabilized as a borrow, or the temporary sum owner is never destroyed. A cast reached
+	// through a pointer/reference base (`(&sum) as T`) only reads storage the pointee owns —
+	// a borrow, as in a read-only AST walk — and is left alone so a traversal does not
+	// deep-clone the whole tree at every level.
+	variant_source_id := if node.kind == .as_expr && node.children_count > 0 {
+		tc.a.child(&node, 0)
+	} else {
+		flat.empty_node
+	}
+	is_variant_cast := variant_source_id != flat.empty_node
+		&& tc.ownership_expr_ident_name(variant_source_id).len > 0
+		&& unwrap_pointer(tc.resolve_type(variant_source_id)) == tc.resolve_type(variant_source_id)
 	// A `const` holds immutable, shared storage that is never dropped; reading it into a
 	// local copies the value, so an owned-storage const must be cloned rather than aliased
 	// (a bare alias would later free the const's static storage on the binding's drop).

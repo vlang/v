@@ -772,6 +772,18 @@ fn test_borrowed_sum_projection_is_cloned() {
 	assert (holder.entry as Payload).values[0] == "original"
 }
 
+fn make_owned_entry() Entry {
+	return Payload{
+		values: ["owned temporary"]
+	}
+}
+
+fn test_owned_rvalue_sum_projection_is_moved() {
+	mut payload := make_owned_entry() as Payload
+	payload.values[0] = "moved"
+	assert payload.values[0] == "moved"
+}
+
 fn test_nonaddressable_borrowed_projections_are_stable() {
 	mut sum_drops := 0
 	entry := DefaultCloneEntry(DefaultClonePayload{
@@ -987,6 +999,7 @@ fn main() {
 	test_multi_conditional_borrowed_branches_are_cloned(holder, true)
 	test_borrowed_or_fallback_is_cloned(holder)
 	test_borrowed_sum_projection_is_cloned()
+	test_owned_rvalue_sum_projection_is_moved()
 	test_nonaddressable_borrowed_projections_are_stable()
 	test_copied_index_alias_is_cloned()
 	test_long_index_alias_chain_is_cloned()
