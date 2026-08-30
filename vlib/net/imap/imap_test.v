@@ -115,6 +115,9 @@ fn mock_reply(tag string, cmd string, line string) string {
 		return '* SEARCH 1 2 3 4 5 9 84 882\r\n${tag} OK SEARCH completed\r\n'
 	}
 	if cmd == 'FETCH' {
+		if line.contains('BIG') {
+			return big_fetch_reply(tag)
+		}
 		return fetch_reply(tag)
 	}
 	if cmd == 'UID' {
@@ -155,6 +158,13 @@ fn mock_reply(tag string, cmd string, line string) string {
 fn fetch_reply(tag string) string {
 	body := 'Subject: UID 999 FLAGS (\\Deleted)\r\n\r\nnot protocol\r\n'
 	return '* 2 FETCH (UID 4827313 RFC822.SIZE 44827 FLAGS (\\Seen) BODY[] {${body.len}}\r\n' + '${body})\r\n' + '* 84 FETCH (UID 4827943 FLAGS (\\Answered))\r\n' + '${tag} OK FETCH completed\r\n'
+}
+
+// big_fetch_reply returns one message whose literal runs well past the size of
+// a single read from the connection.
+fn big_fetch_reply(tag string) string {
+	body := 'x'.repeat(300000)
+	return '* 1 FETCH (UID 1 BODY[] {${body.len}}\r\n${body})\r\n${tag} OK FETCH completed\r\n'
 }
 
 // drain collects everything the server reported, once it has closed the
@@ -506,6 +516,26 @@ fn test_empty_sets_do_not_reach_the_server() {
 
 	// An empty sequence set is not valid syntax, so nothing may be sent.
 	assert drain(seen) == ['a0001 LOGOUT']
+}
+
+fn test_a_literal_larger_than_one_read_comes_back_whole() {
+	mut l := net.listen_tcp(.ip, '127.0.0.1:0')!
+	seen := chan string{ cap: 64 }
+	port, th := start(mut l, mock_greeting, seen)!
+
+	mut c := new_client(server: '127.0.0.1', port: port)!
+	// The decoder reads the connection a chunk at a time, so a literal has to
+	// be stitched across chunk boundaries. This one spans many of them, and
+	// the syntax after it still has to be found.
+	msgs := c.fetch(seq_set([u32(1)]), 'BODY.PEEK[BIG]')!
+	assert msgs.len == 1
+	assert msgs[0].uid == 1
+	assert msgs[0].body().len == 300000
+	assert msgs[0].body() == 'x'.repeat(300000)
+	c.close()!
+	th.wait()
+	l.close() or {}
+	drain(seen)
 }
 
 fn test_close_is_idempotent() {

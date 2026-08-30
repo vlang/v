@@ -106,9 +106,7 @@ pub fn (mut c Client) connect() ! {
 		c.conn.set_read_timeout(c.timeout)
 		c.conn.set_write_timeout(c.timeout)
 	}
-	c.dec = &Decoder{
-		reader: io.new_buffered_reader(reader: c.conn)
-	}
+	c.dec = decoder_on(io.new_buffered_reader(reader: c.conn))
 	c.is_open = true
 
 	if c.ssl {
@@ -602,9 +600,7 @@ fn (mut c Client) upgrade_to_tls() ! {
 	c.ssl_conn.connect(mut c.conn, c.server) or {
 		return error('imap: TLS handshake with ${c.server} failed: ${err}')
 	}
-	c.dec = &Decoder{
-		reader: io.new_buffered_reader(reader: c.ssl_conn)
-	}
+	c.dec = decoder_on(io.new_buffered_reader(reader: c.ssl_conn))
 	c.encrypted = true
 }
 
@@ -669,6 +665,18 @@ fn needs_literal(s string) bool {
 // quote_arg wraps a value as a quoted string, escaping the two characters that
 // would otherwise end it early.
 fn quote_arg(s string) string {
+	// Most arguments hold neither character, and the two passes of replace
+	// would allocate twice over for nothing.
+	mut clean := true
+	for ch in s {
+		if ch == `\\` || ch == `"` {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return '"${s}"'
+	}
 	escaped := s.replace('\\', '\\\\').replace('"', '\\"')
 	return '"${escaped}"'
 }
@@ -676,6 +684,5 @@ fn quote_arg(s string) string {
 // format_internal_date renders a time the way APPEND wants it, which is a
 // fixed two digit day and an English month.
 fn format_internal_date(t time.Time) string {
-	months := ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-	return '${t.day:02}-${months[t.month - 1]}-${t.year:04} ${t.hour:02}:${t.minute:02}:${t.second:02} +0000'
+	return '${t.day:02}-${month_names[t.month - 1]}-${t.year:04} ${t.hour:02}:${t.minute:02}:${t.second:02} +0000'
 }

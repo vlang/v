@@ -17,6 +17,11 @@ const utf7_alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234
 
 // utf7_encode renders a mailbox name in modified UTF-7.
 pub fn utf7_encode(s string) string {
+	// A name already made of printable ASCII with no shift character in it
+	// encodes to itself, which covers INBOX and most of what a server holds.
+	if !needs_utf7(s) {
+		return s
+	}
 	runes := s.runes()
 	mut out := []u8{cap: s.len}
 	mut i := 0
@@ -50,6 +55,11 @@ pub fn utf7_encode(s string) string {
 // Bytes above US-ASCII are passed through as they are: some servers send raw
 // UTF-8 despite the convention, and refusing it would hide their mailboxes.
 pub fn utf7_decode(s string) !string {
+	// With no shift character there is nothing encoded, so the name already is
+	// what it decodes to.
+	if s.index_u8(`&`) < 0 {
+		return s
+	}
 	mut out := []u8{cap: s.len}
 	mut i := 0
 	for i < s.len {
@@ -71,6 +81,16 @@ pub fn utf7_decode(s string) !string {
 		i = end + 1
 	}
 	return out.bytestr()
+}
+
+// needs_utf7 reports whether anything in the name has to be encoded at all.
+fn needs_utf7(s string) bool {
+	for ch in s {
+		if ch < utf7_min || ch > utf7_max || ch == `&` {
+			return true
+		}
+	}
+	return false
 }
 
 fn is_self_representing(r rune) bool {

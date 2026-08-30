@@ -16,52 +16,69 @@ const max_literal_size = u32(64 * 1024 * 1024)
 
 // Decoder reads the grammar off a connection, or off a fixed buffer when it is
 // being exercised without one.
+//
+// Bytes are served from `buf`, refilled a chunk at a time. Reaching into the
+// reader for one octet at a time would mean a call and an allocation per byte
+// of every response.
 struct Decoder {
 mut:
-	reader  ?&io.BufferedReader
-	src     []u8
-	src_pos int
-	pushed  ?u8
+	reader ?&io.BufferedReader
+	buf    []u8
+	pos    int
+	filled int
 }
+
+// The size of one read from the connection.
+const decoder_chunk = 8192
 
 // decoder_over builds a decoder that reads a fixed buffer, which is how the
 // grammar is tested without a server.
 fn decoder_over(s string) &Decoder {
+	bytes := s.bytes()
 	return &Decoder{
-		src: s.bytes()
+		buf: bytes
+		filled: bytes.len
 	}
 }
 
-// read_byte takes the next octet, from the pushback slot first.
+fn decoder_on(reader &io.BufferedReader) &Decoder {
+	return &Decoder{
+		reader: unsafe { reader }
+		buf: []u8{len: decoder_chunk}
+	}
+}
+
 fn (mut d Decoder) read_byte() !u8 {
-	if ch := d.pushed {
-		d.pushed = none
-		return ch
+	if d.pos >= d.filled {
+		d.refill()!
 	}
-	if mut r := d.reader {
-		mut one := [u8(0)]
-		n := r.read(mut one)!
-		if n <= 0 {
-			return error('imap: the connection closed in the middle of a response')
-		}
-		return one[0]
-	}
-	if d.src_pos >= d.src.len {
-		return error('imap: the response ended early')
-	}
-	ch := d.src[d.src_pos]
-	d.src_pos++
+	ch := d.buf[d.pos]
+	d.pos++
 	return ch
 }
 
-// unread puts one octet back, which is all the lookahead this grammar needs.
-fn (mut d Decoder) unread(ch u8) {
-	d.pushed = ch
+// refill pulls the next chunk from the connection. A decoder over a fixed
+// buffer has none, so running out is simply the end of the input.
+fn (mut d Decoder) refill() ! {
+	mut r := d.reader or { return error('imap: the response ended early') }
+	n := r.read(mut d.buf)!
+	if n <= 0 {
+		return error('imap: the connection closed in the middle of a response')
+	}
+	d.filled = n
+	d.pos = 0
+}
+
+// unread puts the last octet back, which is all the lookahead this grammar
+// needs. It is only ever called on a byte just taken, so the position cannot
+// go below the start of the chunk that byte came from.
+fn (mut d Decoder) unread() {
+	d.pos--
 }
 
 fn (mut d Decoder) peek_byte() !u8 {
 	ch := d.read_byte()!
-	d.unread(ch)
+	d.unread()
 	return ch
 }
 
@@ -69,36 +86,29 @@ fn (mut d Decoder) peek_byte() !u8 {
 // defined by its length and has no terminator to look for.
 fn (mut d Decoder) read_n(n int) ![]u8 {
 	mut out := []u8{len: n}
-	mut got := 0
-	if ch := d.pushed {
-		d.pushed = none
-		out[0] = ch
-		got = 1
+	// Whatever is already buffered comes first.
+	mut got := d.filled - d.pos
+	if got > n {
+		got = n
 	}
+	if got > 0 {
+		copy(mut out, d.buf[d.pos..d.pos + got])
+		d.pos += got
+	}
+	if got == n {
+		return out
+	}
+	// The rest goes from the connection straight into the caller's buffer,
+	// since a literal can be many times the size of a chunk.
+	mut r := d.reader or { return error('imap: the literal is shorter than it claimed') }
 	for got < n {
-		got += d.fill(mut out[got..])!
-	}
-	return out
-}
-
-fn (mut d Decoder) fill(mut dest []u8) !int {
-	if mut r := d.reader {
-		n := r.read(mut dest)!
-		if n <= 0 {
+		read := r.read(mut out[got..])!
+		if read <= 0 {
 			return error('imap: the connection closed inside a literal')
 		}
-		return n
+		got += read
 	}
-	left := d.src.len - d.src_pos
-	if left <= 0 {
-		return error('imap: the literal is shorter than it claimed')
-	}
-	n := if dest.len < left { dest.len } else { left }
-	for i in 0 .. n {
-		dest[i] = d.src[d.src_pos + i]
-	}
-	d.src_pos += n
-	return n
+	return out
 }
 
 // accept consumes the next octet when it is the one wanted, and reports
@@ -108,7 +118,7 @@ fn (mut d Decoder) accept(want u8) !bool {
 	if ch == want {
 		return true
 	}
-	d.unread(ch)
+	d.unread()
 	return false
 }
 
@@ -137,22 +147,51 @@ fn (mut d Decoder) crlf() ! {
 	d.expect(`\n`)!
 }
 
-// atom reads an unquoted word. `atom-specials` are the characters that end
-// one, so an atom never swallows the syntax around it.
-fn (mut d Decoder) atom() !string {
-	mut out := []u8{}
+// TokenKind names the four runs of bare characters the grammar has. They differ
+// from each other by a single character, so one reader covers all of them.
+enum TokenKind {
+	// ATOM-CHAR only.
+	atom
+	// ATOM-CHAR plus `]`, which a mailbox name written bare may hold.
+	astring
+	// ATOM-CHAR minus `[`, which opens a section specification with no space
+	// in front of it.
+	item_name
+	// The digits and punctuation a sequence set is made of, including the `*`
+	// that an atom may not hold.
+	seq_set
+}
+
+fn (k TokenKind) accepts(ch u8) bool {
+	return match k {
+		.atom { is_atom_char(ch) }
+		.astring { is_atom_char(ch) || ch == `]` }
+		.item_name { is_atom_char(ch) && ch != `[` }
+		.seq_set { is_seq_set_char(ch) }
+	}
+}
+
+// take_token reads one bare run, stopping at the first character the kind does
+// not accept, so a token never swallows the syntax around it.
+fn (mut d Decoder) take_token(kind TokenKind, name string) !string {
+	mut out := []u8{cap: 32}
 	for {
 		ch := d.read_byte() or { break }
-		if !is_atom_char(ch) {
-			d.unread(ch)
+		if !kind.accepts(ch) {
+			d.unread()
 			break
 		}
 		out << ch
 	}
 	if out.len == 0 {
-		return error('imap: expected an atom')
+		return error('imap: expected ${name}')
 	}
 	return out.bytestr()
+}
+
+// atom reads an unquoted word.
+fn (mut d Decoder) atom() !string {
+	return d.take_token(.atom, 'an atom')
 }
 
 // item_name reads the name of a fetch item.
@@ -162,19 +201,7 @@ fn (mut d Decoder) atom() !string {
 // atom character, so an atom would otherwise swallow the opening bracket of
 // `BODY[]` and leave the rest unreadable.
 fn (mut d Decoder) item_name() !string {
-	mut out := []u8{}
-	for {
-		ch := d.read_byte() or { break }
-		if !is_atom_char(ch) || ch == `[` {
-			d.unread(ch)
-			break
-		}
-		out << ch
-	}
-	if out.len == 0 {
-		return error('imap: expected a fetch item name')
-	}
-	return out.bytestr()
+	return d.take_token(.item_name, 'a fetch item name')
 }
 
 // number reads an unsigned 32 bit integer.
@@ -184,7 +211,7 @@ fn (mut d Decoder) number() !u32 {
 	for {
 		ch := d.read_byte() or { break }
 		if ch < `0` || ch > `9` {
-			d.unread(ch)
+			d.unread()
 			break
 		}
 		n = n * 10 + u64(ch - `0`)
@@ -204,19 +231,7 @@ fn (mut d Decoder) number() !u32 {
 // An atom cannot hold one: `*` is a list wildcard and therefore not an atom
 // character, yet it is an ordinary part of a set.
 fn (mut d Decoder) seq_set_token() !string {
-	mut out := []u8{}
-	for {
-		ch := d.read_byte() or { break }
-		if !is_seq_set_char(ch) {
-			d.unread(ch)
-			break
-		}
-		out << ch
-	}
-	if out.len == 0 {
-		return error('imap: expected a sequence set')
-	}
-	return out.bytestr()
+	return d.take_token(.seq_set, 'a sequence set')
 }
 
 fn is_seq_set_char(ch u8) bool {
@@ -229,7 +244,7 @@ fn is_seq_set_char(ch u8) bool {
 // quoted reads a quoted string, where a backslash escapes the next octet.
 fn (mut d Decoder) quoted() !string {
 	d.expect(`"`)!
-	mut out := []u8{}
+	mut out := []u8{cap: 64}
 	for {
 		mut ch := d.read_byte()!
 		if ch == `"` {
@@ -285,19 +300,7 @@ fn (mut d Decoder) astring() !string {
 	if ch == `"` || ch == `{` {
 		return d.string_value()
 	}
-	mut out := []u8{}
-	for {
-		next := d.read_byte() or { break }
-		if !is_atom_char(next) && next != `]` {
-			d.unread(next)
-			break
-		}
-		out << next
-	}
-	if out.len == 0 {
-		return error('imap: expected a mailbox name or an atom')
-	}
-	return out.bytestr()
+	return d.take_token(.astring, 'a mailbox name or an atom')
 }
 
 // nstring_text reads a string or the atom NIL, which stands for a field the
@@ -321,16 +324,37 @@ fn (mut d Decoder) nstring_text() !string {
 // text reads the free-form remainder of a line, which carries the human
 // readable part of a status response.
 fn (mut d Decoder) text() !string {
-	mut out := []u8{}
+	mut out := []u8{cap: 64}
 	for {
 		ch := d.read_byte() or { break }
 		if ch == `\r` || ch == `\n` {
-			d.unread(ch)
+			d.unread()
 			break
 		}
 		out << ch
 	}
 	return out.bytestr()
+}
+
+// accept_nil consumes the atom NIL where a parenthesised value could stand,
+// and reports whether it did. NIL is how a server says a header the message
+// never carried, or a content type with no parameters.
+fn (mut d Decoder) accept_nil() !bool {
+	if d.peek_byte()! == `(` {
+		return false
+	}
+	word := d.atom()!
+	if word.to_upper() != 'NIL' {
+		return error('imap: expected a parenthesised value or NIL, got `${word}`')
+	}
+	return true
+}
+
+// mailbox_name reads a name off the wire and hands it back as UTF-8. A name
+// the encoding cannot explain is passed through rather than lost.
+fn (mut d Decoder) mailbox_name() !string {
+	raw := d.astring()!
+	return utf7_decode(raw) or { raw }
 }
 
 // open_list consumes the opening parenthesis and reports whether the list has

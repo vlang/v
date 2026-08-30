@@ -26,7 +26,7 @@ fn test_decoder_reads_the_four_shapes_of_the_grammar() {
 	d.sp()!
 	// A nested list is stepped over whole, whatever it holds.
 	d.skip_value()!
-	assert d.src_pos == d.src.len
+	assert d.pos == d.filled
 }
 
 fn test_a_quoted_string_never_ends_early() {

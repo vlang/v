@@ -495,11 +495,7 @@ fn read_envelope(mut d Decoder) !Envelope {
 // `"(" 1*address ")"`, not a list whose elements are separated by spaces.
 fn read_address_list(mut d Decoder) ![]Address {
 	mut out := []Address{}
-	if d.peek_byte()! != `(` {
-		word := d.atom()!
-		if word.to_upper() != 'NIL' {
-			return error('imap: expected an address list or NIL, got `${word}`')
-		}
+	if d.accept_nil()! {
 		return out
 	}
 	d.expect(`(`)!
@@ -609,11 +605,7 @@ fn skip_extensions(mut d Decoder) ! {
 // NIL when there are none.
 fn read_param_list(mut d Decoder) !map[string]string {
 	mut out := map[string]string{}
-	if d.peek_byte()! != `(` {
-		word := d.atom()!
-		if word.to_upper() != 'NIL' {
-			return error('imap: expected a parameter list or NIL, got `${word}`')
-		}
+	if d.accept_nil()! {
 		return out
 	}
 	if !d.open_list()! {
@@ -647,9 +639,8 @@ fn read_mailbox_list(mut d Decoder) !MailboxInfo {
 		}
 	}
 	d.sp()!
-	raw := d.astring()!
 	return MailboxInfo{
-		name: utf7_decode(raw) or { raw }
+		name: d.mailbox_name()!
 		delimiter: delimiter
 		attributes: attributes
 	}
@@ -657,7 +648,7 @@ fn read_mailbox_list(mut d Decoder) !MailboxInfo {
 
 // read_status_data reads `STATUS mailbox (MESSAGES 231 UIDNEXT 44292)`.
 fn read_status_data(mut d Decoder) !MailboxStatus {
-	raw := d.astring()!
+	mailbox := d.mailbox_name()!
 	d.sp()!
 	mut messages := u32(0)
 	mut recent := u32(0)
@@ -693,7 +684,7 @@ fn read_status_data(mut d Decoder) !MailboxStatus {
 		}
 	}
 	return MailboxStatus{
-		name: utf7_decode(raw) or { raw }
+		name: mailbox
 		messages: messages
 		recent: recent
 		uid_next: uid_next
@@ -862,9 +853,13 @@ fn parse_internal_date(s string) !time.Time {
 	return time.unix(stamp.unix() - zone)
 }
 
+// The month names the protocol spells its dates with: read here, and written
+// by `format_internal_date`.
+const month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov',
+	'Dec']!
+
 fn month_number(name string) !int {
-	months := ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-	for i, m in months {
+	for i, m in month_names {
 		if m.to_lower() == name.to_lower() {
 			return i + 1
 		}
