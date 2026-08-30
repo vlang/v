@@ -2982,6 +2982,23 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 		locals = merged.move()
 		return
 	}
+	if stmt.kind == .match_stmt {
+		before := locals.clone()
+		mut merged := map[string]bool{}
+		for name, _ in before {
+			merged[name] = false
+		}
+		for i in 1 .. stmt.children_count {
+			mut branch := before.clone()
+			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name,
+				mut branch)
+			for name, _ in before {
+				merged[name] = merged[name] || branch[name]
+			}
+		}
+		locals = merged.move()
+		return
+	}
 	if stmt.kind == .decl_assign {
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
 			lhs := t.a.child_node(&stmt, i)

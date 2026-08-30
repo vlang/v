@@ -30,6 +30,23 @@ fn set_pair_sources(mut pair Pair, value &Value) {
 	route_targets(mut pair.first, mut pair.second, value)
 }
 
+fn set_or_reset(mut box &Box, value &Value, replacement &Value, stop bool) {
+	box.value = value
+	if stop {
+		return
+	}
+	box.value = replacement
+}
+
+fn store_value(mut box &Box, value &Value) {
+	box.value = value
+}
+
+fn delegate_then_reset(mut box &Box, value &Value, replacement &Value) {
+	store_value(mut box, value)
+	box.value = replacement
+}
+
 fn main() {
 	mut value := Value{}
 	mut first := &Box{
@@ -43,6 +60,8 @@ fn main() {
 		second: second
 	}
 	set_pair_sources(mut pair, &value)
+	set_or_reset(mut first, &value, &value, true)
+	delegate_then_reset(mut second, &value, &value)
 }
 ') or { panic(err) }
 	defer {
@@ -57,16 +76,20 @@ fn main() {
 	_ = tc.check_semantics_opt(false)
 	assert tc.errors.len == 0, tc.errors.str()
 
-	mut set_call := flat.empty_node
+	mut calls := map[string]flat.NodeId{}
 	for i, node in a.nodes {
 		if node.kind != .call {
 			continue
 		}
 		name := tc.resolved_call_name(flat.NodeId(i)) or { continue }
-		if name.ends_with('set_pair_sources') {
-			set_call = flat.NodeId(i)
+		for wanted in ['set_pair_sources', 'set_or_reset', 'delegate_then_reset'] {
+			if name.ends_with(wanted) {
+				calls[wanted] = flat.NodeId(i)
+			}
 		}
 	}
-	assert set_call != flat.empty_node
-	assert tc.call_param_storage_source_params(set_call, 0) == [1]
+	assert calls.len == 3, calls.str()
+	assert tc.call_param_storage_source_params(calls['set_pair_sources'], 0) == [1]
+	assert tc.call_param_storage_source_params(calls['set_or_reset'], 0) == [1, 2]
+	assert tc.call_param_storage_source_params(calls['delegate_then_reset'], 0) == [2]
 }

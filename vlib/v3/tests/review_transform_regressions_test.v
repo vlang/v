@@ -6546,6 +6546,18 @@ fn main() {
 	out := run_good_with_flags(v3_bin, 'array_map_conditional_external_pointer_alias', '-ownership',
 		source)
 	assert out == '0\nsource'
+
+	match_source := source.replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}',
+		'match flag {\n\t\t\t\ttrue { alias = &saved }\n\t\t\t\telse {}\n\t\t\t}')
+	assert match_source != source
+	match_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_match_external_pointer_alias_c', '-ownership', match_source)
+	match_main_body := c_fn_body(match_c_source, 'int main(int argc, char** argv) {')
+	compact_match_main := match_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_match_main.contains('array__free(&(__map_source_'), match_main_body
+	match_out := run_good_with_flags(v3_bin, 'array_map_match_external_pointer_alias',
+		'-ownership', match_source)
+	assert match_out == '0\nsource'
 }
 
 fn test_array_map_drops_temporary_source_after_external_pointer_alias_overwrite() {
@@ -6649,6 +6661,35 @@ fn main() {
 	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
 	out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_overwrite', '-ownership', source)
 	assert out == 'external'
+
+	early_return_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'box.value = value\n\tif true {\n\t\treturn\n\t}\n\tbox.value = replacement')
+	assert early_return_source != source
+	early_return_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_early_return_c', '-ownership', early_return_source)
+	early_return_main_body := c_fn_body(early_return_c_source,
+		'int main(int argc, char** argv) {')
+	compact_early_return_main := early_return_main_body.replace(' ', '').replace('\t', '').replace('\n',
+		'')
+	assert !compact_early_return_main.contains('array__free(&(__map_source_'),
+		early_return_main_body
+	early_return_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_early_return',
+		'-ownership', early_return_source)
+	assert early_return_out == 'source'
+
+	delegated_source := source.replace('fn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value',
+		'fn (mut box PointerBox) store(value &Item) {\n\tbox.value = value\n}\n\nfn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.store(value)')
+	assert delegated_source != source
+	delegated_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_delegated_mutator_storage_overwrite_c', '-ownership', delegated_source)
+	delegated_main_body := c_fn_body(delegated_c_source, 'int main(int argc, char** argv) {')
+	delegated_source_drop_pos := delegated_main_body.index('array__free(&(') or { -1 }
+	delegated_result_move_pos := delegated_main_body.index('Array selected = ') or { -1 }
+	assert delegated_source_drop_pos >= 0 && delegated_source_drop_pos < delegated_result_move_pos,
+		delegated_main_body
+	delegated_out := run_good_with_flags(v3_bin, 'array_map_delegated_mutator_storage_overwrite',
+		'-ownership', delegated_source)
+	assert delegated_out == 'external'
 }
 
 fn test_array_map_keeps_temporary_source_through_mutator_target_alias() {
