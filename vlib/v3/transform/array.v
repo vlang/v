@@ -2894,20 +2894,39 @@ fn (t &Transformer) array_map_lvalue_root_ident(id flat.NodeId) ?string {
 	return none
 }
 
-fn (t &Transformer) array_map_lvalue_is_plain_ident(id flat.NodeId) bool {
+fn (t &Transformer) array_map_lvalue_local_path(id flat.NodeId) ?string {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return false
+		return none
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .paren && node.children_count > 0 {
-		return t.array_map_lvalue_is_plain_ident(t.a.child(&node, 0))
+	if node.kind == .ident {
+		return node.value
 	}
-	return node.kind == .ident
+	if node.kind in [.paren, .cast_expr, .as_expr, .prefix] && node.children_count > 0 {
+		return t.array_map_lvalue_local_path(t.a.child(&node, 0))
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := t.array_map_lvalue_local_path(t.a.child(&node, 0)) or { return none }
+		return '${base}.${node.value}'
+	}
+	if node.kind == .index && node.children_count > 1 {
+		base := t.array_map_lvalue_local_path(t.a.child(&node, 0)) or { return none }
+		index := t.a.child_node(&node, 1)
+		if index.kind in [.ident, .int_literal, .string_literal, .char_literal, .bool_literal] {
+			return '${base}[${index.kind}:${index.value}]'
+		}
+		return '${base}[*]'
+	}
+	return none
 }
 
-// `locals[name]` records whether a mapper-local pointer currently aliases
-// storage rooted outside the mapper. A bare assignment to the pointer variable
-// itself stays local; selector/index writes and mutating calls follow the alias.
+fn array_map_local_path_is_projection(path string, base string) bool {
+	return path == base || path.starts_with('${base}.') || path.starts_with('${base}[')
+}
+
+// `locals[path]` records whether a mapper-local pointer projection currently aliases
+// storage rooted outside the mapper. A bare assignment to that pointer slot itself stays
+// local; deeper selector/index writes and mutating calls follow the alias.
 fn (t &Transformer) array_map_side_effect_target_is_external(id flat.NodeId, elem_name string, locals map[string]bool, follow_local_pointer bool) bool {
 	root := t.array_map_lvalue_root_ident(id) or { return false }
 	if root == elem_name {
@@ -2916,7 +2935,14 @@ fn (t &Transformer) array_map_side_effect_target_is_external(id flat.NodeId, ele
 	if root !in locals {
 		return true
 	}
-	return locals[root] && (follow_local_pointer || !t.array_map_lvalue_is_plain_ident(id))
+	path := t.array_map_lvalue_local_path(id) or { return false }
+	mut pointer_path := root
+	for local_path, _ in locals {
+		if local_path.len > pointer_path.len && array_map_local_path_is_projection(path, local_path) {
+			pointer_path = local_path
+		}
+	}
+	return locals[pointer_path] && (follow_local_pointer || path != pointer_path)
 }
 
 fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId, elem_name string, locals map[string]bool) bool {
@@ -2925,8 +2951,7 @@ fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
-		root := t.array_map_lvalue_root_ident(t.a.child(&node, 0)) or { return true }
-		return root != elem_name && (root !in locals || locals[root])
+		return t.array_map_side_effect_target_is_external(t.a.child(&node, 0), elem_name, locals, false)
 	}
 	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] && node.children_count > 0 {
 		return t.array_map_pointer_alias_origin_is_external(t.a.child(&node, 0), elem_name, locals)
@@ -2938,8 +2963,86 @@ fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId
 	if !t.normalize_type_alias(typ).starts_with('&') {
 		return false
 	}
+	if path := t.array_map_lvalue_local_path(id) {
+		if path in locals {
+			return locals[path]
+		}
+	}
 	root := t.array_map_lvalue_root_ident(id) or { return true }
 	return root != elem_name && (root !in locals || locals[root])
+}
+
+fn array_map_clear_local_pointer_origins(path string, mut locals map[string]bool) {
+	mut stale := []string{}
+	for local_path, _ in locals {
+		if array_map_local_path_is_projection(local_path, path) {
+			stale << local_path
+		}
+	}
+	for local_path in stale {
+		locals.delete(local_path)
+	}
+}
+
+fn array_map_local_path_root(path string) string {
+	for i, ch in path {
+		if ch in [`.`, `[`] {
+			return path[..i]
+		}
+	}
+	return path
+}
+
+fn array_map_merge_local_pointer_origins(mut target map[string]bool, source map[string]bool, baseline map[string]bool) {
+	for path, external in source {
+		if array_map_local_path_root(path) in baseline {
+			target[path] = target[path] || external
+		}
+	}
+}
+
+fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id flat.NodeId, elem_name string, origins map[string]bool, mut locals map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init] && node.children_count > 0 {
+		t.array_map_record_local_pointer_origins(path, t.a.child(&node, 0), elem_name, origins, mut locals)
+		return
+	}
+	if node.kind == .block && node.children_count > 0 {
+		t.array_map_record_local_pointer_origins(path, t.a.child(&node, node.children_count - 1), elem_name, origins, mut locals)
+		return
+	}
+	typ := t.checker_expr_type_name(id) or { t.node_type(id) }
+	if t.normalize_type_alias(typ).starts_with('&') {
+		locals[path] = t.array_map_pointer_alias_origin_is_external(id, elem_name, origins)
+		return
+	}
+	locals[path] = false
+	if node.kind == .struct_init {
+		for i in 0 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_init && field.value.len > 0 && field.children_count > 0 {
+				t.array_map_record_local_pointer_origins('${path}.${field.value}', t.a.child(field, 0), elem_name, origins, mut locals)
+			}
+		}
+		return
+	}
+	if node.kind == .array_literal {
+		for i in 0 .. node.children_count {
+			t.array_map_record_local_pointer_origins('${path}[int_literal:${i}]', t.a.child(&node, i), elem_name, origins, mut locals)
+		}
+		return
+	}
+	if node.kind == .ident {
+		for local_path, external in origins {
+			if local_path != node.value && array_map_local_path_is_projection(local_path, node.value) {
+				suffix := local_path[node.value.len..]
+				locals['${path}${suffix}'] = external
+			}
+		}
+	}
 }
 
 fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, elem_name string, mut locals map[string]bool) {
@@ -2962,9 +3065,10 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 			}
 			t.array_map_update_local_pointer_origins(*child, elem_name, mut scoped)
 		}
-		for name, _ in locals {
-			if name !in declared {
-				locals[name] = scoped[name]
+		for path, external in scoped {
+			root := array_map_local_path_root(path)
+			if root in locals && root !in declared {
+				locals[path] = external
 			}
 		}
 		return
@@ -2990,9 +3094,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 		for i in 1 .. stmt.children_count {
 			mut fallback := before.clone()
 			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut fallback)
-			for name, origin in before {
-				merged[name] = origin || fallback[name]
-			}
+			array_map_merge_local_pointer_origins(mut merged, fallback, before)
 		}
 		locals = merged.move()
 		return
@@ -3005,11 +3107,8 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 		}
 		for i in 1 .. stmt.children_count {
 			mut branch := before.clone()
-			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name,
-				mut branch)
-			for name, _ in before {
-				merged[name] = merged[name] || branch[name]
-			}
+			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut branch)
+			array_map_merge_local_pointer_origins(mut merged, branch, before)
 		}
 		locals = merged.move()
 		return
@@ -3022,11 +3121,8 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 		}
 		for i in 1 .. stmt.children_count {
 			mut branch := before.clone()
-			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name,
-				mut branch)
-			for name, _ in before {
-				merged[name] = merged[name] || branch[name]
-			}
+			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut branch)
+			array_map_merge_local_pointer_origins(mut merged, branch, before)
 		}
 		locals = merged.move()
 		return
@@ -3035,28 +3131,35 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 		before := locals.clone()
 		mut loop_origins := before.clone()
 		for i in 0 .. stmt.children_count {
-			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut
-				loop_origins)
+			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name, mut loop_origins)
 		}
 		for name, origin in before {
 			locals[name] = origin || loop_origins[name]
 		}
+		array_map_merge_local_pointer_origins(mut locals, loop_origins, before)
 		return
 	}
 	if stmt.kind == .decl_assign {
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
 			lhs := t.a.child_node(&stmt, i)
 			if lhs.kind == .ident && lhs.value.len > 0 {
-				locals[lhs.value] = t.array_map_pointer_alias_origin_is_external(t.a.child(&stmt, i + 1), elem_name, locals)
+				origins := locals.clone()
+				array_map_clear_local_pointer_origins(lhs.value, mut locals)
+				t.array_map_record_local_pointer_origins(lhs.value, t.a.child(&stmt, i + 1), elem_name, origins, mut locals)
 			}
 		}
 		return
 	}
-	if stmt.kind == .assign {
+	if stmt.kind in [.assign, .selector_assign, .index_assign] {
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
-			lhs := t.a.child_node(&stmt, i)
-			if lhs.kind == .ident && lhs.value in locals {
-				locals[lhs.value] = t.array_map_pointer_alias_origin_is_external(t.a.child(&stmt, i + 1), elem_name, locals)
+			lhs_id := t.a.child(&stmt, i)
+			if path := t.array_map_lvalue_local_path(lhs_id) {
+				root := t.array_map_lvalue_root_ident(lhs_id) or { continue }
+				if root in locals {
+					origins := locals.clone()
+					array_map_clear_local_pointer_origins(path, mut locals)
+					t.array_map_record_local_pointer_origins(path, t.a.child(&stmt, i + 1), elem_name, origins, mut locals)
+				}
 			}
 		}
 	}

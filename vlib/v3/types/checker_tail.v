@@ -9057,6 +9057,27 @@ fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, aliases map[s
 	}
 }
 
+fn (tc &TypeChecker) storage_expr_contains_target_pointer(id flat.NodeId, aliases map[string][]int, target_param_idx int) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	if unalias_type(tc.resolve_type(id)) is Pointer {
+		mut sources := []int{}
+		tc.collect_storage_source_params(id, aliases, target_param_idx, mut sources)
+		return target_param_idx in sources
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if tc.storage_expr_contains_target_pointer(tc.a.child(&node, i), aliases, target_param_idx) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (tc &TypeChecker) storage_node_contains_return(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -9361,7 +9382,7 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 			if lhs.kind == .ident && lhs.value != target_name {
 				mut alias_sources := []int{}
 				tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut alias_sources)
-				if unalias_type(tc.resolve_type(rhs_id)) !is Pointer {
+				if unalias_type(tc.resolve_type(rhs_id)) !is Pointer && !tc.storage_expr_contains_target_pointer(rhs_id, aliases, target_param_idx) {
 					// Aggregate temporaries can retain non-target parameter sources in their
 					// fields, but copying the mutable target by value must not make the copy
 					// another lvalue rooted at that target.

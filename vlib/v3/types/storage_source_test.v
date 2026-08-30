@@ -26,6 +26,11 @@ mut:
 	values []&Value
 }
 
+struct BoxHolder {
+	mut:
+	box &Box
+}
+
 fn route_targets(mut first &Box, mut second &Box, value &Value) {
 	_ = first
 	second.value = value
@@ -53,6 +58,13 @@ fn store_through_aggregate(mut box &Box, value &Value) {
 		value: unsafe { value }
 	}
 	box.value = tmp.value
+}
+
+fn store_through_target_aggregate(mut box Box, value &Value) {
+	mut holder := BoxHolder{
+		box: unsafe { &box }
+	}
+	holder.box.value = value
 }
 
 fn store_deferred(mut box &Box, value &Value, replacement &Value) {
@@ -150,6 +162,7 @@ fn main() {
 	store_at_computed_index(mut indexed, &value)
 	copy_then_store(mut copied, &value)
 	store_through_aggregate(mut first, &value)
+	store_through_target_aggregate(mut copied, &value)
 	store_deferred(mut first, &value, &value)
 	store_selected(mut first, &value, &value, chan bool{})
 	set_or_reset(mut first, &value, &value, true)
@@ -179,21 +192,24 @@ fn main() {
 		}
 		name := tc.resolved_call_name(flat.NodeId(i)) or { continue }
 		for wanted in ['set_pair_sources', 'store_at_computed_index', 'copy_then_store',
-			'store_through_aggregate', 'store_deferred', 'store_selected', 'set_or_reset',
-			'delegate_then_reset', 'reset_then_delegate', 'set_then_keep', 'store_in_loop',
-			'store_or_replace'] {
+			'store_through_aggregate', 'store_through_target_aggregate', 'store_deferred',
+			'store_selected', 'set_or_reset', 'delegate_then_reset', 'reset_then_delegate',
+			'set_then_keep', 'store_in_loop', 'store_or_replace'] {
 			if name.ends_with(wanted) {
 				calls[wanted] = flat.NodeId(i)
 			}
 		}
 	}
-	assert calls.len == 12, calls.str()
+	assert calls.len == 13, calls.str()
 	assert tc.call_param_storage_source_params(calls['set_pair_sources'], 0) == [1]
 	assert tc.call_param_storage_source_params(calls['store_at_computed_index'], 0) == [
 		1,
 	]
 	assert tc.call_param_storage_source_params(calls['copy_then_store'], 0) == []
 	assert tc.call_param_storage_source_params(calls['store_through_aggregate'], 0) == [
+		1,
+	]
+	assert tc.call_param_storage_source_params(calls['store_through_target_aggregate'], 0) == [
 		1,
 	]
 	assert tc.call_param_storage_source_params(calls['store_deferred'], 0) == [1]

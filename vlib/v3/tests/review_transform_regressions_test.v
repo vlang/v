@@ -6493,6 +6493,117 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_keeps_temporary_source_through_external_pointer_in_local_aggregate() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	mut:
+	box &PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := Holder{
+				box: unsafe { &saved }
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_pointer_in_local_aggregate_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_pointer_in_local_aggregate', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_drops_source_for_unrelated_local_aggregate_pointer_field() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	mut:
+	external &PointerBox
+	local    &PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut holder := Holder{
+				external: unsafe { &saved }
+				local: unsafe { &local }
+			}
+			holder.local.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_unrelated_local_aggregate_pointer_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body.index('array__free(&(') or { -1 }
+	result_move_pos := main_body.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_unrelated_local_aggregate_pointer', '-ownership', source)
+	assert out == '0'
+}
+
 fn test_array_map_keeps_temporary_source_through_conditional_external_pointer_alias() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
