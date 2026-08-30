@@ -892,6 +892,35 @@ fn main() {
 	assert nested_call.output.contains('cannot return an independent array element'), nested_call.output
 }
 
+fn test_owned_scalar_consumer_in_aggregate_with_mutating_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_scalar_aggregate_mutating_sibling', "struct E {
+	name string
+}
+
+struct Pair {
+	n int
+	s string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn last_length_then_delete(mut arr []E) Pair {
+	return Pair{ n: arr.last().name.len, s: delete_last(mut arr) }
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_length_then_delete(mut arr).n)
+}
+", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
 fn test_owned_field_overloaded_index_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_index', "struct Name {

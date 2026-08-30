@@ -6143,6 +6143,13 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			current = parent_id
 			continue
 		}
+		if parent.kind in [.field_init, .struct_init, .assoc, .array_literal, .array_init, .map_init] {
+			if !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+				return false
+			}
+			current = parent_id
+			continue
+		}
 		if parent.kind == .call {
 			if !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
 				return false
