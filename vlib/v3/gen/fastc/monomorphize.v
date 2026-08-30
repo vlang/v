@@ -43,14 +43,13 @@ struct FastcGenericMethodSource {
 	source                     string
 }
 
-// fastc_collect_generic_method_sources indexes every generic method (own type param) AND
-// generic FREE FUNCTION remaining in the post-monomorphization sources, so the parser can
-// instantiate them on demand. Methods are keyed `<receiver_type>.<name>`; functions are
-// keyed `<module>.<name>` (module-qualified, for aliased cross-module calls like
-// `json.encode`). Fully source-monomorphized entries are already blanked and absent here.
-fn fastc_collect_generic_method_sources(sources []FastcSourceFile, prefs &pref.Preferences) map[string]FastcGenericMethodSource {
+// fastc_collect_generic_method_source_chunk indexes the generic methods and free
+// functions in one contiguous source range. The parallel wrapper merges ranges in
+// source order so duplicate keys retain the serial scan's last-definition behavior.
+fn fastc_collect_generic_method_source_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) map[string]FastcGenericMethodSource {
 	mut result := map[string]FastcGenericMethodSource{}
-	for i, source_file in sources {
+	for i in start .. end {
+		source_file := sources[i]
 		module_name := source_file.header.module_name
 		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, i) {
 			receiver_type := if generic.receiver_type != '' {

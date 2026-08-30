@@ -135,11 +135,13 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 				return error('fastc imported source `${path}` declares module `${header.module_name}` instead of `${expected_module_name}`')
 			}
 			header = FastcSourceHeader{
-				module_name:   queued.module_name
-				imports:       header.imports
-				import_order:  header.import_order
-				blank_imports: header.blank_imports
-				has_globals:   header.has_globals
+				module_name:             queued.module_name
+				imports:                 header.imports
+				import_order:            header.import_order
+				blank_imports:           header.blank_imports
+				has_globals:             header.has_globals
+				has_constants:           header.has_constants
+				has_global_declarations: header.has_global_declarations
 			}
 		}
 		sources << FastcSourceFile{
@@ -476,12 +478,37 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 		}
 	}
 	return FastcSourceHeader{
-		module_name:   module_name
-		imports:       imports
-		import_order:  import_order
-		blank_imports: blank_imports
-		has_globals:   has_globals
+		module_name:             module_name
+		imports:                 imports
+		import_order:            import_order
+		blank_imports:           blank_imports
+		has_globals:             has_globals
+		has_constants:           fastc_source_contains_word(source, 'const')
+		has_global_declarations: fastc_source_contains_word(source, '__global')
 	}
+}
+
+fn fastc_source_contains_word(source string, word string) bool {
+	mut start := 0
+	for start < source.len {
+		index := source.index_after_(word, start)
+		if index < 0 {
+			return false
+		}
+		end := index + word.len
+		before_is_identifier := index > 0 && fastc_identifier_byte(source[index - 1])
+		after_is_identifier := end < source.len && fastc_identifier_byte(source[end])
+		if !before_is_identifier && !after_is_identifier {
+			return true
+		}
+		start = end
+	}
+	return false
+}
+
+fn fastc_identifier_byte(value u8) bool {
+	return value == `_` || (value >= `a` && value <= `z`) || (value >= `A` && value <= `Z`)
+		|| (value >= `0` && value <= `9`)
 }
 
 // fastc_source_uses_sql reports whether a file contains a `sql <conn> { ... }` ORM

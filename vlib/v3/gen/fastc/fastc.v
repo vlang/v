@@ -670,11 +670,13 @@ struct FastcInterfaceField {
 }
 
 struct FastcSourceHeader {
-	module_name   string
-	imports       map[string]string
-	import_order  []string
-	blank_imports []string
-	has_globals   bool
+	module_name             string
+	imports                 map[string]string
+	import_order            []string
+	blank_imports           []string
+	has_globals             bool
+	has_constants           bool
+	has_global_declarations bool
 }
 
 struct FastcSourceFile {
@@ -1110,9 +1112,10 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut public_constants := map[string]bool{}
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
+	mut type_source_paths := map[string]bool{}
 	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut
-		enum_flags, mut params_structs, mut constants, mut public_constants, mut globals, mut
-		public_globals)!
+		enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut
+		globals, mut public_globals)!
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
@@ -1145,7 +1148,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
-	type_output := fastc_generate_type_declarations(sources, prefs, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
+	type_output := fastc_generate_type_declarations(sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
 	declared_composite_types := composite_types.clone()
 	type_declarations := type_output.declarations
 	enum_field_types := type_output.enum_field_types.clone()

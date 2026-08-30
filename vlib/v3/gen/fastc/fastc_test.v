@@ -24,6 +24,54 @@ fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	assert fastc_chunk_bounds(sources, 2) == [0, 3, 3, 4]
 }
 
+fn test_fastc_source_contains_word_respects_identifier_boundaries() {
+	assert fastc_source_contains_word('module main\nconst answer = 42\n', 'const')
+	assert fastc_source_contains_word('module main\n__global count int\n', '__global')
+	assert !fastc_source_contains_word('module main\nfn key_const() {}\n', 'const')
+	assert !fastc_source_contains_word('module main\nfn use__global_value() {}\n', '__global')
+}
+
+fn test_fastc_generic_source_collection_matches_serial_scan() {
+	mut prefs := pref.new_preferences()
+	sources := [
+		FastcSourceFile{
+			path: 'first.v'
+			source: 'module sample\nfn pick[T](value T) T { return value }\n'
+			header: FastcSourceHeader{
+				module_name: 'sample'
+			}
+		},
+		FastcSourceFile{
+			path: 'second.v'
+			source: 'module sample\nfn keep[T](value T) T { return value }\n'
+			header: FastcSourceHeader{
+				module_name: 'sample'
+			}
+		},
+		FastcSourceFile{
+			path: 'plain.v'
+			source: 'module sample\nfn plain() {}\n'
+			header: FastcSourceHeader{
+				module_name: 'sample'
+			}
+		},
+		FastcSourceFile{
+			path: 'last.v'
+			source: 'module sample\nfn pick[T](other T) T { return other }\n'
+			header: FastcSourceHeader{
+				module_name: 'sample'
+			}
+		},
+	]
+	serial := fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
+	collected := fastc_collect_generic_method_sources(sources, prefs)
+	assert collected.keys().len == serial.keys().len
+	for key, expected in serial {
+		assert key in collected
+		assert collected[key].source == expected.source
+	}
+}
+
 fn test_selfhost_spawn_nested_wait_statement_and_helper_names() {
 	$if windows {
 		return
