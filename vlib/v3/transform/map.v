@@ -240,6 +240,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// The new node has two child IDs, so charge the larger append pool.
 			estimate += int(node.children_count)
 		}
+		if t.external_equality_expands_from_type_metadata(node) {
+			// Struct and interface equality can expand from field/implementation
+			// metadata that is not represented by the infix node's children.
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		is_string_infix := node.kind == .infix && node.op in [.plus, .eq, .ne, .lt, .gt, .le, .ge] && node.children_count >= 2 && (t.is_string_type(t.a.child(&node, 0)) || t.is_string_type(t.a.child(&node, 1)))
 		if is_string_infix {
 			// String infix lowering emits a fresh literal or an identifier/call pair,
@@ -274,6 +279,23 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 		}
 	}
 	return estimate
+}
+
+fn (t &Transformer) external_equality_expands_from_type_metadata(node flat.Node) bool {
+	if node.kind != .infix || node.op !in [.eq, .ne] || node.children_count < 2 {
+		return false
+	}
+	for i in 0 .. 2 {
+		operand_id := t.a.child(&node, i)
+		operand_type := t.node_type(operand_id)
+		if t.resolve_interface_type_name(operand_type).len > 0 {
+			return true
+		}
+		if !t.infix_operand_is_pointer(operand_id) && t.struct_lookup_name(operand_type).len > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node) bool {

@@ -721,6 +721,64 @@ fn test_external_map_expansion_estimate_defers_interface_metadata_lowering() {
 	assert external_map_metadata_expr_expansion_estimate(.as_expr) > deferred_map_expansion_threshold
 }
 
+fn external_map_equality_expansion_estimate(operand_type string, is_interface bool) int {
+	mut a := flat.FlatAst.new()
+	mut operands := []flat.NodeId{}
+	for name in ['left', 'right'] {
+		callee := a.add_node(flat.Node{
+			kind:  .ident
+			value: name
+		})
+		call_start := a.children.len
+		a.children << callee
+		operands << a.add_node(flat.Node{
+			kind: .call
+			typ: operand_type
+			children_start: call_start
+			children_count: 1
+		})
+	}
+	equality_start := a.children.len
+	a.children << operands[0]
+	a.children << operands[1]
+	equality := a.add_node(flat.Node{
+		kind: .infix
+		op: .eq
+		typ: 'bool'
+		children_start: equality_start
+		children_count: 2
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << equality
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]bool'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	if is_interface {
+		tc.interface_names[operand_type] = true
+	}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	if !is_interface {
+		t.structs[operand_type] = StructInfo{
+			name: operand_type
+		}
+	}
+	return t.external_map_tree_expansion_estimate(root, 0, 0)
+}
+
+fn test_external_map_expansion_estimate_defers_metadata_driven_equality() {
+	assert external_map_equality_expansion_estimate('WideRecord', false) > deferred_map_expansion_threshold
+	assert external_map_equality_expansion_estimate('Value', true) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_selector_reconstruction() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{
