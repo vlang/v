@@ -6847,6 +6847,61 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_return_ignores_defers_registered_after_exit() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn map_or_return(mut saved PointerBox, early bool) []int {
+	return make_items().map(match true {
+		true {
+			match early {
+				true { return [7] }
+				false { return [8] }
+			}
+			defer {
+				saved.value = unsafe { &it }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := map_or_return(mut saved, true)
+	println(result[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_before_late_defer_c', '-ownership', source)
+	map_body := c_fn_body(c_source, 'Array map_or_return(main__PointerBox* saved, bool early) {')
+	compact_map := map_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert compact_map.contains('array__free(&(__map_source_'), map_body
+	out := run_good_with_flags(v3_bin, 'array_map_return_before_late_defer', '-ownership', source)
+	assert out == '7\nexternal'
+}
+
 fn test_array_map_keeps_temporary_source_through_external_pointer_in_local_map() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
@@ -6940,6 +6995,58 @@ fn main() {
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	out := run_good_with_flags(v3_bin, 'array_map_dynamic_local_array_index', '-ownership', source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_dynamic_assignment_replaces_exact_pointer_origin() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut local := PointerBox{
+		value: unsafe { &external }
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut holder := [1]&PointerBox{}
+			holder[0] = unsafe { &local }
+			index := 0
+			holder[index] = unsafe { &saved }
+			holder[0].value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_dynamic_assignment_replaces_exact_origin_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_dynamic_assignment_replaces_exact_origin', '-ownership', source)
 	assert out == '0\nsource'
 }
 
@@ -7163,6 +7270,62 @@ fn main() {
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	out := run_good_with_flags(v3_bin, 'array_map_loop_break_pointer_origins', '-ownership',
 		source)
+	assert out == '0\nsource'
+}
+
+fn test_array_map_propagates_labeled_pointer_origin_exit_to_outer_loop() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut local := PointerBox{
+		value: unsafe { &external }
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut alias := unsafe { &local }
+			outer: for {
+				for {
+					alias = unsafe { &saved }
+					break outer
+				}
+				alias = unsafe { &local }
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_labeled_outer_loop_pointer_origin_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_labeled_outer_loop_pointer_origin', '-ownership', source)
 	assert out == '0\nsource'
 }
 
