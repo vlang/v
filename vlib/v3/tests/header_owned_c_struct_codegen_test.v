@@ -306,6 +306,45 @@ fn main() {
 	}
 }
 
+fn test_header_owned_typedef_ignores_inactive_pragma_once() {
+	v3_bin := header_owned_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_header_owned_inactive_once_${os.getpid()}_${rand.ulid()}')
+	os.mkdir_all(root) or { panic(err) }
+	out := os.join_path(root, 'out')
+	defer {
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.write_file(os.join_path(root, 'inactive_once.h'), header_owned_large_header('#if 0
+#pragma once
+#endif
+#ifdef ENABLE_INACTIVE_ONCE_ALIAS
+typedef struct { int value; } InactiveOnceAlias;
+#endif
+'))!
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+
+#flag -I @DIR
+#include "inactive_once.h"
+#define ENABLE_INACTIVE_ONCE_ALIAS
+#include "inactive_once.h"
+
+@[typedef]
+struct C.InactiveOnceAlias { value int }
+
+fn main() {
+	println(C.InactiveOnceAlias{ value: 42 }.value)
+}
+')!
+	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(os.quoted_path(out))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42', run.output
+	generated := os.read_file(out + '.c')!
+	assert !generated.contains('struct InactiveOnceAlias {'), generated
+}
+
 fn test_header_owned_typedefs_follow_import_emission_order() {
 	v3_bin := header_owned_build_v3()
 	root := os.join_path(os.temp_dir(), 'v3_header_owned_module_order_${os.getpid()}_${rand.ulid()}')

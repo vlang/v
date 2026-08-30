@@ -5320,9 +5320,6 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		seen.delete(real_path)
 	}
 	text := os.read_file(real_path) or { return c_header_macro_state_clone(state) }
-	if c_header_has_pragma_once(text) {
-		g.header_owned_pragma_once_seen[real_path] = true
-	}
 	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
 	mut include_results := map[string]CHeaderIncludeResult{}
 	mut macro_line_index := 0
@@ -5331,6 +5328,9 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 	for _ in 0 .. c_join_continued_lines(text).len + 2 {
 		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
 			g.target, include_results)
+		if scan.has_pragma_once {
+			g.header_owned_pragma_once_seen[real_path] = true
+		}
 		mut unresolved_include := -1
 		for i, include_key in scan.include_keys {
 			include_state_signature := c_header_macro_state_signature(scan.include_states[i])
@@ -5390,22 +5390,13 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		}
 	}
 	fallback_scan := c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
+	if fallback_scan.has_pragma_once {
+		g.header_owned_pragma_once_seen[real_path] = true
+	}
 	c_record_active_include_macro_definitions(fallback_scan.text, macro_line_index, -1, mut include_macros, mut dynamic_include_macros, mut literal_include_macros)
 	g.collect_header_owned_c_typedef_text(fallback_scan.text)
 	g.collect_header_owned_c_typedef_text(fallback_scan.typedef_macro_expansions)
 	return c_header_macro_state_clone(fallback_scan.final_state)
-}
-
-fn c_header_has_pragma_once(text string) bool {
-	mut in_block_comment := false
-	for line in text.split_into_lines() {
-		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
-		in_block_comment = next_in_block_comment
-		if c_directive_name(clean) == 'pragma' && c_directive_arg(clean) == 'once' {
-			return true
-		}
-	}
-	return false
 }
 
 fn c_header_owned_include_args(raw string, state CHeaderMacroState, vroot string, source_file string) []string {
@@ -5866,6 +5857,7 @@ mut:
 struct CHeaderActiveScan {
 	text                        string
 	typedef_macro_expansions    string
+	has_pragma_once             bool
 	include_states              []CHeaderMacroState
 	include_keys                []string
 	include_args                []string
@@ -6048,6 +6040,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	mut include_definitely_active := []bool{}
 	mut macro_names := map[string]bool{}
 	mut possibly_active_macro_names := map[string]bool{}
+	mut has_pragma_once := false
 	mut output := strings.new_builder(text.len)
 	mut typedef_macro_expansions := strings.new_builder(256)
 	mut in_block_comment := false
@@ -6142,6 +6135,9 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 				definitely_active = false
 			}
 		}
+		if name == 'pragma' && c_directive_arg(clean) == 'once' && definitely_active {
+			has_pragma_once = true
+		}
 		if name in ['define', 'undef'] {
 			macro_name, macro_value, has_macro_value, function_macro_value := c_header_define_name_and_value(clean)
 			if macro_name.len > 0 {
@@ -6232,6 +6228,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	return CHeaderActiveScan{
 		text: output.str()
 		typedef_macro_expansions: typedef_macro_expansions.str()
+		has_pragma_once: has_pragma_once
 		include_states: include_states
 		include_keys: include_keys
 		include_args: include_args
