@@ -6306,7 +6306,7 @@ fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool
 		if !valid_definition || params.len != args.len {
 			return none
 		}
-		substituted := c_header_substitute_function_macro(body, params, args)
+		substituted := c_header_substitute_function_macro(body, params, args, defined, undefined, uncertain, macro_values)
 		replacement = c_header_apply_token_pasting(substituted) or { return none }
 		seen[macro_name] = true
 	}
@@ -6393,10 +6393,12 @@ fn c_header_function_macro_arguments(raw string) ([]string, bool) {
 	return args, true
 }
 
-fn c_header_substitute_function_macro(body string, params []string, args []string) string {
-	mut values := map[string]string{}
+fn c_header_substitute_function_macro(body string, params []string, args []string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string) string {
+	mut raw_values := map[string]string{}
+	mut expanded_values := map[string]string{}
 	for i, param in params {
-		values[param] = args[i]
+		raw_values[param] = args[i]
+		expanded_values[param] = c_header_expand_macro_argument(args[i], defined, undefined, uncertain, macro_values)
 	}
 	mut output := strings.new_builder(body.len)
 	mut i := 0
@@ -6411,10 +6413,77 @@ fn c_header_substitute_function_macro(body string, params []string, args []strin
 			end++
 		}
 		name := body[i..end]
-		output.write_string(values[name] or { name })
+		value := if c_header_function_macro_param_is_pasted(body, i, end) {
+			raw_values[name] or { name }
+		} else {
+			expanded_values[name] or { name }
+		}
+		output.write_string(value)
 		i = end
 	}
 	return output.str()
+}
+
+fn c_header_expand_macro_argument(arg string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string) string {
+	mut current := arg
+	mut seen := map[string]bool{}
+	for _ in 0 .. 64 {
+		if seen[current] {
+			break
+		}
+		seen[current] = true
+		next, changed := c_header_expand_macro_argument_once(current, defined, undefined, uncertain, macro_values)
+		current = next
+		if !changed {
+			break
+		}
+	}
+	return current
+}
+
+fn c_header_expand_macro_argument_once(arg string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string) (string, bool) {
+	mut output := strings.new_builder(arg.len)
+	mut changed := false
+	mut i := 0
+	for i < arg.len {
+		if !fixed_array_len_ident_start(arg[i]) {
+			output.write_u8(arg[i])
+			i++
+			continue
+		}
+		mut end := i + 1
+		for end < arg.len && fixed_array_len_ident_char(arg[end]) && arg[end] != `.` {
+			end++
+		}
+		name := arg[i..end]
+		if name in defined && name !in undefined && name !in uncertain {
+			if replacement := macro_values[name] {
+				output.write_string(replacement)
+				changed = changed || replacement != name
+			} else {
+				output.write_string(name)
+			}
+		} else {
+			output.write_string(name)
+		}
+		i = end
+	}
+	return output.str(), changed
+}
+
+fn c_header_function_macro_param_is_pasted(body string, start int, end int) bool {
+	mut left := start - 1
+	for left >= 0 && body[left].is_space() {
+		left--
+	}
+	if left > 0 && body[left] == `#` && body[left - 1] == `#` {
+		return true
+	}
+	mut right := end
+	for right < body.len && body[right].is_space() {
+		right++
+	}
+	return right + 1 < body.len && body[right] == `#` && body[right + 1] == `#`
 }
 
 fn c_header_apply_token_pasting(text string) ?string {
@@ -6509,13 +6578,17 @@ fn c_inline_header_file(path string, vroot string, include_dirs []string, condit
 	if seen[real_path] || inlining[real_path] {
 		return CInlineHeader{}
 	}
-	// A header first reached inside a false `#if` region would be invisible to
-	// the C preprocessor, so only an unconditional inline may suppress later
-	// copies; include guards make the re-emission a no-op.
-	if !conditional {
-		seen[real_path] = true
-	}
 	text := os.read_file(real_path) or { return none }
+	// Without carrying the full macro state, only an unconditional `#pragma once`
+	// can safely suppress a later copy. A classic guard can be undefined, while an
+	// unguarded header can expose new declarations after a feature macro changes.
+	if !conditional {
+		if guard := c_whole_file_guard_macro(text) {
+			if guard.len == 0 {
+				seen[real_path] = true
+			}
+		}
+	}
 	inlining[real_path] = true
 	header := c_inline_header_file_text(text, vroot, real_path, include_dirs, conditional,
 		use_system_stdint, mut seen, mut inlining, mut output)

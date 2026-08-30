@@ -209,9 +209,11 @@ fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 	os.write_file(os.join_path(root, 'compiler.h'), '#if defined(__clang__) || defined(__GNUC__)\ntypedef struct { int value; } CompilerAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'compiler_version.h'), '#if __GNUC__ >= 4\ntypedef struct { int value; } CompilerVersionAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'invoked_macro.h'), '#define UNUSED_ALIAS typedef struct Wrong UnusedMacroAlias;\n#define DECLARE_INVOKED_ALIAS typedef struct { int value; } InvokedMacroAlias;\nDECLARE_INVOKED_ALIAS\n')!
-	os.write_file(os.join_path(root, 'function_macro.h'), '#define UNUSED_FUNCTION(name) typedef struct Wrong name;\n#define DECLARE_FUNCTION(name) typedef struct FunctionImpl name##_t;\nDECLARE_FUNCTION(FunctionMacroAlias)\nstruct FunctionImpl { int value; };\n')!
+	os.write_file(os.join_path(root, 'function_macro.h'), '#define UNUSED_FUNCTION(name) typedef struct Wrong name;\n#define DECLARE_FUNCTION(name) typedef struct FunctionImpl name##_t;\nDECLARE_FUNCTION(FunctionMacroAlias)\nstruct FunctionImpl { int value; };\n#define ORDINARY_NAME OrdinaryMacroAlias\n#define DECLARE_ORDINARY(name) typedef struct OrdinaryImpl name;\nDECLARE_ORDINARY(ORDINARY_NAME)\nstruct OrdinaryImpl { int value; };\n#define PASTED_NAME WrongPastedAlias\n#define DECLARE_PASTED(name) typedef struct PastedImpl name##_t;\nDECLARE_PASTED(PASTED_NAME)\nstruct PastedImpl { int value; };\n')!
 	os.write_file(os.join_path(root, 'child.h'), '#ifdef CHILD_FEATURE\ntypedef struct { int value; } RevisitedAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'child_wrapper.h'), '#include "child.h"\n#define CHILD_FEATURE 1\n#include "child.h"\n')!
+	os.write_file(os.join_path(root, 'emitted_child.h'), '#ifdef EMITTED_CHILD_FEATURE\ntypedef struct { int value; } EmittedRevisitedAlias;\n#endif\n')!
+	os.write_file(os.join_path(root, 'emitted_child_wrapper.h'), '#include "emitted_child.h"\n#define EMITTED_CHILD_FEATURE 1\n#include "emitted_child.h"\n')!
 	os.write_file(os.join_path(root, 'lazy_one.h'), 'typedef struct { int value; } LazyAlias;\n')!
 	os.write_file(os.join_path(root, 'lazy_two.h'), '/* the current alias target intentionally has no typedef */\n')!
 	os.write_file(os.join_path(root, 'lazy_wrapper.h'), '#define B "lazy_one.h"\n#define A B\n#undef B\n#define B "lazy_two.h"\n#include A\n')!
@@ -233,6 +235,7 @@ fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 #include "compiler_version.h"
 #include "invoked_macro.h"
 #include "function_macro.h"
+#include "emitted_child_wrapper.h"
 #include "lazy_wrapper.h"
 #include <once.h>
 #define ONCE_FEATURE
@@ -255,7 +258,13 @@ struct C.InvokedMacroAlias { value int }
 @[typedef]
 struct C.FunctionMacroAlias_t { value int }
 @[typedef]
+struct C.OrdinaryMacroAlias { value int }
+@[typedef]
+struct C.PASTED_NAME_t { value int }
+@[typedef]
 struct C.RevisitedAlias { value int }
+@[typedef]
+struct C.EmittedRevisitedAlias { value int }
 @[typedef]
 struct C.LazyAlias { value int }
 @[typedef]
@@ -274,7 +283,9 @@ struct C.CommonAlias { value int }
 fn main() {
 	values := [C.ValuedAlias{ value: 1 }.value, C.CompilerAlias{ value: 2 }.value,
 		C.CompilerVersionAlias{ value: 11 }.value, C.InvokedMacroAlias{ value: 12 }.value,
-		C.FunctionMacroAlias_t{ value: 13 }.value, C.RevisitedAlias{ value: 3 }.value,
+		C.FunctionMacroAlias_t{ value: 13 }.value, C.OrdinaryMacroAlias{ value: 14 }.value,
+		C.PASTED_NAME_t{ value: 15 }.value, C.RevisitedAlias{ value: 3 }.value,
+		C.EmittedRevisitedAlias{ value: 16 }.value,
 		C.LazyAlias{ value: 4 }.value,
 		C.OnceAlias{ value: 5 }.value, C.AttributeAlias{ value: 6 }.value,
 		C.MacroAlias{ value: 7 }.value, C.PreincludeAlias{ value: 8 }.value,
@@ -290,10 +301,11 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '91', run.output
+	assert run.output.trim_space() == '136', run.output
 	generated := os.read_file(out + '.c')!
 	for owned in ['ValuedAlias', 'CompilerAlias', 'CompilerVersionAlias', 'InvokedMacroAlias',
-		'FunctionMacroAlias_t', 'RevisitedAlias', 'AttributeAlias', 'RepeatedAlias', 'CommonAlias'] {
+		'FunctionMacroAlias_t', 'OrdinaryMacroAlias', 'PASTED_NAME_t', 'RevisitedAlias',
+		'EmittedRevisitedAlias', 'AttributeAlias', 'RepeatedAlias', 'CommonAlias'] {
 		assert !generated.contains('struct ${owned} {'), generated
 	}
 	for fallback in ['LazyAlias', 'OnceAlias', 'MacroAlias', 'PreincludeAlias'] {
