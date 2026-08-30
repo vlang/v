@@ -191,6 +191,7 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 		cur_file:   'token.v'
 	}
 	value := t.make_ident('pos')
+	t.stringify_stack << 'Wrapper'
 	call := t.request_auto_str_helper(value, 'v.token.Pos')
 	callee := a.child_node(a.node(call), 0)
 
