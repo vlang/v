@@ -782,6 +782,31 @@ fn main() {
 	assert scalar_selector_call.exit_code != 0, scalar_selector_call.output
 	assert scalar_selector_call.output.contains('cannot return an independent array element'), scalar_selector_call.output
 
+	conditional_call := compile_v3_ownership_program(v3_bin, 'owned_conditional_call_argument_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn consume(value int, suffix string) int {
+	return value
+}
+
+fn last_name_len_then_delete(mut arr []E, flag bool) int {
+	return consume(if flag { arr.last().name.len } else { 0 }, delete_last(mut arr))
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_len_then_delete(mut arr, true))
+}
+", '')
+	assert conditional_call.exit_code != 0, conditional_call.output
+	assert conditional_call.output.contains('cannot return an independent array element'), conditional_call.output
+
 	logical_wrapper_call := compile_v3_ownership_program(v3_bin, 'owned_logical_wrapper_call_argument_mutating_sibling', "struct E {
 	name string
 }

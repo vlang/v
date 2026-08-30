@@ -6127,8 +6127,19 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			return true
 		}
 		parent := tc.a.node(parent_id)
-		if parent.kind == .paren
-			|| (parent.kind == .directive && parent.value == 'string_interp_format') {
+		if parent.kind == .paren || (parent.kind == .directive && parent.value == 'string_interp_format') {
+			current = parent_id
+			continue
+		}
+		if parent.kind == .expr_stmt && parent.children_count > 0 && tc.a.child(parent, 0) == current {
+			current = parent_id
+			continue
+		}
+		if parent.kind in [.block, .match_branch] && parent.children_count > 0 && tc.a.child(parent, parent.children_count - 1) == current {
+			current = parent_id
+			continue
+		}
+		if parent.kind in [.if_expr, .match_stmt, .or_expr] {
 			current = parent_id
 			continue
 		}
