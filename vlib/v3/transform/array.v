@@ -2647,12 +2647,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	out_type := '[]${result_elem_type}'
 	base_id := t.a.child(&fn_node, 0)
-	map_result_retains_elem_address := mapper_takes_elem_address
-		&& t.array_map_result_can_retain_element_address(result_elem_type)
-		&& t.array_map_expr_result_retains_element_address(map_source_id, 'it')
-	source_needs_drop := !map_result_retains_elem_address && !t.expr_can_take_address(base_id)
-		&& !isnil(t.tc)
-		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
+	map_result_retains_elem_address := mapper_takes_elem_address && t.array_map_result_can_retain_element_address(result_elem_type) && t.array_map_expr_result_retains_element_address(map_source_id, 'it')
+	map_side_effect_retains_elem_address := mapper_takes_elem_address && t.array_map_expr_side_effect_retains_element_address(map_source_id, 'it')
+	source_needs_drop := !map_result_retains_elem_address && !map_side_effect_retains_elem_address && !t.expr_can_take_address(base_id) && !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
 	base := t.stable_transformed_expr_for_reuse(t.transform_expr(base_id), base_type, 'map_source')
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
@@ -2881,6 +2878,133 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 			return false
 		}
 	}
+}
+
+fn (t &Transformer) array_map_lvalue_root_ident(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value
+	}
+	if node.kind in [.selector, .index, .paren, .cast_expr, .as_expr, .prefix] && node.children_count > 0 {
+		return t.array_map_lvalue_root_ident(t.a.child(&node, 0))
+	}
+	return none
+}
+
+fn (t &Transformer) array_map_side_effect_target_is_external(id flat.NodeId, elem_name string, locals map[string]bool) bool {
+	root := t.array_map_lvalue_root_ident(id) or { return false }
+	return root != elem_name && root !in locals
+}
+
+fn (mut t Transformer) array_map_side_effect_source_retains_element_address(id flat.NodeId, elem_name string, block flat.Node, before_idx int) bool {
+	if before_idx >= 0 {
+		mut seen := map[string]bool{}
+		return t.array_map_block_value_retains_element_address(block, before_idx, id, elem_name, mut seen)
+	}
+	return t.array_map_expr_result_retains_element_address(id, elem_name)
+}
+
+fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id flat.NodeId, node flat.Node, elem_name string, locals map[string]bool, block flat.Node, before_idx int) bool {
+	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
+		return false
+	}
+	call_name := t.call_name_for_node(id, node)
+	params := t.call_param_types_for_node(call_name, node)
+	param_offset := t.call_param_offset_for_node(call_name, node, params)
+	callee := t.a.child_node(&node, 0)
+	mut target_param_idxs := []int{}
+	mut target_ids := []flat.NodeId{}
+	if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 && t.tc.mut_receiver_methods[call_name] {
+		target_param_idxs << 0
+		target_ids << t.a.child(callee, 0)
+	}
+	for i in 1 .. node.children_count {
+		arg_id := t.a.child(&node, i)
+		if t.a.nodes[int(arg_id)].is_mut {
+			target_param_idxs << i - 1 + param_offset
+			target_ids << arg_id
+		}
+	}
+	for target_i, target_param_idx in target_param_idxs {
+		if !t.array_map_side_effect_target_is_external(target_ids[target_i], elem_name, locals) {
+			continue
+		}
+		for source_param_idx in t.tc.call_param_storage_source_params(id, target_param_idx) {
+			mut source_id := flat.empty_node
+			if param_offset == 1 && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
+				source_id = t.a.child(callee, 0)
+			} else {
+				child_idx := source_param_idx - param_offset + 1
+				if child_idx >= 1 && child_idx < node.children_count {
+					source_id = t.a.child(&node, child_idx)
+				}
+			}
+			if int(source_id) >= 0 && t.array_map_side_effect_source_retains_element_address(source_id, elem_name, block, before_idx) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_expr_side_effect_retains_element_address(id flat.NodeId, elem_name string) bool {
+	locals := map[string]bool{}
+	return t.array_map_expr_side_effect_retains_element_address_in_scope(id, elem_name, locals, flat.Node{}, -1)
+}
+
+fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_scope(id flat.NodeId, elem_name string, locals map[string]bool, block flat.Node, before_idx int) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	if node.kind in [.block, .match_branch] {
+		mut scoped := locals.clone()
+		for i in 0 .. node.children_count {
+			stmt_id := t.a.child(&node, i)
+			if t.array_map_expr_side_effect_retains_element_address_in_scope(stmt_id, elem_name, scoped, node, int(i)) {
+				return true
+			}
+			stmt := t.a.nodes[int(stmt_id)]
+			if stmt.kind == .decl_assign {
+				for j := 0; j + 1 < int(stmt.children_count); j += 2 {
+					lhs := t.a.child_node(&stmt, j)
+					if lhs.kind == .ident && lhs.value.len > 0 {
+						scoped[lhs.value] = true
+					}
+				}
+			}
+		}
+		return false
+	}
+	if node.kind == .comptime_if {
+		if take_then := t.comptime_type_condition_value(node.value) {
+			branch_idx := if take_then { 0 } else { 1 }
+			return branch_idx < node.children_count && t.array_map_expr_side_effect_retains_element_address_in_scope(t.a.child(&node, branch_idx), elem_name, locals, block, before_idx)
+		}
+	}
+	if t.array_map_call_side_effect_retains_element_address(id, node, elem_name, locals, block, before_idx) {
+		return true
+	}
+	if node.kind in [.assign, .selector_assign, .index_assign] {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			lhs_id := t.a.child(&node, i)
+			if t.array_map_side_effect_target_is_external(lhs_id, elem_name, locals) && t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i + 1), elem_name, block, before_idx) {
+				return true
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.array_map_expr_side_effect_retains_element_address_in_scope(t.a.child(&node, i), elem_name, locals, block, before_idx) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) array_map_expr_is_call_projection(id flat.NodeId) bool {
