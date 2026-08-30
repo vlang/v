@@ -829,6 +829,7 @@ fn test_export_external_v3_report_preserves_failing_line_through_handoff() {
 		assert false, 'no report round-tripped'
 		return
 	}
+	// The environment is too small to forward the manifest, so there is nothing to assert.
 	if got.kind == external_v3_transport_limited_kind {
 		return
 	}
@@ -861,6 +862,7 @@ fn test_export_external_v3_report_marks_complete_file_containing_marker_text_as_
 		assert false, 'no report round-tripped'
 		return
 	}
+	// The environment is too small to forward the manifest, so there is nothing to assert.
 	if got.kind == external_v3_transport_limited_kind {
 		return
 	}
@@ -890,6 +892,7 @@ fn test_export_external_v3_report_preserves_incoming_truncation_flag() {
 		assert false, 'no report round-tripped'
 		return
 	}
+	// The environment is too small to forward the manifest, so there is nothing to assert.
 	if got.kind == external_v3_transport_limited_kind {
 		return
 	}
