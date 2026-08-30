@@ -7893,13 +7893,16 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
 				g.write(';')
-			} else if g.is_noreturn_call(expr_id) || g.tc.resolve_type(expr_id) is types.Void {
-				// A diverging/void or-body tail (e.g. `panic(..)`/`exit(..)`) yields no
-				// value; emit it as a bare statement instead of assigning void.
+			} else if g.is_noreturn_call(expr_id) {
+				// A diverging or-body tail (e.g. `panic(..)`/`exit(..)`) yields no value;
+				// emit it as a bare statement instead of assigning void.
 				g.gen_expr(expr_id)
 				g.write(';')
 			} else if g.stmt_tail_exits(expr_id) {
 				g.gen_node(expr_id)
+			} else if g.tc.resolve_type(expr_id) is types.Void {
+				g.gen_expr(expr_id)
+				g.write(';')
 			} else {
 				g.write('${value_name} = ')
 				g.gen_expr_with_expected_type(expr_id, value_type)
