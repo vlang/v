@@ -6843,6 +6843,31 @@ fn main() {
 	loop_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_loop_break', '-ownership',
 		loop_source)
 	assert loop_out == 'source'
+
+	deferred_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'defer {\n\t\tbox.value = value\n\t}\n\tbox.value = replacement')
+	assert deferred_source != source
+	deferred_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_deferred_c', '-ownership', deferred_source)
+	deferred_main_body := c_fn_body(deferred_c_source, 'int main(int argc, char** argv) {')
+	compact_deferred_main := deferred_main_body.replace(' ', '').replace('\t', '').replace('\n',
+		'')
+	assert !compact_deferred_main.contains('array__free(&(__map_source_'), deferred_main_body
+	deferred_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_deferred',
+		'-ownership', deferred_source)
+	assert deferred_out == 'source'
+
+	select_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'signal := chan bool{cap: 1}\n\tsignal <- true\n\tselect {\n\t\t<-signal {\n\t\t\tbox.value = value\n\t\t}\n\t\telse {\n\t\t\tbox.value = replacement\n\t\t}\n\t}')
+	assert select_source != source
+	select_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_storage_select_c', '-ownership', select_source)
+	select_main_body := c_fn_body(select_c_source, 'int main(int argc, char** argv) {')
+	compact_select_main := select_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_select_main.contains('array__free(&(__map_source_'), select_main_body
+	select_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_select', '-ownership',
+		select_source)
+	assert select_out == 'source'
 }
 
 fn test_array_map_keeps_temporary_source_through_mutator_or_success() {
@@ -6953,6 +6978,19 @@ fn main() {
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	out := run_good_with_flags(v3_bin, 'array_map_mutator_target_alias', '-ownership', source)
 	assert out == 'source'
+
+	aggregate_source := source.replace('mut pbox := &box\n\tpbox.value = value',
+		'tmp := PointerBox{\n\t\tvalue: unsafe { value }\n\t}\n\tbox.value = tmp.value')
+	assert aggregate_source != source
+	aggregate_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_mutator_aggregate_source_c', '-ownership', aggregate_source)
+	aggregate_main_body := c_fn_body(aggregate_c_source, 'int main(int argc, char** argv) {')
+	compact_aggregate_main := aggregate_main_body.replace(' ', '').replace('\t', '').replace('\n',
+		'')
+	assert !compact_aggregate_main.contains('array__free(&(__map_source_'), aggregate_main_body
+	aggregate_out := run_good_with_flags(v3_bin, 'array_map_mutator_aggregate_source',
+		'-ownership', aggregate_source)
+	assert aggregate_out == 'source'
 }
 
 fn test_array_map_keeps_temporary_source_for_all_mutator_targets_and_computed_indices() {

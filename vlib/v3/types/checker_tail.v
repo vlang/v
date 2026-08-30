@@ -9065,6 +9065,25 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
 		return
 	}
+	if node.kind == .defer_stmt {
+		// A defer nested in conditional control flow may or may not be registered.
+		// Preserve its possible exit writes without applying them to the ordinary
+		// fallthrough state. Guaranteed function-level defers are handled precisely
+		// by param_storage_writes_for_decl after all ordinary exits are collected.
+		mut deferred_aliases := storage_param_sources_clone(aliases)
+		mut deferred_writes := storage_param_sources_clone(writes)
+		mut deferred_exited_writes := map[string][]int{}
+		mut deferred_loop_exit_writes := map[string][]int{}
+		for i in 0 .. node.children_count {
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+				target_param_idx, decl_mod, mut deferred_aliases, mut visiting, mut
+				deferred_writes, mut deferred_exited_writes, mut deferred_loop_exit_writes)
+		}
+		storage_param_writes_merge(mut deferred_writes, deferred_exited_writes)
+		storage_param_writes_merge(mut deferred_writes, deferred_loop_exit_writes)
+		storage_param_writes_merge(mut exited_writes, deferred_writes)
+		return
+	}
 	if node.kind == .return_stmt {
 		for i in 0 .. node.children_count {
 			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
@@ -9215,6 +9234,24 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 		writes = merged_writes.move()
 		return
 	}
+	if node.kind == .select_stmt {
+		before := storage_param_sources_clone(aliases)
+		mut merged := storage_param_sources_clone(aliases)
+		before_writes := storage_param_sources_clone(writes)
+		mut merged_writes := map[string][]int{}
+		for i in 0 .. node.children_count {
+			mut branch_aliases := storage_param_sources_clone(before)
+			mut branch_writes := storage_param_sources_clone(before_writes)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type,
+				target_param_idx, decl_mod, mut branch_aliases, mut visiting, mut branch_writes, mut
+				exited_writes, mut loop_exit_writes)
+			storage_param_sources_merge(mut merged, branch_aliases)
+			storage_param_writes_merge(mut merged_writes, branch_writes)
+		}
+		aliases = merged.move()
+		writes = merged_writes.move()
+		return
+	}
 	if node.kind in [.for_stmt, .for_in_stmt] {
 		before := storage_param_sources_clone(aliases)
 		mut loop_aliases := storage_param_sources_clone(aliases)
@@ -9252,8 +9289,12 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 			lhs := tc.a.nodes[int(lhs_id)]
 			if lhs.kind == .ident && lhs.value != target_name {
 				mut alias_sources := []int{}
-				if unalias_type(tc.resolve_type(rhs_id)) is Pointer {
-					tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut alias_sources)
+				tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut alias_sources)
+				if unalias_type(tc.resolve_type(rhs_id)) !is Pointer {
+					// Aggregate temporaries can retain non-target parameter sources in their
+					// fields, but copying the mutable target by value must not make the copy
+					// another lvalue rooted at that target.
+					alias_sources = alias_sources.filter(it != target_param_idx)
 				}
 				aliases[lhs.value] = alias_sources
 			}
@@ -9370,8 +9411,13 @@ fn (mut tc TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl
 	mut writes := map[string][]int{}
 	mut exited_writes := map[string][]int{}
 	mut loop_exit_writes := map[string][]int{}
+	mut deferred_stmts := []flat.NodeId{}
 	for i in body_start .. fn_node.children_count {
 		child_id := tc.a.child(&fn_node, i)
+		if tc.a.nodes[int(child_id)].kind == .defer_stmt {
+			deferred_stmts << child_id
+			continue
+		}
 		tc.collect_param_storage_sources(child_id, target_param.value, target_param.typ,
 			target_param_idx, decl.mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut
 			loop_exit_writes)
@@ -9380,6 +9426,20 @@ fn (mut tc TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl
 		}
 	}
 	storage_param_writes_merge(mut exited_writes, writes)
+	for i := deferred_stmts.len; i > 0; i-- {
+		defer_node := tc.a.nodes[int(deferred_stmts[i - 1])]
+		mut deferred_writes := storage_param_sources_clone(exited_writes)
+		mut deferred_exited_writes := map[string][]int{}
+		mut deferred_loop_exit_writes := map[string][]int{}
+		for j in 0 .. defer_node.children_count {
+			tc.collect_param_storage_sources(tc.a.child(&defer_node, j), target_param.value,
+				target_param.typ, target_param_idx, decl.mod, mut aliases, mut visiting, mut
+				deferred_writes, mut deferred_exited_writes, mut deferred_loop_exit_writes)
+		}
+		storage_param_writes_merge(mut deferred_writes, deferred_exited_writes)
+		storage_param_writes_merge(mut deferred_writes, deferred_loop_exit_writes)
+		exited_writes = deferred_writes.move()
+	}
 	visiting.delete(cache_id)
 	return exited_writes
 }

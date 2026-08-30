@@ -48,6 +48,31 @@ fn copy_then_store(mut box Box, value &Value) {
 	copy.value = value
 }
 
+fn store_through_aggregate(mut box &Box, value &Value) {
+	tmp := Box{
+		value: unsafe { value }
+	}
+	box.value = tmp.value
+}
+
+fn store_deferred(mut box &Box, value &Value, replacement &Value) {
+	defer {
+		box.value = value
+	}
+	box.value = replacement
+}
+
+fn store_selected(mut box &Box, value &Value, replacement &Value, signal chan bool) {
+	select {
+		<-signal {
+			box.value = value
+		}
+		else {
+			box.value = replacement
+		}
+	}
+}
+
 fn set_or_reset(mut box &Box, value &Value, replacement &Value, stop bool) {
 	box.value = value
 	if stop {
@@ -110,6 +135,9 @@ fn main() {
 	set_pair_sources(mut pair, &value)
 	store_at_computed_index(mut indexed, &value)
 	copy_then_store(mut copied, &value)
+	store_through_aggregate(mut first, &value)
+	store_deferred(mut first, &value, &value)
+	store_selected(mut first, &value, &value, chan bool{})
 	set_or_reset(mut first, &value, &value, true)
 	delegate_then_reset(mut second, &value, &value)
 	store_in_loop(mut first, &value, &value, true)
@@ -135,18 +163,24 @@ fn main() {
 		}
 		name := tc.resolved_call_name(flat.NodeId(i)) or { continue }
 		for wanted in ['set_pair_sources', 'store_at_computed_index', 'copy_then_store',
-			'set_or_reset', 'delegate_then_reset', 'store_in_loop', 'store_or_replace'] {
+			'store_through_aggregate', 'store_deferred', 'store_selected', 'set_or_reset',
+			'delegate_then_reset', 'store_in_loop', 'store_or_replace'] {
 			if name.ends_with(wanted) {
 				calls[wanted] = flat.NodeId(i)
 			}
 		}
 	}
-	assert calls.len == 7, calls.str()
+	assert calls.len == 10, calls.str()
 	assert tc.call_param_storage_source_params(calls['set_pair_sources'], 0) == [1]
 	assert tc.call_param_storage_source_params(calls['store_at_computed_index'], 0) == [
 		1,
 	]
 	assert tc.call_param_storage_source_params(calls['copy_then_store'], 0) == []
+	assert tc.call_param_storage_source_params(calls['store_through_aggregate'], 0) == [
+		1,
+	]
+	assert tc.call_param_storage_source_params(calls['store_deferred'], 0) == [1]
+	assert tc.call_param_storage_source_params(calls['store_selected'], 0) == [1, 2]
 	assert tc.call_param_storage_source_params(calls['set_or_reset'], 0) == [1, 2]
 	assert tc.call_param_storage_source_params(calls['delegate_then_reset'], 0) == [2]
 	assert tc.call_param_storage_source_params(calls['store_in_loop'], 0) == [1, 2]
