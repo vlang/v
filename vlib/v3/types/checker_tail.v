@@ -6214,6 +6214,13 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op fl
 				}
 			}
 		}
+		Interface {
+			for impl_name in tc.interface_impl_names(raw.name) {
+				if tc.array_accessor_type_has_overloaded_operator(tc.parse_type(impl_name), op, mut seen) {
+					return true
+				}
+			}
+		}
 		SumType {
 			base := tc.sum_base_name(raw.name)
 			for variant in tc.sum_types[base] or { []string{} } {
@@ -6253,6 +6260,18 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 	}
 	if node.kind == .index && node.children_count > 0 {
 		if _ := tc.index_overload_call_info(tc.resolve_type(tc.a.child(node, 0)), false) {
+			return false
+		}
+	}
+	if node.kind == .in_expr && node.children_count > 1 {
+		container_type := unalias_type(tc.resolve_type(tc.a.child(node, 1)))
+		elem_type := match container_type {
+			Array { container_type.elem_type }
+			ArrayFixed { container_type.elem_type }
+			else { unknown_type('non-array membership') }
+		}
+		mut seen := map[string]bool{}
+		if tc.array_accessor_type_has_overloaded_operator(elem_type, .eq, mut seen) {
 			return false
 		}
 	}

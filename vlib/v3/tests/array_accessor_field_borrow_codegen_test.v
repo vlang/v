@@ -506,6 +506,78 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
+fn test_owned_interface_field_overloaded_comparison_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_interface_field_overloaded_comparison', "interface Named {
+	name() string
+}
+
+struct Name {
+	text string
+}
+
+struct E {
+	value Named
+}
+
+__global entries []E
+
+fn (name Name) name() string {
+	return name.text
+}
+
+fn (left Name) == (right Name) bool {
+	entries.delete_last()
+	return left.text == right.text
+}
+
+fn last_matches(other Named) bool {
+	return entries.last().value == other
+}
+
+fn main() {
+	entries = [E{ value: Named(Name{ text: 'hello' }) }]
+	println(last_matches(Named(Name{ text: 'hello' })))
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
+fn test_owned_field_with_overloaded_membership_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_membership_sibling', "struct E {
+	name string
+}
+
+struct Needle {
+	value int
+}
+
+__global entries []E
+
+fn (left Needle) == (right Needle) bool {
+	entries.delete_last()
+	return left.value == right.value
+}
+
+fn consume(length int, found bool) int {
+	return if found { length } else { 0 }
+}
+
+fn last_length_with_membership(needle Needle, haystack []Needle) int {
+	return consume(entries.last().name.len, needle in haystack)
+}
+
+fn main() {
+	entries = [E{ name: 'hello' }]
+	println(last_length_with_membership(Needle{ value: 1 }, [Needle{ value: 1 }]))
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
 fn test_owned_nested_string_consumer_with_mutating_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_nested_string_mutating_sibling', "struct E {
