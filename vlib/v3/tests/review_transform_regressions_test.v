@@ -6677,6 +6677,169 @@ fn main() {
 	assert out == '0\nsource\n0\nsource'
 }
 
+fn test_array_map_tracks_pointer_origins_through_struct_updates() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+mut:
+	box   &PointerBox
+	other int
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved_inherited := PointerBox{
+		value: unsafe { &external }
+	}
+	selected_inherited := make_items().map(match true {
+		true {
+			base := Holder{
+				box: unsafe { &saved_inherited }
+			}
+			mut holder := Holder{
+				...base
+				other: 1
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	mut saved_overridden := PointerBox{
+		value: unsafe { &external }
+	}
+	selected_overridden := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			base := Holder{
+				box: unsafe { &saved_overridden }
+			}
+			mut holder := Holder{
+				...base
+				box: unsafe { &local }
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected_inherited[0])
+	println(saved_inherited.value.text)
+	println(selected_overridden[0])
+	println(saved_overridden.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_struct_update_pointer_origins_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert compact_main.count('array__free(&(__map_source_') == 1, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_struct_update_pointer_origins', '-ownership', source)
+	assert out == '0\nsource\n0\nexternal'
+}
+
+fn test_array_map_drops_temporary_source_for_local_conditional_pointer_initializers() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	selected_if := make_items().map(match true {
+		true {
+			mut local_a := PointerBox{
+				value: unsafe { &external }
+			}
+			mut local_b := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := if flag { unsafe { &local_a } } else { unsafe { &local_b } }
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	selected_match := make_items().map(match true {
+		true {
+			mut local_a := PointerBox{
+				value: unsafe { &external }
+			}
+			mut local_b := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := match flag {
+				true { unsafe { &local_a } }
+				else { unsafe { &local_b } }
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected_if[0])
+	println(selected_match[0])
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_local_conditional_pointer_initializers_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	if_result_pos := compact_main.index('Arrayselected_if=') or { -1 }
+	match_result_pos := compact_main.index('Arrayselected_match=') or { -1 }
+	if_source_drop_pos := compact_main.index('array__free(&(__map_source_') or { -1 }
+	match_drop_offset := compact_main[if_result_pos..].index('array__free(&(__map_source_') or {
+		-1
+	}
+	match_source_drop_pos := if match_drop_offset >= 0 {
+		if_result_pos + match_drop_offset
+	} else {
+		-1
+	}
+	assert if_source_drop_pos >= 0 && if_source_drop_pos < if_result_pos, main_body
+	assert match_source_drop_pos > if_result_pos && match_source_drop_pos < match_result_pos, main_body
+	out := run_good_with_flags(v3_bin, 'array_map_local_conditional_pointer_initializers', '-ownership', source)
+	assert out == '0\n0'
+}
+
 fn test_array_map_keeps_temporary_source_through_external_pointer_in_call_result() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {

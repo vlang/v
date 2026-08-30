@@ -3190,14 +3190,8 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 		t.array_map_record_local_pointer_origins(path, t.a.child(&node, node.children_count - 1), elem_name, origins, mut locals)
 		return
 	}
-	typ := t.checker_expr_type_name(id) or { t.node_type(id) }
-	clean_type := t.normalize_type_alias(typ)
-	if clean_type.starts_with('&') || clean_type.starts_with('chan ') {
-		locals[path] = t.array_map_pointer_alias_origin_is_external(id, elem_name, origins)
-		return
-	}
-	locals[path] = false
 	if node.kind in [.if_expr, .match_stmt] {
+		locals[path] = false
 		for i in 1 .. node.children_count {
 			mut branch_origins := map[string]bool{}
 			t.array_map_record_local_pointer_origins(path, t.a.child(&node, i), elem_name, origins, mut branch_origins)
@@ -3207,10 +3201,29 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 		}
 		return
 	}
+	typ := t.checker_expr_type_name(id) or { t.node_type(id) }
+	clean_type := t.normalize_type_alias(typ)
+	if clean_type.starts_with('&') || clean_type.starts_with('chan ') {
+		locals[path] = t.array_map_pointer_alias_origin_is_external(id, elem_name, origins)
+		return
+	}
+	locals[path] = false
 	if node.kind == .call {
 		sources := t.tc.ownership_call_result_sources(id)
 		mut seen := map[string]bool{}
 		t.array_map_record_call_result_pointer_type_paths(path, '', t.tc.resolve_type(id), sources, elem_name, origins, mut locals, mut seen)
+		return
+	}
+	if node.kind == .assoc && node.children_count > 0 {
+		t.array_map_record_local_pointer_origins(path, t.a.child(&node, 0), elem_name, origins, mut locals)
+		for i in 1 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_init && field.value.len > 0 && field.children_count > 0 {
+				field_path := '${path}.${field.value}'
+				array_map_clear_local_pointer_origins(field_path, mut locals)
+				t.array_map_record_local_pointer_origins(field_path, t.a.child(field, 0), elem_name, origins, mut locals)
+			}
+		}
 		return
 	}
 	if node.kind == .struct_init {
