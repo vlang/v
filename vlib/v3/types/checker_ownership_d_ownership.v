@@ -10614,6 +10614,61 @@ pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []
 	return args
 }
 
+// ownership_call_result_sources returns the argument-to-result projection mappings found by
+// ownership return analysis.
+pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []OwnershipCallResultSource {
+	if tc.ownership == unsafe { nil } {
+		return []OwnershipCallResultSource{}
+	}
+	projection := tc.ownership_call_projection(id) or { return []OwnershipCallResultSource{} }
+	call_id := projection.call_id
+	if !tc.valid_node_id(call_id) {
+		return []OwnershipCallResultSource{}
+	}
+	node := tc.a.nodes[int(call_id)]
+	if node.kind != .call {
+		return []OwnershipCallResultSource{}
+	}
+	info := tc.resolve_call_info(call_id, node) or { return []OwnershipCallResultSource{} }
+	call_name := if info.name.len > 0 { info.name } else { tc.ownership_call_name(call_id) }
+	is_multi_return := tc.resolve_type(call_id) is MultiReturn
+	mut result := []OwnershipCallResultSource{}
+	for param_idx in tc.ownership_state().ownership_fn_returns_param[call_name] {
+		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, param_idx) {
+			candidate := OwnershipCallResultSource{
+				arg_id: arg_id
+			}
+			if candidate !in result {
+				result << candidate
+			}
+		}
+	}
+	for slot in tc.ownership_state().ownership_fn_return_params[call_name] {
+		if arg_id := tc.ownership_call_arg_for_return_param_info(node, info, slot.param_idx) {
+			candidate := OwnershipCallResultSource{
+				arg_id: arg_id
+				target_suffix: if is_multi_return { '[${slot.slot_idx}]' } else { '' }
+			}
+			if candidate !in result {
+				result << candidate
+			}
+		}
+	}
+	for desc in tc.ownership_state().ownership_fn_return_param_descs[call_name] {
+		source := tc.ownership_call_arg_for_return_param_source_info(node, info, desc.param_idx, desc.source_suffix) or { continue }
+		slot_prefix := if is_multi_return { '[${desc.slot_idx}]' } else { '' }
+		candidate := OwnershipCallResultSource{
+			arg_id: source.arg_id
+			source_suffix: source.source_suffix
+			target_suffix: slot_prefix + desc.target_suffix
+		}
+		if candidate !in result {
+			result << candidate
+		}
+	}
+	return result
+}
+
 fn (tc &TypeChecker) ownership_clone_receiver_name(id flat.NodeId) string {
 	recv_id := tc.ownership_clone_receiver_id(id)
 	if !tc.valid_node_id(recv_id) {

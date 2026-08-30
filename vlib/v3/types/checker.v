@@ -237,6 +237,14 @@ pub:
 	arg_offset           int
 }
 
+// OwnershipCallResultSource records how a call argument can flow into a result projection.
+pub struct OwnershipCallResultSource {
+pub:
+	arg_id        flat.NodeId
+	source_suffix string
+	target_suffix string
+}
+
 // LocalBinding represents local binding data used by types.
 struct LocalBinding {
 	name   string
@@ -7826,6 +7834,14 @@ fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 // resolved_call_name returns the checker-resolved function name for a call node.
 pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 	return tc.cached_resolved_call(id)
+}
+
+// resolved_call_may_store_globally reports whether the resolved callee belongs to a source
+// file annotated with `@[has_globals]`.
+pub fn (tc &TypeChecker) resolved_call_may_store_globally(id flat.NodeId) bool {
+	name := tc.cached_resolved_call(id) or { return false }
+	file := tc.fn_type_files[name] or { return false }
+	return tc.has_globals_files[file]
 }
 
 // resolved_call_is_builtin reports whether `id` resolved to the named builtin function.

@@ -88,6 +88,11 @@ pub fn (mut tc TypeChecker) ownership_call_result_source_args(_ flat.NodeId) []f
 	return []flat.NodeId{}
 }
 
+// ownership_call_result_sources is empty when ownership analysis is disabled.
+pub fn (mut tc TypeChecker) ownership_call_result_sources(_ flat.NodeId) []OwnershipCallResultSource {
+	return []OwnershipCallResultSource{}
+}
+
 pub fn (tc &TypeChecker) ownership_default_clone_missing_method(_ Type) ?string {
 	return none
 }

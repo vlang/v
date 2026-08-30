@@ -3043,44 +3043,58 @@ fn array_map_merge_local_pointer_origins(mut target map[string]bool, source map[
 	}
 }
 
-fn (mut t Transformer) array_map_call_result_origin_is_external(id flat.NodeId, elem_name string, origins map[string]bool) bool {
-	if isnil(t.tc) {
-		return false
+fn array_map_call_result_relative_source_suffix(target_suffix string, source_target_suffix string) ?string {
+	if source_target_suffix.len == 0 {
+		return target_suffix
 	}
-	for source_arg in t.tc.ownership_call_result_source_args(id) {
-		if t.array_map_side_effect_target_is_external(source_arg, elem_name, origins, true) {
-			return true
-		}
-		if source_path := t.array_map_lvalue_local_path(source_arg) {
-			for origin_path, external in origins {
-				if external && array_map_local_path_is_possible_projection(origin_path, source_path) {
-					return true
-				}
-			}
-		}
+	if target_suffix == source_target_suffix || (target_suffix.len == source_target_suffix.len && array_map_local_path_is_possible_projection(target_suffix, source_target_suffix)) {
+		return ''
 	}
-	return false
+	if array_map_local_path_is_possible_projection(target_suffix, source_target_suffix) {
+		return target_suffix[source_target_suffix.len..]
+	}
+	if array_map_local_path_is_possible_projection(source_target_suffix, target_suffix) {
+		// A conservative aggregate target contains the mapped descendant.
+		return ''
+	}
+	return none
 }
 
-fn (mut t Transformer) array_map_record_external_pointer_type_paths(path string, typ types.Type, mut locals map[string]bool, mut seen map[string]bool) {
+fn (mut t Transformer) array_map_call_result_path_origin_is_external(source types.OwnershipCallResultSource, target_suffix string, elem_name string, origins map[string]bool) bool {
+	relative_suffix := array_map_call_result_relative_source_suffix(target_suffix, source.target_suffix) or { return false }
+	source_path := t.array_map_lvalue_local_path(source.arg_id) or {
+		return t.array_map_pointer_alias_origin_is_external(source.arg_id, elem_name, origins)
+	}
+	root := t.array_map_lvalue_root_ident(source.arg_id) or { return true }
+	if root == elem_name {
+		return false
+	}
+	if root !in origins {
+		return true
+	}
+	effective_path := source_path + source.source_suffix + relative_suffix
+	return origins[array_map_local_pointer_path(effective_path, root, origins)]
+}
+
+fn (mut t Transformer) array_map_record_call_result_pointer_type_paths(path string, target_suffix string, typ types.Type, sources []types.OwnershipCallResultSource, elem_name string, origins map[string]bool, mut locals map[string]bool, mut seen map[string]bool) {
 	match typ {
 		types.Pointer, types.Channel, types.FnType, types.Interface {
-			locals[path] = true
+			locals[path] = sources.any(t.array_map_call_result_path_origin_is_external(it, target_suffix, elem_name, origins))
 		}
 		types.Alias, types.OptionType, types.ResultType {
-			t.array_map_record_external_pointer_type_paths(path, typ.base_type, mut locals, mut seen)
+			t.array_map_record_call_result_pointer_type_paths(path, target_suffix, typ.base_type, sources, elem_name, origins, mut locals, mut seen)
 		}
 		types.Array, types.ArrayFixed {
-			t.array_map_record_external_pointer_type_paths('${path}[*]', typ.elem_type, mut locals, mut seen)
+			t.array_map_record_call_result_pointer_type_paths('${path}[*]', '${target_suffix}[*]', typ.elem_type, sources, elem_name, origins, mut locals, mut seen)
 		}
 		types.Map {
-			t.array_map_record_external_pointer_type_paths('${path}[*]', typ.value_type, mut locals, mut seen)
+			t.array_map_record_call_result_pointer_type_paths('${path}[*]', '${target_suffix}[*]', typ.value_type, sources, elem_name, origins, mut locals, mut seen)
 		}
 		types.Struct {
 			if typ.name !in seen {
 				seen[typ.name] = true
 				for field in t.tc.struct_fields_for_type(typ.name) {
-					t.array_map_record_external_pointer_type_paths('${path}.${field.name}', field.typ, mut locals, mut seen)
+					t.array_map_record_call_result_pointer_type_paths('${path}.${field.name}', '${target_suffix}.${field.name}', field.typ, sources, elem_name, origins, mut locals, mut seen)
 				}
 				seen.delete(typ.name)
 			}
@@ -3088,7 +3102,7 @@ fn (mut t Transformer) array_map_record_external_pointer_type_paths(path string,
 		types.SumType, types.MultiReturn {
 			// The active variant/slot is runtime-dependent, so retain a conservative
 			// aggregate root when ownership says an external argument reaches it.
-			locals[path] = true
+			locals[path] = sources.any(t.array_map_call_result_path_origin_is_external(it, target_suffix, elem_name, origins))
 		}
 		else {}
 	}
@@ -3114,9 +3128,10 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 		return
 	}
 	locals[path] = false
-	if node.kind == .call && t.array_map_call_result_origin_is_external(id, elem_name, origins) {
+	if node.kind == .call {
+		sources := t.tc.ownership_call_result_sources(id)
 		mut seen := map[string]bool{}
-		t.array_map_record_external_pointer_type_paths(path, t.tc.resolve_type(id), mut locals, mut seen)
+		t.array_map_record_call_result_pointer_type_paths(path, '', t.tc.resolve_type(id), sources, elem_name, origins, mut locals, mut seen)
 		return
 	}
 	if node.kind == .struct_init {
@@ -3367,6 +3382,16 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 	params := t.call_param_types_for_node(call_name, node)
 	param_offset := t.call_param_offset_for_node(call_name, node, params)
 	callee := t.a.child_node(&node, 0)
+	if t.tc.resolved_call_may_store_globally(id) {
+		if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 && t.array_map_side_effect_source_retains_element_address(t.a.child(callee, 0), elem_name, block, before_idx) {
+			return true
+		}
+		for i in 1 .. node.children_count {
+			if t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i), elem_name, block, before_idx) {
+				return true
+			}
+		}
+	}
 	mut target_param_idxs := []int{}
 	mut target_ids := []flat.NodeId{}
 	if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 && t.tc.mut_receiver_methods[call_name] {
