@@ -15031,7 +15031,7 @@ fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []fl
 		}
 		target_type := if i < lhs_ids.len && !is_blank { t.lvalue_type(lhs_ids[i]) } else { '' }
 		value := if target_type.len > 0 {
-			t.transform_expr_for_type(value_id, target_type)
+			t.transform_if_branch_value(value_id, target_type)
 		} else {
 			t.transform_expr(value_id)
 		}

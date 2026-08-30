@@ -449,6 +449,25 @@ fn test_borrowed_dynamic_array_conversion_is_cloned() {
 	assert holder.items[0].values[0] == "original"
 }
 
+fn test_borrowed_array_push_many_is_cloned() ? {
+	holder := &DynamicHolder{
+		items: [Payload{
+			values: ["original"]
+		}]
+	}
+	mut items := []Payload{}
+	items << holder.items
+	items[0].values[0] = "ordinary push many"
+	assert holder.items[0].values[0] == "original"
+
+	mut optional := OptionalPayloads{}
+	optional.items = []
+	optional.items? << holder.items
+	mut optional_items := optional.items or { panic(err) }
+	optional_items[0].values[0] = "optional push many"
+	assert holder.items[0].values[0] == "original"
+}
+
 fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
 	mut items := []Payload{}
 	items << (*holder).left
@@ -589,6 +608,26 @@ fn test_conditional_borrowed_branches_are_cloned(holder &Holder) {
 
 	mut right := select_payload(holder, false)
 	right.values[0] = "conditional right"
+	assert holder.right.values[0] == "right"
+}
+
+fn test_multi_conditional_borrowed_branches_are_cloned(holder &Holder, cond bool) {
+	mut first := Payload{
+		values: ["first"]
+	}
+	mut second := Payload{
+		values: ["second"]
+	}
+	first, second = if cond {
+		holder.left
+		holder.right
+	} else {
+		holder.right
+		holder.left
+	}
+	first.values[0] = "conditional first"
+	second.values[0] = "conditional second"
+	assert holder.left.values[0] == "left"
 	assert holder.right.values[0] == "right"
 }
 
@@ -792,6 +831,7 @@ fn main() {
 	test_disjoint_receiver_fields_are_not_cloned()
 	test_borrowed_fixed_array_conversions_are_cloned()
 	test_borrowed_dynamic_array_conversion_is_cloned()
+	test_borrowed_array_push_many_is_cloned() or { panic(err) }
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
 	test_borrowed_array_initializer_is_cloned_per_element(holder)
 	test_borrowed_array_literal_element_is_cloned(holder)
@@ -805,6 +845,7 @@ fn main() {
 	test_borrowed_assoc_overrides_are_cloned(holder)
 	test_pointer_dereferences_are_cloned(holder)
 	test_conditional_borrowed_branches_are_cloned(holder)
+	test_multi_conditional_borrowed_branches_are_cloned(holder, true)
 	test_borrowed_or_fallback_is_cloned(holder)
 	test_borrowed_sum_projection_is_cloned()
 	test_copied_index_alias_is_cloned()
@@ -820,7 +861,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 48, out.output
+		assert out.output.count('clone') == 52, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')
