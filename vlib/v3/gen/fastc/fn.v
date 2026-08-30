@@ -648,7 +648,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		receiver_key = type_key
 		is_static_method = true
 		g.next()
-		if g.tok != .name {
+		if g.tok != .name && !g.tok.is_keyword() {
 			return g.unsupported('static method declaration')
 		}
 		name = g.lit
@@ -1057,11 +1057,11 @@ fn (mut g Parser) parse_parameters() ![]string {
 	g.skip_semicolons()
 	for g.tok != .rpar {
 		mut is_mut := false
-		if g.tok in [.key_mut, .key_shared] {
+		if g.tok == .key_mut || (g.tok == .key_shared && !fastc_shared_parameter_is_name(g.s, g.path, g.module_name, g.imports, g.declared_types, g.prefs.building_v)) {
 			is_mut = true
 			g.next()
 		}
-		if g.tok != .name {
+		if g.tok !in [.name, .key_shared] {
 			return g.unsupported('function parameters')
 		}
 		name := g.lit
@@ -1069,7 +1069,7 @@ fn (mut g Parser) parse_parameters() ![]string {
 		mut names := [name]
 		for g.tok == .comma {
 			g.next()
-			if g.tok != .name && !g.tok.is_keyword() {
+			if !fastc_token_can_be_decl_name(g.tok) {
 				return g.unsupported('grouped parameter names')
 			}
 			names << g.lit

@@ -5,6 +5,10 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+fn fastc_token_can_be_decl_name(tok token.Token) bool {
+	return tok == .name || (tok.is_keyword() && tok != .key_volatile)
+}
+
 fn fastc_skip_attribute(mut scan scanner.Scanner) !token.Token {
 	mut tok := scan.scan()
 	mut depth := 1
@@ -20,6 +24,19 @@ fn fastc_skip_attribute(mut scan scanner.Scanner) !token.Token {
 		tok = scan.scan()
 	}
 	return tok
+}
+
+fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) bool {
+	mut lookahead := scan
+	first := lookahead.scan()
+	if first == .comma {
+		return true
+	}
+	if first in [.semicolon, .rpar, .eof] {
+		return false
+	}
+	_, boundary := fastc_scan_type(mut lookahead, first, path, module_name, imports, declared_types, allow_short_placeholders) or { return false }
+	return boundary in [.comma, .semicolon, .rpar, .eof]
 }
 
 fn fastc_scan_struct_field_attribute(mut scan scanner.Scanner) !(token.Token, bool, bool) {
@@ -196,7 +213,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				receiver_type = fastc_c_declared_type_name(type_key)
 				receiver_key = type_key
 				tok = scan.scan()
-				if tok != .name {
+				if tok != .name && !tok.is_keyword() {
 					return error('fastc parser does not support static method declaration in ${path}')
 				}
 				name = scan.lit
@@ -231,7 +248,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			mut is_variadic := false
 			for tok != .rpar {
 				mut parameter_is_mut := false
-				if tok in [.key_mut, .key_shared] {
+				if tok == .key_mut || (tok == .key_shared && !fastc_shared_parameter_is_name(scan, path, header.module_name, header.imports, declared_types, prefs.building_v)) {
 					parameter_is_mut = true
 					tok = scan.scan()
 				}
@@ -248,11 +265,12 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 					}
 					continue
 				}
-				if tok != .name {
+				if tok !in [.name, .key_shared] {
 					return error('fastc parser does not support function `${name}` parameter token `${tok.str()}` in ${path}')
 				}
 				parameter_name_or_type := scan.lit
 				tok = scan.scan()
+				mut parameter_name_count := 1
 				if is_c_function && tok == .dot {
 					tok = scan.scan()
 					if parameter_name_or_type != 'C' || tok != .name {
@@ -286,22 +304,29 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 					}
 					continue
 				}
-				if tok == .comma {
-					return error('fastc parser does not support grouped parameter names in ${path}')
+				for tok == .comma {
+					tok = scan.scan()
+					if !fastc_token_can_be_decl_name(tok) {
+						return error('fastc parser does not support grouped function parameter token `${tok.str()}` in ${path}')
+					}
+					parameter_name_count++
+					tok = scan.scan()
 				}
 				if tok == .ellipsis {
 					is_variadic = true
 				}
-				parameter_type, next_token := fastc_scan_type(mut scan, tok, path,
-					header.module_name, header.imports, declared_types, prefs.building_v) or {
+				parameter_type, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v) or {
 					return error('fastc function `${name}` parameter: ${err.msg()}')
 				}
-				parameter_types << if parameter_is_mut && !parameter_type.ends_with('*') {
+				stored_parameter_type := if parameter_is_mut && !parameter_type.ends_with('*') {
 					parameter_type + '*'
 				} else {
 					parameter_type
 				}
-				parameter_mutability << parameter_is_mut
+				for _ in 0 .. parameter_name_count {
+					parameter_types << stored_parameter_type
+					parameter_mutability << parameter_is_mut
+				}
 				tok = next_token
 				if tok == .comma {
 					tok = scan.scan()
@@ -412,11 +437,13 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 			continue
 		}
 		mut parameter_is_mut := false
+		// Function aliases may omit parameter names, so `shared T` here is always
+		// the shared modifier followed by the type rather than a contextual name.
 		if tok in [.key_mut, .key_shared] {
 			parameter_is_mut = true
 			tok = scan.scan()
 		}
-		if tok == .name {
+		if tok in [.name, .key_shared] {
 			mut lookahead := scan
 			next_token := lookahead.scan()
 			if next_token in [.name, .amp, .and, .mul, .question, .not, .key_fn, .lsbr] {
@@ -741,6 +768,8 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 			tok = scan.scan()
 			for tok != .rpar {
 				mut parameter_is_mut := false
+				// Interface parameters may be type-only, so `shared T` is always the
+				// shared modifier followed by the type, matching the main parser.
 				if tok in [.key_mut, .key_shared] {
 					parameter_is_mut = true
 					tok = scan.scan()
@@ -749,7 +778,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 				// `handle(Request) Response`. When a leading plain name is followed by
 				// another type token it is the parameter name; otherwise the name
 				// itself starts the (unnamed) type.
-				if tok == .name {
+				if tok in [.name, .key_shared] {
 					mut lookahead := scan
 					after := lookahead.scan()
 					if after !in [.comma, .rpar, .dot] {
