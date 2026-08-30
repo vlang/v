@@ -4900,6 +4900,7 @@ fn (mut g FlatGen) rebuild_header_owned_c_typedefs() {
 		conditionals:           []CHeaderOwnedConditional{}
 	}
 	include_dirs := c_flag_include_dirs(effective_flags)
+	quote_include_dirs := c_flag_quote_include_dirs(effective_flags)
 	for forced_input in c_forced_include_typedef_inputs(effective_flags) {
 		g.collect_header_owned_c_typedefs_with_include_dirs('"${forced_input}"', '', include_dirs)
 	}
@@ -4922,6 +4923,7 @@ fn (mut g FlatGen) rebuild_header_owned_c_typedefs() {
 				vroot: g.compiler_vroot
 				source_file: event.source_file
 				include_dirs: include_dirs
+				quote_include_dirs: quote_include_dirs
 			})
 			name := c_directive_name(event.directive)
 			if depth == 0 && name in ['define', 'undef'] {
@@ -4999,6 +5001,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg
 		return
 	}
 	g.ensure_header_owned_macro_context()
+	quote_include_dirs := c_flag_quote_include_dirs(g.header_owned_effective_c_flags())
 	if g.header_owned_macro_context.conditionals.any(!it.current_possible) {
 		return
 	}
@@ -5010,7 +5013,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg
 		mut possible_literal_include_macros := g.header_owned_macro_context.literal_include_macros.clone()
 		mut seen := map[string]bool{}
 		mut found := false
-		for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		for path in c_header_owned_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs, quote_include_dirs, false) {
 			if !os.is_file(path) {
 				continue
 			}
@@ -5036,7 +5039,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg
 	}
 	mut seen := map[string]bool{}
 	mut found := false
-	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+	for path in c_header_owned_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs, quote_include_dirs, false) {
 		if !os.is_file(path) {
 			continue
 		}
@@ -5426,10 +5429,12 @@ fn c_header_define_name_and_value(directive string) (string, string, bool, strin
 			body := function_value[close_idx + 1..].trim_space()
 			_, _, body_is_invocation := c_header_function_macro_invocation(body)
 			params, _, _, valid_definition := c_header_function_macro_definition(function_value)
-			if body.starts_with('typedef ') || body_is_invocation || (valid_definition && body in params) {
+			is_expression := valid_definition && body.len > 0 && !body.contains(';') && !body.contains('{') && !body.contains('}')
+			if body.starts_with('typedef ') || body_is_invocation || (valid_definition && body in params) || is_expression {
 				// Retain direct typedef producers and single-invocation wrappers. Tracking every
-				// helper macro in a system header would make propagated states unnecessarily large.
-				// A single-parameter passthrough is also needed for include wrappers.
+				// statement macro in a system header would make propagated states unnecessarily
+				// large. Expression macros are also needed when later header conditions invoke them.
+				// A single-parameter passthrough is needed for include wrappers.
 				return name, '', false, function_value
 			}
 		}
@@ -5509,8 +5514,8 @@ fn c_header_owned_source_condition(directive string, state CHeaderMacroState, st
 		c_preprocessor_ifdef_macro_state(macro_name, state.defined, state.undefined, state.uncertain,
 			state.external_macros_possible, strict_iso_mode, target)
 	} else {
-		condition := c_header_condition_resolve_has_include(c_directive_arg(directive), state,
-			include_context)
+		expanded := c_header_expand_condition_function_macros(c_directive_arg(directive), state)
+		condition := c_header_condition_resolve_has_include(expanded, state, include_context)
 		c_header_objective_c_condition_state(condition, state.defined, state.undefined,
 			state.uncertain, state.macro_values, strict_iso_mode, target)
 	}
@@ -5534,6 +5539,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 	}
 	text := os.read_file(real_path) or { return c_header_macro_state_clone(state) }
 	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
+	quote_include_dirs := c_flag_quote_include_dirs(g.header_owned_effective_c_flags())
 	mut include_results := map[string]CHeaderIncludeResult{}
 	mut macro_line_index := 0
 	// Resolve includes from left to right so child macro effects determine later
@@ -5543,6 +5549,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			vroot: g.compiler_vroot
 			source_file: real_path
 			include_dirs: include_dirs
+			quote_include_dirs: quote_include_dirs
 		}
 		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
 			g.target, include_results, include_context)
@@ -5580,8 +5587,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		mut result_typedef_aliases := []string{}
 		if include_is_definitely_active {
 			for nested_include_arg in include_args {
-				paths := c_header_include_file_paths(nested_include_arg, g.compiler_vroot, real_path,
-					include_dirs, include_is_next)
+				paths := c_header_owned_include_file_paths(nested_include_arg, g.compiler_vroot, real_path, include_dirs, quote_include_dirs, include_is_next)
 				for nested_path in paths {
 					if !os.is_file(nested_path) {
 						continue
@@ -5598,8 +5604,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			}
 		} else {
 			for nested_include_arg in include_args {
-				paths := c_header_include_file_paths(nested_include_arg, g.compiler_vroot, real_path,
-					include_dirs, include_is_next)
+				paths := c_header_owned_include_file_paths(nested_include_arg, g.compiler_vroot, real_path, include_dirs, quote_include_dirs, include_is_next)
 				for nested_path in paths {
 					if !os.is_file(nested_path) {
 						continue
@@ -5647,6 +5652,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			vroot: g.compiler_vroot
 			source_file: real_path
 			include_dirs: include_dirs
+			quote_include_dirs: quote_include_dirs
 		})
 	if fallback_scan.has_pragma_once {
 		g.header_owned_pragma_once_seen[real_path] = true
@@ -6164,9 +6170,10 @@ struct CHeaderActiveScan {
 }
 
 struct CHeaderIncludeContext {
-	vroot        string
-	source_file  string
-	include_dirs []string
+	vroot              string
+	source_file        string
+	include_dirs       []string
+	quote_include_dirs []string
 }
 
 struct CHeaderIncludeResult {
@@ -6615,7 +6622,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 		} else {
 			pending_typedef_invocation = ''
 		}
-		if possibly_active && conditionals.len > 0 && name.len == 0 && !line_started_in_block_comment {
+		if possibly_active && conditionals.len > 0 && name.len == 0 && !line_started_in_block_comment && brace_depth == 0 {
 			alias_text := if typedef_expansion.len > 0 {
 				line + '\n' + typedef_expansion
 			} else {
@@ -7513,6 +7520,28 @@ fn c_flag_include_dirs(flags []string) []string {
 			dir = tok[2..]
 		} else if tok.starts_with('-isystem') && tok.len > '-isystem'.len {
 			dir = tok['-isystem'.len..].trim_left('=')
+		}
+		dir = dir.trim('"\'')
+		if dir.len > 0 && dir !in dirs {
+			dirs << dir
+		}
+	}
+	return dirs
+}
+
+fn c_flag_quote_include_dirs(flags []string) []string {
+	mut dirs := []string{}
+	mut expect_include_dir := false
+	for flag in flags {
+		tok := flag.trim_space()
+		mut dir := ''
+		if expect_include_dir {
+			dir = tok
+			expect_include_dir = false
+		} else if tok == '-iquote' {
+			expect_include_dir = true
+		} else if tok.starts_with('-iquote') && tok.len > '-iquote'.len {
+			dir = tok['-iquote'.len..].trim_left('=')
 		}
 		dir = dir.trim('"\'')
 		if dir.len > 0 && dir !in dirs {
@@ -11237,6 +11266,109 @@ fn c_header_include_file_paths(include_arg string, vroot string, source_file str
 	return paths
 }
 
+fn c_header_owned_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string, quote_include_dirs []string, include_next bool) []string {
+	clean := trimmed_space(include_arg)
+	if clean.len < 2 || clean[0] != `"` || clean[clean.len - 1] != `"` {
+		return c_header_include_file_paths(include_arg, vroot, source_file, include_dirs, include_next)
+	}
+	mut search_dirs := quote_include_dirs.clone()
+	for dir in include_dirs {
+		if dir !in search_dirs {
+			search_dirs << dir
+		}
+	}
+	return c_header_include_file_paths(include_arg, vroot, source_file, search_dirs, include_next)
+}
+
+fn c_header_expand_condition_function_macros(raw string, state CHeaderMacroState) string {
+	mut current := c_header_condition_without_comments(raw)
+	for _ in 0 .. 64 {
+		next, changed := c_header_expand_condition_function_macros_once(current, state)
+		current = next
+		if !changed {
+			break
+		}
+	}
+	return current
+}
+
+fn c_header_expand_condition_function_macros_once(raw string, state CHeaderMacroState) (string, bool) {
+	mut output := strings.new_builder(raw.len)
+	mut changed := false
+	mut quote := u8(0)
+	mut escaped := false
+	mut i := 0
+	for i < raw.len {
+		if quote != 0 {
+			output.write_u8(raw[i])
+			if escaped {
+				escaped = false
+			} else if raw[i] == `\\` {
+				escaped = true
+			} else if raw[i] == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if raw[i] in [`"`, `'`] {
+			quote = raw[i]
+			output.write_u8(raw[i])
+			i++
+			continue
+		}
+		if !fixed_array_len_ident_start(raw[i]) {
+			output.write_u8(raw[i])
+			i++
+			continue
+		}
+		mut name_end := i + 1
+		for name_end < raw.len && fixed_array_len_ident_char(raw[name_end]) && raw[name_end] != `.` {
+			name_end++
+		}
+		name := raw[i..name_end]
+		mut paren_open := name_end
+		for paren_open < raw.len && raw[paren_open].is_space() {
+			paren_open++
+		}
+		if paren_open >= raw.len || raw[paren_open] != `(` || name !in state.defined || name in state.undefined || name in state.uncertain || name !in state.function_macro_values {
+			output.write_string(name)
+			i = name_end
+			continue
+		}
+		close_offset := fixed_array_len_matching_paren(raw[paren_open..], 0)
+		if close_offset < 0 {
+			output.write_string(name)
+			i = name_end
+			continue
+		}
+		paren_close := paren_open + close_offset
+		args, valid_args := c_header_function_macro_arguments(raw[paren_open + 1..paren_close])
+		definition := state.function_macro_values[name]
+		params, body, variadic, valid_definition := c_header_function_macro_definition(definition)
+		if !valid_args || !valid_definition {
+			output.write_string(raw[i..paren_close + 1])
+			i = paren_close + 1
+			continue
+		}
+		bound_args := c_header_function_macro_bound_args(params, args, variadic) or {
+			output.write_string(raw[i..paren_close + 1])
+			i = paren_close + 1
+			continue
+		}
+		substituted := c_header_substitute_function_macro(body, params, bound_args, state.defined, state.undefined, state.uncertain, state.macro_values)
+		replacement := c_header_apply_token_pasting(substituted) or {
+			output.write_string(raw[i..paren_close + 1])
+			i = paren_close + 1
+			continue
+		}
+		output.write_string(replacement)
+		changed = changed || replacement != raw[i..paren_close + 1]
+		i = paren_close + 1
+	}
+	return output.str(), changed
+}
+
 fn c_header_condition_resolve_has_include(raw string, state CHeaderMacroState, include_context CHeaderIncludeContext) string {
 	mut result := strings.new_builder(raw.len)
 	mut i := 0
@@ -11279,8 +11411,7 @@ fn c_header_condition_resolve_has_include(raw string, state CHeaderMacroState, i
 		is_next := predicate == '__has_include_next'
 		mut found := false
 		for include_arg in include_args {
-			for path in c_header_include_file_paths(include_arg, include_context.vroot,
-				include_context.source_file, include_context.include_dirs, is_next) {
+			for path in c_header_owned_include_file_paths(include_arg, include_context.vroot, include_context.source_file, include_context.include_dirs, include_context.quote_include_dirs, is_next) {
 				if os.is_file(path) {
 					found = true
 					break

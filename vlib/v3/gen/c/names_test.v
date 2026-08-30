@@ -708,6 +708,33 @@ fn test_header_owned_scan_resolves_ambient_include_dirs() {
 	assert g.header_owned_c_typedefs['AmbientAlias']
 }
 
+fn test_header_owned_scan_resolves_quote_only_include_dirs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_quote_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source_dir := os.join_path(dir, 'source')
+	quote_dir := os.join_path(dir, 'quote')
+	os.mkdir_all(source_dir)!
+	os.mkdir_all(quote_dir)!
+	os.write_file(os.join_path(quote_dir, 'types.h'), 'typedef struct QuoteOnly QuoteOnlyAlias;\n')!
+	os.write_file(os.join_path(quote_dir, 'angle.h'), 'typedef struct AngleOnly AngleOnlyAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.QuoteOnlyAlias'] = true
+	tc.c_typedef_structs['C.AngleOnlyAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-iquote', quote_dir]
+	g.collect_header_owned_c_typedefs('"types.h"', os.join_path(source_dir, 'sample.v'))
+	g.collect_header_owned_c_typedefs('<angle.h>', os.join_path(source_dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['QuoteOnlyAlias']
+	assert !g.header_owned_c_typedefs['AngleOnlyAlias']
+}
+
 fn test_header_owned_compiler_state_preserves_version_values() {
 	values := c_header_compiler_predefined_macro_values_from_output('#define unrelated 9\n#define __GNUC__ 12\n#define __GNUC_MINOR__ 2\n#define __clang_major__ 18\n#define __x86_64__ 1\n#define __aarch64__ 1\n#define __STDC_VERSION__ 201710L\n#define __has_builtin(x) __builtin_has_attribute(x)\n')
 	assert values == {
@@ -793,6 +820,24 @@ fn test_header_owned_scan_expands_nested_invoked_function_typedef_macros() {
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
 }
 
+fn test_header_owned_scan_expands_function_macros_in_conditions() {
+	state := CHeaderMacroState{
+		defined: {
+			'__GNUC__': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'__GNUC__': '12'
+		}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define VERSION_AT_LEAST(n) (__GNUC__ >= (n))\n#if VERSION_AT_LEAST(4)\ntypedef struct Active ActiveAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['ActiveAlias'], scan.text
+}
+
 fn test_header_owned_scan_expands_macros_inside_typedef_replacements() {
 	state := CHeaderMacroState{
 		defined: map[string]bool{}
@@ -821,6 +866,21 @@ fn test_header_owned_scan_excludes_function_scoped_typedef_macro_invocations() {
 	})
 	assert !scan.typedef_macro_expansions.contains('LocalAlias')
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl GlobalAlias;'
+}
+
+fn test_header_owned_scan_excludes_conditional_function_scoped_typedefs() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+		external_macros_possible: true
+	}
+	scan := c_header_definitely_active_scan('void helper(void) {\n#if EXTERNAL_LAYOUT\ntypedef struct First LocalAlias;\n#else\ntypedef struct Second LocalAlias;\n#endif\n}\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert 'LocalAlias' !in c_header_owned_typedef_aliases(scan.typedef_macro_expansions), scan.typedef_macro_expansions
 }
 
 fn test_header_owned_scan_expands_variadic_typedef_macros() {
