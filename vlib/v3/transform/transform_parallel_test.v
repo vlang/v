@@ -605,7 +605,7 @@ fn test_string_interp_expansion_estimate_includes_possible_temp_hoisting() {
 		children_start: index_start
 		children_count: 2
 	})
-	part_count := 1001
+	part_count := 600
 	interp_start := a.children.len
 	for _ in 0 .. part_count - 1 {
 		a.children << literal
@@ -621,7 +621,7 @@ fn test_string_interp_expansion_estimate_includes_possible_temp_hoisting() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
-	join_estimate := 2 * (part_count - 1)
+	join_estimate := 3 * (part_count - 1)
 	assert join_estimate < deferred_map_expansion_threshold
 	assert estimate == join_estimate + part_count * string_interp_hoisted_part_expansion_estimate
 	assert estimate > deferred_map_expansion_threshold
@@ -780,7 +780,7 @@ fn test_external_map_expansion_estimate_includes_logical_rewrites() {
 		kind: .bool_literal
 		value: 'true'
 	})
-	for i in 0 .. deferred_map_expansion_threshold + 1 {
+	for i in 0 .. deferred_map_expansion_threshold / 2 + 1 {
 		rhs := a.add_node(flat.Node{
 			kind: .bool_literal
 			value: 'false'

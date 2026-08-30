@@ -207,7 +207,8 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 		}
 		if node.kind == .infix && node.op in [.logical_and, .logical_or] {
 			// Logical conditions are rebuilt through make_infix during smartcast lowering.
-			estimate++
+			// The new node has two child IDs, so charge the larger append pool.
+			estimate += int(node.children_count)
 		}
 		is_string_infix := node.kind == .infix && node.op in [.plus, .eq, .ne, .lt, .gt, .le, .ge] && node.children_count >= 2 && (t.is_string_type(t.a.child(&node, 0)) || t.is_string_type(t.a.child(&node, 1)))
 		if is_string_infix {
