@@ -202,3 +202,19 @@ fn test_owned_intermediate_field_chain_borrows() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5', run.output
 }
+
+// An owned field used only by a comparison does not escape. The accessor can borrow the
+// array element even when its type has no clone method.
+fn test_owned_field_comparison_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_field_comparison',
+		"struct E {\n\tname string\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) has_name(name string) bool {\n\treturn t.entries.last().name == name\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello' }\n\tprintln(t.has_name('hello'))\n}\n",
+		'')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('cannot return an independent array element'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_field_comparison_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'true', run.output
+}

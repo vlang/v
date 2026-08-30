@@ -6025,11 +6025,12 @@ fn (tc &TypeChecker) known_sum_constructor_name(name string) ?string {
 }
 
 // array_accessor_result_is_borrowed reports whether a `first()`/`last()` call result is
-// consumed as a borrow — read through a chain of field selectors whose final value does not
-// own heap data (`arr.last().size`, `arr.last().name.len`) — rather than escaping as an
-// independent value. Such a read keeps the element owned by the array, so the accessor needs
-// no `clone()` and the transformer can lower it to an in-place `arr[..]` access. Two shapes
-// are excluded so the copying accessor semantics are kept instead:
+// consumed as a borrow — read through a chain of field selectors whose final value either
+// does not own heap data (`arr.last().size`, `arr.last().name.len`) or is consumed by a
+// comparison (`arr.last().name == 'x'`) — rather than escaping as an independent value. Such
+// a read keeps the element owned by the array, so the accessor needs no `clone()` and the
+// transformer can lower it to an in-place `arr[..]` access. Two shapes are excluded so the
+// copying accessor semantics are kept instead:
 //   * a bound method value (`arr.last().method`) — closure generation shallow-copies the
 //     receiver, so a borrowed element would share heap fields with the array;
 //   * a chain whose final value itself owns heap data (`arr.last().name`, where `name` is a
@@ -6061,8 +6062,22 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	if final_field == flat.empty_node {
 		return false
 	}
-	// The value that ultimately escapes the chain must not own heap data.
-	return !tc.ownership_type_requires_destruction(tc.resolve_type(final_field))
+	if !tc.ownership_type_requires_destruction(tc.resolve_type(final_field)) {
+		return true
+	}
+	// An owned field remains borrowed when a comparison consumes it immediately; only the
+	// boolean result escapes. Calls and assignments stay on the copying path because they can
+	// retain the owned value.
+	mut consumer_id := tc.direct_parent_id(current)
+	for consumer_id != flat.empty_node && int(consumer_id) >= 0
+		&& int(consumer_id) < tc.a.nodes.len && tc.a.node(consumer_id).kind == .paren {
+		consumer_id = tc.direct_parent_id(consumer_id)
+	}
+	if consumer_id == flat.empty_node || int(consumer_id) < 0 || int(consumer_id) >= tc.a.nodes.len {
+		return false
+	}
+	consumer := tc.a.node(consumer_id)
+	return consumer.kind == .infix && consumer.op in [.eq, .ne, .lt, .gt, .le, .ge]
 }
 
 // should_diagnose reports whether should diagnose applies in types.
