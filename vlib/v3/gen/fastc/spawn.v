@@ -68,7 +68,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 	if g.tok == .dot {
 		if imported_module := g.imports[callee] {
 			g.next()
-			if g.tok != .name {
+			if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.dot)) {
 				return g.unsupported('spawn qualified callee')
 			}
 			callee = g.lit
@@ -89,7 +89,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 				return g.unsupported('spawn on receiver `${callee}`')
 			}
 			g.next() // consume `.`
-			if g.tok != .name {
+			if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.dot)) {
 				return g.unsupported('spawn method name')
 			}
 			method_name := g.lit

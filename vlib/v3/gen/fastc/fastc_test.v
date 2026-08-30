@@ -7662,6 +7662,32 @@ fn main() {
 	assert c_source.contains('args->result = Worker_run(args->arg0);'), c_source
 }
 
+fn test_selfhost_spawn_method_named_shared() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	source := 'module main
+
+struct Worker {
+	id int
+}
+
+fn (w Worker) shared() int {
+	return w.id
+}
+
+fn main() {
+	w := Worker{ id: 5 }
+	h := spawn w.shared()
+	println(h.wait())
+}
+'
+	c_source := generate(source, 'selfhost_spawn_shared_method.v', prefs) or { panic(err) }
+	assert c_source.contains('args->result = Worker_shared(args->arg0);'), c_source
+}
+
 fn test_selfhost_or_block_with_trailing_value_fallback() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
