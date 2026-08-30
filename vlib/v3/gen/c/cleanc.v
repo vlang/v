@@ -4998,8 +4998,35 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg
 		return
 	}
 	if g.header_owned_macro_context.conditionals.any(!it.current_definite) {
-		g.header_owned_macro_context.state = c_header_macro_state_after_unknown_include(
-			g.header_owned_macro_context.state)
+		mut owned_before := g.header_owned_c_typedefs.clone()
+		mut pragma_once_before := g.header_owned_pragma_once_seen.clone()
+		mut possible_include_macros := g.header_owned_macro_context.include_macros.clone()
+		mut possible_dynamic_include_macros := g.header_owned_macro_context.dynamic_include_macros.clone()
+		mut possible_literal_include_macros := g.header_owned_macro_context.literal_include_macros.clone()
+		mut seen := map[string]bool{}
+		mut found := false
+		for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+			if !os.is_file(path) {
+				continue
+			}
+			g.header_owned_macro_context.state = g.collect_header_owned_c_typedef_file(path, include_dirs, g.header_owned_macro_context.state, mut seen, mut possible_include_macros, mut possible_dynamic_include_macros, mut possible_literal_include_macros)
+			found = true
+			break
+		}
+		if !found {
+			g.collect_known_header_owned_c_typedef_names(include_arg)
+			g.header_owned_macro_context.state = c_header_macro_state_after_unknown_include(g.header_owned_macro_context.state)
+		}
+		conditional_idx := g.header_owned_macro_context.conditionals.len - 1
+		mut conditional := g.header_owned_macro_context.conditionals[conditional_idx]
+		for alias, _ in g.header_owned_c_typedefs {
+			if alias !in owned_before {
+				conditional.current_branch_typedef_aliases[alias] = true
+			}
+		}
+		g.header_owned_macro_context.conditionals[conditional_idx] = conditional
+		g.header_owned_c_typedefs = owned_before.move()
+		g.header_owned_pragma_once_seen = pragma_once_before.move()
 		return
 	}
 	mut seen := map[string]bool{}
@@ -5235,14 +5262,16 @@ fn (mut g FlatGen) collect_header_owned_source_macro_directive(directive string)
 		condition := c_header_owned_source_condition(directive, g.header_owned_macro_context.state,
 			c_effective_strict_iso_mode(g.c_flags, g.c99_mode), g.target)
 		g.header_owned_macro_context.conditionals << CHeaderOwnedConditional{
-			entry_state:      c_header_macro_state_clone(g.header_owned_macro_context.state)
-			branch_states:    []CHeaderMacroState{}
-			parent_possible:  parent_possible
-			parent_definite:  parent_definite
+			entry_state: c_header_macro_state_clone(g.header_owned_macro_context.state)
+			branch_states: []CHeaderMacroState{}
+			branch_typedef_aliases: []map[string]bool{}
+			current_branch_typedef_aliases: map[string]bool{}
+			parent_possible: parent_possible
+			parent_definite: parent_definite
 			current_possible: parent_possible && condition >= 0
 			current_definite: parent_definite && condition > 0
-			taken_known:      condition != 0
-			taken:            condition > 0
+			taken_known: condition != 0
+			taken: condition > 0
 		}
 		return
 	}
@@ -5251,7 +5280,9 @@ fn (mut g FlatGen) collect_header_owned_source_macro_directive(directive string)
 		mut conditional := g.header_owned_macro_context.conditionals[conditional_idx]
 		if conditional.current_possible {
 			conditional.branch_states << c_header_macro_state_clone(g.header_owned_macro_context.state)
+			conditional.branch_typedef_aliases << conditional.current_branch_typedef_aliases.clone()
 		}
+		conditional.current_branch_typedef_aliases = map[string]bool{}
 		g.header_owned_macro_context.state = c_header_macro_state_clone(conditional.entry_state)
 		if name == 'else' {
 			conditional.current_possible = conditional.parent_possible
@@ -5292,13 +5323,28 @@ fn (mut g FlatGen) collect_header_owned_source_macro_directive(directive string)
 			mut conditional := g.header_owned_macro_context.conditionals.last()
 			if conditional.current_possible {
 				conditional.branch_states << c_header_macro_state_clone(g.header_owned_macro_context.state)
+				conditional.branch_typedef_aliases << conditional.current_branch_typedef_aliases.clone()
 			}
 			if !conditional.has_else && !(conditional.taken_known && conditional.taken) {
 				conditional.branch_states << c_header_macro_state_clone(conditional.entry_state)
+				conditional.branch_typedef_aliases << map[string]bool{}
 			}
 			g.header_owned_macro_context.state = c_header_macro_states_merge(conditional.branch_states,
 				conditional.entry_state)
+			common_typedef_aliases := c_header_typedef_alias_state_intersection(conditional.branch_typedef_aliases)
 			g.header_owned_macro_context.conditionals.delete_last()
+			if g.header_owned_macro_context.conditionals.len > 0 {
+				parent_idx := g.header_owned_macro_context.conditionals.len - 1
+				mut parent := g.header_owned_macro_context.conditionals[parent_idx]
+				for alias in common_typedef_aliases {
+					parent.current_branch_typedef_aliases[alias] = true
+				}
+				g.header_owned_macro_context.conditionals[parent_idx] = parent
+			} else {
+				for alias in common_typedef_aliases {
+					g.header_owned_c_typedefs[alias] = true
+				}
+			}
 		}
 		return
 	}
@@ -6655,7 +6701,11 @@ fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool
 	}
 	for _ in 0 .. 64 {
 		clean := replacement.trim_space()
-		if clean.len == 0 || clean.starts_with('typedef ') {
+		if clean.len == 0 {
+			break
+		}
+		if clean.starts_with('typedef ') {
+			replacement = c_header_expand_macro_argument(clean, defined, undefined, uncertain, macro_values)
 			break
 		}
 		if c_header_struct_tag(clean) == clean {

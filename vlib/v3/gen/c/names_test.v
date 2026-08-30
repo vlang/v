@@ -758,6 +758,20 @@ fn test_header_owned_scan_expands_nested_invoked_function_typedef_macros() {
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
 }
 
+fn test_header_owned_scan_expands_macros_inside_typedef_replacements() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define NAME Alias\n#define DECL typedef struct Impl NAME;\nDECL\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
+}
+
 fn test_header_owned_scan_excludes_function_scoped_typedef_macro_invocations() {
 	state := CHeaderMacroState{
 		defined: map[string]bool{}
@@ -829,6 +843,35 @@ fn test_header_owned_scan_retains_alias_from_conditional_child_headers() {
 	g.header_owned_macro_context.state.external_macros_possible = true
 	g.collect_header_owned_c_typedefs('"parent.h"', os.join_path(dir, 'sample.v'))
 	assert g.header_owned_c_typedefs['CommonAlias']
+}
+
+fn test_header_owned_scan_retains_alias_from_source_conditional_includes() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_source_conditional_header_aliases_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'first.h'), 'typedef struct First CommonAlias;\ntypedef struct FirstOnly FirstOnlyAlias;\n')!
+	os.write_file(os.join_path(dir, 'second.h'), 'typedef struct Second CommonAlias;\ntypedef struct SecondOnly SecondOnlyAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	for alias in ['CommonAlias', 'FirstOnlyAlias', 'SecondOnlyAlias'] {
+		tc.c_typedef_structs['C.${alias}'] = true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.ensure_header_owned_macro_context()
+	g.header_owned_macro_context.state.external_macros_possible = true
+	g.collect_header_owned_source_macro_directive('#if EXTERNAL_LAYOUT')
+	g.collect_header_owned_c_typedefs('"first.h"', os.join_path(dir, 'sample.v'))
+	g.collect_header_owned_source_macro_directive('#else')
+	g.collect_header_owned_c_typedefs('"second.h"', os.join_path(dir, 'sample.v'))
+	g.collect_header_owned_source_macro_directive('#endif')
+	assert g.header_owned_c_typedefs['CommonAlias']
+	assert !g.header_owned_c_typedefs['FirstOnlyAlias']
+	assert !g.header_owned_c_typedefs['SecondOnlyAlias']
 }
 
 fn test_header_owned_scan_collects_forced_include_typedefs() {
