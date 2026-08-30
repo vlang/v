@@ -653,6 +653,36 @@ fn test_header_owned_compiler_state_includes_clang_guards() {
 	assert state.defined['__GNUC__']
 }
 
+fn test_header_owned_compiler_state_preserves_version_values() {
+	values := c_header_compiler_predefined_macro_values_from_output('#define unrelated 9\n#define __GNUC__ 12\n#define __GNUC_MINOR__ 2\n#define __clang_major__ 18\n')
+	assert values == {
+		'__GNUC__':        '12'
+		'__GNUC_MINOR__':  '2'
+		'__clang_major__': '18'
+	}
+	known, active := c_header_objective_c_condition_state('__GNUC__ >= 4', {
+		'__GNUC__': true
+	}, map[string]bool{}, map[string]bool{}, values, false, pref.Target{
+		os: 'linux'
+	})
+	assert known
+	assert active
+}
+
+fn test_header_owned_scan_expands_only_invoked_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define UNUSED typedef struct Wrong UnusedAlias;\n#define DECLARE_ALIAS typedef struct Impl Alias;\nDECLARE_ALIAS\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert !scan.typedef_macro_expansions.contains('UnusedAlias')
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
+}
+
 fn test_large_transitive_header_tree_is_preserved() {
 	root := os.join_path(os.temp_dir(), 'v3_large_transitive_header_tree_test')
 	os.rmdir_all(root) or {}

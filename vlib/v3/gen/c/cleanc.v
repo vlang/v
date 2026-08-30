@@ -5005,6 +5005,16 @@ fn (mut g FlatGen) ensure_header_owned_macro_context() {
 
 fn (g &FlatGen) header_owned_initial_macro_state() CHeaderMacroState {
 	mut state := c_header_macro_state_for_flags(g.c_flags)
+	compiler_values := c_header_compiler_predefined_macro_values(g.ccompiler)
+	for name, value in compiler_values {
+		if name in state.defined || name in state.undefined {
+			continue
+		}
+		state.defined[name] = true
+		if value.len > 0 {
+			state.macro_values[name] = value
+		}
+	}
 	compiler := g.ccompiler.to_lower()
 	mut predefined := []string{}
 	if compiler.contains('clang') {
@@ -5017,12 +5027,53 @@ fn (g &FlatGen) header_owned_initial_macro_state() CHeaderMacroState {
 		predefined << '__TINYC__'
 	}
 	for name in predefined {
+		if name in state.defined || name in state.undefined {
+			continue
+		}
 		state.undefined.delete(name)
 		state.uncertain.delete(name)
 		state.defined[name] = true
-		state.macro_values[name] = '1'
 	}
 	return state
+}
+
+fn c_header_compiler_predefined_macro_values(ccompiler string) map[string]string {
+	if ccompiler.len == 0 || ccompiler.to_lower().contains('msvc') || ccompiler.to_lower().contains('cl.exe') {
+		return map[string]string{}
+	}
+	path := os.join_path(os.vtmp_dir(), 'v3_header_macros_${os.getpid()}_${time.now().unix_nano()}.c')
+	defer {
+		os.rm(path) or {}
+	}
+	os.write_file(path, '') or { return map[string]string{} }
+	result := cmdexec.run(ccompiler, ['-dM', '-E', '-x', 'c', path])
+	if result.exit_code != 0 {
+		return map[string]string{}
+	}
+	return c_header_compiler_predefined_macro_values_from_output(result.output)
+}
+
+fn c_header_compiler_predefined_macro_values_from_output(output string) map[string]string {
+	mut values := map[string]string{}
+	for line in output.split_into_lines() {
+		if !line.starts_with('#define ') {
+			continue
+		}
+		rest := line['#define '.len..]
+		mut end := 0
+		for end < rest.len && (rest[end].is_alnum() || rest[end] == `_`) {
+			end++
+		}
+		if end == 0 {
+			continue
+		}
+		name := rest[..end]
+		if !name.starts_with('__GNUC') && !name.starts_with('__clang') && !name.starts_with('_MSC_VER') && !name.starts_with('_MSC_FULL_VER') && name != '__TINYC__' {
+			continue
+		}
+		values[name] = rest[end..].trim_space()
+	}
+	return values
 }
 
 fn (mut g FlatGen) collect_header_owned_source_macro_directive(directive string) {
@@ -5263,9 +5314,9 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			}
 		}
 		if unresolved_include < 0 {
-			c_record_active_include_macro_definitions(scan.text, macro_line_index, -1, mut
-				include_macros, mut dynamic_include_macros, mut literal_include_macros)
+			c_record_active_include_macro_definitions(scan.text, macro_line_index, -1, mut include_macros, mut dynamic_include_macros, mut literal_include_macros)
 			g.collect_header_owned_c_typedef_text(scan.text)
+			g.collect_header_owned_c_typedef_text(scan.typedef_macro_expansions)
 			return c_header_macro_state_clone(scan.final_state)
 		}
 		include_key := scan.include_keys[unresolved_include]
@@ -5308,9 +5359,9 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		}
 	}
 	fallback_scan := c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
-	c_record_active_include_macro_definitions(fallback_scan.text, macro_line_index, -1, mut
-		include_macros, mut dynamic_include_macros, mut literal_include_macros)
+	c_record_active_include_macro_definitions(fallback_scan.text, macro_line_index, -1, mut include_macros, mut dynamic_include_macros, mut literal_include_macros)
 	g.collect_header_owned_c_typedef_text(fallback_scan.text)
+	g.collect_header_owned_c_typedef_text(fallback_scan.typedef_macro_expansions)
 	return c_header_macro_state_clone(fallback_scan.final_state)
 }
 
@@ -5782,6 +5833,7 @@ mut:
 
 struct CHeaderActiveScan {
 	text                        string
+	typedef_macro_expansions    string
 	include_states              []CHeaderMacroState
 	include_keys                []string
 	include_args                []string
@@ -5958,8 +6010,10 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	mut macro_names := map[string]bool{}
 	mut possibly_active_macro_names := map[string]bool{}
 	mut output := strings.new_builder(text.len)
+	mut typedef_macro_expansions := strings.new_builder(256)
 	mut in_block_comment := false
 	for line_index, line in c_join_continued_lines(text) {
+		line_started_in_block_comment := in_block_comment
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
@@ -6116,17 +6170,23 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 		}
 		if definitely_active {
 			output.writeln(line)
+			if name.len == 0 && !line_started_in_block_comment {
+				if expansion := c_header_invoked_typedef_macro_expansion(line, defined, undefined, uncertain, macro_values) {
+					typedef_macro_expansions.writeln(expansion)
+				}
+			}
 		} else {
 			output.writeln('')
 		}
 	}
 	return CHeaderActiveScan{
-		text:                        output.str()
-		include_states:              include_states
-		include_keys:                include_keys
-		include_args:                include_args
-		include_definitely_active:   include_definitely_active
-		macro_names:                 macro_names.keys()
+		text: output.str()
+		typedef_macro_expansions: typedef_macro_expansions.str()
+		include_states: include_states
+		include_keys: include_keys
+		include_args: include_args
+		include_definitely_active: include_definitely_active
+		macro_names: macro_names.keys()
 		possibly_active_macro_names: possibly_active_macro_names.keys()
 		final_state:                 CHeaderMacroState{
 			defined:                  defined
@@ -6135,6 +6195,37 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			macro_values:             macro_values
 			external_macros_possible: external_macros_possible
 		}
+	}
+}
+
+fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string) ?string {
+	mut invocation := c_text_without_literals(c_header_condition_without_comments(line)).trim_space()
+	semicolon := invocation.ends_with(';')
+	if semicolon {
+		invocation = invocation[..invocation.len - 1].trim_space()
+	}
+	if invocation.len == 0 || c_header_struct_tag(invocation) != invocation || invocation !in defined || invocation in undefined || invocation in uncertain {
+		return none
+	}
+	mut replacement := macro_values[invocation] or { return none }
+	mut seen := map[string]bool{}
+	seen[invocation] = true
+	for _ in 0 .. 64 {
+		clean := replacement.trim_space()
+		if clean.len == 0 || c_header_struct_tag(clean) != clean || clean !in defined || clean in undefined || clean in uncertain || seen[clean] {
+			break
+		}
+		seen[clean] = true
+		replacement = macro_values[clean] or { break }
+	}
+	clean_replacement := replacement.trim_space()
+	if !clean_replacement.starts_with('typedef ') {
+		return none
+	}
+	return if semicolon && !clean_replacement.ends_with(';') {
+		clean_replacement + ';'
+	} else {
+		clean_replacement
 	}
 }
 

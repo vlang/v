@@ -176,6 +176,8 @@ fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 	}
 	os.write_file(os.join_path(root, 'valued.h'), '#if FEATURE_VALUE == 7\ntypedef struct { int value; } ValuedAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'compiler.h'), '#if defined(__clang__) || defined(__GNUC__)\ntypedef struct { int value; } CompilerAlias;\n#endif\n')!
+	os.write_file(os.join_path(root, 'compiler_version.h'), '#if __GNUC__ >= 4\ntypedef struct { int value; } CompilerVersionAlias;\n#endif\n')!
+	os.write_file(os.join_path(root, 'invoked_macro.h'), '#define UNUSED_ALIAS typedef struct Wrong UnusedMacroAlias;\n#define DECLARE_INVOKED_ALIAS typedef struct { int value; } InvokedMacroAlias;\nDECLARE_INVOKED_ALIAS\n')!
 	os.write_file(os.join_path(root, 'child.h'), '#ifdef CHILD_FEATURE\ntypedef struct { int value; } RevisitedAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'child_wrapper.h'), '#include "child.h"\n#define CHILD_FEATURE 1\n#include "child.h"\n')!
 	os.write_file(os.join_path(root, 'lazy_one.h'), 'typedef struct { int value; } LazyAlias;\n')!
@@ -196,6 +198,8 @@ fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 #preinclude "preinclude.h"
 #include "valued.h"
 #include "compiler.h"
+#include "compiler_version.h"
+#include "invoked_macro.h"
 #include "lazy_wrapper.h"
 #include <once.h>
 #define ONCE_FEATURE
@@ -217,6 +221,10 @@ struct C.ValuedAlias { value int }
 @[typedef]
 struct C.CompilerAlias { value int }
 @[typedef]
+struct C.CompilerVersionAlias { value int }
+@[typedef]
+struct C.InvokedMacroAlias { value int }
+@[typedef]
 struct C.RevisitedAlias { value int }
 @[typedef]
 struct C.LazyAlias { value int }
@@ -235,6 +243,7 @@ struct C.CommonAlias { value int }
 
 fn main() {
 	values := [C.ValuedAlias{ value: 1 }.value, C.CompilerAlias{ value: 2 }.value,
+		C.CompilerVersionAlias{ value: 11 }.value, C.InvokedMacroAlias{ value: 12 }.value,
 		C.RevisitedAlias{ value: 3 }.value, C.LazyAlias{ value: 4 }.value,
 		C.OnceAlias{ value: 5 }.value, C.AttributeAlias{ value: 6 }.value,
 		C.MacroAlias{ value: 7 }.value, C.PreincludeAlias{ value: 8 }.value,
@@ -250,10 +259,10 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '55', run.output
+	assert run.output.trim_space() == '78', run.output
 	generated := os.read_file(out + '.c')!
-	for owned in ['ValuedAlias', 'CompilerAlias', 'RevisitedAlias', 'AttributeAlias', 'RepeatedAlias',
-		'CommonAlias'] {
+	for owned in ['ValuedAlias', 'CompilerAlias', 'CompilerVersionAlias', 'InvokedMacroAlias',
+		'RevisitedAlias', 'AttributeAlias', 'RepeatedAlias', 'CommonAlias'] {
 		assert !generated.contains('struct ${owned} {'), generated
 	}
 	for fallback in ['LazyAlias', 'OnceAlias', 'MacroAlias', 'PreincludeAlias'] {
