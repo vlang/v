@@ -133,7 +133,9 @@ fn (t &Transformer) dynamic_array_init_requires_deferral(id flat.NodeId, node fl
 			continue
 		}
 		if field.value == 'init' {
-			return false
+			// Explicit element initializers are substituted and transformed inside a
+			// synthesized fill loop, whose expansion is not bounded by this source node.
+			return true
 		}
 		if field.value == 'len' {
 			has_len = true

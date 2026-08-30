@@ -517,6 +517,50 @@ fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_defers_dynamic_array_explicit_init() {
+	mut a := flat.FlatAst.new()
+	length := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '4'
+		typ: 'int'
+	})
+	len_field_start := a.children.len
+	a.children << length
+	len_field := a.add_node(flat.Node{
+		kind: .field_init
+		value: 'len'
+		children_start: len_field_start
+		children_count: 1
+	})
+	initial := a.add_node(flat.Node{
+		kind: .ident
+		value: 'index'
+		typ: 'int'
+	})
+	init_field_start := a.children.len
+	a.children << initial
+	init_field := a.add_node(flat.Node{
+		kind: .field_init
+		value: 'init'
+		children_start: init_field_start
+		children_count: 1
+	})
+	array_start := a.children.len
+	a.children << len_field
+	a.children << init_field
+	root := a.add_node(flat.Node{
+		kind: .array_init
+		value: 'int'
+		typ: '[]int'
+		children_start: array_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_defers_nested_empty_fixed_array_runtime_init() {
 	mut a := flat.FlatAst.new()
 	root := a.add_node(flat.Node{
@@ -1308,6 +1352,47 @@ fn test_pointer_formatted_interp_skips_aggregate_stringify_expansion() {
 
 	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
 	assert estimate == 0
+	assert !needs_deferred_lowering
+}
+
+fn test_pointer_formatted_interp_still_accounts_for_temp_hoisting() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+		typ: 'Any'
+	})
+	cast_start := a.children.len
+	a.children << value
+	cast := a.add_node(flat.Node{
+		kind: .as_expr
+		value: '[]int'
+		typ: '[]int'
+		children_start: cast_start
+		children_count: 1
+	})
+	format_start := a.children.len
+	a.children << cast
+	formatted := a.add_node(flat.Node{
+		kind: .directive
+		value: 'string_interp_format'
+		typ: 'p'
+		children_start: format_start
+		children_count: 1
+	})
+	interp_start := a.children.len
+	a.children << formatted
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert estimate == string_interp_hoisted_part_expansion_estimate
 	assert !needs_deferred_lowering
 }
 
