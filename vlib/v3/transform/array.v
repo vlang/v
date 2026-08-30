@@ -3287,7 +3287,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt_id flat.NodeI
 	t.array_map_update_local_pointer_origins_flow(stmt_id, elem_name, mut locals, mut loop_exits, mut return_exits, '', 0)
 }
 
-fn (mut t Transformer) array_map_loop_pointer_origin_fixed_point(stmt flat.Node, elem_name string, initial map[string]bool, active_defer_count int) map[string]bool {
+fn (mut t Transformer) array_map_loop_pointer_origin_fixed_point(stmt flat.Node, elem_name string, initial map[string]bool, loop_label string, active_defer_count int) map[string]bool {
 	mut loop_origins := initial.clone()
 	for {
 		mut next_origins := loop_origins.clone()
@@ -3305,7 +3305,7 @@ fn (mut t Transformer) array_map_loop_pointer_origin_fixed_point(stmt flat.Node,
 			array_map_merge_local_pointer_origins(mut next_origins, pass_origins, loop_origins)
 		}
 		for exit in pass_exits {
-			if exit.is_continue {
+			if exit.is_continue && (exit.label.len == 0 || exit.label == loop_label) {
 				array_map_merge_local_pointer_origins(mut next_origins, exit.origins, loop_origins)
 			}
 		}
@@ -3466,7 +3466,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 	}
 	if stmt.kind in [.for_stmt, .for_in_stmt] {
 		before := locals.clone()
-		mut loop_origins := t.array_map_loop_pointer_origin_fixed_point(stmt, elem_name, before, active_defer_count)
+		mut loop_origins := t.array_map_loop_pointer_origin_fixed_point(stmt, elem_name, before, loop_label, active_defer_count)
 		mut exits := []ArrayMapLoopPointerExit{}
 		mut continues := true
 		for i in 0 .. stmt.children_count {
@@ -3675,7 +3675,14 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 	}
 	if node.kind in [.block, .match_branch, .select_branch, .for_stmt, .for_in_stmt] {
 		mut scoped := if node.kind in [.for_stmt, .for_in_stmt] {
-			t.array_map_loop_pointer_origin_fixed_point(node, elem_name, locals, 0)
+			mut loop_label := ''
+			if before_idx > 0 && before_idx < block.children_count {
+				previous := t.a.child_node(&block, before_idx - 1)
+				if previous.kind == .label_stmt {
+					loop_label = previous.value
+				}
+			}
+			t.array_map_loop_pointer_origin_fixed_point(node, elem_name, locals, loop_label, 0)
 		} else {
 			locals.clone()
 		}
