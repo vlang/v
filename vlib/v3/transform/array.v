@@ -1602,7 +1602,71 @@ fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value fl
 	if !t.borrowed_projection_clone_required(source_id, typ) {
 		return value
 	}
+	if source_base_id := t.owned_rvalue_slice_source(source_id) {
+		if cloned := t.clone_owned_rvalue_slice_projection(value, source_base_id, typ) {
+			return cloned
+		}
+	}
 	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
+}
+
+// owned_rvalue_slice_source reports the base temporary of a slice that has no retained owner.
+// Its transformed slice still needs the normal implicit clone, but the base must be destroyed
+// explicitly once that clone is safe.
+fn (t &Transformer) owned_rvalue_slice_source(id flat.NodeId) ?flat.NodeId {
+	mut clean_id := id
+	for int(clean_id) >= 0 && int(clean_id) < t.a.nodes.len {
+		node := t.a.nodes[int(clean_id)]
+		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+			clean_id = t.a.child(&node, 0)
+			continue
+		}
+		if node.kind != .index || node.value != 'range' || node.children_count == 0 {
+			return none
+		}
+		base_id := t.a.child(&node, 0)
+		base_type := t.node_type(base_id)
+		if base_type.starts_with('&') || t.expr_can_take_address(base_id) {
+			return none
+		}
+		return base_id
+	}
+	return none
+}
+
+// clone_owned_rvalue_slice_projection clones a slice of an owned temporary, then destroys the
+// materialized base. The ordinary borrowed-clone path intentionally omits source cleanup because
+// named slice sources remain owned elsewhere; using it here abandons the rvalue's backing.
+fn (mut t Transformer) clone_owned_rvalue_slice_projection(value flat.NodeId, source_base_id flat.NodeId, typ string) ?flat.NodeId {
+	mut slice_id := value
+	for int(slice_id) >= 0 && int(slice_id) < t.a.nodes.len {
+		node := t.a.nodes[int(slice_id)]
+		if node.kind in [.paren, .cast_expr, .expr_stmt] && node.children_count > 0 {
+			slice_id = t.a.child(&node, 0)
+			continue
+		}
+		break
+	}
+	if int(slice_id) < 0 || int(slice_id) >= t.a.nodes.len {
+		return none
+	}
+	slice_node := t.a.nodes[int(slice_id)]
+	if slice_node.kind != .index || slice_node.value != 'range' || slice_node.children_count == 0 {
+		return none
+	}
+	base_type := t.node_type(source_base_id)
+	transformed_base_id := t.a.child(&slice_node, 0)
+	stable_base := t.stable_transformed_expr_for_reuse(transformed_base_id, base_type,
+		'owned_slice_source')
+	mut children := []flat.NodeId{cap: int(slice_node.children_count)}
+	children << stable_base
+	for i in 1 .. slice_node.children_count {
+		children << t.a.child(&slice_node, i)
+	}
+	stable_slice := t.copy_node_with_children(slice_node, children)
+	cloned := t.make_compiler_default_borrowed_clone_value(stable_slice, typ, true)
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', [stable_base], 'void'))
+	return cloned
 }
 
 fn (t &Transformer) borrowed_projection_clone_required(source_id flat.NodeId, typ string) bool {

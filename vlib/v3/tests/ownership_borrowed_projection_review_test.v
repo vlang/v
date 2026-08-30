@@ -179,6 +179,31 @@ struct DefaultCloneArrayHolder {
 	items []DefaultClonePayload
 }
 
+struct OwnedSlicePayload implements IClone, Drop {
+mut:
+	values []string
+	clones &int
+	drops  &int
+}
+
+fn (value &OwnedSlicePayload) clone() OwnedSlicePayload {
+	unsafe {
+		*value.clones += 1
+	}
+	return OwnedSlicePayload{
+		values: value.values.clone()
+		clones: value.clones
+		drops:  value.drops
+	}
+}
+
+fn (mut value OwnedSlicePayload) drop() {
+	unsafe {
+		*value.drops += 1
+	}
+	value.values = []
+}
+
 // A `to_owned` method retains its receiver while the by-value parameter consumes the map slot.
 fn (entries PayloadMap) to_owned(value Payload) {
 	_ = entries
@@ -784,6 +809,29 @@ fn test_owned_rvalue_sum_projection_is_moved() {
 	assert payload.values[0] == "moved"
 }
 
+fn make_owned_slice_payloads(clones &int, drops &int) []OwnedSlicePayload {
+	return [OwnedSlicePayload{
+		values: ["owned slice temporary"]
+		clones: clones
+		drops:  drops
+	}]
+}
+
+fn consume_owned_rvalue_slice(clones &int, drops &int) {
+	mut copied := make_owned_slice_payloads(clones, drops)[..]
+	assert unsafe { *clones } == 1
+	copied[0].values[0] = "consumed"
+	assert copied[0].values[0] == "consumed"
+}
+
+fn test_owned_rvalue_slice_projection_is_consumed() {
+	mut clones := 0
+	mut drops := 0
+	consume_owned_rvalue_slice(&clones, &drops)
+	assert clones == 1
+	assert drops == 2
+}
+
 fn test_nonaddressable_borrowed_projections_are_stable() {
 	mut sum_drops := 0
 	entry := DefaultCloneEntry(DefaultClonePayload{
@@ -1000,6 +1048,7 @@ fn main() {
 	test_borrowed_or_fallback_is_cloned(holder)
 	test_borrowed_sum_projection_is_cloned()
 	test_owned_rvalue_sum_projection_is_moved()
+	test_owned_rvalue_slice_projection_is_consumed()
 	test_nonaddressable_borrowed_projections_are_stable()
 	test_copied_index_alias_is_cloned()
 	test_long_index_alias_chain_is_cloned()
