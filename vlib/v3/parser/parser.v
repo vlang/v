@@ -11596,7 +11596,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 				is_mut_capture = true
 				p.next()
 			}
-			if p.tok == .key_shared || p.tok == .key_atomic {
+			if (p.tok == .key_shared && !p.shared_token_is_identifier(true)) || p.tok == .key_atomic {
 				capture_modifier = p.lit
 				p.next()
 			}

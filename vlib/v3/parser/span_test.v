@@ -375,6 +375,28 @@ fn test_shared_keyword_identifier_in_mut_declaration() {
 	assert ast.nodes.any(it.kind == .if_expr)
 }
 
+fn test_shared_keyword_identifier_in_fn_literal_capture() {
+	ast, _ := parse_span_source('shared_fn_literal_capture', 'fn main() {
+	shared := 1
+	callback := fn [shared] () {
+		println(shared)
+	}
+	callback()
+}
+')
+	mut saw_capture := false
+	for node in ast.nodes {
+		if node.kind != .fn_literal || node.children_count == 0 {
+			continue
+		}
+		capture := ast.child_node(&node, 0)
+		if capture.kind == .ident && capture.value == 'shared' {
+			saw_capture = true
+		}
+	}
+	assert saw_capture
+}
+
 fn test_multiline_shared_call_argument_stays_a_modifier() {
 	ast, _ := parse_span_source('multiline_shared_argument', 'struct Box {}
 
