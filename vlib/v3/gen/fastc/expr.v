@@ -1358,40 +1358,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		if g.tok == .name && previous_token == .dot {
 			mut method_lookahead := g.s
 			if method_lookahead.scan() == .lpar {
-				piece = g.lit
-				// On-demand generic-method monomorphization: `recv.m(arg)` where `m` is a
-				// generic method (own type param, left un-monomorphized because its body
-				// recurses through a comptime `$for`). Infer the first arg's type, queue the
-				// concrete instance, and emit its mangled name so the call resolves to it.
-				if g.selfhost && !g.in_generic_placeholder && g.generic_method_sources.len > 0 && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 2].tok == .dot {
-					dot_index := expression_tokens.len - 2
-					recv_start := fastc_method_receiver_start(expression_tokens, dot_index)
-					receiver_type := g.infer_expression_type(expression_tokens[recv_start..dot_index]) or {
-						''
-					}
-					recv_base := fastc_normalize_inferred_type(receiver_type).trim_right('*')
-					source_key := '${recv_base}.${g.lit}'
-					if recv_base != '' && source_key in g.generic_method_sources {
-						source := g.generic_method_sources[source_key] or {
-							FastcGenericMethodSource{}
-						}
-						base_key := '${g.semantic_type_key(recv_base)}.${g.lit}'
-						base := g.functions[base_key] or { FastcFunctionSignature{} }
-						parameter_index := source.type_param_parameter_index
-						signature_index := parameter_index + 1
-						argument_type := g.mono_argument_type_at(mut method_lookahead, parameter_index)
-						concrete := if parameter_index >= 0 && signature_index < base.parameter_types.len {
-							fastc_infer_generic_type_from_parameter(base.parameter_types[signature_index], argument_type)
-						} else {
-							''
-						}
-						if concrete != '' {
-							mono := g.queue_mono_method(recv_base, g.lit, concrete)
-							piece = mono
-							expression_tokens[expression_tokens.len - 1].lit = mono
-						}
-					}
-				}
+				piece = expression_tokens.last().lit
 			}
 		}
 		if g.tok == .name && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 2].tok == .dot && expression_tokens[expression_tokens.len - 3].tok == .name && expression_tokens[expression_tokens.len - 3].lit == 'C' {

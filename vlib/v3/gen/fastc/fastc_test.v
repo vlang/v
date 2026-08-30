@@ -185,6 +185,27 @@ fn main() {
 	assert !c_source.contains('shared[int]'), c_source
 }
 
+fn test_selfhost_implicit_generic_method_named_shared_is_monomorphized() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn (worker Worker) shared[T](value T) T {
+	_ = worker
+	return value
+}
+
+fn main() {
+	worker := Worker{}
+	_ := worker.shared(2)
+}
+', 'selfhost_implicit_generic_shared_method.v', prefs) or { panic(err) }
+	assert c_source.contains('Worker_shared_mono_int'), c_source
+	assert c_source.contains('Worker_shared_mono_int(worker,2)'), c_source
+}
+
 fn test_selfhost_multiline_result_propagation_after_shared_identifier() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

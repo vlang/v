@@ -211,6 +211,9 @@ fn (mut g Parser) queue_expression_monomorphization(tokens []FastcExpressionToke
 	if mono := g.queue_explicit_mono_method(tokens) {
 		return mono
 	}
+	if mono := g.queue_implicit_mono_method(tokens) {
+		return mono
+	}
 	if mono := g.queue_explicit_mono_function(tokens) {
 		return mono
 	}
@@ -239,6 +242,42 @@ fn (mut g Parser) queue_explicit_mono_method(tokens []FastcExpressionToken) ?str
 	concrete, next := fastc_scan_type(mut look, first, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return none }
 	after := look.scan()
 	if next != .rsbr || after != .lpar {
+		return none
+	}
+	return g.queue_mono_method(receiver_base, method, concrete)
+}
+
+// queue_implicit_mono_method recognizes `receiver.method(arg)` for generic methods and
+// infers the method's concrete type from the corresponding argument.
+fn (mut g Parser) queue_implicit_mono_method(tokens []FastcExpressionToken) ?string {
+	if tokens.len < 3 || tokens.last().tok != .name || tokens[tokens.len - 2].tok != .dot {
+		return none
+	}
+	mut look := g.s
+	if look.scan() != .lpar {
+		return none
+	}
+	dot_index := tokens.len - 2
+	receiver_start := fastc_method_receiver_start(tokens, dot_index)
+	receiver_type := g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none }
+	receiver_base := fastc_normalize_inferred_type(receiver_type).trim_right('*')
+	method := tokens.last().lit
+	source_key := '${receiver_base}.${method}'
+	if receiver_base == '' || source_key !in g.generic_method_sources {
+		return none
+	}
+	source := g.generic_method_sources[source_key] or { return none }
+	base_key := '${g.semantic_type_key(receiver_base)}.${method}'
+	base := g.functions[base_key] or { return none }
+	parameter_index := source.type_param_parameter_index
+	signature_index := parameter_index + 1
+	argument_type := g.mono_argument_type_at(mut look, parameter_index)
+	concrete := if parameter_index >= 0 && signature_index < base.parameter_types.len {
+		fastc_infer_generic_type_from_parameter(base.parameter_types[signature_index], argument_type)
+	} else {
+		''
+	}
+	if concrete == '' {
 		return none
 	}
 	return g.queue_mono_method(receiver_base, method, concrete)
