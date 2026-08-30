@@ -260,6 +260,23 @@ fn test_isreftype_qualified_type_names_parse_as_types() {
 	assert type_args == ['foo.Bar', '&foo.Bar']
 }
 
+fn test_isreftype_shared_local_parses_as_expression() {
+	a := parse_parser_regression_source('isreftype_shared_local_expression', 'module main\n\nfn main() {\n\tshared := 1\n\t_ = isreftype(shared)\n}\n')
+	mut saw_shared_argument := false
+	for node in a.nodes {
+		if node.kind != .call || node.children_count != 2 {
+			continue
+		}
+		callee := a.child_node(&node, 0)
+		if callee.kind != .ident || callee.value != '__v3_isreftype' {
+			continue
+		}
+		argument := a.child_node(&node, 1)
+		saw_shared_argument = argument.kind == .ident && argument.value == 'shared'
+	}
+	assert saw_shared_argument
+}
+
 fn test_or_block_inside_index_stays_in_index_expression() {
 	a := parse_parser_regression_source('or_block_inside_index', 'fn idx() ?int {
 	return none

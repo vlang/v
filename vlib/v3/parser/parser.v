@@ -11986,7 +11986,10 @@ fn (mut p Parser) isreftype_paren_arg_starts_type() bool {
 		.lsbr {
 			return p.current_lbr_starts_array_type()
 		}
-		.key_fn, .ellipsis, .key_mut, .key_shared, .key_atomic, .key_struct, .key_union {
+		.key_shared {
+			return !p.shared_token_is_identifier(false)
+		}
+		.key_fn, .ellipsis, .key_mut, .key_atomic, .key_struct, .key_union {
 			return true
 		}
 		else {
