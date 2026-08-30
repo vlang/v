@@ -548,6 +548,60 @@ fn main() {
 ", '')
 	assert interpolation_call.exit_code != 0, interpolation_call.output
 	assert interpolation_call.output.contains('cannot return an independent array element'), interpolation_call.output
+
+	comparison_call := compile_v3_ownership_program(v3_bin, 'owned_comparison_call_argument_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn consume(value bool, suffix string) bool {
+	return value
+}
+
+fn last_name_then_delete(mut arr []E) bool {
+	return consume(arr.last().name == 'hello', delete_last(mut arr))
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert comparison_call.exit_code != 0, comparison_call.output
+	assert comparison_call.output.contains('cannot return an independent array element'), comparison_call.output
+
+	nested_call := compile_v3_ownership_program(v3_bin, 'owned_nested_call_argument_mutating_outer_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn identity(value string) string {
+	return value
+}
+
+fn consume(value string, suffix string) string {
+	return value + suffix
+}
+
+fn last_name_then_delete(mut arr []E) string {
+	return consume(identity(arr.last().name + '!'), delete_last(mut arr))
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert nested_call.exit_code != 0, nested_call.output
+	assert nested_call.output.contains('cannot return an independent array element'), nested_call.output
 }
 
 fn test_owned_field_overloaded_index_is_rejected() {
