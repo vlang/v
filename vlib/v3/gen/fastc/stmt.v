@@ -1137,7 +1137,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			is_mut = true
 			g.next()
 		}
-		if g.tok != .name {
+		if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier()) {
 			return g.unsupported('parallel assignment target')
 		}
 		names << g.lit

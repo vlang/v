@@ -1770,10 +1770,29 @@ fn (g &Parser) shared_token_is_identifier() bool {
 	}
 	start := g.s.offset
 	mut offset := start
-	// Horizontal whitespace separates a modifier from its operand, but a newline
-	// terminates an expression and must leave a keyword-named local intact.
-	for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`] {
-		offset++
+	// Horizontal whitespace and block comments separate a modifier from its operand. A
+	// line comment ends the expression and must leave a keyword-named local intact.
+	for {
+		for offset < g.s.src.len && g.s.src[offset] in [` `, `\t`] {
+			offset++
+		}
+		if offset + 1 >= g.s.src.len || g.s.src[offset] != `/` {
+			break
+		}
+		if g.s.src[offset + 1] == `/` {
+			return true
+		}
+		if g.s.src[offset + 1] != `*` {
+			break
+		}
+		offset += 2
+		for offset + 1 < g.s.src.len && !(g.s.src[offset] == `*` && g.s.src[offset + 1] == `/`) {
+			offset++
+		}
+		if offset + 1 >= g.s.src.len {
+			return true
+		}
+		offset += 2
 	}
 	if offset >= g.s.src.len {
 		return true
@@ -1784,8 +1803,8 @@ fn (g &Parser) shared_token_is_identifier() bool {
 	if g.s.src[offset] == `(` {
 		return offset == start
 	}
-	return g.s.src[offset] in [`.`, `[`, `{`, `)`, `]`, `}`, `,`, `;`, `:`, `?`, `+`, `-`,
-		`*`, `/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`, `^`]
+	return g.s.src[offset] in [`.`, `[`, `{`, `)`, `]`, `}`, `,`, `;`, `:`, `?`, `+`, `-`, `*`,
+		`/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`, `^`]
 }
 
 fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source string) string {

@@ -34,7 +34,7 @@ fn (mut g Parser) parse_for() !bool {
 		g.write_line('}')
 		return false
 	}
-	if g.tok == .name {
+	if g.tok == .name || (g.tok == .key_shared && g.shared_token_is_identifier()) {
 		name := g.lit
 		g.next()
 		mut value_name := ''
@@ -47,7 +47,7 @@ fn (mut g Parser) parse_for() !bool {
 				value_is_mut = true
 				g.next()
 			}
-			if g.tok != .name {
+			if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier()) {
 				return g.unsupported('for-in value name')
 			}
 			value_name = g.lit
