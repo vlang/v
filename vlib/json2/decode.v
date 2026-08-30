@@ -424,8 +424,7 @@ fn mark_struct_field_decoded(decoded_mask u64, mut decoded_fields []bool, field_
 fn (decoder &Decoder) find_struct_field(field_infos []StructFieldInfo, key_ptr voidptr, key_len int) int {
 	for field_idx, field_info in field_infos {
 		field_can_match := (!field_info.is_skip || field_info.is_required)
-			&& !(field_info.is_omitempty
-			&& decoder.is_empty_value(decoder.current_node.next.value))
+			&& !(field_info.is_omitempty && decoder.is_empty_value(decoder.current_node.next.value))
 		field_name_matches := key_len == field_info.json_name_len && unsafe {
 			vmemcmp(key_ptr, field_info.json_name_ptr, field_info.json_name_len) == 0
 		}
@@ -899,150 +898,150 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							key_len = unescaped_key.len
 						}
 
-						matched_field_idx := decoder.find_struct_field(field_infos, key_ptr, key_len)
+						matched_field_idx := decoder.find_struct_field(field_infos, key_ptr,
+							key_len)
 						mut matched := false
 						field_idx = 0
 						$for field in T.fields {
 							if field.attrs.contains('skip') {
 								if !matched && field_idx == matched_field_idx {
+									decoder.current_node = decoder.current_node.next
+									decoded_mask = mark_struct_field_decoded(decoded_mask, mut
+										decoded_fields, field_idx)
+									if decoder.current_node != unsafe { nil } {
 										decoder.current_node = decoder.current_node.next
-										decoded_mask = mark_struct_field_decoded(decoded_mask, mut
-											decoded_fields, field_idx)
-										if decoder.current_node != unsafe { nil } {
-											decoder.current_node = decoder.current_node.next
-										}
-										matched = true
+									}
+									matched = true
 								}
 							} else if !matched && field_idx == matched_field_idx {
 								field_info := field_infos[field_idx]
-									// value node
-									decoder.current_node = decoder.current_node.next
+								// value node
+								decoder.current_node = decoder.current_node.next
 
-									if field_info.is_skip {
-										// Preserve the existing inline decode behavior for `skip`+`required`.
-										decoded_mask = mark_struct_field_decoded(decoded_mask, mut
-											decoded_fields, field_idx)
-										if decoder.current_node != unsafe { nil } {
-											decoder.current_node = decoder.current_node.next
-										}
-									} else if field_info.is_raw {
-										$if field.unaliased_typ is $enum {
-											// workaround to avoid the error: enums can only be assigned `int` values
-											decoder.decode_error('`raw` attribute cannot be used with enum fields')!
-										} $else $if field.typ is ?string {
-											position := decoder.current_node.value.position
-											end := position + decoder.current_node.value.length
-
-											val.$(field.name) = decoder.json[position..end]
-											decoder.current_node = decoder.current_node.next
-
-											for {
-												if decoder.current_node == unsafe { nil }
-													|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
-													break
-												}
-												decoder.current_node = decoder.current_node.next
-											}
-										} $else $if field.typ is string {
-											position := decoder.current_node.value.position
-											end := position + decoder.current_node.value.length
-
-											val.$(field.name) = decoder.json[position..end]
-											decoder.current_node = decoder.current_node.next
-
-											for {
-												if decoder.current_node == unsafe { nil }
-													|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
-													break
-												}
-												decoder.current_node = decoder.current_node.next
-											}
-										} $else {
-											decoder.decode_error('`raw` attribute can only be used with string fields')!
-										}
-									} else {
-										$if field.typ is $option {
-											if decoder.current_node.value.value_kind == .null {
-												val.$(field.name) = none
-
-												if decoder.current_node != unsafe { nil } {
-													decoder.current_node = decoder.current_node.next
-												}
-											} else {
-												$if field.indirections == 1 {
-													mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
-													decoder.decode_value(mut decoded_ptr)!
-													val.$(field.name) = decoded_ptr
-												} $else {
-													mut unwrapped_val := $zero(field.typ.payload_type)
-													decoder.decode_value(mut unwrapped_val)!
-													$if unwrapped_val is $map {
-														val.$(field.name) = unwrapped_val.move()
-													} $else {
-														val.$(field.name) = unwrapped_val
-													}
-												}
-											}
-										} $else $if field.unaliased_typ is $array_dynamic {
-											if decoder.current_node.value.value_kind == .null
-												&& !field_info.is_required {
-												val.$(field.name).clear()
-												decoder.skip_current_value()
-											} else {
-												val.$(field.name).clear()
-												decoder.decode_array(mut val.$(field.name))!
-											}
-										} $else $if field.unaliased_typ is $map {
-											if decoder.current_node.value.value_kind == .null
-												&& !field_info.is_required {
-												val.$(field.name).clear()
-												decoder.skip_current_value()
-											} else {
-												decoder.decode_map(mut val.$(field.name))!
-											}
-										} $else $if field.unaliased_typ is string {
-											value_info := decoder.current_node.value
-											if value_info.value_kind == .object
-												|| value_info.value_kind == .array {
-												val.$(field.name) = decoder.json[value_info.position..
-													value_info.position + value_info.length]
-												decoder.skip_current_value()
-											} else if value_info.value_kind == .null
-												&& !field_info.is_required {
-												val.$(field.name) = ''
-												decoder.skip_current_value()
-											} else {
-												mut decoded_field_value := val.$(field.name)
-												decoder.decode_value(mut decoded_field_value)!
-												val.$(field.name) = decoded_field_value
-											}
-										} $else $if field.indirections == 1 {
-											if decoder.current_node.value.value_kind == .null {
-												val.$(field.name) = unsafe { nil }
-
-												if decoder.current_node != unsafe { nil } {
-													decoder.current_node = decoder.current_node.next
-												}
-											} else {
-												mut decoded_ptr :=
-													create_decoded_ptr(val.$(field.name))
-												decoder.decode_value(mut decoded_ptr)!
-												val.$(field.name) = decoded_ptr
-											}
-										} $else {
-											mut decoded_field_value := val.$(field.name)
-											decoder.decode_value(mut decoded_field_value)!
-											$if field.unaliased_typ is $map {
-												val.$(field.name) = decoded_field_value.move()
-											} $else {
-												val.$(field.name) = decoded_field_value
-											}
-										}
-									}
-
+								if field_info.is_skip {
+									// Preserve the existing inline decode behavior for `skip`+`required`.
 									decoded_mask = mark_struct_field_decoded(decoded_mask, mut
 										decoded_fields, field_idx)
-									matched = true
+									if decoder.current_node != unsafe { nil } {
+										decoder.current_node = decoder.current_node.next
+									}
+								} else if field_info.is_raw {
+									$if field.unaliased_typ is $enum {
+										// workaround to avoid the error: enums can only be assigned `int` values
+										decoder.decode_error('`raw` attribute cannot be used with enum fields')!
+									} $else $if field.typ is ?string {
+										position := decoder.current_node.value.position
+										end := position + decoder.current_node.value.length
+
+										val.$(field.name) = decoder.json[position..end]
+										decoder.current_node = decoder.current_node.next
+
+										for {
+											if decoder.current_node == unsafe { nil }
+												|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
+												break
+											}
+											decoder.current_node = decoder.current_node.next
+										}
+									} $else $if field.typ is string {
+										position := decoder.current_node.value.position
+										end := position + decoder.current_node.value.length
+
+										val.$(field.name) = decoder.json[position..end]
+										decoder.current_node = decoder.current_node.next
+
+										for {
+											if decoder.current_node == unsafe { nil }
+												|| decoder.current_node.value.position + decoder.current_node.value.length >= end {
+												break
+											}
+											decoder.current_node = decoder.current_node.next
+										}
+									} $else {
+										decoder.decode_error('`raw` attribute can only be used with string fields')!
+									}
+								} else {
+									$if field.typ is $option {
+										if decoder.current_node.value.value_kind == .null {
+											val.$(field.name) = none
+
+											if decoder.current_node != unsafe { nil } {
+												decoder.current_node = decoder.current_node.next
+											}
+										} else {
+											$if field.indirections == 1 {
+												mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
+												decoder.decode_value(mut decoded_ptr)!
+												val.$(field.name) = decoded_ptr
+											} $else {
+												mut unwrapped_val := $zero(field.typ.payload_type)
+												decoder.decode_value(mut unwrapped_val)!
+												$if unwrapped_val is $map {
+													val.$(field.name) = unwrapped_val.move()
+												} $else {
+													val.$(field.name) = unwrapped_val
+												}
+											}
+										}
+									} $else $if field.unaliased_typ is $array_dynamic {
+										if decoder.current_node.value.value_kind == .null
+											&& !field_info.is_required {
+											val.$(field.name).clear()
+											decoder.skip_current_value()
+										} else {
+											val.$(field.name).clear()
+											decoder.decode_array(mut val.$(field.name))!
+										}
+									} $else $if field.unaliased_typ is $map {
+										if decoder.current_node.value.value_kind == .null
+											&& !field_info.is_required {
+											val.$(field.name).clear()
+											decoder.skip_current_value()
+										} else {
+											decoder.decode_map(mut val.$(field.name))!
+										}
+									} $else $if field.unaliased_typ is string {
+										value_info := decoder.current_node.value
+										if value_info.value_kind == .object
+											|| value_info.value_kind == .array {
+											val.$(field.name) = decoder.json[value_info.position..
+												value_info.position + value_info.length]
+											decoder.skip_current_value()
+										} else if value_info.value_kind == .null
+											&& !field_info.is_required {
+											val.$(field.name) = ''
+											decoder.skip_current_value()
+										} else {
+											mut decoded_field_value := val.$(field.name)
+											decoder.decode_value(mut decoded_field_value)!
+											val.$(field.name) = decoded_field_value
+										}
+									} $else $if field.indirections == 1 {
+										if decoder.current_node.value.value_kind == .null {
+											val.$(field.name) = unsafe { nil }
+
+											if decoder.current_node != unsafe { nil } {
+												decoder.current_node = decoder.current_node.next
+											}
+										} else {
+											mut decoded_ptr := create_decoded_ptr(val.$(field.name))
+											decoder.decode_value(mut decoded_ptr)!
+											val.$(field.name) = decoded_ptr
+										}
+									} $else {
+										mut decoded_field_value := val.$(field.name)
+										decoder.decode_value(mut decoded_field_value)!
+										$if field.unaliased_typ is $map {
+											val.$(field.name) = decoded_field_value.move()
+										} $else {
+											val.$(field.name) = decoded_field_value
+										}
+									}
+								}
+
+								decoded_mask = mark_struct_field_decoded(decoded_mask, mut
+									decoded_fields, field_idx)
+								matched = true
 							}
 							field_idx++
 						}

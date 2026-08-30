@@ -33,8 +33,8 @@ fn test_selfhost_default_prunes_optional_backends() {
 	assert !c_src.contains('v3__gen__arm64__'), 'default self-host compiled the arm64 backend'
 	assert !c_src.contains('v3__ssa__'), 'default self-host compiled the SSA backend'
 	assert !c_src.contains('v3__eval__'), 'default self-host compiled the eval backend'
-	assert !c_src.contains('fastc__generate_files_with_source_paths'),
-		'default self-host compiled the FastC backend'
+	assert !c_src.contains('fastc__generate_files_with_source_paths'), 'default self-host compiled the FastC backend'
+
 	assert c_src.contains('bool lhs_is_arr = false;'), 'array equality fallback should use an explicit presence flag'
 	assert c_src.contains('bool lhs_is_fixed = false;'), 'fixed-array equality fallback should use an explicit presence flag'
 	assert !c_src.contains('lhs_arr.elem_type; __sum.typ'), 'array equality fallback used zero-value sum-type sentinel'
@@ -44,8 +44,8 @@ fn test_selfhost_default_prunes_optional_backends() {
 fn test_selfhost_compile_backend_fastc_opts_fastc_back_in() {
 	v3_bin := build_selfhost_prune_v3()
 	c_src := selfhost_to_c(v3_bin, 'fastc', '-compile-backend fastc')
-	assert c_src.contains('fastc__generate_files_with_source_paths'),
-		'FastC backend was not compiled after opt-in'
+	assert c_src.contains('fastc__generate_files_with_source_paths'), 'FastC backend was not compiled after opt-in'
+
 	assert !c_src.contains('v3__gen__arm64__'), 'FastC opt-in compiled the arm64 backend'
 	assert !c_src.contains('v3__ssa__'), 'FastC opt-in compiled the SSA backend'
 	assert !c_src.contains('v3__eval__'), 'FastC opt-in compiled the eval backend'

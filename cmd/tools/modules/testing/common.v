@@ -121,7 +121,8 @@ fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 	}
 	if v1_memory_path != '' {
 		if limit := cgroup_memory_limit_for_hierarchy(mountinfo, v1_memory_path, 'cgroup',
-			'memory.limit_in_bytes') {
+			'memory.limit_in_bytes')
+		{
 			return limit
 		}
 	}
@@ -147,7 +148,9 @@ fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_ty
 		if fs_parts[0] != fs_type || (fs_type == 'cgroup' && 'memory' !in fs_parts[2].split(',')) {
 			continue
 		}
-		if limit := cgroup_memory_limit_in_hierarchy(mount_root, mount_point, cgroup_path, limit_file) {
+		if limit := cgroup_memory_limit_in_hierarchy(mount_root, mount_point, cgroup_path,
+			limit_file)
+		{
 			return limit
 		}
 	}
@@ -230,9 +233,8 @@ fn effective_test_memory(physical_memory u64, cgroup_memory_limit u64) u64 {
 fn test_runner_memory() !u64 {
 	physical_memory := u64(runtime.total_memory()!)
 	$if linux {
-		cgroup_memory_limit := cgroup_memory_limit_from_contents(os.read_file('/proc/self/cgroup')!, os.read_file('/proc/self/mountinfo')!) or {
-			return physical_memory
-		}
+		cgroup_memory_limit := cgroup_memory_limit_from_contents(os.read_file('/proc/self/cgroup')!,
+			os.read_file('/proc/self/mountinfo')!) or { return physical_memory }
 		return effective_test_memory(physical_memory, cgroup_memory_limit)
 	}
 	return physical_memory

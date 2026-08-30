@@ -844,8 +844,7 @@ fn fastc_collect_signature_chunk(sources []FastcSourceFile, prefs &pref.Preferen
 		collect_interface_method_signatures(source_file.source, source_file.path,
 			source_file.header, prefs, declared_types, mut partial.functions, mut
 			partial.interface_methods, mut partial.interface_fields, mut
-			partial.interface_field_paths, mut partial.embed_embedders, mut
-			partial.embed_embeddeds) or {
+			partial.interface_field_paths, mut partial.embed_embedders, mut partial.embed_embeddeds) or {
 			partial.failed = true
 			partial.error_message = err.msg()
 			return partial
@@ -862,12 +861,11 @@ fn fastc_merge_signature_partial(partial FastcSignaturePartial, mut functions ma
 		if key !in partial.interface_methods {
 			if previous := functions[key] {
 				if !key.starts_with('C.') {
-					is_c_override := previous.path.ends_with('.c.v') || signature.path.ends_with('.c.v')
+					is_c_override := previous.path.ends_with('.c.v')
+						|| signature.path.ends_with('.c.v')
 					if previous.path == signature.path || !is_c_override
-						|| !fastc_string_types_equal(previous.parameter_types,
-							signature.parameter_types)
-						|| !fastc_bool_types_equal(previous.parameter_mutability,
-							signature.parameter_mutability)
+						|| !fastc_string_types_equal(previous.parameter_types, signature.parameter_types)
+						|| !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability)
 						|| previous.last_parameter_is_params != signature.last_parameter_is_params
 						|| previous.return_type != signature.return_type {
 						return error('fastc parser does not support duplicate function `${key.all_after_last('.')}` in ${signature.path}')

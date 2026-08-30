@@ -930,7 +930,7 @@ pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 	}
 	c_source, _, _ := generate_source_files([
 		FastcSourceFile{
-			path: path
+			path:   path
 			source: source
 			header: header
 		},
@@ -954,10 +954,10 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	}
 	c_source, uses_threads, c_flags := generate_source_files(sources, module_aliases, prefs)!
 	return GenerationResult{
-		c_source: c_source
+		c_source:     c_source
 		source_paths: source_paths
 		uses_threads: uses_threads
-		c_flags: c_flags
+		c_flags:      c_flags
 	}
 }
 
@@ -1019,79 +1019,79 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	file.index_lines_without_digest(source_file.source)
 	prefs := ctx.prefs
 	mut gen := Parser{
-		prefs: unsafe { prefs }
-		path: source_file.path
-		module_name: source_file.header.module_name
-		imports: source_file.header.imports
-		declared_types: ctx.declared_types
-		declared_type_c_names: ctx.declared_type_c_names
-		fastc_prefixed_c_names: ctx.fastc_prefixed_c_names
-		has_c_functions: ctx.has_c_functions
-		comparison_memo: map[i64]FastcRenderedExpression{}
-		member_smartcasts: map[string]FastcMemberSmartcast{}
-		spawn_typedefs: map[string]string{}
-		spawn_helpers: map[string]string{}
-		thread_value_types: map[string]string{}
-		declared_kinds: ctx.declared_kinds
-		enum_flags: ctx.enum_flags
-		enum_field_types: ctx.enum_field_types
-		alias_base_types: ctx.alias_base_types
-		sum_types: ctx.sum_types
-		struct_fields: ctx.struct_fields
-		struct_field_info: ctx.struct_field_info
-		generic_method_sources: ctx.generic_method_sources
-		module_aliases: ctx.module_aliases
-		generated_mono: map[string]bool{}
-		mono_functions: map[string]FastcFunctionSignature{}
-		mono_definitions: map[string]string{}
-		interface_fields: ctx.interface_fields
-		constants: ctx.constants
-		constant_values: ctx.constant_values
-		public_constants: ctx.public_constants
-		globals: ctx.globals
-		public_globals: ctx.public_globals
-		used_function_names: ctx.used_function_names
-		selfhost: prefs.building_v
-		has_startup_inits: ctx.has_startup_inits
-		has_cleanup_hooks: ctx.has_cleanup_hooks
-		s: scanner.new_scanner(prefs, .normal)
-		out: strings.new_builder(source_file.source.len)
-		protos: strings.new_builder(256)
-		functions: ctx.functions
-		constant_types: ctx.constant_types
-		global_types: ctx.global_types
-		fixed_array_types: ctx.fixed_array_types.clone()
-		composite_types: ctx.composite_types.clone()
-		deferred_lines: []string{}
-		deferred_block_starts: []int{}
+		prefs:                   unsafe { prefs }
+		path:                    source_file.path
+		module_name:             source_file.header.module_name
+		imports:                 source_file.header.imports
+		declared_types:          ctx.declared_types
+		declared_type_c_names:   ctx.declared_type_c_names
+		fastc_prefixed_c_names:  ctx.fastc_prefixed_c_names
+		has_c_functions:         ctx.has_c_functions
+		comparison_memo:         map[i64]FastcRenderedExpression{}
+		member_smartcasts:       map[string]FastcMemberSmartcast{}
+		spawn_typedefs:          map[string]string{}
+		spawn_helpers:           map[string]string{}
+		thread_value_types:      map[string]string{}
+		declared_kinds:          ctx.declared_kinds
+		enum_flags:              ctx.enum_flags
+		enum_field_types:        ctx.enum_field_types
+		alias_base_types:        ctx.alias_base_types
+		sum_types:               ctx.sum_types
+		struct_fields:           ctx.struct_fields
+		struct_field_info:       ctx.struct_field_info
+		generic_method_sources:  ctx.generic_method_sources
+		module_aliases:          ctx.module_aliases
+		generated_mono:          map[string]bool{}
+		mono_functions:          map[string]FastcFunctionSignature{}
+		mono_definitions:        map[string]string{}
+		interface_fields:        ctx.interface_fields
+		constants:               ctx.constants
+		constant_values:         ctx.constant_values
+		public_constants:        ctx.public_constants
+		globals:                 ctx.globals
+		public_globals:          ctx.public_globals
+		used_function_names:     ctx.used_function_names
+		selfhost:                prefs.building_v
+		has_startup_inits:       ctx.has_startup_inits
+		has_cleanup_hooks:       ctx.has_cleanup_hooks
+		s:                       scanner.new_scanner(prefs, .normal)
+		out:                     strings.new_builder(source_file.source.len)
+		protos:                  strings.new_builder(256)
+		functions:               ctx.functions
+		constant_types:          ctx.constant_types
+		global_types:            ctx.global_types
+		fixed_array_types:       ctx.fixed_array_types.clone()
+		composite_types:         ctx.composite_types.clone()
+		deferred_lines:          []string{}
+		deferred_block_starts:   []int{}
 		loop_defer_block_starts: []int{}
-		loop_has_breaks: []bool{}
-		statement_reachable: true
+		loop_has_breaks:         []bool{}
+		statement_reachable:     true
 	}
 	gen.s.init(file, source_file.source)
 	generated := gen.run() or {
 		return FastcFileGenOutput{
-			failed: true
+			failed:        true
 			error_message: err.msg()
 		}
 	}
 	if gen.s.diagnostics.len > 0 {
 		diagnostic := gen.s.diagnostics[0]
 		return FastcFileGenOutput{
-			failed: true
+			failed:        true
 			error_message: 'fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}'
 		}
 	}
 	return FastcFileGenOutput{
-		prototypes: gen.protos.str()
-		body: generated
-		has_main_entry: source_file.header.module_name in ['', 'main'] && gen.has_main
+		prototypes:        gen.protos.str()
+		body:              generated
+		has_main_entry:    source_file.header.module_name in ['', 'main'] && gen.has_main
 		fixed_array_types: gen.fixed_array_types
-		composite_types: gen.composite_types
-		spawn_typedefs: gen.spawn_typedefs
-		spawn_helpers: gen.spawn_helpers
-		mono_definitions: gen.mono_definitions
-		c_flags: gen.c_flags
+		composite_types:   gen.composite_types
+		spawn_typedefs:    gen.spawn_typedefs
+		spawn_helpers:     gen.spawn_helpers
+		mono_definitions:  gen.mono_definitions
+		c_flags:           gen.c_flags
 	}
 }
 
@@ -1127,7 +1127,8 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	// An interface that embeds another (`interface B { A; ... }`) inherits A's
 	// methods. Copy them onto B (with the receiver re-keyed to B) so calls on a B
 	// value resolve and B gets its own dispatch table entries.
-	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
+	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut
+		interface_methods)
 	used_function_names := fastc_collect_referenced_function_names(sources, prefs, functions)
 	has_c_functions := fastc_functions_declare_c(functions)
 	fastc_prefixed_c_names := fastc_reserved_temporary_c_names(functions, globals)
@@ -1145,18 +1146,31 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
-	type_output := fastc_generate_type_declarations(sources, prefs, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
+	type_output := fastc_generate_type_declarations(sources, prefs, declared_types, declared_kinds,
+		enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut
+		composite_types)!
 	declared_composite_types := composite_types.clone()
 	type_declarations := type_output.declarations
 	enum_field_types := type_output.enum_field_types.clone()
 	mut constant_types := map[string]string{}
 	mut global_types := map[string]string{}
-	fastc_render_struct_field_defaults(prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, mut struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)!
-	constant_output := fastc_generate_constant_declarations(sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	fastc_render_struct_field_defaults(prefs, declared_types, declared_type_c_names,
+		fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types,
+		type_output.alias_base_types, struct_fields, mut struct_field_info, functions, constants,
+		public_constants, constant_types, globals, public_globals, global_types,
+		type_output.sum_types)!
+	constant_output := fastc_generate_constant_declarations(sources, prefs, declared_types,
+		declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags,
+		enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info,
+		functions, constants, public_constants, globals, public_globals, mut constant_types)!
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
 	}
-	global_output := fastc_generate_global_declarations(sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
+	global_output := fastc_generate_global_declarations(sources, prefs, declared_types,
+		declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags,
+		enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info,
+		functions, constants, constant_output.compile_time_values, public_constants,
+		constant_types, globals, public_globals, mut global_types)!
 	for name, _ in global_output.composite_types {
 		composite_types[name] = true
 	}
@@ -1166,7 +1180,8 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	for global_type in global_types.values() {
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
-	startup_initializers := fastc_generate_startup_initializers(sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls)!
+	startup_initializers := fastc_generate_startup_initializers(sources,
+		constant_output.module_initializers, global_output.module_initializers, module_init_calls)!
 	mut prototypes := strings.new_builder(1024)
 	mut body := strings.new_builder(4096)
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
@@ -1182,34 +1197,34 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	}
 	mut entry_has_main := false
 	ctx := FastcFileGenContext{
-		prefs: unsafe { prefs }
-		declared_types: declared_types
-		declared_type_c_names: declared_type_c_names
+		prefs:                  unsafe { prefs }
+		declared_types:         declared_types
+		declared_type_c_names:  declared_type_c_names
 		fastc_prefixed_c_names: fastc_prefixed_c_names
-		has_c_functions: has_c_functions
-		declared_kinds: declared_kinds
-		enum_flags: enum_flags
-		enum_field_types: enum_field_types
-		alias_base_types: type_output.alias_base_types
-		sum_types: type_output.sum_types
-		struct_fields: struct_fields
-		struct_field_info: struct_field_info
+		has_c_functions:        has_c_functions
+		declared_kinds:         declared_kinds
+		enum_flags:             enum_flags
+		enum_field_types:       enum_field_types
+		alias_base_types:       type_output.alias_base_types
+		sum_types:              type_output.sum_types
+		struct_fields:          struct_fields
+		struct_field_info:      struct_field_info
 		generic_method_sources: generic_method_sources
-		module_aliases: module_aliases
-		interface_fields: interface_fields
-		constants: constants
-		constant_values: constant_output.compile_time_values
-		public_constants: public_constants
-		globals: globals
-		public_globals: public_globals
-		used_function_names: used_function_names
-		has_startup_inits: startup_initializers.len > 0
-		has_cleanup_hooks: module_cleanup_calls.len > 0
-		functions: functions
-		constant_types: constant_types
-		global_types: global_types
-		fixed_array_types: fixed_array_types
-		composite_types: composite_types
+		module_aliases:         module_aliases
+		interface_fields:       interface_fields
+		constants:              constants
+		constant_values:        constant_output.compile_time_values
+		public_constants:       public_constants
+		globals:                globals
+		public_globals:         public_globals
+		used_function_names:    used_function_names
+		has_startup_inits:      startup_initializers.len > 0
+		has_cleanup_hooks:      module_cleanup_calls.len > 0
+		functions:              functions
+		constant_types:         constant_types
+		global_types:           global_types
+		fixed_array_types:      fixed_array_types
+		composite_types:        composite_types
 	}
 	mut spawn_typedefs := map[string]string{}
 	mut spawn_helpers := map[string]string{}
@@ -1252,7 +1267,8 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		body.write_string(mono_definitions[mono_name])
 	}
 	synthesized_main := if has_entry_module && !entry_has_main {
-		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0, module_cleanup_calls.len > 0)
+		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0,
+			module_cleanup_calls.len > 0)
 	} else {
 		''
 	}
@@ -1264,7 +1280,8 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		// each a stable type id in a range disjoint from the declared-type ids
 		// (1..N) and the primitive ids (0x40000000+). Only unique/consistent values
 		// matter: construction and `match` both reference `__v_typeid_<composite>`.
-		late_composite_declarations.writeln('#define __v_typeid_${composite_name} ${u32(0x50000000) + u32(index)}')
+		late_composite_declarations.writeln('#define __v_typeid_${composite_name} ${
+			u32(0x50000000) + u32(index)}')
 		if composite_name !in declared_composite_types {
 			declaration := 'typedef ${if composite_name.starts_with('Array_') {
 				'array'
@@ -1277,11 +1294,15 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	if late_composite_declarations.len > 0 {
 		late_composite_declarations.writeln('')
 	}
-	interface_dispatches := fastc_generate_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v)
+	interface_dispatches := fastc_generate_interface_dispatches(declared_kinds, functions,
+		interface_methods, used_function_names, prefs.building_v)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
 	hoisted_body := fastc_hoist_c_directives(body.str())
-	mut result := strings.new_builder(preamble.len + c_integer_comparison_helpers.len + type_declarations.len + type_output.enum_string_helpers.len + constant_output.macros.len + constant_output.declarations.len + global_output.declarations.len + prototypes.len + body.len + startup_initializers.len + 96)
+	mut result := strings.new_builder(preamble.len + c_integer_comparison_helpers.len +
+		type_declarations.len + type_output.enum_string_helpers.len + constant_output.macros.len +
+		constant_output.declarations.len + global_output.declarations.len + prototypes.len +
+		body.len + startup_initializers.len + 96)
 	result.write_string(preamble)
 	result.write_string(c_integer_comparison_helpers)
 	result.write_string(hoisted_body.directives)
@@ -1369,15 +1390,20 @@ fn fastc_synthesized_main(selfhost bool, has_startup_inits bool, has_cleanup_hoo
 }
 
 fn fastc_interface_method_signatures_match(interface_signature FastcFunctionSignature, candidate_signature FastcFunctionSignature) bool {
-	if candidate_signature.return_type != interface_signature.return_type || !fastc_string_types_equal(candidate_signature.return_types, interface_signature.return_types) || candidate_signature.option_type != interface_signature.option_type || candidate_signature.parameter_types.len != interface_signature.parameter_types.len {
+	if candidate_signature.return_type != interface_signature.return_type
+		|| !fastc_string_types_equal(candidate_signature.return_types, interface_signature.return_types)
+		|| candidate_signature.option_type != interface_signature.option_type
+		|| candidate_signature.parameter_types.len != interface_signature.parameter_types.len {
 		return false
 	}
 	for i in 0 .. interface_signature.parameter_types.len {
 		if i > 0 && candidate_signature.parameter_types[i] != interface_signature.parameter_types[i] {
 			return false
 		}
-		interface_parameter_is_mut := i < interface_signature.parameter_mutability.len && interface_signature.parameter_mutability[i]
-		candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len && candidate_signature.parameter_mutability[i]
+		interface_parameter_is_mut := i < interface_signature.parameter_mutability.len
+			&& interface_signature.parameter_mutability[i]
+		candidate_parameter_is_mut := i < candidate_signature.parameter_mutability.len
+			&& candidate_signature.parameter_mutability[i]
 		if candidate_parameter_is_mut != interface_parameter_is_mut {
 			return false
 		}
@@ -1413,17 +1439,17 @@ fn fastc_promote_embedded_interface_methods(embed_embedders []string, embed_embe
 					promoted_params[0] = embedder_type
 				}
 				functions[promoted_key] = FastcFunctionSignature{
-					parameter_types: promoted_params
-					parameter_mutability: source.parameter_mutability.clone()
-					return_type: source.return_type
-					return_types: source.return_types.clone()
-					option_type: source.option_type
-					is_variadic: source.is_variadic
+					parameter_types:          promoted_params
+					parameter_mutability:     source.parameter_mutability.clone()
+					return_type:              source.return_type
+					return_types:             source.return_types.clone()
+					option_type:              source.option_type
+					is_variadic:              source.is_variadic
 					last_parameter_is_params: source.last_parameter_is_params
-					is_public: source.is_public
-					is_disabled: source.is_disabled
-					module_name: source.module_name
-					path: source.path
+					is_public:                source.is_public
+					is_disabled:              source.is_disabled
+					module_name:              source.module_name
+					path:                     source.path
 				}
 				interface_methods[promoted_key] = true
 				changed = true
@@ -1462,22 +1488,26 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				parameters << '${interface_signature.parameter_types[i]} arg${i}'
 				arguments << 'arg${i}'
 			}
-			c_name := fastc_method_c_name(interface_signature.module_name, interface_type, method_name)
+			c_name := fastc_method_c_name(interface_signature.module_name, interface_type,
+				method_name)
 			out.writeln('${interface_signature.return_type} ${c_name}(${parameters.join(', ')}) {')
 			out.writeln('\tswitch (value._typ) {')
 			for candidate_key in function_keys {
 				if selfhost && method_name !in used_function_names {
 					continue
 				}
-				if candidate_key == interface_method_key || candidate_key.all_after_last('.') != method_name {
+				if candidate_key == interface_method_key
+					|| candidate_key.all_after_last('.') != method_name {
 					continue
 				}
 				receiver_key := candidate_key.all_before_last('.')
-				if declared_kinds[receiver_key] in [.interface_, .enum_, .alias_] || receiver_key !in declared_kinds {
+				if declared_kinds[receiver_key] in [.interface_, .enum_, .alias_]
+					|| receiver_key !in declared_kinds {
 					continue
 				}
 				candidate_signature := functions[candidate_key]
-				if !fastc_interface_method_signatures_match(interface_signature, candidate_signature) {
+				if !fastc_interface_method_signatures_match(interface_signature,
+					candidate_signature) {
 					continue
 				}
 				receiver_type := fastc_c_declared_type_name(receiver_key)
@@ -1492,7 +1522,8 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 				} else {
 					''
 				}
-				call := '${fastc_method_c_name(candidate_signature.module_name, receiver_type, method_name)}(${receiver_argument}${call_arguments})'
+				call := '${fastc_method_c_name(candidate_signature.module_name, receiver_type,
+					method_name)}(${receiver_argument}${call_arguments})'
 				out.writeln('\tcase __v_typeid_${receiver_type}: ${if interface_signature.return_type == 'void' {
 					call + '; return;'
 				} else {
@@ -1542,9 +1573,9 @@ fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 		conditional_code.writeln('')
 	}
 	return FastcHoistedCSource{
-		directives: directives.str()
+		directives:       directives.str()
 		conditional_code: conditional_code.str()
-		body: body.str()
+		body:             body.str()
 	}
 }
 

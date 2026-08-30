@@ -7,8 +7,12 @@ import os
 import os.cmdline
 import rand
 import term
+import v.ast
+import v.pref
+import v.fmt
 import v.util
 import v.util.diff
+import v.parser
 import v.help
 import v3.errors as v3errors
 import v3.flat
@@ -38,14 +42,20 @@ mut:
 const formatted_file_token = '\@\@\@' + 'FORMATTED_FILE: '
 const vtmp_folder = os.vtmp_dir()
 const term_colors = term.can_show_color_on_stderr()
+const legacy_vfmt_only_flags = ['-backup', '-c', '-diff', '-inprocess', '-l', '-new_int',
+	'-no-migrate-json2', '-noerror', '-verbose', '--verbose', '-verify', '-w']
 
 fn formatter_backend(args []string) !string {
 	mut backend := 'c'
 	for i, arg in args {
 		if arg in ['-b', '-backend'] && i + 1 < args.len {
 			backend = match args[i + 1] {
-				'c', 'fastc', 'wasm' { args[i + 1] }
-				'js', 'js_node', 'js_browser', 'js_freestanding' { 'js' }
+				'c', 'fastc', 'wasm' {
+					args[i + 1]
+				}
+				'js', 'js_node', 'js_browser', 'js_freestanding' {
+					'js'
+				}
 				else {
 					return error('Unknown V backend: ${args[i + 1]}\nValid -backend choices are: c, fastc, js, js_node, js_browser, js_freestanding, wasm')
 				}
@@ -192,10 +202,45 @@ fn main() {
 	exit(0)
 }
 
+// verify_file accepts both V3 and legacy vfmt output while the existing source tree
+// transitions to V3 formatting.
 fn (foptions &FormatOptions) verify_file(fpath string) bool {
-	fcontent := foptions.formatted_content_from_file(fpath) or { return false }
 	content := os.read_file(fpath) or { return false }
-	return fcontent == content
+	fcontent := foptions.formatted_content_from_file(fpath) or { return false }
+	return fcontent == content || foptions.is_legacy_formatted(fpath, content)
+}
+
+fn (foptions &FormatOptions) is_legacy_formatted(fpath string, content string) bool {
+	args := util.join_env_vflags_and_os_args()
+	mut prefs, _ := pref.parse_args_and_show_errors(['fmt'], legacy_vfmt_args(args), false)
+	prefs.is_fmt = true
+	prefs.skip_warnings = true
+	mut table := ast.new_table()
+	file_ast := parser.parse_file(fpath, mut table, .parse_comments, prefs)
+	if file_ast.errors.len > 0 {
+		return false
+	}
+	table.new_int = foptions.is_new_int
+	legacy_content := fmt.fmt(file_ast, mut table, prefs, foptions.is_debug,
+		migrate_json2: foptions.should_migrate_json2(fpath)
+	)
+	return legacy_content == content
+}
+
+fn legacy_vfmt_args(args []string) []string {
+	mut res := []string{}
+	for i := 1; i < args.len; i++ {
+		arg := args[i]
+		if arg == '-worker' {
+			i++
+			continue
+		}
+		if arg in legacy_vfmt_only_flags {
+			continue
+		}
+		res << arg
+	}
+	return res
 }
 
 fn (foptions &FormatOptions) vlog(msg string) {
@@ -301,14 +346,14 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 		return error('')
 	}
 	if foptions.is_verify {
-		if !is_formatted_different {
+		if !is_formatted_different || foptions.is_legacy_formatted(file, fc) {
 			return
 		}
 		println("${file} is not vfmt'ed")
 		return error('')
 	}
 	if foptions.is_c {
-		if is_formatted_different {
+		if is_formatted_different && !foptions.is_legacy_formatted(file, fc) {
 			eprintln('File is not formatted: ${file}')
 			return error('')
 		}

@@ -452,74 +452,74 @@ mut:
 	// generic_plain_fn_base_for_call (O(generic fns) with two string allocations
 	// per key, run for nearly every emitted call). The ordinal preserves the
 	// map's iteration order so multi-match resolution stays byte-identical.
-	generic_fn_keys_by_short     map[string][]string
-	generic_fn_keys_by_cname     map[string][]string
-	generic_fn_key_ordinal       map[string]int
-	struct_decl_infos            map[string]StructDeclInfo
-	struct_decl_short_infos      map[string]StructDeclInfo
-	decl_attrs                   map[int][]string
+	generic_fn_keys_by_short      map[string][]string
+	generic_fn_keys_by_cname      map[string][]string
+	generic_fn_key_ordinal        map[string]int
+	struct_decl_infos             map[string]StructDeclInfo
+	struct_decl_short_infos       map[string]StructDeclInfo
+	decl_attrs                    map[int][]string
 	decl_attrs_by_source_position map[u64][]string
-	c_decl_abi_names             map[string]string
-	c_extern_global_names        map[string]string
-	shared_type_names            map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
-	shared_alias_pointer_shorts  map[string]string         // alias short name -> shared inner type; '' means ambiguous
-	needs_shared_runtime         bool
-	const_runtime_inits          []string
-	const_runtime_init_modules   []string
-	runtime_inits                []string
-	runtime_init_modules         []string
-	compiler_vroot               string
-	compiler_vexe                string
-	compiler_vexe_env_setup      bool = true
-	ccompiler                    string
-	target                       pref.Target
-	thread_stack_size            int = 8 * 1024 * 1024
-	compile_values               map[string]string // explicit `-d` values used by `$d(...)` in `#flag`s
-	output_path                  string
-	output_error                 string
-	c99_mode                     bool
-	trace_calls                  bool
-	track_heap                   bool
-	inside_trace_call            bool
-	skip_generics                bool
-	skip_enum_autostr            bool
-	placeholder_check_forced     bool
-	cur_fn_name                  string
-	cur_fn_is_specialized        bool
-	cur_fn_assert_continues      bool
-	current_decl_is_mut          bool
-	direct_array_access          bool
-	struct_default_module        string
-	default_value_stack          map[string]bool
-	shadowed_global_locals       map[string]bool
-	cur_param_names              []string
-	cur_param_type_values        []types.Type
-	cur_param_types              map[string]types.Type
-	cur_param_name_bits          u64
-	cur_concrete_optional_params map[string]bool
-	cur_mut_params               map[string]bool
-	cur_mut_pointer_params       map[string]bool
-	cur_mut_param_owners         map[string]types.ScopeBindingOwner
-	cur_fn_ret                   types.Type = types.Type(types.void_)
-	cur_fn_ret_is_optional       bool
-	cur_fn_ret_base              types.Type = types.Type(types.void_)
-	defer_return_tmp_var         string
-	active_locks                 []ActiveLock
-	unsafe_depth                 int
-	loop_depth                   int
-	conditional_branch_scopes    []&types.Scope
-	conditional_branch_depths    []int
-	conditional_branch_depth     int
-	loop_label_depths            map[string]int
-	loop_defer_starts            []int
-	loop_label_defer_starts      map[string]int
-	loop_control_copybacks       []LoopControlCopyback
-	map_loop_copyback_guards     []MapLoopCopybackGuard
-	emitted_loop_break_labels    map[string]bool
-	goto_label_c_names           map[string]string
-	goto_label_count             int
-	goto_label_lock_scopes       map[string][]int
-	pending_loop_label           string
+	c_decl_abi_names              map[string]string
+	c_extern_global_names         map[string]string
+	shared_type_names             map[string]SharedTypeInfo // __shared__ wrapper name -> wrapped type metadata
+	shared_alias_pointer_shorts   map[string]string         // alias short name -> shared inner type; '' means ambiguous
+	needs_shared_runtime          bool
+	const_runtime_inits           []string
+	const_runtime_init_modules    []string
+	runtime_inits                 []string
+	runtime_init_modules          []string
+	compiler_vroot                string
+	compiler_vexe                 string
+	compiler_vexe_env_setup       bool = true
+	ccompiler                     string
+	target                        pref.Target
+	thread_stack_size             int = 8 * 1024 * 1024
+	compile_values                map[string]string // explicit `-d` values used by `$d(...)` in `#flag`s
+	output_path                   string
+	output_error                  string
+	c99_mode                      bool
+	trace_calls                   bool
+	track_heap                    bool
+	inside_trace_call             bool
+	skip_generics                 bool
+	skip_enum_autostr             bool
+	placeholder_check_forced      bool
+	cur_fn_name                   string
+	cur_fn_is_specialized         bool
+	cur_fn_assert_continues       bool
+	current_decl_is_mut           bool
+	direct_array_access           bool
+	struct_default_module         string
+	default_value_stack           map[string]bool
+	shadowed_global_locals        map[string]bool
+	cur_param_names               []string
+	cur_param_type_values         []types.Type
+	cur_param_types               map[string]types.Type
+	cur_param_name_bits           u64
+	cur_concrete_optional_params  map[string]bool
+	cur_mut_params                map[string]bool
+	cur_mut_pointer_params        map[string]bool
+	cur_mut_param_owners          map[string]types.ScopeBindingOwner
+	cur_fn_ret                    types.Type = types.Type(types.void_)
+	cur_fn_ret_is_optional        bool
+	cur_fn_ret_base               types.Type = types.Type(types.void_)
+	defer_return_tmp_var          string
+	active_locks                  []ActiveLock
+	unsafe_depth                  int
+	loop_depth                    int
+	conditional_branch_scopes     []&types.Scope
+	conditional_branch_depths     []int
+	conditional_branch_depth      int
+	loop_label_depths             map[string]int
+	loop_defer_starts             []int
+	loop_label_defer_starts       map[string]int
+	loop_control_copybacks        []LoopControlCopyback
+	map_loop_copyback_guards      []MapLoopCopybackGuard
+	emitted_loop_break_labels     map[string]bool
+	goto_label_c_names            map[string]string
+	goto_label_count              int
+	goto_label_lock_scopes        map[string][]int
+	pending_loop_label            string
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.

@@ -198,8 +198,7 @@ fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, 
 	mut chunk_threads := [first_thread]
 	for chunk_idx in 1 .. bounds.len / 2 {
 		chunk_thread := spawn fastc_collect_signature_chunk(sources, prefs, declared_types,
-			declared_type_c_names, params_structs, bounds[chunk_idx * 2],
-			bounds[chunk_idx * 2 + 1])
+			declared_type_c_names, params_structs, bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
 		chunk_threads << chunk_thread
 	}
 	for chunk_idx in 0 .. chunk_threads.len {

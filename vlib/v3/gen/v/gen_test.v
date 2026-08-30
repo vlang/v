@@ -88,14 +88,14 @@ fn test_formatter_preserves_blank_lines_between_statements() {
 }
 
 fn test_formatter_preserves_compact_function_and_expression_bodies() {
-	source := "fn empty() {}\n\nfn comment_only() {\n\t// keep inside\n}\n\nfn compact_expressions() {\n\t_ := if true { 1 } else { 2 }\n\t_ := match 10 {\n\t\t10 { 10 }\n\t\t5 {}\n\t\telse { 2 }\n\t}\n\tmatch 1 {\n\t\telse {\n\t\t\t// keep inside\n\t\t}\n\t}\n}\n"
+	source := 'fn empty() {}\n\nfn comment_only() {\n\t// keep inside\n}\n\nfn compact_expressions() {\n\t_ := if true { 1 } else { 2 }\n\t_ := match 10 {\n\t\t10 { 10 }\n\t\t5 {}\n\t\telse { 2 }\n\t}\n\tmatch 1 {\n\t\telse {\n\t\t\t// keep inside\n\t\t}\n\t}\n}\n'
 	out := vfmt('compact_bodies', source)
 	assert out == source, out
 	assert vfmt('compact_bodies_twice', out) == out
 }
 
 fn test_formatter_keeps_trailing_array_comments_inside_literal() {
-	source := "fn array_comments() {\n\t_ := [\n\t\t// before\n\t\t6,\n\t\t// after\n\t]\n\t_ := [\n\t\t7, // inline after\n\t]\n}\n"
+	source := 'fn array_comments() {\n\t_ := [\n\t\t// before\n\t\t6,\n\t\t// after\n\t]\n\t_ := [\n\t\t7, // inline after\n\t]\n}\n'
 	out := vfmt('trailing_array_comments', source)
 	assert out == source, out
 	assert vfmt('trailing_array_comments_twice', out) == out
@@ -109,21 +109,21 @@ fn test_formatter_keeps_trailing_block_and_struct_update_comments_inside() {
 }
 
 fn test_formatter_preserves_unsafe_and_defer_source_layout() {
-	source := "fn foo() {}\n\nfn block_layouts() {\n\tunsafe { 6 }\n\tunsafe {}\n\tunsafe {\n\t}\n\tx := unsafe {\n\t\t5\n\t}\n\ty := unsafe { 7 }\n\tdefer {}\n\tdefer { foo() }\n\tdefer {\n\t\tfoo()\n\t}\n\t_ = x\n\t_ = y\n}\n"
+	source := 'fn foo() {}\n\nfn block_layouts() {\n\tunsafe { 6 }\n\tunsafe {}\n\tunsafe {\n\t}\n\tx := unsafe {\n\t\t5\n\t}\n\ty := unsafe { 7 }\n\tdefer {}\n\tdefer { foo() }\n\tdefer {\n\t\tfoo()\n\t}\n\t_ = x\n\t_ = y\n}\n'
 	out := vfmt('unsafe_defer_layout', source)
 	assert out == source, out
 	assert vfmt('unsafe_defer_layout_twice', out) == out
 }
 
 fn test_formatter_preserves_compact_empty_literals_and_declarations() {
-	source := "interface Compact {}\n\nstruct Between {}\n\ninterface Expanded {\n}\n\nenum CompactEnum {}\n\nstruct Between2 {}\n\nenum ExpandedEnum {\n}\n\nfn literal_layouts() {\n\tcompact := fn (_s string) {}\n\texpanded := fn (_s string) {\n\t}\n\t_ = compact\n\t_ = expanded\n}\n"
+	source := 'interface Compact {}\n\nstruct Between {}\n\ninterface Expanded {\n}\n\nenum CompactEnum {}\n\nstruct Between2 {}\n\nenum ExpandedEnum {\n}\n\nfn literal_layouts() {\n\tcompact := fn (_s string) {}\n\texpanded := fn (_s string) {\n\t}\n\t_ = compact\n\t_ = expanded\n}\n'
 	out := vfmt('compact_empty_literals_declarations', source)
 	assert out == source, out
 	assert vfmt('compact_empty_literals_declarations_twice', out) == out
 }
 
 fn test_formatter_preserves_loop_labels_debugger_and_enum_groups() {
-	source := "enum Grouped {\n\taa = 1\n\tbbb\n\n\tcccc  = 5\n\tddddd = 10\n\n\t// final group\n\tee  = 20\n\tfff = 30\n}\n\nfn labelled_debugger() {\n\tL1: for {\n\t\t\$dbg;\n\t\tbreak L1\n\t}\n}\n"
+	source := 'enum Grouped {\n\taa = 1\n\tbbb\n\n\tcccc  = 5\n\tddddd = 10\n\n\t// final group\n\tee  = 20\n\tfff = 30\n}\n\nfn labelled_debugger() {\n\tL1: for {\n\t\t\$dbg;\n\t\tbreak L1\n\t}\n}\n'
 	out := vfmt('loop_label_debugger_enum_groups', source)
 	assert out == source, out
 	assert vfmt('loop_label_debugger_enum_groups_twice', out) == out
@@ -144,7 +144,7 @@ fn test_formatter_keeps_trailing_loop_comments_inside_body() {
 }
 
 fn test_formatter_keeps_trailing_comptime_for_comments_inside_body() {
-	source := "fn comptime_loop_comments[T]() {\n\t\$for field in T.fields {\n\t\tprintln(field.name)\n\t\t// trailing comptime loop\n\t}\n\t\$for method in T.methods {\n\t\t// comment-only comptime loop\n\t}\n}\n"
+	source := 'fn comptime_loop_comments[T]() {\n\t\$for field in T.fields {\n\t\tprintln(field.name)\n\t\t// trailing comptime loop\n\t}\n\t\$for method in T.methods {\n\t\t// comment-only comptime loop\n\t}\n}\n'
 	out := vfmt('trailing_comptime_for_comments', source)
 	assert out == source, out
 	assert vfmt('trailing_comptime_for_comments_twice', out) == out
@@ -168,37 +168,37 @@ fn test_formatter_rewrites_c_string_selectors_by_backend() {
 }
 
 fn test_formatter_preserves_aggregate_member_blank_lines() {
-	source := "struct Grouped {\n\ta int\n\n\tbb string\n\tcc bool\n}\n\ninterface Contract {\n\ta int\n\n\tbb string\n\n\tfirst()\n\tsecond()\n}\n"
+	source := 'struct Grouped {\n\ta int\n\n\tbb string\n\tcc bool\n}\n\ninterface Contract {\n\ta int\n\n\tbb string\n\n\tfirst()\n\tsecond()\n}\n'
 	out := vfmt('aggregate_member_blank_lines', source)
 	assert out == source, out
 	assert vfmt('aggregate_member_blank_lines_twice', out) == out
 }
 
 fn test_formatter_keeps_blank_lines_between_consecutive_enums() {
-	source := "enum First {\n\tone\n}\n\nenum Second {\n\ttwo\n}\n"
+	source := 'enum First {\n\tone\n}\n\nenum Second {\n\ttwo\n}\n'
 	out := vfmt('consecutive_enum_blank_lines', source)
 	assert out == source, out
 	assert vfmt('consecutive_enum_blank_lines_twice', out) == out
 }
 
 fn test_formatter_keeps_trailing_positional_struct_init_comments_inside() {
-	source := "struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{\n\t\t1,\n\t\t2,\n\t\t// trailing positional\n\t}\n}\n"
-	expected := "struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{1, 2,\n\t\t// trailing positional\n\t}\n}\n"
+	source := 'struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{\n\t\t1,\n\t\t2,\n\t\t// trailing positional\n\t}\n}\n'
+	expected := 'struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{1, 2,\n\t\t// trailing positional\n\t}\n}\n'
 	out := vfmt('trailing_positional_struct_init_comment', source)
 	assert out == expected, out
 	assert vfmt('trailing_positional_struct_init_comment_twice', out) == out
 }
 
 fn test_formatter_preserves_compact_struct_updates() {
-	source := "struct Position {\n\tpos int\n\tlen int\n}\n\nfn compact(field Position, name_len int) {\n\t_ := Position{ ...field }\n\t_ := Position{ ...field, len: name_len }\n}\n"
+	source := 'struct Position {\n\tpos int\n\tlen int\n}\n\nfn compact(field Position, name_len int) {\n\t_ := Position{ ...field }\n\t_ := Position{ ...field, len: name_len }\n}\n'
 	out := vfmt('compact_struct_updates', source)
 	assert out == source, out
 	assert vfmt('compact_struct_updates_twice', out) == out
 }
 
 fn test_formatter_expands_grouped_consts_and_keeps_trailing_global_comments_inside() {
-	source := "const (\n\t// first docs\n\tfirst = 1\n\tsecond = 2\n)\n\npub const (\n\tthird = 3\n)\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n"
-	expected := "// first docs\nconst first = 1\nconst second = 2\n\npub const third = 3\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n"
+	source := 'const (\n\t// first docs\n\tfirst = 1\n\tsecond = 2\n)\n\npub const (\n\tthird = 3\n)\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n'
+	expected := '// first docs\nconst first = 1\nconst second = 2\n\npub const third = 3\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n'
 	out := vfmt('grouped_consts_trailing_global_comment', source)
 	assert out == expected, out
 	second := vfmt('grouped_consts_trailing_global_comment_twice', out)
@@ -206,15 +206,15 @@ fn test_formatter_expands_grouped_consts_and_keeps_trailing_global_comments_insi
 }
 
 fn test_formatter_keeps_trailing_array_initializer_comments_inside() {
-	source := "fn f() {\n\ta := []int{len: 1\n\t\t/* trailing initializer */\n\t}\n\t_ = a\n}\n"
+	source := 'fn f() {\n\ta := []int{len: 1\n\t\t/* trailing initializer */\n\t}\n\t_ = a\n}\n'
 	out := vfmt('trailing_array_initializer_comment', source)
 	assert out == source, out
 	assert vfmt('trailing_array_initializer_comment_twice', out) == out
 }
 
 fn test_formatter_keeps_singleton_grouped_const_comments_before_declaration() {
-	source := "const (\n\t// only docs\n\tonly = 1\n)\n"
-	expected := "// only docs\nconst only = 1\n"
+	source := 'const (\n\t// only docs\n\tonly = 1\n)\n'
+	expected := '// only docs\nconst only = 1\n'
 	out := vfmt('singleton_grouped_const_comment', source)
 	assert out == expected, out
 	assert vfmt('singleton_grouped_const_comment_twice', out) == out
@@ -255,8 +255,8 @@ fn test_formatter_preserves_multiline_strings_and_trailing_struct_comments() {
 }
 
 fn test_formatter_preserves_declaration_list_layout() {
-	input := "fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant | SecondVeryLongVariant | ThirdVeryLongVariant | FourthVeryLongVariant | FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta = 1\n\tlong_name = 2\n\t// trailing\n}\n"
-	expected := "fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant\n\t| SecondVeryLongVariant\n\t| ThirdVeryLongVariant\n\t| FourthVeryLongVariant\n\t| FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta         = 1\n\tlong_name = 2\n\t// trailing\n}\n"
+	input := 'fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant | SecondVeryLongVariant | ThirdVeryLongVariant | FourthVeryLongVariant | FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta = 1\n\tlong_name = 2\n\t// trailing\n}\n'
+	expected := 'fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant\n\t| SecondVeryLongVariant\n\t| ThirdVeryLongVariant\n\t| FourthVeryLongVariant\n\t| FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta         = 1\n\tlong_name = 2\n\t// trailing\n}\n'
 	out := vfmt('declaration_list_layout', input)
 	assert out == expected, out
 	assert vfmt('declaration_list_layout_twice', out) == out
@@ -358,8 +358,7 @@ fn convert(value int) int {
 	return int(value)
 }
 '
-	translated_out := vfmt_with_options('new_int_translated', translated_source,
-		is_new_int: true)
+	translated_out := vfmt_with_options('new_int_translated', translated_source, is_new_int: true)
 	assert translated_out.contains('fn convert(value i32) i32'), translated_out
 	assert translated_out.contains('return i32(value)'), translated_out
 }
@@ -380,7 +379,7 @@ fn test_formatter_reescapes_control_bytes() {
 }
 
 fn test_formatter_does_not_import_lexical_binders() {
-	source := "struct Item {\n\tname string\n}\n\nfn scan(items []Item, ch chan Item) {\n\tfor flag in items {\n\t\tprintln(flag.name)\n\t}\n\tselect {\n\t\ttime := <-ch {\n\t\t\tprintln(time.name)\n\t\t}\n\t}\n}\n\nfn fields[T]() {\n\t\$for json in T.fields {\n\t\tprintln(json.name)\n\t}\n}\n"
+	source := 'struct Item {\n\tname string\n}\n\nfn scan(items []Item, ch chan Item) {\n\tfor flag in items {\n\t\tprintln(flag.name)\n\t}\n\tselect {\n\t\ttime := <-ch {\n\t\t\tprintln(time.name)\n\t\t}\n\t}\n}\n\nfn fields[T]() {\n\t\$for json in T.fields {\n\t\tprintln(json.name)\n\t}\n}\n'
 	out := vfmt('lexical_binder_imports', source)
 	assert !out.contains('import flag'), out
 	assert !out.contains('import time'), out
@@ -423,7 +422,7 @@ fn test_formatter_preserves_anonymous_aggregate_types() {
 }
 
 fn test_formatter_preserves_mutable_match_subjects() {
-	source := "fn update(mut value int) {\n\tmatch mut value {\n\t\tint {\n\t\t\tvalue++\n\t\t}\n\t}\n}\n"
+	source := 'fn update(mut value int) {\n\tmatch mut value {\n\t\tint {\n\t\t\tvalue++\n\t\t}\n\t}\n}\n'
 	out := vfmt('mutable_match_subject', source)
 	assert out.contains('match mut value {'), out
 	assert vfmt('mutable_match_subject_twice', out) == out
@@ -491,7 +490,7 @@ fn test_string_escaping() {
 }
 
 fn test_rune_literal_escaping() {
-	source := "fn f() {\n\tprintln(`\\n`)\n\tprintln(`\\``)\n}\n"
+	source := 'fn f() {\n\tprintln(`\\n`)\n\tprintln(`\\``)\n}\n'
 	out := vfmt('rune_literal_escaping', source)
 	assert out == source, out
 	assert escape_string('\n', `\``) == '\\n'
@@ -559,15 +558,15 @@ fn test_formatter_preserves_multiline_map_layout() {
 	unicode := vfmt('unicode_map_alignment', "values := {'ß': 1, 'abc': 2}\n")
 	assert unicode.contains("\t'ß':   1\n\t'abc': 2"), unicode
 
-	comments := 'fn f() {
+	comments := "fn f() {
 	values := {
-		\'a\': 1 // after
+		'a': 1 // after
 		// between
-		\'b\': 2
+		'b': 2
 		// post
 	}
 }
-'
+"
 	assert vfmt('map_comments', comments) == comments
 }
 
@@ -628,8 +627,8 @@ fn config() Config {
 }
 
 fn test_formatter_preserves_three_value_if_guard_bindings() {
-	source := 'fn create() ?(int, string, bool) {
-	return 5, \'value\', true
+	source := "fn create() ?(int, string, bool) {
+	return 5, 'value', true
 }
 
 fn check() {
@@ -639,7 +638,7 @@ fn check() {
 		_ = r3
 	}
 }
-'
+"
 	out := vfmt('three_value_if_guard', source)
 	assert out == source, out
 	assert vfmt('three_value_if_guard_twice', out) == out
@@ -721,8 +720,8 @@ fn test_formatter_expands_long_single_line_named_call_arguments() {
 }
 
 fn test_formatter_removes_redundant_parentheses() {
-	source := "fn predicate(char int) bool {\n\treturn (char >= 65 && char <= 90)\n}\n\nfn checks() {\n\tx := 3\n\t_ := &(((x)))\n\t_, _ := (((22 > 11))), (43 > 22)\n\t_ := ((10 + 11))\n\t_ := (cond1 && cond2) || (single_ident)\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (((((1 + 2) == 3))))\n\tassert (((true)))\n}\n"
-	expected := "fn predicate(char int) bool {\n\treturn char >= 65 && char <= 90\n}\n\nfn checks() {\n\tx := 3\n\t_ := &x\n\t_, _ := (22 > 11), (43 > 22)\n\t_ := (10 + 11)\n\t_ := (cond1 && cond2) || single_ident\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (1 + 2) == 3\n\tassert true\n}\n"
+	source := 'fn predicate(char int) bool {\n\treturn (char >= 65 && char <= 90)\n}\n\nfn checks() {\n\tx := 3\n\t_ := &(((x)))\n\t_, _ := (((22 > 11))), (43 > 22)\n\t_ := ((10 + 11))\n\t_ := (cond1 && cond2) || (single_ident)\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (((((1 + 2) == 3))))\n\tassert (((true)))\n}\n'
+	expected := 'fn predicate(char int) bool {\n\treturn char >= 65 && char <= 90\n}\n\nfn checks() {\n\tx := 3\n\t_ := &x\n\t_, _ := (22 > 11), (43 > 22)\n\t_ := (10 + 11)\n\t_ := (cond1 && cond2) || single_ident\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (1 + 2) == 3\n\tassert true\n}\n'
 	out := vfmt('redundant_parentheses', source)
 	assert out == expected, out
 	assert vfmt('redundant_parentheses_twice', out) == out
@@ -795,7 +794,7 @@ fn test_formatter_preserves_comptime_match() {
 }
 
 fn test_formatter_preserves_inclusive_match_ranges() {
-	source := 'fn classify(value int) string {\n\treturn match value {\n\t\t32...126 { \'printable\' }\n\t\telse { \'other\' }\n\t}\n}\n'
+	source := "fn classify(value int) string {\n\treturn match value {\n\t\t32...126 { 'printable' }\n\t\telse { 'other' }\n\t}\n}\n"
 	out := vfmt('inclusive_match_range', source)
 	assert out.contains('32...126 {'), out
 	assert !out.contains('32 .. 126'), out
@@ -838,12 +837,12 @@ fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {
 	assert vfmt('go_and_spawn_twice', concurrency) == concurrency
 
 	dollar := vfmt('legacy_dollar_builtins',
-		'fn main() {\n\t// vfmt off\n\tn := 1\n\tassert \$typeof(n).name == \'int\'\n\tassert \$sizeof(n) > 0\n\tassert !\$isreftype[int]()\n\tassert \$dump(n) == n\n\t// vfmt on\n}\n')
+		"fn main() {\n\t// vfmt off\n\tn := 1\n\tassert \$typeof(n).name == 'int'\n\tassert \$sizeof(n) > 0\n\tassert !\$isreftype[int]()\n\tassert \$dump(n) == n\n\t// vfmt on\n}\n")
 	assert dollar.contains('\$typeof(n).name'), dollar
 	assert dollar.contains('\$sizeof(n)'), dollar
 	assert dollar.contains('\$isreftype[int]()'), dollar
 	assert dollar.contains('\$dump(n)'), dollar
-	assert dollar.ends_with("\t// vfmt on\n}\n"), dollar
+	assert dollar.ends_with('\t// vfmt on\n}\n'), dollar
 	assert vfmt('legacy_dollar_builtins_twice', dollar) == dollar
 }
 
@@ -1333,7 +1332,7 @@ fn test_formatter_preserves_function_parameter_comments() {
 }
 
 fn test_formatter_demangles_function_local_aggregate_types() {
-	source := 'fn local_types() {
+	source := "fn local_types() {
 	struct Tick {
 		next  &Tick = unsafe { nil }
 		value int
@@ -1358,7 +1357,7 @@ fn test_formatter_demangles_function_local_aggregate_types() {
 	wrapper := Wrapper{
 		Tick: first
 		numbers: {
-			\'one\': Number{
+			'one': Number{
 				integer: 1
 			}
 		}
@@ -1366,7 +1365,7 @@ fn test_formatter_demangles_function_local_aggregate_types() {
 	_ = ticks
 	_ = wrapper
 }
-'
+"
 	out := vfmt('function_local_aggregate_types', source)
 	assert out == source, out
 	assert !out.contains('@local@'), out

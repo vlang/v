@@ -69,7 +69,8 @@ fn test_fmt_preferences_respect_vflags() {
 		assert vflags_res.output.contains('Unknown V backend: jss'), vflags_res.output
 
 		os.unsetenv('VFLAGS')
-		cli_res := os.execute('${os.quoted_path(vexe)} fmt ${backend_flag} jss ${os.quoted_path(source_path)}')
+		cli_res :=
+			os.execute('${os.quoted_path(vexe)} fmt ${backend_flag} jss ${os.quoted_path(source_path)}')
 		assert cli_res.exit_code != 0, '${backend_flag} jss: ${cli_res.output}'
 		assert cli_res.output.contains('Unknown V backend: jss'), cli_res.output
 	}
@@ -84,6 +85,23 @@ fn test_fmt_uses_v3_formatter() {
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
 	assert res.output.contains("fn main() {\n\tprintln('v3')\n}"), res.output
+}
+
+fn test_fmt_checks_accept_legacy_formatted_source() {
+	source_path := os.join_path(vfmt_test_tdir, 'legacy_formatter.v')
+	source := '// Header\n\nmodule main\n'
+	os.write_file(source_path, source)!
+
+	format_res := os.execute('${os.quoted_path(vexe)} fmt ${os.quoted_path(source_path)}')
+	assert format_res.exit_code == 0, format_res.output
+	assert format_res.output == '// Header\nmodule main\n', format_res.output
+
+	for check_args in ['-verify -inprocess', '-verify', '-c'] {
+		res :=
+			os.execute('${os.quoted_path(vexe)} fmt ${check_args} ${os.quoted_path(source_path)}')
+		assert res.exit_code == 0, '${check_args}: ${res.output}'
+		assert os.read_file(source_path)! == source
+	}
 }
 
 fn test_fmt_debug_reports_v3_node_kinds() {
@@ -163,14 +181,14 @@ fn only_comments() {
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('vfmt running v3.gen.v over file:'), res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('construct_comment_boundaries_twice',
-		formatted, '')
+	second_res, formatted_twice :=
+		run_vfmt_write('construct_comment_boundaries_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
 fn test_fmt_preserves_compact_function_and_expression_bodies_with_v3() {
-	source := "fn empty() {}\n\nfn comment_only() {\n\t// keep inside\n}\n\nfn compact_expressions() {\n\t_ := if true { 1 } else { 2 }\n\t_ := match 10 {\n\t\t10 { 10 }\n\t\t5 {}\n\t\telse { 2 }\n\t}\n\tmatch 1 {\n\t\telse {\n\t\t\t// keep inside\n\t\t}\n\t}\n}\n"
+	source := 'fn empty() {}\n\nfn comment_only() {\n\t// keep inside\n}\n\nfn compact_expressions() {\n\t_ := if true { 1 } else { 2 }\n\t_ := match 10 {\n\t\t10 { 10 }\n\t\t5 {}\n\t\telse { 2 }\n\t}\n\tmatch 1 {\n\t\telse {\n\t\t\t// keep inside\n\t\t}\n\t}\n}\n'
 	res, formatted := run_vfmt_write('compact_bodies', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -181,13 +199,12 @@ fn test_fmt_preserves_compact_function_and_expression_bodies_with_v3() {
 }
 
 fn test_fmt_keeps_trailing_array_comments_inside_literal_with_v3() {
-	source := "fn array_comments() {\n\t_ := [\n\t\t// before\n\t\t6,\n\t\t// after\n\t]\n\t_ := [\n\t\t7, // inline after\n\t]\n}\n"
+	source := 'fn array_comments() {\n\t_ := [\n\t\t// before\n\t\t6,\n\t\t// after\n\t]\n\t_ := [\n\t\t7, // inline after\n\t]\n}\n'
 	res, formatted := run_vfmt_write('trailing_array_comments', source, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('trailing_array_comments_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('trailing_array_comments_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -205,19 +222,18 @@ fn test_fmt_keeps_trailing_block_and_struct_update_comments_inside_with_v3() {
 }
 
 fn test_fmt_preserves_unsafe_and_defer_source_layout_with_v3() {
-	source := "fn foo() {}\n\nfn block_layouts() {\n\tunsafe { 6 }\n\tunsafe {}\n\tunsafe {\n\t}\n\tx := unsafe {\n\t\t5\n\t}\n\ty := unsafe { 7 }\n\tdefer {}\n\tdefer { foo() }\n\tdefer {\n\t\tfoo()\n\t}\n\t_ = x\n\t_ = y\n}\n"
+	source := 'fn foo() {}\n\nfn block_layouts() {\n\tunsafe { 6 }\n\tunsafe {}\n\tunsafe {\n\t}\n\tx := unsafe {\n\t\t5\n\t}\n\ty := unsafe { 7 }\n\tdefer {}\n\tdefer { foo() }\n\tdefer {\n\t\tfoo()\n\t}\n\t_ = x\n\t_ = y\n}\n'
 	res, formatted := run_vfmt_write('unsafe_defer_layout', source, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('unsafe_defer_layout_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('unsafe_defer_layout_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
 fn test_fmt_preserves_compact_empty_literals_and_declarations_with_v3() {
-	source := "interface Compact {}\n\nstruct Between {}\n\ninterface Expanded {\n}\n\nenum CompactEnum {}\n\nstruct Between2 {}\n\nenum ExpandedEnum {\n}\n\nfn literal_layouts() {\n\tcompact := fn (_s string) {}\n\texpanded := fn (_s string) {\n\t}\n\t_ = compact\n\t_ = expanded\n}\n"
+	source := 'interface Compact {}\n\nstruct Between {}\n\ninterface Expanded {\n}\n\nenum CompactEnum {}\n\nstruct Between2 {}\n\nenum ExpandedEnum {\n}\n\nfn literal_layouts() {\n\tcompact := fn (_s string) {}\n\texpanded := fn (_s string) {\n\t}\n\t_ = compact\n\t_ = expanded\n}\n'
 	res, formatted := run_vfmt_write('compact_empty_literals_declarations', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -229,7 +245,7 @@ fn test_fmt_preserves_compact_empty_literals_and_declarations_with_v3() {
 }
 
 fn test_fmt_preserves_loop_labels_debugger_and_enum_groups_with_v3() {
-	source := "enum Grouped {\n\taa = 1\n\tbbb\n\n\tcccc  = 5\n\tddddd = 10\n\n\t// final group\n\tee  = 20\n\tfff = 30\n}\n\nfn labelled_debugger() {\n\tL1: for {\n\t\t\$dbg;\n\t\tbreak L1\n\t}\n}\n"
+	source := 'enum Grouped {\n\taa = 1\n\tbbb\n\n\tcccc  = 5\n\tddddd = 10\n\n\t// final group\n\tee  = 20\n\tfff = 30\n}\n\nfn labelled_debugger() {\n\tL1: for {\n\t\t\$dbg;\n\t\tbreak L1\n\t}\n}\n'
 	res, formatted := run_vfmt_write('loop_label_debugger_enum_groups', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -246,8 +262,7 @@ fn test_fmt_preserves_or_block_layout_and_lock_comments_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('or_layout_lock_comments_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('or_layout_lock_comments_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -258,14 +273,13 @@ fn test_fmt_keeps_trailing_loop_comments_inside_body_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('trailing_loop_comments_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('trailing_loop_comments_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
 fn test_fmt_keeps_trailing_comptime_for_comments_inside_body_with_v3() {
-	source := "fn comptime_loop_comments[T]() {\n\t\$for field in T.fields {\n\t\tprintln(field.name)\n\t\t// trailing comptime loop\n\t}\n\t\$for method in T.methods {\n\t\t// comment-only comptime loop\n\t}\n}\n"
+	source := 'fn comptime_loop_comments[T]() {\n\t\$for field in T.fields {\n\t\tprintln(field.name)\n\t\t// trailing comptime loop\n\t}\n\t\$for method in T.methods {\n\t\t// comment-only comptime loop\n\t}\n}\n'
 	res, formatted := run_vfmt_write('trailing_comptime_for_comments', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -277,32 +291,32 @@ fn test_fmt_keeps_trailing_comptime_for_comments_inside_body_with_v3() {
 }
 
 fn test_fmt_preserves_aggregate_member_blank_lines_with_v3() {
-	source := "struct Grouped {\n\ta int\n\n\tbb string\n\tcc bool\n}\n\ninterface Contract {\n\ta int\n\n\tbb string\n\n\tfirst()\n\tsecond()\n}\n"
+	source := 'struct Grouped {\n\ta int\n\n\tbb string\n\tcc bool\n}\n\ninterface Contract {\n\ta int\n\n\tbb string\n\n\tfirst()\n\tsecond()\n}\n'
 	res, formatted := run_vfmt_write('aggregate_member_blank_lines', source, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('aggregate_member_blank_lines_twice',
-		formatted, '')
+	second_res, formatted_twice :=
+		run_vfmt_write('aggregate_member_blank_lines_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
 fn test_fmt_keeps_blank_lines_between_consecutive_enums_with_v3() {
-	source := "enum First {\n\tone\n}\n\nenum Second {\n\ttwo\n}\n"
+	source := 'enum First {\n\tone\n}\n\nenum Second {\n\ttwo\n}\n'
 	res, formatted := run_vfmt_write('consecutive_enum_blank_lines', source, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('consecutive_enum_blank_lines_twice', formatted,
-		'')
+	second_res, formatted_twice :=
+		run_vfmt_write('consecutive_enum_blank_lines_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
 fn test_fmt_keeps_trailing_positional_struct_init_comments_inside_with_v3() {
-	source := "struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{\n\t\t1,\n\t\t2,\n\t\t// trailing positional\n\t}\n}\n"
-	expected := "struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{1, 2,\n\t\t// trailing positional\n\t}\n}\n"
+	source := 'struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{\n\t\t1,\n\t\t2,\n\t\t// trailing positional\n\t}\n}\n'
+	expected := 'struct Pair {\n\tfirst  int\n\tsecond int\n}\n\nfn positional() {\n\t_ := Pair{1, 2,\n\t\t// trailing positional\n\t}\n}\n'
 	res, formatted := run_vfmt_write('trailing_positional_struct_init_comment', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -314,20 +328,19 @@ fn test_fmt_keeps_trailing_positional_struct_init_comments_inside_with_v3() {
 }
 
 fn test_fmt_preserves_compact_struct_updates_with_v3() {
-	source := "struct Position {\n\tpos int\n\tlen int\n}\n\nfn compact(field Position, name_len int) {\n\t_ := Position{ ...field }\n\t_ := Position{ ...field, len: name_len }\n}\n"
+	source := 'struct Position {\n\tpos int\n\tlen int\n}\n\nfn compact(field Position, name_len int) {\n\t_ := Position{ ...field }\n\t_ := Position{ ...field, len: name_len }\n}\n'
 	res, formatted := run_vfmt_write('compact_struct_updates', source, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('compact_struct_updates_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('compact_struct_updates_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
 fn test_fmt_expands_grouped_consts_and_keeps_trailing_global_comments_inside_with_v3() {
-	source := "const (\n\t// first docs\n\tfirst = 1\n\tsecond = 2\n)\n\npub const (\n\tthird = 3\n)\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n"
-	expected := "// first docs\nconst first = 1\nconst second = 2\n\npub const third = 3\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n"
+	source := 'const (\n\t// first docs\n\tfirst = 1\n\tsecond = 2\n)\n\npub const (\n\tthird = 3\n)\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n'
+	expected := '// first docs\nconst first = 1\nconst second = 2\n\npub const third = 3\n\n__global (\n\tvalue = 4\n\t// trailing global\n)\n'
 	res, formatted := run_vfmt_write('grouped_consts_trailing_global_comment', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -339,7 +352,7 @@ fn test_fmt_expands_grouped_consts_and_keeps_trailing_global_comments_inside_wit
 }
 
 fn test_fmt_keeps_trailing_array_initializer_comments_inside_with_v3() {
-	source := "fn f() {\n\ta := []int{len: 1\n\t\t/* trailing initializer */\n\t}\n\t_ = a\n}\n"
+	source := 'fn f() {\n\ta := []int{len: 1\n\t\t/* trailing initializer */\n\t}\n\t_ = a\n}\n'
 	res, formatted := run_vfmt_write('trailing_array_initializer_comment', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -351,8 +364,8 @@ fn test_fmt_keeps_trailing_array_initializer_comments_inside_with_v3() {
 }
 
 fn test_fmt_keeps_singleton_grouped_const_comments_before_declaration_with_v3() {
-	source := "const (\n\t// only docs\n\tonly = 1\n)\n"
-	expected := "// only docs\nconst only = 1\n"
+	source := 'const (\n\t// only docs\n\tonly = 1\n)\n'
+	expected := '// only docs\nconst only = 1\n'
 	res, formatted := run_vfmt_write('singleton_grouped_const_comment', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -370,8 +383,8 @@ fn test_fmt_preserves_declaration_attribute_groups_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == expected, formatted
-	second_res, formatted_twice := run_vfmt_write('declaration_attribute_groups_twice', formatted,
-		'')
+	second_res, formatted_twice :=
+		run_vfmt_write('declaration_attribute_groups_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -408,15 +421,14 @@ fn config() Config {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('struct_init_field_comments_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('struct_init_field_comments_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
 fn test_fmt_preserves_three_value_if_guard_bindings_with_v3() {
-	source := 'fn create() ?(int, string, bool) {
-	return 5, \'value\', true
+	source := "fn create() ?(int, string, bool) {
+	return 5, 'value', true
 }
 
 fn check() {
@@ -426,7 +438,7 @@ fn check() {
 		_ = r3
 	}
 }
-'
+"
 	res, formatted := run_vfmt_write('three_value_if_guard', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -459,8 +471,7 @@ fn calls() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('expanded_call_arguments_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('expanded_call_arguments_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -479,14 +490,13 @@ fn test_fmt_expands_long_single_line_named_call_arguments_with_v3() {
 }
 
 fn test_fmt_removes_redundant_parentheses_with_v3() {
-	source := "fn predicate(char int) bool {\n\treturn (char >= 65 && char <= 90)\n}\n\nfn checks() {\n\tx := 3\n\t_ := &(((x)))\n\t_, _ := (((22 > 11))), (43 > 22)\n\t_ := ((10 + 11))\n\t_ := (cond1 && cond2) || (single_ident)\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (((((1 + 2) == 3))))\n\tassert (((true)))\n}\n"
-	expected := "fn predicate(char int) bool {\n\treturn char >= 65 && char <= 90\n}\n\nfn checks() {\n\tx := 3\n\t_ := &x\n\t_, _ := (22 > 11), (43 > 22)\n\t_ := (10 + 11)\n\t_ := (cond1 && cond2) || single_ident\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (1 + 2) == 3\n\tassert true\n}\n"
+	source := 'fn predicate(char int) bool {\n\treturn (char >= 65 && char <= 90)\n}\n\nfn checks() {\n\tx := 3\n\t_ := &(((x)))\n\t_, _ := (((22 > 11))), (43 > 22)\n\t_ := ((10 + 11))\n\t_ := (cond1 && cond2) || (single_ident)\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (((((1 + 2) == 3))))\n\tassert (((true)))\n}\n'
+	expected := 'fn predicate(char int) bool {\n\treturn char >= 65 && char <= 90\n}\n\nfn checks() {\n\tx := 3\n\t_ := &x\n\t_, _ := (22 > 11), (43 > 22)\n\t_ := (10 + 11)\n\t_ := (cond1 && cond2) || single_ident\n\t_ := (\n\t\t// keep grouping\n\t\tx\n\t)\n\tassert (1 + 2) == 3\n\tassert true\n}\n'
 	res, formatted := run_vfmt_write('redundant_parentheses', source, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted == expected, formatted
-	second_res, formatted_twice := run_vfmt_write('redundant_parentheses_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('redundant_parentheses_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -505,8 +515,7 @@ fn test_fmt_emits_hash_directive_attributes_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == expected, formatted
-	second_res, formatted_twice := run_vfmt_write('hash_directive_attributes_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('hash_directive_attributes_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -528,8 +537,8 @@ fn test_fmt_preserves_boolean_compound_assignment_spelling_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('boolean_compound_assignments_twice', formatted,
-		'')
+	second_res, formatted_twice :=
+		run_vfmt_write('boolean_compound_assignments_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -540,8 +549,7 @@ fn test_fmt_preserves_comment_only_files_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('comment_only_file_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('comment_only_file_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -552,8 +560,7 @@ fn test_fmt_preserves_atomic_parameter_qualifiers_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('atomic_parameter_qualifier_twice',
-		formatted, '')
+	second_res, formatted_twice := run_vfmt_write('atomic_parameter_qualifier_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -589,8 +596,7 @@ fn test_fmt_preserves_comptime_method_shorthand_with_v3() {
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('Dummy{}.\$method(1)'), formatted
 	assert !formatted.contains('Dummy{}.\$(method)(1)'), formatted
-	second_res, formatted_twice := run_vfmt_write('comptime_method_shorthand_twice',
-		formatted, '')
+	second_res, formatted_twice := run_vfmt_write('comptime_method_shorthand_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -626,13 +632,12 @@ fn test_fmt_preserves_fixed_array_literal_prefixes_with_v3() {
 }
 
 fn test_fmt_escapes_rune_literals_with_v3() {
-	source := "fn f() {\n\tprintln(`\\n`)\n\tprintln(`\\``)\n}\n"
+	source := 'fn f() {\n\tprintln(`\\n`)\n\tprintln(`\\``)\n}\n'
 	res, formatted := run_vfmt_write('rune_literal_escaping', source, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('rune_literal_escaping_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('rune_literal_escaping_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -665,8 +670,7 @@ fn test_fmt_preserves_multiline_map_layout_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == "numbers := {\n\t'one':       1\n\t'twentytwo': 22\n}\n", formatted
-	second_res, formatted_twice := run_vfmt_write('multiline_map_layout_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('multiline_map_layout_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -679,8 +683,7 @@ fn test_fmt_preserves_closure_capture_qualifiers_with_v3() {
 	assert formatted.contains('atomic counter := 0'), formatted
 	assert formatted.contains('fn [mut value, atomic counter, shared state] ()'), formatted
 	assert formatted.contains('consume[[]int]([]int{})'), formatted
-	second_res, formatted_twice := run_vfmt_write('closure_capture_qualifiers_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('closure_capture_qualifiers_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -698,7 +701,7 @@ fn test_fmt_preserves_comptime_match_with_v3() {
 	res, formatted := run_vfmt_write('comptime_match', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert formatted.contains("\$match @OS"), formatted
+	assert formatted.contains('\$match @OS'), formatted
 	assert formatted.contains("const platform = 'linux'"), formatted
 	assert formatted.contains("const platform = 'other'"), formatted
 	assert formatted.count('\$match @OS') == 2, formatted
@@ -708,14 +711,13 @@ fn test_fmt_preserves_comptime_match_with_v3() {
 }
 
 fn test_fmt_preserves_inclusive_match_ranges_with_v3() {
-	source := 'fn classify(value int) string {\n\treturn match value {\n\t\t32...126 { \'printable\' }\n\t\telse { \'other\' }\n\t}\n}\n'
+	source := "fn classify(value int) string {\n\treturn match value {\n\t\t32...126 { 'printable' }\n\t\telse { 'other' }\n\t}\n}\n"
 	res, formatted := run_vfmt_write('inclusive_match_range', source, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('32...126 {'), formatted
 	assert !formatted.contains('32 .. 126'), formatted
-	second_res, formatted_twice := run_vfmt_write('inclusive_match_range_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('inclusive_match_range_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -731,8 +733,7 @@ fn test_fmt_preserves_lifetime_annotations_with_v3() {
 	assert formatted.contains('fn Borrowed.new[^a, T](value &^a T) Borrowed[^a, T]'), formatted
 	assert formatted.contains('return Borrowed[^a, T]{'), formatted
 	assert formatted.contains('fn (borrowed &^a Borrowed[^a, T]) get[^a]() &^a T'), formatted
-	second_res, formatted_twice := run_vfmt_write('lifetime_annotations_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('lifetime_annotations_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -757,7 +758,7 @@ fn test_fmt_preserves_go_and_spawn_keywords_with_v3() {
 }
 
 fn test_fmt_preserves_legacy_dollar_builtins_with_v3() {
-	source := 'fn main() {\n\t// vfmt off\n\tn := 1\n\tassert \$typeof(n).name == \'int\'\n\tassert \$sizeof(n) > 0\n\tassert !\$isreftype[int]()\n\tassert \$dump(n) == n\n\t// vfmt on\n}\n'
+	source := "fn main() {\n\t// vfmt off\n\tn := 1\n\tassert \$typeof(n).name == 'int'\n\tassert \$sizeof(n) > 0\n\tassert !\$isreftype[int]()\n\tassert \$dump(n) == n\n\t// vfmt on\n}\n"
 	res, formatted := run_vfmt_write('legacy_dollar_builtins', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -765,7 +766,7 @@ fn test_fmt_preserves_legacy_dollar_builtins_with_v3() {
 	assert formatted.contains('\$sizeof(n)'), formatted
 	assert formatted.contains('\$isreftype[int]()'), formatted
 	assert formatted.contains('\$dump(n)'), formatted
-	assert formatted.ends_with("\t// vfmt on\n}\n"), formatted
+	assert formatted.ends_with('\t// vfmt on\n}\n'), formatted
 }
 
 fn test_fmt_preserves_bodyless_function_prefixes_with_v3() {
@@ -873,13 +874,12 @@ fn f() {
 	assert formatted.contains('json.encode(1)'), formatted
 	assert !formatted.contains('import json2'), formatted
 	assert !formatted.contains('json2.encode'), formatted
-	second_res, formatted_twice := run_vfmt_write('disabled_json_migration_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('disabled_json_migration_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
-fn test_fmt_keeps_comments_before_grouped_const_fields_with_v3() {
+fn test_fmt_keeps_comments_before_expanded_const_fields_with_v3() {
 	source := 'const (
 	// pi documents pi
 	pi = 3.14
@@ -890,8 +890,9 @@ fn test_fmt_keeps_comments_before_grouped_const_fields_with_v3() {
 	res, formatted := run_vfmt_write('grouped_const_comments', source, '')
 
 	assert res.exit_code == 0, res.output
-	assert formatted.contains('\t// pi documents pi\n\tpi = 3.14'), formatted
-	assert formatted.contains('\t// phi documents phi\n\tphi = 1.618'), formatted
+	assert formatted.contains('// pi documents pi\nconst pi = 3.14'), formatted
+	assert formatted.contains('// phi documents phi\nconst phi = 1.618'), formatted
+	assert !formatted.contains('const ('), formatted
 	assert !formatted.contains('pi =\n'), formatted
 }
 
@@ -902,8 +903,7 @@ fn test_fmt_preserves_typed_map_entries_and_typeof_array_init_with_v3() {
 	assert res.exit_code == 0, res.output
 	assert formatted.contains("map[string]int{\n\t\t'a': 1\n\t}"), formatted
 	assert formatted.contains('[]typeof(fixed[0]){}'), formatted
-	second_res, formatted_twice := run_vfmt_write('typed_map_and_typeof_array', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('typed_map_and_typeof_array', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -919,8 +919,7 @@ fn test_fmt_rewrites_legacy_it_only_in_array_init_expression_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('[]int{len: it, cap: it + 1, init: index}'), formatted
-	second_res, formatted_twice := run_vfmt_write('array_init_legacy_it_scope_twice',
-		formatted, '')
+	second_res, formatted_twice := run_vfmt_write('array_init_legacy_it_scope_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -940,8 +939,8 @@ fn test_fmt_preserves_multi_variable_c_style_loop_headers_with_v3() {
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('L4: for a, b := 0, 10; a < 4; a++, b-- {'), formatted
 	assert !formatted.contains('\n\t{\n\t\tmut a, b := 0, 10'), formatted
-	second_res, formatted_twice := run_vfmt_write('multi_variable_c_style_loop_twice',
-		formatted, '')
+	second_res, formatted_twice :=
+		run_vfmt_write('multi_variable_c_style_loop_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -958,8 +957,8 @@ fn test_fmt_preserves_postfix_assignment_attributes_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('x := [1, 2, 3] @[freed]'), formatted
-	second_res, formatted_twice := run_vfmt_write('postfix_assignment_attribute_twice',
-		formatted, '')
+	second_res, formatted_twice :=
+		run_vfmt_write('postfix_assignment_attribute_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -977,8 +976,7 @@ fn test_fmt_preserves_branch_prediction_builtins_with_v3() {
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('if _likely_(value > 0) {'), formatted
 	assert formatted.contains('return _unlikely_(value < 0)'), formatted
-	second_res, formatted_twice := run_vfmt_write('branch_prediction_builtins_twice',
-		formatted, '')
+	second_res, formatted_twice := run_vfmt_write('branch_prediction_builtins_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -996,8 +994,7 @@ fn next() int {
 	assert res.exit_code == 0, res.output
 	assert formatted.contains('mut static value := 1'), formatted
 	assert !formatted.contains('static mut value'), formatted
-	second_res, formatted_twice := run_vfmt_write('mutable_static_declaration_twice',
-		formatted, '')
+	second_res, formatted_twice := run_vfmt_write('mutable_static_declaration_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1025,8 +1022,8 @@ fn encode_legacy() string {
 	assert formatted.contains('j2 := Foo{}'), formatted
 	assert formatted.contains('return json.encode(j2)'), formatted
 	assert !formatted.contains('return j2.encode(j2'), formatted
-	second_res, formatted_twice := run_vfmt_write('aliased_json2_local_collision_twice',
-		formatted, '')
+	second_res, formatted_twice :=
+		run_vfmt_write('aliased_json2_local_collision_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1053,8 +1050,8 @@ __global (
 	assert formatted.contains('\t// initialized global docs\n\tinitialized = int(2)'), formatted
 	assert !formatted.contains('__global (\n\terrno C.int'), formatted
 	assert !formatted.contains('initialized =\n'), formatted
-	second_res, formatted_twice := run_vfmt_write('global_grouping_and_comments_twice',
-		formatted, '')
+	second_res, formatted_twice :=
+		run_vfmt_write('global_grouping_and_comments_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1111,8 +1108,8 @@ fn abc(a int) int
 '
 	c_res, c_formatted := run_vfmt_write('new_int_c_decl', c_source, '-new_int')
 	assert c_res.exit_code == 0, c_res.output
-	assert c_formatted.contains('fn C.abc(a i32, b []i32, foreign C.int, foreign_values []C.int) i32'),
-		c_formatted
+	assert c_formatted.contains('fn C.abc(a i32, b []i32, foreign C.int, foreign_values []C.int) i32'), c_formatted
+
 	assert c_formatted.contains('fn C.foreign(value C.int) C.int'), c_formatted
 	assert !c_formatted.contains('C.i32'), c_formatted
 	assert c_formatted.contains('fn abc(a int) int'), c_formatted
@@ -1124,8 +1121,8 @@ fn convert(value int) int {
 	return int(value)
 }
 '
-	translated_res, translated_formatted := run_vfmt_write('new_int_translated',
-		translated_source, '-new_int')
+	translated_res, translated_formatted := run_vfmt_write('new_int_translated', translated_source,
+		'-new_int')
 	assert translated_res.exit_code == 0, translated_res.output
 	assert translated_formatted.contains('fn convert(value i32) i32'), translated_formatted
 	assert translated_formatted.contains('return i32(value)'), translated_formatted
@@ -1155,7 +1152,7 @@ fn test_fmt_reescapes_control_bytes_with_v3() {
 }
 
 fn test_fmt_does_not_import_for_in_binders_with_v3() {
-	source := "struct Item {\n\tname string\n}\n\nfn scan(items []Item) {\n\tfor flag in items {\n\t\tprintln(flag.name)\n\t}\n}\n"
+	source := 'struct Item {\n\tname string\n}\n\nfn scan(items []Item) {\n\tfor flag in items {\n\t\tprintln(flag.name)\n\t}\n}\n'
 	res, formatted := run_vfmt_write('for_in_binder_import', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -1174,8 +1171,7 @@ fn test_fmt_resolves_implied_imports_in_selector_scope_with_v3() {
 	assert formatted.contains('fn shadow(time Clock)'), formatted
 	assert formatted.contains('println(time.now)'), formatted
 	assert formatted.contains('println(time.now())'), formatted
-	second_res, formatted_twice := run_vfmt_write('scope_aware_implied_import_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('scope_aware_implied_import_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1190,8 +1186,7 @@ fn test_fmt_preserves_isreftype_spelling_with_v3() {
 	assert formatted.contains('isreftype[T]()'), formatted
 	assert formatted.contains('isreftype(value)'), formatted
 	assert formatted.contains('isreftype(sizeof(T))'), formatted
-	second_res, formatted_twice := run_vfmt_write('isreftype_spelling_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('isreftype_spelling_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1205,14 +1200,13 @@ fn test_fmt_preserves_anonymous_aggregate_types_with_v3() {
 	assert formatted.contains('item []struct { foo string }'), formatted
 	assert formatted.contains('value struct{ foo string }'), formatted
 	assert formatted.contains("accept(struct { foo: 'ok' })"), formatted
-	second_res, formatted_twice := run_vfmt_write('anonymous_aggregate_types', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('anonymous_aggregate_types', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
 fn test_fmt_preserves_mutable_match_subjects_with_v3() {
-	source := "fn update(mut value int) {\n\tmatch mut value {\n\t\tint {\n\t\t\tvalue++\n\t\t}\n\t}\n}\n"
+	source := 'fn update(mut value int) {\n\tmatch mut value {\n\t\tint {\n\t\t\tvalue++\n\t\t}\n\t}\n}\n'
 	res, formatted := run_vfmt_write('mutable_match_subject', source, '')
 
 	assert res.exit_code == 0, res.output
@@ -1279,8 +1273,7 @@ fn test_fmt_preserves_for_in_binder_mutability_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('for_in_binder_mutability_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('for_in_binder_mutability_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1308,8 +1301,8 @@ fn test_fmt_preserves_function_parameter_comments_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == expected, formatted
-	second_res, formatted_twice := run_vfmt_write('function_parameter_comments_twice', formatted,
-		'')
+	second_res, formatted_twice :=
+		run_vfmt_write('function_parameter_comments_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1352,8 +1345,7 @@ fn test_fmt_keeps_comments_inside_fn_literals_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('fn_literal_comments_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('fn_literal_comments_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1374,8 +1366,7 @@ fn test_fmt_keeps_trailing_select_comments_inside_body_with_v3() {
 
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
-	second_res, formatted_twice := run_vfmt_write('select_trailing_comment_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('select_trailing_comment_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1392,8 +1383,7 @@ fn enabled() bool {
 	assert res.exit_code == 0, res.output
 	assert formatted == source, formatted
 	assert !formatted.contains('/* comptime_if */'), formatted
-	second_res, formatted_twice := run_vfmt_write('comptime_if_expressions_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('comptime_if_expressions_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
@@ -1436,20 +1426,19 @@ fn test_fmt_preserves_multiline_strings_and_trailing_struct_comments_with_v3() {
 }
 
 fn test_fmt_preserves_declaration_list_layout_with_v3() {
-	input := "fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant | SecondVeryLongVariant | ThirdVeryLongVariant | FourthVeryLongVariant | FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta = 1\n\tlong_name = 2\n\t// trailing\n}\n"
-	expected := "fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant\n\t| SecondVeryLongVariant\n\t| ThirdVeryLongVariant\n\t| FourthVeryLongVariant\n\t| FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta         = 1\n\tlong_name = 2\n\t// trailing\n}\n"
+	input := 'fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant | SecondVeryLongVariant | ThirdVeryLongVariant | FourthVeryLongVariant | FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta = 1\n\tlong_name = 2\n\t// trailing\n}\n'
+	expected := 'fn wrapped(first_parameter string,\n\tsecond_parameter int, third_parameter bool) {\n\tprintln(first_parameter)\n}\n\ntype Long = FirstVeryLongVariant\n\t| SecondVeryLongVariant\n\t| ThirdVeryLongVariant\n\t| FourthVeryLongVariant\n\t| FifthVeryLongVariant\n\ntype Commented = First // first\n\t| Second\n\t// disabled\n\t| Third\n\nenum Code {\n\ta         = 1\n\tlong_name = 2\n\t// trailing\n}\n'
 	res, formatted := run_vfmt_write('declaration_list_layout', input, '')
 
 	assert res.exit_code == 0, res.output
 	assert formatted == expected, formatted
-	second_res, formatted_twice := run_vfmt_write('declaration_list_layout_twice', formatted,
-		'')
+	second_res, formatted_twice := run_vfmt_write('declaration_list_layout_twice', formatted, '')
 	assert second_res.exit_code == 0, second_res.output
 	assert formatted_twice == formatted
 }
 
 fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
-	source := 'fn local_types() {
+	source := "fn local_types() {
 	struct Tick {
 		next  &Tick = unsafe { nil }
 		value int
@@ -1474,7 +1463,7 @@ fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 	wrapper := Wrapper{
 		Tick: first
 		numbers: {
-			\'one\': Number{
+			'one': Number{
 				integer: 1
 			}
 		}
@@ -1482,7 +1471,7 @@ fn test_fmt_demangles_function_local_aggregate_types_with_v3() {
 	_ = ticks
 	_ = wrapper
 }
-'
+"
 	res, formatted := run_vfmt_write('function_local_aggregate_types', source, '')
 
 	assert res.exit_code == 0, res.output

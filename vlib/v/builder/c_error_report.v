@@ -849,8 +849,8 @@ pub fn submit_external_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_
 // controlled (a forged handoff can therefore only submit attacker-supplied text).
 fn submit_inline_v3_compiler_error_bug_report(prefs &pref.Preferences, v3_stage string, v3_output string, v_file_label string, v_source string, v_source_truncated bool, tag string) {
 	mut b := new_builder(prefs)
-	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, v_file_label, v_source, v_source_truncated,
-		tag)
+	b.submit_v3_compiler_error_bug_report(v3_stage, v3_output, v_file_label, v_source,
+		v_source_truncated, tag)
 }
 
 // build_inline_c_error_report constructs the generated-C fallback report to upload from
@@ -863,16 +863,16 @@ fn build_inline_c_error_report(prefs &pref.Preferences, ccompiler string, c_outp
 		return none
 	}
 	return CErrorBugReport{
-		kind:           'v-c-compiler-error'
-		v_version:      version.full_v_version(true)
-		target_os:      prefs.os.str()
-		target_backend: prefs.backend.str()
-		arch:           prefs.arch.str()
-		ccompiler:      ccompiler
-		build_options:  c_error_report_build_options(prefs, tag)
-		c_error:        c_output
-		v_file:         v_file
-		v_source:       v_source
+		kind:               'v-c-compiler-error'
+		v_version:          version.full_v_version(true)
+		target_os:          prefs.os.str()
+		target_backend:     prefs.backend.str()
+		arch:               prefs.arch.str()
+		ccompiler:          ccompiler
+		build_options:      c_error_report_build_options(prefs, tag)
+		c_error:            c_output
+		v_file:             v_file
+		v_source:           v_source
 		v_source_truncated: v_source_truncated
 	}
 }
@@ -916,16 +916,16 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 	// directory build (`v .`) stages an empty source and so contributes no source at all — but
 	// the version/target/build-option metadata is still reported. See doc/docs.md.
 	raw_report := CErrorBugReport{
-		kind:           'v3-compiler-error'
-		v_version:      version.full_v_version(true)
-		target_os:      v.pref.os.str()
-		target_backend: v.pref.backend.str()
-		arch:           v.pref.arch.str()
-		ccompiler:      v3_stage
-		build_options:  build_options
-		c_error:        v3_output
-		v_file:         v_file
-		v_source:       v_source
+		kind:               'v3-compiler-error'
+		v_version:          version.full_v_version(true)
+		target_os:          v.pref.os.str()
+		target_backend:     v.pref.backend.str()
+		arch:               v.pref.arch.str()
+		ccompiler:          v3_stage
+		build_options:      build_options
+		c_error:            v3_output
+		v_file:             v_file
+		v_source:           v_source
 		v_source_truncated: v_source_truncated
 	}
 	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
@@ -939,7 +939,8 @@ fn (mut v Builder) submit_v3_compiler_error_bug_report(v3_stage string, v3_outpu
 	// C is already on stdout, so appending this banner there would corrupt the documented
 	// `-o -` output for exactly the programs that needed the fallback.
 	eprintln('================== V3 compiler bug report ==============')
-	print_v3_fallback_notice(report_url, true, report.v_source != '', report_uploaded_complete_source(report))
+	print_v3_fallback_notice(report_url, true, report.v_source != '',
+		report_uploaded_complete_source(report))
 	if tool_output != '' {
 		eprintln(tool_output)
 	}

@@ -830,7 +830,7 @@ fn test_export_external_v3_report_preserves_failing_line_through_handoff() {
 		return
 	}
 	if got.kind == external_v3_transport_limited_kind {
-		return // environment too small to forward any manifest; nothing to assert
+		return
 	}
 	// Either source was omitted (a budget too small to hold even the marker) or it was
 	// truncated with the marker present, keeping the failing line — never a markerless prefix.
@@ -862,7 +862,7 @@ fn test_export_external_v3_report_marks_complete_file_containing_marker_text_as_
 		return
 	}
 	if got.kind == external_v3_transport_limited_kind {
-		return // environment too small to forward the manifest; nothing to assert
+		return
 	}
 	// The whole file fit the budget, so it was forwarded complete and reported as untruncated,
 	// even though its content contains the marker text.
@@ -891,7 +891,7 @@ fn test_export_external_v3_report_preserves_incoming_truncation_flag() {
 		return
 	}
 	if got.kind == external_v3_transport_limited_kind {
-		return // environment too small to forward the manifest; nothing to assert
+		return
 	}
 	// The small excerpt fits the budget (forwarded whole), but its incoming truncation flag is
 	// preserved through the re-export.
@@ -945,8 +945,7 @@ fn test_build_inline_c_error_report_classifies_and_filters() {
 	// (`v-c-compiler-error`) report carrying the bounded content — not misreported as an
 	// internal V3 error (which would emit `v3-compiler-error`) (PR #28131 review).
 	report := build_inline_c_error_report(&prefs, 'clang',
-		'main.tmp.c:3:9: error: use of undeclared identifier x', 'main.v', 'fn main() {}',
-		false, 'V3') or {
+		'main.tmp.c:3:9: error: use of undeclared identifier x', 'main.v', 'fn main() {}', false, 'V3') or {
 		assert false, 'an ordinary generated-C diagnostic must be reportable'
 		return
 	}
@@ -1025,7 +1024,6 @@ fn test_v_source_and_context_expose_whole_file_checks_the_union() {
 	// An empty union exposes nothing.
 	assert !v_source_and_context_expose_whole_file('', [], mapped)
 }
-
 
 fn test_selected_v_source_only_uploads_mapped_v_source_chunk() {
 	// a mapped V file yields a small chunk around the failing line
