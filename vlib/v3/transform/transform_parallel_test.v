@@ -650,6 +650,20 @@ fn test_string_interp_expansion_estimate_defers_unresolved_values() {
 	assert needs_deferred_lowering
 }
 
+fn test_shared_map_expansion_is_bounded_in_aggregate() {
+	mut t := Transformer{}
+	items := [
+		FnWorkItem{ fn_idx: 10, map_expansion_estimate: 300 },
+		FnWorkItem{ fn_idx: 20, map_expansion_estimate: 0 },
+		FnWorkItem{ fn_idx: 30, map_expansion_estimate: 300 },
+		FnWorkItem{ fn_idx: 40, map_expansion_estimate: 300 },
+	]
+
+	bounded := t.bound_shared_map_expansion(items, 1600, 2000)
+	assert bounded.map(it.fn_idx) == [10, 20, 30]
+	assert t.deferred_expansion_items.map(it.fn_idx) == [40]
+}
+
 fn test_external_map_expansion_estimate_includes_string_concatenation() {
 	mut a := flat.FlatAst.new()
 	mut concat := a.add_node(flat.Node{

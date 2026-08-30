@@ -24,6 +24,9 @@ const max_shared_transform_jobs = 18
 // the caller consumes two synchronous chunks while each pool worker consumes
 // two queued chunks.
 const shared_transform_chunks_per_job = 2
+// Normal function lowering needs part of the shared append pool too. Limit map
+// expansion estimates to the other half before assigning fixed worker regions.
+const shared_map_expansion_pool_divisor = 2
 const max_parallel_monomorph_jobs = 18
 // Recycle scratch arenas throughout large self-hosting transforms.
 const scoped_transform_batches = 16
@@ -2257,6 +2260,38 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 	}
 }
 
+// bound_shared_map_expansion keeps the combined map-lowering estimate within
+// the shared append pool. A sub-threshold const map can be reconstructed by
+// many reader functions, so checking each work item alone does not prevent the
+// fixed .nogrow regions from being exhausted in aggregate.
+fn (mut t Transformer) bound_shared_map_expansion(items []FnWorkItem, node_pool int, child_pool int) []FnWorkItem {
+	mut pool := node_pool
+	if child_pool < pool {
+		pool = child_pool
+	}
+	if pool < 0 {
+		pool = 0
+	}
+	budget := pool / shared_map_expansion_pool_divisor
+	mut used := 0
+	mut bounded := []FnWorkItem{cap: items.len}
+	mut deferred_any := false
+	for item in items {
+		estimate := item.map_expansion_estimate
+		if estimate > 0 && estimate > budget - used {
+			t.deferred_expansion_items << item
+			deferred_any = true
+			continue
+		}
+		used += estimate
+		bounded << item
+	}
+	if deferred_any {
+		t.deferred_expansion_items.sort(a.fn_idx < b.fn_idx)
+	}
+	return bounded
+}
+
 // run_parallel_transform_shared is the clone-free variant of the parallel
 // transform: all threads (master included) work directly on the master arrays.
 // Fn subtrees are disjoint node ranges, transform only rewrites nodes inside
@@ -2272,12 +2307,19 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		return false
 	} $else {
 		mut ttsw := time.new_stopwatch()
+		node_pool := t.a.nodes.cap - base_nodes
+		child_pool := t.a.children.cap - base_children
+		bounded_items := t.bound_shared_map_expansion(items, node_pool, child_pool)
+		if bounded_items.len < min_parallel_transform_items {
+			t.transform_pure_items_serial(bounded_items)
+			return false
+		}
 		t.tc.freeze_type_cache_for_forks()
 		mut chunk_target := n_jobs * shared_transform_chunks_per_job
-		if chunk_target > items.len {
-			chunk_target = items.len
+		if chunk_target > bounded_items.len {
+			chunk_target = bounded_items.len
 		}
-		mut chunks := split_work_items_ex(items, chunk_target, false)
+		mut chunks := split_work_items_ex(bounded_items, chunk_target, false)
 		chunk_count := chunks.len
 		thread_count := chunk_count - 1
 		// Pool.run queues asynchronous work before running synchronous tasks. Give
@@ -2290,8 +2332,6 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		// Partition the reserved capacity into per-chunk append regions,
 		// proportional to chunk cost (the caller reserved ~2x the expected
 		// total growth for this pool).
-		node_pool := t.a.nodes.cap - base_nodes
-		child_pool := t.a.children.cap - base_children
 		mut costs := []i64{len: chunk_count}
 		mut total := i64(0)
 		for ci in 0 .. chunk_count {

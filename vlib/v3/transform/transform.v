@@ -3141,14 +3141,15 @@ fn (mut t Transformer) append_transformed_top_level_stmts(mut out []flat.NodeId,
 // the file/module context active at its declaration and a rough cost estimate
 // (subtree node count) used to balance work across parallel workers.
 struct FnWorkItem {
-	fn_idx             int
-	range_lo           int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
-	file               string
-	module             string
-	cost               int
-	rank               i64
-	escape_scan_known  bool
-	escape_scan_needed bool
+	fn_idx                 int
+	range_lo               int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
+	file                   string
+	module                 string
+	cost                   int
+	rank                   i64
+	map_expansion_estimate int
+	escape_scan_known      bool
+	escape_scan_needed     bool
 }
 
 // DeferredBaseWrite is an in-place base-node write recorded by the master
@@ -3398,13 +3399,14 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				} else {
 					adj_cost := cost + str_est + map_est
 					pure << FnWorkItem{
-						fn_idx:             i
-						range_lo:           range_lo
-						file:               t.cur_file
-						module:             t.cur_module
-						cost:               adj_cost
-						rank:               i64(adj_cost) * 1_000_000_000 - i64(i)
-						escape_scan_known:  escape_scan_flags & 1 != 0
+						fn_idx: i
+						range_lo: range_lo
+						file: t.cur_file
+						module: t.cur_module
+						cost: adj_cost
+						rank: i64(adj_cost) * 1_000_000_000 - i64(i)
+						map_expansion_estimate: map_est
+						escape_scan_known: escape_scan_flags & 1 != 0
 						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				}
