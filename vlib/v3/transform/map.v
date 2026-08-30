@@ -199,6 +199,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// and value extraction beyond the source node's physical children.
 			estimate += deferred_map_expansion_threshold + 1
 		}
+		if node.kind == .dump_expr {
+			// Dump lowering synthesizes a temporary plus formatting and output trees
+			// whose size depends on the dumped type. Defer instead of estimating it.
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if node.kind == .call {
 			// Calls outside the writable function span are always reconstructed by
 			// transform_call_args, including a new child-ID span.
