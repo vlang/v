@@ -16975,51 +16975,50 @@ fn (tc &TypeChecker) generic_struct_method_alias_target(type_name string) string
 fn (tc &TypeChecker) generic_receiver_method_pattern_match(base string, actual_args []string, method string) ?GenericReceiverMethodPatternMatch {
 	mut best := GenericReceiverMethodPatternMatch{}
 	mut found := false
-	for key, _ in tc.fn_ret_types {
-		method_spelling := key.all_after_last('.')
-		if method_spelling !in [method, '@${method}'] {
-			continue
-		}
-		receiver := key.all_before_last('.')
-		pattern_base, patterns, is_generic := generic_type_application_parts(receiver)
-		if !is_generic || patterns.len != actual_args.len
-			|| !tc.generic_type_base_matches(pattern_base, base) {
-			continue
-		}
-		mut is_exact := true
-		for i, pattern in patterns {
-			if tc.parse_type(trimmed_space(pattern)).name() != tc.parse_type(trimmed_space(actual_args[i])).name() {
-				is_exact = false
-				break
-			}
-		}
-		mut params := []string{}
-		mut inferred_args := []string{}
-		mut specificity := 1_000_000
-		if !is_exact {
-			if patterns.all(is_bare_generic_param(trimmed_space(it))) {
+	for method_spelling in [method, '@${method}'] {
+		candidates := tc.generic_receiver_method_index[method_spelling] or { continue }
+		for key in candidates {
+			receiver := key.all_before_last('.')
+			pattern_base, patterns, is_generic := generic_type_application_parts(receiver)
+			if !is_generic || patterns.len != actual_args.len
+				|| !tc.generic_type_base_matches(pattern_base, base) {
 				continue
 			}
-			params, inferred_args = tc.generic_method_receiver_pattern_args(key, actual_args) or {
-				continue
-			}
-			specificity = 0
-			for pattern in patterns {
-				if !is_bare_generic_param(trimmed_space(pattern)) {
-					specificity += 10_000 + pattern.len
+			mut is_exact := true
+			for i, pattern in patterns {
+				if tc.parse_type(trimmed_space(pattern)).name() != tc.parse_type(trimmed_space(actual_args[i])).name() {
+					is_exact = false
+					break
 				}
 			}
-		}
-		if !found || specificity > best.specificity
-			|| (specificity == best.specificity && key < best.key) {
-			best = GenericReceiverMethodPatternMatch{
-				key:         key
-				params:      params
-				args:        inferred_args
-				specificity: specificity
-				is_exact:    is_exact
+			mut params := []string{}
+			mut inferred_args := []string{}
+			mut specificity := 1_000_000
+			if !is_exact {
+				if patterns.all(is_bare_generic_param(trimmed_space(it))) {
+					continue
+				}
+				params, inferred_args = tc.generic_method_receiver_pattern_args(key, actual_args) or {
+					continue
+				}
+				specificity = 0
+				for pattern in patterns {
+					if !is_bare_generic_param(trimmed_space(pattern)) {
+						specificity += 10_000 + pattern.len
+					}
+				}
 			}
-			found = true
+			if !found || specificity > best.specificity
+				|| (specificity == best.specificity && key < best.key) {
+				best = GenericReceiverMethodPatternMatch{
+					key:         key
+					params:      params
+					args:        inferred_args
+					specificity: specificity
+					is_exact:    is_exact
+				}
+				found = true
+			}
 		}
 	}
 	if !found {
@@ -17073,10 +17072,8 @@ fn (tc &TypeChecker) generic_receiver_has_structured_method_pattern(type_name st
 	if !is_generic {
 		return false
 	}
-	for key, _ in tc.fn_ret_types {
-		if key.all_after_last('.') != method {
-			continue
-		}
+	candidates := tc.generic_receiver_method_index[method] or { return false }
+	for key in candidates {
 		receiver := key.all_before_last('.')
 		pattern_base, patterns, is_pattern := generic_type_application_parts(receiver)
 		if !is_pattern || !tc.generic_type_base_matches(pattern_base, base) {
@@ -17094,10 +17091,8 @@ fn (tc &TypeChecker) generic_receiver_method_rejects_voidptr(type_name string, m
 	if !is_generic {
 		return false
 	}
-	for key, _ in tc.fn_ret_types {
-		if key.all_after_last('.') != method {
-			continue
-		}
+	candidates := tc.generic_receiver_method_index[method] or { return false }
+	for key in candidates {
 		receiver := key.all_before_last('.')
 		pattern_base, _, is_pattern := generic_type_application_parts(receiver)
 		if !is_pattern || !tc.generic_type_base_matches(pattern_base, base) {

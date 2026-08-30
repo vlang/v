@@ -6,6 +6,17 @@ import v3.parser
 import v3.pref
 import v3.types
 
+fn test_json_helper_scan_requires_legacy_json_module() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut g := FlatGen.new()
+	g.a = &ast
+	g.tc = &tc
+	assert !g.has_legacy_json_module()
+	tc.file_modules['json_primitives.c.v'] = 'json'
+	assert g.has_legacy_json_module()
+}
+
 fn test_optional_typedef_collection_ignores_incomplete_call_type_text() {
 	mut ast := &flat.FlatAst{}
 	ast.nodes = [flat.Node{

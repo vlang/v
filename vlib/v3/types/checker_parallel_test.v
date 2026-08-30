@@ -41,9 +41,11 @@ fn test_parallel_checker_dependencies_are_private_and_merged() {
 	master_dependency, _ := tc.intern_symbol('main.master_dependency')
 	worker_dependency, _ := tc.intern_symbol('main.worker_dependency')
 	tc.direct_dependencies_by_fn[10] = [master_dependency]
+	tc.visible_mutation_cache.rebind_results[1] = true
 
 	mut worker := tc.fork_for_parallel_check()
 	assert voidptr(worker.visible_mutation_cache) != voidptr(tc.visible_mutation_cache)
+	assert 1 !in worker.visible_mutation_cache.rebind_results
 	assert worker.direct_dependencies_by_fn.len == 0
 	worker.direct_dependencies_by_fn[10] = [worker_dependency]
 	worker.direct_dependencies_by_fn[20] = [master_dependency]
@@ -213,6 +215,30 @@ fn test_generated_fn_params_update_method_suffix_index() {
 	assert tc.fn_param_types_for_name('open') == params
 }
 
+fn test_generic_receiver_pattern_index_survives_rebuild_and_worker_fork() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	structured_key := 'Box[[]T].flatten'
+	tc.fn_ret_types[structured_key] = Type(int_)
+	tc.register_generated_fn_param_types(structured_key, []Type{})
+	for i in 0 .. 256 {
+		tc.fn_ret_types['irrelevant_${i}'] = Type(int_)
+	}
+
+	matched := tc.generic_receiver_method_pattern_match('Box', ['[]int'], 'flatten') or {
+		assert false
+		return
+	}
+	assert matched.key == structured_key
+	assert matched.params == ['T']
+	assert matched.args == ['int']
+
+	tc.rebuild_fn_param_suffix_index()
+	assert tc.generic_receiver_method_index['flatten'] == [structured_key]
+	worker := tc.fork_for_parallel_check()
+	assert worker.generic_receiver_method_index['flatten'] == [structured_key]
+}
+
 fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 	mut a := flat.FlatAst.new()
 	generic_child := a.add_val(.ident, 'T')
@@ -269,6 +295,8 @@ fn test_parallel_checker_preserves_all_dependency_edges() {
 		mut a := p.parse_file(path)
 		assert p.diagnostics.len == 0, p.diagnostics.str()
 		mut tc := TypeChecker.new(a)
+		tc.building_v_fast = true
+		tc.enable_scoped_parallel_workers()
 		tc.collect(a)
 		assert tc.check_semantics_opt(true)
 		assert tc.errors.len == 0, tc.errors.str()

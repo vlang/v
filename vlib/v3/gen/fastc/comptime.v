@@ -373,8 +373,9 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	}
 	mut type_key := ''
 	if g.lit == 'fields' {
-		type_key = fastc_resolve_declared_type_key(g.module_name, first, g.imports,
-			g.declared_types) or { return g.unsupported('`$for` over unknown type `${first}`') }
+		type_key = g.resolve_declared_type_key(first) or {
+			return g.unsupported('`$for` over unknown type `${first}`')
+		}
 		g.next()
 	} else {
 		// Qualified `mod.Type.fields`.
@@ -706,7 +707,7 @@ fn (g &Parser) resolve_type_name_c(name string) string {
 	if fastc_primitive_c_type(name) != none {
 		return name
 	}
-	key := fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) or {
+	key := g.resolve_declared_type_key(name) or {
 		return name
 	}
 	return fastc_c_declared_type_name(key)
@@ -860,7 +861,7 @@ fn (g &Parser) comptime_named_type(name string) string {
 	if primitive := fastc_primitive_c_type(name) {
 		return primitive
 	}
-	if key := fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) {
+	if key := g.resolve_declared_type_key(name) {
 		return fastc_c_declared_type_name(key)
 	}
 	if name.len <= 3 && name[0].is_capital() {

@@ -295,7 +295,7 @@ fn (g &Parser) method_uses_undefined_receiver() bool {
 		if g.is_enum_type_name(r) {
 			continue
 		}
-		if _ := fastc_resolve_declared_type_key(g.module_name, r, g.imports, g.declared_types) {
+		if _ := g.resolve_declared_type_key(r) {
 			continue
 		}
 		return true
@@ -621,7 +621,7 @@ fn (mut g Parser) read_match_type_key() ?string {
 		module_name := g.imports[first] or { first }
 		return fastc_type_key(module_name, type_name)
 	}
-	if key := fastc_resolve_declared_type_key(g.module_name, first, g.imports, g.declared_types) {
+	if key := g.resolve_declared_type_key(first) {
 		return key
 	}
 	// A primitive variant (`int`, `bool`, ...) is not a declared type; its own
@@ -2320,8 +2320,9 @@ fn (g &Parser) build_orm_delete(db_source string, block_source string, trailing 
 // an orm.QueryData with one boxed Primitive per row-struct field, then calls the
 // connection's `insert` method.
 fn (g &Parser) build_orm_insert(db_source string, value_source string, table_name string, trailing string) !string {
-	type_key := fastc_resolve_declared_type_key(g.module_name, table_name, g.imports,
-		g.declared_types) or { return g.unsupported('ORM `sql`: unknown row type `${table_name}`') }
+	type_key := g.resolve_declared_type_key(table_name) or {
+		return g.unsupported('ORM `sql`: unknown row type `${table_name}`')
+	}
 	c_type := fastc_c_declared_type_name(type_key)
 	fields := g.struct_field_info[c_type]
 	if fields.len == 0 {
@@ -2382,8 +2383,9 @@ fn (g &Parser) fastc_orm_parse_table_op(block_source string, op string) !string 
 // by FastC, so they are empty) and calls the connection's `create`.
 fn (g &Parser) build_orm_create(db_source string, block_source string, trailing string) !string {
 	table_name := g.fastc_orm_parse_table_op(block_source, 'create')!
-	type_key := fastc_resolve_declared_type_key(g.module_name, table_name, g.imports,
-		g.declared_types) or { return g.unsupported('ORM `sql`: unknown row type `${table_name}`') }
+	type_key := g.resolve_declared_type_key(table_name) or {
+		return g.unsupported('ORM `sql`: unknown row type `${table_name}`')
+	}
 	c_type := fastc_c_declared_type_name(type_key)
 	fields := g.struct_field_info[c_type]
 	if fields.len == 0 {
@@ -2567,8 +2569,9 @@ fn (g &Parser) build_orm_select_lowering(db_source string, block_source string, 
 	if tok != .eof {
 		return g.unsupported('ORM `sql`: unsupported clause near the end of `select`')
 	}
-	type_key := fastc_resolve_declared_type_key(g.module_name, table_name, g.imports,
-		g.declared_types) or { return g.unsupported('ORM `sql`: unknown row type `${table_name}`') }
+	type_key := g.resolve_declared_type_key(table_name) or {
+		return g.unsupported('ORM `sql`: unknown row type `${table_name}`')
+	}
 	c_type := fastc_c_declared_type_name(type_key)
 	fields := g.struct_field_info[c_type]
 	if fields.len == 0 {

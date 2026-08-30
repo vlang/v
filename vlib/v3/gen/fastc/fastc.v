@@ -670,11 +670,13 @@ struct FastcInterfaceField {
 }
 
 struct FastcSourceHeader {
-	module_name   string
-	imports       map[string]string
-	import_order  []string
-	blank_imports []string
-	has_globals   bool
+	module_name             string
+	imports                 map[string]string
+	import_order            []string
+	blank_imports           []string
+	has_globals             bool
+	has_constants           bool
+	has_global_declarations bool
 }
 
 struct FastcSourceFile {
@@ -686,6 +688,13 @@ struct FastcSourceFile {
 struct FastcQueuedSource {
 	path        string
 	module_name string
+}
+
+struct FastcLoadedSource {
+	source        string
+	header        FastcSourceHeader
+	failed        bool
+	error_message string
 }
 
 struct FastcHoistedCSource {
@@ -801,6 +810,7 @@ struct Parser {
 	sum_types              map[string]bool
 	struct_fields          map[string]map[string]string
 	struct_field_info      map[string][]FastcStructField
+	struct_field_lookup    map[string]map[string]FastcStructField
 	interface_fields       map[string]FastcInterfaceField
 	constants              map[string]string
 	constant_values        map[string]string
@@ -879,6 +889,8 @@ mut:
 	// operator scans in those handlers re-recurse over shared subranges;
 	// without the memo that search re-renders the same ranges combinatorially.
 	comparison_memo map[i64]FastcRenderedExpression
+	enum_type_name_memo map[string]bool
+	declared_type_key_memo map[string]string
 	has_c_functions bool
 	// Spawn lowering registrations (see spawn.v): thread struct typedefs,
 	// creator/run/waiter helper definitions, and thread type -> value type.
@@ -962,8 +974,8 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 }
 
 // FastcFileGenContext bundles the read-only program tables every per-file
-// code-generation Parser starts from. Workers share it across threads; the
-// two seed maps are cloned per file, never mutated through the context.
+// code-generation Parser starts from. Workers share it across threads and
+// return their per-file registration deltas to the stitch pass.
 struct FastcFileGenContext {
 	prefs                  &pref.Preferences = unsafe { nil }
 	declared_types         map[string]bool
@@ -977,6 +989,7 @@ struct FastcFileGenContext {
 	sum_types              map[string]bool
 	struct_fields          map[string]map[string]string
 	struct_field_info      map[string][]FastcStructField
+	struct_field_lookup    map[string]map[string]FastcStructField
 	interface_fields       map[string]FastcInterfaceField
 	constants              map[string]string
 	constant_values        map[string]string
@@ -1028,6 +1041,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		fastc_prefixed_c_names: ctx.fastc_prefixed_c_names
 		has_c_functions: ctx.has_c_functions
 		comparison_memo: map[i64]FastcRenderedExpression{}
+		enum_type_name_memo: map[string]bool{}
+		declared_type_key_memo: map[string]string{}
 		member_smartcasts: map[string]FastcMemberSmartcast{}
 		spawn_typedefs: map[string]string{}
 		spawn_helpers: map[string]string{}
@@ -1039,6 +1054,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		sum_types: ctx.sum_types
 		struct_fields: ctx.struct_fields
 		struct_field_info: ctx.struct_field_info
+		struct_field_lookup: ctx.struct_field_lookup
 		generic_method_sources: ctx.generic_method_sources
 		module_aliases: ctx.module_aliases
 		generated_mono: map[string]bool{}
@@ -1060,8 +1076,11 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		functions: ctx.functions
 		constant_types: ctx.constant_types
 		global_types: ctx.global_types
-		fixed_array_types: ctx.fixed_array_types.clone()
-		composite_types: ctx.composite_types.clone()
+		// These maps are per-file registration deltas. The stitch pass already owns
+		// the declarations collected before file generation, so copying that shared
+		// seed into every parser only adds allocation and hashing work.
+		fixed_array_types: map[string]string{}
+		composite_types: map[string]bool{}
 		deferred_lines: []string{}
 		deferred_block_starts: []int{}
 		loop_defer_block_starts: []int{}
@@ -1110,9 +1129,10 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut public_constants := map[string]bool{}
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
+	mut type_source_paths := map[string]bool{}
 	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut
-		enum_flags, mut params_structs, mut constants, mut public_constants, mut globals, mut
-		public_globals)!
+		enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut
+		globals, mut public_globals)!
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
@@ -1145,7 +1165,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
-	type_output := fastc_generate_type_declarations(sources, prefs, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
+	type_output := fastc_generate_type_declarations(sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
 	declared_composite_types := composite_types.clone()
 	type_declarations := type_output.declarations
 	enum_field_types := type_output.enum_field_types.clone()
@@ -1167,6 +1187,14 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
 	startup_initializers := fastc_generate_startup_initializers(sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls)!
+	mut struct_field_lookup := map[string]map[string]FastcStructField{}
+	for layout_type, fields in struct_field_info {
+		mut fields_by_name := map[string]FastcStructField{}
+		for field in fields {
+			fields_by_name[field.name] = field
+		}
+		struct_field_lookup[layout_type] = fields_by_name.move()
+	}
 	mut prototypes := strings.new_builder(1024)
 	mut body := strings.new_builder(4096)
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
@@ -1194,6 +1222,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		sum_types: type_output.sum_types
 		struct_fields: struct_fields
 		struct_field_info: struct_field_info
+		struct_field_lookup: struct_field_lookup
 		generic_method_sources: generic_method_sources
 		module_aliases: module_aliases
 		interface_fields: interface_fields
@@ -1436,6 +1465,10 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 	mut out := strings.new_builder(1024)
 	mut function_keys := functions.keys()
 	function_keys.sort()
+	mut function_method_names := []string{cap: function_keys.len}
+	for function_key in function_keys {
+		function_method_names << function_key.all_after_last('.')
+	}
 	mut interface_method_keys := interface_methods.keys()
 	interface_method_keys.sort()
 	for interface_key, kind in declared_kinds {
@@ -1465,11 +1498,15 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			c_name := fastc_method_c_name(interface_signature.module_name, interface_type, method_name)
 			out.writeln('${interface_signature.return_type} ${c_name}(${parameters.join(', ')}) {')
 			out.writeln('\tswitch (value._typ) {')
-			for candidate_key in function_keys {
-				if selfhost && method_name !in used_function_names {
-					continue
-				}
-				if candidate_key == interface_method_key || candidate_key.all_after_last('.') != method_name {
+			candidate_count := if selfhost && method_name !in used_function_names {
+				0
+			} else {
+				function_keys.len
+			}
+			for candidate_index in 0 .. candidate_count {
+				candidate_key := function_keys[candidate_index]
+				if candidate_key == interface_method_key
+					|| function_method_names[candidate_index] != method_name {
 					continue
 				}
 				receiver_key := candidate_key.all_before_last('.')

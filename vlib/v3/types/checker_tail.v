@@ -10432,7 +10432,17 @@ fn (tc &TypeChecker) call_mut_param_can_retag(info CallInfo, param_idx int) bool
 			source_param_idx--
 		}
 	}
-	param := tc.visible_mutation_fn_param(decl, source_param_idx) or { return true }
+	cache_id := visible_mutation_cache_id(decl, source_param_idx)
+	if !isnil(tc.visible_mutation_cache) {
+		cache := tc.visible_mutation_cache
+		if cache_id in cache.rebind_results {
+			return cache.rebind_results[cache_id]
+		}
+	}
+	param := tc.visible_mutation_fn_param(decl, source_param_idx) or {
+		tc.cache_mut_param_rebind_result(cache_id, true)
+		return true
+	}
 	mut param_count := 0
 	for i in 0 .. fn_node.children_count {
 		if tc.a.child_node(&fn_node, i).kind != .param {
@@ -10441,16 +10451,26 @@ fn (tc &TypeChecker) call_mut_param_can_retag(info CallInfo, param_idx int) bool
 		param_count++
 	}
 	if param_count == int(fn_node.children_count) {
+		tc.cache_mut_param_rebind_result(cache_id, fn_node.is_mut)
 		return fn_node.is_mut
 	}
 	for i in param_count .. fn_node.children_count {
 		if tc.subtree_can_rebind_mut_parameter(tc.a.child(&fn_node, i), param.value,
 			info.params[param_idx])
 		{
+			tc.cache_mut_param_rebind_result(cache_id, true)
 			return true
 		}
 	}
+	tc.cache_mut_param_rebind_result(cache_id, false)
 	return false
+}
+
+fn (tc &TypeChecker) cache_mut_param_rebind_result(key u64, result bool) {
+	if !isnil(tc.visible_mutation_cache) {
+		mut cache := tc.visible_mutation_cache
+		cache.rebind_results[key] = result
+	}
 }
 
 fn (tc &TypeChecker) subtree_can_rebind_mut_parameter(id flat.NodeId, name string, typ Type) bool {

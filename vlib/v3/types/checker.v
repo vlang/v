@@ -316,14 +316,16 @@ mut:
 	decls            map[string]VisibleMutationFnDecl
 	decl_misses      map[string]bool
 	results          map[u64]bool
+	rebind_results   map[u64]bool
 	decl_index_ready bool
 }
 
 fn new_visible_mutation_cache() &VisibleMutationCache {
 	return &VisibleMutationCache{
-		decls:       map[string]VisibleMutationFnDecl{}
-		decl_misses: map[string]bool{}
-		results:     map[u64]bool{}
+		decls:          map[string]VisibleMutationFnDecl{}
+		decl_misses:    map[string]bool{}
+		results:        map[u64]bool{}
+		rebind_results: map[u64]bool{}
 	}
 }
 
@@ -628,6 +630,15 @@ fn clone_pointer_alias_goto_states(states map[string][]map[string][]string) map[
 	return result
 }
 
+fn clone_string_list_map(source map[string][]string) map[string][]string {
+	mut result := map[string][]string{}
+	result.reserve(u32(source.len))
+	for key, values in source {
+		result[key] = values.clone()
+	}
+	return result
+}
+
 pub struct InterfaceImplIndex {
 pub:
 	names []string
@@ -691,6 +702,7 @@ pub mut:
 	c_variadic_fns                   map[string]bool
 	fn_implicit_veb_ctx              map[string]bool
 	receiver_method_suffix_index     map[string]string
+	generic_receiver_method_index    map[string][]string
 	structs                          map[string][]StructField
 	struct_modules                   map[string]string
 	struct_files                     map[string]string
@@ -1004,6 +1016,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		c_variadic_fns:                        map[string]bool{}
 		fn_implicit_veb_ctx:                   map[string]bool{}
 		receiver_method_suffix_index:          map[string]string{}
+		generic_receiver_method_index:         map[string][]string{}
 		structs:                               map[string][]StructField{}
 		struct_modules:                        map[string]string{}
 		struct_files:                          map[string]string{}
@@ -1164,6 +1177,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		c_variadic_fns:                     tc.c_variadic_fns
 		fn_implicit_veb_ctx:                tc.fn_implicit_veb_ctx
 		receiver_method_suffix_index:       tc.receiver_method_suffix_index
+		generic_receiver_method_index:      tc.generic_receiver_method_index
 		structs:                            tc.structs
 		struct_modules:                     tc.struct_modules
 		struct_files:                       tc.struct_files
@@ -1438,6 +1452,7 @@ pub fn (mut tc TypeChecker) ensure_private_transform_signatures() {
 		tc.fn_ret_types = tc.fn_ret_types.clone()
 		tc.fn_param_types = tc.fn_param_types.clone()
 		tc.receiver_method_suffix_index = tc.receiver_method_suffix_index.clone()
+		tc.generic_receiver_method_index = clone_string_list_map(tc.generic_receiver_method_index)
 		tc.fn_variadic = tc.fn_variadic.clone()
 		tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
 		tc.fn_type_modules = tc.fn_type_modules.clone()
@@ -1682,7 +1697,19 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 	mut fn_cost := 0
 	for parent_idx, node in a.nodes {
-		fn_cost += 1 + int(node.children_count) * 2
+		// Node count alone severely underestimates index-heavy and control-flow
+		// functions, which leaves one parallel checker worker running last.
+		mut node_cost := 1 + int(node.children_count) * 2
+		node_cost += match node.kind {
+			.index { 64 }
+			.call { 8 }
+			.selector { 4 }
+			.infix { 8 }
+			.for_stmt, .for_in_stmt { 64 }
+			.if_expr, .match_stmt { 16 }
+			else { 0 }
+		}
+		fn_cost += node_cost
 		if node.kind == .goto_stmt {
 			tc.has_goto_nodes = true
 		}
@@ -6263,6 +6290,7 @@ pub fn (mut tc TypeChecker) rebuild_fn_param_suffix_index() {
 	// Allocate a new map so callers rebuilding after a disposable prealloc
 	// scope do not retain its keys, values, or backing storage.
 	tc.receiver_method_suffix_index = map[string]string{}
+	tc.generic_receiver_method_index = map[string][]string{}
 	tc.receiver_method_suffix_index.reserve(u32(tc.fn_param_types.len * 3))
 	for name, _ in tc.fn_param_types {
 		tc.add_receiver_method_suffix_index(name)
@@ -6290,9 +6318,17 @@ fn (mut tc TypeChecker) add_receiver_method_suffix_index(name string) {
 	if tc.method_suffix_prescreen && name.index_u8(`.`) < 0 {
 		return
 	}
+	receiver := name.all_before_last('.')
+	if receiver.contains('[') && receiver.ends_with(']') {
+		method := name.all_after_last('.')
+		mut indexed := tc.generic_receiver_method_index[method] or { []string{} }
+		if name !in indexed {
+			indexed << name
+			tc.generic_receiver_method_index[method] = indexed
+		}
+	}
 	tc.set_receiver_method_suffix_index(name, name)
 	if name.contains('.') {
-		receiver := name.all_before_last('.')
 		bracket := receiver.index_u8(`[`)
 		if bracket > 0 {
 			tc.set_receiver_method_suffix_index('${receiver[..bracket]}.${name.all_after_last('.')}',

@@ -8532,6 +8532,15 @@ fn json_encode_sum_helper_name(sum_ct string) string {
 	return b.str()
 }
 
+fn (g &FlatGen) has_legacy_json_module() bool {
+	for _, module_name in g.tc.file_modules {
+		if module_name == 'json' {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut g FlatGen) collect_json_pointer_types(typ types.Type, seen []string, mut pointer_types map[string]types.Pointer) {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if clean is types.Pointer {
@@ -8652,6 +8661,9 @@ fn (mut g FlatGen) collect_json_encode_sum_types(typ types.Type, seen []string, 
 }
 
 fn (mut g FlatGen) prepare_json_encode_pointer_helpers() []JsonEncodePointerHelper {
+	if !g.has_legacy_json_module() {
+		return []JsonEncodePointerHelper{}
+	}
 	mut pointer_types := map[string]types.Pointer{}
 	for idx, node in g.a.nodes {
 		if node.kind != .call || node.children_count < 2 {
@@ -8685,6 +8697,9 @@ fn (mut g FlatGen) prepare_json_encode_pointer_helpers() []JsonEncodePointerHelp
 }
 
 fn (mut g FlatGen) prepare_json_encode_sum_helpers() []JsonEncodeSumHelper {
+	if !g.has_legacy_json_module() {
+		return []JsonEncodeSumHelper{}
+	}
 	mut sum_types := map[string]types.SumType{}
 	for idx, node in g.a.nodes {
 		if node.kind != .call || node.children_count < 2 {
@@ -8769,6 +8784,9 @@ fn json_decode_pointer_helper_name(pointer_ct string) string {
 }
 
 fn (mut g FlatGen) prepare_json_decode_pointer_helpers() []JsonDecodePointerHelper {
+	if !g.has_legacy_json_module() {
+		return []JsonDecodePointerHelper{}
+	}
 	mut pointer_types := map[string]types.Pointer{}
 	for idx, node in g.a.nodes {
 		if node.kind != .call || node.children_count < 2 {
