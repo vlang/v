@@ -6585,6 +6585,98 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_keeps_temporary_source_through_conditional_local_aggregate_initializers() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+mut:
+	box &PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	flag := true
+	mut saved_if := PointerBox{
+		value: unsafe { &external }
+	}
+	selected_if := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut holder := if flag {
+				Holder{
+					box: unsafe { &saved_if }
+				}
+			} else {
+				Holder{
+					box: unsafe { &local }
+				}
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	mut saved_match := PointerBox{
+		value: unsafe { &external }
+	}
+	selected_match := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut holder := match flag {
+				true {
+					Holder{
+						box: unsafe { &saved_match }
+					}
+				}
+				else {
+					Holder{
+						box: unsafe { &local }
+					}
+				}
+			}
+			holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected_if[0])
+	println(saved_if.value.text)
+	println(selected_match[0])
+	println(saved_match.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_conditional_local_aggregate_initializers_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_conditional_local_aggregate_initializers', '-ownership', source)
+	assert out == '0\nsource\n0\nsource'
+}
+
 fn test_array_map_keeps_temporary_source_through_external_pointer_in_call_result() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {

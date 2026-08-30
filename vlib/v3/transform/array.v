@@ -3186,7 +3186,7 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 		t.array_map_record_local_pointer_origins(path, t.a.child(&node, 0), elem_name, origins, mut locals)
 		return
 	}
-	if node.kind == .block && node.children_count > 0 {
+	if node.kind in [.block, .match_branch] && node.children_count > 0 {
 		t.array_map_record_local_pointer_origins(path, t.a.child(&node, node.children_count - 1), elem_name, origins, mut locals)
 		return
 	}
@@ -3197,6 +3197,16 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 		return
 	}
 	locals[path] = false
+	if node.kind in [.if_expr, .match_stmt] {
+		for i in 1 .. node.children_count {
+			mut branch_origins := map[string]bool{}
+			t.array_map_record_local_pointer_origins(path, t.a.child(&node, i), elem_name, origins, mut branch_origins)
+			for branch_path, external in branch_origins {
+				locals[branch_path] = locals[branch_path] || external
+			}
+		}
+		return
+	}
 	if node.kind == .call {
 		sources := t.tc.ownership_call_result_sources(id)
 		mut seen := map[string]bool{}
