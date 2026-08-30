@@ -5425,9 +5425,11 @@ fn c_header_define_name_and_value(directive string) (string, string, bool, strin
 		if close_idx >= 0 {
 			body := function_value[close_idx + 1..].trim_space()
 			_, _, body_is_invocation := c_header_function_macro_invocation(body)
-			if body.starts_with('typedef ') || body_is_invocation {
+			params, _, _, valid_definition := c_header_function_macro_definition(function_value)
+			if body.starts_with('typedef ') || body_is_invocation || (valid_definition && body in params) {
 				// Retain direct typedef producers and single-invocation wrappers. Tracking every
 				// helper macro in a system header would make propagated states unnecessarily large.
+				// A single-parameter passthrough is also needed for include wrappers.
 				return name, '', false, function_value
 			}
 		}
@@ -5662,13 +5664,34 @@ fn c_header_owned_include_args(raw string, state CHeaderMacroState, vroot string
 	}
 	mut seen := map[string]bool{}
 	for _ in 0 .. 64 {
-		name := current.trim_space()
-		if name.len == 0 || seen[name] || name !in state.defined || name in state.undefined
-			|| name in state.uncertain {
+		clean := current.trim_space()
+		if clean.len == 0 {
 			return []string{}
 		}
-		seen[name] = true
-		replacement := state.macro_values[name] or { return []string{} }
+		mut replacement := ''
+		macro_name, args, is_invocation := c_header_function_macro_invocation(clean)
+		if is_invocation {
+			if seen[macro_name] || macro_name !in state.defined || macro_name in state.undefined || macro_name in state.uncertain {
+				return []string{}
+			}
+			definition := state.function_macro_values[macro_name] or { return []string{} }
+			params, body, variadic, valid_definition := c_header_function_macro_definition(definition)
+			if !valid_definition {
+				return []string{}
+			}
+			bound_args := c_header_function_macro_bound_args(params, args, variadic) or {
+				return []string{}
+			}
+			substituted := c_header_substitute_function_macro(body, params, bound_args, state.defined, state.undefined, state.uncertain, state.macro_values)
+			replacement = c_header_apply_token_pasting(substituted) or { return []string{} }
+			seen[macro_name] = true
+		} else {
+			if seen[clean] || clean !in state.defined || clean in state.undefined || clean in state.uncertain {
+				return []string{}
+			}
+			replacement = state.macro_values[clean] or { return []string{} }
+			seen[clean] = true
+		}
 		current = c_include_arg(replacement, vroot, source_file)
 		if c_include_arg_is_literal(current) {
 			return [current]
@@ -6333,6 +6356,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	mut typedef_macro_expansions := strings.new_builder(256)
 	mut in_block_comment := false
 	mut brace_depth := 0
+	mut pending_typedef_invocation := ''
 	for line_index, line in c_join_continued_lines(text) {
 		line_started_in_block_comment := in_block_comment
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
@@ -6574,10 +6598,22 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			}
 		}
 		mut typedef_expansion := ''
-		if name.len == 0 && !line_started_in_block_comment && brace_depth == 0 {
-			if expansion := c_header_invoked_typedef_macro_expansion(line, defined, undefined, uncertain, macro_values, function_macro_values) {
-				typedef_expansion = expansion
+		if name.len == 0 && possibly_active && !line_started_in_block_comment && brace_depth == 0 {
+			invocation := if pending_typedef_invocation.len > 0 {
+				pending_typedef_invocation + '\n' + line
+			} else {
+				line
 			}
+			if expansion := c_header_invoked_typedef_macro_expansion(invocation, defined, undefined, uncertain, macro_values, function_macro_values) {
+				typedef_expansion = expansion
+				pending_typedef_invocation = ''
+			} else if c_header_typedef_macro_invocation_needs_more(invocation, defined, undefined, uncertain, function_macro_values) {
+				pending_typedef_invocation = invocation
+			} else {
+				pending_typedef_invocation = ''
+			}
+		} else {
+			pending_typedef_invocation = ''
 		}
 		if possibly_active && conditionals.len > 0 && name.len == 0 && !line_started_in_block_comment {
 			alias_text := if typedef_expansion.len > 0 {
@@ -6797,6 +6833,16 @@ fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool
 	} else {
 		clean_replacement
 	}
+}
+
+fn c_header_typedef_macro_invocation_needs_more(line string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, function_macro_values map[string]string) bool {
+	invocation := c_text_without_literals(c_header_condition_without_comments(line)).trim_space()
+	macro_name := c_header_struct_tag(invocation)
+	if macro_name.len == 0 || macro_name !in defined || macro_name in undefined || macro_name in uncertain || macro_name !in function_macro_values {
+		return false
+	}
+	rest := invocation[macro_name.len..].trim_space()
+	return rest.len > 0 && rest[0] == `(` && fixed_array_len_matching_paren(rest, 0) < 0
 }
 
 fn c_header_function_macro_invocation(invocation string) (string, []string, bool) {

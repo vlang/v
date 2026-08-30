@@ -765,6 +765,20 @@ fn test_header_owned_scan_expands_invoked_function_typedef_macros() {
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
 }
 
+fn test_header_owned_scan_accumulates_multiline_function_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define DECLARE(name) typedef struct Impl name;\nDECLARE(\nMultilineAlias\n)\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl MultilineAlias;'
+}
+
 fn test_header_owned_scan_expands_nested_invoked_function_typedef_macros() {
 	state := CHeaderMacroState{
 		defined: map[string]bool{}
@@ -904,6 +918,25 @@ typedef struct Missing MissingAlias;
 	assert g.header_owned_c_typedefs['IncludedImplAlias']
 	assert g.header_owned_c_typedefs['NextWrapperAlias']
 	assert !g.header_owned_c_typedefs['MissingAlias']
+}
+
+fn test_header_owned_scan_expands_function_macro_include_operand() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_function_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'wrapper.h'), '#define INCLUDE_FILE(path) path\n#include INCLUDE_FILE("types.h")\n')!
+	os.write_file(os.join_path(dir, 'types.h'), 'typedef struct Impl FunctionIncludeAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.FunctionIncludeAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.collect_header_owned_c_typedefs('"wrapper.h"', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['FunctionIncludeAlias']
 }
 
 fn test_header_owned_include_next_uses_exact_overlapping_search_dir() {
