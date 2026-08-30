@@ -1119,7 +1119,8 @@ fn (mut t Transformer) try_lower_map_index_fixed_array_assign(node flat.Node) ?[
 		cur_type = elem_type
 	}
 	rhs_id := t.a.child(&node, 1)
-	result << t.make_assign(target, t.transform_expr_for_type(rhs_id, path.elem_type))
+	rhs := t.transform_expr_for_type(rhs_id, path.elem_type)
+	result << t.make_assign(target, t.clone_borrowed_assignment_value(rhs_id, rhs, path.elem_type))
 	result << t.make_map_set_stmt(map_expr, path.map_info.base_type, key_name, current_name)
 	return result
 }

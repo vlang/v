@@ -660,6 +660,17 @@ fn test_borrowed_map_assignment_is_cloned(holder &Holder) {
 	assert holder.left.values[0] == "left"
 }
 
+fn test_map_fixed_array_assignment_clones_borrowed_rhs(holder &Holder) {
+	key := "payload"
+	mut items := map[string][1]Payload{}
+	items[key] = [Payload{
+		values: ["old"]
+	}]!
+	items[key][0] = holder.left
+	items[key][0].values[0] = "map copy"
+	assert holder.left.values[0] == "left"
+}
+
 fn test_borrowed_assoc_overrides_are_cloned(holder &Holder) {
 	base := AssocCopy{
 		left: Payload{
@@ -969,6 +980,7 @@ fn main() {
 	test_borrowed_channel_send_is_cloned(holder)
 	test_borrowed_map_literal_entries_are_cloned(holder)
 	test_borrowed_map_assignment_is_cloned(holder)
+	test_map_fixed_array_assignment_clones_borrowed_rhs(holder)
 	test_borrowed_assoc_overrides_are_cloned(holder)
 	test_pointer_dereferences_are_cloned(holder)
 	test_conditional_borrowed_branches_are_cloned(holder)
@@ -990,7 +1002,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.split_into_lines().filter(it == 'clone').len == 61, out.output
+		assert out.output.split_into_lines().filter(it == 'clone').len == 62, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

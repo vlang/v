@@ -32,6 +32,41 @@ fn test_generated_calls_publish_exact_resolution_except_cgen_intrinsics() {
 	assert tc.resolved_call_name(intrinsic_id) == none
 }
 
+fn test_forwarded_optional_conversion_propagates_borrowed_clone() {
+	mut a := flat.FlatAst.new()
+	source := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'source'
+		typ:   '?string'
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	payload := types.Type(types.string_)
+	optional := types.Type(types.OptionType{
+		base_type: types.Type(types.string_)
+	})
+
+	result := t.convert_forwarded_optional_result(source, optional, payload, optional, optional,
+		payload, true)
+
+	assert result != source
+	mut saw_clone := false
+	mut saw_error_clone := false
+	for i, node in a.nodes {
+		if node.kind == .call && tc.resolved_call_name(flat.NodeId(i)) or { '' } == 'string__clone' {
+			saw_clone = true
+		}
+		if node.kind == .call && node.children_count > 0 {
+			callee := a.child_node(&node, 0)
+			if callee.kind == .ident && callee.value == '__v3_clone_owned_ierror' {
+				saw_error_clone = true
+			}
+		}
+	}
+	assert saw_clone
+	assert saw_error_clone
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{
