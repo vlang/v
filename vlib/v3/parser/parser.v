@@ -12450,7 +12450,10 @@ fn (mut p Parser) shared_parameter_token_is_identifier() bool {
 		return false
 	}
 	first := p.peek()
-	if first in [.comma, .semicolon, .rpar, .eof] {
+	if first == .comma {
+		return true
+	}
+	if first in [.semicolon, .rpar, .eof] {
 		return false
 	}
 	start := p.peek_pos

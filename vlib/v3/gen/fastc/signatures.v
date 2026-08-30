@@ -25,11 +25,13 @@ fn fastc_skip_attribute(mut scan scanner.Scanner) !token.Token {
 fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[string]bool, allow_short_placeholders bool) bool {
 	mut lookahead := scan
 	first := lookahead.scan()
-	if first in [.comma, .semicolon, .rpar, .eof] {
+	if first == .comma {
+		return true
+	}
+	if first in [.semicolon, .rpar, .eof] {
 		return false
 	}
-	_, boundary := fastc_scan_type(mut lookahead, first, path, module_name, imports,
-		declared_types, allow_short_placeholders) or { return false }
+	_, boundary := fastc_scan_type(mut lookahead, first, path, module_name, imports, declared_types, allow_short_placeholders) or { return false }
 	return boundary in [.comma, .semicolon, .rpar, .eof]
 }
 
@@ -264,6 +266,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				}
 				parameter_name_or_type := scan.lit
 				tok = scan.scan()
+				mut parameter_name_count := 1
 				if is_c_function && tok == .dot {
 					tok = scan.scan()
 					if parameter_name_or_type != 'C' || tok != .name {
@@ -297,22 +300,29 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 					}
 					continue
 				}
-				if tok == .comma {
-					return error('fastc parser does not support grouped parameter names in ${path}')
+				for tok == .comma {
+					tok = scan.scan()
+					if tok !in [.name, .key_shared] {
+						return error('fastc parser does not support grouped function parameter token `${tok.str()}` in ${path}')
+					}
+					parameter_name_count++
+					tok = scan.scan()
 				}
 				if tok == .ellipsis {
 					is_variadic = true
 				}
-				parameter_type, next_token := fastc_scan_type(mut scan, tok, path,
-					header.module_name, header.imports, declared_types, prefs.building_v) or {
+				parameter_type, next_token := fastc_scan_type(mut scan, tok, path, header.module_name, header.imports, declared_types, prefs.building_v) or {
 					return error('fastc function `${name}` parameter: ${err.msg()}')
 				}
-				parameter_types << if parameter_is_mut && !parameter_type.ends_with('*') {
+				stored_parameter_type := if parameter_is_mut && !parameter_type.ends_with('*') {
 					parameter_type + '*'
 				} else {
 					parameter_type
 				}
-				parameter_mutability << parameter_is_mut
+				for _ in 0 .. parameter_name_count {
+					parameter_types << stored_parameter_type
+					parameter_mutability << parameter_is_mut
+				}
 				tok = next_token
 				if tok == .comma {
 					tok = scan.scan()

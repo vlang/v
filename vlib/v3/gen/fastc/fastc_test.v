@@ -22,6 +22,10 @@ fn id(shared int) int {
 	return shared
 }
 
+fn pair(shared, other int) int {
+	return shared + other
+}
+
 fn use_immutable_shared() Box {
 	shared := Box{}
 	return shared
@@ -105,6 +109,7 @@ fn multiline_shared_operator(enabled bool) bool {
 
 fn main() {
 	_ = id(1)
+	_ = pair(1, 2)
 	_ = use_immutable_shared()
 	_ = xor_shared()
 	_ = unwrap_shared(1)
@@ -151,6 +156,8 @@ fn main() {
 	assert c_source.contains('consume(&(type));'), c_source
 	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
 	assert c_source.contains('return shared;'), c_source
+	assert c_source.contains('int pair(int shared, int other)'), c_source
+	assert c_source.contains('return shared+other;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
 	assert !c_source.contains('return &shared'), c_source
 	assert c_source.contains('Option __v_fastc_option_0 = (shared);'), c_source

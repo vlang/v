@@ -402,8 +402,13 @@ fn test_shared_keyword_identifier_as_parameter_name() {
 	return shared
 }
 ')
-	assert ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ == 'int'
-		&& !it.is_mut)
+	assert ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ == 'int' && !it.is_mut)
+	grouped_ast, _ := parse_span_source('grouped_shared_parameter_name', 'fn pair(shared, other int) int {
+	return shared + other
+}
+')
+	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ == 'int' && !it.is_mut)
+	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'other' && it.typ == 'int' && !it.is_mut)
 }
 
 fn test_multiline_shared_call_argument_stays_a_modifier() {
