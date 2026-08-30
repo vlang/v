@@ -304,3 +304,28 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'hello!', run.output
 }
+
+// A multi-part interpolation lowers through string__plus and copies the selected string, so the
+// accessor can borrow the array element just like the explicit concatenation case.
+fn test_owned_allocating_string_interpolation_consumer_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_string_interp_consumer', "struct E {
+	name string
+}
+
+fn decorated_last_name() string {
+	arr := [E{ name: 'hello' }]
+	return '<\${arr.last().name}>'
+}
+
+fn main() {
+	println(decorated_last_name())
+}
+", '')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('cannot return an independent array element'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_string_interp_consumer_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '<hello>', run.output
+}

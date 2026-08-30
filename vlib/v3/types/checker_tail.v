@@ -6028,10 +6028,10 @@ fn (tc &TypeChecker) known_sum_constructor_name(name string) ?string {
 // consumed as a borrow — read through a chain of field selectors whose final value either
 // does not own heap data (`arr.last().size`, `arr.last().name.len`) or is consumed by a
 // comparison/index operation that produces a scalar (`arr.last().name == 'x'`,
-// `arr.last().name[0]`) — rather than escaping as an independent value. Such a read keeps the
-// element owned by the array, so the accessor needs no `clone()` and the transformer can lower
-// it to an in-place `arr[..]` access. Two shapes are excluded so the copying accessor semantics
-// are kept instead:
+// `arr.last().name[0]`) or an allocating string consumer (`'<${arr.last().name}>'`) — rather
+// than escaping as an independent value. Such a read keeps the element owned by the array, so
+// the accessor needs no `clone()` and the transformer can lower it to an in-place `arr[..]`
+// access. Two shapes are excluded so the copying accessor semantics are kept instead:
 //   * a bound method value (`arr.last().method`) — closure generation shallow-copies the
 //     receiver, so a borrowed element would share heap fields with the array;
 //   * a chain whose final value itself owns heap data (`arr.last().name`, where `name` is a
@@ -6085,6 +6085,9 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 		return true
 	}
 	if consumer.kind == .infix && consumer.op == .plus && final_type is String && (raw_final_type !is Alias || !tc.type_has_infix_operator_method(raw_final_type, .plus)) {
+		return true
+	}
+	if consumer.kind == .string_interp && consumer.children_count > 1 && final_type is String {
 		return true
 	}
 	if consumer.kind != .index || consumer.children_count == 0 || tc.a.child(consumer, 0) != consumed_id {
