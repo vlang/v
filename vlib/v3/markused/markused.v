@@ -7338,6 +7338,10 @@ fn (c &CallCollector) call_is_json_encode_fast_path_target(call &flat.Node, reso
 }
 
 fn (c &CallCollector) collect_json_encode_type_helpers(typ types.Type, cur_module string, mut helpers []string) bool {
+	return c.collect_json_encode_type_helpers_inner(typ, cur_module, []string{}, mut helpers)
+}
+
+fn (c &CallCollector) collect_json_encode_type_helpers_inner(typ types.Type, cur_module string, seen []string, mut helpers []string) bool {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if clean is types.Enum {
 		if cast := c.json_enum_number_cast(clean.name) {
@@ -7356,7 +7360,8 @@ fn (c &CallCollector) collect_json_encode_type_helpers(typ types.Type, cur_modul
 		helpers << 'v3_c_lit'
 		helpers << 'array.get'
 		helpers << 'array__get'
-		return c.collect_json_encode_type_helpers(clean.elem_type, cur_module, mut helpers)
+		return c.collect_json_encode_type_helpers_inner(clean.elem_type, cur_module, seen, mut
+			helpers)
 	}
 	if clean is types.Map {
 		key_clean := if clean.key_type is types.Alias {
@@ -7370,14 +7375,21 @@ fn (c &CallCollector) collect_json_encode_type_helpers(typ types.Type, cur_modul
 		helpers << 'string__plus'
 		helpers << 'v3_c_lit'
 		helpers << 'v3_json_encode_string'
-		return c.collect_json_encode_type_helpers(clean.value_type, cur_module, mut helpers)
+		return c.collect_json_encode_type_helpers_inner(clean.value_type, cur_module, seen, mut
+			helpers)
 	}
 	if clean is types.SumType {
 		sum_name := markused_json_resolve_sum_name(clean.name, c.tc)
+		sum_key := 'sum:${sum_name}'
+		if sum_key in seen {
+			return true
+		}
+		mut next_seen := seen.clone()
+		next_seen << sum_key
 		for variant in c.tc.sum_types[sum_name] or { return false } {
 			variant_type := markused_json_sum_variant_type(variant, c.tc)
 			if variant_type is types.Pointer
-				|| !c.collect_json_encode_type_helpers(variant_type, cur_module, mut helpers) {
+				|| !c.collect_json_encode_type_helpers_inner(variant_type, cur_module, next_seen, mut helpers) {
 				return false
 			}
 		}
@@ -7414,7 +7426,7 @@ fn (c &CallCollector) collect_json_encode_type_helpers(typ types.Type, cur_modul
 				&& !markused_json_encode_omitempty_supported(field.typ) {
 				return false
 			}
-			if !c.collect_json_encode_type_helpers(field.typ, cur_module, mut helpers) {
+			if !c.collect_json_encode_type_helpers_inner(field.typ, cur_module, seen, mut helpers) {
 				return false
 			}
 		}

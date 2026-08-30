@@ -88,9 +88,12 @@ currently supported collector mode. Directory builds read `subdirs` through the 
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
-The driver monitors compiler memory throughout the build and exits when it reaches 10 GiB.
+The driver monitors compiler memory throughout the build and exits when it reaches 3840 MiB,
+leaving sampling headroom below a 4 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
 current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
+On macOS and Linux, `make` and the default `v self` build the compiler with `-prealloc`, enabling
+the disposable stage arenas that keep compiler self-hosting within that ceiling.
 Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.
@@ -133,14 +136,18 @@ float printing, C-string and embedded-NUL string literals, runes, assertions, `s
 division, modulo, indexing, parallel assignment, mixed-precedence expressions, oversized decimal
 literals, and high-bit hexadecimal or binary literals. These restrictions avoid emitting C that
 cannot provide the required runtime behavior.
-`#flag` and `#pkgconfig` are rejected because FastC does not yet transport source build options to
-its fixed TinyCC invocation.
+FastC transports header paths, link inputs, frameworks, and preprocessor defines from `#flag`, and
+resolves `#pkgconfig` options into its fixed TinyCC invocation. Other compile options remain
+unsupported.
 
 FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
 permits an explicit cross target and publishes its generated C without host TinyCC validation.
 Production, test, shared/live, ownership/autofree, object-file, profiling/coverage, strict C,
 custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL modes are currently
 rejected.
+
+A conventional C-backend self-host prunes FastC along with the other optional backends. Pass
+`-compile-backend fastc` or `-all-backends` when the generated compiler should retain `-b fastc`.
 
 `-selfhost -b fastc -o v4 vlib/v3/v3.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v3.fastcdriver` entry point and can build further FastC generations without

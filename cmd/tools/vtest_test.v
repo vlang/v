@@ -8,6 +8,7 @@ const tpath_passing = os.join_path(tpath, 'passing')
 const tpath_impure = os.join_path(tpath, 'impure')
 const tpath_js_runtime_error = os.join_path(tpath, 'js_runtime_error')
 const tpath_partial = os.join_path(tpath, 'partial')
+const tpath_strict_v3 = os.join_path(tpath, 'strict_v3')
 const mytest_exe = os.join_path(tpath, 'mytest.exe')
 
 fn testsuite_end() {
@@ -51,6 +52,11 @@ fn test_xyz() { assert 3 == 10 - 7 }
 fn test_def() { assert 10 == 100 / 10 }
 -- partial/failing_test.v --
 fn test_xyz() { assert 5 == 7, "oh no" }
+-- strict_v3/environment_test.v --
+import os
+fn test_compiler_flags_do_not_leak() { assert os.getenv("VFLAGS") == "" }
+-- strict_v3/backend_test.js.v --
+fn test_js_backend_only() { assert true }
 ').unpack_to(tpath)!
 	assert os.exists(os.join_path(tpath, 'passing/1_test.v'))
 	assert os.exists(os.join_path(tpath, 'passing/2_test.v'))
@@ -58,6 +64,8 @@ fn test_xyz() { assert 5 == 7, "oh no" }
 	assert os.exists(os.join_path(tpath, 'js_runtime_error/runtime_error_test.js.v'))
 	assert os.exists(os.join_path(tpath, 'partial/passing_test.v'))
 	assert os.exists(os.join_path(tpath, 'partial/failing_test.v'))
+	assert os.exists(os.join_path(tpath, 'strict_v3/environment_test.v'))
+	assert os.exists(os.join_path(tpath, 'strict_v3/backend_test.js.v'))
 }
 
 fn test_vflags_target_musl_detection() {
@@ -70,8 +78,29 @@ fn test_vflags_target_musl_detection() {
 
 fn test_vtest_executable_compiles() {
 	os.chdir(vroot)!
-	os.execute_or_exit('${os.quoted_path(vexe)} -o ${tpath}/mytest.exe cmd/tools/vtest.v')
+	os.execute_or_exit('${os.quoted_path(vexe)} -nocache -o ${tpath}/mytest.exe cmd/tools/vtest.v')
 	assert os.exists(mytest_exe), 'executable file: `${mytest_exe}` should exist'
+}
+
+fn test_strict_v3_flags_apply_only_to_top_level_test_compilation() {
+	os.execute_or_exit('${os.quoted_path(vexe)} -old-compiler -nocache -o ${mytest_exe} cmd/tools/vtest.v')
+	old_vflags := os.getenv_opt('VFLAGS')
+	old_test_only := os.getenv_opt('VTEST_ONLY_FN')
+	os.setenv('VFLAGS', '-new-compiler -gc none -cc clang', true)
+	os.unsetenv('VTEST_ONLY_FN')
+	res := os.execute('${os.quoted_path(mytest_exe)} test ${os.quoted_path(tpath_strict_v3)}')
+	if value := old_vflags {
+		os.setenv('VFLAGS', value, true)
+	} else {
+		os.unsetenv('VFLAGS')
+	}
+	if value := old_test_only {
+		os.setenv('VTEST_ONLY_FN', value, true)
+	} else {
+		os.unsetenv('VTEST_ONLY_FN')
+	}
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('1 passed, 1 skipped, 2 total'), res.output
 }
 
 fn test_with_several_test_files() {

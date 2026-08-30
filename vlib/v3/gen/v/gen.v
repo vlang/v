@@ -2006,6 +2006,9 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 		g.write('mut ')
 	}
 	if count <= 1 {
+		if is_decl && !n.is_mut && g.a.node(children[0]).is_mut && !g.suppress_mut {
+			g.write('mut ')
+		}
 		g.expr(children[0])
 		g.write(' ${opstr} ')
 		g.expr_list(children[1..], ', ')
@@ -2025,7 +2028,15 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 				child_index++
 			}
 		}
-		g.expr_list(lhs, ', ')
+		for i, lhs_id in lhs {
+			if is_decl && !n.is_mut && g.a.node(lhs_id).is_mut && !g.suppress_mut {
+				g.write('mut ')
+			}
+			g.expr(lhs_id)
+			if i < lhs.len - 1 {
+				g.write(', ')
+			}
+		}
 		g.write(' ${opstr} ')
 		g.expr_list(rhs, ', ')
 	}

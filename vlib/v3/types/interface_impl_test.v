@@ -79,3 +79,33 @@ fn test_interface_concrete_method_keys_include_dispatch_methods() {
 	keys := tc.interface_concrete_method_keys()
 	assert 'orm.TransactionalConnection.select' in keys
 }
+
+fn test_generic_interface_signature_substitutes_named_return_types() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_generic_params['BoxedValue'] = ['T']
+	tc.fn_param_types['BoxedValue.get'] = [
+		Type(Interface{
+			name: 'BoxedValue[T]'
+		}),
+	]
+	tc.fn_ret_types['BoxedValue.get'] = Type(Struct{
+		name: 'Box[T]'
+	})
+
+	struct_params, struct_ret := tc.specialized_interface_method_signature('BoxedValue[int]',
+		'BoxedValue.get')
+	assert struct_params[0].name() == 'BoxedValue[int]'
+	assert struct_ret.name() == 'Box[int]'
+
+	tc.fn_ret_types['BoxedValue.get'] = Type(SumType{
+		name: 'Maybe[T]'
+	})
+	_, sum_ret := tc.specialized_interface_method_signature('BoxedValue[int]', 'BoxedValue.get')
+	assert sum_ret.name() == 'Maybe[int]'
+
+	interface_type := tc.substitute_generic_type(Type(Interface{
+		name: 'BoxedValue[T]'
+	}), ['int'], ['T'])
+	assert interface_type.name() == 'BoxedValue[int]'
+}

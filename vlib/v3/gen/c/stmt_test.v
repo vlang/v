@@ -25,6 +25,70 @@ fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.Node
 	})
 }
 
+fn test_inline_asm_quoted_label_references_drop_v_quotes() {
+	assert lower_c_inline_asm_template("jz '1f'", 'amd64', map[string]bool{}, false) == 'jz 1f'
+	assert lower_c_inline_asm_template("jnz '23b'", 'amd64', map[string]bool{}, false) == 'jnz 23b'
+	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', map[string]bool{}, false) == 'call named_target'
+	assert lower_c_inline_asm_template("jmp 'next_block'", 'i386', map[string]bool{}, false) == 'jmp next_block'
+	assert lower_c_inline_asm_template("jmp 'x'", 'amd64', map[string]bool{}, false) == 'jmp x'
+}
+
+fn test_inline_asm_quoted_numbered_operands_drop_v_quotes() {
+	assert lower_c_inline_asm_template("lock cmpxchgq '%1', '%2'", 'amd64', map[string]bool{}, true) == 'lock cmpxchgq %2, %1'
+}
+
+fn test_inline_asm_character_tokens_use_assembly_quotes() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('mov rax, `A`', 'amd64', aliases, false) == "mov 'A', %rax"
+	assert lower_c_inline_asm_template('mov rax, `,`', 'amd64', aliases, false) == "mov ',', %rax"
+	assert lower_c_inline_asm_template('mov x0, `A`', 'arm64', aliases, false) == "mov x0, 'A'"
+}
+
+fn test_inline_asm_x86_addresses_preserve_unscaled_indexes() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('mov rax, [rbx + rcx + 8]', 'amd64', aliases, false) == 'mov 8(%rbx, %rcx, 1), %rax'
+	assert lower_c_inline_asm_template('mov eax, [ebx + ecx + 4]', 'i386', aliases, false) == 'mov 4(%ebx, %ecx, 1), %eax'
+	assert lower_c_inline_asm_template('lea rax, [rip + named_target]', 'amd64', aliases, false) == 'lea named_target(%rip), %rax'
+}
+
+fn test_inline_asm_i386_uses_x86_att_operand_lowering() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('mov eax, ebx', 'i386', aliases, false) == 'mov %ebx, %eax'
+	assert lower_c_inline_asm_template('mov eax, 7', 'i386', aliases, false) == 'mov \$7, %eax'
+	assert lower_c_inline_asm_template('mov eax, [ebx + ecx*4 + 8]', 'i386', aliases, false) == 'mov 8(%ebx, %ecx, 4), %eax'
+}
+
+fn test_inline_asm_x86_register_branch_targets_are_indirect() {
+	aliases := {
+		'callback': true
+	}
+	assert lower_c_inline_asm_template('call rax', 'amd64', aliases, false) == 'call *%rax'
+	assert lower_c_inline_asm_template('call rax', 'amd64', aliases, true) == 'call *%%rax'
+	assert lower_c_inline_asm_template('jmp callback', 'amd64', aliases, true) == 'jmp *%[callback]'
+	assert lower_c_inline_asm_template('jmp eax', 'i386', aliases, false) == 'jmp *%eax'
+	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', aliases, false) == 'call named_target'
+}
+
+fn test_inline_asm_block_comments_do_not_create_operand_sections() {
+	source := 'mov rax, "/* ; quoted */"
+/* outer ; /* nested ; */ still a comment ; */
+mov rbx, "// ; quoted"
+// line comment ;
+; +r (value)'
+	clean := strip_c_inline_asm_comments(source)
+	assert clean.contains('"/* ; quoted */"')
+	assert clean.contains('"// ; quoted"')
+	assert !clean.contains('outer')
+	assert !clean.contains('line comment')
+	sections := split_c_inline_asm_sections(clean)
+	assert sections.len == 2
+	assert sections[0].split_into_lines().filter(it.trim_space().len > 0) == [
+		'mov rax, "/* ; quoted */"',
+		'mov rbx, "// ; quoted"',
+	]
+	assert sections[1].trim_space() == '+r (value)'
+}
+
 fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

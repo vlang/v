@@ -490,3 +490,9 @@ fn test_prune_cached_native_function_prototypes_resolves_cache_guards() {
 	assert pruned.contains('int library_api(void);')
 	assert !pruned.contains('V3CACHE_PROGRAM_UNIT')
 }
+
+fn test_c_typedef_function_pointer_scan_advances_without_source_slices() {
+	source := '// Callback is declared below.\ntypedef void (*Callback)(void);\ntypedef void *Data;\n'
+	assert c_typedef_is_function_pointer(source, 'Callback')
+	assert !c_typedef_is_function_pointer(source, 'Data')
+}
