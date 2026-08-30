@@ -6030,10 +6030,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	// nested include can still introduce unknown macros, which makes later
 	// conditions unresolved and therefore unsuitable for prototype suppression.
 	mut external_macros_possible := state.external_macros_possible
-	mut condition_known := []bool{}
-	mut condition_active := []bool{}
-	mut condition_taken_known := []bool{}
-	mut condition_taken := []bool{}
+	mut conditionals := []CHeaderOwnedConditional{}
 	mut include_states := []CHeaderMacroState{}
 	mut include_keys := []string{}
 	mut include_args := []string{}
@@ -6049,89 +6046,131 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
-		if name in ['ifdef', 'ifndef'] {
-			macro_name := c_directive_arg(clean).fields()[0] or { '' }
-			known, mut active := c_preprocessor_ifdef_macro_state(macro_name, defined, undefined,
-				uncertain, external_macros_possible, strict_iso_mode, target)
-			if name == 'ifndef' {
-				active = !active
+		if name in ['if', 'ifdef', 'ifndef'] {
+			parent_possible := conditionals.all(it.current_possible)
+			parent_definite := conditionals.all(it.current_definite)
+			current_state := CHeaderMacroState{
+				defined:                  defined
+				undefined:                undefined
+				uncertain:                uncertain
+				macro_values:             macro_values
+				function_macro_values:    function_macro_values
+				external_macros_possible: external_macros_possible
 			}
-			condition_known << known
-			condition_active << (if known { active } else { true })
-			condition_taken_known << known
-			condition_taken << (if known { active } else { true })
+			condition := c_header_owned_source_condition(clean, current_state, strict_iso_mode,
+				target)
+			conditionals << CHeaderOwnedConditional{
+				entry_state:      c_header_macro_state_clone(current_state)
+				branch_states:    []CHeaderMacroState{}
+				parent_possible:  parent_possible
+				parent_definite:  parent_definite
+				current_possible: parent_possible && condition >= 0
+				current_definite: parent_definite && condition > 0
+				taken_known:      condition != 0
+				taken:            condition > 0
+			}
 			output.writeln('')
 			continue
 		}
-		if name == 'if' {
-			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined,
-				undefined, uncertain, macro_values, strict_iso_mode, target)
-			condition_known << known
-			condition_active << (if known { active } else { true })
-			condition_taken_known << known
-			condition_taken << (if known { active } else { true })
-			output.writeln('')
-			continue
-		}
-		if name == 'elif' && condition_known.len > 0 {
-			last := condition_known.len - 1
-			prior_known := condition_taken_known[last]
-			prior_taken := condition_taken[last]
-			known, active := c_header_objective_c_condition_state(c_directive_arg(clean), defined,
-				undefined, uncertain, macro_values, strict_iso_mode, target)
-			if (prior_known && prior_taken) || (known && !active) {
-				condition_known[last] = true
-				condition_active[last] = false
-			} else if prior_known && known {
-				condition_known[last] = true
-				condition_active[last] = true
+		if name in ['else', 'elif'] && conditionals.len > 0 {
+			conditional_idx := conditionals.len - 1
+			mut conditional := conditionals[conditional_idx]
+			if conditional.current_possible {
+				conditional.branch_states << CHeaderMacroState{
+					defined:                  defined.clone()
+					undefined:                undefined.clone()
+					uncertain:                uncertain.clone()
+					macro_values:             macro_values.clone()
+					function_macro_values:    function_macro_values.clone()
+					external_macros_possible: external_macros_possible
+				}
+			}
+			entry_state := c_header_macro_state_clone(conditional.entry_state)
+			defined = entry_state.defined.clone()
+			undefined = entry_state.undefined.clone()
+			uncertain = entry_state.uncertain.clone()
+			macro_values = entry_state.macro_values.clone()
+			function_macro_values = entry_state.function_macro_values.clone()
+			external_macros_possible = entry_state.external_macros_possible
+			if name == 'else' {
+				conditional.current_possible = conditional.parent_possible
+					&& !(conditional.taken_known && conditional.taken)
+				conditional.current_definite = conditional.parent_definite
+					&& conditional.taken_known && !conditional.taken
+				conditional.taken_known = true
+				conditional.taken = true
+				conditional.has_else = true
+			} else if conditional.taken_known && conditional.taken {
+				conditional.current_possible = false
+				conditional.current_definite = false
 			} else {
-				condition_known[last] = false
-				condition_active[last] = true
+				current_state := CHeaderMacroState{
+					defined:                  defined
+					undefined:                undefined
+					uncertain:                uncertain
+					macro_values:             macro_values
+					function_macro_values:    function_macro_values
+					external_macros_possible: external_macros_possible
+				}
+				next_condition := c_header_owned_source_condition(clean, current_state,
+					strict_iso_mode, target)
+				prior_known := conditional.taken_known
+				prior_taken := conditional.taken
+				conditional.current_possible = conditional.parent_possible
+					&& next_condition >= 0
+				conditional.current_definite = conditional.parent_definite && prior_known
+					&& !prior_taken && next_condition > 0
+				if next_condition > 0 {
+					conditional.taken_known = true
+					conditional.taken = true
+				} else if next_condition < 0 {
+					conditional.taken_known = prior_known
+					conditional.taken = prior_taken
+				} else {
+					conditional.taken_known = false
+					conditional.taken = true
+				}
 			}
-			if (prior_known && prior_taken) || (known && active) {
-				condition_taken_known[last] = true
-				condition_taken[last] = true
-			} else if prior_known && known {
-				condition_taken_known[last] = true
-				condition_taken[last] = false
-			} else {
-				condition_taken_known[last] = false
-				condition_taken[last] = true
-			}
+			conditionals[conditional_idx] = conditional
 			output.writeln('')
 			continue
 		}
-		if name == 'else' && condition_known.len > 0 {
-			last := condition_known.len - 1
-			condition_known[last] = condition_taken_known[last]
-			condition_active[last] = if condition_taken_known[last] {
-				!condition_taken[last]
-			} else {
-				true
+		if name == 'endif' && conditionals.len > 0 {
+			mut conditional := conditionals.last()
+			if conditional.current_possible {
+				conditional.branch_states << CHeaderMacroState{
+					defined:                  defined.clone()
+					undefined:                undefined.clone()
+					uncertain:                uncertain.clone()
+					macro_values:             macro_values.clone()
+					function_macro_values:    function_macro_values.clone()
+					external_macros_possible: external_macros_possible
+				}
 			}
-			condition_taken_known[last] = true
-			condition_taken[last] = true
-			output.writeln('')
-			continue
-		}
-		if name == 'endif' && condition_known.len > 0 {
-			condition_known.delete_last()
-			condition_active.delete_last()
-			condition_taken_known.delete_last()
-			condition_taken.delete_last()
+			if !conditional.has_else && !(conditional.taken_known && conditional.taken) {
+				conditional.branch_states << c_header_macro_state_clone(conditional.entry_state)
+			}
+			merged_state := c_header_macro_states_merge(conditional.branch_states,
+				conditional.entry_state)
+			defined = merged_state.defined.clone()
+			undefined = merged_state.undefined.clone()
+			uncertain = merged_state.uncertain.clone()
+			macro_values = merged_state.macro_values.clone()
+			function_macro_values = merged_state.function_macro_values.clone()
+			external_macros_possible = merged_state.external_macros_possible
+			conditionals.delete_last()
 			output.writeln('')
 			continue
 		}
 		mut definitely_active := true
 		mut possibly_active := true
-		for depth in 0 .. condition_known.len {
-			if condition_known[depth] && !condition_active[depth] {
+		for conditional in conditionals {
+			if !conditional.current_possible {
 				definitely_active = false
 				possibly_active = false
 				break
 			}
-			if !condition_known[depth] {
+			if !conditional.current_definite {
 				definitely_active = false
 			}
 		}
@@ -6147,7 +6186,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 				if name == 'define' && possibly_active && macro_name.len > 0 {
 					possibly_active_macro_names[macro_name] = true
 				}
-				if definitely_active {
+				if possibly_active {
 					uncertain.delete(macro_name)
 					if name == 'define' {
 						undefined.delete(macro_name)
@@ -6168,12 +6207,6 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 						macro_values.delete(macro_name)
 						function_macro_values.delete(macro_name)
 					}
-				} else if possibly_active {
-					defined.delete(macro_name)
-					undefined.delete(macro_name)
-					uncertain[macro_name] = true
-					macro_values.delete(macro_name)
-					function_macro_values.delete(macro_name)
 				}
 			}
 		}
@@ -6270,10 +6303,11 @@ fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool
 		}
 		definition := function_macro_values[macro_name] or { return none }
 		params, body, valid_definition := c_header_function_macro_definition(definition)
-		if !valid_definition || params.len != args.len || body.contains('#') {
+		if !valid_definition || params.len != args.len {
 			return none
 		}
-		replacement = c_header_substitute_function_macro(body, params, args)
+		substituted := c_header_substitute_function_macro(body, params, args)
+		replacement = c_header_apply_token_pasting(substituted) or { return none }
 		seen[macro_name] = true
 	}
 	for _ in 0 .. 64 {
@@ -6381,6 +6415,32 @@ fn c_header_substitute_function_macro(body string, params []string, args []strin
 		i = end
 	}
 	return output.str()
+}
+
+fn c_header_apply_token_pasting(text string) ?string {
+	if !text.contains('#') {
+		return text
+	}
+	mut output := []u8{cap: text.len}
+	mut i := 0
+	for i < text.len {
+		if text[i] != `#` {
+			output << text[i]
+			i++
+			continue
+		}
+		if i + 1 >= text.len || text[i + 1] != `#` {
+			return none
+		}
+		for output.len > 0 && output.last().is_space() {
+			output.delete_last()
+		}
+		i += 2
+		for i < text.len && text[i].is_space() {
+			i++
+		}
+	}
+	return output.bytestr()
 }
 
 fn c_preprocessor_ifdef_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, strict_iso_mode bool, target pref.Target) (bool, bool) {

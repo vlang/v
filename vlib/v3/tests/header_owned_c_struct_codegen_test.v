@@ -209,7 +209,7 @@ fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 	os.write_file(os.join_path(root, 'compiler.h'), '#if defined(__clang__) || defined(__GNUC__)\ntypedef struct { int value; } CompilerAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'compiler_version.h'), '#if __GNUC__ >= 4\ntypedef struct { int value; } CompilerVersionAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'invoked_macro.h'), '#define UNUSED_ALIAS typedef struct Wrong UnusedMacroAlias;\n#define DECLARE_INVOKED_ALIAS typedef struct { int value; } InvokedMacroAlias;\nDECLARE_INVOKED_ALIAS\n')!
-	os.write_file(os.join_path(root, 'function_macro.h'), '#define UNUSED_FUNCTION(name) typedef struct Wrong name;\n#define DECLARE_FUNCTION(name) typedef struct FunctionImpl name;\nDECLARE_FUNCTION(FunctionMacroAlias)\nstruct FunctionImpl { int value; };\n')!
+	os.write_file(os.join_path(root, 'function_macro.h'), '#define UNUSED_FUNCTION(name) typedef struct Wrong name;\n#define DECLARE_FUNCTION(name) typedef struct FunctionImpl name##_t;\nDECLARE_FUNCTION(FunctionMacroAlias)\nstruct FunctionImpl { int value; };\n')!
 	os.write_file(os.join_path(root, 'child.h'), '#ifdef CHILD_FEATURE\ntypedef struct { int value; } RevisitedAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'child_wrapper.h'), '#include "child.h"\n#define CHILD_FEATURE 1\n#include "child.h"\n')!
 	os.write_file(os.join_path(root, 'lazy_one.h'), 'typedef struct { int value; } LazyAlias;\n')!
@@ -220,7 +220,7 @@ fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 	os.write_file(os.join_path(root, 'false_tokens.h'), '// typedef struct Wrong CommentAlias;\n#define MAKE_ALIAS typedef struct Wrong MacroAlias;\nstatic const char *example = "typedef struct Wrong StringAlias;";\n')!
 	os.write_file(os.join_path(root, 'preinclude.h'), '#ifdef PREINCLUDE_FEATURE\ntypedef struct { int value; } PreincludeAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'repeat_angle.h'), header_owned_large_header('#ifdef REPEAT_FEATURE\ntypedef struct { int value; } RepeatedAlias;\n#endif\n'))!
-	os.write_file(os.join_path(root, 'common.h'), '#ifdef HAS_COMMON_ALIAS\ntypedef struct { int value; } CommonAlias;\n#endif\n')!
+	os.write_file(os.join_path(root, 'common.h'), '#if UNKNOWN_BRANCH\n#define HAS_COMMON_ALIAS\n#else\n#define HAS_COMMON_ALIAS\n#endif\n#ifdef HAS_COMMON_ALIAS\ntypedef struct { int value; } CommonAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main
 
 #flag -I @DIR
@@ -242,11 +242,6 @@ fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 #include <repeat_angle.h>
 #define REPEAT_FEATURE
 #include <repeat_angle.h>
-#if UNKNOWN_BRANCH
-#define HAS_COMMON_ALIAS
-#else
-#define HAS_COMMON_ALIAS
-#endif
 #include "common.h"
 
 @[typedef]
@@ -258,7 +253,7 @@ struct C.CompilerVersionAlias { value int }
 @[typedef]
 struct C.InvokedMacroAlias { value int }
 @[typedef]
-struct C.FunctionMacroAlias { value int }
+struct C.FunctionMacroAlias_t { value int }
 @[typedef]
 struct C.RevisitedAlias { value int }
 @[typedef]
@@ -279,7 +274,7 @@ struct C.CommonAlias { value int }
 fn main() {
 	values := [C.ValuedAlias{ value: 1 }.value, C.CompilerAlias{ value: 2 }.value,
 		C.CompilerVersionAlias{ value: 11 }.value, C.InvokedMacroAlias{ value: 12 }.value,
-		C.FunctionMacroAlias{ value: 13 }.value, C.RevisitedAlias{ value: 3 }.value,
+		C.FunctionMacroAlias_t{ value: 13 }.value, C.RevisitedAlias{ value: 3 }.value,
 		C.LazyAlias{ value: 4 }.value,
 		C.OnceAlias{ value: 5 }.value, C.AttributeAlias{ value: 6 }.value,
 		C.MacroAlias{ value: 7 }.value, C.PreincludeAlias{ value: 8 }.value,
@@ -298,7 +293,7 @@ fn main() {
 	assert run.output.trim_space() == '91', run.output
 	generated := os.read_file(out + '.c')!
 	for owned in ['ValuedAlias', 'CompilerAlias', 'CompilerVersionAlias', 'InvokedMacroAlias',
-		'FunctionMacroAlias', 'RevisitedAlias', 'AttributeAlias', 'RepeatedAlias', 'CommonAlias'] {
+		'FunctionMacroAlias_t', 'RevisitedAlias', 'AttributeAlias', 'RepeatedAlias', 'CommonAlias'] {
 		assert !generated.contains('struct ${owned} {'), generated
 	}
 	for fallback in ['LazyAlias', 'OnceAlias', 'MacroAlias', 'PreincludeAlias'] {
