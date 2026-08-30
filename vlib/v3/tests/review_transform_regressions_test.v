@@ -725,6 +725,10 @@ fn compile_good_project(v3_bin string, name string, flags string, files map[stri
 }
 
 fn gen_c_from_project(v3_bin string, name string, files map[string]string, input string) string {
+	return gen_c_from_project_with_flags(v3_bin, name, '', files, input)
+}
+
+fn gen_c_from_project_with_flags(v3_bin string, name string, flags string, files map[string]string, input string) string {
 	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -736,7 +740,7 @@ fn gen_c_from_project(v3_bin string, name string, files map[string]string, input
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${input_path} -b c -o ${c_path}')
+	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${c_path}')
 	assert compile.exit_code == 0, '${name}: C generation failed\n${compile.output}'
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -6747,6 +6751,69 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_keeps_source_passed_through_global_store_wrapper() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':         "Module { name: 'array_map_global_wrapper_sink' }\n"
+		'api/store.v':   '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/wrapper.v': 'module api
+
+pub fn keep(value &Item) {
+	save(value)
+}
+'
+		'main.v':        'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.keep(unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_global_wrapper_sink_c',
+		'-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_global_wrapper_sink', '-ownership',
+		files, 'main.v')
+	assert out == '0\nsource'
+}
+
 fn test_array_map_keeps_source_passed_to_unresolved_pointer_call() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := '@[has_globals]
@@ -6900,6 +6967,108 @@ fn main() {
 	assert compact_map.contains('array__free(&(__map_source_'), map_body
 	out := run_good_with_flags(v3_bin, 'array_map_return_before_late_defer', '-ownership', source)
 	assert out == '7\nexternal'
+}
+
+fn test_array_map_loop_exit_ignores_defers_registered_after_exit() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := unsafe { &saved }
+			for _ in 0 .. 1 {
+				if it.text.len > 0 {
+					break
+				}
+				defer {
+					alias.value = unsafe { &it }
+				}
+				alias = unsafe { &local }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	for exit_kind, exit_source in {
+		'break':    source
+		'continue': source.replace('\t\t\t\t\tbreak\n', '\t\t\t\t\tcontinue\n')
+	} {
+		c_source := gen_c_from_source_with_flags(v3_bin,
+			'array_map_${exit_kind}_before_late_defer_c', '-ownership', exit_source)
+		main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+		compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+		assert compact_main.contains('array__free(&(__map_source_'), main_body
+		out := run_good_with_flags(v3_bin, 'array_map_${exit_kind}_before_late_defer',
+			'-ownership', exit_source)
+		assert out == '0\nexternal'
+	}
+}
+
+fn test_array_map_keeps_source_when_returning_element_address() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn first_item() &Item {
+	_ := make_items().map(match true {
+		true {
+			return unsafe { &it }
+		}
+		else {
+			0
+		}
+	})
+	return unsafe { nil }
+}
+
+fn main() {
+	item := first_item()
+	println(item.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_element_address_c',
+		'-ownership', source)
+	first_body := c_fn_body(c_source, 'main__Item* main__first_item(void) {')
+	compact_first := first_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_first.contains('array__free(&(__map_source_'), first_body
+	out := run_good_with_flags(v3_bin, 'array_map_return_element_address', '-ownership', source)
+	assert out == 'source'
 }
 
 fn test_array_map_keeps_temporary_source_through_external_pointer_in_local_map() {

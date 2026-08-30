@@ -4,8 +4,9 @@ import v3.flat
 import v3.types
 
 struct ArrayMapLoopPointerExit {
-	origins map[string]bool
-	label   string
+	origins     map[string]bool
+	label       string
+	defer_count int
 }
 
 struct ArrayMapReturnPointerExit {
@@ -3253,8 +3254,9 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Node, elem_name string, mut locals map[string]bool, mut loop_exits []ArrayMapLoopPointerExit, mut return_exits []ArrayMapReturnPointerExit, loop_label string, active_defer_count int) bool {
 	if stmt.kind in [.break_stmt, .continue_stmt] {
 		loop_exits << ArrayMapLoopPointerExit{
-			origins: locals.clone()
-			label: stmt.value
+			origins:     locals.clone()
+			label:       stmt.value
+			defer_count: active_defer_count
 		}
 		return false
 	}
@@ -3543,7 +3545,7 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
 		return false
 	}
-	if node.kind in [.block, .match_branch, .select_branch] {
+	if node.kind in [.block, .match_branch, .select_branch, .for_stmt, .for_in_stmt] {
 		mut scoped := locals.clone()
 		mut deferred := []flat.NodeId{}
 		mut loop_exits := []ArrayMapLoopPointerExit{}
@@ -3554,6 +3556,9 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 				break
 			}
 			stmt_id := t.a.child(&node, i)
+			if int(stmt_id) < 0 || int(stmt_id) >= t.a.nodes.len {
+				continue
+			}
 			stmt := t.a.nodes[int(stmt_id)]
 			if stmt.kind == .defer_stmt && stmt.children_count > 0 {
 				deferred << t.a.child(&stmt, 0)
@@ -3566,7 +3571,7 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 		}
 		for exit in loop_exits {
 			mut exit_state := exit.origins.clone()
-			if t.array_map_deferred_side_effect_retains_element_address(deferred, elem_name, mut exit_state) {
+			if t.array_map_deferred_side_effect_retains_element_address(deferred[..exit.defer_count], elem_name, mut exit_state) {
 				return true
 			}
 		}
@@ -3589,6 +3594,14 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 	}
 	if t.array_map_call_side_effect_retains_element_address(id, node, elem_name, locals, block, before_idx) {
 		return true
+	}
+	if node.kind == .return_stmt {
+		for i in 0 .. node.children_count {
+			if t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i), elem_name,
+				block, before_idx) {
+				return true
+			}
+		}
 	}
 	if node.kind == .spawn_expr && node.children_count > 0 {
 		call := t.a.child_node(&node, 0)

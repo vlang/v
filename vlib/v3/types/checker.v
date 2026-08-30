@@ -7836,12 +7836,72 @@ pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 	return tc.cached_resolved_call(id)
 }
 
-// resolved_call_may_store_globally reports whether the resolved callee belongs to a source
-// file annotated with `@[has_globals]`.
+// resolved_call_may_store_globally reports whether the resolved callee or one of its
+// transitive callees belongs to a source file annotated with `@[has_globals]`.
 pub fn (tc &TypeChecker) resolved_call_may_store_globally(id flat.NodeId) bool {
 	name := tc.cached_resolved_call(id) or { return false }
+	mut visiting := map[string]bool{}
+	return tc.fn_may_store_globally(name, mut visiting)
+}
+
+fn (tc &TypeChecker) fn_may_store_globally(name string, mut visiting map[string]bool) bool {
+	if visiting[name] {
+		return false
+	}
+	visiting[name] = true
 	file := tc.fn_type_files[name] or { return false }
-	return tc.has_globals_files[file]
+	if tc.has_globals_files[file] {
+		return true
+	}
+	decl_module := tc.fn_type_modules[name] or { '' }
+	decl := tc.visible_mutation_fn_decl(name, decl_module) or { return false }
+	for dependency in tc.direct_dependency_ids(decl.idx) {
+		dependency_name := tc.frozen_symbol_name(dependency)
+		if dependency_name.len > 0 && tc.fn_may_store_globally(dependency_name, mut visiting) {
+			return true
+		}
+	}
+	fn_node := tc.a.nodes[decl.idx]
+	for i in 0 .. fn_node.children_count {
+		if tc.node_calls_fn_that_may_store_globally(tc.a.child(&fn_node, i), decl.mod,
+			mut visiting) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) node_calls_fn_that_may_store_globally(id flat.NodeId, caller_mod string, mut visiting map[string]bool) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	if node.kind == .call {
+		if name := tc.cached_resolved_call(id) {
+			if tc.fn_may_store_globally(name, mut visiting) {
+				return true
+			}
+		}
+		if node.children_count > 0 {
+			callee := tc.a.child_node(&node, 0)
+			if callee.kind == .ident {
+				if tc.fn_may_store_globally(checker_qualified_fn_name(caller_mod, callee.value),
+					mut visiting) {
+					return true
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.node_calls_fn_that_may_store_globally(tc.a.child(&node, i), caller_mod,
+			mut visiting) {
+			return true
+		}
+	}
+	return false
 }
 
 // resolved_call_is_builtin reports whether `id` resolved to the named builtin function.
