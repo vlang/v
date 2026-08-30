@@ -9204,22 +9204,22 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 					receiver_is_mut = receiver.is_mut
 				}
 				param_offset := if is_method { 1 } else { 0 }
-				mut nested_target_idx := -1
+				mut nested_target_idxs := []int{}
 				callee := tc.a.child_node(&node, 0)
 				if is_method && receiver_is_mut && callee.kind == .selector && callee.children_count > 0 && tc.storage_lvalue_is_rooted_at_param_alias(tc.a.child(callee, 0), target_name, aliases, target_param_idx) {
-					nested_target_idx = 0
+					nested_target_idxs << 0
 				}
-				if nested_target_idx < 0 {
-					for i in 1 .. node.children_count {
-						arg_id := tc.a.child(&node, i)
-						arg := tc.a.nodes[int(arg_id)]
-						if arg.is_mut && tc.storage_lvalue_is_rooted_at_param_alias(arg_id, target_name, aliases, target_param_idx) {
-							nested_target_idx = i - 1 + param_offset
-							break
+				for i in 1 .. node.children_count {
+					arg_id := tc.a.child(&node, i)
+					arg := tc.a.nodes[int(arg_id)]
+					if arg.is_mut && tc.storage_lvalue_is_rooted_at_param_alias(arg_id, target_name, aliases, target_param_idx) {
+						nested_target_idx := i - 1 + param_offset
+						if nested_target_idx !in nested_target_idxs {
+							nested_target_idxs << nested_target_idx
 						}
 					}
 				}
-				if nested_target_idx >= 0 {
+				for nested_target_idx in nested_target_idxs {
 					for source_param_idx in tc.param_storage_source_params_for_decl(decl, nested_target_idx, mut visiting) {
 						mut source_id := flat.empty_node
 						if is_method && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {

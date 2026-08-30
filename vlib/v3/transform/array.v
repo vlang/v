@@ -2943,6 +2943,45 @@ fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId
 }
 
 fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, elem_name string, mut locals map[string]bool) {
+	if stmt.kind in [.block, .match_branch] {
+		mut scoped := locals.clone()
+		mut declared := map[string]bool{}
+		for i in 0 .. stmt.children_count {
+			child := t.a.child_node(&stmt, i)
+			if child.kind == .decl_assign {
+				for j := 0; j + 1 < int(child.children_count); j += 2 {
+					lhs := t.a.child_node(child, j)
+					if lhs.kind == .ident {
+						declared[lhs.value] = true
+					}
+				}
+			}
+			t.array_map_update_local_pointer_origins(*child, elem_name, mut scoped)
+		}
+		for name, _ in locals {
+			if name !in declared {
+				locals[name] = scoped[name]
+			}
+		}
+		return
+	}
+	if stmt.kind == .if_expr {
+		before := locals.clone()
+		mut merged := map[string]bool{}
+		for name, origin in before {
+			merged[name] = if stmt.children_count > 2 { false } else { origin }
+		}
+		for i in 1 .. stmt.children_count {
+			mut branch := before.clone()
+			t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, i), elem_name,
+				mut branch)
+			for name, _ in before {
+				merged[name] = merged[name] || branch[name]
+			}
+		}
+		locals = merged.move()
+		return
+	}
 	if stmt.kind == .decl_assign {
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
 			lhs := t.a.child_node(&stmt, i)
