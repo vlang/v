@@ -498,6 +498,31 @@ fn main() {
 ", '')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+	call := compile_v3_ownership_program(v3_bin, 'owned_call_argument_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn consume(value string, suffix string) string {
+	return value + suffix
+}
+
+fn last_name_then_delete(mut arr []E) string {
+	return consume(arr.last().name + '!', delete_last(mut arr))
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert call.exit_code != 0, call.output
+	assert call.output.contains('cannot return an independent array element'), call.output
 }
 
 fn test_owned_field_overloaded_index_is_rejected() {
@@ -523,6 +548,35 @@ fn main() {
 	println(last_initial(arr))
 }
 ", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
+fn test_owned_string_comparison_with_overloaded_index_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_overloaded_index_sibling', "struct E {
+	name string
+}
+
+struct Mutator {}
+
+__global entries []E
+
+fn (Mutator) [] (index int) string {
+	_ = index
+	entries.delete_last()
+	return 'hello'
+}
+
+fn last_name_matches(mutator Mutator) bool {
+	return entries.last().name == mutator[0]
+}
+
+fn main() {
+	entries = [E{ name: 'hello' }]
+	println(last_name_matches(Mutator{}))
+}
+", '-enable-globals')
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }

@@ -6130,6 +6130,9 @@ fn (tc &TypeChecker) array_accessor_enclosing_string_consumers_are_stable(id fla
 			current = parent_id
 			continue
 		}
+		if parent.kind == .call {
+			return tc.array_accessor_consumer_siblings_are_stable(parent, current)
+		}
 		is_string_plus := parent.kind == .infix && parent.op == .plus
 			&& unalias_type(tc.resolve_type(parent_id)) is String
 		if !is_string_plus && parent.kind != .string_interp {
@@ -6176,6 +6179,11 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 	if node.kind !in [.paren, .selector, .index, .prefix, .cast_expr, .as_expr, .is_expr, .in_expr,
 		.range] {
 		return false
+	}
+	if node.kind == .index && node.children_count > 0 {
+		if _ := tc.index_overload_call_info(tc.resolve_type(tc.a.child(node, 0)), false) {
+			return false
+		}
 	}
 	for i in 0 .. node.children_count {
 		if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
