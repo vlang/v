@@ -9,6 +9,19 @@ fn test_fastc_tcc_backtrace_enabled() {
 	assert fastc_tcc_backtrace_enabled('linux', 'amd64')
 }
 
+fn test_fastc_canonical_vroot_resolves_symlinked_checkout() {
+	root := os.join_path(os.temp_dir(), 'fastc_canonical_vroot_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	real_root := os.join_path(root, 'real')
+	linked_root := os.join_path(root, 'linked')
+	os.mkdir_all(os.join_path(real_root, 'vlib', 'builtin')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.symlink(real_root, linked_root) or { return }
+	assert fastc_canonical_vroot(linked_root) == os.real_path(real_root)
+}
+
 fn test_fastc_parse_bench_child_output() {
 	sample := fastc_parse_bench_child_output('notice\nfastc-bench-child 50123 170 64516\n') or {
 		assert false, 'expected benchmark sample'

@@ -271,6 +271,13 @@ fn canonical_output_path(path string) string {
 	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 }
 
+fn fastc_canonical_vroot(vroot string) string {
+	if vroot == '' {
+		return ''
+	}
+	return os.real_path(vroot)
+}
+
 fn fastc_tcc_backtrace_enabled(target_os string, target_arch string) bool {
 	return !(target_os == 'macos' && target_arch == 'arm64')
 }
@@ -372,6 +379,7 @@ pub fn run(args []string) {
 	if prefs.vroot == '' && real_input.ends_with('/vlib/v3/v3.v') {
 		prefs.vroot = os.dir(os.dir(os.dir(real_input)))
 	}
+	prefs.vroot = fastc_canonical_vroot(prefs.vroot)
 	prefs.backend = 'fastc'
 	prefs.ccompiler = 'tinyc'
 	prefs.building_v = real_input.ends_with('/vlib/v3/v3.v')
