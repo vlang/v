@@ -440,7 +440,7 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 		gen.s.init(file, source_file.source)
 		gen.next()
 		gen.parse_selected_global_declarations(mut out, mut initializers, false)!
-		global_types = gen.global_types.clone()
+		global_types = gen.global_types.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
 		}
@@ -756,7 +756,7 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 			diagnostic := gen.s.diagnostics[0]
 			return error('fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}')
 		}
-		constant_types = gen.constant_types.clone()
+		constant_types = gen.constant_types.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
 		}
@@ -1034,8 +1034,7 @@ fn (g &Parser) constant_expression_requires_runtime_storage(tokens []FastcExpres
 		if i > 0 && tokens[i - 1].tok == .dot {
 			return true
 		}
-		if fastc_primitive_c_type(item.lit) != none
-			|| fastc_resolve_declared_type_key(g.module_name, item.lit, g.imports, g.declared_types) != none {
+		if fastc_primitive_c_type(item.lit) != none || g.resolve_declared_type_key(item.lit) != none {
 			continue
 		}
 		return true
@@ -1729,6 +1728,23 @@ fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports 
 		}
 	}
 	return none
+}
+
+fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
+	if cached := g.declared_type_key_memo[raw_type] {
+		return if cached == '' { none } else { cached }
+	}
+	mut resolved := ''
+	if type_key := fastc_resolve_declared_type_key(g.module_name, raw_type, g.imports,
+		g.declared_types) {
+		resolved = type_key
+	}
+	mut parser := unsafe { &Parser(g) }
+	if parser.declared_type_key_memo.len == 0 {
+		parser.declared_type_key_memo = map[string]string{}
+	}
+	parser.declared_type_key_memo[raw_type] = resolved
+	return if resolved == '' { none } else { resolved }
 }
 
 fn fastc_semantic_declared_type_key(c_type string, declared_type_c_names map[string]string) string {

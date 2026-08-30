@@ -298,7 +298,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				higher_order_method := lookahead.lit
 				if higher_order_method in ['map', 'filter', 'any', 'all', 'count'] && lookahead.scan() == .lpar {
 					receiver_start := fastc_method_receiver_start(expression_tokens, expression_tokens.len)
-					receiver_tokens := expression_tokens[receiver_start..]
+					receiver_tokens := unsafe { expression_tokens[receiver_start..] }
 					receiver_type := g.infer_expression_type(receiver_tokens) or { '' }
 					// Array-literal receivers (`[.a, .b].map(...)`) do not round-trip
 					// through the receiver renderer yet; leave them to the normal path.
@@ -412,7 +412,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				// `.sort()` (no argument) keeps its existing builtin lowering (the `!= .rpar`).
 				if higher_order_method == 'sort' && lookahead.scan() == .lpar && lookahead.scan() != .rpar {
 					receiver_start := fastc_method_receiver_start(expression_tokens, expression_tokens.len)
-					receiver_tokens := expression_tokens[receiver_start..]
+					receiver_tokens := unsafe { expression_tokens[receiver_start..] }
 					receiver_type := g.infer_expression_type(receiver_tokens) or { '' }
 					if receiver_type.starts_with('Array_') {
 						element_type := g.array_element_type(receiver_type) or {
@@ -1475,7 +1475,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 						pointer_cast_depths << paren_depth + 1
 					}
 				}
-			} else if type_key := fastc_resolve_declared_type_key(g.module_name, previous_lit, g.imports, g.declared_types) {
+			} else if type_key := g.resolve_declared_type_key(previous_lit) {
 				if !name_is_member {
 					cast_type := fastc_c_declared_type_name(type_key)
 					rendered_previous := g.resolved_expression_name(previous_lit, .unknown)
@@ -1552,7 +1552,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 					}
 				}
 			} else if previous_token == .name {
-				if type_key := fastc_resolve_declared_type_key(g.module_name, previous_lit, g.imports, g.declared_types) {
+				if type_key := g.resolve_declared_type_key(previous_lit) {
 					c_type := fastc_c_declared_type_name(type_key)
 					result.go_back(c_type.len)
 					piece = '(${c_type}){'
@@ -1590,10 +1590,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			.comma,
 			.semicolon,
 		] && struct_types.len > 0 {
-			mut fields := map[string]string{}
-			if struct_types.last() in g.struct_fields {
-				fields = g.struct_fields[struct_types.last()].clone()
-			}
+			// The current program's field metadata is immutable while expressions render.
+			fields := unsafe { g.struct_fields[struct_types.last()] }
 			expected_struct_field_type = fields[g.lit] or { '' }
 			piece = '.${piece}'
 		} else if g.selfhost && g.tok == .dot && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 1) {
@@ -1760,7 +1758,7 @@ fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source 
 			if fastc_primitive_c_type(item.lit) != none {
 				continue
 			}
-			if fastc_resolve_declared_type_key(g.module_name, item.lit, g.imports, g.declared_types) != none {
+			if g.resolve_declared_type_key(item.lit) != none {
 				continue
 			}
 			function_key := g.unqualified_function_key(item.lit)
@@ -1924,7 +1922,7 @@ fn (mut g Parser) read_inferred_map_literal() !string {
 		// Explicit key `EnumType.field` (the first entry often spells it out).
 		mut lookahead := g.s
 		if lookahead.scan() == .dot {
-			if type_key := fastc_resolve_declared_type_key(g.module_name, g.lit, g.imports, g.declared_types) {
+			if type_key := g.resolve_declared_type_key(g.lit) {
 				if g.declared_kinds[type_key] == .enum_ {
 					key_enum_type = fastc_c_declared_type_name(type_key)
 				}
@@ -2468,7 +2466,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		lhs_type := g.infer_expression_type(tokens[..1]) or { return none }
 		mut variant_c := ''
 		if tokens.len == 3 && tokens[2].tok == .name {
-			if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[2].lit, g.imports, g.declared_types) {
+			if type_key := g.resolve_declared_type_key(tokens[2].lit) {
 				variant_c = fastc_c_declared_type_name(type_key)
 			}
 		} else if resolved_target := g.type_from_expression_tokens(tokens[2..]) {

@@ -810,6 +810,7 @@ struct Parser {
 	sum_types              map[string]bool
 	struct_fields          map[string]map[string]string
 	struct_field_info      map[string][]FastcStructField
+	struct_field_lookup    map[string]map[string]FastcStructField
 	interface_fields       map[string]FastcInterfaceField
 	constants              map[string]string
 	constant_values        map[string]string
@@ -888,6 +889,8 @@ mut:
 	// operator scans in those handlers re-recurse over shared subranges;
 	// without the memo that search re-renders the same ranges combinatorially.
 	comparison_memo map[i64]FastcRenderedExpression
+	enum_type_name_memo map[string]bool
+	declared_type_key_memo map[string]string
 	has_c_functions bool
 	// Spawn lowering registrations (see spawn.v): thread struct typedefs,
 	// creator/run/waiter helper definitions, and thread type -> value type.
@@ -986,6 +989,7 @@ struct FastcFileGenContext {
 	sum_types              map[string]bool
 	struct_fields          map[string]map[string]string
 	struct_field_info      map[string][]FastcStructField
+	struct_field_lookup    map[string]map[string]FastcStructField
 	interface_fields       map[string]FastcInterfaceField
 	constants              map[string]string
 	constant_values        map[string]string
@@ -1037,6 +1041,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		fastc_prefixed_c_names: ctx.fastc_prefixed_c_names
 		has_c_functions: ctx.has_c_functions
 		comparison_memo: map[i64]FastcRenderedExpression{}
+		enum_type_name_memo: map[string]bool{}
+		declared_type_key_memo: map[string]string{}
 		member_smartcasts: map[string]FastcMemberSmartcast{}
 		spawn_typedefs: map[string]string{}
 		spawn_helpers: map[string]string{}
@@ -1048,6 +1054,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		sum_types: ctx.sum_types
 		struct_fields: ctx.struct_fields
 		struct_field_info: ctx.struct_field_info
+		struct_field_lookup: ctx.struct_field_lookup
 		generic_method_sources: ctx.generic_method_sources
 		module_aliases: ctx.module_aliases
 		generated_mono: map[string]bool{}
@@ -1180,6 +1187,14 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
 	startup_initializers := fastc_generate_startup_initializers(sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls)!
+	mut struct_field_lookup := map[string]map[string]FastcStructField{}
+	for layout_type, fields in struct_field_info {
+		mut fields_by_name := map[string]FastcStructField{}
+		for field in fields {
+			fields_by_name[field.name] = field
+		}
+		struct_field_lookup[layout_type] = fields_by_name.move()
+	}
 	mut prototypes := strings.new_builder(1024)
 	mut body := strings.new_builder(4096)
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
@@ -1207,6 +1222,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		sum_types: type_output.sum_types
 		struct_fields: struct_fields
 		struct_field_info: struct_field_info
+		struct_field_lookup: struct_field_lookup
 		generic_method_sources: generic_method_sources
 		module_aliases: module_aliases
 		interface_fields: interface_fields
