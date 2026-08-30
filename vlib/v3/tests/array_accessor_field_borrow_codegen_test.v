@@ -329,3 +329,98 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '<hello>', run.output
 }
+
+// A format directive wraps the expression before the interpolation consumes it. The checker
+// must see through that wrapper, and formatting must stabilize a borrowed string because
+// padding is allowed to return its input unchanged when the requested width is already met.
+fn test_owned_formatted_string_interpolation_consumer_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_formatted_string_interp_consumer', "struct E {
+	name string
+}
+
+fn formatted_last_name() string {
+	arr := [E{ name: 'hello' }]
+	return '\${arr.last().name:3s}'
+}
+
+fn main() {
+	println(formatted_last_name())
+}
+", '')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('cannot return an independent array element'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_formatted_string_interp_consumer_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'hello', run.output
+}
+
+// An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate
+// the source array first. Keep the accessor on its independent-copy path when a sibling call can
+// delete the selected element before string concatenation consumes the field.
+fn test_owned_string_consumer_with_mutating_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	concat := compile_v3_ownership_program(v3_bin, 'owned_string_concat_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '!'
+}
+
+fn last_name_then_delete(mut arr []E) string {
+	return arr.last().name + delete_last(mut arr)
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert concat.exit_code != 0, concat.output
+	assert concat.output.contains('cannot return an independent array element'), concat.output
+
+	interp := compile_v3_ownership_program(v3_bin, 'owned_string_interp_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '!'
+}
+
+fn last_name_then_delete(mut arr []E) string {
+	return '\${arr.last().name}\${delete_last(mut arr)}'
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert interp.exit_code != 0, interp.output
+	assert interp.output.contains('cannot return an independent array element'), interp.output
+
+	comparison := compile_v3_ownership_program(v3_bin, 'owned_string_comparison_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return 'hello'
+}
+
+fn last_name_then_delete(mut arr []E) bool {
+	return arr.last().name == delete_last(mut arr)
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert comparison.exit_code != 0, comparison.output
+	assert comparison.output.contains('cannot return an independent array element'), comparison.output
+}

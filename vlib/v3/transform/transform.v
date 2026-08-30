@@ -5623,7 +5623,28 @@ fn (mut t Transformer) transform_string_interp_part(child_id flat.NodeId) flat.N
 	if typ.len == 0 {
 		typ = 'string'
 	}
+	if format.len > 0 && t.normalize_type_alias(typ) == 'string' && t.string_interp_borrows_array_accessor_field(expr_id) {
+		// Formatting may return its input unchanged when no padding is needed. Give it
+		// independent storage so a returned formatted value cannot retain the array field.
+		transformed = t.make_compiler_default_clone_value(transformed, 'string', false)
+	}
 	return t.wrap_formatted_string_conversion(transformed, typ, format)
+}
+
+fn (t &Transformer) string_interp_borrows_array_accessor_field(id flat.NodeId) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	mut current := id
+	for int(current) >= 0 && int(current) < t.a.nodes.len {
+		node := t.a.nodes[int(current)]
+		if node.kind in [.paren, .selector] && node.children_count > 0 {
+			current = t.a.child(&node, 0)
+			continue
+		}
+		return node.kind == .call && t.tc.array_accessor_result_is_borrowed(current)
+	}
+	return false
 }
 
 fn (t &Transformer) string_interp_interface_smartcast_ref_type(expr_id flat.NodeId) ?string {

@@ -6031,7 +6031,8 @@ fn (tc &TypeChecker) known_sum_constructor_name(name string) ?string {
 // `arr.last().name[0]`) or an allocating string consumer (`'<${arr.last().name}>'`) — rather
 // than escaping as an independent value. Such a read keeps the element owned by the array, so
 // the accessor needs no `clone()` and the transformer can lower it to an in-place `arr[..]`
-// access. Two shapes are excluded so the copying accessor semantics are kept instead:
+// access. Allocating/comparison consumers also require sibling expressions that cannot mutate
+// the source before consumption. Two shapes are excluded so copying semantics are kept instead:
 //   * a bound method value (`arr.last().method`) — closure generation shallow-copies the
 //     receiver, so a borrowed element would share heap fields with the array;
 //   * a chain whose final value itself owns heap data (`arr.last().name`, where `name` is a
@@ -6072,29 +6073,72 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	// immediately. Calls, assignments, and owned/pointer index results stay on the copying path
 	// because they can retain storage from the array element.
 	mut consumed_id := current
+	mut formatted_interp := false
 	mut consumer_id := tc.direct_parent_id(current)
-	for consumer_id != flat.empty_node && int(consumer_id) >= 0 && int(consumer_id) < tc.a.nodes.len && tc.a.node(consumer_id).kind == .paren {
-		consumed_id = consumer_id
-		consumer_id = tc.direct_parent_id(consumer_id)
+	for consumer_id != flat.empty_node && int(consumer_id) >= 0 && int(consumer_id) < tc.a.nodes.len {
+		parent := tc.a.node(consumer_id)
+		if parent.kind == .paren {
+			consumed_id = consumer_id
+			consumer_id = tc.direct_parent_id(consumer_id)
+			continue
+		}
+		if parent.kind == .directive && parent.value == 'string_interp_format' && parent.children_count > 0 && tc.a.child(parent, 0) == consumed_id {
+			formatted_interp = true
+			consumed_id = consumer_id
+			consumer_id = tc.direct_parent_id(consumer_id)
+			continue
+		}
+		break
 	}
 	if consumer_id == flat.empty_node || int(consumer_id) < 0 || int(consumer_id) >= tc.a.nodes.len {
 		return false
 	}
 	consumer := tc.a.node(consumer_id)
 	if consumer.kind == .infix && consumer.op in [.eq, .ne, .lt, .gt, .le, .ge] {
-		return true
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
 	}
 	if consumer.kind == .infix && consumer.op == .plus && final_type is String && (raw_final_type !is Alias || !tc.type_has_infix_operator_method(raw_final_type, .plus)) {
-		return true
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
 	}
-	if consumer.kind == .string_interp && consumer.children_count > 1 && final_type is String {
-		return true
+	if consumer.kind == .string_interp && (consumer.children_count > 1 || formatted_interp) && final_type is String {
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
 	}
 	if consumer.kind != .index || consumer.children_count == 0 || tc.a.child(consumer, 0) != consumed_id {
 		return false
 	}
 	index_type := unalias_type(tc.resolve_type(consumer_id))
 	return !tc.ownership_type_requires_destruction(index_type) && !tc.array_accessor_type_contains_pointer(index_type)
+}
+
+fn (tc &TypeChecker) array_accessor_consumer_siblings_are_stable(consumer &flat.Node, consumed_id flat.NodeId) bool {
+	for i in 0 .. consumer.children_count {
+		child_id := tc.a.child(consumer, i)
+		if child_id != consumed_id && !tc.array_accessor_borrow_sibling_is_stable(child_id) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.ident, .enum_val, .nil_literal, .none_expr, .sizeof_expr, .typeof_expr, .offsetof_expr] {
+		return true
+	}
+	if node.kind !in [.paren, .selector, .index, .prefix, .cast_expr, .as_expr, .is_expr, .in_expr,
+		.range] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (tc &TypeChecker) array_accessor_type_contains_pointer(typ Type) bool {
