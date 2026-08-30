@@ -758,6 +758,22 @@ fn test_header_owned_scan_expands_nested_invoked_function_typedef_macros() {
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
 }
 
+fn test_header_owned_scan_excludes_function_scoped_typedef_macro_invocations() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define DECLARE(name) typedef struct Impl name;\nvoid helper(void) {\nDECLARE(LocalAlias)\n}\nDECLARE(GlobalAlias)\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert !scan.typedef_macro_expansions.contains('LocalAlias')
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl GlobalAlias;'
+}
+
 fn test_header_owned_scan_expands_variadic_typedef_macros() {
 	state := CHeaderMacroState{
 		defined: map[string]bool{}

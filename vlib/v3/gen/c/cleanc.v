@@ -6021,6 +6021,8 @@ struct CHeaderOwnedConditional {
 mut:
 	entry_state                    CHeaderMacroState
 	branch_states                  []CHeaderMacroState
+	entry_brace_depth              int
+	branch_brace_depths            []int
 	branch_typedef_aliases         []map[string]bool
 	current_branch_typedef_aliases map[string]bool
 	parent_possible                bool
@@ -6230,6 +6232,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	mut output := strings.new_builder(text.len)
 	mut typedef_macro_expansions := strings.new_builder(256)
 	mut in_block_comment := false
+	mut brace_depth := 0
 	for line_index, line in c_join_continued_lines(text) {
 		line_started_in_block_comment := in_block_comment
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
@@ -6251,6 +6254,8 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			conditionals << CHeaderOwnedConditional{
 				entry_state: c_header_macro_state_clone(current_state)
 				branch_states: []CHeaderMacroState{}
+				entry_brace_depth: brace_depth
+				branch_brace_depths: []int{}
 				branch_typedef_aliases: []map[string]bool{}
 				current_branch_typedef_aliases: map[string]bool{}
 				parent_possible: parent_possible
@@ -6275,6 +6280,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 					function_macro_values:    function_macro_values.clone()
 					external_macros_possible: external_macros_possible
 				}
+				conditional.branch_brace_depths << brace_depth
 				conditional.branch_typedef_aliases << conditional.current_branch_typedef_aliases.clone()
 			}
 			conditional.current_branch_typedef_aliases = map[string]bool{}
@@ -6285,6 +6291,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			macro_values = entry_state.macro_values.clone()
 			function_macro_values = entry_state.function_macro_values.clone()
 			external_macros_possible = entry_state.external_macros_possible
+			brace_depth = conditional.entry_brace_depth
 			if name == 'else' {
 				conditional.current_possible = conditional.parent_possible
 					&& !(conditional.taken_known && conditional.taken)
@@ -6339,10 +6346,12 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 					function_macro_values:    function_macro_values.clone()
 					external_macros_possible: external_macros_possible
 				}
+				conditional.branch_brace_depths << brace_depth
 				conditional.branch_typedef_aliases << conditional.current_branch_typedef_aliases.clone()
 			}
 			if !conditional.has_else && !(conditional.taken_known && conditional.taken) {
 				conditional.branch_states << c_header_macro_state_clone(conditional.entry_state)
+				conditional.branch_brace_depths << conditional.entry_brace_depth
 				conditional.branch_typedef_aliases << map[string]bool{}
 			}
 			merged_state := c_header_macro_states_merge(conditional.branch_states, conditional.entry_state)
@@ -6352,6 +6361,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			macro_values = merged_state.macro_values.clone()
 			function_macro_values = merged_state.function_macro_values.clone()
 			external_macros_possible = merged_state.external_macros_possible
+			brace_depth = c_header_scope_depth_merge(conditional.branch_brace_depths, conditional.entry_brace_depth)
 			common_typedef_aliases := c_header_typedef_alias_state_intersection(conditional.branch_typedef_aliases)
 			conditionals.delete_last()
 			if conditionals.len > 0 {
@@ -6463,7 +6473,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			}
 		}
 		mut typedef_expansion := ''
-		if name.len == 0 && !line_started_in_block_comment {
+		if name.len == 0 && !line_started_in_block_comment && brace_depth == 0 {
 			if expansion := c_header_invoked_typedef_macro_expansion(line, defined, undefined, uncertain, macro_values, function_macro_values) {
 				typedef_expansion = expansion
 			}
@@ -6489,6 +6499,12 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 		} else {
 			output.writeln('')
 		}
+		if name.len == 0 && possibly_active && brace_depth >= 0 {
+			brace_depth += c_header_source_brace_delta(line, line_started_in_block_comment)
+			if brace_depth < 0 {
+				brace_depth = -1
+			}
+		}
 	}
 	return CHeaderActiveScan{
 		text: output.str()
@@ -6509,6 +6525,71 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			external_macros_possible: external_macros_possible
 		}
 	}
+}
+
+fn c_header_scope_depth_merge(depths []int, fallback int) int {
+	if depths.len == 0 {
+		return fallback
+	}
+	depth := depths[0]
+	for candidate in depths[1..] {
+		if candidate != depth {
+			return -1
+		}
+	}
+	return depth
+}
+
+fn c_header_source_brace_delta(line string, starts_in_block_comment bool) int {
+	mut delta := 0
+	mut in_block_comment := starts_in_block_comment
+	mut quote := u8(0)
+	mut escaped := false
+	mut i := 0
+	for i < line.len {
+		if in_block_comment {
+			if i + 1 < line.len && line[i] == `*` && line[i + 1] == `/` {
+				in_block_comment = false
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if line[i] == `\\` {
+				escaped = true
+			} else if line[i] == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if line[i] in [`'`, `"`] {
+			quote = line[i]
+			i++
+			continue
+		}
+		if i + 1 < line.len && line[i] == `/` {
+			if line[i + 1] == `/` {
+				break
+			}
+			if line[i + 1] == `*` {
+				in_block_comment = true
+				i += 2
+				continue
+			}
+		}
+		if line[i] == `{` {
+			delta++
+		} else if line[i] == `}` {
+			delta--
+		}
+		i++
+	}
+	return delta
 }
 
 fn c_header_owned_typedef_aliases(text string) []string {
