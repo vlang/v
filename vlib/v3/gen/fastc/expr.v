@@ -588,10 +588,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.pos
 			continue
 		}
-		if g.tok == .key_shared && g.shared_token_is_identifier(previous_token) {
-			mut following := g.s
-			_ = following.scan()
-			ends_expression := following.pos > g.s.offset && g.s.src[g.s.offset..following.pos].contains_any('\r\n')
+		shared_classification := g.classify_shared_token(previous_token)
+		if g.tok == .key_shared && shared_classification.is_identifier {
 			result.write_string(g.lit)
 			expression_tokens << FastcExpressionToken{
 				tok: .name
@@ -602,7 +600,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_module_separator = false
 			previous_token_end = g.s.pos
 			g.next()
-			if ends_expression && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && unsafe_expression_depth == 0 {
+			if shared_classification.ends_expression && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && unsafe_expression_depth == 0 {
 				break
 			}
 			continue
@@ -1777,12 +1775,21 @@ fn fastc_shared_modifier_may_cross_line(previous token.Token, next token.Token) 
 	return previous in [.lpar, .lsbr, .comma, .colon] && fastc_shared_modifier_operand_start(next)
 }
 
+struct FastcSharedTokenClassification {
+	is_identifier   bool
+	ends_expression bool
+}
+
 fn (g &Parser) shared_token_is_identifier(previous token.Token) bool {
+	return g.classify_shared_token(previous).is_identifier
+}
+
+fn (g &Parser) classify_shared_token(previous token.Token) FastcSharedTokenClassification {
+	if g.tok != .key_shared {
+		return FastcSharedTokenClassification{}
+	}
 	mut lookahead := g.s
 	next := lookahead.scan()
-	if next in [.key_or, .key_in, .key_as, .key_is] {
-		return true
-	}
 	start := g.s.offset
 	mut offset := start
 	mut crossed_line := false
@@ -1799,7 +1806,10 @@ fn (g &Parser) shared_token_is_identifier(previous token.Token) bool {
 			break
 		}
 		if g.s.src[offset + 1] == `/` {
-			return true
+			return FastcSharedTokenClassification{
+				is_identifier: true
+				ends_expression: true
+			}
 		}
 		if g.s.src[offset + 1] != `*` {
 			break
@@ -1807,7 +1817,7 @@ fn (g &Parser) shared_token_is_identifier(previous token.Token) bool {
 		offset += 2
 		mut depth := 1
 		for offset + 1 < g.s.src.len && depth > 0 {
-			if g.s.src[offset] == `/` && g.s.src[offset + 1] == `*` {
+			if g.s.src[offset] == `/` && g.s.src[offset + 1] == `*` && (offset + 2 >= g.s.src.len || g.s.src[offset + 2] != `/`) {
 				depth++
 				offset += 2
 				continue
@@ -1820,20 +1830,36 @@ fn (g &Parser) shared_token_is_identifier(previous token.Token) bool {
 			offset++
 		}
 		if depth > 0 {
-			return true
+			return FastcSharedTokenClassification{
+				is_identifier: true
+			}
 		}
 	}
 	if offset >= g.s.src.len {
-		return true
+		return FastcSharedTokenClassification{
+			is_identifier: true
+		}
 	}
 	if crossed_line && !fastc_shared_modifier_may_cross_line(previous, next) {
-		return true
+		return FastcSharedTokenClassification{
+			is_identifier: true
+			ends_expression: true
+		}
+	}
+	if next in [.key_or, .key_in, .key_as, .key_is] {
+		return FastcSharedTokenClassification{
+			is_identifier: true
+		}
 	}
 	if g.s.src[offset] == `(` {
-		return offset == start
+		return FastcSharedTokenClassification{
+			is_identifier: offset == start
+		}
 	}
-	return g.s.src[offset] in [`.`, `[`, `{`, `)`, `]`, `}`, `,`, `;`, `:`, `?`, `+`, `-`, `*`,
-		`/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`, `^`]
+	return FastcSharedTokenClassification{
+		is_identifier: g.s.src[offset] in [`.`, `[`, `{`, `)`, `]`, `}`, `,`, `;`, `:`, `?`, `+`,
+			`-`, `*`, `/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`, `^`]
+	}
 }
 
 fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source string) string {

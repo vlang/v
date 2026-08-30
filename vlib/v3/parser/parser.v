@@ -12428,11 +12428,11 @@ fn (p &Parser) can_start_type_name() bool {
 
 fn (mut p Parser) shared_token_is_identifier(allow_multiline_modifier bool) bool {
 	next := p.peek()
+	if !allow_multiline_modifier && p.shared_token_gap_has_line_boundary() {
+		return true
+	}
 	if next.is_keyword() && next !in [.key_or, .key_in, .key_as, .key_is] {
 		return false
-	}
-	if !allow_multiline_modifier && next == .name && p.peek_pos > p.tok_end && p.s.src[p.tok_end..p.peek_pos].contains_any('\r\n') {
-		return true
 	}
 	if !token_can_start_type_name(next) && next != .key_union {
 		return true
@@ -12443,6 +12443,42 @@ fn (mut p Parser) shared_token_is_identifier(allow_multiline_modifier bool) bool
 	// Calls and indexes attach directly to an identifier. A shared modifier is
 	// separated from the value it qualifies (`shared value`).
 	return p.tok_end == p.peek_pos && next in [.lpar, .lsbr, .question, .not]
+}
+
+fn (p &Parser) shared_token_gap_has_line_boundary() bool {
+	mut offset := p.tok_end
+	for offset < p.peek_pos {
+		if p.s.src[offset] in [`\r`, `\n`] {
+			return true
+		}
+		if offset + 1 >= p.peek_pos || p.s.src[offset] != `/` {
+			offset++
+			continue
+		}
+		if p.s.src[offset + 1] == `/` {
+			return true
+		}
+		if p.s.src[offset + 1] != `*` {
+			offset++
+			continue
+		}
+		offset += 2
+		mut depth := 1
+		for offset + 1 < p.peek_pos && depth > 0 {
+			if p.s.src[offset] == `/` && p.s.src[offset + 1] == `*` && (offset + 2 >= p.peek_pos || p.s.src[offset + 2] != `/`) {
+				depth++
+				offset += 2
+				continue
+			}
+			if p.s.src[offset] == `*` && p.s.src[offset + 1] == `/` {
+				depth--
+				offset += 2
+				continue
+			}
+			offset++
+		}
+	}
+	return false
 }
 
 fn token_can_start_type_name(tok token.Token) bool {

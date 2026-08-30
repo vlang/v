@@ -357,6 +357,10 @@ fn test_shared_keyword_identifier_in_mut_declaration() {
 	println(shared type)
 	x := shared
 	println(x)
+	y := shared
+	if true {
+		println(y)
+	}
 	println(shared)
 }
 ')
@@ -368,6 +372,7 @@ fn test_shared_keyword_identifier_in_mut_declaration() {
 	}
 	assert shared_spans.len >= 7, shared_spans.str()
 	assert shared_spans.all(it == 'shared')
+	assert ast.nodes.any(it.kind == .if_expr)
 }
 
 fn test_multiline_shared_call_argument_stays_a_modifier() {

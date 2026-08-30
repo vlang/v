@@ -78,6 +78,21 @@ fn nested_comment_shared() int {
 	return shared /* outer /* inner */ tail */ + 1
 }
 
+fn multiline_comment_shared() int {
+	shared := 1
+	return shared /* first
+	second */ + 1
+}
+
+fn following_keyword_shared() int {
+	shared := 3
+	x := shared
+	if true {
+		println(x)
+	}
+	return x
+}
+
 fn main() {
 	_ = use_immutable_shared()
 	_ = xor_shared()
@@ -90,6 +105,8 @@ fn main() {
 	_ = parallel_shared()
 	_ = following_line_shared()
 	_ = nested_comment_shared()
+	_ = multiline_comment_shared()
+	_ = following_keyword_shared()
 	unsafe {
 		mut shared := Box{}
 		value := Box{}
@@ -119,8 +136,8 @@ fn main() {
 	assert c_source.contains('if (shared)'), c_source
 	assert c_source.contains('total+=shared;'), c_source
 	assert c_source.contains('return x+shared;'), c_source
-	assert c_source.contains('return shared+1;'), c_source
-	assert c_source.contains('println(x);'), c_source
+	assert c_source.count('return shared+1;') == 2, c_source
+	assert c_source.count('println(x);') == 2, c_source
 	assert !c_source.contains('(&shared)'), c_source
 }
 
