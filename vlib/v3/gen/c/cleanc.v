@@ -5068,7 +5068,10 @@ fn c_header_compiler_predefined_macro_values_from_output(output string) map[stri
 			continue
 		}
 		name := rest[..end]
-		if !name.starts_with('__GNUC') && !name.starts_with('__clang') && !name.starts_with('_MSC_VER') && !name.starts_with('_MSC_FULL_VER') && name != '__TINYC__' {
+		// Function-like predefined macros still need to be present for `defined()`
+		// checks, but their replacement text cannot be used as an object-like value.
+		if end < rest.len && rest[end] == `(` {
+			values[name] = ''
 			continue
 		}
 		values[name] = rest[end..].trim_space()

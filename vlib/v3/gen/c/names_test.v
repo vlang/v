@@ -654,19 +654,31 @@ fn test_header_owned_compiler_state_includes_clang_guards() {
 }
 
 fn test_header_owned_compiler_state_preserves_version_values() {
-	values := c_header_compiler_predefined_macro_values_from_output('#define unrelated 9\n#define __GNUC__ 12\n#define __GNUC_MINOR__ 2\n#define __clang_major__ 18\n')
+	values := c_header_compiler_predefined_macro_values_from_output('#define unrelated 9\n#define __GNUC__ 12\n#define __GNUC_MINOR__ 2\n#define __clang_major__ 18\n#define __x86_64__ 1\n#define __aarch64__ 1\n#define __STDC_VERSION__ 201710L\n#define __has_builtin(x) __builtin_has_attribute(x)\n')
 	assert values == {
-		'__GNUC__':        '12'
-		'__GNUC_MINOR__':  '2'
-		'__clang_major__': '18'
+		'unrelated':        '9'
+		'__GNUC__':         '12'
+		'__GNUC_MINOR__':   '2'
+		'__clang_major__':  '18'
+		'__x86_64__':       '1'
+		'__aarch64__':      '1'
+		'__STDC_VERSION__': '201710L'
+		'__has_builtin':    ''
 	}
-	known, active := c_header_objective_c_condition_state('__GNUC__ >= 4', {
-		'__GNUC__': true
-	}, map[string]bool{}, map[string]bool{}, values, false, pref.Target{
+	mut defined := map[string]bool{}
+	for name, _ in values {
+		defined[name] = true
+	}
+	known, active := c_header_objective_c_condition_state('defined(__x86_64__) && __GNUC__ >= 4', defined, map[string]bool{}, map[string]bool{}, values, false, pref.Target{
 		os: 'linux'
 	})
 	assert known
 	assert active
+	known_function, active_function := c_header_objective_c_condition_state('defined(__has_builtin)', defined, map[string]bool{}, map[string]bool{}, values, false, pref.Target{
+		os: 'linux'
+	})
+	assert known_function
+	assert active_function
 }
 
 fn test_header_owned_scan_expands_only_invoked_typedef_macros() {
