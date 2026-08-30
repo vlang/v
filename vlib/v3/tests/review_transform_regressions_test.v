@@ -6558,6 +6558,18 @@ fn main() {
 	match_out := run_good_with_flags(v3_bin, 'array_map_match_external_pointer_alias',
 		'-ownership', match_source)
 	assert match_out == '0\nsource'
+
+	loop_source := source.replace('if flag {\n\t\t\t\talias = &saved\n\t\t\t}',
+		'for flag {\n\t\t\t\talias = &saved\n\t\t\t\tbreak\n\t\t\t}')
+	assert loop_source != source
+	loop_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_loop_external_pointer_alias_c', '-ownership', loop_source)
+	loop_main_body := c_fn_body(loop_c_source, 'int main(int argc, char** argv) {')
+	compact_loop_main := loop_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_loop_main.contains('array__free(&(__map_source_'), loop_main_body
+	loop_out := run_good_with_flags(v3_bin, 'array_map_loop_external_pointer_alias', '-ownership',
+		loop_source)
+	assert loop_out == '0\nsource'
 }
 
 fn test_array_map_drops_temporary_source_after_external_pointer_alias_overwrite() {
@@ -6690,6 +6702,18 @@ fn main() {
 	delegated_out := run_good_with_flags(v3_bin, 'array_map_delegated_mutator_storage_overwrite',
 		'-ownership', delegated_source)
 	assert delegated_out == 'external'
+
+	loop_source := source.replace('box.value = value\n\tbox.value = replacement',
+		'for {\n\t\tbox.value = value\n\t\tif true {\n\t\t\tbreak\n\t\t}\n\t\tbox.value = replacement\n\t\tbreak\n\t}')
+	assert loop_source != source
+	loop_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_loop_break_c',
+		'-ownership', loop_source)
+	loop_main_body := c_fn_body(loop_c_source, 'int main(int argc, char** argv) {')
+	compact_loop_main := loop_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_loop_main.contains('array__free(&(__map_source_'), loop_main_body
+	loop_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_loop_break', '-ownership',
+		loop_source)
+	assert loop_out == 'source'
 }
 
 fn test_array_map_keeps_temporary_source_through_mutator_target_alias() {

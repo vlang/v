@@ -47,6 +47,17 @@ fn delegate_then_reset(mut box &Box, value &Value, replacement &Value) {
 	box.value = replacement
 }
 
+fn store_in_loop(mut box &Box, value &Value, replacement &Value, stop bool) {
+	for {
+		box.value = value
+		if stop {
+			break
+		}
+		box.value = replacement
+		break
+	}
+}
+
 fn main() {
 	mut value := Value{}
 	mut first := &Box{
@@ -62,6 +73,7 @@ fn main() {
 	set_pair_sources(mut pair, &value)
 	set_or_reset(mut first, &value, &value, true)
 	delegate_then_reset(mut second, &value, &value)
+	store_in_loop(mut first, &value, &value, true)
 }
 ') or { panic(err) }
 	defer {
@@ -82,14 +94,15 @@ fn main() {
 			continue
 		}
 		name := tc.resolved_call_name(flat.NodeId(i)) or { continue }
-		for wanted in ['set_pair_sources', 'set_or_reset', 'delegate_then_reset'] {
+		for wanted in ['set_pair_sources', 'set_or_reset', 'delegate_then_reset', 'store_in_loop'] {
 			if name.ends_with(wanted) {
 				calls[wanted] = flat.NodeId(i)
 			}
 		}
 	}
-	assert calls.len == 3, calls.str()
+	assert calls.len == 4, calls.str()
 	assert tc.call_param_storage_source_params(calls['set_pair_sources'], 0) == [1]
 	assert tc.call_param_storage_source_params(calls['set_or_reset'], 0) == [1, 2]
 	assert tc.call_param_storage_source_params(calls['delegate_then_reset'], 0) == [2]
+	assert tc.call_param_storage_source_params(calls['store_in_loop'], 0) == [1, 2]
 }
