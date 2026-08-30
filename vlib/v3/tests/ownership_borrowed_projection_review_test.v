@@ -259,6 +259,20 @@ fn test_reassign(holder &Holder) {
 	assert holder.left.values[0] == "left"
 }
 
+fn replace_borrowed_payload(mut target Payload, holder &Holder) {
+	target = holder.left
+	target.values[0] = "changed through mut parameter"
+}
+
+fn test_mut_value_param_borrowed_reassign(holder &Holder) {
+	mut target := Payload{
+		values: ["old"]
+	}
+	replace_borrowed_payload(mut target, holder)
+	assert target.values[0] == "changed through mut parameter"
+	assert holder.left.values[0] == "left"
+}
+
 fn test_multi_assign(holder &Holder) {
 	mut left := Payload{
 		values: ["old-left"]
@@ -872,6 +886,7 @@ fn main() {
 		}
 	}
 	test_reassign(holder)
+	test_mut_value_param_borrowed_reassign(holder)
 	test_multi_assign(holder)
 	assert holder.accept(holder.left) == "left"
 	assert holder.accept_entry(holder.left) == "left"
@@ -921,7 +936,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 58, out.output
+		assert out.output.count('clone') == 59, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

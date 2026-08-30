@@ -12420,8 +12420,10 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 	}
 	if lhs.value in t.heaped_amp_locals {
 		new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
+		value := t.transform_expr_for_type(rhs_id, lhs_value_type_raw)
 		return [
-			t.make_assign(new_lhs, t.transform_expr_for_type(rhs_id, lhs_value_type_raw)),
+			t.make_assign(new_lhs, t.clone_borrowed_assignment_value(rhs_id, value,
+				lhs_value_type_raw)),
 		]
 	}
 	rhs_node := t.a.nodes[int(rhs_id)]
@@ -12446,8 +12448,9 @@ fn (mut t Transformer) try_lower_pointer_value_assign(node flat.Node) ?[]flat.No
 		return none
 	}
 	new_lhs := t.make_prefix(.mul, t.make_ident(lhs.value))
+	value := t.transform_expr_for_type(rhs_id, lhs_value_type_raw)
 	return [
-		t.make_assign(new_lhs, t.transform_expr_for_type(rhs_id, lhs_value_type_raw)),
+		t.make_assign(new_lhs, t.clone_borrowed_assignment_value(rhs_id, value, lhs_value_type_raw)),
 	]
 }
 
