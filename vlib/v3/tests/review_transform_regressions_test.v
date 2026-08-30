@@ -3026,6 +3026,42 @@ fn main() {
 	assert out == '42'
 }
 
+fn test_immediately_invoked_factory_closure_keeps_side_effect_capture_escape_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+fn install(mut registry Registry, callback fn () int) {
+	registry.callbacks << callback
+}
+
+fn make_callback(mut registry Registry) fn () {
+	mut value := 42
+	return fn [mut registry, mut value] () {
+		install(mut registry, fn [mut value] () int {
+			return value
+		})
+	}
+}
+
+fn main() {
+	mut registry := Registry{}
+	make_callback(mut registry)()
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_factory_closure_side_effect_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_factory_closure_side_effect_escape', source)
+	assert out == '42'
+}
+
 fn test_immediately_invoked_closure_keeps_projected_capture_escapes_alive() {
 	v3_bin := build_v3_review_transform()
 	source := 'struct PointerHolder {

@@ -1092,10 +1092,11 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 	t.in_call_callee = true
 	callee_id := t.a.children[node.children_start]
 	immediate_bound_method := t.immediate_bound_method_value_allocates_runtime_closure(callee_id)
-	immediate_fresh_closure := immediate_bound_method || t.call_returns_exclusive_closure(callee_id)
+	immediate_factory_closure := t.call_returns_exclusive_closure(callee_id)
+	immediate_fresh_closure := immediate_bound_method || immediate_factory_closure
 	mut immediate_closure_type := ''
 	mut immediate_closure_cleanup := ''
-	immediate_closure_capture_may_escape := immediate_bound_method || t.immediate_fn_literal_capture_may_escape(callee_id)
+	immediate_closure_capture_may_escape := immediate_bound_method || immediate_factory_closure || t.immediate_fn_literal_capture_may_escape(callee_id)
 	if immediate_fresh_closure {
 		immediate_closure_type = t.fresh_runtime_closure_type(callee_id) or { '' }
 		if immediate_closure_type.len > 0 {
