@@ -4965,7 +4965,6 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs(include_arg string, source_fi
 			g.header_owned_macro_context.state)
 		return
 	}
-	g.collect_known_header_owned_c_typedef_names(include_arg)
 	include_dirs := c_flag_include_dirs(g.c_flags)
 	mut seen := map[string]bool{}
 	mut found := false
@@ -4982,6 +4981,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs(include_arg string, source_fi
 		break
 	}
 	if !found {
+		g.collect_known_header_owned_c_typedef_names(include_arg)
 		g.header_owned_macro_context.state = c_header_macro_state_after_unknown_include(
 			g.header_owned_macro_context.state)
 	}
@@ -5156,7 +5156,7 @@ fn (mut g FlatGen) collect_header_owned_source_macro_directive(directive string)
 		|| g.header_owned_macro_context.conditionals.any(!it.current_possible) {
 		return
 	}
-	macro_name, macro_value, has_macro_value := c_header_define_name_and_value(directive)
+	macro_name, macro_value, has_macro_value, function_macro_value := c_header_define_name_and_value(directive)
 	if macro_name.len == 0 {
 		return
 	}
@@ -5164,14 +5164,20 @@ fn (mut g FlatGen) collect_header_owned_source_macro_directive(directive string)
 	mut undefined := g.header_owned_macro_context.state.undefined.clone()
 	mut uncertain := g.header_owned_macro_context.state.uncertain.clone()
 	mut macro_values := g.header_owned_macro_context.state.macro_values.clone()
+	mut function_macro_values := g.header_owned_macro_context.state.function_macro_values.clone()
 	uncertain.delete(macro_name)
 	if name == 'define' {
 		undefined.delete(macro_name)
 		defined[macro_name] = true
-		if has_macro_value {
+		if function_macro_value.len > 0 {
+			macro_values.delete(macro_name)
+			function_macro_values[macro_name] = function_macro_value
+		} else if has_macro_value {
 			macro_values[macro_name] = macro_value
+			function_macro_values.delete(macro_name)
 		} else {
 			macro_values.delete(macro_name)
+			function_macro_values.delete(macro_name)
 		}
 		c_record_literal_include_macro_definition(directive, mut
 			g.header_owned_macro_context.literal_include_macros)
@@ -5179,12 +5185,14 @@ fn (mut g FlatGen) collect_header_owned_source_macro_directive(directive string)
 		defined.delete(macro_name)
 		undefined[macro_name] = true
 		macro_values.delete(macro_name)
+		function_macro_values.delete(macro_name)
 	}
 	g.header_owned_macro_context.state = CHeaderMacroState{
 		defined:                  defined
 		undefined:                undefined
 		uncertain:                uncertain
 		macro_values:             macro_values
+		function_macro_values:    function_macro_values
 		external_macros_possible: g.header_owned_macro_context.state.external_macros_possible
 	}
 	c_record_include_macro_definition(directive, false, mut
@@ -5192,10 +5200,10 @@ fn (mut g FlatGen) collect_header_owned_source_macro_directive(directive string)
 		g.header_owned_macro_context.dynamic_include_macros, false)
 }
 
-fn c_header_define_name_and_value(directive string) (string, string, bool) {
+fn c_header_define_name_and_value(directive string) (string, string, bool, string) {
 	arg := c_directive_arg(directive).trim_space()
 	if arg.len == 0 {
-		return '', '', false
+		return '', '', false, ''
 	}
 	mut token_end := 0
 	for token_end < arg.len && !arg[token_end].is_space() {
@@ -5204,13 +5212,20 @@ fn c_header_define_name_and_value(directive string) (string, string, bool) {
 	token := arg[..token_end]
 	name := token.all_before('(')
 	if name.len == 0 {
-		return '', '', false
+		return '', '', false, ''
 	}
 	if token.contains('(') {
-		return name, '', false
+		function_value := arg[name.len..].trim_space()
+		close_idx := fixed_array_len_matching_paren(function_value, 0)
+		if close_idx >= 0 && function_value[close_idx + 1..].trim_space().starts_with('typedef ') {
+			// Retain only typedef-producing function macros; tracking every helper macro in a
+			// system header would make each propagated preprocessor state unnecessarily large.
+			return name, '', false, function_value
+		}
+		return name, '', false, ''
 	}
 	value := arg[token_end..].trim_space()
-	return name, value, value.len > 0
+	return name, value, value.len > 0, ''
 }
 
 fn c_header_macro_states_merge(states []CHeaderMacroState, fallback CHeaderMacroState) CHeaderMacroState {
@@ -5236,6 +5251,7 @@ fn c_header_macro_states_merge(states []CHeaderMacroState, fallback CHeaderMacro
 		undefined:                map[string]bool{}
 		uncertain:                map[string]bool{}
 		macro_values:             map[string]string{}
+		function_macro_values:    map[string]string{}
 		external_macros_possible: external_macros_possible
 	}
 	for name in names.keys() {
@@ -5254,6 +5270,17 @@ fn c_header_macro_states_merge(states []CHeaderMacroState, fallback CHeaderMacro
 			}
 			if value_known {
 				result.macro_values[name] = value
+			}
+			mut function_value_known := name in states[0].function_macro_values
+			function_value := states[0].function_macro_values[name]
+			for state in states[1..] {
+				if (name in state.function_macro_values) != function_value_known || (function_value_known && state.function_macro_values[name] != function_value) {
+					function_value_known = false
+					break
+				}
+			}
+			if function_value_known {
+				result.function_macro_values[name] = function_value
 			}
 		} else if all_undefined {
 			result.undefined[name] = true
@@ -5333,7 +5360,6 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		mut result_state := CHeaderMacroState{}
 		if include_is_definitely_active {
 			for nested_include_arg in include_args {
-				g.collect_known_header_owned_c_typedef_names(nested_include_arg)
 				for nested_path in c_include_file_paths(nested_include_arg, g.compiler_vroot,
 					real_path, include_dirs) {
 					if !os.is_file(nested_path) {
@@ -5351,6 +5377,11 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			}
 		}
 		if !found {
+			if include_is_definitely_active {
+				for nested_include_arg in include_args {
+					g.collect_known_header_owned_c_typedef_names(nested_include_arg)
+				}
+			}
 			result_state = c_header_macro_state_after_unknown_include(include_state)
 		}
 		include_results[include_key] = CHeaderIncludeResult{
@@ -5805,6 +5836,7 @@ mut:
 	undefined                map[string]bool
 	uncertain                map[string]bool
 	macro_values             map[string]string
+	function_macro_values    map[string]string
 	external_macros_possible bool
 }
 
@@ -5854,6 +5886,7 @@ fn c_header_macro_state_clone(state CHeaderMacroState) CHeaderMacroState {
 		undefined:                state.undefined.clone()
 		uncertain:                state.uncertain.clone()
 		macro_values:             state.macro_values.clone()
+		function_macro_values:    state.function_macro_values.clone()
 		external_macros_possible: state.external_macros_possible
 	}
 }
@@ -5868,13 +5901,14 @@ fn c_header_macro_state_after_unknown_include(state CHeaderMacroState) CHeaderMa
 		undefined:                undefined
 		uncertain:                uncertain
 		macro_values:             map[string]string{}
+		function_macro_values:    map[string]string{}
 		external_macros_possible: true
 	}
 }
 
 fn c_header_macro_state_signature(state CHeaderMacroState) string {
 	mut parts := []string{cap: state.defined.len + state.undefined.len + state.uncertain.len +
-		state.macro_values.len + 1}
+		state.macro_values.len + state.function_macro_values.len + 1}
 	for name in state.defined.keys().sorted() {
 		parts << 'd:${name}'
 	}
@@ -5886,6 +5920,9 @@ fn c_header_macro_state_signature(state CHeaderMacroState) string {
 	}
 	for name in state.macro_values.keys().sorted() {
 		parts << 'v:${name}=${state.macro_values[name]}'
+	}
+	for name in state.function_macro_values.keys().sorted() {
+		parts << 'f:${name}=${state.function_macro_values[name]}'
 	}
 	parts << if state.external_macros_possible { 'e:1' } else { 'e:0' }
 	return parts.join('\x1f')
@@ -5935,7 +5972,8 @@ fn c_header_macro_state_for_flags(flags []string) CHeaderMacroState {
 		defined:   defined
 		undefined: undefined
 		uncertain: map[string]bool{}
-		macro_values: macro_values
+		macro_values:          macro_values
+		function_macro_values: map[string]string{}
 	}
 }
 
@@ -5995,6 +6033,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	mut undefined := state.undefined.clone()
 	mut uncertain := state.uncertain.clone()
 	mut macro_values := state.macro_values.clone()
+	mut function_macro_values := state.function_macro_values.clone()
 	// Preinclude headers begin before generated source declarations. An earlier
 	// nested include can still introduce unknown macros, which makes later
 	// conditions unresolved and therefore unsuitable for prototype suppression.
@@ -6104,7 +6143,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			}
 		}
 		if name in ['define', 'undef'] {
-			macro_name, macro_value, has_macro_value := c_header_define_name_and_value(clean)
+			macro_name, macro_value, has_macro_value, function_macro_value := c_header_define_name_and_value(clean)
 			if macro_name.len > 0 {
 				if possibly_active && macro_name.len > 0 {
 					macro_names[macro_name] = true
@@ -6117,21 +6156,28 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 					if name == 'define' {
 						undefined.delete(macro_name)
 						defined[macro_name] = true
-						if has_macro_value {
+						if function_macro_value.len > 0 {
+							macro_values.delete(macro_name)
+							function_macro_values[macro_name] = function_macro_value
+						} else if has_macro_value {
 							macro_values[macro_name] = macro_value
+							function_macro_values.delete(macro_name)
 						} else {
 							macro_values.delete(macro_name)
+							function_macro_values.delete(macro_name)
 						}
 					} else {
 						defined.delete(macro_name)
 						undefined[macro_name] = true
 						macro_values.delete(macro_name)
+						function_macro_values.delete(macro_name)
 					}
 				} else if possibly_active {
 					defined.delete(macro_name)
 					undefined.delete(macro_name)
 					uncertain[macro_name] = true
 					macro_values.delete(macro_name)
+					function_macro_values.delete(macro_name)
 				}
 			}
 		}
@@ -6141,6 +6187,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 				undefined:                undefined.clone()
 				uncertain:                uncertain.clone()
 				macro_values:             macro_values.clone()
+				function_macro_values:    function_macro_values.clone()
 				external_macros_possible: external_macros_possible
 			}
 			include_key := '${line_index}:${clean}'
@@ -6156,22 +6203,25 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 					undefined = result_state.undefined.clone()
 					uncertain = result_state.uncertain.clone()
 					macro_values = result_state.macro_values.clone()
+					function_macro_values = result_state.function_macro_values.clone()
 					external_macros_possible = result_state.external_macros_possible
 				} else {
 					c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
 					macro_values.clear()
+					function_macro_values.clear()
 					external_macros_possible = true
 				}
 			} else {
 				c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
 				macro_values.clear()
+				function_macro_values.clear()
 				external_macros_possible = true
 			}
 		}
 		if definitely_active {
 			output.writeln(line)
 			if name.len == 0 && !line_started_in_block_comment {
-				if expansion := c_header_invoked_typedef_macro_expansion(line, defined, undefined, uncertain, macro_values) {
+				if expansion := c_header_invoked_typedef_macro_expansion(line, defined, undefined, uncertain, macro_values, function_macro_values) {
 					typedef_macro_expansions.writeln(expansion)
 				}
 			}
@@ -6193,23 +6243,42 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			undefined:                undefined
 			uncertain:                uncertain
 			macro_values:             macro_values
+			function_macro_values:    function_macro_values
 			external_macros_possible: external_macros_possible
 		}
 	}
 }
 
-fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string) ?string {
+fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, macro_values map[string]string, function_macro_values map[string]string) ?string {
 	mut invocation := c_text_without_literals(c_header_condition_without_comments(line)).trim_space()
 	semicolon := invocation.ends_with(';')
 	if semicolon {
 		invocation = invocation[..invocation.len - 1].trim_space()
 	}
-	if invocation.len == 0 || c_header_struct_tag(invocation) != invocation || invocation !in defined || invocation in undefined || invocation in uncertain {
+	if invocation.len == 0 {
 		return none
 	}
-	mut replacement := macro_values[invocation] or { return none }
 	mut seen := map[string]bool{}
-	seen[invocation] = true
+	mut replacement := ''
+	if c_header_struct_tag(invocation) == invocation {
+		if invocation !in defined || invocation in undefined || invocation in uncertain {
+			return none
+		}
+		replacement = macro_values[invocation] or { return none }
+		seen[invocation] = true
+	} else {
+		macro_name, args, is_invocation := c_header_function_macro_invocation(invocation)
+		if !is_invocation || macro_name !in defined || macro_name in undefined || macro_name in uncertain {
+			return none
+		}
+		definition := function_macro_values[macro_name] or { return none }
+		params, body, valid_definition := c_header_function_macro_definition(definition)
+		if !valid_definition || params.len != args.len || body.contains('#') {
+			return none
+		}
+		replacement = c_header_substitute_function_macro(body, params, args)
+		seen[macro_name] = true
+	}
 	for _ in 0 .. 64 {
 		clean := replacement.trim_space()
 		if clean.len == 0 || c_header_struct_tag(clean) != clean || clean !in defined || clean in undefined || clean in uncertain || seen[clean] {
@@ -6227,6 +6296,94 @@ fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool
 	} else {
 		clean_replacement
 	}
+}
+
+fn c_header_function_macro_invocation(invocation string) (string, []string, bool) {
+	name := c_header_struct_tag(invocation)
+	if name.len == 0 {
+		return '', []string{}, false
+	}
+	rest := invocation[name.len..].trim_space()
+	if rest.len == 0 || rest[0] != `(` {
+		return '', []string{}, false
+	}
+	close_idx := fixed_array_len_matching_paren(rest, 0)
+	if close_idx < 0 || rest[close_idx + 1..].trim_space().len > 0 {
+		return '', []string{}, false
+	}
+	args, valid := c_header_function_macro_arguments(rest[1..close_idx])
+	return name, args, valid
+}
+
+fn c_header_function_macro_definition(definition string) ([]string, string, bool) {
+	if definition.len == 0 || definition[0] != `(` {
+		return []string{}, '', false
+	}
+	close_idx := fixed_array_len_matching_paren(definition, 0)
+	if close_idx < 0 {
+		return []string{}, '', false
+	}
+	params, valid := c_header_function_macro_arguments(definition[1..close_idx])
+	if !valid || params.any(c_header_struct_tag(it) != it) {
+		return []string{}, '', false
+	}
+	return params, definition[close_idx + 1..].trim_space(), true
+}
+
+fn c_header_function_macro_arguments(raw string) ([]string, bool) {
+	if raw.trim_space().len == 0 {
+		return []string{}, true
+	}
+	mut args := []string{}
+	mut depth := 0
+	mut start := 0
+	for i, ch in raw {
+		if ch == `(` {
+			depth++
+		} else if ch == `)` {
+			if depth == 0 {
+				return []string{}, false
+			}
+			depth--
+		} else if ch == `,` && depth == 0 {
+			arg := raw[start..i].trim_space()
+			if arg.len == 0 {
+				return []string{}, false
+			}
+			args << arg
+			start = i + 1
+		}
+	}
+	last := raw[start..].trim_space()
+	if depth != 0 || last.len == 0 {
+		return []string{}, false
+	}
+	args << last
+	return args, true
+}
+
+fn c_header_substitute_function_macro(body string, params []string, args []string) string {
+	mut values := map[string]string{}
+	for i, param in params {
+		values[param] = args[i]
+	}
+	mut output := strings.new_builder(body.len)
+	mut i := 0
+	for i < body.len {
+		if !fixed_array_len_ident_start(body[i]) {
+			output.write_u8(body[i])
+			i++
+			continue
+		}
+		mut end := i + 1
+		for end < body.len && fixed_array_len_ident_char(body[end]) && body[end] != `.` {
+			end++
+		}
+		name := body[i..end]
+		output.write_string(values[name] or { name })
+		i = end
+	}
+	return output.str()
 }
 
 fn c_preprocessor_ifdef_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, strict_iso_mode bool, target pref.Target) (bool, bool) {

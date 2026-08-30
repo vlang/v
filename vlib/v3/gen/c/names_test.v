@@ -683,6 +683,21 @@ fn test_header_owned_scan_expands_only_invoked_typedef_macros() {
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
 }
 
+fn test_header_owned_scan_expands_invoked_function_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define UNUSED(name) typedef struct Wrong name;\n#define DECLARE(name) typedef struct Impl name;\nDECLARE(Alias)\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert !scan.typedef_macro_expansions.contains('Wrong')
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
+}
+
 fn test_large_transitive_header_tree_is_preserved() {
 	root := os.join_path(os.temp_dir(), 'v3_large_transitive_header_tree_test')
 	os.rmdir_all(root) or {}

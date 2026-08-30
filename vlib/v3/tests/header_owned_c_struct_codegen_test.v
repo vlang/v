@@ -165,6 +165,37 @@ fn main() {
 	assert generated.contains('struct V3SourceUndefAlias {'), generated
 }
 
+fn test_shadowed_system_header_does_not_claim_missing_typedef() {
+	v3_bin := header_owned_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_header_owned_shadow_${os.getpid()}_${rand.ulid()}')
+	os.mkdir_all(os.join_path(root, 'X11')) or { panic(err) }
+	out := os.join_path(root, 'out')
+	defer {
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.write_file(os.join_path(root, 'X11', 'Xlib.h'), '#pragma once\ntypedef int LocalX11Marker;\n')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+
+#flag -I @DIR
+#include <X11/Xlib.h>
+
+@[typedef]
+struct C.XEvent { value int }
+
+fn main() {
+	println(C.XEvent{ value: 42 }.value)
+}
+')!
+	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(os.quoted_path(out))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42', run.output
+	generated := os.read_file(out + '.c')!
+	assert generated.contains('struct XEvent {'), generated
+}
+
 fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 	v3_bin := header_owned_build_v3()
 	root := os.join_path(os.temp_dir(), 'v3_header_owned_review_${os.getpid()}_${rand.ulid()}')
@@ -178,6 +209,7 @@ fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 	os.write_file(os.join_path(root, 'compiler.h'), '#if defined(__clang__) || defined(__GNUC__)\ntypedef struct { int value; } CompilerAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'compiler_version.h'), '#if __GNUC__ >= 4\ntypedef struct { int value; } CompilerVersionAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'invoked_macro.h'), '#define UNUSED_ALIAS typedef struct Wrong UnusedMacroAlias;\n#define DECLARE_INVOKED_ALIAS typedef struct { int value; } InvokedMacroAlias;\nDECLARE_INVOKED_ALIAS\n')!
+	os.write_file(os.join_path(root, 'function_macro.h'), '#define UNUSED_FUNCTION(name) typedef struct Wrong name;\n#define DECLARE_FUNCTION(name) typedef struct FunctionImpl name;\nDECLARE_FUNCTION(FunctionMacroAlias)\nstruct FunctionImpl { int value; };\n')!
 	os.write_file(os.join_path(root, 'child.h'), '#ifdef CHILD_FEATURE\ntypedef struct { int value; } RevisitedAlias;\n#endif\n')!
 	os.write_file(os.join_path(root, 'child_wrapper.h'), '#include "child.h"\n#define CHILD_FEATURE 1\n#include "child.h"\n')!
 	os.write_file(os.join_path(root, 'lazy_one.h'), 'typedef struct { int value; } LazyAlias;\n')!
@@ -200,6 +232,7 @@ fn test_header_owned_typedef_preprocessor_state_matches_emitted_c() {
 #include "compiler.h"
 #include "compiler_version.h"
 #include "invoked_macro.h"
+#include "function_macro.h"
 #include "lazy_wrapper.h"
 #include <once.h>
 #define ONCE_FEATURE
@@ -225,6 +258,8 @@ struct C.CompilerVersionAlias { value int }
 @[typedef]
 struct C.InvokedMacroAlias { value int }
 @[typedef]
+struct C.FunctionMacroAlias { value int }
+@[typedef]
 struct C.RevisitedAlias { value int }
 @[typedef]
 struct C.LazyAlias { value int }
@@ -244,7 +279,8 @@ struct C.CommonAlias { value int }
 fn main() {
 	values := [C.ValuedAlias{ value: 1 }.value, C.CompilerAlias{ value: 2 }.value,
 		C.CompilerVersionAlias{ value: 11 }.value, C.InvokedMacroAlias{ value: 12 }.value,
-		C.RevisitedAlias{ value: 3 }.value, C.LazyAlias{ value: 4 }.value,
+		C.FunctionMacroAlias{ value: 13 }.value, C.RevisitedAlias{ value: 3 }.value,
+		C.LazyAlias{ value: 4 }.value,
 		C.OnceAlias{ value: 5 }.value, C.AttributeAlias{ value: 6 }.value,
 		C.MacroAlias{ value: 7 }.value, C.PreincludeAlias{ value: 8 }.value,
 		C.RepeatedAlias{ value: 9 }.value, C.CommonAlias{ value: 10 }.value]
@@ -259,10 +295,10 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '78', run.output
+	assert run.output.trim_space() == '91', run.output
 	generated := os.read_file(out + '.c')!
 	for owned in ['ValuedAlias', 'CompilerAlias', 'CompilerVersionAlias', 'InvokedMacroAlias',
-		'RevisitedAlias', 'AttributeAlias', 'RepeatedAlias', 'CommonAlias'] {
+		'FunctionMacroAlias', 'RevisitedAlias', 'AttributeAlias', 'RepeatedAlias', 'CommonAlias'] {
 		assert !generated.contains('struct ${owned} {'), generated
 	}
 	for fallback in ['LazyAlias', 'OnceAlias', 'MacroAlias', 'PreincludeAlias'] {
