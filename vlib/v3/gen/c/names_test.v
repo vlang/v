@@ -698,6 +698,37 @@ fn test_header_owned_scan_expands_invoked_function_typedef_macros() {
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
 }
 
+fn test_header_owned_scan_expands_nested_invoked_function_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define DECLARE_IMPL(name) typedef struct Impl name;\n#define DECLARE(name) DECLARE_IMPL(name)\nDECLARE(Alias)\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
+}
+
+fn test_header_owned_scan_retains_typedef_alias_common_to_all_possible_arms() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+		external_macros_possible: true
+	}
+	scan := c_header_definitely_active_scan('#if EXTERNAL_LAYOUT\ntypedef struct First CommonAlias;\n#else\ntypedef struct Second CommonAlias;\n#endif\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.typedef_macro_expansions) == [
+		'CommonAlias',
+	], scan.typedef_macro_expansions
+}
+
 fn test_large_transitive_header_tree_is_preserved() {
 	root := os.join_path(os.temp_dir(), 'v3_large_transitive_header_tree_test')
 	os.rmdir_all(root) or {}
