@@ -1369,10 +1369,24 @@ fn (t &Transformer) immediate_fn_literal_capture_may_escape(id flat.NodeId) bool
 			break
 		}
 	}
+	mut capture_address_aliases := map[string]bool{}
+	for {
+		alias_count := capture_address_aliases.len
+		for i in 0 .. node.children_count {
+			child_id := t.a.child(&node, i)
+			child := t.a.nodes[int(child_id)]
+			if child.kind !in [.ident, .param] {
+				t.collect_capture_address_derived_names(child_id, capture_aliases, mut capture_address_aliases)
+			}
+		}
+		if capture_address_aliases.len == alias_count {
+			break
+		}
+	}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
 		child := t.a.nodes[int(child_id)]
-		if child.kind !in [.ident, .param] && t.expr_may_escape_any_named_capture(child_id, capture_aliases) {
+		if child.kind !in [.ident, .param] && t.expr_may_escape_any_named_capture(child_id, capture_aliases, capture_address_aliases) {
 			return true
 		}
 	}
@@ -1403,7 +1417,40 @@ fn (t &Transformer) collect_capture_derived_names(id flat.NodeId, mut names map[
 	}
 }
 
-fn (t &Transformer) expr_may_escape_any_named_capture(id flat.NodeId, captures map[string]bool) bool {
+fn (t &Transformer) collect_capture_address_derived_names(id flat.NodeId, captures map[string]bool, mut address_names map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return
+	}
+	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
+		mut i := 0
+		for i + 1 < node.children_count {
+			lhs := t.a.child_node(&node, i)
+			rhs_id := t.a.child(&node, i + 1)
+			mut derives_from_address := t.expr_mentions_any_name(rhs_id, address_names)
+			if !derives_from_address {
+				for name, _ in captures {
+					if t.fn_literal_expr_takes_address_of_capture(rhs_id, name) {
+						derives_from_address = true
+						break
+					}
+				}
+			}
+			if lhs.kind == .ident && lhs.value.len > 0 && derives_from_address {
+				address_names[lhs.value] = true
+			}
+			i += 2
+		}
+	}
+	for i in 0 .. node.children_count {
+		t.collect_capture_address_derived_names(t.a.child(&node, i), captures, mut address_names)
+	}
+}
+
+fn (t &Transformer) expr_may_escape_any_named_capture(id flat.NodeId, captures map[string]bool, capture_address_aliases map[string]bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -1416,6 +1463,9 @@ fn (t &Transformer) expr_may_escape_any_named_capture(id flat.NodeId, captures m
 		return true
 	}
 	if node.kind == .return_stmt {
+		if t.expr_mentions_any_name(id, capture_address_aliases) {
+			return true
+		}
 		for name, _ in captures {
 			if t.fn_literal_expr_takes_address_of_capture(id, name) {
 				return true
@@ -1430,7 +1480,7 @@ fn (t &Transformer) expr_may_escape_any_named_capture(id flat.NodeId, captures m
 		}
 	}
 	for i in 0 .. node.children_count {
-		if t.expr_may_escape_any_named_capture(t.a.child(&node, i), captures) {
+		if t.expr_may_escape_any_named_capture(t.a.child(&node, i), captures, capture_address_aliases) {
 			return true
 		}
 	}
