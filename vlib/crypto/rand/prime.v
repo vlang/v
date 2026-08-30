@@ -19,7 +19,10 @@ pub fn prime(bits int) !big.Integer {
 		return error('crypto.rand: prime requires at least 2 bits')
 	}
 	if bits == 2 {
-		return if int_u64(2)! == 0 { big.two_int } else { big.integer_from_int(3) }
+		if int_u64(2)! == 0 {
+			return big.two_int
+		}
+		return big.integer_from_int(3)
 	}
 	for {
 		mut candidate := random_bits(bits)!

@@ -39,7 +39,10 @@ pub fn (x Integer) is_probably_prime(rounds int) bool {
 	if ra % 3 == 0 || ra % 5 == 0 || ra % 7 == 0 || ra % 11 == 0 || ra % 13 == 0 || ra % 17 == 0 || ra % 19 == 0 || ra % 23 == 0 || ra % 37 == 0 || rb % 29 == 0 || rb % 31 == 0 || rb % 41 == 0 || rb % 43 == 0 || rb % 47 == 0 || rb % 53 == 0 {
 		return false
 	}
-	reps := if rounds <= 0 { 40 } else { rounds }
+	mut reps := rounds
+	if reps <= 0 {
+		reps = 40
+	}
 	return x.miller_rabin(reps) && x.lucas_probable_prime()
 }
 
@@ -85,16 +88,20 @@ fn (x Integer) miller_rabin(rounds int) bool {
 	// every round shares the same modulus.
 	ctx := x.montgomery()
 	for i in 0 .. rounds {
-		a := if i < deterministic_bases.len {
-			integer_from_u64(deterministic_bases[i])
-		} else {
-			random_base(x)
-		}
-		if !x.passes_miller_rabin_round(a, d, s, x_minus_one, ctx) {
+		if !x.passes_miller_rabin_round(x.round_base(i), d, s, x_minus_one, ctx) {
 			return false
 		}
 	}
 	return true
+}
+
+// round_base returns the base for round `i`: one of the fixed bases while they
+// last, a random one afterwards.
+fn (x Integer) round_base(i int) Integer {
+	if i < deterministic_bases.len {
+		return integer_from_u64(deterministic_bases[i])
+	}
+	return random_base(x)
 }
 
 // passes_miller_rabin_round reports whether the base `a` fails to witness that
@@ -201,12 +208,14 @@ fn (x Integer) lucas_probable_prime() bool {
 	mut vk1 := big_p // V(1) = P
 	for i := s.bit_len() - 1; i >= 0; i-- {
 		if s.get_bit(u32(i)) {
+			// k -> 2k + 1
 			vk = (vk * vk1 + x - big_p) % x
 			vk1 = (vk1 * vk1 + x_minus_two) % x
-		} else {
-			vk1 = (vk * vk1 + x - big_p) % x
-			vk = (vk * vk + x_minus_two) % x
+			continue
 		}
+		// k -> 2k
+		vk1 = (vk * vk1 + x - big_p) % x
+		vk = (vk * vk + x_minus_two) % x
 	}
 
 	// Accept on V(s) == +-2 with U(s) == 0. Crandall and Pomerance eq. 3.13
