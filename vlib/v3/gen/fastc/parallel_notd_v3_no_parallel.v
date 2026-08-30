@@ -55,6 +55,33 @@ fn fastc_chunk_bounds(sources []FastcSourceFile, jobs int) []int {
 	return bounds
 }
 
+// fastc_collect_generic_method_sources indexes every generic method and free
+// function remaining after source monomorphization. Scanning is independent per
+// file, and chunk maps are merged in source order for deterministic duplicates.
+fn fastc_collect_generic_method_sources(sources []FastcSourceFile, prefs &pref.Preferences) map[string]FastcGenericMethodSource {
+	jobs := fastc_parallel_jobs(sources, prefs)
+	if jobs <= 1 {
+		return fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
+	}
+	bounds := fastc_chunk_bounds(sources, jobs)
+	first_thread := spawn fastc_collect_generic_method_source_chunk(sources, prefs, bounds[0],
+		bounds[1])
+	mut chunk_threads := [first_thread]
+	for chunk_idx in 1 .. bounds.len / 2 {
+		chunk_thread := spawn fastc_collect_generic_method_source_chunk(sources, prefs,
+			bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
+		chunk_threads << chunk_thread
+	}
+	mut result := map[string]FastcGenericMethodSource{}
+	for chunk_idx in 0 .. chunk_threads.len {
+		chunk := chunk_threads[chunk_idx].wait()
+		for key, generic in chunk {
+			result[key] = generic
+		}
+	}
+	return result
+}
+
 // fastc_generate_file_chunk generates a contiguous file range on its own
 // thread. The array header is passed by value; the backing file data is
 // shared and read-only. It runs as a value-returning spawn: under -prealloc,
@@ -158,13 +185,13 @@ fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Prefe
 	}
 }
 
-fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut constants map[string]string, mut public_constants map[string]bool, mut globals map[string]string, mut public_globals map[string]bool) ! {
+fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut constants map[string]string, mut public_constants map[string]bool, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
 		partial := fastc_collect_declaration_chunk(sources, prefs, 0, sources.len)
 		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut
-			enum_flags, mut params_structs, mut constants, mut public_constants, mut globals, mut
-			public_globals)!
+			enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants,
+			mut globals, mut public_globals)!
 		return
 	}
 	bounds := fastc_chunk_bounds(sources, jobs)
@@ -178,8 +205,8 @@ fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Pref
 	for chunk_idx in 0 .. chunk_threads.len {
 		partial := chunk_threads[chunk_idx].wait()
 		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut
-			enum_flags, mut params_structs, mut constants, mut public_constants, mut globals, mut
-			public_globals)!
+			enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants,
+			mut globals, mut public_globals)!
 	}
 }
 
