@@ -40,6 +40,17 @@ fn (m Integer) montgomery() MontgomeryContext {
 // assumes a, x > 1 and m is odd
 @[direct_array_access]
 fn (a Integer) mont_odd(x Integer, m Integer) Integer {
+	return a.mont_odd_with_ctx(x, m, m.montgomery())
+}
+
+// mont_odd_with_ctx is `mont_odd` with a caller-supplied montgomery context.
+// Callers that exponentiate repeatedly modulo the same `m` (primality testing,
+// for instance) should build the context once and reuse it, since deriving it
+// costs a modular inverse.
+// -----
+// assumes a, x > 1, m is odd, and ctx was derived from m
+@[direct_array_access]
+fn (a Integer) mont_odd_with_ctx(x Integer, m Integer, ctx MontgomeryContext) Integer {
 	$if debug {
 		assert a > one_int && x > one_int
 		assert m.is_odd()
@@ -48,8 +59,6 @@ fn (a Integer) mont_odd(x Integer, m Integer) Integer {
 	window := get_window_size(u32(x.bit_len()))
 
 	mut table := []Integer{len: 1 << window}
-
-	ctx := m.montgomery()
 	aa := if a.signum < 0 || a.abs_cmp(m) >= 0 {
 		a % m
 	} else {
@@ -185,12 +194,15 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 	t1 := x1.mask_bits(m2n)
 	t2 := x2.mask_bits(m2n)
 
-	t := (if t2.abs_cmp(t1) >= 0 {
-		(t2 - t1).mask_bits(m2n)
-	} else {
-		// (x2 - x1) % m2 = 1 + ((~((x2 % m2) - (x1 % m2))) % m2)
-		(t1 - t2).abs().bitwise_not().mask_bits(m2n) + one_int
-	} * m1i).mask_bits(m2n)
+	t := (
+		if t2.abs_cmp(t1) >= 0 {
+			(t2 - t1).mask_bits(m2n)
+		} else {
+			// (x2 - x1) % m2 = 1 + ((~((x2 % m2) - (x1 % m2))) % m2)
+			(t1 - t2).abs().bitwise_not().mask_bits(m2n) + one_int
+		} * m1i
+	)
+	.mask_bits(m2n)
 
 	return x1 + m1 * t
 }
