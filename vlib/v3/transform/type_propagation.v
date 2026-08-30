@@ -585,6 +585,11 @@ fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 		}
 		return ''
 	}
+	if !isnil(t.tc) {
+		if typ := t.tc.selector_const_type(node) {
+			return t.normalize_type_alias(typ.name())
+		}
+	}
 	field_name := node.value
 	if field_name.len == 0 {
 		return ''

@@ -80,7 +80,7 @@ fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backen
 				// V3 failed before it could stage a complete parser manifest. The stable
 				// build succeeded, so preserve the documented fallback notice, but do not
 				// submit an unverified V3-only failure report.
-				print_v3_fallback_notice('', false, false)
+				print_v3_fallback_notice('', false, false, false)
 			}
 			.changed {
 				// The stable compiler succeeded, but not from the exact source snapshot V3
