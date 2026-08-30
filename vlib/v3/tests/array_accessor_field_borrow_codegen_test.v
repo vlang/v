@@ -410,6 +410,26 @@ fn main() {
 	run := os.execute(os.quoted_path(bin_path))
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'hello', run.output
+
+	siblings := compile_v3_ownership_program(v3_bin, 'owned_formatted_string_interp_sibling', "struct E {
+	name string
+}
+
+fn formatted_last_name() string {
+	arr := [E{ name: 'hello' }]
+	return '\${arr.last().name:3s}\${1:3d}'
+}
+
+fn main() {
+	println(formatted_last_name())
+}
+", '')
+	assert siblings.exit_code == 0, siblings.output
+	assert !siblings.output.contains('cannot return an independent array element'), siblings.output
+	siblings_bin_path := tmp_array_accessor_borrow_path('owned_formatted_string_interp_sibling_bin')
+	siblings_run := os.execute(os.quoted_path(siblings_bin_path))
+	assert siblings_run.exit_code == 0, siblings_run.output
+	assert siblings_run.output == 'hello  1\n', siblings_run.output
 }
 
 // An allocating consumer is borrow-safe only when evaluating its other operands cannot mutate

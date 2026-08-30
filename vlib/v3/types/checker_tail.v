@@ -6291,6 +6291,14 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 		return false
 	}
 	node := tc.a.node(id)
+	if node.kind == .directive && node.value == 'string_interp_format' {
+		for i in 0 .. node.children_count {
+			if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
+				return false
+			}
+		}
+		return true
+	}
 	if node.kind == .field_init {
 		return node.children_count == 1 && tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, 0))
 	}
