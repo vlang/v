@@ -7688,6 +7688,32 @@ fn main() {
 	assert c_source.contains('args->result = Worker_shared(args->arg0);'), c_source
 }
 
+fn test_selfhost_spawn_qualified_function_named_shared() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_spawn_qualified_shared_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'worker')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'worker', 'worker.v')
+	os.write_file(main_file, 'module main\nimport worker\nfn main() { h := spawn worker.shared(5); println(h.wait()) }\n') or {
+		panic(err)
+	}
+	os.write_file(module_file, 'module worker\npub fn shared(value int) int { return value }\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	sources, aliases := fastc_resolve_source_files([main_file], prefs) or { panic(err) }
+	prefs.building_v = true
+	c_source, _, _ := generate_source_files(sources, aliases, prefs) or { panic(err) }
+	assert c_source.contains('args->result = worker__shared(args->arg0);'), c_source
+}
+
 fn test_selfhost_or_block_with_trailing_value_fallback() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
