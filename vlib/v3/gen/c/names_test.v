@@ -735,6 +735,38 @@ fn test_header_owned_scan_resolves_quote_only_include_dirs() {
 	assert !g.header_owned_c_typedefs['AngleOnlyAlias']
 }
 
+fn test_header_owned_scan_resolves_after_include_dirs_in_order() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_after_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source_dir := os.join_path(dir, 'source')
+	ordinary_dir := os.join_path(dir, 'ordinary')
+	after_dir := os.join_path(dir, 'after')
+	os.mkdir_all(source_dir)!
+	os.mkdir_all(ordinary_dir)!
+	os.mkdir_all(after_dir)!
+	os.write_file(os.join_path(ordinary_dir, 'types.h'), 'typedef struct Ordinary OrdinaryAlias;\n')!
+	os.write_file(os.join_path(after_dir, 'types.h'), 'typedef struct WrongAfter WrongAfterAlias;\n')!
+	os.write_file(os.join_path(after_dir, 'after_only.h'), 'typedef struct AfterOnly AfterOnlyAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.OrdinaryAlias'] = true
+	tc.c_typedef_structs['C.WrongAfterAlias'] = true
+	tc.c_typedef_structs['C.AfterOnlyAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-idirafter', after_dir, '-I', ordinary_dir]
+	g.collect_header_owned_c_typedefs('"types.h"', os.join_path(source_dir, 'sample.v'))
+	g.collect_header_owned_c_typedefs('"after_only.h"', os.join_path(source_dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['OrdinaryAlias']
+	assert !g.header_owned_c_typedefs['WrongAfterAlias']
+	assert g.header_owned_c_typedefs['AfterOnlyAlias']
+}
+
 fn test_header_owned_compiler_state_preserves_version_values() {
 	values := c_header_compiler_predefined_macro_values_from_output('#define unrelated 9\n#define __GNUC__ 12\n#define __GNUC_MINOR__ 2\n#define __clang_major__ 18\n#define __x86_64__ 1\n#define __aarch64__ 1\n#define __STDC_VERSION__ 201710L\n#define __has_builtin(x) __builtin_has_attribute(x)\n')
 	assert values == {

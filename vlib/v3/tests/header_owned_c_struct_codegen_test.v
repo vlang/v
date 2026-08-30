@@ -437,3 +437,84 @@ fn main() {
 	assert body_pos > forward_pos, generated
 	assert postinclude_pos > body_pos, generated
 }
+
+fn test_inlined_c_source_typedef_is_not_redeclared() {
+	v3_bin := header_owned_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_inlined_c_typedef_${os.getpid()}_${rand.ulid()}')
+	os.mkdir_all(root) or { panic(err) }
+	out := os.join_path(root, 'out')
+	defer {
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.write_file(os.join_path(root, 'impl.c'), 'typedef struct V3InlinedSourceImpl {
+	int value;
+} V3InlinedSourceAlias;
+
+int v3_inlined_source_value(V3InlinedSourceAlias value) {
+	return value.value;
+}
+')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+
+#include "impl.c"
+
+@[typedef]
+struct C.V3InlinedSourceAlias {
+	value int
+}
+
+fn C.v3_inlined_source_value(C.V3InlinedSourceAlias) int
+
+fn main() {
+	item := C.V3InlinedSourceAlias{ value: 42 }
+	println(C.v3_inlined_source_value(item))
+}
+')!
+	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(os.quoted_path(out))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42', run.output
+	generated := os.read_file(out + '.c')!
+	assert !generated.contains('typedef struct V3InlinedSourceAlias V3InlinedSourceAlias;'), generated
+	assert !generated.contains('struct V3InlinedSourceAlias {'), generated
+}
+
+fn test_header_owned_typedef_resolves_idirafter() {
+	v3_bin := header_owned_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_header_idirafter_${os.getpid()}_${rand.ulid()}')
+	after_dir := os.join_path(root, 'after')
+	os.mkdir_all(after_dir) or { panic(err) }
+	out := os.join_path(root, 'out')
+	defer {
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.write_file(os.join_path(after_dir, 'types.h'), 'typedef struct V3AfterImpl {
+	int value;
+} V3AfterAlias;
+')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+
+#flag -idirafter @DIR/after
+#include "types.h"
+
+@[typedef]
+struct C.V3AfterAlias {
+	value int
+}
+
+fn main() {
+	println(C.V3AfterAlias{ value: 43 }.value)
+}
+')!
+	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(os.quoted_path(out))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '43', run.output
+	generated := os.read_file(out + '.c')!
+	assert !generated.contains('typedef struct V3AfterAlias V3AfterAlias;'), generated
+	assert !generated.contains('struct V3AfterAlias {'), generated
+}

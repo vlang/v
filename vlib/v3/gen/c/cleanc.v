@@ -387,6 +387,7 @@ mut:
 	module_imports                 map[string][]string // module -> imported modules
 	c_directives                   []CDirective
 	header_owned_c_typedefs        map[string]bool
+	inlined_c_source_typedefs      map[string]bool
 	header_owned_directives        []CHeaderOwnershipDirective
 	preinclude_header_owned        []CHeaderOwnershipDirective
 	header_owned_pragma_once_seen  map[string]bool
@@ -1105,6 +1106,7 @@ pub fn FlatGen.new() FlatGen {
 		module_imports:                  map[string][]string{}
 		c_directives:                    []CDirective{}
 		header_owned_c_typedefs:         map[string]bool{}
+		inlined_c_source_typedefs:       map[string]bool{}
 		header_owned_directives:         []CHeaderOwnershipDirective{}
 		preinclude_header_owned:         []CHeaderOwnershipDirective{}
 		header_owned_pragma_once_seen:   map[string]bool{}
@@ -2957,6 +2959,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.module_imports.clear()
 	g.c_directives = []CDirective{}
 	g.header_owned_c_typedefs.clear()
+	g.inlined_c_source_typedefs.clear()
 	g.header_owned_directives = []CHeaderOwnershipDirective{}
 	g.preinclude_header_owned = []CHeaderOwnershipDirective{}
 	g.header_owned_pragma_once_seen.clear()
@@ -4751,6 +4754,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 					}
 				}
 				g.collect_inlined_c_structs(source_text)
+				g.collect_inlined_c_source_typedefs(source_text)
 				g.collect_inlined_c_fns_for_cache(source_text, true, false)
 				g.collect_inlined_c_declared_fns(source_text)
 				source_directive := c_native_source_context_include(source_path)
@@ -4887,6 +4891,9 @@ fn (mut g FlatGen) record_header_owned_include(module_name string, include_arg s
 
 fn (mut g FlatGen) rebuild_header_owned_c_typedefs() {
 	g.header_owned_c_typedefs.clear()
+	for alias, _ in g.inlined_c_source_typedefs {
+		g.header_owned_c_typedefs[alias] = true
+	}
 	g.header_owned_pragma_once_seen.clear()
 	effective_flags := g.header_owned_effective_c_flags()
 	include_macros, dynamic_include_macros := c_flag_include_macro_definitions(effective_flags,
@@ -7507,22 +7514,41 @@ fn c_nested_include_context_depth(context []string) int {
 
 fn c_flag_include_dirs(flags []string) []string {
 	mut dirs := []string{}
+	mut after_dirs := []string{}
 	mut expect_include_dir := false
+	mut expect_after_dir := false
 	for flag in flags {
 		tok := flag.trim_space()
 		mut dir := ''
+		mut is_after_dir := false
 		if expect_include_dir {
 			dir = tok
 			expect_include_dir = false
+		} else if expect_after_dir {
+			dir = tok
+			is_after_dir = true
+			expect_after_dir = false
 		} else if tok in ['-I', '-isystem'] {
 			expect_include_dir = true
+		} else if tok == '-idirafter' {
+			expect_after_dir = true
 		} else if tok.starts_with('-I') && tok.len > 2 {
 			dir = tok[2..]
 		} else if tok.starts_with('-isystem') && tok.len > '-isystem'.len {
 			dir = tok['-isystem'.len..].trim_left('=')
+		} else if tok.starts_with('-idirafter') && tok.len > '-idirafter'.len {
+			dir = tok['-idirafter'.len..].trim_left('=')
+			is_after_dir = true
 		}
 		dir = dir.trim('"\'')
-		if dir.len > 0 && dir !in dirs {
+		if is_after_dir && dir.len > 0 && dir !in after_dirs {
+			after_dirs << dir
+		} else if dir.len > 0 && dir !in dirs {
+			dirs << dir
+		}
+	}
+	for dir in after_dirs {
+		if dir !in dirs {
 			dirs << dir
 		}
 	}
@@ -9757,6 +9783,20 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 	for alias in c_typedef_fn_aliases(text) {
 		g.inlined_c_structs[alias] = true
 		g.inlined_c_typedef_names[alias] = true
+	}
+}
+
+fn (mut g FlatGen) collect_inlined_c_source_typedefs(text string) {
+	clean := c_header_owned_typedef_scan_text(text)
+	for alias in c_typedef_all_aggregate_aliases(clean) {
+		if 'C.${alias}' in g.tc.c_typedef_structs {
+			g.inlined_c_source_typedefs[alias] = true
+		}
+	}
+	for alias in c_typedef_plain_aliases(clean) {
+		if 'C.${alias}' in g.tc.c_typedef_structs {
+			g.inlined_c_source_typedefs[alias] = true
+		}
 	}
 }
 
