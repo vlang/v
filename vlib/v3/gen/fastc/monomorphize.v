@@ -1167,7 +1167,7 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 			pending_var = ''
 			pending_struct_var = ''
 			pending_struct_type = ''
-			tok = fastc_collect_params(mut s, mut var_types)
+			tok = fastc_collect_params(mut s, mut var_types, prefs)
 			previous = .rpar
 			previous_lit = ''
 			continue
@@ -1250,7 +1250,7 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 			}
 			tok = s.scan()
 			mut concrete := fastc_infer_literal_type(tok, s.lit)
-			if concrete == '' && tok == .name {
+			if concrete == '' && tok in [.name, .key_shared] {
 				// A bare variable argument (`f(x)`) or a struct-literal argument
 				// (`f(Foo{...})`); peek one token to tell them apart.
 				argument_name := s.lit
@@ -1260,7 +1260,7 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				} else if next_token in [.comma, .rpar] && argument_name !in var_ambiguous {
 					concrete = var_types[argument_name] or { '' }
 				}
-				previous = .name
+				previous = tok
 				previous_lit = argument_name
 				tok = next_token
 			} else {
@@ -1293,7 +1293,9 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 // fastc_collect_params records the single-name-typed parameters of the function
 // whose `fn` keyword was just consumed, so `f(param)` calls can infer their
 // concrete type. It returns the token just past the parameter list.
-fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string) token.Token {
+fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, prefs &pref.Preferences) token.Token {
+	no_imports := map[string]string{}
+	no_declared_types := map[string]bool{}
 	mut tok := s.scan()
 	if tok == .lpar {
 		// Method receiver `(recv Type)`: skip it.
@@ -1340,10 +1342,11 @@ fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string) 
 	}
 	tok = s.scan()
 	for tok !in [.rpar, .eof] {
-		if tok in [.key_mut, .key_shared] {
+		shared_is_name := tok == .key_shared && fastc_shared_parameter_is_name(s, 'params', '', no_imports, no_declared_types, prefs.building_v)
+		if tok == .key_mut || (tok == .key_shared && !shared_is_name) {
 			tok = s.scan()
 		}
-		if tok != .name {
+		if tok !in [.name, .key_shared] {
 			tok = fastc_skip_to_param_boundary(mut s, tok)
 			if tok == .comma {
 				tok = s.scan()

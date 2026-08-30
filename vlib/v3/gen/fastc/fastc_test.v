@@ -246,6 +246,26 @@ fn main() {
 	assert c_source.contains('Worker_id_mono_int(worker,2)'), c_source
 }
 
+fn test_selfhost_generic_call_from_contextual_shared_parameter_is_monomorphized() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn id[T](value T) T {
+	return value
+}
+
+fn forward(shared int) int {
+	return id(shared)
+}
+
+fn main() {
+	_ := forward(1)
+}
+', 'selfhost_generic_call_from_contextual_shared_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('id_mono_int(shared)'), c_source
+}
+
 fn test_selfhost_multiline_result_propagation_after_shared_identifier() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -452,6 +472,31 @@ fn main() {
 	assert c_source.contains('__v_fastc_struct_default.value=(default_value());'), c_source
 	assert c_source.contains('.value=(__v_fastc_struct_field_0)'), c_source
 	assert c_source.contains('v_fastc_interface_box(&(PointerConfig){0}, sizeof(PointerConfig))'), c_source
+}
+
+fn test_selfhost_spawn_accepts_shared_named_params_field() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+@[params]
+struct Config {
+	shared int
+}
+
+fn configured(config Config) int {
+	return config.shared
+}
+
+fn main() {
+	handle := spawn configured(shared: 1)
+	println(handle.wait())
+}
+', 'spawn_shared_named_params_field.v', prefs) or { panic(err) }
+	assert c_source.contains('.shared=(__v_fastc_struct_field_0)'), c_source
 }
 
 fn test_generate_and_compile_without_flat_ast() {

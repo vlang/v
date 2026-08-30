@@ -159,7 +159,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 			return g.unsupported('unfinished spawn call')
 		}
 		mut is_named_param := false
-		if signature.last_parameter_is_params && g.tok == .name {
+		if signature.last_parameter_is_params && g.tok in [.name, .key_shared] {
 			mut lookahead := g.s
 			is_named_param = lookahead.scan() == .colon
 		}
