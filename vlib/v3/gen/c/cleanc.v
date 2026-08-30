@@ -10345,6 +10345,18 @@ fn c_index_u8_after(text string, needle u8, start int) int {
 	return -1
 }
 
+fn c_brace_depth_after(text string, start int, end int, initial int) int {
+	mut depth := initial
+	for i in start .. end {
+		if text[i] == `{` {
+			depth++
+		} else if text[i] == `}` && depth > 0 {
+			depth--
+		}
+	}
+	return depth
+}
+
 fn c_typedef_struct_aliases(text string) []string {
 	return c_typedef_aggregate_aliases(text, 'struct')
 }
@@ -10360,10 +10372,18 @@ fn c_typedef_enum_aliases(text string) []string {
 fn c_typedef_plain_aliases(text string) []string {
 	mut aliases := []string{}
 	mut start := 0
+	mut scanned := 0
+	mut brace_depth := 0
 	for start < text.len {
 		idx := text.index_after('typedef', start) or { break }
+		brace_depth = c_brace_depth_after(text, scanned, idx, brace_depth)
+		scanned = idx
 		pos := idx + 'typedef'.len
 		if (idx > 0 && c_ident_char(text[idx - 1])) || (pos < text.len && c_ident_char(text[pos])) {
+			start = pos
+			continue
+		}
+		if brace_depth > 0 {
 			start = pos
 			continue
 		}
@@ -10424,11 +10444,19 @@ fn c_text_matches_at(text string, pos int, word string) bool {
 fn c_typedef_all_aggregate_aliases(text string) []string {
 	mut aliases := []string{}
 	mut start := 0
+	mut scanned := 0
+	mut brace_depth := 0
 	// kind codes: 0 = struct, 1 = union, 2 = enum.
 	mut stopped := [false, false, false]
 	for start < text.len {
 		idx := text.index_after('typedef ', start) or { break }
+		brace_depth = c_brace_depth_after(text, scanned, idx, brace_depth)
+		scanned = idx
 		kw := idx + 'typedef '.len
+		if brace_depth > 0 {
+			start = kw
+			continue
+		}
 		mut prefix_len := 0
 		mut kind := 0
 		if c_text_matches_at(text, kw, 'struct') {
