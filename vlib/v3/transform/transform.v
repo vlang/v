@@ -15464,7 +15464,7 @@ fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool 
 			child := t.a.nodes[child_id]
 			if child.kind == .param && child.value == name {
 				found = true
-				is_shared = false
+				is_shared = child.typ.trim_space().starts_with('shared ')
 			} else if parent.kind == .for_in_stmt && inside_for_in_body && i < 2 && child.kind == .ident && child.value == name {
 				found = true
 				is_shared = false

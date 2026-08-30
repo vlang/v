@@ -1048,6 +1048,57 @@ fn test_string_interp_expansion_estimate_includes_shared_ident_hoisting() {
 	assert !needs_deferred_lowering
 }
 
+fn test_string_interp_expansion_estimate_includes_shared_param_hoisting() {
+	mut a := flat.FlatAst.new()
+	param := a.add_node(flat.Node{
+		kind: .param
+		value: 'counter'
+		typ: 'shared int'
+	})
+	literal := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'part'
+		typ: 'string'
+	})
+	shared_value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'counter'
+		typ: 'int'
+	})
+	interp_start := a.children.len
+	a.children << literal
+	a.children << shared_value
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 2
+	})
+	block_start := a.children.len
+	a.children << interp
+	block := a.add_node(flat.Node{
+		kind: .block
+		children_start: block_start
+		children_count: 1
+	})
+	fn_start := a.children.len
+	a.children << param
+	a.children << block
+	a.add_node(flat.Node{
+		kind: .fn_decl
+		value: 'show'
+		children_start: fn_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_source_parent_index()
+
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert estimate == 3 + 2 * string_interp_hoisted_part_expansion_estimate
+	assert !needs_deferred_lowering
+}
+
 fn test_string_interp_expansion_estimate_ignores_stale_shared_binding() {
 	mut a := flat.FlatAst.new()
 	stale_lhs := a.add_node(flat.Node{
