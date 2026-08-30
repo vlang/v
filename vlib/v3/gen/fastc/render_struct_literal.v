@@ -1,0 +1,360 @@
+module fastc
+
+fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	mut open := -1
+	mut delimiter_depth := 0
+	for i, item in tokens {
+		if item.tok in [.lpar, .lsbr] {
+			delimiter_depth++
+		} else if item.tok in [.rpar, .rsbr] {
+			delimiter_depth--
+		} else if item.tok == .lcbr && delimiter_depth == 0 {
+			open = i
+			break
+		}
+	}
+	if open <= 0 || tokens.last().tok != .rcbr {
+		return none
+	}
+	close := fastc_matching_delimiter(tokens, open, .lcbr, .rcbr) or { return none }
+	if close != tokens.len - 1 {
+		return none
+	}
+	is_c_struct_literal := open == 3 && tokens[0].tok == .name && tokens[0].lit == 'C' && tokens[1].tok == .dot && tokens[2].tok == .name
+	mut c_type := if open == 1 && tokens[0].typ != '' {
+		tokens[0].typ
+	} else {
+		g.type_from_expression_tokens(tokens[..open]) or { '' }
+	}
+	if c_type == '' && is_c_struct_literal {
+		c_type = if '#Cstruct#${tokens[2].lit}' in g.declared_types {
+			'struct ${tokens[2].lit}'
+		} else {
+			tokens[2].lit
+		}
+	}
+	mut layout_type := c_type.trim_right('*')
+	if layout_type.starts_with('Array_') {
+		layout_type = 'array'
+	}
+	if c_type == '' || (!is_c_struct_literal && layout_type !in g.struct_fields && g.declared_kinds[g.semantic_type_key(c_type)] !in [
+		.struct_,
+		.union_,
+	]) {
+		return none
+	}
+	// This is a read-only view of program metadata owned by the generation context.
+	fields := unsafe { g.struct_fields[layout_type] }
+	if open + 1 < close {
+		items := fastc_expression_list_items(tokens, open + 1, close) or { return none }
+		mut is_positional := false
+		if !fastc_expression_tokens_contain(tokens[open + 1..close], .ellipsis) {
+			for item in items {
+				if item.len == 0 {
+					continue
+				}
+				if !(item.len >= 2 && item[0].tok == .name && item[1].tok == .colon) && !(item.len == 1 && item[0].tok == .name && item[0].lit in fields) {
+					is_positional = true
+					break
+				}
+			}
+		}
+		if is_positional {
+			mut values := []string{cap: items.len}
+			for item_index, item in items {
+				expected_type := if !is_c_struct_literal && item_index < g.struct_field_info[layout_type].len {
+					g.struct_field_info[layout_type][item_index].typ
+				} else {
+					''
+				}
+				values << g.render_call_argument_expression(item, expected_type) or { return none }
+			}
+			source := if c_type.ends_with('*') {
+				'&(${c_type.trim_right('*')}){${values.join(',')}}'
+			} else {
+				'(${c_type}){${values.join(',')}}'
+			}
+			return FastcRenderedExpression{
+				source: source
+				typ: c_type
+			}
+		}
+	}
+	mut rendered_fields := []string{}
+	mut rendered_fields_by_name := map[string]string{}
+	mut field_values := map[string]string{}
+	mut explicit_initializers := []string{}
+	mut fixed_array_copies := []string{}
+	mut has_applied_defaults := false
+	mut update_source := ''
+	mut index := open + 1
+	for index < close {
+		for index < close && tokens[index].tok in [.semicolon, .comma] {
+			index++
+		}
+		if index >= close {
+			break
+		}
+		if tokens[index].tok == .ellipsis {
+			index++
+			value_start := index
+			for index < close && tokens[index].tok !in [.semicolon, .comma] {
+				index++
+			}
+			if value_start == index {
+				return none
+			}
+			update_source = g.render_call_argument_expression(tokens[value_start..index], c_type) or {
+				return none
+			}
+			continue
+		}
+		if tokens[index].tok != .name {
+			return none
+		}
+		field_name := tokens[index].lit
+		index++
+		mut value_tokens := []FastcExpressionToken{}
+		if index < close && tokens[index].tok == .colon {
+			index++
+			value_start := index
+			mut parens := 0
+			mut brackets := 0
+			mut braces := 0
+			for index < close {
+				match tokens[index].tok {
+					.lpar {
+						parens++
+					}
+					.rpar {
+						parens--
+					}
+					.lsbr {
+						brackets++
+					}
+					.rsbr {
+						brackets--
+					}
+					.lcbr {
+						braces++
+					}
+					.rcbr {
+						braces--
+					}
+					.semicolon, .comma {
+						if parens == 0 && brackets == 0 && braces == 0 {
+							break
+						}
+					}
+					else {}
+				}
+				index++
+			}
+			if value_start == index {
+				return none
+			}
+			// The enclosing token array outlives this render pass and is never mutated here.
+			value_tokens = unsafe { tokens[value_start..index] }
+		} else {
+			value_tokens = [
+				FastcExpressionToken{
+					tok: .name
+					lit: field_name
+				},
+			]
+		}
+		mut c_field_name := if is_c_struct_literal {
+			field_name
+		} else {
+			fastc_c_identifier(field_name)
+		}
+		mut expected_type := if layout_type == 'array' && field_name == 'init' {
+			g.array_element_type(c_type) or { '' }
+		} else {
+			fields[field_name] or { '' }
+		}
+		if expected_type == '' && !is_c_struct_literal {
+			if field := g.struct_field_metadata(c_type, field_name) {
+				expected_type = field.typ
+				mut storage_path := field.storage_path.clone()
+				storage_path << field.name
+				mut c_storage_path := []string{}
+				for storage_name in storage_path {
+					c_storage_path << fastc_c_identifier(storage_name)
+				}
+				c_field_name = c_storage_path.join('.')
+			} else {
+				// Initializing an embedded field by its type name:
+				// `Derived{ Base: Base{...} }` sets the `__embedded_N` field.
+				for embed_field in g.struct_field_info[layout_type] {
+					if embed_field.name.starts_with('__embedded_') && (embed_field.typ == field_name || embed_field.typ.all_after_last('__') == field_name) {
+						c_field_name = embed_field.name
+						expected_type = embed_field.typ
+						break
+					}
+				}
+			}
+		}
+		if fixed_element_type := fastc_fixed_array_element_type(expected_type) {
+			array_end := if value_tokens.len > 0 && value_tokens.last().tok == .not {
+				value_tokens.len - 1
+			} else {
+				value_tokens.len
+			}
+			if array_end >= 2 && value_tokens[0].tok == .lsbr && value_tokens[array_end - 1].tok == .rsbr {
+				items := fastc_expression_list_items(value_tokens, 1, array_end - 1) or {
+					return none
+				}
+				mut values := []string{}
+				for item in items {
+					rendered_item := g.render_call_argument_expression(item, fixed_element_type) or {
+						return none
+					}
+					temporary := '__v_fastc_struct_field_${explicit_initializers.len}'
+					explicit_initializers << '__typeof__((${rendered_item})) ${temporary} = (${rendered_item});'
+					values << temporary
+				}
+				rendered_field := '.${c_field_name}={${values.join(',')}}'
+				rendered_fields << rendered_field
+				rendered_fields_by_name[field_name] = rendered_field
+				field_values[field_name] = '{${values.join(',')}}'
+				continue
+			}
+			value := g.render_call_argument_expression(value_tokens, expected_type) or {
+				return none
+			}
+			is_raw_fixed_array := value_tokens.len > 1 || (value_tokens.len == 1 && value_tokens[0].tok == .name && fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals)
+			copy_source := if is_raw_fixed_array {
+				value
+			} else if expected_type.ends_with('*') {
+				'(${value})->data'
+			} else {
+				'(${value}).data'
+			}
+			fixed_array_copies << 'memcpy(__v_fastc_struct_fixed.${c_field_name}, ${copy_source}, sizeof(__v_fastc_struct_fixed.${c_field_name}));'
+			field_values[field_name] = value
+			continue
+		}
+		value := if value_tokens.len == 1 && value_tokens[0].source != '' {
+			// A field value carried as a pre-rendered `({ ... })` (e.g. an `or`-unwrap) is used
+			// directly so its internal temporaries stay self-contained.
+			value_tokens[0].source
+		} else {
+			g.render_call_argument_expression(value_tokens, expected_type) or { return none }
+		}
+		temporary := '__v_fastc_struct_field_${explicit_initializers.len}'
+		explicit_initializers << '__typeof__((${value})) ${temporary} = (${value});'
+		rendered_field := '.${c_field_name}=(${temporary})'
+		rendered_fields << rendered_field
+		rendered_fields_by_name[field_name] = rendered_field
+		field_values[field_name] = temporary
+	}
+	if update_source == '' {
+		for field in g.struct_field_info[layout_type] {
+			if field.default_value == '' || field.name in field_values {
+				continue
+			}
+			c_field_name := fastc_c_identifier(field.name)
+			rendered_field := '.${c_field_name}=(${field.default_value})'
+			rendered_fields << rendered_field
+			rendered_fields_by_name[field.name] = rendered_field
+			field_values[field.name] = field.default_value
+			has_applied_defaults = true
+		}
+	}
+	if layout_type in g.struct_field_info {
+		mut ordered_fields := []string{cap: rendered_fields.len}
+		mut ordered_values := map[string]bool{}
+		for field in g.struct_field_info[layout_type] {
+			if rendered_field := rendered_fields_by_name[field.name] {
+				ordered_fields << rendered_field
+				ordered_values[rendered_field] = true
+			}
+		}
+		for rendered_field in rendered_fields {
+			if rendered_field !in ordered_values {
+				ordered_fields << rendered_field
+			}
+		}
+		rendered_fields = ordered_fields.clone()
+	}
+	if layout_type == 'array' {
+		array_type := c_type.trim_right('*')
+		element_type := g.array_element_type(array_type) or { return none }
+		length := field_values['len'] or { '0' }
+		capacity := field_values['cap'] or { '0' }
+		base := '((${array_type})builtin____new_array(${length},${capacity},sizeof(${element_type})))'
+		mut value_source := base
+		if initial := field_values['init'] {
+			value_source = '({ ${explicit_initializers.join(' ')} ${array_type} __v_fastc_array_init = ${base}; ${element_type} __v_fastc_array_default = (${initial}); for (int __v_fastc_array_index = 0; __v_fastc_array_index < __v_fastc_array_init.len; __v_fastc_array_index++) { ((${element_type} *)__v_fastc_array_init.data)[__v_fastc_array_index] = __v_fastc_array_default; } __v_fastc_array_init; })'
+		} else if explicit_initializers.len > 0 {
+			value_source = '({ ${explicit_initializers.join(' ')} ${base}; })'
+		}
+		if c_type.ends_with('*') {
+			value_source = '({ ${array_type} __v_fastc_array_pointer_value = (${value_source}); (${c_type})v_fastc_interface_box(&__v_fastc_array_pointer_value, sizeof(${array_type})); })'
+		}
+		return FastcRenderedExpression{
+			source: value_source
+			typ: c_type
+		}
+	}
+	if update_source != '' {
+		mut assignments := []string{cap: rendered_fields.len}
+		for field in rendered_fields {
+			assignments << '__v_fastc_struct_update${field};'
+		}
+		if c_type.ends_with('*') {
+			base_type := c_type.trim_right('*')
+			copy_statements := fixed_array_copies.join(' ')
+			return FastcRenderedExpression{
+				source: '({ ${base_type} __v_fastc_struct_update = *(${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__v_fastc_struct_fixed', '__v_fastc_struct_update')} (${c_type})v_fastc_interface_box(&__v_fastc_struct_update, sizeof(${base_type})); })'
+				typ: c_type
+			}
+		}
+		copy_statements := fixed_array_copies.join(' ')
+		return FastcRenderedExpression{
+			source: '({ ${c_type} __v_fastc_struct_update = (${update_source}); ${explicit_initializers.join(' ')} ${assignments.join(' ')} ${copy_statements.replace('__v_fastc_struct_fixed', '__v_fastc_struct_update')} __v_fastc_struct_update; })'
+			typ: c_type
+		}
+	}
+	if has_applied_defaults {
+		rendered := g.render_struct_literal_with_defaults(c_type, layout_type, explicit_initializers, rendered_fields, rendered_fields_by_name)
+		if fixed_array_copies.len == 0 {
+			return rendered
+		}
+		access := if c_type.ends_with('*') { '->' } else { '.' }
+		copies := fixed_array_copies.join(' ').replace('__v_fastc_struct_fixed.', '__v_fastc_struct_with_fixed${access}')
+		return FastcRenderedExpression{
+			source: '({ ${c_type} __v_fastc_struct_with_fixed = (${rendered.source}); ${copies} __v_fastc_struct_with_fixed; })'
+			typ: c_type
+		}
+	}
+	literal_source := if c_type.ends_with('*') {
+		'(${c_type})v_fastc_interface_box(&(${c_type.trim_right('*')}){${rendered_fields.join(',')}}, sizeof(${c_type.trim_right('*')}))'
+	} else {
+		'(${c_type}){${rendered_fields.join(',')}}'
+	}
+	if fixed_array_copies.len > 0 {
+		base_type := c_type.trim_right('*')
+		copies := fixed_array_copies.join(' ')
+		result := if c_type.ends_with('*') {
+			'(${c_type})v_fastc_interface_box(&__v_fastc_struct_fixed, sizeof(${base_type}))'
+		} else {
+			'__v_fastc_struct_fixed'
+		}
+		return FastcRenderedExpression{
+			source: '({ ${explicit_initializers.join(' ')} ${base_type} __v_fastc_struct_fixed = (${base_type}){${rendered_fields.join(',')}}; ${copies} ${result}; })'
+			typ: c_type
+		}
+	}
+	if explicit_initializers.len > 0 {
+		return FastcRenderedExpression{
+			source: '({ ${explicit_initializers.join(' ')} ${literal_source}; })'
+			typ: c_type
+		}
+	}
+	return FastcRenderedExpression{
+		source: literal_source
+		typ: c_type
+	}
+}
