@@ -156,7 +156,7 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 	element_type := if is_array_pointer {
 		g.array_element_type(base_type) or { return none }
 	} else if base_type.ends_with('*') {
-		base_type.trim_right('*')
+		base_type[..base_type.len - 1]
 	} else if base_layout_type == 'string' {
 		'u8'
 	} else {

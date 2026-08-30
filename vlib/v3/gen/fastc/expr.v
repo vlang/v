@@ -2308,6 +2308,11 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	}
 	if g.selfhost {
 		if tokens.len > 1 && tokens.last().tok == .not {
+			if map_expression := g.render_map_expression(tokens) {
+				// A propagated RHS in `values[key] = load()!` must remain part of
+				// the map assignment lowering, not become a raw C subexpression.
+				return map_expression
+			}
 			if assignment := g.render_assignment_expression(tokens) {
 				// Assignment supplies the target type to its RHS. In particular, an
 				// option-returning call propagated with `!` is unwrapped recursively and
@@ -2317,6 +2322,12 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		}
 		if interface_cast := g.render_interface_cast_expression(tokens, rendered_expression) {
 			return interface_cast
+		}
+		// An append RHS may itself use result propagation (`items << load()!`). Lower
+		// the append first so nested propagation is applied to the RHS call rather than
+		// returning a raw C expression that still contains V's `<<` operator.
+		if append_expression := g.render_append_expression(tokens, rendered_expression) {
+			return append_expression
 		}
 		if nested_propagation := g.render_nested_option_propagation(tokens, rendered_expression) {
 			return nested_propagation
@@ -2413,9 +2424,6 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				source: '({ Option ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
 				typ: value_type
 			}
-		}
-		if append_expression := g.render_append_expression(tokens, rendered_expression) {
-			return append_expression
 		}
 		mut depth := 0
 		for i, item in tokens {

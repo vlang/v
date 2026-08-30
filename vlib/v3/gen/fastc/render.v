@@ -2441,6 +2441,9 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 	}
 	left_type := g.infer_expression_type(tokens[..operator_index]) or { return none }
 	element_type := g.array_element_type(left_type) or { return none }
+	right_tokens := tokens[operator_index + 1..]
+	right_type := g.infer_expression_type(right_tokens) or { return none }
+	is_array_append := fastc_normalize_inferred_type(right_type) == fastc_normalize_inferred_type(left_type)
 	separator := rendered_expression.index('<<') or { return none }
 	left_tokens := tokens[..operator_index]
 	mut left_source := rendered_expression[..separator]
@@ -2450,7 +2453,8 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 	// `arr << [a, b]`), and any call (`arr << s.clone()`, `arr << f(x)`) need the argument
 	// renderer, which boxes variants, lowers indexing, and routes method/function calls.
 	// Render through it whenever it succeeds, keeping the raw form only as a fallback.
-	if rerendered := g.render_call_argument_expression(tokens[operator_index + 1..], element_type) {
+	expected_right_type := if is_array_append { left_type } else { element_type }
+	if rerendered := g.render_call_argument_expression(right_tokens, expected_right_type) {
 		right_source = rerendered
 	}
 	temporary := '__v_fastc_append_value'
@@ -2492,6 +2496,47 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 					}
 				}
 			}
+			base_type := g.infer_expression_type(base_tokens) or { '' }
+			base_layout := g.underlying_alias_type(base_type).trim_right('*')
+			if base_layout.starts_with('Array_') {
+				outer_element_type := g.array_element_type(base_type) or { '' }
+				if fastc_normalize_inferred_type(outer_element_type) == fastc_normalize_inferred_type(left_type) {
+					index_source := g.render_call_argument_expression(left_tokens[open + 1..left_tokens.len - 1],
+						'int') or { return none }
+					base_source := if base_tokens.len == 1 {
+						g.resolved_root_expression_name(base_tokens[0].lit)
+					} else if nested_base := g.render_array_access_expression(base_tokens) {
+						nested_base.source
+					} else if raw_base := g.render_raw_expression_tokens(base_tokens) {
+						g.render_member_receiver(base_tokens) or { raw_base }
+					} else {
+						return none
+					}
+					array_value := if base_type.ends_with('*') { '*(${base_source})' } else { base_source }
+					target := '(${left_type.trim_right('*')} *)builtin__array_get(${array_value}, ${index_source})'
+					if is_array_append {
+						return FastcRenderedExpression{
+							source: '({ ${left_type.trim_right('*')} ${temporary} = (${right_source}); ${left_type.trim_right('*')} *__v_fastc_append_array_target = ${target}; builtin__array_push_many((array *)__v_fastc_append_array_target, ${temporary}.data, ${temporary}.len); 0; })'
+							typ:    'void'
+						}
+					}
+					return FastcRenderedExpression{
+						source: '({ ${element_type} ${temporary} = (${right_source}); ${left_type.trim_right('*')} *__v_fastc_append_array_target = ${target}; builtin__array_push((array *)__v_fastc_append_array_target, &${temporary}); 0; })'
+						typ:    'void'
+					}
+				}
+			}
+		}
+	}
+	if is_array_append {
+		array_target := if left_type.ends_with('*') {
+			'(array *)(${left_source})'
+		} else {
+			'(array *)&(${left_source})'
+		}
+		return FastcRenderedExpression{
+			source: '({ ${left_type.trim_right('*')} ${temporary} = (${right_source}); builtin__array_push_many(${array_target}, ${temporary}.data, ${temporary}.len); 0; })'
+			typ:    'void'
 		}
 	}
 	return FastcRenderedExpression{
