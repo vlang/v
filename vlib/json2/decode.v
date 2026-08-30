@@ -47,6 +47,37 @@ struct StructFieldInfo {
 	is_raw        bool
 }
 
+// Keep runtime attribute parsing outside the compile-time field loop. This is called only while
+// a struct type's field metadata cache is initialized.
+@[noinline]
+fn struct_field_info(field_name string, attrs []string) StructFieldInfo {
+	mut json_name_str := field_name.str
+	mut json_name_len := field_name.len
+	mut is_json_skip := false
+	for attr in attrs {
+		if start, end := json_attr_value_range(attr) {
+			if end <= start {
+				continue
+			}
+			if end == start + 1 && attr[start] == `-` {
+				is_json_skip = true
+				break
+			}
+			json_name_str = unsafe { attr.str + start }
+			json_name_len = end - start
+			break
+		}
+	}
+	return StructFieldInfo{
+		json_name_ptr: voidptr(json_name_str)
+		json_name_len: json_name_len
+		is_omitempty:  attrs.contains('omitempty')
+		is_skip:       attrs.contains('skip') || is_json_skip
+		is_required:   attrs.contains('required')
+		is_raw:        attrs.contains('raw')
+	}
+}
+
 struct StructKeyDecodeResult[T] {
 	matched bool
 	value   T
@@ -364,40 +395,21 @@ fn decoder_field_infos[T]() []DecoderFieldInfo {
 	return field_infos
 }
 
+struct StructFieldInfoCache {
+mut:
+	field_infos []StructFieldInfo
+}
+
 @[manualfree; unsafe]
-fn (mut decoder Decoder) cached_struct_field_infos[T]() []StructFieldInfo {
-	static field_infos := &[]StructFieldInfo(nil)
-	if field_infos == nil {
-		field_infos = &[]StructFieldInfo{}
+fn (mut decoder Decoder) cached_struct_field_infos[T]() &StructFieldInfoCache {
+	static cache := &StructFieldInfoCache(nil)
+	if cache == nil {
+		cache = &StructFieldInfoCache{}
 		$for field in T.fields {
-			mut json_name_str := field.name.str
-			mut json_name_len := field.name.len
-			mut is_json_skip := false
-			for attr in field.attrs {
-				if start, end := json_attr_value_range(attr) {
-					if end <= start {
-						continue
-					}
-					if end == start + 1 && attr[start] == `-` {
-						is_json_skip = true
-						break
-					}
-					json_name_str = unsafe { attr.str + start }
-					json_name_len = end - start
-					break
-				}
-			}
-			field_infos << StructFieldInfo{
-				json_name_ptr: voidptr(json_name_str)
-				json_name_len: json_name_len
-				is_omitempty:  field.attrs.contains('omitempty')
-				is_skip:       field.attrs.contains('skip') || is_json_skip
-				is_required:   field.attrs.contains('required')
-				is_raw:        field.attrs.contains('raw')
-			}
+			cache.field_infos << struct_field_info(field.name, field.attrs)
 		}
 	}
-	return *field_infos
+	return cache
 }
 
 @[inline; markused]
@@ -870,11 +882,11 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 					check_required_struct_fields(mut decoder, val, seen_required, '')!
 				} else {
-					field_infos := unsafe { decoder.cached_struct_field_infos[T]() }
+					field_info_cache := unsafe { decoder.cached_struct_field_infos[T]() }
 					mut decoded_mask := u64(0)
 					mut decoded_fields := []bool{}
-					if field_infos.len > 64 {
-						decoded_fields = []bool{len: field_infos.len}
+					if field_info_cache.field_infos.len > 64 {
+						decoded_fields = []bool{len: field_info_cache.field_infos.len}
 					}
 
 					mut field_idx := 0
@@ -899,7 +911,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							key_len = unescaped_key.len
 						}
 
-						matched_field_idx := decoder.find_struct_field(field_infos, key_ptr, key_len)
+						matched_field_idx := decoder.find_struct_field(field_info_cache.field_infos, key_ptr, key_len)
 						mut matched := false
 						field_idx = 0
 						$for field in T.fields {
@@ -914,7 +926,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										matched = true
 								}
 							} else if !matched && field_idx == matched_field_idx {
-								field_info := field_infos[field_idx]
+								field_info := field_info_cache.field_infos[field_idx]
 									// value node
 									decoder.current_node = decoder.current_node.next
 
@@ -1057,7 +1069,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 					// check if all required fields are present
 					field_idx = 0
 					$for field in T.fields {
-						field_info := field_infos[field_idx]
+						field_info := field_info_cache.field_infos[field_idx]
 						if field_info.is_required
 							&& !struct_field_is_decoded(decoded_mask, decoded_fields, field_idx) {
 							decoder.decode_error('missing required field `${field.name}`')!
