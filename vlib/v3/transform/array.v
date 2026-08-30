@@ -2999,7 +2999,8 @@ fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId
 		return t.array_map_pointer_alias_origin_is_external(t.a.child(&node, node.children_count - 1), elem_name, locals)
 	}
 	typ := t.checker_expr_type_name(id) or { t.node_type(id) }
-	if !t.normalize_type_alias(typ).starts_with('&') {
+	clean_type := t.normalize_type_alias(typ)
+	if !clean_type.starts_with('&') && !clean_type.starts_with('chan ') {
 		return false
 	}
 	if path := t.array_map_lvalue_local_path(id) {
@@ -3042,6 +3043,57 @@ fn array_map_merge_local_pointer_origins(mut target map[string]bool, source map[
 	}
 }
 
+fn (mut t Transformer) array_map_call_result_origin_is_external(id flat.NodeId, elem_name string, origins map[string]bool) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	for source_arg in t.tc.ownership_call_result_source_args(id) {
+		if t.array_map_side_effect_target_is_external(source_arg, elem_name, origins, true) {
+			return true
+		}
+		if source_path := t.array_map_lvalue_local_path(source_arg) {
+			for origin_path, external in origins {
+				if external && array_map_local_path_is_possible_projection(origin_path, source_path) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_record_external_pointer_type_paths(path string, typ types.Type, mut locals map[string]bool, mut seen map[string]bool) {
+	match typ {
+		types.Pointer, types.Channel, types.FnType, types.Interface {
+			locals[path] = true
+		}
+		types.Alias, types.OptionType, types.ResultType {
+			t.array_map_record_external_pointer_type_paths(path, typ.base_type, mut locals, mut seen)
+		}
+		types.Array, types.ArrayFixed {
+			t.array_map_record_external_pointer_type_paths('${path}[*]', typ.elem_type, mut locals, mut seen)
+		}
+		types.Map {
+			t.array_map_record_external_pointer_type_paths('${path}[*]', typ.value_type, mut locals, mut seen)
+		}
+		types.Struct {
+			if typ.name !in seen {
+				seen[typ.name] = true
+				for field in t.tc.struct_fields_for_type(typ.name) {
+					t.array_map_record_external_pointer_type_paths('${path}.${field.name}', field.typ, mut locals, mut seen)
+				}
+				seen.delete(typ.name)
+			}
+		}
+		types.SumType, types.MultiReturn {
+			// The active variant/slot is runtime-dependent, so retain a conservative
+			// aggregate root when ownership says an external argument reaches it.
+			locals[path] = true
+		}
+		else {}
+	}
+}
+
 fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id flat.NodeId, elem_name string, origins map[string]bool, mut locals map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
@@ -3056,11 +3108,17 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 		return
 	}
 	typ := t.checker_expr_type_name(id) or { t.node_type(id) }
-	if t.normalize_type_alias(typ).starts_with('&') {
+	clean_type := t.normalize_type_alias(typ)
+	if clean_type.starts_with('&') || clean_type.starts_with('chan ') {
 		locals[path] = t.array_map_pointer_alias_origin_is_external(id, elem_name, origins)
 		return
 	}
 	locals[path] = false
+	if node.kind == .call && t.array_map_call_result_origin_is_external(id, elem_name, origins) {
+		mut seen := map[string]bool{}
+		t.array_map_record_external_pointer_type_paths(path, t.tc.resolve_type(id), mut locals, mut seen)
+		return
+	}
 	if node.kind == .struct_init {
 		for i in 0 .. node.children_count {
 			field := t.a.child_node(&node, i)
@@ -3357,7 +3415,7 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
 		return false
 	}
-	if node.kind in [.block, .match_branch] {
+	if node.kind in [.block, .match_branch, .select_branch] {
 		mut scoped := locals.clone()
 		for i in 0 .. node.children_count {
 			stmt_id := t.a.child(&node, i)
@@ -3398,9 +3456,7 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 	if node.kind == .infix && node.op == .arrow && node.children_count >= 2 {
 		channel_id := t.a.child(&node, 0)
 		value_id := t.a.child(&node, 1)
-		if t.array_map_side_effect_target_is_external(channel_id, elem_name, locals, false)
-			&& t.array_map_side_effect_source_retains_element_address(value_id, elem_name, block,
-				before_idx) {
+		if t.array_map_side_effect_target_is_external(channel_id, elem_name, locals, true) && t.array_map_side_effect_source_retains_element_address(value_id, elem_name, block, before_idx) {
 			return true
 		}
 	}
