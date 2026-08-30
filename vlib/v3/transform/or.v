@@ -669,7 +669,12 @@ fn (mut t Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStrin
 	enum_id := t.a.child(&fn_node, 0)
 	enum_type := t.enum_type_from_node(enum_id) or { return none }
 	arg_id := t.a.child(&expr, 1)
-	mut arg_type := t.normalize_type_alias(t.node_type(arg_id)).trim_left('&')
+	arg_node := t.a.nodes[int(arg_id)]
+	mut arg_type := if arg_node.kind in [.string_literal, .string_interp] {
+		'string'
+	} else {
+		t.normalize_type_alias(t.node_type(arg_id)).trim_left('&')
+	}
 	if t.validating_generic_spec && arg_type in ['', 'unknown'] {
 		arg_type = t.normalize_type_alias(t.specialized_expr_type_name(arg_id)).trim_left('&')
 	}
@@ -946,14 +951,27 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			if specialized_ret := t.specialized_interface_method_call_return_type(expr_id,
+				expr_node)
+			{
+				if t.is_optional_type_name(specialized_ret)
+					&& !t.generic_arg_is_unresolved(specialized_ret) {
+					return t.canonical_or_expr_types(specialized_ret)
+				}
+			}
 			if thread_ret := t.thread_wait_or_expr_type(expr_node) {
 				return t.canonical_or_expr_types(thread_ret)
+			}
+			if t.is_optional_type_name(expr_node.typ)
+				&& t.generic_type_text_contains_alias(expr_node.typ, t.cur_module)
+				&& !t.generic_arg_is_unresolved(expr_node.typ) {
+				return t.specialized_or_expr_types(expr_node.typ)
 			}
 			if expr_node.children_count > 0 {
 				callee := t.a.child_node(&expr_node, 0)
 				if callee.kind == .ident && t.generic_callee_is_specialization(callee.value)
 					&& t.is_optional_type_name(expr_node.typ) {
-					return specialized_or_expr_types(expr_node.typ)
+					return t.specialized_or_expr_types(expr_node.typ)
 				}
 			}
 			if current_ret := t.current_generic_receiver_call_return_type(expr_node) {
@@ -963,7 +981,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 			}
 			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
 			if t.is_optional_type_name(concrete_ret) && !t.generic_arg_is_unresolved(concrete_ret) {
-				return specialized_or_expr_types(concrete_ret)
+				return t.specialized_or_expr_types(concrete_ret)
 			}
 			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
 				return t.canonical_or_expr_types(decode_ret)
@@ -1058,7 +1076,7 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	return expr_type, value_type
 }
 
-fn specialized_or_expr_types(expr_type string) (string, string) {
+fn (t &Transformer) specialized_or_expr_types(expr_type string) (string, string) {
 	clean := expr_type.trim_space()
 	if clean in ['!', '?'] {
 		return '${clean}void', 'void'
@@ -1066,15 +1084,46 @@ fn specialized_or_expr_types(expr_type string) (string, string) {
 	if clean.len < 2 || (clean[0] != `!` && clean[0] != `?`) {
 		return clean, clean
 	}
-	base := clean[1..]
+	mut base := clean[1..]
 	if base.len == 0 || base in ['void', 'Optional'] {
 		return '${clean[..1]}void', 'void'
 	}
+	base = t.qualify_specialized_or_expr_value_type(base)
 	// The specialized signature is the ABI authority. In particular, resolving
 	// `StructKeyDecodeResult[sapp.Event]` again here would unalias the argument to
 	// `C.sapp_event`, while the specialized callee still returns the former C
 	// generic struct type.
-	return clean, base
+	return '${clean[..1]}${base}', base
+}
+
+fn (t &Transformer) qualify_specialized_or_expr_value_type(typ string) string {
+	clean := typ.trim_space()
+	if clean.starts_with('&') {
+		return '&' + t.qualify_specialized_or_expr_value_type(clean[1..])
+	}
+	if clean.starts_with('[]') {
+		return '[]' + t.qualify_specialized_or_expr_value_type(clean[2..])
+	}
+	if clean.starts_with('map[') {
+		bracket_end := generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := t.qualify_specialized_or_expr_value_type(clean[4..bracket_end])
+			value := t.qualify_specialized_or_expr_value_type(clean[bracket_end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := generic_matching_bracket(clean, 0)
+		if bracket_end > 0 && bracket_end < clean.len - 1 {
+			return clean[..bracket_end + 1] +
+				t.qualify_specialized_or_expr_value_type(clean[bracket_end + 1..])
+		}
+	}
+	base, args, is_generic := generic_app_parts(clean)
+	if !is_generic {
+		return clean
+	}
+	return '${t.qualify_or_expr_generic_base(base)}[${args.join(', ')}]'
 }
 
 fn (mut t Transformer) thread_wait_or_expr_type(call flat.Node) ?string {
@@ -1220,11 +1269,38 @@ fn (t &Transformer) normalize_or_expr_value_type(typ string) string {
 	if !is_generic {
 		return t.normalize_type_alias(typ)
 	}
+	mut normalized_base := t.normalize_type_alias(base)
+	// Imported generic structs have both a qualified declaration entry and a
+	// short convenience entry. The latter is sufficient for field lookup but is
+	// not a valid C type outside its declaring module (`QueryBuilder_User` versus
+	// `orm__QueryBuilder_User`), so retain the qualified owner in option/result
+	// payload temporaries.
+	normalized_base = t.qualify_or_expr_generic_base(normalized_base)
 	mut normalized_args := []string{cap: args.len}
 	for arg in args {
 		normalized_args << t.normalize_or_expr_value_type(arg)
 	}
-	return '${t.normalize_type_alias(base)}[${normalized_args.join(', ')}]'
+	return '${normalized_base}[${normalized_args.join(', ')}]'
+}
+
+fn (t &Transformer) qualify_or_expr_generic_base(base string) string {
+	if base.contains('.') {
+		return base
+	}
+	local_qualified := if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		'${t.cur_module}.${base}'
+	} else {
+		''
+	}
+	if local_qualified.len > 0 && t.type_authority_has(local_qualified) {
+		return local_qualified
+	}
+	if !t.bare_struct_name_is_local_to_current_module(base) {
+		if qualified := t.qualified_types[base] {
+			return qualified
+		}
+	}
+	return base
 }
 
 fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat.Node) ?string {
@@ -1254,12 +1330,12 @@ fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat
 	if expr_node.children_count >= 3 {
 		type_arg := t.generic_call_type_arg_name(t.a.child(&expr_node, 1))
 		if type_arg.len > 0 {
-			return '!${type_arg}'
+			return t.specialized_json_decode_result_type(type_arg)
 		}
 	}
 	if args := t.explicit_generic_call_args(expr_node, t.cur_module) {
 		if args.len == 1 && args[0].len > 0 {
-			return '!${args[0]}'
+			return t.specialized_json_decode_result_type(args[0])
 		}
 		return none
 	}
@@ -1270,7 +1346,15 @@ fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat
 	if type_arg.len == 0 {
 		return none
 	}
-	return '!${type_arg}'
+	return t.specialized_json_decode_result_type(type_arg)
+}
+
+fn (t &Transformer) specialized_json_decode_result_type(type_arg string) string {
+	if t.active_specialization_args.len == 0 {
+		return '!${type_arg}'
+	}
+	concrete := t.subst_type(type_arg, t.active_specialization_args)
+	return '!${concrete}'
 }
 
 // value_type_name returns value type name data for Transformer.
@@ -1362,7 +1446,12 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
 		return t.make_optional_none(clean)
 	}
-	clean = t.normalize_type_alias(clean)
+	_, _, is_generic_app := generic_app_parts(clean)
+	if expanded := t.expand_generic_type_alias(clean) {
+		clean = t.normalize_type_alias(expanded)
+	} else if !is_generic_app {
+		clean = t.normalize_type_alias(clean)
+	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') || clean.starts_with('fn_ptr:') {
 		return t.make_cast(clean, t.make_int_literal(0), clean)
 	}
@@ -1520,10 +1609,26 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	}
 
 	prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
-	storage_value_type := if t.is_fixed_array_type(value_type) {
+	storage_value_type0 := if t.is_fixed_array_type(value_type) {
 		t.resolved_fixed_array_canonical_type(value_type)
 	} else {
 		t.shared_alias_storage_type(value_type)
+	}
+	mut storage_value_type := storage_value_type0
+	storage_normalized := t.normalize_type_in_module(storage_value_type0, t.cur_module)
+	if t.is_optional_type_name(t.cur_fn_ret_type) {
+		return_value_type := t.optional_base_type(t.qualify_optional_type(t.cur_fn_ret_type))
+		if return_value_type != storage_value_type0
+			&& t.normalize_type_in_module(return_value_type, t.cur_module) == storage_normalized {
+			storage_value_type = return_value_type
+		}
+	}
+	for active_arg in t.active_specialization_args {
+		if active_arg != storage_value_type0
+			&& t.normalize_type_in_module(active_arg, t.cur_module) == storage_normalized {
+			storage_value_type = active_arg
+			break
+		}
 	}
 	prelude << t.make_stack_value_decl_assign_typed(val_tmp,
 		t.zero_value_for_type(storage_value_type), storage_value_type)

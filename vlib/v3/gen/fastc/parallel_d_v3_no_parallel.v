@@ -19,3 +19,17 @@ fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Prefe
 			top_level_references)
 	}
 }
+
+fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut constants map[string]string, mut public_constants map[string]bool, mut globals map[string]string, mut public_globals map[string]bool) ! {
+	partial := fastc_collect_declaration_chunk(sources, prefs, 0, sources.len)
+	fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut
+		enum_flags, mut params_structs, mut constants, mut public_constants, mut globals, mut
+		public_globals)!
+}
+
+fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {
+	partial := fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names,
+		params_structs, 0, sources.len)
+	fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut
+		interface_fields, mut embed_embedders, mut embed_embeddeds)!
+}

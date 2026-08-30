@@ -552,7 +552,20 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	if !lhs_map_type.starts_with('map[') || !rhs_map_type.starts_with('map[') {
 		return none
 	}
-	map_type := lhs_map_type
+	_, lhs_value_type := t.map_type_parts(lhs_map_type)
+	_, rhs_value_type := t.map_type_parts(rhs_map_type)
+	// A result/option wrapper can retain the checker's partial `map[K]` spelling
+	// after its generic callee has been specialized to `map[K]V`. Prefer the
+	// complete peer type so equality still uses V's element semantics (not a raw
+	// byte comparison of string/array/map descriptors).
+	map_type := if
+		(lhs_value_type in ['', 'void', 'unknown'] || t.generic_arg_is_unresolved(lhs_value_type))
+		&& rhs_value_type !in ['', 'void', 'unknown']
+		&& !t.generic_arg_is_unresolved(rhs_value_type) {
+		rhs_map_type
+	} else {
+		lhs_map_type
+	}
 	mut new_lhs := t.transform_expr_for_type(lhs_id, map_type)
 	mut new_rhs := t.transform_expr_for_type(rhs_id, map_type)
 	if t.transformed_map_equality_operand_needs_deref(new_lhs, lhs_type) {
@@ -951,8 +964,12 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	if node.op !in [.eq, .ne] {
 		return none
 	}
-	lhs_is_ptr := t.infix_operand_is_pointer(lhs_id)
-	rhs_is_ptr := t.infix_operand_is_pointer(rhs_id)
+	// Pointer-backed value locals (for example a struct heap-promoted because it is
+	// later passed to a `voidptr` parameter) still have value semantics here. Treating
+	// their storage pointer as a language-level pointer adds a second dereference when
+	// the value equality is lowered.
+	lhs_is_ptr := t.infix_operand_is_language_pointer(lhs_id)
+	rhs_is_ptr := t.infix_operand_is_language_pointer(rhs_id)
 	if !lhs_is_ptr && !rhs_is_ptr {
 		return none
 	}
@@ -1262,6 +1279,10 @@ fn (t &Transformer) is_type_alias_name(name string) bool {
 fn (t &Transformer) is_type_alias_name_uncached(name string) bool {
 	if name in t.tc.type_aliases {
 		return true
+	}
+	base, _, is_generic := generic_app_parts(name)
+	if is_generic && base != name {
+		return t.is_type_alias_name_uncached(base)
 	}
 	has_dot := name.index_u8(`.`) >= 0
 	if !has_dot && t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
@@ -3170,6 +3191,8 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	if key_type.len == 0 || value_type.len == 0 {
 		return t.make_call_typed('v3_map_map_eq', [lhs, rhs], 'bool')
 	}
+	t.refine_contextual_map_ident_type(lhs, map_type)
+	t.refine_contextual_map_ident_type(rhs, map_type)
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, map_type, 'map_eq_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, map_type, 'map_eq_rhs')
 	result_name := t.new_temp('map_eq')
@@ -3216,6 +3239,29 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'bool')
 	return result
+}
+
+fn (mut t Transformer) refine_contextual_map_ident_type(id flat.NodeId, map_type string) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .ident || node.value.len == 0 {
+		return
+	}
+	_, expected_value_type := t.map_type_parts(map_type)
+	if expected_value_type in ['', 'void', 'unknown']
+		|| t.generic_arg_is_unresolved(expected_value_type) {
+		return
+	}
+	actual_type := t.clean_map_type(t.var_type(node.value))
+	_, actual_value_type := t.map_type_parts(actual_type)
+	if actual_value_type !in ['', 'void', 'unknown']
+		&& !t.generic_arg_is_unresolved(actual_value_type) {
+		return
+	}
+	t.set_var_type(node.value, map_type)
+	t.set_node_typ(int(id), map_type)
 }
 
 fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeId, struct_type string) ?flat.NodeId {

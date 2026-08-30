@@ -3,6 +3,153 @@ module fastc
 import strings
 import v3.token
 
+// fastc_sort_compare_key hashes a `.sort()` comparison expression (FNV-1a) into a stable,
+// C-identifier-safe suffix so equal comparisons on the same element type share one
+// generated comparator function.
+fn fastc_sort_compare_key(condition string) string {
+	mut h := u64(14695981039346656037)
+	for c in condition {
+		h = (h ^ u64(c)) * u64(1099511628211)
+	}
+	return h.hex()
+}
+
+// current_call_has_one_argument peeks from the scanner position immediately after the
+// current `(`. It disambiguates a lowercase tagged C type conversion from a same-named
+// C function: conversions have one operand, while calls like `C.stat(path, &out)` do not.
+fn (g &Parser) current_call_has_one_argument() bool {
+	mut look := g.s
+	mut parens := 0
+	mut brackets := 0
+	mut braces := 0
+	mut saw_argument := false
+	for {
+		tok := look.scan()
+		if tok == .eof {
+			return false
+		}
+		if tok == .rpar && parens == 0 && brackets == 0 && braces == 0 {
+			return saw_argument
+		}
+		if tok == .comma && parens == 0 && brackets == 0 && braces == 0 {
+			return false
+		}
+		match tok {
+			.lpar { parens++ }
+			.rpar { parens-- }
+			.lsbr { brackets++ }
+			.rsbr { brackets-- }
+			.lcbr { braces++ }
+			.rcbr { braces-- }
+			.semicolon {}
+			else {
+				saw_argument = true
+			}
+		}
+	}
+	return false
+}
+
+// fastc_struct_field_value_token_start returns the index of the first token of the
+// current struct-literal field VALUE: the token just after the last field `:` at bracket
+// depth 0. Returns 0 when there is no such colon (e.g. a positional literal).
+fn fastc_struct_field_value_token_start(tokens []FastcExpressionToken) int {
+	mut depth := 0
+	for i := tokens.len - 1; i >= 0; i-- {
+		match tokens[i].tok {
+			.rpar, .rsbr, .rcbr {
+				depth++
+			}
+			.lpar, .lsbr, .lcbr {
+				depth--
+			}
+			.colon {
+				// depth < 0 means an unmatched opener sits between here and the end — a
+				// grouping `(` around the field value (`f: (x or {…}).m()`); the field value
+				// still starts right after this `:`.
+				if depth <= 0 {
+					return i + 1
+				}
+			}
+			else {}
+		}
+	}
+	return 0
+}
+
+// fastc_or_operand_token_start returns the first token of the trailing operand that an `or`
+// binds to. Array elements start after their nearest comma/opener. In an arithmetic or
+// comparison expression, the option-producing operand starts after the nearest binary
+// operator. Other parenthesized/braced cases are handled by the existing grouped/call paths.
+fn fastc_or_operand_token_start(tokens []FastcExpressionToken) int {
+	mut depth := 0
+	mut nearest_comma := -1
+	for i := tokens.len - 1; i >= 0; i-- {
+		match tokens[i].tok {
+			.rpar, .rsbr, .rcbr {
+				depth++
+			}
+			.lsbr {
+				if depth == 0 {
+					return if nearest_comma >= 0 { nearest_comma + 1 } else { i + 1 }
+				}
+				depth--
+			}
+			.lpar {
+				if depth == 0 {
+					if i > 0 && tokens[i - 1].tok == .name && fastc_primitive_c_type(tokens[i - 1].lit) != none {
+						return 0
+					}
+					return if nearest_comma >= 0 { nearest_comma + 1 } else { i + 1 }
+				}
+				depth--
+			}
+			.lcbr {
+				if depth == 0 {
+					return 0
+				}
+				depth--
+			}
+			.comma {
+				if depth == 0 && nearest_comma < 0 {
+					nearest_comma = i
+				}
+			}
+			.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .left_shift, .right_shift, .right_shift_unsigned, .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or {
+				if depth == 0 {
+					return i + 1
+				}
+			}
+			else {}
+		}
+	}
+	return 0
+}
+
+fn fastc_trailing_not_marks_fixed_array_literal(tokens []FastcExpressionToken) bool {
+	if tokens.len < 3 || tokens.last().tok != .not || tokens[tokens.len - 2].tok != .rsbr {
+		return false
+	}
+	mut depth := 0
+	mut open := -1
+	for i := tokens.len - 2; i >= 0; i-- {
+		if tokens[i].tok == .rsbr {
+			depth++
+		} else if tokens[i].tok == .lsbr {
+			depth--
+			if depth == 0 {
+				open = i
+				break
+			}
+		}
+	}
+	if open == 0 {
+		return true
+	}
+	return open > 0 && tokens[open - 1].tok in [.lpar, .comma, .assign, .decl_assign, .key_in,
+		.not_in, .plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .and, .logical_or]
+}
+
 fn (mut g Parser) read_expression(stops []token.Token) !string {
 	return g.read_expression_with_prefix_mode('', stops, false, false)
 }
@@ -24,6 +171,9 @@ fn (mut g Parser) read_statement_expression_with_prefix(prefix string, stops []t
 }
 
 fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool) !string {
+	if g.expression_depth == 0 {
+		g.last_option_value_type = ''
+	}
 	g.expression_depth++
 	if g.expression_depth == 1 && g.comparison_memo.len > 0 {
 		// Memoized comparison renders are only valid while the expression's
@@ -34,13 +184,15 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 	defer {
 		g.expression_depth--
 	}
-	return g.read_expression_with_prefix_mode_impl(prefix, stops, allow_mutation_statement,
-		allow_declaration_guard)
+	return g.read_expression_with_prefix_mode_impl(prefix, stops, allow_mutation_statement, allow_declaration_guard)
 }
 
 fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool) !string {
 	if g.selfhost && prefix == '' && g.tok == .lcbr && token.Token.lcbr !in stops {
 		return g.read_inferred_map_literal()!
+	}
+	if g.selfhost && prefix == '' && g.tok == .arrow {
+		return g.read_channel_receive(stops)!
 	}
 	if prefix == '' && g.tok == .key_if {
 		return g.read_if_expression()!
@@ -54,13 +206,22 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	if prefix == '' && g.tok == .key_spawn {
 		return g.read_spawn_expression()!
 	}
+	if prefix == '' && g.tok == .name && g.lit == 'sql' && 'sql' !in g.locals {
+		mut lookahead := g.s
+		if lookahead.scan() == .name {
+			// `x := sql db { select ... }` is lowered at the declaration level
+			// (parse_declaration_after_name); a `sql` expression in any other position
+			// has nowhere to bind the row-parsing loop.
+			return g.unsupported('ORM `sql` select is only supported as `x := sql db { select ... }`')
+		}
+	}
 	mut result := strings.new_builder(64)
 	mut expression_tokens := []FastcExpressionToken{}
 	if prefix.len > 0 {
 		result.write_string(g.resolved_expression_name(prefix, .unknown))
 		expression_tokens << FastcExpressionToken{
-			tok:          .name
-			lit:          prefix
+			tok: .name
+			lit: prefix
 			unsafe_depth: g.unsafe_depth
 		}
 	}
@@ -84,32 +245,277 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	mut struct_depths := []int{}
 	mut struct_paren_depths := []int{}
 	mut expected_struct_field_type := ''
+	// Result-buffer offset where the current struct-literal field VALUE begins (just past
+	// its `=`), letting an `or` inside a field value be scoped to that value.
+	mut struct_field_value_start := 0
+	mut pending_field_value_mark := false
 	mut enum_shorthand_type := ''
 	mut next_token_is_mut_argument := false
 	mut source_token_count := if prefix == '' { 0 } else { 1 }
 	mut mutation_operator := token.Token.unknown
 	mut tokens_before_mutation := 0
+	// A plain assignment gives its right-hand side the target's type (below), so an
+	// if/match-expression or `[]` on the right infers against the field type rather
+	// than a stale `expected_expression_type` (e.g. wrapping a string result as an
+	// Option). This is restored after the expression is read.
+	saved_expected_expression_type := g.expected_expression_type
 	for g.tok != .eof {
 		if g.selfhost && g.tok == .semicolon && g.semicolon_continues_expression() {
 			g.next()
 			continue
 		}
-		if g.selfhost && expression_tokens.len > 0 && paren_depth == 0 && bracket_depth == 0
-			&& brace_depth == 0 && unsafe_expression_depth == 0 && g.tok == .mul
-			&& g.s.src[previous_token_end..g.s.pos].contains('\n') {
+		// `$d('key', default)` may appear mid-expression (e.g. `int($d(...))`).
+		// Lower it inline to its default value.
+		if g.tok == .dollar {
+			mut lookahead := g.s
+			if lookahead.scan() == .name && lookahead.lit == 'd' {
+				g.next() // consume `$`
+				value := g.read_comptime_d_expression()!
+				value_type := g.last_expression_type
+				if result.len > 0 && fastc_needs_space(result.last(), value) {
+					result.write_u8(` `)
+				}
+				result.write_string(value)
+				expression_tokens << FastcExpressionToken{
+					tok: .name
+					lit: value
+					typ: value_type
+				}
+				previous_token = .name
+				previous_lit = value
+				previous_module_separator = false
+				previous_token_end = g.s.pos
+				continue
+			}
+		}
+		// `arr.map/filter/any/all/count(expr)`: expand the `it`-closure into a C statement
+		// expression. These are compiler-magic methods (not builtin functions), so
+		// they must be lowered here, where locals are mutable and the closure body
+		// can be rendered with `it` in scope.
+		if g.tok == .dot && expression_tokens.len > 0 {
+			mut lookahead := g.s
+			if lookahead.scan() == .name {
+				higher_order_method := lookahead.lit
+				if higher_order_method in ['map', 'filter', 'any', 'all', 'count'] && lookahead.scan() == .lpar {
+					receiver_start := fastc_method_receiver_start(expression_tokens, expression_tokens.len)
+					receiver_tokens := expression_tokens[receiver_start..]
+					receiver_type := g.infer_expression_type(receiver_tokens) or { '' }
+					// Array-literal receivers (`[.a, .b].map(...)`) do not round-trip
+					// through the receiver renderer yet; leave them to the normal path.
+					if receiver_type.starts_with('Array_') {
+						fastc_register_composite_type(receiver_type, mut g.composite_types)
+						element_type := g.array_element_type(receiver_type) or { '' }
+						// Method calls in the receiver are only resolved by a post-pass,
+						// so the live buffer holds an unresolved form; re-render through the
+						// resolving path and drop the unresolved form from the buffer (its
+						// whole content when the receiver is the entire expression, else its
+						// raw suffix length). Array literals need the element type as expected
+						// context to resolve `.enum` shorthand elements.
+						mut receiver_source := ''
+						if receiver_tokens[0].tok == .lsbr && receiver_tokens.last().tok == .rsbr {
+							raw := g.render_raw_expression_tokens(receiver_tokens) or { '' }
+							items := fastc_expression_list_items(receiver_tokens, 1, receiver_tokens.len - 1) or {
+								return g.unsupported('`.${higher_order_method}` array-literal receiver')
+							}
+							norm_element := fastc_normalize_inferred_type(element_type)
+							previous_expected := g.expected_expression_type
+							g.expected_expression_type = element_type
+							mut rendered_items := []string{cap: items.len}
+							for item in items {
+								rendered_items << g.render_call_argument_expression(item, element_type) or {
+									g.expected_expression_type = previous_expected
+									return g.unsupported('`.${higher_order_method}` array-literal element')
+								}
+							}
+							g.expected_expression_type = previous_expected
+							receiver_source = '((${receiver_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${norm_element}), (${norm_element}[]){${rendered_items.join(',')}}))'
+							if receiver_start == 0 {
+								result.str()
+							} else {
+								result.go_back(raw.len)
+							}
+						} else {
+							resolved := g.render_method_receiver_expression(receiver_tokens) or {
+								return g.unsupported('`.${higher_order_method}` receiver')
+							}
+							receiver_source = resolved.source
+							if receiver_start == 0 {
+								result.str()
+							} else {
+								raw := g.render_raw_expression_tokens(receiver_tokens) or {
+									return g.unsupported('`.${higher_order_method}` receiver')
+								}
+								result.go_back(raw.len)
+							}
+						}
+						g.next() // `.`
+						g.next() // method name
+						g.next() // `(`
+						had_it := 'it' in g.locals
+						saved_it := g.locals['it'] or { FastcLocal{} }
+						g.locals['it'] = FastcLocal{
+							typ: element_type
+						}
+						closure := g.read_expression([token.Token.rpar])!
+						closure_type := g.last_expression_type
+						if had_it {
+							g.locals['it'] = saved_it
+						} else {
+							g.locals.delete('it')
+						}
+						g.next() // `)`
+						if closure_type == '' {
+							return g.unsupported('`.${higher_order_method}` closure type')
+						}
+						src := g.temporary_name('collection')
+						dst := g.temporary_name('mapped')
+						idx := g.temporary_name('index')
+						elem := g.temporary_name('element')
+						mut lowered := ''
+						mut result_type := receiver_type
+						if higher_order_method == 'map' {
+							result_type = fastc_array_c_type(closure_type)
+							fastc_register_composite_type(result_type, mut g.composite_types)
+							lowered = '({ ${receiver_type} ${src} = (${receiver_source}); ${result_type} ${dst} = (${result_type})builtin____new_array(0, ${src}.len, sizeof(${closure_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} it = ((${element_type} *)${src}.data)[${idx}]; ${closure_type} ${elem} = (${closure}); builtin__array_push((array *)&${dst}, &${elem}); } ${dst}; })'
+						} else if higher_order_method == 'filter' {
+							lowered = '({ ${receiver_type} ${src} = (${receiver_source}); ${receiver_type} ${dst} = (${receiver_type})builtin____new_array(0, ${src}.len, sizeof(${element_type})); for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} it = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { builtin__array_push((array *)&${dst}, &it); } } ${dst}; })'
+						} else if higher_order_method == 'count' {
+							result_type = 'int'
+							lowered = '({ ${receiver_type} ${src} = (${receiver_source}); int ${dst} = 0; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} it = ((${element_type} *)${src}.data)[${idx}]; if (${closure}) { ${dst}++; } } ${dst}; })'
+						} else {
+							result_type = 'bool'
+							initial := if higher_order_method == 'all' { 'true' } else { 'false' }
+							condition := if higher_order_method == 'all' {
+								'!(${closure})'
+							} else {
+								closure
+							}
+							matched := if higher_order_method == 'all' { 'false' } else { 'true' }
+							lowered = '({ ${receiver_type} ${src} = (${receiver_source}); bool ${dst} = ${initial}; for (int ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_type} it = ((${element_type} *)${src}.data)[${idx}]; if (${condition}) { ${dst} = ${matched}; break; } } ${dst}; })'
+						}
+						result.write_string(lowered)
+						expression_tokens = expression_tokens[..receiver_start].clone()
+						expression_tokens << FastcExpressionToken{
+							tok: .name
+							lit: lowered
+							typ: result_type
+						}
+						previous_token = .name
+						previous_lit = lowered
+						previous_module_separator = false
+						previous_token_end = g.s.pos
+						continue
+					}
+				}
+				// `arr.sort(a.x < b.x)`: generate a comparator function (`a`/`b` are the two
+				// elements) keyed by element type + comparison, and lower to sort_with_compare.
+				// `.sort()` (no argument) keeps its existing builtin lowering (the `!= .rpar`).
+				if higher_order_method == 'sort' && lookahead.scan() == .lpar && lookahead.scan() != .rpar {
+					receiver_start := fastc_method_receiver_start(expression_tokens, expression_tokens.len)
+					receiver_tokens := expression_tokens[receiver_start..]
+					receiver_type := g.infer_expression_type(receiver_tokens) or { '' }
+					if receiver_type.starts_with('Array_') {
+						element_type := g.array_element_type(receiver_type) or {
+							return g.unsupported('`.sort` element type')
+						}
+						norm_element := fastc_normalize_inferred_type(element_type)
+						resolved := g.render_method_receiver_expression(receiver_tokens) or {
+							return g.unsupported('`.sort` receiver')
+						}
+						receiver_source := resolved.source
+						if receiver_start == 0 {
+							result.str()
+						} else {
+							raw := g.render_raw_expression_tokens(receiver_tokens) or {
+								return g.unsupported('`.sort` receiver')
+							}
+							result.go_back(raw.len)
+						}
+						g.next() // `.`
+						g.next() // `sort`
+						g.next() // `(`
+						had_a := 'a' in g.locals
+						saved_a := g.locals['a'] or { FastcLocal{} }
+						had_b := 'b' in g.locals
+						saved_b := g.locals['b'] or { FastcLocal{} }
+						g.locals['a'] = FastcLocal{
+							typ: element_type
+						}
+						g.locals['b'] = FastcLocal{
+							typ: element_type
+						}
+						condition := g.read_expression([token.Token.rpar])!
+						if had_a {
+							g.locals['a'] = saved_a
+						} else {
+							g.locals.delete('a')
+						}
+						if had_b {
+							g.locals['b'] = saved_b
+						} else {
+							g.locals.delete('b')
+						}
+						g.next() // `)`
+						if condition.trim_space() == '' {
+							return g.unsupported('`.sort` comparison')
+						}
+						cmp_name := 'v_fastc_sort_${fastc_c_identifier(norm_element)}_${fastc_sort_compare_key(condition)}'
+						if cmp_name !in g.spawn_helpers {
+							// The same rendered comparison in two blocks with swapped element
+							// bindings yields the -1 / +1 / 0 ordering without re-rendering it.
+							g.spawn_helpers[cmp_name] = 'static int ${cmp_name}(void *__v_fastc_a, void *__v_fastc_b) { { ${norm_element} a = *(${norm_element} *)__v_fastc_a; ${norm_element} b = *(${norm_element} *)__v_fastc_b; if (${condition}) { return -1; } } { ${norm_element} a = *(${norm_element} *)__v_fastc_b; ${norm_element} b = *(${norm_element} *)__v_fastc_a; if (${condition}) { return 1; } } return 0; }'
+						}
+						lowered := '({ builtin__array_sort_with_compare((array *)&(${receiver_source}), ${cmp_name}); })'
+						result.write_string(lowered)
+						expression_tokens = expression_tokens[..receiver_start].clone()
+						expression_tokens << FastcExpressionToken{
+							tok: .name
+							lit: lowered
+							typ: 'void'
+							is_statement: true
+						}
+						previous_token = .name
+						previous_lit = lowered
+						previous_module_separator = false
+						previous_token_end = g.s.pos
+						continue
+					}
+				}
+			}
+		}
+		if g.selfhost && expression_tokens.len > 0 && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && unsafe_expression_depth == 0 && g.tok == .mul && g.s.src[previous_token_end..g.s.pos].contains('\n') {
 			mut lookahead := g.s
 			if lookahead.scan() == .name && lookahead.scan().is_assignment() {
 				break
 			}
 		}
-		if expression_tokens.len > 0 && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0
-			&& unsafe_expression_depth == 0 && previous_token in [.inc, .dec]
-			&& g.s.src[previous_token_end..g.s.pos].contains('\n') {
+		if expression_tokens.len > 0 && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && unsafe_expression_depth == 0 && previous_token in [
+			.inc,
+			.dec,
+		] && g.s.src[previous_token_end..g.s.pos].contains('\n') {
 			break
 		}
-		if g.tok in [.key_if, .key_unsafe] && expression_tokens.len > 0 && paren_depth == 0
-			&& bracket_depth == 0 && brace_depth == 0 && unsafe_expression_depth == 0
-			&& g.s.src[previous_token_end..g.s.pos].contains('\n') {
+		if g.tok in [.key_if, .key_unsafe] && expression_tokens.len > 0 && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && unsafe_expression_depth == 0 && previous_token !in [
+			.plus,
+			.minus,
+			.mul,
+			.div,
+			.mod,
+			.amp,
+			.pipe,
+			.xor,
+			.and,
+			.logical_or,
+			.eq,
+			.ne,
+			.lt,
+			.gt,
+			.le,
+			.ge,
+			.comma,
+			.lpar,
+			.lsbr,
+		] && g.s.src[previous_token_end..g.s.pos].contains('\n') {
 			break
 		}
 		if g.tok == .key_unsafe {
@@ -150,14 +556,13 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			interpolation := g.read_interpolated_string()!
 			g.expected_expression_type = previous_expected_type
-			if result.len > 0 && fastc_needs_space(result.last(), interpolation)
-				&& !previous_module_separator {
+			if result.len > 0 && fastc_needs_space(result.last(), interpolation) && !previous_module_separator {
 				result.write_u8(` `)
 			}
 			result.write_string(interpolation)
 			expression_tokens << FastcExpressionToken{
-				tok:    .string
-				lit:    literal
+				tok: .string
+				lit: literal
 				source: interpolation
 			}
 			previous_token = .string
@@ -166,8 +571,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.pos
 			continue
 		}
-		if g.selfhost && g.tok == .lcbr && expression_tokens.len >= 2
-			&& expression_tokens[0].tok == .name && expression_tokens[0].lit == 'chan' {
+		if g.selfhost && g.tok == .lcbr && expression_tokens.len >= 2 && expression_tokens[0].tok == .name && expression_tokens[0].lit == 'chan' {
 			g.skip_balanced(.lcbr, .rcbr)!
 			result.go_back(result.len)
 			result.write_string('(chan){0}')
@@ -202,8 +606,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			result.write_u8(`&`)
 			expression_tokens << FastcExpressionToken{
-				tok:             .amp
-				lit:             '&'
+				tok: .amp
+				lit: '&'
 				is_mut_argument: true
 			}
 			previous_token = .amp
@@ -220,8 +624,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			conditional := g.read_if_expression()!
 			conditional_type := g.last_expression_type
 			g.expected_expression_type = previous_expected_type
-			if result.len > 0 && fastc_needs_space(result.last(), conditional)
-				&& !previous_module_separator {
+			if result.len > 0 && fastc_needs_space(result.last(), conditional) && !previous_module_separator {
 				result.write_u8(` `)
 			}
 			result.write_string(conditional)
@@ -239,8 +642,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		if g.selfhost && g.tok == .key_match {
 			matched := g.read_match_expression()!
 			matched_type := g.last_expression_type
-			if result.len > 0 && fastc_needs_space(result.last(), matched)
-				&& !previous_module_separator {
+			if result.len > 0 && fastc_needs_space(result.last(), matched) && !previous_module_separator {
 				result.write_u8(` `)
 			}
 			result.write_string(matched)
@@ -255,11 +657,27 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.pos
 			continue
 		}
+		if g.selfhost && g.tok == .key_fn {
+			anon := g.reject_anonymous_function()!
+			if result.len > 0 && fastc_needs_space(result.last(), anon) && !previous_module_separator {
+				result.write_u8(` `)
+			}
+			result.write_string(anon)
+			expression_tokens << FastcExpressionToken{
+				tok: .name
+				lit: anon
+				source: anon
+			}
+			previous_token = .name
+			previous_lit = anon
+			previous_module_separator = false
+			previous_token_end = g.s.pos
+			continue
+		}
 		if g.selfhost && g.tok == .key_spawn {
 			spawned := g.read_spawn_expression()!
 			spawned_type := g.last_expression_type
-			if result.len > 0 && fastc_needs_space(result.last(), spawned)
-				&& !previous_module_separator {
+			if result.len > 0 && fastc_needs_space(result.last(), spawned) && !previous_module_separator {
 				result.write_u8(` `)
 			}
 			result.write_string(spawned)
@@ -280,22 +698,56 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			or_expression_is_statement := g.expression_tokens_are_statement(expression_tokens)
 			or_return_types := g.multi_return_types_for_expression(expression_tokens)
 			mut wrapper_parens := 0
-			for wrapper_parens < expression_tokens.len
-				&& expression_tokens[wrapper_parens].tok == .lpar {
+			for wrapper_parens < expression_tokens.len && expression_tokens[wrapper_parens].tok == .lpar {
 				wrapper_parens++
 			}
-			mut option_expression := result.str().trim_space()
+			raw_option_buffer := result.str()
+			mut option_expression := raw_option_buffer.trim_space()
 			mut value_type := g.expected_expression_type
 			mut option_tokens := expression_tokens.clone()
 			mut assignment_prefix := ''
+			mut scoped_operand_prefix := ''
+			mut scoped_or_operand := false
 			mut assignment_depth := 0
+			// An `or` inside a struct-literal field VALUE (`Type{ f: expr or {...} }`) applies
+			// only to that value, not the whole literal-so-far. Scope the option to the field
+			// value and keep the `(Type){.f = ` prefix (rebuilt via assignment_prefix).
+			mut in_struct_field := false
+			mut struct_field_prefix_tokens := []FastcExpressionToken{}
+			field_extra_parens := if struct_paren_depths.len > 0 {
+				paren_depth - struct_paren_depths.last()
+			} else {
+				-1
+			}
+			if struct_depths.len > 0 && brace_depth == struct_depths.last() && field_extra_parens >= 0 && struct_field_value_start > 0 && struct_field_value_start <= raw_option_buffer.len {
+				value_token_start := fastc_struct_field_value_token_start(expression_tokens)
+				// When the field value is wrapped in grouping parens (`f: (x or {…}).m()`),
+				// paren_depth is above the struct's baseline; require the extra depth to be
+				// exactly that many leading `(` of the value, so a call/index arg
+				// (`f: g(x or {…})`) is left to the operand-scoping path instead.
+				mut field_leading_open := 0
+				if value_token_start > 0 && value_token_start < expression_tokens.len {
+					for value_token_start + field_leading_open < expression_tokens.len && expression_tokens[value_token_start + field_leading_open].tok == .lpar {
+						field_leading_open++
+					}
+				}
+				if value_token_start > 0 && value_token_start < expression_tokens.len && (field_extra_parens == 0 || field_leading_open >= field_extra_parens) {
+					in_struct_field = true
+					assignment_prefix = raw_option_buffer[..struct_field_value_start]
+					option_expression = raw_option_buffer[struct_field_value_start..].trim_space()
+					option_tokens = expression_tokens[value_token_start..].clone()
+					struct_field_prefix_tokens = expression_tokens[..value_token_start].clone()
+					if expected_struct_field_type != '' {
+						value_type = expected_struct_field_type
+					}
+				}
+			}
 			for i, assignment_token in expression_tokens {
 				if assignment_token.tok in [.lpar, .lsbr, .lcbr] {
 					assignment_depth++
 				} else if assignment_token.tok in [.rpar, .rsbr, .rcbr] {
 					assignment_depth--
-				} else if assignment_depth == 0 && assignment_token.tok.is_assignment() && i > 0
-					&& i + 1 < expression_tokens.len {
+				} else if assignment_depth == 0 && assignment_token.tok.is_assignment() && i > 0 && i + 1 < expression_tokens.len {
 					left_tokens := expression_tokens[..i].clone()
 					left_type := g.infer_expression_type(left_tokens) or { '' }
 					if left_type != '' {
@@ -306,38 +758,121 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 							assignment_prefix = '${left_source}${assignment_token.tok.str()}'
 							value_type = left_type
 							option_tokens = expression_tokens[i + 1..].clone()
-							option_expression = g.render_call_argument_expression(option_tokens,
-								left_type) or { '' }
+							option_expression = g.render_call_argument_expression(option_tokens, left_type) or { '' }
 							wrapper_parens = 0
 						}
 					}
 					break
 				}
 			}
-			if expression_tokens.len >= 3 && expression_tokens[0].tok == .name
-				&& expression_tokens[1].tok == .lpar
-				&& fastc_primitive_c_type(expression_tokens[0].lit) != none {
-				option_tokens = expression_tokens[2..].clone()
+			// An `or` inside an array literal / index / call-argument list
+			// (`[a, expr or {..}]`, `f(expr or {..})`): scope the option to the current operand
+			// (after the last `,` / `[` / `(`), keeping the enclosing prefix tokens so the
+			// collection/call re-renders correctly from tokens. Reuses the struct-field rebuild
+			// path via `in_struct_field` + `struct_field_prefix_tokens`.
+			if !in_struct_field && assignment_prefix == '' {
+				operand_start := fastc_or_operand_token_start(expression_tokens)
+				if operand_start > 0 && operand_start < expression_tokens.len {
+					scoped_or_operand = true
+					in_struct_field = true
+					struct_field_prefix_tokens = expression_tokens[..operand_start].clone()
+					option_tokens = expression_tokens[operand_start..].clone()
+					option_expression = g.render_call_argument_expression(option_tokens, value_type) or {
+						option_expression
+					}
+					separator := expression_tokens[operand_start - 1].tok
+					if separator !in [.lpar, .lsbr, .comma] {
+						scoped_operand_prefix = g.render_raw_expression_tokens(struct_field_prefix_tokens) or {
+							''
+						}
+						wrapper_parens = 0
+					}
+				}
 			}
-			mut option_value_type := g.option_value_type_for_expression(option_tokens)
+			// A grouping-parenthesized operand (`(x or {…}).method()`) renders with an
+			// unmatched leading `(` in the option buffer; that `(` is re-emitted as a
+			// `wrapper_parens`, so strip it from the option expression to keep the generated
+			// `Option t = (x)` balanced. option_tokens is left intact so the method-call /
+			// missing-call detection below still sees the whole operand.
+			mut grouped_operand := false
+			mut grouped_paren_count := 0
+			mut grouped_value_tokens := []FastcExpressionToken{}
+			// Handle a grouping-parenthesized operand for the plain case (`(x or {…}).m()`)
+			// and the struct-field case (`Type{ f: (x or {…}).m() }`), but not a plain
+			// assignment RHS (which has its own membership rebuild).
+			if in_struct_field || assignment_prefix == '' {
+				mut operand_open := 0
+				for operand_open < option_tokens.len && option_tokens[operand_open].tok == .lpar {
+					operand_open++
+				}
+				mut operand_balance := 0
+				for balance_item in option_tokens {
+					match balance_item.tok {
+						.lpar, .lsbr, .lcbr {
+							operand_balance++
+						}
+						.rpar, .rsbr, .rcbr {
+							operand_balance--
+						}
+						else {}
+					}
+				}
+				if operand_balance < operand_open {
+					operand_open = if operand_balance > 0 { operand_balance } else { 0 }
+				}
+				if operand_open > 0 && operand_open < option_tokens.len {
+					grouped_operand = true
+					grouped_paren_count = operand_open
+					stripped_tokens := option_tokens[operand_open..].clone()
+					grouped_value_tokens = stripped_tokens.clone()
+					option_expression = g.render_call_argument_expression(stripped_tokens, value_type) or { option_expression }
+				}
+			}
+			if expression_tokens.len >= 3 && expression_tokens[0].tok == .name && expression_tokens[1].tok == .lpar && fastc_primitive_c_type(expression_tokens[0].lit) != none {
+				option_tokens = expression_tokens[2..].clone()
+				option_expression = g.render_raw_expression_tokens(option_tokens) or {
+					option_expression
+				}
+			}
+			// For a grouped operand the option value type must come from the balanced tokens
+			// (`make_box(x)` → Box); option_tokens still carries the unmatched leading `(`,
+			// which would defeat the lookup.
+			mut option_value_type := if grouped_operand {
+				g.option_value_type_for_expression(grouped_value_tokens)
+			} else {
+				g.option_value_type_for_expression(option_tokens)
+			}
+			if member_source := g.render_member_receiver(option_tokens) {
+				// Re-render pure member chains so pointer fields at any depth use `->`
+				// inside the Option temporary (`outer.inner.value or { ... }`).
+				option_expression = member_source
+			}
 			if map_lookup := g.render_map_lookup_option_expression(option_tokens) {
 				option_expression = map_lookup.source
 				option_value_type = map_lookup.typ
 			} else if array_lookup := g.render_array_lookup_option_expression(option_tokens) {
 				option_expression = array_lookup.source
 				option_value_type = array_lookup.typ
-			} else if method_call := g.render_method_call_expression(option_tokens,
-				option_expression)
-			{
-				option_expression = method_call.source
+			} else if explicit_generic := g.render_explicit_generic_call_expression(option_tokens) {
+				option_expression = explicit_generic.source
+				option_value_type = g.option_value_type_for_expression(option_tokens)
+			} else if static_call := g.render_static_call_expression(option_tokens, option_expression) {
+				option_expression = static_call.source
 				option_value_type = g.option_value_type_for_expression(option_tokens)
 			} else if call := g.render_missing_call_arguments(option_tokens) {
+				// Rebuild a complete free-function call before resolving methods nested in
+				// its arguments. This supplies contextual types for array/map literals.
 				option_expression = call.source
 				option_value_type = g.option_value_type_for_expression(option_tokens)
+			} else if method_call := g.render_method_call_expression(option_tokens, option_expression) {
+				option_expression = method_call.source
+				option_value_type = g.option_value_type_for_expression(option_tokens)
 			}
-			outer_cast := assignment_prefix == '' && option_tokens.len != expression_tokens.len
-			if expression_tokens.len >= 2 && expression_tokens[0].tok == .name
-				&& expression_tokens[1].tok == .lpar {
+			if pointer_members := g.render_pointer_member_access_expression(option_tokens, option_expression) {
+				option_expression = pointer_members.source
+			}
+			outer_cast := assignment_prefix == '' && scoped_operand_prefix == '' && !scoped_or_operand && option_tokens.len != expression_tokens.len
+			if expression_tokens.len >= 2 && expression_tokens[0].tok == .name && expression_tokens[1].tok == .lpar {
 				value_type = fastc_primitive_c_type(expression_tokens[0].lit) or { value_type }
 				cast_prefix := '((${value_type})('
 				if option_expression.starts_with(cast_prefix) {
@@ -357,7 +892,20 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				}
 				g.capturing_defer = true
 				g.captured_defer_lines = []string{}
+				// A trailing bare VALUE (`or { ...; User{} }`) is the block's fallback: let
+				// parse_block_body capture it into `or_value_captured` instead of rejecting
+				// it as a value-only statement.
+				previous_or_capture := g.or_value_capture
+				previous_or_captured := g.or_value_captured
+				previous_or_expected := g.or_value_expected_type
+				g.or_value_capture = true
+				g.or_value_captured = ''
+				g.or_value_expected_type = option_value_type
 				_ = g.parse_block_body()!
+				fallback_value := g.or_value_captured
+				g.or_value_capture = previous_or_capture
+				g.or_value_captured = previous_or_captured
+				g.or_value_expected_type = previous_or_expected
 				block_lines := g.captured_defer_lines.clone()
 				g.capturing_defer = previous_capture
 				g.captured_defer_lines = previous_lines.clone()
@@ -366,36 +914,85 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				} else {
 					g.locals.delete('err')
 				}
-				complex_value_type := if option_value_type == '' {
+				// A primitive cast around the or (`int(f() or {...})`): the result type is the
+				// cast type, and its closing `)` must be consumed (mirrors the single-value
+				// path's `outer_cast` handling below).
+				cast_type := if outer_cast && expression_tokens.len >= 2 && expression_tokens[0].tok == .name && expression_tokens[1].tok == .lpar {
+					fastc_primitive_c_type(expression_tokens[0].lit) or { '' }
+				} else {
+					''
+				}
+				complex_value_type := if cast_type != '' {
+					cast_type
+				} else if option_value_type == '' {
 					'void'
 				} else {
 					option_value_type
 				}
-				complex_success := if complex_value_type == 'void' {
+				complex_payload_type := if option_value_type != '' {
+					option_value_type
+				} else {
+					complex_value_type
+				}
+				complex_unwrapped := if complex_payload_type == 'void' {
 					'0'
 				} else {
-					'*((${complex_value_type} *)${temporary}.data)'
+					'*((${complex_payload_type} *)${temporary}.data)'
+				}
+				complex_success := if cast_type != '' && complex_payload_type != cast_type {
+					'((${cast_type})(${complex_unwrapped}))'
+				} else {
+					complex_unwrapped
+				}
+				if outer_cast && paren_depth > 0 && g.tok == .rpar {
+					paren_depth--
+					g.next()
 				}
 				result.go_back(result.len)
-				result.write_string('${assignment_prefix}({ Option ${temporary} = (${option_expression}); if (${temporary}.state) { IError err = ${temporary}.err; ${block_lines.join(' ')} } ${complex_success}; })')
-				expression_tokens = [
-					FastcExpressionToken{
-						tok:          .name
-						lit:          temporary
-						typ:          complex_value_type
-						is_statement: or_expression_is_statement
-					},
-				]
-				if complex_value_type == 'void' {
-					expression_tokens << FastcExpressionToken{
-						tok: .assign
-						lit: '='
-					}
+				or_expr_body := if fallback_value != '' && complex_value_type != 'void' {
+					// The or-block ends in a fallback VALUE: run the leading statements and
+					// use the value on failure, the unwrapped option value on success.
+					or_result := g.temporary_name('or_result')
+					'({ Option ${temporary} = (${option_expression}); ${complex_value_type} ${or_result}; if (${temporary}.state) { IError err = ${temporary}.err; ${block_lines.join(' ')} ${or_result} = (${fallback_value}); } else { ${or_result} = ${complex_success}; } ${or_result}; })'
+				} else {
+					// The or-block only runs statements (it diverges): run them on failure,
+					// then use the unwrapped value.
+					'({ Option ${temporary} = (${option_expression}); if (${temporary}.state) { IError err = ${temporary}.err; ${block_lines.join(' ')} } ${complex_success}; })'
 				}
-				if assignment_prefix != '' {
+				result.write_string(assignment_prefix)
+				result.write_string(scoped_operand_prefix)
+				result.write_string(or_expr_body)
+				if in_struct_field {
+					expression_tokens = struct_field_prefix_tokens.clone()
 					expression_tokens << FastcExpressionToken{
-						tok: .assign
-						lit: '='
+						tok: .name
+						lit: temporary
+						source: or_expr_body
+						typ: complex_value_type
+						is_statement: or_expression_is_statement
+					}
+				} else {
+					expression_tokens = [
+						FastcExpressionToken{
+							tok: .name
+							lit: temporary
+							// Carry the rendered `({ ... })` so a trailing `.method()` binds to it.
+							source: or_expr_body
+							typ: complex_value_type
+							is_statement: or_expression_is_statement
+						},
+					]
+					if complex_value_type == 'void' {
+						expression_tokens << FastcExpressionToken{
+							tok: .assign
+							lit: '='
+						}
+					}
+					if assignment_prefix != '' {
+						expression_tokens << FastcExpressionToken{
+							tok: .assign
+							lit: '='
+						}
 					}
 				}
 				previous_token = .name
@@ -405,6 +1002,37 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				g.last_expression_type = complex_value_type
 				g.last_expression = expression_tokens
 				g.last_multi_return_types = or_return_types.clone()
+				if in_struct_field {
+					// parse_block_body consumed the field separator; re-insert a `,` as both a
+					// token (render_struct_literal_expression works off tokens) and buffer text
+					// before the next field so the struct literal keeps rendering.
+					if g.tok == .name {
+						expression_tokens << FastcExpressionToken{
+							tok: .comma
+							lit: ','
+						}
+						result.write_string(', ')
+						previous_token = .comma
+					}
+					continue
+				}
+				// parse_block_body already skipped the statement separator after `}`, so an
+				// immediate `.` here is a method on the or-result (`x or { ... }.method()`):
+				// continue so it binds to the temporary (via its `source`). Otherwise the
+				// expression is complete.
+				if g.tok == .dot {
+					continue
+				}
+				// A trailing binary operator (`data.index(c) or { return … } + 1`) also binds
+				// to the or-result: keep reading so it renders `or_expr_body + 1` rather than
+				// orphaning `+ 1` as its own value-only statement. (The single-value path
+				// already falls through to the shared read loop for this.)
+				if g.tok in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor, .left_shift,
+					.right_shift, .right_shift_unsigned, .eq, .ne, .gt, .lt, .ge, .le, .and,
+					.logical_or] {
+					continue
+				}
+				g.expected_expression_type = saved_expected_expression_type
 				return result.str().trim_space()
 			}
 			previous_err := g.locals['err'] or { FastcLocal{} }
@@ -417,7 +1045,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			if fallback == '' {
 				fallback = '0'
 			} else if fallback_type.starts_with('Map_') && fallback.contains('){}') {
-				key_type, map_value_type := fastc_map_key_value_types(fallback_type) or {
+				key_type, map_value_type := g.map_key_value_types(fallback_type) or {
 					return g.unsupported('map fallback type `${fallback_type}`')
 				}
 				hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
@@ -441,46 +1069,104 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 					fallback_type
 				}
 			}
+			if (g.tok == .dot || grouped_operand || scoped_or_operand) && option_value_type != '' {
+				// A method immediately follows the or-block (`expr or { v }.method()`):
+				// the unwrapped receiver's type is the option's value type, not the
+				// surrounding expression's expected type (which describes the whole
+				// `.method()` call's result). For a grouped operand (`(x or { v }).method()`)
+				// the closing `)` sits between the block and the `.`, so `g.tok` is `.rpar`
+				// here; the grouped expression's value is still the option value type (in the
+				// non-method uses the expected type already equals it, so this is a no-op).
+				value_type = option_value_type
+			}
 			if outer_cast && paren_depth > 0 && g.tok == .rpar {
 				paren_depth--
 				g.next()
 			}
+			// A grouped struct-field operand (`Type{ f: (x or {…}).m() }`) absorbed its
+			// opening `(` into the field prefix, so consume the matching closing `)` here;
+			// otherwise it would trail the or-result token as an unmatched `)` and break the
+			// struct field's comma-splitting. wrapper_parens==0 in this path, so the plain
+			// grouped case (which balances via wrapper_parens) is unaffected.
+			if grouped_operand && in_struct_field {
+				mut skipped := 0
+				for skipped < grouped_paren_count && g.tok == .rpar {
+					if paren_depth > 0 {
+						paren_depth--
+					}
+					g.next()
+					skipped++
+				}
+			}
 			result.go_back(result.len)
-			success_value := if value_type == 'void' {
+			payload_type := if option_value_type != '' { option_value_type } else { value_type }
+			unwrapped_value := if payload_type == 'void' {
 				'0'
 			} else {
-				'*((${value_type} *)${temporary}.data)'
+				'*((${payload_type} *)${temporary}.data)'
+			}
+			mut success_value := if outer_cast && payload_type != value_type {
+				'((${value_type})(${unwrapped_value}))'
+			} else {
+				unwrapped_value
+			}
+			if fallback_type == 'Option' && option_value_type != '' {
+				success_value = fastc_option_success_expression(option_value_type, unwrapped_value)
+				value_type = 'Option'
+			}
+			or_expr_body := if fallback_type == 'IError' && g.return_type == 'Option' {
+				// `return result_call() or { error(...) }`: the IError is a replacement
+				// result failure, not a value of the result payload type.
+				'({ Option ${temporary} = (${option_expression}); if (${temporary}.state) { return (Option){.err = (${fallback}), .state = 1}; } ${success_value}; })'
+			} else if value_type != 'void' && fallback_type in ['', 'void'] {
+				'({ Option ${temporary} = (${option_expression}); if (${temporary}.state) { ${fallback}; } ${success_value}; })'
+			} else {
+				'({ Option ${temporary} = (${option_expression}); ${temporary}.state ? (${fallback}) : ${success_value}; })'
+			}
+			if fallback_type == 'IError' && g.return_type == 'Option' && option_value_type != '' {
+				value_type = option_value_type
 			}
 			result.write_string(assignment_prefix)
+			result.write_string(scoped_operand_prefix)
 			result.write_string('('.repeat(wrapper_parens))
-			if value_type != 'void' && fallback_type in ['', 'void'] {
-				result.write_string('({ Option ${temporary} = (${option_expression}); if (${temporary}.state) { ${fallback}; } ${success_value}; })')
+			result.write_string(or_expr_body)
+			if in_struct_field {
+				expression_tokens = struct_field_prefix_tokens.clone()
+				expression_tokens << FastcExpressionToken{
+					tok: .name
+					lit: temporary
+					source: or_expr_body
+					typ: value_type
+					is_statement: or_expression_is_statement
+				}
 			} else {
-				result.write_string('({ Option ${temporary} = (${option_expression}); ${temporary}.state ? (${fallback}) : ${success_value}; })')
-			}
-			expression_tokens = []FastcExpressionToken{}
-			for _ in 0 .. wrapper_parens {
-				expression_tokens << FastcExpressionToken{
-					tok: .lpar
-					lit: '('
+				expression_tokens = []FastcExpressionToken{}
+				for _ in 0 .. wrapper_parens {
+					expression_tokens << FastcExpressionToken{
+						tok: .lpar
+						lit: '('
+					}
 				}
-			}
-			expression_tokens << FastcExpressionToken{
-				tok:          .name
-				lit:          temporary
-				typ:          value_type
-				is_statement: or_expression_is_statement
-			}
-			if value_type == 'void' {
 				expression_tokens << FastcExpressionToken{
-					tok: .assign
-					lit: '='
+					tok: .name
+					lit: temporary
+					// Carry the rendered `({ ... })` so a trailing `.method()`
+					// (`expr or { v }.str()`) binds to it via render_method_receiver_expression.
+					source: or_expr_body
+					typ: value_type
+					is_statement: or_expression_is_statement
 				}
-			}
-			if assignment_prefix != '' {
-				expression_tokens << FastcExpressionToken{
-					tok: .assign
-					lit: '='
+				if value_type == 'void' {
+					expression_tokens << FastcExpressionToken{
+						tok: .assign
+						lit: '='
+					}
+				}
+				if assignment_prefix != '' {
+					expression_tokens << FastcExpressionToken{
+						tok: .assign
+						lit: '='
+					}
 				}
 			}
 			previous_token = .name
@@ -495,16 +1181,15 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			pseudo := g.comptime_pseudo_expression(pseudo_name) or {
 				return g.unsupported('compile-time pseudo value `${pseudo_name}`')
 			}
-			if result.len > 0 && fastc_needs_space(result.last(), pseudo)
-				&& !previous_module_separator {
+			if result.len > 0 && fastc_needs_space(result.last(), pseudo) && !previous_module_separator {
 				result.write_u8(` `)
 			}
 			result.write_string(pseudo)
 			expression_tokens << FastcExpressionToken{
-				tok:    .string
-				lit:    pseudo_name
+				tok: .string
+				lit: pseudo_name
 				source: pseudo
-				typ:    'string'
+				typ: 'string'
 			}
 			previous_token = .string
 			previous_lit = pseudo_name
@@ -513,8 +1198,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			g.next()
 			continue
 		}
-		if !g.selfhost
-			&& g.tok in [.left_shift, .right_shift, .right_shift_unsigned, .left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
+		if !g.selfhost && g.tok in [.left_shift, .right_shift, .right_shift_unsigned,
+			.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
 			// V defines oversized shifts to produce zero. Raw C shifts are
 			// undefined and may mask the count to the operand width instead.
 			return g.unsupported('shift expressions')
@@ -534,14 +1219,14 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			// indexing cannot preserve either in this scanner-only lane.
 			return g.unsupported('expression token `${g.token_source()}`')
 		}
-		if (!g.selfhost || g.tok !in [.lcbr, .rcbr])
-			&& g.tok in [.lcbr, .rcbr, .str_dollar, .key_match, .key_or, .key_as, .arrow, .power] {
+		if (!g.selfhost || g.tok !in [.lcbr, .rcbr]) && g.tok in [.lcbr, .rcbr, .str_dollar,
+			.key_match, .key_or, .arrow, .power] {
 			return g.unsupported('expression token `${g.token_source()}`')
 		}
 		if !g.selfhost && g.tok in [.key_in, .not_in] {
 			return g.unsupported('expression token `${g.token_source()}`')
 		}
-		if !g.selfhost && g.tok in [.key_is, .not_is] {
+		if !g.selfhost && g.tok in [.key_is, .not_is, .key_as] {
 			return g.unsupported('expression token `${g.token_source()}`')
 		}
 		match g.tok {
@@ -562,20 +1247,14 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			else {}
 		}
-		if !g.selfhost && ((has_sum_arithmetic_operator && (has_and_operator
-			|| has_pipe_operator || has_xor_operator))
-			|| (has_multiply_operator && has_and_operator)
-			|| (has_pipe_operator && has_xor_operator)) {
+		if !g.selfhost && ((has_sum_arithmetic_operator && (has_and_operator || has_pipe_operator || has_xor_operator)) || (has_multiply_operator && has_and_operator) || (has_pipe_operator && has_xor_operator)) {
 			// V groups + and - with | and ^, and * with &, while C splits those
 			// levels and also orders + and - above &. Reject ambiguous token streams.
 			return g.unsupported('mixed operator precedence')
 		}
 		if g.tok.is_assignment() || g.tok in [.inc, .dec] {
-			is_declaration_guard := allow_declaration_guard && g.tok == .decl_assign
-				&& source_token_count == 1
-			if (!allow_mutation_statement && !is_declaration_guard)
-				|| paren_depth != 0 || bracket_depth != 0 || brace_depth != 0
-				|| unsafe_expression_depth != 0 {
+			is_declaration_guard := allow_declaration_guard && g.tok == .decl_assign && source_token_count == 1
+			if (!allow_mutation_statement && !is_declaration_guard) || paren_depth != 0 || bracket_depth != 0 || brace_depth != 0 || unsafe_expression_depth != 0 {
 				return g.unsupported('mutation `${g.token_source()}` inside an expression')
 			}
 			if mutation_operator != .unknown {
@@ -583,46 +1262,83 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			mutation_operator = g.tok
 			tokens_before_mutation = source_token_count
+			if g.selfhost && g.tok == .assign {
+				target_type := g.infer_expression_type(expression_tokens[..source_token_count]) or {
+					''
+				}
+				if target_type != '' {
+					g.expected_expression_type = target_type
+				}
+			}
 			mut mutation_lookahead := g.s
 			next_mutation_token := mutation_lookahead.scan()
-			mutation_ends_line := mutation_lookahead.pos >= g.s.offset
-				&& g.s.src[g.s.offset..mutation_lookahead.pos].contains('\n')
-			if mutation_operator in [.inc, .dec] && next_mutation_token !in stops
-				&& next_mutation_token != .eof && !mutation_ends_line {
+			mutation_ends_line := mutation_lookahead.pos >= g.s.offset && g.s.src[g.s.offset..mutation_lookahead.pos].contains('\n')
+			if mutation_operator in [.inc, .dec] && next_mutation_token !in stops && next_mutation_token != .eof && !mutation_ends_line {
 				return g.unsupported('postfix mutation used inside an expression')
 			}
-			if mutation_operator.is_assignment()
-				&& (next_mutation_token in stops || next_mutation_token == .eof) {
+			if mutation_operator.is_assignment() && (next_mutation_token in stops || next_mutation_token == .eof) {
 				return g.unsupported('assignment without a value')
 			}
 		}
 		source_token_count++
+		// A word that is also a keyword (`conn.select(...)`, `x.lock`) is a member
+		// name, not a keyword, once it follows `.`; store it as a plain name so the
+		// method-call and inference paths recognize it like any other member.
+		stored_tok := if previous_token == .dot && g.tok.is_keyword() {
+			token.Token.name
+		} else {
+			g.tok
+		}
 		expression_tokens << FastcExpressionToken{
-			tok:             g.tok
-			lit:             g.lit
-			unsafe_depth:    g.unsafe_depth
+			tok: stored_tok
+			lit: g.lit
+			unsafe_depth: g.unsafe_depth
 			is_mut_argument: next_token_is_mut_argument
 		}
 		next_token_is_mut_argument = false
-		module_separator := g.expression_dot_is_module_separator(expression_tokens,
-			expression_tokens.len - 1)
-		qualified_name_owner := if g.tok == .name && previous_token == .dot
-			&& expression_tokens.len >= 3 {
+		module_separator := g.expression_dot_is_module_separator(expression_tokens, expression_tokens.len - 1)
+		qualified_name_owner := if g.tok == .name && previous_token == .dot && expression_tokens.len >= 3 && g.expression_dot_is_module_separator(expression_tokens, expression_tokens.len - 2) {
 			expression_tokens[expression_tokens.len - 3].lit
 		} else {
 			''
 		}
-		mut piece := g.expression_token(previous_token, previous_lit, qualified_name_owner)!
+		mut piece := g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!
+		if g.selfhost && !g.in_generic_placeholder && g.tok == .name && g.generic_method_sources.len > 0 {
+			if mono := g.queue_explicit_mono_method(expression_tokens) {
+				piece = mono
+				expression_tokens[expression_tokens.len - 1].lit = mono
+			} else if mono := g.queue_explicit_mono_function(expression_tokens) {
+				piece = mono
+				expression_tokens[expression_tokens.len - 1].lit = mono
+			} else if mono := g.queue_implicit_mono_function(expression_tokens) {
+				piece = mono
+				expression_tokens[expression_tokens.len - 1].lit = mono
+			}
+		}
 		if g.tok == .name && previous_token != .dot {
 			// A name after `.` is a field or method: never substitute a local
 			// (a mut parameter's deref form) that happens to share its name.
 			if local := g.locals[g.lit] {
 				mut lookahead := g.s
 				next_token := lookahead.scan()
-				is_single_value := expression_tokens.len == 1
-					&& (next_token in stops || next_token == .eof)
-				if local.is_reference && !expression_tokens.last().is_mut_argument
-					&& next_token !in [.dot, .lsbr] && !is_single_value {
+				is_single_value := expression_tokens.len == 1 && (next_token in stops || next_token == .eof)
+				// An explicit deref of a reference local (`*b` where `b` is a `mut` receiver,
+				// C type `T*`): the leading `*` already dereferences, so auto-deref would
+				// double it (`*(*(b))`). Skip the auto-deref so `*b` renders as `*(b)`. Only a
+				// PREFIX `*` counts — a binary `a * b` still needs `b`'s value.
+				is_deref_prefix := previous_token == .mul && expression_tokens.len > 0 && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 1)
+				cast_type := if previous_token == .lpar && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 3].tok == .name {
+					fastc_primitive_c_type(expression_tokens[expression_tokens.len - 3].lit) or {
+						''
+					}
+				} else {
+					''
+				}
+				is_pointer_cast_operand := cast_type != '' && fastc_is_pointer_type(cast_type)
+				if local.is_reference && !expression_tokens.last().is_mut_argument && next_token !in [
+					.dot,
+					.lsbr,
+				] && !is_single_value && !is_deref_prefix && !is_pointer_cast_operand {
 					piece = '(*(${piece}))'
 				}
 			}
@@ -630,16 +1346,51 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		if module_separator && piece == '.' {
 			piece = '__'
 		}
+		if previous_token == .dot && (g.tok == .name || g.tok.is_keyword()) && expression_tokens.len >= 3 && g.expression_dot_is_module_separator(expression_tokens, expression_tokens.len - 2) {
+			// A module or enum prefix makes a keyword-named symbol C-safe
+			// (`TokenKind.float` -> `TokenKind__float`).
+			piece = g.lit
+		}
 		if g.tok == .name && previous_token == .dot {
 			mut method_lookahead := g.s
 			if method_lookahead.scan() == .lpar {
 				piece = g.lit
+				// On-demand generic-method monomorphization: `recv.m(arg)` where `m` is a
+				// generic method (own type param, left un-monomorphized because its body
+				// recurses through a comptime `$for`). Infer the first arg's type, queue the
+				// concrete instance, and emit its mangled name so the call resolves to it.
+				if g.selfhost && !g.in_generic_placeholder && g.generic_method_sources.len > 0 && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 2].tok == .dot {
+					dot_index := expression_tokens.len - 2
+					recv_start := fastc_method_receiver_start(expression_tokens, dot_index)
+					receiver_type := g.infer_expression_type(expression_tokens[recv_start..dot_index]) or {
+						''
+					}
+					recv_base := fastc_normalize_inferred_type(receiver_type).trim_right('*')
+					source_key := '${recv_base}.${g.lit}'
+					if recv_base != '' && source_key in g.generic_method_sources {
+						source := g.generic_method_sources[source_key] or {
+							FastcGenericMethodSource{}
+						}
+						base_key := '${g.semantic_type_key(recv_base)}.${g.lit}'
+						base := g.functions[base_key] or { FastcFunctionSignature{} }
+						parameter_index := source.type_param_parameter_index
+						signature_index := parameter_index + 1
+						argument_type := g.mono_argument_type_at(mut method_lookahead, parameter_index)
+						concrete := if parameter_index >= 0 && signature_index < base.parameter_types.len {
+							fastc_infer_generic_type_from_parameter(base.parameter_types[signature_index], argument_type)
+						} else {
+							''
+						}
+						if concrete != '' {
+							mono := g.queue_mono_method(recv_base, g.lit, concrete)
+							piece = mono
+							expression_tokens[expression_tokens.len - 1].lit = mono
+						}
+					}
+				}
 			}
 		}
-		if g.tok == .name && expression_tokens.len >= 3
-			&& expression_tokens[expression_tokens.len - 2].tok == .dot
-			&& expression_tokens[expression_tokens.len - 3].tok == .name
-			&& expression_tokens[expression_tokens.len - 3].lit == 'C' {
+		if g.tok == .name && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 2].tok == .dot && expression_tokens[expression_tokens.len - 3].tok == .name && expression_tokens[expression_tokens.len - 3].lit == 'C' {
 			piece = g.lit
 		}
 		if g.selfhost && brace_depth > 0 && g.tok == .name {
@@ -652,8 +1403,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			piece = '->'
 		}
 		if g.tok == .lpar && previous_token == .name {
-			pointer_token := if expression_tokens.len >= 3
-				&& fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 3) {
+			name_is_member := expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 3].tok == .dot
+			pointer_token := if expression_tokens.len >= 3 && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 3) {
 				expression_tokens[expression_tokens.len - 3].tok
 			} else {
 				token.Token.unknown
@@ -668,21 +1419,15 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			pointer_cast := pointer_count > 0
 			pointer_suffix := '*'.repeat(pointer_count)
 			pointer_prefix_len := pointer_count
-			if expression_tokens.len >= 4
-				&& expression_tokens[expression_tokens.len - 4].tok == .lsbr
-				&& expression_tokens[expression_tokens.len - 3].tok == .rsbr {
+			if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 4].tok == .lsbr && expression_tokens[expression_tokens.len - 3].tok == .rsbr {
 				element_type := fastc_primitive_c_type(previous_lit) or { previous_lit }
 				array_type := fastc_array_c_type(element_type)
-				result.go_back(previous_lit.len + 2)
+				rendered_previous := g.resolved_expression_name(previous_lit, .unknown)
+				result.go_back(rendered_previous.len + 2)
 				piece = '((${array_type})('
 				cast_depths << paren_depth + 1
-			} else if expression_tokens.len >= 4
-				&& expression_tokens[expression_tokens.len - 4].tok == .name
-				&& expression_tokens[expression_tokens.len - 4].lit == 'C'
-				&& expression_tokens[expression_tokens.len - 3].tok == .dot && previous_lit.len > 0
-				&& previous_lit[0].is_capital() && 'C.${previous_lit}' !in g.functions {
-				c_pointer_token := if expression_tokens.len >= 5
-					&& fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 5) {
+			} else if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 4].tok == .name && expression_tokens[expression_tokens.len - 4].lit == 'C' && expression_tokens[expression_tokens.len - 3].tok == .dot && previous_lit.len > 0 && 'C.${previous_lit}' !in g.functions && g.current_call_has_one_argument() && (previous_lit[0].is_capital() || '#Cstruct#${previous_lit}' in g.declared_types) {
+				c_pointer_token := if expression_tokens.len >= 5 && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 5) {
 					expression_tokens[expression_tokens.len - 5].tok
 				} else {
 					token.Token.unknown
@@ -694,28 +1439,52 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				} else {
 					0
 				}
+				c_cast_type := if '#Cstruct#${previous_lit}' in g.declared_types {
+					'struct ${previous_lit}'
+				} else {
+					previous_lit
+				}
 				result.go_back(previous_lit.len + c_pointer_count)
-				piece = '((${previous_lit}${'*'.repeat(c_pointer_count)})('
+				piece = '((${c_cast_type}${'*'.repeat(c_pointer_count)})('
 				cast_depths << paren_depth + 1
 				if c_pointer_count > 0 {
 					pointer_cast_depths << paren_depth + 1
 				}
-			} else if cast_type := fastc_primitive_c_type(previous_lit) {
-				result.go_back(cast_type.len + pointer_prefix_len)
-				piece = '((${cast_type}${pointer_suffix})('
-				cast_depths << paren_depth + 1
-				if pointer_cast {
-					pointer_cast_depths << paren_depth + 1
+			} else if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 3].tok == .dot && expression_tokens[expression_tokens.len - 4].tok == .name && expression_tokens[expression_tokens.len - 4].lit in g.imports {
+				// Qualified conversion `mod.Type(value)` (e.g. `orm.Primitive(x)`): render
+				// it as a C cast so a sum-type/interface operand is boxed downstream,
+				// instead of the default `mod__Type(value)` call-style spelling.
+				module_lit := expression_tokens[expression_tokens.len - 4].lit
+				qualified_key := fastc_type_key(g.imports[module_lit], previous_lit)
+				if qualified_key in g.declared_types {
+					cast_type := fastc_c_declared_type_name(qualified_key)
+					result.go_back(cast_type.len + pointer_prefix_len)
+					piece = '((${cast_type}${pointer_suffix})('
+					cast_depths << paren_depth + 1
+					if pointer_cast {
+						pointer_cast_depths << paren_depth + 1
+					}
 				}
-			} else if type_key := fastc_resolve_declared_type_key(g.module_name, previous_lit,
-				g.imports, g.declared_types)
-			{
-				cast_type := fastc_c_declared_type_name(type_key)
-				result.go_back(cast_type.len + pointer_prefix_len)
-				piece = '((${cast_type}${pointer_suffix})('
-				cast_depths << paren_depth + 1
-				if pointer_cast {
-					pointer_cast_depths << paren_depth + 1
+			} else if cast_type := fastc_primitive_c_type(previous_lit) {
+				if !name_is_member {
+					rendered_previous := g.resolved_expression_name(previous_lit, .unknown)
+					result.go_back(rendered_previous.len + pointer_prefix_len)
+					piece = '((${cast_type}${pointer_suffix})('
+					cast_depths << paren_depth + 1
+					if pointer_cast {
+						pointer_cast_depths << paren_depth + 1
+					}
+				}
+			} else if type_key := fastc_resolve_declared_type_key(g.module_name, previous_lit, g.imports, g.declared_types) {
+				if !name_is_member {
+					cast_type := fastc_c_declared_type_name(type_key)
+					rendered_previous := g.resolved_expression_name(previous_lit, .unknown)
+					result.go_back(rendered_previous.len + pointer_prefix_len)
+					piece = '((${cast_type}${pointer_suffix})('
+					cast_depths << paren_depth + 1
+					if pointer_cast {
+						pointer_cast_depths << paren_depth + 1
+					}
 				}
 			}
 		}
@@ -752,11 +1521,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				struct_depths << brace_depth
 				struct_paren_depths << paren_depth
 				is_struct_literal = true
-			} else if expression_tokens.len >= 4
-				&& expression_tokens[expression_tokens.len - 4].tok == .name
-				&& expression_tokens[expression_tokens.len - 4].lit == 'C'
-				&& expression_tokens[expression_tokens.len - 3].tok == .dot
-				&& expression_tokens[expression_tokens.len - 2].tok == .name {
+			} else if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 4].tok == .name && expression_tokens[expression_tokens.len - 4].lit == 'C' && expression_tokens[expression_tokens.len - 3].tok == .dot && expression_tokens[expression_tokens.len - 2].tok == .name {
 				raw_c_type := expression_tokens[expression_tokens.len - 2].lit
 				c_type := if '#Cstruct#${raw_c_type}' in g.declared_types {
 					'struct ${raw_c_type}'
@@ -770,10 +1535,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				struct_depths << brace_depth
 				struct_paren_depths << paren_depth
 				is_struct_literal = true
-			} else if expression_tokens.len >= 4
-				&& expression_tokens[expression_tokens.len - 4].tok == .name
-				&& expression_tokens[expression_tokens.len - 3].tok == .dot
-				&& expression_tokens[expression_tokens.len - 2].tok == .name {
+			} else if expression_tokens.len >= 4 && expression_tokens[expression_tokens.len - 4].tok == .name && expression_tokens[expression_tokens.len - 3].tok == .dot && expression_tokens[expression_tokens.len - 2].tok == .name {
 				module_alias := expression_tokens[expression_tokens.len - 4].lit
 				if imported_module := g.imports[module_alias] {
 					raw_type := expression_tokens[expression_tokens.len - 2].lit
@@ -790,9 +1552,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 					}
 				}
 			} else if previous_token == .name {
-				if type_key := fastc_resolve_declared_type_key(g.module_name, previous_lit,
-					g.imports, g.declared_types)
-				{
+				if type_key := fastc_resolve_declared_type_key(g.module_name, previous_lit, g.imports, g.declared_types) {
 					c_type := fastc_c_declared_type_name(type_key)
 					result.go_back(c_type.len)
 					piece = '(${c_type}){'
@@ -820,23 +1580,23 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			brace_depth--
 			piece = '}'
-		} else if g.selfhost && g.tok == .colon && struct_depths.len > 0
-			&& brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() {
+		} else if g.selfhost && g.tok == .colon && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() {
 			piece = '='
-		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last()
-			&& paren_depth == struct_paren_depths.last() && g.tok == .semicolon {
+			pending_field_value_mark = true
+		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && g.tok == .semicolon {
 			piece = ','
-		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last()
-			&& paren_depth == struct_paren_depths.last() && g.tok == .name
-			&& previous_token in [.lcbr, .comma, .semicolon] && struct_types.len > 0 {
+		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && g.tok == .name && previous_token in [
+			.lcbr,
+			.comma,
+			.semicolon,
+		] && struct_types.len > 0 {
 			mut fields := map[string]string{}
 			if struct_types.last() in g.struct_fields {
 				fields = g.struct_fields[struct_types.last()].clone()
 			}
 			expected_struct_field_type = fields[g.lit] or { '' }
 			piece = '.${piece}'
-		} else if g.selfhost && g.tok == .dot
-			&& fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 1) {
+		} else if g.selfhost && g.tok == .dot && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 1) {
 			mut contextual_type := if expected_struct_field_type != '' {
 				expected_struct_field_type
 			} else {
@@ -861,8 +1621,17 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			if contextual_type == '' {
 				contextual_type = g.expected_call_argument_type(expression_tokens)
 			}
-			if expression_tokens.len >= 2
-				&& expression_tokens[expression_tokens.len - 2].tok in [.eq, .ne, .gt, .lt, .ge, .le, .pipe, .amp, .xor] {
+			if expression_tokens.len >= 2 && expression_tokens[expression_tokens.len - 2].tok in [
+				.eq,
+				.ne,
+				.gt,
+				.lt,
+				.ge,
+				.le,
+				.pipe,
+				.amp,
+				.xor,
+			] {
 				operator_index := expression_tokens.len - 2
 				mut operand_start := 0
 				mut operand_depth := 0
@@ -887,16 +1656,19 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				piece = ''
 				enum_shorthand_type = contextual_type
 			}
-		} else if g.selfhost && enum_shorthand_type != '' && g.tok == .name {
+		} else if g.selfhost && enum_shorthand_type != '' && (g.tok == .name || g.tok.is_keyword()) {
 			piece = '${enum_shorthand_type.trim_right('*')}__${g.lit}'
 			expression_tokens[expression_tokens.len - 1].typ = enum_shorthand_type
 			enum_shorthand_type = ''
 		}
-		if result.len > 0 && fastc_needs_space(result.last(), piece) && !module_separator
-			&& !previous_module_separator {
+		if result.len > 0 && fastc_needs_space(result.last(), piece) && !module_separator && !previous_module_separator {
 			result.write_u8(` `)
 		}
 		result.write_string(piece)
+		if pending_field_value_mark {
+			struct_field_value_start = result.len
+			pending_field_value_mark = false
+		}
 		match g.tok {
 			.lpar {
 				paren_depth++
@@ -934,6 +1706,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		previous_token_end = g.s.offset
 		g.next()
 	}
+	g.expected_expression_type = saved_expected_expression_type
 	if paren_depth != 0 {
 		return g.unsupported('unbalanced expression')
 	}
@@ -956,8 +1729,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	g.validate_expression_field_visibility(expression_tokens)!
 	g.validate_expression_calls(expression_tokens)!
 	mut rendered_expression := result.str().trim_space()
-	rendered_expression = g.render_enum_alias_member_references(expression_tokens,
-		rendered_expression)
+	rendered_expression = g.render_enum_alias_member_references(expression_tokens, rendered_expression)
 	rendered_expression = g.render_constant_references(expression_tokens, rendered_expression)
 	if special := g.render_special_expression(expression_tokens, rendered_expression) {
 		g.last_expression_type = special.typ
@@ -970,8 +1742,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	if return_types.len > 0 {
 		g.last_multi_return_types = return_types.clone()
 	}
-	if !g.selfhost && g.last_expression_type == 'bool'
-		&& fastc_expression_tokens_contain_boolean_operator(expression_tokens) {
+	if !g.selfhost && g.last_expression_type == 'bool' && fastc_expression_tokens_contain_boolean_operator(expression_tokens) {
 		// C comparison and logical operators produce int. Preserve V's bool
 		// expression type for inferred declarations and generic dispatch.
 		return '((bool)(${rendered_expression}))'
@@ -982,27 +1753,91 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source string) string {
 	mut rendered := source
 	for i, item in tokens {
-		if item.tok != .name || (i > 0 && tokens[i - 1].tok == .dot)
-			|| (i + 1 < tokens.len && tokens[i + 1].tok == .colon)
-			|| item.lit in g.locals {
+		if item.tok != .name || (i > 0 && tokens[i - 1].tok == .dot) || (i + 1 < tokens.len && tokens[i + 1].tok == .colon) || item.lit in g.locals {
 			continue
 		}
 		if i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
+			if fastc_primitive_c_type(item.lit) != none {
+				continue
+			}
+			if fastc_resolve_declared_type_key(g.module_name, item.lit, g.imports, g.declared_types) != none {
+				continue
+			}
 			function_key := g.unqualified_function_key(item.lit)
-			if function_key in g.functions {
-				rendered = fastc_replace_c_identifier(rendered, item.lit,
-					fastc_c_function_name_for_key(function_key))
+			if function_key in g.functions || function_key in g.mono_functions {
+				rendered = fastc_replace_c_call_identifier(rendered, item.lit, fastc_c_function_name_for_key(function_key))
 				continue
 			}
 		}
 		constant_key := fastc_constant_key(g.module_name, item.lit)
 		if c_name := g.constants[constant_key] {
-			rendered = fastc_replace_c_identifier(rendered, item.lit, c_name)
+			rendered = fastc_replace_c_root_identifier(rendered, item.lit, c_name)
 		} else if c_name := g.constants[fastc_constant_key('builtin', item.lit)] {
-			rendered = fastc_replace_c_identifier(rendered, item.lit, c_name)
+			rendered = fastc_replace_c_root_identifier(rendered, item.lit, c_name)
 		}
 	}
 	return rendered
+}
+
+fn fastc_replace_c_call_identifier(source string, identifier string, replacement string) string {
+	if identifier == '' || identifier == replacement || !source.contains(identifier) {
+		return source
+	}
+	mut out := strings.new_builder(source.len + replacement.len)
+	mut start := 0
+	for start < source.len {
+		remaining := source[start..]
+		relative := remaining.index(identifier) or {
+			out.write_string(remaining)
+			break
+		}
+		index := start + relative
+		end := index + identifier.len
+		before_is_name_or_member := index > 0 && (source[index - 1].is_alnum() || source[index - 1] in [
+			`_`,
+			`.`,
+		])
+		mut after := end
+		for after < source.len && source[after] in [` `, `\t`, `\r`, `\n`] {
+			after++
+		}
+		out.write_string(source[start..index])
+		if before_is_name_or_member || after >= source.len || source[after] != `(` {
+			out.write_string(identifier)
+		} else {
+			out.write_string(replacement)
+		}
+		start = end
+	}
+	return out.str()
+}
+
+fn fastc_replace_c_root_identifier(source string, identifier string, replacement string) string {
+	if identifier == '' || identifier == replacement || !source.contains(identifier) {
+		return source
+	}
+	mut out := strings.new_builder(source.len + replacement.len)
+	mut start := 0
+	for start < source.len {
+		remaining := source[start..]
+		relative := remaining.index(identifier) or {
+			out.write_string(remaining)
+			break
+		}
+		index := start + relative
+		end := index + identifier.len
+		before_is_name := index > 0 && (source[index - 1].is_alnum() || source[index - 1] == `_`)
+		before_is_member := index > 0 && source[index - 1] in [`.`, `>`]
+		after_is_name := end < source.len && (source[end].is_alnum() || source[end] == `_`)
+		out.write_string(source[start..index])
+		if before_is_name || before_is_member || after_is_name {
+			out.write_string(identifier)
+		} else {
+			out.write_string(replacement)
+		}
+		start = end
+	}
+	return out.str()
 }
 
 fn fastc_replace_c_identifier(source string, identifier string, replacement string) string {
@@ -1040,10 +1875,18 @@ fn (g &Parser) semicolon_continues_expression() bool {
 	if offset >= g.s.src.len {
 		return false
 	}
-	if offset + 1 < g.s.src.len && g.s.src[offset] == `/` && g.s.src[offset + 1] in [`/`, `*`] {
+	if offset + 1 < g.s.src.len && g.s.src[offset] == `/` && g.s.src[offset + 1] in [
+		`/`,
+		`*`,
+	] {
 		return false
 	}
-	return g.s.src[offset] in [`.`, `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `<`, `>`, `=`, `?`]
+	if g.in_enum_keyed_map_value && g.s.src[offset] == `.` {
+		// The next `.field` starts the following map entry, not a member chain.
+		return false
+	}
+	return g.s.src[offset] in [`.`, `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `<`, `>`, `=`, `?`,
+		`)`]
 }
 
 fn fastc_runtime_c_type(typ string) string {
@@ -1064,15 +1907,58 @@ fn (mut g Parser) read_inferred_map_literal() !string {
 	mut values := []string{}
 	mut key_type := ''
 	mut value_type := ''
+	// Enum-shorthand keys (`{ .field: v }`) carry no type of their own; recover the
+	// key enum type from the declared enum that owns the first `.field`, and read
+	// every key with it as the expected type so `.field` resolves.
+	g.skip_semicolons()
+	mut key_enum_type := ''
+	if g.tok == .dot {
+		// Shorthand key `.field`: recover the enum from the field name.
+		mut lookahead := g.s
+		if lookahead.scan() == .name {
+			if enum_type := g.enum_field_types[lookahead.lit] {
+				key_enum_type = enum_type
+			}
+		}
+	} else if g.tok == .name {
+		// Explicit key `EnumType.field` (the first entry often spells it out).
+		mut lookahead := g.s
+		if lookahead.scan() == .dot {
+			if type_key := fastc_resolve_declared_type_key(g.module_name, g.lit, g.imports, g.declared_types) {
+				if g.declared_kinds[type_key] == .enum_ {
+					key_enum_type = fastc_c_declared_type_name(type_key)
+				}
+			}
+		}
+	}
 	for g.tok != .rcbr {
 		g.skip_semicolons()
 		if g.tok == .rcbr {
 			break
 		}
+		previous_expected := g.expected_expression_type
+		if key_enum_type != '' {
+			g.expected_expression_type = key_enum_type
+		}
 		key := g.read_expression([token.Token.colon])!
-		actual_key_type := fastc_normalize_inferred_type(g.last_expression_type)
+		g.expected_expression_type = previous_expected
+		actual_key_type := if key_enum_type != '' {
+			key_enum_type
+		} else {
+			fastc_normalize_inferred_type(g.last_expression_type)
+		}
 		g.expect(.colon)!
+		// In an enum-keyed map the next entry begins with `.field` on a new line; a
+		// value must not treat that `.` as a member-chain continuation.
+		previous_enum_map := g.in_enum_keyed_map_value
+		g.in_enum_keyed_map_value = key_enum_type != ''
+		previous_value_expected := g.expected_expression_type
+		if value_type != '' {
+			g.expected_expression_type = value_type
+		}
 		value := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
+		g.expected_expression_type = previous_value_expected
+		g.in_enum_keyed_map_value = previous_enum_map
 		actual_value_type := fastc_normalize_inferred_type(g.last_expression_type)
 		if key_type == '' {
 			key_type = actual_key_type
@@ -1085,10 +1971,20 @@ fn (mut g Parser) read_inferred_map_literal() !string {
 		}
 	}
 	g.expect(.rcbr)!
-	if keys.len == 0 || key_type == '' || value_type == '' {
+	mut map_type := ''
+	if keys.len == 0 {
+		map_type = fastc_normalize_inferred_type(g.expected_expression_type)
+		expected_key_type, expected_value_type := g.map_key_value_types(map_type) or {
+			return g.unsupported('empty inferred map literal')
+		}
+		key_type = expected_key_type
+		value_type = expected_value_type
+	} else if key_type == '' || value_type == '' {
 		return g.unsupported('empty inferred map literal')
 	}
-	map_type := fastc_map_c_type(key_type, value_type)
+	if map_type == '' {
+		map_type = fastc_map_c_type(key_type, value_type)
+	}
 	hash_fn, eq_fn, clone_fn, free_fn := g.map_runtime_functions(key_type)
 	map_name := g.temporary_name('map_literal')
 	mut statements := [
@@ -1110,6 +2006,70 @@ fn (mut g Parser) read_inferred_map_literal() !string {
 		},
 	]
 	return '({ ${statements.join(' ')} ${map_name}; })'
+}
+
+// read_channel_receive lowers `<-ch` / `<-ch or { … }`. Channels are the type-erased
+// `void*` stub, so this pops via the non-blocking `builtin__chan_try_pop` into a temp
+// of the element type (recovered from the expected type or the channel's tracked
+// element). The stub pop always "succeeds", so an `or` block is dead and is discarded.
+fn (mut g Parser) read_channel_receive(stops []token.Token) !string {
+	g.expect(.arrow)!
+	mut operand_stops := stops.clone()
+	if token.Token.key_or !in operand_stops {
+		operand_stops << token.Token.key_or
+	}
+	expected := g.expected_expression_type
+	g.expected_expression_type = ''
+	channel := g.read_expression(operand_stops)!
+	channel_tokens := g.last_expression.clone()
+	g.expected_expression_type = expected
+	mut element_type := fastc_normalize_inferred_type(expected)
+	if element_type in ['', 'chan', 'Option', 'void'] {
+		element_type = g.channel_element_type(channel_tokens)
+	}
+	if element_type == '' {
+		element_type = 'int'
+	}
+	if g.tok == .key_or {
+		g.next()
+		if g.tok == .lcbr {
+			g.skip_balanced(.lcbr, .rcbr)!
+		}
+	}
+	recv_tmp := g.temporary_name('chan_recv')
+	g.last_expression_type = element_type
+	g.last_expression = [
+		FastcExpressionToken{
+			tok: .name
+			lit: recv_tmp
+			typ: element_type
+		},
+	]
+	return '({ ${element_type} ${recv_tmp} = (${element_type}){0}; builtin__chan_try_pop((chan)(${channel}), &${recv_tmp}); ${recv_tmp}; })'
+}
+
+// channel_element_type recovers the element C type of the channel that `tokens`
+// evaluates to: a bare local, or an `x.field` member access on a struct with a
+// `chan` field. Returns '' when it cannot be determined.
+fn (g &Parser) channel_element_type(tokens []FastcExpressionToken) string {
+	if tokens.len == 1 && tokens[0].tok == .name {
+		if local := g.locals[tokens[0].lit] {
+			return local.chan_element_type
+		}
+	}
+	if tokens.len >= 3 && tokens.last().tok == .name && tokens[tokens.len - 2].tok == .dot {
+		receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { return '' }
+		receiver_layout := fastc_normalize_inferred_type(receiver_type).trim_right('*')
+		field_name := tokens.last().lit
+		if fields := g.struct_field_info[receiver_layout] {
+			for field in fields {
+				if field.name == field_name {
+					return field.chan_element_type
+				}
+			}
+		}
+	}
+	return ''
 }
 
 fn (g &Parser) expected_call_argument_type(tokens []FastcExpressionToken) string {
@@ -1135,8 +2095,7 @@ fn (g &Parser) expected_call_argument_type(tokens []FastcExpressionToken) string
 	name_index := open_index - 1
 	mut function_key := g.function_key_for_call(tokens, name_index)
 	mut argument_offset := 0
-	if name_index >= 2 && tokens[name_index - 1].tok == .dot && !(name_index == 2
-		&& tokens[0].tok == .name && (tokens[0].lit in g.imports || tokens[0].lit == 'C')) {
+	if name_index >= 2 && tokens[name_index - 1].tok == .dot && !(name_index == 2 && tokens[0].tok == .name && (tokens[0].lit in g.imports || tokens[0].lit == 'C')) {
 		receiver_start := fastc_method_receiver_start(tokens, name_index - 1)
 		receiver_type := g.infer_expression_type(tokens[receiver_start..name_index - 1]) or {
 			return ''
@@ -1164,14 +2123,29 @@ fn (g &Parser) expected_call_argument_type(tokens []FastcExpressionToken) string
 }
 
 fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
+	if c_sizeof := g.render_c_struct_sizeof(tokens) {
+		return c_sizeof
+	}
+	if interface_object := g.render_c_interface_object_address(tokens) {
+		return interface_object
+	}
 	if type_name := g.render_typeof_name_expression(tokens) {
 		return type_name
+	}
+	if type_reflection := g.render_typeof_generic_expression(tokens) {
+		return type_reflection
+	}
+	if type_comparison := g.render_typeof_generic_comparison_expression(tokens) {
+		return type_comparison
 	}
 	if disabled_call := g.render_disabled_call_expression(tokens) {
 		return disabled_call
 	}
 	if enum_print := g.render_enum_print_expression(tokens) {
 		return enum_print
+	}
+	if selfhost_print := g.render_selfhost_print_expression(tokens) {
+		return selfhost_print
 	}
 	if bool_print := g.render_bool_print_expression(tokens) {
 		return bool_print
@@ -1184,10 +2158,23 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			if local.is_reference {
 				return FastcRenderedExpression{
 					source: '*(${rendered_expression})'
-					typ:    local.typ.trim_right('*')
+					typ: local.typ.trim_right('*')
 				}
 			}
 		}
+	}
+	if g.selfhost && g.expression_uses_member_smartcast(tokens) {
+		if source := g.render_member_receiver(tokens) {
+			if typ := g.infer_member_access_type(tokens) {
+				return FastcRenderedExpression{
+					source: source
+					typ: typ
+				}
+			}
+		}
+	}
+	if overloaded_binary := g.render_overloaded_binary_expression(tokens) {
+		return overloaded_binary
 	}
 	if struct_comparison := g.render_struct_comparison_expression(tokens) {
 		return struct_comparison
@@ -1204,19 +2191,31 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		}
 	}
 	if g.selfhost {
+		if tokens.len > 1 && tokens.last().tok == .not {
+			if assignment := g.render_assignment_expression(tokens) {
+				// Assignment supplies the target type to its RHS. In particular, an
+				// option-returning call propagated with `!` is unwrapped recursively and
+				// then boxed when the target itself is an Option field/local.
+				return assignment
+			}
+		}
 		if interface_cast := g.render_interface_cast_expression(tokens, rendered_expression) {
 			return interface_cast
 		}
+		if nested_propagation := g.render_nested_option_propagation(tokens, rendered_expression) {
+			return nested_propagation
+		}
 	}
 	if cast_expression := g.render_cast_expression(tokens) {
-		if pointer_members := g.render_pointer_member_access_expression(tokens,
-			cast_expression.source)
-		{
+		if pointer_members := g.render_pointer_member_access_expression(tokens, cast_expression.source) {
 			return pointer_members
 		}
 		return cast_expression
 	}
 	if g.selfhost {
+		if explicit_generic := g.render_explicit_generic_call_expression(tokens) {
+			return explicit_generic
+		}
 		if defaulted_call := g.render_missing_call_arguments(tokens) {
 			return defaulted_call
 		}
@@ -1232,14 +2231,16 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		if initializer_assignment := g.render_initializer_assignment_expression(tokens) {
 			return initializer_assignment
 		}
-		if assignment := g.render_assignment_expression(tokens) {
-			return assignment
-		}
 		if array_assignment := g.render_array_assignment_expression(tokens) {
 			return array_assignment
 		}
-		if static_call := g.render_static_call_expression(tokens, rendered_expression) {
-			return static_call
+		if assignment := g.render_assignment_expression(tokens) {
+			return assignment
+		}
+		if tokens.len == 0 || tokens.last().tok != .not {
+			if static_call := g.render_static_call_expression(tokens, rendered_expression) {
+				return static_call
+			}
 		}
 		if logical := g.render_logical_expression(tokens) {
 			return logical
@@ -1248,7 +2249,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			inner := g.render_call_argument_expression(tokens[1..], 'bool') or { return none }
 			return FastcRenderedExpression{
 				source: '!(${inner})'
-				typ:    'bool'
+				typ: 'bool'
 			}
 		}
 		if option_comparison := g.render_option_none_comparison(tokens) {
@@ -1263,11 +2264,14 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		if concatenation := g.render_composed_string_concatenation(tokens) {
 			return concatenation
 		}
-		if tokens.len > 1 && tokens.last().tok == .not && rendered_expression.ends_with('!')
-			&& !(tokens[0].tok == .lsbr && tokens[tokens.len - 2].tok == .rsbr) {
+		if tokens.len > 1 && tokens.last().tok == .not && rendered_expression.ends_with('!') && !fastc_trailing_not_marks_fixed_array_literal(tokens) {
 			inner_tokens := tokens[..tokens.len - 1]
 			mut inner_source := rendered_expression[..rendered_expression.len - 1]
-			if method_expression := g.render_method_call_expression(inner_tokens, inner_source) {
+			if explicit_generic := g.render_explicit_generic_call_expression(inner_tokens) {
+				inner_source = explicit_generic.source
+			} else if static_expression := g.render_static_call_expression(inner_tokens, inner_source) {
+				inner_source = static_expression.source
+			} else if method_expression := g.render_method_call_expression(inner_tokens, inner_source) {
 				inner_source = method_expression.source
 			} else if array_expression := g.render_array_access_expression(inner_tokens) {
 				inner_source = array_expression.source
@@ -1291,7 +2295,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			}
 			return FastcRenderedExpression{
 				source: '({ Option ${temporary} = (${inner_source}); if (${temporary}.state) { ${failure} } ${value}; })'
-				typ:    value_type
+				typ: value_type
 			}
 		}
 		if append_expression := g.render_append_expression(tokens, rendered_expression) {
@@ -1324,11 +2328,11 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					predicate := if item.tok == .not_in { '!(${found})' } else { found }
 					return FastcRenderedExpression{
 						source: '({ string ${substring_name} = (${substring}); string ${value_name} = (${value}); ${predicate}; })'
-						typ:    'bool'
+						typ: 'bool'
 					}
 				}
 				if right_type.trim_right('*').starts_with('Map_') {
-					key_type, _ := fastc_map_key_value_types(right_type) or { return none }
+					key_type, _ := g.map_key_value_types(right_type) or { return none }
 					key_source := g.render_membership_candidate(tokens[..i], key_type) or {
 						return none
 					}
@@ -1343,10 +2347,11 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					predicate := if item.tok == .not_in { '!(${found})' } else { found }
 					return FastcRenderedExpression{
 						source: '({ ${fastc_runtime_c_type(key_type)} ${key_name} = (${key_source}); ${predicate}; })'
-						typ:    'bool'
+						typ: 'bool'
 					}
 				}
-				if right_type.trim_right('*').starts_with('Array_') {
+				right_layout := right_type.trim_right('*')
+				if right_layout.starts_with('Array_') || right_layout.starts_with('FixedArray_') {
 					element_type := g.array_element_type(right_type) or { return none }
 					candidate := g.render_membership_candidate(tokens[..i], element_type) or {
 						return none
@@ -1359,6 +2364,11 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					found_name := '${temporary_namespace}_found'
 					index_name := '${temporary_namespace}_index'
 					access := if right_type.ends_with('*') { '->' } else { '.' }
+					collection_length := if fixed_length := fastc_fixed_array_length(right_layout) {
+						fixed_length
+					} else {
+						'${collection_name}${access}len'
+					}
 					comparison := if g.underlying_alias_type(element_type).trim_right('*') == 'string' {
 						'builtin__string_eq(${item_name}, ((${element_type} *)${collection_name}${access}data)[${index_name}])'
 					} else {
@@ -1369,21 +2379,22 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					// literally, corrupting the emitted membership expression.
 					predicate := if item.tok == .not_in { '!${found_name}' } else { found_name }
 					return FastcRenderedExpression{
-						source: '({ ${element_type} ${item_name} = (${candidate}); __typeof__((${collection})) ${collection_name} = (${collection}); bool ${found_name} = false; for (int ${index_name} = 0; ${index_name} < ${collection_name}${access}len; ${index_name}++) { if (${comparison}) { ${found_name} = true; break; } } ${predicate}; })'
-						typ:    'bool'
+						source: '({ ${element_type} ${item_name} = (${candidate}); __typeof__((${collection})) ${collection_name} = (${collection}); bool ${found_name} = false; for (int ${index_name} = 0; ${index_name} < ${collection_length}; ${index_name}++) { if (${comparison}) { ${found_name} = true; break; } } ${predicate}; })'
+						typ: 'bool'
 					}
 				}
-				if i + 2 >= tokens.len || tokens[i + 1].tok != .lsbr || tokens.last().tok != .rsbr {
+				array_end := if tokens.last().tok == .not { tokens.len - 1 } else { tokens.len }
+				if i + 2 >= array_end || tokens[i + 1].tok != .lsbr || tokens[array_end - 1].tok != .rsbr {
 					continue
 				}
 				lhs_type := g.infer_expression_type(tokens[..i]) or { return none }
-				items := fastc_expression_list_items(tokens, i + 2, tokens.len - 1) or {
+				items := fastc_expression_list_items(tokens, i + 2, array_end - 1) or {
 					return none
 				}
 				if items.len == 0 {
 					return FastcRenderedExpression{
 						source: if item.tok == .key_in { 'false' } else { 'true' }
-						typ:    'bool'
+						typ: 'bool'
 					}
 				}
 				lhs_source := g.render_membership_candidate(tokens[..i], lhs_type) or {
@@ -1409,8 +2420,13 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				joiner := if item.tok == .key_in { ' || ' } else { ' && ' }
 				return FastcRenderedExpression{
 					source: '({ ${value_type} ${lhs_name} = (${lhs_source}); ${initializers.join(' ')} (${comparisons.join(joiner)}); })'
-					typ:    'bool'
+					typ: 'bool'
 				}
+			}
+		}
+		if array_type := g.infer_expression_type(tokens) {
+			if array_literal := g.render_array_literal_argument(tokens, array_type) {
+				return array_literal
 			}
 		}
 		// Resolve a complete index expression before the generic pointer/member
@@ -1422,13 +2438,19 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			return pointer_members
 		}
 		if method_expression := g.render_method_call_expression(tokens, rendered_expression) {
-			if array_expression := g.render_nested_array_access_expression(tokens,
-				method_expression.source)
-			{
+			if array_expression := g.render_nested_array_access_expression(tokens, method_expression.source) {
 				return FastcRenderedExpression{
 					source: array_expression.source
-					typ:    method_expression.typ
+					typ: method_expression.typ
 				}
+			}
+			if array_type := g.infer_expression_type(tokens) {
+				if array_literal := g.render_array_literal_argument(tokens, array_type) {
+					return array_literal
+				}
+			}
+			if pointer_members := g.render_pointer_member_access_expression(tokens, method_expression.source) {
+				return pointer_members
 			}
 			return method_expression
 		}
@@ -1439,16 +2461,50 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			return array_expression
 		}
 	}
-	if g.selfhost && tokens.len == 3 && tokens[0].tok == .name
-		&& tokens[1].tok in [.key_is, .not_is] && tokens[2].tok == .name {
+	if g.selfhost && tokens.len >= 3 && tokens[0].tok == .name && tokens[1].tok in [
+		.key_is,
+		.not_is,
+	] {
 		lhs_type := g.infer_expression_type(tokens[..1]) or { return none }
-		type_key := fastc_resolve_declared_type_key(g.module_name, tokens[2].lit, g.imports,
-			g.declared_types) or { return none }
+		mut variant_c := ''
+		if tokens.len == 3 && tokens[2].tok == .name {
+			if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[2].lit, g.imports, g.declared_types) {
+				variant_c = fastc_c_declared_type_name(type_key)
+			}
+		} else if resolved_target := g.type_from_expression_tokens(tokens[2..]) {
+			// Qualified (`err is io.Eof`) and composite (`x is []string`) targets both
+			// lower to their concrete C spelling and its generated `__v_typeid_` tag.
+			target := fastc_normalize_inferred_type(resolved_target)
+			variant_c = target.trim_right('*')
+		}
+		if variant_c == '' {
+			return none
+		}
 		access := if lhs_type.ends_with('*') { '->' } else { '.' }
 		operator := if tokens[1].tok == .key_is { '==' } else { '!=' }
 		return FastcRenderedExpression{
-			source: '((${tokens[0].lit}${access}_typ) ${operator} __v_typeid_${fastc_c_declared_type_name(type_key)})'
-			typ:    'bool'
+			source: '((${tokens[0].lit}${access}_typ) ${operator} __v_typeid_${variant_c})'
+			typ: 'bool'
+		}
+	}
+	if g.selfhost {
+		if as_expression := g.render_as_cast_expression(tokens) {
+			return as_expression
+		}
+	}
+	if g.selfhost && tokens.len >= 3 && tokens.last().tok == .name && tokens[tokens.len - 2].tok == .dot && tokens.last().lit in [
+		'len',
+		'cap',
+		'closed',
+	] {
+		// The erased `void*` chan stub has no fields. Channels are non-functional in
+		// this scanner lane, so report the empty/open stub state.
+		receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { '' }
+		if fastc_normalize_inferred_type(receiver_type).trim_right('*') == 'chan' {
+			return FastcRenderedExpression{
+				source: if tokens.last().lit == 'closed' { 'false' } else { '0' }
+				typ: if tokens.last().lit == 'closed' { 'bool' } else { 'int' }
+			}
 		}
 	}
 	if g.selfhost {
@@ -1461,9 +2517,19 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		}
 		if init_open > 0 && tokens.last().tok == .rcbr {
 			if array_type := g.array_initializer_type(tokens[..init_open]) {
+				if array_type.starts_with('FixedArray_') && rendered_expression.contains('{.init=') {
+					length := fastc_fixed_array_length(array_type) or { return none }
+					marker := '{.init='
+					marker_index := rendered_expression.index(marker) or { return none }
+					value := rendered_expression[marker_index + marker.len..rendered_expression.len - 1]
+					return FastcRenderedExpression{
+						source: rendered_expression[..marker_index] + '{.data={ [0 ... ${length} -\n\t\t\t\t\t\t\t1] = ' + value + '}}'
+						typ: array_type
+					}
+				}
 				return FastcRenderedExpression{
 					source: rendered_expression
-					typ:    array_type
+					typ: array_type
 				}
 			}
 		}
@@ -1473,11 +2539,10 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	} else {
 		tokens.len
 	}
-	if g.selfhost && array_end == 2 && tokens[0].tok == .lsbr && tokens[1].tok == .rsbr
-		&& g.expected_expression_type.trim_right('*').starts_with('Array_') {
+	if g.selfhost && array_end == 2 && tokens[0].tok == .lsbr && tokens[1].tok == .rsbr && g.expected_expression_type.trim_right('*').starts_with('Array_') {
 		return FastcRenderedExpression{
 			source: '(${g.expected_expression_type}){0}'
-			typ:    g.expected_expression_type
+			typ: g.expected_expression_type
 		}
 	}
 	if g.selfhost && array_end >= 2 && tokens[0].tok == .lsbr && tokens[array_end - 1].tok == .rsbr {
@@ -1490,6 +2555,8 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			return none
 		}
 		array_type := fastc_array_c_type(fastc_normalize_inferred_type(element_type))
+		mut w := unsafe { &Parser(g) }
+		fastc_register_composite_type(array_type, mut w.composite_types)
 		mut rendered_items := []string{cap: items.len}
 		for item in items {
 			rendered_items << g.render_call_argument_expression(item, element_type) or {
@@ -1498,7 +2565,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		}
 		return FastcRenderedExpression{
 			source: '((${array_type})builtin__new_array_from_c_array(${items.len}, ${items.len}, sizeof(${fastc_normalize_inferred_type(element_type)}), (${fastc_normalize_inferred_type(element_type)}[]){${rendered_items.join(',')}}))'
-			typ:    array_type
+			typ: array_type
 		}
 	}
 	if g.selfhost && tokens.len > 0 && tokens.len % 2 == 1 {
@@ -1523,7 +2590,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		if is_literal_concat {
 			return FastcRenderedExpression{
 				source: '_S(${literals.str()})'
-				typ:    'string'
+				typ: 'string'
 			}
 		}
 	}
@@ -1563,11 +2630,27 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 					}
 					return FastcRenderedExpression{
 						source: combined
-						typ:    'string'
+						typ: 'string'
 					}
 				}
 			}
 		}
 	}
 	return g.render_flag_method_expression(tokens, rendered_expression)
+}
+
+fn (g &Parser) expression_uses_member_smartcast(tokens []FastcExpressionToken) bool {
+	if g.member_smartcasts.len == 0 || tokens.len < 3 || tokens[0].tok != .name {
+		return false
+	}
+	mut path := tokens[0].lit
+	mut index := 1
+	for index + 1 < tokens.len && tokens[index].tok == .dot && tokens[index + 1].tok == .name {
+		path += '.' + tokens[index + 1].lit
+		if path in g.member_smartcasts {
+			return true
+		}
+		index += 2
+	}
+	return false
 }

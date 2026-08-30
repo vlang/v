@@ -666,7 +666,16 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 	}
 	after_fields_module := g.tc.cur_module
 	g.tc.cur_module = init_module
-	sname := g.struct_init_resolved_decl_name(lookup_source_name)
+	resolved_sname := g.struct_init_resolved_decl_name(lookup_source_name)
+	// Main-module declarations are bare-keyed, but an imported generic clone can
+	// carry an explicit `main.X` lock to disambiguate a same-named module type.
+	// Preserve that lock while selecting source defaults; reducing it back to `X`
+	// here would rebind the lookup in the imported function's module.
+	sname := if lookup_source_name.starts_with('main.') && !resolved_sname.contains('.') {
+		lookup_source_name
+	} else {
+		resolved_sname
+	}
 	g.tc.cur_module = after_fields_module
 	if is_union_init {
 		if !has_field {
@@ -734,6 +743,36 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 		cache.put(short_ct, '')
 	}
 	return none
+}
+
+fn (g &FlatGen) unique_qualified_interface_c_type(short_ct string) ?string {
+	matches := g.qualified_interface_c_types(short_ct)
+	if matches.len == 1 && matches[0] != short_ct {
+		return matches[0]
+	}
+	return none
+}
+
+fn (g &FlatGen) qualified_interface_c_types(short_ct string) []string {
+	if short_ct.len == 0 {
+		return []string{}
+	}
+	mut matches := []string{}
+	for type_name, _ in g.tc.interface_names {
+		candidate_ct := g.cname(type_name)
+		if candidate_ct != short_ct && !candidate_ct.ends_with('__${short_ct}') {
+			continue
+		}
+		if candidate_ct !in matches {
+			matches << candidate_ct
+		}
+	}
+	return matches
+}
+
+fn (g &FlatGen) stale_ambiguous_qualified_interface_c_type(short_ct string) bool {
+	matches := g.qualified_interface_c_types(short_ct)
+	return matches.len > 1 && short_ct !in matches
 }
 
 fn (g &FlatGen) generic_struct_init_context_matches(init_name string, expected_name string) bool {
@@ -1491,7 +1530,15 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	}
 	after_fields_module := g.tc.cur_module
 	g.tc.cur_module = init_module
-	sname := g.struct_init_resolved_decl_name(node.value)
+	// A specialized generic heap literal can retain its unqualified source spelling
+	// while `lookup_source_name` identifies the concrete caller type. Use that same
+	// concrete name for declared defaults; resolving `node.value` in the generic
+	// function's module can otherwise borrow a same-named local struct.
+	sname := if lookup_source_name.starts_with('main.') {
+		lookup_source_name
+	} else {
+		g.struct_init_resolved_decl_name(lookup_source_name)
+	}
 	g.tc.cur_module = after_fields_module
 	if is_union_init {
 		if !has_field {
@@ -1511,7 +1558,12 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 			promoted_set_fields, has_field)
 	}
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
-	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
+	resolved_defaults_key := if info := g.find_struct_decl(sname) { info.full_name } else { sname }
+	defaults_key := if lookup_name in g.tc.structs {
+		lookup_name
+	} else {
+		resolved_defaults_key
+	}
 	if defaults_key in g.tc.structs {
 		for f in g.tc.structs[defaults_key] {
 			if f.name in set_fields {
@@ -2691,6 +2743,16 @@ fn (mut g FlatGen) collect_local_shared_type_names() {
 		node := g.a.nodes[i]
 		if node.kind == .module_decl {
 			cur_module = if node.value.len == 0 { 'main' } else { node.value }
+			continue
+		}
+		if node.kind == .global_decl {
+			g.tc.cur_module = cur_module
+			for j in 0 .. node.children_count {
+				field := g.a.child_node(&node, j)
+				inner := shared_inner_type_text(field.typ) or { continue }
+				g.register_shared_type_name(g.shared_qualify_type_text(inner, cur_module),
+					cur_module)
+			}
 			continue
 		}
 		if node.kind != .decl_assign || !decl_assign_is_shared_marker(node.value) {
@@ -3937,6 +3999,19 @@ fn (g &FlatGen) struct_decl_alignment_c_type(type_name string, fallback string) 
 }
 
 fn (g &FlatGen) struct_type_alias_target(type_name string) ?string {
+	// A generic specialization pins a caller-owned alias as `main.Alias`. Resolve
+	// its base semantically before the active imported module can requalify the
+	// alias target (`Context`) to its own same-named struct (`veb.Context`).
+	if type_name.starts_with('main.') && !type_name['main.'.len..].contains('.') {
+		parsed := g.tc.parse_resolution_type(type_name)
+		base := default_init_unalias_type(types.unwrap_all_pointers(parsed))
+		if base is types.Struct {
+			if !base.name.contains('.') && g.tc.struct_modules[base.name] or { '' } in ['', 'main'] {
+				return 'main.${base.name}'
+			}
+			return base.name
+		}
+	}
 	qname := g.tc.qualify_name(type_name)
 	if target := g.tc.type_aliases[qname] {
 		return target
@@ -4130,9 +4205,10 @@ fn (g &FlatGen) embedded_field_type_name(field types.StructField) string {
 		names << base_name
 	}
 	short_field := if field.name.contains('.') { field.name.all_after_last('.') } else { field.name }
+	short_field_base := types.generic_base_name(short_field)
 	for name in names {
 		short_type := if name.contains('.') { name.all_after_last('.') } else { name }
-		if field.name == name || short_field == short_type
+		if field.name == name || short_field == short_type || short_field_base == short_type
 			|| embedded_field_c_names_match(field.name, name) {
 			return field_type_name
 		}
@@ -4328,7 +4404,9 @@ fn (g &FlatGen) embedded_field_path_for_promoted_field(type_name string, field_n
 }
 
 fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, field_name string) ?[]types.StructField {
-	type_name := g.type_lookup_name(base_type)
+	type_name := g.concrete_bare_struct_selector_name(base_type) or {
+		g.type_lookup_name(base_type)
+	}
 	if type_name.len == 0 {
 		return none
 	}
@@ -4338,6 +4416,34 @@ fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, 
 		return none
 	}
 	return g.embedded_field_path_for_promoted_field(type_name, field_name)
+}
+
+// concrete_bare_struct_selector_name recovers the declaration identity of a bare
+// struct type substituted into a generic body. In an imported `fn [T](mut value T)`
+// specialization, a program type can remain `Context` while c_type correctly maps
+// it to `main.Context`; resolving the bare spelling in the imported module would
+// instead select that module's own same-named `Context`.
+fn (g &FlatGen) concrete_bare_struct_selector_name(typ types.Type) ?string {
+	clean := types.unwrap_pointer(typ)
+	if clean !is types.Struct {
+		return none
+	}
+	struct_type := clean as types.Struct
+	if struct_type.name.len == 0 || struct_type.name.contains('.') {
+		return none
+	}
+	module_name := g.tc.struct_modules[struct_type.name] or { return none }
+	qualified := if module_name in ['', 'main'] {
+		'main.${struct_type.name}'
+	} else {
+		'${module_name}.${struct_type.name}'
+	}
+	// Only override lexical lookup when the semantic type's emitted C identity
+	// agrees with the declaration. This keeps ordinary module-local bare types local.
+	if g.struct_cname(qualified) != g.tc.c_type(struct_type) {
+		return none
+	}
+	return qualified
 }
 
 fn (g &FlatGen) embedded_field_for_promoted_selector(base_type types.Type, field_name string) ?types.StructField {
@@ -5214,8 +5320,8 @@ fn (mut g FlatGen) struct_decls() {
 	mut sum_names := g.tc.sum_types.keys().filter(!incremental_support_only
 		|| !g.cached_support_has_c_type(g.cname(it)))
 	sum_names.sort()
-	mut interface_names := g.interfaces.keys().filter(!incremental_support_only
-		|| !g.cached_support_has_c_type(g.cname(it)))
+	mut interface_names := g.interfaces.keys().filter(!g.interface_name_is_specialized(it)
+		&& (!incremental_support_only || !g.cached_support_has_c_type(g.cname(it))))
 	interface_names.sort()
 	for name in struct_names {
 		if g.skip_builtin_struct(name) {
@@ -5568,7 +5674,7 @@ fn (mut g FlatGen) type_forward_decls() {
 		}
 		g.writeln('typedef struct ${cn} ${cn};')
 	}
-	mut interface_names := g.interfaces.keys()
+	mut interface_names := g.interfaces.keys().filter(!g.interface_name_is_specialized(it))
 	interface_names.sort()
 	for name in interface_names {
 		cn := g.cname(name)

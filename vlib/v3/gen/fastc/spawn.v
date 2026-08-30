@@ -60,17 +60,63 @@ fn (mut g Parser) read_spawn_expression() !string {
 	mut callee := g.lit
 	g.next()
 	mut function_key := ''
+	// A method spawn (`spawn receiver.method(...)`) packs the receiver as the first
+	// argument and calls the method's C name; `receiver_arg`/`method_target` stay empty
+	// for a free/module function.
+	mut receiver_arg := ''
+	mut method_target := ''
 	if g.tok == .dot {
-		imported_module := g.imports[callee] or {
+		if imported_module := g.imports[callee] {
+			g.next()
+			if g.tok != .name {
+				return g.unsupported('spawn qualified callee')
+			}
+			callee = g.lit
+			function_key = fastc_function_key(imported_module, callee)
+			g.next()
+		} else if callee in g.locals {
+			// `spawn <local>.method(...)`: the local is the method receiver.
+			receiver_tokens := [
+				FastcExpressionToken{
+					tok: .name
+					lit: callee
+				},
+			]
+			receiver_type := g.infer_expression_type(receiver_tokens) or {
+				return g.unsupported('spawn on receiver `${callee}` of unknown type')
+			}
+			receiver := g.render_method_receiver_expression(receiver_tokens) or {
+				return g.unsupported('spawn on receiver `${callee}`')
+			}
+			g.next() // consume `.`
+			if g.tok != .name {
+				return g.unsupported('spawn method name')
+			}
+			method_name := g.lit
+			g.next()
+			method_key, _ := g.resolve_method(receiver_type, method_name)
+			method_signature := g.functions[method_key] or {
+				return g.unsupported('spawn of undeclared method `${callee}.${method_name}`')
+			}
+			if method_signature.parameter_types.len == 0 {
+				return g.unsupported('spawn of method `${method_name}` without a receiver parameter')
+			}
+			expected_receiver := method_signature.parameter_types[0]
+			receiver_is_pointer := receiver_type.ends_with('*')
+			receiver_arg = if expected_receiver.ends_with('*') && !receiver_is_pointer {
+				'&(${receiver.source})'
+			} else if !expected_receiver.ends_with('*') && receiver_is_pointer {
+				'*(${receiver.source})'
+			} else {
+				receiver.source
+			}
+			method_target = fastc_method_c_name(method_signature.module_name, expected_receiver,
+				method_name)
+			function_key = method_key
+			callee = method_name
+		} else {
 			return g.unsupported('spawn on unimported qualifier `${callee}`')
 		}
-		g.next()
-		if g.tok != .name {
-			return g.unsupported('spawn qualified callee')
-		}
-		callee = g.lit
-		function_key = fastc_function_key(imported_module, callee)
-		g.next()
 	} else {
 		function_key = g.unqualified_function_key(callee)
 	}
@@ -92,9 +138,6 @@ fn (mut g Parser) read_spawn_expression() !string {
 	if signature.is_variadic {
 		return g.unsupported('spawn of variadic function `${callee}`')
 	}
-	if signature.option_type != '' {
-		return g.unsupported('spawn of option or result function `${callee}`')
-	}
 	if signature.return_types.len > 1 {
 		return g.unsupported('spawn of multi-return function `${callee}`')
 	}
@@ -102,7 +145,13 @@ fn (mut g Parser) read_spawn_expression() !string {
 		return g.unsupported('spawn call arguments')
 	}
 	g.next()
-	mut arguments := []string{}
+	// A method spawn packs the receiver as the first positional argument, aligning with
+	// the method signature's `parameter_types[0]`.
+	mut arguments := if receiver_arg != '' {
+		[receiver_arg]
+	} else {
+		[]string{}
+	}
 	mut named_params := [][]FastcExpressionToken{}
 	mut named_param_names := map[string]bool{}
 	for g.tok != .rpar {
@@ -160,8 +209,11 @@ fn (mut g Parser) read_spawn_expression() !string {
 		if named_params.len > 0 {
 			return g.unsupported('positional spawn argument after named params fields')
 		}
+		mut is_mut_argument := false
 		if g.tok == .key_mut {
-			return g.unsupported('spawn with a `mut` argument')
+			// `spawn f(mut x)`: the `mut` parameter is a pointer, so pass x's address.
+			is_mut_argument = true
+			g.next()
 		}
 		expected_type := if arguments.len < signature.parameter_types.len {
 			signature.parameter_types[arguments.len]
@@ -175,7 +227,21 @@ fn (mut g Parser) read_spawn_expression() !string {
 		// Mirror ordinary calls: arguments that need contextual typing (enum
 		// shorthand, boxing) render through the parameter-typed pipeline.
 		argument_tokens := g.last_expression.clone()
-		if expected_type != '' && argument_tokens.len > 0 {
+		if is_mut_argument {
+			mut argument_type := ''
+			if inferred := g.infer_expression_type(argument_tokens) {
+				argument_type = inferred
+			}
+			if expected_type.ends_with('*') && argument_type.ends_with('*') {
+				// `mut c` where `c` is already a reference local must stay a pointer;
+				// read_expression's value form auto-dereferences it.
+				if contextual := g.render_call_argument_expression(argument_tokens, expected_type) {
+					argument = contextual
+				}
+			} else if expected_type.ends_with('*') && !argument_type.ends_with('*') {
+				argument = '&(${argument})'
+			}
+		} else if expected_type != '' && argument_tokens.len > 0 {
 			if contextual := g.render_call_argument_expression(argument_tokens, expected_type) {
 				argument = contextual
 			}
@@ -208,7 +274,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 	thread_type := g.fastc_unclaimed_generated_name(fastc_thread_type_name(value_type))
 	start_name := g.fastc_unclaimed_generated_name(fastc_spawn_start_name(function_key))
 	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types,
-		start_name)
+		start_name, method_target)
 	g.last_expression = []FastcExpressionToken{}
 	g.last_expression_type = thread_type
 	g.last_multi_return_types = []string{}
@@ -257,7 +323,7 @@ fn (g &Parser) generated_name_is_claimed(candidate string) bool {
 // struct, run wrapper, and creator for one spawn target. The result is the
 // first packed field, so the per-type waiter reads it without knowing which
 // call site produced the thread.
-fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type string, parameter_types []string, start_name string) {
+fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type string, parameter_types []string, start_name string, target_c_name string) {
 	g.thread_value_types[thread_type] = value_type
 	if thread_type !in g.spawn_typedefs {
 		g.spawn_typedefs[thread_type] = 'typedef struct { pthread_t handle; void *packed; } ${thread_type};'
@@ -293,7 +359,13 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	if start_name in g.spawn_helpers {
 		return
 	}
-	target := fastc_c_function_name_for_key(function_key)
+	// A method target supplies its own C name (`Type_method`); a free/module function
+	// derives it from the function key.
+	target := if target_c_name != '' {
+		target_c_name
+	} else {
+		fastc_c_function_name_for_key(function_key)
+	}
 	target_stem := fastc_spawn_target_stem(function_key)
 	args_struct := g.fastc_unclaimed_generated_name('__v_fastc_spawn_args_${target_stem}')
 	run_name := g.fastc_unclaimed_generated_name('__v_fastc_spawn_run_${target_stem}')
