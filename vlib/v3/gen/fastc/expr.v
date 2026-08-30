@@ -1768,7 +1768,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 }
 
 fn fastc_shared_modifier_operand_start(tok token.Token) bool {
-	return tok in [.name, .amp, .and, .question, .not, .lpar, .lsbr]
+	return tok in [.name, .key_shared, .amp, .and, .question, .not, .lpar, .lsbr]
 }
 
 fn fastc_shared_modifier_may_cross_line(previous token.Token, next token.Token) bool {
@@ -1793,8 +1793,8 @@ fn (g &Parser) classify_shared_token(previous token.Token) FastcSharedTokenClass
 	start := g.s.offset
 	mut offset := start
 	mut crossed_line := false
-	// Whitespace and block comments separate a modifier from its operand. A
-	// line comment ends the expression and must leave a keyword-named local intact.
+	// Whitespace and comments separate a modifier from its operand. A line
+	// comment can still continue inside an open argument or collection context.
 	for {
 		for offset < g.s.src.len && g.s.src[offset].is_space() {
 			if g.s.src[offset] in [`\r`, `\n`] {
@@ -1806,10 +1806,12 @@ fn (g &Parser) classify_shared_token(previous token.Token) FastcSharedTokenClass
 			break
 		}
 		if g.s.src[offset + 1] == `/` {
-			return FastcSharedTokenClassification{
-				is_identifier: true
-				ends_expression: true
+			offset += 2
+			for offset < g.s.src.len && g.s.src[offset] !in [`\r`, `\n`] {
+				offset++
 			}
+			crossed_line = true
+			continue
 		}
 		if g.s.src[offset + 1] != `*` {
 			break

@@ -117,6 +117,10 @@ fn main() {
 		consume(shared /* ownership */ value)
 		consume(shared
 			value)
+		consume(shared // ownership
+			value)
+		consume(shared
+			shared)
 	}
 }
 ', 'shared_keyword_local.v', prefs) or { panic(err) }
@@ -125,7 +129,8 @@ fn main() {
 	assert c_source.contains('consume(&(shared));'), c_source
 	assert c_source.contains('consume(&((shared)));'), c_source
 	assert c_source.contains('consume(&(value));'), c_source
-	assert c_source.count('consume(&(value));') == 2, c_source
+	assert c_source.count('consume(&(value));') == 3, c_source
+	assert c_source.count('consume(&(shared));') == 2, c_source
 	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
 	assert c_source.contains('return shared;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
