@@ -188,7 +188,16 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			estimate += t.fixed_array_init_expansion_estimate(id, node)
 		}
 		if node.kind == .string_interp {
-			estimate += t.string_interp_expansion_estimate(node)
+			interp_estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(node)
+			estimate += interp_estimate
+			if needs_deferred_lowering {
+				estimate += deferred_map_expansion_threshold + 1
+			}
+		}
+		if node.kind == .or_expr {
+			// Or lowering synthesizes option temporaries, status checks, branches,
+			// and value extraction beyond the source node's physical children.
+			estimate += deferred_map_expansion_threshold + 1
 		}
 		if node.kind == .call {
 			// Calls outside the writable function span are always reconstructed by

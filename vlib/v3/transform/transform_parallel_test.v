@@ -543,6 +543,103 @@ fn test_external_map_expansion_estimate_includes_string_interpolation() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_defers_small_aggregate_interpolation() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+		typ: 'Small'
+	})
+	interp_start := a.children.len
+	a.children << value
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 1
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << interp
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]string'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Small'] = StructInfo{
+		name: 'Small'
+		fields: [
+			FieldInfo{
+				name: 'number'
+				typ: 'int'
+			},
+		]
+	}
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
+fn test_external_map_expansion_estimate_defers_or_lowering() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{
+		kind: .ident
+		value: 'decode'
+	})
+	call_start := a.children.len
+	a.children << callee
+	call := a.add_node(flat.Node{
+		kind: .call
+		typ: '!int'
+		children_start: call_start
+		children_count: 1
+	})
+	fallback_value := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '0'
+		typ: 'int'
+	})
+	fallback_start := a.children.len
+	a.children << fallback_value
+	fallback := a.add_node(flat.Node{
+		kind: .block
+		children_start: fallback_start
+		children_count: 1
+	})
+	or_start := a.children.len
+	a.children << call
+	a.children << fallback
+	or_expr := a.add_node(flat.Node{
+		kind: .or_expr
+		typ: 'int'
+		children_start: or_start
+		children_count: 2
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << or_expr
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_interpolation_concatenation() {
 	mut a := flat.FlatAst.new()
 	part := a.add_node(flat.Node{

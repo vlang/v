@@ -5918,11 +5918,6 @@ fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) (int, bool) {
 	return est, needs_deferred_lowering
 }
 
-fn (mut t Transformer) string_interp_expansion_estimate(node flat.Node) int {
-	estimate, _ := t.string_interp_expansion_estimates(node)
-	return estimate
-}
-
 fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, bool) {
 	// transform_string_interp joins every part after the first with string__plus.
 	// Each join appends two nodes and three child IDs, so charge the larger pool.
