@@ -11284,7 +11284,8 @@ pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(id flat.NodeId) 
 //     ownership away from the pointer's owner; and
 //   * a field read (`obj.field`) reached through a pointer/reference base — a `mut` receiver
 //     or `&` binding whose fields are owned elsewhere and can be rotated or freed later (as a
-//     parser rotates its token fields), so a bare alias would dangle.
+//     parser rotates its token fields), so a bare alias would dangle; and
+//   * an indexed read (`obj.items[i]`) reached through such a pointer/reference base.
 //
 // A field read of a directly-held value (a plain local or an owned global) keeps its
 // Rust-like move semantics, diagnosed by the existing move analysis. Only cloneable
@@ -11303,6 +11304,7 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	node := tc.a.nodes[int(clean_id)]
 	is_field := node.kind == .selector && node.children_count > 0 && node.value.len > 0
 	is_slice := node.kind == .index && node.value == 'range'
+	is_index := node.kind == .index && node.value != 'range' && node.children_count > 0
 	is_deref := node.kind == .prefix && node.op == .mul && node.children_count > 0
 	// A sum-type/interface cast (`v as T`) of a directly-held value extracts an independent
 	// copy of the variant while the source keeps its value, so an owned-storage payload must
@@ -11315,7 +11317,7 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	// local copies the value, so an owned-storage const must be cloned rather than aliased
 	// (a bare alias would later free the const's static storage on the binding's drop).
 	is_const_read := node.kind == .ident && tc.ownership_ident_names_const(node.value)
-	if !is_field && !is_slice && !is_deref && !is_variant_cast && !is_const_read {
+	if !is_field && !is_slice && !is_index && !is_deref && !is_variant_cast && !is_const_read {
 		return false
 	}
 	typ := tc.resolve_type(clean_id)

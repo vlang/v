@@ -466,6 +466,17 @@ fn test_borrowed_dynamic_array_conversion_is_cloned() {
 	assert holder.items[0].values[0] == "original"
 }
 
+fn test_pointer_backed_index_read_is_cloned() {
+	holder := &DynamicHolder{
+		items: [Payload{
+			values: ["original"]
+		}]
+	}
+	mut copied := holder.items[0]
+	copied.values[0] = "copy"
+	assert holder.items[0].values[0] == "original"
+}
+
 fn test_borrowed_array_push_many_is_cloned() ? {
 	holder := &DynamicHolder{
 		items: [Payload{
