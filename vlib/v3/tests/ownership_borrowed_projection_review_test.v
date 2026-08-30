@@ -214,6 +214,18 @@ fn copy_payload_pointer(value &Payload) Payload {
 	return *value
 }
 
+fn maybe_payload() ?Payload {
+	return none
+}
+
+fn maybe_payload_pair() ?(Payload, Payload) {
+	return none
+}
+
+fn maybe_entry() ?Entry {
+	return none
+}
+
 fn select_payload(holder &Holder, pick_left bool) Payload {
 	return if pick_left {
 		holder.left
@@ -580,6 +592,23 @@ fn test_conditional_borrowed_branches_are_cloned(holder &Holder) {
 	assert holder.right.values[0] == "right"
 }
 
+fn test_borrowed_or_fallback_is_cloned(holder &Holder) {
+	mut fallback := maybe_payload() or { holder.left }
+	fallback.values[0] = "fallback copy"
+	assert holder.left.values[0] == "left"
+
+	mut entry := maybe_entry() or { holder.right }
+	mut entry_payload := &(entry as Payload)
+	entry_payload.values[0] = "sum fallback copy"
+	assert holder.right.values[0] == "right"
+
+	mut first, mut second := maybe_payload_pair() or { holder.left, holder.right }
+	first.values[0] = "first fallback copy"
+	second.values[0] = "second fallback copy"
+	assert holder.left.values[0] == "left"
+	assert holder.right.values[0] == "right"
+}
+
 fn test_borrowed_sum_projection_is_cloned() {
 	holder := &EntryHolder{
 		entry: Payload{
@@ -776,6 +805,7 @@ fn main() {
 	test_borrowed_assoc_overrides_are_cloned(holder)
 	test_pointer_dereferences_are_cloned(holder)
 	test_conditional_borrowed_branches_are_cloned(holder)
+	test_borrowed_or_fallback_is_cloned(holder)
 	test_borrowed_sum_projection_is_cloned()
 	test_copied_index_alias_is_cloned()
 	test_long_index_alias_chain_is_cloned()
@@ -790,7 +820,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 44, out.output
+		assert out.output.count('clone') == 48, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

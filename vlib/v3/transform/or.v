@@ -2207,11 +2207,7 @@ fn (mut t Transformer) lower_or_multi_return_values(values []flat.NodeId, target
 			break
 		}
 		field_type := field_types[i].name()
-		value := if field_type in t.sum_types || t.resolve_sum_name(field_type) in t.sum_types {
-			t.wrap_sum_value(value_id, field_type)
-		} else {
-			t.transform_expr_for_type(value_id, field_type)
-		}
+		value := t.transform_if_branch_value(value_id, field_type)
 		t.drain_pending(mut result)
 		field := t.make_selector(t.make_ident(target_name), 'arg${i}', field_type)
 		result << t.make_assign(field, value)
@@ -2220,7 +2216,7 @@ fn (mut t Transformer) lower_or_multi_return_values(values []flat.NodeId, target
 }
 
 fn (mut t Transformer) lower_or_multi_return_expr(expr_id flat.NodeId, target_name string, target_type string) []flat.NodeId {
-	value := t.transform_expr_for_type(expr_id, target_type)
+	value := t.transform_if_branch_value(expr_id, target_type)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	result << t.make_assign(t.make_ident(target_name), value)
@@ -2262,7 +2258,11 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 			}
 			return result
 		}
-		return [t.make_assign(t.make_ident(target_name), t.transform_expr(body_id))]
+		value := t.transform_if_branch_value(body_id, target_type)
+		mut result := []flat.NodeId{}
+		t.drain_pending(mut result)
+		result << t.make_assign(t.make_ident(target_name), value)
+		return result
 	}
 	mut result := []flat.NodeId{}
 	if body.children_count == 0 {
@@ -2316,31 +2316,18 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 					result << eid
 				}
 			} else {
-				value := if target_type in t.sum_types
-					|| t.resolve_sum_name(target_type) in t.sum_types {
-					t.wrap_sum_value(inner_id, target_type)
-				} else {
-					t.transform_expr_for_type(inner_id, target_type)
-				}
+				value := t.transform_if_branch_value(inner_id, target_type)
 				t.drain_pending(mut result)
 				result << t.make_assign(t.make_ident(target_name), value)
 			}
 		} else if is_last && target_name.len > 0 && child.kind == .block {
 			result << t.if_value_branch_block(child_id, target_name, target_type)
 		} else if is_last && target_name.len > 0 && child.kind in [.if_expr, .match_stmt] {
-			value := if target_type in t.sum_types || t.resolve_sum_name(target_type) in t.sum_types {
-				t.wrap_sum_value(child_id, target_type)
-			} else {
-				t.transform_expr_for_type(child_id, target_type)
-			}
+			value := t.transform_if_branch_value(child_id, target_type)
 			t.drain_pending(mut result)
 			result << t.make_assign(t.make_ident(target_name), value)
 		} else if is_last && target_name.len > 0 && !t.is_stmt_kind(child.kind) {
-			value := if target_type in t.sum_types || t.resolve_sum_name(target_type) in t.sum_types {
-				t.wrap_sum_value(child_id, target_type)
-			} else {
-				t.transform_expr_for_type(child_id, target_type)
-			}
+			value := t.transform_if_branch_value(child_id, target_type)
 			t.drain_pending(mut result)
 			result << t.make_assign(t.make_ident(target_name), value)
 		} else {
