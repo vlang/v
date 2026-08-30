@@ -3148,7 +3148,7 @@ fn (mut t Transformer) array_map_call_result_path_origin_is_external(source type
 fn (mut t Transformer) array_map_record_call_result_pointer_type_paths(path string, target_suffix string, typ types.Type, sources []types.OwnershipCallResultSource, elem_name string, origins map[string]bool, mut locals map[string]bool, mut seen map[string]bool) {
 	match typ {
 		types.Pointer, types.Channel, types.FnType, types.Interface {
-			locals[path] = sources.any(t.array_map_call_result_path_origin_is_external(it, target_suffix, elem_name, origins))
+			locals[path] = sources.len == 0 || sources.any(t.array_map_call_result_path_origin_is_external(it, target_suffix, elem_name, origins))
 		}
 		types.Alias, types.OptionType, types.ResultType {
 			t.array_map_record_call_result_pointer_type_paths(path, target_suffix, typ.base_type, sources, elem_name, origins, mut locals, mut seen)
@@ -3171,7 +3171,7 @@ fn (mut t Transformer) array_map_record_call_result_pointer_type_paths(path stri
 		types.SumType, types.MultiReturn {
 			// The active variant/slot is runtime-dependent, so retain a conservative
 			// aggregate root when ownership says an external argument reaches it.
-			locals[path] = sources.any(t.array_map_call_result_path_origin_is_external(it, target_suffix, elem_name, origins))
+			locals[path] = sources.len == 0 || sources.any(t.array_map_call_result_path_origin_is_external(it, target_suffix, elem_name, origins))
 		}
 		else {}
 	}
@@ -3268,13 +3268,17 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 	}
 }
 
-fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, elem_name string, mut locals map[string]bool) {
+fn (mut t Transformer) array_map_update_local_pointer_origins(stmt_id flat.NodeId, elem_name string, mut locals map[string]bool) {
 	mut loop_exits := []ArrayMapLoopPointerExit{}
 	mut return_exits := []ArrayMapReturnPointerExit{}
-	t.array_map_update_local_pointer_origins_flow(stmt, elem_name, mut locals, mut loop_exits, mut return_exits, '', 0)
+	t.array_map_update_local_pointer_origins_flow(stmt_id, elem_name, mut locals, mut loop_exits, mut return_exits, '', 0)
 }
 
-fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Node, elem_name string, mut locals map[string]bool, mut loop_exits []ArrayMapLoopPointerExit, mut return_exits []ArrayMapReturnPointerExit, loop_label string, active_defer_count int) bool {
+fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.NodeId, elem_name string, mut locals map[string]bool, mut loop_exits []ArrayMapLoopPointerExit, mut return_exits []ArrayMapReturnPointerExit, loop_label string, active_defer_count int) bool {
+	if int(stmt_id) < 0 || int(stmt_id) >= t.a.nodes.len {
+		return true
+	}
+	stmt := t.a.nodes[int(stmt_id)]
 	if stmt.kind in [.break_stmt, .continue_stmt] {
 		loop_exits << ArrayMapLoopPointerExit{
 			origins:     locals.clone()
@@ -3291,7 +3295,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 		return false
 	}
 	if stmt.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt] && stmt.children_count > 0 {
-		return t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count)
+		return t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count)
 	}
 	if stmt.kind in [.block, .match_branch, .select_branch] {
 		mut scoped := locals.clone()
@@ -3301,10 +3305,11 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 			if !continues {
 				break
 			}
-			child := t.a.child_node(&stmt, i)
+			child_id := t.a.child(&stmt, i)
+			child := t.a.nodes[int(child_id)]
 			if child.kind == .decl_assign {
 				for j := 0; j + 1 < int(child.children_count); j += 2 {
-					lhs := t.a.child_node(child, j)
+					lhs := t.a.child_node(&child, j)
 					if lhs.kind == .ident {
 						declared[lhs.value] = true
 					}
@@ -3317,7 +3322,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 					child_loop_label = previous.value
 				}
 			}
-			continues = t.array_map_update_local_pointer_origins_flow(*child, elem_name, mut scoped, mut loop_exits, mut return_exits, child_loop_label, active_defer_count)
+			continues = t.array_map_update_local_pointer_origins_flow(child_id, elem_name, mut scoped, mut loop_exits, mut return_exits, child_loop_label, active_defer_count)
 		}
 		if continues {
 			for path, external in scoped {
@@ -3333,7 +3338,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 		if take_then := t.comptime_type_condition_value(stmt.value) {
 			branch_idx := if take_then { 0 } else { 1 }
 			if branch_idx < stmt.children_count {
-				return t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, branch_idx), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count)
+				return t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, branch_idx), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count)
 			}
 			return true
 		}
@@ -3344,14 +3349,14 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 		}
 		// The source is evaluated on both paths. A continuing fallback is conditional, so
 		// preserve every pointer origin possible after either success or fallback execution.
-		if !t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+		if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
 			return false
 		}
 		before := locals.clone()
 		mut merged := before.clone()
 		for i in 1 .. stmt.children_count {
 			mut fallback := before.clone()
-			if t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, i), elem_name, mut fallback, mut loop_exits, mut return_exits, '', active_defer_count) {
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut fallback, mut loop_exits, mut return_exits, '', active_defer_count) {
 				array_map_merge_local_pointer_origins(mut merged, fallback, before)
 			}
 		}
@@ -3367,7 +3372,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 		}
 		for i in 1 .. stmt.children_count {
 			mut branch := before.clone()
-			if t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
 				continues = true
 				array_map_merge_local_pointer_origins(mut merged, branch, before)
 			}
@@ -3386,7 +3391,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 		}
 		for i in 1 .. stmt.children_count {
 			mut branch := before.clone()
-			if t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
 				continues = true
 				array_map_merge_local_pointer_origins(mut merged, branch, before)
 			}
@@ -3405,7 +3410,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 		}
 		for i in 0 .. stmt.children_count {
 			mut branch := before.clone()
-			if t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
 				continues = true
 				array_map_merge_local_pointer_origins(mut merged, branch, before)
 			}
@@ -3424,7 +3429,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 			if !continues {
 				break
 			}
-			continues = t.array_map_update_local_pointer_origins_flow(*t.a.child_node(&stmt, i), elem_name, mut loop_origins, mut exits, mut return_exits, '', active_defer_count)
+			continues = t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut loop_origins, mut exits, mut return_exits, '', active_defer_count)
 		}
 		for name, origin in before {
 			locals[name] = origin || (continues && loop_origins[name])
@@ -3438,6 +3443,51 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt flat.Nod
 			} else {
 				loop_exits << exit
 			}
+		}
+		return true
+	}
+	if stmt.kind == .call && stmt.children_count > 0 {
+		call_name := t.call_name_for_node(stmt_id, stmt)
+		params := t.call_param_types_for_node(call_name, stmt)
+		param_offset := t.call_param_offset_for_node(call_name, stmt, params)
+		callee := t.a.child_node(&stmt, 0)
+		for i in 1 .. stmt.children_count {
+			target_id := t.a.child(&stmt, i)
+			target := t.a.nodes[int(target_id)]
+			if !target.is_mut || types.unalias_type(t.tc.resolve_type(target_id)) !is types.Pointer {
+				continue
+			}
+			target_path := t.array_map_lvalue_local_path(target_id) or { continue }
+			target_root := t.array_map_lvalue_root_ident(target_id) or { continue }
+			if target_root !in locals {
+				continue
+			}
+			target_param_idx := i - 1 + param_offset
+			source_param_idxs := t.tc.call_param_storage_source_params(stmt_id, target_param_idx)
+			if source_param_idxs.len == 0 {
+				continue
+			}
+			origins := locals.clone()
+			overlapping := array_map_clear_local_pointer_origins(target_path, mut locals)
+			mut replacement_origins := map[string]bool{}
+			for source_param_idx in source_param_idxs {
+				mut source_id := flat.empty_node
+				if param_offset == 1 && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
+					source_id = t.a.child(callee, 0)
+				} else {
+					child_idx := source_param_idx - param_offset + 1
+					if child_idx >= 1 && child_idx < stmt.children_count {
+						source_id = t.a.child(&stmt, child_idx)
+					}
+				}
+				if int(source_id) >= 0 {
+					t.array_map_record_local_pointer_origins(target_path, source_id, elem_name, origins, mut replacement_origins)
+				}
+			}
+			for path, external in replacement_origins {
+				locals[path] = locals[path] || external
+			}
+			array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
 		}
 		return true
 	}
@@ -3566,7 +3616,7 @@ fn (mut t Transformer) array_map_deferred_side_effect_retains_element_address(de
 		if t.array_map_expr_side_effect_retains_element_address_in_scope(body_id, elem_name, locals, flat.Node{}, -1) {
 			return true
 		}
-		t.array_map_update_local_pointer_origins(t.a.nodes[int(body_id)], elem_name, mut locals)
+		t.array_map_update_local_pointer_origins(body_id, elem_name, mut locals)
 	}
 	return false
 }
@@ -3601,7 +3651,7 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 			if t.array_map_expr_side_effect_retains_element_address_in_scope(stmt_id, elem_name, scoped, node, int(i)) {
 				return true
 			}
-			continues = t.array_map_update_local_pointer_origins_flow(stmt, elem_name, mut scoped, mut loop_exits, mut return_exits, '', deferred.len)
+			continues = t.array_map_update_local_pointer_origins_flow(stmt_id, elem_name, mut scoped, mut loop_exits, mut return_exits, '', deferred.len)
 		}
 		for exit in loop_exits {
 			mut exit_state := exit.origins.clone()
