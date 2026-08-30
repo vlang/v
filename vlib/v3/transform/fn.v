@@ -5928,8 +5928,15 @@ fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, b
 		part_id := t.a.child(&node, ci)
 		mut expr_id := part_id
 		part := t.a.nodes[int(part_id)]
+		mut format := ''
 		if part.kind == .directive && part.value == 'string_interp_format' && part.children_count > 0 {
 			expr_id = t.a.child(&part, 0)
+			format = part.typ
+		}
+		if format == 'p' {
+			// Pointer formatting lowers directly to bounded ptr_str work, regardless of
+			// the pointee's aggregate auto-string expansion.
+			continue
 		}
 		may_hoist = may_hoist || t.string_interp_expr_may_hoist(expr_id)
 		part_expr := t.a.nodes[int(expr_id)]

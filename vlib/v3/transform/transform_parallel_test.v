@@ -980,6 +980,47 @@ fn test_string_interp_expansion_estimate_defers_unresolved_values() {
 	assert needs_deferred_lowering
 }
 
+fn test_pointer_formatted_interp_skips_aggregate_stringify_expansion() {
+	mut a := flat.FlatAst.new()
+	pointer := a.add_node(flat.Node{
+		kind: .ident
+		value: 'pointer'
+		typ: '&Large'
+	})
+	format_start := a.children.len
+	a.children << pointer
+	formatted := a.add_node(flat.Node{
+		kind: .directive
+		value: 'string_interp_format'
+		typ: 'p'
+		children_start: format_start
+		children_count: 1
+	})
+	interp_start := a.children.len
+	a.children << formatted
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Large'] = StructInfo{
+		name: 'Large'
+		fields: [
+			FieldInfo{
+				name: 'value'
+				typ: 'string'
+			},
+		]
+	}
+
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert estimate == 0
+	assert !needs_deferred_lowering
+}
+
 fn test_shared_map_expansion_is_bounded_in_aggregate() {
 	mut t := Transformer{}
 	items := [
