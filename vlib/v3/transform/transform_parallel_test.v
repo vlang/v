@@ -1715,6 +1715,17 @@ fn test_external_map_expansion_estimate_defers_match_reconstruction() {
 	assert estimate > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_defers_function_literal_lifting() {
+	mut a := flat.new_ast()
+	root := a.new_node(flat.Node{
+		kind: .fn_literal
+	})
+	mut t := Transformer{
+		a: &a
+	}
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{

@@ -220,6 +220,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// external tree instead of risking a shared-arena underestimate.
 			estimate += deferred_map_expansion_threshold + 1
 		}
+		if node.kind == .fn_literal {
+			// Function-literal lifting appends declarations and closure signatures to
+			// global output, which is not bounded by the source node's children.
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if node.kind == .map_init {
 			estimate += t.map_init_expansion_estimate(id, node)
 		}
