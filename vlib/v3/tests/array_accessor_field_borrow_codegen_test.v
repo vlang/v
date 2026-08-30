@@ -562,6 +562,36 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
+fn test_owned_aggregate_field_overloaded_inequality_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_inequality', "struct Name {
+	text string
+}
+
+struct E {
+	names []Name
+}
+
+__global entries []E
+
+fn (left Name) == (right Name) bool {
+	entries.delete_last()
+	return left.text == right.text
+}
+
+fn last_names_differ(other []Name) bool {
+	return entries.last().names != other
+}
+
+fn main() {
+	entries = [E{ names: [Name{ text: 'hello' }] }]
+	println(last_names_differ([Name{ text: 'world' }]))
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
 fn test_owned_interface_field_overloaded_comparison_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_interface_field_overloaded_comparison', "interface Named {

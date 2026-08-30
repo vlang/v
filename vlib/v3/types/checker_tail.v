@@ -6204,6 +6204,7 @@ fn (tc &TypeChecker) array_accessor_membership_has_overloaded_equality(consumer 
 
 fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op flat.Op, mut seen map[string]bool) bool {
 	raw := unwrap_pointer(typ)
+	semantic_op := if op == .ne { flat.Op.eq } else { op }
 	key := raw.name()
 	if seen[key] {
 		return false
@@ -6212,41 +6213,41 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op fl
 	defer {
 		seen.delete(key)
 	}
-	if (raw is Struct || raw is Alias) && tc.type_has_infix_operator_method(raw, op) {
+	if (raw is Struct || raw is Alias) && tc.type_has_infix_operator_method(raw, semantic_op) {
 		return true
 	}
-	if op !in [.eq, .ne] {
+	if semantic_op != .eq {
 		return false
 	}
 	match raw {
 		Alias {
-			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut seen)
 		}
 		Array {
-			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, semantic_op, mut seen)
 		}
 		ArrayFixed {
-			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, semantic_op, mut seen)
 		}
 		Map {
-			return tc.array_accessor_type_has_overloaded_operator(raw.key_type, op, mut seen) || tc.array_accessor_type_has_overloaded_operator(raw.value_type, op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.key_type, semantic_op, mut seen) || tc.array_accessor_type_has_overloaded_operator(raw.value_type, semantic_op, mut seen)
 		}
 		OptionType {
-			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut seen)
 		}
 		ResultType {
-			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, op, mut seen)
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut seen)
 		}
 		Struct {
 			for field in tc.struct_fields_for_type(raw.name) {
-				if tc.array_accessor_type_has_overloaded_operator(field.typ, op, mut seen) {
+				if tc.array_accessor_type_has_overloaded_operator(field.typ, semantic_op, mut seen) {
 					return true
 				}
 			}
 		}
 		Interface {
 			for impl_name in tc.interface_impl_names(raw.name) {
-				if tc.array_accessor_type_has_overloaded_operator(tc.parse_type(impl_name), op, mut seen) {
+				if tc.array_accessor_type_has_overloaded_operator(tc.parse_type(impl_name), semantic_op, mut seen) {
 					return true
 				}
 			}
@@ -6255,7 +6256,7 @@ fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op fl
 			base := tc.sum_base_name(raw.name)
 			for variant in tc.sum_types[base] or { []string{} } {
 				variant_type := tc.parse_type(tc.concrete_sum_variant_name(raw.name, variant))
-				if tc.array_accessor_type_has_overloaded_operator(variant_type, op, mut seen) {
+				if tc.array_accessor_type_has_overloaded_operator(variant_type, semantic_op, mut seen) {
 					return true
 				}
 			}
