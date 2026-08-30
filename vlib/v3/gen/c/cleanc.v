@@ -10345,16 +10345,40 @@ fn c_index_u8_after(text string, needle u8, start int) int {
 	return -1
 }
 
-fn c_brace_depth_after(text string, start int, end int, initial int) int {
-	mut depth := initial
+struct CTypedefBraceState {
+mut:
+	depth int
+	stack []bool
+}
+
+fn c_brace_opens_extern_linkage(text string, pos int) bool {
+	mut end := pos
+	for end > 0 && text[end - 1].is_space() {
+		end--
+	}
+	mut start := end
+	for start > 0 && c_ident_char(text[start - 1]) {
+		start--
+	}
+	return start < end && text[start..end] == 'extern'
+}
+
+fn c_typedef_brace_state_advance(text string, start int, end int, mut state CTypedefBraceState) {
 	for i in start .. end {
 		if text[i] == `{` {
-			depth++
-		} else if text[i] == `}` && depth > 0 {
-			depth--
+			counted := !c_brace_opens_extern_linkage(text, i)
+			state.stack << counted
+			if counted {
+				state.depth++
+			}
+		} else if text[i] == `}` && state.stack.len > 0 {
+			counted := state.stack.last()
+			state.stack.delete_last()
+			if counted && state.depth > 0 {
+				state.depth--
+			}
 		}
 	}
-	return depth
 }
 
 fn c_typedef_struct_aliases(text string) []string {
@@ -10373,17 +10397,17 @@ fn c_typedef_plain_aliases(text string) []string {
 	mut aliases := []string{}
 	mut start := 0
 	mut scanned := 0
-	mut brace_depth := 0
+	mut brace_state := CTypedefBraceState{}
 	for start < text.len {
 		idx := text.index_after('typedef', start) or { break }
-		brace_depth = c_brace_depth_after(text, scanned, idx, brace_depth)
+		c_typedef_brace_state_advance(text, scanned, idx, mut brace_state)
 		scanned = idx
 		pos := idx + 'typedef'.len
 		if (idx > 0 && c_ident_char(text[idx - 1])) || (pos < text.len && c_ident_char(text[pos])) {
 			start = pos
 			continue
 		}
-		if brace_depth > 0 {
+		if brace_state.depth > 0 {
 			start = pos
 			continue
 		}
@@ -10428,6 +10452,44 @@ fn c_text_matches_at(text string, pos int, word string) bool {
 	return true
 }
 
+fn c_skip_typedef_aggregate_attributes(text string, start int) int {
+	mut pos := start
+	for {
+		for pos < text.len && text[pos].is_space() {
+			pos++
+		}
+		mut marker_len := 0
+		for marker in ['__attribute__', '__attribute', '__declspec'] {
+			end := pos + marker.len
+			if c_text_matches_at(text, pos, marker) && (end == text.len || !c_ident_char(text[end])) {
+				marker_len = marker.len
+				break
+			}
+		}
+		if marker_len > 0 {
+			mut paren_open := pos + marker_len
+			for paren_open < text.len && text[paren_open].is_space() {
+				paren_open++
+			}
+			if paren_open < text.len && text[paren_open] == `(` {
+				paren_close := fixed_array_len_matching_paren(text, paren_open)
+				if paren_close >= 0 {
+					pos = paren_close + 1
+					continue
+				}
+			}
+		}
+		if pos + 1 < text.len && text[pos] == `[` && text[pos + 1] == `[` {
+			if close_offset := text[pos + 2..].index(']]') {
+				pos += close_offset + 4
+				continue
+			}
+		}
+		return pos
+	}
+	return pos
+}
+
 // c_typedef_all_aggregate_aliases collects `typedef struct|union|enum` alias
 // names in a single scan, replacing three separate full-text passes (one per
 // kind). The result is a set, so finding all three in text order yields the same
@@ -10445,15 +10507,15 @@ fn c_typedef_all_aggregate_aliases(text string) []string {
 	mut aliases := []string{}
 	mut start := 0
 	mut scanned := 0
-	mut brace_depth := 0
+	mut brace_state := CTypedefBraceState{}
 	// kind codes: 0 = struct, 1 = union, 2 = enum.
 	mut stopped := [false, false, false]
 	for start < text.len {
 		idx := text.index_after('typedef ', start) or { break }
-		brace_depth = c_brace_depth_after(text, scanned, idx, brace_depth)
+		c_typedef_brace_state_advance(text, scanned, idx, mut brace_state)
 		scanned = idx
 		kw := idx + 'typedef '.len
-		if brace_depth > 0 {
+		if brace_state.depth > 0 {
 			start = kw
 			continue
 		}
@@ -10481,9 +10543,7 @@ fn c_typedef_all_aggregate_aliases(text string) []string {
 			start = pos + 1
 			continue
 		}
-		for pos < text.len && text[pos].is_space() {
-			pos++
-		}
+		pos = c_skip_typedef_aggregate_attributes(text, pos)
 		mut had_tag := false
 		if pos < text.len && text[pos] != `{` {
 			tag := c_header_struct_tag_at(text, pos)
@@ -10493,9 +10553,7 @@ fn c_typedef_all_aggregate_aliases(text string) []string {
 			}
 			had_tag = true
 			pos += tag.len
-			for pos < text.len && text[pos].is_space() {
-				pos++
-			}
+			pos = c_skip_typedef_aggregate_attributes(text, pos)
 		}
 		if pos >= text.len || text[pos] != `{` {
 			if had_tag {
@@ -10546,9 +10604,7 @@ fn c_typedef_aggregate_aliases(text string, kind string) []string {
 			start = pos + 1
 			continue
 		}
-		for pos < text.len && text[pos].is_space() {
-			pos++
-		}
+		pos = c_skip_typedef_aggregate_attributes(text, pos)
 		mut had_tag := false
 		if pos < text.len && text[pos] != `{` {
 			tag := c_header_struct_tag_at(text, pos)
@@ -10558,9 +10614,7 @@ fn c_typedef_aggregate_aliases(text string, kind string) []string {
 			}
 			had_tag = true
 			pos += tag.len
-			for pos < text.len && text[pos].is_space() {
-				pos++
-			}
+			pos = c_skip_typedef_aggregate_attributes(text, pos)
 		}
 		if pos >= text.len || text[pos] != `{` {
 			// Bodyless alias form: `typedef struct tag Alias;` also names the

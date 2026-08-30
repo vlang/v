@@ -634,10 +634,11 @@ fn test_header_owned_include_aliases_expand_lazily() {
 }
 
 fn test_header_owned_typedef_scan_ignores_non_declarations_and_declarator_attributes() {
-	clean := c_header_owned_typedef_scan_text('// typedef struct Wrong CommentAlias;\n#define MAKE_ALIAS typedef struct Wrong MacroAlias;\nconst char *example = "typedef struct Wrong StringAlias;";\ntypedef struct Impl RealAlias __attribute__((deprecated));\ntypedef struct Impl __attribute__((deprecated, aligned(8))) PrefixAlias;\ntypedef struct Impl keep__attribute__Alias;\ntypedef struct Impl __attribute__Alias;\nstatic inline void helper(void) {\n\ttypedef struct Hidden HiddenAlias;\n\ttypedef int HiddenPlain;\n}\ntypedef int VisiblePlain;\n')
+	clean := c_header_owned_typedef_scan_text('// typedef struct Wrong CommentAlias;\n#define MAKE_ALIAS typedef struct Wrong MacroAlias;\nconst char *example = "typedef struct Wrong StringAlias;";\ntypedef struct Impl RealAlias __attribute__((deprecated));\ntypedef struct Impl __attribute__((deprecated, aligned(8))) PrefixAlias;\ntypedef struct Impl keep__attribute__Alias;\ntypedef struct Impl __attribute__Alias;\ntypedef struct __attribute__((packed)) { int value; } PackedAlias;\ntypedef struct Tagged __attribute__((aligned(8))) { int value; } TaggedAlias;\nstatic inline void helper(void) {\n\ttypedef struct Hidden HiddenAlias;\n\ttypedef int HiddenPlain;\n}\nextern "C" {\n\ttypedef struct External ExternalAlias;\n\ttypedef int ExternalPlain;\n\tstatic inline void linked_helper(void) { typedef int LinkedHidden; }\n}\ntypedef int VisiblePlain;\n')
 	aliases := c_typedef_all_aggregate_aliases(clean)
-	assert aliases == ['RealAlias', 'PrefixAlias', 'keep__attribute__Alias', '__attribute__Alias']
-	assert c_typedef_plain_aliases(clean) == ['VisiblePlain']
+	assert aliases == ['RealAlias', 'PrefixAlias', 'keep__attribute__Alias', '__attribute__Alias',
+		'PackedAlias', 'TaggedAlias', 'ExternalAlias']
+	assert c_typedef_plain_aliases(clean) == ['ExternalPlain', 'VisiblePlain']
 }
 
 fn test_top_level_include_deduplication_resets_after_macro_changes() {
