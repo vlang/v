@@ -684,6 +684,43 @@ fn test_external_map_expansion_estimate_defers_dump_lowering() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn external_map_metadata_expr_expansion_estimate(kind flat.NodeKind) int {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'source'
+	})
+	expr_start := a.children.len
+	a.children << value
+	expr := a.add_node(flat.Node{
+		kind: kind
+		typ: 'Target'
+		children_start: expr_start
+		children_count: 1
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << expr
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]bool'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	return t.external_map_tree_expansion_estimate(root, 0, 0)
+}
+
+fn test_external_map_expansion_estimate_defers_interface_metadata_lowering() {
+	assert external_map_metadata_expr_expansion_estimate(.is_expr) > deferred_map_expansion_threshold
+	assert external_map_metadata_expr_expansion_estimate(.as_expr) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_selector_reconstruction() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{

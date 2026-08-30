@@ -204,6 +204,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// whose size depends on the dumped type. Defer instead of estimating it.
 			estimate += deferred_map_expansion_threshold + 1
 		}
+		if node.kind in [.is_expr, .as_expr] {
+			// Interface tests and conversions expand from implementation metadata, so
+			// their generated comparison/copy trees are not bounded by AST children.
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if node.kind == .call {
 			// Calls outside the writable function span are always reconstructed by
 			// transform_call_args, including a new child-ID span.
