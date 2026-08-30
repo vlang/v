@@ -219,6 +219,62 @@ fn test_owned_field_comparison_borrows() {
 	assert run.output.trim_space() == 'true', run.output
 }
 
+// Builtin membership only reads and compares the selected string, so the array element can
+// remain borrowed when no element equality overload can invoke user code.
+fn test_owned_field_membership_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_field_membership', "struct E {
+	name string
+}
+
+fn has_last_name(entries []E, names []string) bool {
+	return entries.last().name in names
+}
+
+fn main() {
+	entries := [E{ name: 'hello' }]
+	println(has_last_name(entries, ['hello']))
+}
+", '')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('cannot return an independent array element'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_field_membership_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'true', run.output
+}
+
+fn test_owned_field_overloaded_membership_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_membership', "struct Needle {
+	text string
+}
+
+struct E {
+	value Needle
+}
+
+__global entries []E
+
+fn (left Needle) == (right Needle) bool {
+	entries.delete_last()
+	return left.text == right.text
+}
+
+fn last_value_is_in(haystack []Needle) bool {
+	return entries.last().value in haystack
+}
+
+fn main() {
+	entries = [E{ value: Needle{ text: 'hello' } }]
+	println(last_value_is_in([Needle{ text: 'hello' }]))
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
 // A non-owning pointer selected from the borrowed element can still outlive the array, so it
 // must not use the in-place borrow path.
 fn test_owned_pointer_field_escape_is_rejected() {

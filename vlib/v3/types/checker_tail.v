@@ -6104,6 +6104,11 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	if consumer.kind == .string_interp && (consumer.children_count > 1 || formatted_interp) && final_type is String {
 		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
 	}
+	if consumer.kind == .in_expr && consumer.children_count > 1
+		&& tc.a.child(consumer, 0) == consumed_id
+		&& !tc.array_accessor_membership_has_overloaded_equality(consumer) {
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+	}
 	if consumer.kind != .index || consumer.children_count == 0 || tc.a.child(consumer, 0) != consumed_id {
 		return false
 	}
@@ -6170,6 +6175,20 @@ fn (tc &TypeChecker) array_accessor_consumer_has_overloaded_operator(consumer &f
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) array_accessor_membership_has_overloaded_equality(consumer &flat.Node) bool {
+	if consumer.kind != .in_expr || consumer.children_count < 2 {
+		return true
+	}
+	container_type := unalias_type(tc.resolve_type(tc.a.child(consumer, 1)))
+	elem_type := match container_type {
+		Array { container_type.elem_type }
+		ArrayFixed { container_type.elem_type }
+		else { unknown_type('non-array membership') }
+	}
+	mut seen := map[string]bool{}
+	return tc.array_accessor_type_has_overloaded_operator(elem_type, .eq, mut seen)
 }
 
 fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op flat.Op, mut seen map[string]bool) bool {
@@ -6264,14 +6283,7 @@ fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) boo
 		}
 	}
 	if node.kind == .in_expr && node.children_count > 1 {
-		container_type := unalias_type(tc.resolve_type(tc.a.child(node, 1)))
-		elem_type := match container_type {
-			Array { container_type.elem_type }
-			ArrayFixed { container_type.elem_type }
-			else { unknown_type('non-array membership') }
-		}
-		mut seen := map[string]bool{}
-		if tc.array_accessor_type_has_overloaded_operator(elem_type, .eq, mut seen) {
+		if tc.array_accessor_membership_has_overloaded_equality(node) {
 			return false
 		}
 	}
