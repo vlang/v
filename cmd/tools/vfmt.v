@@ -221,6 +221,7 @@ fn (foptions &FormatOptions) is_legacy_formatted(fpath string, content string) b
 	mut prefs, _ := pref.parse_args_and_show_errors(['fmt'], legacy_vfmt_args(args), false)
 	prefs.is_fmt = true
 	prefs.skip_warnings = true
+	prefs.output_mode = .silent
 	mut table := ast.new_table()
 	file_ast := parser.parse_file(fpath, mut table, .parse_comments, prefs)
 	if file_ast.errors.len > 0 {

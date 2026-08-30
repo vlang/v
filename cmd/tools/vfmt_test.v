@@ -117,6 +117,24 @@ fn test_fmt_checks_accept_legacy_source_when_v3_parsing_fails() {
 	}
 }
 
+fn test_fmt_checks_continue_after_legacy_parse_errors() {
+	v3_path := os.join_path(vfmt_test_tdir, 'v3_only_unformatted.v')
+	later_path := os.join_path(vfmt_test_tdir, 'later_unformatted.v')
+	os.write_file(v3_path, 'struct Owned implements IClone{\n\tvalue string\n}\n')!
+	os.write_file(later_path, 'fn later(){println(1)}\n')!
+	files := '${os.quoted_path(v3_path)} ${os.quoted_path(later_path)}'
+
+	check_res := os.execute('${os.quoted_path(vexe)} fmt -c ${files}')
+	assert check_res.exit_code == 2, check_res.output
+	assert check_res.output.contains('v3_only_unformatted.v'), check_res.output
+	assert check_res.output.contains('later_unformatted.v'), check_res.output
+
+	noerror_res := os.execute('${os.quoted_path(vexe)} fmt -c -noerror ${files}')
+	assert noerror_res.exit_code == 0, noerror_res.output
+	assert noerror_res.output.contains('v3_only_unformatted.v'), noerror_res.output
+	assert noerror_res.output.contains('later_unformatted.v'), noerror_res.output
+}
+
 fn test_fmt_debug_reports_v3_node_kinds() {
 	source_path := os.join_path(vfmt_test_tdir, 'v3_formatter_debug.v')
 	os.write_file(source_path, 'fn main() { println(1) }\n')!
