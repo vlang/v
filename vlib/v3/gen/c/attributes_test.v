@@ -18,14 +18,14 @@ fn test_noinline_attribute_is_preserved_for_generic_specialization() {
 	g.ccompiler = 'clang'
 	source_pos := token.new_span(1, 20, 40)
 	template_id := g.a.add_node(flat.Node{
-		kind: .fn_decl
+		kind:  .fn_decl
 		value: 'helper'
-		pos: source_pos
+		pos:   source_pos
 	})
 	specialization_id := g.a.add_node(flat.Node{
-		kind: .fn_decl
+		kind:  .fn_decl
 		value: 'helper_T_int'
-		pos: source_pos
+		pos:   source_pos
 	})
 	g.a.specialized_fn_nodes[int(specialization_id)] = true
 	g.decl_attrs[int(template_id)] = ['noinline']
@@ -33,10 +33,13 @@ fn test_noinline_attribute_is_preserved_for_generic_specialization() {
 		'noinline',
 	]
 
-	assert g.fn_decl_c_attribute(template_id) == ' __attribute__((noinline))'
-	assert g.fn_decl_c_attribute(specialization_id) == ' __attribute__((noinline))'
+	assert g.fn_decl_c_attribute(template_id) == ''
+	assert g.fn_decl_c_attribute(specialization_id) == ''
+	assert g.fn_decl_c_noinline_prefix(template_id) == '__attribute__((noinline)) '
+	assert g.fn_decl_c_noinline_prefix(specialization_id) == '__attribute__((noinline)) '
 
 	g.ccompiler = 'msvc'
 	assert g.fn_decl_c_attribute(specialization_id) == ''
+	assert g.fn_decl_c_noinline_prefix(specialization_id) == ''
 	assert g.fn_decl_msvc_noinline_prefix(specialization_id) == '__declspec(noinline) '
 }
