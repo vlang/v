@@ -593,6 +593,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			expression_tokens << FastcExpressionToken{
 				tok: .name
 				lit: g.lit
+				unsafe_depth: g.unsafe_depth
 			}
 			source_token_count++
 			piece := if previous_token == .dot {

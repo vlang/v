@@ -188,6 +188,27 @@ fn main() {
 	assert c_source.contains('println(shared)'), c_source
 }
 
+fn test_selfhost_unsafe_contextual_shared_local_mutation() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Box {
+mut:
+	value int
+}
+
+fn main() {
+	shared := Box{}
+	unsafe {
+		shared.value = 1
+	}
+	println(shared.value)
+}
+', 'selfhost_unsafe_contextual_shared_local_mutation.v', prefs) or { panic(err) }
+	assert c_source.contains('shared.value=1;'), c_source
+}
+
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	sources := [
 		FastcSourceFile{
