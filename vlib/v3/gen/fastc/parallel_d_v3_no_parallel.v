@@ -2,6 +2,14 @@ module fastc
 
 import v3.pref
 
+fn fastc_load_source_headers(paths []string, prefs &pref.Preferences) []FastcLoadedSource {
+	mut loaded := []FastcLoadedSource{cap: paths.len}
+	for path in paths {
+		loaded << fastc_load_source(path, prefs)
+	}
+	return loaded
+}
+
 // A `-no-parallel` (v3_no_parallel) FastC build omits threaded generation
 // entirely, mirroring the AST pipeline's _d_v3_no_parallel variants: both
 // phases run serially and no spawn helpers are referenced.

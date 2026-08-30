@@ -3,11 +3,7 @@ module fastc
 import os
 import v3.pref
 
-// fastc_parallel_jobs picks the worker count for a parallel phase; 1 selects
-// the serial path. `-no-parallel` and VJOBS mirror the AST pipeline's
-// behavior, and V3_FASTC_NO_PARALLEL forces serial for debugging and for
-// byte-comparing parallel output against a serial run.
-fn fastc_parallel_jobs(sources []FastcSourceFile, prefs &pref.Preferences) int {
+fn fastc_parallel_job_count(item_count int, prefs &pref.Preferences) int {
 	if prefs.no_parallel {
 		return 1
 	}
@@ -19,13 +15,49 @@ fn fastc_parallel_jobs(sources []FastcSourceFile, prefs &pref.Preferences) int {
 	if os.getenv('V3_FASTC_NO_PARALLEL') != '' {
 		jobs = 1
 	}
-	if jobs > sources.len {
-		jobs = sources.len
+	if jobs > item_count {
+		jobs = item_count
 	}
-	if sources.len < 4 {
+	if item_count < 4 {
 		jobs = 1
 	}
 	return jobs
+}
+
+// fastc_parallel_jobs picks the worker count for a parallel phase; 1 selects
+// the serial path. `-no-parallel` and VJOBS mirror the AST pipeline's
+// behavior, and V3_FASTC_NO_PARALLEL forces serial for debugging and for
+// byte-comparing parallel output against a serial run.
+fn fastc_parallel_jobs(sources []FastcSourceFile, prefs &pref.Preferences) int {
+	return fastc_parallel_job_count(sources.len, prefs)
+}
+
+fn fastc_load_source_chunk(paths []string, prefs &pref.Preferences, start int, end int) []FastcLoadedSource {
+	mut loaded := []FastcLoadedSource{cap: end - start}
+	for i in start .. end {
+		loaded << fastc_load_source(paths[i], prefs)
+	}
+	return loaded
+}
+
+fn fastc_load_source_headers(paths []string, prefs &pref.Preferences) []FastcLoadedSource {
+	jobs := fastc_parallel_job_count(paths.len, prefs)
+	if jobs <= 1 {
+		return fastc_load_source_chunk(paths, prefs, 0, paths.len)
+	}
+	first_end := paths.len / jobs
+	first_thread := spawn fastc_load_source_chunk(paths, prefs, 0, first_end)
+	mut chunk_threads := [first_thread]
+	for chunk_idx in 1 .. jobs {
+		start := paths.len * chunk_idx / jobs
+		end := paths.len * (chunk_idx + 1) / jobs
+		chunk_threads << spawn fastc_load_source_chunk(paths, prefs, start, end)
+	}
+	mut loaded := []FastcLoadedSource{cap: paths.len}
+	for chunk_thread in chunk_threads {
+		loaded << chunk_thread.wait()
+	}
+	return loaded
 }
 
 // fastc_chunk_bounds splits the file list into contiguous chunks balanced by
@@ -82,44 +114,85 @@ fn fastc_collect_generic_method_sources(sources []FastcSourceFile, prefs &pref.P
 	return result
 }
 
-// fastc_generate_file_chunk generates a contiguous file range on its own
-// thread. The array header is passed by value; the backing file data is
-// shared and read-only. It runs as a value-returning spawn: under -prealloc,
-// V frees a void thread's arena when the thread exits, so the outputs must
-// travel through the thread result.
-fn fastc_generate_file_chunk(ctx &FastcFileGenContext, sources []FastcSourceFile, start int, end int) []FastcFileGenOutput {
-	mut outputs := []FastcFileGenOutput{cap: end - start}
-	for idx in start .. end {
-		outputs << fastc_generate_single_file(ctx, sources[idx])
+struct FastcIndexedFileGenOutput {
+	index  int
+	output FastcFileGenOutput
+}
+
+// fastc_file_generation_job_indices assigns the largest files first to the
+// currently lightest worker. This avoids clustering the generator's largest
+// source files at the end of the dependency-ordered source list.
+fn fastc_file_generation_job_indices(sources []FastcSourceFile, jobs int) [][]int {
+	mut order := []int{len: sources.len}
+	for i in 0 .. sources.len {
+		order[i] = i
+	}
+	// There are normally only a few hundred files; insertion sort avoids a
+	// closure and keeps this scheduling helper in FastC's self-hostable subset.
+	for i in 1 .. order.len {
+		index := order[i]
+		weight := sources[index].source.len
+		mut insert_at := i
+		for insert_at > 0 && sources[order[insert_at - 1]].source.len < weight {
+			order[insert_at] = order[insert_at - 1]
+			insert_at--
+		}
+		order[insert_at] = index
+	}
+	mut job_indices := [][]int{len: jobs}
+	mut job_weights := []i64{len: jobs}
+	for index in order {
+		mut lightest := 0
+		for job in 1 .. jobs {
+			if job_weights[job] < job_weights[lightest] {
+				lightest = job
+			}
+		}
+		job_indices[lightest] << index
+		job_weights[lightest] += i64(sources[index].source.len) + 1
+	}
+	return job_indices
+}
+
+// fastc_generate_file_chunk generates one worker's files. The backing source
+// data is shared and read-only. It runs as a value-returning spawn: under
+// -prealloc, V frees a void thread's arena when the thread exits, so outputs
+// must travel through the thread result.
+fn fastc_generate_file_chunk(ctx &FastcFileGenContext, sources []FastcSourceFile, indices []int) []FastcIndexedFileGenOutput {
+	mut outputs := []FastcIndexedFileGenOutput{cap: indices.len}
+	for index in indices {
+		outputs << FastcIndexedFileGenOutput{
+			index: index
+			output: fastc_generate_single_file(ctx, sources[index])
+		}
 	}
 	return outputs
 }
 
 // fastc_generate_file_outputs runs per-file code generation, in parallel when
-// more than one job is available. Files are split into contiguous chunks
-// balanced by source size, and results are stitched back in file order, so
-// the emitted C is identical to a serial run.
+// more than one job is available. Results are restored to file order, so the
+// emitted C is identical to a serial run.
 fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) []FastcFileGenOutput {
 	jobs := fastc_parallel_jobs(sources, ctx.prefs)
-	mut outputs := []FastcFileGenOutput{cap: sources.len}
 	if jobs <= 1 {
+		mut outputs := []FastcFileGenOutput{cap: sources.len}
 		for source_file in sources {
 			outputs << fastc_generate_single_file(ctx, source_file)
 		}
 		return outputs
 	}
-	bounds := fastc_chunk_bounds(sources, jobs)
-	first_thread := spawn fastc_generate_file_chunk(ctx, sources, bounds[0], bounds[1])
+	job_indices := fastc_file_generation_job_indices(sources, jobs)
+	first_thread := spawn fastc_generate_file_chunk(ctx, sources, job_indices[0])
 	mut chunk_threads := [first_thread]
-	for chunk_idx in 1 .. bounds.len / 2 {
-		chunk_thread := spawn fastc_generate_file_chunk(ctx, sources, bounds[chunk_idx * 2], bounds[
-			chunk_idx * 2 + 1])
+	for chunk_idx in 1 .. jobs {
+		chunk_thread := spawn fastc_generate_file_chunk(ctx, sources, job_indices[chunk_idx])
 		chunk_threads << chunk_thread
 	}
+	mut outputs := []FastcFileGenOutput{len: sources.len}
 	for chunk_idx in 0 .. chunk_threads.len {
 		chunk_outputs := chunk_threads[chunk_idx].wait()
-		for output in chunk_outputs {
-			outputs << output
+		for indexed_output in chunk_outputs {
+			outputs[indexed_output.index] = indexed_output.output
 		}
 	}
 	return outputs

@@ -690,6 +690,13 @@ struct FastcQueuedSource {
 	module_name string
 }
 
+struct FastcLoadedSource {
+	source        string
+	header        FastcSourceHeader
+	failed        bool
+	error_message string
+}
+
 struct FastcHoistedCSource {
 	directives       string
 	conditional_code string
@@ -964,8 +971,8 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 }
 
 // FastcFileGenContext bundles the read-only program tables every per-file
-// code-generation Parser starts from. Workers share it across threads; the
-// two seed maps are cloned per file, never mutated through the context.
+// code-generation Parser starts from. Workers share it across threads and
+// return their per-file registration deltas to the stitch pass.
 struct FastcFileGenContext {
 	prefs                  &pref.Preferences = unsafe { nil }
 	declared_types         map[string]bool
@@ -1062,8 +1069,11 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		functions: ctx.functions
 		constant_types: ctx.constant_types
 		global_types: ctx.global_types
-		fixed_array_types: ctx.fixed_array_types.clone()
-		composite_types: ctx.composite_types.clone()
+		// These maps are per-file registration deltas. The stitch pass already owns
+		// the declarations collected before file generation, so copying that shared
+		// seed into every parser only adds allocation and hashing work.
+		fixed_array_types: map[string]string{}
+		composite_types: map[string]bool{}
 		deferred_lines: []string{}
 		deferred_block_starts: []int{}
 		loop_defer_block_starts: []int{}
@@ -1439,6 +1449,10 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 	mut out := strings.new_builder(1024)
 	mut function_keys := functions.keys()
 	function_keys.sort()
+	mut function_method_names := []string{cap: function_keys.len}
+	for function_key in function_keys {
+		function_method_names << function_key.all_after_last('.')
+	}
 	mut interface_method_keys := interface_methods.keys()
 	interface_method_keys.sort()
 	for interface_key, kind in declared_kinds {
@@ -1468,11 +1482,15 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			c_name := fastc_method_c_name(interface_signature.module_name, interface_type, method_name)
 			out.writeln('${interface_signature.return_type} ${c_name}(${parameters.join(', ')}) {')
 			out.writeln('\tswitch (value._typ) {')
-			for candidate_key in function_keys {
-				if selfhost && method_name !in used_function_names {
-					continue
-				}
-				if candidate_key == interface_method_key || candidate_key.all_after_last('.') != method_name {
+			candidate_count := if selfhost && method_name !in used_function_names {
+				0
+			} else {
+				function_keys.len
+			}
+			for candidate_index in 0 .. candidate_count {
+				candidate_key := function_keys[candidate_index]
+				if candidate_key == interface_method_key
+					|| function_method_names[candidate_index] != method_name {
 					continue
 				}
 				receiver_key := candidate_key.all_before_last('.')
