@@ -588,13 +588,48 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.pos
 			continue
 		}
-		if g.tok in [.key_mut, .key_shared] {
+		shared_classification := g.classify_shared_token(previous_token)
+		shared_is_struct_field := shared_classification.is_identifier && g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && previous_token in [
+			.lcbr,
+			.comma,
+			.semicolon,
+		]
+		if g.tok == .key_shared && shared_classification.is_identifier && !shared_is_struct_field {
+			expression_tokens << FastcExpressionToken{
+				tok: .name
+				lit: g.lit
+				unsafe_depth: g.unsafe_depth
+				is_mut_argument: next_token_is_mut_argument
+			}
+			next_token_is_mut_argument = false
+			source_token_count++
+			mut piece := if previous_token == .dot {
+				g.lit
+			} else {
+				g.reference_local_value_piece(g.lit, g.lit, previous_token, expression_tokens, stops)
+			}
+			if mono := g.queue_expression_monomorphization(expression_tokens) {
+				piece = mono
+				expression_tokens[expression_tokens.len - 1].lit = mono
+			}
+			result.write_string(piece)
+			previous_token = .name
+			previous_lit = g.lit
+			previous_module_separator = false
+			previous_token_end = g.s.pos
+			g.next()
+			if shared_classification.ends_expression && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && unsafe_expression_depth == 0 {
+				break
+			}
+			continue
+		}
+		if g.tok in [.key_mut, .key_shared] && !shared_is_struct_field {
 			g.next()
 			if g.tok in [.amp, .and] {
 				next_token_is_mut_argument = true
 				continue
 			}
-			if g.tok == .name && g.local_is_pointer(g.lit) {
+			if (g.tok == .name || g.shared_token_is_identifier(previous_token)) && g.local_is_pointer(g.lit) {
 				mut next_offset := g.s.offset
 				for next_offset < g.s.src.len && g.s.src[next_offset].is_space() {
 					next_offset++
@@ -1284,7 +1319,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		// A word that is also a keyword (`conn.select(...)`, `x.lock`) is a member
 		// name, not a keyword, once it follows `.`; store it as a plain name so the
 		// method-call and inference paths recognize it like any other member.
-		stored_tok := if previous_token == .dot && g.tok.is_keyword() {
+		stored_tok := if (previous_token == .dot && g.tok.is_keyword()) || shared_is_struct_field {
 			token.Token.name
 		} else {
 			g.tok
@@ -1303,14 +1338,8 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			''
 		}
 		mut piece := g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!
-		if g.selfhost && !g.in_generic_placeholder && g.tok == .name && g.generic_method_sources.len > 0 {
-			if mono := g.queue_explicit_mono_method(expression_tokens) {
-				piece = mono
-				expression_tokens[expression_tokens.len - 1].lit = mono
-			} else if mono := g.queue_explicit_mono_function(expression_tokens) {
-				piece = mono
-				expression_tokens[expression_tokens.len - 1].lit = mono
-			} else if mono := g.queue_implicit_mono_function(expression_tokens) {
+		if g.tok == .name {
+			if mono := g.queue_expression_monomorphization(expression_tokens) {
 				piece = mono
 				expression_tokens[expression_tokens.len - 1].lit = mono
 			}
@@ -1318,30 +1347,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		if g.tok == .name && previous_token != .dot {
 			// A name after `.` is a field or method: never substitute a local
 			// (a mut parameter's deref form) that happens to share its name.
-			if local := g.locals[g.lit] {
-				mut lookahead := g.s
-				next_token := lookahead.scan()
-				is_single_value := expression_tokens.len == 1 && (next_token in stops || next_token == .eof)
-				// An explicit deref of a reference local (`*b` where `b` is a `mut` receiver,
-				// C type `T*`): the leading `*` already dereferences, so auto-deref would
-				// double it (`*(*(b))`). Skip the auto-deref so `*b` renders as `*(b)`. Only a
-				// PREFIX `*` counts — a binary `a * b` still needs `b`'s value.
-				is_deref_prefix := previous_token == .mul && expression_tokens.len > 0 && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 1)
-				cast_type := if previous_token == .lpar && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 3].tok == .name {
-					fastc_primitive_c_type(expression_tokens[expression_tokens.len - 3].lit) or {
-						''
-					}
-				} else {
-					''
-				}
-				is_pointer_cast_operand := cast_type != '' && fastc_is_pointer_type(cast_type)
-				if local.is_reference && !expression_tokens.last().is_mut_argument && next_token !in [
-					.dot,
-					.lsbr,
-				] && !is_single_value && !is_deref_prefix && !is_pointer_cast_operand {
-					piece = '(*(${piece}))'
-				}
-			}
+			piece = g.reference_local_value_piece(g.lit, piece, previous_token, expression_tokens, stops)
 		}
 		if module_separator && piece == '.' {
 			piece = '__'
@@ -1354,40 +1360,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		if g.tok == .name && previous_token == .dot {
 			mut method_lookahead := g.s
 			if method_lookahead.scan() == .lpar {
-				piece = g.lit
-				// On-demand generic-method monomorphization: `recv.m(arg)` where `m` is a
-				// generic method (own type param, left un-monomorphized because its body
-				// recurses through a comptime `$for`). Infer the first arg's type, queue the
-				// concrete instance, and emit its mangled name so the call resolves to it.
-				if g.selfhost && !g.in_generic_placeholder && g.generic_method_sources.len > 0 && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 2].tok == .dot {
-					dot_index := expression_tokens.len - 2
-					recv_start := fastc_method_receiver_start(expression_tokens, dot_index)
-					receiver_type := g.infer_expression_type(expression_tokens[recv_start..dot_index]) or {
-						''
-					}
-					recv_base := fastc_normalize_inferred_type(receiver_type).trim_right('*')
-					source_key := '${recv_base}.${g.lit}'
-					if recv_base != '' && source_key in g.generic_method_sources {
-						source := g.generic_method_sources[source_key] or {
-							FastcGenericMethodSource{}
-						}
-						base_key := '${g.semantic_type_key(recv_base)}.${g.lit}'
-						base := g.functions[base_key] or { FastcFunctionSignature{} }
-						parameter_index := source.type_param_parameter_index
-						signature_index := parameter_index + 1
-						argument_type := g.mono_argument_type_at(mut method_lookahead, parameter_index)
-						concrete := if parameter_index >= 0 && signature_index < base.parameter_types.len {
-							fastc_infer_generic_type_from_parameter(base.parameter_types[signature_index], argument_type)
-						} else {
-							''
-						}
-						if concrete != '' {
-							mono := g.queue_mono_method(recv_base, g.lit, concrete)
-							piece = mono
-							expression_tokens[expression_tokens.len - 1].lit = mono
-						}
-					}
-				}
+				piece = expression_tokens.last().lit
 			}
 		}
 		if g.tok == .name && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 2].tok == .dot && expression_tokens[expression_tokens.len - 3].tok == .name && expression_tokens[expression_tokens.len - 3].lit == 'C' {
@@ -1585,7 +1558,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			pending_field_value_mark = true
 		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && g.tok == .semicolon {
 			piece = ','
-		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && g.tok == .name && previous_token in [
+		} else if g.selfhost && struct_depths.len > 0 && brace_depth == struct_depths.last() && paren_depth == struct_paren_depths.last() && (g.tok == .name || shared_is_struct_field) && previous_token in [
 			.lcbr,
 			.comma,
 			.semicolon,
@@ -1746,6 +1719,149 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		return '((bool)(${rendered_expression}))'
 	}
 	return rendered_expression
+}
+
+fn (g &Parser) reference_local_value_piece(name string, piece string, previous_token token.Token, expression_tokens []FastcExpressionToken, stops []token.Token) string {
+	local := g.locals[name] or { return piece }
+	mut lookahead := g.s
+	next_token := lookahead.scan()
+	is_single_value := expression_tokens.len == 1 && (next_token in stops || next_token == .eof)
+	// An explicit deref of a reference local (`*b` where `b` is a `mut` receiver,
+	// C type `T*`): the leading `*` already dereferences, so auto-deref would
+	// double it (`*(*(b))`). Skip the auto-deref so `*b` renders as `*(b)`. Only a
+	// PREFIX `*` counts — a binary `a * b` still needs `b`'s value.
+	is_deref_prefix := previous_token == .mul && expression_tokens.len > 0 && fastc_token_is_prefix_operator(expression_tokens, expression_tokens.len - 1)
+	cast_type := if previous_token == .lpar && expression_tokens.len >= 3 && expression_tokens[expression_tokens.len - 3].tok == .name {
+		fastc_primitive_c_type(expression_tokens[expression_tokens.len - 3].lit) or { '' }
+	} else {
+		''
+	}
+	is_pointer_cast_operand := cast_type != '' && fastc_is_pointer_type(cast_type)
+	if local.is_reference && !expression_tokens.last().is_mut_argument && next_token !in [
+		.dot,
+		.lsbr,
+	] && !is_single_value && !is_deref_prefix && !is_pointer_cast_operand {
+		return '(*(${piece}))'
+	}
+	return piece
+}
+
+fn fastc_shared_modifier_operand_start(tok token.Token) bool {
+	if tok in [.key_or, .key_in, .key_as, .key_is] {
+		return false
+	}
+	return tok == .name || (tok.is_keyword() && tok != .key_volatile) || tok in [.amp, .and,
+		.question, .not, .lpar, .lsbr]
+}
+
+fn fastc_shared_modifier_may_cross_line(previous token.Token, next token.Token) bool {
+	return previous in [.lpar, .lsbr, .comma, .colon] && fastc_shared_modifier_operand_start(next)
+}
+
+fn fastc_token_continues_expression_after_operand(tok token.Token) bool {
+	return tok.is_infix() || tok.is_postfix() || tok.is_assignment() || tok in [
+		.key_or,
+		.key_as,
+		.question,
+		.not,
+		.dot,
+		.lpar,
+		.lsbr,
+	]
+}
+
+struct FastcSharedTokenClassification {
+	is_identifier   bool
+	ends_expression bool
+}
+
+fn (g &Parser) shared_token_is_identifier(previous token.Token) bool {
+	return g.classify_shared_token(previous).is_identifier
+}
+
+fn (g &Parser) classify_shared_token(previous token.Token) FastcSharedTokenClassification {
+	if g.tok != .key_shared {
+		return FastcSharedTokenClassification{}
+	}
+	if previous == .dot {
+		return FastcSharedTokenClassification{
+			is_identifier: true
+		}
+	}
+	mut lookahead := g.s
+	next := lookahead.scan()
+	start := g.s.offset
+	mut offset := start
+	mut crossed_line := false
+	// Whitespace and comments separate a modifier from its operand. A line
+	// comment can still continue inside an open argument or collection context.
+	for {
+		for offset < g.s.src.len && g.s.src[offset].is_space() {
+			if g.s.src[offset] in [`\r`, `\n`] {
+				crossed_line = true
+			}
+			offset++
+		}
+		if offset + 1 >= g.s.src.len || g.s.src[offset] != `/` {
+			break
+		}
+		if g.s.src[offset + 1] == `/` {
+			offset += 2
+			for offset < g.s.src.len && g.s.src[offset] !in [`\r`, `\n`] {
+				offset++
+			}
+			crossed_line = true
+			continue
+		}
+		if g.s.src[offset + 1] != `*` {
+			break
+		}
+		offset += 2
+		mut depth := 1
+		for offset + 1 < g.s.src.len && depth > 0 {
+			if g.s.src[offset] == `/` && g.s.src[offset + 1] == `*` && (offset + 2 >= g.s.src.len || g.s.src[offset + 2] != `/`) {
+				depth++
+				offset += 2
+				continue
+			}
+			if g.s.src[offset] == `*` && g.s.src[offset + 1] == `/` {
+				depth--
+				offset += 2
+				continue
+			}
+			offset++
+		}
+		if depth > 0 {
+			return FastcSharedTokenClassification{
+				is_identifier: true
+			}
+		}
+	}
+	if offset >= g.s.src.len {
+		return FastcSharedTokenClassification{
+			is_identifier: true
+		}
+	}
+	if crossed_line && !fastc_shared_modifier_may_cross_line(previous, next) {
+		return FastcSharedTokenClassification{
+			is_identifier: true
+			ends_expression: !fastc_token_continues_expression_after_operand(next)
+		}
+	}
+	if next in [.key_or, .key_in, .key_as, .key_is] {
+		return FastcSharedTokenClassification{
+			is_identifier: true
+		}
+	}
+	if g.s.src[offset] == `(` {
+		return FastcSharedTokenClassification{
+			is_identifier: offset == start
+		}
+	}
+	return FastcSharedTokenClassification{
+		is_identifier: g.s.src[offset] in [`.`, `[`, `{`, `)`, `]`, `}`, `,`, `;`, `:`, `?`, `+`,
+			`-`, `*`, `/`, `%`, `=`, `!`, `<`, `>`, `&`, `|`, `^`]
+	}
 }
 
 fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source string) string {
