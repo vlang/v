@@ -970,6 +970,72 @@ fn test_external_map_expansion_estimate_includes_unary_wrapper_reconstruction() 
 	assert estimate > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_includes_conditional_reconstruction() {
+	mut a := flat.FlatAst.new()
+	mut conditional := a.add_node(flat.Node{
+		kind:  .int_literal
+		value: '0'
+		typ:   'int'
+	})
+	level_count := deferred_map_expansion_threshold / 8 + 1
+	for i in 0 .. level_count {
+		guard := a.add_node(flat.Node{
+			kind:  .bool_literal
+			value: 'false'
+			typ:   'bool'
+		})
+		then_value := a.add_node(flat.Node{
+			kind:  .int_literal
+			value: i.str()
+			typ:   'int'
+		})
+		then_start := a.children.len
+		a.children << then_value
+		then_block := a.add_node(flat.Node{
+			kind:           .block
+			children_start: then_start
+			children_count: 1
+		})
+		else_start := a.children.len
+		a.children << conditional
+		else_block := a.add_node(flat.Node{
+			kind:           .block
+			children_start: else_start
+			children_count: 1
+		})
+		if_start := a.children.len
+		a.children << guard
+		a.children << then_block
+		a.children << else_block
+		conditional = a.add_node(flat.Node{
+			kind:           .if_expr
+			typ:            'int'
+			children_start: if_start
+			children_count: 3
+		})
+	}
+	key := a.add_node(flat.Node{
+		kind:  .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << conditional
+	root := a.add_node(flat.Node{
+		kind:           .map_init
+		typ:            'map[string]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	base := t.map_init_expansion_estimate(root, a.nodes[int(root)])
+	estimate := t.external_map_tree_expansion_estimate(root, 0, 0)
+	assert estimate == base + level_count * 8
+	assert estimate > deferred_map_expansion_threshold
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{
