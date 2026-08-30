@@ -109,6 +109,16 @@ mut:
 
 type ObservedSharedEntry = ObservedSharedLeft | ObservedSharedRight
 
+interface ObservedPayloadTarget {
+mut:
+	payload ObservedPayload
+}
+
+struct ObservedInterfaceTarget {
+mut:
+	payload ObservedPayload
+}
+
 type Entry = Payload | int
 
 struct EntryHolder {
@@ -870,6 +880,34 @@ fn test_sum_shared_field_assignment_clones_borrowed_rhs() {
 	assert holder.left.values[0] == "source"
 }
 
+fn test_interface_field_assignment_clones_borrowed_rhs() {
+	mut clones := 0
+	holder := &ObservedPair{
+		left: ObservedPayload{
+			values: ["source"]
+			clones: &clones
+		}
+		right: ObservedPayload{
+			values: ["other"]
+			clones: &clones
+		}
+	}
+	mut target := ObservedPayloadTarget(ObservedInterfaceTarget{
+		payload: ObservedPayload{
+			values: ["old"]
+			clones: &clones
+		}
+	})
+	clones_before_assignment := clones
+	target.payload = holder.left
+	assert clones == clones_before_assignment + 1
+	if mut target is ObservedInterfaceTarget {
+		target.payload.values[0] = "assigned"
+		assert target.payload.values[0] == "assigned"
+	}
+	assert holder.left.values[0] == "source"
+}
+
 fn test_borrowed_sum_projection_is_cloned() {
 	holder := &EntryHolder{
 		entry: Payload{
@@ -1160,6 +1198,7 @@ fn main() {
 	test_borrowed_or_success_is_cloned()
 	test_optional_selector_assignment_clones_borrowed_rhs()
 	test_sum_shared_field_assignment_clones_borrowed_rhs()
+	test_interface_field_assignment_clones_borrowed_rhs()
 	test_borrowed_sum_projection_is_cloned()
 	test_owned_rvalue_sum_projection_is_moved()
 	test_owned_rvalue_slice_projection_is_consumed()

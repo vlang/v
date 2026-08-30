@@ -12076,7 +12076,8 @@ fn (mut t Transformer) try_lower_interface_field_assign(node flat.Node) ?[]flat.
 		base_ptr = t.make_ident(tmp_name)
 	}
 	mut rhs := if node.op == .assign {
-		t.transform_expr_for_type(rhs_id, field_type)
+		value := t.transform_expr_for_type(rhs_id, field_type)
+		t.clone_borrowed_assignment_value(rhs_id, value, field_type)
 	} else {
 		t.transform_expr(rhs_id)
 	}
