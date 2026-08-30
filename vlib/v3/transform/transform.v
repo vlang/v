@@ -3371,18 +3371,20 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				if sc_profile {
 					scsw.restart()
 				}
-				str_est := if t.building_v && t.parallel_enabled {
+				mut str_est := 0
+				mut str_needs_deferred_lowering := false
+				if t.building_v && t.parallel_enabled {
 					// The compiler's interpolated types are all bounded primitives and
 					// metadata names; none can trigger aggregate auto-str expansion.
-					0
+					str_est = 0
 				} else {
-					t.fn_span_interp_estimate(range_lo, i)
+					str_est, str_needs_deferred_lowering = t.fn_span_interp_estimate(range_lo, i)
 				}
 				map_est := t.fn_span_map_expansion_estimate(range_lo, i)
 				if sc_profile {
 					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
 				}
-				if str_est > deferred_str_expansion_threshold || map_est > deferred_map_expansion_threshold {
+				if str_needs_deferred_lowering || map_est > deferred_map_expansion_threshold {
 					t.deferred_expansion_items << FnWorkItem{
 						fn_idx:             i
 						range_lo:           range_lo

@@ -17,15 +17,6 @@ const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 // expansion is combinatorial in this depth: v1's ast graph is unbounded past ~5.
 const max_stringify_nesting_depth = 3
 
-// deferred_str_expansion_threshold is the estimated inline-autostr node count
-// above which a function is lowered serially (against the growable master arena)
-// instead of inside a bounded parallel worker region. It is 0: any function that
-// inline-expands an auto-str struct/sum is deferred, because that expansion is a
-// poor fit for a cost-proportional region and hard to size precisely. Functions
-// with only scalar / custom-str() interps estimate to 0 and stay parallel — this
-// is every function during v3 self-host, whose parallel path is thus unchanged.
-const deferred_str_expansion_threshold = 0
-
 // unresolved_interp_expansion_estimate is charged for an interpolation part whose
 // value type cannot be resolved at collection time, forcing the function onto the
 // serial deferred path in case the transform expands it inline.
@@ -5901,18 +5892,17 @@ fn (mut t Transformer) stringify_expansion_estimate_at(typ string, depth_left in
 	return total
 }
 
-// fn_span_interp_estimate sums the inline autostr expansion estimate over every
-// string-interpolation part in a function's parsed subtree [lo, hi). It is 0
-// unless the function interpolates an auto-str struct/sum, in which case the
-// return value approximates how many nodes the lowering will emit for those
-// interps — used to size the function's parallel append region (or defer it).
+// fn_span_interp_estimate sums the expansion reserve over every string
+// interpolation in a function's parsed subtree [lo, hi), and separately reports
+// whether unresolved or inline auto-str work requires serial deferred lowering.
 // A part whose value type cannot be resolved at collection time is treated as
 // heavy: the transform can still resolve it to an aggregate (e.g. through a
 // smartcast or a method return) and inline-expand it, which must not land in a
-// bounded worker region. Scalar / str-method interps resolve cleanly to 0, so
-// v3 self-host — whose interps are all scalars — defers nothing.
-fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) int {
+// bounded worker region. Scalar / str-method interpolations reserve their bounded
+// joins and temporary declarations while remaining eligible for parallel lowering.
+fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) (int, bool) {
 	mut est := 0
+	mut needs_deferred_lowering := false
 	for idx in lo .. hi {
 		if idx < 0 || idx >= t.a.nodes.len {
 			continue
@@ -5921,16 +5911,24 @@ fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) int {
 		if node.kind != .string_interp {
 			continue
 		}
-		est += t.string_interp_expansion_estimate(node)
+		interp_est, interp_needs_deferred_lowering := t.string_interp_expansion_estimates(node)
+		est += interp_est
+		needs_deferred_lowering = needs_deferred_lowering || interp_needs_deferred_lowering
 	}
-	return est
+	return est, needs_deferred_lowering
 }
 
 fn (mut t Transformer) string_interp_expansion_estimate(node flat.Node) int {
+	estimate, _ := t.string_interp_expansion_estimates(node)
+	return estimate
+}
+
+fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, bool) {
 	// transform_string_interp joins every part after the first with string__plus.
 	// Each join appends the function identifier and call nodes.
 	mut estimate := if node.children_count > 1 { 2 * (int(node.children_count) - 1) } else { 0 }
 	mut may_hoist := false
+	mut needs_deferred_lowering := false
 	for ci in 0 .. int(node.children_count) {
 		part_id := t.a.child(&node, ci)
 		mut expr_id := part_id
@@ -5946,10 +5944,13 @@ fn (mut t Transformer) string_interp_expansion_estimate(node flat.Node) int {
 			continue
 		}
 		typ := t.reliable_stringify_type(expr_id)
-		if typ.len == 0 {
+		if typ.len == 0 || typ == 'unknown' {
 			estimate += unresolved_interp_expansion_estimate
+			needs_deferred_lowering = true
 		} else {
-			estimate += t.stringify_expansion_estimate(typ)
+			stringify_estimate := t.stringify_expansion_estimate(typ)
+			estimate += stringify_estimate
+			needs_deferred_lowering = needs_deferred_lowering || stringify_estimate > 0
 		}
 	}
 	if may_hoist {
@@ -5957,7 +5958,7 @@ fn (mut t Transformer) string_interp_expansion_estimate(node flat.Node) int {
 		// every part to a temp so evaluation order remains stable.
 		estimate += int(node.children_count) * string_interp_hoisted_part_expansion_estimate
 	}
-	return estimate
+	return estimate, needs_deferred_lowering
 }
 
 fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {

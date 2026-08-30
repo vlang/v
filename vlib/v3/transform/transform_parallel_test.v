@@ -620,11 +620,34 @@ fn test_string_interp_expansion_estimate_includes_possible_temp_hoisting() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
-	estimate := t.string_interp_expansion_estimate(a.nodes[int(interp)])
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
 	join_estimate := 2 * (part_count - 1)
 	assert join_estimate < deferred_map_expansion_threshold
 	assert estimate == join_estimate + part_count * string_interp_hoisted_part_expansion_estimate
 	assert estimate > deferred_map_expansion_threshold
+	assert !needs_deferred_lowering
+}
+
+fn test_string_interp_expansion_estimate_defers_unresolved_values() {
+	mut a := flat.FlatAst.new()
+	unresolved := a.add_node(flat.Node{
+		kind: .ident
+		value: 'unknown_value'
+	})
+	interp_start := a.children.len
+	a.children << unresolved
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert estimate == unresolved_interp_expansion_estimate
+	assert needs_deferred_lowering
 }
 
 fn test_external_map_expansion_estimate_includes_string_concatenation() {
