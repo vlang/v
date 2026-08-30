@@ -164,6 +164,17 @@ struct DropObservedOptionalCopy {
 	value ?DropObservedPayload
 }
 
+struct DefaultClonePayload {
+	mut:
+	values []DropObservedPayload
+}
+
+type DefaultCloneEntry = DefaultClonePayload | int
+
+struct DefaultCloneArrayHolder {
+	items []DefaultClonePayload
+}
+
 // A `to_owned` method retains its receiver while the by-value parameter consumes the map slot.
 fn (entries PayloadMap) to_owned(value Payload) {
 	_ = entries
@@ -742,6 +753,34 @@ fn test_borrowed_sum_projection_is_cloned() {
 	assert (holder.entry as Payload).values[0] == "original"
 }
 
+fn test_nonaddressable_borrowed_projections_are_stable() {
+	mut sum_drops := 0
+	entry := DefaultCloneEntry(DefaultClonePayload{
+		values: [DropObservedPayload{
+			values: ["sum original"]
+			drops:  &sum_drops
+		}]
+	})
+	mut copied_entry := entry as DefaultClonePayload
+	assert sum_drops == 0
+	copied_entry.values[0].values[0] = "sum copy"
+	assert (entry as DefaultClonePayload).values[0].values[0] == "sum original"
+
+	mut slice_drops := 0
+	holder := &DefaultCloneArrayHolder{
+		items: [DefaultClonePayload{
+			values: [DropObservedPayload{
+				values: ["slice original"]
+				drops:  &slice_drops
+			}]
+		}]
+	}
+	mut copied_items := holder.items[..]
+	assert slice_drops == 0
+	copied_items[0].values[0].values[0] = "slice copy"
+	assert holder.items[0].values[0].values[0] == "slice original"
+}
+
 fn test_copied_index_alias_is_cloned() {
 	mut entries := {
 		"item": Entry(Payload{
@@ -923,6 +962,7 @@ fn main() {
 	test_multi_conditional_borrowed_branches_are_cloned(holder, true)
 	test_borrowed_or_fallback_is_cloned(holder)
 	test_borrowed_sum_projection_is_cloned()
+	test_nonaddressable_borrowed_projections_are_stable()
 	test_copied_index_alias_is_cloned()
 	test_long_index_alias_chain_is_cloned()
 	test_shadowed_index_alias_is_restored()
@@ -936,7 +976,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 59, out.output
+		assert out.output.split_into_lines().filter(it == 'clone').len == 59, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')

@@ -104,6 +104,22 @@ fn test_default_clone_helper_drops_owned_rvalue_after_saving_clone() {
 	assert a.child_node(drop_call, 0).value == 'drop_owned'
 }
 
+fn test_borrowed_clone_stabilizes_nonaddressable_sources() {
+	for typ in ['Payload', '[]Payload'] {
+		mut a := flat.FlatAst.new()
+		mut t := Transformer{
+			a: &a
+		}
+		source := t.make_call_typed('borrowed_projection', []flat.NodeId{}, typ)
+		t.make_compiler_default_borrowed_clone_value(source, typ, true)
+
+		assert t.pending_stmts.len > 0
+		source_decl := a.node(t.pending_stmts[0])
+		assert source_decl.kind == .decl_assign
+		assert a.child(source_decl, 1) == source
+	}
+}
+
 fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
