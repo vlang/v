@@ -752,6 +752,24 @@ fn test_header_owned_scan_expands_nested_invoked_function_typedef_macros() {
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
 }
 
+fn test_header_owned_scan_expands_variadic_typedef_macros() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define DECLARE(name, ...) typedef struct Impl name;\n#define DECLARE_ARGS(...) typedef struct Impl __VA_ARGS__;\n#define DECLARE_NAMED(tag, aliases...) typedef struct tag aliases;\nDECLARE(FirstAlias, ignored)\nDECLARE_ARGS(SecondAlias)\nDECLARE_NAMED(Impl, ThirdAlias)\n', state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.typedef_macro_expansions) == [
+		'FirstAlias',
+		'SecondAlias',
+		'ThirdAlias',
+	], scan.typedef_macro_expansions
+}
+
 fn test_header_owned_scan_retains_typedef_alias_common_to_all_possible_arms() {
 	state := CHeaderMacroState{
 		defined: map[string]bool{}
@@ -767,6 +785,50 @@ fn test_header_owned_scan_retains_typedef_alias_common_to_all_possible_arms() {
 	assert c_header_owned_typedef_aliases(scan.typedef_macro_expansions) == [
 		'CommonAlias',
 	], scan.typedef_macro_expansions
+}
+
+fn test_header_owned_scan_retains_alias_from_conditional_child_headers() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_conditional_header_aliases_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'first.h'), 'typedef struct First CommonAlias;\n')!
+	os.write_file(os.join_path(dir, 'second.h'), 'typedef struct Second CommonAlias;\n')!
+	os.write_file(os.join_path(dir, 'parent.h'), '#if EXTERNAL_LAYOUT\n#include "first.h"\n#else\n#include "second.h"\n#endif\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.CommonAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.ensure_header_owned_macro_context()
+	g.header_owned_macro_context.state.external_macros_possible = true
+	g.collect_header_owned_c_typedefs('"parent.h"', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['CommonAlias']
+}
+
+fn test_header_owned_scan_collects_forced_include_typedefs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_forced_header_aliases_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'types.h'), 'typedef struct ForcedType ForcedAlias;\n')!
+	os.write_file(os.join_path(dir, 'macros.h'), 'typedef struct MacrosOnly MacrosOnlyAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.ForcedAlias'] = true
+	tc.c_typedef_structs['C.MacrosOnlyAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-I', dir, '-include', 'types.h', '-imacros', 'macros.h']
+	g.rebuild_header_owned_c_typedefs()
+	assert g.header_owned_c_typedefs['ForcedAlias']
+	assert !g.header_owned_c_typedefs['MacrosOnlyAlias']
 }
 
 fn test_large_transitive_header_tree_is_preserved() {

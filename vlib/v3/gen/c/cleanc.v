@@ -2043,6 +2043,27 @@ fn c_forced_include_inputs(flags []string) []string {
 	return inputs
 }
 
+fn c_forced_include_typedef_inputs(flags []string) []string {
+	mut inputs := []string{}
+	mut expect_input := false
+	for flag in flags {
+		token := flag.trim_space()
+		if expect_input {
+			inputs << token.trim('"\'')
+			expect_input = false
+			continue
+		}
+		if token == '-include' {
+			expect_input = true
+			continue
+		}
+		if token.starts_with('-include=') && token.len > '-include='.len {
+			inputs << token['-include='.len..].trim('"\'')
+		}
+	}
+	return inputs
+}
+
 // tokenize_c_flag splits a C flag on unquoted whitespace while preserving quotes.
 pub fn tokenize_c_flag(value string) []string {
 	return util.tokenize_c_flag(value)
@@ -4866,7 +4887,8 @@ fn (mut g FlatGen) record_header_owned_include(module_name string, include_arg s
 fn (mut g FlatGen) rebuild_header_owned_c_typedefs() {
 	g.header_owned_c_typedefs.clear()
 	g.header_owned_pragma_once_seen.clear()
-	include_macros, dynamic_include_macros := c_flag_include_macro_definitions(g.c_flags,
+	effective_flags := g.header_owned_effective_c_flags()
+	include_macros, dynamic_include_macros := c_flag_include_macro_definitions(effective_flags,
 		map[string]string{})
 	g.header_owned_macro_context = CHeaderOwnedMacroContext{
 		initialized:            true
@@ -4875,6 +4897,10 @@ fn (mut g FlatGen) rebuild_header_owned_c_typedefs() {
 		dynamic_include_macros: dynamic_include_macros
 		literal_include_macros: map[string][]string{}
 		conditionals:           []CHeaderOwnedConditional{}
+	}
+	include_dirs := c_flag_include_dirs(effective_flags)
+	for forced_input in c_forced_include_typedef_inputs(effective_flags) {
+		g.collect_header_owned_c_typedefs_with_include_dirs('"${forced_input}"', '', include_dirs)
 	}
 	for event in g.preinclude_header_owned {
 		g.collect_header_owned_c_typedefs(event.include_arg, event.source_file)
@@ -4960,7 +4986,11 @@ fn (g &FlatGen) visit_header_owned_directive_module(mod string, directives_by_mo
 }
 
 fn (mut g FlatGen) collect_header_owned_c_typedefs(include_arg string, source_file string) {
-	if source_file.len == 0 || c_include_arg_is_source_file(include_arg) {
+	g.collect_header_owned_c_typedefs_with_include_dirs(include_arg, source_file, c_flag_include_dirs(g.c_flags))
+}
+
+fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg string, source_file string, include_dirs []string) {
+	if c_include_arg_is_source_file(include_arg) {
 		return
 	}
 	g.ensure_header_owned_macro_context()
@@ -4972,7 +5002,6 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs(include_arg string, source_fi
 			g.header_owned_macro_context.state)
 		return
 	}
-	include_dirs := c_flag_include_dirs(g.c_flags)
 	mut seen := map[string]bool{}
 	mut found := false
 	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
@@ -4998,8 +5027,7 @@ fn (mut g FlatGen) ensure_header_owned_macro_context() {
 	if g.header_owned_macro_context.initialized {
 		return
 	}
-	include_macros, dynamic_include_macros := c_flag_include_macro_definitions(g.c_flags,
-		map[string]string{})
+	include_macros, dynamic_include_macros := c_flag_include_macro_definitions(g.header_owned_effective_c_flags(), map[string]string{})
 	g.header_owned_macro_context = CHeaderOwnedMacroContext{
 		initialized:            true
 		state:                  g.header_owned_initial_macro_state()
@@ -5011,8 +5039,7 @@ fn (mut g FlatGen) ensure_header_owned_macro_context() {
 }
 
 fn (g &FlatGen) header_owned_initial_macro_state() CHeaderMacroState {
-	mut effective_flags := g.macro_probe_c_flags.clone()
-	effective_flags << g.c_flags
+	effective_flags := g.header_owned_effective_c_flags()
 	mut state := c_header_macro_state_for_flags(effective_flags)
 	compiler_values := c_header_compiler_predefined_macro_values(g.ccompiler, effective_flags, g.c99_mode, g.target)
 	for name, value in compiler_values {
@@ -5044,6 +5071,12 @@ fn (g &FlatGen) header_owned_initial_macro_state() CHeaderMacroState {
 		state.defined[name] = true
 	}
 	return state
+}
+
+fn (g &FlatGen) header_owned_effective_c_flags() []string {
+	mut effective_flags := g.macro_probe_c_flags.clone()
+	effective_flags << g.c_flags
+	return effective_flags
 }
 
 fn c_header_compiler_predefined_macro_values(ccompiler string, c_flags []string, c99_mode bool, target pref.Target) map[string]string {
@@ -5472,6 +5505,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			g.compiler_vroot, real_path)
 		mut found := false
 		mut result_state := CHeaderMacroState{}
+		mut result_typedef_aliases := []string{}
 		if include_is_definitely_active {
 			for nested_include_arg in include_args {
 				for nested_path in c_include_file_paths(nested_include_arg, g.compiler_vroot,
@@ -5489,6 +5523,36 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 					break
 				}
 			}
+		} else {
+			for nested_include_arg in include_args {
+				for nested_path in c_include_file_paths(nested_include_arg, g.compiler_vroot,
+					real_path, include_dirs) {
+					if !os.is_file(nested_path) {
+						continue
+					}
+					mut owned_before := g.header_owned_c_typedefs.clone()
+					mut pragma_once_before := g.header_owned_pragma_once_seen.clone()
+					mut possible_include_macros := include_macros.clone()
+					mut possible_dynamic_include_macros := dynamic_include_macros.clone()
+					mut possible_literal_include_macros := literal_include_macros.clone()
+					_ = g.collect_header_owned_c_typedef_file(nested_path, include_dirs,
+						include_state, mut seen, mut possible_include_macros, mut
+						possible_dynamic_include_macros, mut possible_literal_include_macros)
+					for alias, _ in g.header_owned_c_typedefs {
+						if alias !in owned_before {
+							result_typedef_aliases << alias
+						}
+					}
+					g.header_owned_c_typedefs = owned_before.move()
+					g.header_owned_pragma_once_seen = pragma_once_before.move()
+					found = true
+					break
+				}
+				if found {
+					break
+				}
+			}
+			result_state = c_header_macro_state_after_unknown_include(include_state)
 		}
 		if !found {
 			if include_is_definitely_active {
@@ -5501,6 +5565,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		include_results[include_key] = CHeaderIncludeResult{
 			input_signature: c_header_macro_state_signature(include_state)
 			output_state:    result_state
+			typedef_aliases: result_typedef_aliases
 		}
 	}
 	fallback_scan := c_header_definitely_active_scan(text, state, strict_iso_mode, g.target)
@@ -5986,6 +6051,7 @@ struct CHeaderActiveScan {
 struct CHeaderIncludeResult {
 	input_signature string
 	output_state    CHeaderMacroState
+	typedef_aliases []string
 }
 
 fn c_header_macro_state_clone(state CHeaderMacroState) CHeaderMacroState {
@@ -6360,6 +6426,14 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			include_definitely_active << definitely_active
 			if include_key in include_results
 				&& include_results[include_key].input_signature == c_header_macro_state_signature(include_state) {
+				if conditionals.len > 0 {
+					conditional_idx := conditionals.len - 1
+					mut conditional := conditionals[conditional_idx]
+					for alias in include_results[include_key].typedef_aliases {
+						conditional.current_branch_typedef_aliases[alias] = true
+					}
+					conditionals[conditional_idx] = conditional
+				}
 				if definitely_active {
 					result_state := include_results[include_key].output_state
 					defined = result_state.defined.clone()
@@ -6481,11 +6555,13 @@ fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool
 			return none
 		}
 		definition := function_macro_values[macro_name] or { return none }
-		params, body, valid_definition := c_header_function_macro_definition(definition)
-		if !valid_definition || params.len != args.len {
+		params, body, variadic, valid_definition := c_header_function_macro_definition(definition)
+		if !valid_definition {
 			return none
 		}
-		substituted := c_header_substitute_function_macro(body, params, args, defined, undefined, uncertain, macro_values)
+		bound_args := c_header_function_macro_bound_args(params, args, variadic) or { return none }
+		substituted := c_header_substitute_function_macro(body, params, bound_args, defined,
+			undefined, uncertain, macro_values)
 		replacement = c_header_apply_token_pasting(substituted) or { return none }
 		seen[macro_name] = true
 	}
@@ -6507,12 +6583,15 @@ fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool
 			break
 		}
 		nested_definition := function_macro_values[nested_name] or { break }
-		nested_params, nested_body, valid_nested_definition := c_header_function_macro_definition(nested_definition)
-		if !valid_nested_definition || nested_params.len != nested_args.len {
+		nested_params, nested_body, nested_variadic, valid_nested_definition := c_header_function_macro_definition(nested_definition)
+		if !valid_nested_definition {
 			break
 		}
+		nested_bound_args := c_header_function_macro_bound_args(nested_params, nested_args,
+			nested_variadic) or { break }
 		seen[nested_name] = true
-		nested_substituted := c_header_substitute_function_macro(nested_body, nested_params, nested_args, defined, undefined, uncertain, macro_values)
+		nested_substituted := c_header_substitute_function_macro(nested_body, nested_params,
+			nested_bound_args, defined, undefined, uncertain, macro_values)
 		replacement = c_header_apply_token_pasting(nested_substituted) or { break }
 	}
 	clean_replacement := replacement.trim_space()
@@ -6543,19 +6622,54 @@ fn c_header_function_macro_invocation(invocation string) (string, []string, bool
 	return name, args, valid
 }
 
-fn c_header_function_macro_definition(definition string) ([]string, string, bool) {
+fn c_header_function_macro_definition(definition string) ([]string, string, bool, bool) {
 	if definition.len == 0 || definition[0] != `(` {
-		return []string{}, '', false
+		return []string{}, '', false, false
 	}
 	close_idx := fixed_array_len_matching_paren(definition, 0)
 	if close_idx < 0 {
-		return []string{}, '', false
+		return []string{}, '', false, false
 	}
-	params, valid := c_header_function_macro_arguments(definition[1..close_idx])
-	if !valid || params.any(c_header_struct_tag(it) != it) {
-		return []string{}, '', false
+	raw_params, valid := c_header_function_macro_arguments(definition[1..close_idx])
+	if !valid {
+		return []string{}, '', false, false
 	}
-	return params, definition[close_idx + 1..].trim_space(), true
+	mut params := []string{cap: raw_params.len}
+	mut variadic := false
+	for i, raw_param in raw_params {
+		if raw_param == '...' && i == raw_params.len - 1 {
+			params << '__VA_ARGS__'
+			variadic = true
+			continue
+		}
+		if raw_param.ends_with('...') && i == raw_params.len - 1 {
+			name := raw_param[..raw_param.len - 3].trim_space()
+			if c_header_struct_tag(name) != name {
+				return []string{}, '', false, false
+			}
+			params << name
+			variadic = true
+			continue
+		}
+		if c_header_struct_tag(raw_param) != raw_param {
+			return []string{}, '', false, false
+		}
+		params << raw_param
+	}
+	return params, definition[close_idx + 1..].trim_space(), variadic, true
+}
+
+fn c_header_function_macro_bound_args(params []string, args []string, variadic bool) ?[]string {
+	if !variadic {
+		return if params.len == args.len { args.clone() } else { none }
+	}
+	fixed_count := params.len - 1
+	if args.len < fixed_count {
+		return none
+	}
+	mut bound := args[..fixed_count].clone()
+	bound << args[fixed_count..].join(', ')
+	return bound
 }
 
 fn c_header_function_macro_arguments(raw string) ([]string, bool) {
