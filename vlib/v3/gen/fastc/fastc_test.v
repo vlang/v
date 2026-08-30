@@ -7321,6 +7321,27 @@ fn main() {
 	assert c_source.contains('Conn_select(c,5)'), c_source
 }
 
+fn test_selfhost_spaced_shared_selector_call() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn (worker Worker) shared(value int) int {
+	_ = worker
+	return value
+}
+
+fn main() {
+	worker := Worker{}
+	_ = worker.shared (1)
+}
+', 'selfhost_spaced_shared_selector_call.v', prefs) or { panic(err) }
+	assert c_source.contains('Worker_shared(worker,1)'), c_source
+	assert !c_source.contains('worker.&'), c_source
+}
+
 fn test_selfhost_match_multi_array_branch_smartcasts_to_array() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

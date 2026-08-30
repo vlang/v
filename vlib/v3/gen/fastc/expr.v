@@ -1803,6 +1803,11 @@ fn (g &Parser) classify_shared_token(previous token.Token) FastcSharedTokenClass
 	if g.tok != .key_shared {
 		return FastcSharedTokenClassification{}
 	}
+	if previous == .dot {
+		return FastcSharedTokenClassification{
+			is_identifier: true
+		}
+	}
 	mut lookahead := g.s
 	next := lookahead.scan()
 	start := g.s.offset
