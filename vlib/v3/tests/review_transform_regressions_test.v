@@ -6747,6 +6747,53 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_keeps_source_passed_to_unresolved_pointer_call() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := '@[has_globals]
+module main
+
+struct Item {
+	text string
+}
+
+__global retained &Item
+
+fn save(value &Item) {
+	retained = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn map_with(callback fn (&Item)) []int {
+	return make_items().map(match true {
+		true {
+			callback(unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+}
+
+fn main() {
+	selected := map_with(save)
+	println(selected[0])
+	println(retained.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_indirect_call_sink_c', '-ownership', source)
+	map_body := c_fn_body(c_source, 'Array main__map_with(')
+	compact_map := map_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_map.contains('array__free(&(__map_source_'), map_body
+	out := run_good_with_flags(v3_bin, 'array_map_indirect_call_sink', '-ownership', source)
+	assert out == '0\nsource'
+}
+
 fn test_array_map_applies_deferred_writes_with_exit_pointer_origins() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
@@ -7733,6 +7780,15 @@ fn main() {
 	assert !compact_deferred_exit_alias_main.contains('array__free(&(__map_source_'), deferred_exit_alias_main
 	deferred_exit_alias_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_deferred_exit_alias', '-ownership', deferred_exit_alias_source)
 	assert deferred_exit_alias_out == 'source'
+
+	late_defer_source := source.replace('box.value = value\n\tbox.value = replacement', 'box.value = value\n\tif value.text.len > 0 {\n\t\treturn\n\t}\n\tdefer {\n\t\tbox.value = replacement\n\t}')
+	assert late_defer_source != source
+	late_defer_c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_mutator_storage_late_defer_c', '-ownership', late_defer_source)
+	late_defer_main := c_fn_body(late_defer_c_source, 'int main(int argc, char** argv) {')
+	compact_late_defer_main := late_defer_main.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_late_defer_main.contains('array__free(&(__map_source_'), late_defer_main
+	late_defer_out := run_good_with_flags(v3_bin, 'array_map_mutator_storage_late_defer', '-ownership', late_defer_source)
+	assert late_defer_out == 'source'
 
 	select_source := source.replace('box.value = value\n\tbox.value = replacement',
 		'signal := chan bool{cap: 1}\n\tsignal <- true\n\tselect {\n\t\t<-signal {\n\t\t\tbox.value = value\n\t\t}\n\t\telse {\n\t\t\tbox.value = replacement\n\t\t}\n\t}')

@@ -3386,6 +3386,19 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 			}
 		}
 	}
+	mut call_is_unresolved := true
+	if _ := t.tc.resolved_call_name(id) {
+		call_is_unresolved = false
+	}
+	if call_is_unresolved {
+		// A function value has no visible body or attributes at this call site. Any
+		// pointer-bearing argument may therefore escape even when it is not `mut`.
+		for i in 1 .. node.children_count {
+			if t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i), elem_name, block, before_idx) {
+				return true
+			}
+		}
+	}
 	mut target_param_idxs := []int{}
 	mut target_ids := []flat.NodeId{}
 	if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 && t.tc.mut_receiver_methods[call_name] {
