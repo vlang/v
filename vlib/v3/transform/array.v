@@ -7,6 +7,7 @@ struct ArrayMapLoopPointerExit {
 	origins     map[string]bool
 	label       string
 	defer_count int
+	is_continue bool
 }
 
 struct ArrayMapReturnPointerExit {
@@ -3112,6 +3113,18 @@ fn array_map_merge_local_pointer_origins(mut target map[string]bool, source map[
 	}
 }
 
+fn array_map_local_pointer_origins_equal(left map[string]bool, right map[string]bool) bool {
+	if left.len != right.len {
+		return false
+	}
+	for path, external in left {
+		if path !in right || right[path] != external {
+			return false
+		}
+	}
+	return true
+}
+
 fn array_map_call_result_relative_source_suffix(target_suffix string, source_target_suffix string) ?string {
 	if source_target_suffix.len == 0 {
 		return target_suffix
@@ -3274,6 +3287,36 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt_id flat.NodeI
 	t.array_map_update_local_pointer_origins_flow(stmt_id, elem_name, mut locals, mut loop_exits, mut return_exits, '', 0)
 }
 
+fn (mut t Transformer) array_map_loop_pointer_origin_fixed_point(stmt flat.Node, elem_name string, initial map[string]bool, active_defer_count int) map[string]bool {
+	mut loop_origins := initial.clone()
+	for {
+		mut next_origins := loop_origins.clone()
+		mut pass_origins := loop_origins.clone()
+		mut pass_exits := []ArrayMapLoopPointerExit{}
+		mut pass_returns := []ArrayMapReturnPointerExit{}
+		mut continues := true
+		for i in 0 .. stmt.children_count {
+			if !continues {
+				break
+			}
+			continues = t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut pass_origins, mut pass_exits, mut pass_returns, '', active_defer_count)
+		}
+		if continues {
+			array_map_merge_local_pointer_origins(mut next_origins, pass_origins, loop_origins)
+		}
+		for exit in pass_exits {
+			if exit.is_continue {
+				array_map_merge_local_pointer_origins(mut next_origins, exit.origins, loop_origins)
+			}
+		}
+		if array_map_local_pointer_origins_equal(loop_origins, next_origins) {
+			return loop_origins
+		}
+		loop_origins = next_origins.move()
+	}
+	return loop_origins
+}
+
 fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.NodeId, elem_name string, mut locals map[string]bool, mut loop_exits []ArrayMapLoopPointerExit, mut return_exits []ArrayMapReturnPointerExit, loop_label string, active_defer_count int) bool {
 	if int(stmt_id) < 0 || int(stmt_id) >= t.a.nodes.len {
 		return true
@@ -3284,6 +3327,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 			origins:     locals.clone()
 			label:       stmt.value
 			defer_count: active_defer_count
+			is_continue: stmt.kind == .continue_stmt
 		}
 		return false
 	}
@@ -3422,7 +3466,7 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 	}
 	if stmt.kind in [.for_stmt, .for_in_stmt] {
 		before := locals.clone()
-		mut loop_origins := before.clone()
+		mut loop_origins := t.array_map_loop_pointer_origin_fixed_point(stmt, elem_name, before, active_defer_count)
 		mut exits := []ArrayMapLoopPointerExit{}
 		mut continues := true
 		for i in 0 .. stmt.children_count {
@@ -3630,7 +3674,11 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 		return false
 	}
 	if node.kind in [.block, .match_branch, .select_branch, .for_stmt, .for_in_stmt] {
-		mut scoped := locals.clone()
+		mut scoped := if node.kind in [.for_stmt, .for_in_stmt] {
+			t.array_map_loop_pointer_origin_fixed_point(node, elem_name, locals, 0)
+		} else {
+			locals.clone()
+		}
 		mut deferred := []flat.NodeId{}
 		mut loop_exits := []ArrayMapLoopPointerExit{}
 		mut return_exits := []ArrayMapReturnPointerExit{}

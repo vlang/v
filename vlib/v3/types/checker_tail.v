@@ -8993,6 +8993,23 @@ fn storage_param_sources_merge(mut target map[string][]int, source map[string][]
 	}
 }
 
+fn storage_param_sources_equal(left map[string][]int, right map[string][]int) bool {
+	if left.len != right.len {
+		return false
+	}
+	for name, params in left {
+		if name !in right || params.len != right[name].len {
+			return false
+		}
+		for param_idx in params {
+			if param_idx !in right[name] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 fn storage_param_writes_merge(mut target map[string][]int, source map[string][]int) {
 	for path, params in source {
 		mut merged := target[path].clone()
@@ -9353,11 +9370,24 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 		before := storage_param_sources_clone(aliases)
 		mut loop_aliases := storage_param_sources_clone(aliases)
 		mut loop_writes := storage_param_sources_clone(writes)
-		mut nested_loop_exit_writes := map[string][]int{}
-		for i in 0 .. node.children_count {
-			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut loop_aliases, mut visiting, mut loop_writes, mut exited_writes, mut nested_loop_exit_writes, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+		for {
+			mut pass_aliases := storage_param_sources_clone(loop_aliases)
+			mut pass_writes := storage_param_sources_clone(writes)
+			mut nested_loop_exit_writes := map[string][]int{}
+			for i in 0 .. node.children_count {
+				tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut pass_aliases, mut visiting, mut pass_writes, mut exited_writes, mut nested_loop_exit_writes, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			}
+			storage_param_writes_merge(mut pass_writes, nested_loop_exit_writes)
+			mut next_aliases := storage_param_sources_clone(loop_aliases)
+			storage_param_sources_merge(mut next_aliases, pass_aliases)
+			mut next_writes := storage_param_sources_clone(loop_writes)
+			storage_param_writes_merge(mut next_writes, pass_writes)
+			if storage_param_sources_equal(loop_aliases, next_aliases) && storage_param_sources_equal(loop_writes, next_writes) {
+				break
+			}
+			loop_aliases = next_aliases.move()
+			loop_writes = next_writes.move()
 		}
-		storage_param_writes_merge(mut loop_writes, nested_loop_exit_writes)
 		storage_param_sources_merge(mut aliases, before)
 		storage_param_sources_merge(mut aliases, loop_aliases)
 		storage_param_writes_merge(mut writes, loop_writes)
@@ -9367,19 +9397,18 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 		for i := 0; i + 1 < int(node.children_count); i += 2 {
 			lhs_id := tc.a.child(&node, i)
 			rhs_id := tc.a.child(&node, i + 1)
-			tc.collect_param_storage_sources(rhs_id, target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exit_writes, mut exited_aliases, active_defer_count, mut exited_defer_counts)
-			if target_path := tc.storage_lvalue_path_from_param(lhs_id, target_name, aliases,
-				target_param_idx)
-			{
-				mut assigned_sources := []int{}
-				tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut
-					assigned_sources)
-				if target_path.len == 0 {
-					writes.clear()
-				}
-				writes[target_path] = assigned_sources
-			}
 			lhs := tc.a.nodes[int(lhs_id)]
+			tc.collect_param_storage_sources(rhs_id, target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exit_writes, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			if lhs.kind != .ident || lhs.value == target_name {
+				if target_path := tc.storage_lvalue_path_from_param(lhs_id, target_name, aliases, target_param_idx) {
+					mut assigned_sources := []int{}
+					tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut assigned_sources)
+					if target_path.len == 0 {
+						writes.clear()
+					}
+					writes[target_path] = assigned_sources
+				}
+			}
 			if lhs.kind == .ident && lhs.value != target_name {
 				mut alias_sources := []int{}
 				tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut alias_sources)
