@@ -3432,6 +3432,17 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address(id fla
 	return t.array_map_expr_side_effect_retains_element_address_in_scope(id, elem_name, locals, flat.Node{}, -1)
 }
 
+fn (mut t Transformer) array_map_deferred_side_effect_retains_element_address(deferred []flat.NodeId, elem_name string, mut locals map[string]bool) bool {
+	for i := deferred.len - 1; i >= 0; i-- {
+		body_id := deferred[i]
+		if t.array_map_expr_side_effect_retains_element_address_in_scope(body_id, elem_name, locals, flat.Node{}, -1) {
+			return true
+		}
+		t.array_map_update_local_pointer_origins(t.a.nodes[int(body_id)], elem_name, mut locals)
+	}
+	return false
+}
+
 fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_scope(id flat.NodeId, elem_name string, locals map[string]bool, block flat.Node, before_idx int) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
@@ -3442,15 +3453,20 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 	}
 	if node.kind in [.block, .match_branch, .select_branch] {
 		mut scoped := locals.clone()
+		mut deferred := []flat.NodeId{}
 		for i in 0 .. node.children_count {
 			stmt_id := t.a.child(&node, i)
+			stmt := t.a.nodes[int(stmt_id)]
+			if stmt.kind == .defer_stmt && stmt.children_count > 0 {
+				deferred << t.a.child(&stmt, 0)
+				continue
+			}
 			if t.array_map_expr_side_effect_retains_element_address_in_scope(stmt_id, elem_name, scoped, node, int(i)) {
 				return true
 			}
-			stmt := t.a.nodes[int(stmt_id)]
 			t.array_map_update_local_pointer_origins(stmt, elem_name, mut scoped)
 		}
-		return false
+		return t.array_map_deferred_side_effect_retains_element_address(deferred, elem_name, mut scoped)
 	}
 	if node.kind == .comptime_if {
 		if take_then := t.comptime_type_condition_value(node.value) {
