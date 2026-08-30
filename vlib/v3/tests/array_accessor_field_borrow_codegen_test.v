@@ -218,3 +218,26 @@ fn test_owned_field_comparison_borrows() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true', run.output
 }
+
+// A non-owning pointer selected from the borrowed element can still outlive the array, so it
+// must not use the in-place borrow path.
+fn test_owned_pointer_field_escape_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_pointer_field_escape', "struct E {\n\tname string\n}\n\nfn last_name_ptr() &u8 {\n\tarr := [E{ name: 'hello' }]\n\treturn arr.last().name.str\n}\n\nfn main() {\n\tprintln(unsafe { cstring_to_vstring(last_name_ptr()) })\n}\n", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
+// Indexing a borrowed owned field immediately yields a scalar, so no array-owned storage
+// escapes and a clone-less element can stay borrowed in place.
+fn test_owned_field_scalar_index_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_field_scalar_index', "struct E {\n\tname string\n}\n\nfn last_initial() u8 {\n\tarr := [E{ name: 'hello' }]\n\treturn arr.last().name[0]\n}\n\nfn main() {\n\tprintln(int_str(last_initial()))\n}\n", '')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('cannot return an independent array element'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_field_scalar_index_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '104', run.output
+}

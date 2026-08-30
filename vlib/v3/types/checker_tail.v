@@ -6027,10 +6027,11 @@ fn (tc &TypeChecker) known_sum_constructor_name(name string) ?string {
 // array_accessor_result_is_borrowed reports whether a `first()`/`last()` call result is
 // consumed as a borrow — read through a chain of field selectors whose final value either
 // does not own heap data (`arr.last().size`, `arr.last().name.len`) or is consumed by a
-// comparison (`arr.last().name == 'x'`) — rather than escaping as an independent value. Such
-// a read keeps the element owned by the array, so the accessor needs no `clone()` and the
-// transformer can lower it to an in-place `arr[..]` access. Two shapes are excluded so the
-// copying accessor semantics are kept instead:
+// comparison/index operation that produces a scalar (`arr.last().name == 'x'`,
+// `arr.last().name[0]`) — rather than escaping as an independent value. Such a read keeps the
+// element owned by the array, so the accessor needs no `clone()` and the transformer can lower
+// it to an in-place `arr[..]` access. Two shapes are excluded so the copying accessor semantics
+// are kept instead:
 //   * a bound method value (`arr.last().method`) — closure generation shallow-copies the
 //     receiver, so a borrowed element would share heap fields with the array;
 //   * a chain whose final value itself owns heap data (`arr.last().name`, where `name` is a
@@ -6062,22 +6063,31 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	if final_field == flat.empty_node {
 		return false
 	}
-	if !tc.ownership_type_requires_destruction(tc.resolve_type(final_field)) {
+	final_type := unalias_type(tc.resolve_type(final_field))
+	if !tc.ownership_type_requires_destruction(final_type) && final_type !is Pointer {
 		return true
 	}
-	// An owned field remains borrowed when a comparison consumes it immediately; only the
-	// boolean result escapes. Calls and assignments stay on the copying path because they can
-	// retain the owned value.
+	// An owned or pointer field remains borrowed when a comparison or scalar index consumes it
+	// immediately. Calls, assignments, and owned/pointer index results stay on the copying path
+	// because they can retain storage from the array element.
+	mut consumed_id := current
 	mut consumer_id := tc.direct_parent_id(current)
-	for consumer_id != flat.empty_node && int(consumer_id) >= 0
-		&& int(consumer_id) < tc.a.nodes.len && tc.a.node(consumer_id).kind == .paren {
+	for consumer_id != flat.empty_node && int(consumer_id) >= 0 && int(consumer_id) < tc.a.nodes.len && tc.a.node(consumer_id).kind == .paren {
+		consumed_id = consumer_id
 		consumer_id = tc.direct_parent_id(consumer_id)
 	}
 	if consumer_id == flat.empty_node || int(consumer_id) < 0 || int(consumer_id) >= tc.a.nodes.len {
 		return false
 	}
 	consumer := tc.a.node(consumer_id)
-	return consumer.kind == .infix && consumer.op in [.eq, .ne, .lt, .gt, .le, .ge]
+	if consumer.kind == .infix && consumer.op in [.eq, .ne, .lt, .gt, .le, .ge] {
+		return true
+	}
+	if consumer.kind != .index || consumer.children_count == 0 || tc.a.child(consumer, 0) != consumed_id {
+		return false
+	}
+	index_type := unalias_type(tc.resolve_type(consumer_id))
+	return !tc.ownership_type_requires_destruction(index_type) && index_type !is Pointer
 }
 
 // should_diagnose reports whether should diagnose applies in types.
