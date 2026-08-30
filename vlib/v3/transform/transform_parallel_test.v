@@ -486,6 +486,37 @@ fn test_external_map_expansion_estimate_includes_empty_fixed_array_runtime_init(
 	assert t.fixed_array_init_expansion_estimate(plain, a.nodes[int(plain)]) == 0
 }
 
+fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
+	mut a := flat.FlatAst.new()
+	length := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+		typ: 'int'
+	})
+	field_start := a.children.len
+	a.children << length
+	len_field := a.add_node(flat.Node{
+		kind: .field_init
+		value: 'len'
+		children_start: field_start
+		children_count: 1
+	})
+	array_start := a.children.len
+	a.children << len_field
+	root := a.add_node(flat.Node{
+		kind: .array_init
+		value: 'Wide'
+		typ: '[]Wide'
+		children_start: array_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Wide'] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_defers_nested_empty_fixed_array_runtime_init() {
 	mut a := flat.FlatAst.new()
 	root := a.add_node(flat.Node{

@@ -112,6 +112,48 @@ fn (t &Transformer) fixed_array_init_expansion_estimate(id flat.NodeId, node fla
 	return array_literal_base_expansion_estimate + len * array_literal_entry_expansion_estimate
 }
 
+fn (t &Transformer) dynamic_array_init_requires_deferral(id flat.NodeId, node flat.Node) bool {
+	if node.kind != .array_init {
+		return false
+	}
+	raw_type := if node.typ.len > 0 {
+		node.typ
+	} else if node.value.len > 0 {
+		node.value
+	} else {
+		t.node_type(id)
+	}
+	if t.is_fixed_array_type(t.resolved_fixed_array_canonical_type(t.normalize_type_alias(raw_type))) {
+		return false
+	}
+	mut has_len := false
+	for i in 0 .. node.children_count {
+		field := t.a.child_node(&node, i)
+		if field.kind != .field_init {
+			continue
+		}
+		if field.value == 'init' {
+			return false
+		}
+		if field.value == 'len' {
+			has_len = true
+		}
+	}
+	if !has_len {
+		return false
+	}
+	elem_value := t.array_init_elem_type_name(id, node)
+	clean_value := t.normalize_type_alias(elem_value)
+	elem_type := if node.typ.starts_with('[]') {
+		node.typ[2..]
+	} else if !elem_value.starts_with('[]') && clean_value.starts_with('[]') {
+		clean_value[2..]
+	} else {
+		elem_value
+	}
+	return t.fixed_array_empty_init_may_expand(elem_type)
+}
+
 fn (t &Transformer) fixed_array_empty_init_requires_deferral(elem_type string) bool {
 	clean_type := t.normalize_type_alias(elem_type)
 	if t.is_fixed_array_type(clean_type) {
@@ -186,6 +228,9 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 		}
 		if node.kind == .array_init {
 			estimate += t.fixed_array_init_expansion_estimate(id, node)
+			if t.dynamic_array_init_requires_deferral(id, node) {
+				estimate += deferred_map_expansion_threshold + 1
+			}
 		}
 		if node.kind == .string_interp {
 			interp_estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(node)
