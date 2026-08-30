@@ -7116,6 +7116,58 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_keeps_source_passed_to_external_c_call() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'retainer.c': 'static void* retained_item;
+
+static void retain_item(void* value) {
+	retained_item = value;
+}
+
+static void* get_retained_item(void) {
+	return retained_item;
+}
+'
+		'main.v':     '#insert "retainer.c"
+
+fn C.retain_item(voidptr)
+fn C.get_retained_item() voidptr
+
+struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			C.retain_item(unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	retained := unsafe { &Item(C.get_retained_item()) }
+	println(selected[0])
+	println(retained.text)
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_external_c_call_sink_c', '-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_external_c_call_sink', '-ownership', files, 'main.v')
+	assert out == '0\nsource'
+}
+
 fn test_array_map_applies_deferred_writes_with_exit_pointer_origins() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
