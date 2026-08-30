@@ -451,6 +451,12 @@ fn test_inlined_c_source_typedef_is_not_redeclared() {
 	int value;
 } V3InlinedSourceAlias;
 
+#if 0
+typedef struct V3InactiveSourceImpl {
+	int value;
+} V3InactiveSourceAlias;
+#endif
+
 int v3_inlined_source_value(V3InlinedSourceAlias value) {
 	return value.value;
 }
@@ -464,21 +470,72 @@ struct C.V3InlinedSourceAlias {
 	value int
 }
 
+@[typedef]
+struct C.V3InactiveSourceAlias {
+	value int
+}
+
 fn C.v3_inlined_source_value(C.V3InlinedSourceAlias) int
 
 fn main() {
 	item := C.V3InlinedSourceAlias{ value: 42 }
-	println(C.v3_inlined_source_value(item))
+	fallback := C.V3InactiveSourceAlias{ value: 1 }
+	println(C.v3_inlined_source_value(item) + fallback.value)
 }
 ')!
 	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(os.quoted_path(out))
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '42', run.output
+	assert run.output.trim_space() == '43', run.output
 	generated := os.read_file(out + '.c')!
 	assert !generated.contains('typedef struct V3InlinedSourceAlias V3InlinedSourceAlias;'), generated
 	assert !generated.contains('struct V3InlinedSourceAlias {'), generated
+	assert generated.contains('typedef struct V3InactiveSourceAlias V3InactiveSourceAlias;'), generated
+	assert generated.contains('struct V3InactiveSourceAlias {'), generated
+}
+
+fn test_inserted_c_source_typedef_is_not_redeclared() {
+	v3_bin := header_owned_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_inserted_c_typedef_${os.getpid()}_${rand.ulid()}')
+	os.mkdir_all(root) or { panic(err) }
+	out := os.join_path(root, 'out')
+	defer {
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.write_file(os.join_path(root, 'inserted.c'), 'typedef struct V3InsertedSourceImpl {
+	int value;
+} V3InsertedSourceAlias;
+
+int v3_inserted_source_value(V3InsertedSourceAlias value) {
+	return value.value;
+}
+')!
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+
+#insert "@DIR/inserted.c"
+
+@[typedef]
+struct C.V3InsertedSourceAlias {
+	value int
+}
+
+fn C.v3_inserted_source_value(C.V3InsertedSourceAlias) int
+
+fn main() {
+	item := C.V3InsertedSourceAlias{ value: 44 }
+	println(C.v3_inserted_source_value(item))
+}
+')!
+	compile := os.execute('${os.quoted_path(v3_bin)} -no-memory-limit ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(out)}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(os.quoted_path(out))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '44', run.output
+	generated := os.read_file(out + '.c')!
+	assert !generated.contains('typedef struct V3InsertedSourceAlias V3InsertedSourceAlias;'), generated
+	assert !generated.contains('struct V3InsertedSourceAlias {'), generated
 }
 
 fn test_header_owned_typedef_resolves_idirafter() {

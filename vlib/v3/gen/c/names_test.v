@@ -767,6 +767,30 @@ fn test_header_owned_scan_resolves_after_include_dirs_in_order() {
 	assert g.header_owned_c_typedefs['AfterOnlyAlias']
 }
 
+fn test_header_owned_scan_resolves_framework_include_dirs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_framework_include_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	headers_dir := os.join_path(dir, 'FrameworkRoot', 'Foo.framework', 'Headers')
+	os.mkdir_all(headers_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(headers_dir, 'Foo.h'), 'typedef struct FrameworkImpl FrameworkAlias;\n')!
+	framework_root := os.join_path(dir, 'FrameworkRoot')
+	assert c_flag_framework_include_dirs(['-F', framework_root, '-iframework=${framework_root}']) == [
+		framework_root,
+	]
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.FrameworkAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-F', framework_root]
+	g.collect_header_owned_c_typedefs('<Foo/Foo.h>', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['FrameworkAlias']
+}
+
 fn test_header_owned_compiler_state_preserves_version_values() {
 	values := c_header_compiler_predefined_macro_values_from_output('#define unrelated 9\n#define __GNUC__ 12\n#define __GNUC_MINOR__ 2\n#define __clang_major__ 18\n#define __x86_64__ 1\n#define __aarch64__ 1\n#define __STDC_VERSION__ 201710L\n#define __has_builtin(x) __builtin_has_attribute(x)\n')
 	assert values == {

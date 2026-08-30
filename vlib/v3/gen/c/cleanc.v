@@ -4816,6 +4816,9 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				g.c_flags << ['-x', 'objective-c', '-x', 'none']
 			}
 			g.collect_inlined_c_structs(header_text)
+			if node.value == 'insert' && c_include_arg_is_source_file(include_arg) {
+				g.collect_inlined_c_source_typedefs(header_text)
+			}
 			if g.cache_split {
 				g.collect_cache_native_c_symbols(header_text)
 			}
@@ -4908,6 +4911,7 @@ fn (mut g FlatGen) rebuild_header_owned_c_typedefs() {
 	}
 	include_dirs := c_flag_include_dirs(effective_flags)
 	quote_include_dirs := c_flag_quote_include_dirs(effective_flags)
+	framework_include_dirs := c_flag_framework_include_dirs(effective_flags)
 	for forced_input in c_forced_include_typedef_inputs(effective_flags) {
 		g.collect_header_owned_c_typedefs_with_include_dirs('"${forced_input}"', '', include_dirs)
 	}
@@ -4931,6 +4935,7 @@ fn (mut g FlatGen) rebuild_header_owned_c_typedefs() {
 				source_file: event.source_file
 				include_dirs: include_dirs
 				quote_include_dirs: quote_include_dirs
+				framework_include_dirs: framework_include_dirs
 			})
 			name := c_directive_name(event.directive)
 			if depth == 0 && name in ['define', 'undef'] {
@@ -5009,6 +5014,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg
 	}
 	g.ensure_header_owned_macro_context()
 	quote_include_dirs := c_flag_quote_include_dirs(g.header_owned_effective_c_flags())
+	framework_include_dirs := c_flag_framework_include_dirs(g.header_owned_effective_c_flags())
 	if g.header_owned_macro_context.conditionals.any(!it.current_possible) {
 		return
 	}
@@ -5020,7 +5026,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg
 		mut possible_literal_include_macros := g.header_owned_macro_context.literal_include_macros.clone()
 		mut seen := map[string]bool{}
 		mut found := false
-		for path in c_header_owned_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs, quote_include_dirs, false) {
+		for path in c_header_owned_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs, quote_include_dirs, framework_include_dirs, false) {
 			if !os.is_file(path) {
 				continue
 			}
@@ -5046,7 +5052,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg
 	}
 	mut seen := map[string]bool{}
 	mut found := false
-	for path in c_header_owned_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs, quote_include_dirs, false) {
+	for path in c_header_owned_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs, quote_include_dirs, framework_include_dirs, false) {
 		if !os.is_file(path) {
 			continue
 		}
@@ -5547,6 +5553,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 	text := os.read_file(real_path) or { return c_header_macro_state_clone(state) }
 	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
 	quote_include_dirs := c_flag_quote_include_dirs(g.header_owned_effective_c_flags())
+	framework_include_dirs := c_flag_framework_include_dirs(g.header_owned_effective_c_flags())
 	mut include_results := map[string]CHeaderIncludeResult{}
 	mut macro_line_index := 0
 	// Resolve includes from left to right so child macro effects determine later
@@ -5557,6 +5564,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			source_file: real_path
 			include_dirs: include_dirs
 			quote_include_dirs: quote_include_dirs
+			framework_include_dirs: framework_include_dirs
 		}
 		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
 			g.target, include_results, include_context)
@@ -5594,7 +5602,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		mut result_typedef_aliases := []string{}
 		if include_is_definitely_active {
 			for nested_include_arg in include_args {
-				paths := c_header_owned_include_file_paths(nested_include_arg, g.compiler_vroot, real_path, include_dirs, quote_include_dirs, include_is_next)
+				paths := c_header_owned_include_file_paths(nested_include_arg, g.compiler_vroot, real_path, include_dirs, quote_include_dirs, framework_include_dirs, include_is_next)
 				for nested_path in paths {
 					if !os.is_file(nested_path) {
 						continue
@@ -5611,7 +5619,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			}
 		} else {
 			for nested_include_arg in include_args {
-				paths := c_header_owned_include_file_paths(nested_include_arg, g.compiler_vroot, real_path, include_dirs, quote_include_dirs, include_is_next)
+				paths := c_header_owned_include_file_paths(nested_include_arg, g.compiler_vroot, real_path, include_dirs, quote_include_dirs, framework_include_dirs, include_is_next)
 				for nested_path in paths {
 					if !os.is_file(nested_path) {
 						continue
@@ -5660,6 +5668,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			source_file: real_path
 			include_dirs: include_dirs
 			quote_include_dirs: quote_include_dirs
+			framework_include_dirs: framework_include_dirs
 		})
 	if fallback_scan.has_pragma_once {
 		g.header_owned_pragma_once_seen[real_path] = true
@@ -6177,10 +6186,11 @@ struct CHeaderActiveScan {
 }
 
 struct CHeaderIncludeContext {
-	vroot              string
-	source_file        string
-	include_dirs       []string
-	quote_include_dirs []string
+	vroot                  string
+	source_file            string
+	include_dirs           []string
+	quote_include_dirs     []string
+	framework_include_dirs []string
 }
 
 struct CHeaderIncludeResult {
@@ -7568,6 +7578,30 @@ fn c_flag_quote_include_dirs(flags []string) []string {
 			expect_include_dir = true
 		} else if tok.starts_with('-iquote') && tok.len > '-iquote'.len {
 			dir = tok['-iquote'.len..].trim_left('=')
+		}
+		dir = dir.trim('"\'')
+		if dir.len > 0 && dir !in dirs {
+			dirs << dir
+		}
+	}
+	return dirs
+}
+
+fn c_flag_framework_include_dirs(flags []string) []string {
+	mut dirs := []string{}
+	mut expect_include_dir := false
+	for flag in flags {
+		tok := flag.trim_space()
+		mut dir := ''
+		if expect_include_dir {
+			dir = tok
+			expect_include_dir = false
+		} else if tok in ['-F', '-iframework'] {
+			expect_include_dir = true
+		} else if tok.starts_with('-F') && tok.len > 2 {
+			dir = tok[2..].trim_left('=')
+		} else if tok.starts_with('-iframework') && tok.len > '-iframework'.len {
+			dir = tok['-iframework'.len..].trim_left('=')
 		}
 		dir = dir.trim('"\'')
 		if dir.len > 0 && dir !in dirs {
@@ -9787,7 +9821,9 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 }
 
 fn (mut g FlatGen) collect_inlined_c_source_typedefs(text string) {
-	clean := c_header_owned_typedef_scan_text(text)
+	effective_flags := g.header_owned_effective_c_flags()
+	scan := c_header_definitely_active_scan(text, g.header_owned_initial_macro_state(), c_effective_strict_iso_mode(effective_flags, g.c99_mode), g.target)
+	clean := c_header_owned_typedef_scan_text(scan.text + '\n' + scan.typedef_macro_expansions)
 	for alias in c_typedef_all_aggregate_aliases(clean) {
 		if 'C.${alias}' in g.tc.c_typedef_structs {
 			g.inlined_c_source_typedefs[alias] = true
@@ -11306,18 +11342,68 @@ fn c_header_include_file_paths(include_arg string, vroot string, source_file str
 	return paths
 }
 
-fn c_header_owned_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string, quote_include_dirs []string, include_next bool) []string {
+fn c_header_owned_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string, quote_include_dirs []string, framework_include_dirs []string, include_next bool) []string {
 	clean := trimmed_space(include_arg)
+	mut paths := []string{}
 	if clean.len < 2 || clean[0] != `"` || clean[clean.len - 1] != `"` {
-		return c_header_include_file_paths(include_arg, vroot, source_file, include_dirs, include_next)
+		paths = c_header_include_file_paths(include_arg, vroot, source_file, include_dirs, include_next)
+	} else {
+		mut search_dirs := quote_include_dirs.clone()
+		for dir in include_dirs {
+			if dir !in search_dirs {
+				search_dirs << dir
+			}
+		}
+		paths = c_header_include_file_paths(include_arg, vroot, source_file, search_dirs, include_next)
 	}
-	mut search_dirs := quote_include_dirs.clone()
-	for dir in include_dirs {
-		if dir !in search_dirs {
-			search_dirs << dir
+	for path in c_framework_include_file_paths(include_arg, source_file, framework_include_dirs, include_next) {
+		if path !in paths {
+			paths << path
 		}
 	}
-	return c_header_include_file_paths(include_arg, vroot, source_file, search_dirs, include_next)
+	return paths
+}
+
+fn c_framework_include_file_paths(include_arg string, source_file string, framework_dirs []string, include_next bool) []string {
+	clean := trimmed_space(include_arg)
+	is_quoted := clean.len >= 2 && clean[0] == `"` && clean[clean.len - 1] == `"`
+	is_angled := clean.len >= 2 && clean[0] == `<` && clean[clean.len - 1] == `>`
+	if clean.len < 4 || (!is_quoted && !is_angled) {
+		return []string{}
+	}
+	inner := clean[1..clean.len - 1]
+	slash := inner.index_u8(`/`)
+	if slash <= 0 || slash + 1 >= inner.len {
+		return []string{}
+	}
+	framework := inner[..slash]
+	header := inner[slash + 1..]
+	source_path := if source_file.len > 0 { os.real_path(source_file) } else { '' }
+	mut start := 0
+	if include_next && source_path.len > 0 {
+		for i, dir in framework_dirs {
+			for headers_dir in ['Headers', 'PrivateHeaders'] {
+				candidate := os.real_path(os.join_path(dir, '${framework}.framework', headers_dir, header))
+				if candidate == source_path {
+					start = i + 1
+					break
+				}
+			}
+			if start > 0 {
+				break
+			}
+		}
+	}
+	mut paths := []string{}
+	for dir in framework_dirs[start..] {
+		for headers_dir in ['Headers', 'PrivateHeaders'] {
+			path := os.join_path(dir, '${framework}.framework', headers_dir, header)
+			if path !in paths {
+				paths << path
+			}
+		}
+	}
+	return paths
 }
 
 fn c_header_expand_condition_function_macros(raw string, state CHeaderMacroState) string {
@@ -11451,7 +11537,7 @@ fn c_header_condition_resolve_has_include(raw string, state CHeaderMacroState, i
 		is_next := predicate == '__has_include_next'
 		mut found := false
 		for include_arg in include_args {
-			for path in c_header_owned_include_file_paths(include_arg, include_context.vroot, include_context.source_file, include_context.include_dirs, include_context.quote_include_dirs, is_next) {
+			for path in c_header_owned_include_file_paths(include_arg, include_context.vroot, include_context.source_file, include_context.include_dirs, include_context.quote_include_dirs, include_context.framework_include_dirs, is_next) {
 				if os.is_file(path) {
 					found = true
 					break
