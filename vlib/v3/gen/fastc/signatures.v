@@ -433,7 +433,9 @@ fn fastc_scan_function_alias_signature(mut scan scanner.Scanner, path string, he
 			continue
 		}
 		mut parameter_is_mut := false
-		if tok == .key_mut || (tok == .key_shared && !fastc_shared_parameter_is_name(scan, path, header.module_name, header.imports, declared_types, prefs.building_v)) {
+		// Function aliases may omit parameter names, so `shared T` here is always
+		// the shared modifier followed by the type rather than a contextual name.
+		if tok in [.key_mut, .key_shared] {
 			parameter_is_mut = true
 			tok = scan.scan()
 		}

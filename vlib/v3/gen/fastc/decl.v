@@ -2168,7 +2168,7 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 			continue
 		}
 		mut parameter_is_mut := false
-		if tok == .key_mut {
+		if tok in [.key_mut, .key_shared] {
 			parameter_is_mut = true
 			tok = scan.scan()
 		}

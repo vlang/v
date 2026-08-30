@@ -6317,6 +6317,18 @@ fn main() {
 	assert c_source.contains('destroy(state);'), c_source
 }
 
+fn test_selfhost_function_alias_preserves_type_only_shared_parameter() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Callback = fn (shared int)
+
+fn main() {}
+', 'selfhost_function_alias_shared_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('typedef void (*Callback)(int*);'), c_source
+}
+
 fn test_selfhost_static_option_constructor_propagates_payload_type() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -7419,6 +7431,39 @@ fn main() { _ := kinds(Row{ id: 1, name: "a", ok: true }) }
 	assert c_source.contains('out=builtin__string_plus(out,_S("s"))'), c_source
 	assert c_source.contains('out=builtin__string_plus(out,_S("o"))'), c_source
 	assert c_source.contains('out=builtin__string_plus(out,_S("?"))'), c_source
+}
+
+fn test_comptime_for_contextual_shared_loop_variable() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Point {
+	x int
+	y int
+}
+
+fn describe(p Point) string {
+	mut out := ""
+	mut total := 0
+	\$for shared in Point.fields {
+		\$if shared.typ is int {
+			out += shared.name
+			total += p.\$(shared.name)
+		}
+	}
+	_ = total
+	return out
+}
+
+fn main() {
+	_ := describe(Point{ x: 1, y: 2 })
+}
+', 'comptime_for_contextual_shared.v', prefs) or { panic(err) }
+	assert c_source.contains('out=builtin__string_plus(out,_S("x"))'), c_source
+	assert c_source.contains('total+=p.x'), c_source
+	assert c_source.contains('out=builtin__string_plus(out,_S("y"))'), c_source
+	assert c_source.contains('total+=p.y'), c_source
 }
 
 fn test_selfhost_sum_type_field_default_is_boxed() {
