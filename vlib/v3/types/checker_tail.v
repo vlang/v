@@ -6103,7 +6103,7 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 			&& tc.array_accessor_enclosing_string_consumers_are_stable(consumer_id)
 	}
 	if consumer.kind == .string_interp && (consumer.children_count > 1 || formatted_interp) && final_type is String {
-		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_string_consumers_are_stable(consumer_id)
 	}
 	if consumer.kind != .index || consumer.children_count == 0 || tc.a.child(consumer, 0) != consumed_id {
 		return false

@@ -523,6 +523,31 @@ fn main() {
 ", '')
 	assert call.exit_code != 0, call.output
 	assert call.output.contains('cannot return an independent array element'), call.output
+
+	interpolation_call := compile_v3_ownership_program(v3_bin, 'owned_interpolation_call_argument_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn consume(value string, suffix string) string {
+	return value + suffix
+}
+
+fn last_name_then_delete(mut arr []E) string {
+	return consume('<\${arr.last().name}>', delete_last(mut arr))
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert interpolation_call.exit_code != 0, interpolation_call.output
+	assert interpolation_call.output.contains('cannot return an independent array element'), interpolation_call.output
 }
 
 fn test_owned_field_overloaded_index_is_rejected() {
