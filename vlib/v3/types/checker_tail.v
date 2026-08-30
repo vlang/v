@@ -8970,20 +8970,6 @@ fn (tc &TypeChecker) visible_mutation_fn_param(decl VisibleMutationFnDecl, param
 	return none
 }
 
-fn (tc &TypeChecker) storage_lvalue_is_rooted_at_param(id flat.NodeId, name string) bool {
-	if !tc.valid_node_id(id) || name.len == 0 {
-		return false
-	}
-	node := tc.a.nodes[int(id)]
-	if node.kind == .ident {
-		return node.value == name
-	}
-	if node.kind in [.selector, .index, .paren] && node.children_count > 0 {
-		return tc.storage_lvalue_is_rooted_at_param(tc.a.child(&node, 0), name)
-	}
-	return false
-}
-
 fn storage_param_sources_clone(source map[string][]int) map[string][]int {
 	mut cloned := map[string][]int{}
 	for name, params in source {
@@ -9019,29 +9005,34 @@ fn storage_param_writes_merge(mut target map[string][]int, source map[string][]i
 	}
 }
 
-fn (tc &TypeChecker) storage_lvalue_path_from_param(id flat.NodeId, name string) ?string {
+fn (tc &TypeChecker) storage_lvalue_path_from_param(id flat.NodeId, name string, aliases map[string][]int, target_param_idx int) ?string {
 	if !tc.valid_node_id(id) || name.len == 0 {
 		return none
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .ident {
-		return if node.value == name { '' } else { none }
+		return if node.value == name || target_param_idx in aliases[node.value] { '' } else { none }
 	}
 	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count > 0 {
-		return tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name)
+		return tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name, aliases, target_param_idx)
 	}
 	if node.kind == .selector && node.children_count > 0 {
-		base := tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name) or { return none }
+		base := tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name, aliases, target_param_idx) or { return none }
 		return '${base}.${node.value}'
 	}
 	if node.kind == .index && node.children_count > 1 {
-		base := tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name) or { return none }
+		base := tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name, aliases, target_param_idx) or { return none }
 		index := tc.a.child_node(&node, 1)
 		if index.kind in [.ident, .int_literal, .string_literal, .char_literal, .bool_literal] {
 			return '${base}[${index.kind}:${index.value}]'
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) storage_lvalue_is_rooted_at_param_alias(id flat.NodeId, name string, aliases map[string][]int, target_param_idx int) bool {
+	_ := tc.storage_lvalue_path_from_param(id, name, aliases, target_param_idx) or { return false }
+	return true
 }
 
 fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, aliases map[string][]int, target_param_idx int, mut sources []int) {
@@ -9051,7 +9042,7 @@ fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, aliases map[s
 	node := tc.a.nodes[int(id)]
 	if node.kind == .ident {
 		for param_idx in aliases[node.value] {
-			if param_idx != target_param_idx && param_idx !in sources {
+			if param_idx !in sources {
 				sources << param_idx
 			}
 		}
@@ -9061,7 +9052,7 @@ fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, aliases map[s
 	}
 }
 
-fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name string, target_type string, target_param_idx int, decl_mod string, mut aliases map[string][]int, mut visiting map[u64]bool, mut writes map[string][]int, mut sources []int) {
+fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name string, target_type string, target_param_idx int, decl_mod string, mut aliases map[string][]int, mut visiting map[u64]bool, mut writes map[string][]int, mut sources []int) {
 	if !tc.valid_node_id(id) {
 		return
 	}
@@ -9123,6 +9114,29 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 		writes = merged_writes.move()
 		return
 	}
+	if node.kind == .comptime_if {
+		if take_then := tc.comptime_type_condition_value(node.value) {
+			branch_idx := if take_then { 0 } else { 1 }
+			if branch_idx < node.children_count {
+				tc.collect_param_storage_sources(tc.a.child(&node, branch_idx), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut sources)
+			}
+			return
+		}
+		before := storage_param_sources_clone(aliases)
+		mut merged := storage_param_sources_clone(aliases)
+		before_writes := storage_param_sources_clone(writes)
+		mut merged_writes := storage_param_sources_clone(writes)
+		for i in 0 .. node.children_count {
+			mut branch_aliases := storage_param_sources_clone(before)
+			mut branch_writes := storage_param_sources_clone(before_writes)
+			tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut branch_aliases, mut visiting, mut branch_writes, mut sources)
+			storage_param_sources_merge(mut merged, branch_aliases)
+			storage_param_writes_merge(mut merged_writes, branch_writes)
+		}
+		aliases = merged.move()
+		writes = merged_writes.move()
+		return
+	}
 	if node.kind == .match_stmt {
 		if node.children_count > 0 {
 			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut sources)
@@ -9159,7 +9173,7 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 			lhs_id := tc.a.child(&node, i)
 			rhs_id := tc.a.child(&node, i + 1)
 			tc.collect_param_storage_sources(rhs_id, target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut sources)
-			if target_path := tc.storage_lvalue_path_from_param(lhs_id, target_name) {
+			if target_path := tc.storage_lvalue_path_from_param(lhs_id, target_name, aliases, target_param_idx) {
 				mut assigned_sources := []int{}
 				tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut assigned_sources)
 				if target_path.len == 0 {
@@ -9192,14 +9206,14 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 				param_offset := if is_method { 1 } else { 0 }
 				mut nested_target_idx := -1
 				callee := tc.a.child_node(&node, 0)
-				if is_method && receiver_is_mut && callee.kind == .selector && callee.children_count > 0 && tc.storage_lvalue_is_rooted_at_param(tc.a.child(callee, 0), target_name) {
+				if is_method && receiver_is_mut && callee.kind == .selector && callee.children_count > 0 && tc.storage_lvalue_is_rooted_at_param_alias(tc.a.child(callee, 0), target_name, aliases, target_param_idx) {
 					nested_target_idx = 0
 				}
 				if nested_target_idx < 0 {
 					for i in 1 .. node.children_count {
 						arg_id := tc.a.child(&node, i)
 						arg := tc.a.nodes[int(arg_id)]
-						if arg.is_mut && tc.storage_lvalue_is_rooted_at_param(arg_id, target_name) {
+						if arg.is_mut && tc.storage_lvalue_is_rooted_at_param_alias(arg_id, target_name, aliases, target_param_idx) {
 							nested_target_idx = i - 1 + param_offset
 							break
 						}
@@ -9231,7 +9245,7 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 	}
 }
 
-fn (tc &TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) []int {
+fn (mut tc TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) []int {
 	target_param := tc.visible_mutation_fn_param(decl, target_param_idx) or { return []int{} }
 	if !target_param.is_mut {
 		return []int{}
@@ -9257,9 +9271,7 @@ fn (tc &TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFn
 	}
 	mut aliases := map[string][]int{}
 	for i, name in param_names {
-		if i != target_param_idx {
-			aliases[name] = [i]
-		}
+		aliases[name] = [i]
 	}
 	visiting[cache_id] = true
 	mut sources := []int{}
@@ -9269,7 +9281,7 @@ fn (tc &TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFn
 	}
 	for _, params in writes {
 		for param_idx in params {
-			if param_idx !in sources {
+			if param_idx != target_param_idx && param_idx !in sources {
 				sources << param_idx
 			}
 		}
@@ -9281,7 +9293,7 @@ fn (tc &TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFn
 
 // call_param_storage_source_params returns parameters whose values a source function
 // may assign into the mutable target parameter or one of its descendants.
-pub fn (tc &TypeChecker) call_param_storage_source_params(id flat.NodeId, target_param_idx int) []int {
+pub fn (mut tc TypeChecker) call_param_storage_source_params(id flat.NodeId, target_param_idx int) []int {
 	if !tc.valid_node_id(id) || target_param_idx < 0 {
 		return []int{}
 	}
