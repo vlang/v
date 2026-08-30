@@ -35,66 +35,50 @@ fn test_carmichael_numbers() {
 fn test_strong_pseudoprimes() {
 	// Composites that survive Miller-Rabin against the first few prime bases.
 	// These are the values that make a fixed-base-only implementation wrong.
-	assert !parse('2047').is_probably_prime(20) // spsp base 2
-	
-
-	assert !parse('1373653').is_probably_prime(20) // spsp bases 2, 3
-	
-
-	assert !parse('25326001').is_probably_prime(20) // spsp bases 2, 3, 5
-	
-
-	assert !parse('3215031751').is_probably_prime(20) // spsp bases 2, 3, 5, 7
-	
-
-	assert !parse('2152302898747').is_probably_prime(20) // spsp first 5 primes
-	
-
-	assert !parse('3474749660383').is_probably_prime(20) // spsp first 6 primes
-	
-
-	assert !parse('341550071728321').is_probably_prime(20) // spsp first 7 primes
-	
-
-	assert !parse('3825123056546413051').is_probably_prime(20) // spsp first 9 primes
-	
-
-	assert !parse('318665857834031151167461').is_probably_prime(20) // spsp first 12 primes
-	
-
-	assert !parse('3317044064679887385961981').is_probably_prime(20) // spsp first 13 primes
-	
+	// spsp base 2
+	assert !parse('2047').is_probably_prime(20)
+	// spsp bases 2, 3
+	assert !parse('1373653').is_probably_prime(20)
+	// spsp bases 2, 3, 5
+	assert !parse('25326001').is_probably_prime(20)
+	// spsp bases 2, 3, 5, 7
+	assert !parse('3215031751').is_probably_prime(20)
+	// spsp first 5 primes
+	assert !parse('2152302898747').is_probably_prime(20)
+	// spsp first 6 primes
+	assert !parse('3474749660383').is_probably_prime(20)
+	// spsp first 7 primes
+	assert !parse('341550071728321').is_probably_prime(20)
+	// spsp first 9 primes
+	assert !parse('3825123056546413051').is_probably_prime(20)
+	// spsp first 12 primes
+	assert !parse('318665857834031151167461').is_probably_prime(20)
+	// spsp first 13 primes
+	assert !parse('3317044064679887385961981').is_probably_prime(20)
 }
 
 fn test_mersenne_primes() {
-	assert parse('2147483647').is_probably_prime(20) // 2^31 - 1
-	
-
-	assert parse('2305843009213693951').is_probably_prime(20) // 2^61 - 1
-	
-
-	assert parse('618970019642690137449562111').is_probably_prime(20) // 2^89 - 1
-	
-
-	assert parse('162259276829213363391578010288127').is_probably_prime(20) // 2^107 - 1
-	
-
-	assert parse('170141183460469231731687303715884105727').is_probably_prime(20) // 2^127 - 1
-	
+	// 2^31 - 1
+	assert parse('2147483647').is_probably_prime(20)
+	// 2^61 - 1
+	assert parse('2305843009213693951').is_probably_prime(20)
+	// 2^89 - 1
+	assert parse('618970019642690137449562111').is_probably_prime(20)
+	// 2^107 - 1
+	assert parse('162259276829213363391578010288127').is_probably_prime(20)
+	// 2^127 - 1
+	assert parse('170141183460469231731687303715884105727').is_probably_prime(20)
 }
 
 fn test_mersenne_composites() {
-	assert !parse('2047').is_probably_prime(20) // 2^11 - 1
-	
-
-	assert !parse('8388607').is_probably_prime(20) // 2^23 - 1
-	
-
-	assert !parse('536870911').is_probably_prime(20) // 2^29 - 1
-	
-
-	assert !parse('137438953471').is_probably_prime(20) // 2^37 - 1
-	
+	// 2^11 - 1
+	assert !parse('2047').is_probably_prime(20)
+	// 2^23 - 1
+	assert !parse('8388607').is_probably_prime(20)
+	// 2^29 - 1
+	assert !parse('536870911').is_probably_prime(20)
+	// 2^37 - 1
+	assert !parse('137438953471').is_probably_prime(20)
 }
 
 fn test_perfect_squares() {
@@ -139,8 +123,8 @@ fn test_jacobi() {
 	assert big.jacobi(big.integer_from_int(1001), big.integer_from_int(9907)) == -1
 	assert big.jacobi(big.integer_from_int(19), big.integer_from_int(45)) == 1
 	assert big.jacobi(big.integer_from_int(8), big.integer_from_int(21)) == -1
-	assert big.jacobi(big.integer_from_int(5), big.integer_from_int(21)) == 1
 	// Negative arguments are reduced modulo n first.
+	assert big.jacobi(big.integer_from_int(5), big.integer_from_int(21)) == 1
 	assert big.jacobi(big.integer_from_int(-1), big.integer_from_int(3)) == -1
 	assert big.jacobi(big.integer_from_int(-1), big.integer_from_int(5)) == 1
 }
