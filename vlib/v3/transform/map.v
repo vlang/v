@@ -204,6 +204,12 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// whose size depends on the dumped type. Defer instead of estimating it.
 			estimate += deferred_map_expansion_threshold + 1
 		}
+		if node.kind == .in_expr {
+			// Membership lowering can synthesize equality and OR trees whose size is
+			// not bounded by the source node's physical children. Defer external
+			// membership expressions instead of risking a shared-arena underestimate.
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if node.kind in [.is_expr, .as_expr] {
 			// Interface tests and conversions expand from implementation metadata, so
 			// their generated comparison/copy trees are not bounded by AST children.
