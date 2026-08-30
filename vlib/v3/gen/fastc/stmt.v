@@ -128,7 +128,7 @@ fn (mut g Parser) parse_statement() !bool {
 		}
 		.key_static {
 			g.next()
-			if g.tok != .name {
+			if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.key_static)) {
 				return g.unsupported('static local declaration')
 			}
 			name := g.lit

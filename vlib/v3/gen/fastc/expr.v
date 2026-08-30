@@ -594,7 +594,12 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				tok: .name
 				lit: g.lit
 			}
-			piece := g.reference_local_value_piece(g.lit, g.lit, previous_token, expression_tokens, stops)
+			source_token_count++
+			piece := if previous_token == .dot {
+				g.lit
+			} else {
+				g.reference_local_value_piece(g.lit, g.lit, previous_token, expression_tokens, stops)
+			}
 			result.write_string(piece)
 			previous_token = .name
 			previous_lit = g.lit

@@ -174,6 +174,20 @@ fn main() {
 	assert !c_source.contains('println(shared+1)'), c_source
 }
 
+fn test_selfhost_static_shared_local_is_contextual_identifier() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn main() {
+	static shared := 1
+	println(shared)
+}
+', 'selfhost_static_shared_local.v', prefs) or { panic(err) }
+	assert c_source.contains('__typeof__((1)) shared = (1);'), c_source
+	assert c_source.contains('println(shared)'), c_source
+}
+
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	sources := [
 		FastcSourceFile{
@@ -7352,10 +7366,15 @@ fn (worker Worker) shared(value int) int {
 fn main() {
 	worker := Worker{}
 	_ = worker.shared (1)
+	mut values := [1]
+	for mut shared in values {
+		_ = worker.shared(1)
+	}
 }
 ', 'selfhost_spaced_shared_selector_call.v', prefs) or { panic(err) }
-	assert c_source.contains('Worker_shared(worker,1)'), c_source
+	assert c_source.count('Worker_shared(worker,1)') == 2, c_source
 	assert !c_source.contains('worker.&'), c_source
+	assert !c_source.contains('worker.(*'), c_source
 }
 
 fn test_selfhost_match_multi_array_branch_smartcasts_to_array() {
@@ -8099,6 +8118,30 @@ fn main() {
 ', 'selfhost_multi_guard_shared_bindings.v', prefs) or { panic(err) }
 	assert c_source.contains('int shared ='), c_source
 	assert c_source.contains('int other ='), c_source
+}
+
+fn test_selfhost_if_single_option_guard_with_shared_binding() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn maybe_value() ?int {
+	return 1
+}
+
+fn read_value() int {
+	if shared := maybe_value() {
+		return shared
+	}
+	return 0
+}
+
+fn main() {
+	println(read_value())
+}
+', 'selfhost_single_guard_shared_binding.v', prefs) or { panic(err) }
+	assert c_source.contains('int shared ='), c_source
+	assert c_source.contains('return shared;'), c_source
 }
 
 fn test_selfhost_multi_return_interface_component_is_macro_safe() {
