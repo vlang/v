@@ -1366,6 +1366,25 @@ fn main() {
 	assert !c_source.contains('Tool_run(['), c_source
 }
 
+fn test_selfhost_static_method_named_shared() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn Worker.shared() int {
+	return 42
+}
+
+fn main() {
+	_ := Worker.shared()
+}
+', 'selfhost_static_method_shared.v', prefs) or { panic(err) }
+	assert c_source.contains('int Worker_shared(void)'), c_source
+	assert c_source.contains('Worker_shared()'), c_source
+}
+
 fn test_selfhost_static_method_named_options_argument_is_lowered() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

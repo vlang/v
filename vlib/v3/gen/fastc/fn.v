@@ -648,7 +648,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		receiver_key = type_key
 		is_static_method = true
 		g.next()
-		if g.tok != .name {
+		if g.tok != .name && !g.tok.is_keyword() {
 			return g.unsupported('static method declaration')
 		}
 		name = g.lit

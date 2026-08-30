@@ -209,7 +209,7 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 				receiver_type = fastc_c_declared_type_name(type_key)
 				receiver_key = type_key
 				tok = scan.scan()
-				if tok != .name {
+				if tok != .name && !tok.is_keyword() {
 					return error('fastc parser does not support static method declaration in ${path}')
 				}
 				name = scan.lit
