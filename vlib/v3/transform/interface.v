@@ -149,7 +149,7 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name string) string {
 		return raw_clean
 	}
 	mut clean := t.trim_pointer_type(t.normalize_type_alias(name))
-	base, _, is_generic := generic_app_parts(clean)
+	base, args, is_generic := generic_app_parts(clean)
 	if is_generic {
 		clean = base
 	}
@@ -160,27 +160,27 @@ fn (t &Transformer) resolve_interface_type_name_uncached(name string) string {
 		return 'IError'
 	}
 	if clean in t.tc.interface_names {
-		return clean
+		return if is_generic { '${clean}[${args.join(', ')}]' } else { clean }
 	}
 	if !clean.contains('.') && t.cur_file.len > 0 {
 		for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
 			[]string{}
 		} {
 			if candidate in t.tc.interface_names {
-				return candidate
+				return if is_generic { '${candidate}[${args.join(', ')}]' } else { candidate }
 			}
 		}
 	}
 	if !clean.contains('.') && t.cur_module.len > 0 {
 		qname := '${t.cur_module}.${clean}'
 		if qname in t.tc.interface_names {
-			return qname
+			return if is_generic { '${qname}[${args.join(', ')}]' } else { qname }
 		}
 	}
 	if !clean.contains('.') {
 		main_name := 'main.${clean}'
 		if main_name in t.tc.interface_names {
-			return main_name
+			return if is_generic { '${main_name}[${args.join(', ')}]' } else { main_name }
 		}
 	}
 	return ''
@@ -939,6 +939,7 @@ fn (mut t Transformer) transform_interface_cast(id flat.NodeId, node flat.Node) 
 // transform_interface_method_call transforms the arguments of a vtable-dispatched
 // interface call using the abstract method's signature.
 fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat.Node) flat.NodeId {
+	specialized_ret_type := t.specialized_interface_method_call_return_type(id, node) or { '' }
 	mut interface_name := ''
 	mut interface_receiver_type := ''
 	mut interface_base := flat.empty_node
@@ -973,6 +974,9 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 		}
 	}
 	transformed_id := t.transform_call_args(id, node)
+	if specialized_ret_type.len > 0 {
+		t.set_node_typ(int(transformed_id), specialized_ret_type)
+	}
 	if interface_name.len == 0 {
 		return transformed_id
 	}
@@ -1019,6 +1023,41 @@ fn (mut t Transformer) transform_interface_method_call(id flat.NodeId, node flat
 		args << t.a.child(&transformed, i)
 	}
 	return t.make_call_expr_typed(typed_callee, args, transformed.typ)
+}
+
+fn (t &Transformer) specialized_interface_method_call_return_type(_id flat.NodeId, node flat.Node) ?string {
+	if isnil(t.tc) || node.kind != .call || node.children_count == 0 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(callee, 0)
+	mut base_type := t.raw_const_type_name_for_expr(base_id) or { '' }
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	if base_type.len == 0 {
+		base_type = t.node_type(base_id)
+	}
+	if t.active_specialization_args.len > 0 {
+		base_type = t.subst_type(base_type, t.active_specialization_args)
+	}
+	iface_name := t.resolve_interface_type_name(base_type)
+	if iface_name.len == 0 {
+		return none
+	}
+	decl_key := t.tc.interface_method_signature_key(iface_name, callee.value) or { return none }
+	_, ret := t.tc.specialized_interface_method_signature(iface_name, decl_key)
+	if ret is types.Unknown || ret is types.Void {
+		return none
+	}
+	ret_name := ret.name()
+	if ret_name.len == 0 || ret_name in ['unknown', 'void'] {
+		return none
+	}
+	return ret_name
 }
 
 fn (t &Transformer) interface_receiver_has_variant_projection(id flat.NodeId) bool {

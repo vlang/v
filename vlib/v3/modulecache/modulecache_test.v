@@ -111,6 +111,12 @@ fn test_source_typedef_identifiers_ignore_comments_and_parse_declarators() {
 	assert !identifiers['StringOnly']
 }
 
+fn test_source_typedef_identifiers_resume_after_macro_decorated_function() {
+	source := 'SOKOL_API_IMPL void draw(void) { if (1) { while (0) {} } }\ntypedef unsigned AfterBody;\n'
+	identifiers := c_source_typedef_identifiers(source)
+	assert identifiers['AfterBody']
+}
+
 fn test_static_variable_identifiers_ignore_asm_labels() {
 	assert c_static_variable_declaration_identifiers('static int state __asm__("state_alias");') == [
 		'state',

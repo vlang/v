@@ -312,9 +312,10 @@ fn autofree_requires_standard_compiler(prefs &pref.Preferences) bool {
 fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 	if prefs.cmain.len > 0 || prefs.custom_prelude.len > 0 || prefs.is_check_return
 		|| prefs.div_by_zero_is_zero || prefs.obfuscate_removed || prefs.no_std
-		|| prefs.is_vls || prefs.new_transform || prefs.show_asserts
-		|| prefs.show_callgraph || prefs.show_depgraph || prefs.hide_auto_str
-		|| prefs.no_rsp || prefs.message_limit != 200 || prefs.warn_about_allocs
+		|| prefs.is_vls || prefs.new_transform || prefs.is_livemain
+		|| prefs.is_liveshared || prefs.show_asserts || prefs.show_callgraph
+		|| prefs.show_depgraph || prefs.hide_auto_str || prefs.no_rsp
+		|| prefs.message_limit != 200 || prefs.warn_about_allocs
 		|| prefs.c_error_bug_report_url.len > 0 || prefs.wasm_validate
 		|| prefs.wasm_stack_top != 1024 + (16 * 1024) || prefs.line_info.len > 0
 		|| prefs.use_coroutines || prefs.checker_match_exhaustive_cutoff_limit != 12
@@ -324,17 +325,16 @@ fn v3_has_v1_only_preferences(prefs &pref.Preferences) bool {
 		|| prefs.build_options.any(it in ['-musl', '-glibc']) || !prefs.relaxed_gcc14 {
 		return true
 	}
-	return prefs.sanitize || prefs.is_livemain || prefs.is_liveshared
-		|| prefs.output_cross_c || prefs.experimental || prefs.use_os_system_to_run
-		|| prefs.is_apk || prefs.is_vsh || prefs.json_errors || prefs.no_preludes
-		|| prefs.is_quiet || prefs.skip_warnings || prefs.skip_notes
-		|| prefs.fatal_errors || prefs.print_watched_files
-		|| prefs.dump_modules.len > 0 || prefs.dump_files.len > 0
-		|| prefs.dump_defines.len > 0 || prefs.print_autofree_vars || prefs.is_vlines
-		|| prefs.warn_impure_v || prefs.trace_calls || prefs.trace_fns.len > 0
-		|| prefs.test_runner.len > 0 || prefs.exclude.len > 0
-		|| prefs.ldflags.len > 0 || prefs.nofloat || prefs.fast_math
-		|| prefs.compress || prefs.is_bare || prefs.no_closures
+	return prefs.sanitize || prefs.output_cross_c || prefs.experimental
+		|| prefs.use_os_system_to_run || prefs.is_apk || prefs.is_vsh
+		|| prefs.json_errors || prefs.no_preludes || prefs.is_quiet
+		|| prefs.skip_warnings || prefs.skip_notes || prefs.fatal_errors
+		|| prefs.print_watched_files || prefs.dump_modules.len > 0
+		|| prefs.dump_files.len > 0 || prefs.dump_defines.len > 0
+		|| prefs.print_autofree_vars || prefs.is_vlines || prefs.warn_impure_v
+		|| prefs.trace_calls || prefs.trace_fns.len > 0 || prefs.test_runner.len > 0
+		|| prefs.exclude.len > 0 || prefs.ldflags.len > 0 || prefs.nofloat
+		|| prefs.fast_math || prefs.compress || prefs.is_bare || prefs.no_closures
 		|| prefs.disable_explicit_mutability || prefs.assert_failure_mode != .default
 		|| prefs.macosx_version_min != '0'
 		|| prefs.build_options.any(it in ['-m32', '-m64']) || prefs.backend.is_js()

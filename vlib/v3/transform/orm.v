@@ -667,6 +667,16 @@ fn (mut t Transformer) sql_db_connection_arg(db_expr flat.NodeId) flat.NodeId {
 
 fn (mut t Transformer) sql_query_builder_method_call(qb flat.NodeId, method string, args []flat.NodeId, typ string) flat.NodeId {
 	t.mark_fn_used_name('orm.QueryBuilder.${method}')
+	qb_type := t.trim_pointer_type(t.node_type(qb))
+	base, type_args, is_generic := generic_app_parts(qb_type)
+	if is_generic && type_args.len == 1 && base.all_after_last('.') == 'QueryBuilder' {
+		method_name := '${base}_${sql_generic_type_suffix(type_args[0])}.${method}'
+		t.mark_fn_used_name(method_name)
+		mut call_args := []flat.NodeId{cap: args.len + 1}
+		call_args << qb
+		call_args << args
+		return t.make_call_typed(method_name, call_args, typ)
+	}
 	selector := t.make_selector(qb, method, '')
 	return t.make_call_expr_typed(selector, args, typ)
 }
@@ -1296,20 +1306,10 @@ fn (mut t Transformer) sql_primitive_from_token_for_field(table SqlTransformTabl
 }
 
 fn sql_generic_type_suffix(typ string) string {
-	clean := typ.trim_space()
-	base, args, is_generic := generic_app_parts(clean)
-	if is_generic {
-		mut parts := [sql_generic_type_suffix_base(base)]
-		for arg in args {
-			parts << sql_generic_type_suffix(arg)
-		}
-		return parts.join('_')
-	}
-	return sql_generic_type_suffix_base(clean)
-}
-
-fn sql_generic_type_suffix_base(typ string) string {
-	return c_name(typ.trim_space().replace('[]', 'Array_').replace('&', 'ptr_'))
+	// Keep this identical to receiver-method specialization. Sanitizing each
+	// nested argument separately turns reserved builtin names such as `int` into
+	// `v_int`, while the generic method name flattens the complete type first.
+	return c_name(generic_type_arg_short(typ.trim_space()))
 }
 
 fn (mut t Transformer) sql_infix_primitive_from_token_for_field(field string, column string, token string, typ string) ?flat.NodeId {
@@ -2902,8 +2902,12 @@ fn (t &Transformer) sql_table_fields(table string) ?[]types.StructField {
 }
 
 fn (t &Transformer) sql_resolved_table_name(table string) string {
-	mut table_name := table
-	if imported := t.resolve_imported_type_name(table) {
+	mut table_name := if t.active_specialization_args.len > 0 {
+		t.subst_type(table, t.active_specialization_args)
+	} else {
+		table
+	}
+	if imported := t.resolve_imported_type_name(table_name) {
 		table_name = imported
 	}
 	base, args, is_generic := generic_app_parts(table_name)
@@ -3147,8 +3151,11 @@ fn (t &Transformer) sql_insert_value_is_scalar_struct(value_name string, table_n
 	if typ.len == 0 || typ.starts_with('[]') {
 		return false
 	}
+	if typ == table_name {
+		return true
+	}
 	table_info := t.sql_table_info(table_name) or { return false }
-	return t.sql_resolved_table_name(typ) == table_info.name
+	return t.sql_table_type_names_match(t.sql_resolved_table_name(typ), table_info.name)
 }
 
 fn (t &Transformer) sql_insert_value_is_array_of_table(value_name string, table_name string) bool {
@@ -3160,8 +3167,21 @@ fn (t &Transformer) sql_insert_value_is_array_of_table(value_name string, table_
 		return false
 	}
 	elem_typ := typ[2..]
+	if elem_typ == table_name {
+		return true
+	}
 	table_info := t.sql_table_info(table_name) or { return false }
-	return t.sql_resolved_table_name(elem_typ) == table_info.name
+	return t.sql_table_type_names_match(t.sql_resolved_table_name(elem_typ), table_info.name)
+}
+
+fn (t &Transformer) sql_table_type_names_match(actual string, expected string) bool {
+	if actual == expected {
+		return true
+	}
+	if t.cur_module in ['', 'main'] {
+		return type_text_without_main_locks(actual) == type_text_without_main_locks(expected)
+	}
+	return false
 }
 
 fn (t &Transformer) sql_bulk_update_info(table_name string, sets []SqlTransformSet, where SqlTransformWhere) (bool, string) {
@@ -3208,6 +3228,12 @@ fn (t &Transformer) sql_selector_value_type_name(value_name string) string {
 }
 
 fn (t &Transformer) sql_root_value_type_name(value_name string) string {
+	if smartcast := t.find_smartcast(value_name) {
+		narrowed := t.smartcast_target_type(smartcast)
+		if narrowed.len > 0 {
+			return narrowed
+		}
+	}
 	mut typ := t.var_type(value_name)
 	if typ.len == 0 && !isnil(t.tc) {
 		if current := t.tc.cur_scope.lookup(value_name) {

@@ -3,6 +3,159 @@ module fastc
 import strings
 import v3.token
 
+// fastc_default_struct_str_name returns the C name of an auto-generated default `str()`
+// for the struct/union `c_type` — V's `Type{\n    field: value\n ...}` format — used when
+// a struct with no user `str()` is interpolated. The function (and any nested struct
+// fields' defaults) is generated into g.spawn_helpers on first use. Returns none if
+// `c_type` is not a struct/union.
+fn (g &Parser) can_generate_default_struct_str(c_type string) bool {
+	key := g.semantic_type_key(c_type.trim_right('*'))
+	return key in g.declared_kinds && g.declared_kinds[key] in [.struct_, .union_]
+}
+
+fn (mut g Parser) fastc_default_struct_str_name(c_type string) ?string {
+	key := g.semantic_type_key(c_type)
+	// A missing key defaults to `.struct_` (the zero enum value), so require it to be
+	// present before treating `c_type` as a struct.
+	if key !in g.declared_kinds || g.declared_kinds[key] !in [.struct_, .union_] {
+		return none
+	}
+	c_name := fastc_c_declared_type_name(key)
+	fn_name := 'v_fastc_default_str_${c_name}'
+	if fn_name in g.spawn_helpers {
+		return fn_name
+	}
+	// Reserve the name first so a self-referential field does not recurse forever.
+	g.spawn_helpers[fn_name] = ''
+	g.protos.writeln('string ${fn_name}(${c_name} it);')
+	display := c_name.all_after_last('__')
+	mut body := 'string ${fn_name}(${c_name} it) {\n'
+	body += '\tstring res = _S("${display}{\\n");\n'
+	for field in g.struct_field_info[c_name] {
+		c_field := fastc_c_identifier(field.name)
+		formatted := g.fastc_struct_field_str_expression('it.${c_field}', field.typ) or {
+			'_S("<${field.typ}>")'
+		}
+		body += '\tres = builtin__string_plus(res, _S("    ${field.name}: "));\n'
+		body += '\tres = builtin__string_plus(res, ${formatted});\n'
+		body += '\tres = builtin__string_plus(res, _S("\\n"));\n'
+	}
+	body += '\tres = builtin__string_plus(res, _S("}"));\n'
+	body += '\treturn res;\n}'
+	g.spawn_helpers[fn_name] = body
+	return fn_name
+}
+
+// fastc_fixed_array_str_name returns a helper that renders a fixed array in V's
+// `[item, item]` form. Fixed-array struct fields use raw C array storage, while
+// locals use FastC's wrapper; the caller passes either representation as an element
+// pointer, so the helper itself is shared by both forms.
+fn (mut g Parser) fastc_fixed_array_str_name(c_type string) ?string {
+	array_type := fastc_normalize_inferred_type(c_type).trim_right('*')
+	element_type := fastc_fixed_array_element_type(array_type) or { return none }
+	length_source := fastc_fixed_array_length(array_type) or { return none }
+	length := g.fixed_array_length_value(length_source) or { return none }
+	fn_name := 'v_fastc_fixed_array_str_${fastc_composite_type_part(array_type)}'
+	if fn_name in g.spawn_helpers {
+		return fn_name
+	}
+	// Reserve the name before formatting elements so nested formatting cannot
+	// register the same helper recursively.
+	g.spawn_helpers[fn_name] = ''
+	g.protos.writeln('string ${fn_name}(${element_type} *it);')
+	mut body := 'string ${fn_name}(${element_type} *it) {\n'
+	body += '\tstring res = _S("[");\n'
+	for index in 0 .. length {
+		formatted := g.fastc_struct_field_str_expression('it[${index}]', element_type) or {
+			g.spawn_helpers.delete(fn_name)
+			return none
+		}
+		if index > 0 {
+			body += '\tres = builtin__string_plus(res, _S(", "));\n'
+		}
+		body += '\tres = builtin__string_plus(res, ${formatted});\n'
+	}
+	body += '\treturn builtin__string_plus(res, _S("]"));\n}'
+	g.spawn_helpers[fn_name] = body
+	return fn_name
+}
+
+// fastc_array_str_name returns a helper that renders a dynamic array using the
+// element type retained in FastC's `Array_T` spelling.
+fn (mut g Parser) fastc_array_str_name(c_type string) ?string {
+	array_type := fastc_normalize_inferred_type(c_type).trim_right('*')
+	if !array_type.starts_with('Array_') {
+		return none
+	}
+	element_type := fastc_array_element_type(array_type) or { return none }
+	fn_name := 'v_fastc_array_str_${fastc_composite_type_part(array_type)}'
+	if fn_name in g.spawn_helpers {
+		return fn_name
+	}
+	g.spawn_helpers[fn_name] = ''
+	g.protos.writeln('string ${fn_name}(${array_type} it);')
+	index := '__v_fastc_array_str_index'
+	element := '(*(${element_type} *)builtin__array_get(it, ${index}))'
+	formatted := g.fastc_struct_field_str_expression(element, element_type) or {
+		g.spawn_helpers.delete(fn_name)
+		return none
+	}
+	mut body := 'string ${fn_name}(${array_type} it) {\n'
+	body += '\tstring res = _S("[");\n'
+	body += '\tfor (int ${index} = 0; ${index} < it.len; ${index}++) {\n'
+	body += '\t\tif (${index} > 0) res = builtin__string_plus(res, _S(", "));\n'
+	body += '\t\tres = builtin__string_plus(res, ${formatted});\n'
+	body += '\t}\n'
+	body += '\treturn builtin__string_plus(res, _S("]"));\n}'
+	g.spawn_helpers[fn_name] = body
+	return fn_name
+}
+
+// fastc_struct_field_str_expression returns a C string expression that renders a struct
+// field value `value_c` of C type `field_c_type` for the default `str()`: a string is
+// single-quoted, a type with a `str()` method (user or builtin, e.g. `int`) calls it, an
+// enum uses its name table, and a nested struct recurses. Returns none if unrenderable.
+fn (mut g Parser) fastc_struct_field_str_expression(value_c string, field_c_type string) ?string {
+	ft := fastc_normalize_inferred_type(field_c_type)
+	if ft == 'string' {
+		// A single-quote C literal, built without `\'`/`\"` escapes (a self-host str_intp
+		// hazard) by concatenating literal pieces.
+		q := '_S("' + "'" + '")'
+		return 'builtin__string_plus(builtin__string_plus(${q}, ${value_c}), ${q})'
+	}
+	if element_type := fastc_fixed_array_element_type(ft.trim_right('*')) {
+		if helper := g.fastc_fixed_array_str_name(ft) {
+			return '${helper}((${element_type} *)(${value_c}))'
+		}
+	}
+	if ft.trim_right('*').starts_with('Array_') {
+		if helper := g.fastc_array_str_name(ft) {
+			value := if ft.ends_with('*') { '*(${value_c})' } else { value_c }
+			return '${helper}(${value})'
+		}
+	}
+	key := g.semantic_type_key(ft)
+	if method_signature := g.functions['${key}.str'] {
+		expected_receiver := method_signature.parameter_types[0]
+		receiver := if expected_receiver.ends_with('*') && !ft.ends_with('*') {
+			'&(${value_c})'
+		} else if !expected_receiver.ends_with('*') && ft.ends_with('*') {
+			'*(${value_c})'
+		} else {
+			value_c
+		}
+		return '${fastc_method_c_name(method_signature.module_name,
+			fastc_c_declared_type_name(key), 'str')}(${receiver})'
+	}
+	if g.declared_kinds[key] == .enum_ {
+		return 'v_fastc_enum_str_${fastc_c_declared_type_name(key)}(${value_c})'
+	}
+	if nested := g.fastc_default_struct_str_name(ft) {
+		return '${nested}(${value_c})'
+	}
+	return none
+}
+
 fn (mut g Parser) read_interpolated_string() !string {
 	first_literal := g.lit
 	mut raw := first_literal
@@ -70,6 +223,26 @@ fn (mut g Parser) read_interpolated_string() !string {
 			} else {
 				value
 			}
+		} else if element_type := fastc_fixed_array_element_type(interpolation_type.trim_right('*')) {
+			helper := g.fastc_fixed_array_str_name(interpolation_type) or {
+				return g.unsupported('interpolation of fixed array type `${value_type}`')
+			}
+			is_member_array := value_tokens.len >= 3 && value_tokens.last().tok == .name
+				&& value_tokens[value_tokens.len - 2].tok == .dot
+			is_global_array := value_tokens.len == 1 && value_tokens[0].tok == .name
+				&& fastc_global_key(g.module_name, value_tokens[0].lit) in g.globals
+			data_source := if is_member_array || is_global_array {
+				value
+			} else {
+				'(${value}).data'
+			}
+			parts << '${helper}((${element_type} *)(${data_source}))'
+		} else if interpolation_type.trim_right('*').starts_with('Array_') {
+			helper := g.fastc_array_str_name(interpolation_type) or {
+				return g.unsupported('interpolation of array type `${value_type}`')
+			}
+			array_value := if interpolation_type.ends_with('*') { '*(${value})' } else { value }
+			parts << '${helper}(${array_value})'
 		} else if g.declared_kinds[g.semantic_type_key(interpolation_type)] == .enum_ {
 			enum_key := g.semantic_type_key(interpolation_type)
 			is_unsigned := g.enum_flags[enum_key]
@@ -116,7 +289,22 @@ fn (mut g Parser) read_interpolated_string() !string {
 			if !converted_primitive {
 				receiver_key := g.semantic_type_key(interpolation_type)
 				method_key := '${receiver_key}.str'
-				method_signature := g.functions[method_key] or {
+				if method_signature := g.functions[method_key] {
+					expected_receiver := method_signature.parameter_types[0]
+					receiver := if expected_receiver.ends_with('*')
+						&& !interpolation_type.ends_with('*') {
+						'&(${value})'
+					} else if !expected_receiver.ends_with('*') && interpolation_type.ends_with('*') {
+						'*(${value})'
+					} else {
+						value
+					}
+					parts << '${fastc_method_c_name(method_signature.module_name,
+						fastc_c_declared_type_name(receiver_key), 'str')}(${receiver})'
+				} else if default_name := g.fastc_default_struct_str_name(interpolation_type) {
+					// No user `str()`: emit V's default `Type{...}` representation.
+					parts << '${default_name}(${value})'
+				} else {
 					local_type := if g.last_expression.len > 0 && g.last_expression[0].tok == .name {
 						local := g.locals[g.last_expression[0].lit] or { FastcLocal{} }
 						local.typ
@@ -125,8 +313,6 @@ fn (mut g Parser) read_interpolated_string() !string {
 					}
 					return g.unsupported('interpolation of type `${value_type}` for `${fastc_expression_tokens_debug(g.last_expression)}` (local `${local_type}`)')
 				}
-				parts << '${fastc_method_c_name(method_signature.module_name,
-					fastc_c_declared_type_name(receiver_key), 'str')}(${value})'
 			}
 		}
 		if g.tok == .string {
@@ -342,7 +528,11 @@ fn fastc_c_string(literal string) !string {
 		return error('interpolated or unfinished fastc string literal')
 	}
 	content := raw[1..raw.len - 1]
-	if fastc_string_contains_nul(content, is_raw) {
+	// A `\x00`/`\000` NUL escape renders to the octal escape `\000`, and the `_S` macro's
+	// `sizeof`-based length preserves it (V strings are length-prefixed, not
+	// NUL-terminated). Other NUL spellings (a raw NUL byte, single `\0`, wrapping octal
+	// like `\400`, unicode ` `) cannot be emitted faithfully, so reject just those.
+	if fastc_string_has_unrenderable_nul(content, is_raw) {
 		return error('fastc parser does not support embedded NUL string literals')
 	}
 	mut result := strings.new_builder(raw.len + 2)
@@ -491,6 +681,54 @@ fn fastc_hex_digit_value(c u8) !u8 {
 		return u8(c - `A` + 10)
 	}
 	return error('invalid fastc hex digit `${c.ascii_str()}`')
+}
+
+// fastc_string_has_unrenderable_nul reports whether the literal content holds a NUL
+// that fastc_c_string cannot faithfully emit: a raw NUL byte, or a NUL escape other
+// than `\x00`/`\000` (single `\0`, a wrapping octal like `\400`, or a unicode
+// ` `/`\U00000000`). `\x00`/`\000` render to the stable octal escape `\000`.
+fn fastc_string_has_unrenderable_nul(content string, is_raw bool) bool {
+	for byte_index in 0 .. content.len {
+		if content[byte_index] == 0 {
+			return true
+		}
+	}
+	if is_raw {
+		return false
+	}
+	mut i := 0
+	for i + 1 < content.len {
+		if content[i] != `\\` {
+			i++
+			continue
+		}
+		escape := content[i + 1]
+		if escape == `\\` {
+			i += 2
+			continue
+		}
+		if escape >= `0` && escape <= `7` && i + 3 < content.len && content[i + 2] >= `0`
+			&& content[i + 2] <= `7` && content[i + 3] >= `0` && content[i + 3] <= `7` {
+			high := int(escape - `0`)
+			middle := int(content[i + 2] - `0`)
+			low := int(content[i + 3] - `0`)
+			value := high * 64 + middle * 8 + low
+			// `\000` (value 0) renders fine; a wrapping octal like `\400` becomes NUL
+			// but cannot be re-spelled as a stable C escape.
+			if value != 0 && u8(value) == 0 {
+				return true
+			}
+			i += 4
+			continue
+		}
+		if escape == `0`
+			|| (escape == `u` && i + 5 < content.len && content[i + 2..i + 6] == '0000')
+			|| (escape == `U` && i + 9 < content.len && content[i + 2..i + 10] == '00000000') {
+			return true
+		}
+		i += 2
+	}
+	return false
 }
 
 fn fastc_string_contains_nul(content string, is_raw bool) bool {
