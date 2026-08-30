@@ -6701,6 +6701,43 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_keeps_temporary_source_for_pointer_sent_to_channel() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	saved := chan &Item{cap: 1}
+	selected := make_items().map(match true {
+		true {
+			saved <- unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	retained := <-saved
+	println(retained.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_channel_pointer_sink_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_channel_pointer_sink', '-ownership', source)
+	assert out == '0\nsource'
+}
+
 fn test_array_map_drops_temporary_source_after_external_pointer_alias_overwrite() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
@@ -6831,6 +6868,28 @@ fn main() {
 	delegated_out := run_good_with_flags(v3_bin, 'array_map_delegated_mutator_storage_overwrite',
 		'-ownership', delegated_source)
 	assert delegated_out == 'external'
+
+	reverse_delegated_source := source.replace('fn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value\n\tbox.value = replacement',
+		'fn store(mut box PointerBox, value &Item) {\n\tbox.value = value\n}\n\nfn (mut box PointerBox) set_then_reset(value &Item, replacement &Item) {\n\tbox.value = value\n\tstore(mut box, replacement)')
+	assert reverse_delegated_source != source
+	reverse_delegated_c_source := gen_c_from_source_with_flags(v3_bin,
+		'array_map_reverse_delegated_mutator_storage_overwrite_c', '-ownership',
+		reverse_delegated_source)
+	reverse_delegated_main_body := c_fn_body(reverse_delegated_c_source,
+		'int main(int argc, char** argv) {')
+	reverse_delegated_source_drop_pos := reverse_delegated_main_body.index('array__free(&(') or {
+		-1
+	}
+	reverse_delegated_result_move_pos := reverse_delegated_main_body.index('Array selected = ') or {
+		-1
+	}
+	assert reverse_delegated_source_drop_pos >= 0
+		&& reverse_delegated_source_drop_pos < reverse_delegated_result_move_pos,
+		reverse_delegated_main_body
+	reverse_delegated_out := run_good_with_flags(v3_bin,
+		'array_map_reverse_delegated_mutator_storage_overwrite', '-ownership',
+		reverse_delegated_source)
+	assert reverse_delegated_out == 'external'
 
 	loop_source := source.replace('box.value = value\n\tbox.value = replacement',
 		'for {\n\t\tbox.value = value\n\t\tif true {\n\t\t\tbreak\n\t\t}\n\t\tbox.value = replacement\n\t\tbreak\n\t}')

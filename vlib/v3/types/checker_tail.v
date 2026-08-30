@@ -9057,6 +9057,77 @@ fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, aliases map[s
 	}
 }
 
+fn (tc &TypeChecker) storage_node_contains_return(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .return_stmt {
+		return true
+	}
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if tc.storage_node_contains_return(tc.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+// Direct writes reached before any possible return replace the caller's prior source for the
+// same exact path. Conditional and delegated writes remain conservative unions.
+fn (tc &TypeChecker) param_storage_direct_definite_write_paths_for_decl(decl VisibleMutationFnDecl, target_param_idx int) []string {
+	target_param := tc.visible_mutation_fn_param(decl, target_param_idx) or { return []string{} }
+	if !target_param.is_mut {
+		return []string{}
+	}
+	fn_node := tc.a.nodes[decl.idx]
+	mut param_names := []string{}
+	mut body_start := 0
+	for i in 0 .. fn_node.children_count {
+		child := tc.a.child_node(&fn_node, i)
+		if child.kind != .param {
+			body_start = i
+			break
+		}
+		param_names << child.value
+		body_start = i + 1
+	}
+	if target_param_idx >= param_names.len {
+		return []string{}
+	}
+	mut aliases := map[string][]int{}
+	for i, name in param_names {
+		aliases[name] = [i]
+	}
+	mut paths := []string{}
+	for i in body_start .. fn_node.children_count {
+		child_id := tc.a.child(&fn_node, i)
+		child := tc.a.nodes[int(child_id)]
+		if child.kind in [.decl_assign, .assign, .selector_assign, .index_assign] {
+			for j := 0; j + 1 < int(child.children_count); j += 2 {
+				rhs_id := tc.a.child(&child, j + 1)
+				if tc.storage_node_contains_return(rhs_id) {
+					return paths
+				}
+				if path := tc.storage_lvalue_path_from_param(tc.a.child(&child, j),
+					target_param.value, aliases, target_param_idx)
+				{
+					if path !in paths {
+						paths << path
+					}
+				}
+			}
+		}
+		if tc.storage_node_contains_return(child_id) {
+			break
+		}
+	}
+	return paths
+}
+
 fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name string, target_type string, target_param_idx int, decl_mod string, mut aliases map[string][]int, mut visiting map[u64]bool, mut writes map[string][]int, mut exited_writes map[string][]int, mut loop_exit_writes map[string][]int) {
 	if !tc.valid_node_id(id) {
 		return
@@ -9341,13 +9412,20 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 						target_name, aliases, target_param_idx) or { continue }
 					nested_writes := tc.param_storage_writes_for_decl(decl, nested_target_idx, mut
 						visiting)
+					definite_paths := tc.param_storage_direct_definite_write_paths_for_decl(decl,
+						nested_target_idx)
 					for nested_path, source_param_idxs in nested_writes {
 						write_path := if nested_path == '*' {
 							'*'
 						} else {
 							target_path + nested_path
 						}
-						mut call_sources := writes[write_path].clone()
+						mut call_sources := if nested_path in definite_paths
+							&& nested_target_idx !in source_param_idxs {
+							[]int{}
+						} else {
+							writes[write_path].clone()
+						}
 						for source_param_idx in source_param_idxs {
 							mut source_id := flat.empty_node
 							if is_method && source_param_idx == 0 && callee.kind == .selector
