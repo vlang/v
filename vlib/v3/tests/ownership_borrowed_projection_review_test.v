@@ -499,6 +499,34 @@ fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
 	assert holder.left.values[0] == "left"
 }
 
+fn test_borrowed_prepend_and_insert_are_cloned(holder &Holder) {
+	mut items := []Payload{}
+	items.prepend(holder.left)
+	items[0].values[0] = "prepended"
+	assert holder.left.values[0] == "left"
+
+	items.insert(0, holder.right)
+	items[0].values[0] = "inserted"
+	assert holder.right.values[0] == "right"
+}
+
+fn test_borrowed_bulk_prepend_and_insert_are_cloned() {
+	holder := &DynamicHolder{
+		items: [Payload{
+			values: ["original"]
+		}]
+	}
+	mut prepended := []Payload{}
+	prepended.prepend(holder.items)
+	prepended[0].values[0] = "bulk prepended"
+	assert holder.items[0].values[0] == "original"
+
+	mut inserted := []Payload{}
+	inserted.insert(0, holder.items)
+	inserted[0].values[0] = "bulk inserted"
+	assert holder.items[0].values[0] == "original"
+}
+
 fn test_borrowed_array_initializer_is_cloned_per_element(holder &Holder) {
 	mut items := []Payload{len: 2, init: holder.left}
 	items[0].values[0] = "first"
@@ -851,6 +879,8 @@ fn main() {
 	test_borrowed_dynamic_array_conversion_is_cloned()
 	test_borrowed_array_push_many_is_cloned() or { panic(err) }
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
+	test_borrowed_prepend_and_insert_are_cloned(holder)
+	test_borrowed_bulk_prepend_and_insert_are_cloned()
 	test_borrowed_array_initializer_is_cloned_per_element(holder)
 	test_borrowed_array_literal_element_is_cloned(holder)
 	test_borrowed_fixed_array_literal_element_is_cloned(holder)
@@ -879,7 +909,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 53, out.output
+		assert out.output.count('clone') == 57, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')
