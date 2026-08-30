@@ -476,6 +476,36 @@ fn main() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
+fn test_owned_aggregate_field_overloaded_comparison_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_aggregate_field_overloaded_comparison', "struct Name {
+	text string
+}
+
+struct E {
+	names []Name
+}
+
+__global entries []E
+
+fn (left Name) == (right Name) bool {
+	entries.delete_last()
+	return left.text == right.text
+}
+
+fn last_names_match(other []Name) bool {
+	return entries.last().names == other
+}
+
+fn main() {
+	entries = [E{ names: [Name{ text: 'hello' }] }]
+	println(last_names_match([Name{ text: 'hello' }]))
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
 fn test_owned_nested_string_consumer_with_mutating_sibling_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_nested_string_mutating_sibling', "struct E {
@@ -573,6 +603,31 @@ fn main() {
 ", '')
 	assert comparison_call.exit_code != 0, comparison_call.output
 	assert comparison_call.output.contains('cannot return an independent array element'), comparison_call.output
+
+	wrapped_comparison_call := compile_v3_ownership_program(v3_bin, 'owned_wrapped_comparison_call_argument_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn consume(value bool, suffix string) bool {
+	return value
+}
+
+fn last_name_then_delete(mut arr []E) bool {
+	return consume(!(arr.last().name == 'hello'), delete_last(mut arr))
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert wrapped_comparison_call.exit_code != 0, wrapped_comparison_call.output
+	assert wrapped_comparison_call.output.contains('cannot return an independent array element'), wrapped_comparison_call.output
 
 	nested_call := compile_v3_ownership_program(v3_bin, 'owned_nested_call_argument_mutating_outer_sibling', "struct E {
 	name string

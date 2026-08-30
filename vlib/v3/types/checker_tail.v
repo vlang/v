@@ -6134,6 +6134,14 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			current = parent_id
 			continue
 		}
+		if parent.kind in [.prefix, .cast_expr, .is_expr] {
+			wrapper_type := unalias_type(tc.resolve_type(parent_id))
+			if tc.ownership_type_requires_destruction(wrapper_type) || tc.array_accessor_type_contains_pointer(wrapper_type) || !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+				return false
+			}
+			current = parent_id
+			continue
+		}
 		is_string_plus := parent.kind == .infix && parent.op == .plus && unalias_type(tc.resolve_type(parent_id)) is String
 		if !is_string_plus && parent.kind != .string_interp {
 			return true
@@ -6148,11 +6156,66 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 
 fn (tc &TypeChecker) array_accessor_consumer_has_overloaded_operator(consumer &flat.Node) bool {
 	for i in 0 .. consumer.children_count {
-		operand_type := unwrap_pointer(tc.resolve_type(tc.a.child(consumer, i)))
-		if (operand_type is Struct || operand_type is Alias)
-			&& tc.type_has_infix_operator_method(operand_type, consumer.op) {
+		mut seen := map[string]bool{}
+		if tc.array_accessor_type_has_overloaded_operator(tc.resolve_type(tc.a.child(consumer, i)), consumer.op, mut seen) {
 			return true
 		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op flat.Op, mut seen map[string]bool) bool {
+	raw := unwrap_pointer(typ)
+	key := raw.name()
+	if seen[key] {
+		return false
+	}
+	seen[key] = true
+	defer {
+		seen.delete(key)
+	}
+	if (raw is Struct || raw is Alias) && tc.type_has_infix_operator_method(raw, op) {
+		return true
+	}
+	if op !in [.eq, .ne] {
+		return false
+	}
+	match raw {
+		Alias {
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, op, mut seen)
+		}
+		Array {
+			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, op, mut seen)
+		}
+		ArrayFixed {
+			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, op, mut seen)
+		}
+		Map {
+			return tc.array_accessor_type_has_overloaded_operator(raw.key_type, op, mut seen) || tc.array_accessor_type_has_overloaded_operator(raw.value_type, op, mut seen)
+		}
+		OptionType {
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, op, mut seen)
+		}
+		ResultType {
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, op, mut seen)
+		}
+		Struct {
+			for field in tc.struct_fields_for_type(raw.name) {
+				if tc.array_accessor_type_has_overloaded_operator(field.typ, op, mut seen) {
+					return true
+				}
+			}
+		}
+		SumType {
+			base := tc.sum_base_name(raw.name)
+			for variant in tc.sum_types[base] or { []string{} } {
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(raw.name, variant))
+				if tc.array_accessor_type_has_overloaded_operator(variant_type, op, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
 	}
 	return false
 }
