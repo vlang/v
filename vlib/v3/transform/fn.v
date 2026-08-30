@@ -5961,9 +5961,11 @@ fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
 		return true
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
-		.ident] {
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
 		return false
+	}
+	if node.kind == .ident {
+		return t.raw_var_type(node.value).trim_space().starts_with('shared ') || t.local_decl_is_shared_before(node.value, id)
 	}
 	if node.kind in [.paren, .cast_expr, .as_expr, .prefix, .postfix, .selector] {
 		for i in 0 .. node.children_count {
