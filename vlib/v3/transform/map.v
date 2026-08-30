@@ -220,9 +220,15 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			estimate += int(node.children_count) + 1
 		}
 		if node.kind == .selector {
-			// A changed external selector base makes every selector ancestor append
-			// a replacement node and child span at the constant's use site.
-			estimate += int(node.children_count) + 1
+			if t.external_selector_expands_from_type_metadata(node) {
+				// Shared sum/interface fields expand into conditional trees whose size
+				// comes from type metadata rather than the selector's physical children.
+				estimate += deferred_map_expansion_threshold + 1
+			} else {
+				// A changed external selector base makes every selector ancestor append
+				// a replacement node and child span at the constant's use site.
+				estimate += int(node.children_count) + 1
+			}
 		}
 		if node.kind in [.paren, .prefix] {
 			// External wrappers cannot rewrite their child IDs in place, so each
@@ -268,6 +274,20 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 		}
 	}
 	return estimate
+}
+
+fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	base_type := t.node_type(t.a.child(&node, 0))
+	iface_name := t.resolve_interface_type_name(base_type)
+	if iface_name.len > 0 && node.value !in ['_typ', '_object'] {
+		if _ := t.interface_field_type_name(iface_name, node.value) {
+			return true
+		}
+	}
+	return t.sum_shared_field_type_name(base_type, node.value) != none
 }
 
 fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {

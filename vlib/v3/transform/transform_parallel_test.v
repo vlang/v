@@ -763,6 +763,60 @@ fn test_external_map_expansion_estimate_includes_selector_reconstruction() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_defers_sum_shared_field_selector() {
+	mut a := flat.FlatAst.new()
+	base := a.add_node(flat.Node{
+		kind: .ident
+		value: 'item'
+		typ: 'Item'
+	})
+	selector_start := a.children.len
+	a.children << base
+	selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'value'
+		typ: 'int'
+		children_start: selector_start
+		children_count: 1
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'item'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << selector
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['Item'] = ['First', 'Second']
+	t.structs['First'] = StructInfo{
+		name: 'First'
+		fields: [
+			FieldInfo{
+				name: 'value'
+				typ: 'int'
+			},
+		]
+	}
+	t.structs['Second'] = StructInfo{
+		name: 'Second'
+		fields: [
+			FieldInfo{
+				name: 'value'
+				typ: 'int'
+			},
+		]
+	}
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_interpolation_concatenation() {
 	mut a := flat.FlatAst.new()
 	part := a.add_node(flat.Node{
