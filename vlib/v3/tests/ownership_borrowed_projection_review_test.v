@@ -67,6 +67,10 @@ mut:
 	items []Payload
 }
 
+struct DynamicHolder {
+	items []Payload
+}
+
 struct ObservedPair {
 	left  ObservedPayload
 	right ObservedPayload
@@ -423,6 +427,16 @@ fn test_borrowed_fixed_array_conversions_are_cloned() {
 	assert holder.items[0].values[0] == "original"
 }
 
+fn test_borrowed_dynamic_array_conversion_is_cloned() {
+	holder := &DynamicHolder{
+		items: [Payload{
+			values: ["original"]
+		}]
+	}
+	consume_fixed_entries(holder.items)
+	assert holder.items[0].values[0] == "original"
+}
+
 fn test_borrowed_append_is_cloned_once(holder &Holder) ? {
 	mut items := []Payload{}
 	items << (*holder).left
@@ -515,6 +529,15 @@ fn test_borrowed_map_literal_entries_are_cloned(holder &Holder) {
 		assert keyed[key_holder.key] == 1
 	}
 	assert key_holder.key == "borrowed-key"
+}
+
+fn test_borrowed_map_assignment_is_cloned(holder &Holder) {
+	mut items := map[string]Payload{}
+	key := "payload"
+	items[key] = holder.left
+	mut item := items[key]
+	item.values[0] = "map assignment copy"
+	assert holder.left.values[0] == "left"
 }
 
 fn test_borrowed_assoc_overrides_are_cloned(holder &Holder) {
@@ -739,6 +762,7 @@ fn main() {
 	test_free_variadic_borrowed_projection_is_cloned(holder)
 	test_disjoint_receiver_fields_are_not_cloned()
 	test_borrowed_fixed_array_conversions_are_cloned()
+	test_borrowed_dynamic_array_conversion_is_cloned()
 	test_borrowed_append_is_cloned_once(holder) or { panic(err) }
 	test_borrowed_array_initializer_is_cloned_per_element(holder)
 	test_borrowed_array_literal_element_is_cloned(holder)
@@ -748,6 +772,7 @@ fn main() {
 	test_borrowed_optional_wrapper_is_not_dropped()
 	test_borrowed_channel_send_is_cloned(holder)
 	test_borrowed_map_literal_entries_are_cloned(holder)
+	test_borrowed_map_assignment_is_cloned(holder)
 	test_borrowed_assoc_overrides_are_cloned(holder)
 	test_pointer_dereferences_are_cloned(holder)
 	test_conditional_borrowed_branches_are_cloned(holder)
@@ -765,7 +790,7 @@ fn main() {
 	for mode in ['-no-parallel', ''] {
 		out := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
 		assert out.exit_code == 0, out.output
-		assert out.output.count('clone') == 42, out.output
+		assert out.output.count('clone') == 44, out.output
 	}
 
 	project := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_review_${os.getpid()}')
