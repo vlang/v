@@ -599,7 +599,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				tok: .name
 				lit: g.lit
 				unsafe_depth: g.unsafe_depth
+				is_mut_argument: next_token_is_mut_argument
 			}
+			next_token_is_mut_argument = false
 			source_token_count++
 			mut piece := if previous_token == .dot {
 				g.lit
@@ -627,7 +629,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				next_token_is_mut_argument = true
 				continue
 			}
-			if g.tok == .name && g.local_is_pointer(g.lit) {
+			if (g.tok == .name || g.shared_token_is_identifier(previous_token)) && g.local_is_pointer(g.lit) {
 				mut next_offset := g.s.offset
 				for next_offset < g.s.src.len && g.s.src[next_offset].is_space() {
 					next_offset++

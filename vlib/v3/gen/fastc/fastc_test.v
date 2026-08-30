@@ -172,6 +172,30 @@ fn main() {
 	assert !c_source.contains('(&shared)'), c_source
 }
 
+fn test_selfhost_shared_pointer_local_modifier_is_not_addressed_again() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn consume_mut(mut value int) {}
+
+fn consume_shared(shared value int) {}
+
+fn main() {
+	unsafe {
+		mut value := 1
+		mut shared := &value
+		consume_mut(mut shared)
+		consume_shared(shared shared)
+	}
+}
+', 'shared_pointer_local_modifier.v', prefs) or { panic(err) }
+	assert c_source.contains('consume_mut(shared);'), c_source
+	assert c_source.contains('consume_shared(shared);'), c_source
+	assert !c_source.contains('consume_mut(&(shared));'), c_source
+	assert !c_source.contains('consume_shared(&(shared));'), c_source
+}
+
 fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
