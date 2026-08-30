@@ -939,6 +939,62 @@ fn test_header_owned_scan_excludes_conditional_function_scoped_typedefs() {
 	assert 'LocalAlias' !in c_header_owned_typedef_aliases(scan.typedef_macro_expansions), scan.typedef_macro_expansions
 }
 
+fn test_header_owned_scan_keeps_nested_include_typedefs_function_scoped() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_local_include_typedef_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.write_file(os.join_path(dir, 'local.h'), 'typedef struct LocalImpl LocalAlias;\n')!
+	os.write_file(os.join_path(dir, 'wrapper.h'), 'static inline void helper(void) {\n#include "local.h"\nLocalAlias value;\n}\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.c_typedef_structs['C.LocalAlias'] = true
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.collect_header_owned_c_typedefs('"wrapper.h"', os.join_path(dir, 'sample.v'))
+	assert !g.header_owned_c_typedefs['LocalAlias']
+}
+
+fn test_header_owned_scan_restores_pushed_macro_definition() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define SELECT 1\n#pragma push_macro("SELECT")\n#undef SELECT\n#pragma pop_macro("SELECT")\n#if SELECT\ntypedef struct Active RestoredAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['RestoredAlias'], scan.text
+}
+
+fn test_header_owned_scan_resolves_compiler_feature_predicates() {
+	text := '#if __has_builtin(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#endif\n#if __has_feature(v3_missing_feature) || __has_extension(v3_missing_extension)\ntypedef struct Wrong WrongAlias;\n#endif\n'
+	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{},
+		text)
+	assert values['__has_builtin(__builtin_expect)'] == 1
+	assert values['__has_feature(v3_missing_feature)'] == -1
+	assert values['__has_extension(v3_missing_extension)'] == -1
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan_in_file(text, state, false, pref.Target{
+		os: 'linux'
+	}, CHeaderIncludeContext{
+		feature_predicates: values
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['BuiltinAlias'], scan.text
+}
+
 fn test_header_owned_scan_expands_variadic_typedef_macros() {
 	state := CHeaderMacroState{
 		defined: map[string]bool{}

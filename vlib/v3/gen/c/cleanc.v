@@ -4754,7 +4754,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 					}
 				}
 				g.collect_inlined_c_structs(source_text)
-				g.collect_inlined_c_source_typedefs(source_text)
+				g.collect_inlined_c_source_typedefs(source_text, module_name)
 				g.collect_inlined_c_fns_for_cache(source_text, true, false)
 				g.collect_inlined_c_declared_fns(source_text)
 				source_directive := c_native_source_context_include(source_path)
@@ -4817,7 +4817,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			}
 			g.collect_inlined_c_structs(header_text)
 			if node.value == 'insert' && c_include_arg_is_source_file(include_arg) {
-				g.collect_inlined_c_source_typedefs(header_text)
+				g.collect_inlined_c_source_typedefs(header_text, module_name)
 			}
 			if g.cache_split {
 				g.collect_cache_native_c_symbols(header_text)
@@ -5528,7 +5528,9 @@ fn c_header_owned_source_condition(directive string, state CHeaderMacroState, st
 			state.external_macros_possible, strict_iso_mode, target)
 	} else {
 		expanded := c_header_expand_condition_function_macros(c_directive_arg(directive), state)
-		condition := c_header_condition_resolve_has_include(expanded, state, include_context)
+		include_condition := c_header_condition_resolve_has_include(expanded, state, include_context)
+		condition := c_header_condition_resolve_feature_predicates(include_condition,
+			include_context.feature_predicates)
 		c_header_objective_c_condition_state(condition, state.defined, state.undefined,
 			state.uncertain, state.macro_values, strict_iso_mode, target)
 	}
@@ -5551,6 +5553,8 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		seen.delete(real_path)
 	}
 	text := os.read_file(real_path) or { return c_header_macro_state_clone(state) }
+	feature_predicates := c_header_compiler_feature_predicate_values(g.ccompiler,
+		g.header_owned_effective_c_flags(), g.c99_mode, g.target, text)
 	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
 	quote_include_dirs := c_flag_quote_include_dirs(g.header_owned_effective_c_flags())
 	framework_include_dirs := c_flag_framework_include_dirs(g.header_owned_effective_c_flags())
@@ -5565,6 +5569,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			include_dirs: include_dirs
 			quote_include_dirs: quote_include_dirs
 			framework_include_dirs: framework_include_dirs
+			feature_predicates: feature_predicates
 		}
 		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
 			g.target, include_results, include_context)
@@ -5593,6 +5598,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 		macro_line_index = include_line_index + 1
 		include_state := scan.include_states[unresolved_include]
 		include_is_definitely_active := scan.include_definitely_active[unresolved_include]
+		include_at_file_scope := scan.include_at_file_scope[unresolved_include]
 		include_is_next := scan.include_next[unresolved_include]
 		raw_include_arg := scan.include_args[unresolved_include]
 		include_args := c_header_owned_include_args(raw_include_arg, include_state,
@@ -5607,9 +5613,16 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 					if !os.is_file(nested_path) {
 						continue
 					}
+					mut owned_before := map[string]bool{}
+					if !include_at_file_scope {
+						owned_before = g.header_owned_c_typedefs.clone()
+					}
 					result_state = g.collect_header_owned_c_typedef_file(nested_path, include_dirs,
 						include_state, mut seen, mut include_macros, mut dynamic_include_macros, mut
 						literal_include_macros)
+					if !include_at_file_scope {
+						g.header_owned_c_typedefs = owned_before.move()
+					}
 					found = true
 					break
 				}
@@ -5633,7 +5646,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 						include_state, mut seen, mut possible_include_macros, mut
 						possible_dynamic_include_macros, mut possible_literal_include_macros)
 					for alias, _ in g.header_owned_c_typedefs {
-						if alias !in owned_before {
+						if include_at_file_scope && alias !in owned_before {
 							result_typedef_aliases << alias
 						}
 					}
@@ -5649,7 +5662,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			result_state = c_header_macro_state_after_unknown_include(include_state)
 		}
 		if !found {
-			if include_is_definitely_active {
+			if include_is_definitely_active && include_at_file_scope {
 				for nested_include_arg in include_args {
 					g.collect_known_header_owned_c_typedef_names(nested_include_arg)
 				}
@@ -5669,6 +5682,7 @@ fn (mut g FlatGen) collect_header_owned_c_typedef_file(path string, include_dirs
 			include_dirs: include_dirs
 			quote_include_dirs: quote_include_dirs
 			framework_include_dirs: framework_include_dirs
+			feature_predicates: feature_predicates
 		})
 	if fallback_scan.has_pragma_once {
 		g.header_owned_pragma_once_seen[real_path] = true
@@ -6016,6 +6030,8 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 		g.preserved_header_scans_active.delete(visit_key)
 		return c_header_macro_state_clone(state)
 	}
+	feature_predicates := c_header_compiler_feature_predicate_values(g.ccompiler,
+		g.header_owned_effective_c_flags(), g.c99_mode, g.target, text)
 	strict_iso_mode := c_effective_strict_iso_mode(g.c_flags, g.c99_mode)
 	mut include_results := map[string]CHeaderIncludeResult{}
 	// Resolve one include at a time, from left to right. Restarting the scan after
@@ -6029,6 +6045,7 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 			vroot: g.compiler_vroot
 			source_file: real_path
 			include_dirs: include_dirs
+			feature_predicates: feature_predicates
 		}
 		scan := c_header_definitely_active_scan_with_include_results(text, state, strict_iso_mode,
 			g.target, include_results, include_context)
@@ -6097,6 +6114,7 @@ fn (mut g FlatGen) collect_preserved_header_file_with_state_and_scope(path strin
 			vroot: g.compiler_vroot
 			source_file: real_path
 			include_dirs: include_dirs
+			feature_predicates: feature_predicates
 		})
 	cgen_worker_scope_leave(fallback_scope)
 	result := g.finish_preserved_header_scan(fallback_scan, visit_key, collect_declarations)
@@ -6180,6 +6198,7 @@ struct CHeaderActiveScan {
 	include_args                []string
 	include_next                []bool
 	include_definitely_active   []bool
+	include_at_file_scope       []bool
 	macro_names                 []string
 	possibly_active_macro_names []string
 	final_state                 CHeaderMacroState
@@ -6191,6 +6210,7 @@ struct CHeaderIncludeContext {
 	include_dirs           []string
 	quote_include_dirs     []string
 	framework_include_dirs []string
+	feature_predicates     map[string]int
 }
 
 struct CHeaderIncludeResult {
@@ -6245,6 +6265,51 @@ fn c_header_macro_state_signature(state CHeaderMacroState) string {
 	}
 	parts << if state.external_macros_possible { 'e:1' } else { 'e:0' }
 	return parts.join('\x1f')
+}
+
+fn c_header_pragma_macro_name(arg string, action string) string {
+	clean := arg.trim_space()
+	prefix := '${action}('
+	if !clean.starts_with(prefix) || !clean.ends_with(')') {
+		return ''
+	}
+	quoted := clean[prefix.len..clean.len - 1].trim_space()
+	if quoted.len < 2 || quoted[0] != `"` || quoted[quoted.len - 1] != `"` {
+		return ''
+	}
+	name := quoted[1..quoted.len - 1]
+	if name.len == 0 {
+		return ''
+	}
+	for character in name {
+		if !c_ident_char(character) {
+			return ''
+		}
+	}
+	return name
+}
+
+fn c_header_restore_macro_name(name string, saved CHeaderMacroState, mut defined map[string]bool, mut undefined map[string]bool, mut uncertain map[string]bool, mut macro_values map[string]string, mut function_macro_values map[string]string) {
+	defined.delete(name)
+	undefined.delete(name)
+	uncertain.delete(name)
+	macro_values.delete(name)
+	function_macro_values.delete(name)
+	if saved.defined[name] {
+		defined[name] = true
+	}
+	if saved.undefined[name] {
+		undefined[name] = true
+	}
+	if saved.uncertain[name] {
+		uncertain[name] = true
+	}
+	if name in saved.macro_values {
+		macro_values[name] = saved.macro_values[name]
+	}
+	if name in saved.function_macro_values {
+		function_macro_values[name] = saved.function_macro_values[name]
+	}
 }
 
 fn c_header_macro_state_for_flags(flags []string) CHeaderMacroState {
@@ -6327,6 +6392,8 @@ fn (mut g FlatGen) collect_possibly_active_header_macros(path string, include_di
 	g.preserved_macro_files_seen[real_path] = true
 	g.preserved_header_files_seen[real_path] = true
 	text := os.read_file(real_path) or { return }
+	feature_predicates := c_header_compiler_feature_predicate_values(g.ccompiler,
+		g.header_owned_effective_c_flags(), g.c99_mode, g.target, text)
 	flag_state := c_header_macro_state_for_flags(g.c_flags)
 	state := CHeaderMacroState{
 		defined:                  flag_state.defined
@@ -6340,6 +6407,7 @@ fn (mut g FlatGen) collect_possibly_active_header_macros(path string, include_di
 			vroot: g.compiler_vroot
 			source_file: real_path
 			include_dirs: include_dirs
+			feature_predicates: feature_predicates
 		})
 	for macro_name in scan.possibly_active_macro_names {
 		g.possibly_active_c_macros[macro_name] = true
@@ -6373,6 +6441,8 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 	mut include_args := []string{}
 	mut include_next := []bool{}
 	mut include_definitely_active := []bool{}
+	mut include_at_file_scope := []bool{}
+	mut macro_stacks := map[string][]CHeaderMacroState{}
 	mut macro_names := map[string]bool{}
 	mut possibly_active_macro_names := map[string]bool{}
 	mut has_pragma_once := false
@@ -6542,6 +6612,43 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 		if name == 'pragma' && c_directive_arg(clean) == 'once' && definitely_active {
 			has_pragma_once = true
 		}
+		if name == 'pragma' && possibly_active {
+			pragma_arg := c_directive_arg(clean)
+			push_name := c_header_pragma_macro_name(pragma_arg, 'push_macro')
+			pop_name := c_header_pragma_macro_name(pragma_arg, 'pop_macro')
+			if push_name.len > 0 {
+				if definitely_active {
+					mut stack := macro_stacks[push_name].clone()
+					stack << CHeaderMacroState{
+						defined: defined.clone()
+						undefined: undefined.clone()
+						uncertain: uncertain.clone()
+						macro_values: macro_values.clone()
+						function_macro_values: function_macro_values.clone()
+						external_macros_possible: external_macros_possible
+					}
+					macro_stacks[push_name] = stack
+				} else {
+					macro_stacks.delete(push_name)
+				}
+			} else if pop_name.len > 0 {
+				if definitely_active && macro_stacks[pop_name].len > 0 {
+					mut stack := macro_stacks[pop_name].clone()
+					saved := stack.last()
+					stack.delete_last()
+					macro_stacks[pop_name] = stack
+					c_header_restore_macro_name(pop_name, saved, mut defined, mut undefined,
+						mut uncertain, mut macro_values, mut function_macro_values)
+				} else {
+					macro_stacks.delete(pop_name)
+					defined.delete(pop_name)
+					undefined.delete(pop_name)
+					uncertain[pop_name] = true
+					macro_values.delete(pop_name)
+					function_macro_values.delete(pop_name)
+				}
+			}
+		}
 		if name in ['define', 'undef'] {
 			macro_name, macro_value, has_macro_value, function_macro_value := c_header_define_name_and_value(clean)
 			if macro_name.len > 0 {
@@ -6590,6 +6697,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 			include_args << c_directive_arg(clean)
 			include_next << name == 'include_next'
 			include_definitely_active << definitely_active
+			include_at_file_scope << brace_depth == 0
 			if include_key in include_results
 				&& include_results[include_key].input_signature == c_header_macro_state_signature(include_state) {
 				if conditionals.len > 0 {
@@ -6676,6 +6784,7 @@ fn c_header_definitely_active_scan_with_include_results(text string, state CHead
 		include_args: include_args
 		include_next: include_next
 		include_definitely_active: include_definitely_active
+		include_at_file_scope: include_at_file_scope
 		macro_names: macro_names.keys()
 		possibly_active_macro_names: possibly_active_macro_names.keys()
 		final_state:                 CHeaderMacroState{
@@ -9820,9 +9929,27 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 	}
 }
 
-fn (mut g FlatGen) collect_inlined_c_source_typedefs(text string) {
+fn (mut g FlatGen) collect_inlined_c_source_typedefs(text string, module_name string) {
 	effective_flags := g.header_owned_effective_c_flags()
-	scan := c_header_definitely_active_scan(text, g.header_owned_initial_macro_state(), c_effective_strict_iso_mode(effective_flags, g.c99_mode), g.target)
+	local_context := (g.native_source_contexts[module_name] or {
+		[]NativeSourceContextDirective{}
+	}).clone()
+	context_directives := g.ordered_native_source_context(module_name, local_context)
+	source_with_context := if context_directives.len > 0 {
+		context_directives.join('\n') + '\n' + text
+	} else {
+		text
+	}
+	scan := c_header_definitely_active_scan_in_file(source_with_context,
+		g.header_owned_initial_macro_state(),
+		c_effective_strict_iso_mode(effective_flags, g.c99_mode), g.target, CHeaderIncludeContext{
+			vroot: g.compiler_vroot
+			include_dirs: c_flag_include_dirs(effective_flags)
+			quote_include_dirs: c_flag_quote_include_dirs(effective_flags)
+			framework_include_dirs: c_flag_framework_include_dirs(effective_flags)
+			feature_predicates: c_header_compiler_feature_predicate_values(g.ccompiler,
+				effective_flags, g.c99_mode, g.target, source_with_context)
+		})
 	clean := c_header_owned_typedef_scan_text(scan.text + '\n' + scan.typedef_macro_expansions)
 	for alias in c_typedef_all_aggregate_aliases(clean) {
 		if 'C.${alias}' in g.tc.c_typedef_structs {
@@ -11548,6 +11675,141 @@ fn c_header_condition_resolve_has_include(raw string, state CHeaderMacroState, i
 			}
 		}
 		result.write_string(if found { '1' } else { '0' })
+		i = paren_close + 1
+	}
+	return result.str()
+}
+
+fn c_header_feature_predicate_invocations(text string) []string {
+	mut invocations := []string{}
+	mut seen := map[string]bool{}
+	mut i := 0
+	for i < text.len {
+		mut predicate := ''
+		for candidate in ['__has_builtin', '__has_feature', '__has_extension'] {
+			if text[i..].starts_with(candidate) {
+				predicate = candidate
+				break
+			}
+		}
+		if predicate.len == 0 || (i > 0 && c_ident_char(text[i - 1]))
+			|| (i + predicate.len < text.len && c_ident_char(text[i + predicate.len])) {
+			i++
+			continue
+		}
+		mut paren_open := i + predicate.len
+		for paren_open < text.len && text[paren_open].is_space() {
+			paren_open++
+		}
+		if paren_open >= text.len || text[paren_open] != `(` {
+			i += predicate.len
+			continue
+		}
+		close_offset := fixed_array_len_matching_paren(text[paren_open..], 0)
+		if close_offset < 0 {
+			i += predicate.len
+			continue
+		}
+		paren_close := paren_open + close_offset
+		invocation := text[i..paren_close + 1]
+		if !seen[invocation] {
+			seen[invocation] = true
+			invocations << invocation
+		}
+		i = paren_close + 1
+	}
+	return invocations
+}
+
+fn c_header_compiler_feature_predicate_values(ccompiler string, c_flags []string, c99_mode bool, target pref.Target, text string) map[string]int {
+	invocations := c_header_feature_predicate_invocations(text)
+	if invocations.len == 0 || ccompiler.len == 0 || ccompiler.to_lower().contains('msvc')
+		|| ccompiler.to_lower().contains('cl.exe') {
+		return map[string]int{}
+	}
+	path := os.join_path(os.vtmp_dir(), 'v3_header_features_${os.getpid()}_${time.now().unix_nano()}.c')
+	defer {
+		os.rm(path) or {}
+	}
+	mut source := strings.new_builder(256 + invocations.len * 96)
+	for predicate in ['__has_builtin', '__has_feature', '__has_extension'] {
+		source.writeln('#ifndef ${predicate}')
+		source.writeln('#define ${predicate}(value) 0')
+		source.writeln('#endif')
+	}
+	for i, invocation in invocations {
+		source.writeln('#if ${invocation}')
+		source.writeln('V3_HEADER_FEATURE_${i}_TRUE')
+		source.writeln('#else')
+		source.writeln('V3_HEADER_FEATURE_${i}_FALSE')
+		source.writeln('#endif')
+	}
+	os.write_file(path, source.str()) or { return map[string]int{} }
+	mut args := c_header_compiler_predefined_macro_args(c_flags, c99_mode, target, path)
+	index := args.index('-dM')
+	if index >= 0 {
+		args.delete(index)
+	}
+	if '-P' !in args {
+		args.insert(args.len - 3, '-P')
+	}
+	result := cmdexec.run(ccompiler, args)
+	if result.exit_code != 0 {
+		return map[string]int{}
+	}
+	mut values := map[string]int{}
+	for i, invocation in invocations {
+		if result.output.contains('V3_HEADER_FEATURE_${i}_TRUE') {
+			values[invocation] = 1
+		} else if result.output.contains('V3_HEADER_FEATURE_${i}_FALSE') {
+			values[invocation] = -1
+		}
+	}
+	return values
+}
+
+fn c_header_condition_resolve_feature_predicates(raw string, values map[string]int) string {
+	if values.len == 0 {
+		return raw
+	}
+	mut result := strings.new_builder(raw.len)
+	mut i := 0
+	for i < raw.len {
+		mut predicate := ''
+		for candidate in ['__has_builtin', '__has_feature', '__has_extension'] {
+			if raw[i..].starts_with(candidate) {
+				predicate = candidate
+				break
+			}
+		}
+		if predicate.len == 0 || (i > 0 && c_ident_char(raw[i - 1]))
+			|| (i + predicate.len < raw.len && c_ident_char(raw[i + predicate.len])) {
+			result.write_u8(raw[i])
+			i++
+			continue
+		}
+		mut paren_open := i + predicate.len
+		for paren_open < raw.len && raw[paren_open].is_space() {
+			paren_open++
+		}
+		if paren_open >= raw.len || raw[paren_open] != `(` {
+			result.write_string(predicate)
+			i += predicate.len
+			continue
+		}
+		close_offset := fixed_array_len_matching_paren(raw[paren_open..], 0)
+		if close_offset < 0 {
+			result.write_string(predicate)
+			i += predicate.len
+			continue
+		}
+		paren_close := paren_open + close_offset
+		invocation := raw[i..paren_close + 1]
+		if invocation in values {
+			result.write_string(if values[invocation] > 0 { '1' } else { '0' })
+		} else {
+			result.write_string(invocation)
+		}
 		i = paren_close + 1
 	}
 	return result.str()

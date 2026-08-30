@@ -447,11 +447,13 @@ fn test_inlined_c_source_typedef_is_not_redeclared() {
 		os.rmdir_all(root) or {}
 		os.rm(v3_bin) or {}
 	}
-	os.write_file(os.join_path(root, 'impl.c'), 'typedef struct V3InlinedSourceImpl {
+	os.write_file(os.join_path(root, 'impl.c'), '#if defined(V3_INLINED_SOURCE_ENABLED)
+typedef struct V3InlinedSourceImpl {
 	int value;
 } V3InlinedSourceAlias;
+#endif
 
-#if 0
+#if defined(V3_INLINED_SOURCE_DISABLED)
 typedef struct V3InactiveSourceImpl {
 	int value;
 } V3InactiveSourceAlias;
@@ -463,6 +465,9 @@ int v3_inlined_source_value(V3InlinedSourceAlias value) {
 ')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main
 
+#define V3_INLINED_SOURCE_ENABLED
+#define V3_INLINED_SOURCE_DISABLED
+#undef V3_INLINED_SOURCE_DISABLED
 #include "impl.c"
 
 @[typedef]
@@ -504,9 +509,11 @@ fn test_inserted_c_source_typedef_is_not_redeclared() {
 		os.rmdir_all(root) or {}
 		os.rm(v3_bin) or {}
 	}
-	os.write_file(os.join_path(root, 'inserted.c'), 'typedef struct V3InsertedSourceImpl {
+	os.write_file(os.join_path(root, 'inserted.c'), '#if defined(V3_INSERTED_SOURCE_ENABLED)
+typedef struct V3InsertedSourceImpl {
 	int value;
 } V3InsertedSourceAlias;
+#endif
 
 int v3_inserted_source_value(V3InsertedSourceAlias value) {
 	return value.value;
@@ -514,6 +521,7 @@ int v3_inserted_source_value(V3InsertedSourceAlias value) {
 ')!
 	os.write_file(os.join_path(root, 'main.v'), 'module main
 
+#define V3_INSERTED_SOURCE_ENABLED
 #insert "@DIR/inserted.c"
 
 @[typedef]
