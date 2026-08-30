@@ -58,5 +58,5 @@ Options:
 
 Environment Variables:
   VDIFF_CMD      A custom tool and options that will be used for viewing the
-  differences between the original and the temporarily formatted
-  files, e.g.: `VDIFF_CMD="diff -y -W 100" v fmt -diff path/file.v`
+                 differences between the original and the temporarily formatted
+                 files, e.g.: `VDIFF_CMD="diff -y -W 100" v fmt -diff path/file.v`
