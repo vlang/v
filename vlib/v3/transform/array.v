@@ -1589,13 +1589,20 @@ fn (mut t Transformer) clone_borrowed_array_append_many_value(source_id flat.Nod
 // decision is made in the checker so its move/drop bookkeeping stays consistent with the
 // clone emitted here; this only materializes it.
 fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value flat.NodeId, typ string) flat.NodeId {
-	if isnil(t.tc) {
+	if !t.borrowed_projection_clone_required(source_id, typ) {
 		return value
+	}
+	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
+}
+
+fn (t &Transformer) borrowed_projection_clone_required(source_id flat.NodeId, typ string) bool {
+	if isnil(t.tc) {
+		return false
 	}
 	// The checker resolves a bare identifier against its lexical scope before constants.
 	// Preserve that decision after checking, when its active scope is no longer available.
 	if t.expr_is_local_ident_read(source_id) {
-		return value
+		return false
 	}
 	// The checker resolves the field/slice/cast shapes from node-annotated types alone, so it
 	// and the transformer agree without a shared map. A `const` read is resolved separately in
@@ -1603,12 +1610,9 @@ fn (mut t Transformer) clone_borrowed_projection(source_id flat.NodeId, value fl
 	// that module-independent resolver.
 	if !t.tc.ownership_expr_is_borrowed_projection(source_id)
 		&& !t.expr_reads_owned_const(source_id) {
-		return value
+		return false
 	}
-	if !t.compiler_default_clone_type_needs_work(typ) {
-		return value
-	}
-	return t.make_compiler_default_borrowed_clone_value(value, typ, true)
+	return t.compiler_default_clone_type_needs_work(typ)
 }
 
 fn (t &Transformer) expr_is_local_ident_read(id flat.NodeId) bool {

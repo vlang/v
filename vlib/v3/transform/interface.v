@@ -339,6 +339,15 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return expr
 	}
 	source_iface := t.resolve_interface_type_name(source_type)
+	if !target_is_ptr && source_iface.len == 0
+		&& t.borrowed_projection_clone_required(id, source_type) {
+		// Clone the concrete projection before boxing it. Interface boxing only copies the
+		// concrete bytes, so cloning the finished interface would leave its payload aliased.
+		source := t.transform_expr(id)
+		cloned := t.clone_borrowed_projection(id, source, source_type)
+		t.set_node_typ(int(cloned), source_type)
+		return t.transform_interface_value_for_type(cloned, target_type, false)
+	}
 	if source_iface == iface_name {
 		expr := t.transform_expr(id)
 		if source_type.len > 0 && int(expr) >= 0 {
