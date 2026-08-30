@@ -93,6 +93,12 @@ fn following_keyword_shared() int {
 	return x
 }
 
+fn multiline_shared_operator(enabled bool) bool {
+	shared := true
+	return shared
+		&& enabled
+}
+
 fn main() {
 	_ = use_immutable_shared()
 	_ = xor_shared()
@@ -107,8 +113,10 @@ fn main() {
 	_ = nested_comment_shared()
 	_ = multiline_comment_shared()
 	_ = following_keyword_shared()
+	_ = multiline_shared_operator(true)
 	unsafe {
 		mut shared := Box{}
+		mut type := Box{}
 		value := Box{}
 		shared.value = 1
 		println(shared.value)
@@ -121,6 +129,8 @@ fn main() {
 			value)
 		consume(shared
 			shared)
+		consume(shared
+			type)
 	}
 }
 ', 'shared_keyword_local.v', prefs) or { panic(err) }
@@ -131,6 +141,7 @@ fn main() {
 	assert c_source.contains('consume(&(value));'), c_source
 	assert c_source.count('consume(&(value));') == 3, c_source
 	assert c_source.count('consume(&(shared));') == 2, c_source
+	assert c_source.contains('consume(&(type));'), c_source
 	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
 	assert c_source.contains('return shared;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
@@ -143,6 +154,7 @@ fn main() {
 	assert c_source.contains('return x+shared;'), c_source
 	assert c_source.count('return shared+1;') == 2, c_source
 	assert c_source.count('println(x);') == 2, c_source
+	assert c_source.contains('return ((shared)&&(enabled));'), c_source
 	assert !c_source.contains('(&shared)'), c_source
 }
 

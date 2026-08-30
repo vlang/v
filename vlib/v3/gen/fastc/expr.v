@@ -1768,11 +1768,26 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 }
 
 fn fastc_shared_modifier_operand_start(tok token.Token) bool {
-	return tok in [.name, .key_shared, .amp, .and, .question, .not, .lpar, .lsbr]
+	if tok in [.key_or, .key_in, .key_as, .key_is] {
+		return false
+	}
+	return tok == .name || (tok.is_keyword() && tok != .key_volatile) || tok in [.amp, .and,
+		.question, .not, .lpar, .lsbr]
 }
 
 fn fastc_shared_modifier_may_cross_line(previous token.Token, next token.Token) bool {
 	return previous in [.lpar, .lsbr, .comma, .colon] && fastc_shared_modifier_operand_start(next)
+}
+
+fn fastc_token_continues_expression_after_operand(tok token.Token) bool {
+	return tok.is_infix() || tok.is_postfix() || tok.is_assignment() || tok in [
+		.key_or,
+		.key_as,
+		.question,
+		.dot,
+		.lpar,
+		.lsbr,
+	]
 }
 
 struct FastcSharedTokenClassification {
@@ -1845,7 +1860,7 @@ fn (g &Parser) classify_shared_token(previous token.Token) FastcSharedTokenClass
 	if crossed_line && !fastc_shared_modifier_may_cross_line(previous, next) {
 		return FastcSharedTokenClassification{
 			is_identifier: true
-			ends_expression: true
+			ends_expression: !fastc_token_continues_expression_after_operand(next)
 		}
 	}
 	if next in [.key_or, .key_in, .key_as, .key_is] {
