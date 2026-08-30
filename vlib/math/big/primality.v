@@ -82,8 +82,12 @@ fn (x Integer) miller_rabin(rounds int) bool {
 	// Hoisted out of the loop: deriving a context costs a modular inverse, and
 	// every round shares the same modulus.
 	ctx := x.montgomery()
+	// Only the random rounds need this, and only its value, so compute it once
+	// rather than once per call to random_base.
+	x_minus_three := x - integer_from_int(3)
 	for i in 0 .. rounds {
-		if !x.passes_miller_rabin_round(x.round_base(i), d, s, x_minus_one, ctx) {
+		base := x.round_base(i, x_minus_three)
+		if !x.passes_miller_rabin_round(base, d, s, x_minus_one, ctx) {
 			return false
 		}
 	}
@@ -92,11 +96,11 @@ fn (x Integer) miller_rabin(rounds int) bool {
 
 // round_base returns the base for round `i`: one of the fixed bases while they
 // last, a random one afterwards.
-fn (x Integer) round_base(i int) Integer {
+fn (x Integer) round_base(i int, x_minus_three Integer) Integer {
 	if i < deterministic_bases.len {
 		return integer_from_u64(deterministic_bases[i])
 	}
-	return random_base(x)
+	return random_base(x, x_minus_three)
 }
 
 // passes_miller_rabin_round reports whether the base `a` fails to witness that
@@ -119,10 +123,11 @@ fn (x Integer) passes_miller_rabin_round(a Integer, d Integer, s int, x_minus_on
 	return false
 }
 
-// random_base returns an integer in `[2, x - 2]`, used once the fixed bases
-// are exhausted.
+// random_base returns an integer in `[2, x - 2]`, used once the fixed bases are
+// exhausted. `x_minus_three` is `x - 3`, supplied by the caller so that it is
+// not rebuilt on every round.
 @[direct_array_access]
-fn random_base(x Integer) Integer {
+fn random_base(x Integer, x_minus_three Integer) Integer {
 	mut digits := []u64{len: x.digits.len}
 	for i in 0 .. digits.len {
 		digits[i] = rand.u64() & max_digit
@@ -140,7 +145,7 @@ fn random_base(x Integer) Integer {
 		digits: digits
 		signum: 1
 	}
-	return candidate % (x - integer_from_int(3)) + two_int
+	return candidate % x_minus_three + two_int
 }
 
 // split_odd writes `n` as `d * 2^s` with `d` odd, and returns `d` and `s`.
