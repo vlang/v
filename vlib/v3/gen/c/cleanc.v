@@ -413,6 +413,7 @@ mut:
 	preinclude_macro_state         CHeaderMacroState
 	preinclude_state_initialized   bool
 	initial_c_flags                []string
+	macro_probe_c_flags            []string
 	c_flags                        []string
 	use_system_stdint              bool
 	libc_compat_fns                map[string]bool
@@ -704,6 +705,11 @@ pub fn (g &FlatGen) c_flags() []string {
 // set_initial_c_flags makes command-line C flags available while collecting directives.
 pub fn (mut g FlatGen) set_initial_c_flags(flags []string) {
 	g.initial_c_flags = flags.clone()
+}
+
+// set_macro_probe_c_flags records ambient compile flags without re-emitting them.
+pub fn (mut g FlatGen) set_macro_probe_c_flags(flags []string) {
+	g.macro_probe_c_flags = flags.clone()
 }
 
 // set_c99_mode configures whether generated C should support strict C99 builds.
@@ -1121,6 +1127,7 @@ pub fn FlatGen.new() FlatGen {
 		preserved_header_scans_active:   map[string]bool{}
 		inlined_c_typedef_names:         map[string]bool{}
 		initial_c_flags:                 []string{}
+		macro_probe_c_flags:             []string{}
 		c_flags:                         []string{}
 		libc_compat_fns:                 map[string]bool{}
 		modules:                         map[string]string{}
@@ -5004,8 +5011,10 @@ fn (mut g FlatGen) ensure_header_owned_macro_context() {
 }
 
 fn (g &FlatGen) header_owned_initial_macro_state() CHeaderMacroState {
-	mut state := c_header_macro_state_for_flags(g.c_flags)
-	compiler_values := c_header_compiler_predefined_macro_values(g.ccompiler)
+	mut effective_flags := g.macro_probe_c_flags.clone()
+	effective_flags << g.c_flags
+	mut state := c_header_macro_state_for_flags(effective_flags)
+	compiler_values := c_header_compiler_predefined_macro_values(g.ccompiler, effective_flags, g.c99_mode, g.target)
 	for name, value in compiler_values {
 		if name in state.defined || name in state.undefined {
 			continue
@@ -5037,7 +5046,7 @@ fn (g &FlatGen) header_owned_initial_macro_state() CHeaderMacroState {
 	return state
 }
 
-fn c_header_compiler_predefined_macro_values(ccompiler string) map[string]string {
+fn c_header_compiler_predefined_macro_values(ccompiler string, c_flags []string, c99_mode bool, target pref.Target) map[string]string {
 	if ccompiler.len == 0 || ccompiler.to_lower().contains('msvc') || ccompiler.to_lower().contains('cl.exe') {
 		return map[string]string{}
 	}
@@ -5046,11 +5055,109 @@ fn c_header_compiler_predefined_macro_values(ccompiler string) map[string]string
 		os.rm(path) or {}
 	}
 	os.write_file(path, '') or { return map[string]string{} }
-	result := cmdexec.run(ccompiler, ['-dM', '-E', '-x', 'c', path])
+	args := c_header_compiler_predefined_macro_args(c_flags, c99_mode, target, path)
+	result := cmdexec.run(ccompiler, args)
 	if result.exit_code != 0 {
 		return map[string]string{}
 	}
 	return c_header_compiler_predefined_macro_values_from_output(result.output)
+}
+
+fn c_header_compiler_predefined_macro_args(c_flags []string, c99_mode bool, target pref.Target, path string) []string {
+	mut args := c_header_compiler_predefined_target_args(target, pref.host_target())
+	compile_flags := c_header_compiler_predefined_compile_flags(c_flags)
+	language := c_header_compiler_predefined_language(c_flags)
+	if !compile_flags.any(it.trim_space() == '-std' || it.trim_space().starts_with('-std=')) {
+		args << if language in ['c++', 'objective-c++'] {
+			if c99_mode { '-std=c++11' } else { '-std=gnu++11' }
+		} else {
+			if c99_mode { '-std=c99' } else { '-std=gnu11' }
+		}
+	}
+	args << compile_flags
+	args << ['-dM', '-E', '-x', language, path]
+	return args
+}
+
+fn c_header_compiler_predefined_target_args(target pref.Target, host pref.Target) []string {
+	if target.os == 'macos' && host.os == 'macos' && target.arch != host.arch && target.arch in [
+		'amd64',
+		'arm64',
+	] {
+		return ['-arch', if target.arch == 'amd64' { 'x86_64' } else { 'arm64' }]
+	}
+	return []string{}
+}
+
+fn c_header_compiler_predefined_language(c_flags []string) string {
+	mut need_objc := false
+	mut need_cpp := false
+	for i, flag in c_flags {
+		clean := flag.trim_space()
+		if clean == '-ObjC' || clean.starts_with('-fobjc-') {
+			need_objc = true
+		}
+		if i == 0 || c_flags[i - 1].trim_space() != '-x' {
+			continue
+		}
+		language := clean
+		need_objc = need_objc || language in ['objective-c', 'objective-c++']
+		need_cpp = need_cpp || language in ['c++', 'objective-c++']
+	}
+	if need_objc && need_cpp {
+		return 'objective-c++'
+	}
+	if need_cpp {
+		return 'c++'
+	}
+	if need_objc {
+		return 'objective-c'
+	}
+	return 'c'
+}
+
+fn c_header_compiler_predefined_compile_flags(c_flags []string) []string {
+	mut flags := []string{cap: c_flags.len}
+	mut skip_operand := false
+	mut preserve_operand := false
+	for flag in c_flags {
+		part := flag.trim_space()
+		if skip_operand {
+			skip_operand = false
+			continue
+		}
+		if preserve_operand {
+			flags << flag
+			preserve_operand = false
+			continue
+		}
+		if part == '-x' {
+			skip_operand = true
+			continue
+		}
+		if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-weak_library',
+			'-force_load', '-o', '-MF', '-MT', '-MQ'] {
+			skip_operand = true
+			continue
+		}
+		if part in ['-I', '-F', '-D', '-U', '-std', '-include', '-imacros', '-isystem', '-iquote',
+			'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot',
+			'-target', '-arch'] {
+			flags << flag
+			preserve_operand = true
+			continue
+		}
+		if part.len == 0 || part in ['-shared', '-static', '-dynamiclib'] || part.starts_with('-Wl,') || (part.starts_with('-l') && part.len > 2) || (part.starts_with('-L') && part.len > 2) || c_header_compiler_predefined_flag_is_input(part) {
+			continue
+		}
+		flags << flag
+	}
+	return flags
+}
+
+fn c_header_compiler_predefined_flag_is_input(flag string) bool {
+	clean := flag.trim(' \t\r\n"\'')
+	return clean.ends_with('.c') || clean.ends_with('.cc') || clean.ends_with('.cpp') || clean.ends_with('.m') || clean.ends_with('.mm') || clean.ends_with('.o') || clean.ends_with('.obj') || clean.ends_with('.a') || clean.ends_with('.so') || clean.ends_with('.dylib')
 }
 
 fn c_header_compiler_predefined_macro_values_from_output(output string) map[string]string {

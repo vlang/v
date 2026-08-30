@@ -653,6 +653,34 @@ fn test_header_owned_compiler_state_includes_clang_guards() {
 	assert state.defined['__GNUC__']
 }
 
+fn test_header_owned_compiler_macro_probe_uses_effective_compile_context() {
+	args := c_header_compiler_predefined_macro_args(['-fopenmp', '-std=c17', '-m32', '-target',
+		'riscv64-linux-gnu', '-D', 'FEATURE=1', '-fobjc-arc', '-x', 'none', '-L', '/tmp/lib', '-lssl',
+		'/tmp/native.c'], false, pref.Target{}, '/tmp/probe.c')
+	assert '-fopenmp' in args
+	assert '-std=c17' in args
+	assert '-m32' in args
+	assert args.contains('-target')
+	assert args.contains('riscv64-linux-gnu')
+	assert args.contains('-D')
+	assert args.contains('FEATURE=1')
+	assert args.contains('objective-c')
+	assert '-L' !in args
+	assert '-lssl' !in args
+	assert '/tmp/native.c' !in args
+	assert args.last() == '/tmp/probe.c'
+
+	mac_target := pref.Target{
+		os: 'macos'
+		arch: 'arm64'
+	}
+	mac_host := pref.Target{
+		os: 'macos'
+		arch: 'amd64'
+	}
+	assert c_header_compiler_predefined_target_args(mac_target, mac_host) == ['-arch', 'arm64']
+}
+
 fn test_header_owned_compiler_state_preserves_version_values() {
 	values := c_header_compiler_predefined_macro_values_from_output('#define unrelated 9\n#define __GNUC__ 12\n#define __GNUC_MINOR__ 2\n#define __clang_major__ 18\n#define __x86_64__ 1\n#define __aarch64__ 1\n#define __STDC_VERSION__ 201710L\n#define __has_builtin(x) __builtin_has_attribute(x)\n')
 	assert values == {
