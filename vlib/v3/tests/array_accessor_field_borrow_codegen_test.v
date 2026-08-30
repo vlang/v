@@ -424,3 +424,54 @@ fn main() {
 	assert comparison.exit_code != 0, comparison.output
 	assert comparison.output.contains('cannot return an independent array element'), comparison.output
 }
+
+fn test_owned_string_index_with_mutating_index_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_string_index_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) int {
+	arr.delete_last()
+	return 0
+}
+
+fn last_initial_then_delete(mut arr []E) u8 {
+	return arr.last().name[delete_last(mut arr)]
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_initial_then_delete(mut arr))
+}
+", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
+fn test_owned_field_overloaded_comparison_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_comparison', "struct Name {
+	text string
+}
+
+struct E {
+	name Name
+}
+
+fn (left Name) == (right Name) bool {
+	return left.text == right.text
+}
+
+fn last_name_matches(arr []E) bool {
+	return arr.last().name == Name{ text: 'hello' }
+}
+
+fn main() {
+	arr := [E{ name: Name{ text: 'hello' } }]
+	println(last_name_matches(arr))
+}
+", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}

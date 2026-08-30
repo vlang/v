@@ -6094,7 +6094,8 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 		return false
 	}
 	consumer := tc.a.node(consumer_id)
-	if consumer.kind == .infix && consumer.op in [.eq, .ne, .lt, .gt, .le, .ge] {
+	if consumer.kind == .infix && consumer.op in [.eq, .ne, .lt, .gt, .le, .ge]
+		&& !tc.array_accessor_consumer_has_overloaded_operator(consumer) {
 		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
 	}
 	if consumer.kind == .infix && consumer.op == .plus && final_type is String && (raw_final_type !is Alias || !tc.type_has_infix_operator_method(raw_final_type, .plus)) {
@@ -6107,7 +6108,20 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 		return false
 	}
 	index_type := unalias_type(tc.resolve_type(consumer_id))
-	return !tc.ownership_type_requires_destruction(index_type) && !tc.array_accessor_type_contains_pointer(index_type)
+	return !tc.ownership_type_requires_destruction(index_type)
+		&& !tc.array_accessor_type_contains_pointer(index_type)
+		&& tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
+}
+
+fn (tc &TypeChecker) array_accessor_consumer_has_overloaded_operator(consumer &flat.Node) bool {
+	for i in 0 .. consumer.children_count {
+		operand_type := unwrap_pointer(tc.resolve_type(tc.a.child(consumer, i)))
+		if (operand_type is Struct || operand_type is Alias)
+			&& tc.type_has_infix_operator_method(operand_type, consumer.op) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) array_accessor_consumer_siblings_are_stable(consumer &flat.Node, consumed_id flat.NodeId) bool {
