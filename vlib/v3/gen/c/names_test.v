@@ -845,6 +845,46 @@ fn test_header_owned_scan_retains_alias_from_conditional_child_headers() {
 	assert g.header_owned_c_typedefs['CommonAlias']
 }
 
+fn test_header_owned_scan_resolves_include_next_and_has_include_paths() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_header_include_next_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	first_dir := os.join_path(dir, 'first')
+	second_dir := os.join_path(dir, 'second')
+	os.mkdir_all(os.join_path(first_dir, 'api'))!
+	os.mkdir_all(os.join_path(second_dir, 'api'))!
+	os.write_file(os.join_path(first_dir, 'api', 'wrapper.h'), '#if __has_include("impl.h")
+#include "impl.h"
+#endif
+#if __has_include_next("api/wrapper.h")
+typedef struct GuardedNext GuardedNextAlias;
+#endif
+#if __has_include("missing.h")
+typedef struct Missing MissingAlias;
+#endif
+#include_next "api/wrapper.h"
+')!
+	os.write_file(os.join_path(second_dir, 'impl.h'), 'typedef struct IncludedImpl IncludedImplAlias;\n')!
+	os.write_file(os.join_path(second_dir, 'api', 'wrapper.h'), 'typedef struct NextWrapper NextWrapperAlias;\n')!
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	for alias in ['GuardedNextAlias', 'IncludedImplAlias', 'MissingAlias', 'NextWrapperAlias'] {
+		tc.c_typedef_structs['C.${alias}'] = true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.c_flags = ['-I', first_dir, '-I', second_dir]
+	g.collect_header_owned_c_typedefs('"api/wrapper.h"', os.join_path(dir, 'sample.v'))
+	assert g.header_owned_c_typedefs['GuardedNextAlias']
+	assert g.header_owned_c_typedefs['IncludedImplAlias']
+	assert g.header_owned_c_typedefs['NextWrapperAlias']
+	assert !g.header_owned_c_typedefs['MissingAlias']
+}
+
 fn test_header_owned_scan_retains_alias_from_source_conditional_includes() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_source_conditional_header_aliases_${os.getpid()}')
 	os.rmdir_all(dir) or {}
