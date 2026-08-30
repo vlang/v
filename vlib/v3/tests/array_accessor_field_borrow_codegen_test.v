@@ -475,3 +475,54 @@ fn main() {
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
+
+fn test_owned_nested_string_consumer_with_mutating_sibling_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_nested_string_mutating_sibling', "struct E {
+	name string
+}
+
+fn delete_last(mut arr []E) string {
+	arr.delete_last()
+	return '?'
+}
+
+fn last_name_then_delete(mut arr []E) string {
+	return (arr.last().name + '!') + delete_last(mut arr)
+}
+
+fn main() {
+	mut arr := [E{ name: 'hello' }]
+	println(last_name_then_delete(mut arr))
+}
+", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}
+
+fn test_owned_field_overloaded_index_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_field_overloaded_index', "struct Name {
+	text string
+}
+
+struct E {
+	name Name
+}
+
+fn (name Name) [] (index int) u8 {
+	return name.text[index]
+}
+
+fn last_initial(arr []E) u8 {
+	return arr.last().name[0]
+}
+
+fn main() {
+	arr := [E{ name: Name{ text: 'hello' } }]
+	println(last_initial(arr))
+}
+", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+}

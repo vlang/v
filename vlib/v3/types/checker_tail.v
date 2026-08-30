@@ -6100,6 +6100,7 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	}
 	if consumer.kind == .infix && consumer.op == .plus && final_type is String && (raw_final_type !is Alias || !tc.type_has_infix_operator_method(raw_final_type, .plus)) {
 		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
+			&& tc.array_accessor_enclosing_string_consumers_are_stable(consumer_id)
 	}
 	if consumer.kind == .string_interp && (consumer.children_count > 1 || formatted_interp) && final_type is String {
 		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
@@ -6107,10 +6108,39 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	if consumer.kind != .index || consumer.children_count == 0 || tc.a.child(consumer, 0) != consumed_id {
 		return false
 	}
+	if _ := tc.index_overload_call_info(tc.resolve_type(tc.a.child(consumer, 0)), false) {
+		return false
+	}
 	index_type := unalias_type(tc.resolve_type(consumer_id))
 	return !tc.ownership_type_requires_destruction(index_type)
 		&& !tc.array_accessor_type_contains_pointer(index_type)
 		&& tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id)
+}
+
+fn (tc &TypeChecker) array_accessor_enclosing_string_consumers_are_stable(id flat.NodeId) bool {
+	mut current := id
+	for {
+		parent_id := tc.direct_parent_id(current)
+		if parent_id == flat.empty_node || int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len {
+			return true
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .paren
+			|| (parent.kind == .directive && parent.value == 'string_interp_format') {
+			current = parent_id
+			continue
+		}
+		is_string_plus := parent.kind == .infix && parent.op == .plus
+			&& unalias_type(tc.resolve_type(parent_id)) is String
+		if !is_string_plus && parent.kind != .string_interp {
+			return true
+		}
+		if !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+			return false
+		}
+		current = parent_id
+	}
+	return true
 }
 
 fn (tc &TypeChecker) array_accessor_consumer_has_overloaded_operator(consumer &flat.Node) bool {
