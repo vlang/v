@@ -3147,7 +3147,8 @@ struct FnWorkItem {
 	module                 string
 	cost                   int
 	rank                   i64
-	map_expansion_estimate int
+	map_expansion_estimate    int
+	interp_expansion_estimate int
 	escape_scan_known      bool
 	escape_scan_needed     bool
 }
@@ -3405,7 +3406,8 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 						module: t.cur_module
 						cost: adj_cost
 						rank: i64(adj_cost) * 1_000_000_000 - i64(i)
-						map_expansion_estimate: map_est
+						map_expansion_estimate:    map_est
+						interp_expansion_estimate: str_est
 						escape_scan_known: escape_scan_flags & 1 != 0
 						escape_scan_needed: escape_scan_flags & 2 != 0
 					}

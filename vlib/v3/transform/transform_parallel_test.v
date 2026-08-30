@@ -659,9 +659,22 @@ fn test_shared_map_expansion_is_bounded_in_aggregate() {
 		FnWorkItem{ fn_idx: 40, map_expansion_estimate: 300 },
 	]
 
-	bounded := t.bound_shared_map_expansion(items, 1600, 2000)
+	bounded := t.bound_shared_expansion(items, 1600, 2000)
 	assert bounded.map(it.fn_idx) == [10, 20, 30]
 	assert t.deferred_expansion_items.map(it.fn_idx) == [40]
+}
+
+fn test_shared_interpolation_expansion_is_bounded_in_aggregate() {
+	mut t := Transformer{}
+	items := [
+		FnWorkItem{ fn_idx: 10, interp_expansion_estimate: 300 },
+		FnWorkItem{ fn_idx: 20, map_expansion_estimate: 100, interp_expansion_estimate: 200 },
+		FnWorkItem{ fn_idx: 30, interp_expansion_estimate: 300 },
+	]
+
+	bounded := t.bound_shared_expansion(items, 1600, 2000)
+	assert bounded.map(it.fn_idx) == [10, 20]
+	assert t.deferred_expansion_items.map(it.fn_idx) == [30]
 }
 
 fn test_external_map_expansion_estimate_includes_string_concatenation() {
