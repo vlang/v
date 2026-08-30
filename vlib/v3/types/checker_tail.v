@@ -6055,6 +6055,14 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 		// A field read of `current`; a bound method value is not a field read.
 		if parent.kind == .selector && parent.children_count > 0
 			&& tc.a.child(parent, 0) == current && !tc.expr_is_method_value(parent_id) {
+			current_type := tc.resolve_type(current)
+			call_id := tc.direct_parent_id(parent_id)
+			if parent.value == 'clone' && unalias_type(current_type) is String && (current_type !is Alias || !tc.ownership_type_has_clone_method(current_type)) && call_id != flat.empty_node && int(call_id) >= 0 && int(call_id) < tc.a.nodes.len {
+				call := tc.a.node(call_id)
+				if call.kind == .call && call.children_count > 0 && tc.a.child(call, 0) == parent_id {
+					return tc.array_accessor_consumer_siblings_are_stable(call, parent_id) && tc.array_accessor_enclosing_consumers_are_stable(call_id)
+				}
+			}
 			final_field = parent_id
 			current = parent_id
 			continue

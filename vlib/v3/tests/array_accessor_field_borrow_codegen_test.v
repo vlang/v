@@ -185,6 +185,20 @@ fn test_owned_escaping_field_is_rejected() {
 	assert compile.output.contains('cannot return an independent array element'), compile.output
 }
 
+// An explicit builtin string clone allocates independent storage before the selected field
+// escapes, so the array element itself can remain borrowed even when it has no clone method.
+fn test_owned_escaping_field_string_clone_borrows() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	compile := compile_v3_ownership_program(v3_bin, 'owned_escaping_field_string_clone', "struct E {\n\tname string\n}\n\nstruct T {\nmut:\n\tentries []E\n}\n\nfn (t &T) last_name() string {\n\treturn t.entries.last().name.clone()\n}\n\nfn main() {\n\tmut t := T{}\n\tt.entries << E{ name: 'hello' }\n\tname := t.last_name()\n\tt.entries.delete_last()\n\tprintln(name)\n}\n", '')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('cannot return an independent array element'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	bin_path := tmp_array_accessor_borrow_path('owned_escaping_field_string_clone_bin')
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'hello', run.output
+}
+
 // The exclusion is limited to the chain's final value: an owned *intermediate* field whose
 // own final value is non-owned stays borrowable. `arr.last().name.len` reads only the length
 // (an int), so nothing owned escapes and it must still lower to the in-place borrow.
