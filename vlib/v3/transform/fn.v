@@ -5977,6 +5977,11 @@ fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
 		}
 		return t.raw_var_type(node.value).trim_space().starts_with('shared ')
 	}
+	if node.kind == .as_expr && interface_pattern_is_collapsed_container_type(node.value) {
+		// Interface-to-container casts emit a runtime type check before producing the
+		// value, so interpolation lowering hoists every part to preserve evaluation order.
+		return true
+	}
 	if node.kind in [.paren, .cast_expr, .as_expr, .prefix, .postfix, .selector] {
 		for i in 0 .. node.children_count {
 			if t.string_interp_expr_may_hoist(t.a.child(&node, i)) {

@@ -1049,6 +1049,44 @@ fn test_string_interp_expansion_estimate_includes_possible_temp_hoisting() {
 	assert !needs_deferred_lowering
 }
 
+fn test_string_interp_expansion_estimate_includes_container_cast_hoisting() {
+	mut a := flat.FlatAst.new()
+	literal := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'part'
+		typ: 'string'
+	})
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+		typ: 'Any'
+	})
+	cast_start := a.children.len
+	a.children << value
+	cast := a.add_node(flat.Node{
+		kind: .as_expr
+		value: '[]int'
+		typ: '[]int'
+		children_start: cast_start
+		children_count: 1
+	})
+	interp_start := a.children.len
+	a.children << literal
+	a.children << cast
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	estimate, _ := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert t.string_interp_expr_may_hoist(cast)
+	assert estimate >= 3 + 2 * string_interp_hoisted_part_expansion_estimate
+}
+
 fn test_string_interp_expansion_estimate_includes_shared_ident_hoisting() {
 	mut a := flat.FlatAst.new()
 	literal := a.add_node(flat.Node{
@@ -1716,8 +1754,8 @@ fn test_external_map_expansion_estimate_defers_match_reconstruction() {
 }
 
 fn test_external_map_expansion_estimate_defers_function_literal_lifting() {
-	mut a := flat.new_ast()
-	root := a.new_node(flat.Node{
+	mut a := flat.FlatAst.new()
+	root := a.add_node(flat.Node{
 		kind: .fn_literal
 	})
 	mut t := Transformer{
