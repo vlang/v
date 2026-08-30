@@ -1036,6 +1036,62 @@ fn test_external_map_expansion_estimate_includes_conditional_reconstruction() {
 	assert estimate > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_defers_match_reconstruction() {
+	mut a := flat.FlatAst.new()
+	subject := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+		typ: 'int'
+	})
+	condition := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+		typ: 'int'
+	})
+	value := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '42'
+		typ: 'int'
+	})
+	branch_start := a.children.len
+	a.children << condition
+	a.children << value
+	branch := a.add_node(flat.Node{
+		kind: .match_branch
+		children_start: branch_start
+		children_count: 2
+	})
+	match_start := a.children.len
+	a.children << subject
+	a.children << branch
+	match_expr := a.add_node(flat.Node{
+		kind: .match_stmt
+		typ: 'int'
+		children_start: match_start
+		children_count: 2
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << match_expr
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	base := t.map_init_expansion_estimate(root, a.nodes[int(root)])
+	estimate := t.external_map_tree_expansion_estimate(root, 0, 0)
+	assert estimate == base + deferred_map_expansion_threshold + 1
+	assert estimate > deferred_map_expansion_threshold
+}
+
 fn test_deferred_worker_node_clone_preserves_skip_ownership_drops() {
 	$if !v3_no_parallel ? {
 		mut t := Transformer{

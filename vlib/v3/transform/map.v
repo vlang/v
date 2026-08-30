@@ -172,6 +172,12 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// child spans in place, so each is reconstructed at the use site.
 			estimate += int(node.children_count) + 1
 		}
+		if node.kind == .match_stmt {
+			// Match lowering synthesizes comparison, block, and nested conditional
+			// trees that are not bounded by the source child count. Defer the whole
+			// external tree instead of risking a shared-arena underestimate.
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if node.kind == .map_init {
 			estimate += t.map_init_expansion_estimate(id, node)
 		}
