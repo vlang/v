@@ -3510,6 +3510,16 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 			}
 		}
 	}
+	if !call_has_opaque_body {
+		// A resolved wrapper can invoke or store a callback without exposing where the
+		// callback's captured pointers flow, so treat capture-bearing callbacks as sinks.
+		for i in 1 .. node.children_count {
+			arg_id := t.a.child(&node, i)
+			if types.unalias_type(t.tc.resolve_type(arg_id)) is types.FnType && t.array_map_side_effect_source_retains_element_address(arg_id, elem_name, block, before_idx) {
+				return true
+			}
+		}
+	}
 	mut target_param_idxs := []int{}
 	mut target_ids := []flat.NodeId{}
 	if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 && t.tc.mut_receiver_methods[call_name] {

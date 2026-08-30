@@ -7069,6 +7069,70 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_keeps_source_captured_by_callback_wrapper() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':        "Module { name: 'array_map_callback_wrapper_sink' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+pub fn invoke(callback fn ()) {
+	callback()
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			p := unsafe { &it }
+			api.invoke(fn [p] () {
+				api.save(p)
+			})
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_callback_wrapper_sink_c', '-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_callback_wrapper_sink', '-ownership', files, 'main.v')
+	assert out == '0\nsource'
+}
+
 fn test_array_map_keeps_source_passed_to_unresolved_pointer_call() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := '@[has_globals]
