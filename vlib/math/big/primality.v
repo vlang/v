@@ -78,12 +78,7 @@ fn (x Integer) mod_small(m u64) u64 {
 // a quarter of the bases fail to witness one.
 fn (x Integer) miller_rabin(rounds int) bool {
 	x_minus_one := x - one_int
-	mut d := x_minus_one
-	mut s := 0
-	for !d.is_odd() {
-		d = d.right_shift(1)
-		s++
-	}
+	d, s := split_odd(x_minus_one)
 	// Hoisted out of the loop: deriving a context costs a modular inverse, and
 	// every round shares the same modulus.
 	ctx := x.montgomery()
@@ -148,6 +143,28 @@ fn random_base(x Integer) Integer {
 	return candidate % (x - integer_from_int(3)) + two_int
 }
 
+// split_odd writes `n` as `d * 2^s` with `d` odd, and returns `d` and `s`.
+fn split_odd(n Integer) (Integer, int) {
+	mut d := n
+	mut s := 0
+	for !d.is_odd() {
+		d = d.right_shift(1)
+		s++
+	}
+	return d, s
+}
+
+// v_double returns `V(2k) == V(k)^2 - 2 (mod x)`, taking `x - 2` precomputed.
+fn v_double(v Integer, x Integer, x_minus_two Integer) Integer {
+	return (v * v + x_minus_two) % x
+}
+
+// v_next_odd returns `V(2k + 1) == V(k) V(k + 1) - P (mod x)`, taking `x - P`
+// precomputed.
+fn v_next_odd(v Integer, v1 Integer, x Integer, x_minus_p Integer) Integer {
+	return (v * v1 + x_minus_p) % x
+}
+
 // lucas_probable_prime runs the "almost extra strong" Lucas probable prime test
 // on the odd integer `x`, using Baillie-OEIS parameter selection (method C).
 // Together with a base-2 Miller-Rabin round this forms the Baillie-PSW test,
@@ -191,12 +208,7 @@ fn (x Integer) lucas_probable_prime() bool {
 
 	// x + 1 == s * 2^r with s odd; x + 1 rather than x - 1 because
 	// Jacobi(d / x) is -1 here.
-	mut s := x + one_int
-	mut r := 0
-	for !s.is_odd() {
-		s = s.right_shift(1)
-		r++
-	}
+	s, r := split_odd(x + one_int)
 
 	big_p := integer_from_u64(p)
 	x_minus_two := x - two_int
@@ -204,18 +216,19 @@ fn (x Integer) lucas_probable_prime() bool {
 	// Build V(s) by doubling the subscript from the top bit of s down:
 	//     V(2k)     = V(k)^2 - 2
 	//     V(2k + 1) = V(k) V(k + 1) - P
+	x_minus_p := x - big_p
 	mut vk := two_int // V(0) = 2
 	mut vk1 := big_p // V(1) = P
 	for i := s.bit_len() - 1; i >= 0; i-- {
 		if s.get_bit(u32(i)) {
 			// k -> 2k + 1
-			vk = (vk * vk1 + x - big_p) % x
-			vk1 = (vk1 * vk1 + x_minus_two) % x
+			vk = v_next_odd(vk, vk1, x, x_minus_p)
+			vk1 = v_double(vk1, x, x_minus_two)
 			continue
 		}
 		// k -> 2k
-		vk1 = (vk * vk1 + x - big_p) % x
-		vk = (vk * vk + x_minus_two) % x
+		vk1 = v_next_odd(vk, vk1, x, x_minus_p)
+		vk = v_double(vk, x, x_minus_two)
 	}
 
 	// Accept on V(s) == +-2 with U(s) == 0. Crandall and Pomerance eq. 3.13
@@ -238,7 +251,7 @@ fn (x Integer) lucas_probable_prime() bool {
 			// Fixed point of V -> V^2 - 2, so no later term can be zero.
 			return false
 		}
-		vk = (vk * vk + x_minus_two) % x
+		vk = v_double(vk, x, x_minus_two)
 	}
 	return false
 }
@@ -259,14 +272,14 @@ pub fn jacobi(a Integer, n Integer) int {
 		// Each factor of two contributes -1 when y is 3 or 5 mod 8.
 		for !x.is_odd() {
 			x = x.right_shift(1)
-			y_mod_8 := (y % integer_from_int(8)).int()
+			y_mod_8 := y.mod_small(8)
 			if y_mod_8 == 3 || y_mod_8 == 5 {
 				result = -result
 			}
 		}
 		// Quadratic reciprocity.
 		x, y = y, x
-		if (x % integer_from_int(4)).int() == 3 && (y % integer_from_int(4)).int() == 3 {
+		if x.mod_small(4) == 3 && y.mod_small(4) == 3 {
 			result = -result
 		}
 		x = x % y
