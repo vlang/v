@@ -2965,6 +2965,15 @@ fn (mut t Transformer) array_map_update_local_pointer_origins(stmt flat.Node, el
 		}
 		return
 	}
+	if stmt.kind == .comptime_if {
+		if take_then := t.comptime_type_condition_value(stmt.value) {
+			branch_idx := if take_then { 0 } else { 1 }
+			if branch_idx < stmt.children_count {
+				t.array_map_update_local_pointer_origins(*t.a.child_node(&stmt, branch_idx), elem_name, mut locals)
+			}
+			return
+		}
+	}
 	if stmt.kind == .if_expr {
 		before := locals.clone()
 		mut merged := map[string]bool{}

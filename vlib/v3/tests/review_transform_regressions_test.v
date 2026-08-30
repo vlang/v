@@ -6572,6 +6572,122 @@ fn main() {
 	assert loop_out == '0\nsource'
 }
 
+fn test_array_map_tracks_pointer_origin_through_selected_comptime_branch() {
+	v3_bin := build_v3_review_transform_ownership()
+	source_true := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			$if true {
+				alias = &saved
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source_true := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_true_c', '-ownership', source_true)
+	main_body_true := c_fn_body(c_source_true, 'int main(int argc, char** argv) {')
+	compact_main_true := main_body_true.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main_true.contains('array__free(&(__map_source_'), main_body_true
+	out_true := run_good_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_true', '-ownership', source_true)
+	assert out_true == '0\nsource'
+
+	source_false := source_true.replace('\$if true {', '\$if false {')
+	c_source_false := gen_c_from_source_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_false_c', '-ownership', source_false)
+	main_body_false := c_fn_body(c_source_false, 'int main(int argc, char** argv) {')
+	source_drop_pos := main_body_false.index('array__free(&(') or { -1 }
+	result_move_pos := main_body_false.index('Array selected = ') or { -1 }
+	assert source_drop_pos >= 0 && source_drop_pos < result_move_pos, main_body_false
+	out_false := run_good_with_flags(v3_bin, 'array_map_comptime_external_pointer_alias_false', '-ownership', source_false)
+	assert out_false == '0\nexternal'
+}
+
+fn test_array_map_keeps_temporary_source_for_indirect_mutator() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+	mut:
+	value &Item
+}
+
+type Setter = fn (mut PointerBox, &Item)
+
+fn store(mut box PointerBox, value &Item) {
+	box.value = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn apply(setter Setter) {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			setter(mut saved, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+
+fn main() {
+	apply(store)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_indirect_mutator_c', '-ownership', source)
+	apply_body := c_fn_body(c_source, 'void main__apply(main__Setter setter) {')
+	compact_apply := apply_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_apply.contains('array__free(&(__map_source_'), apply_body
+	out := run_good_with_flags(v3_bin, 'array_map_indirect_mutator', '-ownership', source)
+	assert out == '0\nsource'
+}
+
 fn test_array_map_drops_temporary_source_after_external_pointer_alias_overwrite() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {

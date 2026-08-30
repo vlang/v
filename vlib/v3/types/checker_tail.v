@@ -9374,6 +9374,23 @@ fn (mut tc TypeChecker) param_storage_source_params_for_decl(decl VisibleMutatio
 	return sources
 }
 
+fn (tc &TypeChecker) indirect_call_param_storage_source_params(call flat.Node, target_param_idx int) []int {
+	if call.children_count == 0 {
+		return []int{}
+	}
+	fn_type := fn_type_from_type(tc.resolve_type(tc.a.child(&call, 0))) or { return []int{} }
+	if target_param_idx >= fn_type.params.len || target_param_idx >= fn_type.params_mut.len || !fn_type.params_mut[target_param_idx] {
+		return []int{}
+	}
+	mut sources := []int{cap: fn_type.params.len - 1}
+	for param_idx in 0 .. fn_type.params.len {
+		if param_idx != target_param_idx {
+			sources << param_idx
+		}
+	}
+	return sources
+}
+
 // call_param_storage_source_params returns parameters whose values a source function
 // may assign into the mutable target parameter or one of its descendants.
 pub fn (mut tc TypeChecker) call_param_storage_source_params(id flat.NodeId, target_param_idx int) []int {
@@ -9384,9 +9401,13 @@ pub fn (mut tc TypeChecker) call_param_storage_source_params(id flat.NodeId, tar
 	if call.kind != .call {
 		return []int{}
 	}
-	call_name := tc.resolved_call_name(id) or { return []int{} }
+	call_name := tc.resolved_call_name(id) or {
+		return tc.indirect_call_param_storage_source_params(call, target_param_idx)
+	}
 	decl_module := tc.fn_type_modules[call_name] or { '' }
-	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or { return []int{} }
+	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or {
+		return tc.indirect_call_param_storage_source_params(call, target_param_idx)
+	}
 	mut visiting := map[u64]bool{}
 	return tc.param_storage_source_params_for_decl(decl, target_param_idx, mut visiting)
 }
