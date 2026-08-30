@@ -214,6 +214,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// otherwise unchanged cast appends a replacement node and child span.
 			estimate += int(node.children_count) + 1
 		}
+		if node.kind == .selector {
+			// A changed external selector base makes every selector ancestor append
+			// a replacement node and child span at the constant's use site.
+			estimate += int(node.children_count) + 1
+		}
 		if node.kind in [.paren, .prefix] {
 			// External wrappers cannot rewrite their child IDs in place, so each
 			// wrapper appends a replacement node and child span.

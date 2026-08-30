@@ -684,6 +684,48 @@ fn test_external_map_expansion_estimate_defers_dump_lowering() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_includes_selector_reconstruction() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{
+		kind: .ident
+		value: 'make_node'
+	})
+	call_start := a.children.len
+	a.children << callee
+	mut value := a.add_node(flat.Node{
+		kind: .call
+		children_start: call_start
+		children_count: 1
+	})
+	for _ in 0 .. deferred_map_expansion_threshold / 2 + 1 {
+		selector_start := a.children.len
+		a.children << value
+		value = a.add_node(flat.Node{
+			kind: .selector
+			value: 'next'
+			children_start: selector_start
+			children_count: 1
+		})
+	}
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << value
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_interpolation_concatenation() {
 	mut a := flat.FlatAst.new()
 	part := a.add_node(flat.Node{
