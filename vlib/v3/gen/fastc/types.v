@@ -652,14 +652,14 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 				_, value_type := g.map_key_value_types(base_type) or { return '' }
 				return value_type
 			}
-			if base_type.ends_with('*') {
-				return base_type.trim_right('*')
-			}
 			if base_type.trim_right('*') == 'string' {
 				return 'u8'
 			}
 			if element_type := g.array_element_type(base_type) {
 				return element_type
+			}
+			if base_type.ends_with('*') {
+				return base_type[..base_type.len - 1]
 			}
 		}
 	}
@@ -850,10 +850,12 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken) ?string {
 			} else if current_type.trim_right('*').starts_with('Map_') {
 				_, value_type := g.map_key_value_types(current_type) or { return none }
 				current_type = value_type
+			} else if element_type := g.array_element_type(current_type) {
+				current_type = element_type
 			} else if current_type.ends_with('*') {
-				current_type = current_type.trim_right('*')
+				current_type = current_type[..current_type.len - 1]
 			} else {
-				current_type = g.array_element_type(current_type) or { return none }
+				return none
 			}
 			index = close + 1
 			continue
