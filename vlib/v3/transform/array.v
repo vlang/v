@@ -2932,9 +2932,19 @@ fn (t &Transformer) array_map_lvalue_local_path(id flat.NodeId) ?string {
 
 fn array_map_local_index_path(base string, index &flat.Node) string {
 	if index.kind in [.int_literal, .string_literal, .char_literal, .bool_literal] {
-		return '${base}[${index.kind}:${index.value}]'
+		return '${base}[${array_map_local_index_component(index.kind, index.value)}]'
 	}
 	return '${base}[*]'
+}
+
+fn array_map_local_index_component(kind flat.NodeKind, value string) string {
+	hex_digits := '0123456789abcdef'
+	mut encoded := []u8{cap: value.len * 2}
+	for byte in value.bytes() {
+		encoded << hex_digits[byte >> 4]
+		encoded << hex_digits[byte & 0x0f]
+	}
+	return '${kind}:${encoded.bytestr()}'
 }
 
 fn array_map_local_path_is_projection(path string, base string) bool {
@@ -3273,7 +3283,8 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 	}
 	if node.kind == .array_literal {
 		for i in 0 .. node.children_count {
-			t.array_map_record_local_pointer_origins('${path}[int_literal:${i}]', t.a.child(&node, i), elem_name, origins, mut locals)
+			index_path := array_map_local_index_component(.int_literal, i.str())
+			t.array_map_record_local_pointer_origins('${path}[${index_path}]', t.a.child(&node, i), elem_name, origins, mut locals)
 		}
 		return
 	}
