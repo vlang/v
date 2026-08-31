@@ -114,8 +114,7 @@ fn (g &Parser) resolved_expression_name(name string, previous token.Token) strin
 		if function_key in g.functions {
 			return fastc_c_function_name_for_key(function_key)
 		}
-		if type_key := fastc_resolve_declared_type_key(g.module_name, name, g.imports,
-			g.declared_types)
+		if type_key := g.resolve_declared_type_key(name)
 		{
 			return fastc_c_declared_type_name(type_key)
 		}
@@ -156,7 +155,7 @@ fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
 	if previous == .dot || (name == 'C' && g.has_declared_c_function())
 		|| name in g.locals || name in g.imports || function_key in g.functions
 		|| constant_key in g.constants || global_key in g.globals
-		|| fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) != none
+		|| g.resolve_declared_type_key(name) != none
 		|| name in ['print', 'println', 'bool', 'byte', 'char', 'f32', 'f64', 'i8', 'i16', 'i32', 'i64', 'int', 'isize', 'rune', 'string', 'u8', 'u16', 'u32', 'u64', 'uint', 'usize', 'voidptr', 'byteptr', 'charptr'] {
 		return
 	}
@@ -219,8 +218,7 @@ fn (g &Parser) static_function_key_for_call(tokens []FastcExpressionToken, name_
 		module_name := g.imports[tokens[name_index - 4].lit] or { return none }
 		type_key = fastc_type_key(module_name, owner_name)
 	} else {
-		type_key = fastc_resolve_declared_type_key(g.module_name, owner_name, g.imports,
-			g.declared_types) or { return none }
+		type_key = g.resolve_declared_type_key(owner_name) or { return none }
 	}
 	function_key := '${type_key}.${tokens[name_index].lit}'
 	return if function_key in g.functions { function_key } else { none }
@@ -232,9 +230,7 @@ fn (g &Parser) local_is_pointer(name string) bool {
 }
 
 fn (g &Parser) is_enum_type_name(name string) bool {
-	type_key := fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) or {
-		return false
-	}
+	type_key := g.resolve_declared_type_key(name) or { return false }
 	return g.underlying_enum_type_key(type_key) != none
 }
 
@@ -266,8 +262,7 @@ fn (g &Parser) enum_member_owner_type_key(tokens []FastcExpressionToken, owner_i
 	} else if owner_index > 0 && tokens[owner_index - 1].tok == .dot {
 		return none
 	} else {
-		type_key = fastc_resolve_declared_type_key(g.module_name, tokens[owner_index].lit,
-			g.imports, g.declared_types) or { return none }
+		type_key = g.resolve_declared_type_key(tokens[owner_index].lit) or { return none }
 	}
 	_ = g.underlying_enum_type_key(type_key) or { return none }
 	return type_key
@@ -301,8 +296,7 @@ fn (g &Parser) declared_cast_type_key(tokens []FastcExpressionToken, name_index 
 	if name_index > 0 && tokens[name_index - 1].tok == .dot {
 		return none
 	}
-	return fastc_resolve_declared_type_key(g.module_name, tokens[name_index].lit, g.imports,
-		g.declared_types)
+	return g.resolve_declared_type_key(tokens[name_index].lit)
 }
 
 fn (g &Parser) validate_expression_calls(tokens []FastcExpressionToken) ! {
@@ -794,11 +788,10 @@ fn (g &Parser) struct_direct_member_type(receiver_type string, field_name string
 	} else if layout_type.starts_with('Map_') {
 		layout_type = 'map'
 	}
-	if layout_type !in g.struct_fields {
-		return ''
+	if fields := g.struct_fields[layout_type] {
+		return fields[field_name] or { '' }
 	}
-	fields := g.struct_fields[layout_type].clone()
-	return fields[field_name] or { '' }
+	return ''
 }
 
 fn (g &Parser) struct_member_type(receiver_type string, field_name string) string {
@@ -812,6 +805,11 @@ fn (g &Parser) struct_field_metadata(receiver_type string, field_name string) ?F
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
 		layout_type = 'map'
+	}
+	if fields := g.struct_field_lookup[layout_type] {
+		if field := fields[field_name] {
+			return field
+		}
 	}
 	for field in g.struct_field_info[layout_type] {
 		if field.name == field_name {

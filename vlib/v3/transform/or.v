@@ -2064,6 +2064,16 @@ fn (mut t Transformer) lower_or_expr_to_stmt(node flat.Node) {
 	t.pending_stmts << if_stmt
 }
 
+fn (mut t Transformer) make_or_lowered_if(mode string, cond flat.NodeId, then_block flat.NodeId, else_block flat.NodeId) flat.NodeId {
+	if mode in ['!', '?'] {
+		// Propagation has no source-level fallback scope. The ownership checker
+		// records its early-return cleanup separately, so this synthetic branch
+		// must not consume the next lexical scope's destructor slot.
+		return t.make_if_with_skip_ownership_drops(cond, then_block, else_block)
+	}
+	return t.make_if(cond, then_block, else_block)
+}
+
 fn (mut t Transformer) mark_optional_source_expr_type(expr flat.NodeId, typ string) {
 	if !t.is_optional_type_name(typ) || int(expr) < 0 || int(expr) >= t.a.nodes.len {
 		return

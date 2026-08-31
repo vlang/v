@@ -6500,6 +6500,33 @@ fn test_parallel_transform_merges_generic_call_metadata() {
 	assert out == expected.str()
 }
 
+fn test_struct_stringification_evaluates_dereferenced_pointer_call_once() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_str_dereferenced_call_once', 'struct Node {
+	value int
+}
+
+struct Counter {
+mut:
+	calls int
+}
+
+fn next_node(mut counter Counter) &Node {
+	counter.calls++
+	return &Node{
+		value: counter.calls
+	}
+}
+
+fn main() {
+	mut counter := Counter{}
+	println("\${*next_node(mut counter)}")
+	println(int_str(counter.calls))
+}
+')
+	assert out == 'Node{\n    value: 1\n}\n1'
+}
+
 fn test_specialized_generic_match_expression_ignores_unresolved_branch_types() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'specialized_generic_match_expression_type', "type Value = []u8 | i64 | string

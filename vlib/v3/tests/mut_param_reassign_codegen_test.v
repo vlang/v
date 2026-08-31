@@ -471,6 +471,41 @@ fn main() {
 	assert c_source.contains('((*(*value)))++;'), 'missing standalone postfix dereference'
 }
 
+fn test_generic_mut_sum_parameter_forwards_existing_pointer() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'generic_mut_sum_forward', 'struct Cat {
+	name string
+}
+
+struct Dog {
+	name string
+}
+
+type Animal = Cat | Dog
+
+fn replace[T](mut value T, replacement T) {
+	value = replacement
+}
+
+fn decode[T](mut value T, replacement T) {
+	replace(mut value, replacement)
+}
+
+fn main() {
+	mut animal := Animal(Dog{
+		name: "Rex"
+	})
+	decode(mut animal, Animal(Cat{
+		name: "Tom"
+	}))
+	println(animal)
+}
+')
+	assert out == "Animal(Cat{\n    name: 'Tom'\n})"
+	assert c_source.contains('replace_T_Animal(value, replacement);')
+	assert !c_source.contains('replace_T_Animal(&value, replacement);')
+}
+
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
 	v3_bin := mut_param_reassign_build_v3()
 	mut_param_reassign_run_bad(v3_bin, 'bad_same_scope_mut_string_param_redeclare', "struct Text {

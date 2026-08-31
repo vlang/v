@@ -6,6 +6,391 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+fn test_selfhost_shared_keyword_local_is_preserved() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Box {
+mut:
+	value int
+}
+
+fn consume(shared value Box) {}
+
+fn id(shared int) int {
+	return shared
+}
+
+fn pair(shared, other int) int {
+	return shared + other
+}
+
+fn use_immutable_shared() Box {
+	shared := Box{}
+	return shared
+}
+
+fn xor_shared() int {
+	shared := 1
+	return shared ^ 2
+}
+
+fn unwrap_shared(value ?int) int {
+	shared := value
+	return shared or { 0 }
+}
+
+fn contains_shared() bool {
+	shared := 1
+	return shared in [1]
+}
+
+fn same_line_shared() int { shared := 1; return shared }
+
+fn condition_shared() int {
+	shared := true
+	if shared {
+		return 1
+	}
+	return 0
+}
+
+fn propagate_shared(value ?int) ?int {
+	shared := value
+	return shared?
+}
+
+fn sum_shared(values []int) int {
+	mut total := 0
+	for shared in values {
+		total += shared
+	}
+	return total
+}
+
+fn parallel_shared() int {
+	x, shared := 1, 2
+	return x + shared
+}
+
+fn following_line_shared() int {
+	shared := 3
+	x := shared
+	println(x)
+	return x
+}
+
+fn nested_comment_shared() int {
+	shared := 1
+	return shared /* outer /* inner */ tail */ + 1
+}
+
+fn multiline_comment_shared() int {
+	shared := 1
+	return shared /* first
+	second */ + 1
+}
+
+fn following_keyword_shared() int {
+	shared := 3
+	x := shared
+	if true {
+		println(x)
+	}
+	return x
+}
+
+fn multiline_shared_operator(enabled bool) bool {
+	shared := true
+	return shared
+		&& enabled
+}
+
+fn main() {
+	_ = id(1)
+	_ = pair(1, 2)
+	_ = use_immutable_shared()
+	_ = xor_shared()
+	_ = unwrap_shared(1)
+	_ = contains_shared()
+	_ = same_line_shared()
+	_ = condition_shared()
+	_ = propagate_shared(1)
+	_ = sum_shared([1, 2])
+	_ = parallel_shared()
+	_ = following_line_shared()
+	_ = nested_comment_shared()
+	_ = multiline_comment_shared()
+	_ = following_keyword_shared()
+	_ = multiline_shared_operator(true)
+	unsafe {
+		mut shared := Box{}
+		mut type := Box{}
+		value := Box{}
+		shared.value = 1
+		println(shared.value)
+		consume(shared shared)
+		consume(shared (shared))
+		consume(shared /* ownership */ value)
+		consume(shared
+			value)
+		consume(shared // ownership
+			value)
+		consume(shared
+			shared)
+		consume(shared
+			type)
+	}
+}
+', 'shared_keyword_local.v', prefs) or { panic(err) }
+	assert c_source.contains('shared.value=1;'), c_source
+	assert c_source.contains('int id(int shared);'), c_source
+	assert c_source.contains('int id(int shared) {'), c_source
+	assert c_source.contains('println(shared.value)'), c_source
+	assert c_source.contains('consume(&(shared));'), c_source
+	assert c_source.contains('consume(&((shared)));'), c_source
+	assert c_source.contains('consume(&(value));'), c_source
+	assert c_source.count('consume(&(value));') == 3, c_source
+	assert c_source.count('consume(&(shared));') == 2, c_source
+	assert c_source.contains('consume(&(type));'), c_source
+	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
+	assert c_source.contains('return shared;'), c_source
+	assert c_source.contains('int pair(int shared, int other)'), c_source
+	assert c_source.contains('return shared+other;'), c_source
+	assert c_source.contains('return shared^2;'), c_source
+	assert !c_source.contains('return &shared'), c_source
+	assert c_source.contains('Option __v_fastc_option_0 = (shared);'), c_source
+	assert c_source.contains('__v_fastc_membership_item = (shared);'), c_source
+	assert c_source.count('return shared;') == 3, c_source
+	assert c_source.contains('if (shared)'), c_source
+	assert c_source.contains('total+=shared;'), c_source
+	assert c_source.contains('return x+shared;'), c_source
+	assert c_source.count('return shared+1;') == 2, c_source
+	assert c_source.count('println(x);') == 2, c_source
+	assert c_source.contains('return ((shared)&&(enabled));'), c_source
+	assert !c_source.contains('(&shared)'), c_source
+}
+
+fn test_selfhost_shared_pointer_local_modifier_is_not_addressed_again() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn consume_mut(mut value int) {}
+
+fn consume_shared(shared value int) {}
+
+fn main() {
+	unsafe {
+		mut value := 1
+		mut shared := &value
+		consume_mut(mut shared)
+		consume_shared(shared shared)
+	}
+}
+', 'shared_pointer_local_modifier.v', prefs) or { panic(err) }
+	assert c_source.contains('consume_mut(shared);'), c_source
+	assert c_source.contains('consume_shared(shared);'), c_source
+	assert !c_source.contains('consume_mut(&(shared));'), c_source
+	assert !c_source.contains('consume_shared(&(shared));'), c_source
+}
+
+fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	mut functions := map[string]FastcFunctionSignature{}
+	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, map[string]bool{}, map[string]string{}, map[string]bool{}, mut functions) or { panic(err) }
+	signature := functions['pair'] or { panic('missing pair signature') }
+	assert signature.parameter_types == ['int', 'int']
+}
+
+fn test_selfhost_generic_calls_named_shared_are_monomorphized() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn shared[T](value T) T {
+	return value
+}
+
+fn (worker Worker) shared[T](value T) T {
+	_ = worker
+	return value
+}
+
+fn main() {
+	worker := Worker{}
+	_ := shared[int](1)
+	_ := worker.shared[int](2)
+}
+', 'selfhost_generic_shared_calls.v', prefs) or { panic(err) }
+	assert c_source.contains('shared_mono_int'), c_source
+	assert c_source.contains('Worker_shared_mono_int'), c_source
+	assert !c_source.contains('shared[int]'), c_source
+}
+
+fn test_selfhost_implicit_generic_method_named_shared_is_monomorphized() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn (worker Worker) shared[T](value T) T {
+	_ = worker
+	return value
+}
+
+fn main() {
+	worker := Worker{}
+	_ := worker.shared(2)
+}
+', 'selfhost_implicit_generic_shared_method.v', prefs) or { panic(err) }
+	assert c_source.contains('Worker_shared_mono_int'), c_source
+	assert c_source.contains('Worker_shared_mono_int(worker,2)'), c_source
+}
+
+fn test_selfhost_implicit_generic_named_shared_parameter_is_monomorphized() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn id[T](shared T) T {
+	return shared
+}
+
+fn (worker Worker) id[T](shared T) T {
+	_ = worker
+	return shared
+}
+
+fn main() {
+	worker := Worker{}
+	_ := id(1)
+	_ := worker.id(2)
+}
+', 'selfhost_implicit_generic_named_shared_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('id_mono_int(1)'), c_source
+	assert c_source.contains('Worker_id_mono_int(worker,2)'), c_source
+}
+
+fn test_selfhost_generic_call_from_contextual_shared_parameter_is_monomorphized() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn id[T](value T) T {
+	return value
+}
+
+fn forward(shared int) int {
+	return id(shared)
+}
+
+fn main() {
+	_ := forward(1)
+}
+', 'selfhost_generic_call_from_contextual_shared_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('id_mono_int(shared)'), c_source
+}
+
+fn test_selfhost_multiline_result_propagation_after_shared_identifier() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn maybe_value() !int {
+	return 7
+}
+
+fn propagate() !int {
+	shared := maybe_value()
+	return shared
+	!
+}
+
+fn main() {
+	_ := propagate() or { 0 }
+}
+', 'selfhost_multiline_shared_result_propagation.v', prefs) or { panic(err) }
+	assert c_source.contains('Option __v_fastc_option_propagate = (shared);'), c_source
+	assert !c_source.contains('shared!'), c_source
+}
+
+fn test_selfhost_mutable_shared_loop_binding_is_dereferenced() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn main() {
+	mut values := [1, 2]
+	for mut shared in values {
+		println(shared + 1)
+	}
+}
+', 'selfhost_mutable_shared_loop_binding.v', prefs) or { panic(err) }
+	assert c_source.contains('println((*(shared))+1)'), c_source
+	assert !c_source.contains('println(shared+1)'), c_source
+}
+
+fn test_selfhost_static_shared_local_is_contextual_identifier() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn main() {
+	static shared := 1
+	println(shared)
+}
+', 'selfhost_static_shared_local.v', prefs) or { panic(err) }
+	assert c_source.contains('__typeof__((1)) shared = (1);'), c_source
+	assert c_source.contains('println(shared)'), c_source
+}
+
+fn test_selfhost_unsafe_contextual_shared_local_mutation() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Box {
+mut:
+	value int
+}
+
+fn main() {
+	shared := Box{}
+	unsafe {
+		shared.value = 1
+	}
+	println(shared.value)
+}
+', 'selfhost_unsafe_contextual_shared_local_mutation.v', prefs) or { panic(err) }
+	assert c_source.contains('shared.value=1;'), c_source
+}
+
+fn test_selfhost_contextual_shared_struct_field_uses_designated_initializer() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Box {
+	shared int
+}
+
+fn main() {
+	box := Box{shared: 1}
+	println(box.shared)
+}
+', 'selfhost_contextual_shared_struct_field.v', prefs) or { panic(err) }
+	assert c_source.contains('(Box){.shared='), c_source
+	assert !c_source.contains('(Box){shared='), c_source
+}
+
 fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	sources := [
 		FastcSourceFile{
@@ -26,12 +411,34 @@ fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 
 fn test_fastc_file_generation_jobs_balance_largest_files_first() {
 	sources := [
-		FastcSourceFile{source: 'a'.repeat(60)},
-		FastcSourceFile{source: 'b'.repeat(50)},
-		FastcSourceFile{source: 'c'.repeat(40)},
-		FastcSourceFile{source: 'd'.repeat(30)},
+		FastcSourceFile{ source: 'a'.repeat(60) },
+		FastcSourceFile{ source: 'b'.repeat(50) },
+		FastcSourceFile{ source: 'c'.repeat(40) },
+		FastcSourceFile{ source: 'd'.repeat(30) },
 	]
 	assert fastc_file_generation_job_indices(sources, 2) == [[0, 3], [1, 2]]
+}
+
+fn test_fastc_overlap_workers_honor_serial_preferences() {
+	mut prefs := pref.new_preferences()
+	prefs.no_parallel = true
+	sources := [
+		FastcSourceFile{ source: 'module main\nfn a() {}\n' },
+		FastcSourceFile{ source: 'module main\nfn b() {}\n' },
+		FastcSourceFile{ source: 'module main\nfn c() {}\n' },
+		FastcSourceFile{ source: 'module main\nfn d() {}\n' },
+	]
+	mut pending_references := fastc_start_referenced_function_names(sources, prefs, map[string]FastcFunctionSignature{})
+	assert pending_references.workers.len == 0
+	assert fastc_wait_referenced_function_names(mut pending_references).len > 0
+
+	mut functions := map[string]FastcFunctionSignature{}
+	for name in ['a', 'b', 'c', 'd'] {
+		functions[name] = FastcFunctionSignature{}
+	}
+	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]bool{}, map[string]bool{}, false, prefs)
+	assert pending_dispatches.workers.len == 0
+	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
 }
 
 fn test_fastc_source_declaration_flags_respect_identifier_boundaries() {
@@ -180,6 +587,31 @@ fn main() {
 	assert c_source.contains('__v_fastc_struct_default.value=(default_value());'), c_source
 	assert c_source.contains('.value=(__v_fastc_struct_field_0)'), c_source
 	assert c_source.contains('v_fastc_interface_box(&(PointerConfig){0}, sizeof(PointerConfig))'), c_source
+}
+
+fn test_selfhost_spawn_accepts_shared_named_params_field() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+@[params]
+struct Config {
+	shared int
+}
+
+fn configured(config Config) int {
+	return config.shared
+}
+
+fn main() {
+	handle := spawn configured(shared: 1)
+	println(handle.wait())
+}
+', 'spawn_shared_named_params_field.v', prefs) or { panic(err) }
+	assert c_source.contains('.shared=(__v_fastc_struct_field_0)'), c_source
 }
 
 fn test_generate_and_compile_without_flat_ast() {
@@ -936,8 +1368,7 @@ fn test_source_resolver_preserves_aliases_for_scheduled_files() {
 	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(root, 'legacy', 'alias.v'),
-		"@[alias: '${canonical_dir}'] module legacy\n") or {
+	os.write_file(os.join_path(root, 'legacy', 'alias.v'), "@[alias: '${canonical_dir}'] module legacy\n") or {
 		panic(err)
 	}
 	mut prefs := pref.new_preferences()
@@ -961,8 +1392,7 @@ fn test_source_resolver_preserves_aliases_for_symlinked_module_dirs() {
 	os.write_file(main_file, 'module main\nimport canonical\nimport legacy\nfn main() { canonical.ping(); legacy.ping() }\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(canonical_dir, 'canonical.v'),
-		'module canonical\npub fn ping() {}\n') or {
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\npub fn ping() {}\n') or {
 		panic(err)
 	}
 	mut prefs := pref.new_preferences()
@@ -970,6 +1400,25 @@ fn test_source_resolver_preserves_aliases_for_symlinked_module_dirs() {
 	sources, aliases := fastc_resolve_source_files([main_file], prefs) or { panic(err) }
 	assert sources.len == 2
 	assert aliases['legacy'] == 'canonical'
+}
+
+fn test_source_resolver_canonicalizes_building_v_entry_path() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.vroot = os.real_path(@VEXEROOT)
+	canonical_entry := os.join_path(prefs.vroot, 'vlib', 'v3', 'v3.v')
+	// The regular V3 driver can pass a relative or otherwise non-canonical entry,
+	// while entry-module enumeration returns canonical absolute paths. Both spellings
+	// must resolve to one source or FastC reports a duplicate `main` during self-host.
+	noncanonical_entry := os.dir(canonical_entry) + '/../v3/v3.v'
+	sources, _ := fastc_resolve_source_files([noncanonical_entry], prefs) or { panic(err) }
+	mut entry_count := 0
+	for source in sources {
+		if source.path == canonical_entry {
+			entry_count++
+		}
+	}
+	assert entry_count == 1
 }
 
 fn test_header_discovers_imports_only_from_selected_comptime_branches() {
@@ -1170,6 +1619,25 @@ fn main() {
 ', 'static_array_argument.v', prefs) or { panic(err) }
 	assert c_source.contains('Tool_run(((Array_string)builtin__new_array_from_c_array'), c_source
 	assert !c_source.contains('Tool_run(['), c_source
+}
+
+fn test_selfhost_static_method_named_shared() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn Worker.shared() int {
+	return 42
+}
+
+fn main() {
+	_ := Worker.shared()
+}
+', 'selfhost_static_method_shared.v', prefs) or { panic(err) }
+	assert c_source.contains('int Worker_shared(void)'), c_source
+	assert c_source.contains('Worker_shared()'), c_source
 }
 
 fn test_selfhost_primitive_cast_array_literal_argument_is_lowered() {
@@ -2223,6 +2691,28 @@ fn main() {
 ', 'valid_interface_implementation.v', prefs) or { panic(err) }
 	assert c_source.contains('case __v_typeid_Good:'), c_source
 	assert c_source.contains('void Worker_update(Worker value, int* arg1)'), c_source
+}
+
+fn test_selfhost_interface_preserves_type_only_shared_parameter() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Box {}
+
+interface User {
+	use(shared Box)
+}
+
+struct Impl {}
+
+fn (value Impl) use(shared box Box) {}
+
+fn main() {
+	_ := User(Impl{})
+}
+', 'selfhost_interface_type_only_shared_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('void User_use(User value, Box* arg1)'), c_source
 }
 
 fn test_selfhost_unused_interface_dispatches_do_not_reference_pruned_methods() {
@@ -5409,6 +5899,25 @@ fn main() {
 	assert !c_source.contains('text.str[index]'), c_source
 }
 
+fn test_selfhost_double_pointer_index_preserves_one_pointer_level() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn take(value &u8) {}
+
+fn pass(values &&u8, index int) {
+	take(values[index])
+}
+
+fn main() {
+	pass(&&u8(0), 0)
+}
+', 'selfhost_double_pointer_index.v', prefs) or { panic(err) }
+	assert c_source.contains('take(((values)[index]))'), c_source
+	assert !c_source.contains('take(&(((values)[index])))'), c_source
+}
+
 fn test_selfhost_selector_assignment_accepts_array_initializer() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -5489,6 +5998,14 @@ fn test_selfhost_type_aliases_are_hoisted_before_composite_fields() {
 	request_index := ordered.index('struct Request {') or { -1 }
 	assert redirect_index >= 0 && status_index > redirect_index && status_index < handle_index, ordered
 	assert handle_index < alias_index && alias_index < request_index, ordered
+}
+
+fn test_c_directive_hoisting_preserves_source_order() {
+	source := 'one\n#include <x.h>\ntwo\n# if FLAG\nthree\n#ifdef INNER\nfour\n#endif\n#else\nfive\n#endif\nsix'
+	hoisted := fastc_hoist_c_directives(source)
+	assert hoisted.directives == '#include <x.h>\n\n'
+	assert hoisted.conditional_code == '# if FLAG\nthree\n#ifdef INNER\nfour\n#endif\n#else\nfive\n#endif\n\n'
+	assert hoisted.body == 'one\ntwo\nsix\n'
 }
 
 fn test_nested_fixed_array_struct_field_uses_native_c_dimensions() {
@@ -5747,6 +6264,88 @@ fn main() {
 	assert c_source.contains('__v_fastc_append_map_target'), c_source
 	assert c_source.contains('builtin__map_get_check'), c_source
 	assert !c_source.contains('groups[key]'), c_source
+}
+
+fn test_selfhost_append_to_nested_array() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn add(mut groups [][]int, index int, value int) {
+	groups[index] << value
+}
+
+fn main() {
+	mut groups := [][]int{len: 1}
+	add(mut groups, 0, 42)
+}
+', 'selfhost_append_to_nested_array.v', prefs) or { panic(err) }
+	assert c_source.contains('__v_fastc_append_array_target'), c_source
+	assert c_source.contains('builtin__array_get(*(groups), index)'), c_source
+	assert c_source.contains('builtin____new_array(0,0,sizeof(int))'), c_source
+	assert c_source.contains('((Array_int *)__v_fastc_array_init.data)[__v_fastc_array_index]'), c_source
+	assert !c_source.contains('groups[index]'), c_source
+}
+
+fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() {
+	prefs := pref.new_preferences()
+	g := Parser{
+		prefs: &prefs
+		s: scanner.new_scanner(prefs, .normal)
+		struct_fields: {
+			'array': {
+				'len': 'int'
+			}
+		}
+	}
+	mut tokens := [
+		FastcExpressionToken{
+			tok: .name
+			lit: 'array'
+			typ: 'Array_FixedArray_2_int'
+		},
+		fastc_test_expression_token(.lcbr, '{'),
+		fastc_test_expression_token(.name, 'len'),
+		fastc_test_expression_token(.colon, ':'),
+		fastc_test_expression_token(.number, '1'),
+		fastc_test_expression_token(.rcbr, '}'),
+	]
+	fixed := g.render_struct_literal_expression(tokens) or { panic('fixed array literal was not rendered') }
+	assert fixed.source.contains('sizeof(' + 'FixedArray_2_int' + ')'), fixed.source
+	assert !fixed.source.contains('builtin____new_array(0,0,sizeof(int))'), fixed.source
+	assert !fixed.source.contains('((FixedArray_2_int *)__v_fastc_array_init.data)'), fixed.source
+
+	tokens[0].typ = 'Array_Array_int'
+	dynamic := g.render_struct_literal_expression(tokens) or { panic('dynamic array literal was not rendered') }
+	assert dynamic.source.contains('builtin____new_array(0,0,sizeof(int))'), dynamic.source
+	assert dynamic.source.contains('((Array_int *)__v_fastc_array_init.data)'), dynamic.source
+}
+
+fn test_selfhost_append_array_result_to_struct_field() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct State {
+mut:
+	values []string
+}
+
+fn load_values() ![]string {
+	return [\'one\', \'two\']
+}
+
+fn add_values(mut state State) ! {
+	state.values << load_values()!
+}
+
+fn main() {
+	mut state := State{}
+	add_values(mut state) or { panic(err) }
+}
+', 'selfhost_append_array_result_to_struct_field.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__array_push_many'), c_source
+	assert !c_source.contains('state->values<<'), c_source
 }
 
 fn test_selfhost_empty_array_assigned_to_member_field() {
@@ -6136,6 +6735,18 @@ fn main() {
 }
 ', 'selfhost_function_alias_local_call.v', prefs) or { panic(err) }
 	assert c_source.contains('destroy(state);'), c_source
+}
+
+fn test_selfhost_function_alias_preserves_type_only_shared_parameter() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Callback = fn (shared int)
+
+fn main() {}
+', 'selfhost_function_alias_shared_parameter.v', prefs) or { panic(err) }
+	assert c_source.contains('typedef void (*Callback)(int*);'), c_source
 }
 
 fn test_selfhost_static_option_constructor_propagates_payload_type() {
@@ -6920,6 +7531,47 @@ fn main() {
 	assert c_source.contains('Array_Node v = *(Array_Node *)'), c_source
 }
 
+fn test_sum_type_recursive_array_variant_append_boxes_one_element() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Value = int | []Value
+
+fn main() {
+	mut dst := []Value{}
+	src := [Value(1)]
+	dst << src
+	_ := dst
+}
+', 'sum_type_recursive_append.v', prefs) or { panic(err) }
+	// `[]Value` is a variant of `Value`, so `dst << src` boxes the whole `src` array as
+	// one `Value` element instead of copying its elements. The append must use the
+	// single-element push and box `src` with the composite `Array_Value` type id.
+	assert !c_source.contains('builtin__array_push_many'), c_source
+	assert c_source.contains('__v_typeid_Array_Value'), c_source
+	assert c_source.contains('builtin__array_push('), c_source
+}
+
+fn test_sum_type_nonrecursive_array_append_is_push_many() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Plain = int | string
+
+fn main() {
+	mut dst := []Plain{}
+	src := [Plain(1)]
+	dst << src
+	_ := dst
+}
+', 'sum_type_nonrecursive_append.v', prefs) or { panic(err) }
+	// `Plain` has no array variant, so `[]Plain << []Plain` stays a push-many append
+	// that copies each element, matching the main C backend.
+	assert c_source.contains('builtin__array_push_many'), c_source
+}
+
 fn test_generic_monomorphization() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -7242,6 +7894,39 @@ fn main() { _ := kinds(Row{ id: 1, name: "a", ok: true }) }
 	assert c_source.contains('out=builtin__string_plus(out,_S("?"))'), c_source
 }
 
+fn test_comptime_for_contextual_shared_loop_variable() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Point {
+	x int
+	y int
+}
+
+fn describe(p Point) string {
+	mut out := ""
+	mut total := 0
+	\$for shared in Point.fields {
+		\$if shared.typ is int {
+			out += shared.name
+			total += p.\$(shared.name)
+		}
+	}
+	_ = total
+	return out
+}
+
+fn main() {
+	_ := describe(Point{ x: 1, y: 2 })
+}
+', 'comptime_for_contextual_shared.v', prefs) or { panic(err) }
+	assert c_source.contains('out=builtin__string_plus(out,_S("x"))'), c_source
+	assert c_source.contains('total+=p.x'), c_source
+	assert c_source.contains('out=builtin__string_plus(out,_S("y"))'), c_source
+	assert c_source.contains('total+=p.y'), c_source
+}
+
 fn test_selfhost_sum_type_field_default_is_boxed() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -7294,6 +7979,32 @@ fn main() {
 	// (so its dispatch function exists) and the call routed to that dispatch.
 	assert c_source.contains('Conn_select('), c_source
 	assert c_source.contains('Conn_select(c,5)'), c_source
+}
+
+fn test_selfhost_spaced_shared_selector_call() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Worker {}
+
+fn (worker Worker) shared(value int) int {
+	_ = worker
+	return value
+}
+
+fn main() {
+	worker := Worker{}
+	_ = worker.shared (1)
+	mut values := [1]
+	for mut shared in values {
+		_ = worker.shared(1)
+	}
+}
+', 'selfhost_spaced_shared_selector_call.v', prefs) or { panic(err) }
+	assert c_source.count('Worker_shared(worker,1)') == 2, c_source
+	assert !c_source.contains('worker.&'), c_source
+	assert !c_source.contains('worker.(*'), c_source
 }
 
 fn test_selfhost_match_multi_array_branch_smartcasts_to_array() {
@@ -7445,6 +8156,84 @@ fn main() {
 	assert c_source.contains('args->result = Worker_run(args->arg0);'), c_source
 }
 
+fn test_selfhost_spawn_method_call_with_shared_receiver_name() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	source := 'module main
+
+struct Worker {
+	id int
+}
+
+fn (w Worker) run() int {
+	return w.id
+}
+
+fn main() {
+	shared := Worker{ id: 5 }
+	h := spawn shared.run()
+	println(h.wait())
+}
+'
+	c_source := generate(source, 'selfhost_spawn_shared_receiver.v', prefs) or { panic(err) }
+	assert c_source.contains('args->result = Worker_run(args->arg0);'), c_source
+}
+
+fn test_selfhost_spawn_method_named_shared() {
+	$if windows {
+		return
+	}
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	source := 'module main
+
+struct Worker {
+	id int
+}
+
+fn (w Worker) shared() int {
+	return w.id
+}
+
+fn main() {
+	w := Worker{ id: 5 }
+	h := spawn w.shared()
+	println(h.wait())
+}
+'
+	c_source := generate(source, 'selfhost_spawn_shared_method.v', prefs) or { panic(err) }
+	assert c_source.contains('args->result = Worker_shared(args->arg0);'), c_source
+}
+
+fn test_selfhost_spawn_qualified_function_named_shared() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_spawn_qualified_shared_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'worker')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	module_file := os.join_path(root, 'worker', 'worker.v')
+	os.write_file(main_file, 'module main\nimport worker\nfn main() { h := spawn worker.shared(5); println(h.wait()) }\n') or {
+		panic(err)
+	}
+	os.write_file(module_file, 'module worker\npub fn shared(value int) int { return value }\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.module_search_paths = [root]
+	sources, aliases := fastc_resolve_source_files([main_file], prefs) or { panic(err) }
+	prefs.building_v = true
+	c_source, _, _ := generate_source_files(sources, aliases, prefs) or { panic(err) }
+	assert c_source.contains('args->result = worker__shared(args->arg0);'), c_source
+}
+
 fn test_selfhost_or_block_with_trailing_value_fallback() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -7471,6 +8260,27 @@ fn main() {
 	assert c_source.contains('__v_fastc_or_result'), c_source
 	assert c_source.contains('flag=9'), c_source
 	assert c_source.contains(' = (42)'), c_source
+}
+
+fn test_selfhost_or_block_with_multiline_struct_fallback_is_a_value() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {}
+
+fn get(items map[string]Item) Item {
+	return items[\'missing\'] or {
+		Item{}
+	}
+}
+
+fn main() {
+	_ := get(map[string]Item{})
+}
+', 'selfhost_multiline_struct_fallback.v', prefs) or { panic(err) }
+	assert c_source.contains('? ((Item){}) : *((Item *)'), c_source
+	assert !c_source.contains('if (__v_fastc_option_'), c_source
 }
 
 fn test_veb_template_compiles_to_builder() {
@@ -7980,6 +8790,61 @@ fn main() {
 	assert c_source.contains('MultiReturn'), c_source
 	assert c_source.contains('.values[0].data'), c_source
 	assert c_source.contains('.values[1].data'), c_source
+}
+
+fn test_selfhost_if_multi_return_option_guard_with_shared_bindings() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn split_pair() ?(int, int) {
+	return 1, 2
+}
+
+fn shared_first() int {
+	if shared, other := split_pair() {
+		return shared + other
+	}
+	return 0
+}
+
+fn shared_second() int {
+	if other, shared := split_pair() {
+		return other + shared
+	}
+	return 0
+}
+
+fn main() {
+	println(shared_first() + shared_second())
+}
+', 'selfhost_multi_guard_shared_bindings.v', prefs) or { panic(err) }
+	assert c_source.contains('int shared ='), c_source
+	assert c_source.contains('int other ='), c_source
+}
+
+fn test_selfhost_if_single_option_guard_with_shared_binding() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn maybe_value() ?int {
+	return 1
+}
+
+fn read_value() int {
+	if shared := maybe_value() {
+		return shared
+	}
+	return 0
+}
+
+fn main() {
+	println(read_value())
+}
+', 'selfhost_single_guard_shared_binding.v', prefs) or { panic(err) }
+	assert c_source.contains('int shared ='), c_source
+	assert c_source.contains('return shared;'), c_source
 }
 
 fn test_selfhost_multi_return_interface_component_is_macro_safe() {
@@ -9646,6 +10511,60 @@ fn main() {
 	assert !c_source.contains('counts[key]+amount'), c_source
 }
 
+fn test_selfhost_map_assignment_keeps_overloaded_operation_in_value() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Text {
+	value string
+}
+
+fn (left Text) + (right Text) Text {
+	return Text{ value: left.value + right.value }
+}
+
+fn append_value(mut values map[string]Text, key string, suffix Text) {
+	previous := values[key] or { Text{} }
+	values[key] = previous + suffix
+}
+
+fn main() {
+	mut values := map[string]Text{}
+	append_value(mut values, "compiler", Text{ value: " initializer" })
+}
+', 'selfhost_map_assignment_overloaded_operation.v', prefs) or { panic(err) }
+	assert c_source.contains('Text __v_fastc_map_value = (Text_plus(previous,suffix))'), c_source
+	assert !c_source.contains('Text_plus(({ string __v_fastc_map_key'), c_source
+}
+
+fn test_selfhost_map_assignment_with_propagated_result() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+	value int
+}
+
+fn load_item() !Item {
+	return Item{ value: 42 }
+}
+
+fn insert(mut items map[string]Item) ! {
+	items[\'answer\'] = load_item()!
+}
+
+fn main() {
+	mut items := map[string]Item{}
+	insert(mut items) or { panic(err) }
+}
+', 'selfhost_map_assignment_propagated_result.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__map_set'), c_source
+	assert c_source.contains('__v_fastc_option_propagate'), c_source
+	assert !c_source.contains('items[_S("answer")]'), c_source
+}
+
 fn test_selfhost_nested_map_assignment_initializes_addressable_inner_map() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -10281,6 +11200,23 @@ fn main() {
 ', 'selfhost_comptime_type_match.v', prefs) or { panic(err) }
 	assert c_source.contains('value=7'), c_source
 	assert !c_source.contains('_S("wrong")'), c_source
+}
+
+fn test_selfhost_comptime_match_subject_named_shared() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn main() {
+	shared := 1
+	\$match shared {
+		int { println("int") }
+		\$else { println("other") }
+	}
+}
+', 'selfhost_comptime_match_shared.v', prefs) or { panic(err) }
+	assert c_source.contains('println(_S("int"))'), c_source
+	assert !c_source.contains('println(_S("other"))'), c_source
 }
 
 fn test_selfhost_on_demand_comptime_recursion() {

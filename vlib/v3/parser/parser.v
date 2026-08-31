@@ -1641,7 +1641,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		is_mut = true
 		p.next()
 	}
-	if p.tok == .key_shared {
+	if p.tok == .key_shared && !p.shared_parameter_token_is_identifier() {
 		is_shared = true
 		p.next()
 	}
@@ -6280,6 +6280,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return stmt_id
 		}
 		.key_shared {
+			if p.shared_token_is_identifier(false) {
+				return p.assign_or_expr_stmt()
+			}
 			p.next()
 			stmt_id := p.assign_or_expr_stmt()
 			p.mark_node_shared(stmt_id)
@@ -8308,7 +8311,7 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 }
 
 fn (mut p Parser) stmt_expr() flat.NodeId {
-	is_stmt_ident := p.tok == .name
+	is_stmt_ident := p.tok_can_be_decl_name()
 	lhs := p.prefix_expr()
 	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident, false)
 }
@@ -9367,6 +9370,16 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			return id
 		}
 		.key_shared {
+			if p.shared_token_is_identifier(false) {
+				name_pos := p.tok_pos
+				name_end := p.tok_end
+				p.next()
+				return p.add_node(flat.Node{
+					kind:  .ident
+					value: 'shared'
+					pos:   token.new_span(p.cur_file_id, name_pos, name_end)
+				})
+			}
 			p.next()
 			return p.prefix_expr()
 		}
@@ -10352,7 +10365,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		}
 		mut arg_is_shared := false
 		mut arg_is_mut := false
-		if p.tok == .key_shared {
+		if p.tok == .key_shared && !p.shared_token_is_identifier(true) {
 			arg_is_shared = true
 			p.next()
 		} else if p.tok == .key_mut {
@@ -10639,8 +10652,10 @@ fn (mut p Parser) index_part_expr() flat.NodeId {
 	// A generic call is initially parsed through the same bracket path as an index.
 	// Preserve type-only heads as a single type expression so `f[fn (int) int]()`
 	// does not turn the function signature into a body-less anonymous function.
-	if p.tok in [.question, .not, .amp, .and, .key_fn, .key_shared, .key_atomic]
-		&& (p.tok !in [.not, .amp, .and] || p.isreftype_prefix_arg_starts_type()) {
+	is_type_only_head := p.tok in [.question, .not, .amp, .and, .key_fn, .key_shared, .key_atomic]
+	shared_starts_type := p.tok != .key_shared || !p.shared_token_is_identifier(false)
+	reference_starts_type := p.tok !in [.not, .amp, .and] || p.isreftype_prefix_arg_starts_type()
+	if is_type_only_head && shared_starts_type && reference_starts_type {
 		start := p.span_start()
 		type_name := p.parse_type_name()
 		return p.add_node(flat.Node{
@@ -11583,7 +11598,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 				is_mut_capture = true
 				p.next()
 			}
-			if p.tok == .key_shared || p.tok == .key_atomic {
+			if (p.tok == .key_shared && !p.shared_token_is_identifier(true)) || p.tok == .key_atomic {
 				capture_modifier = p.lit
 				p.next()
 			}
@@ -11973,7 +11988,10 @@ fn (mut p Parser) isreftype_paren_arg_starts_type() bool {
 		.lsbr {
 			return p.current_lbr_starts_array_type()
 		}
-		.key_fn, .ellipsis, .key_mut, .key_shared, .key_atomic, .key_struct, .key_union {
+		.key_shared {
+			return !p.shared_token_is_identifier(false)
+		}
+		.key_fn, .ellipsis, .key_mut, .key_atomic, .key_struct, .key_union {
 			return true
 		}
 		else {
@@ -12411,6 +12429,114 @@ fn (mut p Parser) lbr_starts_array_type_from_offset(offset int) bool {
 // can_start_type_name reports whether can start type name applies in parser.
 fn (p &Parser) can_start_type_name() bool {
 	return token_can_start_type_name(p.tok)
+}
+
+fn (mut p Parser) shared_token_is_identifier(allow_multiline_modifier bool) bool {
+	next := p.peek()
+	if !allow_multiline_modifier && p.shared_token_gap_has_line_boundary() {
+		return true
+	}
+	if next.is_keyword() && next !in [.key_or, .key_in, .key_as, .key_is] {
+		return false
+	}
+	if !token_can_start_type_name(next) && next != .key_union {
+		return true
+	}
+	if next == .amp {
+		return true
+	}
+	// Calls and indexes attach directly to an identifier. A shared modifier is
+	// separated from the value it qualifies (`shared value`).
+	return p.tok_end == p.peek_pos && next in [.lpar, .lsbr, .question, .not]
+}
+
+fn (mut p Parser) shared_parameter_token_is_identifier() bool {
+	if p.tok != .key_shared {
+		return false
+	}
+	first := p.peek()
+	if first == .comma {
+		return true
+	}
+	if first in [.semicolon, .rpar, .eof] {
+		return false
+	}
+	start := p.peek_pos
+	mut end := p.peek_end
+	mut lookahead := p.s
+	mut tok := first
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut brace_depth := 0
+	for tok != .eof {
+		if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0
+			&& tok in [.comma, .semicolon, .rpar] {
+			break
+		}
+		end = if tok == first { p.peek_end } else { lookahead.offset }
+		match tok {
+			.lpar { paren_depth++ }
+			.rpar {
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			}
+			.lsbr { bracket_depth++ }
+			.rsbr {
+				if bracket_depth > 0 {
+					bracket_depth--
+				}
+			}
+			.lcbr { brace_depth++ }
+			.rcbr {
+				if brace_depth > 0 {
+					brace_depth--
+				}
+			}
+			else {}
+		}
+		tok = lookahead.scan()
+	}
+	if start < 0 || end <= start || end > p.s.src.len {
+		return false
+	}
+	return generic_struct_init_suffix_arg_can_be_type(p.s.src[start..end])
+}
+
+fn (p &Parser) shared_token_gap_has_line_boundary() bool {
+	mut offset := p.tok_end
+	for offset < p.peek_pos {
+		if p.s.src[offset] in [`\r`, `\n`] {
+			return true
+		}
+		if offset + 1 >= p.peek_pos || p.s.src[offset] != `/` {
+			offset++
+			continue
+		}
+		if p.s.src[offset + 1] == `/` {
+			return true
+		}
+		if p.s.src[offset + 1] != `*` {
+			offset++
+			continue
+		}
+		offset += 2
+		mut depth := 1
+		for offset + 1 < p.peek_pos && depth > 0 {
+			if p.s.src[offset] == `/` && p.s.src[offset + 1] == `*` && (offset + 2 >= p.peek_pos || p.s.src[offset + 2] != `/`) {
+				depth++
+				offset += 2
+				continue
+			}
+			if p.s.src[offset] == `*` && p.s.src[offset + 1] == `/` {
+				depth--
+				offset += 2
+				continue
+			}
+			offset++
+		}
+	}
+	return false
 }
 
 fn token_can_start_type_name(tok token.Token) bool {

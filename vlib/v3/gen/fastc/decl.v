@@ -440,7 +440,7 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 		gen.s.init(file, source_file.source)
 		gen.next()
 		gen.parse_selected_global_declarations(mut out, mut initializers, false)!
-		global_types = gen.global_types.clone()
+		global_types = gen.global_types.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
 		}
@@ -756,7 +756,7 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 			diagnostic := gen.s.diagnostics[0]
 			return error('fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}')
 		}
-		constant_types = gen.constant_types.clone()
+		constant_types = gen.constant_types.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
 		}
@@ -1034,8 +1034,7 @@ fn (g &Parser) constant_expression_requires_runtime_storage(tokens []FastcExpres
 		if i > 0 && tokens[i - 1].tok == .dot {
 			return true
 		}
-		if fastc_primitive_c_type(item.lit) != none
-			|| fastc_resolve_declared_type_key(g.module_name, item.lit, g.imports, g.declared_types) != none {
+		if fastc_primitive_c_type(item.lit) != none || g.resolve_declared_type_key(item.lit) != none {
 			continue
 		}
 		return true
@@ -1049,6 +1048,7 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Prefe
 	mut enum_infos := []FastcEnumInfo{}
 	mut alias_base_types := map[string]string{}
 	mut sum_types := map[string]bool{}
+	mut sum_type_variants := map[string]bool{}
 	mut keys := declared_kinds.keys()
 	keys.sort()
 	for type_id, key in keys {
@@ -1076,7 +1076,8 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Prefe
 		}
 		fastc_emit_source_type_declarations(source_file, prefs, declared_types, declared_kinds,
 			constants, public_constants, mut struct_fields, mut struct_field_info, mut
-			composite_types, mut alias_base_types, mut sum_types, mut enum_infos, mut bodies)!
+			composite_types, mut alias_base_types, mut sum_types, mut sum_type_variants, mut
+			enum_infos, mut bodies)!
 	}
 	mut composite_names := composite_types.keys()
 	composite_names.sort()
@@ -1118,6 +1119,7 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Prefe
 		alias_base_types:    alias_base_types
 		enum_field_types:    enum_field_types
 		sum_types:           sum_types
+		sum_type_variants:   sum_type_variants
 	}
 }
 
@@ -1275,7 +1277,7 @@ fn fastc_c_composite_definition_end(source string, start int) ?int {
 	return none
 }
 
-fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut alias_base_types map[string]string, mut sum_types map[string]bool, mut enum_infos []FastcEnumInfo, mut out strings.Builder) ! {
+fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut alias_base_types map[string]string, mut sum_types map[string]bool, mut sum_type_variants map[string]bool, mut enum_infos []FastcEnumInfo, mut out strings.Builder) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(source_file.path, source_file.source.len)
 	file.index_lines_without_digest(source_file.source)
@@ -1300,7 +1302,7 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 					fastc_emit_source_type_declarations(selected_source, prefs, declared_types,
 						declared_kinds, constants, public_constants, mut struct_fields, mut
 						struct_field_info, mut composite_types, mut alias_base_types, mut
-						sum_types, mut enum_infos, mut out)!
+						sum_types, mut sum_type_variants, mut enum_infos, mut out)!
 				}
 				tok = selected.tok
 				next_enum_is_flag = false
@@ -1347,7 +1349,7 @@ fn fastc_emit_source_type_declarations(source_file FastcSourceFile, prefs &pref.
 		if depth == 0 && tok == .key_type {
 			tok = fastc_emit_alias_declaration(mut scan, source_file, declared_types,
 				declared_kinds, prefs.building_v, mut struct_fields, mut struct_field_info, mut
-				alias_base_types, mut sum_types, mut out)!
+				alias_base_types, mut sum_types, mut sum_type_variants, mut out)!
 			next_type_is_enabled = true
 			continue
 		}
@@ -1731,6 +1733,10 @@ fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports 
 	return none
 }
 
+fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
+	return fastc_resolve_declared_type_key(g.module_name, raw_type, g.imports, g.declared_types)
+}
+
 fn fastc_semantic_declared_type_key(c_type string, declared_type_c_names map[string]string) string {
 	base := c_type.trim_right('*')
 	// Resolve through the precomputed C-spelling index (first key per spelling
@@ -2079,7 +2085,7 @@ fn fastc_emit_interface_declaration(mut scan scanner.Scanner, source_file FastcS
 	return tok
 }
 
-fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, allow_short_placeholders bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut alias_base_types map[string]string, mut sum_types map[string]bool, mut out strings.Builder) !token.Token {
+fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourceFile, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, allow_short_placeholders bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut alias_base_types map[string]string, mut sum_types map[string]bool, mut sum_type_variants map[string]bool, mut out strings.Builder) !token.Token {
 	mut tok := scan.scan()
 	if tok != .name {
 		return error('fastc parser does not support type alias in ${source_file.path}')
@@ -2124,13 +2130,20 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		tok = scan.scan()
 	}
 	if tok == .pipe {
-		for tok != .eof {
+		// Record each variant's C type (keyed `<sum type>|<variant>`) so an append can
+		// tell push-many (`[]T << []T`) from boxing an array-valued variant of a
+		// recursive sum type (`type Value = []Value | int`) as one element. `base` is
+		// the first variant, already scanned above; the rest follow each `|`.
+		sum_type_variants['${c_name}|${base.trim_right('*')}'] = true
+		for tok == .pipe {
 			tok = scan.scan()
+			variant, variant_next := fastc_scan_type(mut scan, tok, source_file.path,
+				source_file.header.module_name, source_file.header.imports, declared_types,
+				allow_short_placeholders) or { return error('fastc type `${name}`: ${err.msg()}') }
+			sum_type_variants['${c_name}|${variant.trim_right('*')}'] = true
+			tok = variant_next
 			if tok == .semicolon {
 				tok = scan.scan()
-				if tok != .pipe {
-					break
-				}
 			}
 		}
 		// A sum type is lowered to the same boxed representation as an interface, so
@@ -2182,7 +2195,7 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 			continue
 		}
 		mut parameter_is_mut := false
-		if tok == .key_mut {
+		if tok in [.key_mut, .key_shared] {
 			parameter_is_mut = true
 			tok = scan.scan()
 		}

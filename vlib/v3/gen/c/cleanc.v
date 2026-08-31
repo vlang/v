@@ -3955,7 +3955,10 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			pt = shared_alias_ptr
 		} else if raw_pt is types.Pointer && param_idx < typed_params.len {
 			typed_pt := typed_params[param_idx]
-			if typed_pt is types.Pointer && raw_pt.base_type is types.FnType
+			if child.is_mut && child.op == .amp && typed_pt is types.Pointer
+				&& typed_pt.base_type is types.Pointer {
+				pt = typed_pt
+			} else if typed_pt is types.Pointer && raw_pt.base_type is types.FnType
 				&& typed_pt.base_type is types.FnType {
 				// Specialized `mut T` parameters keep a pointer-to-function type in
 				// the flat declaration. The registered signature retains the concrete
@@ -3964,6 +3967,9 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			}
 		} else if raw_pt !is types.Pointer && param_idx < typed_params.len {
 			pt = typed_params[param_idx]
+		}
+		if child.is_mut && child.op == .amp {
+			pt = g.explicit_mut_pointer_param_type(child, pt)
 		}
 		mut is_shared_param := false
 		if child.typ.len > 0 && child.typ[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
@@ -10092,6 +10098,65 @@ fn (mut g FlatGen) collect_const_init_order_from_files() {
 	}
 }
 
+// module_const_init_order returns the dependency-safe constant initialization
+// order that declaration-only module headers must preserve.
+pub fn module_const_init_order(a &flat.FlatAst, tc &types.TypeChecker) []string {
+	mut g := FlatGen.new()
+	g.a = a
+	g.tc = tc
+	old_module := tc.cur_module
+	old_file := tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
+	mut cur_module := 'main'
+	mut cur_file := ''
+	for node_idx, node in a.nodes {
+		match node.kind {
+			.file {
+				cur_file = node.value
+				cur_module = 'main'
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.fn_decl {
+				g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
+			}
+			.const_decl {
+				for i in 0 .. node.children_count {
+					field := a.child_node(&node, i)
+					if field.kind != .const_field || field.children_count == 0 {
+						continue
+					}
+					qname := g.const_storage_name(cur_module, field.value)
+					g.const_vals[qname] = a.child(field, 0)
+					g.const_modules[qname] = cur_module
+					g.const_files[qname] = cur_file
+					if cur_module in ['', 'main', 'builtin'] && field.value !in g.const_vals {
+						g.const_vals[field.value] = a.child(field, 0)
+						g.const_modules[field.value] = cur_module
+						g.const_files[field.value] = cur_file
+					}
+				}
+			}
+			.import_decl {
+				if node.typ.len > 0 && node.value.len > 0 {
+					g.modules[node.typ] = node.value
+				}
+				if cur_module.len > 0 && node.value.len > 0
+					&& node.value !in g.module_imports[cur_module] {
+					g.module_imports[cur_module] << node.value
+				}
+			}
+			else {}
+		}
+	}
+	g.collect_const_init_order_from_files()
+	return g.const_emission_order()
+}
+
 // ordered_module_init_fns supports ordered module init fns handling for FlatGen.
 fn (g &FlatGen) ordered_module_init_fns() []string {
 	module_to_init := g.module_init_fn_map()
@@ -15803,7 +15868,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					// semantic `&T` value. Synthetic dereferences only read the slot.
 					g.write('(*')
 					if g.source_mut_pointer_param_deref_type(id) != none {
-						g.gen_expr(child_id)
+						g.write('(*')
+						g.gen_mut_pointer_slot_expr(child_id)
+						g.write(')')
 					} else {
 						g.gen_mut_pointer_slot_expr(child_id)
 					}
@@ -18615,6 +18682,12 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('DWORD WaitForSingleObject(HANDLE handle, DWORD milliseconds);')
 	g.writeln('BOOL CloseHandle(HANDLE handle);')
 	g.writeln('DWORD GetLastError(void);')
+	g.writeln('DWORD WINAPI TlsAlloc(void);')
+	g.writeln('void* WINAPI TlsGetValue(DWORD index);')
+	g.writeln('BOOL WINAPI TlsSetValue(DWORD index, void* value);')
+	g.writeln('DWORD WINAPI FlsAlloc(void (WINAPI *callback)(void*));')
+	g.writeln('void* WINAPI FlsGetValue(DWORD index);')
+	g.writeln('BOOL WINAPI FlsSetValue(DWORD index, void* value);')
 	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
 	g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
@@ -21604,6 +21677,26 @@ fn (mut g FlatGen) emit_fixed_array_optional_elem_deps(elem types.Type, needed m
 	}
 }
 
+fn (g &FlatGen) is_builtin_autostr_addr_state(name string) bool {
+	return name == 'g_autostr_addr_state'
+		&& (g.global_modules[name] or { '' }) == 'builtin'
+}
+
+fn (mut g FlatGen) emit_tinyc_windows_thread_local_slot(cname string, ct string, dims string) {
+	g.writeln('#if defined(__TINYC__) && defined(_WIN32)')
+	g.writeln('static DWORD ${cname}_key = 0xFFFFFFFF;')
+	g.writeln('static void WINAPI ${cname}_slot_free(void* p) { free(p); }')
+	g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
+	g.writeln('static void ${cname}_key_init(void) { ${cname}_key = FlsAlloc(${cname}_slot_free); }')
+	if dims.len > 0 {
+		g.writeln('static ${ct} (*${cname}_slot(void))${dims} { void* p = FlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(*${cname}_slot())); FlsSetValue(${cname}_key, p); } return p; }')
+	} else {
+		g.writeln('static ${ct}* ${cname}_slot(void) { void* p = FlsGetValue(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); FlsSetValue(${cname}_key, p); } return (${ct}*)p; }')
+	}
+	g.writeln('#define ${cname} (*${cname}_slot())')
+	g.writeln('#elif defined(__TINYC__)')
+}
+
 fn (mut g FlatGen) global_decls() {
 	old_module := g.tc.cur_module
 	for name, typ in g.global_types {
@@ -21614,6 +21707,7 @@ fn (mut g FlatGen) global_decls() {
 		}
 		decl_typ := g.global_storage_type(name, typ)
 		is_fn_capture := name.contains('__anon_fn_')
+		is_thread_local := is_fn_capture || g.is_builtin_autostr_addr_state(name)
 		if raw := g.global_raw_type_texts[name] {
 			if inner := shared_inner_type_text(raw) {
 				qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
@@ -21625,16 +21719,14 @@ fn (mut g FlatGen) global_decls() {
 		if decl_typ is types.ArrayFixed {
 			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
-			if is_fn_capture {
-				g.writeln('#if defined(__TINYC__)')
+			if is_thread_local {
+				g.emit_tinyc_windows_thread_local_slot(g.cname(name), c_elem, dims)
 				g.writeln('static pthread_key_t ${g.cname(name)}_key;')
 				g.writeln('static void ${g.cname(name)}_key_init(void) __attribute__((constructor));')
 				g.writeln('static void ${g.cname(name)}_key_init(void) { pthread_key_create(&${g.cname(name)}_key, free); }')
 				g.writeln('static ${c_elem} (*${g.cname(name)}_slot(void))${dims} { void* p = pthread_getspecific(${g.cname(name)}_key); if (!p) { p = calloc(1, sizeof(*${g.cname(name)}_slot())); pthread_setspecific(${g.cname(name)}_key, p); } return p; }')
 				g.writeln('#define ${g.cname(name)} (*${g.cname(name)}_slot())')
-				g.writeln('#else')
-				g.writeln('_Thread_local ${c_elem} ${g.cname(name)}${dims}${init};')
-				g.writeln('#endif')
+				g.emit_thread_local_decl_after_tinyc('${c_elem} ${g.cname(name)}${dims}${init};')
 			} else {
 				g.writeln('${c_elem} ${g.cname(name)}${dims}${init};')
 			}
@@ -21663,45 +21755,40 @@ fn (mut g FlatGen) global_decls() {
 			continue
 		}
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
-		// Capturing fn literals are immediately consumed callbacks in the V3
-		// frontend. Their lifted capture slots must nevertheless be per-thread:
-		// a process-global slot lets concurrent invocations overwrite one
-		// another before the callback runs. Native C compilers use TLS directly;
-		// TinyCC uses pthread keys because it does not implement `_Thread_local`.
-		if is_fn_capture {
+		// Lifted capture slots and the recursive autostr address guard must be
+		// per-thread. A process-global slot lets concurrent invocations overwrite
+		// one another. Native C compilers use TLS directly; TinyCC uses Win32 TLS
+		// on Windows and pthread keys elsewhere because it lacks `_Thread_local`.
+		if is_thread_local {
 			cname := g.cname(name)
 			if shared_ct := g.fn_capture_shared_global_c_type(name) {
-				g.writeln('#if defined(__TINYC__)')
+				g.emit_tinyc_windows_thread_local_slot(cname, shared_ct, '')
 				g.writeln('static pthread_key_t ${cname}_key;')
 				g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
 				g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
 				g.writeln('static ${shared_ct}* ${cname}_slot(void) { void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${shared_ct})); pthread_setspecific(${cname}_key, p); } return (${shared_ct}*)p; }')
 				g.writeln('#define ${cname} (*${cname}_slot())')
-				g.writeln('#else')
-				g.writeln('_Thread_local ${shared_ct} ${cname};')
-				g.writeln('#endif')
+				g.emit_thread_local_decl_after_tinyc('${shared_ct} ${cname};')
 				continue
 			}
-			g.writeln('#if defined(__TINYC__)')
+			g.emit_tinyc_windows_thread_local_slot(cname, ct, '')
 			g.writeln('static pthread_key_t ${cname}_key;')
 			g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
 			g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
 			g.writeln('static ${ct}* ${cname}_slot(void) { void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); pthread_setspecific(${cname}_key, p); } return (${ct}*)p; }')
 			g.writeln('#define ${cname} (*${cname}_slot())')
-			g.writeln('#else')
-			g.writeln('_Thread_local ${ct} ${cname}${init};')
-			g.writeln('#endif')
+			g.emit_thread_local_decl_after_tinyc('${ct} ${cname}${init};')
 			continue
 		}
 		// With -prealloc the arena base block is per-thread; a shared pointer
 		// would make all threads bump the same block without synchronization.
 		// The block-recycle cache hangs off this TLS root, keeping bootstrap
 		// compilers that only know about g_memory_block safe as well.
-		// cc gets real TLS; tcc implements no _Thread_local, so it gets a
-		// pthread-key emulation behind an lvalue macro.
+		// cc gets real TLS; tcc implements no _Thread_local, so it gets a native
+		// Win32 slot or a pthread-key emulation behind an lvalue macro.
 		if g.prealloc && name == 'g_memory_block' {
 			cn := g.cname(name)
-			g.writeln('#if defined(__TINYC__)')
+			g.emit_tinyc_windows_thread_local_slot(cn, ct, '')
 			g.writeln('static pthread_key_t ${cn}_key;')
 			g.writeln('static void ${cn}_key_init(void) __attribute__((constructor));')
 			g.writeln('static void ${cn}_key_init(void) { pthread_key_create(&${cn}_key, 0); }')
@@ -21726,6 +21813,16 @@ fn (mut g FlatGen) global_decls() {
 		g.writeln('')
 	}
 	g.emit_global_inits()
+}
+
+fn (mut g FlatGen) emit_thread_local_decl_after_tinyc(decl string) {
+	g.writeln('#elif defined(_MSC_VER)')
+	g.writeln('__declspec(thread) ${decl}')
+	g.writeln('#elif defined(__cplusplus)')
+	g.writeln('thread_local ${decl}')
+	g.writeln('#else')
+	g.writeln('_Thread_local ${decl}')
+	g.writeln('#endif')
 }
 
 // queue_global_struct_default_init applies source-level field defaults to a global

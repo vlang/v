@@ -686,8 +686,9 @@ struct FastcSourceFile {
 }
 
 struct FastcQueuedSource {
-	path        string
-	module_name string
+	path         string
+	module_name  string
+	is_canonical bool
 }
 
 struct FastcLoadedSource {
@@ -772,6 +773,9 @@ struct FastcTypeDeclarations {
 	// `{void*_object; u32 _typ;}` layout with interfaces; construction boxes a
 	// variant and `match` dispatches on `_typ`.
 	sum_types map[string]bool
+	// Declared variants per sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`
+	// (see Parser.sum_type_variants).
+	sum_type_variants map[string]bool
 }
 
 struct FastcLoopBlockResult {
@@ -808,18 +812,23 @@ struct Parser {
 	enum_field_types       map[string]string
 	alias_base_types       map[string]string
 	sum_types              map[string]bool
-	struct_fields          map[string]map[string]string
-	struct_field_info      map[string][]FastcStructField
-	interface_fields       map[string]FastcInterfaceField
-	constants              map[string]string
-	constant_values        map[string]string
-	public_constants       map[string]bool
-	globals                map[string]string
-	public_globals         map[string]bool
-	used_function_names    map[string]bool
-	selfhost               bool
-	has_startup_inits      bool
-	has_cleanup_hooks      bool
+	// Declared variants of each sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`.
+	// Lets an append distinguish push-many (`[]T << []T`) from boxing an array-valued
+	// variant of a recursive sum type as one element (see sumtype_has_variant).
+	sum_type_variants   map[string]bool
+	struct_fields       map[string]map[string]string
+	struct_field_info   map[string][]FastcStructField
+	struct_field_lookup map[string]map[string]FastcStructField
+	interface_fields    map[string]FastcInterfaceField
+	constants           map[string]string
+	constant_values     map[string]string
+	public_constants    map[string]bool
+	globals             map[string]string
+	public_globals      map[string]bool
+	used_function_names map[string]bool
+	selfhost            bool
+	has_startup_inits   bool
+	has_cleanup_hooks   bool
 mut:
 	path                     string
 	module_name              string
@@ -984,8 +993,10 @@ struct FastcFileGenContext {
 	enum_field_types       map[string]string
 	alias_base_types       map[string]string
 	sum_types              map[string]bool
+	sum_type_variants      map[string]bool
 	struct_fields          map[string]map[string]string
 	struct_field_info      map[string][]FastcStructField
+	struct_field_lookup    map[string]map[string]FastcStructField
 	interface_fields       map[string]FastcInterfaceField
 	constants              map[string]string
 	constant_values        map[string]string
@@ -1046,8 +1057,10 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		enum_field_types: ctx.enum_field_types
 		alias_base_types: ctx.alias_base_types
 		sum_types: ctx.sum_types
+		sum_type_variants: ctx.sum_type_variants
 		struct_fields: ctx.struct_fields
 		struct_field_info: ctx.struct_field_info
+		struct_field_lookup: ctx.struct_field_lookup
 		generic_method_sources: ctx.generic_method_sources
 		module_aliases: ctx.module_aliases
 		generated_mono: map[string]bool{}
@@ -1123,9 +1136,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	mut type_source_paths := map[string]bool{}
-	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut
-		enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut
-		globals, mut public_globals)!
+	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut globals, mut public_globals)!
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
@@ -1134,14 +1145,12 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	// interface it embeds), kept flat to stay in FastC's self-hostable subset.
 	mut embed_embedders := []string{}
 	mut embed_embeddeds := []string{}
-	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut
-		functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut
-		embed_embeddeds)!
+	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
 	// An interface that embeds another (`interface B { A; ... }`) inherits A's
 	// methods. Copy them onto B (with the receiver re-keyed to B) so calls on a B
 	// value resolve and B gets its own dispatch table entries.
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
-	used_function_names := fastc_collect_referenced_function_names(sources, prefs, functions)
+	mut pending_references := fastc_start_referenced_function_names(sources, prefs, functions)
 	has_c_functions := fastc_functions_declare_c(functions)
 	fastc_prefixed_c_names := fastc_reserved_temporary_c_names(functions, globals)
 	module_init_calls := fastc_module_init_calls(sources, functions)!
@@ -1180,6 +1189,16 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
 	startup_initializers := fastc_generate_startup_initializers(sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls)!
+	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v, prefs)
+	mut struct_field_lookup := map[string]map[string]FastcStructField{}
+	for layout_type, fields in struct_field_info {
+		mut fields_by_name := map[string]FastcStructField{}
+		for field in fields {
+			fields_by_name[field.name] = field
+		}
+		struct_field_lookup[layout_type] = fields_by_name.move()
+	}
 	mut prototypes := strings.new_builder(1024)
 	mut body := strings.new_builder(4096)
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
@@ -1205,8 +1224,10 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		enum_field_types: enum_field_types
 		alias_base_types: type_output.alias_base_types
 		sum_types: type_output.sum_types
+		sum_type_variants: type_output.sum_type_variants
 		struct_fields: struct_fields
 		struct_field_info: struct_field_info
+		struct_field_lookup: struct_field_lookup
 		generic_method_sources: generic_method_sources
 		module_aliases: module_aliases
 		interface_fields: interface_fields
@@ -1290,7 +1311,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	if late_composite_declarations.len > 0 {
 		late_composite_declarations.writeln('')
 	}
-	interface_dispatches := fastc_generate_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v)
+	interface_dispatches := fastc_wait_interface_dispatches(mut pending_interface_dispatches)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
 	hoisted_body := fastc_hoist_c_directives(body.str())
@@ -1489,8 +1510,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			}
 			for candidate_index in 0 .. candidate_count {
 				candidate_key := function_keys[candidate_index]
-				if candidate_key == interface_method_key
-					|| function_method_names[candidate_index] != method_name {
+				if candidate_key == interface_method_key || function_method_names[candidate_index] != method_name {
 					continue
 				}
 				receiver_key := candidate_key.all_before_last('.')
@@ -1538,22 +1558,58 @@ fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 	mut conditional_code := strings.new_builder(256)
 	mut body := strings.new_builder(source.len)
 	mut conditional_depth := 0
-	for line in source.split('\n') {
-		directive_name := fastc_c_directive_name(line)
+	mut line_start := 0
+	mut run_start := 0
+	mut run_kind := -1
+	for line_end := 0; line_end <= source.len; line_end++ {
+		if line_end < source.len && source[line_end] != `\n` {
+			continue
+		}
+		directive_kind := fastc_c_directive_kind(source, line_start, line_end)
+		mut line_kind := 0
 		if conditional_depth > 0 {
-			conditional_code.writeln(line)
-			if directive_name in ['if', 'ifdef', 'ifndef'] {
+			line_kind = 2
+			if directive_kind == 2 {
 				conditional_depth++
-			} else if directive_name == 'endif' {
+			} else if directive_kind == 3 {
 				conditional_depth--
 			}
-		} else if directive_name in ['if', 'ifdef', 'ifndef'] {
-			conditional_code.writeln(line)
+		} else if directive_kind == 2 {
+			line_kind = 2
 			conditional_depth = 1
-		} else if directive_name != '' {
-			directives.writeln(line)
-		} else {
-			body.writeln(line)
+		} else if directive_kind != 0 {
+			line_kind = 1
+		}
+		if run_kind == -1 {
+			run_kind = line_kind
+		} else if line_kind != run_kind {
+			segment := source[run_start..line_start]
+			match run_kind {
+				1 { directives.write_string(segment) }
+				2 { conditional_code.write_string(segment) }
+				else { body.write_string(segment) }
+			}
+			run_start = line_start
+			run_kind = line_kind
+		}
+		if line_end == source.len {
+			break
+		}
+		line_start = line_end + 1
+	}
+	segment := source[run_start..]
+	match run_kind {
+		1 {
+			directives.write_string(segment)
+			directives.write_u8(`\n`)
+		}
+		2 {
+			conditional_code.write_string(segment)
+			conditional_code.write_u8(`\n`)
+		}
+		else {
+			body.write_string(segment)
+			body.write_u8(`\n`)
 		}
 	}
 	if directives.len > 0 {
@@ -1569,9 +1625,36 @@ fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 	}
 }
 
-fn fastc_c_directive_name(line string) string {
-	if !line.starts_with('#') {
-		return ''
+// fastc_c_directive_kind classifies a source line without allocating a
+// substring: 0 is ordinary code, 1 a plain directive, 2 a conditional opener,
+// and 3 `#endif`.
+fn fastc_c_directive_kind(source string, start int, end int) int {
+	if start >= end || source[start] != `#` {
+		return 0
 	}
-	return line[1..].trim_space().fields()[0] or { '' }
+	mut name_start := start + 1
+	for name_start < end && source[name_start] in [` `, `\t`, `\r`, `\v`, `\f`] {
+		name_start++
+	}
+	if name_start == end {
+		return 0
+	}
+	mut name_end := name_start
+	for name_end < end && source[name_end] !in [` `, `\t`, `\r`, `\v`, `\f`] {
+		name_end++
+	}
+	name_len := name_end - name_start
+	if name_len == 2 && source[name_start] == `i` && source[name_start + 1] == `f` {
+		return 2
+	}
+	if name_len == 5 && source[name_start] == `i` && source[name_start + 1] == `f` && source[name_start + 2] == `d` && source[name_start + 3] == `e` && source[name_start + 4] == `f` {
+		return 2
+	}
+	if name_len == 6 && source[name_start] == `i` && source[name_start + 1] == `f` && source[name_start + 2] == `n` && source[name_start + 3] == `d` && source[name_start + 4] == `e` && source[name_start + 5] == `f` {
+		return 2
+	}
+	if name_len == 5 && source[name_start] == `e` && source[name_start + 1] == `n` && source[name_start + 2] == `d` && source[name_start + 3] == `i` && source[name_start + 4] == `f` {
+		return 3
+	}
+	return 1
 }

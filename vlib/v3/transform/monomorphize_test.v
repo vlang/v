@@ -132,6 +132,42 @@ fn test_materialized_generic_struct_fields_preserve_plain_alias_arguments() {
 	assert fields[1].typ.name() == '[]int'
 }
 
+fn test_materialized_imported_generic_struct_preserves_locked_main_generic_argument() {
+	mut a := flat.FlatAst.new()
+	value_field := a.add_node(flat.Node{
+		kind:  .field_decl
+		value: 'value'
+		typ:   'T'
+	})
+	children_start := a.children.len
+	a.children << value_field
+	mut result_decl := flat.Node{
+		kind:           .struct_decl
+		value:          'StructKeyDecodeResult'
+		children_start: children_start
+		children_count: 1
+	}
+	result_decl.set_generic_params(['T'])
+	result_id := a.add_node(result_decl)
+
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params['StructType'] = ['T']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.materialize_generic_struct_spec('json2.StructKeyDecodeResult[main.StructType[main.string]]',
+		GenericStructDecl{
+			id:     result_id
+			node:   result_decl
+			module: 'json2'
+			key:    'json2.StructKeyDecodeResult'
+		})
+
+	fields := tc.structs['json2.StructKeyDecodeResult[main.StructType[main.string]]'] or {
+		assert false, 'missing materialized result fields'
+		return
+	}
+	assert fields[0].typ.name() == 'StructType[string]'
+}
+
 fn test_flattened_generic_struct_types_materialize_from_recorded_args() {
 	mut a := flat.FlatAst.new()
 	mut arc_decl := flat.Node{
@@ -329,7 +365,13 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	t.active_specialization_main_types['Context'] = true
 	assert t.lock_colliding_main_substitution_type_text('fn (mut T) bool', 'fn (mut Context) bool',
 		'callee', ['T']) == 'fn (mut main.Context) bool'
+	t.structs['Unique'] = StructInfo{}
+	assert t.lock_colliding_main_generic_type_text('Unique', 'callee') == 'Unique'
 	assert t.canonical_generic_specialization_arg('[]main.Event') == '[]Event'
+	assert t.canonical_generic_specialization_arg('main.Box[main.Event]') == 'Box[Event]'
+	assert t.canonical_generic_specialization_arg('[main.string]Box') == 'Box[string]'
+	assert t.canonical_generic_specialization_arg('u8_3') == '[3]u8'
+	assert strip_main_type_locks('domain.Type[main.Event]') == 'domain.Type[Event]'
 	assert t.specialization_main_type_closure(['map[string]Event']) == {
 		'Event': true
 	}
@@ -462,6 +504,56 @@ fn test_generic_method_decl_matches_embedded_receiver() {
 	}
 	mut seen := map[string]bool{}
 	assert t.generic_decl_matches_embedded_receiver('Outer', decl, 'main', mut seen)
+}
+
+fn test_escaped_generic_method_indexes_unescaped_call_spelling() {
+	mut a := flat.FlatAst.new()
+	receiver_id := a.add_node(flat.Node{
+		kind: .param
+		typ:  '&Box[T]'
+	})
+	children_start := a.children.len
+	a.children << receiver_id
+	mut fn_decl := flat.Node{
+		kind:           .fn_decl
+		value:          'Box[T].@union'
+		children_start: children_start
+		children_count: 1
+	}
+	fn_decl.set_generic_params(['T'])
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.generic_fn_decls_cache['Box.@union'] = GenericFnDecl{
+		node: fn_decl
+		key:  'Box.@union'
+	}
+	t.build_generic_receiver_method_index()
+
+	assert t.generic_fn_call_names['union']
+	assert t.generic_receiver_methods_by_name['union'] == ['Box.@union']
+	assert t.generic_receiver_decl_key('Box', 'union', t.generic_fn_decls_cache) == 'Box.@union'
+	assert t.generic_plain_call_candidates('type', 'main') == ['type', '@type']
+}
+
+fn test_synthetic_generic_call_with_exact_identity_is_scannable() {
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'datatypes.LinkedList[map[string]int].str'
+	})
+	children_start := a.children.len
+	a.children << callee_id
+	call := flat.Node{
+		kind:           .call
+		children_start: children_start
+		children_count: 1
+	}
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.synthetic_generic_call_has_exact_identity(call)
+	a.nodes[int(callee_id)].value = 'orm.v_sql_create_table_T_Demo'
+	assert t.synthetic_generic_call_has_exact_identity(call)
 }
 
 fn test_specialized_plain_generic_call_args_decode_top_level_array_suffix() {

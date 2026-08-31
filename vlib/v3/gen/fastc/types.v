@@ -413,8 +413,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 				return fastc_c_declared_type_name(type_key)
 			}
 		}
-		if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[start].lit, g.imports,
-			g.declared_types)
+		if type_key := g.resolve_declared_type_key(tokens[start].lit)
 		{
 			if enum_type_key := g.underlying_enum_type_key(type_key) {
 				return fastc_c_declared_type_name(enum_type_key)
@@ -462,8 +461,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 	if start + 1 < end && tokens[start].tok == .name && tokens[start + 1].tok == .lcbr {
 		if close := fastc_matching_delimiter(tokens[start..end], 1, .lcbr, .rcbr) {
 			if close == end - start - 1 {
-				if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[start].lit,
-					g.imports, g.declared_types)
+				if type_key := g.resolve_declared_type_key(tokens[start].lit)
 				{
 					return fastc_c_declared_type_name(type_key)
 				}
@@ -516,8 +514,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 					if primitive := fastc_primitive_c_type(name) {
 						return primitive
 					}
-					if type_key := fastc_resolve_declared_type_key(g.module_name, name, g.imports,
-						g.declared_types)
+					if type_key := g.resolve_declared_type_key(name)
 					{
 						return fastc_c_declared_type_name(type_key)
 					}
@@ -655,14 +652,14 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 				_, value_type := g.map_key_value_types(base_type) or { return '' }
 				return value_type
 			}
-			if base_type.ends_with('*') {
-				return base_type.trim_right('*')
-			}
 			if base_type.trim_right('*') == 'string' {
 				return 'u8'
 			}
 			if element_type := g.array_element_type(base_type) {
 				return element_type
+			}
+			if base_type.ends_with('*') {
+				return base_type[..base_type.len - 1]
 			}
 		}
 	}
@@ -853,10 +850,12 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken) ?string {
 			} else if current_type.trim_right('*').starts_with('Map_') {
 				_, value_type := g.map_key_value_types(current_type) or { return none }
 				current_type = value_type
+			} else if element_type := g.array_element_type(current_type) {
+				current_type = element_type
 			} else if current_type.ends_with('*') {
-				current_type = current_type.trim_right('*')
+				current_type = current_type[..current_type.len - 1]
 			} else {
-				current_type = g.array_element_type(current_type) or { return none }
+				return none
 			}
 			index = close + 1
 			continue
@@ -1110,12 +1109,10 @@ fn (g &Parser) array_element_type(typ string) ?string {
 		return element_type
 	}
 	layout_type := typ.trim_right('*')
-	if layout_type !in g.struct_fields {
-		return none
+	if fields := g.struct_fields[layout_type] {
+		return fields['__fastc_element_type'] or { none }
 	}
-	fields := g.struct_fields[layout_type].clone()
-	element_type := fields['__fastc_element_type'] or { return none }
-	return element_type
+	return none
 }
 
 fn fastc_is_integer_type(typ string) bool {

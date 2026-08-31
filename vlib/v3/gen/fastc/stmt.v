@@ -128,7 +128,7 @@ fn (mut g Parser) parse_statement() !bool {
 		}
 		.key_static {
 			g.next()
-			if g.tok != .name {
+			if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.key_static)) {
 				return g.unsupported('static local declaration')
 			}
 			name := g.lit
@@ -295,7 +295,7 @@ fn (g &Parser) method_uses_undefined_receiver() bool {
 		if g.is_enum_type_name(r) {
 			continue
 		}
-		if _ := fastc_resolve_declared_type_key(g.module_name, r, g.imports, g.declared_types) {
+		if _ := g.resolve_declared_type_key(r) {
 			continue
 		}
 		return true
@@ -621,7 +621,7 @@ fn (mut g Parser) read_match_type_key() ?string {
 		module_name := g.imports[first] or { first }
 		return fastc_type_key(module_name, type_name)
 	}
-	if key := fastc_resolve_declared_type_key(g.module_name, first, g.imports, g.declared_types) {
+	if key := g.resolve_declared_type_key(first) {
 		return key
 	}
 	// A primitive variant (`int`, `bool`, ...) is not a declared type; its own
@@ -792,7 +792,7 @@ fn (g &Parser) interface_value_expression(interface_type string, actual_type str
 
 fn (mut g Parser) parse_mutable_declaration() ! {
 	g.next()
-	if g.tok != .name {
+	if g.tok != .name && !g.tok.is_keyword() {
 		return g.unsupported('mutable declaration')
 	}
 	name := g.lit
@@ -811,7 +811,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 	if g.tok == .key_assert {
 		return g.parse_assert_statement()
 	}
-	if g.tok == .name {
+	if g.tok == .name || (g.tok == .key_shared && g.shared_token_is_identifier(.unknown)) {
 		name := g.lit
 		global_key := fastc_global_key(g.module_name, name)
 		is_global := global_key in g.globals
@@ -870,13 +870,19 @@ fn (mut g Parser) parse_simple_statement() ! {
 			if !local.is_mut {
 				return g.unsupported('append to immutable name `${name}`')
 			}
-			_ := g.array_element_type(local.typ) or {
+			element_type := g.array_element_type(local.typ) or {
 				return g.unsupported('append to non-array `${name}` of type `${local.typ}`')
 			}
 			g.next()
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 			value_type := fastc_normalize_inferred_type(g.last_expression_type)
-			is_array_append := value_type == local.typ
+			// `[]T << []T` is push-many, unless the element type is a sum type that lists
+			// `[]T` as a variant (a recursive sum type such as `type Value = []Value | int`),
+			// in which case the array is boxed as one element. Mirrors the main C backend's
+			// `sumtype_has_variant` guard (see vlib/v/gen/c/infix.v).
+			boxes_array_variant := value_type == local.typ
+				&& g.sumtype_has_variant(element_type, value_type)
+			is_array_append := value_type == local.typ && !boxes_array_variant
 			g.consume_statement_end()
 			c_name := fastc_c_identifier(name)
 			array_target := if local.typ.ends_with('*') {
@@ -885,11 +891,19 @@ fn (mut g Parser) parse_simple_statement() ! {
 				'(array *)&${c_name}'
 			}
 			value_name := g.temporary_name('push_value')
-			g.write_line('__typeof__((${value})) ${value_name} = (${value});')
-			if is_array_append {
-				g.write_line('builtin__array_push_many(${array_target}, ${value_name}.data, ${value_name}.len);')
-			} else {
+			if boxes_array_variant {
+				boxed := g.render_call_argument_expression(g.last_expression, element_type) or {
+					value
+				}
+				g.write_line('${element_type} ${value_name} = (${boxed});')
 				g.write_line('builtin__array_push(${array_target}, &${value_name});')
+			} else {
+				g.write_line('__typeof__((${value})) ${value_name} = (${value});')
+				if is_array_append {
+					g.write_line('builtin__array_push_many(${array_target}, ${value_name}.data, ${value_name}.len);')
+				} else {
+					g.write_line('builtin__array_push(${array_target}, &${value_name});')
+				}
 			}
 			return
 		}
@@ -1137,7 +1151,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			is_mut = true
 			g.next()
 		}
-		if g.tok != .name {
+		if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.unknown)) {
 			return g.unsupported('parallel assignment target')
 		}
 		names << g.lit
@@ -2320,8 +2334,9 @@ fn (g &Parser) build_orm_delete(db_source string, block_source string, trailing 
 // an orm.QueryData with one boxed Primitive per row-struct field, then calls the
 // connection's `insert` method.
 fn (g &Parser) build_orm_insert(db_source string, value_source string, table_name string, trailing string) !string {
-	type_key := fastc_resolve_declared_type_key(g.module_name, table_name, g.imports,
-		g.declared_types) or { return g.unsupported('ORM `sql`: unknown row type `${table_name}`') }
+	type_key := g.resolve_declared_type_key(table_name) or {
+		return g.unsupported('ORM `sql`: unknown row type `${table_name}`')
+	}
 	c_type := fastc_c_declared_type_name(type_key)
 	fields := g.struct_field_info[c_type]
 	if fields.len == 0 {
@@ -2382,8 +2397,9 @@ fn (g &Parser) fastc_orm_parse_table_op(block_source string, op string) !string 
 // by FastC, so they are empty) and calls the connection's `create`.
 fn (g &Parser) build_orm_create(db_source string, block_source string, trailing string) !string {
 	table_name := g.fastc_orm_parse_table_op(block_source, 'create')!
-	type_key := fastc_resolve_declared_type_key(g.module_name, table_name, g.imports,
-		g.declared_types) or { return g.unsupported('ORM `sql`: unknown row type `${table_name}`') }
+	type_key := g.resolve_declared_type_key(table_name) or {
+		return g.unsupported('ORM `sql`: unknown row type `${table_name}`')
+	}
 	c_type := fastc_c_declared_type_name(type_key)
 	fields := g.struct_field_info[c_type]
 	if fields.len == 0 {
@@ -2567,8 +2583,9 @@ fn (g &Parser) build_orm_select_lowering(db_source string, block_source string, 
 	if tok != .eof {
 		return g.unsupported('ORM `sql`: unsupported clause near the end of `select`')
 	}
-	type_key := fastc_resolve_declared_type_key(g.module_name, table_name, g.imports,
-		g.declared_types) or { return g.unsupported('ORM `sql`: unknown row type `${table_name}`') }
+	type_key := g.resolve_declared_type_key(table_name) or {
+		return g.unsupported('ORM `sql`: unknown row type `${table_name}`')
+	}
 	c_type := fastc_c_declared_type_name(type_key)
 	fields := g.struct_field_info[c_type]
 	if fields.len == 0 {

@@ -54,7 +54,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 		return g.unsupported('spawn for windows targets')
 	}
 	g.next()
-	if g.tok != .name {
+	if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.key_spawn)) {
 		return g.unsupported('spawn callee token `${g.token_source()}`')
 	}
 	mut callee := g.lit
@@ -68,7 +68,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 	if g.tok == .dot {
 		if imported_module := g.imports[callee] {
 			g.next()
-			if g.tok != .name {
+			if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.dot)) {
 				return g.unsupported('spawn qualified callee')
 			}
 			callee = g.lit
@@ -89,7 +89,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 				return g.unsupported('spawn on receiver `${callee}`')
 			}
 			g.next() // consume `.`
-			if g.tok != .name {
+			if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.dot)) {
 				return g.unsupported('spawn method name')
 			}
 			method_name := g.lit
@@ -159,7 +159,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 			return g.unsupported('unfinished spawn call')
 		}
 		mut is_named_param := false
-		if signature.last_parameter_is_params && g.tok == .name {
+		if signature.last_parameter_is_params && g.tok in [.name, .key_shared] {
 			mut lookahead := g.s
 			is_named_param = lookahead.scan() == .colon
 		}
