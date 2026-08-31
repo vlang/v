@@ -92,16 +92,17 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		if fixed_arguments < 0 || fixed_arguments > rendered_arguments.len {
 			return none
 		}
-		variadic_arguments := rendered_arguments[fixed_arguments..].clone()
-		packed := if variadic_arguments.len == 0 {
+		variadic_count := rendered_arguments.len - fixed_arguments
+		variadic_values := rendered_arguments[fixed_arguments..].join(',')
+		packed := if variadic_count == 0 {
 			'(${variadic_type}){0}'
 		} else {
-			'((${variadic_type})builtin__new_array_from_c_array(${variadic_arguments.len}, ${variadic_arguments.len}, sizeof(${element_type}), (${element_type}[]){${variadic_arguments.join(',')}}))'
+			'((${variadic_type})builtin__new_array_from_c_array(${variadic_count}, ${variadic_count}, sizeof(${element_type}), (${element_type}[]){${variadic_values}}))'
 		}
-		mut c_arguments := rendered_arguments[..fixed_arguments].clone()
-		c_arguments << packed
+		rendered_arguments.trim(fixed_arguments)
+		rendered_arguments << packed
 		return FastcRenderedExpression{
-			source: '${fastc_c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
+			source: '${fastc_c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
 			typ: signature.return_type
 		}
 	}
@@ -431,13 +432,14 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			variadic_type := signature.parameter_types.last()
 			element_type := g.array_element_type(variadic_type) or { continue }
-			variadic_arguments := direct_arguments[fixed_arguments..].clone()
-			packed := if variadic_arguments.len == 0 {
+			variadic_count := direct_arguments.len - fixed_arguments
+			variadic_values := direct_arguments[fixed_arguments..].join(',')
+			packed := if variadic_count == 0 {
 				'(${variadic_type}){0}'
 			} else {
-				'((${variadic_type})builtin__new_array_from_c_array(${variadic_arguments.len}, ${variadic_arguments.len}, sizeof(${element_type}), (${element_type}[]){${variadic_arguments.join(',')}}))'
+				'((${variadic_type})builtin__new_array_from_c_array(${variadic_count}, ${variadic_count}, sizeof(${element_type}), (${element_type}[]){${variadic_values}}))'
 			}
-			direct_arguments = direct_arguments[..fixed_arguments].clone()
+			direct_arguments.trim(fixed_arguments)
 			direct_arguments << packed
 		}
 		if signature.last_parameter_is_params && direct_arguments.len + 1 == signature.parameter_types.len - 1 {
