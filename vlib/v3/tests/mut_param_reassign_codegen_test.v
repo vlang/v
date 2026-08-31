@@ -550,6 +550,32 @@ fn main() {
 	assert c_source.contains('inspect(*arg0, arg1)')
 }
 
+fn test_fn_literal_mut_pointer_param_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'fn_literal_mut_pointer_param_reassign', 'struct Item {
+	value int
+}
+
+fn main() {
+	mut first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	mut current := &first
+	replace := fn (mut current &Item, replacement &Item) {
+		current = replacement
+	}
+	replace(mut current, &second)
+	assert current == &second
+	assert first.value == 1
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+}
+
 fn test_callback_alias_and_field_mut_pointer_params_reassign_caller_slot() {
 	v3_bin := mut_param_reassign_build_v3()
 	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'callback_alias_and_field_mut_pointer_params', 'struct Item {
