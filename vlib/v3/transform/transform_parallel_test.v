@@ -1231,6 +1231,109 @@ fn test_string_interp_expansion_estimate_includes_container_cast_hoisting() {
 	assert estimate >= 3 + 2 * string_interp_hoisted_part_expansion_estimate
 }
 
+fn test_string_interp_expansion_estimate_defers_interface_conversion_hoisting() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+		typ: 'Source'
+	})
+	cast_start := a.children.len
+	a.children << value
+	cast := a.add_node(flat.Node{
+		kind: .as_expr
+		value: 'Target'
+		typ: 'Target'
+		children_start: cast_start
+		children_count: 1
+	})
+	interp_start := a.children.len
+	a.children << cast
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['Source'] = true
+	tc.interface_names['Target'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.string_interp_expr_needs_deferred_lowering(cast)
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert estimate == string_interp_hoisted_part_expansion_estimate
+	assert needs_deferred_lowering
+}
+
+fn test_string_interp_expansion_estimate_defers_metadata_driven_selectors() {
+	mut a := flat.FlatAst.new()
+	interface_base := a.add_node(flat.Node{
+		kind: .ident
+		value: 'view'
+		typ: 'View'
+	})
+	interface_selector_start := a.children.len
+	a.children << interface_base
+	interface_selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'value'
+		typ: 'int'
+		children_start: interface_selector_start
+		children_count: 1
+	})
+	sum_base := a.add_node(flat.Node{
+		kind: .ident
+		value: 'item'
+		typ: 'Item'
+	})
+	sum_selector_start := a.children.len
+	a.children << sum_base
+	sum_selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'value'
+		typ: 'int'
+		children_start: sum_selector_start
+		children_count: 1
+	})
+	interp_start := a.children.len
+	a.children << interface_selector
+	a.children << sum_selector
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['View'] = true
+	tc.interface_fields['View'] = [
+			types.StructField{
+				name: 'value'
+				typ: types.Type(types.int_)
+		},
+	]
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['Item'] = ['First', 'Second']
+	for variant in ['First', 'Second'] {
+		t.structs[variant] = StructInfo{
+			name: variant
+			fields: [
+				FieldInfo{
+					name: 'value'
+					typ: 'int'
+				},
+			]
+		}
+	}
+
+	assert t.string_interp_expr_needs_deferred_lowering(interface_selector)
+	assert t.string_interp_expr_needs_deferred_lowering(sum_selector)
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert estimate == 3 + 2 * string_interp_hoisted_part_expansion_estimate
+	assert needs_deferred_lowering
+}
+
 fn test_string_interp_expansion_estimate_includes_shared_ident_hoisting() {
 	mut a := flat.FlatAst.new()
 	literal := a.add_node(flat.Node{

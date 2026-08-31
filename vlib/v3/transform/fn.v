@@ -6268,7 +6268,9 @@ fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, b
 			expr_id = t.a.child(&part, 0)
 			format = part.typ
 		}
-		may_hoist = may_hoist || t.string_interp_expr_may_hoist(expr_id)
+		expr_needs_deferred_lowering := t.string_interp_expr_needs_deferred_lowering(expr_id)
+		may_hoist = may_hoist || expr_needs_deferred_lowering || t.string_interp_expr_may_hoist(expr_id)
+		needs_deferred_lowering = needs_deferred_lowering || expr_needs_deferred_lowering
 		if format == 'p' {
 			// Pointer formatting lowers directly to bounded ptr_str work, regardless of
 			// the pointee's aggregate auto-string expansion.
@@ -6301,6 +6303,34 @@ fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, b
 		estimate += int(node.children_count) * string_interp_hoisted_part_expansion_estimate
 	}
 	return estimate, needs_deferred_lowering
+}
+
+fn (t &Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .as_expr && node.children_count > 0 {
+		source_id := t.a.child(&node, 0)
+		mut source_type := t.raw_expr_type_without_smartcast(source_id)
+		if source_type.len == 0 {
+			source_type = t.node_type(source_id)
+		}
+		source_iface := t.resolve_interface_type_name(source_type)
+		target_iface := t.resolve_interface_type_name(node.value)
+		if source_iface.len > 0 && target_iface.len > 0 && source_iface != target_iface {
+			return true
+		}
+	}
+	if node.kind == .selector && t.external_selector_expands_from_type_metadata(node) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.string_interp_expr_needs_deferred_lowering(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
