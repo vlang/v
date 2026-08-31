@@ -597,6 +597,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	}
 	mut transformed_body := []flat.NodeId{}
 	mut pointer_value_name := ''
+	mut pointer_value_reads_pointee := true
 	if node.op == .amp {
 		bind_id := if has_index { val_id } else { key_id }
 		if int(bind_id) >= 0 {
@@ -605,6 +606,15 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 				bind_type := t.var_type(bind.value)
 				if bind_type.starts_with('&') && !t.is_fixed_array_type(bind_type[1..]) {
 					pointer_value_name = bind.value
+					elem_type := if map_iter_type.starts_with('map[') {
+						t.map_value_type(map_iter_type)
+					} else {
+						t.infer_for_in_elem_type(iter_type, node)
+					}
+					// `for mut value in map[K]&T` stores `&T` directly. Selectors
+					// and pointer-valued RHS uses must therefore keep the pointer;
+					// only assignments to the mutable binding write through it.
+					pointer_value_reads_pointee = !t.normalize_type_alias(elem_type).starts_with('&')
 				}
 			}
 		}
@@ -613,7 +623,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		had_pointer_value_lvalue := t.pointer_value_lvalues[pointer_value_name] or { false }
 		had_pointer_value_rvalue := t.pointer_value_rvalues[pointer_value_name] or { false }
 		t.pointer_value_lvalues[pointer_value_name] = true
-		t.pointer_value_rvalues[pointer_value_name] = true
+		if pointer_value_reads_pointee {
+			t.pointer_value_rvalues[pointer_value_name] = true
+		} else {
+			t.pointer_value_rvalues.delete(pointer_value_name)
+		}
 		transformed_body = t.transform_stmts(body_ids)
 		if had_pointer_value_lvalue {
 			t.pointer_value_lvalues[pointer_value_name] = true

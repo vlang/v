@@ -349,6 +349,17 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 		ct = ct[..ct.len - 1]
 		pointer_suffix += '*'
 	}
+	if source_name := optional_payload_struct_name(t) {
+		canonical_name := g.canonical_import_alias_type_text(source_name)
+		lookup_name := if canonical_name.starts_with('main.') {
+			canonical_name['main.'.len..]
+		} else {
+			canonical_name
+		}
+		if canonical_name != source_name && lookup_name in g.tc.structs {
+			return g.struct_cname(canonical_name) + pointer_suffix
+		}
+	}
 	// A concrete generic type can reach this collector through a stale bare
 	// specialization spelling while its declaration is module-qualified
 	// (`StructKeyDecodeResult_T` vs `json2__StructKeyDecodeResult_T`). Resolve
@@ -377,6 +388,68 @@ fn optional_payload_may_have_stale_interface_spelling(t types.Type) bool {
 		clean = cgen_unalias_type(clean.base_type)
 	}
 	return clean is types.Interface || (clean is types.Struct && !clean.name.contains('.'))
+}
+
+fn optional_payload_struct_name(t types.Type) ?string {
+	mut clean := t
+	for clean is types.Pointer {
+		clean = clean.base_type
+	}
+	if clean is types.Struct {
+		return clean.name
+	}
+	return none
+}
+
+fn (g &FlatGen) canonical_import_alias_type_text(typ string) string {
+	clean := typ.trim_space()
+	for prefix in ['&', '?', '!', '[]'] {
+		if clean.starts_with(prefix) {
+			return prefix + g.canonical_import_alias_type_text(clean[prefix.len..])
+		}
+	}
+	if clean.starts_with('map[') {
+		bracket_end := shared_generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := g.canonical_import_alias_type_text(clean[4..bracket_end])
+			value := g.canonical_import_alias_type_text(clean[bracket_end + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
+	base, args, ok := parse_shared_generic_app_parts(clean)
+	if ok {
+		mut canonical_args := []string{cap: args.len}
+		for arg in args {
+			canonical_args << g.canonical_import_alias_type_text(arg)
+		}
+		canonical_base := g.canonical_import_alias_type_text(base)
+		return '${canonical_base}[${canonical_args.join(', ')}]'
+	}
+	if clean.contains('.') {
+		alias := clean.all_before('.')
+		if module_name := g.unique_import_alias_module(alias) {
+			return module_name + clean[alias.len..]
+		}
+	}
+	return clean
+}
+
+fn (g &FlatGen) unique_import_alias_module(alias string) ?string {
+	mut found := ''
+	suffix := '\n${alias}'
+	for key, module_name in g.tc.file_imports {
+		if !key.ends_with(suffix) {
+			continue
+		}
+		if found.len > 0 && found != module_name {
+			return none
+		}
+		found = module_name
+	}
+	if found.len > 0 {
+		return found
+	}
+	return none
 }
 
 fn optional_payload_is_bare_struct(t types.Type) bool {
@@ -498,11 +571,28 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 			}
 		}
 	}
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
 	// Parallel monomorph workers can append concrete declarations before their
 	// checker signature maps are merged. Read declaration nodes directly too, so
 	// an option/result used only by a worker specialization still gets a typedef.
+	mut cur_module := ''
+	mut cur_file := ''
 	for idx in g.top_level_nodes() {
 		node := g.a.nodes[idx]
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = g.tc.file_modules[cur_file] or { '' }
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
 		if node.kind != .fn_decl {
 			continue
 		}
@@ -510,6 +600,10 @@ fn (mut g FlatGen) collect_declaration_signature_types() {
 			|| g.name_uses_specialized_generic_abi(node.value)
 		if !concrete_optional {
 			continue
+		}
+		g.tc.cur_module = g.a.specialized_fn_modules[idx] or { cur_module }
+		g.tc.cur_file = g.a.specialized_fn_files[idx] or {
+			g.tc.fn_type_files[node.value] or { cur_file }
 		}
 		if node.typ.len > 0 {
 			g.collect_declaration_signature_type_for_context(g.tc.parse_type(node.typ),

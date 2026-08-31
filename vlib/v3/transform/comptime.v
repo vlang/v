@@ -1256,6 +1256,17 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 			return t.make_param_data_literal_in_module(method.params[idx], method.module_name)
 		}
 	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.value == '$' && callee.children_count >= 2
+			&& t.comptime_method_name_expr_matches(t.a.child(callee, 1), var_name)
+			&& int(node.children_count) - 1 != method.params.len {
+			// A `$method` call can appear in the runtime branch paired with a
+			// method-metadata condition. V1 leaves that branch in place but skips
+			// specializations whose argument list cannot call the current method.
+			return none
+		}
+	}
 	if node.kind == .selector && node.value == '$' && node.children_count >= 2
 		&& t.comptime_method_name_expr_matches(t.a.child(&node, 1), var_name) {
 		receiver := t.clone_method_subst_scoped(t.a.child(&node, 0), var_name, method, inner_vars) or {
@@ -1371,12 +1382,52 @@ fn (t &Transformer) method_if_condition_value(id flat.NodeId, var_name string, m
 		}
 		return t.method_if_condition_value(t.a.child(&node, 1), var_name, method)
 	}
+	if node.op in [.eq, .ne, .lt, .gt, .le, .ge] {
+		if left := t.method_const_int_value(t.a.child(&node, 0), var_name, method) {
+			if right := t.method_const_int_value(t.a.child(&node, 1), var_name, method) {
+				return match node.op {
+					.eq { left == right }
+					.ne { left != right }
+					.lt { left < right }
+					.gt { left > right }
+					.le { left <= right }
+					.ge { left >= right }
+					else { false }
+				}
+			}
+		}
+	}
 	if node.op !in [.eq, .ne] {
 		return none
 	}
 	left := t.method_const_string_value(t.a.child(&node, 0), var_name, method) or { return none }
 	right := t.method_const_string_value(t.a.child(&node, 1), var_name, method) or { return none }
 	return if node.op == .eq { left == right } else { left != right }
+}
+
+fn (t &Transformer) method_const_int_value(id flat.NodeId, var_name string, method MethodMeta) ?int {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return t.method_const_int_value(t.a.child(&node, 0), var_name, method)
+	}
+	if node.kind == .int_literal {
+		return node.value.int()
+	}
+	if node.kind != .selector || node.value != 'len' || node.children_count == 0 {
+		return none
+	}
+	params := t.a.child_node(&node, 0)
+	if params.kind != .selector || params.value !in ['args', 'params'] || params.children_count == 0 {
+		return none
+	}
+	owner := t.a.child_node(params, 0)
+	if owner.kind == .ident && owner.value == var_name {
+		return method.params.len
+	}
+	return none
 }
 
 fn (t &Transformer) method_const_string_value(id flat.NodeId, var_name string, method MethodMeta) ?string {

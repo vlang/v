@@ -55,27 +55,27 @@ fn self_tests() {
 	// The broad compatibility suite still covers V1. The strict V3 canary and
 	// dedicated V3 suites in macos_ci.yml cover the default compiler separately.
 	if common.is_github_job {
-		exec('VJOBS=1 v -old-compiler -silent test-self vlib')
+		exec('VJOBS=1 v -old-compiler -no-memory-limit -silent test-self vlib')
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec('VJOBS=${vjobs} v -old-compiler -progress test-self vlib')
+		exec('VJOBS=${vjobs} v -old-compiler -no-memory-limit -progress test-self vlib')
 	}
 }
 
 fn build_examples() {
 	if common.is_github_job {
-		exec('v build-examples')
+		exec('v -no-memory-limit build-examples')
 	} else {
-		exec('v -progress build-examples')
+		exec('v -no-memory-limit -progress build-examples')
 	}
 }
 
 fn build_examples_v_compiled_with_tcc() {
 	exec('v -o vtcc -cc tcc cmd/v')
 	if common.is_github_job {
-		exec('./vtcc build-examples')
+		exec('./vtcc -no-memory-limit build-examples')
 	} else {
-		exec('./vtcc -progress build-examples')
+		exec('./vtcc -no-memory-limit -progress build-examples')
 	}
 }
 
@@ -85,11 +85,13 @@ fn build_hello_world_autofree() {
 }
 
 fn build_tetris_autofree() {
-	exec('v -autofree -o tetris examples/tetris/tetris.v')
+	// Autofree remains a V1 compatibility job. V3 ownership is tested separately,
+	// while fastc intentionally performs no ownership analysis.
+	exec('v -old-compiler -autofree -o tetris examples/tetris/tetris.v')
 }
 
 fn build_blog_autofree() {
-	exec('v -autofree -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
+	exec('v -old-compiler -autofree -o blog tutorials/building_a_simple_web_blog_with_veb/code/blog')
 }
 
 fn build_examples_prod() {

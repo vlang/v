@@ -2968,6 +2968,12 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 			if roots.any(c_flag_is_c_source_file(it)) {
 				return false
 			}
+			if roots.len > 1 {
+				// Several implementation headers can share macro state with later
+				// inlined directives. Replaying each header independently after an
+				// uncertain guard would expose definitions in every cache object.
+				return false
+			}
 			mut recovered_functions := map[string]bool{}
 			for root in roots {
 				real_root := os.real_path(root)
@@ -2985,6 +2991,10 @@ fn prepare_v3_cache_native_type_declarations(mut state V3ModuleCacheState, c_fla
 					}
 				}
 				if root_has_recovered_functions {
+					// An unresolved conditional can make declaration extraction lose a
+					// directive that is nested inside a function branch. Replay headers
+					// with their implementation switches disabled instead; the check below
+					// still rejects any external definition that would survive the replay.
 					roots_with_function_declarations[real_root] = true
 				}
 			}
@@ -9431,6 +9441,7 @@ pub fn run(args []string) {
 			return
 		}
 		if cache_state.manager.enabled {
+			const_init_order := cgen.module_const_init_order(a, pre_tc)
 			if !prepare_v3_cache_external_inputs_scoped(mut cache_state, a, prefs, user_files,
 				cache_c_flags, scope_prealloc_stages) {
 				trace_v3_cache_fallback('external C inputs cannot be assigned to cache units')
@@ -9444,8 +9455,8 @@ pub fn run(args []string) {
 				if !parsed {
 					continue
 				}
-				header := modulecache.module_header(a, pre_tc, module_name, prefs.vroot,
-					cache_state.module_import_paths)
+				header := modulecache.module_header_with_const_order(a, pre_tc, module_name,
+					prefs.vroot, cache_state.module_import_paths, const_init_order)
 				if header.len > 0 {
 					cache_state.headers[module_name] = header
 				}
@@ -11691,16 +11702,17 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	tcc_declarations := tcc_cached_main_source(main_declarations, main_body)
 	tcc_main := '#define V3CACHE_PROGRAM_UNIT 1\n' + tcc_declarations + main_body
 	mut object_paths := state.objects.clone()
-	mut bundle_body := strings.new_builder(4096)
-	mut split_modules := split.modules.keys()
-	split_modules.sort()
-	for module_name in split_modules {
-		if module_is_builtin_bundle(state, module_name) {
-			bundle_body.write_string(split.modules[module_name])
-		}
-	}
 	if !state.bundle_valid {
 		entry := state.manager.object_entry('builtin', state.bundle_sources, compile_signature)
+		bundle_compile_scope := prealloc_scope_begin_for_v3()
+		mut bundle_body := strings.new_builder(4096)
+		mut split_modules := split.modules.keys()
+		split_modules.sort()
+		for module_name in split_modules {
+			if module_is_builtin_bundle(state, module_name) {
+				bundle_body.write_string(split.modules[module_name])
+			}
+		}
 		bundle_roots := cache_builtin_bundle_roots(state)
 		bundle_declarations := prune_cached_native_function_prototypes(raw_declarations, state,
 			bundle_roots)
@@ -11714,7 +11726,15 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			declarations + bundle_body.str()
 		}
 		compile_v3_cached_object(entry, module_source, c_standard, opt_flag, pic_flag,
-			warning_flags, generated_c_flags, objective_c)!
+			warning_flags, generated_c_flags, objective_c) or {
+			prealloc_scope_leave_for_v3(bundle_compile_scope)
+			message := err.msg().clone()
+			prealloc_scope_free_for_v3(bundle_compile_scope)
+			return error(message)
+		}
+		unsafe { bundle_body.free() }
+		prealloc_scope_leave_for_v3(bundle_compile_scope)
+		prealloc_scope_free_for_v3(bundle_compile_scope)
 		for module_name, header in state.headers {
 			if !module_is_builtin_bundle(state, module_name) {
 				continue
@@ -11735,7 +11755,6 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			}
 		}
 	}
-	unsafe { bundle_body.free() }
 
 	for module_name in parsed_modules {
 		if module_is_builtin_bundle(state, module_name) {
@@ -11754,6 +11773,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 				''
 			}
 		}
+		module_compile_scope := prealloc_scope_begin_for_v3()
 		module_declarations := prune_cached_native_function_prototypes(raw_declarations, state, [
 			module_name,
 		])
@@ -11767,7 +11787,14 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			declarations + body
 		}
 		compile_v3_cached_object(entry, module_source, c_standard, opt_flag, pic_flag,
-			warning_flags, generated_c_flags, objective_c)!
+			warning_flags, generated_c_flags, objective_c) or {
+			prealloc_scope_leave_for_v3(module_compile_scope)
+			message := err.msg().clone()
+			prealloc_scope_free_for_v3(module_compile_scope)
+			return error(message)
+		}
+		prealloc_scope_leave_for_v3(module_compile_scope)
+		prealloc_scope_free_for_v3(module_compile_scope)
 		if header := state.headers[module_name] {
 			state.manager.write_header(module_name, source_files, header)!
 		}

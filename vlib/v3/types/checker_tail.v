@@ -9202,7 +9202,8 @@ fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node
 }
 
 fn (tc &TypeChecker) call_param_requires_mut_pointer_slot(info CallInfo, param_idx int) bool {
-	return false
+	param := tc.visible_call_param(info, param_idx) or { return false }
+	return param.is_mut && param.op == .amp && param.typ.starts_with('&')
 }
 
 fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info CallInfo, param_idx int) bool {
@@ -11437,6 +11438,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			mut_param_base_depth, _ := type_pointer_depth_and_base(mut_param_base)
 			is_implicit_mut_param_pointer := mut_arg_node.kind == .ident
 				&& mut_arg_node.value in tc.fn_context.mut_param_base_types
+				&& !tc.current_fn_param_is_explicit_mut_pointer(mut_arg_node.value)
 				&& actual_mut_depth > mut_param_base_depth
 			if is_implicit_mut_param_pointer
 				|| !tc.mut_pointer_slot_arg_compatible(actual_mut_type, expected) {

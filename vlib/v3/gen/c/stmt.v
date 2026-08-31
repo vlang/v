@@ -1533,8 +1533,15 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int, mut e
 		concrete_ct := g.value_c_type(concrete_type)
 		g.writeln('case ${id}:')
 		g.indent++
-		g.gen_ownership_drop_value_inner(concrete_type, '*((${concrete_ct}*)${object})', depth + 1, mut
-			expanding)
+		if concrete in ['MessageError', 'builtin.MessageError'] {
+			// MessageError is introduced by generated result/error lowering and can be
+			// absent from markused's source-level call graph in tiny programs.
+			g.writeln('string__free(&(((${concrete_ct}*)${object})->msg));')
+		} else {
+			g.gen_ownership_drop_value_inner(concrete_type, '*((${concrete_ct}*)${object})',
+
+				depth + 1, mut expanding)
+		}
 		g.writeln('break;')
 		g.indent--
 	}
@@ -5284,7 +5291,14 @@ fn (mut g FlatGen) gen_autofree_discarded_owned_call(id flat.NodeId, node flat.N
 	tmp := '__discarded_owned_${g.tmp_count}'
 	g.tmp_count++
 	g.write('${g.value_c_type(typ)} ${tmp} = ')
-	g.gen_expr(id)
+	if g.expr_is_error_call(id) {
+		// A bare `error(...)` expression is typed as IError here. The regular call
+		// generator wraps it in the current function's result type, which is only
+		// correct when the caller expects that result wrapper.
+		g.gen_ierror_from_error_call(node)
+	} else {
+		g.gen_expr(id)
+	}
 	g.writeln(';')
 	g.gen_ownership_drop_value(typ, tmp, 0)
 	return true
