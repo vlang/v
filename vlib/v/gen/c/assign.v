@@ -882,7 +882,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 						}
 						if left.scope != unsafe { nil } {
-							if scope_var := left.scope.find_var(left.name) {
+							if mut scope_var := left.scope.find_var(left.name) {
 								scope_var.typ = var_type
 								if !var_type.has_option_or_result() {
 									scope_var.orig_type = ast.no_type
@@ -1260,7 +1260,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 		}
 		if is_decl && mut left is ast.Ident && left.obj is ast.Var {
 			left.obj.typ = var_type
-			if scope_var := left.scope.find_var(left.name) {
+			if mut scope_var := left.scope.find_var(left.name) {
 				scope_var.typ = var_type
 				scope_var.orig_type = ast.no_type
 				scope_var.smartcasts = []
@@ -2335,7 +2335,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 					}
 				}
 				if i < mr_types.len && lx.scope != unsafe { nil } {
-					if scope_var := lx.scope.find_var(lx.name) {
+					if mut scope_var := lx.scope.find_var(lx.name) {
 						scope_var.typ = mr_types[i]
 						if !mr_types[i].has_option_or_result() {
 							scope_var.orig_type = ast.no_type
