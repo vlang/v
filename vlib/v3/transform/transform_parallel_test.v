@@ -871,6 +871,56 @@ fn test_external_map_expansion_estimate_defers_runtime_type_metadata_calls() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_defers_enum_from_string_calls() {
+	mut a := flat.FlatAst.new()
+	enum_type := a.add_node(flat.Node{
+		kind: .ident
+		value: 'Wide'
+		typ: 'Wide'
+	})
+	selector_start := a.children.len
+	a.children << enum_type
+	selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'from_string'
+		typ: 'fn (string) ?Wide'
+		children_start: selector_start
+		children_count: 1
+	})
+	argument := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'v0'
+		typ: 'string'
+	})
+	call_start := a.children.len
+	a.children << selector
+	a.children << argument
+	call := a.add_node(flat.Node{
+		kind: .call
+		typ: '?Wide'
+		children_start: call_start
+		children_count: 2
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << call
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]?Wide'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.enum_types['Wide'] = ['v0', 'v1']
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn external_map_equality_expansion_estimate(operand_type string, is_interface bool) int {
 	mut a := flat.FlatAst.new()
 	mut operands := []flat.NodeId{}

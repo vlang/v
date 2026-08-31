@@ -6305,12 +6305,12 @@ fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, b
 	return estimate, needs_deferred_lowering
 }
 
-fn (t &Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId) bool {
+fn (mut t Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return true
 	}
 	node := t.a.nodes[int(id)]
-	if t.runtime_type_metadata_call_expands(node) {
+	if t.runtime_type_metadata_call_expands(id, node) {
 		return true
 	}
 	if node.kind == .as_expr && node.children_count > 0 {
@@ -6336,8 +6336,14 @@ fn (t &Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId) b
 	return false
 }
 
-fn (t &Transformer) runtime_type_metadata_call_expands(node flat.Node) bool {
-	if node.kind != .call || node.children_count != 1 {
+fn (mut t Transformer) runtime_type_metadata_call_expands(id flat.NodeId, node flat.Node) bool {
+	if node.kind != .call {
+		return false
+	}
+	if _ := t.enum_from_string_info(id) {
+		return true
+	}
+	if node.children_count != 1 {
 		return false
 	}
 	fn_id := t.a.child(&node, 0)
