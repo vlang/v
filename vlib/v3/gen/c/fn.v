@@ -3204,6 +3204,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	} else {
 		g.resolve_method_name(receiver_name, method)
 	}
+	mut emitted_method_key := method_key
 	mut params := []types.Type{}
 	mut ret := types.Type(types.void_)
 	mut cname := ''
@@ -3248,12 +3249,13 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 			}
 		}
 		ret = ci.return_type
-		cname = g.direct_call_name('${receiver_name}.${method}')
+		emitted_method_key = '${receiver_name}.${method}'
+		cname = g.direct_call_name(emitted_method_key)
 	} else {
 		return false
 	}
-	if !is_interface_receiver && method_key.len > 0 {
-		params = g.callback_fn_emitted_param_types(method_key, params)
+	if !is_interface_receiver && emitted_method_key.len > 0 {
+		params = g.callback_fn_emitted_param_types(emitted_method_key, params)
 	}
 	if params.len == 0 {
 		return false
@@ -3290,7 +3292,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	// site and signature instead of the function-local temporary counter. Comptime
 	// expansion can reuse one selector node for methods with different concrete
 	// signatures, so the node id alone is not unique.
-	wrapper_key := '${method_key}|${ctx_receiver_ct}|${ret_ct}|${params.map(it.name()).join(',')}'
+	wrapper_key := '${emitted_method_key}|${ctx_receiver_ct}|${ret_ct}|${params.map(it.name()).join(',')}'
 	idx := '${int(selector_id)}_${callback_stable_key_hash(wrapper_key)}'
 	ctx_name := '_mvctx_${idx}'
 	wrap_name := '_mvwrap_${idx}'
@@ -11853,6 +11855,7 @@ fn (g &FlatGen) enum_receiver_method_name(enum_type types.Enum, method string) ?
 fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_type types.Type) bool {
 	field_type := g.field_type(base_type, fn_node.value) or { return false }
 	fn_type := fn_type_from(field_type) or { return false }
+	param_types := fn_type_effective_params(fn_type)
 	field_is_ptr := fn_type_is_pointer(field_type)
 	base_id := g.a.child(fn_node, 0)
 	base := g.a.nodes[int(base_id)]
@@ -11883,8 +11886,12 @@ fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_ty
 		}
 		arg_id := g.a.child(&node, i)
 		arg_idx := i - 1
-		if arg_idx < fn_type.params.len {
-			g.gen_arg_for_expected_type(arg_id, fn_type.params[arg_idx])
+		if arg_idx < param_types.len {
+			arg_node := g.a.node(arg_id)
+			if g.gen_mut_pointer_slot_arg(arg_id, arg_node, param_types[arg_idx]) {
+				continue
+			}
+			g.gen_arg_for_expected_type(arg_id, param_types[arg_idx])
 		} else {
 			g.gen_expr(arg_id)
 		}
@@ -15979,9 +15986,15 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	// by the callee, so emitting the lowered dereference would lose one level.
 	if arg_node.kind == .prefix && arg_node.op == .mul && arg_node.children_count == 1 {
 		child := g.a.child_node(&arg_node, 0)
-		if child.kind == .ident && g.current_param_is_mut(child.value)
-			&& !g.current_param_is_mut_pointer(child.value) {
-			param_type := g.current_param_type(child.value) or { types.Type(types.void_) }
+		if child.kind == .ident && g.current_param_is_mut(child.value) {
+			mut param_type := g.current_param_type(child.value) or {
+				types.Type(types.void_)
+			}
+			if g.current_param_is_mut_pointer(child.value) {
+				param_type = types.Type(types.Pointer{
+					base_type: param_type
+				})
+			}
 			if g.tc.c_type(param_type) == g.tc.c_type(expected) {
 				g.write(g.local_decl_cname(child.value))
 				return true

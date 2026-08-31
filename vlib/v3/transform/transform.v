@@ -181,6 +181,7 @@ mut:
 	refined_node_types              map[int]string
 	fn_value_locals                 map[string]string
 	mut_param_values                map[string]bool
+	mut_pointer_slot_values         map[string]bool
 	fixed_array_param_values        map[string]bool
 	mut_value_ident_nodes           map[int]bool
 	pointer_value_lvalues           map[string]bool
@@ -2324,6 +2325,7 @@ fn (mut t Transformer) reset_var_types() {
 	}
 	t.fn_value_locals.clear()
 	t.mut_param_values.clear()
+	t.mut_pointer_slot_values.clear()
 	t.fixed_array_param_values.clear()
 	t.interface_var_concrete_types.clear()
 	t.addr_lvalue_pointer_locals.clear()
@@ -3696,6 +3698,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.var_type_indices = map[string]int{}
 	w.refined_node_types = t.refined_node_types.clone()
 	w.mut_param_values = map[string]bool{}
+	w.mut_pointer_slot_values = map[string]bool{}
 	w.fixed_array_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
@@ -3813,6 +3816,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.var_types = []VarTypeBinding{}
 	w.var_type_indices = map[string]int{}
 	w.mut_param_values = map[string]bool{}
+	w.mut_pointer_slot_values = map[string]bool{}
 	w.fixed_array_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
@@ -3934,6 +3938,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		default_clone_synthesized:          t.default_clone_synthesized.clone()
 		used_fns:                           used_fns.clone()
 		mut_param_values:                   map[string]bool{}
+		mut_pointer_slot_values:            map[string]bool{}
 		pointer_value_lvalues:              map[string]bool{}
 		pointer_value_rvalues:              map[string]bool{}
 		orm_initialized_fields:             map[string][]string{}
@@ -8634,6 +8639,10 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		}
 		if child.is_mut || child.op == .amp || child.typ.starts_with('mut ') {
 			t.mut_param_values[child.value] = true
+			if child.is_mut && child.op == .amp
+				&& t.tc.fn_node_param_requires_mut_pointer_slot(fn_node, param_idx) {
+				t.mut_pointer_slot_values[child.value] = true
+			}
 			source_mut_params << child.value
 			if child.op == .amp {
 				source_pointer_value_params << child.value

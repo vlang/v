@@ -2620,12 +2620,18 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		return none
 	}
 	arg_node := t.a.nodes[int(arg_id)]
+	if arg_node.kind == .ident && t.mut_pointer_slot_values[arg_node.value] {
+		storage_type := t.var_type(arg_node.value)
+		value := t.transform_expr_preserving_pointer_value(arg_id)
+		t.set_node_typ(int(value), '&${storage_type}')
+		return value
+	}
 	if expected_depth == actual_depth + 1 && arg_node.kind == .ident
 		&& t.pointer_value_rvalues[arg_node.value] {
 		storage_type := t.var_type(arg_node.value)
 		if storage_type == param_type {
 			value := t.transform_expr_preserving_pointer_value(arg_id)
-			t.set_node_typ(int(value), storage_type)
+			t.set_node_typ(int(value), param_type)
 			return value
 		}
 	}
@@ -2903,6 +2909,13 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 				}
 			}
 		}
+	}
+	if arg_node.kind == .ident && arg_node.is_mut
+		&& t.mut_pointer_slot_values[arg_node.value] {
+		storage_type := t.var_type(arg_node.value)
+		value := t.transform_expr_preserving_pointer_value(arg_id)
+		t.set_node_typ(int(value), '&${storage_type}')
+		return value
 	}
 	if param_type.starts_with('&') && arg_node.kind == .ident && arg_node.is_mut
 		&& t.mut_param_values[arg_node.value] {
@@ -10419,6 +10432,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	saved_vars := t.var_types.clone()
 	saved_fn_value_locals := t.fn_value_locals.clone()
 	saved_mut_param_values := t.mut_param_values.clone()
+	saved_mut_pointer_slot_values := t.mut_pointer_slot_values.clone()
 	saved_fixed_array_param_values := t.fixed_array_param_values.clone()
 	saved_local_closure_cleanup_decls := t.local_closure_cleanup_decls.clone()
 	saved_local_closure_cleanup_assigns := t.local_closure_cleanup_assigns.clone()
@@ -10510,6 +10524,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.restore_var_types(saved_vars)
 	t.fn_value_locals = saved_fn_value_locals.clone()
 	t.mut_param_values = saved_mut_param_values.clone()
+	t.mut_pointer_slot_values = saved_mut_pointer_slot_values.clone()
 	t.fixed_array_param_values = saved_fixed_array_param_values.clone()
 	t.local_closure_cleanup_decls = saved_local_closure_cleanup_decls.clone()
 	t.local_closure_cleanup_assigns = saved_local_closure_cleanup_assigns.clone()

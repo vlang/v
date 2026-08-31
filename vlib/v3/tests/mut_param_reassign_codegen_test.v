@@ -520,6 +520,53 @@ fn main() {
 	assert c_source.contains('inspect(*arg0, arg1)')
 }
 
+fn test_callback_alias_and_field_mut_pointer_params_reassign_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'callback_alias_and_field_mut_pointer_params', 'struct Item {
+	value int
+}
+
+struct Callbacks {
+	replace fn (mut &Item, &Item)
+}
+
+fn replace(mut current &Item, replacement &Item) {
+	current = replacement
+}
+
+fn apply_alias(callback fn (mut &Item, &Item), mut current &Item, replacement &Item) {
+	selected := callback
+	selected(mut current, replacement)
+}
+
+fn apply_field(callbacks Callbacks, mut current &Item, replacement &Item) {
+	callbacks.replace(mut current, replacement)
+}
+
+fn main() {
+	mut first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	mut current := &first
+	apply_alias(replace, mut current, &second)
+	assert current == &second
+	current = &first
+	apply_field(Callbacks{
+		replace: replace
+	}, mut current, &second)
+	assert current == &second
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+	assert c_source.contains('void apply_alias(_fn_ptr_')
+	assert c_source.contains('main__Item** current, main__Item* replacement)')
+	assert c_source.contains('void apply_field(main__Callbacks callbacks, main__Item** current, main__Item* replacement)')
+}
+
 fn test_bound_method_mut_pointer_param_reassigns_caller_slot() {
 	v3_bin := mut_param_reassign_build_v3()
 	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'bound_method_mut_pointer_param_reassign', 'struct Item {
@@ -550,6 +597,42 @@ fn main() {
 ')
 	assert out == '9'
 	assert c_source.contains('void Replacer__replace(main__Replacer _0, main__Item** current, main__Item* replacement)')
+	assert c_source.contains('main__Item** a1')
+}
+
+fn test_generic_bound_method_mut_pointer_param_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'generic_bound_method_mut_pointer_param_reassign', 'struct Item {
+	value int
+}
+
+type Wrapped = Item
+
+struct Replacer[T] {}
+
+fn (replacer Replacer[T]) replace[T](mut current &T, replacement &T) {
+	_ = replacer
+	current = replacement
+}
+
+fn main() {
+	mut first := Wrapped{
+		value: 1
+	}
+	second := Wrapped{
+		value: 9
+	}
+	mut current := &first
+	replacer := Replacer[Wrapped]{}
+	callback := replacer.replace
+	callback(mut current, &second)
+	assert current == &second
+	assert first.value == 1
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+	assert c_source.contains('void Replacer_Wrapped__replace(main__Replacer_Wrapped replacer, main__Item** current, main__Item* replacement)')
 	assert c_source.contains('main__Item** a1')
 }
 
