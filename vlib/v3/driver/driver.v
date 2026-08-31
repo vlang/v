@@ -1660,6 +1660,11 @@ fn input_implies_building_v(input_file string) bool {
 	return false
 }
 
+fn input_is_v3_compiler_entry(input_file string) bool {
+	normalized := os.real_path(input_file).replace('\\', '/').trim_right('/')
+	return normalized.ends_with('/vlib/v3/v3.v')
+}
+
 fn input_is_cmd_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
 	return normalized == 'cmd/v' || normalized.ends_with('/cmd/v')
@@ -8284,8 +8289,8 @@ pub fn run(args []string) {
 	if !include_eval {
 		user_defines << 'skip_eval'
 	}
-	fastc_selfhost_build := backend == 'fastc'
-		&& (is_selfhost || input_implies_building_v(input_file))
+	fastc_compiler_entry := backend == 'fastc' && input_is_v3_compiler_entry(input_file)
+	fastc_selfhost_build := backend == 'fastc' && (is_selfhost || fastc_compiler_entry)
 	if fastc_selfhost_build {
 		// Select the scanner-to-C driver in the first generated compiler. A direct
 		// `-b fastc vlib/v3/v3.v` build is a self-host build too; do not require the
@@ -8327,7 +8332,7 @@ pub fn run(args []string) {
 		target.default_thread_stack_size()
 	}
 	prefs.backend = backend
-	prefs.vroot = if fastc_selfhost_build && input_implies_building_v(input_file) {
+	prefs.vroot = if fastc_compiler_entry {
 		// A directly invoked host compiler may live outside the checkout (for example,
 		// a production benchmark binary in /tmp). The explicit compiler entry owns
 		// this build, so resolve builtin and vlib beside that input instead of VEXE.
