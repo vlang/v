@@ -7570,6 +7570,63 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_applies_nested_condition_pointer_alias_updates_before_branches() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	flag := true
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			if flag && replace(mut alias, &saved) {
+				alias.value = unsafe { &it }
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_condition_pointer_alias_update_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_condition_pointer_alias_update', '-ownership', source)
+	assert out == '0\nsource'
+}
+
 fn test_array_map_applies_match_subject_pointer_alias_updates_before_branches() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
@@ -7859,6 +7916,71 @@ fn main() {
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	out := run_good_project_with_flags(v3_bin, 'array_map_forwarded_callback_wrapper_sink',
 		'-ownership', files, 'main.v')
+	assert out == '0\nsource'
+}
+
+fn test_array_map_keeps_source_forwarded_through_nested_callback_wrappers() {
+	v3_bin := build_v3_review_transform_ownership()
+	files := {
+		'v.mod':        "Module { name: 'array_map_nested_callback_wrapper_sink' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+pub fn invoke1(callback fn (&Item), value &Item) {
+	callback(value)
+}
+
+pub fn invoke2(callback fn (&Item), value &Item) {
+	invoke1(callback, value)
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.invoke2(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_nested_callback_wrapper_sink_c', '-ownership', files, 'main.v')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_project_with_flags(v3_bin, 'array_map_nested_callback_wrapper_sink', '-ownership', files, 'main.v')
 	assert out == '0\nsource'
 }
 

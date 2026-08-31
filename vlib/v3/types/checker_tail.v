@@ -9869,7 +9869,8 @@ pub fn (mut tc TypeChecker) call_param_storage_source_params(id flat.NodeId, tar
 }
 
 // call_param_flows_to_callback reports whether a resolved function passes one source
-// parameter to a direct invocation of one of its function-valued parameters.
+// parameter to an invocation of one of its function-valued parameters, including through
+// resolved wrappers.
 pub fn (tc &TypeChecker) call_param_flows_to_callback(id flat.NodeId, callback_param_idx int, source_param_idx int) bool {
 	if !tc.valid_node_id(id) || callback_param_idx < 0 || source_param_idx < 0 {
 		return false
@@ -9877,19 +9878,29 @@ pub fn (tc &TypeChecker) call_param_flows_to_callback(id flat.NodeId, callback_p
 	call_name := tc.resolved_call_name(id) or { return false }
 	decl_module := tc.fn_type_modules[call_name] or { '' }
 	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or { return false }
+	mut visiting := map[u64]bool{}
+	return tc.visible_fn_param_flows_to_callback(decl, callback_param_idx, source_param_idx, mut visiting)
+}
+
+fn (tc &TypeChecker) visible_fn_param_flows_to_callback(decl VisibleMutationFnDecl, callback_param_idx int, source_param_idx int, mut visiting map[u64]bool) bool {
+	key := (u64(decl.idx + 1) << 32) | (u64(callback_param_idx + 1) << 16) | u64(source_param_idx + 1)
+	if visiting[key] {
+		return false
+	}
+	visiting[key] = true
 	callback_param := tc.visible_mutation_fn_param(decl, callback_param_idx) or { return false }
 	source_param := tc.visible_mutation_fn_param(decl, source_param_idx) or { return false }
 	fn_node := tc.a.nodes[decl.idx]
 	for i in 0 .. fn_node.children_count {
 		child_id := tc.a.child(&fn_node, i)
-		if tc.node_invokes_callback_with_param(child_id, callback_param.value, source_param.value) {
+		if tc.node_invokes_callback_with_param(child_id, callback_param.value, source_param.value, decl.mod, mut visiting) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_name string, source_name string) bool {
+fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_name string, source_name string, module_name string, mut visiting map[u64]bool) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -9906,9 +9917,44 @@ fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_n
 				}
 			}
 		}
+		if called_name := tc.resolved_call_name(id) {
+			decl_module := tc.fn_type_modules[called_name] or { module_name }
+			if decl := tc.visible_mutation_fn_decl(called_name, decl_module) {
+				first_param := tc.visible_mutation_fn_param(decl, 0) or { flat.Node{} }
+				param_offset := if first_param.kind == .param && first_param.op == .dot {
+					1
+				} else {
+					0
+				}
+				mut callback_idx := -1
+				mut source_idx := -1
+				if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 {
+					receiver_id := tc.a.child(callee, 0)
+					if tc.callback_arg_is_rooted_at_ident(receiver_id, callback_name) {
+						callback_idx = 0
+					}
+					if tc.callback_arg_is_rooted_at_ident(receiver_id, source_name) {
+						source_idx = 0
+					}
+				}
+				for i in 1 .. node.children_count {
+					arg_id := tc.call_arg_value(tc.a.child(&node, i))
+					param_idx := i - 1 + param_offset
+					if tc.callback_arg_is_rooted_at_ident(arg_id, callback_name) {
+						callback_idx = param_idx
+					}
+					if tc.callback_arg_is_rooted_at_ident(arg_id, source_name) {
+						source_idx = param_idx
+					}
+				}
+				if callback_idx >= 0 && source_idx >= 0 && tc.visible_fn_param_flows_to_callback(decl, callback_idx, source_idx, mut visiting) {
+					return true
+				}
+			}
+		}
 	}
 	for i in 0 .. node.children_count {
-		if tc.node_invokes_callback_with_param(tc.a.child(&node, i), callback_name, source_name) {
+		if tc.node_invokes_callback_with_param(tc.a.child(&node, i), callback_name, source_name, module_name, mut visiting) {
 			return true
 		}
 	}
