@@ -6310,6 +6310,9 @@ fn (t &Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId) b
 		return true
 	}
 	node := t.a.nodes[int(id)]
+	if t.runtime_type_metadata_call_expands(node) {
+		return true
+	}
 	if node.kind == .as_expr && node.children_count > 0 {
 		source_id := t.a.child(&node, 0)
 		mut source_type := t.raw_expr_type_without_smartcast(source_id)
@@ -6331,6 +6334,34 @@ fn (t &Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId) b
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) runtime_type_metadata_call_expands(node flat.Node) bool {
+	if node.kind != .call || node.children_count != 1 {
+		return false
+	}
+	fn_id := t.a.child(&node, 0)
+	if int(fn_id) < 0 || int(fn_id) >= t.a.nodes.len {
+		return false
+	}
+	fn_node := t.a.nodes[int(fn_id)]
+	if fn_node.kind != .selector || fn_node.value !in ['type_name', 'type_idx'] || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(&fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	if base_type.len == 0 {
+		base_type = t.raw_checker_node_type(base_id)
+	}
+	if base_type.len == 0 {
+		return false
+	}
+	clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	_, variants := t.concrete_sum_name_and_variants(clean_type)
+	return variants.len > 0 || t.resolve_interface_type_name(clean_type).len > 0
 }
 
 fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {

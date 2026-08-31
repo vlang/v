@@ -271,6 +271,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// Calls outside the writable function span are always reconstructed by
 			// transform_call_args, including a new child-ID span.
 			estimate += int(node.children_count) + 1
+			if t.runtime_type_metadata_call_expands(node) {
+				// Runtime type metadata calls expand into comparison chains derived from
+				// sum variants or interface implementations, not physical call children.
+				estimate += deferred_map_expansion_threshold + 1
+			}
 			if info := t.compiler_default_clone_call_info(node) {
 				if info.can_lower {
 					// Compiler-provided aggregate clones expand recursively from type

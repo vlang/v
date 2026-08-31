@@ -823,6 +823,54 @@ fn test_external_map_expansion_estimate_defers_interface_metadata_lowering() {
 	assert external_map_metadata_expr_expansion_estimate(.as_expr) > deferred_map_expansion_threshold
 }
 
+fn add_runtime_metadata_call(mut a flat.FlatAst, base_name string, base_type string, method string, result_type string) flat.NodeId {
+	base := a.add_node(flat.Node{
+		kind:  .ident
+		value: base_name
+		typ:   base_type
+	})
+	selector_start := a.children.len
+	a.children << base
+	selector := a.add_node(flat.Node{
+		kind:           .selector
+		value:          method
+		typ:            'fn () ${result_type}'
+		children_start: selector_start
+		children_count: 1
+	})
+	call_start := a.children.len
+	a.children << selector
+	return a.add_node(flat.Node{
+		kind:           .call
+		typ:            result_type
+		children_start: call_start
+		children_count: 1
+	})
+}
+
+fn test_external_map_expansion_estimate_defers_runtime_type_metadata_calls() {
+	mut a := flat.FlatAst.new()
+	type_idx_call := add_runtime_metadata_call(mut a, 'item', 'Item', 'type_idx', 'int')
+	key := a.add_node(flat.Node{
+		kind:  .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << type_idx_call
+	root := a.add_node(flat.Node{
+		kind:           .map_init
+		typ:            'map[string]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['Item'] = ['First', 'Second']
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn external_map_equality_expansion_estimate(operand_type string, is_interface bool) int {
 	mut a := flat.FlatAst.new()
 	mut operands := []flat.NodeId{}
@@ -1331,6 +1379,30 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_selectors() {
 	assert t.string_interp_expr_needs_deferred_lowering(sum_selector)
 	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
 	assert estimate == 3 + 2 * string_interp_hoisted_part_expansion_estimate
+	assert needs_deferred_lowering
+}
+
+fn test_string_interp_expansion_estimate_defers_runtime_type_metadata_calls() {
+	mut a := flat.FlatAst.new()
+	sum_call := add_runtime_metadata_call(mut a, 'item', 'Item', 'type_name', 'string')
+	interface_call := add_runtime_metadata_call(mut a, 'view', 'View', 'type_idx', 'int')
+	interp_start := a.children.len
+	a.children << sum_call
+	a.children << interface_call
+	interp := a.add_node(flat.Node{
+		kind:           .string_interp
+		typ:            'string'
+		children_start: interp_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['View'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['Item'] = ['First', 'Second']
+
+	assert t.string_interp_expr_needs_deferred_lowering(sum_call)
+	assert t.string_interp_expr_needs_deferred_lowering(interface_call)
+	_, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
 	assert needs_deferred_lowering
 }
 
