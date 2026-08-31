@@ -9847,6 +9847,16 @@ fn (tc &TypeChecker) indirect_call_param_storage_source_params(call flat.Node, t
 	return sources
 }
 
+fn (tc &TypeChecker) visible_mutation_call_module(call flat.Node, call_name string) string {
+	if module_name := tc.fn_type_modules[call_name] {
+		return module_name
+	}
+	if source_file := tc.a.source_files[call.pos.id] {
+		return tc.file_modules[source_file.name] or { '' }
+	}
+	return ''
+}
+
 // call_param_storage_source_params returns parameters whose values a source function
 // may assign into the mutable target parameter or one of its descendants.
 pub fn (mut tc TypeChecker) call_param_storage_source_params(id flat.NodeId, target_param_idx int) []int {
@@ -9860,7 +9870,7 @@ pub fn (mut tc TypeChecker) call_param_storage_source_params(id flat.NodeId, tar
 	call_name := tc.resolved_call_name(id) or {
 		return tc.indirect_call_param_storage_source_params(call, target_param_idx)
 	}
-	decl_module := tc.fn_type_modules[call_name] or { '' }
+	decl_module := tc.visible_mutation_call_module(call, call_name)
 	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or {
 		return tc.indirect_call_param_storage_source_params(call, target_param_idx)
 	}
@@ -9875,8 +9885,9 @@ pub fn (tc &TypeChecker) call_param_flows_to_callback(id flat.NodeId, callback_p
 	if !tc.valid_node_id(id) || callback_param_idx < 0 || source_param_idx < 0 {
 		return false
 	}
+	call := tc.a.nodes[int(id)]
 	call_name := tc.resolved_call_name(id) or { return false }
-	decl_module := tc.fn_type_modules[call_name] or { '' }
+	decl_module := tc.visible_mutation_call_module(call, call_name)
 	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or { return false }
 	mut visiting := map[u64]bool{}
 	return tc.visible_fn_param_flows_to_callback(decl, callback_param_idx, source_param_idx, mut visiting)

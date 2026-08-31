@@ -221,3 +221,58 @@ fn main() {
 	assert tc.call_param_storage_source_params(calls['store_in_loop'], 0) == [1, 2]
 	assert tc.call_param_storage_source_params(calls['store_or_replace'], 0) == [1, 2]
 }
+
+fn test_param_storage_sources_use_call_site_module_for_unqualified_calls() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_storage_source_module_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	other_path := os.join_path(dir, 'other.v')
+	main_path := os.join_path(dir, 'main.v')
+	os.write_file(other_path, 'module other
+
+struct OtherBox {}
+
+fn replace(mut target &OtherBox, replacement &OtherBox) {
+	_ = target
+	_ = replacement
+}
+') or { panic(err) }
+	os.write_file(main_path, 'module main
+
+struct Box {}
+
+fn replace(mut target &Box, replacement &Box) {
+	target = replacement
+}
+
+fn main() {
+	mut first := &Box{}
+	second := &Box{}
+	replace(mut first, second)
+}
+') or { panic(err) }
+
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_files([other_path, main_path])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+
+	mut replace_call := flat.empty_node
+	for i, node in a.nodes {
+		if node.kind != .call {
+			continue
+		}
+		name := tc.resolved_call_name(flat.NodeId(i)) or { continue }
+		if name.ends_with('replace') {
+			replace_call = flat.NodeId(i)
+		}
+	}
+	assert int(replace_call) >= 0
+	assert tc.call_param_storage_source_params(replace_call, 0) == [1]
+}

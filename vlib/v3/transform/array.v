@@ -3721,11 +3721,15 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 	}
 	if stmt.kind == .decl_assign {
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+			rhs_id := t.a.child(&stmt, i + 1)
+			if !t.array_map_update_local_pointer_origins_flow(rhs_id, elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
+				return false
+			}
 			lhs := t.a.child_node(&stmt, i)
 			if lhs.kind == .ident && lhs.value.len > 0 {
 				origins := locals.clone()
 				overlapping := array_map_clear_local_pointer_origins(lhs.value, mut locals)
-				t.array_map_record_local_pointer_origins(lhs.value, t.a.child(&stmt, i + 1), elem_name, origins, mut locals)
+				t.array_map_record_local_pointer_origins(lhs.value, rhs_id, elem_name, origins, mut locals)
 				array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
 			}
 		}
