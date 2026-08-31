@@ -381,6 +381,28 @@ pub fn (v Builder) get_builtin_files() []string {
 	verror('`builtin/` not included on module lookup path.\nDid you forget to add vlib to the path? (Use @vlib for default vlib)')
 }
 
+fn test_file_has_module_declaration(content string) bool {
+	mut in_block_comment := false
+	for source_line in content.split_into_lines() {
+		line := source_line.trim_space()
+		if in_block_comment {
+			if line.contains('*/') {
+				in_block_comment = false
+			}
+			continue
+		}
+		if line == '' || line.starts_with('//') || line.starts_with('#!') {
+			continue
+		}
+		if line.starts_with('/*') {
+			in_block_comment = !line.contains('*/')
+			continue
+		}
+		return line.starts_with('module ')
+	}
+	return false
+}
+
 pub fn (v &Builder) get_user_files() []string {
 	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash']
 		|| v.pref.path.ends_with('vlib/builtin') {
@@ -450,19 +472,7 @@ pub fn (v &Builder) get_user_files() []string {
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := util.read_file(dir) or { verror('${dir} does not exist') }
-		slines := tcontent.split_into_lines()
-		for sline in slines {
-			line := sline.trim_space()
-			if line.len > 2 {
-				if line[0] == `/` && line[1] == `/` {
-					continue
-				}
-				if line.starts_with('module ') {
-					is_internal_module_test = true
-					break
-				}
-			}
-		}
+		is_internal_module_test = test_file_has_module_declaration(tcontent)
 	}
 	if is_internal_module_test {
 		// v volt/slack_test.v: compile all .v files to get the environment

@@ -268,6 +268,31 @@ pub struct Client {}
 	assert !res.output.contains('cannot register struct')
 }
 
+fn test_standalone_test_ignores_embedded_module_declarations() {
+	workspace := os.join_path(test_path, 'standalone_test_embedded_module')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	os.mkdir_all(workspace)!
+	os.write_file(os.join_path(workspace, 'fixture_test.v'), "const fixture = 'first
+module main
+last'
+
+fn test_fixture() {
+	assert fixture.contains('module main')
+}
+")!
+	for name in ['first', 'second'] {
+		os.write_file(os.join_path(workspace, '${name}.v'), 'module main
+
+struct Context {}
+')!
+	}
+
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace, 'fixture_test.v'))}')
+	assert res.exit_code == 0, res.output
+}
+
 fn test_duplicate_resolved_import_path_still_validates_module_name() {
 	$if windows {
 		return
