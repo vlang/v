@@ -1842,6 +1842,49 @@ fn test_pointer_formatted_interp_still_accounts_for_temp_hoisting() {
 	assert !needs_deferred_lowering
 }
 
+fn test_pointer_formatted_interp_accounts_for_pointer_to_sum_cast_hoisting() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+		typ: 'First'
+	})
+	cast_start := a.children.len
+	a.children << value
+	cast := a.add_node(flat.Node{
+		kind: .cast_expr
+		value: '&Item'
+		typ: '&Item'
+		children_start: cast_start
+		children_count: 1
+	})
+	format_start := a.children.len
+	a.children << cast
+	formatted := a.add_node(flat.Node{
+		kind: .directive
+		value: 'string_interp_format'
+		typ: 'p'
+		children_start: format_start
+		children_count: 1
+	})
+	interp_start := a.children.len
+	a.children << formatted
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['Item'] = ['First', 'Second']
+
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert t.string_interp_expr_may_hoist(cast)
+	assert estimate == string_interp_hoisted_part_expansion_estimate
+	assert !needs_deferred_lowering
+}
+
 fn test_shared_map_expansion_is_bounded_in_aggregate() {
 	mut t := Transformer{}
 	items := [

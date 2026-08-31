@@ -6407,6 +6407,13 @@ fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
 		// value, so interpolation lowering hoists every part to preserve evaluation order.
 		return true
 	}
+	if node.kind == .cast_expr {
+		target_type := t.normalize_type_alias(node.value)
+		if target_type.starts_with('&') && t.is_sum_type_name(t.normalize_type_alias(target_type[1..])) {
+			// Taking a pointer to a sum materializes the wrapped value in a temporary.
+			return true
+		}
+	}
 	if node.kind in [.paren, .cast_expr, .as_expr, .prefix, .postfix, .selector] {
 		for i in 0 .. node.children_count {
 			if t.string_interp_expr_may_hoist(t.a.child(&node, i)) {
