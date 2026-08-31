@@ -482,11 +482,10 @@ fn (g &Parser) method_function_key(receiver_type string, name string) string {
 		}
 		layout_type = 'map'
 	}
-	// The program metadata is immutable during per-file generation, so workers
-	// can share the nested field map instead of cloning it for every method lookup.
-	fields := unsafe { g.struct_fields[layout_type] }
-	if 'data' in fields && 'len' in fields && 'cap' in fields && 'array.${name}' in g.functions {
-		return 'array.${name}'
+	if fields := g.struct_fields[layout_type] {
+		if 'data' in fields && 'len' in fields && 'cap' in fields && 'array.${name}' in g.functions {
+			return 'array.${name}'
+		}
 	}
 	return direct_key
 }

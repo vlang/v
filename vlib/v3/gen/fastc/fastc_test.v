@@ -5860,6 +5860,25 @@ fn main() {
 	assert !c_source.contains('text.str[index]'), c_source
 }
 
+fn test_selfhost_double_pointer_index_preserves_one_pointer_level() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn take(value &u8) {}
+
+fn pass(values &&u8, index int) {
+	take(values[index])
+}
+
+fn main() {
+	pass(&&u8(0), 0)
+}
+', 'selfhost_double_pointer_index.v', prefs) or { panic(err) }
+	assert c_source.contains('take(((values)[index]))'), c_source
+	assert !c_source.contains('take(&(((values)[index])))'), c_source
+}
+
 fn test_selfhost_selector_assignment_accepts_array_initializer() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -6198,6 +6217,52 @@ fn main() {
 	assert c_source.contains('__v_fastc_append_map_target'), c_source
 	assert c_source.contains('builtin__map_get_check'), c_source
 	assert !c_source.contains('groups[key]'), c_source
+}
+
+fn test_selfhost_append_to_nested_array() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn add(mut groups [][]int, index int, value int) {
+	groups[index] << value
+}
+
+fn main() {
+	mut groups := [][]int{len: 1}
+	add(mut groups, 0, 42)
+}
+', 'selfhost_append_to_nested_array.v', prefs) or { panic(err) }
+	assert c_source.contains('__v_fastc_append_array_target'), c_source
+	assert c_source.contains('builtin__array_get(*(groups), index)'), c_source
+	assert !c_source.contains('groups[index]'), c_source
+}
+
+fn test_selfhost_append_array_result_to_struct_field() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct State {
+mut:
+	values []string
+}
+
+fn load_values() ![]string {
+	return [\'one\', \'two\']
+}
+
+fn add_values(mut state State) ! {
+	state.values << load_values()!
+}
+
+fn main() {
+	mut state := State{}
+	add_values(mut state) or { panic(err) }
+}
+', 'selfhost_append_array_result_to_struct_field.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__array_push_many'), c_source
+	assert !c_source.contains('state->values<<'), c_source
 }
 
 fn test_selfhost_empty_array_assigned_to_member_field() {
@@ -7381,6 +7446,47 @@ fn main() {
 	assert c_source.contains('Map_string_int v = *(Map_string_int *)'), c_source
 	assert c_source.contains('_typ == __v_typeid_Array_Node'), c_source
 	assert c_source.contains('Array_Node v = *(Array_Node *)'), c_source
+}
+
+fn test_sum_type_recursive_array_variant_append_boxes_one_element() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Value = int | []Value
+
+fn main() {
+	mut dst := []Value{}
+	src := [Value(1)]
+	dst << src
+	_ := dst
+}
+', 'sum_type_recursive_append.v', prefs) or { panic(err) }
+	// `[]Value` is a variant of `Value`, so `dst << src` boxes the whole `src` array as
+	// one `Value` element instead of copying its elements. The append must use the
+	// single-element push and box `src` with the composite `Array_Value` type id.
+	assert !c_source.contains('builtin__array_push_many'), c_source
+	assert c_source.contains('__v_typeid_Array_Value'), c_source
+	assert c_source.contains('builtin__array_push('), c_source
+}
+
+fn test_sum_type_nonrecursive_array_append_is_push_many() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Plain = int | string
+
+fn main() {
+	mut dst := []Plain{}
+	src := [Plain(1)]
+	dst << src
+	_ := dst
+}
+', 'sum_type_nonrecursive_append.v', prefs) or { panic(err) }
+	// `Plain` has no array variant, so `[]Plain << []Plain` stays a push-many append
+	// that copies each element, matching the main C backend.
+	assert c_source.contains('builtin__array_push_many'), c_source
 }
 
 fn test_generic_monomorphization() {
@@ -10299,6 +10405,33 @@ fn main() {
 	assert c_source.contains('builtin__map_get_check'), c_source
 	assert c_source.contains('builtin__map_set'), c_source
 	assert !c_source.contains('counts[key]+amount'), c_source
+}
+
+fn test_selfhost_map_assignment_with_propagated_result() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+	value int
+}
+
+fn load_item() !Item {
+	return Item{ value: 42 }
+}
+
+fn insert(mut items map[string]Item) ! {
+	items[\'answer\'] = load_item()!
+}
+
+fn main() {
+	mut items := map[string]Item{}
+	insert(mut items) or { panic(err) }
+}
+', 'selfhost_map_assignment_propagated_result.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__map_set'), c_source
+	assert c_source.contains('__v_fastc_option_propagate'), c_source
+	assert !c_source.contains('items[_S("answer")]'), c_source
 }
 
 fn test_selfhost_nested_map_assignment_initializes_addressable_inner_map() {
