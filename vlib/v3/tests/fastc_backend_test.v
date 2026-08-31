@@ -46,6 +46,31 @@ fn run_with_v_environment(program string, args []string, flags string, vexe stri
 	return cmdexec.run(program, args)
 }
 
+fn test_direct_fastc_compiler_entry_selects_selfhost_driver() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_direct_fastc_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	host_binary := os.join_path(root, 'v_host')
+	os.cp(@VEXE, host_binary) or { panic(err) }
+	direct_binary := os.join_path(root, 'v_fastc_direct')
+	direct_build := cmdexec.run(host_binary, ['-silent', '-b', 'fastc', '-o', direct_binary,
+		fastc_backend_v3_source])
+	assert direct_build.exit_code == 0, direct_build.output
+	assert os.is_executable(direct_binary)
+
+	self_output := os.join_path(root, 'v_fastc_child')
+	self_build := cmdexec.run(direct_binary, ['self', '-silent', '-o', self_output])
+	assert self_build.exit_code == 0, self_build.output
+	assert self_build.output.contains('V self compiling (-b fastc)...'), self_build.output
+	assert os.is_executable(self_output)
+}
+
 fn test_v_self_accepts_fastc_backend() {
 	$if !macos && !linux {
 		return
