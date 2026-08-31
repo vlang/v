@@ -9966,48 +9966,56 @@ fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_n
 }
 
 fn (tc &TypeChecker) callback_arg_is_rooted_at_ident(id flat.NodeId, name string, owner_decl VisibleMutationFnDecl) bool {
-	mut current := id
-	for _ in 0 .. 16 {
+	mut pending := [id]
+	mut seen := map[int]bool{}
+	for pending.len > 0 && seen.len < 64 {
+		current := pending.pop()
 		if !tc.valid_node_id(current) {
-			return false
+			continue
 		}
+		if seen[int(current)] {
+			continue
+		}
+		seen[int(current)] = true
 		node := tc.a.node(current)
 		if node.kind == .ident {
 			if node.value == name {
 				return true
 			}
-			current = tc.visible_fn_local_binding_rhs_before(owner_decl, node.value,
-				current) or { return false }
+			pending << tc.visible_fn_local_binding_rhs_before(owner_decl, node.value, current)
 			continue
 		}
-		if node.kind in [.paren, .prefix, .selector, .index, .cast_expr, .as_expr, .expr_stmt]
-			&& node.children_count > 0 {
-			current = tc.a.child(node, 0)
+		if node.kind in [.paren, .prefix, .selector, .index, .cast_expr, .as_expr, .expr_stmt] && node.children_count > 0 {
+			pending << tc.a.child(node, 0)
 			continue
 		}
-		return false
 	}
 	return false
 }
 
-fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnDecl, name string, use_id flat.NodeId) ?flat.NodeId {
+fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnDecl, name string, use_id flat.NodeId) []flat.NodeId {
 	if name.len == 0 || !tc.valid_node_id(use_id) || decl.idx < 0 || decl.idx >= tc.a.nodes.len {
-		return none
+		return []
 	}
 	use_pos := tc.a.node(use_id).pos
 	fn_node := tc.a.nodes[decl.idx]
 	mut stack := []flat.NodeId{}
+	mut stack_conditional := []bool{}
 	for i in 0 .. fn_node.children_count {
 		child_id := tc.a.child(&fn_node, i)
 		if tc.a.node(child_id).kind != .param {
 			stack << child_id
+			stack_conditional << false
 		}
 	}
 	mut seen := map[int]bool{}
-	mut best_id := flat.empty_node
-	mut best_offset := -1
+	mut latest_definite_id := flat.empty_node
+	mut latest_definite_offset := -1
+	mut conditional_ids := []flat.NodeId{}
+	mut conditional_offsets := []int{}
 	for stack.len > 0 {
 		current_id := stack.pop()
+		current_conditional := stack_conditional.pop()
 		if seen[int(current_id)] || !tc.valid_node_id(current_id) {
 			continue
 		}
@@ -10016,24 +10024,39 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 		if current_node.kind in [.decl_assign, .assign] {
 			for i := 0; i + 1 < int(current_node.children_count); i += 2 {
 				lhs := tc.a.child_node(current_node, i)
-				if lhs.kind == .ident && lhs.value == name && lhs.pos.id == use_pos.id
-					&& lhs.pos.offset < use_pos.offset && lhs.pos.offset > best_offset {
-					best_id = tc.a.child(current_node, i + 1)
-					best_offset = lhs.pos.offset
+				if lhs.kind == .ident && lhs.value == name && lhs.pos.id == use_pos.id && lhs.pos.offset < use_pos.offset {
+					rhs_id := tc.a.child(current_node, i + 1)
+					if current_conditional {
+						conditional_ids << rhs_id
+						conditional_offsets << lhs.pos.offset
+					} else if lhs.pos.offset > latest_definite_offset {
+						latest_definite_id = rhs_id
+						latest_definite_offset = lhs.pos.offset
+					}
 				}
 			}
 		}
 		if current_node.kind in [.fn_literal, .lambda_expr] {
 			continue
 		}
+		child_conditional := current_conditional || current_node.kind in [.if_expr, .match_stmt,
+			.match_branch, .or_expr, .for_stmt, .for_in_stmt, .select_stmt, .select_branch,
+			.comptime_if, .comptime_for]
 		for i in 0 .. current_node.children_count {
 			stack << tc.a.child(current_node, i)
+			stack_conditional << child_conditional
 		}
 	}
-	if best_id != flat.empty_node {
-		return best_id
+	mut result := []flat.NodeId{}
+	if latest_definite_id != flat.empty_node {
+		result << latest_definite_id
 	}
-	return none
+	for i, conditional_id in conditional_ids {
+		if conditional_offsets[i] > latest_definite_offset {
+			result << conditional_id
+		}
+	}
+	return result
 }
 
 fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node {
