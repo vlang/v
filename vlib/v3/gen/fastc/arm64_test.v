@@ -151,6 +151,12 @@ fn main() {
 		println("wrong insertion")
 		return
 	}
+	mut repeated := [1, 2]
+	repeated << repeated
+	if repeated.len != 4 || repeated[0] != 1 || repeated[1] != 2 || repeated[2] != 1 || repeated[3] != 2 {
+		println("wrong self append")
+		return
+	}
 	defaults := FastArm64Defaults{}
 	explicit := FastArm64Defaults{retries: 7}
 	if defaults.retries != 3 || !defaults.enabled || defaults.mode != .warm || explicit.retries != 7 || !explicit.enabled || explicit.mode != .warm {
@@ -174,6 +180,84 @@ fn main() {
 }
 '
 		os.write_file(source_path, source) or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n'
+	}
+}
+
+fn test_fastc_arm64_checks_dynamic_array_indexes() {
+	$if arm64? {
+		for index in [-1, 2] {
+			for operation_index, operation in ['println(values[index])', 'values[index] = 30'] {
+				test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_bounds_${os.getpid()}_${index}_${operation_index}')
+				os.rmdir_all(test_dir) or {}
+				os.mkdir_all(test_dir) or { panic(err) }
+				defer {
+					os.rmdir_all(test_dir) or {}
+				}
+				source_path := os.join_path_single(test_dir, 'main.v')
+				output_path := os.join_path_single(test_dir, 'app')
+				os.write_file(source_path, 'fn main() {\n\tmut values := [10, 20]\n\tindex := ${index}\n\t${operation}\n}\n') or {
+					panic(err)
+				}
+				mut prefs := pref.new_preferences()
+				prefs.backend = 'fastc'
+				prefs.user_defines = ['arm64']
+				generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+				result := os.execute(output_path)
+				assert result.exit_code != 0
+			}
+		}
+	}
+}
+
+fn test_fastc_arm64_preserves_option_and_result_failures() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_option_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn maybe(ok bool) ?int {
+	if ok {
+		return 7
+	}
+	return none
+}
+
+fn read_value(ok bool) !int {
+	if ok {
+		return 9
+	}
+	return error("failed")
+}
+
+fn propagate(ok bool) !int {
+	return read_value(ok)!
+}
+
+fn main() {
+	a := maybe(true) or { 42 }
+	b := maybe(false) or { 42 }
+	c := propagate(true) or { 55 }
+	d := propagate(false) or { 55 }
+	if a != 7 || b != 42 || c != 9 || d != 55 {
+		println("wrong option flow")
+		return
+	}
+	println("native")
+}
+') or {
+			panic(err)
+		}
 		mut prefs := pref.new_preferences()
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']

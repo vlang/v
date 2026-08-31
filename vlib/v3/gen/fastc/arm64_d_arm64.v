@@ -16,6 +16,9 @@ struct FastArm64Value {
 	tuple_types  []string
 	is_none      bool
 	is_temporary bool
+	option_state ssa.ValueID
+	option_id    ssa.ValueID
+	option_typ   ssa.TypeID
 	map_found    ssa.ValueID
 	map_id       ssa.ValueID
 	map_type     string
@@ -89,29 +92,31 @@ mut:
 struct FastArm64Parser {
 	source_file FastcSourceFile
 mut:
-	program         &FastArm64Program = unsafe { nil }
-	s               scanner.Scanner
-	tok             token.Token
-	lit             string
-	func_id         int
-	cur_block       ssa.BlockID
-	return_typ      ssa.TypeID
-	return_name     string
-	locals          map[string]FastArm64Local
-	terminated      map[int]bool
-	labels          map[string]ssa.BlockID
-	break_to        []ssa.BlockID
-	continue_to     []ssa.BlockID
-	break_scopes    []int
-	continue_scopes []int
-	defer_sources   []string
-	defer_starts    []int
-	local_names     []string
-	local_values    []FastArm64Local
-	local_existed   []bool
-	local_starts    []int
-	array_element   string
-	last_map_found  ssa.ValueID
+	program          &FastArm64Program = unsafe { nil }
+	s                scanner.Scanner
+	tok              token.Token
+	lit              string
+	func_id          int
+	cur_block        ssa.BlockID
+	return_typ       ssa.TypeID
+	return_value_typ ssa.TypeID
+	return_name      string
+	return_is_option bool
+	locals           map[string]FastArm64Local
+	terminated       map[int]bool
+	labels           map[string]ssa.BlockID
+	break_to         []ssa.BlockID
+	continue_to      []ssa.BlockID
+	break_scopes     []int
+	continue_scopes  []int
+	defer_sources    []string
+	defer_starts     []int
+	local_names      []string
+	local_values     []FastArm64Local
+	local_existed    []bool
+	local_starts     []int
+	array_element    string
+	last_map_found   ssa.ValueID
 }
 
 struct FastArm64Generation {
@@ -959,18 +964,22 @@ fn (mut p FastArm64Program) register_signature_function(key string) ?int {
 	if signature.is_disabled {
 		return none
 	}
-	effective_return_type := if signature.return_type == 'Option' {
+	mut value_type := p.type_id(if signature.return_type == 'Option' {
 		signature.option_type
 	} else {
 		signature.return_type
-	}
-	mut ret := p.type_id(effective_return_type)
+	})
 	if signature.return_types.len > 0 && (signature.return_type != 'Option' || signature.option_type == 'MultiReturn') {
 		mut return_types := []ssa.TypeID{cap: signature.return_types.len}
 		for return_type in signature.return_types {
 			return_types << p.type_id(return_type)
 		}
-		ret = p.m.type_store.get_tuple(return_types)
+		value_type = p.m.type_store.get_tuple(return_types)
+	}
+	ret := if signature.return_type == 'Option' {
+		p.m.type_store.get_tuple([value_type, p.i1_type])
+	} else {
+		value_type
 	}
 	if key.starts_with('C.') {
 		symbol := key['C.'.len..]
@@ -2704,10 +2713,16 @@ fn (mut p FastArm64Parser) parse_function() ! {
 	}
 	p.func_id = func_id
 	p.return_typ = p.program.fn_returns[key]
+	p.return_is_option = signature.return_type == 'Option'
 	p.return_name = if signature.return_type == 'Option' {
 		signature.option_type
 	} else {
 		signature.return_type
+	}
+	p.return_value_typ = if p.return_is_option {
+		p.program.m.type_store.types[p.return_typ].fields[0]
+	} else {
+		p.return_typ
 	}
 	p.locals = map[string]FastArm64Local{}
 	p.terminated = map[int]bool{}
@@ -3018,12 +3033,13 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 			array_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
 			p.program.instr2(.store, p.cur_block, p.program.void_type, array_value, array_slot)
 			data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
+			length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 2))
 			element_type_name := p.program.array_element_type_name(local.typ_name) or {
 				return p.unsupported('array type `${local.typ_name}`')
 			}
 			element_type := p.program.type_id(element_type_name)
 			element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
-			index64 := p.integer_to_i64(key)
+			index64 := p.checked_array_index(key, length)
 			offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index64, element_size)
 			address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, offset)
 			typed_address := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), address)
@@ -3072,12 +3088,13 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 			array_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
 			p.program.instr2(.store, p.cur_block, p.program.void_type, array_value, array_slot)
 			data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
+			length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 2))
 			element_type_name := p.program.array_element_type_name(local.typ_name) or {
 				return p.unsupported('array type `${local.typ_name}`')
 			}
 			element_type := p.program.type_id(element_type_name)
 			element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
-			index64 := p.integer_to_i64(key)
+			index64 := p.checked_array_index(key, length)
 			offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index64, element_size)
 			address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, offset)
 			typed_address := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), address)
@@ -3267,35 +3284,58 @@ fn (mut p FastArm64Parser) parse_return() ! {
 		p.emit_deferred_scopes(0)!
 		p.program.instr0(.ret, p.cur_block, p.program.void_type)
 	} else {
-		first := if p.tok == .dot {
+		mut value := if p.tok == .dot {
 			p.parse_enum_shorthand(p.return_name)!
 		} else {
 			p.parse_expression(0)!
 		}
 		if p.tok == .comma {
-			mut values := [first]
+			mut values := [value]
 			for p.tok == .comma {
 				p.next()
 				values << p.parse_expression(0)!
 			}
-			layout := p.program.m.type_store.types[p.return_typ]
+			layout := p.program.m.type_store.types[p.return_value_typ]
 			if layout.kind != .struct_t || layout.fields.len != values.len {
 				return p.unsupported('multi-return layout')
 			}
-			slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.return_typ))
-			for i, value in values {
-				address := p.program.struct_field_ptr(p.cur_block, slot, p.return_typ, i)
-				p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, address)
+			slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.return_value_typ))
+			for i, item in values {
+				address := p.program.struct_field_ptr(p.cur_block, slot, p.return_value_typ, i)
+				p.program.instr2(.store, p.cur_block, p.program.void_type, item.id, address)
 			}
-			result := p.program.instr1(.load, p.cur_block, p.return_typ, slot)
-			p.emit_deferred_scopes(0)!
-			p.program.instr1(.ret, p.cur_block, p.program.void_type, result)
-		} else {
-			p.emit_deferred_scopes(0)!
-			p.program.instr1(.ret, p.cur_block, p.program.void_type, first.id)
+			value = FastArm64Value{
+				id: p.program.instr1(.load, p.cur_block, p.return_value_typ, slot)
+				typ: p.return_value_typ
+				typ_name: p.return_name
+			}
 		}
+		p.emit_return_value(value)!
 	}
 	p.mark_terminated(p.cur_block)
+}
+
+fn (mut p FastArm64Parser) emit_return_value(value FastArm64Value) ! {
+	p.emit_deferred_scopes(0)!
+	if p.return_is_option {
+		if value.option_id != ssa.ValueID(0) && value.option_typ == p.return_typ {
+			p.program.instr1(.ret, p.cur_block, p.program.void_type, value.option_id)
+			return
+		}
+		failed := p.program.m.get_or_add_const(p.program.i1_type, if value.is_none {
+			'1'
+		} else {
+			'0'
+		})
+		result := p.option_result(value, failed)
+		p.program.instr1(.ret, p.cur_block, p.program.void_type, result)
+		return
+	}
+	mut result := value
+	if result.typ != p.return_typ {
+		result = p.convert_value(result, p.return_typ, p.return_name)
+	}
+	p.program.instr1(.ret, p.cur_block, p.program.void_type, result.id)
 }
 
 fn (mut p FastArm64Parser) emit_deferred_scopes(first_scope int) ! {
@@ -4336,16 +4376,89 @@ fn (mut p FastArm64Parser) parse_primary() !FastArm64Value {
 		}
 		p.program.instr2(.store, p.cur_block, p.program.void_type, updated, value.address)
 	}
-	// FastC signatures expose the successful payload type directly. Propagation
-	// markers therefore do not change the native SSA value.
 	if p.tok in [.not, .question] {
-		p.next()
+		return p.propagate_option_value(value)
 	}
 	if p.tok == .key_or {
-		p.next()
-		p.skip_group(.lcbr, .rcbr)!
+		return p.handle_option_value(value)
 	}
 	return value
+}
+
+fn (mut p FastArm64Parser) propagate_option_value(value FastArm64Value) !FastArm64Value {
+	if value.option_state == ssa.ValueID(0) {
+		return p.unsupported('propagation of a non-Option value')
+	}
+	if !p.return_is_option {
+		return p.unsupported('Option propagation from a non-Option function')
+	}
+	p.next()
+	failure := p.program.m.add_block(p.func_id, 'option_propagate_failure')
+	success := p.program.m.add_block(p.func_id, 'option_propagate_success')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, value.option_state, ssa.ValueID(failure), ssa.ValueID(success))
+	p.mark_terminated(p.cur_block)
+	p.cur_block = failure
+	failed_value := p.zero_value(p.return_value_typ, p.return_name)
+	failed_state := p.program.m.get_or_add_const(p.program.i1_type, '1')
+	result := p.option_result(FastArm64Value{
+		...failed_value
+		is_none: true
+	}, failed_state)
+	p.emit_deferred_scopes(0)!
+	p.program.instr1(.ret, p.cur_block, p.program.void_type, result)
+	p.mark_terminated(p.cur_block)
+	p.cur_block = success
+	return FastArm64Value{
+		...value
+		option_state: ssa.ValueID(0)
+		option_id: ssa.ValueID(0)
+		option_typ: ssa.TypeID(0)
+	}
+}
+
+fn (mut p FastArm64Parser) handle_option_value(value FastArm64Value) !FastArm64Value {
+	if value.option_state == ssa.ValueID(0) {
+		return p.unsupported('`or` handler on a non-Option value')
+	}
+	p.next()
+	result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value.typ))
+	failure := p.program.m.add_block(p.func_id, 'option_or_failure')
+	success := p.program.m.add_block(p.func_id, 'option_or_success')
+	done := p.program.m.add_block(p.func_id, 'option_or_done')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, value.option_state, ssa.ValueID(failure), ssa.ValueID(success))
+	p.mark_terminated(p.cur_block)
+	p.program.instr2(.store, success, p.program.void_type, value.id, result_slot)
+	p.program.instr1(.jmp, success, p.program.void_type, ssa.ValueID(done))
+	p.mark_terminated(success)
+	p.cur_block = failure
+	p.expect(.lcbr)!
+	for p.tok == .semicolon {
+		p.next()
+	}
+	if p.tok == .key_return {
+		p.parse_return()!
+	} else {
+		mut fallback := p.parse_expression(0)!
+		if !p.block_is_terminated(p.cur_block) {
+			if fallback.typ != value.typ {
+				fallback = p.convert_value(fallback, value.typ, value.typ_name)
+			}
+			p.program.instr2(.store, p.cur_block, p.program.void_type, fallback.id, result_slot)
+			p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(done))
+			p.mark_terminated(p.cur_block)
+		}
+	}
+	for p.tok == .semicolon {
+		p.next()
+	}
+	p.expect(.rcbr)!
+	p.cur_block = done
+	return FastArm64Value{
+		id: p.program.instr1(.load, done, value.typ, result_slot)
+		typ: value.typ
+		typ_name: value.typ_name
+		tuple_types: value.tuple_types
+	}
 }
 
 fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
@@ -4410,7 +4523,7 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 		}
 		.key_none {
 			p.next()
-			value := p.zero_value(p.return_typ, '')
+			value := p.zero_value(p.return_value_typ, p.return_name)
 			return FastArm64Value{
 				id: value.id
 				typ: value.typ
@@ -4827,7 +4940,11 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 	p.next()
 	if first_name == 'error' && p.tok == .lpar {
 		p.skip_group(.lpar, .rpar)!
-		return p.zero_value(p.return_typ, p.return_name)
+		value := p.zero_value(p.return_value_typ, p.return_name)
+		return FastArm64Value{
+			...value
+			is_none: true
+		}
 	}
 	if first_name.starts_with('@') {
 		function_name := p.program.m.funcs[p.func_id].name
@@ -6033,14 +6150,44 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		}
 	}
 	result := p.program.m.add_instr(.call, p.cur_block, ret, operands)
-	return FastArm64Value{
-		id: result
-		typ: ret
-		typ_name: if signature.return_type == 'Option' {
-			signature.option_type} else {
-			signature.return_type}
-		tuple_types: signature.return_types
+	return p.call_result_value(result, ret, signature)
+}
+
+fn (mut p FastArm64Parser) call_result_value(result ssa.ValueID, ret ssa.TypeID, signature FastcFunctionSignature) FastArm64Value {
+	if signature.return_type != 'Option' {
+		return FastArm64Value{
+			id: result
+			typ: ret
+			typ_name: signature.return_type
+			tuple_types: signature.return_types
+		}
 	}
+	option_layout := p.program.m.type_store.types[ret]
+	value_type := option_layout.fields[0]
+	result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(ret))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, result, result_slot)
+	value_address := p.program.struct_field_ptr(p.cur_block, result_slot, ret, 0)
+	state_address := p.program.struct_field_ptr(p.cur_block, result_slot, ret, 1)
+	return FastArm64Value{
+		id: p.program.instr1(.load, p.cur_block, value_type, value_address)
+		typ: value_type
+		typ_name: signature.option_type
+		tuple_types: signature.return_types
+		option_state: p.program.instr1(.load, p.cur_block, p.program.i1_type, state_address)
+		option_id: result
+		option_typ: ret
+	}
+}
+
+fn (mut p FastArm64Parser) option_result(value FastArm64Value, failed ssa.ValueID) ssa.ValueID {
+	mut payload := value
+	if payload.typ != p.return_value_typ {
+		payload = p.convert_value(payload, p.return_value_typ, p.return_name)
+	}
+	result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.return_typ))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, payload.id, p.program.struct_field_ptr(p.cur_block, result_slot, p.return_typ, 0))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, failed, p.program.struct_field_ptr(p.cur_block, result_slot, p.return_typ, 1))
+	return p.program.instr1(.load, p.cur_block, p.return_typ, result_slot)
 }
 
 fn (mut p FastArm64Parser) integer_to_i64(value FastArm64Value) ssa.ValueID {
@@ -6050,6 +6197,26 @@ fn (mut p FastArm64Parser) integer_to_i64(value FastArm64Value) ssa.ValueID {
 	typ := p.program.m.type_store.types[value.typ]
 	op := if typ.is_unsigned { ssa.OpCode.zext } else { ssa.OpCode.sext }
 	return p.program.instr1(op, p.cur_block, p.program.i64_type, value.id)
+}
+
+fn (mut p FastArm64Parser) checked_array_index(index FastArm64Value, length ssa.ValueID) ssa.ValueID {
+	index64 := p.integer_to_i64(index)
+	length64 := p.program.instr1(.zext, p.cur_block, p.program.i64_type, length)
+	zero64 := p.program.m.get_or_add_const(p.program.i64_type, '0')
+	below_start := p.program.instr2(.lt, p.cur_block, p.program.i1_type, index64, zero64)
+	past_end := p.program.instr2(.uge, p.cur_block, p.program.i1_type, index64, length64)
+	invalid := p.program.instr2(.or_, p.cur_block, p.program.i1_type, below_start, past_end)
+	invalid_block := p.program.m.add_block(p.func_id, 'array_index_invalid')
+	valid_block := p.program.m.add_block(p.func_id, 'array_index_valid')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, invalid, ssa.ValueID(invalid_block), ssa.ValueID(valid_block))
+	p.mark_terminated(p.cur_block)
+	exit_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'exit', p.program.fn_ids['exit'])
+	exit_code := p.program.m.get_or_add_const(p.program.i32_type, '1')
+	p.program.m.add_instr(.call, invalid_block, p.program.void_type, [exit_ref, exit_code])
+	p.program.instr0(.unreachable, invalid_block, p.program.void_type)
+	p.mark_terminated(invalid_block)
+	p.cur_block = valid_block
+	return index64
 }
 
 fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !FastArm64Value {
@@ -6203,8 +6370,9 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		value_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
 		p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, value_slot)
 		data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, value_slot, p.program.array_type, 0))
+		length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, value_slot, p.program.array_type, 2))
 		element_size := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, value_slot, p.program.array_type, 5))
-		index64 := p.integer_to_i64(start)
+		index64 := p.checked_array_index(start, length)
 		element_size64 := p.program.instr1(.zext, p.cur_block, p.program.i64_type, element_size)
 		offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index64, element_size64)
 		address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, offset)
@@ -6530,14 +6698,7 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		}
 	}
 	result := p.program.m.add_instr(.call, p.cur_block, ret, operands)
-	return FastArm64Value{
-		id: result
-		typ: ret
-		typ_name: if signature.return_type == 'Option' {
-			signature.option_type} else {
-			signature.return_type}
-		tuple_types: signature.return_types
-	}
+	return p.call_result_value(result, ret, signature)
 }
 
 fn (mut p FastArm64Parser) parse_named_argument_struct(type_name string) !FastArm64Value {
@@ -6933,20 +7094,48 @@ fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items Fa
 	items_length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, items_slot, p.program.array_type, 2))
 	required := p.program.instr2(.add, p.cur_block, p.program.i32_type, length, items_length)
 	needs_grow := p.program.instr2(.gt, p.cur_block, p.program.i1_type, required, capacity)
+	element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
+	element_size32 := p.program.m.get_or_add_const(p.program.i32_type, p.program.m.type_size(element_type).str())
+	items_length64 := p.program.instr1(.zext, p.cur_block, p.program.i64_type, items_length)
+	items_bytes := p.program.instr2(.mul, p.cur_block, p.program.i64_type, items_length64, element_size)
+	destination_before_grow := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
+	source_before_grow := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, items_slot, p.program.array_type, 0))
+	same_backing := p.program.instr2(.eq, p.cur_block, p.program.i1_type, destination_before_grow, source_before_grow)
+	source_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.ptr_i8))
+	owned_source_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.ptr_i8))
+	snapshot := p.program.m.add_block(p.func_id, 'array_append_many_snapshot')
+	direct := p.program.m.add_block(p.func_id, 'array_append_many_direct')
+	prepare := p.program.m.add_block(p.func_id, 'array_append_many_prepare')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, same_backing, ssa.ValueID(snapshot), ssa.ValueID(direct))
+	p.mark_terminated(p.cur_block)
+	malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
+	snapshot_data := p.program.m.add_instr(.call, snapshot, p.program.ptr_i8, [
+		malloc_ref,
+		items_bytes,
+	])
+	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
+	p.program.m.add_instr(.call, snapshot, p.program.ptr_i8, [memcpy_ref, snapshot_data,
+		source_before_grow, items_bytes])
+	p.program.instr2(.store, snapshot, p.program.void_type, snapshot_data, source_slot)
+	p.program.instr2(.store, snapshot, p.program.void_type, snapshot_data, owned_source_slot)
+	p.program.instr1(.jmp, snapshot, p.program.void_type, ssa.ValueID(prepare))
+	p.mark_terminated(snapshot)
+	null_pointer := p.program.m.get_or_add_const(p.program.ptr_i8, '0')
+	p.program.instr2(.store, direct, p.program.void_type, source_before_grow, source_slot)
+	p.program.instr2(.store, direct, p.program.void_type, null_pointer, owned_source_slot)
+	p.program.instr1(.jmp, direct, p.program.void_type, ssa.ValueID(prepare))
+	p.mark_terminated(direct)
+	p.cur_block = prepare
 	grow := p.program.m.add_block(p.func_id, 'array_append_many_grow')
 	copy_block := p.program.m.add_block(p.func_id, 'array_append_many_copy')
 	done := p.program.m.add_block(p.func_id, 'array_append_many_done')
 	p.program.instr3(.br, p.cur_block, p.program.void_type, needs_grow, ssa.ValueID(grow), ssa.ValueID(copy_block))
 	p.mark_terminated(p.cur_block)
-	element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
-	element_size32 := p.program.m.get_or_add_const(p.program.i32_type, p.program.m.type_size(element_type).str())
 	p.emit_array_grow_storage(array_slot, grow, copy_block, length, required, element_size, element_size32)
 	destination_data := p.program.instr1(.load, copy_block, p.program.ptr_i8, p.program.struct_field_ptr(copy_block, array_slot, p.program.array_type, 0))
-	source_data := p.program.instr1(.load, copy_block, p.program.ptr_i8, p.program.struct_field_ptr(copy_block, items_slot, p.program.array_type, 0))
+	source_data := p.program.instr1(.load, copy_block, p.program.ptr_i8, source_slot)
 	length64 := p.program.instr1(.zext, copy_block, p.program.i64_type, length)
-	items_length64 := p.program.instr1(.zext, copy_block, p.program.i64_type, items_length)
 	existing_bytes := p.program.instr2(.mul, copy_block, p.program.i64_type, length64, element_size)
-	items_bytes := p.program.instr2(.mul, copy_block, p.program.i64_type, items_length64, element_size)
 	if prepend {
 		shifted_destination := p.program.instr2(.add, copy_block, p.program.ptr_i8, destination_data, items_bytes)
 		memmove_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memmove', p.program.fn_ids['memmove'])
@@ -6958,9 +7147,11 @@ fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items Fa
 	} else {
 		p.program.instr2(.add, copy_block, p.program.ptr_i8, destination_data, existing_bytes)
 	}
-	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
 	p.program.m.add_instr(.call, copy_block, p.program.ptr_i8, [memcpy_ref, destination, source_data,
 		items_bytes])
+	owned_source := p.program.instr1(.load, copy_block, p.program.ptr_i8, owned_source_slot)
+	free_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'free', p.program.fn_ids['free'])
+	p.program.m.add_instr(.call, copy_block, p.program.void_type, [free_ref, owned_source])
 	p.program.instr2(.store, copy_block, p.program.void_type, required, p.program.struct_field_ptr(copy_block, array_slot, p.program.array_type, 2))
 	p.program.instr1(.jmp, copy_block, p.program.void_type, ssa.ValueID(done))
 	p.mark_terminated(copy_block)
