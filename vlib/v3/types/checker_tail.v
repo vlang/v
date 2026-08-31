@@ -9893,14 +9893,15 @@ fn (tc &TypeChecker) visible_fn_param_flows_to_callback(decl VisibleMutationFnDe
 	fn_node := tc.a.nodes[decl.idx]
 	for i in 0 .. fn_node.children_count {
 		child_id := tc.a.child(&fn_node, i)
-		if tc.node_invokes_callback_with_param(child_id, callback_param.value, source_param.value, decl.mod, mut visiting) {
+		if tc.node_invokes_callback_with_param(child_id, callback_param.value,
+			source_param.value, decl, mut visiting) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_name string, source_name string, module_name string, mut visiting map[u64]bool) bool {
+fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_name string, source_name string, owner_decl VisibleMutationFnDecl, mut visiting map[u64]bool) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -9912,13 +9913,14 @@ fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_n
 		callee := tc.a.child_node(&node, 0)
 		if callee.kind == .ident && callee.value == callback_name {
 			for i in 1 .. node.children_count {
-				if tc.callback_arg_is_rooted_at_ident(tc.call_arg_value(tc.a.child(&node, i)), source_name) {
+				if tc.callback_arg_is_rooted_at_ident(tc.call_arg_value(tc.a.child(&node,
+					i)), source_name, owner_decl) {
 					return true
 				}
 			}
 		}
 		if called_name := tc.resolved_call_name(id) {
-			decl_module := tc.fn_type_modules[called_name] or { module_name }
+			decl_module := tc.fn_type_modules[called_name] or { owner_decl.mod }
 			if decl := tc.visible_mutation_fn_decl(called_name, decl_module) {
 				first_param := tc.visible_mutation_fn_param(decl, 0) or { flat.Node{} }
 				param_offset := if first_param.kind == .param && first_param.op == .dot {
@@ -9930,20 +9932,21 @@ fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_n
 				mut source_idx := -1
 				if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 {
 					receiver_id := tc.a.child(callee, 0)
-					if tc.callback_arg_is_rooted_at_ident(receiver_id, callback_name) {
+					if tc.callback_arg_is_rooted_at_ident(receiver_id, callback_name,
+						owner_decl) {
 						callback_idx = 0
 					}
-					if tc.callback_arg_is_rooted_at_ident(receiver_id, source_name) {
+					if tc.callback_arg_is_rooted_at_ident(receiver_id, source_name, owner_decl) {
 						source_idx = 0
 					}
 				}
 				for i in 1 .. node.children_count {
 					arg_id := tc.call_arg_value(tc.a.child(&node, i))
 					param_idx := i - 1 + param_offset
-					if tc.callback_arg_is_rooted_at_ident(arg_id, callback_name) {
+					if tc.callback_arg_is_rooted_at_ident(arg_id, callback_name, owner_decl) {
 						callback_idx = param_idx
 					}
-					if tc.callback_arg_is_rooted_at_ident(arg_id, source_name) {
+					if tc.callback_arg_is_rooted_at_ident(arg_id, source_name, owner_decl) {
 						source_idx = param_idx
 					}
 				}
@@ -9954,25 +9957,83 @@ fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_n
 		}
 	}
 	for i in 0 .. node.children_count {
-		if tc.node_invokes_callback_with_param(tc.a.child(&node, i), callback_name, source_name, module_name, mut visiting) {
+		if tc.node_invokes_callback_with_param(tc.a.child(&node, i), callback_name,
+			source_name, owner_decl, mut visiting) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) callback_arg_is_rooted_at_ident(id flat.NodeId, name string) bool {
-	if !tc.valid_node_id(id) {
+fn (tc &TypeChecker) callback_arg_is_rooted_at_ident(id flat.NodeId, name string, owner_decl VisibleMutationFnDecl) bool {
+	mut current := id
+	for _ in 0 .. 16 {
+		if !tc.valid_node_id(current) {
+			return false
+		}
+		node := tc.a.node(current)
+		if node.kind == .ident {
+			if node.value == name {
+				return true
+			}
+			current = tc.visible_fn_local_binding_rhs_before(owner_decl, node.value,
+				current) or { return false }
+			continue
+		}
+		if node.kind in [.paren, .prefix, .selector, .index, .cast_expr, .as_expr, .expr_stmt]
+			&& node.children_count > 0 {
+			current = tc.a.child(node, 0)
+			continue
+		}
 		return false
 	}
-	node := tc.a.nodes[int(id)]
-	if node.kind == .ident {
-		return node.value == name
-	}
-	if node.kind in [.paren, .prefix, .selector, .index, .cast_expr, .as_expr, .expr_stmt] && node.children_count > 0 {
-		return tc.callback_arg_is_rooted_at_ident(tc.a.child(&node, 0), name)
-	}
 	return false
+}
+
+fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnDecl, name string, use_id flat.NodeId) ?flat.NodeId {
+	if name.len == 0 || !tc.valid_node_id(use_id) || decl.idx < 0 || decl.idx >= tc.a.nodes.len {
+		return none
+	}
+	use_pos := tc.a.node(use_id).pos
+	fn_node := tc.a.nodes[decl.idx]
+	mut stack := []flat.NodeId{}
+	for i in 0 .. fn_node.children_count {
+		child_id := tc.a.child(&fn_node, i)
+		if tc.a.node(child_id).kind != .param {
+			stack << child_id
+		}
+	}
+	mut seen := map[int]bool{}
+	mut best_id := flat.empty_node
+	mut best_offset := -1
+	for stack.len > 0 {
+		current_id := stack.pop()
+		if seen[int(current_id)] || !tc.valid_node_id(current_id) {
+			continue
+		}
+		seen[int(current_id)] = true
+		current_node := tc.a.node(current_id)
+		if current_node.kind in [.decl_assign, .assign] {
+			for i := 0; i + 1 < int(current_node.children_count); i += 2 {
+				lhs := tc.a.child_node(current_node, i)
+				if lhs.kind == .ident && lhs.value == name && lhs.pos.id == use_pos.id
+					&& lhs.pos.offset < use_pos.offset && lhs.pos.offset > best_offset {
+					best_id = tc.a.child(current_node, i + 1)
+					best_offset = lhs.pos.offset
+				}
+			}
+		}
+		if current_node.kind in [.fn_literal, .lambda_expr] {
+			continue
+		}
+		for i in 0 .. current_node.children_count {
+			stack << tc.a.child(current_node, i)
+		}
+	}
+	if best_id != flat.empty_node {
+		return best_id
+	}
+	return none
 }
 
 fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node {
