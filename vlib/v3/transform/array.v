@@ -3520,6 +3520,9 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 		return true
 	}
 	if stmt.kind == .if_expr {
+		if stmt.children_count > 0 && !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+			return false
+		}
 		before := locals.clone()
 		mut merged := map[string]bool{}
 		mut continues := stmt.children_count <= 2
@@ -3862,6 +3865,20 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 			branch_idx := if take_then { 0 } else { 1 }
 			return branch_idx < node.children_count && t.array_map_expr_side_effect_retains_element_address_in_scope(t.a.child(&node, branch_idx), elem_name, locals, block, before_idx)
 		}
+	}
+	if node.kind == .if_expr && node.children_count > 0 {
+		condition_id := t.a.child(&node, 0)
+		if t.array_map_expr_side_effect_retains_element_address_in_scope(condition_id, elem_name, locals, block, before_idx) {
+			return true
+		}
+		mut branch_locals := locals.clone()
+		t.array_map_update_local_pointer_origins(condition_id, elem_name, mut branch_locals)
+		for i in 1 .. node.children_count {
+			if t.array_map_expr_side_effect_retains_element_address_in_scope(t.a.child(&node, i), elem_name, branch_locals, block, before_idx) {
+				return true
+			}
+		}
+		return false
 	}
 	if t.array_map_call_side_effect_retains_element_address(id, node, elem_name, locals, block, before_idx) {
 		return true
