@@ -11422,7 +11422,7 @@ fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?f
 	fn_node := t.a.node(fn_id)
 	// A monomorphized method callee such as `Tree[int].size` contains a generic
 	// type spelling, but it is a function name rather than a named-type cast.
-	if fn_node.kind == .ident && !fn_node.value.trim_space().ends_with(']') {
+	if fn_node.kind == .ident && t.generic_callee_is_specialization(fn_node.value) {
 		return none
 	}
 	target := t.generic_call_type_arg_name(fn_id)
@@ -11451,8 +11451,7 @@ fn (t &Transformer) generic_sum_constructor_call_type(node flat.Node) ?string {
 		return none
 	}
 	fn_node := t.a.nodes[int(fn_id)]
-	if fn_node.kind == .ident && fn_node.value.contains(']')
-		&& !fn_node.value.trim_space().ends_with(']') {
+	if fn_node.kind == .ident && t.generic_callee_is_specialization(fn_node.value) {
 		return none
 	}
 	mut target := ''
