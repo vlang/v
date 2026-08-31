@@ -459,6 +459,17 @@ fn test_file_attribute_end(content string, start int) int {
 			}
 			continue
 		}
+		if c == `/` && i + 1 < content.len && content[i + 1] == `*` {
+			i += 2
+			for i + 1 < content.len && !(content[i] == `*` && content[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 >= content.len {
+				return -1
+			}
+			i += 2
+			continue
+		}
 		if c == `[` {
 			depth++
 		} else if c == `]` {
