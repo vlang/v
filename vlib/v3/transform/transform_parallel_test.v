@@ -1503,6 +1503,50 @@ fn test_string_interp_expansion_estimate_defers_runtime_type_metadata_calls() {
 	assert needs_deferred_lowering
 }
 
+fn test_string_interp_expansion_estimate_defers_compiler_clone_calls() {
+	for clone_type in ['Wide', '[]Wide', '[4]Wide', 'map[string]Wide'] {
+		mut a := flat.FlatAst.new()
+		receiver := a.add_node(flat.Node{
+			kind: .ident
+			value: 'value'
+			typ: clone_type
+		})
+		selector_start := a.children.len
+		a.children << receiver
+		selector := a.add_node(flat.Node{
+			kind: .selector
+			value: 'clone'
+			typ: 'fn () ${clone_type}'
+			children_start: selector_start
+			children_count: 1
+		})
+		call_start := a.children.len
+		a.children << selector
+		clone_call := a.add_node(flat.Node{
+			kind: .call
+			typ: clone_type
+			children_start: call_start
+			children_count: 1
+		})
+		interp_start := a.children.len
+		a.children << clone_call
+		interp := a.add_node(flat.Node{
+			kind: .string_interp
+			typ: 'string'
+			children_start: interp_start
+			children_count: 1
+		})
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs['Wide'] = []
+		tc.struct_implements['Wide'] = ['IClone']
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+		assert t.string_interp_expr_needs_deferred_lowering(clone_call)
+		_, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+		assert needs_deferred_lowering
+	}
+}
+
 fn test_string_interp_expansion_estimate_includes_shared_ident_hoisting() {
 	mut a := flat.FlatAst.new()
 	literal := a.add_node(flat.Node{

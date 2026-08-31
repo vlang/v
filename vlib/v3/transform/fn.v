@@ -6313,6 +6313,16 @@ fn (mut t Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId
 	if t.runtime_type_metadata_call_expands(id, node) {
 		return true
 	}
+	if node.kind == .call {
+		if info := t.compiler_default_clone_call_info(node) {
+			if info.can_lower {
+				return true
+			}
+		}
+		if t.compiler_collection_clone_call_expands(node) {
+			return true
+		}
+	}
 	if node.kind == .is_expr || t.external_equality_expands_from_type_metadata(node) {
 		// These predicates can expand from interface implementations or struct
 		// fields that are not represented by their physical AST children.
