@@ -6403,7 +6403,11 @@ fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
 		// A `mut value &T` parameter still has one implicit caller-reference
 		// layer: its binding is `&T` at the ABI boundary, but reads and writes in
 		// the function body operate on `T`.
-		tc.fn_context.mut_param_base_types[p.value] = mut_param_base_type(typ)
+		tc.fn_context.mut_param_base_types[p.value] = if p.op == .amp {
+			typ
+		} else {
+			mut_param_base_type(typ)
+		}
 		tc.fn_context.mut_param_owners[p.value] = owner
 	}
 	if param_type_text_is_shared(p.typ) {

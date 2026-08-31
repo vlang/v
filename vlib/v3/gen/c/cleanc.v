@@ -3965,6 +3965,7 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 		} else if raw_pt !is types.Pointer && param_idx < typed_params.len {
 			pt = typed_params[param_idx]
 		}
+		pt = g.fn_node_effective_param_type(node, param_idx, *child, pt)
 		mut is_shared_param := false
 		if child.typ.len > 0 && child.typ[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
 			if _ := shared_inner_type_text(child.typ) {
@@ -15469,6 +15470,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.ident {
+			if g.current_param_is_mut_pointer(node.value) {
+				// A rebinding `mut p &T` parameter is stored as a `T**` slot; its
+				// expression value is the `&T` pointer held in that slot.
+				g.write('(*')
+				g.gen_mut_pointer_slot_expr(id)
+				g.write(')')
+				return
+			}
 			if c_fn_name := g.test_user_main_fn_value_c_name(id, node) {
 				g.write(c_fn_name)
 				return
