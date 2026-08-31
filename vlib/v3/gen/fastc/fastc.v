@@ -1190,7 +1190,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	}
 	startup_initializers := fastc_generate_startup_initializers(sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls)!
 	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
-	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v)
+	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v, prefs)
 	mut struct_field_lookup := map[string]map[string]FastcStructField{}
 	for layout_type, fields in struct_field_info {
 		mut fields_by_name := map[string]FastcStructField{}

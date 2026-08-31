@@ -419,6 +419,28 @@ fn test_fastc_file_generation_jobs_balance_largest_files_first() {
 	assert fastc_file_generation_job_indices(sources, 2) == [[0, 3], [1, 2]]
 }
 
+fn test_fastc_overlap_workers_honor_serial_preferences() {
+	mut prefs := pref.new_preferences()
+	prefs.no_parallel = true
+	sources := [
+		FastcSourceFile{ source: 'module main\nfn a() {}\n' },
+		FastcSourceFile{ source: 'module main\nfn b() {}\n' },
+		FastcSourceFile{ source: 'module main\nfn c() {}\n' },
+		FastcSourceFile{ source: 'module main\nfn d() {}\n' },
+	]
+	mut pending_references := fastc_start_referenced_function_names(sources, prefs, map[string]FastcFunctionSignature{})
+	assert pending_references.workers.len == 0
+	assert fastc_wait_referenced_function_names(mut pending_references).len > 0
+
+	mut functions := map[string]FastcFunctionSignature{}
+	for name in ['a', 'b', 'c', 'd'] {
+		functions[name] = FastcFunctionSignature{}
+	}
+	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]bool{}, map[string]bool{}, false, prefs)
+	assert pending_dispatches.workers.len == 0
+	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
+}
+
 fn test_fastc_source_declaration_flags_respect_identifier_boundaries() {
 	has_constants, has_global_declarations := fastc_source_declaration_flags('module main\nconst answer = 42\n__global count int\n')
 	assert has_constants

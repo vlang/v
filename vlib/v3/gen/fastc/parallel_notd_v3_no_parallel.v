@@ -5,25 +5,40 @@ import v3.pref
 
 struct FastcPendingReferences {
 mut:
-	workers []thread map[string]bool
+	workers    []thread map[string]bool
+	references map[string]bool
 }
 
 struct FastcPendingInterfaceDispatches {
 mut:
-	workers []thread string
+	workers    []thread string
+	dispatches string
 }
 
 fn fastc_start_referenced_function_names(sources []FastcSourceFile, prefs &pref.Preferences, functions map[string]FastcFunctionSignature) FastcPendingReferences {
+	if fastc_parallel_job_count(sources.len, prefs) <= 1 {
+		return FastcPendingReferences{
+			references: fastc_collect_referenced_function_names(sources, prefs, functions)
+		}
+	}
 	return FastcPendingReferences{
 		workers: [spawn fastc_collect_referenced_function_names(sources, prefs, functions)]
 	}
 }
 
 fn fastc_wait_referenced_function_names(mut pending FastcPendingReferences) map[string]bool {
+	if pending.workers.len == 0 {
+		return pending.references
+	}
 	return pending.workers[0].wait()
 }
 
-fn fastc_start_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, interface_methods map[string]bool, used_function_names map[string]bool, selfhost bool) FastcPendingInterfaceDispatches {
+fn fastc_start_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, interface_methods map[string]bool, used_function_names map[string]bool, selfhost bool, prefs &pref.Preferences) FastcPendingInterfaceDispatches {
+	if fastc_parallel_job_count(functions.len, prefs) <= 1 {
+		return FastcPendingInterfaceDispatches{
+			dispatches: fastc_generate_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, selfhost)
+		}
+	}
 	return FastcPendingInterfaceDispatches{
 		workers: [
 			spawn fastc_generate_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, selfhost),
@@ -32,6 +47,9 @@ fn fastc_start_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeK
 }
 
 fn fastc_wait_interface_dispatches(mut pending FastcPendingInterfaceDispatches) string {
+	if pending.workers.len == 0 {
+		return pending.dispatches
+	}
 	return pending.workers[0].wait()
 }
 
