@@ -1432,6 +1432,53 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_selectors() {
 	assert needs_deferred_lowering
 }
 
+fn test_string_interp_expansion_estimate_defers_metadata_driven_predicates() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+		typ: 'Value'
+	})
+	is_start := a.children.len
+	a.children << value
+	is_expr := a.add_node(flat.Node{
+		kind: .is_expr
+		value: 'Target'
+		typ: 'bool'
+		children_start: is_start
+		children_count: 1
+	})
+	left := a.add_node(flat.Node{
+		kind: .ident
+		value: 'left'
+		typ: 'WideRecord'
+	})
+	right := a.add_node(flat.Node{
+		kind: .ident
+		value: 'right'
+		typ: 'WideRecord'
+	})
+	equality_start := a.children.len
+	a.children << left
+	a.children << right
+	equality := a.add_node(flat.Node{
+		kind: .infix
+		op: .eq
+		typ: 'bool'
+		children_start: equality_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['Value'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['WideRecord'] = StructInfo{
+		name: 'WideRecord'
+	}
+
+	assert t.string_interp_expr_needs_deferred_lowering(is_expr)
+	assert t.string_interp_expr_needs_deferred_lowering(equality)
+}
+
 fn test_string_interp_expansion_estimate_defers_runtime_type_metadata_calls() {
 	mut a := flat.FlatAst.new()
 	sum_call := add_runtime_metadata_call(mut a, 'item', 'Item', 'type_name', 'string')
