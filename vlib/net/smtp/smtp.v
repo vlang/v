@@ -307,7 +307,11 @@ fn (mut c Client) send_mailfrom(from string) ! {
 }
 
 fn (mut c Client) send_mailto(to string) ! {
-	for rcpt in to.split(';') {
+	for raw_rcpt in to.split(';') {
+		rcpt := raw_rcpt.trim_space()
+		if rcpt == '' {
+			continue
+		}
 		c.send_str('RCPT TO:<${envelope_addr(rcpt)}>\r\n')!
 		c.expect_reply(.action_ok)!
 	}
