@@ -439,6 +439,45 @@ fn main() {
 	assert c_source.contains('Observer__write_byte(*(main__Observer*)i->_object, *_a0)')
 }
 
+fn test_interface_forwarded_mut_pointer_param_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'interface_forwarded_mut_pointer_param_reassign', 'interface Replacer {
+	replace(mut current &Item, replacement &Item)
+}
+
+struct Item {
+	value int
+}
+
+struct Device {}
+
+fn (Device) replace(mut current &Item, replacement &Item) {
+	current = replacement
+}
+
+fn forward(replacer Replacer, mut current &Item, replacement &Item) {
+	replacer.replace(mut current, replacement)
+}
+
+fn main() {
+	mut first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	mut current := &first
+	forward(Device{}, mut current, &second)
+	assert current == &second
+	assert first.value == 1
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+	assert c_source.contains('void forward(Replacer replacer, main__Item** current, main__Item* replacement)')
+	assert c_source.contains('Replacer__replace(&(replacer), current, replacement)')
+}
+
 fn test_callback_mut_pointer_param_reassigns_caller_slot() {
 	v3_bin := mut_param_reassign_build_v3()
 	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'callback_mut_pointer_param_reassign', 'struct Item {
@@ -479,6 +518,39 @@ fn main() {
 	assert c_source.contains('main__Item** current, main__Item* replacement)')
 	assert c_source.contains('inspect_callback_adapter_')
 	assert c_source.contains('inspect(*arg0, arg1)')
+}
+
+fn test_bound_method_mut_pointer_param_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'bound_method_mut_pointer_param_reassign', 'struct Item {
+	value int
+}
+
+struct Replacer {}
+
+fn (Replacer) replace(mut current &Item, replacement &Item) {
+	current = replacement
+}
+
+fn main() {
+	mut first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	mut current := &first
+	replacer := Replacer{}
+	callback := replacer.replace
+	callback(mut current, &second)
+	assert current == &second
+	assert first.value == 1
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+	assert c_source.contains('void Replacer__replace(main__Replacer _0, main__Item** current, main__Item* replacement)')
+	assert c_source.contains('main__Item** a1')
 }
 
 fn test_mut_pointer_param_signature_and_expression_conversions() {

@@ -9207,19 +9207,34 @@ fn (tc &TypeChecker) call_param_requires_mut_pointer_slot(info CallInfo, param_i
 	} else {
 		tc.fn_type_modules[info.name] or { '' }
 	}
-	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or { return false }
-	mut source_param_idx := param_idx
-	fn_node := tc.a.nodes[decl.idx]
-	if info.has_implicit_veb_ctx {
-		ctx_idx := tc.fn_implicit_veb_ctx_insert_index(fn_node)
-		if source_param_idx == ctx_idx {
-			return false
+	if decl := tc.visible_mutation_fn_decl(info.name, decl_module) {
+		mut source_param_idx := param_idx
+		fn_node := tc.a.nodes[decl.idx]
+		if info.has_implicit_veb_ctx {
+			ctx_idx := tc.fn_implicit_veb_ctx_insert_index(fn_node)
+			if source_param_idx == ctx_idx {
+				return false
+			}
+			if source_param_idx > ctx_idx {
+				source_param_idx--
+			}
 		}
-		if source_param_idx > ctx_idx {
-			source_param_idx--
-		}
+		return tc.fn_node_param_requires_mut_pointer_slot(fn_node, source_param_idx)
 	}
-	return tc.fn_node_param_requires_mut_pointer_slot(fn_node, source_param_idx)
+	if info.has_receiver && param_idx >= 0 && param_idx < info.params.len {
+		return tc.interface_param_requires_mut_pointer_slot(info.name, param_idx, info.params[param_idx])
+	}
+	return false
+}
+
+fn (tc &TypeChecker) interface_param_requires_mut_pointer_slot(name string, param_idx int, param_type Type) bool {
+	if unalias_type(param_type) !is Pointer {
+		return false
+	}
+	owner := name.all_before_last('.')
+	method := name.all_after_last('.')
+	signature := tc.interface_method_signature_key(owner, method) or { return false }
+	return tc.declaration_param_is_mut(signature, param_idx)
 }
 
 fn (tc &TypeChecker) current_fn_param_requires_mut_pointer_slot(name string) bool {
@@ -9367,8 +9382,33 @@ fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name st
 			tc.visible_mutation_call_name(id, *node, '', module_name)
 		}
 		if called_name.len > 0 {
-			decl_module := tc.fn_type_modules[called_name] or { module_name }
-			if decl := tc.visible_mutation_fn_decl(called_name, decl_module) {
+			mut effective_called_name := called_name
+			callee := tc.a.child_node(node, 0)
+			if effective_called_name.starts_with('.') && callee.kind == .selector && callee.children_count > 0 {
+				receiver_id := tc.a.child(callee, 0)
+				receiver := tc.a.node(receiver_id)
+				mut receiver_name := ''
+				if receiver.kind == .ident {
+					for i in 0 .. fn_node.children_count {
+						param := tc.a.child_node(&fn_node, i)
+						if param.kind != .param {
+							break
+						}
+						if param.value == receiver.value {
+							receiver_name = visible_mutation_receiver_type_name(param.typ)
+							break
+						}
+					}
+				}
+				if receiver_name.len == 0 {
+					receiver_name = resolve_type_name_for_method(unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id)))
+				}
+				if receiver_name.len > 0 {
+					effective_called_name = receiver_name + effective_called_name
+				}
+			}
+			decl_module := tc.fn_type_modules[effective_called_name] or { module_name }
+			if decl := tc.visible_mutation_fn_decl(effective_called_name, decl_module) {
 				called_fn := tc.a.nodes[decl.idx]
 				first_param := tc.visible_mutation_fn_param(decl, 0) or { flat.Node{} }
 				param_offset := if first_param.kind == .param && first_param.op == .dot { 1 } else { 0 }
@@ -9385,6 +9425,20 @@ fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name st
 					visiting[key] = true
 					if tc.fn_node_param_requires_mut_pointer_slot_inner(called_fn, decl.mod, called_param_idx, mut visiting) {
 						return true
+					}
+				}
+			} else if node.children_count > 0 {
+				if callee.kind == .selector {
+					owner := effective_called_name.all_before_last('.')
+					method := effective_called_name.all_after_last('.')
+					if signature := tc.interface_method_signature_key(owner, method) {
+						params, _ := tc.specialized_interface_method_signature(owner, signature)
+						for i in 1 .. node.children_count {
+							arg_id := tc.call_arg_value(tc.a.child(node, i))
+							if tc.forwarded_mut_pointer_arg_matches(arg_id, name) && i < params.len && tc.interface_param_requires_mut_pointer_slot(effective_called_name, int(i), params[i]) {
+								return true
+							}
+						}
 					}
 				}
 			}

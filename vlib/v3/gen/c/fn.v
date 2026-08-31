@@ -3252,6 +3252,9 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	} else {
 		return false
 	}
+	if !is_interface_receiver && method_key.len > 0 {
+		params = g.callback_fn_emitted_param_types(method_key, params)
+	}
 	if params.len == 0 {
 		return false
 	}
@@ -15936,6 +15939,16 @@ fn (mut g FlatGen) gen_addressed_rvalue_arg(child_id flat.NodeId, pt types.Type)
 fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
 	if expected !is types.Pointer {
 		return false
+	}
+	// Interface lowering can consume the source `mut` marker while preserving the
+	// identifier. A known caller-owned pointer slot still has the exact effective
+	// type expected by the dispatcher, so forward its storage rather than its value.
+	if arg_node.kind == .ident && g.current_param_is_mut_pointer(arg_node.value) {
+		param_type := g.current_param_type(arg_node.value) or { types.Type(types.void_) }
+		if g.tc.c_type(param_type) == g.tc.c_type(expected) {
+			g.write(g.local_decl_cname(arg_node.value))
+			return true
+		}
 	}
 	// A transformed callback argument can retain the source `mut p` marker as
 	// `&(*p)`. When p already is a caller-owned pointer slot, forward the slot
