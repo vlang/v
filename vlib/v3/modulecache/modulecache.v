@@ -5649,10 +5649,10 @@ fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node fl
 			import_text(a, node, import_paths)
 		}
 		.fn_decl {
-			fn_text(a, module_name, node, false, declaration_attrs, source_is_public)
+			fn_text(a, tc, module_name, node, false, declaration_attrs, source_is_public)
 		}
 		.c_fn_decl {
-			fn_text(a, module_name, node, true, declaration_attrs, source_is_public)
+			fn_text(a, tc, module_name, node, true, declaration_attrs, source_is_public)
 		}
 		.struct_decl {
 			struct_text(a, node, declaration_attrs, source_is_public)
@@ -5869,7 +5869,7 @@ fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) 
 	return text
 }
 
-fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, declaration_attrs []string, source_is_public bool) string {
+fn fn_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node flat.Node, is_c bool, declaration_attrs []string, source_is_public bool) string {
 	mut params := []flat.Node{}
 	for i in 0 .. node.children_count {
 		child := a.child_node(&node, i)
@@ -5942,6 +5942,17 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 	if !cached_declaration_has_attr(declaration_attrs, 'noreturn')
 		&& fn_is_noreturn(a, module_name, name) {
 		attrs << 'noreturn'
+	}
+	if !is_c {
+		mut pointer_slots := []string{}
+		for i in 0 .. params.len {
+			if tc.fn_node_param_requires_mut_pointer_slot(node, i) {
+				pointer_slots << i.str()
+			}
+		}
+		if pointer_slots.len > 0 {
+			attrs << "__v3_mut_pointer_slots: '${pointer_slots.join(',')}'"
+		}
 	}
 	if attrs.len > 0 {
 		attr_lines << '@[${attrs.join('; ')}]'

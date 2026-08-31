@@ -9273,8 +9273,25 @@ fn (tc &TypeChecker) fn_node_param_requires_mut_pointer_slot_inner(fn_node flat.
 	if !param.is_mut || param.op != .amp || !param.typ.trim_space().starts_with('&') {
 		return false
 	}
+	if tc.fn_node_param_has_cached_mut_pointer_slot(fn_node, module_name, param_idx) {
+		return true
+	}
 	for i in body_start .. int(fn_node.children_count) {
 		if tc.subtree_reassigns_or_forwards_ident(tc.a.child(&fn_node, i), param.value, module_name, fn_node, mut visiting) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) fn_node_param_has_cached_mut_pointer_slot(fn_node flat.Node, module_name string, param_idx int) bool {
+	decl := tc.visible_mutation_fn_decl(fn_node.value, module_name) or { return false }
+	encoded := tc.declaration_attribute_value(flat.NodeId(decl.idx), '__v3_mut_pointer_slots') or {
+		return false
+	}
+	for raw_idx in encoded.split(',') {
+		clean := raw_idx.trim_space()
+		if clean == param_idx.str() {
 			return true
 		}
 	}
