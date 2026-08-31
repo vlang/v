@@ -396,6 +396,36 @@ fn main() {
 		'expected `&&Item`')
 }
 
+fn test_mut_pointer_rebind_requires_pointer_storage_but_pointee_write_accepts_value() {
+	v3_bin := mut_param_reassign_build_v3()
+	mut_param_reassign_run_bad(v3_bin, 'mut_pointer_rebind_value_argument', 'fn replace(mut current &bool, replacement &bool) {
+	current = replacement
+}
+
+fn main() {
+	mut flag := true
+	replacement := false
+	replace(mut flag, &replacement)
+}
+', 'expected `&&bool`')
+	out := mut_param_reassign_run_good(v3_bin, 'mut_pointer_pointee_write_value_argument', 'fn clear(mut running &bool) {
+	running = false
+}
+
+fn main() {
+	mut flag := true
+	clear(mut flag)
+	assert !flag
+	flag = true
+	mut pointer := &flag
+	clear(mut pointer)
+	assert !flag
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
 fn test_interface_mut_pointer_param_reassigns_caller_slot() {
 	v3_bin := mut_param_reassign_build_v3()
 	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'interface_mut_pointer_param_reassign', 'interface Writer {

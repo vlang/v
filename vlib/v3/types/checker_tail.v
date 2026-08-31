@@ -9460,6 +9460,45 @@ fn (tc &TypeChecker) forwarded_mut_pointer_arg_matches(id flat.NodeId, name stri
 	return false
 }
 
+fn (tc &TypeChecker) fn_node_expr_is_pointer_value(fn_node flat.Node, id flat.NodeId, use_id flat.NodeId) bool {
+	mut current := id
+	for _ in 0 .. 16 {
+		if !tc.valid_node_id(current) {
+			return false
+		}
+		resolved := tc.resolve_type(current)
+		resolved_depth, _ := type_pointer_depth_and_base(resolved)
+		if resolved_depth > 0 {
+			return true
+		}
+		node := tc.a.node(current)
+		if node.kind == .prefix && node.op == .amp {
+			return true
+		}
+		if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr]
+			&& node.children_count > 0 {
+			current = tc.a.child(node, 0)
+			continue
+		}
+		if node.kind != .ident {
+			return false
+		}
+		for i in 0 .. fn_node.children_count {
+			param := tc.a.child_node(&fn_node, i)
+			if param.kind != .param {
+				break
+			}
+			if param.value == node.value {
+				return param.op == .amp || param.typ.trim_space().starts_with('&')
+			}
+		}
+		current = tc.fn_node_local_decl_rhs_before(fn_node, node.value, use_id) or {
+			return false
+		}
+	}
+	return false
+}
+
 fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name string, module_name string, fn_node flat.Node, mut visiting map[u64]bool) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -9472,7 +9511,10 @@ fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name st
 		mut i := 0
 		for i + 1 < node.children_count {
 			if tc.expr_key(tc.a.child(node, i)) == name {
-				return true
+				rhs_id := tc.a.child(node, i + 1)
+				if tc.fn_node_expr_is_pointer_value(fn_node, rhs_id, id) {
+					return true
+				}
 			}
 			i += 2
 		}
@@ -9882,15 +9924,6 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_compatible(actual Type, expected Type)
 		// `mut &value` passes the address of an existing pointer slot to a
 		// `mut value &T` parameter.
 		return true
-	}
-	if expected is Pointer {
-		if unalias_type(actual) is Primitive && tc.type_compatible(actual, expected.base_type) {
-			return true
-		}
-		if unalias_type(actual) is Primitive && expected.base_type is Pointer
-			&& tc.type_compatible(actual, expected.base_type.base_type) {
-			return true
-		}
 	}
 	return false
 }
