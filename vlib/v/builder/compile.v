@@ -382,31 +382,91 @@ pub fn (v Builder) get_builtin_files() []string {
 }
 
 fn test_file_has_module_declaration(content string) bool {
-	mut in_block_comment := false
-	for source_line in content.split_into_lines() {
-		mut line := source_line.trim_space()
-		for {
-			if in_block_comment {
-				end := line.index('*/') or { break }
-				in_block_comment = false
-				line = line[end + 2..].trim_space()
-				continue
-			}
-			if line == '' || line.starts_with('//') || line.starts_with('#!') {
-				break
-			}
-			if line.starts_with('/*') {
-				end := line.index('*/') or {
-					in_block_comment = true
-					break
-				}
-				line = line[end + 2..].trim_space()
-				continue
-			}
-			return line.starts_with('module ')
+	mut i := 0
+	for i < content.len {
+		c := content[i]
+		if c in [` `, `\t`, `\n`, `\r`] {
+			i++
+			continue
 		}
+		if c == `#` && i + 1 < content.len && content[i + 1] == `!` {
+			for i < content.len && content[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `/` && i + 1 < content.len && content[i + 1] == `/` {
+			for i < content.len && content[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `/` && i + 1 < content.len && content[i + 1] == `*` {
+			i += 2
+			for i + 1 < content.len && !(content[i] == `*` && content[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 >= content.len {
+				return false
+			}
+			i += 2
+			continue
+		}
+		if c == `[` || (c == `@` && i + 1 < content.len && content[i + 1] == `[`) {
+			attribute_start := if c == `@` { i + 1 } else { i }
+			i = test_file_attribute_end(content, attribute_start)
+			if i < 0 {
+				return false
+			}
+			continue
+		}
+		if !content[i..].starts_with('module') || i + 6 >= content.len {
+			return false
+		}
+		return content[i + 6] in [` `, `\t`]
 	}
 	return false
+}
+
+fn test_file_attribute_end(content string, start int) int {
+	mut depth := 0
+	mut quote := u8(0)
+	mut i := start
+	for i < content.len {
+		c := content[i]
+		if quote != 0 {
+			if c == `\\` {
+				i += 2
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `'` || c == `"` {
+			quote = c
+			i++
+			continue
+		}
+		if c == `/` && i + 1 < content.len && content[i + 1] == `/` {
+			for i < content.len && content[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `[` {
+			depth++
+		} else if c == `]` {
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+		i++
+	}
+	return -1
 }
 
 pub fn (v &Builder) get_user_files() []string {

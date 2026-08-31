@@ -312,8 +312,33 @@ fn helper() int {
 }
 ')!
 
-	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace,
-		'fixture_test.v'))}')
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace, 'fixture_test.v'))}')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_internal_module_test_accepts_module_after_attribute() {
+	workspace := os.join_path(test_path, 'internal_test_module_after_attribute')
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	os.mkdir_all(workspace)!
+	os.write_file(os.join_path(workspace, 'fixture_test.v'), '@[has_globals]
+module sample
+
+__global observed = helper()
+
+fn test_helper() {
+	assert observed == 1
+}
+')!
+	os.write_file(os.join_path(workspace, 'helper.v'), 'module sample
+
+fn helper() int {
+	return 1
+}
+')!
+
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler -check ${os.quoted_path(os.join_path(workspace, 'fixture_test.v'))}')
 	assert res.exit_code == 0, res.output
 }
 
