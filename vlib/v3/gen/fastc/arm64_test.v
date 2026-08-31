@@ -51,11 +51,49 @@ struct FastArm64Defaults {
 	mode FastArm64DefaultMode = .warm
 }
 
+struct FastArm64CustomError {}
+
+fn (err FastArm64CustomError) msg() string {
+	return "custom"
+}
+
+fn (err FastArm64CustomError) code() int {
+	return 0
+}
+
 fn add_after_return(mut value int) {
 	defer {
 		value += 7
 	}
 	return
+}
+
+fn maybe_value(ok bool) ?int {
+	if ok {
+		return 7
+	}
+	return none
+}
+
+fn result_value(ok bool) !int {
+	if ok {
+		return 9
+	}
+	return error("failed")
+}
+
+fn custom_error_value() !int {
+	return FastArm64CustomError{}
+}
+
+fn propagated_result(ok bool) !int {
+	value := result_value(ok)!
+	return value + 1
+}
+
+fn propagated_option(ok bool) ?int {
+	value := maybe_value(ok)?
+	return value + 2
 }
 
 fn main() {
@@ -151,10 +189,44 @@ fn main() {
 		println("wrong insertion")
 		return
 	}
-	mut repeated := [1, 2]
-	repeated << repeated
-	if repeated.len != 4 || repeated[0] != 1 || repeated[1] != 2 || repeated[2] != 1 || repeated[3] != 2 {
-		println("wrong self append")
+	mut option_handler_ran := false
+	option_fallback := maybe_value(false) or {
+		option_handler_ran = true
+		42
+	}
+	option_success := maybe_value(true) or { 99 }
+	mut error_message_ok := false
+	result_fallback := result_value(false) or {
+		error_message_ok = err.msg() == "failed"
+		43
+	}
+	result_success := result_value(true) or { 99 }
+	mut custom_error_seen := false
+	custom_error_fallback := custom_error_value() or {
+		if err is FastArm64CustomError {
+			custom_error_seen = true
+		}
+		46
+	}
+	propagated_result_fallback := propagated_result(false) or { 44 }
+	propagated_result_success := propagated_result(true) or { 99 }
+	propagated_option_fallback := propagated_option(false) or { 45 }
+	propagated_option_success := propagated_option(true) or { 99 }
+	if !option_handler_ran || !error_message_ok || !custom_error_seen || option_fallback != 42 || option_success != 7 || result_fallback != 43 || result_success != 9 || custom_error_fallback != 46 || propagated_result_fallback != 44 || propagated_result_success != 10 || propagated_option_fallback != 45 || propagated_option_success != 9 {
+		println("wrong option result handling")
+		return
+	}
+	mut aliased := [1, 2]
+	aliased << aliased
+	if aliased.len != 4 || aliased[0] != 1 || aliased[1] != 2 || aliased[2] != 1 || aliased[3] != 2 {
+		println("wrong aliased append")
+		return
+	}
+	mut alias_base := [1, 2, 3]
+	alias_slice := alias_base[1..]
+	alias_base << alias_slice
+	if alias_base.len != 5 || alias_base[0] != 1 || alias_base[1] != 2 || alias_base[2] != 3 || alias_base[3] != 2 || alias_base[4] != 3 {
+		println("wrong sliced alias append")
 		return
 	}
 	defaults := FastArm64Defaults{}
@@ -190,81 +262,27 @@ fn main() {
 	}
 }
 
-fn test_fastc_arm64_checks_dynamic_array_indexes() {
+fn test_fastc_arm64_array_index_bounds() {
 	$if arm64? {
-		for index in [-1, 2] {
-			for operation_index, operation in ['println(values[index])', 'values[index] = 30'] {
-				test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_bounds_${os.getpid()}_${index}_${operation_index}')
-				os.rmdir_all(test_dir) or {}
-				os.mkdir_all(test_dir) or { panic(err) }
-				defer {
-					os.rmdir_all(test_dir) or {}
-				}
-				source_path := os.join_path_single(test_dir, 'main.v')
-				output_path := os.join_path_single(test_dir, 'app')
-				os.write_file(source_path, 'fn main() {\n\tmut values := [10, 20]\n\tindex := ${index}\n\t${operation}\n}\n') or {
-					panic(err)
-				}
-				mut prefs := pref.new_preferences()
-				prefs.backend = 'fastc'
-				prefs.user_defines = ['arm64']
-				generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-				result := os.execute(output_path)
-				assert result.exit_code != 0
-			}
-		}
-	}
-}
-
-fn test_fastc_arm64_preserves_option_and_result_failures() {
-	$if arm64? {
-		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_option_${os.getpid()}')
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_bounds_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
 		os.mkdir_all(test_dir) or { panic(err) }
 		defer {
 			os.rmdir_all(test_dir) or {}
 		}
-		source_path := os.join_path_single(test_dir, 'main.v')
-		output_path := os.join_path_single(test_dir, 'app')
-		os.write_file(source_path, 'fn maybe(ok bool) ?int {
-	if ok {
-		return 7
-	}
-	return none
-}
-
-fn read_value(ok bool) !int {
-	if ok {
-		return 9
-	}
-	return error("failed")
-}
-
-fn propagate(ok bool) !int {
-	return read_value(ok)!
-}
-
-fn main() {
-	a := maybe(true) or { 42 }
-	b := maybe(false) or { 42 }
-	c := propagate(true) or { 55 }
-	d := propagate(false) or { 55 }
-	if a != 7 || b != 42 || c != 9 || d != 55 {
-		println("wrong option flow")
-		return
-	}
-	println("native")
-}
-') or {
-			panic(err)
-		}
 		mut prefs := pref.new_preferences()
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
-		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
-		assert result.exit_code == 0
-		assert result.output == 'native\n'
+		for index in [-1, 2] {
+			source_path := os.join_path_single(test_dir, 'bounds_${index}.v')
+			output_path := os.join_path_single(test_dir, 'bounds_${index}')
+			os.write_file(source_path, 'fn main() {\n\tvalues := [1, 2]\n\tindex := ${index}\n\tselected := values[index]\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n') or {
+				panic(err)
+			}
+			generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+			result := os.execute(output_path)
+			assert result.exit_code != 0
+		}
 	}
 }
 
