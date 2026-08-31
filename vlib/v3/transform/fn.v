@@ -6282,6 +6282,11 @@ fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, b
 			estimate += unresolved_interp_expansion_estimate
 			needs_deferred_lowering = true
 		} else {
+			if t.is_optional_type_name(typ.trim_space()) {
+				// Option/result conversion emits a prelude and conditional through
+				// pending_stmts even when its scalar payload has no stringify expansion.
+				needs_deferred_lowering = true
+			}
 			stringify_estimate := t.stringify_expansion_estimate(typ)
 			estimate += stringify_estimate
 			needs_deferred_lowering = needs_deferred_lowering || stringify_estimate > 0
@@ -6302,6 +6307,9 @@ fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
 	node := t.a.nodes[int(id)]
 	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
 		return false
+	}
+	if t.is_optional_type_name(t.reliable_stringify_type(id).trim_space()) {
+		return true
 	}
 	if node.kind == .ident {
 		if t.source_parent_ids.len > 0 {

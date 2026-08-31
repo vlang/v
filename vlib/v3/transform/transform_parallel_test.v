@@ -1226,6 +1226,36 @@ fn test_string_interp_expansion_estimate_includes_shared_ident_hoisting() {
 	assert !needs_deferred_lowering
 }
 
+fn test_string_interp_expansion_estimate_defers_optional_ident_hoisting() {
+	mut a := flat.FlatAst.new()
+	literal := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'part'
+		typ: 'string'
+	})
+	optional_value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'maybe_value'
+		typ: '?int'
+	})
+	interp_start := a.children.len
+	a.children << literal
+	a.children << optional_value
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert t.string_interp_expr_may_hoist(optional_value)
+	assert estimate == 3 + 2 * string_interp_hoisted_part_expansion_estimate
+	assert needs_deferred_lowering
+}
+
 fn test_string_interp_expansion_estimate_includes_shared_param_hoisting() {
 	mut a := flat.FlatAst.new()
 	param := a.add_node(flat.Node{
