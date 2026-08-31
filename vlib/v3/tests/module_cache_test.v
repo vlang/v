@@ -220,6 +220,53 @@ fn main() {
 	assert run_module_cache_binary(second_output) == 'V3_CACHE_SYNC_OK'
 }
 
+fn test_warm_cached_module_preserves_runtime_const_dependency_order() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_runtime_const_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'ordered/a_consumer.v', 'module ordered
+
+const value = make_value()
+
+fn make_value() int {
+	return dependency + 1
+}
+
+pub fn result() int {
+	return value
+}
+')
+	write_module_cache_file(root, 'ordered/z_dependency.v', 'module ordered
+
+const dependency = make_dependency()
+
+fn make_dependency() int {
+	return 41
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import ordered
+
+fn main() {
+	println(ordered.result())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_program_preserves_selective_import_call_target() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_selective_import_${os.getpid()}')

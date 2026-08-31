@@ -713,12 +713,21 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	if adjusted := t.mut_param_address_source_type(id) {
 		source_type = adjusted
 	}
+	source_node := t.a.nodes[int(source_id)]
+	source_is_mut_pointer_slot := source_node.kind == .ident
+		&& t.pointer_value_rvalues[source_node.value]
+		&& t.var_type(source_node.value).starts_with('&&')
+	if source_is_mut_pointer_slot {
+		// `mut p &T` has `&&T` storage but its expression value is `&T`.
+		source_type = t.var_type(source_node.value)[1..]
+	}
 	if source_type.len == 0 {
 		return none
 	}
 	source_expr := if source_is_heaped_amp_child || source_type.starts_with('&') {
 		source := t.a.nodes[int(source_id)]
 		had_rvalue := source.kind == .ident && source.value in t.pointer_value_rvalues
+			&& !source_is_mut_pointer_slot
 		if had_rvalue {
 			t.pointer_value_rvalues.delete(source.value)
 		}

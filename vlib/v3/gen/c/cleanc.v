@@ -3955,7 +3955,10 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			pt = shared_alias_ptr
 		} else if raw_pt is types.Pointer && param_idx < typed_params.len {
 			typed_pt := typed_params[param_idx]
-			if typed_pt is types.Pointer && raw_pt.base_type is types.FnType
+			if child.is_mut && child.op == .amp && typed_pt is types.Pointer
+				&& typed_pt.base_type is types.Pointer {
+				pt = typed_pt
+			} else if typed_pt is types.Pointer && raw_pt.base_type is types.FnType
 				&& typed_pt.base_type is types.FnType {
 				// Specialized `mut T` parameters keep a pointer-to-function type in
 				// the flat declaration. The registered signature retains the concrete
@@ -3965,7 +3968,9 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 		} else if raw_pt !is types.Pointer && param_idx < typed_params.len {
 			pt = typed_params[param_idx]
 		}
-		pt = g.fn_node_effective_param_type(node, param_idx, *child, pt)
+		if child.is_mut && child.op == .amp {
+			pt = g.explicit_mut_pointer_param_type(child, pt)
+		}
 		mut is_shared_param := false
 		if child.typ.len > 0 && child.typ[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
 			if _ := shared_inner_type_text(child.typ) {
@@ -10093,6 +10098,65 @@ fn (mut g FlatGen) collect_const_init_order_from_files() {
 	}
 }
 
+// module_const_init_order returns the dependency-safe constant initialization
+// order that declaration-only module headers must preserve.
+pub fn module_const_init_order(a &flat.FlatAst, tc &types.TypeChecker) []string {
+	mut g := FlatGen.new()
+	g.a = a
+	g.tc = tc
+	old_module := tc.cur_module
+	old_file := tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
+	mut cur_module := 'main'
+	mut cur_file := ''
+	for node_idx, node in a.nodes {
+		match node.kind {
+			.file {
+				cur_file = node.value
+				cur_module = 'main'
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.fn_decl {
+				g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
+			}
+			.const_decl {
+				for i in 0 .. node.children_count {
+					field := a.child_node(&node, i)
+					if field.kind != .const_field || field.children_count == 0 {
+						continue
+					}
+					qname := g.const_storage_name(cur_module, field.value)
+					g.const_vals[qname] = a.child(field, 0)
+					g.const_modules[qname] = cur_module
+					g.const_files[qname] = cur_file
+					if cur_module in ['', 'main', 'builtin'] && field.value !in g.const_vals {
+						g.const_vals[field.value] = a.child(field, 0)
+						g.const_modules[field.value] = cur_module
+						g.const_files[field.value] = cur_file
+					}
+				}
+			}
+			.import_decl {
+				if node.typ.len > 0 && node.value.len > 0 {
+					g.modules[node.typ] = node.value
+				}
+				if cur_module.len > 0 && node.value.len > 0
+					&& node.value !in g.module_imports[cur_module] {
+					g.module_imports[cur_module] << node.value
+				}
+			}
+			else {}
+		}
+	}
+	g.collect_const_init_order_from_files()
+	return g.const_emission_order()
+}
+
 // ordered_module_init_fns supports ordered module init fns handling for FlatGen.
 fn (g &FlatGen) ordered_module_init_fns() []string {
 	module_to_init := g.module_init_fn_map()
@@ -15470,14 +15534,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.ident {
-			if g.current_param_is_mut_pointer(node.value) {
-				// A rebinding `mut p &T` parameter is stored as a `T**` slot; its
-				// expression value is the `&T` pointer held in that slot.
-				g.write('(*')
-				g.gen_mut_pointer_slot_expr(id)
-				g.write(')')
-				return
-			}
 			if c_fn_name := g.test_user_main_fn_value_c_name(id, node) {
 				g.write(c_fn_name)
 				return
@@ -15812,7 +15868,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					// semantic `&T` value. Synthetic dereferences only read the slot.
 					g.write('(*')
 					if g.source_mut_pointer_param_deref_type(id) != none {
-						g.gen_expr(child_id)
+						g.write('(*')
+						g.gen_mut_pointer_slot_expr(child_id)
+						g.write(')')
 					} else {
 						g.gen_mut_pointer_slot_expr(child_id)
 					}

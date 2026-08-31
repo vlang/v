@@ -59,6 +59,7 @@ const stack_value_decl_marker = '__v3_stack_value_decl'
 // generated functions and helpers must stay in the main cache segment.
 pub struct SumEqRequest {
 pub:
+	sum_name      string
 	module        string
 	file          string
 	helper_module string
@@ -250,7 +251,7 @@ mut:
 	used_fns_root                 &map[string]bool = unsafe { nil }
 	comptime_reflected_params     map[string][]ParamMeta
 	// sum_eq_types records sum types whose deep-equality helper fn
-	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
+	// (__v3_sum_eq_<name>) is called somewhere, keyed by the concrete helper name with the
 	// module/file context of the requesting call site (type resolution inside
 	// the helper body needs that context). The helpers are synthesized
 	// serially after the (possibly parallel) transform completes.
@@ -4014,6 +4015,7 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 		if name !in t.sum_eq_types {
 			if scoped {
 				t.sum_eq_types[name.clone()] = SumEqRequest{
+					sum_name:      req.sum_name.clone()
 					module:        req.module.clone()
 					file:          req.file.clone()
 					helper_module: req.helper_module.clone()
@@ -4173,6 +4175,7 @@ fn (mut t Transformer) clone_sum_eq_types_owned() {
 	mut cloned := map[string]SumEqRequest{}
 	for name, req in t.sum_eq_types {
 		cloned[name.clone()] = SumEqRequest{
+			sum_name:      req.sum_name.clone()
 			module:        req.module.clone()
 			file:          req.file.clone()
 			helper_module: req.helper_module.clone()
@@ -8618,6 +8621,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		} else {
 			''
 		}
+		if child.is_mut && child.op == .amp && typ.starts_with('&') {
+			typ = '&${typ}'
+		}
 		if child.is_mut {
 			typ = mut_optional_param_value_type(typ)
 			raw_source_typ = mut_optional_param_value_type(raw_source_typ)
@@ -9093,6 +9099,14 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 	if kind_id == 56 {
 		return t.transform_select_stmt(id, node)
 	}
+	if kind_id == 22 {
+		transformed := t.transform_or_expr(id, node)
+		transformed_node := t.a.nodes[int(transformed)]
+		if t.is_stmt_kind_id(int(transformed_node.kind)) {
+			return [transformed]
+		}
+		return [t.make_expr_stmt(transformed)]
+	}
 	match node.kind {
 		.return_stmt {
 			return t.transform_return_stmt(id, node)
@@ -9135,6 +9149,14 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 		}
 		.select_stmt {
 			return t.transform_select_stmt(id, node)
+		}
+		.or_expr {
+			transformed := t.transform_or_expr(id, node)
+			transformed_node := t.a.nodes[int(transformed)]
+			if t.is_stmt_kind_id(int(transformed_node.kind)) {
+				return [transformed]
+			}
+			return [t.make_expr_stmt(transformed)]
 		}
 		else {
 			return [id]
@@ -11195,7 +11217,8 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			}
 			// A `mut val T` value param resolves to `&T`; cgen writes assignments
 			// through the pointer (`*val = ...`), so coerce the RHS to `T`, not `&T`.
-			if lhs.kind == .ident && lhs_type.starts_with('&') && t.mut_param_values[lhs.value] && !t.pointer_value_rvalues[lhs.value] && !lhs_type.starts_with('&&') {
+			if lhs.kind == .ident && lhs_type.starts_with('&') && t.mut_param_values[lhs.value]
+				&& !t.pointer_value_rvalues[lhs.value] && !lhs_type.starts_with('&&') {
 				lhs_type = lhs_type[1..]
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)

@@ -1180,6 +1180,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_type_files:                      tc.fn_type_files
 		fn_type_modules:                    tc.fn_type_modules
 		fn_generic_params:                  tc.fn_generic_params
+		transform_signature_names_log:      []string{}
 		specialized_generic_fns:            tc.specialized_generic_fns
 		fn_variadic:                        tc.fn_variadic
 		c_variadic_fns:                     tc.c_variadic_fns
@@ -6079,7 +6080,8 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 			// `main.<name>` for C codegen; the post-transform re-check must still
 			// resolve them against the bare-keyed program symbol tables.
 			if !rest.contains('.') {
-				if tc.qualify_candidate_type_exists(rest) || rest in tc.const_types {
+				if is_builtin_type_name(rest) || tc.qualify_candidate_type_exists(rest)
+					|| rest in tc.const_types {
 					return rest
 				}
 				if _ := tc.file_scope.lookup(rest) {
@@ -6403,11 +6405,7 @@ fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
 		// A `mut value &T` parameter still has one implicit caller-reference
 		// layer: its binding is `&T` at the ABI boundary, but reads and writes in
 		// the function body operate on `T`.
-		tc.fn_context.mut_param_base_types[p.value] = if p.op == .amp {
-			typ
-		} else {
-			mut_param_base_type(typ)
-		}
+		tc.fn_context.mut_param_base_types[p.value] = mut_param_base_type(typ)
 		tc.fn_context.mut_param_owners[p.value] = owner
 	}
 	if param_type_text_is_shared(p.typ) {
