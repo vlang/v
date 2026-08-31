@@ -3542,6 +3542,9 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 		return continues
 	}
 	if stmt.kind == .match_stmt {
+		if stmt.children_count > 0 && !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+			return false
+		}
 		before := locals.clone()
 		mut merged := map[string]bool{}
 		mut continues := false
@@ -3724,10 +3727,32 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 	if !call_has_opaque_body {
 		// A resolved wrapper can invoke or store a callback without exposing where the
 		// callback's captured pointers flow, so treat capture-bearing callbacks as sinks.
+		mut globally_storing_callback_params := []int{}
 		for i in 1 .. node.children_count {
 			arg_id := t.a.child(&node, i)
-			if types.unalias_type(t.tc.resolve_type(arg_id)) is types.FnType && t.array_map_side_effect_source_retains_element_address(arg_id, elem_name, block, before_idx) {
+			if types.unalias_type(t.tc.resolve_type(arg_id)) !is types.FnType {
+				continue
+			}
+			if t.array_map_side_effect_source_retains_element_address(arg_id, elem_name, block, before_idx) {
 				return true
+			}
+			if t.tc.fn_value_may_store_globally(arg_id) {
+				globally_storing_callback_params << i - 1 + param_offset
+			}
+		}
+		if globally_storing_callback_params.len > 0 {
+			// A callback can receive a mapped pointer through another wrapper parameter,
+			// even when the callback expression itself captures no mapper state.
+			for i in 1 .. node.children_count {
+				arg_id := t.a.child(&node, i)
+				if types.unalias_type(t.tc.resolve_type(arg_id)) !is types.FnType && t.array_map_side_effect_source_retains_element_address(arg_id, elem_name, block, before_idx) {
+					source_param_idx := i - 1 + param_offset
+					for callback_param_idx in globally_storing_callback_params {
+						if t.tc.call_param_flows_to_callback(id, callback_param_idx, source_param_idx) {
+							return true
+						}
+					}
+				}
 			}
 		}
 	}
@@ -3866,7 +3891,7 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 			return branch_idx < node.children_count && t.array_map_expr_side_effect_retains_element_address_in_scope(t.a.child(&node, branch_idx), elem_name, locals, block, before_idx)
 		}
 	}
-	if node.kind == .if_expr && node.children_count > 0 {
+	if node.kind in [.if_expr, .match_stmt] && node.children_count > 0 {
 		condition_id := t.a.child(&node, 0)
 		if t.array_map_expr_side_effect_retains_element_address_in_scope(condition_id, elem_name, locals, block, before_idx) {
 			return true

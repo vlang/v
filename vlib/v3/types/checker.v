@@ -7904,6 +7904,15 @@ pub fn (tc &TypeChecker) resolved_call_may_store_globally(id flat.NodeId) bool {
 	return tc.fn_may_store_globally(name, mut visiting)
 }
 
+// fn_value_may_store_globally reports whether invoking a function value can reach a
+// declaration from a source file annotated with `@[has_globals]`. An unresolved function
+// value is conservative because its body is opaque at this call site.
+pub fn (tc &TypeChecker) fn_value_may_store_globally(id flat.NodeId) bool {
+	name := tc.resolved_fn_value_name(id) or { return true }
+	mut visiting := map[string]bool{}
+	return tc.fn_may_store_globally(name, mut visiting)
+}
+
 fn (tc &TypeChecker) fn_may_store_globally(name string, mut visiting map[string]bool) bool {
 	if visiting[name] {
 		return false

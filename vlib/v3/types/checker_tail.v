@@ -9868,6 +9868,67 @@ pub fn (mut tc TypeChecker) call_param_storage_source_params(id flat.NodeId, tar
 	return tc.param_storage_source_params_for_decl(decl, target_param_idx, mut visiting)
 }
 
+// call_param_flows_to_callback reports whether a resolved function passes one source
+// parameter to a direct invocation of one of its function-valued parameters.
+pub fn (tc &TypeChecker) call_param_flows_to_callback(id flat.NodeId, callback_param_idx int, source_param_idx int) bool {
+	if !tc.valid_node_id(id) || callback_param_idx < 0 || source_param_idx < 0 {
+		return false
+	}
+	call_name := tc.resolved_call_name(id) or { return false }
+	decl_module := tc.fn_type_modules[call_name] or { '' }
+	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or { return false }
+	callback_param := tc.visible_mutation_fn_param(decl, callback_param_idx) or { return false }
+	source_param := tc.visible_mutation_fn_param(decl, source_param_idx) or { return false }
+	fn_node := tc.a.nodes[decl.idx]
+	for i in 0 .. fn_node.children_count {
+		child_id := tc.a.child(&fn_node, i)
+		if tc.node_invokes_callback_with_param(child_id, callback_param.value, source_param.value) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) node_invokes_callback_with_param(id flat.NodeId, callback_name string, source_name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	if node.kind == .call && node.children_count > 1 {
+		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value == callback_name {
+			for i in 1 .. node.children_count {
+				if tc.callback_arg_is_rooted_at_ident(tc.call_arg_value(tc.a.child(&node, i)), source_name) {
+					return true
+				}
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.node_invokes_callback_with_param(tc.a.child(&node, i), callback_name, source_name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) callback_arg_is_rooted_at_ident(id flat.NodeId, name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .ident {
+		return node.value == name
+	}
+	if node.kind in [.paren, .prefix, .selector, .index, .cast_expr, .as_expr, .expr_stmt] && node.children_count > 0 {
+		return tc.callback_arg_is_rooted_at_ident(tc.a.child(&node, 0), name)
+	}
+	return false
+}
+
 fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node {
 	decl_module := if info.name.starts_with('C.') {
 		tc.cur_module
