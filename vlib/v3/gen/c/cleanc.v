@@ -5049,7 +5049,18 @@ fn (g &FlatGen) visit_header_owned_directive_module(mod string, directives_by_mo
 }
 
 fn (mut g FlatGen) collect_header_owned_c_typedefs(include_arg string, source_file string) {
-	g.collect_header_owned_c_typedefs_with_include_dirs(include_arg, source_file, c_flag_include_dirs(g.header_owned_effective_c_flags()))
+	g.ensure_header_owned_macro_context()
+	mut include_dirs := c_flag_include_dirs(g.header_owned_effective_c_flags())
+	// Headers pulled in without an explicit -I (e.g. a third-party header under
+	// /usr/include) are still resolved by the real compiler, so the ownership
+	// walker must search the compiler's built-in include roots as well. These
+	// are appended after the flag directories to preserve C search order.
+	for dir in g.header_owned_macro_context.implicit_include_dirs {
+		if dir !in include_dirs {
+			include_dirs << dir
+		}
+	}
+	g.collect_header_owned_c_typedefs_with_include_dirs(include_arg, source_file, include_dirs)
 }
 
 fn (mut g FlatGen) collect_header_owned_c_typedefs_with_include_dirs(include_arg string, source_file string, include_dirs []string) {
@@ -5119,7 +5130,9 @@ fn (mut g FlatGen) ensure_header_owned_macro_context() {
 	if g.header_owned_macro_context.initialized {
 		return
 	}
-	include_macros, dynamic_include_macros := c_flag_include_macro_definitions(g.header_owned_effective_c_flags(), map[string]string{})
+	effective_flags := g.header_owned_effective_c_flags()
+	include_macros, dynamic_include_macros := c_flag_include_macro_definitions(effective_flags,
+		map[string]string{})
 	g.header_owned_macro_context = CHeaderOwnedMacroContext{
 		initialized:            true
 		state:                  g.header_owned_initial_macro_state()
@@ -5127,6 +5140,8 @@ fn (mut g FlatGen) ensure_header_owned_macro_context() {
 		dynamic_include_macros: dynamic_include_macros
 		literal_include_macros: map[string][]string{}
 		conditionals:           []CHeaderOwnedConditional{}
+		implicit_include_dirs:  c_header_compiler_implicit_include_dirs(g.ccompiler, effective_flags,
+			g.c99_mode, g.target)
 	}
 }
 
@@ -5172,8 +5187,15 @@ fn (g &FlatGen) header_owned_effective_c_flags() []string {
 }
 
 fn c_header_compiler_predefined_macro_values(ccompiler string, c_flags []string, c99_mode bool, target pref.Target) map[string]string {
-	if ccompiler.len == 0 || ccompiler.to_lower().contains('msvc') || ccompiler.to_lower().contains('cl.exe') {
+	if ccompiler.len == 0 {
 		return map[string]string{}
+	}
+	lower := ccompiler.to_lower()
+	if lower.contains('msvc') || lower.contains('cl.exe') {
+		// MSVC does not accept the GCC `-dM -E` dump, so probe the numeric
+		// predefined macros (notably `_MSC_VER`) with a preprocess-only run so
+		// version guards such as `#if _MSC_VER >= 1900` resolve.
+		return c_header_msvc_predefined_macro_values(ccompiler, c_flags)
 	}
 	path := os.join_path(os.vtmp_dir(), 'v3_header_macros_${os.getpid()}_${time.now().unix_nano()}.c')
 	defer {
@@ -5186,6 +5208,70 @@ fn c_header_compiler_predefined_macro_values(ccompiler string, c_flags []string,
 		return map[string]string{}
 	}
 	return c_header_compiler_predefined_macro_values_from_output(result.output)
+}
+
+// c_header_msvc_predefined_macro_candidates lists the numeric MSVC predefined
+// macros that commonly appear in header version/target guards.
+fn c_header_msvc_predefined_macro_candidates() []string {
+	return [
+		'_MSC_VER',
+		'_MSC_FULL_VER',
+		'_MSC_BUILD',
+		'_MSVC_LANG',
+		'_MSVC_TRADITIONAL',
+		'_WIN32',
+		'_WIN64',
+		'_M_IX86',
+		'_M_X64',
+		'_M_AMD64',
+		'_M_ARM',
+		'_M_ARM64',
+		'_INTEGRAL_MAX_BITS',
+		'__STDC_VERSION__',
+	]
+}
+
+fn c_header_msvc_predefined_macro_values(ccompiler string, c_flags []string) map[string]string {
+	candidates := c_header_msvc_predefined_macro_candidates()
+	path := os.join_path(os.vtmp_dir(), 'v3_msvc_macros_${os.getpid()}_${time.now().unix_nano()}.c')
+	defer {
+		os.rm(path) or {}
+	}
+	mut source := strings.new_builder(128 + candidates.len * 48)
+	for i, name in candidates {
+		source.writeln('#ifdef ${name}')
+		source.writeln('V3_MSVC_MACRO_${i} ${name}')
+		source.writeln('#endif')
+	}
+	os.write_file(path, source.str()) or { return map[string]string{} }
+	// `/EP` preprocesses to stdout without `#line` markers; undefined names are
+	// left untouched, defined numeric macros expand to their value.
+	result := cmdexec.run(ccompiler, ['/nologo', '/EP', path])
+	if result.exit_code != 0 {
+		return map[string]string{}
+	}
+	return c_header_msvc_predefined_macro_values_from_output(result.output, candidates)
+}
+
+fn c_header_msvc_predefined_macro_values_from_output(output string, candidates []string) map[string]string {
+	mut markers := map[string]string{}
+	for i, name in candidates {
+		markers['V3_MSVC_MACRO_${i}'] = name
+	}
+	mut values := map[string]string{}
+	for line in output.split_into_lines() {
+		fields := line.trim_space().fields()
+		if fields.len < 2 {
+			continue
+		}
+		name := markers[fields[0]] or { continue }
+		rest := fields[1..].join(' ')
+		// Retain only values that resolve to a plain integer usable in `#if`.
+		if _ := c_header_objective_c_integer_value(rest) {
+			values[name] = rest
+		}
+	}
+	return values
 }
 
 fn c_header_compiler_predefined_macro_args(c_flags []string, c99_mode bool, target pref.Target, path string) []string {
@@ -5202,6 +5288,62 @@ fn c_header_compiler_predefined_macro_args(c_flags []string, c99_mode bool, targ
 	args << compile_flags
 	args << ['-dM', '-E', '-x', language, path]
 	return args
+}
+
+// c_header_compiler_implicit_include_dirs asks the C compiler for its built-in
+// header search roots so headers included without an explicit -I can still be
+// opened by the ownership walker. GCC/Clang print the list to stderr under `-v`.
+fn c_header_compiler_implicit_include_dirs(ccompiler string, c_flags []string, c99_mode bool, target pref.Target) []string {
+	if ccompiler.len == 0 || ccompiler.to_lower().contains('msvc')
+		|| ccompiler.to_lower().contains('cl.exe') {
+		return []string{}
+	}
+	path := os.join_path(os.vtmp_dir(), 'v3_header_incdirs_${os.getpid()}_${time.now().unix_nano()}.c')
+	defer {
+		os.rm(path) or {}
+	}
+	os.write_file(path, '') or { return []string{} }
+	mut args := c_header_compiler_predefined_macro_args(c_flags, c99_mode, target, path)
+	// The search list is emitted by `-v`; the `-dM` macro dump is irrelevant here.
+	index := args.index('-dM')
+	if index >= 0 {
+		args.delete(index)
+	}
+	args.insert(0, '-v')
+	result := cmdexec.run(ccompiler, args)
+	// The search list is printed regardless of exit status, so parse unconditionally.
+	return c_header_compiler_implicit_include_dirs_from_output(result.output)
+}
+
+fn c_header_compiler_implicit_include_dirs_from_output(output string) []string {
+	mut dirs := []string{}
+	mut collecting := false
+	for line in output.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed == 'End of search list.' {
+			collecting = false
+			continue
+		}
+		if trimmed.ends_with('search starts here:') {
+			collecting = true
+			continue
+		}
+		if !collecting || trimmed.len == 0 {
+			continue
+		}
+		// Framework roots are resolved separately via framework include dirs.
+		if trimmed.ends_with('(framework directory)') {
+			continue
+		}
+		if !os.is_dir(trimmed) {
+			continue
+		}
+		real := os.real_path(trimmed)
+		if real.len > 0 && real !in dirs {
+			dirs << real
+		}
+	}
+	return dirs
 }
 
 fn c_header_compiler_predefined_target_args(target pref.Target, host pref.Target) []string {
@@ -6231,6 +6373,7 @@ mut:
 	dynamic_include_macros map[string]bool
 	literal_include_macros map[string][]string
 	conditionals           []CHeaderOwnedConditional
+	implicit_include_dirs  []string
 }
 
 struct CHeaderActiveScan {
@@ -6974,7 +7117,29 @@ fn c_header_invoked_typedef_macro_expansion(line string, defined map[string]bool
 			break
 		}
 		if clean.starts_with('typedef ') {
-			replacement = c_header_expand_macro_argument(clean, defined, undefined, uncertain, macro_values)
+			// The C preprocessor keeps rescanning the typedef body, so function-like
+			// invocations (including token pasting, e.g. `CAT(name)` -> `name##_t`)
+			// must be expanded alongside object-like values. Otherwise the alias tag
+			// this scan records differs from the tag the real compiler declares.
+			state := CHeaderMacroState{
+				defined:               defined
+				undefined:             undefined
+				uncertain:             uncertain
+				macro_values:          macro_values
+				function_macro_values: function_macro_values
+			}
+			mut expanded := clean
+			for _ in 0 .. 64 {
+				function_expanded := c_header_expand_condition_function_macros(expanded,
+					state)
+				object_expanded := c_header_expand_macro_argument(function_expanded, defined,
+					undefined, uncertain, macro_values)
+				if object_expanded == expanded {
+					break
+				}
+				expanded = object_expanded
+			}
+			replacement = expanded
 			break
 		}
 		if c_header_struct_tag(clean) == clean {
@@ -8331,6 +8496,42 @@ fn c_header_objective_c_integer_expression_value(raw string, defined map[string]
 		return c_header_objective_c_integer_expression_value(if active { if_true } else { if_false },
 			defined, undefined, uncertain, macro_values, strict_iso_mode, target, mut seen, depth +
 			1)
+	}
+	or_parts := c_header_condition_top_level_parts(clean, '||')
+	if or_parts.len > 1 {
+		mut all_known := true
+		for part in or_parts {
+			value := c_header_objective_c_integer_expression_value(part, defined, undefined,
+				uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
+				all_known = false
+				continue
+			}
+			if value != 0 {
+				return i64(1)
+			}
+		}
+		if all_known {
+			return i64(0)
+		}
+		return none
+	}
+	and_parts := c_header_condition_top_level_parts(clean, '&&')
+	if and_parts.len > 1 {
+		mut all_known := true
+		for part in and_parts {
+			value := c_header_objective_c_integer_expression_value(part, defined, undefined,
+				uncertain, macro_values, strict_iso_mode, target, mut seen, depth + 1) or {
+				all_known = false
+				continue
+			}
+			if value == 0 {
+				return i64(0)
+			}
+		}
+		if all_known {
+			return i64(1)
+		}
+		return none
 	}
 	operator_groups := [
 		['|'],
@@ -11727,6 +11928,19 @@ fn c_header_condition_resolve_has_include(raw string, state CHeaderMacroState, i
 fn c_header_feature_predicate_invocations(text string) []string {
 	mut invocations := []string{}
 	mut seen := map[string]bool{}
+	c_header_collect_feature_predicate_invocations(text, mut invocations, mut seen)
+	// A common pattern wraps the predicate in a helper macro
+	// (e.g. `#define HAS_BUILTIN(x) __has_builtin(x)` then `#if HAS_BUILTIN(...)`).
+	// The real preprocessor expands that helper before evaluating the predicate, so
+	// the resolved condition contains `__has_builtin(<arg>)`, which is absent from the
+	// raw text. Probe the invocations produced by expanding conditional expressions too.
+	for expanded in c_header_expanded_condition_feature_texts(text) {
+		c_header_collect_feature_predicate_invocations(expanded, mut invocations, mut seen)
+	}
+	return invocations
+}
+
+fn c_header_collect_feature_predicate_invocations(text string, mut invocations []string, mut seen map[string]bool) {
 	mut i := 0
 	for i < text.len {
 		mut predicate := ''
@@ -11762,7 +11976,71 @@ fn c_header_feature_predicate_invocations(text string) []string {
 		}
 		i = paren_close + 1
 	}
-	return invocations
+}
+
+// c_header_expanded_condition_feature_texts expands function-like macros used in
+// `#if`/`#elif` conditions so feature-predicate wrappers resolve to their real
+// invocations before probing. Object-like wrappers already appear verbatim in the
+// header text, so only function-like macros need this extra pass.
+fn c_header_expanded_condition_feature_texts(text string) []string {
+	state := c_header_condition_macro_state(text)
+	if state.function_macro_values.len == 0 {
+		return []string{}
+	}
+	mut expansions := []string{}
+	for raw_line in c_join_continued_lines(text) {
+		line := raw_line.trim_space()
+		if !line.starts_with('#') || c_directive_name(line) !in ['if', 'elif'] {
+			continue
+		}
+		condition := c_directive_arg(line)
+		if condition.len == 0 {
+			continue
+		}
+		expanded := c_header_expand_condition_function_macros(condition, state)
+		if expanded != condition {
+			expansions << expanded
+		}
+	}
+	return expansions
+}
+
+// c_header_condition_macro_state builds a best-effort macro state from every
+// `#define` in the text, ignoring branch structure. It is used to expand
+// conditional expressions when probing feature predicates; over-inclusion is
+// harmless because only invocations the real scan resolves are ever consulted.
+fn c_header_condition_macro_state(text string) CHeaderMacroState {
+	mut defined := map[string]bool{}
+	mut macro_values := map[string]string{}
+	mut function_macro_values := map[string]string{}
+	for raw_line in c_join_continued_lines(text) {
+		line := raw_line.trim_space()
+		if !line.starts_with('#') || c_directive_name(line) != 'define' {
+			continue
+		}
+		macro_name, macro_value, has_macro_value, function_macro_value := c_header_define_name_and_value(line)
+		if macro_name.len == 0 {
+			continue
+		}
+		defined[macro_name] = true
+		if function_macro_value.len > 0 {
+			function_macro_values[macro_name] = function_macro_value
+			macro_values.delete(macro_name)
+		} else if has_macro_value {
+			macro_values[macro_name] = macro_value
+			function_macro_values.delete(macro_name)
+		} else {
+			macro_values.delete(macro_name)
+			function_macro_values.delete(macro_name)
+		}
+	}
+	return CHeaderMacroState{
+		defined:               defined
+		undefined:             map[string]bool{}
+		uncertain:             map[string]bool{}
+		macro_values:          macro_values
+		function_macro_values: function_macro_values
+	}
 }
 
 fn c_header_compiler_feature_predicate_values(ccompiler string, c_flags []string, c99_mode bool, target pref.Target, text string) map[string]int {

@@ -933,6 +933,64 @@ fn test_header_owned_scan_expands_macros_inside_typedef_replacements() {
 	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias;'
 }
 
+fn test_header_owned_scan_expands_pasting_macros_inside_typedef_replacements() {
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define CAT(x) x##_t\n#define DECL(name) typedef struct Impl CAT(name);\nDECL(Alias)\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert scan.typedef_macro_expansions.trim_space() == 'typedef struct Impl Alias_t;'
+	assert c_header_owned_typedef_aliases(scan.typedef_macro_expansions) == ['Alias_t'], scan.typedef_macro_expansions
+}
+
+fn test_header_owned_scan_evaluates_logical_object_macro_conditions() {
+	state := CHeaderMacroState{
+		defined: {
+			'__GNUC__':       true
+			'__GNUC_MINOR__': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'__GNUC__':       '4'
+			'__GNUC_MINOR__': '1'
+		}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 && __GNUC_MINOR__ >= 1)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['SupportedAlias'], scan.text
+}
+
+fn test_header_owned_scan_evaluates_logical_or_object_macro_conditions() {
+	state := CHeaderMacroState{
+		defined: {
+			'__GNUC__':       true
+			'__GNUC_MINOR__': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'__GNUC__':       '3'
+			'__GNUC_MINOR__': '9'
+		}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#define SUPPORTED (__GNUC__ >= 4 || __GNUC_MINOR__ >= 5)\n#if SUPPORTED\ntypedef struct Active SupportedAlias;\n#else\ntypedef struct Inactive InactiveAlias;\n#endif\n',
+		state, false, pref.Target{
+		os: 'linux'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['SupportedAlias'], scan.text
+}
+
 fn test_header_owned_scan_excludes_function_scoped_typedef_macro_invocations() {
 	state := CHeaderMacroState{
 		defined: map[string]bool{}
@@ -1018,6 +1076,107 @@ fn test_header_owned_scan_resolves_compiler_feature_predicates() {
 		feature_predicates: values
 	})
 	assert c_header_owned_typedef_aliases(scan.text) == ['BuiltinAlias'], scan.text
+}
+
+fn test_header_owned_feature_predicate_invocations_probe_macro_wrappers() {
+	text := '#define HAS_BUILTIN(x) __has_builtin(x)\n#if HAS_BUILTIN(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#endif\n'
+	invocations := c_header_feature_predicate_invocations(text)
+	assert '__has_builtin(__builtin_expect)' in invocations, invocations.str()
+}
+
+fn test_header_owned_scan_resolves_wrapped_feature_predicates() {
+	text := '#define HAS_BUILTIN(x) __has_builtin(x)\n#if HAS_BUILTIN(__builtin_expect)\ntypedef struct Builtin BuiltinAlias;\n#else\ntypedef struct Wrong WrongAlias;\n#endif\n'
+	values := c_header_compiler_feature_predicate_values('cc', []string{}, false, pref.Target{},
+		text)
+	assert values['__has_builtin(__builtin_expect)'] == 1
+	state := CHeaderMacroState{
+		defined: map[string]bool{}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: map[string]string{}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan_in_file(text, state, false, pref.Target{
+		os: 'linux'
+	}, CHeaderIncludeContext{
+		feature_predicates: values
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['BuiltinAlias'], scan.text
+}
+
+fn test_header_owned_compiler_implicit_include_dirs_parser() {
+	base := os.join_path(os.vtmp_dir(), 'v3_implicit_incdirs_${os.getpid()}')
+	real_a := os.join_path(base, 'a')
+	real_b := os.join_path(base, 'b')
+	framework := os.join_path(base, 'frameworks')
+	after := os.join_path(base, 'after')
+	os.mkdir_all(real_a) or { panic(err) }
+	os.mkdir_all(real_b) or { panic(err) }
+	os.mkdir_all(framework) or { panic(err) }
+	os.mkdir_all(after) or { panic(err) }
+	defer {
+		os.rmdir_all(base) or {}
+	}
+	missing := os.join_path(base, 'missing')
+	output := 'ignored preamble\n#include "..." search starts here:\n ${real_a}\n#include <...> search starts here:\n ${real_b}\n ${framework} (framework directory)\n ${missing}\nEnd of search list.\n ${after}\n'
+	dirs := c_header_compiler_implicit_include_dirs_from_output(output)
+	// Only existing, non-framework directories inside the search block survive.
+	assert os.real_path(real_a) in dirs, dirs.str()
+	assert os.real_path(real_b) in dirs, dirs.str()
+	assert os.real_path(missing) !in dirs, dirs.str()
+	assert os.real_path(framework) !in dirs, dirs.str()
+	assert os.real_path(after) !in dirs, dirs.str()
+	assert dirs.len == 2, dirs.str()
+}
+
+fn test_header_owned_compiler_implicit_include_dirs_are_real() {
+	// Live discovery via the platform C compiler; every reported root must exist.
+	dirs := c_header_compiler_implicit_include_dirs('cc', []string{}, false, pref.Target{})
+	for dir in dirs {
+		assert os.is_dir(dir), dir
+	}
+}
+
+fn test_header_owned_msvc_predefined_macro_values_parser() {
+	candidates := c_header_msvc_predefined_macro_candidates()
+	// Emulates `cl /EP` output: defined numeric macros expanded, others untouched.
+	output := 'V3_MSVC_MACRO_0 1930\nV3_MSVC_MACRO_1 193030705\nV3_MSVC_MACRO_5 1\nV3_MSVC_MACRO_13 __STDC_VERSION__\n'
+	values := c_header_msvc_predefined_macro_values_from_output(output, candidates)
+	assert values['_MSC_VER'] == '1930', values.str()
+	assert values['_MSC_FULL_VER'] == '193030705', values.str()
+	assert values['_WIN32'] == '1', values.str()
+	// Unexpanded (still-textual) macros are not recorded as numeric values.
+	assert '__STDC_VERSION__' !in values, values.str()
+}
+
+fn test_header_owned_msvc_predefined_macro_marker_indices_do_not_collide() {
+	// Marker 1 must not swallow marker 10..13 despite the shared textual prefix.
+	candidates := c_header_msvc_predefined_macro_candidates()
+	output := 'V3_MSVC_MACRO_11 42\n'
+	values := c_header_msvc_predefined_macro_values_from_output(output, candidates)
+	assert values[candidates[11]] == '42', values.str()
+	assert candidates[1] !in values, values.str()
+}
+
+fn test_header_owned_scan_resolves_msvc_version_guard() {
+	// _MSC_VER is defined with a numeric value, so the version guard resolves and
+	// only the active-branch typedef is owned.
+	state := CHeaderMacroState{
+		defined: {
+			'_MSC_VER': true
+		}
+		undefined: map[string]bool{}
+		uncertain: map[string]bool{}
+		macro_values: {
+			'_MSC_VER': '1930'
+		}
+		function_macro_values: map[string]string{}
+	}
+	scan := c_header_definitely_active_scan('#if _MSC_VER >= 1900\ntypedef struct Modern ModernAlias;\n#else\ntypedef struct Legacy LegacyAlias;\n#endif\n',
+		state, false, pref.Target{
+		os: 'windows'
+	})
+	assert c_header_owned_typedef_aliases(scan.text) == ['ModernAlias'], scan.text
 }
 
 fn test_header_owned_scan_expands_variadic_typedef_macros() {
