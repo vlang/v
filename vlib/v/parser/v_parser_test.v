@@ -276,6 +276,10 @@ fn scan_v(mut files []string, path string) ! {
 			continue
 		}
 		if os.is_file(p) {
+			if i == 'arc_d_ownership.v' {
+				// This file uses V3-only lifetime syntax.
+				continue
+			}
 			if i.ends_with('.v') && !i.contains_any_substr(['_test.', 'test_', 'tests_']) {
 				files << p
 			}

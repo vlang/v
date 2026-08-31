@@ -21,11 +21,11 @@ fn test_build_install_server_urls_prioritizes_default_servers() {
 		'https://mirror1.example']
 }
 
-fn test_metadata_server_urls_uses_selected_server() {
+fn test_metadata_server_urls_prefers_selected_server_with_fallbacks() {
 	mut selector := VpmInstallServerSelector{
 		candidate_urls: ['https://official.example', 'https://mirror.example']
 	}
 	assert selector.metadata_server_urls() == ['https://official.example', 'https://mirror.example']
 	selector.selected_url = 'https://mirror.example'
-	assert selector.metadata_server_urls() == ['https://mirror.example']
+	assert selector.metadata_server_urls() == ['https://mirror.example', 'https://official.example']
 }

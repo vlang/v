@@ -105,6 +105,19 @@ fn test_existing_vsh_executable_uses_cache_until_source_is_newer() {
 	assert warm_cache_res.exit_code == 0, warm_cache_res.output
 	assert warm_cache_res.output.trim_space() == 'Hello from cached vsh'
 
+	replacement_source := os.join_path(project_dir, 'replacement.v')
+	os.write_file(replacement_source, "fn main() {
+	println('foreign executable')
+}
+")!
+	replacement_res :=
+		os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(executable)} ${os.quoted_path(replacement_source)}')
+	assert replacement_res.exit_code == 0, replacement_res.output
+	assert os.execute(os.quoted_path(executable)).output.trim_space() == 'foreign executable'
+	rebound_cache_res := os.execute(cmd)
+	assert rebound_cache_res.exit_code == 0, rebound_cache_res.output
+	assert rebound_cache_res.output.trim_space() == 'Hello from cached vsh'
+
 	cache_stamp := os.file_last_mod_unix(executable) + 3600
 	os.utime(executable, cache_stamp, cache_stamp)!
 
@@ -296,6 +309,53 @@ fn main() {
 	assert res.output.contains('defined as module `foo`'), res.output
 }
 
+fn test_module_alias_imports_canonical_module_and_submodule() {
+	project_dir := os.join_path(test_path, 'module_alias_import')
+	modules_dir := os.join_path(project_dir, 'modules')
+	canonical_dir := os.join_path(modules_dir, 'canonical')
+	os.rmdir_all(project_dir) or {}
+	defer {
+		os.rmdir_all(project_dir) or {}
+	}
+	os.mkdir_all(os.join_path(canonical_dir, 'sub'))!
+	os.mkdir_all(os.join_path(modules_dir, 'legacy'))!
+	os.write_file(os.join_path(project_dir, 'v.mod'),
+		"Module {\n\tname: 'module_alias_import'\n}\n")!
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical
+
+pub struct Token {
+pub:
+	value int
+}
+')!
+	os.write_file(os.join_path(canonical_dir, 'sub', 'sub.v'), 'module sub
+
+pub fn value() int {
+	return 2
+}
+')!
+	os.write_file(os.join_path(modules_dir, 'legacy', 'alias.v'),
+		"@[alias: '@VMODROOT/modules/canonical'] module legacy\n")!
+	os.write_file(os.join_path(project_dir, 'main.v'), 'module main
+
+import canonical
+import legacy
+import legacy.sub
+
+fn main() {
+	a := canonical.Token{value: 1}
+	b := legacy.Token{value: 1}
+	assert a == b
+	println(a.value + sub.value())
+}
+')!
+
+	main_path := os.join_path(project_dir, 'main.v')
+	res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(main_path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == '3'
+}
+
 fn test_removed_src_layout_error_mentions_vmod_subdirs() {
 	os.chdir(test_path)!
 	project_dir := os.join_path(test_path, 'run_removed_src_project')
@@ -347,7 +407,7 @@ fn test_missing_library_is_reported_without_compiler_bug_hint() {
 	src_file := os.join_path('missing_library', 'main.v')
 	os.write_file(src_file, '#flag -l${lib_name}\nfn main() {}\n')!
 
-	res := os.execute('${os.quoted_path(vexe)} ${os.quoted_path(src_file)}')
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler ${os.quoted_path(src_file)}')
 	normalized_output := res.output.replace('\r\n', '\n')
 
 	assert res.exit_code != 0

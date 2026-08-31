@@ -1,0 +1,23 @@
+type FA = [8]int
+
+fn get_ptr() &FA {
+	return unsafe { nil }
+}
+
+// A raw top-level `&FA` (a pointer to a fixed array that is not a named
+// pointer-alias type) is not a usable pointer in V: cgen decays it to a
+// fixed array value, so `&p` must be rejected the same way as referencing
+// the fixed array directly. This holds regardless of where the `&FA` came
+// from - a local `&arr` or a `fn () &FA` return.
+fn from_local() {
+	mut arr := FA{}
+	p := unsafe { &arr }
+	q := &p
+	_ = q
+}
+
+fn from_return() {
+	p := get_ptr()
+	q := &p
+	_ = q
+}

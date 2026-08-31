@@ -3,12 +3,14 @@ import os
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
+const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
 // test_at_mod_codegen validates that v3 lowers @MOD to the current module name.
 fn test_at_mod_codegen() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_pseudo_vars_codegen_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	main_src := os.join_path(os.temp_dir(), 'v3_at_mod_main.v')
@@ -27,23 +29,43 @@ fn test_at_mod_codegen() {
 
 fn test_at_file_line_codegen_uses_source_line() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_file_line_codegen_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	main_src := os.join_path(os.temp_dir(), 'v3_file_line_main.v')
 	main_bin := os.join_path(os.temp_dir(), 'v3_file_line_main')
 	os.write_file(main_src,
-		"fn main() {\n\tgot, expected := @FILE_LINE, @FILE + ':' + @LINE.str()\n\tassert got == expected\n\tassert !got.ends_with(':0')\n}\n")!
-	main_result := os.execute('${v3_bin} ${main_src} -o ${main_bin}')
+		"fn main() {\n\tgot := @FILE_LINE\n\texpected := 'v3_file_line_main.v:' + @LINE.str()\n\tprintln(got)\n\tprintln(expected)\n}\n")!
+	main_result := os.execute('${v3_bin} -nocache -o ${main_bin} ${main_src}')
 	assert main_result.exit_code == 0, main_result.output
 	run := os.execute(main_bin)
 	assert run.exit_code == 0, run.output
+	assert run.output == 'v3_file_line_main.v:2\nv3_file_line_main.v:3\n', run.output
+}
+
+fn test_quoted_comptime_pseudo_vars_are_not_expanded() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_quoted_pseudo_vars_test')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	main_src := os.join_path(os.temp_dir(), 'v3_quoted_pseudo_vars_main.v')
+	main_bin := os.join_path(os.temp_dir(), 'v3_quoted_pseudo_vars_main')
+	os.write_file(main_src,
+		"fn main() {\n\t\$if '@OS' == @OS {\n\t\tprintln('wrong')\n\t} \$else {\n\t\tprintln('ok')\n\t}\n}\n")!
+	compile := os.execute('${v3_bin} ${main_src} -o ${main_bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(main_bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
 }
 
 // test_embed_file_codegen validates that v3 lowers $embed_file to EmbedFileData.
 fn test_embed_file_codegen() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_embed_file_codegen_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_embed_file_codegen_${os.getpid()}')
@@ -68,7 +90,8 @@ fn test_embed_file_codegen() {
 // resolution for $embed_file().
 fn test_embed_file_at_file_from_relative_subdir_path() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_embed_file_at_file_codegen_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_embed_file_at_file_codegen_${os.getpid()}')
@@ -96,7 +119,8 @@ fn test_embed_file_at_file_from_relative_subdir_path() {
 // embeds do not reload the asset at runtime.
 fn test_prod_embed_file_keeps_bytes_after_source_removed() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_prod_embed_file_codegen_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_prod_embed_file_codegen_${os.getpid()}')
@@ -122,7 +146,8 @@ fn test_prod_embed_file_keeps_bytes_after_source_removed() {
 // after imported module parsing.
 fn test_imported_module_embed_file_codegen() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_imported_embed_file_codegen_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_imported_embed_file_codegen_${os.getpid()}')

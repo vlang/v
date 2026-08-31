@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generics_test')
-	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -84,6 +85,91 @@ fn run_generic_exec(v3_bin string, name string, src string) string {
 	run := os.execute(bin_file)
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
+}
+
+fn test_generic_array_for_in_binding_survives_annotation() {
+	v3_bin := build_v3()
+	out := run_generic_exec(v3_bin, 'generic_array_for_in_binding', '
+fn sum[T](data T) int {
+	$if T is $array {
+		mut total := 0
+		for value in data {
+			total += value
+		}
+		return total
+	} $else {
+		return 0
+	}
+}
+
+fn main() {
+	println(sum([1, 2, 3]))
+}
+')
+	assert out == '6'
+}
+
+fn test_explicit_main_generic_arg_survives_imported_call_rewrite() {
+	v3_bin := build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_gen_explicit_main_generic_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	write_project_file(root, 'gate/gate.v', 'module gate
+
+pub fn classify[T]() string {
+	$if T is $struct {
+		return "struct"
+	} $else {
+		return "other"
+	}
+}
+')
+	write_project_file(root, 'main.v', 'module main
+
+import gate
+
+struct Payload[T] {
+	value T
+}
+
+fn main() {
+	println(gate.classify[Payload[string]]())
+}
+')
+	bin_file := os.join_path(root, 'app')
+	compile := os.execute('${v3_bin} -nocache -path "${root}|@vlib|@vmodules" -b c -o ${bin_file} ${os.join_path(root,
+		'main.v')}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_file)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'struct'
+}
+
+fn test_late_generic_reachability_runs_to_fixpoint() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3()
+	mut source := ''
+	for i in 1 .. 41 {
+		source += 'struct Reach${i}[T] {\n\tmarker T\n\tvalue int\n}\n\n'
+		source += 'fn (_ Reach${i}[T]) + (_ Reach${i}[T]) Reach${i}[T] {\n\treturn Reach${i}[T]{\n\t\tvalue: helper_${i}()\n\t}\n}\n\n'
+		if i < 40 {
+			source += 'fn helper_${i}() int {\n\tif never() {\n\t\t_ = Reach${i + 1}[string]{} + Reach${
+				i + 1}[string]{}\n\t}\n\tvalue := Reach${i + 1}[int]{} + Reach${i + 1}[int]{}\n\treturn value.value + 1\n}\n\n'
+		} else {
+			source += 'fn helper_${i}() int {\n\treturn 1\n}\n\n'
+		}
+	}
+	source += 'fn never() bool {\n\treturn false\n}\n\nfn main() {\n\tif never() {\n\t\t_ = Reach1[string]{} + Reach1[string]{}\n\t}\n\tvalue := Reach1[int]{} + Reach1[int]{}\n\tprintln(value.value)\n}\n'
+	src_file := os.join_path(os.temp_dir(), 'v3_gen_late_generic_reachability_fixpoint.v')
+	os.write_file(src_file, source) or { panic(err) }
+	bin_file := os.join_path(os.temp_dir(), 'v3_gen_late_generic_reachability_fixpoint')
+	compile := os.execute('VJOBS=4 ${v3_bin} ${src_file} -b c -o ${bin_file}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin_file)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '40'
 }
 
 // test_generics_rejected_when_building_v validates this v3 regression case.
@@ -437,4 +523,25 @@ fn main() {
 }
 ')
 	assert selector_convert_out == 'ok'
+
+	explicit_multi_arg_out := run_generic_exec(v3_bin, 'explicit_generic_call_keeps_runtime_args', '
+fn second[T](a T, b T) T {
+	return b
+}
+
+fn main() {
+	println(second[int](1, 2))
+}
+')
+	assert explicit_multi_arg_out == '2'
+
+	reused_result_out := run_generic_exec(v3_bin, 'reused_generic_result_keeps_payload_type', '
+import arrays { sum }
+
+fn main() {
+	mapped := [[1, 2], [3, 4]].map(sum(it)!)
+	println(sum(mapped[..2])!)
+}
+')
+	assert reused_result_out == '10'
 }

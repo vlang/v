@@ -110,6 +110,29 @@ fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	}
 }
 
+fn (mut p Parser) error_with_pos_no_advance(s string, pos token.Pos) {
+	if p.should_abort {
+		return
+	}
+	mut kind := 'error:'
+	file_path := if pos.file_idx < 0 { p.file_path } else { p.table.filelist[pos.file_idx] }
+	should_abort_after_print := p.pref.fatal_errors
+		|| (p.pref.output_mode == .stdout && !p.pref.check_only && !p.is_vls)
+	if should_abort_after_print {
+		if p.pref.is_verbose {
+			kind = 'parser error:'
+		}
+		util.show_compiler_message(kind, pos: pos, file_path: file_path, message: s)
+		p.should_abort = true
+	}
+	p.errors << errors.Error{
+		file_path: file_path
+		pos:       pos
+		reporter:  .parser
+		message:   s
+	}
+}
+
 fn (mut p Parser) error_with_error(error errors.Error) {
 	if p.should_abort {
 		if p.tok.kind != .eof {
@@ -231,4 +254,8 @@ fn (mut p Parser) unexpected_with_pos(pos token.Pos, params ParamsForUnexpected)
 fn (mut p Parser) chan_type_error() {
 	p.error_with_pos('`chan` has no type specified. Use `chan Type` instead of `chan`',
 		p.prev_tok.pos())
+}
+
+fn (mut p Parser) map_type_error() {
+	p.error_with_pos('cannot use the map type without key and value definition', p.prev_tok.pos())
 }

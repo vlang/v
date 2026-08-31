@@ -1,0 +1,4 @@
+V panic: Assertion failed...
+vlib/v/slow_tests/inout/v3_assert_unsigned_value.v3.v:4: > assert left == right
+   left value: left = 9223372036854775808
+  right value: right = 9223372036854775809

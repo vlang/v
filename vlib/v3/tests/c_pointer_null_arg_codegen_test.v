@@ -21,12 +21,14 @@ fn c_pointer_null_write_source() string {
 
 fn C.take_charptr(ptr &char)
 fn C.take_charptrptr(ptr &&char)
+fn C.take_voidptr(ptr voidptr)
 
 fn main() {
-	C.take_charptrptr(nil)
-	C.take_charptr(&char(0))
+	C.take_charptrptr(unsafe { nil })
+	C.take_charptr(unsafe { nil })
+	C.take_voidptr(unsafe { nil })
 }
-') or {
+	') or {
 		panic(err)
 	}
 	return src
@@ -43,5 +45,7 @@ fn test_nil_for_c_pointer_to_pointer_arg_emits_null() {
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('take_charptrptr(NULL);'), c_code
 	assert !compact.contains('take_charptrptr((char*)(0));'), c_code
-	assert compact.contains('take_charptr((char*)(0));'), c_code
+	assert compact.contains('take_charptr(NULL);'), c_code
+	assert compact.contains('take_voidptr(NULL);'), c_code
+	assert !compact.contains('&NULL'), c_code
 }

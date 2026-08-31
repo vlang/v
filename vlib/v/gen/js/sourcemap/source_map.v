@@ -2,7 +2,7 @@ module sourcemap
 
 import io
 import os
-import x.json2
+import json2
 
 const source_map_version = 3
 

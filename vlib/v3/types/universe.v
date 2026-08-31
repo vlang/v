@@ -73,8 +73,8 @@ pub fn is_builtin_type_name(name string) bool {
 		|| name == 'i64' || name == 'u8' || name == 'byte' || name == 'u16' || name == 'u32'
 		|| name == 'u64' || name == 'f32' || name == 'f64' || name == 'string' || name == 'char'
 		|| name == 'rune' || name == 'isize' || name == 'usize' || name == 'void'
-		|| name == 'voidptr' || name == 'array' || name == 'charptr' || name == 'byteptr'
-		|| name == 'nil' || name == 'none'
+		|| name == 'voidptr' || name == 'array' || name == 'map' || name == 'charptr'
+		|| name == 'byteptr' || name == 'nil' || name == 'none'
 }
 
 // builtin_type_value returns the Type for a known builtin type name.

@@ -7,5 +7,5 @@ pub interface Value {
 pub type List = []Value
 
 pub fn (x List) str() string {
-	return x.str()
+	return ([]Value(x)).str()
 }

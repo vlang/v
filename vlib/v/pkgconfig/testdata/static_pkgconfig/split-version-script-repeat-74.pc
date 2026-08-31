@@ -1,0 +1,4 @@
+Name: split-version-script-repeat-74
+Description: Repeated operand shared by split GNU linker controls
+Version: 1.0.0
+Libs: -Wl,--version-script -Wl,/issue74/shared-symbol-list.map -Wl,--dynamic-list -Wl,/issue74/shared-symbol-list.map

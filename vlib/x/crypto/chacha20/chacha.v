@@ -5,7 +5,7 @@
 // Chacha20 symmetric key stream cipher encryption based on RFC 8439
 module chacha20
 
-import crypto.internal.subtle
+import crypto.subtle
 
 // The size of ChaCha20 key, ie 256 bits size, in bytes
 pub const key_size = 32

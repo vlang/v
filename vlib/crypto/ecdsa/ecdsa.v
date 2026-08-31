@@ -30,6 +30,7 @@ const openssl_ec_named_curve = C.OPENSSL_EC_NAMED_CURVE
 
 // https://docs.openssl.org/3.0/man3/EVP_PKEY_fromdata/#selections
 const evp_pkey_keypair = C.EVP_PKEY_KEYPAIR
+const evp_pkey_public_key = C.EVP_PKEY_PUBLIC_KEY
 
 // POINT_CONVERSION FORAMT
 const point_conversion_uncompressed = 4
@@ -274,6 +275,48 @@ pub fn (pv PrivateKey) public_key() !PublicKey {
 	}
 }
 
+// derive_shared_secret performs ECDH key agreement between this private key
+// and a peer's public key, returning the raw shared secret (the X-coordinate
+// of the resulting curve point only, per SEC1 — this is what OpenSSL's
+// EVP_PKEY_derive already returns for EC keys, and is exactly what TLS 1.3's
+// key schedule expects as ECDHE input; it is NOT the full uncompressed point).
+// Both keys must use the same curve.
+pub fn (pv PrivateKey) derive_shared_secret(peer PublicKey) ![]u8 {
+	ctx := C.EVP_PKEY_CTX_new(pv.evpkey, 0)
+	if ctx == 0 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return error('EVP_PKEY_CTX_new failed')
+	}
+	dinit := C.EVP_PKEY_derive_init(ctx)
+	if dinit <= 0 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return error('EVP_PKEY_derive_init failed')
+	}
+	dpeer := C.EVP_PKEY_derive_set_peer(ctx, peer.evpkey)
+	if dpeer <= 0 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return error('EVP_PKEY_derive_set_peer failed (mismatched curve or invalid peer key?)')
+	}
+	// First call with a nil buffer to learn the required secret length.
+	mut secret_len := usize(0)
+	dlen := C.EVP_PKEY_derive(ctx, unsafe { nil }, &secret_len)
+	if dlen <= 0 || secret_len == 0 {
+		C.EVP_PKEY_CTX_free(ctx)
+		return error('EVP_PKEY_derive (length query) failed')
+	}
+	mut secret := []u8{len: int(secret_len)}
+	dres := C.EVP_PKEY_derive(ctx, secret.data, &secret_len)
+	if dres <= 0 {
+		unsafe { secret.free() }
+		C.EVP_PKEY_CTX_free(ctx)
+		return error('EVP_PKEY_derive failed')
+	}
+	result := secret[..int(secret_len)].clone()
+	unsafe { secret.free() }
+	C.EVP_PKEY_CTX_free(ctx)
+	return result
+}
+
 // equal compares two private keys was equal.
 pub fn (priv_key PrivateKey) equal(other PrivateKey) bool {
 	eq := C.EVP_PKEY_eq(voidptr(priv_key.evpkey), voidptr(other.evpkey))
@@ -308,6 +351,72 @@ pub fn (pub_key PublicKey) equal(other PublicKey) bool {
 // free clears out allocated memory for PublicKey. Dont use PublicKey after calling `.free()`
 pub fn (pb &PublicKey) free() {
 	C.EVP_PKEY_free(pb.evpkey)
+}
+
+// uncompressed_bytes returns the public key as an uncompressed EC point,
+// `0x04 || X || Y` (SEC1 §2.3.3) — the wire format TLS 1.3's key_share
+// extension uses for the secp256r1 (P-256) group (RFC 8446 §4.2.8.2).
+pub fn (pb PublicKey) uncompressed_bytes() ![]u8 {
+	mut ptr := &u8(unsafe { nil })
+	n := C.EVP_PKEY_get1_encoded_public_key(pb.evpkey, &ptr)
+	if n == 0 {
+		return error('EVP_PKEY_get1_encoded_public_key failed')
+	}
+	result := unsafe { ptr.vbytes(int(n)).clone() }
+	C.OPENSSL_free(voidptr(ptr))
+	return result
+}
+
+// PublicKey.from_uncompressed_bytes reconstructs a public key (no private
+// component) from an uncompressed EC point `0x04 || X || Y`, as received on
+// the wire in a TLS 1.3 key_share extension. `opt.nid` must match the curve
+// the peer actually used (v1 callers of net.quic only ever use `.prime256v1`
+// here, since X25519 is handled entirely by crypto.x25519 instead).
+pub fn PublicKey.from_uncompressed_bytes(bytes []u8, opt CurveOptions) !PublicKey {
+	if bytes.len == 0 {
+		return error('empty public key bytes')
+	}
+	if bytes[0] != 0x04 {
+		return error('only uncompressed EC points (0x04 prefix) are supported, got tag ${bytes[0]:02x}')
+	}
+	param_bld := C.OSSL_PARAM_BLD_new()
+	if param_bld == 0 {
+		return error('OSSL_PARAM_BLD_new failed')
+	}
+	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', voidptr(opt.nid.str().str), 0)
+	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', bytes.data, usize(bytes.len))
+	if n <= 0 || o <= 0 {
+		C.OSSL_PARAM_BLD_free(param_bld)
+		return error('OSSL_PARAM_BLD_push failed')
+	}
+	params := C.OSSL_PARAM_BLD_to_param(param_bld)
+	pctx := C.EVP_PKEY_CTX_new_id(nid_evp_pkey_ec, 0)
+	if params == 0 || pctx == 0 {
+		C.OSSL_PARAM_BLD_free(param_bld)
+		C.OSSL_PARAM_free(params)
+		if pctx != 0 {
+			C.EVP_PKEY_CTX_free(pctx)
+		}
+		return error('EVP_PKEY_CTX_new_id or OSSL_PARAM_BLD_to_param failed')
+	}
+	// Start from a nil pointer, not C.EVP_PKEY_new(): EVP_PKEY_fromdata()
+	// allocates its own new EVP_PKEY internally and overwrites *ppkey with
+	// it, so pre-allocating here would only leak that first object once
+	// fromdata replaces the pointer.
+	mut pkey := &C.EVP_PKEY(unsafe { nil })
+	p := C.EVP_PKEY_fromdata_init(pctx)
+	q := C.EVP_PKEY_fromdata(pctx, &pkey, evp_pkey_public_key, params)
+	// Cleanup independent of outcome.
+	C.OSSL_PARAM_BLD_free(param_bld)
+	C.OSSL_PARAM_free(params)
+	C.EVP_PKEY_CTX_free(pctx)
+	if p <= 0 || q <= 0 {
+		C.EVP_PKEY_free(pkey)
+		return error('EVP_PKEY_fromdata failed to build public key from raw bytes')
+	}
+	return PublicKey{
+		evpkey: pkey
+	}
 }
 
 // Helpers

@@ -86,6 +86,15 @@ fn time_fields_to_unix(t Time) i64 {
 		i64(t.second)
 }
 
+// unix_now returns the current UNIX time in seconds (UTC), i.e. the value
+// that `utc().unix()` would produce, without constructing a `Time` (no
+// calendar conversion, no allocation). It is the cheapest wall-clock read
+// available — a plain `time()` call, served from the vDSO on Linux — and is
+// the natural choice for second-resolution caches, timeouts and TTL checks.
+pub fn unix_now() i64 {
+	return i64(C.time(0))
+}
+
 // ticks returns the number of milliseconds since the UNIX epoch.
 // On Windows ticks returns the number of milliseconds elapsed since system start.
 pub fn ticks() i64 {

@@ -1,6 +1,6 @@
 module jsonrpc
 
-import json
+import json2 as json
 import strings
 import io
 
@@ -52,6 +52,7 @@ pub fn (mut s Server) respond() ! {
 		return
 	}
 
+	rx.trim(bytes_read)
 	intercept_encoded_request(s.interceptors.encoded_request, rx) or {
 		rw.write_error(response_error(error: err))
 		return err

@@ -1,0 +1,21 @@
+@[translated]
+module main
+
+type BytePointer = &u8
+type OptionalByte = ?u8
+
+struct DecoratedElements {
+	pointers        [2]&u8
+	pointer_aliases [2]BytePointer
+	options         [2]?u8
+	option_aliases  [2]OptionalByte
+}
+
+fn main() {
+	_ := DecoratedElements{
+		pointers:        c'ab'
+		pointer_aliases: c'ab'
+		options:         c'ab'
+		option_aliases:  c'ab'
+	}
+}

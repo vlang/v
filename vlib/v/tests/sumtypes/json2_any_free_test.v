@@ -1,4 +1,4 @@
-import x.json2
+import json2
 
 fn test_json2_any_free() {
 	c := json2.Any(123)

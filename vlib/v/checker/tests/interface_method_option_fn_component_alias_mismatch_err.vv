@@ -1,0 +1,23 @@
+type MyInt = int
+
+type MathOp = fn (int, int) int
+
+type AliasedMathOp = fn (MyInt, MyInt) MyInt
+
+interface OptionalAliasedCalculator {
+	get_operation() ?AliasedMathOp
+}
+
+struct OptionalPlainCalc {}
+
+fn (_ OptionalPlainCalc) get_operation() ?MathOp {
+	return fn (a int, b int) int {
+		return a + b
+	}
+}
+
+fn main() {
+	calc := OptionalAliasedCalculator(OptionalPlainCalc{})
+	operation := calc.get_operation() or { panic('missing operation') }
+	assert operation(2, 3) == 5
+}

@@ -1,0 +1,18 @@
+import json2 { Any }
+
+struct User {
+	name string
+}
+
+fn to_json(u User) string {
+	return json2.encode(u, escape_unicode: true)
+}
+
+fn any_of(s string) Any {
+	return Any(s)
+}
+
+fn main() {
+	println(to_json(User{ name: 'bob' }))
+	println(any_of('hi'))
+}

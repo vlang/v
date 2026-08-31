@@ -6,6 +6,7 @@ module http
 
 import net
 import net.ssl
+import strings
 import sync
 import time
 
@@ -23,14 +24,82 @@ import time
 // loop. is_no_need_retry_error recognizes this code so the outer loop honors it.
 const transport_err_unsafe_retry = -20013
 
+// H1StreamConn abstracts a platform-specific streaming h1 connection that can
+// be pooled the same way H1PooledConn already pools ssl.SSLConn/net.TcpConn —
+// currently implemented only by VSchannelPooledTransport
+// (vschannel_pooled_transport_windows.c.v), for native-Windows h1 pooling.
+// Kept separate from H2Transport (h2_conn.v) even though read/write have the
+// same shape: h1 pooling needs a per-request read/write timeout knob that
+// H2Transport's multiplexed background reader has no use for, and h2_conn.v
+// documents H2Transport as deliberately minimal for testability.
+interface H1StreamConn {
+mut:
+	read(mut buf []u8) !int
+	write(buf []u8) !int
+	close()
+	set_timeouts(read_timeout time.Duration, write_timeout time.Duration)
+}
+
+// H1StreamConnBox lets a boxed H1StreamConn interface value be threaded
+// through receive_all_data_from_cb_in_builder's voidptr+FnReceiveChunk
+// callback convention (request.v), the same convention read_from_ssl_connection_cb/
+// read_from_tcp_connection_cb already use for their own concrete connection
+// types. A concrete box struct is used instead of casting a raw voidptr
+// directly back to &H1StreamConn: an interface value is a fat pointer
+// (type tag + data + method table), and reinterpreting arbitrary bytes as one
+// via unsafe cast would be undefined behavior — boxing it in an ordinary,
+// single-field struct keeps the voidptr round-trip a plain pointer
+// reinterpret, exactly like the existing ssl.SSLConn/net.TcpConn callbacks.
+struct H1StreamConnBox {
+mut:
+	conn H1StreamConn
+}
+
+// read_from_h1stream_cb is the H1StreamConn FnReceiveChunk adapter (see
+// H1StreamConnBox), the h1-pool counterpart of read_from_ssl_connection_cb/
+// read_from_tcp_connection_cb.
+fn read_from_h1stream_cb(con voidptr, buf &u8, bufsize int) !int {
+	mut box := unsafe { &H1StreamConnBox(con) }
+	mut bytes := unsafe { buf.vbytes(bufsize) }
+	return box.conn.read(mut bytes)
+}
+
+// h1_exchange_stream runs one request/response over a pooled H1StreamConn,
+// leaving it open. Mirrors h1_exchange_ssl/h1_exchange_tcp exactly, sharing
+// the same response-framing implementation via receive_all_data_from_cb_in_builder.
+fn (req &Request) h1_exchange_stream(mut conn H1StreamConn, raw string) !(Response, bool) {
+	conn.write(raw.bytes()) or {
+		return error('http.transport: connection write failed: ${err.msg()}')
+	}
+	mut content := strings.new_builder(4096)
+	mut box := &H1StreamConnBox{
+		conn: conn
+	}
+	response_info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(box),
+		read_from_h1stream_cb)!
+	response_text := content.str()
+	$if trace_http_response ? {
+		eprint('< ')
+		eprint(response_text)
+		eprintln('')
+	}
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(response_text.len))!
+	}
+	resp := parse_received_response(response_text, response_info)!
+	return resp, response_info.reusable
+}
+
 // H1PooledConn is one keep-alive HTTP/1.1 connection in a Transport pool:
-// either a plain TCP connection or a TLS one (exactly one of the two is set).
+// exactly one of tcp/ssl/vsc is set — a plain TCP connection, an mbedTLS/
+// OpenSSL TLS one, or (native Windows only) a pooled SChannel connection.
 @[heap]
 struct H1PooledConn {
 mut:
 	key        string
 	tcp        &net.TcpConn = unsafe { nil }
 	ssl        &ssl.SSLConn = unsafe { nil }
+	vsc        ?H1StreamConn
 	idle_since time.Time
 }
 
@@ -44,6 +113,10 @@ fn (mut c H1PooledConn) close_conn() {
 		c.tcp.close() or {}
 		c.tcp = unsafe { nil }
 	}
+	if mut v := c.vsc {
+		v.close()
+		c.vsc = none
+	}
 }
 
 // refresh_timeouts applies the current request's timeouts to a pooled
@@ -56,6 +129,15 @@ fn (mut c H1PooledConn) refresh_timeouts(req &Request) {
 		if req.read_timeout > 0 {
 			c.ssl.set_read_timeout(req.read_timeout)
 		}
+	} else if mut v := c.vsc {
+		// Unlike the ssl branch above (read-only, guarded on > 0 — 0 there
+		// means "leave whatever timeout this connection already has"), both
+		// directions are applied unconditionally here: SO_RCVTIMEO/SO_SNDTIMEO
+		// are independent Winsock options where 0 has its own well-defined
+		// meaning ("block indefinitely"), so forwarding it is correct, not a
+		// missing guard — matching the tcp branch's convention (also
+		// unconditional, both directions) rather than ssl's.
+		v.set_timeouts(req.read_timeout, req.write_timeout)
 	}
 }
 
@@ -65,6 +147,9 @@ fn (mut c H1PooledConn) refresh_timeouts(req &Request) {
 fn (mut c H1PooledConn) exchange(req &Request, raw string) !(Response, bool) {
 	if c.ssl != unsafe { nil } {
 		return req.h1_exchange_ssl(mut c.ssl, raw)
+	}
+	if mut v := c.vsc {
+		return req.h1_exchange_stream(mut v, raw)
 	}
 	return req.h1_exchange_tcp(mut c.tcp, raw)
 }
@@ -94,6 +179,34 @@ pub mut:
 mut:
 	mu      &sync.Mutex = sync.new_mutex()
 	h1_idle map[string][]&H1PooledConn
+	// h2_conns holds the one pooled, multiplexed H2MuxConn per pool key (an h2
+	// connection multiplexes all concurrent requests to an origin, unlike the
+	// h1 pool's per-connection list). h2_dial_id tags which dial "owns" the
+	// current h2_conns[key] entry, so a superseded connection's own teardown
+	// closure can never evict a newer connection registered under the same
+	// key (see h2_dial_and_do in transport_h2.v). dialing singleflights the
+	// ALPN-probing dial itself: concurrent first requests to a fresh h2-enabled
+	// origin share one dial rather than each racing their own. key_proto
+	// memoizes the ALPN result (1 = http/1.1-only, 2 = h2) once known, so a
+	// key already proven http/1.1-only skips the h2 path entirely.
+	h2_conns    map[string]&H2MuxConn
+	h2_dial_seq u64
+	h2_dial_id  map[string]u64
+	dialing     map[string]&H2DialCall
+	key_proto   map[string]u8
+	// h3_conns holds the one pooled, multiplexed H3MuxConn per pool key,
+	// mirroring h2_conns exactly. h3_dial_id tags which dial "owns" the
+	// current h3_conns[key] entry, the same superseded-connection-can-
+	// never-evict-a-newer-one guard h2_dial_id provides. h3_dialing
+	// singleflights the QUIC dial itself, mirroring `dialing`'s role for
+	// h2 -- concurrent first requests to a fresh h3-enabled origin share
+	// one dial rather than each racing their own. No h3 counterpart to
+	// key_proto: h3 selection is 100% caller-declared via req.enable_http3,
+	// never auto-probed, so there is no ALPN-outcome to memoize.
+	h3_conns    map[string]&H3MuxConn
+	h3_dial_seq u64
+	h3_dial_id  map[string]u64
+	h3_dialing  map[string]&H3DialCall
 }
 
 // new_transport creates an empty Transport with default limits.
@@ -121,10 +234,20 @@ pub fn close_idle_connections() {
 	t.close_idle()
 }
 
-// close_idle closes every idle pooled connection held by this Transport.
-// In-flight requests are unaffected.
+// close_idle closes every idle pooled connection held by this Transport,
+// unconditionally — including a pooled h2 connection that is currently
+// serving requests, mirroring how it already treats h1: this is the pool-wide
+// flush used before fork()-style process handoffs and, in tests, to unblock a
+// server thread reading a kept-alive connection at teardown (neither can wait
+// out idle_timeout). In-flight requests are unaffected: shutdown_when_idle()+
+// release() only stop new admissions and drop the pool's own reference;
+// drop_ref defers the actual teardown until any remaining in-flight streams
+// finish (the same refcount mechanism H2MuxConn already relies on
+// internally).
 pub fn (mut t Transport) close_idle() {
 	mut all := []&H1PooledConn{}
+	mut h2_all := []&H2MuxConn{}
+	mut h3_all := []&H3MuxConn{}
 	t.mu.lock()
 	for _, list in t.h1_idle {
 		for c in list {
@@ -132,9 +255,46 @@ pub fn (mut t Transport) close_idle() {
 		}
 	}
 	t.h1_idle.clear()
+	for _, conn in t.h2_conns {
+		h2_all << conn
+	}
+	for _, conn in t.h3_conns {
+		h3_all << conn
+	}
+	// Untrack every h2/h3 entry now, atomically with collecting it: a
+	// connection with an in-flight stream survives one release() call below
+	// (its refcount drops but doesn't reach zero), so if it stayed in
+	// h2_conns/h3_conns, a second close_idle() call — a concurrent caller, or
+	// simply calling it twice — would find the same connection again and
+	// release() it a second time, over-decrementing the refcount below the
+	// number of genuinely live references (Codex P2, vlang/v#27643
+	// pullrequestreview-4626225521, discussion 3520259791). Clearing the maps
+	// here, under the same lock as the collection above, means no caller can
+	// ever observe — and therefore never re-release — a connection this call
+	// has already claimed.
+	t.h2_conns.clear()
+	t.h2_dial_id.clear()
+	t.h3_conns.clear()
+	t.h3_dial_id.clear()
 	t.mu.unlock()
 	for mut c in all {
 		c.close_conn()
+	}
+	for mut c in h2_all {
+		// shutdown_when_idle()/release() must run outside t.mu: release() can
+		// synchronously drive teardown_transport(), which calls this
+		// connection's own close_transport closure, which itself takes t.mu —
+		// calling it while still holding t.mu here would self-deadlock.
+		c.shutdown_when_idle()
+		c.release()
+	}
+	for mut c in h3_all {
+		// H3MuxConn.release() has no such synchronous-callback concern (see
+		// its own doc comment: unlike H2MuxConn.release, it never drives
+		// teardown by itself) — run outside t.mu anyway, for the same
+		// symmetry as the h1/h2 loops above.
+		c.shutdown_when_idle()
+		c.release()
 	}
 }
 
@@ -144,17 +304,27 @@ pub fn (mut t Transport) close_idle() {
 // advertised via ALPN at dial time: a forced-HTTP/1.1 connection (no ALPN)
 // must not satisfy an HTTP/2-enabled request, which would otherwise silently
 // never negotiate h2 against that origin while the pooled connection lives.
+// enable_http3 is folded in the same way, mirroring enable_http2 exactly --
+// h3-enabled and h3-disabled requests already land in structurally separate
+// pool maps (h3_conns vs h1_idle/h2_conns), so this is not load-bearing for
+// correctness today the way enable_http2's fold is, but keeps the key's own
+// contract uniform ("every protocol-selecting flag is part of the key")
+// rather than leaving h3 as a silent, undocumented exception. No key_proto-
+// style probed-outcome state exists for h3 (unlike h2's ALPN auto-probe,
+// h3 selection is 100% caller-declared, never auto-detected), so there is
+// nothing else to fold in.
 fn transport_pool_key(req &Request, scheme string, host string, port int) string {
-	// enable_http2 only affects https dials (plain http ignores it), so keep
-	// the plain-http pool unsplit.
+	// enable_http2/enable_http3 only affect https dials (plain http ignores
+	// them), so keep the plain-http pool unsplit.
 	h2 := scheme == 'https' && req.enable_http2
+	h3 := scheme == 'https' && req.enable_http3
 	// Length-prefix the free-form string fields (host and the TLS paths/PEM
 	// blobs) so a value containing the '|' separator cannot collide with a
 	// different field split — e.g. cert='a|b',cert_key='c' vs cert='a',
 	// cert_key='b|c' — which would let a request reuse a connection dialed with
 	// the wrong CA or client certificate. Bools and the int port cannot contain
 	// '|', and scheme is a fixed literal, so they need no prefixing.
-	return '${scheme}|${pk_part(host)}|${port}|${h2}|${req.validate}|${pk_part(req.verify)}|${pk_part(req.cert)}|${pk_part(req.cert_key)}|${req.in_memory_verification}'
+	return '${scheme}|${pk_part(host)}|${port}|${h2}|${h3}|${req.validate}|${pk_part(req.verify)}|${pk_part(req.cert)}|${pk_part(req.cert_key)}|${req.in_memory_verification}'
 }
 
 // pk_part length-prefixes a string (`len:value`) so concatenated pool-key
@@ -221,10 +391,9 @@ fn (mut t Transport) checkout(key string) &H1PooledConn {
 // checkin returns a healthy connection to the idle pool, or closes it when the
 // per-host pool is already at capacity. Adding it may push the total idle count
 // over max_idle_conns, in which case the least-recently-used idle connection
-// across all pools is evicted and closed.
+// across all pools (h1, h2, and h3) is evicted and closed.
 fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	conn.idle_since = time.now()
-	mut evicted := &H1PooledConn(unsafe { nil })
 	t.mu.lock()
 	mut list := t.h1_idle[conn.key] or { []&H1PooledConn{} }
 	if list.len >= t.max_idle_conns_per_host {
@@ -234,17 +403,23 @@ fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	}
 	list << conn
 	t.h1_idle[conn.key] = list
-	if t.max_idle_conns > 0 && t.total_idle_locked() > t.max_idle_conns {
-		evicted = t.evict_oldest_locked()
-	}
+	mut evicted := t.evict_oldest_idle_locked('', '')
 	t.mu.unlock()
-	if evicted != unsafe { nil } {
-		evicted.close_conn()
+	if evicted.h1 != unsafe { nil } {
+		evicted.h1.close_conn()
+	}
+	if evicted.h3 != unsafe { nil } {
+		evicted.h3.shutdown_when_idle()
+		evicted.h3.release()
+	}
+	if evicted.h2 != unsafe { nil } {
+		evicted.h2.shutdown_when_idle()
+		evicted.h2.release()
 	}
 }
 
-// total_idle_locked sums the idle connections across all pool keys. The caller
-// must hold t.mu.
+// total_idle_locked sums the idle h1 connections across all pool keys. The
+// caller must hold t.mu.
 fn (t &Transport) total_idle_locked() int {
 	mut n := 0
 	for _, list in t.h1_idle {
@@ -253,34 +428,180 @@ fn (t &Transport) total_idle_locked() int {
 	return n
 }
 
-// evict_oldest_locked removes and returns the least-recently-used idle
-// connection across all pool keys (nil if the pool is empty), pruning an
-// emptied key. The caller must hold t.mu and close the returned connection.
-fn (mut t Transport) evict_oldest_locked() &H1PooledConn {
-	mut oldest_key := ''
-	mut oldest_idx := -1
+// EvictedIdleConn carries the result of evict_oldest_idle_locked: at most one
+// of h1/h2/h3 is non-nil.
+struct EvictedIdleConn {
+mut:
+	h1 &H1PooledConn = unsafe { nil }
+	h2 &H2MuxConn    = unsafe { nil }
+	h3 &H3MuxConn    = unsafe { nil }
+}
+
+// EvictionSource tags which pool evict_oldest_idle_locked's chosen victim
+// came from.
+enum EvictionSource {
+	none_
+	h1
+	h2
+	h3
+}
+
+// evict_oldest_idle_locked evicts the single least-recently-idle connection
+// across the h1, h2, AND h3 pools when the combined idle count exceeds
+// max_idle_conns — a shared cap enforced from only one side lets the other
+// protocols exceed it silently: checkin()'s own cap check used to count only
+// h1_idle, and the h2 dial path's own eviction scan used to consider only
+// h2_conns, so a budget already filled entirely by ONE protocol was never
+// freed for the OTHERS (Codex P2, vlang/v#27643 pullrequestreview-4630174759:
+// with max_idle_conns filled by one idle h1 connection, a fresh h2 dial had
+// no eligible h2 candidate to evict — its own new entry is excluded, and
+// there was no other h2 connection — so neither it nor the h1 entry was ever
+// freed, and the pool grew past the documented cap; h3_conns is folded into
+// the same scan for the identical reason, added in Phase 12c). The caller
+// must hold t.mu; the returned connection's teardown (close_conn for h1,
+// shutdown_when_idle+release for h2/h3) must happen OUTSIDE t.mu — h2's
+// release() can synchronously call this connection's own close_transport
+// closure, which itself takes t.mu.
+//
+// `just_registered_h2_key`, when non-empty, excludes that h2 key from
+// candidacy: the h2 dial path calls this in the same locked section that just
+// registered a brand-new h2_conns entry under that key, whose active_streams
+// is still 0 (do_h2 hasn't run yet), making it look idle when it is this very
+// dial's own result (Codex P1, pullrequestreview-4628439062) — otherwise, if
+// it were the only idle h2 candidate, it would be evicted before its own
+// request ever runs on it. Only a connection with zero active streams (h2/h3)
+// or one already sitting in h1_idle (h1, always idle by construction) is
+// eligible — a busy h2/h3 connection is never evicted to make room, mirroring
+// how a checked-out h1 connection (not in h1_idle) can't be evicted either.
+// `just_registered_h3_key` mirrors `just_registered_h2_key` exactly, for
+// Phase 12d's own h3_dial_and_do (transport_h3.v), which registers a new
+// h3_conns entry in the same locked section it calls this from.
+fn (mut t Transport) evict_oldest_idle_locked(just_registered_h2_key string, just_registered_h3_key string) EvictedIdleConn {
+	if t.max_idle_conns <= 0 {
+		return EvictedIdleConn{}
+	}
+	// Count only h2/h3 entries with active_streams == 0, matching the
+	// eviction scan below's own eligibility. Counting every entry regardless
+	// of activity made a pool with busy h2 connections and a single genuinely
+	// idle h1 connection look over budget on its own, evicting that h1
+	// connection even though the actual idle count was within the cap (Codex
+	// P3, vlang/v#27643 pullrequestreview-4631763931, discussion 3525390899).
+	//
+	// just_registered_h2_key is deliberately NOT excluded here (unlike the
+	// candidacy scan below): it still occupies a real pool slot the instant
+	// it is registered, so it must count toward the cap even though it can
+	// never be picked as its own eviction victim. Excluding it from this
+	// count too under-counted the pool during sequential single-connection
+	// dials (each new h2 registration's own active_streams is still 0 before
+	// do_h2 runs), letting the combined count sit AT the cap instead of over
+	// it and skipping an eviction that should have happened.
+	mut idle_h2_count := 0
+	for _, mut c in t.h2_conns {
+		c.smu.lock()
+		is_idle := c.active_streams == 0
+		c.smu.unlock()
+		if is_idle {
+			idle_h2_count++
+		}
+	}
+	mut idle_h3_count := 0
+	for _, mut c in t.h3_conns {
+		c.qmu.lock()
+		is_idle := c.active_streams == 0
+		c.qmu.unlock()
+		if is_idle {
+			idle_h3_count++
+		}
+	}
+	if t.total_idle_locked() + idle_h2_count + idle_h3_count <= t.max_idle_conns {
+		return EvictedIdleConn{}
+	}
+	mut found := false
+	mut from := EvictionSource.none_
 	mut oldest_since := time.now()
+	mut h1_key := ''
+	mut h1_idx := -1
+	mut h2_key := ''
+	mut h2_conn := &H2MuxConn(unsafe { nil })
+	mut h3_key := ''
+	mut h3_conn := &H3MuxConn(unsafe { nil })
 	for k, list in t.h1_idle {
 		for i, c in list {
-			if oldest_idx == -1 || c.idle_since < oldest_since {
-				oldest_key = k
-				oldest_idx = i
+			if !found || c.idle_since < oldest_since {
+				found = true
+				from = .h1
+				h1_key = k
+				h1_idx = i
 				oldest_since = c.idle_since
 			}
 		}
 	}
-	if oldest_idx == -1 {
-		return &H1PooledConn(unsafe { nil })
+	for k, mut c in t.h2_conns {
+		if k == just_registered_h2_key {
+			continue
+		}
+		c.smu.lock()
+		is_idle := c.active_streams == 0
+		since := c.idle_since
+		c.smu.unlock()
+		if !is_idle {
+			continue
+		}
+		if !found || since < oldest_since {
+			found = true
+			from = .h2
+			h2_key = k
+			h2_conn = c
+			oldest_since = since
+		}
 	}
-	mut list := t.h1_idle[oldest_key] or { return &H1PooledConn(unsafe { nil }) }
-	victim := list[oldest_idx]
-	list.delete(oldest_idx)
+	for k, mut c in t.h3_conns {
+		if k == just_registered_h3_key {
+			continue
+		}
+		c.qmu.lock()
+		is_idle := c.active_streams == 0
+		since := c.idle_since
+		c.qmu.unlock()
+		if !is_idle {
+			continue
+		}
+		if !found || since < oldest_since {
+			found = true
+			from = .h3
+			h3_key = k
+			h3_conn = c
+			oldest_since = since
+		}
+	}
+	if !found {
+		return EvictedIdleConn{}
+	}
+	if from == .h2 {
+		t.h2_conns.delete(h2_key)
+		t.h2_dial_id.delete(h2_key)
+		return EvictedIdleConn{
+			h2: h2_conn
+		}
+	}
+	if from == .h3 {
+		t.h3_conns.delete(h3_key)
+		t.h3_dial_id.delete(h3_key)
+		return EvictedIdleConn{
+			h3: h3_conn
+		}
+	}
+	mut list := t.h1_idle[h1_key] or { return EvictedIdleConn{} }
+	victim := list[h1_idx]
+	list.delete(h1_idx)
 	if list.len == 0 {
-		t.h1_idle.delete(oldest_key)
+		t.h1_idle.delete(h1_key)
 	} else {
-		t.h1_idle[oldest_key] = list
+		t.h1_idle[h1_key] = list
 	}
-	return victim
+	return EvictedIdleConn{
+		h1: victim
+	}
 }
 
 // maybe_checkin pools the connection when both the read framing and the
@@ -298,12 +619,21 @@ fn (mut t Transport) maybe_checkin(mut conn H1PooledConn, header Header, reusabl
 // retrying once on a connection that turned out to be stale), dials otherwise,
 // and returns healthy connections to the pool afterwards.
 fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host string, port int, path string, data string, header Header) !Response {
-	$if windows && !no_vschannel ? {
-		if scheme == 'https' {
-			// The SChannel backend keeps its proven one-shot path until SChannel
-			// pooling lands; plain-http pooling below already works on Windows.
-			return req.ssl_do(port, method, host, path, data, header)
-		}
+	key := transport_pool_key(req, scheme, host, port)
+	if scheme == 'https' && req.enable_http3 {
+		// Checked BEFORE enable_http2 and before build_request_headers_opts
+		// below: explicit h3 opt-in wins if a caller somehow sets both, and
+		// h3_round_trip never touches the HTTP/1.1-shaped `raw` string at
+		// all (it builds its own QPACK-encoded field lines), so computing
+		// it first would be pure waste on every h3 request -- and would
+		// print misleading h1-style bytes under -d trace_http_request for
+		// a connection that never actually sends them. No probe/fallback
+		// here at all (unlike h2's own ALPN-probing dial) -- enable_http3's
+		// own doc comment states this is a hard per-request commitment, not
+		// a "try h3, fall back to h2/h1 on failure" negotiation; see
+		// transport_h3.v's own module doc comment for why (UDP has no
+		// fast-fail signal).
+		return t.h3_round_trip(req, key, method, host, port, path, data, header)
 	}
 	raw := req.build_request_headers_opts(method, host, port, path, data, header, false)
 	$if trace_http_request ? {
@@ -311,7 +641,20 @@ fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host
 		eprint(raw)
 		eprintln('')
 	}
-	key := transport_pool_key(req, scheme, host, port)
+	if scheme == 'https' && req.enable_http2 {
+		t.mu.lock()
+		proto := t.key_proto[key] or { 0 }
+		t.mu.unlock()
+		if proto != 1 {
+			// Unknown or known-h2: try the pooled, multiplexed h2 path. It falls
+			// back to the ordinary h1 path itself (and memoizes key_proto[key] = 1)
+			// the first time ALPN turns out not to be h2 for this key — see
+			// transport_h2.v.
+			return t.h2_round_trip(req, key, raw, method, host, port, path, data, header)
+		}
+		// key_proto[key] == 1: this origin is already known http/1.1-only; fall
+		// through to the ordinary pooled path below unchanged.
+	}
 	// A stale pooled connection (closed by the server while idle) fails the
 	// exchange; drain through the pool, then dial fresh.
 	for _ in 0 .. t.max_idle_conns_per_host + 1 {
@@ -367,6 +710,9 @@ fn (mut t Transport) dial_h1_tcp(req &Request, key string, host string, port int
 // connection is not pooled yet; an http/1.1 connection is pooled afterwards
 // like any other.
 fn (mut t Transport) tls_fresh_round_trip(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
+	$if windows && !no_vschannel ? {
+		return t.vschannel_fresh_round_trip(req, key, raw, method, host, port, path, data, header)
+	}
 	alpn := if req.enable_http2 { ['h2', 'http/1.1'] } else { []string{} }
 	mut ssl_conn := ssl.new_ssl_conn(
 		verify:                 req.verify

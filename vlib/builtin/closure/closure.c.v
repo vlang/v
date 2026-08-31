@@ -11,6 +11,8 @@ type ClosureGetDataFn = fn () voidptr
 
 type ClosureInitFn = fn ()
 
+type ClosureDataDropFn = fn (voidptr)
+
 struct ClosurePage {
 mut:
 	next            &ClosurePage = unsafe { nil }
@@ -21,6 +23,7 @@ struct ClosureLiveInfo {
 mut:
 	ctx        voidptr
 	owns_data  bool
+	drop_data  voidptr
 	generation u64
 }
 
@@ -354,11 +357,12 @@ fn closure_is_managed(exec_ptr voidptr) bool {
 	return false
 }
 
-fn closure_live_set(exec_ptr voidptr, data voidptr, owns_data bool) {
+fn closure_live_set(exec_ptr voidptr, data voidptr, owns_data bool, drop_data voidptr) {
 	g_closure.next_generation++
 	g_closure.live[exec_ptr] = ClosureLiveInfo{
 		ctx:        data
 		owns_data:  owns_data
+		drop_data:  drop_data
 		generation: g_closure.next_generation
 	}
 }
@@ -482,6 +486,14 @@ fn closure_release_no_lock(exec_ptr voidptr, generation u64) bool {
 	data := closure_slot_data(exec_ptr)
 	_ := closure_live_delete(exec_ptr)
 	if info.owns_data && !isnil(data) {
+		if !isnil(info.drop_data) {
+			drop_fn := ClosureDataDropFn(info.drop_data)
+			// A user-defined drop can allocate another closure. Run it outside the
+			// runtime mutex after removing this slot from the live map.
+			closure_mtx_unlock_platform()
+			drop_fn(data)
+			closure_mtx_lock_platform()
+		}
 		unsafe { free(data) }
 	}
 	unsafe {
@@ -796,6 +808,12 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 // closure_create_with_data creates closure objects with explicit context ownership(INTERNAL COMPILER USE ONLY).
 @[direct_array_access]
 fn closure_create_with_data(func voidptr, data voidptr, owns_data bool) voidptr {
+	return closure_create_with_data_and_drop(func, data, owns_data, unsafe { nil })
+}
+
+// closure_create_with_data_and_drop creates an owned closure context with type-aware cleanup(INTERNAL COMPILER USE ONLY).
+@[direct_array_access]
+fn closure_create_with_data_and_drop(func voidptr, data voidptr, owns_data bool, drop_data voidptr) voidptr {
 	closure_ensure_initialized()
 	closure_mtx_lock_platform()
 
@@ -837,7 +855,7 @@ fn closure_create_with_data(func voidptr, data voidptr, owns_data bool) voidptr 
 			p[1] = func // Target function to execute
 		}
 	}
-	closure_live_set(curr_closure, data, owns_data)
+	closure_live_set(curr_closure, data, owns_data, drop_data)
 	closure_lifetime_track_no_lock(curr_closure)
 	closure_mtx_unlock_platform()
 

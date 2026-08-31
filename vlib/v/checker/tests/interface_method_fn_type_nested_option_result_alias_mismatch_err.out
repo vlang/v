@@ -1,0 +1,30 @@
+vlib/v/checker/tests/interface_method_fn_type_nested_option_result_alias_mismatch_err.vv:36:7: error: `OptionalIntCallbackProvider` incorrectly implements method `callback` of interface `OptionalCallbackProvider`: expected return type `fn () ?MyInt`
+   34 |
+   35 | fn main() {
+   36 |     _ := OptionalCallbackProvider(OptionalIntCallbackProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   37 |     _ := ResultCallbackProvider(ResultIntCallbackProvider{})
+   38 | }
+Details: main.OptionalCallbackProvider has `fn callback(x main.OptionalCallbackProvider) fn () ?main.MyInt`
+         main.OptionalIntCallbackProvider has `fn callback(_ main.OptionalIntCallbackProvider) fn () ?int`
+vlib/v/checker/tests/interface_method_fn_type_nested_option_result_alias_mismatch_err.vv:36:7: error: `OptionalIntCallbackProvider` does not implement interface `OptionalCallbackProvider`, cannot cast `OptionalIntCallbackProvider` to interface `OptionalCallbackProvider`
+   34 |
+   35 | fn main() {
+   36 |     _ := OptionalCallbackProvider(OptionalIntCallbackProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   37 |     _ := ResultCallbackProvider(ResultIntCallbackProvider{})
+   38 | }
+vlib/v/checker/tests/interface_method_fn_type_nested_option_result_alias_mismatch_err.vv:37:7: error: `ResultIntCallbackProvider` incorrectly implements method `callback` of interface `ResultCallbackProvider`: expected return type `fn () !MyInt`
+   35 | fn main() {
+   36 |     _ := OptionalCallbackProvider(OptionalIntCallbackProvider{})
+   37 |     _ := ResultCallbackProvider(ResultIntCallbackProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   38 | }
+Details: main.ResultCallbackProvider has `fn callback(x main.ResultCallbackProvider) fn () !main.MyInt`
+         main.ResultIntCallbackProvider has `fn callback(_ main.ResultIntCallbackProvider) fn () !int`
+vlib/v/checker/tests/interface_method_fn_type_nested_option_result_alias_mismatch_err.vv:37:7: error: `ResultIntCallbackProvider` does not implement interface `ResultCallbackProvider`, cannot cast `ResultIntCallbackProvider` to interface `ResultCallbackProvider`
+   35 | fn main() {
+   36 |     _ := OptionalCallbackProvider(OptionalIntCallbackProvider{})
+   37 |     _ := ResultCallbackProvider(ResultIntCallbackProvider{})
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   38 | }

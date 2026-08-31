@@ -1,0 +1,15 @@
+import json2 as json
+
+struct DbConfig {
+	host   string
+	dbname string
+	user   string
+}
+
+fn test_decode_error_message_should_have_enough_context_empty() {
+	json.decode[DbConfig]('') or {
+		assert err.msg() == 'failed to decode JSON string'
+		return
+	}
+	assert false
+}

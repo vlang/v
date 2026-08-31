@@ -1,0 +1,38 @@
+type MyInt = int
+
+type OptionalAliasCallback = fn () ?MyInt
+
+type OptionalIntCallback = fn () ?int
+
+interface OptionalCallbackProvider {
+	callback() OptionalAliasCallback
+}
+
+struct OptionalIntCallbackProvider {}
+
+fn (_ OptionalIntCallbackProvider) callback() OptionalIntCallback {
+	return fn () ?int {
+		return 1
+	}
+}
+
+type ResultAliasCallback = fn () !MyInt
+
+type ResultIntCallback = fn () !int
+
+interface ResultCallbackProvider {
+	callback() ResultAliasCallback
+}
+
+struct ResultIntCallbackProvider {}
+
+fn (_ ResultIntCallbackProvider) callback() ResultIntCallback {
+	return fn () !int {
+		return 2
+	}
+}
+
+fn main() {
+	_ := OptionalCallbackProvider(OptionalIntCallbackProvider{})
+	_ := ResultCallbackProvider(ResultIntCallbackProvider{})
+}

@@ -1,9 +1,8 @@
 module yaml
 
-import json
+import json2
 import os
 import strings
-import x.json2
 
 // Null is a simple representation of the YAML `null` value.
 pub struct Null {}
@@ -68,7 +67,7 @@ pub fn parse_text(text string) !Doc {
 }
 
 // decode decodes YAML text into the target type `T`.
-// The generic encode/decode path uses the main `json` module for field parity.
+// The generic encode/decode path uses `json2` for field parity.
 pub fn decode[T](yaml_text string) !T {
 	doc := parse_text(yaml_text)!
 	return doc.decode[T]()
@@ -80,9 +79,9 @@ pub fn decode_file[T](path string) !T {
 }
 
 // encode encodes the value `value` into a YAML string.
-// The generic encode/decode path uses the main `json` module for field parity.
+// The generic encode/decode path uses `json2` for field parity.
 pub fn encode[T](value T) string {
-	json_text := json.encode(value)
+	json_text := json2.encode(value)
 	raw := json2.decode[json2.Any](json_text) or { return '' }
 	return from_json2(raw).to_yaml()
 }
@@ -97,9 +96,9 @@ pub fn encode_file[T](path string, value T) ! {
 // `T`, matching the common "empty config file = use defaults" idiom.
 pub fn (d Doc) decode[T]() !T {
 	if d.root is Null {
-		return json.decode(T, '{}')!
+		return json2.decode[T]('{}')!
 	}
-	return json.decode(T, d.to_json())!
+	return json2.decode[T](d.to_json())!
 }
 
 // to_any converts the YAML document to `yaml.Any`.

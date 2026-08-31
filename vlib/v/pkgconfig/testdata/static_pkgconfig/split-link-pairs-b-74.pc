@@ -1,0 +1,4 @@
+Name: split-link-pairs-b-74
+Description: Second public split linker pair fixture
+Version: 1.0.0
+Libs: -L /issue74/search-b -l issue74_b

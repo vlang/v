@@ -1,0 +1,7 @@
+libdir=/issue74/expanded lib
+
+Name: expanded-space-link-74
+Description: Expanded variable linker boundary fixture
+Version: 1.0.0
+Libs: -L "${libdir}" -l issue74_expanded_space
+Libs.private: "${libdir}/libissue74_expanded_direct.a"

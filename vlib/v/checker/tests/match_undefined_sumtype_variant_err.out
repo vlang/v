@@ -1,0 +1,8 @@
+vlib/v/checker/tests/match_undefined_sumtype_variant_err.vv:6:3: error: `Value` has no variant `Nil`.
+2 possibilities: `int`, `string`.
+    4 |     value := Value(1)
+    5 |     println(match value {
+    6 |         Nil { 'nil' }
+      |         ~~~
+    7 |         else { 'other' }
+    8 |     })

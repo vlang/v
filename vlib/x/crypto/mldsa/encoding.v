@@ -5,7 +5,7 @@
 // Ported to V from Go's crypto/internal/fips140/mldsa.
 module mldsa
 
-import crypto.internal.subtle
+import crypto.subtle
 import crypto.sha3
 
 // algo. 22: pkEncode (s. 7.2)

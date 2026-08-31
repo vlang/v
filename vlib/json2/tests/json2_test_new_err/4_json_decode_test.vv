@@ -1,0 +1,20 @@
+import json2 as json
+
+struct DbConfig {
+	host   string
+	dbname string
+	user   string
+}
+
+fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() {
+	txt := '{
+    "host": "localhost",
+    "dbname": "alex",
+    "user": "alex",
+}'
+	json.decode[DbConfig](txt) or {
+		assert err.msg().contains('    "user": "alex",\n}')
+		return
+	}
+	assert false
+}

@@ -5,7 +5,7 @@ on:
     branches:
       - master
     paths:
-      - 'vlib/x/json2/**' # Trigger on changes in this folder
+      - 'vlib/json2/**' # Trigger on changes in this folder
 
 jobs:
   json-encode-benchmark:
@@ -14,16 +14,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
 
       - name: Build V
         run: make -j4 && ./v symlink
 
       - name: Run V benchmark and save output
-        run: (echo '```txt'; v -prod crun vlib/x/json2/tests/bench.v; echo '```') > vlib/x/json2/tests/bench_out.md
+        run: (echo '```txt'; v -prod crun vlib/json2/tests/bench.v; echo '```') > vlib/json2/tests/bench_out.md
 
       - name: Upload result file
         uses: actions/upload-artifact@v7
         with:
           name: program-output
-          path: vlib/x/json2/tests/bench_out.md
+          path: vlib/json2/tests/bench_out.md

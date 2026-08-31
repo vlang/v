@@ -36,8 +36,11 @@ fn (mut g Gen) write_defer_stmts(scope &ast.Scope, lookup bool, pos token.Pos) {
 
 	prev_inside_defer_generation := g.inside_defer_generation
 	g.inside_defer_generation = true
+	prev_skip_stmt_pos := g.skip_stmt_pos
+	g.skip_stmt_pos = false
 	defer {
 		g.inside_defer_generation = prev_inside_defer_generation
+		g.skip_stmt_pos = prev_skip_stmt_pos
 	}
 	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {

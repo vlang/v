@@ -170,7 +170,7 @@ fn (mut h KvHandler) handle_list(_req &jsonrpc.Request, mut wr jsonrpc.ResponseW
 fn handle_conn(mut conn net.TcpConn, h jsonrpc.Handler) {
 	defer { conn.close() or {} }
 
-	mut log_inter := jsonrpc.LoggingInterceptor{}
+	mut log_inter := &jsonrpc.LoggingInterceptor{}
 	mut inters := jsonrpc.Interceptors{
 		event:            [log_inter.on_event]
 		encoded_request:  [log_inter.on_encoded_request]

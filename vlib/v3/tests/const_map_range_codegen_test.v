@@ -13,7 +13,7 @@ fn tmp_const_map_range_path(name string) string {
 fn build_v3_const_map_range() string {
 	v3_bin := tmp_const_map_range_path('const_map_range')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.execute('${os.quoted_path(vexe)} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -23,7 +23,7 @@ fn run_v3_const_map_range_program(v3_bin string, name string, src string) string
 	bin_path := tmp_const_map_range_path('${name}_bin')
 	os.write_file(src_path, src) or { panic(err) }
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+		os.execute('${os.quoted_path(v3_bin)} -enable-globals ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(os.quoted_path(bin_path))
@@ -36,6 +36,9 @@ fn test_const_map_initializer_and_range_high_bound_review_fixes() {
 	const_map := run_v3_const_map_range_program(v3_bin, 'const_map_initializer',
 		"const m = map[string]int{\n\t'a': 1\n}\n\nfn main() {\n\tprintln(int_str(m['a']))\n}\n")
 	assert const_map == '1'
+	const_array_interp := run_v3_const_map_range_program(v3_bin, 'const_array_interpolation',
+		"const values = [1, 2, 3]\nconst rendered_values = '\${values}'\n\nfn main() {\n\tprintln(rendered_values)\n}\n")
+	assert const_array_interp == '[1, 2, 3]'
 	range_high := run_v3_const_map_range_program(v3_bin, 'range_high_once',
 		"__global calls int\n\nfn next_limit() int {\n\tcalls++\n\treturn 3\n}\n\nfn main() {\n\tmut total := 0\n\tfor i in 0 .. next_limit() {\n\t\ttotal += i\n\t}\n\tprintln(int_str(calls) + ':' + int_str(total))\n}\n")
 	assert range_high == '1:3'

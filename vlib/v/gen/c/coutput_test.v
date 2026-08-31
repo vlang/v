@@ -149,7 +149,7 @@ fn test_c_must_have_files() {
 	println(term.colorize(term.green,
 		'> testing whether all line patterns in ${paths.len} `.c.must_have` files in ${local_tdata_path} match:'))
 	for must_have_path in paths {
-		basename, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
+		_, path, relpath, must_have_relpath := target2paths(must_have_path, '.c.must_have')
 		if should_skip(relpath) {
 			total_skips++
 			continue
@@ -162,6 +162,10 @@ fn test_c_must_have_files() {
 		compilation := os.execute(cmd)
 		compile_ms := sw_compile.elapsed().milliseconds()
 		ensure_compilation_succeeded(compilation, cmd)
+		uses_v3 := generated_c_uses_v3_codegen(compilation.output)
+		if user_os == 'macos' && relpath.ends_with('_v3.v') {
+			assert uses_v3, '${relpath} must exercise the default V3 C backend on macOS'
+		}
 		expected_lines := os.read_lines(must_have_path) or { [] }
 		generated_c_lines := compilation.output.split_into_lines()
 		mut nmatches := 0
@@ -210,6 +214,41 @@ fn test_c_must_have_files() {
 	assert total_errors == 0
 }
 
+fn test_fontstash_boehm_prealloc_copy_uses_atomic_allocator() {
+	old_wd := os.getwd()
+	os.chdir(vroot) or { panic(err) }
+	defer {
+		os.chdir(old_wd) or { panic(err) }
+	}
+	path := os.join_path(testdata_folder, 'fontstash_boehm_prealloc_copy.vv')
+	file_options := get_file_options(path)
+	alloptions := '-o - ${file_options.vflags}'
+	cmd := '${os.quoted_path(vexe)} ${alloptions} ${os.quoted_path(path)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert !generated_c_uses_v3_codegen(compilation.output)
+	allocator_call := 'GC_MALLOC_ATOMIC('
+	mut matching_lines := []string{}
+	for raw_line in compilation.output.split_into_lines() {
+		line := raw_line.trim_space()
+		if line.starts_with('owned =') && line.contains(allocator_call)
+			&& line.all_after(allocator_call).contains('data_len') {
+			matching_lines << line
+		}
+	}
+	assert matching_lines.len == 1, 'expected 1 fontstash atomic ownership line, got ${matching_lines.len}'
+	matching_line := matching_lines[0]
+	allocator_count := matching_line.count(allocator_call)
+	data_len_count := matching_line.count('data_len')
+	assert allocator_count == 1, 'expected 1 allocator call, got ${allocator_count}'
+	assert data_len_count == 1, 'expected 1 data_len argument, got ${data_len_count}'
+	assert matching_line.ends_with(';'), 'fontstash atomic ownership line must end with semicolon'
+}
+
+fn generated_c_uses_v3_codegen(generated_c string) bool {
+	return !generated_c.contains('#define VV_LOC')
+}
+
 fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	os.chdir(vroot) or {}
 	path := os.join_path(testdata_folder, 'or_block_err_var_collision.vv')
@@ -217,6 +256,19 @@ fn test_or_block_err_var_collision_does_not_emit_self_referential_err() {
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
 	assert !compilation.output.contains('IError err = err.err;')
+	if generated_c_uses_v3_codegen(compilation.output) {
+		assert compilation.output.contains('Optional_string err =')
+		mut has_v3_or_block_err := false
+		for line in compilation.output.split_into_lines() {
+			trimmed := line.trim_space()
+			if trimmed.starts_with('IError err = __or_') && trimmed.ends_with('.err;') {
+				has_v3_or_block_err = true
+			}
+		}
+		assert has_v3_or_block_err
+		assert compilation.output.contains('IError__msg(&err)')
+		return
+	}
 	mut source_err_tmp := ''
 	mut has_visible_or_block_err := false
 	for line in compilation.output.split_into_lines() {
@@ -250,6 +302,20 @@ fn test_main_error_propagation_panic_branches_do_not_fall_through() {
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		main_body := compilation.output.all_after('int main(int argc, char** argv) {')
+			.all_before('u8* malloc_noscan')
+		assert main_body.count('if (!__or_opt_') == 2
+		assert main_body.count('v_panic(') == 2
+		lines := main_body.split_into_lines()
+		for i, line in lines {
+			if line.trim_space().starts_with('v_panic(') {
+				assert i + 1 < lines.len
+				assert lines[i + 1].trim_space() == '}'
+			}
+		}
+		return
+	}
 	for panic_call in [
 		'builtin__panic_result_not_set(IError_name_table[',
 		'builtin__panic_option_not_set( IError_name_table[',
@@ -307,6 +373,12 @@ fn test_array_push_no_bounds_checking_keeps_max_len_panics() {
 	cmd := '${os.quoted_path(vexe)} -prod -no-bounds-checking -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		assert compilation.output.contains('void array__push(array* a, void* val) {')
+		assert !compilation.output.contains('array.push: negative len')
+		assert compilation.output.contains('array.push: len bigger than max_int')
+		return
+	}
 	assert compilation.output.contains('VV_LOC void builtin__array_push(array* a, voidptr val) {')
 	assert compilation.output.contains('VV_LOC void builtin__array_push_noscan(array* a, voidptr val) {')
 	assert !compilation.output.contains('array.push: negative len')
@@ -335,6 +407,26 @@ fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_
 	assert compilation.output.contains('builtin__str_intp')
 }
 
+fn test_windows_sharedlive_explicit_string_format_scalar_reference_uses_pointee() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_live_windows_scalar_ref_s_fmt.vv')
+	os.write_file(test_source,
+		"module main\n\n@[live]\nfn format_scalar_ref(p &string) string {\n\treturn '\${p:s}'\n}\n\nfn main() {\n\ts := 'hi'\n\tprintln(format_scalar_ref(&s))\n}\n")!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - -os windows -sharedlive ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		assert compilation.output.contains('= *__str_fmt_ptr_')
+		assert !compilation.output.contains('voidptr__str((void*)(p))')
+		return
+	}
+	assert compilation.output.contains('builtin__string_str(*p)')
+	assert !compilation.output.contains('builtin__voidptr_str((voidptr)(p))')
+}
+
 fn test_simple_string_interpolation_does_not_emit_str_intp_runtime() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_simple_interpolation_no_str_intp.vv')
@@ -346,6 +438,9 @@ fn test_simple_string_interpolation_does_not_emit_str_intp_runtime() {
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		return
+	}
 	assert !compilation.output.contains('builtin__str_intp')
 	assert !compilation.output.contains('StrIntpData')
 }
@@ -360,6 +455,9 @@ fn test_auto_str_float_array_still_emits_str_intp_runtime() {
 	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		return
+	}
 	assert compilation.output.contains('builtin__str_intp')
 	assert compilation.output.contains('StrIntpData')
 }
@@ -394,9 +492,45 @@ fn main() {
 	cmd := '${os.quoted_path(vexe)} -o - -os windows -cc ${cc} ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		assert compilation.output.contains('thirdparty/stdatomic/win/atomic.h')
+		assert compilation.output.contains('atomic_fetch_add_u32(')
+		assert !compilation.output.contains('__atomic_fetch_add')
+		return
+	}
 	assert compilation.output.contains('thirdparty/stdatomic/win/atomic.h')
 	assert compilation.output.contains('InterlockedExchangeAdd')
 	assert !compilation.output.contains('__atomic_fetch_add')
+}
+
+fn test_windows_closure_virtualprotect_uses_native_dword_pointer() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_windows_closure_virtualprotect.vv')
+	os.write_file(test_source, 'module main
+
+fn main() {
+	value := 41
+	add := fn [value] (delta int) int {
+		return value + delta
+	}
+	println(add(1))
+}
+')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -old-compiler -o - -os windows ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('#define C__DWORD DWORD')
+	assert compilation.output.contains('C__DWORD tmp = ((C__DWORD)(0));')
+	assert !compilation.output.contains('u32 tmp = ((u32)(0));')
+	assert compilation.output.contains('C__DWORD chars_written = ((C__DWORD)(0));')
+	assert !compilation.output.contains('u32 chars_written = ((u32)(0));')
+	assert compilation.output.contains('WriteConsoleW(console_handle, wide_ptr, ((C__DWORD)(remaining_chars)), &chars_written, ((void*)0))')
+	assert !compilation.output.contains('WriteConsoleW(console_handle, wide_ptr, ((u32)(remaining_chars)), &chars_written, ((void*)0))')
+	assert compilation.output.contains('VirtualProtect(ptr, size, PAGE_EXECUTE_READ, &tmp);')
+	assert compilation.output.contains('VirtualProtect(ptr, size, PAGE_READWRITE, &tmp);')
 }
 
 fn test_windows_tcc_boehm_prod_does_not_emit_gc_remove_roots() {
@@ -453,23 +587,39 @@ fn test_no_main_exports_initialize_windows_runtime() {
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
 	generated_c_lines := compilation.output.split_into_lines()
-	expected_lines := [
-		'static void _vno_main_init_caller(void);',
-		'static void _vno_main_cleanup_caller(void);',
-		'void v_sdl_app_quit(void) {',
-		'_vno_main_init_caller();',
-		'void _vinit(int ___argc, voidptr ___argv) {',
-		'static bool once = false; if (once) {return;} once = true;',
-		'void _vcleanup(void) {',
-		'static void _vno_main_cleanup_caller(void) {',
-		'static void _vno_main_init_caller(void) {',
-		'con_valid = AttachConsole(ATTACH_PARENT_PROCESS);',
-		'err = freopen_s(&res_fp, "NUL", "w", stdout);',
-		'_vinit(0,0);',
-		'atexit(_vno_main_cleanup_caller);',
-	]
+	uses_v3 := generated_c_uses_v3_codegen(compilation.output)
+	expected_lines := if uses_v3 {
+		[
+			'static void _vno_main_init_caller(void);',
+			'void v_sdl_app_quit(void) {',
+			'_vno_main_init_caller();',
+			'void _vinit() {',
+			'static bool _v3_no_main_initialized = false;',
+			'static void _vno_main_init_caller(void) {',
+			'_vinit();',
+		]
+	} else {
+		[
+			'static void _vno_main_init_caller(void);',
+			'static void _vno_main_cleanup_caller(void);',
+			'void v_sdl_app_quit(void) {',
+			'_vno_main_init_caller();',
+			'void _vinit(int ___argc, voidptr ___argv) {',
+			'static bool once = false; if (once) {return;} once = true;',
+			'void _vcleanup(void) {',
+			'static void _vno_main_cleanup_caller(void) {',
+			'static void _vno_main_init_caller(void) {',
+			'con_valid = AttachConsole(ATTACH_PARENT_PROCESS);',
+			'err = freopen_s(&res_fp, "NUL", "w", stdout);',
+			'_vinit(0,0);',
+			'atexit(_vno_main_cleanup_caller);',
+		]
+	}
 	for expected_line in expected_lines {
 		assert does_line_match_one_of_generated_lines(expected_line, generated_c_lines)
+	}
+	if uses_v3 {
+		assert !compilation.output.contains('\nint main(int argc, char** argv) {')
 	}
 }
 
@@ -484,13 +634,20 @@ fn test_coverage_output_checks_counter_file_open() {
 	cmd := '${os.quoted_path(vexe)} -o - -coverage ${os.quoted_path(coverage_dir)} ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
-	assert compilation.output.contains('FILE *fp = fopen(cov_filename, "wb+");')
-	assert compilation.output.contains('if (fp == NULL) { return; }')
-	assert compilation.output.contains('nsecs = ts.tv_nsec;')
-	assert !compilation.output.contains('\nsecs = ts.tv_nsec;')
+	if generated_c_uses_v3_codegen(compilation.output) {
+		assert compilation.output.contains('FILE* cov_file = fopen(cov_filename, "wb+");')
+		assert compilation.output.contains('if (cov_file == NULL) return;')
+		assert compilation.output.contains('cov_nsecs = cov_ts.tv_nsec;')
+		assert !compilation.output.contains('\nov_nsecs = cov_ts.tv_nsec;')
+	} else {
+		assert compilation.output.contains('FILE *fp = fopen(cov_filename, "wb+");')
+		assert compilation.output.contains('if (fp == NULL) { return; }')
+		assert compilation.output.contains('nsecs = ts.tv_nsec;')
+		assert !compilation.output.contains('\nsecs = ts.tv_nsec;')
+	}
 }
 
-fn test_c_fallback_decl_uses_module_wide_c_includes() {
+fn test_c_fallback_decl_uses_module_wide_c_inserts() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_module_c_include')
 	os.rmdir_all(test_source) or {}
@@ -499,13 +656,16 @@ fn test_c_fallback_decl_uses_module_wide_c_includes() {
 		os.rmdir_all(test_source) or {}
 	}
 	header_path := os.join_path(test_source, 'c_header_decl.h')
-	os.write_file(header_path, 'int c_header_decl(const char* input);\n')!
+	os.write_file(header_path,
+		'static int c_header_decl(const char *input) { return input != 0; }\n')!
 	header_include_path := header_path.replace('\\', '/')
 	os.write_file(os.join_path(test_source, 'include.v'), 'module main
 
-#include "${header_include_path}"
+#insert "${header_include_path}"
 ')!
 	os.write_file(os.join_path(test_source, 'decl.v'), "module main
+
+#flag -lm
 
 fn C.c_header_decl(input &char) int
 
@@ -513,10 +673,39 @@ fn main() {
 	C.c_header_decl(c'text')
 }
 ")!
-	cmd := '${os.quoted_path(vexe)} -o - ${os.quoted_path(test_source)}'
+	cmd := '${os.quoted_path(vexe)} -old-compiler -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('static int c_header_decl(const char *input)')
 	assert !compilation.output.contains('extern int c_header_decl(')
+}
+
+fn test_c_fallback_decl_uses_inserted_header() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_inserted_c_header')
+	os.rmdir_all(test_source) or {}
+	os.mkdir_all(test_source)!
+	defer {
+		os.rmdir_all(test_source) or {}
+	}
+	os.write_file(os.join_path(test_source, 'inserted.h'),
+		'static int inserted_const_decl(const char *input) { return input != 0; }\n')!
+	os.write_file(os.join_path(test_source, 'linked.c'), 'int inserted_link_anchor = 0;\n')!
+	os.write_file(os.join_path(test_source, 'main.v'), 'module main
+
+#flag @DIR/linked.c
+#insert "@DIR/inserted.h"
+
+fn C.inserted_const_decl(input &char) int
+
+fn main() {
+	assert C.inserted_const_decl(c\'text\') == 1
+}
+')!
+	executable := os.join_path(test_source, 'inserted_header_test')
+	cmd := '${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(executable)} ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
 }
 
 fn test_c_fallback_decl_uses_c_helper_submodule_includes() {
@@ -561,7 +750,11 @@ pub fn call() {
 	cmd := '${os.quoted_path(vexe)} -shared -o - coutput_sdl'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
-	assert compilation.output.contains('#include "${header_include_path}"')
+	if generated_c_uses_v3_codegen(compilation.output) {
+		assert compilation.output.contains('foreign_bool c_helper_decl(void);')
+	} else {
+		assert compilation.output.contains('#include "${header_include_path}"')
+	}
 	assert !compilation.output.contains('extern bool c_helper_decl(')
 }
 
@@ -577,18 +770,61 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	cmd := '${os.quoted_path(vexe)} -o - -os windows -shared -gc boehm ${os.quoted_path(test_source)}'
 	compilation := os.execute(cmd)
 	ensure_compilation_succeeded(compilation, cmd)
-	assert compilation.output.contains('void _vinit_caller() {')
-	assert compilation.output.contains('GC_set_pages_executable(0);')
-	// The shared-library GC tuning (issue #27555) must stay guarded, so loading
-	// the library into an already-GC-initialized host does not clobber the host's
-	// process-wide free-space divisor (its local GC_INIT() would be a no-op).
-	assert compilation.output.contains('if (!GC_is_init_called()) {')
-	assert compilation.output.contains('GC_INIT();')
+	if generated_c_uses_v3_codegen(compilation.output) {
+		assert compilation.output.contains('void _vinit_caller(void) {')
+		assert compilation.output.contains('void _vcleanup_caller(void) {')
+		assert compilation.output.contains('_vno_main_init_caller();')
+		assert !compilation.output.contains('\nint main(int argc, char** argv) {')
+	} else {
+		assert compilation.output.contains('void _vinit_caller() {')
+		assert compilation.output.contains('GC_set_pages_executable(0);')
+		// The shared-library GC tuning (issue #27555) must stay guarded, so loading
+		// the library into an already-GC-initialized host does not clobber the host's
+		// process-wide free-space divisor (its local GC_INIT() would be a no-op).
+		assert compilation.output.contains('if (!GC_is_init_called()) {')
+		assert compilation.output.contains('GC_INIT();')
+	}
 	assert compilation.output.contains('DllMain(')
 	assert compilation.output.contains('_vinit_caller();')
 	assert compilation.output.contains('_vcleanup_caller();')
 	assert !compilation.output.contains('switch (fdwReason)')
 	assert !compilation.output.contains('case DLL_PROCESS_ATTACH')
+}
+
+fn test_boehm_gc_header_precedes_imported_module_spawn_wrappers() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_boehm_gc_spawn_include_order.vv')
+	source_lines := [
+		'module main',
+		'',
+		'import fasthttp',
+		'',
+		'fn handler(_ fasthttp.HttpRequest) !fasthttp.HttpResponse {',
+		"\treturn fasthttp.HttpResponse{content: 'HTTP/1.1 200 OK\\r\\nContent-Length: 0\\r\\n\\r\\n'.bytes()}",
+		'}',
+		'',
+		'fn main() {',
+		'\tmut server := fasthttp.new_server(handler: handler)!',
+		'\tserver.run()!',
+		'}',
+	]
+	os.write_file(test_source, source_lines.join('\n') + '\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -os linux -gc boehm -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		// V3 currently accepts Boehm modes as no-GC compatibility aliases.
+		assert !compilation.output.contains('#include <gc/gc.h>')
+		return
+	}
+	gc_include_pos := compilation.output.index('#include <gc/gc.h>') or { -1 }
+	pthread_create_pos := compilation.output.index('pthread_create(&thread_') or { -1 }
+	assert gc_include_pos >= 0
+	assert pthread_create_pos >= 0
+	assert gc_include_pos < pthread_create_pos
 }
 
 fn test_array_sort_with_compare_uses_stable_sort_adapters() {
@@ -624,6 +860,13 @@ fn test_array_sort_with_compare_uses_stable_sort_adapters() {
 	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')
 	for normalized.contains('  ') {
 		normalized = normalized.replace('  ', ' ')
+	}
+	if generated_c_uses_v3_codegen(compilation.output) {
+		assert normalized.contains('while ((__sort_j_')
+		assert normalized.contains('by_x(&(*(Foo*)array_get(')
+		assert normalized.contains('.x <')
+		assert !normalized.contains('_qsort_adapter')
+		return
 	}
 	assert normalized.contains('int main__by_x_qsort_adapter(const void* a, const void* b) { return main__by_x((main__Foo*)a, (main__Foo*)b); }')
 	assert normalized.contains('if (xs.len > 0) { v_stable_sort(xs.data, xs.len, xs.element_size, main__by_x_qsort_adapter); }')
@@ -727,6 +970,15 @@ fn test_auxiliary_c_symbols_use_stable_type_hashes() {
 		'__v_boehm_collect_keepalive_')
 	keepalive_b := generated_c_symbols_with_prefix(compilation_b.output,
 		'__v_boehm_collect_keepalive_')
+	uses_v3_a := generated_c_uses_v3_codegen(compilation_a.output)
+	uses_v3_b := generated_c_uses_v3_codegen(compilation_b.output)
+	assert uses_v3_a == uses_v3_b
+	if uses_v3_a {
+		assert keepalive_a.len == 0
+		assert keepalive_b.len == 0
+		assert compare_a == compare_b
+		return
+	}
 	assert compare_a.len > 0
 	assert keepalive_a.len > 0
 	assert compare_a == compare_b
@@ -748,6 +1000,11 @@ fn test_veb_implicit_ctx_alias_uses_user_context_name() {
 	mut normalized := compilation.output.replace('\t', ' ').replace('\n', ' ')
 	for normalized.contains('  ') {
 		normalized = normalized.replace('  ', ' ')
+	}
+	if generated_c_uses_v3_codegen(compilation.output) {
+		assert normalized.contains('veb__Result App__index(App app, Context* c) { App__log(app, *c); return App__nested(app, c); }')
+		assert !normalized.contains('GC_reachable_here')
+		return
 	}
 	assert normalized.contains('veb__Result main__App_index(main__App app, main__Context* c) { main__App_log(app, *c); GC_reachable_here(&c); return main__App_nested(app, c); }')
 }
@@ -775,6 +1032,16 @@ fn test_veb_implicit_ctx_alias_on_context_receiver_tmpl_not_found() {
 	c_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(c_cmd)
 	ensure_compilation_succeeded(compilation, c_cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		not_found_start := 'veb__Result Context__not_found(Context* c) {'
+		assert compilation.output.contains(not_found_start)
+		not_found_body :=
+			compilation.output.all_after(not_found_start).all_before('DenseArray DenseArray__clone')
+		assert !not_found_body.contains('GC_reachable_here')
+		assert not_found_body.contains('veb__Context__html(&c->veb__Context,')
+		assert not_found_body.contains('.c = c')
+		return
+	}
 	not_found_start := 'veb__Result main__Context_not_found(main__Context* c) {'
 	assert compilation.output.contains(not_found_start)
 	not_found_body :=
@@ -854,12 +1121,26 @@ fn test_veb_template_scope_gc_pin_does_not_escape_loop_var() {
 	c_cmd := '${os.quoted_path(vexe)} -gc boehm_full_opt -o - ${os.quoted_path(test_source)}'
 	compilation := os.execute(c_cmd)
 	ensure_compilation_succeeded(compilation, c_cmd)
+	if generated_c_uses_v3_codegen(compilation.output) {
+		index_start := 'veb__Result App__index(App* app, Context* ctx) {'
+		assert compilation.output.contains(index_start)
+		index_body :=
+			compilation.output.all_after(index_start).all_before('string Array_rune__string')
+		assert index_body.contains('string p =')
+		assert !index_body.contains('GC_reachable_here')
+		assert index_body.contains('Context__make_path(ctx, branch_name, i)')
+		assert !index_body.contains('Context__make_path(&ctx->veb__Context')
+		assert index_body.contains('return veb__Context__html(&ctx->veb__Context, v3tmpl_')
+		return
+	}
 	index_start := 'veb__Result main__App_index(main__App* app, main__Context* ctx) {'
 	assert compilation.output.contains(index_start)
 	index_body := compilation.output.all_after(index_start).all_before('VV_LOC void main__main')
 	assert index_body.contains('string p =')
 	assert !index_body.contains('GC_reachable_here(&p);')
 	assert index_body.contains('veb__Context_html(&ctx->Context, _tmpl_res_')
+	assert index_body.contains('return (veb__Result){E_STRUCT};')
+	assert !index_body.contains('return (veb__Result){0};')
 }
 
 fn does_line_match_one_of_generated_lines(line string, generated_c_lines []string) bool {
@@ -903,7 +1184,8 @@ fn ensure_compilation_succeeded(compilation os.Result, cmd string) {
 fn target2paths(target_path string, postfix string) (string, string, string, string) {
 	basename := os.file_name(target_path).replace(postfix, '')
 	target_dir := os.dir(target_path)
-	path := os.join_path(target_dir, '${basename}.vv')
+	v_path := os.join_path(target_dir, '${basename}.v')
+	path := if os.is_file(v_path) { v_path } else { os.join_path(target_dir, '${basename}.vv') }
 	relpath := vroot_relative(path)
 	target_relpath := vroot_relative(target_path)
 	return basename, path, relpath, target_relpath

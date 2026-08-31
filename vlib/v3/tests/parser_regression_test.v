@@ -25,6 +25,44 @@ fn parse_parser_regression_sources(name string, sources []string) &flat.FlatAst 
 	return p.a
 }
 
+fn parse_parser_regression_diagnostics(name string, source string) []parser.Diagnostic {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(src)
+	return p.diagnostics
+}
+
+fn parse_parser_regression_backend_diagnostics(name string, source string, backend string) []parser.Diagnostic {
+	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src, source) or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.backend = backend
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(src)
+	return p.diagnostics
+}
+
+fn test_assert_message_requires_a_comma() {
+	diagnostics := parse_parser_regression_diagnostics('assert_message_comma',
+		"fn main() {\n\tassert false 'bye'\n}\n")
+	assert diagnostics.len == 1, diagnostics.str()
+	assert diagnostics[0].message == 'unexpected string `bye`, expecting `,`', diagnostics.str()
+}
+
+fn test_vv_input_is_counted_as_v_source() {
+	path := os.join_path(os.temp_dir(), 'v3_parser_source_count_${os.getpid()}.vv')
+	os.write_file(path, 'fn main() {}\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_into(path)
+	assert p.parsed_v_files == 1
+	assert p.parsed_v_file_paths == [path]
+}
+
 // interface_method_param_types supports interface method param types handling for v3 tests.
 fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []string {
 	for node in a.nodes {
@@ -66,6 +104,53 @@ fn fn_decl_param_pairs(a &flat.FlatAst, kind flat.NodeKind, name string) []strin
 	return []string{}
 }
 
+fn struct_init_values(a &flat.FlatAst) []string {
+	mut values := []string{}
+	for node in a.nodes {
+		if node.kind == .struct_init {
+			values << node.value
+		}
+	}
+	return values
+}
+
+fn cast_expr_values(a &flat.FlatAst) []string {
+	mut values := []string{}
+	for node in a.nodes {
+		if node.kind == .cast_expr {
+			values << node.value
+		}
+	}
+	return values
+}
+
+fn selector_values(a &flat.FlatAst) []string {
+	mut values := []string{}
+	for node in a.nodes {
+		if node.kind == .selector {
+			values << node.value
+		}
+	}
+	return values
+}
+
+fn has_addressed_index_base(a &flat.FlatAst, base_name string) bool {
+	for node in a.nodes {
+		if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+			continue
+		}
+		index_node := a.child_node(&node, 0)
+		if index_node.kind != .index || index_node.children_count == 0 {
+			continue
+		}
+		base := a.child_node(index_node, 0)
+		if base.kind == .ident && base.value == base_name {
+			return true
+		}
+	}
+	return false
+}
+
 // test_interface_method_generic_type_only_param_is_not_parsed_as_name
 // validates this v3 regression case.
 fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
@@ -75,6 +160,275 @@ fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 	assert interface_method_param_types(a, 'Sink', 'append') == ['[]int']
 	assert interface_method_param_types(a, 'Sink', 'visit') == ['&Node']
 	assert interface_method_param_types(a, 'Sink', 'read') == ['[max_len]u8']
+}
+
+fn test_interface_method_keyword_named_param_makes_progress() {
+	a := parse_parser_regression_source('interface_keyword_named_param',
+		'interface Commands {\n\tfilter(module string) string\n\tafter(value int) int\n}\n')
+	assert fn_decl_param_pairs(a, .interface_field, 'filter') == ['module:string']
+	assert fn_decl_param_pairs(a, .interface_field, 'after') == ['value:int']
+}
+
+fn test_interface_method_type_head_keyword_param_name_is_disambiguated() {
+	a := parse_parser_regression_source('interface_type_head_keyword_param_name',
+		'struct Foo {}\ninterface Commands {\n\tuse(struct Foo)\n\tmerge(union Foo)\n\tcallback(fn string)\n\tinspect(typeof string)\n\tlookup(map string)\n\tinline_struct(struct { value int })\n\tinline_union(union { value int })\n\tfunction_type(fn (string) int)\n\treflected_type(typeof(string))\n\tmap_type(map[string]int)\n\tchannel_type(chan string)\n}\n')
+	assert fn_decl_param_pairs(a, .interface_field, 'use') == ['struct:Foo']
+	assert fn_decl_param_pairs(a, .interface_field, 'merge') == ['union:Foo']
+	assert fn_decl_param_pairs(a, .interface_field, 'callback') == ['fn:string']
+	assert fn_decl_param_pairs(a, .interface_field, 'inspect') == ['typeof:string']
+	assert fn_decl_param_pairs(a, .interface_field, 'lookup') == ['map:string']
+	struct_params := fn_decl_param_pairs(a, .interface_field, 'inline_struct')
+	assert struct_params.len == 1
+	assert struct_params[0].starts_with(':AnonStruct_')
+	union_params := fn_decl_param_pairs(a, .interface_field, 'inline_union')
+	assert union_params.len == 1
+	assert union_params[0].starts_with(':AnonUnion_')
+	assert fn_decl_param_pairs(a, .interface_field, 'function_type') == [
+		':fn(string) int',
+	]
+	assert fn_decl_param_pairs(a, .interface_field, 'reflected_type') == [
+		':typeof(string)',
+	]
+	assert fn_decl_param_pairs(a, .interface_field, 'map_type') == [':map[string]int']
+	assert fn_decl_param_pairs(a, .interface_field, 'channel_type') == [
+		':chan string',
+	]
+}
+
+fn test_lifetime_generic_suffixes_are_erased() {
+	a := parse_parser_regression_source('lifetime_generic_suffixes',
+		'struct IgnoreMatch {}\nstruct Match[T] {}\n\ninterface Matcher {\n\tmatched[^a](item Match[IgnoreMatch[^a]]) IgnoreMatch[^a]\n}\n\nfn use(item Match[IgnoreMatch[^a]]) {}\nfn after() int {\n\treturn 1\n}\n')
+	assert interface_method_param_types(a, 'Matcher', 'matched') == [
+		'Match[IgnoreMatch]',
+	]
+	assert fn_decl_param_pairs(a, .fn_decl, 'use') == ['item:Match[IgnoreMatch]']
+	assert fn_decl_param_pairs(a, .fn_decl, 'after') == []
+}
+
+fn test_lifetime_generic_struct_init_suffixes_are_erased() {
+	a := parse_parser_regression_source('lifetime_generic_struct_init_suffixes',
+		'struct Candidate {}\nstruct Slot[T] {}\n\nfn make[^a]() {\n\t_ := Candidate[^a]{}\n\t_ := Slot[int, ^a]{}\n}\n')
+	assert struct_init_values(a) == ['Candidate', 'Slot[int]']
+}
+
+fn test_for_in_container_generic_index_keeps_loop_body() {
+	a := parse_parser_regression_source('for_in_generic_index_keeps_body',
+		'const Foo = [1, 2]\n\nfn main() {\n\tfor x in Foo[int] {\n\t\tprintln(x)\n\t}\n}\n')
+	assert 'Foo[int]' !in struct_init_values(a)
+	mut saw_for_in := false
+	for node in a.nodes {
+		if node.kind == .for_in_stmt {
+			saw_for_in = true
+			assert int(node.children_count) > 3
+		}
+	}
+	assert saw_for_in
+}
+
+fn test_address_of_capitalized_index_keeps_postfix_on_operand() {
+	a := parse_parser_regression_source('address_capitalized_index_operand',
+		'const Foo = [1, 2]\n\nfn main() {\n\tp := &Foo[0]\n\t_ = p\n}\n')
+	assert has_addressed_index_base(a, 'Foo')
+}
+
+fn test_address_expression_inside_index_is_not_parsed_as_a_type() {
+	a := parse_parser_regression_source('address_expression_inside_index',
+		'fn main() {\n\tmut values := map[voidptr]string{}\n\tvalue := 5\n\tvalues[&value] = "value"\n\t_ = values[&value]\n}\n')
+	mut addressed_values := 0
+	for node in a.nodes {
+		if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+			continue
+		}
+		child := a.child_node(&node, 0)
+		if child.kind == .ident && child.value == 'value' {
+			addressed_values++
+		}
+	}
+	assert addressed_values == 2
+}
+
+fn test_isreftype_qualified_type_names_parse_as_types() {
+	a := parse_parser_regression_source('isreftype_qualified_type_names',
+		'module main\n\nfn main() {\n\t_ = isreftype(foo.Bar)\n\t_ = isreftype(&foo.Bar)\n}\n')
+	assert 'Bar' !in selector_values(a)
+	mut type_args := []string{}
+	for node in a.nodes {
+		if node.kind == .sizeof_expr {
+			type_args << node.value
+		}
+	}
+	assert type_args == ['foo.Bar', '&foo.Bar']
+}
+
+fn test_isreftype_shared_local_parses_as_expression() {
+	a := parse_parser_regression_source('isreftype_shared_local_expression', 'module main\n\nfn main() {\n\tshared := 1\n\t_ = isreftype(shared)\n}\n')
+	mut saw_shared_argument := false
+	for node in a.nodes {
+		if node.kind != .call || node.children_count != 2 {
+			continue
+		}
+		callee := a.child_node(&node, 0)
+		if callee.kind != .ident || callee.value != '__v3_isreftype' {
+			continue
+		}
+		argument := a.child_node(&node, 1)
+		saw_shared_argument = argument.kind == .ident && argument.value == 'shared'
+	}
+	assert saw_shared_argument
+}
+
+fn test_shared_local_index_parses_as_expression() {
+	a := parse_parser_regression_source('shared_local_index_expression', 'fn main() {\n\titems := [10, 20]\n\tshared := 1\n\t_ = items[shared]\n}\n')
+	mut saw_shared_index := false
+	for node in a.nodes {
+		if node.kind != .index || node.children_count != 2 {
+			continue
+		}
+		base := a.child_node(&node, 0)
+		index := a.child_node(&node, 1)
+		if base.kind == .ident && base.value == 'items' && index.kind == .ident && index.value == 'shared' {
+			saw_shared_index = true
+		}
+	}
+	assert saw_shared_index
+}
+
+fn test_or_block_inside_index_stays_in_index_expression() {
+	a := parse_parser_regression_source('or_block_inside_index', 'fn idx() ?int {
+	return none
+}
+
+fn run() int {
+	mut xs := [0]
+	xs[idx() or { return 7 }] = 1
+	return xs[0]
+}
+')
+	mut saw_index_assign := false
+	for node in a.nodes {
+		if node.kind != .index_assign || node.children_count < 2 {
+			continue
+		}
+		index := a.child_node(&node, 0)
+		if index.kind == .index && index.children_count > 1
+			&& a.child_node(index, 1).kind == .or_expr {
+			saw_index_assign = true
+		}
+	}
+	assert saw_index_assign
+}
+
+fn test_dollar_prefixed_pseudo_functions_are_accepted() {
+	diagnostics := parse_parser_regression_diagnostics('dollar_pseudo_functions',
+		'struct Item {\n\tvalue int\n}\n\nfn main() {\n\tx := Item{}\n\t_ = $sizeof(int)\n\t_ = $typeof(x)\n\t_ = $isreftype(x)\n\t_ = $__offsetof(Item, value)\n\t_ = $dump(x)\n}\n')
+	assert diagnostics.len == 0, '${diagnostics}'
+}
+
+fn test_res_is_rejected_outside_the_active_defer_body() {
+	outside := parse_parser_regression_diagnostics('res_outside_defer',
+		'fn value() int {\n\treturn $res()\n}\n')
+	assert outside.any(it.message.contains('`res` can only be used in defer blocks')), '${outside}'
+	nested_fn := parse_parser_regression_diagnostics('res_in_nested_fn_inside_defer',
+		'fn value() int {\n\tdefer {\n\t\tcallback := fn () int {\n\t\t\treturn $res()\n\t\t}\n\t\t_ = callback\n\t}\n\treturn 1\n}\n')
+	assert nested_fn.any(it.message.contains('`res` can only be used in defer blocks')), '${nested_fn}'
+	no_arg_lambda := parse_parser_regression_diagnostics('res_in_no_arg_lambda_inside_defer',
+		'fn consume(callback fn () int) {\n\t_ = callback\n}\n\nfn value() int {\n\tdefer {\n\t\tconsume(|| $res())\n\t}\n\treturn 1\n}\n')
+	assert no_arg_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${no_arg_lambda}'
+
+	pipe_lambda := parse_parser_regression_diagnostics('res_in_pipe_lambda_inside_defer',
+		'fn consume(callback fn (int) int) {\n\t_ = callback\n}\n\nfn value() int {\n\tdefer {\n\t\tconsume(|x| $res())\n\t}\n\treturn 1\n}\n')
+	assert pipe_lambda.any(it.message.contains('`res` can only be used in defer blocks')), '${pipe_lambda}'
+}
+
+fn test_res_is_restricted_to_function_exit_defers() {
+	nested_block := parse_parser_regression_diagnostics('res_in_nested_scoped_defer',
+		'fn value() int {\n\t{\n\t\tdefer {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')
+	assert nested_block.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${nested_block}'
+
+	loop := parse_parser_regression_diagnostics('res_in_loop_scoped_defer',
+		'fn value() int {\n\tfor _ in 0 .. 1 {\n\t\tdefer {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')
+	assert loop.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${loop}'
+
+	direct := parse_parser_regression_diagnostics('res_in_direct_scoped_defer',
+		'fn value() int {\n\tdefer {\n\t\tprintln($res())\n\t}\n\treturn 7\n}\n')
+	assert !direct.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${direct}'
+
+	explicit_function := parse_parser_regression_diagnostics('res_in_explicit_function_defer',
+		'fn value() int {\n\t{\n\t\tdefer(fn) {\n\t\t\tprintln($res())\n\t\t}\n\t}\n\treturn 7\n}\n')
+	assert !explicit_function.any(it.message.contains('`res` can only be used in function-exit defer blocks')), '${explicit_function}'
+}
+
+fn test_res_uses_a_dedicated_node_and_rejects_trailing_argument_tokens() {
+	valid := parse_parser_regression_source('res_dedicated_node',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(0)\n\t}\n\treturn 1, 2\n}\n')
+	result_nodes := valid.nodes.filter(it.kind == .defer_result)
+	assert result_nodes.len == 1, '${result_nodes}'
+	assert result_nodes[0].value == '0'
+	assert !valid.nodes.any(it.kind == .ident && it.value == '__v3_defer_result')
+
+	max_index := parse_parser_regression_source('res_max_int_index',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(2147483647)\n\t}\n\treturn 1, 2\n}\n')
+	max_index_nodes := max_index.nodes.filter(it.kind == .defer_result)
+	assert max_index_nodes.len == 1, '${max_index_nodes}'
+	assert max_index_nodes[0].value == '2147483647'
+
+	overflow := parse_parser_regression_diagnostics('res_index_overflows_int',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(4294967296)\n\t}\n\treturn 1, 2\n}\n')
+	assert overflow.any(it.message.contains('`res` index must be a non-negative integer literal')), '${overflow}'
+
+	trailing := parse_parser_regression_diagnostics('res_trailing_argument_tokens',
+		'fn value() (int, int) {\n\tdefer {\n\t\t_ := $res(0 + 1)\n\t}\n\treturn 1, 2\n}\n')
+	assert trailing.any(it.message.contains('expected `)` immediately after the `$res` index')), '${trailing}'
+
+	bare := parse_parser_regression_diagnostics('res_requires_parentheses',
+		'fn value() int {\n\tdefer {\n\t\t_ := $res\n\t}\n\treturn 1\n}\n')
+	assert bare.any(it.message.contains('expected `(` after `$res`')), '${bare}'
+}
+
+fn test_defer_result_backend_rejection_is_not_parser_level() {
+	source := 'fn specialized[T]() int {
+	defer {
+		$if T is int {
+			assert $res() == 1
+		}
+	}
+	return 1
+}
+
+fn main() {
+	assert specialized[string]() == 1
+}
+'
+	for backend in ['arm64', 'eval', 'wasm'] {
+		diagnostics := parse_parser_regression_backend_diagnostics('deferred_res_${backend}',
+			source, backend)
+		assert !diagnostics.any(it.message.contains('is not supported by the V3 ${backend} backend')), '${diagnostics}'
+	}
+}
+
+fn test_memory_only_inline_assembly_is_preserved_for_c_lowering() {
+	a := parse_parser_regression_source('asm_memory_barrier',
+		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t\t;\n\t\t;\n\t\tmemory\n\t}\n}\n')
+	asm_nodes := a.nodes.filter(it.kind == .asm_stmt)
+	assert asm_nodes.len == 1
+	assert asm_nodes[0].value.contains('volatile amd64')
+	assert asm_nodes[0].value.contains('memory')
+}
+
+fn test_c_pointer_cast_selector_parses_cast_before_selector() {
+	a := parse_parser_regression_source('c_pointer_cast_selector', 'module main
+
+@[typedef]
+struct C.log__Logger {
+mut:
+	_object voidptr
+}
+
+fn object(logger &C.log__Logger) voidptr {
+	return &C.log__Logger(logger)._object
+}
+')
+	assert '&C.log__Logger' in cast_expr_values(a)
 }
 
 fn test_c_function_anonymous_params_are_parsed_as_types() {
@@ -161,6 +515,33 @@ fn test_sql_identifier_calls_are_not_parsed_as_sql_expr() {
 	assert call_count == 1
 }
 
+fn test_statement_match_trailing_or_is_preserved() {
+	a := parse_parser_regression_source('match_trailing_or_stmt',
+		'fn f() !int {\n\treturn 1\n}\n\nfn main() {\n\tmatch f() {\n\t\t0, 1 {}\n\t\telse {}\n\t} or { 0 }\n}\n')
+	mut found := false
+	for node in a.nodes {
+		if node.kind == .or_expr && node.children_count >= 1 {
+			child := a.child_node(&node, 0)
+			if child.kind == .match_stmt {
+				found = true
+			}
+		}
+	}
+	assert found
+}
+
+fn test_match_parenthesized_and_array_literal_subjects_parse_as_match_stmt() {
+	a := parse_parser_regression_source('match_parenthesized_array_subjects',
+		'fn maybe() ?int {\n\treturn none\n}\n\nfn f() int {\n\treturn match (maybe() or { 0 }) {\n\t\t0 { 1 }\n\t\telse { 2 }\n\t}\n}\n\nfn g() int {\n\treturn match []int{} {\n\t\telse { 3 }\n\t}\n}\n')
+	mut match_count := 0
+	for node in a.nodes {
+		if node.kind == .match_stmt {
+			match_count++
+		}
+	}
+	assert match_count == 2
+}
+
 fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification() {
 	a := parse_parser_regression_source('local_generic_qualified_arg',
 		'module main\n\nimport other\n\nfn main() {\n\tstruct Box[T] {}\n\tmut boxes := []Box[other.Thing]{}\n\tboxes << Box[other.Thing]{}\n}\n')
@@ -225,6 +606,89 @@ fn test_local_type_generic_call_type_arg_is_resolved() {
 	assert local_row.starts_with('Row@local@main')
 	assert call_type_args == [local_row]
 	assert init_types == [local_row]
+}
+
+fn test_uppercase_index_condition_before_block_is_not_struct_init() {
+	a := parse_parser_regression_source('uppercase_index_condition_block',
+		'const Foo = [true]\n\nfn main() {\n\tif Foo[0] {\n\t\tprintln("ok")\n\t}\n}\n')
+	mut foo_struct_inits := []string{}
+	mut foo_index_count := 0
+	for node in a.nodes {
+		match node.kind {
+			.struct_init {
+				if node.value == 'Foo' {
+					foo_struct_inits << node.value
+				}
+			}
+			.index {
+				if node.children_count == 2 {
+					base := a.child_node(&node, 0)
+					if base.kind == .ident && base.value == 'Foo' {
+						foo_index_count++
+					}
+				}
+			}
+			else {}
+		}
+	}
+	assert foo_struct_inits == []
+	assert foo_index_count == 1
+}
+
+fn test_uppercase_identifier_index_condition_before_block_is_not_struct_init() {
+	a := parse_parser_regression_source('uppercase_identifier_index_condition_block',
+		'const Foo = [true, false]\n\nfn main() {\n\tidx := 0\n\tif Foo[idx] {\n\t\tprintln("ok")\n\t}\n}\n')
+	mut foo_struct_inits := []string{}
+	mut foo_index_count := 0
+	for node in a.nodes {
+		match node.kind {
+			.struct_init {
+				if node.value == 'Foo' {
+					foo_struct_inits << node.value
+				}
+			}
+			.index {
+				if node.children_count == 2 {
+					base := a.child_node(&node, 0)
+					if base.kind == .ident && base.value == 'Foo' {
+						foo_index_count++
+					}
+				}
+			}
+			else {}
+		}
+	}
+	assert foo_struct_inits == []
+	assert foo_index_count == 1
+}
+
+fn test_empty_struct_literals_parse_in_control_header_conditions() {
+	a := parse_parser_regression_source('empty_struct_literal_control_header',
+		'struct Foo {}\n\nfn main() {\n\tif Foo{} == Foo{} {\n\t\tprintln("if")\n\t}\n\tfor Foo{} == Foo{} {\n\t\tbreak\n\t}\n}\n')
+	mut foo_struct_inits := 0
+	for node in a.nodes {
+		if node.kind == .struct_init && node.value == 'Foo' {
+			foo_struct_inits++
+		}
+	}
+	assert foo_struct_inits == 4
+}
+
+fn test_positional_struct_literal_in_control_header_call_keeps_later_declaration() {
+	a := parse_parser_regression_source('positional_struct_literal_control_header_call',
+		'struct Range {\n\tfirst int\n\tlast int\n}\n\nfn allowed(range_ Range) bool {\n\treturn range_.first <= range_.last\n}\n\nfn check() bool {\n\tif true\n\t\t&& !allowed(Range{0, 1}) {\n\t\treturn false\n\t}\n\treturn true\n}\n\nfn declared_after() int {\n\treturn 1\n}\n')
+	mut range_struct_inits := 0
+	mut has_later_declaration := false
+	for node in a.nodes {
+		if node.kind == .struct_init && node.value == 'Range' {
+			range_struct_inits++
+		}
+		if node.kind == .fn_decl && node.value == 'declared_after' {
+			has_later_declaration = true
+		}
+	}
+	assert range_struct_inits == 1
+	assert has_later_declaration
 }
 
 fn test_local_sibling_types_are_predeclared_before_fields() {
@@ -303,4 +767,145 @@ fn test_multiline_keyword_infix_expressions_continue_after_semicolon() {
 	assert is_count == 1
 	assert in_count == 1
 	assert as_count == 1
+}
+
+fn test_indented_plus_minus_continue_before_operand_column() {
+	a := parse_parser_regression_source('indented_plus_minus_continuation',
+		"module main\n\nfn main() {\n\tfirst := 7\n\tsecond := 2\n\ttotal := first\n\t\t+ second\n\tdifference := first\n\t\t- second\n\tfallback := none or {\n\t\tprintln('fallback')\n\t\t-1\n\t}\n\t_ = total\n\t_ = difference\n\t_ = fallback\n}\n")
+	mut infix_plus := 0
+	mut infix_minus := 0
+	mut prefix_minus := 0
+	for node in a.nodes {
+		if node.kind == .infix && node.op == .plus {
+			infix_plus++
+		}
+		if node.kind == .infix && node.op == .minus {
+			infix_minus++
+		}
+		if node.kind == .prefix && node.op == .minus {
+			prefix_minus++
+		}
+	}
+	assert infix_plus == 1
+	assert infix_minus == 1
+	assert prefix_minus == 1
+}
+
+fn test_parenthesized_statement_after_call_is_not_call_continuation() {
+	a := parse_parser_regression_source('parenthesized_statement_after_call',
+		"module main\n\nfn foo() int {\n\treturn 1\n}\n\nfn main() {\n\tprintln('a')\n\t(foo())\n}\n")
+	mut nested_call_continuations := 0
+	mut println_calls := 0
+	mut foo_calls := 0
+	for node in a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		callee_id := a.child(&node, 0)
+		callee := a.node(callee_id)
+		if callee.kind == .call {
+			nested_call_continuations++
+		}
+		if callee.kind == .ident && callee.value == 'println' {
+			println_calls++
+		}
+		if callee.kind == .ident && callee.value == 'foo' {
+			foo_calls++
+		}
+	}
+	assert nested_call_continuations == 0
+	assert println_calls == 1
+	assert foo_calls == 1
+}
+
+fn test_generic_call_function_type_arguments_stay_type_expressions() {
+	source := 'fn accept[T]() bool {
+	return true
+}
+
+fn main() {
+	_ = accept[fn (int) int]()
+	_ = accept[&fn (int) int]()
+	_ = accept[shared fn (int) int]()
+	_ = accept[atomic fn (int) int]()
+	_ = accept[fn ([4]int) bool]()
+}
+'
+	a := parse_parser_regression_source('generic_call_function_type_args', source)
+	mut type_args := []string{}
+	for node in a.nodes {
+		if node.kind != .index || node.children_count != 2 {
+			continue
+		}
+		callee := a.child_node(&node, 0)
+		arg := a.child_node(&node, 1)
+		if callee.kind == .ident && callee.value == 'accept' && arg.kind == .ident {
+			type_args << arg.value
+		}
+	}
+	assert type_args == [
+		'fn(int) int',
+		'&fn(int) int',
+		'shared fn(int) int',
+		'atomic fn(int) int',
+		'fn([4]int) bool',
+	]
+}
+
+fn test_generic_method_chain_on_struct_init_is_not_parsed_as_cast() {
+	source := 'struct Seq[T] {}
+
+type Wrapper[T] = T
+
+fn main() {
+	_ := Seq[string]{}.map[int](fn (value string) int {
+		return value.len
+	}).map[string](fn (value int) string {
+		return value.str()
+	})
+	_ := Wrapper[int](1)
+}
+'
+	a := parse_parser_regression_source('generic_method_chain_on_struct_init', source)
+	casts := cast_expr_values(a)
+	assert 'Wrapper[int]' in casts
+	assert !casts.any(it.contains('.map[')), '${casts}'
+	mut map_calls := 0
+	for node in a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		callee := a.child_node(&node, 0)
+		if callee.kind != .index || callee.children_count == 0 {
+			continue
+		}
+		selector := a.child_node(callee, 0)
+		if selector.kind == .selector && selector.value == 'map' {
+			map_calls++
+		}
+	}
+	assert map_calls == 2
+}
+
+fn test_normalized_option_result_fixed_array_type_names_parse_as_wrapped_arrays() {
+	mut a := flat.FlatAst.new()
+	tc := types.TypeChecker.new(&a)
+	opt := tc.parse_type('?int[2]')
+	assert opt is types.OptionType
+	if opt is types.OptionType {
+		assert opt.base_type is types.ArrayFixed
+		if opt.base_type is types.ArrayFixed {
+			assert opt.base_type.elem_type.name() == 'int'
+			assert opt.base_type.len == 2
+		}
+	}
+	res := tc.parse_type('!Foo[3]')
+	assert res is types.ResultType
+	if res is types.ResultType {
+		assert res.base_type is types.ArrayFixed
+		if res.base_type is types.ArrayFixed {
+			assert res.base_type.elem_type.name() == 'Foo'
+			assert res.base_type.len == 3
+		}
+	}
 }

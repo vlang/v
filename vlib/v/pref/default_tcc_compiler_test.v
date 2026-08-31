@@ -245,6 +245,30 @@ fn test_try_to_use_tcc_by_default_resolves_explicit_tcc_to_system_tcc_on_termux(
 	assert prefs.ccompiler == system_tcc
 }
 
+fn test_try_to_use_tcc_by_default_resolves_tinyc_alias_to_bundled_tcc() {
+	$if windows {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_tcc_compiler_test')
+	fake_vexe := os.join_path(test_root, 'v')
+	bundled_tcc := prepare_test_tcc_binary(test_root, 'exit 0')
+	old_vexe := os.getenv('VEXE')
+	os.setenv('VEXE', fake_vexe, true)
+	defer {
+		if old_vexe == '' {
+			os.unsetenv('VEXE')
+		} else {
+			os.setenv('VEXE', old_vexe, true)
+		}
+		os.rmdir_all(test_root) or {}
+	}
+	mut prefs := Preferences{
+		ccompiler: 'tinyc'
+	}
+	prefs.try_to_use_tcc_by_default()
+	assert prefs.ccompiler == bundled_tcc
+}
+
 fn test_windows_default_c_compiler_prefers_gcc_when_available() {
 	$if windows {
 		return

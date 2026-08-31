@@ -21,12 +21,16 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
+concurrency:
+  group: ubuntu-25-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ubuntu-25-gcc-14-2-build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build and test in Ubuntu 25.04 with GCC 14.2
         run: |
           set -o xtrace

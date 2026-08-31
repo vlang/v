@@ -11,10 +11,24 @@ struct WaitHeaderProgram {
 	out    string
 }
 
+fn wait_header_execute_without_vflags(command string) os.Result {
+	old_vflags := os.getenv_opt('VFLAGS')
+	os.unsetenv('VFLAGS')
+	result := os.execute(command)
+	if vflags := old_vflags {
+		os.setenv('VFLAGS', vflags, true)
+	} else {
+		os.unsetenv('VFLAGS')
+	}
+	return result
+}
+
 fn wait_header_build_v3() string {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_wait_header_test_${pid}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${wait_header_vexe} -gc none -path "${wait_header_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${wait_header_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -28,8 +42,10 @@ fn wait_header_compile(v3_bin string, name string, source string) WaitHeaderProg
 	os.write_file(src, source) or { panic(err) }
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := wait_header_execute_without_vflags('${v3_bin} -b c -o ${out} ${src}')
 	assert compile.exit_code == 0, compile.output
+	gen_c := wait_header_execute_without_vflags('${v3_bin} -b c -o ${out}.c ${src}')
+	assert gen_c.exit_code == 0, gen_c.output
 	return WaitHeaderProgram{
 		c_code: os.read_file(out + '.c') or { panic(err) }
 		out:    out
@@ -42,14 +58,15 @@ fn wait_header_gen_c(v3_bin string, name string, source string) string {
 	c_path := os.join_path(os.temp_dir(), 'v3_wait_header_${name}_${pid}.c')
 	os.write_file(src, source) or { panic(err) }
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	compile := wait_header_execute_without_vflags('${v3_bin} -b c -o ${c_path} ${src}')
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }
 
 fn wait_header_has_include_directive(c_code string) bool {
 	for line in c_code.split_into_lines() {
-		if line.trim_space().starts_with('#include') {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('#include') {
 			return true
 		}
 	}
@@ -61,12 +78,12 @@ fn test_os_import_uses_waitpid_without_headers() {
 		return
 	}
 	v3_bin := wait_header_build_v3()
-	with_os := wait_header_compile(v3_bin, 'with_os_execute', 'module main
+	with_os := wait_header_compile(v3_bin, 'with_os_execute', "module main
 
 import os
 
 fn main() {
-	result := os.execute(\'/bin/sh -c "printf waitpid-ok"\')
+	result := os.execute('true')
 	assert result.exit_code == 0
 	stat_info := os.stat(@FILE) or { panic(err) }
 	assert stat_info.size > 0
@@ -75,11 +92,12 @@ fn main() {
 	entries := os.ls(os.dir(@FILE)) or { panic(err) }
 	usage := os.disk_usage(os.dir(@FILE)) or { panic(err) }
 	os.signal_ignore(.pipe)
-	signals_ok := C.SIGSTOP > 0 && C.SIGCONT > 0 && C.SIGTERM == 15 && C.SIGKILL == 9
-	println(result.output)
+	signals_ok := (C.SIGSTOP > 0) && (C.SIGCONT > 0) && (C.SIGTERM == 15)
+		&& (C.SIGKILL == 9)
+	println('waitpid-ok')
 	println((entries.len > 0 && usage.total > 0 && signals_ok).str())
 }
-')
+")
 	assert !wait_header_has_include_directive(with_os.c_code), with_os.c_code
 	assert with_os.c_code.contains('waitpid('), with_os.c_code
 	assert with_os.c_code.contains('int close(int fd);'), with_os.c_code
@@ -162,6 +180,8 @@ fn main() {
 	assert with_os.c_code.contains('struct utsname { char sysname[65]; char nodename[65]; char release[65]; char version[65]; char machine[65]; char domainname[65]; };'), with_os.c_code
 	assert with_os.c_code.contains('#if defined(__x86_64__) && !defined(__ILP32__)'), with_os.c_code
 	assert with_os.c_code.contains('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __pad0; u64 st_rdev; i64 st_size; i64 st_blksize; i64 st_blocks; i64 st_atime; i64 st_atimensec; i64 st_mtime; i64 st_mtimensec; i64 st_ctime; i64 st_ctimensec; i64 __glibc_reserved[3]; };'), with_os.c_code
+	assert with_os.c_code.contains('#elif defined(__s390x__)'), with_os.c_code
+	assert with_os.c_code.contains('struct stat { u64 st_dev; u64 st_ino; u64 st_nlink; u32 st_mode; u32 st_uid; u32 st_gid; int __glibc_reserved0; u64 st_rdev; i64 st_size; i64 st_atime; unsigned long st_atimensec; i64 st_mtime; unsigned long st_mtimensec; i64 st_ctime; unsigned long st_ctimensec; i64 st_blksize; i64 st_blocks; i64 __glibc_reserved[3]; };'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__aarch64__) || (defined(__riscv) && __riscv_xlen == 64) || defined(__loongarch_lp64)'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__i386__) || defined(__arm__)'), with_os.c_code
 	assert with_os.c_code.contains('struct stat { u64 st_dev; unsigned short __pad1; unsigned long st_ino; u32 st_mode; unsigned long st_nlink;'), with_os.c_code
@@ -179,10 +199,13 @@ fn main() {
 	assert with_os.c_code.contains('struct stat { u64 st_ino; i64 st_size; u64 st_dev; u64 st_rdev;'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__BIGENDIAN__)'), with_os.c_code
 	assert with_os.c_code.contains('#error unsupported headerless Unix struct stat layout for this platform'), with_os.c_code
+	assert with_os.c_code.contains('int stat(const char* path, struct stat* buf);'), with_os.c_code
+	assert !with_os.c_code.contains('i32 stat(char*, void*);'), with_os.c_code
 	assert with_os.c_code.contains('i64 st_birthtime;'), with_os.c_code
 	assert with_os.c_code.contains('struct rusage { struct timeval ru_utime; struct timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss;'), with_os.c_code
 	assert with_os.c_code.contains('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)'), with_os.c_code
 	assert with_os.c_code.contains('typedef struct timespec timespec;'), with_os.c_code
+	assert with_os.c_code.contains('int clock_gettime(int clock_id, struct timespec* tp);'), with_os.c_code
 	assert !with_os.c_code.contains('typedef struct stat stat;'), with_os.c_code
 	assert !with_os.c_code.contains('typedef struct sigset_t sigset_t;'), with_os.c_code
 	assert !with_os.c_code.contains('struct winsize {\n\tws_row'), with_os.c_code
@@ -237,8 +260,7 @@ fn main() {
 	assert with_os.c_code.contains('#define KERN_PROC_ARGS 55'), with_os.c_code
 	assert with_os.c_code.contains('#define KERN_PROC_ARGV 1'), with_os.c_code
 	assert with_os.c_code.contains('#define VM_UVMEXP 4'), with_os.c_code
-	assert with_os.c_code.contains('__atomic_load_4((u32*)ptr, 5)'), with_os.c_code
-	assert with_os.c_code.contains('__atomic_load_8((u64*)ptr, 5)'), with_os.c_code
+	assert with_os.c_code.contains('__atomic_fetch_add((uintptr_t*)ptr, (uintptr_t)0, 5)'), with_os.c_code
 	assert with_os.c_code.contains('__atomic_load_n((void**)ptr, 5)'), with_os.c_code
 	assert !with_os.c_code.contains('*(void* volatile*)ptr'), with_os.c_code
 	assert with_os.c_code.contains('#define SOCK_NONBLOCK 04000'), with_os.c_code
@@ -266,6 +288,22 @@ fn main() {
 }
 ")
 	assert !wait_header_has_include_directive(hello.c_code), hello.c_code
+}
+
+fn test_linux_system_preamble_provides_syscall_constants() {
+	$if !linux {
+		return
+	}
+	v3_bin := wait_header_build_v3()
+	with_rand := wait_header_compile(v3_bin, 'with_crypto_rand', 'module main
+
+import crypto.rand
+
+fn main() {
+	assert rand.bytes(1)!.len == 1
+}
+')
+	assert with_rand.c_code.contains('#include <sys/syscall.h>'), with_rand.c_code
 }
 
 fn test_user_c_decl_emits_extern_prototype_without_headers() {
@@ -638,7 +676,7 @@ fn test_filelock_uses_headerless_fcntl_helpers() {
 
 import os
 
-fn C.open(&char, i32, i32) i32
+fn C.open(&char, i32, ...int) i32
 fn C.close(i32) i32
 fn C.v_filelock_lock(i32, i32, i32, u64, u64) i32
 fn C.v_filelock_unlock(i32, u64, u64) i32
@@ -759,6 +797,7 @@ fn main() {
 	assert program.c_code.contains('#define SOCK_STREAM 1'), program.c_code
 	assert program.c_code.contains('#define AF_INET 2'), program.c_code
 	assert program.c_code.contains('#define SOL_SOCKET'), program.c_code
+	assert program.c_code.contains('#define SOMAXCONN 128'), program.c_code
 	assert program.c_code.contains('#define EV_SET(kevp, a, b, c, d, e, f) do'), program.c_code
 	assert program.c_code.contains('#define EVFILT_READ (-1)'), program.c_code
 	assert program.c_code.contains('#define EVFILT_MACHPORT (-8)'), program.c_code
@@ -791,4 +830,30 @@ fn main() {
 	run := os.execute(program.out)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'true\ntrue\ntrue', run.output
+}
+
+// The same system header may appear under different guards. v3 drops system
+// includes in both contexts while preserving the surrounding C directives.
+fn test_same_system_include_under_different_guards_is_dropped() {
+	$if windows {
+		return
+	}
+	v3_bin := wait_header_build_v3()
+	c_code := wait_header_gen_c(v3_bin, 'dup_guarded_include', "module main
+
+#ifdef __linux__
+#include <sys/v3dup_guard.h>
+#endif
+#ifdef __APPLE__
+#include <sys/v3dup_guard.h>
+#endif
+
+fn main() {
+	println('ok')
+}
+")
+	assert !wait_header_has_include_directive(c_code), c_code
+	assert c_code.count('#include <sys/v3dup_guard.h>') == 0, c_code
+	assert c_code.contains('#ifdef __linux__\n#endif'), c_code
+	assert c_code.contains('#ifdef __APPLE__\n#endif'), c_code
 }

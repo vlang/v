@@ -145,10 +145,11 @@ fn (jt JoinType) to_str() string {
 // JoinConfig holds configuration for a JOIN clause in a SELECT query
 pub struct JoinConfig {
 pub mut:
-	kind         JoinType
-	table        Table
-	on_left_col  string // Column from main table (e.g., 'user_id')
-	on_right_col string // Column from joined table (e.g., 'id')
+	kind          JoinType
+	table         Table
+	on_left_table string // Table from the left side of the join predicate
+	on_left_col   string // Column from the left table (e.g., 'user_id')
+	on_right_col  string // Column from joined table (e.g., 'id')
 }
 
 pub enum SQLDialect {
@@ -835,7 +836,9 @@ fn clone_query_data(data QueryData) QueryData {
 pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind, num bool, qm string,
 	start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
-	mut c := start_pos
+	mut c := PlaceholderCounter{
+		position: start_pos
+	}
 	insert_data := prepare_insert_query_data(data)
 
 	match kind {
@@ -852,8 +855,8 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 				for _ in 0 .. row_count {
 					mut row_values := []string{}
 					for _ in insert_data.fields {
-						row_values << factory_insert_qm_value(num, qm, c)
-						c++
+						row_values << factory_insert_qm_value(num, qm, c.position)
+						c.position++
 					}
 					values << '(${row_values.join(', ')})'
 				}
@@ -883,13 +886,13 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 					for _ in 0 .. data.batch_rows {
 						str += 'WHEN ${qm}'
 						if num {
-							str += '${c}'
-							c++
+							str += '${c.position}'
+							c.position++
 						}
 						str += ' THEN ${qm}'
 						if num {
-							str += '${c}'
-							c++
+							str += '${c.position}'
+							c.position++
 						}
 						str += ' '
 					}
@@ -927,8 +930,8 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 						str += '${qm}'
 					}
 					if num {
-						str += '${c}'
-						c++
+						str += '${c.position}'
+						c.position++
 					}
 					if i < data.fields.len - 1 {
 						str += ', '
@@ -944,7 +947,7 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 
 	// where
 	if kind == .update || kind == .delete {
-		str += gen_where_clause(where, q, qm, num, mut &c)
+		str += gen_where_clause(where, q, qm, num, mut c)
 	}
 	str += ';'
 	$if trace_orm_stmt ? {
@@ -1176,7 +1179,7 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 		if cfg.aggregate_kind == .count {
 			str += cfg.aggregate_kind.to_str()
 		} else {
-			str += '${cfg.aggregate_kind.to_str()}(${q}${cfg.aggregate_field}${q})'
+			str += '${cfg.aggregate_kind.to_str()}(${gen_qualified_field(cfg.aggregate_field, q)})'
 		}
 	} else {
 		for i, field in cfg.fields {
@@ -1187,6 +1190,8 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 			}
 			if select_expr == field {
 				str += '${q}${field}${q}'
+			} else if select_expr.contains(table_qualified_field_separator) {
+				str += gen_qualified_field(select_expr, q)
 			} else {
 				str += select_expr
 			}
@@ -1200,12 +1205,15 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 	// Generate JOIN clauses
 	for join in cfg.joins {
+		left_table := if join.on_left_table.len > 0 { join.on_left_table } else { cfg.table.name }
 		str += ' ${join.kind.to_str()} ${q}${join.table.name}${q}'
-		str += ' ON ${q}${cfg.table.name}${q}.${q}${join.on_left_col}${q}'
+		str += ' ON ${q}${left_table}${q}.${q}${join.on_left_col}${q}'
 		str += ' = ${q}${join.table.name}${q}.${q}${join.on_right_col}${q}'
 	}
 
-	mut c := start_pos
+	mut c := PlaceholderCounter{
+		position: start_pos
+	}
 
 	if cfg.has_where {
 		str += ' WHERE '
@@ -1216,30 +1224,30 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 				eprintln('> orm_select_gen: field[${i}] = ${field}')
 			}
 		}
-		str += gen_where_clause(where, q, qm, num, mut &c)
+		str += gen_where_clause(where, q, qm, num, mut c)
 	}
 
 	// Note: do not order, if the user did not want it explicitly,
 	// ordering is *slow*, especially if there are no indexes!
 	if cfg.has_order {
 		str += ' ORDER BY '
-		str += '${q}${cfg.order}${q} '
+		str += gen_qualified_field(cfg.order, q) + ' '
 		str += cfg.order_type.to_str()
 	}
 
 	if cfg.has_limit {
 		str += ' LIMIT ${qm}'
 		if num {
-			str += '${c}'
-			c++
+			str += '${c.position}'
+			c.position++
 		}
 	}
 
 	if cfg.has_offset {
 		str += ' OFFSET ${qm}'
 		if num {
-			str += '${c}'
-			c++
+			str += '${c.position}'
+			c.position++
 		}
 	}
 
@@ -1255,11 +1263,16 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 
 const table_qualified_field_separator = '::v_orm_table::'
 
+struct PlaceholderCounter {
+mut:
+	position int
+}
+
 fn table_qualified_field(table_name string, column_name string) string {
 	return '${table_name}${table_qualified_field_separator}${column_name}'
 }
 
-fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) string {
+fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c PlaceholderCounter) string {
 	mut str := ''
 	mut data_idx := 0
 	for i, field in where.fields {
@@ -1271,7 +1284,8 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 		}
 		str += gen_qualified_field(field, q) + ' ${where.kinds[i].to_str()}'
 		if !where.kinds[i].is_unary() {
-			array_len := if where.data.len > data_idx {
+			expand_array := where.kinds[i] in [.in, .not_in]!
+			array_len := if expand_array && where.data.len > data_idx {
 				primitive_array_len(where.data[data_idx])
 			} else {
 				-1
@@ -1281,16 +1295,16 @@ fn gen_where_clause(where QueryData, q string, qm string, num bool, mut c &int) 
 				for j in 0 .. array_len {
 					tmp[j] = '${qm}'
 					if num {
-						tmp[j] += '${c}'
-						c++
+						tmp[j] += '${c.position}'
+						c.position++
 					}
 				}
 				str += ' (${tmp.join(', ')})'
 			} else {
 				str += ' ${qm}'
 				if num {
-					str += '${c}'
-					c++
+					str += '${c.position}'
+					c.position++
 				}
 			}
 			data_idx++
@@ -1456,7 +1470,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 				'default' {
 					has_default = true
 					if default_val == '' {
-						default_val = attr.arg.str()
+						default_val = attr.arg.trim_space()
 					}
 				}
 				'references' {
@@ -1472,8 +1486,9 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 						if attr.arg.trim(' ') == '' {
 							return error("references attribute needs to be in the format [references], [references: 'tablename'], or [references: 'tablename(field_id)']")
 						}
-						if attr.arg.contains('(') {
-							if ref_table, ref_field := attr.arg.split_once('(') {
+						ref_arg := trim_attr_arg(attr.arg)
+						if ref_arg.contains('(') {
+							if ref_table, ref_field := ref_arg.split_once('(') {
 								if !ref_field.ends_with(')') {
 									return error("explicit references attribute should be written as [references: 'tablename(field_id)']")
 								}
@@ -1481,7 +1496,7 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 								references_field = ref_field[..ref_field.len - 1]
 							}
 						} else {
-							references_table = attr.arg
+							references_table = ref_arg
 							references_field = 'id'
 						}
 					}
@@ -1576,17 +1591,19 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 	str += ';'
 
 	if sql_dialect in [.pg, .h2] {
+		quote := '"'
 		if table_comment != '' {
-			str += "\nCOMMENT ON TABLE \"${table.name}\" IS '${table_comment}';"
+			str += "\nCOMMENT ON TABLE ${quote}${table.name}${quote} IS '${table_comment}';"
 		}
 		for f, c in field_comments {
-			str += "\nCOMMENT ON COLUMN \"${table.name}\".\"${f}\" IS '${c}';"
+			str += "\nCOMMENT ON COLUMN ${quote}${table.name}${quote}.${quote}${f}${quote} IS '${c}';"
 		}
 	}
 	if sql_dialect in [.pg, .sqlite, .h2] && index_fields.len > 0 {
-		str += '\nCREATE INDEX "idx_${table.name}" ON "${table.name}" ("'
+		quote := '"'
+		str += '\nCREATE INDEX ${quote}idx_${table.name}${quote} ON ${quote}${table.name}${quote} (${quote}'
 		str += index_fields.join('","')
-		str += '");'
+		str += '${quote});'
 	}
 	$if trace_orm_create ? {
 		eprintln('> orm_create table: ${table.name} | query: ${str}')
@@ -1626,7 +1643,7 @@ fn sql_field_name(field TableField) string {
 	mut name := field.name
 	for attr in field.attrs {
 		if attr.name == 'sql' && attr.has_arg && attr.kind == .string {
-			name = attr.arg
+			name = trim_attr_arg(attr.arg)
 			break
 		}
 	}

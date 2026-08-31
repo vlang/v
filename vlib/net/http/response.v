@@ -13,8 +13,14 @@ import strings
 // Response represents the result of the request
 pub struct Response {
 pub mut:
-	body         string
-	header       Header
+	body   string
+	header Header
+	// trailers are emitted as a trailing HEADERS block by the HTTP/2 server
+	// path (net.http.h2_server.v) after the body, e.g. for `grpc-status`.
+	// Ignored by the HTTP/1.1 write path — H1 has no wire mechanism for this
+	// enabled here (chunked-encoding trailers are a separate, unimplemented
+	// feature), so fields set here simply do not appear on an H1 response.
+	trailers     Header
 	status_code  int
 	status_msg   string
 	http_version string
@@ -29,6 +35,15 @@ pub fn (resp Response) bytes() []u8 {
 	mut sb := strings.new_builder(resp.response_buffer_cap())
 	resp.write_into_builder(mut sb)
 	return unsafe { sb.reuse_as_plain_u8_array() }
+}
+
+// write_to appends the raw HTTP response bytes (status line, headers and body)
+// to `sb`, letting a caller serialize directly into an existing buffer instead of
+// allocating a fresh one via bytes()/bytestr(). Since strings.Builder is a []u8,
+// a server can reuse its per-connection write buffer as the target and avoid a
+// per-response allocation and copy.
+pub fn (resp Response) write_to(mut sb strings.Builder) {
+	resp.write_into_builder(mut sb)
 }
 
 // Formats resp to a string suitable for HTTP response transmission
@@ -181,6 +196,7 @@ pub fn (r Response) version() Version {
 		'1.0' { .v1_0 }
 		'1.1' { .v1_1 }
 		'2.0' { .v2_0 }
+		'3.0' { .v3_0 }
 		else { .unknown }
 	}
 }

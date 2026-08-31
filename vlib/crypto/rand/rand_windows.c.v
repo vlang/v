@@ -11,13 +11,11 @@ module rand
 const status_success = 0x00000000
 const bcrypt_use_system_preferred_rng = 0x00000002
 
-// read returns an array of `bytes_needed` random bytes read from the OS.
-pub fn read(bytes_needed int) ![]u8 {
-	mut buffer := []u8{len: bytes_needed}
+// read fills `buffer` with random bytes from the OS.
+pub fn read(mut buffer []u8) ! {
 	// use bcrypt_use_system_preferred_rng because we passed null as algo
-	status := C.BCryptGenRandom(0, buffer.data, bytes_needed, bcrypt_use_system_preferred_rng)
+	status := C.BCryptGenRandom(0, buffer.data, buffer.len, bcrypt_use_system_preferred_rng)
 	if status != status_success {
 		return &ReadError{}
 	}
-	return buffer
 }

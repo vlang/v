@@ -41,16 +41,26 @@ jobs:
           - os: macos-latest
             zip: v_macos_arm64.zip
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       VDIR: /tmp/v_from_release_zip
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build v
         run: make && ./v symlink && ./v version
 
       - name: Download latest release ZIP
-        run: ./v retry -- ./v download --sha256 https://github.com/vlang/v/releases/latest/download/${{ matrix.zip }}
+        run: |
+          curl --fail --location --silent --show-error \
+            --connect-timeout 15 \
+            --max-time 180 \
+            --retry 5 \
+            --retry-all-errors \
+            --retry-delay 2 \
+            --retry-max-time 600 \
+            --output "${{ matrix.zip }}" \
+            "https://github.com/vlang/v/releases/latest/download/${{ matrix.zip }}"
+          shasum -a 256 "${{ matrix.zip }}"
 
       - name: Extract ZIP 1, no changes
         run: |

@@ -2,7 +2,7 @@ module main
 
 import veb
 import encoding.base64
-import json
+import json2 as json
 
 @['/controller/products'; get]
 pub fn (mut app App) controller_get_all_products(mut ctx Context) veb.Result {
@@ -15,7 +15,7 @@ pub fn (mut app App) controller_get_all_products(mut ctx Context) veb.Result {
 
 	jwt_payload_stringify := base64.url_decode_str(token.split('.')[1])
 
-	jwt_payload := json.decode(JwtPayload, jwt_payload_stringify) or {
+	jwt_payload := json.decode[JwtPayload](jwt_payload_stringify) or {
 		ctx.res.set_status(.internal_server_error)
 		return ctx.text('jwt decode error')
 	}
@@ -45,7 +45,7 @@ pub fn (mut app App) controller_create_product(mut ctx Context, product_name str
 
 	jwt_payload_stringify := base64.url_decode_str(token.split('.')[1])
 
-	jwt_payload := json.decode(JwtPayload, jwt_payload_stringify) or {
+	jwt_payload := json.decode[JwtPayload](jwt_payload_stringify) or {
 		ctx.res.set_status(.internal_server_error)
 		return ctx.text('jwt decode error')
 	}

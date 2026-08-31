@@ -53,6 +53,7 @@ section in the README.md.
 If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
+This also refreshes the bundled TCC binaries used for fast C compilation.
 
 ## Project-local compiler versions with `.vvmrc`
 
@@ -72,6 +73,75 @@ Both `0.4.12` and `v0.4.12` are accepted. The special aliases `latest` and
 V searches for `.vvmrc` from the target path upward and stops at repository and
 project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
+## The default compiler
+
+On macOS and Linux, `v` compiles your program with the experimental **V3**
+compiler (a newer implementation of the V compiler, whose source lives in
+`vlib/v3`) by default. On other platforms, and for C builds that select a
+target OS different from the host, the established compiler in `vlib/v` is
+used. V scripts (`.vsh`, including `v run script.vsh`), the `crun` and
+`build-module` commands, and debug builds selected with `-g`/`-debug` also
+remain on the established compiler. Same-OS cross-architecture builds can still
+use V3 when the target is supported. Copies or symlinks whose resolved compiler
+executable is not named `v` or `vnew` also remain on the established compiler by
+default; pass `-new-compiler` to select V3 explicitly in those installations.
+
+You normally do not need to do anything: when V3 cannot yet build an eligible
+program, `v` automatically falls back to the established compiler, so your build
+keeps working. A fallback also prints a short notice, for example:
+
+```text
+note: V3 could not build this program, so V used the stable compiler instead.
+```
+
+### Opting out with `-old-compiler`
+
+Pass `-old-compiler` to skip V3 entirely and compile with the established
+compiler:
+
+```shell
+v -old-compiler run main.v
+```
+
+This is a temporary compatibility workaround for when a build behaves differently
+under V3. On platforms where the established compiler is the default,
+`-new-compiler` opts into V3 for a single build (only where the V3 compiler is
+embedded in your `v`).
+
+### Automatic bug reports
+
+To help close the remaining gaps, a successful fallback (V3 fails to build a
+program that the established compiler then builds) normally submits the V
+version, target OS/arch, and build options to `https://bugs.vlang.io`. When a
+generated-C diagnostic maps to a verified V source, the **full mapped source
+file** is included so the report is reproducible; a failure without such a
+mapping submits metadata only. The source is bounded to a window around the
+failure only when the file is larger than the upload byte budget.
+This full-file selection applies only to verified V3 fallback reports. When the
+established compiler is used directly, its automatic C-error reports retain a
+bounded strict subset of mapped source and omit source when no strict subset is
+possible.
+A single-file build that hits an **internal V3 compiler error** uploads the
+complete captured input when it fits the 64 KiB source and process-environment
+transport budgets. Larger snapshots are truncated to a bounded head-and-tail
+window, and source is omitted when the transport cannot safely carry an excerpt.
+A directory build (such as `v .`) submits metadata only for this failure type
+because it has no single input snapshot. A **generated-C compilation error** is
+instead mapped back to the specific failing file through the staged C's `#line`
+directives, so even a directory build can upload that one failing file (still
+only when its current bytes match what V3 parsed). If the input selected for the
+source changes after V3 parses it, that report submits metadata only rather than
+source V3 did not parse. Before submitting any report, the stable
+compiler also verifies that it parsed the same bytes for every captured project
+input; if it did not, no fallback report is submitted. Inline-assembly fallbacks
+and reports that cannot fit safely through the retry's process environment are
+notice-only and do not submit a report. Reporting is also skipped for test
+compilations and to the default endpoint in GitHub CI. A custom fallback endpoint
+set with `V_C_ERROR_BUG_REPORT_URL` remains active in CI. The
+`-bug-report-url` option selects the established compiler and configures only its
+reports. You can turn reporting off entirely by setting
+`V_C_ERROR_BUG_REPORT_DISABLED=1`.
+
 ## Packaging V for distribution
 See the [notes on how to prepare a package for V](packaging_v_for_distributions.md) .
 
@@ -85,6 +155,12 @@ by using any of the following commands in a terminal:
 * `v new --web abcd` → creates a new project in the new folder `abcd`, using the veb template.
 
 The `v new --web` template uses `veb`, V's web framework.
+
+When run in a terminal, `v new` and `v init` interactively prompt for the project's
+description, version and license. When stdin is *not* a terminal (for example when the
+input is piped or redirected, as in CI), the prompts are skipped and the defaults are
+used instead of blocking on input; in that case the project name must be passed as an
+argument, e.g. `v new abc`.
 
 ## Table of Contents
 
@@ -540,7 +616,7 @@ fn foo() (int, int) {
 
 fn main() {
 	c, _ := foo()
-	print(c)
+	println(c)
 	// no warning about unused variable returned by foo.
 }
 ```
@@ -1380,9 +1456,12 @@ memory location when the size increases thus becoming independent from the
 parent array (*copy on grow*). In particular pushing elements to a slice
 does not alter the parent:
 
-When a slice expression like `a[2..4]` is assigned to another array outside
-`unsafe`, V inserts an implicit `.clone()` and shows a notice. The
-shared-memory examples below therefore use `unsafe {}` intentionally.
+When a slice expression like `a[2..4]` is assigned outside `unsafe` and either
+the parent array or the resulting slice is mutable, V inserts an implicit
+`.clone()` and shows a notice. This prevents changes through one array from
+affecting the other. If both arrays are immutable, the slice safely reuses the
+parent array's memory without cloning. The shared-memory examples below
+therefore use `unsafe {}` intentionally.
 
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
@@ -1433,9 +1512,11 @@ println(a) // [0, 1, 2, 3, 4, 5]
 println(b) // [7, 3]
 ```
 
-Note that, by default, V makes an implicit clone of the slice and displays a notice about this.
-So without the `.clone()` call the result of the code above will be the same.
-Make the slice in an `unsafe {}` block if you want to reuse memory,
+If either the parent array or the slice is mutable, V makes an implicit clone
+of the slice and displays a notice. Therefore, without the `.clone()` call,
+the result of the code above will be the same. When both arrays are immutable,
+the slice reuses the parent array's memory because neither array can be changed.
+Make the slice in an `unsafe {}` block if you want to share mutable memory;
 otherwise use explicit cloning.
 
 ##### Slices with negative indexes
@@ -3507,19 +3588,15 @@ fn calc() {
 The `pub` keyword is only allowed before the `const` keyword and cannot be used inside
 a `const ( )` block.
 
-Outside from module main all constants need to be prefixed with the module name.
+Constants can be referenced without a module prefix from within the module where they are
+defined. To access a public constant from another module, prefix it with the module name.
 
 ### Required module prefix
 
-When naming constants, `snake_case` must be used. In order to distinguish consts
-from local variables, the full path to consts must be specified. For example,
-to access the PI const, full `math.pi` name must be used both outside the `math`
-module, and inside it. That restriction is relaxed only for the `main` module
-(the one containing your `fn main()`), where you can use the unqualified name of
-constants defined there, i.e. `numbers`, rather than `main.numbers`.
-
-vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
-and vfmt will automatically update it to `println(math.pi)`.
+When naming constants, `snake_case` must be used. Outside the module where a constant is
+defined, its full path must be specified. For example, use `math.pi` to access the public
+`pi` constant from another module. Inside the `math` module, the unqualified name `pi` can
+be used.
 
 <!--
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
@@ -3597,6 +3674,23 @@ red := Color{
 	b: 0
 }
 println(red)
+```
+
+**Note:** Calling `.str()` on an unchanged receiver, or an unchanged alias of it,
+inside a custom `str()` method is not allowed because it causes infinite recursion.
+Use string interpolation of the individual fields instead, or for type aliases,
+cast to the underlying type first:
+
+```v failcompile
+struct Color {
+	r int
+	g int
+	b int
+}
+
+fn (c Color) str() string {
+	return c.str() // error: cannot call `str()` method recursively
+}
 ```
 
 ### Dumping expressions at runtime
@@ -3712,6 +3806,21 @@ myapp/
 
 `main.v` can use `import myapp.common`, and `structs.v` should still
 declare `module common`.
+
+### Module aliases
+
+When a module moves, an `alias.v` file can keep its old import path working without copying its
+implementation. The alias module contains only a module declaration with an `alias` attribute:
+
+```v ignore
+@[alias: '@VMODROOT/modules/new_name']
+module old_name
+```
+
+The attribute value is the path to the canonical module. Relative paths are resolved from the
+alias directory. `@VMODROOT` is resolved from the `v.mod` that contains `alias.v`. An alias also
+applies to submodules: if `old_name` aliases `new_name`, importing `old_name.sub` resolves to
+`new_name.sub`. The old and new import paths refer to the same module and use the same types.
 
 ### Special considerations for project folders
 
@@ -5273,15 +5382,13 @@ fn main() {
 
 ## JSON
 
-Because of the ubiquitous nature of JSON, support for it is built directly into V.
-
-V generates code for JSON encoding and decoding.
-No runtime reflection is used. This results in much better performance.
+Because of the ubiquitous nature of JSON, V provides the pure V `json2` module for encoding and
+decoding. It uses compile-time reflection instead of runtime reflection.
 
 ### Decoding JSON
 
 ```v
-import json
+import json2
 
 struct Foo {
 	x int
@@ -5297,14 +5404,14 @@ struct User {
 	age  int
 	// Use the `@[skip]` attribute to skip certain fields.
 	// You can also use `@[json: '-']`, and `@[sql: '-']`, which will cause only
-	// the `json` module to skip the field, or only the SQL orm to skip it.
+	// the JSON encoder to skip the field, or only the SQL ORM to skip it.
 	foo Foo @[skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string @[json: lastName]
 }
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25, "nullable": null }'
-user := json.decode(User, data) or {
+user := json2.decode[User](data) or {
 	eprintln('Failed to decode json, error: ${err}')
 	return
 }
@@ -5313,19 +5420,18 @@ println(user.last_name)
 println(user.age)
 // You can also decode JSON arrays:
 sfoos := '[{"x":123},{"x":456}]'
-foos := json.decode([]Foo, sfoos)!
+foos := json2.decode[[]Foo](sfoos)!
 println(foos[0].x)
 println(foos[1].x)
 ```
 
-The `json.decode` function takes two arguments:
-the first is the type into which the JSON value should be decoded and
-the second is a string containing the JSON data.
+The `json2.decode` function takes the target type as a generic type argument and the JSON data as
+a string argument.
 
 ### Encoding JSON
 
 ```v
-import json
+import json2
 
 struct User {
 	name  string
@@ -5341,12 +5447,12 @@ user := &User{
 data['x'] = 42
 data['y'] = 360
 
-println(json.encode(data)) // {"x":42,"y":360}
-println(json.encode(user)) // {"name":"Pierre","score":1024}
+println(json2.encode(data, escape_unicode: true)) // {"x":42,"y":360}
+println(json2.encode(user, escape_unicode: true)) // {"name":"Pierre","score":1024}
 ```
 
-The json module also supports anonymous struct fields, which helps with complex JSON apis with lots
-of levels.
+The `json2` module also supports anonymous struct fields, which helps with complex JSON APIs with
+many levels.
 
 ## Testing
 
@@ -6129,10 +6235,22 @@ before using the shader in your code.
 
 ### Profiling
 
-V has good support for profiling your programs: `v -profile profile.txt run file.v`
-That will produce a profile.txt file, which you can then analyze.
+V has good support for profiling your programs: `v -profile profile.txt run file.v`.
+That will produce a `profile.txt` file when the program exits, which you can then
+analyze. If the output file is omitted, as in `v -profile run file.v`, the report
+is written to standard output. `-prof` is an alias for `-profile`.
 
-The generated profile.txt file will have lines with 4 columns:
+The V3 compiler supports profiling with its C backend. Other V3 backends reject
+`-profile`. V3 also supports these V1-compatible selection options:
+
+- `-profile-fns name1,name2` profiles only the named functions and functions
+  called from them. Use the function names shown in profile output, such as
+  `main__work`.
+- `-profile-no-inline` omits functions marked `@[inline]` from the report.
+- `-d no_profile_startup` excludes calls made during module initialization.
+
+Use the selection options together with `-profile`. The generated profile file
+has lines with 5 columns:
 
 1. How many times a function was called.
 2. How much time in total a function took (in ms).
@@ -6141,8 +6259,8 @@ The generated profile.txt file will have lines with 4 columns:
 4. How much time on average, a call to a function took (in ns).
 5. The name of the v function.
 
-You can sort on column 3 (average time per function) using:
-`sort -n -k3 profile.txt|tail`
+You can sort on column 3 (exclusive time per function) using:
+`sort -n -k3 profile.txt | tail`
 
 You can also use stopwatches to measure just portions of your code explicitly:
 
@@ -6292,6 +6410,9 @@ Package are up to date.
    Initialising ...
    Complete!
    ```
+
+   The prompts above appear only when running in a terminal; with a non-terminal
+   stdin the defaults are used instead (see [Getting started](#getting-started)).
 
    Example `v.mod`:
    ```v ignore
@@ -6687,7 +6808,8 @@ that are substituted at compile time:
 - `@DIR` => replaced with the absolute path of the *folder*, where the V source file is.
 - `@LINE` => replaced with the V line number where it appears (as a string).
 - `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path.
-- `@LOCATION` => file, line and name of the current type + method; suitable for logging.
+- `@LOCATION` => file, line and name of the current module + function or method;
+  suitable for logging.
 - `@COLUMN` => replaced with the column where it appears (as a string).
 - `@VEXE` => replaced with the path to the V compiler.
 - `@VEXEROOT`  => will be substituted with the *folder*,
@@ -7119,6 +7241,9 @@ V can bring in values at compile time from environment variables.
 V can bring in values at compile time from `-d ident=value` flag defines, passed on
 the command line to the compiler. You can also pass `-d ident`, which will have the
 same meaning as passing `-d ident=true`.
+
+The `-ownership` compiler mode supplies `ownership` as a target-visible custom option.
+This enables `$if ownership ? {}` branches and includes `*_d_ownership.v` files.
 
 To get the value in your code, use: `$d('ident', default)`, where `default`
 can be `false` for booleans, `0` or `123` for i64 numbers, `0.0` or `113.0`

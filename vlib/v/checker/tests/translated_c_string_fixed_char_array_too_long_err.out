@@ -1,0 +1,42 @@
+vlib/v/checker/tests/translated_c_string_fixed_char_array_too_long_err.vv:19:3: error: cannot assign to field `char_name`: expected `[2]char`, not `&u8`
+   17 | fn main() {
+   18 |     _ := TooSmallFixedNames{
+   19 |         char_name:          c'abc'
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   20 |         signed_name:        c'abc'
+   21 |         unsigned_name:      c'abc'
+vlib/v/checker/tests/translated_c_string_fixed_char_array_too_long_err.vv:20:3: error: cannot assign to field `signed_name`: expected `[2]i8`, not `&u8`
+   18 |     _ := TooSmallFixedNames{
+   19 |         char_name:          c'abc'
+   20 |         signed_name:        c'abc'
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   21 |         unsigned_name:      c'abc'
+   22 |         alias_name:         c'abc'
+vlib/v/checker/tests/translated_c_string_fixed_char_array_too_long_err.vv:21:3: error: cannot assign to field `unsigned_name`: expected `[2]u8`, not `&u8`
+   19 |         char_name:          c'abc'
+   20 |         signed_name:        c'abc'
+   21 |         unsigned_name:      c'abc'
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   22 |         alias_name:         c'abc'
+   23 |         element_alias_name: c'abc'
+vlib/v/checker/tests/translated_c_string_fixed_char_array_too_long_err.vv:22:3: error: cannot assign to field `alias_name`: expected `TooSmallAlias`, not `&u8`
+   20 |         signed_name:        c'abc'
+   21 |         unsigned_name:      c'abc'
+   22 |         alias_name:         c'abc'
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   23 |         element_alias_name: c'abc'
+   24 |         utf8_name:          c'é'
+vlib/v/checker/tests/translated_c_string_fixed_char_array_too_long_err.vv:23:3: error: cannot assign to field `element_alias_name`: expected `[2]NestedTooSmallElement`, not `&u8`
+   21 |         unsigned_name:      c'abc'
+   22 |         alias_name:         c'abc'
+   23 |         element_alias_name: c'abc'
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   24 |         utf8_name:          c'é'
+   25 |     }
+vlib/v/checker/tests/translated_c_string_fixed_char_array_too_long_err.vv:24:3: error: cannot assign to field `utf8_name`: expected `[1]u8`, not `&u8`
+   22 |         alias_name:         c'abc'
+   23 |         element_alias_name: c'abc'
+   24 |         utf8_name:          c'é'
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~
+   25 |     }
+   26 | }

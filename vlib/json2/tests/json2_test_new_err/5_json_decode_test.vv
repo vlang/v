@@ -1,0 +1,16 @@
+import json2 as json
+
+struct DbConfig {
+	host   string
+	dbname string
+	user   string
+}
+
+fn test_decode_error_message_should_have_enough_context_in_the_middle() {
+	txt := '{"host": "localhost", "dbname": "alex" "user": "alex", "port": "1234"}'
+	json.decode[DbConfig](txt) or {
+		assert err.msg().contains('ost", "dbname": "alex" "user":')
+		return
+	}
+	assert false
+}

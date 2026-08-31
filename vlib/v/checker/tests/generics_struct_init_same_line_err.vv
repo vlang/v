@@ -1,0 +1,19 @@
+struct Left[T] {
+	value int
+}
+
+struct Right[T] {
+	value int
+}
+
+fn (left Left[T]) left_value() int {
+	return left.value
+}
+
+fn (right Right[T]) right_value() int {
+	return right.value
+}
+
+fn main() {
+	println(Left{value: 1}.left_value() + Right{value: 2}.right_value())
+}

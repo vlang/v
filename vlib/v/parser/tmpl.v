@@ -205,7 +205,19 @@ fn rewrite_complex_template_at_expressions(line string) string {
 			continue
 		}
 		next := line[i + 1]
-		if next == `@` || next == `{` {
+		// `@@` is the documented escape for a literal `@` (see vlib/v/TEMPLATES.md).
+		// Write BOTH characters and consume them fully (i += 2): otherwise the
+		// second `@` is re-parsed below as the start of a complex at-expression,
+		// turning `@@get('/x')` into `@{get('/x')}`. The final `@@` -> `@` collapse
+		// is performed later in insert_template_code.
+		if next == `@` {
+			b.write_string('@@')
+			i += 2
+			continue
+		}
+		// `@{expr}` is an interpolation; leave it untouched, insert_template_code
+		// turns `@{` into `${`.
+		if next == `{` {
 			b.write_u8(`@`)
 			i++
 			continue

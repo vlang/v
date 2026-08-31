@@ -1,0 +1,6 @@
+Name: oracle-cycle-a-74
+Description: First public cycle node
+Version: 1.0.0
+Requires: oracle-cycle-b-74 oracle-cycle-c-74
+Libs: -loracle_cycle_a
+Cflags: -DORACLE_CYCLE_A

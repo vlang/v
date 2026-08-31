@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 type Issue26826Value = Issue26826Nil | string

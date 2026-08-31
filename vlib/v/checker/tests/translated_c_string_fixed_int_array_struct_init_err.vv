@@ -1,0 +1,12 @@
+@[translated]
+module main
+
+struct FixedNumbers {
+	values [4]int
+}
+
+fn main() {
+	_ := FixedNumbers{
+		values: c'abcd'
+	}
+}

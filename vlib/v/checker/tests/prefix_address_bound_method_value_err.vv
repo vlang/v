@@ -1,0 +1,8 @@
+struct MethodValueAddress {}
+
+fn (_ MethodValueAddress) value() int {
+	return 1
+}
+
+m := MethodValueAddress{}
+_ := &m.value

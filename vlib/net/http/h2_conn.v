@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module http
 
+import time
+
 // --- HTTP/2 (RFC 7540 / 7541) file map -----------------------------------------
 // The h2 implementation is split by layer; h2_conn.v (this file) is the lead.
 //   h2_frame.v               binary framing layer (RFC 7540 §4, §6): parse/encode
@@ -87,6 +89,15 @@ pub:
 	// once that many body bytes have been received. The callback fires for the
 	// final chunk; no further callbacks fire after that.
 	stop_receiving_limit i64 = -1
+	// read_timeout, when > 0, bounds how long H2MuxConn.do() may wait for this
+	// request's response before failing it. Ignored by the one-shot H2Conn:
+	// its blocking transport read is already bounded by the underlying
+	// connection's own read_timeout, and any timeout there fails the whole
+	// (single-stream) connection directly. H2MuxConn's background reader, by
+	// contrast, treats every transport read timeout as a benign wake-up (it
+	// must survive one to keep servicing other streams), so nothing bounds an
+	// individual request's wait unless this field does.
+	read_timeout time.Duration
 }
 
 // H2ClientResponse is the result of an HTTP/2 request.

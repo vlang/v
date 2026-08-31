@@ -1,0 +1,3 @@
+string builtin__tos_clone(const u8* const_s);
+string builtin__tos_clone(const u8* const_s) {
+return builtin__tos_clone(((u8*)(path)));

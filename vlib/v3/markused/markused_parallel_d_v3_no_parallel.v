@@ -1,0 +1,18 @@
+module markused
+
+// precollect_body_calls falls back to the serial analysis when v3 is built
+// with the internal `v3_no_parallel` define.
+fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules []string, body_import_contexts []int) []BodyCalls {
+	mut results := []BodyCalls{len: body_ids.len}
+	collector.collect_bodies_range(body_ids, body_modules, body_import_contexts, 0, body_ids.len, mut
+		results)
+	return results
+}
+
+fn markused_worker_scope_begin(_ bool) voidptr {
+	return unsafe { nil }
+}
+
+fn markused_worker_scope_leave(_ voidptr) {}
+
+fn markused_worker_scope_free(_ voidptr) {}

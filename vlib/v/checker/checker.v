@@ -499,18 +499,19 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 	c.reset_checker_state_at_start_of_new_file()
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
+		import_name := ast_import.source_name
 		// Imports with the same path and name (self-imports and module name conflicts with builtin module imports)
 		if c.mod == ast_import.mod {
-			c.error('cannot import `${ast_import.mod}` into a module with the same name',
+			c.error('cannot import `${import_name}` into a module with the same name',
 				ast_import.mod_pos)
 		}
 		// Duplicates of regular imports with the default alias (modname) and `as` imports with a custom alias
 		if c.mod == ast_import.alias {
 			if c.mod == ast_import.mod.all_after_last('.') {
-				c.error('cannot import `${ast_import.mod}` into a module with the same name',
+				c.error('cannot import `${import_name}` into a module with the same name',
 					ast_import.mod_pos)
 			}
-			c.error('cannot import `${ast_import.mod}` as `${ast_import.alias}` into a module with the same name',
+			c.error('cannot import `${import_name}` as `${ast_import.alias}` into a module with the same name',
 				ast_import.alias_pos)
 		}
 		for sym in ast_import.syms {
@@ -4488,22 +4489,54 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				// (for example Linux OpenSSL headers when targeting Windows).
 				return
 			}
-			args := if node.main.contains('--') {
-				node.main.split(' ')
+			raw_args := node.main.split(' ')
+			mut parsed := pkgconfig.main(raw_args) or {
+				c.error(err.msg(), node.pos)
+				return
+			}
+			static_mode := c.pref.pkgconfig_mode == .static_ || parsed.link_mode() == .static_
+			if !static_mode {
+				args := if node.main.contains('--') {
+					raw_args
+				} else {
+					'--cflags --libs ${node.main}'.split(' ')
+				}
+				mut m := pkgconfig.main(args) or {
+					c.error(err.msg(), node.pos)
+					return
+				}
+				cflags := m.run() or {
+					c.error(err.msg(), node.pos)
+					return
+				}
+				c.table.parse_cflag_with_link_segment(cflags, c.mod, c.pref.compile_defines_all) or {
+					c.error(err.msg(), node.pos)
+					return
+				}
 			} else {
-				'--cflags --libs ${node.main}'.split(' ')
-			}
-			mut m := pkgconfig.main(args) or {
-				c.error(err.msg(), node.pos)
-				return
-			}
-			cflags := m.run() or {
-				c.error(err.msg(), node.pos)
-				return
-			}
-			c.table.parse_cflag(cflags, c.mod, c.pref.compile_defines_all) or {
-				c.error(err.msg(), node.pos)
-				return
+				if c.pref.pkgconfig_mode == .static_ {
+					parsed.force_static()
+				}
+				if !parsed.has_actions {
+					parsed.apply_default_actions()
+				}
+				result := parsed.run_result() or {
+					c.error(err.msg(), node.pos)
+					return
+				}
+				if result.cflags.len > 0 {
+					c.table.parse_cflag(result.cflags.join(' '), c.mod, c.pref.compile_defines_all) or {
+						c.error(err.msg(), node.pos)
+						return
+					}
+				}
+				if result.link_flags.len > 0 {
+					c.table.parse_pkgconfig_link_flags(result.link_flags, c.mod,
+						c.pref.compile_defines_all) or {
+						c.error(err.msg(), node.pos)
+						return
+					}
+				}
 			}
 		}
 		'flag' {
@@ -4513,7 +4546,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				c.error('no argument(s) provided for #flag', node.pos)
 			}
 			flag = c.resolve_pseudo_variables(flag, node.pos) or { return }
-			c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
+			c.table.parse_cflag_with_link_segment(flag, c.mod, c.pref.compile_defines_all) or {
 				c.error(err.msg(), node.pos)
 			}
 		}
@@ -5455,6 +5488,15 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		&& to_type.flags() == from_type.flags() {
 		// type alias, and flags are same, e.g. option, result, nr_muls...
 		return node.typ
+	}
+
+	unaliased_from_type := c.table.fully_unaliased_type(from_type)
+	unaliased_to_type := c.table.fully_unaliased_type(to_type)
+	if unaliased_from_type.is_any_kind_of_pointer() && !unaliased_to_type.is_any_kind_of_pointer()
+		&& final_to_sym.kind in [.array, .array_fixed] {
+		ft := c.table.type_to_str(from_type)
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast pointer type `${ft}` to array type `${tt}`', node.pos)
 	}
 
 	final_to_is_ptr := to_type.is_ptr() || final_to_type.is_ptr()
@@ -7753,6 +7795,25 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 					return
 				}
 				type_sym := c.table.sym(obj.typ.set_nr_muls(0))
+				// Resolve aliases so that a `type Arr = [N]T` is treated like its
+				// underlying fixed array: fixed arrays live on the stack, so they
+				// cannot be referenced/heap-promoted. Without this, the alias slips
+				// past the guard below and cgen emits invalid `HEAP(Arr, ({0}))`
+				// (#27646). Use `fully_unaliased_type` (not `final_sym`, which
+				// discards `nr_muls`/flags).
+				//
+				// The only usable pointer to a fixed array is a *named* pointer
+				// alias (`type Ptr = &Arr`): V represents it as a real pointer, so
+				// `&p` is valid there. A raw top-level `&Arr` (from `&arr`, or a
+				// `fn () &Arr` return) is not a usable pointer - cgen decays it to
+				// the fixed array value - so it must be rejected like the array
+				// itself. `set_nr_muls(0)` strips the raw top-level pointer (so a
+				// raw `&Arr` is treated as `Arr` and rejected), while a pointer
+				// carried on the alias parent survives `fully_unaliased_type` and
+				// keeps `nr_muls() > 0` (so a named `Ptr` is accepted).
+				unaliased_typ := c.table.fully_unaliased_type(obj.typ.set_nr_muls(0))
+				is_fixed_array := unaliased_typ.nr_muls() == 0
+					&& c.table.sym(unaliased_typ).kind == .array_fixed
 				if obj.is_stack_obj && !type_sym.is_heap() && !type_sym.is_int()
 					&& !c.pref.translated && !c.file.is_translated {
 					suggestion := if type_sym.kind == .struct {
@@ -7763,7 +7824,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 					mischief := if as_interface { 'used as interface object' } else { 'referenced' }
 					c.error('`${node.name}` cannot be ${mischief} outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
 						node.pos)
-				} else if type_sym.kind == .array_fixed {
+				} else if is_fixed_array {
 					c.error('cannot reference fixed array `${node.name}` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
 				} else {
@@ -7865,6 +7926,8 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			} else if expr.expr is ast.StructInit {
 				c.error('should not create object instance on the heap to simply access a member',
 					node.pos.extend(expr.pos))
+			} else if expr.has_hidden_receiver {
+				c.error('cannot take the address of ${ast.Expr(expr)}', node.pos)
 			}
 			right_sym := c.table.sym(right_type)
 			expr_sym := c.table.sym(expr.expr_type)

@@ -6,29 +6,56 @@ on:
     branches:
       - master
     paths-ignore:
-      - 'vlib/v3/**'
+      # vlib/v3/** is intentionally NOT ignored: V3 is the default compiler on
+      # Linux, including this riscv64 runner.
       - '**.md'
       - '**.yml'
       - '!**/riscv64_linux_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
   pull_request:
-    paths-ignore:
+    paths:
+      - 'cmd/v/**'
+      - 'cmd/tools/builders/**.v'
+      - 'vlib/arrays/**'
+      - 'vlib/builtin/**'
+      - 'vlib/encoding/binary/**'
+      - 'vlib/os/**'
+      - 'vlib/time/**'
+      - 'vlib/runtime/**'
+      - 'vlib/term/**'
+      - 'vlib/net/**'
+      - 'vlib/crypto/rand/**'
+      - 'vlib/picoev/**'
+      - 'vlib/rand/**'
+      - 'vlib/strconv/**'
+      - 'vlib/strings/**'
+      - 'vlib/sync/**'
+      - 'vlib/v/**'
       - 'vlib/v3/**'
-      - '**.md'
-      - '**.yml'
-      - '!**/riscv64_linux_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+      - 'thirdparty/**'
+      - 'vc/**'
+      - 'v.mod'
+      - 'GNUmakefile'
+      - 'Makefile'
+      - '.github/problem-matchers/**'
+      - '!**.md'
+      - '!**.yml'
+      - '.github/workflows/riscv64_linux_ci.yml'
+
+concurrency:
+  group: riscv64-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   riscv64_linux:
     # The host should always be Linux
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Embedding the Linux-default V3 compiler makes both bootstrap stages slow under QEMU.
+    timeout-minutes: 120
     name: Build on ubuntu-24.04 riscv64
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: uraimo/run-on-arch-action@v3
         name: Run commands
         id: runcmd
@@ -53,6 +80,10 @@ jobs:
             make
             file ./v
             ls -la ./v
+            # V3 is the default compiler on Linux. Keep bootstrap fallback-compatible,
+            # then make ordinary test compilation fail instead of silently retrying V1.
+            export V_MACOS_V3_NO_FALLBACK=1
             ./v test vlib/builtin vlib/os vlib/encoding/binary
-            ./v test vlib/v/slow_tests/assembly
+            # Inline assembly is an intentional V3 compatibility fallback.
+            V_MACOS_V3_NO_FALLBACK=0 ./v test vlib/v/slow_tests/assembly
             VTEST_ONLY=closure ./v test vlib/v/tests

@@ -1,0 +1,4 @@
+module main
+
+fn bar()
+fn foo()

@@ -3,8 +3,11 @@
 // that can be found in the LICENSE file.
 module builder
 
+import crypto.sha256
 import hash.fnv1a
 import os
+import os.filelock
+import time
 import v.ast
 import v.cflag
 import v.pref
@@ -29,6 +32,14 @@ const missing_libatomic_markers = [
 ]!
 const max_cross_sysroot_git_symlink_depth = 32
 const max_cross_sysroot_git_symlink_placeholder_size = 256
+const max_reproducible_macos_debug_cache_bytes = u64(1024 * 1024 * 1024)
+
+struct ReproducibleMacosDebugCacheEntry {
+	object_dir  string
+	object_path string
+	size        u64
+	last_used   i64
+}
 
 fn live_windows_import_lib_path(source_path string) string {
 	cache_dir := os.join_path(os.cache_dir(), 'v', 'live')
@@ -413,30 +424,6 @@ fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	println('='.repeat(header.len))
 }
 
-struct CCompilerFailureOutput {
-	display_ccompiler string
-	display_res       os.Result
-	report_ccompiler  string
-	report_res        os.Result
-}
-
-fn c_compiler_failure_output(ccompiler string, res os.Result, tcc_output os.Result) CCompilerFailureOutput {
-	if res.exit_code != 0 && tcc_output.output != '' {
-		return CCompilerFailureOutput{
-			display_ccompiler: 'tcc'
-			display_res:       tcc_output
-			report_ccompiler:  ccompiler
-			report_res:        res
-		}
-	}
-	return CCompilerFailureOutput{
-		display_ccompiler: ccompiler
-		display_res:       res
-		report_ccompiler:  ccompiler
-		report_res:        res
-	}
-}
-
 fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Result) {
 	v.post_process_c_compiler_output_with_report(ccompiler, res, ccompiler, res)
 }
@@ -604,6 +591,8 @@ pub enum CC {
 }
 
 pub struct CcompilerOptions {
+mut:
+	pkgconfig_pthread bool // exact `-pthread` supplied by an ordered pkg-config linker segment
 pub mut:
 	guessed_compiler string
 	shared_postfix   string // .so, .dll
@@ -741,6 +730,169 @@ fn cc_from_pref_ccompiler_type(cc_type pref.CompilerType) CC {
 		.msvc { .msvc }
 		.cplusplus { .unknown }
 	}
+}
+
+fn ordered_link_cflag_key(flag cflag.CFlag) string {
+	return '${flag.os}\x00${flag.name}\x00${flag.value}'
+}
+
+fn quote_spaced_ordered_pkgconfig_operand(flag cflag.CFlag, preserve_msvc_slash_option bool) cflag.CFlag {
+	value := flag.value
+	is_quoted := value.len >= 2 && ((value[0] == `"` && value[value.len - 1] == `"`)
+		|| (value[0] == `'` && value[value.len - 1] == `'`))
+	is_msvc_slash_option := preserve_msvc_slash_option && flag.name == '' && value.starts_with('/')
+		&& value.contains(':')
+	if is_msvc_slash_option {
+		colon_index := value.index(':') or { return flag }
+		option_name := value[1..colon_index]
+		operand := value[colon_index + 1..]
+		is_operand_quoted := operand.len >= 2
+			&& ((operand[0] == `"` && operand[operand.len - 1] == `"`)
+			|| (operand[0] == `'` && operand[operand.len - 1] == `'`))
+		if option_name != '' && option_name.bytes().all(it.is_alnum())
+			&& operand.contains_any(' \t\r\n') && !is_operand_quoted {
+			return cflag.CFlag{
+				mod:    flag.mod
+				os:     flag.os
+				name:   flag.name
+				value:  '${value[..colon_index + 1]}"${operand}"'
+				cached: flag.cached
+			}
+		}
+		return flag
+	}
+	is_raw_operand := flag.name == '' && !is_msvc_slash_option
+	if (flag.name != '-L' && !is_raw_operand) || !value.contains_any(' \t\r\n') || is_quoted {
+		return flag
+	}
+	return cflag.CFlag{
+		mod:    flag.mod
+		os:     flag.os
+		name:   flag.name
+		value:  '"${value}"'
+		cached: flag.cached
+	}
+}
+
+fn generic_ordered_pkgconfig_flag(flag cflag.CFlag) cflag.CFlag {
+	value := flag.value
+	if flag.name != '-L' || value.len <= 2 || value[0] != `"` || value[value.len - 1] != `"` {
+		return flag
+	}
+	return cflag.CFlag{
+		mod:    flag.mod
+		os:     flag.os
+		name:   flag.name
+		value:  value[1..value.len - 1]
+		cached: flag.cached
+	}
+}
+
+fn ordered_pkgconfig_link_args(flag cflag.CFlag, convert_windows_import_libs bool) []string {
+	if flag.name == '-Wl' && flag.value.contains_any(' \t\r\n') {
+		formatted := flag.format() or { return []string{} }
+		return ['"${formatted}"']
+	}
+	raw_safe_flag := quote_spaced_ordered_pkgconfig_operand(flag, false)
+	if convert_windows_import_libs {
+		return raw_safe_flag.windows_import_lib_link_args()
+	}
+	formatted_flag := generic_ordered_pkgconfig_flag(raw_safe_flag)
+	return [formatted_flag.format() or { return []string{} }]
+}
+
+fn ordinary_flag_is_linker_control(flag cflag.CFlag) bool {
+	raw := flag.value.trim_space()
+	return flag.name in ['-L', '-Wl', '-framework', '-library'] || raw == '-Xlinker'
+		|| raw.starts_with('-Xlinker ') || raw == '-force_load' || raw.starts_with('-force_load ')
+		|| raw == '-weak_framework' || raw.starts_with('-weak_framework ')
+}
+
+fn ordinary_flag_takes_linker_operand(flag cflag.CFlag) bool {
+	raw := flag.value.trim_space()
+	return (flag.name == '' && raw in ['-Xlinker', '-force_load', '-weak_framework'])
+		|| (flag.name == '-Wl'
+		&& raw in [',-rpath', ',--rpath', ',-R', ',-rpath-link', ',--rpath-link', ',--version-script'])
+}
+
+fn ordered_ordinary_link_args(flag cflag.CFlag, force_linker bool) []string {
+	if force_linker {
+		return [flag.format() or { return []string{} }]
+	}
+	_, others, libs := [flag].defines_others_libs()
+	if libs.len > 0 {
+		return libs
+	}
+	if ordinary_flag_is_linker_control(flag) {
+		return others
+	}
+	return []string{}
+}
+
+fn (v &Builder) split_ordered_pkgconfig_link_flags(cflags []cflag.CFlag) ([]cflag.CFlag, []string, bool) {
+	mut has_pkgconfig_segment := false
+	for segment in v.table.link_flag_segments {
+		if segment.is_pkgconfig {
+			has_pkgconfig_segment = true
+			break
+		}
+	}
+	if !has_pkgconfig_segment {
+		return cflags, []string{}, false
+	}
+	mut active_cflags := map[string]bool{}
+	for flag in cflags {
+		active_cflags[ordered_link_cflag_key(flag)] = true
+	}
+	mut routed_cflags := map[string]bool{}
+	mut ordered_link_flags := []string{}
+	mut pkgconfig_pthread := false
+	mut pending_linker_option := ''
+	convert_windows_import_libs := v.pref.os == .windows && v.pref.ccompiler_type in [.gcc, .mingw]
+	for segment in v.table.link_flag_segments {
+		if segment.is_pkgconfig {
+			if pending_linker_option != '' {
+				verror('incomplete linker option `${pending_linker_option}` before `#pkgconfig`; provide its operand in the next ordinary `#flag` directive before the pkg-config directive')
+			}
+			for flag in segment.flags {
+				args := ordered_pkgconfig_link_args(flag, convert_windows_import_libs)
+				for arg in args {
+					ordered_link_flags << arg
+					if arg == '-pthread' {
+						pkgconfig_pthread = true
+					}
+				}
+			}
+			continue
+		}
+		for flag in segment.flags {
+			key := ordered_link_cflag_key(flag)
+			if key !in active_cflags {
+				continue
+			}
+			force_linker := pending_linker_option != ''
+			pending_linker_option = ''
+			if !force_linker && ordinary_flag_takes_linker_operand(flag) {
+				pending_linker_option = flag.format() or { flag.value.trim_space() }
+			}
+			args := ordered_ordinary_link_args(flag, force_linker)
+			if args.len == 0 {
+				continue
+			}
+			routed_cflags[key] = true
+			ordered_link_flags << args
+		}
+	}
+	if pending_linker_option != '' {
+		verror('incomplete linker option `${pending_linker_option}` at the end of ordered linker flags; provide its operand in the next ordinary `#flag` directive')
+	}
+	mut legacy_cflags := []cflag.CFlag{cap: cflags.len}
+	for flag in cflags {
+		if ordered_link_cflag_key(flag) !in routed_cflags {
+			legacy_cflags << flag
+		}
+	}
+	return legacy_cflags, ordered_link_flags, pkgconfig_pthread
 }
 
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
@@ -989,6 +1141,16 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if ccoptions.debug_mode && current_os != 'windows' && v.pref.build_mode != .build_module {
 		if ccoptions.cc != .tcc && current_os == 'macos' {
 			ccoptions.linker_flags << '-Wl,-export_dynamic' // clang for mac needs export_dynamic instead of -rdynamic
+			if v.pref.building_v && ccoptions.cc == .clang {
+				// ld64 otherwise lets temporary object and output paths perturb the
+				// content-derived UUID and its provisional ad-hoc code signature.
+				// Suppress that signature so every linker version leaves the same
+				// unsigned layout for the normalized post-link signature below.
+				ccoptions.args << os.quoted_path('-ffile-prefix-map=${v.out_name_c}=<generated-c>')
+				ccoptions.linker_flags << '-Wl,-reproducible'
+				ccoptions.linker_flags << '-Wl,-final_output,v-compiler'
+				ccoptions.linker_flags << '-Wl,-no_adhoc_codesign'
+			}
 		} else {
 			if v.pref.ccompiler != 'x86_64-w64-mingw32-gcc' {
 				// the mingw-w64-gcc cross compiler does not support -rdynamic, and windows/wine already does have nicer backtraces
@@ -1067,6 +1229,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// The C file we are compiling
 	if !v.pref.parallel_cc { // parallel_cc uses its own split up c files
 		ccoptions.source_args << v.tcc_quoted_path(v.out_name_c)
+		if force_generated_c_language {
+			ccoptions.source_args << '-x none'
+		}
 	}
 	// Min macos version is mandatory I think?
 	if v.pref.os == .macos {
@@ -1101,10 +1266,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.o_args << only_o_files
 	}
 
-	defines, others, libs := cflags.defines_others_libs()
+	legacy_cflags, ordered_link_flags, pkgconfig_pthread :=
+		v.split_ordered_pkgconfig_link_flags(cflags)
+	defines, others, libs := legacy_cflags.defines_others_libs()
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
+	ccoptions.linker_flags << ordered_link_flags
+	ccoptions.pkgconfig_pthread = pkgconfig_pthread
 	v.fixup_tcc_macos_comma_path_flags(mut ccoptions)
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
 		if ccoptions.cc != .tcc {
@@ -1171,6 +1340,10 @@ pub fn (v &Builder) get_compile_args() []string {
 	return v.only_compile_args(v.ccoptions)
 }
 
+pub fn (v &Builder) has_pkgconfig_pthread() bool {
+	return v.ccoptions.pkgconfig_pthread
+}
+
 fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
 	mut all := []string{}
 	all << ccoptions.env_cflags
@@ -1199,6 +1372,12 @@ fn (v &Builder) only_compile_args(ccoptions CcompilerOptions) []string {
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
+	if ccoptions.pkgconfig_pthread
+		&& (ccoptions.cc in [.gcc, .clang] || v.pref.ccompiler_type == .cplusplus)
+		&& (v.pref.is_o || (v.pref.build_mode == .build_module && !v.pref.is_shared))
+		&& !all.any(pref.contains_exact_cflag_token(it, '-pthread')) {
+		all << '-pthread'
+	}
 	return all
 }
 
@@ -1210,7 +1389,7 @@ fn (v &Builder) only_linker_args(ccoptions CcompilerOptions) []string {
 	mut all := []string{}
 	// in `build-mode` or when producing a .o file, we do not need -lxyz flags,
 	// since we are building an (.o) object file, that will be linked later.
-	if v.pref.build_mode != .build_module && !v.pref.is_o {
+	if (v.pref.build_mode != .build_module || v.pref.is_shared) && !v.pref.is_o {
 		all << ccoptions.linker_flags
 		all << ccoptions.env_ldflags
 		all << ccoptions.ldflags
@@ -1410,6 +1589,13 @@ fn (v &Builder) rsp_safe_arg(arg string) string {
 	return arg
 }
 
+fn shell_safe_cc_arg(arg string) string {
+	if arg in ['-Wl,-(', '-Wl,-)'] {
+		return os.quoted_path(arg)
+	}
+	return arg
+}
+
 fn (v &Builder) should_use_rsp(rsp_args []string) bool {
 	if v.pref.no_rsp || v.pref.os == .termux {
 		return false
@@ -1544,13 +1730,14 @@ fn (mut v Builder) generate_c_project() {
 	}
 	v.dump_c_options(all_args)
 	cc_cmd := '${v.quote_compiler_name(ccompiler)} ${all_args.join(' ')}'
+	posix_cc_cmd := '${v.quote_compiler_name(ccompiler)} ${all_args.map(shell_safe_cc_arg(it)).join(' ')}'
 	os.write_file(os.join_path(project_dir, 'build_command.txt'), cc_cmd + '\n') or {
 		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'build_command.txt'))}: ${err}')
 	}
-	os.write_file(os.join_path(project_dir, 'Makefile'), 'all:\n\t${cc_cmd}\n') or {
+	os.write_file(os.join_path(project_dir, 'Makefile'), 'all:\n\t${posix_cc_cmd}\n') or {
 		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'Makefile'))}: ${err}')
 	}
-	os.write_file(os.join_path(project_dir, 'build.sh'), '#!/bin/sh\nset -eu\n${cc_cmd}\n') or {
+	os.write_file(os.join_path(project_dir, 'build.sh'), '#!/bin/sh\nset -eu\n${posix_cc_cmd}\n') or {
 		verror('Cannot write ${os.quoted_path(os.join_path(project_dir, 'build.sh'))}: ${err}')
 	}
 	os.write_file(os.join_path(project_dir, 'build.bat'), '@echo off\r\n${cc_cmd}\r\n') or {
@@ -1560,6 +1747,104 @@ fn (mut v Builder) generate_c_project() {
 		os.chmod(os.join_path(project_dir, 'build.sh'), 0o755) or {}
 	}
 	println('Generated C project in ${os.quoted_path(project_dir)}')
+}
+
+fn without_ccompiler_args(args []string) []string {
+	mut filtered := []string{cap: args.len}
+	mut i := 0
+	for i < args.len {
+		if args[i] == '-cc' {
+			i += 2
+			continue
+		}
+		if args[i].starts_with('-cc=') {
+			i++
+			continue
+		}
+		filtered << args[i]
+		i++
+	}
+	return filtered
+}
+
+fn (v &Builder) retry_command_boundary(args []string) int {
+	if v.pref.is_run || v.pref.is_crun {
+		command := if v.pref.is_run { 'run' } else { 'crun' }
+		idx := args.len - v.pref.run_args.len - 2
+		if idx >= 0 && args[idx] == command {
+			return idx
+		}
+		if v.pref.is_crun && v.pref.is_vsh {
+			// An implicit vsh command has no `crun` token; its run arguments locate the script.
+			script_idx := idx + 1
+			if script_idx >= 0 && os.real_path(args[script_idx]) == os.real_path(v.pref.path) {
+				return script_idx
+			}
+		}
+		return args.len
+	}
+	if v.pref.build_mode == .build_module && args.len >= 2 {
+		target_path := os.real_path(v.pref.path)
+		for idx in 0 .. args.len - 1 {
+			if args[idx] == 'build-module' && os.real_path(args[idx + 1]) == target_path {
+				return idx
+			}
+		}
+	}
+	return args.len
+}
+
+fn (v &Builder) should_forward_retry_output() bool {
+	return v.pref.show_cc || v.pref.show_c_output || v.pref.is_verbose || v.pref.is_stats
+		|| v.pref.show_timings || v.pref.show_callgraph || v.pref.show_depgraph
+		|| v.pref.dump_c_flags == '-' || v.pref.dump_modules == '-' || v.pref.dump_files == '-'
+		|| v.pref.dump_defines == '-'
+}
+
+fn (v &Builder) retry_compilation_args(original_args []string, ccompiler string) []string {
+	boundary := v.retry_command_boundary(original_args)
+	mut retry_args := without_ccompiler_args(original_args[..boundary])
+	retry_args << ['-cc', ccompiler, '-no-retry-compilation']
+	if v.pref.build_mode == .build_module {
+		retry_args << without_ccompiler_args(original_args[boundary..])
+	} else {
+		retry_args << original_args[boundary..]
+	}
+	return retry_args
+}
+
+fn (v &Builder) retry_compilation_with(ccompiler string) os.Result {
+	// Compiler comptime branches such as `$if tinyc` are resolved before C generation,
+	// so the fallback must regenerate the program instead of reusing TCC's C output.
+	all_args := util.join_env_vflags_and_os_args()
+	original_args := all_args#[1..].clone()
+	retry_args := v.retry_compilation_args(original_args, ccompiler)
+	vexe := pref.vexe_path()
+	cmd := '${os.quoted_path(vexe)} ${util.args_quote_paths(retry_args)}'
+	old_vflags := os.getenv_opt('VFLAGS')
+	old_vosargs := os.getenv_opt('VOSARGS')
+	old_vnorun := os.getenv_opt('VNORUN')
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+	os.setenv('VNORUN', '1', true)
+	defer {
+		if vflags := old_vflags {
+			os.setenv('VFLAGS', vflags, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
+		if vosargs := old_vosargs {
+			os.setenv('VOSARGS', vosargs, true)
+		} else {
+			os.unsetenv('VOSARGS')
+		}
+		if vnorun := old_vnorun {
+			os.setenv('VNORUN', vnorun, true)
+		} else {
+			os.unsetenv('VNORUN')
+		}
+	}
+	return os.execute(cmd)
 }
 
 pub fn (mut v Builder) cc() {
@@ -1632,7 +1917,11 @@ pub fn (mut v Builder) cc() {
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
-	mut tcc_output := os.Result{}
+	mut reproducible_debug_object := ''
+	mut reproducible_debug_object_lock := filelock.new('')
+	defer {
+		reproducible_debug_object_lock.release()
+	}
 	original_pwd := os.getwd()
 	for {
 		// try to compile with the chosen compiler
@@ -1664,6 +1953,15 @@ pub fn (mut v Builder) cc() {
 			v.ccoptions.pre_args << '-c'
 		}
 		v.handle_usecache(vexe)
+		reproducible_debug_object_lock.release()
+		reproducible_debug_object = v.prepare_reproducible_macos_debug_compiler_object(ccompiler,
+			vdir, mut reproducible_debug_object_lock)
+		if reproducible_debug_object != '' {
+			// Link the persistent object instead of letting clang use a random temporary
+			// object, whose path would otherwise be recorded in the Mach-O debug map.
+			v.ccoptions.source_args = [v.tcc_quoted_path(reproducible_debug_object)]
+			v.ccoptions.args << '-Qunused-arguments'
+		}
 		$if windows {
 			if v.ccoptions.cc == .msvc || v.pref.ccompiler_type == .msvc {
 				v.cc_msvc()
@@ -1675,12 +1973,11 @@ pub fn (mut v Builder) cc() {
 		v.dump_c_options(all_args)
 		mut rsp_args := all_args.map(v.rsp_safe_arg(it))
 		rsp_args = rsp_args.map(v.tcc_windows_path_arg(it))
-		shell_args := rsp_args.join(' ')
 		mut should_use_rsp := v.should_use_rsp(rsp_args)
 		mut str_args := if !should_use_rsp {
-			shell_args.replace('\n', ' ')
+			rsp_args.map(shell_safe_cc_arg(it)).join(' ').replace('\n', ' ')
 		} else {
-			shell_args
+			rsp_args.join(' ')
 		}
 		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
 		if v.pref.parallel_cc {
@@ -1751,7 +2048,6 @@ pub fn (mut v Builder) cc() {
 					exit(101)
 				}
 				if v.pref.retry_compilation {
-					tcc_output = res
 					old_ccompiler := v.pref.ccompiler
 					v.pref.default_c_compiler()
 					if v.pref.ccompiler == ccompiler || is_tcc_compiler_name(v.pref.ccompiler)
@@ -1762,12 +2058,17 @@ pub fn (mut v Builder) cc() {
 					if v.pref.ccompiler != '' && v.pref.ccompiler != ccompiler {
 						if v.pref.is_verbose {
 							eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
-						} else {
-							$if macos {
-								eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler} (this is much slower)'))
-							}
+						} else if !v.pref.is_quiet {
+							eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler}'))
 						}
-						continue
+						retry_res := v.retry_compilation_with(v.pref.ccompiler)
+						if retry_res.exit_code != 0 || v.should_forward_retry_output() {
+							print(retry_res.output)
+						}
+						if retry_res.exit_code != 0 {
+							exit(retry_res.exit_code)
+						}
+						return
 					}
 				}
 			}
@@ -1780,13 +2081,7 @@ pub fn (mut v Builder) cc() {
 					missing_compiler_info())
 			}
 		}
-		// If tcc failed once, and the system C compiler has failed as well,
-		// print the tcc error instead since it may contain more useful information.
-		// Keep the uploaded bug report tied to the final compiler result.
-		// See https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
-		failure_output := c_compiler_failure_output(ccompiler, res, tcc_output)
-		v.post_process_c_compiler_output_with_report(failure_output.display_ccompiler,
-			failure_output.display_res, failure_output.report_ccompiler, failure_output.report_res)
+		v.post_process_c_compiler_output(ccompiler, res)
 		// Print the C command
 		if v.pref.is_verbose {
 			println('${ccompiler}')
@@ -1795,6 +2090,7 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	v.apply_windows_icon_to_executable() or { verror(err.msg()) }
+	v.generate_reproducible_macos_debug_compiler_dsym(reproducible_debug_object)
 	if v.pref.compress {
 		ret := os.system('strip ${os.quoted_path(v.pref.out_name)}')
 		if ret != 0 {
@@ -1820,12 +2116,275 @@ pub fn (mut v Builder) cc() {
 			}
 		}
 	}
+	v.finalize_reproducible_macos_debug_compiler()
 	// if v.pref.os == .ios {
 	// ret := os.system('ldid2 -S ${v.pref.out_name}')
 	// if ret != 0 {
 	// eprintln('failed to run ldid2, try: brew install ldid')
 	// }
 	// }
+}
+
+fn (mut v Builder) prepare_reproducible_macos_debug_compiler_object(ccompiler string, vdir string, mut object_usage_lock filelock.FileLock) string {
+	$if macos {
+		if v.pref.os != .macos || !v.pref.building_v || !v.pref.is_debug || v.pref.parallel_cc
+			|| v.pref.build_mode == .build_module || v.pref.is_o || v.ccoptions.cc != .clang {
+			return ''
+		}
+		cache_dir := os.join_path(os.cache_dir(), 'v', 'reproducible-macos-debug')
+		os.mkdir_all(cache_dir) or {
+			verror('could not create the reproducible macOS debug object directory: ${err}')
+			return ''
+		}
+		prune_reproducible_macos_debug_compiler_temporaries(cache_dir)
+		temporary_object := os.join_path(cache_dir, 'v-compiler.${os.getpid()}.tmp')
+		mut temporary_object_lock := filelock.new(temporary_object + '.lock')
+		temporary_object_lock.acquire() or {
+			verror('could not lock the temporary reproducible macOS debug object: ${err}')
+			return ''
+		}
+		defer {
+			temporary_object_lock.release()
+		}
+		os.rm(temporary_object) or {}
+		os.rm(temporary_object + '.rsp') or {}
+		mut compile_options := v.ccoptions
+		// Output and linked third-party objects do not affect compilation of the
+		// generated C file and must not enter the persistent object's content.
+		compile_options.o_args = ['-o ${v.tcc_quoted_path(temporary_object)}', '-c']
+		mut rsp_args := v.only_compile_args(compile_options).map(v.rsp_safe_arg(it))
+		rsp_args = rsp_args.map(v.tcc_windows_path_arg(it))
+		should_use_rsp := v.should_use_rsp(rsp_args)
+		mut str_args := if should_use_rsp {
+			rsp_args.join(' ')
+		} else {
+			rsp_args.map(shell_safe_cc_arg(it)).join(' ').replace('\n', ' ')
+		}
+		mut cmd := '${v.quote_compiler_name(ccompiler)} ${str_args}'
+		mut response_file := ''
+		mut response_file_content := str_args
+		if should_use_rsp {
+			response_file = '${temporary_object}.rsp'
+			response_file_content = str_args.replace('\\', '\\\\')
+			write_response_file(response_file, response_file_content)
+			rspexpr := '@${v.tcc_windows_path(response_file)}'
+			cmd = '${v.quote_compiler_name(ccompiler)} ${os.quoted_path(rspexpr)}'
+		}
+		v.show_cc(cmd, response_file, response_file_content)
+		original_pwd := os.getwd()
+		os.chdir(vdir) or {
+			verror('could not enter the compiler directory for the reproducible macOS debug build: ${err}')
+			return ''
+		}
+		util.timing_start('C object')
+		res := os.execute(cmd)
+		util.timing_measure('C object')
+		os.chdir(original_pwd) or {}
+		if v.pref.show_c_output {
+			v.show_c_compiler_output(ccompiler, res)
+		}
+		if response_file != '' {
+			os.rm(response_file) or {}
+		}
+		if res.exit_code != 0 {
+			os.rm(temporary_object) or {}
+		}
+		v.post_process_c_compiler_output(ccompiler, res)
+		object_bytes := os.read_bytes(temporary_object) or {
+			verror('could not read the reproducible macOS debug object: ${err}')
+			return ''
+		}
+		object_dir := os.join_path(cache_dir, sha256.sum(object_bytes).hex())
+		object_path := os.join_path(object_dir, 'v-compiler.o')
+		os.mkdir_all(object_dir) or {
+			verror('could not create the content-addressed macOS debug object directory: ${err}')
+			return ''
+		}
+		mut cache_entry_lock := new_reproducible_macos_debug_cache_entry_lock(object_dir) or {
+			verror('could not open the reproducible macOS debug cache entry lock: ${err}')
+			return ''
+		}
+		cache_entry_lock.acquire() or {
+			verror('could not lock the reproducible macOS debug cache entry: ${err}')
+			return ''
+		}
+		defer {
+			cache_entry_lock.release()
+		}
+		store_reproducible_macos_debug_compiler_object(temporary_object, object_dir, object_path) or {
+			verror('could not store the reproducible macOS debug object: ${err}')
+			return ''
+		}
+		os.utime(object_path, 1, 1) or {
+			verror('could not normalize the reproducible macOS debug object timestamp: ${err}')
+		}
+		object_usage_lock = filelock.new_file(object_path, mode: .shared)
+		object_usage_lock.acquire() or {
+			verror('could not lock the reproducible macOS debug object for linking: ${err}')
+			return ''
+		}
+		now := time.now().unix()
+		os.utime(object_dir, now, now) or {}
+		prune_reproducible_macos_debug_compiler_cache(cache_dir, object_path,
+			max_reproducible_macos_debug_cache_bytes)
+		return object_path
+	}
+	return ''
+}
+
+fn store_reproducible_macos_debug_compiler_object(temporary_object string, object_dir string, object_path string) ! {
+	os.mkdir_all(object_dir)!
+	if os.is_file(object_path) {
+		os.rm(temporary_object) or {}
+	} else {
+		os.mv(temporary_object, object_path)!
+	}
+}
+
+fn new_reproducible_macos_debug_cache_entry_lock(object_dir string) !filelock.FileLock {
+	lock_path := object_dir + '.lock'
+	// Cache entry locks remain in the cache root so all contenders always lock the
+	// same inode, including while the corresponding content directory is pruned.
+	mut lock_file := os.open_append(lock_path)!
+	lock_file.close()
+	return filelock.new_file(lock_path)
+}
+
+fn prune_reproducible_macos_debug_compiler_cache(cache_dir string, retained_object string, max_bytes u64) {
+	$if macos {
+		prune_reproducible_macos_debug_compiler_temporaries(cache_dir)
+		mut total_size := u64(0)
+		mut candidates := []ReproducibleMacosDebugCacheEntry{}
+		for name in os.ls(cache_dir) or { return } {
+			object_dir := os.join_path(cache_dir, name)
+			object_path := os.join_path(object_dir, 'v-compiler.o')
+			object_stat := os.stat(object_path) or { continue }
+			dir_stat := os.stat(object_dir) or { continue }
+			total_size += object_stat.size
+			if object_path != retained_object {
+				candidates << ReproducibleMacosDebugCacheEntry{
+					object_dir:  object_dir
+					object_path: object_path
+					size:        object_stat.size
+					last_used:   dir_stat.mtime
+				}
+			}
+		}
+		if total_size <= max_bytes {
+			return
+		}
+		candidates.sort(a.last_used < b.last_used)
+		for entry in candidates {
+			if total_size <= max_bytes {
+				break
+			}
+			if remove_reproducible_macos_debug_cache_entry(entry) {
+				total_size -= entry.size
+			}
+		}
+	}
+}
+
+fn prune_reproducible_macos_debug_compiler_temporaries(cache_dir string) {
+	mut temporary_names := map[string]bool{}
+	for name in os.ls(cache_dir) or { return } {
+		if !name.starts_with('v-compiler.') {
+			continue
+		}
+		temporary_name := if name.ends_with('.tmp') {
+			name
+		} else if name.ends_with('.tmp.rsp') {
+			name.trim_string_right('.rsp')
+		} else if name.ends_with('.tmp.lock') {
+			name.trim_string_right('.lock')
+		} else {
+			continue
+		}
+		pid := temporary_name.trim_string_left('v-compiler.').trim_string_right('.tmp')
+		if pid.len == 0 || !pid.bytes().all(it.is_digit()) {
+			continue
+		}
+		temporary_names[temporary_name] = true
+	}
+	for temporary_name, _ in temporary_names {
+		temporary_object := os.join_path(cache_dir, temporary_name)
+		mut temporary_object_lock := filelock.new(temporary_object + '.lock')
+		if !temporary_object_lock.try_acquire() {
+			continue
+		}
+		os.rm(temporary_object) or {}
+		os.rm(temporary_object + '.rsp') or {}
+		temporary_object_lock.release()
+	}
+}
+
+fn remove_reproducible_macos_debug_cache_entry(entry ReproducibleMacosDebugCacheEntry) bool {
+	mut cache_entry_lock := new_reproducible_macos_debug_cache_entry_lock(entry.object_dir) or {
+		return false
+	}
+	if !cache_entry_lock.try_acquire() {
+		return false
+	}
+	defer {
+		cache_entry_lock.release()
+	}
+	mut object_lock := filelock.new_file(entry.object_path, mode: .exclusive)
+	if !object_lock.try_acquire() {
+		return false
+	}
+	defer {
+		object_lock.release()
+	}
+	current_dir_stat := os.stat(entry.object_dir) or { return false }
+	if current_dir_stat.mtime != entry.last_used {
+		return false
+	}
+	os.rmdir_all(entry.object_dir) or { return false }
+	return true
+}
+
+fn (v &Builder) should_finalize_reproducible_macos_debug_compiler() bool {
+	$if macos {
+		return v.pref.os == .macos && v.pref.building_v && v.pref.is_debug
+			&& v.pref.build_mode != .build_module && !v.pref.is_o
+	}
+	return false
+}
+
+fn (v &Builder) generate_reproducible_macos_debug_compiler_dsym(debug_object string) {
+	$if macos {
+		if !v.should_finalize_reproducible_macos_debug_compiler() || debug_object == '' {
+			return
+		}
+		dsymutil_path := os.find_abs_path_of_executable('dsymutil') or {
+			verror('could not find `dsymutil` to finalize the reproducible macOS compiler debug information')
+			return
+		}
+		dsymutil_result := os.execute('${os.quoted_path(dsymutil_path)} -o ${os.quoted_path(
+			v.pref.out_name + '.dSYM')} ${os.quoted_path(v.pref.out_name)}')
+		if dsymutil_result.exit_code != 0 {
+			verror('failed to generate the reproducible macOS compiler debug information:\n${dsymutil_result.output}')
+		}
+	}
+}
+
+fn (v &Builder) finalize_reproducible_macos_debug_compiler() {
+	$if macos {
+		if !v.should_finalize_reproducible_macos_debug_compiler() {
+			return
+		}
+		codesign_path := os.find_abs_path_of_executable('codesign') or {
+			verror('could not find `codesign` to finalize the reproducible macOS compiler binary')
+			return
+		}
+		// The linker leaves this compiler unsigned; add one normalized signature with
+		// a stable identifier so its layout and contents do not depend on the output path.
+		codesign_result :=
+			os.execute('${os.quoted_path(codesign_path)} --force --sign - --identifier org.vlang.v ${os.quoted_path(v.pref.out_name)}')
+		if codesign_result.exit_code != 0 {
+			verror('failed to ad-hoc sign the reproducible macOS compiler binary:\n${codesign_result.output}')
+		}
+	}
 }
 
 fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
@@ -2378,24 +2937,10 @@ fn sqlite_thirdparty_validation_error(mod string, obj_path string, source_file s
 	return ''
 }
 
-// fixup_tcc_macos_comma_path_flags works around the fact that both tcc and
-// clang split `-Wl,foo,bar` on every comma without an escape mechanism. When
-// V's install path contains a literal comma (used in CI to stress
-// space-paths), the `-Wl,-rpath,"@VEXEROOT/thirdparty/tcc/lib"` flag emitted
-// by builtin_d_gcboehm.c.v under `$if tinyc` expands into a path with a comma
-// and the linker rejects it. The bundled libgc.dylib also gets passed by
-// absolute path; that itself is fine, but the dylib's `LC_ID_DYLIB` is
-// `@rpath/libgc.dylib`, so the linked binary cannot find the library at
-// runtime once we strip the rpath flag.
-//
-// This helper copies the bundled dylib into a non-comma cache directory,
-// updates the copy's install_name to its own absolute path (so the linked
-// binary records that path in `LC_LOAD_DYLIB`), then rewrites the dylib flag
-// in the linker arguments to point at the copy and drops the now-broken rpath
-// flag. The bundled libgc.dylib itself is left untouched, so binaries built
-// before/elsewhere that rely on `@rpath/libgc.dylib` still work. The fixup is
-// applied for any cc, since V may fall back from tcc to clang and reuse the
-// already-emitted flags.
+// fixup_tcc_macos_comma_path_flags moves the exact bundled libgc dylib/rpath
+// pair to a persistent comma-free content store when V's root contains a comma.
+// It is token-driven because a fallback compiler can reuse the already emitted
+// flags. The store keeps the dylib bytes and its @rpath install name unchanged.
 fn (v &Builder) fixup_tcc_macos_comma_path_flags(mut ccoptions CcompilerOptions) {
 	$if !macos {
 		return
@@ -2403,44 +2948,16 @@ fn (v &Builder) fixup_tcc_macos_comma_path_flags(mut ccoptions CcompilerOptions)
 	if v.pref.os != .macos {
 		return
 	}
-	tcc_lib_dir := os.real_path(os.join_path(v.pref.vroot, 'thirdparty', 'tcc', 'lib'))
-	if !tcc_lib_dir.contains(',') {
+	plan := plan_tcc_macos_libgc_store(v.pref.vroot, ccoptions.linker_flags, ccoptions.pre_args) or {
+		verror(err.msg())
+	}
+	if !plan.required {
 		return
 	}
-	src_dylib := os.join_path(tcc_lib_dir, 'libgc.dylib')
-	if !os.exists(src_dylib) {
-		return
-	}
-	cache_dir := os.join_path(os.temp_dir(), 'v_tcc_libgc')
-	if cache_dir.contains(',') {
-		return
-	}
-	if !os.exists(cache_dir) {
-		os.mkdir_all(cache_dir) or { return }
-	}
-	cache_dylib := os.join_path(cache_dir, 'libgc.dylib')
-	src_mtime := os.file_last_mod_unix(src_dylib)
-	if !os.exists(cache_dylib) || os.file_last_mod_unix(cache_dylib) < src_mtime {
-		os.cp(src_dylib, cache_dylib) or { return }
-		idres :=
-			os.execute('install_name_tool -id ${os.quoted_path(cache_dylib)} ${os.quoted_path(cache_dylib)}')
-		if idres.exit_code != 0 {
-			if v.pref.is_verbose {
-				eprintln('install_name_tool -id for ${cache_dylib} failed: ${idres.output.trim_space()}')
-			}
-			return
-		}
-	}
-	cache_dylib_quoted := '"${cache_dylib}"'
-	suffix := os.path_separator + 'tcc' + os.path_separator + 'lib' + os.path_separator +
-		'libgc.dylib'
-	ccoptions.linker_flags = ccoptions.linker_flags.map(if it.ends_with(suffix + '"')
-		&& it.starts_with('"') {
-		cache_dylib_quoted
-	} else {
-		it
-	})
-	ccoptions.pre_args = ccoptions.pre_args.filter(!it.starts_with('-Wl,-rpath,'))
+	linker_flags, pre_args := materialize_and_rewrite_tcc_macos_libgc_flags(plan,
+		ccoptions.linker_flags, ccoptions.pre_args) or { verror(err.msg()) }
+	ccoptions.linker_flags = linker_flags
+	ccoptions.pre_args = pre_args
 }
 
 fn (v &Builder) should_compile_bundled_thirdparty_object_from_source(obj_path string, source_file string, source_kind SourceKind) bool {

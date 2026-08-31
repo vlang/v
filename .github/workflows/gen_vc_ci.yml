@@ -25,6 +25,9 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
+permissions:
+  contents: read
+
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
@@ -36,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build V
         run: make -j4
       - name: Regenerate v.c and v_win.c

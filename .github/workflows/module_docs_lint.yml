@@ -10,11 +10,15 @@ on:
     paths:
       - '**/cmd/tools/vdoc/theme/**'
 
+concurrency:
+  group: module-docs-lint-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-module-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Check Formatting
         uses: creyD/prettier_action@v4.6
         with:

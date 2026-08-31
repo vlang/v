@@ -11,6 +11,20 @@ enum SpawnGoMode {
 	go_
 }
 
+fn (mut g Gen) mark_spawn_arg_option_or_result_type(typ ast.Type) {
+	if typ.has_flag(.option) {
+		_, base := g.option_type_name(typ)
+		if base !in g.spawn_arg_options {
+			g.spawn_arg_options << base
+		}
+	} else if typ.has_flag(.result) {
+		_, base := g.result_type_name(typ)
+		if base !in g.spawn_arg_results {
+			g.spawn_arg_results << base
+		}
+	}
+}
+
 fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	if node.call_expr.should_be_skipped {
 		return
@@ -139,9 +153,37 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 		g.writeln(';')
 	}
 	for i, arg in expr.args {
-		g.write('${arg_tmp_var}${dot}arg${i + 1} = ')
-		g.expr(arg.expr)
-		g.writeln(';')
+		arg_field := '${arg_tmp_var}${dot}arg${i + 1}'
+		arg_type := g.unwrap_generic(g.recheck_concrete_type(arg.typ))
+		expected_type := if i < expr.expected_arg_types.len {
+			g.unwrap_generic(expr.expected_arg_types[i])
+		} else {
+			arg_type
+		}
+		// e.g. `spawn obj.f(none)` (or `spawn obj.f(v)`) where `f` takes an `?T`
+		// parameter: the argument must be wrapped into the option type of the
+		// parameter, otherwise the packed thread argument keeps the bare `none`/value
+		// type and the generated C fails to compile (see issue #28079).
+		coerce_to_option := expected_type.has_flag(.option) && !arg_type.has_flag(.option)
+		if !coerce_to_option && !arg_type.is_ptr() && !arg_type.has_option_or_result()
+			&& g.table.final_sym(arg_type).kind == .array_fixed {
+			g.write('memcpy(${arg_field}, ')
+			g.expr(arg.expr)
+			g.writeln(', sizeof(${arg_field}));')
+		} else {
+			g.write('${arg_field} = ')
+			if coerce_to_option {
+				g.expr_with_opt(arg.expr, arg_type, expected_type)
+			} else if arg_type.has_option_or_result() {
+				old_inside_opt_or_res := g.inside_opt_or_res
+				g.inside_opt_or_res = true
+				g.expr(arg.expr)
+				g.inside_opt_or_res = old_inside_opt_or_res
+			} else {
+				g.expr(arg.expr)
+			}
+			g.writeln(';')
+		}
 	}
 	if is_spawn && g.pref.prealloc {
 		g.writeln('${arg_tmp_var}->prealloc_scope = builtin__prealloc_scope_retain_current();')
@@ -356,7 +398,18 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 					arg_sym.info.func.params.map(it.typ), 'arg${i + 1}')
 				g.type_definitions.writeln('\t' + sig + ';')
 			} else {
-				styp := g.styp(arg_typ)
+				// Keep the wrapper field type in sync with the coercion done when
+				// packing the argument: an `?T` parameter given a bare `none`/value
+				// must be stored as the option type, not as `none` (see #28079).
+				mut field_typ := arg_typ
+				if i < expr.expected_arg_types.len {
+					expected_typ := g.unwrap_generic(expr.expected_arg_types[i])
+					if expected_typ.has_flag(.option) && !arg_typ.has_flag(.option) {
+						field_typ = expected_typ
+					}
+				}
+				g.mark_spawn_arg_option_or_result_type(field_typ)
+				styp := g.styp(field_typ)
 				g.type_definitions.writeln('\t${styp} arg${i + 1};')
 			}
 		}
@@ -492,6 +545,9 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 			} else {
 				g.gowrappers.writeln('\tbuiltin___v_free(arg);')
 			}
+		}
+		if is_spawn && g.pref.prealloc && wrapper_return_type == ast.void_type {
+			g.gowrappers.writeln('\tbuiltin__prealloc_thread_cleanup();')
 		}
 		if g.pref.os != .windows && wrapper_return_type != ast.void_type {
 			g.gowrappers.writeln('\treturn ret_ptr;')

@@ -1,0 +1,4 @@
+Name: whole-archive-epoch-74
+Description: Balanced whole-archive revisit
+Version: 1.0.0
+Libs: -Wl,--whole-archive -lissue74_epoch -Wl,--no-whole-archive

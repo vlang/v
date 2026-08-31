@@ -1,9 +1,0 @@
-module main
-
-#include freestanding <platform_none.h>
-#flag freestanding -DPLATFORM_NONE_FREESTANDING
-fn C.platform_none_tick() int
-
-fn main() {
-	_ := C.platform_none_tick()
-}

@@ -1,0 +1,4 @@
+Name: split-rpath-a-74
+Description: First split GNU rpath operand
+Version: 1.0.0
+Libs: -Wl,-rpath -Wl,/issue74/split-rpath-a

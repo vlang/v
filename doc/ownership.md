@@ -20,6 +20,10 @@ Compile with ownership checking:
 v -ownership -o out main.v
 ```
 
+Ownership mode defines the target-visible custom option `ownership`. Code can use
+`$if ownership ? {}` to select ownership-specific branches, and files named
+`*_d_ownership.v` are included in ownership builds.
+
 ## Creating owned values
 
 Call `.to_owned()` on a string to create an owned copy. Only strings created with
@@ -209,6 +213,9 @@ compile-time defines so there is no ownership-checking overhead in the normal co
 ```
 v -ownership file.v        # check and compile
 ```
+
+The main V driver forwards `-d ownership` to the ownership-enabled compiler. This both
+enables the target compile-time checks described above and selects ownership-specific files.
 
 To build the ownership-enabled compiler manually:
 

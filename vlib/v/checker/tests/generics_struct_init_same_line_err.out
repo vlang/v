@@ -1,0 +1,24 @@
+vlib/v/checker/tests/generics_struct_init_same_line_err.vv:18:10: error: could not infer generic type `T` in generic struct `Left[T]`
+   16 | 
+   17 | fn main() {
+   18 |     println(Left{value: 1}.left_value() + Right{value: 2}.right_value())
+      |             ~~~~~~~~~~~~~~
+   19 | }
+vlib/v/checker/tests/generics_struct_init_same_line_err.vv:18:25: error: could not infer generic type `T` in call to `left_value`
+   16 | 
+   17 | fn main() {
+   18 |     println(Left{value: 1}.left_value() + Right{value: 2}.right_value())
+      |                            ~~~~~~~~~~~~
+   19 | }
+vlib/v/checker/tests/generics_struct_init_same_line_err.vv:18:40: error: could not infer generic type `T` in generic struct `Right[T]`
+   16 | 
+   17 | fn main() {
+   18 |     println(Left{value: 1}.left_value() + Right{value: 2}.right_value())
+      |                                           ~~~~~~~~~~~~~~~
+   19 | }
+vlib/v/checker/tests/generics_struct_init_same_line_err.vv:18:56: error: could not infer generic type `T` in call to `right_value`
+   16 | 
+   17 | fn main() {
+   18 |     println(Left{value: 1}.left_value() + Right{value: 2}.right_value())
+      |                                                           ~~~~~~~~~~~~~
+   19 | }

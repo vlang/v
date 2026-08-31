@@ -16,3 +16,13 @@ fn test_keeps_at_in_html_urls() {
 	assert res.contains('https://unpkg.com/hyperscript.org@0.8.1')
 	assert res.contains('<div>template ok</div>')
 }
+
+fn test_escape_double_at_before_complex_at_expression() {
+	res := $tmpl('tmpl/at_before_complex.txt')
+	// @@ before ident(...) must yield the literal `@ident(...)`, not `@{ident(...)}`.
+	// Regression for `@@get('/x')` being rewritten to `@{get('/x')}`.
+	assert res.contains("@get('/x')")
+	assert res.contains("@post('/save')")
+	assert !res.contains('@{get(')
+	assert !res.contains('@{post(')
+}

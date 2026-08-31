@@ -1,0 +1,18 @@
+import json as old
+
+struct User {
+	name string
+}
+
+// An aliased legacy import qualifies its calls as `old.encode(...)`. Whether the
+// parser tags those as the `json.encode` call kind that vfmt migrates depends on the
+// alias being resolved to the canonical module, which isn't guaranteed in every parse
+// context — so migrating could drop the `old` alias while leaving `old.encode(...)`
+// behind. The file is left unmigrated.
+fn to_json(u User) string {
+	return old.encode(u)
+}
+
+fn from_json(s string) !User {
+	return old.decode(User, s)
+}

@@ -1,7 +1,7 @@
 module main
 
 import os
-import json
+import json2 as json
 
 pub struct SiteConfig {
 pub mut:
@@ -24,7 +24,7 @@ pub enum SiteCat {
 
 fn data_load() []SiteConfig {
 	data := os.read_file(os.resource_abs_path('data.json')) or { panic(err) }
-	a := json.decode([]SiteConfig, data) or { panic(err) }
+	a := json.decode[[]SiteConfig](data) or { panic(err) }
 	return a
 }
 

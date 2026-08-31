@@ -107,6 +107,7 @@ pub:
 pub struct Channel {
 pub:
 	elem_type Type
+	is_mut    bool
 }
 
 // Map represents map data used by types.
@@ -126,6 +127,7 @@ pub:
 pub struct FnType {
 pub:
 	params      []Type
+	params_mut  []bool
 	return_type Type
 }
 
@@ -179,11 +181,143 @@ pub:
 	types []Type
 }
 
+// clone_owned_type clones a type and all nested owned metadata.
+pub fn clone_owned_type(value Type) Type {
+	return match value {
+		Void {
+			Type(void_)
+		}
+		Unknown {
+			Type(Unknown{
+				reason: value.reason.clone()
+			})
+		}
+		Primitive {
+			Type(Primitive{
+				props: value.props
+				size:  value.size
+			})
+		}
+		String {
+			Type(string_)
+		}
+		Char {
+			Type(char_)
+		}
+		Rune {
+			Type(rune_)
+		}
+		ISize {
+			Type(isize_)
+		}
+		USize {
+			Type(usize_)
+		}
+		Nil {
+			Type(nil_)
+		}
+		None {
+			Type(none_)
+		}
+		Array {
+			Type(Array{
+				elem_type: clone_owned_type(value.elem_type)
+			})
+		}
+		ArrayFixed {
+			Type(ArrayFixed{
+				elem_type: clone_owned_type(value.elem_type)
+				len:       value.len
+				len_expr:  value.len_expr.clone()
+			})
+		}
+		Channel {
+			Type(Channel{
+				elem_type: clone_owned_type(value.elem_type)
+				is_mut:    value.is_mut
+			})
+		}
+		Map {
+			Type(Map{
+				key_type:   clone_owned_type(value.key_type)
+				value_type: clone_owned_type(value.value_type)
+			})
+		}
+		Pointer {
+			Type(Pointer{
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		FnType {
+			Type(FnType{
+				params:      clone_owned_types(value.params)
+				params_mut:  value.params_mut.clone()
+				return_type: clone_owned_type(value.return_type)
+			})
+		}
+		OptionType {
+			Type(OptionType{
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		ResultType {
+			Type(ResultType{
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		Struct {
+			Type(Struct{
+				name: value.name.clone()
+			})
+		}
+		Interface {
+			Type(Interface{
+				name: value.name.clone()
+			})
+		}
+		Enum {
+			Type(Enum{
+				name:    value.name.clone()
+				is_flag: value.is_flag
+			})
+		}
+		SumType {
+			Type(SumType{
+				name: value.name.clone()
+			})
+		}
+		Alias {
+			Type(Alias{
+				name:      value.name.clone()
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		MultiReturn {
+			Type(MultiReturn{
+				types: clone_owned_types(value.types)
+			})
+		}
+	}
+}
+
+// clone_owned_types clones a list of types and all nested owned metadata.
+pub fn clone_owned_types(values []Type) []Type {
+	mut cloned := []Type{cap: values.len}
+	for value in values {
+		cloned << clone_owned_type(value)
+	}
+	return cloned
+}
+
 // StructField represents struct field data used by types.
 pub struct StructField {
 pub:
-	name string
-	typ  Type
+	name        string
+	typ         Type
+	has_default bool
+	is_embed    bool
+	is_mut      bool
+	is_volatile bool
 }
 
 // unwrap_pointer transforms unwrap pointer data for types.
@@ -192,6 +326,15 @@ pub fn unwrap_pointer(t Type) Type {
 		return t.base_type
 	}
 	return t
+}
+
+// unwrap_all_pointers removes every pointer layer from t.
+pub fn unwrap_all_pointers(t Type) Type {
+	mut clean := t
+	for clean is Pointer {
+		clean = clean.base_type
+	}
+	return clean
 }
 
 // generic_base_name returns the declaration part of a concrete generic type name.
@@ -224,6 +367,31 @@ pub fn (t Type) is_integer() bool {
 	return t is Rune || t is ISize || t is USize
 }
 
+// unsigned_shift_result_type returns the unsigned counterpart used as the result of `>>>`.
+pub fn unsigned_shift_result_type(t Type) Type {
+	if t is Alias {
+		return unsigned_shift_result_type(t.base_type)
+	}
+	if t is Primitive {
+		if !t.props.has(.integer) || t.props.has(.unsigned) {
+			return t
+		}
+		return match t.size {
+			8 { Type(u8_) }
+			16 { Type(u16_) }
+			64 { Type(u64_) }
+			else { Type(u32_) }
+		}
+	}
+	if t is Rune {
+		return Type(u32_)
+	}
+	if t is ISize {
+		return Type(usize_)
+	}
+	return t
+}
+
 // is_float reports whether is float applies in types.
 pub fn (t Type) is_float() bool {
 	if t is Primitive {
@@ -237,6 +405,75 @@ pub fn (t Type) name() string {
 	if t is Void {
 		return 'void'
 	}
+	if t is Struct {
+		return t.name
+	}
+	if t is Alias {
+		return t.name
+	}
+	if t is Primitive {
+		return prim_name_from(t.props, t.size)
+	}
+	if t is Pointer {
+		if t.base_type is Void {
+			return 'voidptr'
+		}
+		return '&${nested_type_name(t.base_type)}'
+	}
+	if t is Array {
+		return '[]${nested_type_name(t.elem_type)}'
+	}
+	if t is Interface {
+		return t.name
+	}
+	if t is Enum {
+		return t.name
+	}
+	if t is SumType {
+		return t.name
+	}
+	if t is String {
+		return 'string'
+	}
+	if t is OptionType {
+		return '?${nested_type_name(t.base_type)}'
+	}
+	if t is ResultType {
+		return '!${nested_type_name(t.base_type)}'
+	}
+	if t is FnType {
+		mut s := 'fn('
+		for i in 0 .. t.params.len {
+			if i > 0 {
+				s += ', '
+			}
+			if fn_type_param_is_mut(t, i) {
+				s += 'mut '
+			}
+			s += nested_type_name(fn_type_param_type(t, i))
+		}
+		s += ')'
+		if t.return_type !is Void {
+			s += ' ${nested_type_name(t.return_type)}'
+		}
+		return s
+	}
+	if t is Map {
+		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
+	}
+	if t is ArrayFixed {
+		len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
+		elem_type := nested_type_name(t.elem_type)
+		// Keep fixed arrays in canonical prefix form. Suffix form loses nesting:
+		// both `?[3]u8` and `[3]?u8` otherwise collapse to the ambiguous `?u8[3]`.
+		return '[${len_text}]${elem_type}'
+	}
+	if t is Channel {
+		if t.is_mut && t.elem_type is Pointer {
+			return 'chan mut ${nested_type_name(t.elem_type.base_type)}'
+		}
+		return 'chan ${nested_type_name(t.elem_type)}'
+	}
 	if t is Unknown {
 		return 'unknown'
 	}
@@ -245,9 +482,6 @@ pub fn (t Type) name() string {
 	}
 	if t is None {
 		return 'none'
-	}
-	if t is String {
-		return 'string'
 	}
 	if t is Char {
 		return 'char'
@@ -261,67 +495,10 @@ pub fn (t Type) name() string {
 	if t is USize {
 		return 'usize'
 	}
-	if t is Primitive {
-		return prim_name_from(t.props, t.size)
-	}
-	if t is Array {
-		return '[]${nested_type_name(t.elem_type)}'
-	}
-	if t is ArrayFixed {
-		mut len_text := t.len.str()
-		if t.len_expr.len > 0 {
-			len_text = t.len_expr
-		}
-		return '${nested_type_name(t.elem_type)}[${len_text}]'
-	}
-	if t is Channel {
-		return 'chan ${nested_type_name(t.elem_type)}'
-	}
-	if t is Map {
-		return 'map[${nested_type_name(t.key_type)}]${nested_type_name(t.value_type)}'
-	}
-	if t is Pointer {
-		return '&${nested_type_name(t.base_type)}'
-	}
-	if t is FnType {
-		mut s := 'fn('
-		for i in 0 .. t.params.len {
-			if i > 0 {
-				s += ', '
-			}
-			s += nested_type_name(fn_type_param_type(t, i))
-		}
-		s += ')'
-		if t.return_type !is Void {
-			s += ' ${nested_type_name(t.return_type)}'
-		}
-		return s
-	}
-	if t is OptionType {
-		return '?${nested_type_name(t.base_type)}'
-	}
-	if t is ResultType {
-		return '!${nested_type_name(t.base_type)}'
-	}
-	if t is Struct {
-		return t.name
-	}
-	if t is Interface {
-		return t.name
-	}
-	if t is Enum {
-		return t.name
-	}
-	if t is SumType {
-		return t.name
-	}
-	if t is Alias {
-		return t.name
-	}
 	if t is MultiReturn {
-		mut parts := []string{}
-		for i in 0 .. t.types.len {
-			parts << nested_type_name(t.types[i])
+		mut parts := []string{cap: t.types.len}
+		for typ in t.types {
+			parts << nested_type_name(typ)
 		}
 		return '(${parts.join(', ')})'
 	}
@@ -336,6 +513,10 @@ fn nested_type_name(t Type) string {
 // fn_type_param_type supports fn type param type handling for types.
 fn fn_type_param_type(f FnType, idx int) Type {
 	return f.params[idx]
+}
+
+fn fn_type_param_is_mut(f FnType, idx int) bool {
+	return idx >= 0 && idx < f.params_mut.len && f.params_mut[idx]
 }
 
 // prim_name_from supports prim name from handling for types.

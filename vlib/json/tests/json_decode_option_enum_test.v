@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 enum Lang {

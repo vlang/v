@@ -441,12 +441,6 @@ fn tls_ka_srv_loop(mut s TlsKaSrv, mut listener mbedtls.SSLListener) {
 }
 
 fn test_h1_tls_reuse() {
-	$if windows && !no_vschannel ? {
-		// The default Windows TLS backend (SChannel) keeps its one-shot path
-		// until SChannel pooling lands.
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
 		assert false, 'port: ${err}'
 		return
@@ -490,10 +484,6 @@ fn test_h1_tls_reuse() {
 // HTTP/2-enabled request to the same origin — the ALPN preference is part of
 // the pool key. Forced-h1 requests still share among themselves.
 fn test_h1_tls_no_reuse_across_alpn_preference() {
-	$if windows && !no_vschannel ? {
-		eprintln('skipping: SChannel connection pooling is not implemented yet')
-		return
-	}
 	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
 		assert false, 'port: ${err}'
 		return

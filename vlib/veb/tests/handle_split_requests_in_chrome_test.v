@@ -3,7 +3,7 @@ import log
 import veb
 import time
 import net
-import x.json2
+import json2
 import net.http
 
 const port = 31228

@@ -1,0 +1,4 @@
+V panic: Assertion failed...
+vlib/v/slow_tests/inout/v3_assert_operand_once.v3.v:3: > assert values.pop() == 0
+   left value: values.pop() = 1
+  right value: 0

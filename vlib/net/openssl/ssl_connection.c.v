@@ -572,12 +572,18 @@ fn wait_for(handle int, what Select, timeout time.Duration) ! {
 	return net.err_timed_out
 }
 
-// wait_for_write waits for a write io operation to be available
-fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
+// wait_for_write waits for a write io operation to be available. Pure
+// raw-socket select() on s.handle — never touches the TLS context, so it is
+// safe to call without holding any lock that guards concurrent access to the
+// context itself (see h2_pooled_transport.v).
+pub fn (mut s SSLConn) wait_for_write(timeout time.Duration) ! {
 	return wait_for(s.handle, .write, timeout)
 }
 
-// wait_for_read waits for a read io operation to be available
-fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
+// wait_for_read waits for a read io operation to be available. Pure
+// raw-socket select() on s.handle — never touches the TLS context, so it is
+// safe to call without holding any lock that guards concurrent access to the
+// context itself (see h2_pooled_transport.v).
+pub fn (mut s SSLConn) wait_for_read(timeout time.Duration) ! {
 	return wait_for(s.handle, .read, timeout)
 }

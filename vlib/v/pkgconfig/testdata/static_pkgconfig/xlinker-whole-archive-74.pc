@@ -1,0 +1,4 @@
+Name: xlinker-whole-archive-74
+Description: Xlinker whole-archive state fixture
+Version: 1.0.0
+Libs: -Xlinker --whole-archive -lissue74_xlinker_whole -Xlinker --no-whole-archive -lissue74_xlinker_whole

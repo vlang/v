@@ -861,9 +861,9 @@ fn C.XGetWindowAttributes(display &C.Display, window Window, attrs &C.XWindowAtt
 fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, long_offset i64, long_length i64, delete int, req_type Atom, actual_type &Atom, actual_format &int, nitems &XlibULong, bytes_after &XlibULong, prop &&u8) int
 fn C.XChangeProperty(display &C.Display, window Window, property Atom, @type Atom, format int, mode int, data &u8, nelements int) int
 fn C.Xutf8SetWMProperties(display &C.Display, window Window, window_name &char, icon_name &char, argv &&char, argc int, normal_hints voidptr, wm_hints voidptr, class_hints voidptr)
-fn C.XSetSelectionOwner(display &C.Display, selection Atom, owner Window, time Time)
+fn C.XSetSelectionOwner(display &C.Display, selection Atom, owner Window, time Time) int
 fn C.XGetSelectionOwner(display &C.Display, selection Atom) Window
-fn C.XConvertSelection(display &C.Display, selection Atom, target Atom, property Atom, requestor Window, time Time)
+fn C.XConvertSelection(display &C.Display, selection Atom, target Atom, property Atom, requestor Window, time Time) int
 fn C.XFree(data voidptr) int
 fn C.XDefineCursor(display &C.Display, window Window, cursor Cursor) int
 fn C.XUndefineCursor(display &C.Display, window Window) int

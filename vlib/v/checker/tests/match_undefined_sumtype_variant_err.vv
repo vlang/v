@@ -1,0 +1,9 @@
+type Value = int | string
+
+fn main() {
+	value := Value(1)
+	println(match value {
+		Nil { 'nil' }
+		else { 'other' }
+	})
+}

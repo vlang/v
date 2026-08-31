@@ -140,6 +140,15 @@ pub fn (mut p Process) set_redirect_stdio() {
 	}
 }
 
+// set_redirect_stdio_merged redirects both stdout and stderr to the stdout pipe.
+pub fn (mut p Process) set_redirect_stdio_merged() {
+	p.use_stdio_ctl = true
+	p.merge_stdio = true
+	$if trace_process_pipes ? {
+		eprintln('${@LOCATION}, pid: ${p.pid}, status: ${p.status}')
+	}
+}
+
 // stdin_write will write the string `s`, to the stdin pipe of the child process.
 pub fn (mut p Process) stdin_write(s string) {
 	p._check_redirection_call(@METHOD)

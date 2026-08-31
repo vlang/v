@@ -9,27 +9,24 @@ pub const C.SYS_getrandom int
 
 const read_batch_size = 256
 
-// read returns an array of `bytes_needed` random bytes read from the OS.
-pub fn read(bytes_needed int) ![]u8 {
-	mut buffer := unsafe { vcalloc_noscan(bytes_needed) }
+// read fills `buffer` with random bytes from the OS.
+pub fn read(mut buffer []u8) ! {
 	mut bytes_read := 0
-	mut remaining_bytes := bytes_needed
+	mut remaining_bytes := buffer.len
 	// getrandom syscall wont block if requesting <= 256 bytes
-	for bytes_read < bytes_needed {
+	for bytes_read < buffer.len {
 		batch_size := if remaining_bytes > read_batch_size {
 			read_batch_size
 		} else {
 			remaining_bytes
 		}
-		rbytes := unsafe { getrandom(batch_size, buffer + bytes_read) }
+		rbytes := unsafe { getrandom(batch_size, &u8(buffer.data) + bytes_read) }
 		if rbytes == -1 {
-			unsafe { free(buffer) }
 			return &ReadError{}
 		}
 		bytes_read += rbytes
 		remaining_bytes -= rbytes
 	}
-	return unsafe { buffer.vbytes(bytes_needed) }
 }
 
 fn getrandom(bytes_needed int, buffer voidptr) int {

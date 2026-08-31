@@ -33,7 +33,9 @@ fn run_parallel_cc_case_with_args(case_name string, args []string, files map[str
 	}
 	mut p := os.new_process(parallel_cc_vexe)
 	p.set_work_folder(case_dir)
-	p.set_args(args)
+	mut child_args := ['-old-compiler']
+	child_args << args
+	p.set_args(child_args)
 	p.set_environment(env)
 	p.set_redirect_stdio()
 	p.wait()
@@ -87,6 +89,34 @@ fn test_parallel_cc_succeeds_with_array_sort_compare_helper() {
 		println(xs)
 	}
 	'
+	})
+	assert res.exit_code == 0, res.output
+}
+
+fn test_parallel_cc_keeps_top_level_comptime_function_guards_together() {
+	res := run_parallel_cc_case_with_env('top_level_comptime_function', {
+		'main.v': 'module main
+
+fn before() int {
+	return 1
+}
+
+$if !parallel_cc_guard_disabled ? {
+	fn guarded() int {
+		return 2
+	}
+}
+
+fn after() int {
+	return 3
+}
+
+fn main() {
+	println(before() + guarded() + after())
+}
+'
+	}, {
+		'VJOBS': '2'
 	})
 	assert res.exit_code == 0, res.output
 }

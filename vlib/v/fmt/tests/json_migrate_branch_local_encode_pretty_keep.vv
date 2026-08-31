@@ -1,0 +1,15 @@
+module main
+
+// A branch-local `import json` (inside a top-level `$if`) is still detected via
+// file.imports, so a file that calls `json.encode_pretty` is left unmigrated even
+// when its json import lives in a comptime branch.
+$if linux {
+	import json
+
+	fn pretty() string {
+		return json.encode_pretty(42)
+	}
+}
+
+fn main() {
+}

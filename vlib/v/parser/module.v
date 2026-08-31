@@ -183,6 +183,13 @@ fn (mut p Parser) module_decl() ast.Module {
 					p.has_globals = true
 				}
 				'strict_map_index' {}
+				'alias' {
+					if !ma.has_arg || ma.kind != .string || ma.arg == '' {
+						p.error_with_pos('module attribute `alias` expects a non-empty path string',
+							ma.pos)
+						return mod_node
+					}
+				}
 				'translated' {
 					p.is_translated = true
 				}

@@ -1,4 +1,4 @@
-import x.json2
+import json2
 
 fn f() ! {
 	j := json2.decode[json2.Any]('')!

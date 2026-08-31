@@ -1,0 +1,4 @@
+fn main() {
+	a := [2]?map{}
+	println(a)
+}

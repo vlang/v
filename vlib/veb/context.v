@@ -7,7 +7,7 @@ import net
 import net.http
 import os
 import time
-import x.json2 as json
+import json2 as json
 
 enum ContextReturnType {
 	normal
@@ -81,6 +81,33 @@ pub mut:
 	// use form_error to pass errors from the context to your frontend
 	form_error                  string
 	livereload_poll_interval_ms int = 250
+}
+
+fn clone_response_writer_header(header http.Header) http.Header {
+	mut cloned := http.new_header()
+	mut seen := map[string]bool{}
+	for key in header.keys() {
+		if key in seen {
+			continue
+		}
+		seen[key] = true
+		for value in header.custom_values(key, exact: true) {
+			cloned.add_custom(key.clone(), value.clone()) or {}
+		}
+	}
+	return cloned
+}
+
+fn (mut ctx Context) preserve_for_response_writer(user_context Context) {
+	unsafe {
+		*ctx = user_context
+	}
+	ctx.res.body = user_context.res.body.clone()
+	ctx.res.header = clone_response_writer_header(user_context.res.header)
+	ctx.res.status_msg = user_context.res.status_msg.clone()
+	ctx.res.http_version = user_context.res.http_version.clone()
+	ctx.req.header = clone_response_writer_header(user_context.req.header)
+	ctx.return_file = user_context.return_file.clone()
 }
 
 // returns the request header data from the key

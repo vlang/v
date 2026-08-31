@@ -23,9 +23,10 @@ pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
 		text:     text
 		is_multi: ast_node.is_multi
 		pos:      token.Pos{
-			line_nr: ast_node.pos.line_nr
-			col:     0 // ast_node.pos.pos - ast_node.text.len
-			len:     text.len
+			line_nr:   ast_node.pos.line_nr
+			last_line: ast_node.pos.last_line
+			col:       0 // ast_node.pos.pos - ast_node.text.len
+			len:       text.len
 		}
 	}
 }
@@ -202,6 +203,41 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 			return ''
 		}
 	}
+}
+
+// stmt_doc_anchor_line returns the source line that a statement's documentation
+// comment is expected to sit directly above. Attributes are parsed and consumed
+// before the declaration itself, so `stmt.pos` points at the declaration keyword,
+// *below* any attribute lines. When the statement carries attributes, the doc
+// comment is above the topmost attribute, so its line is used instead.
+fn stmt_doc_anchor_line(stmt ast.Stmt) int {
+	return match stmt {
+		ast.ConstDecl, ast.EnumDecl, ast.FnDecl, ast.GlobalDecl, ast.InterfaceDecl, ast.StructDecl {
+			attrs_first_line(stmt.attrs, stmt.pos.line_nr)
+		}
+		ast.TypeDecl {
+			match stmt {
+				ast.AliasTypeDecl, ast.FnTypeDecl, ast.SumTypeDecl {
+					attrs_first_line(stmt.attrs, stmt.pos.line_nr)
+				}
+			}
+		}
+		else {
+			stmt.pos.line_nr
+		}
+	}
+}
+
+// attrs_first_line returns the topmost source line among `attrs`, or
+// `default_line` when there are no positioned attributes.
+fn attrs_first_line(attrs []ast.Attr, default_line int) int {
+	mut anchor := default_line
+	for a in attrs {
+		if a.pos.line_nr > 0 && a.pos.line_nr < anchor {
+			anchor = a.pos.line_nr
+		}
+	}
+	return anchor
 }
 
 // stmt_pub returns a boolean if a given `ast.Stmt` node

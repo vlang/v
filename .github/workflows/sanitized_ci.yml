@@ -43,7 +43,7 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
-      - 'vlib/x/json2/**.v'
+      - 'vlib/json2/**.v'
       - '**/sanitized_ci.yml'
   pull_request:
     paths:
@@ -71,19 +71,27 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
-      - 'vlib/x/json2/**.v'
+      - 'vlib/json2/**.v'
       - '**/sanitized_ci.yml'
 
 concurrency:
   group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+env:
+  SANITIZER_BASE_PACKAGES: >-
+    postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+  SANITIZER_GRAPHICS_PACKAGES: >-
+    libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev
+    libasound2-dev libegl-dev
+  SANITIZER_CLANG_PACKAGES: clang
+
 jobs:
   sanitize-undefined-clang:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
-      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc clang -cflags -fno-omit-frame-pointer
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
@@ -91,7 +99,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
@@ -103,9 +111,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
@@ -117,9 +125,9 @@ jobs:
 
   sanitize-undefined-gcc:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
-      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc gcc -cflags -fno-omit-frame-pointer
       VJOBS: 1
       UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_undefined.suppressions
       VNATIVE_SKIP_LIBC_VV: 1
@@ -127,7 +135,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
@@ -139,8 +147,8 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
@@ -154,7 +162,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc clang -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc clang -cflags -fno-omit-frame-pointer
       VJOBS: 1
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
@@ -163,7 +171,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
@@ -175,9 +183,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
@@ -200,7 +208,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build
         run: |
           echo %VFLAGS%
@@ -222,7 +230,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc gcc -cflags -fno-omit-frame-pointer
       VJOBS: 1
       ASAN_OPTIONS: detect_leaks=1
       LSAN_OPTIONS: max_leaks=1:print_suppressions=0:suppressions=/home/runner/work/v/v/.github/workflows/run_sanitizers_leak.suppressions
@@ -231,7 +239,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
@@ -243,9 +251,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
@@ -261,14 +269,14 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
@@ -280,25 +288,51 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with clang and -cstrict
         run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)
         run: ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
+
+  sanitize-memory-clang-compiler:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      VFLAGS: -old-compiler -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
+      - name: Recompile V with clang and -cstrict
+        run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
         run: |
-          ./v -cflags -fsanitize=memory -o v cmd/v
-          ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
+          # Preserve existing `// vtest build: !sanitize-memory-clang` exclusions.
+          GITHUB_JOB=sanitize-memory-clang ./v -cflags -fsanitize=memory -o v cmd/v
+          GITHUB_JOB=sanitize-memory-clang ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
       - name: Build examples (V compiled with -fsanitize=memory)
-        run: ./v -silent build-examples
+        run: GITHUB_JOB=sanitize-memory-clang ./v -silent build-examples
 
   sanitize-address-clang-without-gc:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     env:
-      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VFLAGS: -old-compiler -cc clang -gc none -cflags -fno-omit-frame-pointer
       VJOBS: 1
       LSAN_OPTIONS: detect_leaks=0
       VNATIVE_SKIP_LIBC_VV: 1
@@ -306,7 +340,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
@@ -318,9 +352,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)

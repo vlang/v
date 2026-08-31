@@ -43,26 +43,39 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				// emitted by gen_formatted_string_interp_child_expr
 			} else if g.gen_map_str_expr(expr_id, typ) {
 				// emitted by gen_map_str_expr
-			} else if typ_name == 'IError' || typ_name.ends_with('.IError') {
-				// IError may resolve as Interface/Alias/Struct depending on context; match by
-				// name and interpolate its `.message` (mirrors the transformer's IError path).
-				g.gen_string_interp_child_expr(expr_id)
-				g.write('.message')
+			} else if g.is_ierror_type_name(typ_name) {
+				// IError may resolve as Interface/Alias/Struct depending on context. Dispatch
+				// through msg() so boxed MessageError values do not depend on the legacy cache.
+				g.gen_ierror_dynamic_method_expr(expr_id, typ, 'msg')
 			} else if typ is types.Primitive {
 				prim_name := types.Type(typ).name()
-				g.write('${c_name('${prim_name}.str')}(')
+				g.write('${g.cname('${prim_name}.str')}(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.ISize || typ is types.USize {
-				g.write('${c_name('${typ.name()}.str')}(')
+				g.write('${g.cname('${typ.name()}.str')}(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
+			} else if typ is types.Enum {
+				g.write('${g.enum_autostr_c_name(typ.name)}__autostr(')
+				g.gen_string_interp_child_expr(expr_id)
+				g.write(')')
+			} else if typ is types.Interface {
+				str_key := '${typ.name}.str'
+				if str_key in g.tc.fn_ret_types {
+					g.write('${g.cname(str_key)}(')
+					g.gen_string_interp_child_expr(child_id)
+					g.write(')')
+				} else {
+					sid := g.intern_string('${typ.name.all_after_last('.')}{}')
+					g.write('_str_${sid}')
+				}
 			} else if typ is types.Struct {
-				g.write('${c_name(typ.name)}__str(')
+				g.write('${g.cname(typ.name)}__str(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else if typ is types.SumType {
-				g.write('${c_name(typ.name)}__str(')
+				g.write('${g.cname(typ.name)}__str(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
 			} else {
@@ -160,10 +173,110 @@ fn is_string_interp_unsigned_int_type(name string) bool {
 	return name in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize']
 }
 
+fn is_string_interp_char_code_type(name string) bool {
+	return is_string_interp_signed_int_type(name) || is_string_interp_unsigned_int_type(name)
+		|| name == 'rune'
+}
+
 fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, typ types.Type, format string) bool {
 	f := parse_string_interp_format(format)
-	type_name := string_interp_type_name(typ)
+	type_name := string_interp_type_name(g.value_unalias_type(typ))
 	left := if f.left { 1 } else { 0 }
+	// An unsigned-backed enum must format as unsigned so values >= 1<<63 are not
+	// rendered as negative; consult the enum backing type like the transformer does.
+	enum_unsigned := if typ is types.Enum {
+		enum_storage_c_type_is_unsigned(g.enum_storage_c_type(typ))
+	} else {
+		false
+	}
+	if is_string_interp_char_code_type(type_name) && f.verb == `c` {
+		if f.width > 1 {
+			g.write('v3_string_pad(')
+		}
+		g.write('rune__str((u32)(')
+		g.gen_string_interp_child_expr(child_id)
+		g.write('))')
+		if f.width > 1 {
+			g.write(', ${f.width}, ${left})')
+		}
+		return true
+	}
+	if (is_string_interp_signed_int_type(type_name) || is_string_interp_unsigned_int_type(type_name)
+		|| typ is types.Enum) && f.verb in [`b`, `o`, `x`, `X`] {
+		base := match f.verb {
+			`b` { 2 }
+			`o` { 8 }
+			else { 16 }
+		}
+
+		zero_pad := f.zero && f.width > 0
+		space_pad := !zero_pad && f.width > 0
+		if zero_pad {
+			g.write('v3_string_zpad(')
+		} else if space_pad {
+			g.write('v3_string_pad(')
+		}
+		if f.verb == `X` {
+			g.write('v3_string_upper_ascii(')
+		}
+		if is_string_interp_unsigned_int_type(type_name) || enum_unsigned {
+			g.write('strconv__format_uint((u64)(')
+		} else {
+			g.write('strconv__format_int((i64)(')
+		}
+		g.gen_string_interp_child_expr(child_id)
+		g.write('), ${base})')
+		if f.verb == `X` {
+			g.write(')')
+		}
+		if zero_pad {
+			g.write(', ${f.width})')
+		} else if space_pad {
+			g.write(', ${f.width}, ${left})')
+		}
+		return true
+	}
+	if typ is types.Enum && f.verb == 0 {
+		if f.zero && f.width > 0 {
+			g.write('v3_string_zpad(')
+		} else if f.width > 0 {
+			g.write('v3_string_pad(')
+		}
+		g.write('${g.enum_autostr_c_name(typ.name)}__autostr(')
+		g.gen_string_interp_child_expr(child_id)
+		g.write(')')
+		if f.zero && f.width > 0 {
+			g.write(', ${f.width})')
+		} else if f.width > 0 {
+			g.write(', ${f.width}, ${left})')
+		}
+		return true
+	}
+	if typ is types.Enum && f.verb == `d` {
+		zpad_fn := if enum_unsigned { 'v3_u64_zpad' } else { 'v3_i64_zpad' }
+		cast := if enum_unsigned { 'u64' } else { 'i64' }
+		str_fn := if enum_unsigned { 'u64__str' } else { 'i64__str' }
+		if f.zero && f.width > 0 {
+			g.write('${zpad_fn}((${cast})(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write('), ${f.width})')
+			return true
+		}
+		if f.width > 0 {
+			g.write('v3_string_pad(${str_fn}((${cast})(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write(')), ${f.width}, ${left})')
+			return true
+		}
+		if enum_unsigned {
+			g.write('strconv__format_uint((u64)(')
+		} else {
+			g.write('strconv__format_int((i64)(')
+		}
+		g.gen_string_interp_child_expr(child_id)
+		g.write('), 10)')
+		return true
+	}
 	if is_string_interp_float_type(type_name) && (f.verb == `f` || f.verb == 0) && f.has_precision {
 		precision := if f.verb == `f` {
 			f.precision
@@ -240,20 +353,43 @@ fn (g &FlatGen) is_string_node(id flat.NodeId) bool {
 
 // string_literals supports string literals handling for FlatGen.
 fn (mut g FlatGen) string_literals() {
-	for i, s in g.str_lits {
-		escaped := s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\t',
-			'\\t').replace('\r', '\\r')
-		g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
+	g.string_literals_from(0)
+}
+
+// string_literals_from emits the interned literal table starting at index
+// `start`. The postamble fork emits [0, snapshot) during the parallel region;
+// anything interned later (worker novelties, the synthetic main) is emitted
+// as a supplement after the joins — per-id definitions are order-independent.
+fn (mut g FlatGen) string_literals_from(start int) {
+	if g.cache_split {
+		mut literals := g.str_lits[start..].clone()
+		literals.sort()
+		for s in literals {
+			i := g.str_lit_ids[s]
+			escaped := c_escape(s)
+			g.writeln('static string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		}
+	} else {
+		for i := start; i < g.str_lits.len; i++ {
+			s := g.str_lits[i]
+			escaped := c_escape(s)
+			g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		}
 	}
-	if g.str_lits.len > 0 {
+	if g.str_lits.len > start {
 		g.writeln('')
 	}
 }
 
 // intern_string supports intern string handling for FlatGen.
 fn (mut g FlatGen) intern_string(s string) int {
-	if s in g.str_lit_ids {
-		return g.str_lit_ids[s]
+	if id := g.str_lit_ids[s] {
+		return id
+	}
+	if g.str_lits_shared {
+		g.str_lits = g.str_lits.clone()
+		g.str_lit_ids = g.str_lit_ids.clone()
+		g.str_lits_shared = false
 	}
 	id := g.str_lits.len
 	g.str_lits << s

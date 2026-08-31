@@ -9,7 +9,7 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 // variable would shadow platform stderr macros in generated C.
 fn test_assert_with_stderr_local_codegen() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_assert_stderr_shadow_codegen_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_assert_stderr_shadow_input.v')

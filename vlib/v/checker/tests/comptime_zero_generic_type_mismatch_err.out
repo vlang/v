@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_zero_generic_type_mismatch_err.vv:6:9: error: infix expr: cannot use `Bar[Bar[int]]` (right expression) as `Bar[int]`
+    4 | 
+    5 | fn is_zero[T](val T) bool {
+    6 |     return val == $zero(Bar[T])
+      |            ~~~~~~~~~~~~~~~~~~~~
+    7 | }
+    8 |

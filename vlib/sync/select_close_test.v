@@ -1,8 +1,6 @@
 // vtest retry: 3
 module sync
 
-import time
-
 fn do_rec_i64(mut ch Channel) {
 	mut sum := i64(0)
 	for i in 0 .. 300 {
@@ -58,7 +56,7 @@ fn test_select() {
 	mut sl := i64(0)
 	mut objs := [voidptr(&ri), &sl, &rl, &rb]
 	for j in 0 .. 1101 {
-		idx := channel_select(mut channels, directions, mut objs, time.infinite)
+		idx := channel_select(mut channels, directions, mut objs, infinite_timeout)
 		match idx {
 			0 {
 				sum += ri

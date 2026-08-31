@@ -70,14 +70,19 @@ fn test_generic_sumtype_str_with_ref_variant() {
 	ptr := &value
 	ref_sum := some[&int](ptr)
 	assert typeof(ref_sum).name == 'Maybe[&int]'
-	assert ref_sum.str() == 'Some(123)'
-	assert '${ref_sum}' == 'Some(123)'
+	assert ref_sum.str() == 'Some(${ptr_str(ptr)})'
+	assert '${ref_sum}' == 'Some(${ptr_str(ptr)})'
 
 	sum := some(123)
 	sum_ref := sum.as_ref()
 	assert typeof(sum_ref).name == 'Maybe[&int]'
-	assert sum_ref.str() == 'Some(123)'
-	assert '${sum_ref}' == 'Some(123)'
+	sum_ref_str := sum_ref.str()
+	assert '${sum_ref}' == sum_ref_str
+	if sum_ref is &int {
+		assert sum_ref_str == 'Some(${ptr_str(sum_ref)})'
+	} else {
+		assert false
+	}
 }
 
 fn test_generic_sumtype_match_resolves_variant_type() {

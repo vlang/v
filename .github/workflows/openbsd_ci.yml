@@ -5,23 +5,75 @@ on:
   push:
     branches:
       - master
-    paths-ignore:
-      - 'vlib/v3/**'
-      - '**.md'
-      - '**.yml'
-      - 'cmd/tools/**'
-      - '!**/openbsd_ci.yml'
-      - '!ci/openbsd_ci.vsh'
-      - '!cmd/tools/builders/**.v'
+    paths:
+      - '**'
+      - '!vlib/v3/**'
+      - '!**.md'
+      - '!**.yml'
+      - '!cmd/tools/**'
+      - '.github/workflows/openbsd_ci.yml'
+      - 'ci/openbsd_ci.vsh'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vwatch_stdin_test.v'
   pull_request:
-    paths-ignore:
-      - 'vlib/v3/**'
-      - '**.md'
-      - '**.yml'
-      - 'cmd/tools/**'
-      - '!**/openbsd_ci.yml'
-      - '!ci/openbsd_ci.vsh'
-      - '!cmd/tools/builders/**.v'
+    paths:
+      - 'cmd/v/**'
+      - 'cmd/tools/builders/**.v'
+      - 'cmd/tools/vwatch_stdin_test.v'
+      # cmd/tools essentials synced with cmd/tools/vtest-self.v:essential_list
+      - 'cmd/tools/vvet/**'
+      - 'cmd/tools/vdoc/**'
+      # vlib essentials synced with cmd/tools/vtest-self.v:essential_list
+      - 'vlib/arrays/**'
+      - 'vlib/bitfield/**'
+      - 'vlib/builtin/**'
+      - 'vlib/cli/**'
+      - 'vlib/crypto/md5/**'
+      - 'vlib/dl/**'
+      - 'vlib/encoding/**'
+      - 'vlib/flag/**'
+      - 'vlib/io/**'
+      - 'vlib/json/**'
+      - 'vlib/json2/**'
+      - 'vlib/math/**'
+      - 'vlib/net/**'
+      - 'vlib/os/**'
+      - 'vlib/rand/**'
+      - 'vlib/runtime/**'
+      - 'vlib/semver/**'
+      - 'vlib/strconv/**'
+      - 'vlib/strings/**'
+      - 'vlib/sync/**'
+      - 'vlib/time/**'
+      - 'vlib/toml/**'
+      - 'vlib/v/**'
+      # build-examples / DB / Sokol deps exercised by ci/openbsd_ci.vsh
+      - 'vlib/compress/**'
+      - 'vlib/crypto/rand/**'
+      - 'vlib/db/**'
+      - 'vlib/fontstash/**'
+      - 'vlib/gg/**'
+      - 'vlib/gx/**'
+      - 'vlib/picoev/**'
+      - 'vlib/sokol/**'
+      - 'vlib/term/**'
+      - 'vlib/veb/**'
+      - 'thirdparty/**'
+      - 'vc/**'
+      - 'v.mod'
+      - 'ci/openbsd_ci.vsh'
+      - 'ci/common/**'
+      - 'GNUmakefile'
+      - 'Makefile'
+      - '.github/problem-matchers/**'
+      # Negated patterns MUST stay after all positive patterns (GitHub path-filter ordering).
+      - '!**.md'
+      - '!**.yml'
+      - '.github/workflows/openbsd_ci.yml'
+
+concurrency:
+  group: openbsd-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
 
 ### See https://github.com/cross-platform-actions/action
 ### for a description of the used fields here
@@ -31,11 +83,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Start OpenBSD VM for tcc
         id: vm-openbsd-tcc
-        uses: cross-platform-actions/action@v1.3.0
+        uses: cross-platform-actions/action@v1.4.0
         with:
           operating_system: openbsd
           version: '7.8'
@@ -46,7 +98,7 @@ jobs:
         id: tests-openbsd-tcc
         shell: cpa.sh {0}
         run: |
-          sudo pkg_add git sqlite3 gmake boehm-gc libiconv
+          sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
           # Install packages needed to build examples
           sudo pkg_add mariadb-client postgresql-client
           # Mandatory: hostname not set in VM => some tests fail
@@ -69,11 +121,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Start OpenBSD VM for clang
         id: vm-openbsd-clang
-        uses: cross-platform-actions/action@v1.3.0
+        uses: cross-platform-actions/action@v1.4.0
         with:
           operating_system: openbsd
           version: '7.8'
@@ -84,7 +136,7 @@ jobs:
         id: tests-openbsd-clang
         shell: cpa.sh {0}
         run: |
-          sudo pkg_add git sqlite3 gmake boehm-gc libiconv
+          sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
           # Install packages needed to build examples
           sudo pkg_add mariadb-client postgresql-client
           # Mandatory: hostname not set in VM => some tests fail

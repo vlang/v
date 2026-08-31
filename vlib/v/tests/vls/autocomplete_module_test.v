@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import os
 import term
 import v.util.diff

@@ -1,0 +1,1 @@
+builtin___option_ok(&(main__Bytes4*[]) { pointer }, (_option*)(&_t1), sizeof(main__Bytes4*));

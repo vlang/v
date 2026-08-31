@@ -77,6 +77,8 @@ functional `git` installation.
 
 Note: On Windows, run `makev.bat` instead of `make` in CMD, or `./makev.bat` in
 PowerShell.
+Note: On FreeBSD, OpenBSD, NetBSD, DragonFly, and Solaris, install GNU `make` and run it as
+`gmake`.
 Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
 
 To get started, execute the following in your terminal/shell:
@@ -102,6 +104,8 @@ Note: V is being constantly updated. To update V to its latest version, simply r
 ```bash
 v up
 ```
+
+This also refreshes the bundled TCC binaries used for fast C compilation.
 
 > [!NOTE]
 > If you run into any trouble, or you have a different operating
@@ -159,14 +163,14 @@ You should see something like this:
 
 ### FreeBSD
 
-On FreeBSD, V needs `boehm-gc-threaded` package preinstalled. After installing it, you can use the
-same script, like on Linux/macos:
+On FreeBSD, V needs `boehm-gc-threaded` and GNU `make` packages preinstalled. After installing
+them, use `gmake` to build V:
 
 ```bash
-pkg install boehm-gc-threaded
+pkg install boehm-gc-threaded gmake
 git clone --depth=1 https://github.com/vlang/v
 cd v
-make
+gmake
 ```
 
 ### OpenBSD
@@ -203,6 +207,13 @@ when no compatible bundled `thirdparty/tcc` binary is available on the host.
 
 The [Tiny C Compiler (tcc)](https://repo.or.cz/w/tinycc.git) is downloaded for you by `make` if
 there is a compatible version for your system, and installed under the V `thirdparty` directory.
+
+On macOS, `-cc tcc -gc boehm` uses a persistent bundled `libgc.dylib` store when the physical V
+installation path contains a comma. The store is under `$XDG_DATA_HOME/v-tcc-libgc-v1`, or
+`$HOME/.local/share/v-tcc-libgc-v1` when the XDG variable is unset or empty. V creates the fallback
+directories with private permissions. An explicit `XDG_DATA_HOME` must already be absolute,
+user-owned, not group/world-writable, and have a safe, comma-free canonical path. Compiled binaries
+can depend on this store at runtime, so do not delete it while they are in use.
 
 This compiler is very fast, but does almost no optimizations. It is best for development builds.
 
@@ -268,7 +279,7 @@ shell/editor after that, so that it can pick up the new PATH variable.
 - [Vim](https://github.com/vlang/awesome-v#vim)
 - [Vim/Neovim Runtime Files](editors/vim)
 - [VS Code](https://marketplace.visualstudio.com/items?itemName=VOSCA.vscode-v-analyzer)
-- [zed](https://github.com/lv37/zed-v)
+- [Zed](https://github.com/lv37/zed-v)
 
 
 To bring IDE functions for the V programming languages to your editor, check out

@@ -1,3 +1,5 @@
+// vtest vflags: -w
+
 module main
 
 import json

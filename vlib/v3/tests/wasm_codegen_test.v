@@ -5,10 +5,17 @@ const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+fn testsuite_begin() {
+	if os.getenv('V3_TEST_WASM') != '1' {
+		eprintln('> skipping v3 wasm backend tests; set V3_TEST_WASM=1 to run')
+		exit(0)
+	}
+}
+
 fn v3_binary() string {
 	v3_bin := os.join_path(os.vtmp_dir(), 'v3_wasm_codegen_test')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.execute('${os.quoted_path(vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

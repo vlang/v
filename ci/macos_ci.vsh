@@ -52,11 +52,13 @@ fn test_pure_v_math_module() {
 }
 
 fn self_tests() {
+	// The broad compatibility suite still covers V1. The strict V3 canary and
+	// dedicated V3 suites in macos_ci.yml cover the default compiler separately.
 	if common.is_github_job {
-		exec('VJOBS=1 v -silent test-self vlib')
+		exec('VJOBS=1 v -old-compiler -silent test-self vlib')
 	} else {
 		vjobs := os.getenv_opt('VJOBS') or { '1' }
-		exec('VJOBS=${vjobs} v -progress test-self vlib')
+		exec('VJOBS=${vjobs} v -old-compiler -progress test-self vlib')
 	}
 }
 
@@ -75,6 +77,11 @@ fn build_examples_v_compiled_with_tcc() {
 	} else {
 		exec('./vtcc -progress build-examples')
 	}
+}
+
+fn build_hello_world_autofree() {
+	exec('v -autofree -o hello_world examples/hello_world.v')
+	exec('./hello_world')
 }
 
 fn build_tetris_autofree() {
@@ -132,7 +139,9 @@ fn test_readline() {
 }
 
 fn test_inline_assembly() {
-	exec('v test vlib/v/slow_tests/assembly')
+	// V3 does not lower inline assembly yet. Select V1 explicitly so this task
+	// remains transparent and never exercises the compatibility retry path.
+	exec('v -old-compiler test vlib/v/slow_tests/assembly')
 }
 
 const all_tasks = {
@@ -147,6 +156,7 @@ const all_tasks = {
 	'test_pure_v_math_module':            Task{test_pure_v_math_module, 'Test pure V math module'}
 	'self_tests':                         Task{self_tests, 'Self tests'}
 	'build_examples':                     Task{build_examples, 'Build examples'}
+	'build_hello_world_autofree':         Task{build_hello_world_autofree, 'Build hello_world with -autofree'}
 	'build_tetris_autofree':              Task{build_tetris_autofree, 'Build tetris with -autofree'}
 	'build_blog_autofree':                Task{build_blog_autofree, 'Build blog tutorial with -autofree'}
 	'build_examples_prod':                Task{build_examples_prod, 'Build examples with -prod'}
@@ -160,4 +170,7 @@ const all_tasks = {
 	'test_inline_assembly':               Task{test_inline_assembly, 'Test inline assembly'}
 }
 
+// A supported V3 compilation must fail directly in CI. Never let the macOS
+// compatibility retry turn a V3 regression into a passing V1 build.
+os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 common.run(all_tasks)

@@ -1,0 +1,5 @@
+Name: transitive-link-error-middle-74
+Description: Middle transitive static parser error fixture
+Version: 1.0.0
+Requires: unterminated-link-quote-74
+Libs: -lissue74_transitive_error_middle

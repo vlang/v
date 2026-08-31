@@ -1,0 +1,7 @@
+type Array = [8]int
+
+fn main() {
+	a := Array{}
+	n := &a[0]
+	println(n)
+}

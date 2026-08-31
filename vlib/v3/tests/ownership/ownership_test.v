@@ -4,14 +4,24 @@ import os
 
 const ownership_tests_dir = os.dir(@FILE)
 const ownership_v3_dir = os.dir(os.dir(ownership_tests_dir))
+const ownership_vlib_dir = os.dir(ownership_v3_dir)
 const ownership_v3_src = os.join_path(ownership_v3_dir, 'v3.v')
 const ownership_vexe = @VEXE
 
 fn ownership_build_v3() string {
+	cache_path := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}.path')
+	if cached := os.read_file(cache_path) {
+		cached_bin := cached.trim_space()
+		if cached_bin.len > 0 && os.exists(cached_bin) {
+			return cached_bin
+		}
+	}
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${ownership_vexe} -d ownership -o ${v3_bin} ${ownership_v3_src}')
+	build :=
+		os.execute('${ownership_vexe} -gc none -d ownership -path "${ownership_vlib_dir}" -o ${v3_bin} ${ownership_v3_src}')
 	assert build.exit_code == 0, build.output
+	os.write_file(cache_path, v3_bin) or {}
 	return v3_bin
 }
 
@@ -22,7 +32,17 @@ fn run_ownership_check(v3_bin string, name string, code string) os.Result {
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -d ownership -b c -o ${out} ${src} 2>&1')
+	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+}
+
+fn run_autofree_check(v3_bin string, name string, code string) os.Result {
+	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	src := os.join_path(tmp_dir, 'main.v')
+	out := os.join_path(tmp_dir, 'out')
+	os.write_file(src, code) or { panic(err) }
+	return os.execute('${v3_bin} -ownership -autofree -b c -o ${out} ${src} 2>&1')
 }
 
 fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result {
@@ -32,7 +52,7 @@ fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out.c')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -d ownership -b c -o ${out} ${src} 2>&1')
+	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
@@ -46,21 +66,12 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, main_code) or { panic(err) }
 	os.write_file(mod_src, module_code) or { panic(err) }
-	return os.execute('${v3_bin} -d ownership -b c -o ${out} ${src} 2>&1')
+	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
-fn run_ownership_delegate_check(name string, code string) os.Result {
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_delegate_${name}_${os.getpid()}')
-	os.rmdir_all(tmp_dir) or {}
-	os.mkdir_all(tmp_dir) or { panic(err) }
-	src := os.join_path(tmp_dir, 'main.v')
-	out := os.join_path(tmp_dir, 'out')
-	os.write_file(src, code) or { panic(err) }
-	return os.execute('${ownership_vexe} -ownership -b c -o ${out} ${src} 2>&1')
-}
-
-fn test_ownership_delegate_does_not_define_target_ownership() {
-	ok := run_ownership_delegate_check('target_define_not_forwarded', r'
+fn test_ownership_flag_does_not_define_target_ownership() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'target_define_not_forwarded', r'
 $if ownership ? {
 	$compile_error("ownership define leaked into target")
 }
@@ -68,6 +79,20 @@ $if ownership ? {
 fn main() {}
 ')
 	assert ok.exit_code == 0, ok.output
+}
+
+fn test_non_mut_reference_parameter_accepts_literal_temporary() {
+	v3_bin := ownership_build_v3()
+	result := run_ownership_check(v3_bin, 'borrow_literal_temporary', '
+fn borrowed_len(value &string) int {
+	return value.len
+}
+
+fn main() {
+	assert borrowed_len("literal") == 7
+}
+')
+	assert result.exit_code == 0, result.output
 }
 
 fn test_ownership_move_on_assign_and_clone_escape() {
@@ -230,8 +255,31 @@ fn main() {
 	println(g)
 	_ = h
 }
-')
+	')
 	assert ok_plain_to_owned_method.exit_code == 0, ok_plain_to_owned_method.output
+
+	ok_builtin_string_receiver := run_ownership_check(v3_bin, 'builtin_string_receiver_borrows', "
+fn main() {
+	s := 'hello'.to_owned()
+	println(s.contains('h'))
+	println(s.contains('e'))
+}
+	")
+	assert ok_builtin_string_receiver.exit_code == 0, ok_builtin_string_receiver.output
+
+	fail_user_string_receiver := run_ownership_check(v3_bin, 'user_string_receiver_moves', '
+fn (s string) consume() {
+	_ = s
+}
+
+fn main() {
+	s := "hello".to_owned()
+	s.consume()
+	println(s)
+}
+	')
+	assert fail_user_string_receiver.exit_code != 0
+	assert fail_user_string_receiver.output.contains('use of moved value: `s`'), fail_user_string_receiver.output
 
 	ok_non_owned_clone_return := run_ownership_check(v3_bin, 'owned_receiver_clone_returns_int', '
 struct Resource implements Owned {
@@ -251,6 +299,78 @@ fn main() {
 }
 	')
 	assert ok_non_owned_clone_return.exit_code == 0, ok_non_owned_clone_return.output
+
+	fail_plain_struct_clone := run_ownership_check(v3_bin, 'plain_struct_clone_unknown', '
+struct Plain {
+	id int
+}
+
+fn main() {
+	_ := Plain{id: 1}.clone()
+}
+	')
+	assert fail_plain_struct_clone.exit_code != 0
+	assert fail_plain_struct_clone.output.contains('unknown function'), fail_plain_struct_clone.output
+
+	ok_iclone_default_clone := run_ownership_check(v3_bin, 'iclone_default_clone', '
+struct Resource implements IClone {
+	id int
+}
+
+fn main() {
+	r := Resource{id: 7}
+	c := r.clone()
+	println(c.id)
+}
+	')
+	assert ok_iclone_default_clone.exit_code == 0, ok_iclone_default_clone.output
+
+	ok_iclone_drop_temporary := run_ownership_check(v3_bin, 'iclone_drop_temporary', '
+interface Drop {
+mut:
+	drop()
+}
+
+struct Resource implements IClone, Drop {
+	id int
+}
+
+fn make_resource() Resource {
+	return Resource{id: 7}
+}
+
+fn (mut resource Resource) drop() {
+	println(resource.id)
+}
+
+fn main() {
+	_ := make_resource().clone()
+}
+	')
+	assert ok_iclone_drop_temporary.exit_code == 0, ok_iclone_drop_temporary.output
+
+	ok_iclone_if_expr_clone := run_ownership_check(v3_bin, 'iclone_if_expr_clone', '
+struct Resource implements IClone {
+	id int
+}
+
+fn pick(cond bool, left Resource, right Resource) Resource {
+	res := if cond {
+		left.clone()
+	} else {
+		right.clone()
+	}
+	return res
+}
+
+fn main() {
+	left := Resource{id: 7}
+	right := Resource{id: 9}
+	res := pick(true, left, right)
+	println(res.id)
+}
+	')
+	assert ok_iclone_if_expr_clone.exit_code == 0, ok_iclone_if_expr_clone.output
 
 	fail_inferred_owned_global := run_ownership_check(v3_bin, 'inferred_owned_global', '
 struct Resource implements Owned {
@@ -784,7 +904,7 @@ fn main() {
 }
 ')
 	assert fail_conditional_blank_aggregate_sink.exit_code != 0
-	assert fail_conditional_blank_aggregate_sink.output.contains('use of moved value: `h.value`'), fail_conditional_blank_aggregate_sink.output
+	assert fail_conditional_blank_aggregate_sink.output.contains('use of moved value: `h`'), fail_conditional_blank_aggregate_sink.output
 
 	fail_blank_aggregate_sink := run_ownership_check(v3_bin, 'blank_aggregate_sink_move', '
 struct Holder {
@@ -799,7 +919,7 @@ fn main() {
 }
 ')
 	assert fail_blank_aggregate_sink.exit_code != 0
-	assert fail_blank_aggregate_sink.output.contains('use of moved value: `h.value`'), fail_blank_aggregate_sink.output
+	assert fail_blank_aggregate_sink.output.contains('use of moved value: `h`'), fail_blank_aggregate_sink.output
 
 	fail_conditional_assign_aggregate := run_ownership_check(v3_bin,
 		'conditional_assign_aggregate_descendant', '
@@ -845,7 +965,7 @@ fn main() {
 }
 ')
 	assert fail_channel_aggregate_send.exit_code != 0
-	assert fail_channel_aggregate_send.output.contains('use of moved value: `h.value`'), fail_channel_aggregate_send.output
+	assert fail_channel_aggregate_send.output.contains('use of moved value: `h`'), fail_channel_aggregate_send.output
 }
 
 fn test_ownership_fn_literal_uses_isolated_frame() {
@@ -1039,8 +1159,8 @@ fn test_ownership_reassigned_reference_releases_old_borrow() {
 	v3_bin := ownership_build_v3()
 	ok := run_ownership_check(v3_bin, 'reassign_ref_releases_borrow', "
 fn main() {
-	s := 's'.to_owned()
-	t := 't'.to_owned()
+	mut s := 's'.to_owned()
+	mut t := 't'.to_owned()
 	mut r := &s
 	r = &t
 	u := s
@@ -1179,14 +1299,14 @@ fn main() {
 	assert fail_returned_borrow.output.contains('cannot move `s` because it is borrowed by `r`'), fail_returned_borrow.output
 
 	fail_mut_borrow := run_ownership_check(v3_bin, 'mut_param_borrow_twice', "
-fn both(mut a string, mut b string) {
+fn both[T](mut a T, mut b T) {
 	_ = a
 	_ = b
 }
 
 fn main() {
 	mut s := 'hello'.to_owned()
-	both(mut s, mut s)
+	both[string](mut s, mut s)
 }
 ")
 	assert fail_mut_borrow.exit_code != 0
@@ -2105,7 +2225,7 @@ fn main() {
 ')
 	assert fail_aggregate_copy.exit_code != 0
 	assert fail_aggregate_copy.output.contains('use of moved value: `h2.value`'), fail_aggregate_copy.output
-	assert fail_aggregate_copy.output.contains('use of moved value: `h.value`'), fail_aggregate_copy.output
+	assert fail_aggregate_copy.output.contains('use of moved value: `h`'), fail_aggregate_copy.output
 
 	fail_default_owned_field_read := run_ownership_check(v3_bin,
 		'default_owned_field_then_duplicate_read', '
@@ -2351,6 +2471,26 @@ fn main() {
 	assert fail_array_append_unknown_len_read.exit_code != 0
 	assert fail_array_append_unknown_len_read.output.contains('use of moved value: `arr[*]`'), fail_array_append_unknown_len_read.output
 
+	ok_array_loop_dynamic_append_return := run_ownership_check(v3_bin,
+		'array_loop_dynamic_append_return', '
+fn split_parts(glob string) []string {
+	mut parts := []string{}
+	for i := 0; i < glob.len; i++ {
+		if glob[i] == `,` {
+			parts << glob[0..i].to_owned()
+		}
+	}
+	parts << glob[0..].to_owned()
+	return parts
+}
+
+fn main() {
+	parts := split_parts("a,b")
+	println(int_str(parts.len))
+}
+')
+	assert ok_array_loop_dynamic_append_return.exit_code == 0, ok_array_loop_dynamic_append_return.output
+
 	fail_array_pop_return := run_ownership_check(v3_bin, 'array_pop_returns_owned', '
 fn main() {
 	mut arr := ["item".to_owned()]
@@ -2589,6 +2729,31 @@ fn main() {
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
 }
 
+fn test_ownership_array_alias_builtin_method_keeps_receiver() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'array_alias_insert_keeps_receiver', '
+type Strings = []string
+
+struct State {
+mut:
+	values map[string]string
+}
+
+fn (mut state State) reset() {
+	state.values = map[string]string{}
+}
+
+fn main() {
+	mut values := Strings{}
+	values.insert(0, "item".to_owned())
+	println(values.len)
+	mut state := State{}
+	state.reset()
+}
+')
+	assert ok.exit_code == 0, ok.output
+}
+
 fn test_ownership_aggregate_borrows_block_overlapping_reassignment() {
 	v3_bin := ownership_build_v3()
 	fail_field_borrow := run_ownership_check(v3_bin, 'field_borrow_blocks_whole_assign', '
@@ -2642,6 +2807,67 @@ fn main() {
 }
 ')
 	assert ok_scoped_owned_field.exit_code == 0, ok_scoped_owned_field.output
+}
+
+fn test_ownership_unsafe_expression_does_not_shift_scope_drops() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'unsafe_expression_scope_drop', '
+fn use_owned(flag bool, pointer voidptr) {
+	if pointer == unsafe { nil } {
+		return
+	}
+	if flag {
+		value := "owned".to_owned()
+		println(value)
+	} else {
+		println("not owned")
+	}
+}
+
+fn main() {
+	use_owned(true, voidptr(1))
+}
+')
+	assert ok.exit_code == 0, ok.output
+}
+
+fn test_ownership_returned_pointer_moves_aggregate_drop_state() {
+	v3_bin := ownership_build_v3()
+	ok := run_autofree_check(v3_bin, 'returned_pointer_aggregate_drop', '
+struct HeapBox {
+	err IError = none
+}
+
+fn make_heap_box() &HeapBox {
+	mut value := HeapBox{}
+	return &value
+}
+
+fn main() {
+	_ := make_heap_box()
+	println("ok")
+}
+')
+	assert ok.exit_code == 0, ok.output
+}
+
+fn test_autofree_nested_aggregate_transfer_moves_cleanup_owner_forward() {
+	v3_bin := ownership_build_v3()
+	ok := run_autofree_check(v3_bin, 'nested_aggregate_transfer', '
+struct Data {
+	value ?string
+}
+
+fn main() {
+	value := "owned".to_owned()
+	mut rows := map[string]Data{}
+	rows["key"] = Data{
+		value: ?string(value)
+	}
+	println(rows.len)
+}
+')
+	assert ok.exit_code == 0, ok.output
 }
 
 fn test_ownership_callee_params_are_order_independent() {
@@ -2802,8 +3028,135 @@ fn main() {
 	assert fail_params_field_borrow_move.output.contains('cannot move `s` because it is borrowed'), fail_params_field_borrow_move.output
 }
 
+fn test_ownership_deferred_call_seeds_param_fixed_point() {
+	v3_bin := ownership_build_v3()
+	fail := run_ownership_check(v3_bin, 'deferred_call_param_fixed_point', "
+fn forward(s string) int {
+	sink(s)
+	println(s)
+	return 0
+}
+
+fn seed() int {
+	defer {
+		forward('owned'.to_owned())
+	}
+	return 0
+}
+
+fn sink(s string) {}
+
+fn main() {
+	_ = seed()
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('use of moved value: `s`'), fail.output
+}
+
+fn test_ownership_expression_statement_call_seeds_param_fixed_point() {
+	v3_bin := ownership_build_v3()
+	fail := run_ownership_check(v3_bin, 'expression_statement_call_param_fixed_point', "
+fn forward(s string) int {
+	sink(s)
+	println(s)
+	return 0
+}
+
+fn seed() int {
+	forward('owned'.to_owned())
+	return 0
+}
+
+fn sink(s string) {}
+
+fn main() {
+	_ = seed()
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('use of moved value: `s`'), fail.output
+}
+
+fn test_ownership_assert_call_seeds_param_fixed_point() {
+	v3_bin := ownership_build_v3()
+	fail := run_ownership_check(v3_bin, 'assert_call_param_fixed_point', "
+fn forward(s string) bool {
+	sink(s)
+	println(s)
+	return true
+}
+
+fn seed() int {
+	assert forward('owned'.to_owned())
+	return 0
+}
+
+fn sink(s string) {}
+
+fn main() {
+	_ = seed()
+}
+")
+	assert fail.exit_code != 0
+	assert fail.output.contains('use of moved value: `s`'), fail.output
+}
+
 fn test_ownership_branch_moves_are_isolated_between_siblings() {
 	v3_bin := ownership_build_v3()
+	distinct_field_moves := run_ownership_check(v3_bin, 'branch_distinct_field_moves', '
+interface Drop {
+mut:
+	drop()
+}
+
+struct Resource implements Drop {
+	id int
+}
+
+fn (mut resource Resource) drop() {
+	println(resource.id)
+}
+
+struct Pair {
+	left  Resource
+	right Resource
+}
+
+fn consume(resource Resource) {
+	_ = resource.id
+}
+
+fn run(cond bool, base int) {
+	value := Pair{
+		left: Resource{
+			id: base
+		}
+		right: Resource{
+			id: base + 1
+		}
+	}
+	if cond {
+		consume(value.left)
+	} else {
+		consume(value.right)
+	}
+}
+
+fn main() {
+	run(true, 1)
+	run(false, 3)
+}
+')
+	assert distinct_field_moves.exit_code == 0, distinct_field_moves.output
+	distinct_field_binary := os.join_path(os.temp_dir(),
+		'v3_ownership_branch_distinct_field_moves_${os.getpid()}', 'out')
+	distinct_field_run := os.execute(distinct_field_binary)
+	assert distinct_field_run.exit_code == 0, distinct_field_run.output
+	dropped_ids := distinct_field_run.output.fields()
+	assert '2' in dropped_ids, distinct_field_run.output
+	assert '3' in dropped_ids, distinct_field_run.output
+
 	ok_sibling := run_ownership_check(v3_bin, 'branch_sibling_isolation', "
 fn main() {
 	cond := true
@@ -2889,10 +3242,10 @@ fn main() {
 		cond = false
 		_ = j
 	}
-}
+	}
 ')
 	assert fail_loop_post_body_local.exit_code != 0
-	assert fail_loop_post_body_local.output.contains('unknown identifier `j`'), fail_loop_post_body_local.output
+	assert fail_loop_post_body_local.output.contains('undefined variable `j`'), fail_loop_post_body_local.output
 
 	ok_labeled_break := run_ownership_check(v3_bin, 'labeled_break_targets_outer_loop', "
 fn main() {
@@ -3048,7 +3401,7 @@ fn main() {
 
 fn test_ownership_veb_implicit_context_arg_moves() {
 	v3_bin := ownership_build_v3()
-	fail := run_ownership_check(v3_bin, 'veb_implicit_ctx_arg_move', '
+	fail := run_ownership_check_with_module(v3_bin, 'veb_implicit_ctx_arg_move', '
 import veb
 
 pub struct Context {
@@ -3073,6 +3426,13 @@ fn main() {
 	app := &App{}
 	_ = app
 }
+',
+		'veb', '
+module veb
+
+pub struct Context {}
+
+pub struct Result {}
 ')
 	assert fail.exit_code != 0
 	assert fail.output.contains('use of moved value: `s`'), fail.output
@@ -3201,4 +3561,38 @@ fn main() {
 }
 ')
 	assert ok.exit_code == 0, ok.output
+}
+
+fn test_autofree_literal_only_program_keeps_ierror_destructors() {
+	v3_bin := ownership_build_v3()
+	ok_multi := run_autofree_check(v3_bin, 'literal_only_mixed_output', "
+fn main() {
+	print('a')
+	eprintln('b')
+	println('c')
+}
+")
+	assert ok_multi.exit_code == 0, ok_multi.output
+}
+
+const shape_coverage_programs = {
+	'literal_only':       "fn main() {\n\tprintln('hello')\n}\n"
+	'loop_accumulate':    'fn main() {\n\tmut n := 0\n\tfor i in 0 .. 4 {\n\t\tn += i\n\t}\n\tprintln(n)\n}\n'
+	'string_interp':      "fn main() {\n\tname := 'world'\n\tprintln('hello \${name} \${name.len}')\n}\n"
+	'array_and_map':      "fn main() {\n\tmut rows := []string{}\n\trows << 'a'.clone()\n\tmut seen := map[string]int{}\n\tseen['a'] = rows.len\n\tprintln(seen['a'])\n}\n"
+	'error_propagation':  "fn parse(s string) !int {\n\tif s == '' {\n\t\treturn error('empty')\n\t}\n\treturn s.len\n}\n\nfn run() ! {\n\tn := parse('abc')!\n\tprintln(n)\n}\n\nfn main() {\n\trun() or { println(err) }\n}\n"
+	'owned_struct':       "struct Row {\nmut:\n\tname  string\n\tlabel ?string\n}\n\nfn build() Row {\n\treturn Row{\n\t\tname: 'x'.clone()\n\t}\n}\n\nfn main() {\n\tr := build()\n\tprintln(r.name)\n}\n"
+	'generic_fn':         "fn first[T](items []T, fallback T) T {\n\tif items.len == 0 {\n\t\treturn fallback\n\t}\n\treturn items[0]\n}\n\nfn main() {\n\tprintln(first([]string{}, 'none'.clone()))\n}\n"
+	'interface_dispatch': 'interface Shape {\n\tarea() int\n}\n\nstruct Box {\n\tside int\n}\n\nfn (b Box) area() int {\n\treturn b.side * b.side\n}\n\nfn main() {\n\ts := Shape(Box{side: 3})\n\tprintln(s.area())\n}\n'
+	'match_option_arms':  "struct DictHeader {\nmut:\n\tn         int\n\tis_sorted ?bool\n}\n\nstruct DataHeader {\nmut:\n\tn        int\n\tencoding string\n}\n\nstruct DataHeaderV2 {\nmut:\n\tn          int\n\tstatistics ?string\n}\n\nenum PageType {\n\tindex_page\n\tdictionary_page\n\tdata_page\n\tdata_page_v2\n}\n\nstruct PageHeader {\nmut:\n\ttyp  PageType\n\tdict ?DictHeader\n\tdata ?DataHeader\n\tv2   ?DataHeaderV2\n}\n\nfn consume(n int) !int {\n\tif n < 0 {\n\t\treturn error('negative')\n\t}\n\treturn n\n}\n\nfn take(header &PageHeader) ! {\n\tmatch header.typ {\n\t\t.index_page {}\n\t\t.dictionary_page {\n\t\t\thead := header.dict or { return error('no dictionary header') }\n\t\t\tsorted := head.is_sorted or { false }\n\t\t\tif sorted {\n\t\t\t\treturn error('sorted')\n\t\t\t}\n\t\t\tconsume(head.n)!\n\t\t}\n\t\t.data_page {\n\t\t\thead := header.data or { return error('no data header') }\n\t\t\tif head.encoding == '' {\n\t\t\t\treturn error('no encoding')\n\t\t\t}\n\t\t\tconsume(head.n)!\n\t\t}\n\t\t.data_page_v2 {\n\t\t\thead := header.v2 or { return error('no v2 header') }\n\t\t\tstats := head.statistics or { '' }\n\t\t\t_ = stats\n\t\t\tconsume(head.n)!\n\t\t}\n\t}\n}\n\nfn main() {\n\th := PageHeader{\n\t\ttyp:  .data_page\n\t\tdata: DataHeader{\n\t\t\tn:        1\n\t\t\tencoding: 'plain'\n\t\t}\n\t}\n\ttake(&h) or { println(err) }\n\tprintln('ok')\n}\n"
+}
+
+fn test_ownership_and_autofree_build_every_program_shape() {
+	v3_bin := ownership_build_v3()
+	for name, code in shape_coverage_programs {
+		dropped := run_ownership_check(v3_bin, 'shape_drop_${name}', code)
+		assert dropped.exit_code == 0, '${name} under -ownership:\n${dropped.output}'
+		freed := run_autofree_check(v3_bin, 'shape_free_${name}', code)
+		assert freed.exit_code == 0, '${name} under -autofree:\n${freed.output}'
+	}
 }

@@ -5,7 +5,7 @@ module mldsa
 
 import crypto.sha256
 import encoding.hex
-import json
+import json2 as json
 import os
 
 struct TestVec {
@@ -20,7 +20,7 @@ struct TestVec {
 const vecs_json = os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdata', 'vectors.json'))) or {
 	panic(err)
 }
-const test_vecs = json.decode([]TestVec, vecs_json) or { panic(err) }
+const test_vecs = json.decode[[]TestVec](vecs_json) or { panic(err) }
 
 fn parse_kind(s string) Kind {
 	return match s {

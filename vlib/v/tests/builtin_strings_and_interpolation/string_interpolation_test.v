@@ -167,10 +167,13 @@ fn int_ref_string(n &int) string {
 fn test_int_ref_string_interpolation() {
 	mut count := 10
 	count_ref := &count
+	// `mut &int` params are auto-dereferenced, so they still interpolate as the value
 	assert int_ref_mut_string(mut &count) == '10'
-	assert int_ref_string(&count) == '10'
-	assert '${count_ref}' == '10'
-	assert '${&count}' == '10'
+	// a plain reference to a scalar interpolates as its address (Go `%v` semantics)
+	assert int_ref_string(&count) == '${voidptr(count_ref)}'
+	assert '${count_ref}' == '${voidptr(count_ref)}'
+	assert '${&count}' == '${voidptr(count_ref)}'
+	// an explicit format specifier still applies to the pointed-to value
 	assert '${count_ref:x}' == 'a'
 }
 

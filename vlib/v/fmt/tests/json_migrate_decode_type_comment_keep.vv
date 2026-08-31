@@ -1,0 +1,12 @@
+import json
+
+struct User {
+	name string
+}
+
+// A comment on the `json.decode` type argument would be dropped by the migration (only the
+// type expression inside `[]` is formatted), so the file is kept on legacy json.
+fn from_json(s string) !User {
+	return json.decode( // target
+	 User, s)
+}

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/struct_field_init_ref_to_fixed_array_alias_err.vv:14:3: error: cannot assign to field `arr`: expected `Arr`, not `&Arr`
+   12 |     original := Original{}
+   13 |     _ := Copy{
+   14 |         arr: &original.arr
+      |         ~~~~~~
+   15 |     }
+   16 | }

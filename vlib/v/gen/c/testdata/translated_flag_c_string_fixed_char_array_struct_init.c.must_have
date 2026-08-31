@@ -1,0 +1,9 @@
+typedef Array_fixed_i8_5 main__FlagName;
+typedef Array_fixed_u8_4 main__ExactFlagName;
+.name = "flag"
+.exact = {(u8)'W', (u8)'X', (u8)'Y', (u8)'Z'}
+.pointer = "pointer"
+builtin___option_ok(&(main__ExactFlagName*[]) { ((Array_fixed_u8_4*)("optr")) }, (_option*)(&_t1), sizeof(main__ExactFlagName*));
+.array_pointer = ((Array_fixed_u8_4*)("dptr"))
+.optional_array_pointer = _t1
+.array_pointer_alias = ((Array_fixed_u8_4*)("aptr"))

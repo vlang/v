@@ -211,7 +211,28 @@ void darwin_draw_string(int x, int y, string s, gg__TextCfg cfg) {
 	CFRelease(cf);
 }
 
-int darwin_text_width(string s) {
+// Attributes used by darwin_text_width. Must match what darwin_draw_string
+// uses for default-size text (gg TextCfg.size defaults to 16): measuring with
+// nil attributes used 12pt Helvetica, so every measured width came out ~25%
+// short of what was actually drawn, and any layout built from per-chunk
+// text_width calls (absolutely positioned text runs) overlapped on screen.
+static NSDictionary* darwin_measure_attrs(void) {
+	static NSDictionary* attrs = nil;
+	static NSDictionary* attrs_mono = nil;
+	if (g_gg_force_mono) {
+		if (attrs_mono == nil) {
+			// Keep in sync with darwin_text_attrs: force-mono draws Menlo at size - 1.
+			attrs_mono = [@{ NSFontAttributeName : [NSFont fontWithName:@"Menlo" size:15] } copy];
+		}
+		return attrs_mono;
+	}
+	if (attrs == nil) {
+		attrs = [@{ NSFontAttributeName : [NSFont userFontOfSize:16] } copy];
+	}
+	return attrs;
+}
+
+static int darwin_text_width_with_attrs(string s, NSDictionary* attrs) {
 	// println('text_width "${s}" len=${s.len}')
 	NSString* n = @"";
 	CFStringRef cf = nil;
@@ -225,20 +246,20 @@ int darwin_text_width(string s) {
 		}
 		n = (__bridge NSString*)cf;
 	}
-	/*
-	# if (!defaultFont){
-	# defaultFont = [NSFont userFontOfSize: ui__DEFAULT_FONT_SIZE];
-	# }
-	# NSDictionary *attrs = @{
-	# NSFontAttributeName: defaultFont,
-	# };
-	*/
-	NSSize size = [n sizeWithAttributes:nil];
+	NSSize size = [n sizeWithAttributes:attrs];
 	if (cf != nil) {
 		CFRelease(cf);
 	}
 	// # printf("!!!%f\n", ceil(size.width));
 	return (int)(ceil(size.width));
+}
+
+int darwin_text_width(string s) {
+	return darwin_text_width_with_attrs(s, darwin_measure_attrs());
+}
+
+int darwin_text_width_with_cfg(string s, gg__TextCfg cfg) {
+	return darwin_text_width_with_attrs(s, darwin_text_attrs(cfg));
 }
 
 void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) {

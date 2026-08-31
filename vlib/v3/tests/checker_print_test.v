@@ -38,7 +38,7 @@ fn check_print_sources(name string, files map[string]string) []types.TypeError {
 // build_checker_print_v3_bin builds checker print v3 bin data for v3 tests.
 fn build_checker_print_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_print_${name}')
-	build := os.execute('${checker_print_vexe} -o ${v3_bin} ${checker_print_v3_src}')
+	build := os.execute('${checker_print_vexe} -gc none -o ${v3_bin} ${checker_print_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -71,7 +71,7 @@ fn main() {
 '
 	})
 	assert errors.len == 1, errors.str()
-	assert errors[0].msg == 'cannot use `string` as argument 1 to `println`; expected `int`'
+	assert errors[0].msg == 'cannot use `string` as `int` in argument 1 to `println`'
 }
 
 // test_qualified_println_keeps_declared_arg_type validates this v3 regression case.
@@ -91,7 +91,7 @@ pub fn println(s string) {}
 '
 	})
 	assert errors.len == 1, errors.str()
-	assert errors[0].msg == 'cannot use `int` as argument 1 to `log.println`; expected `string`'
+	assert errors[0].msg == 'cannot use `int literal` as `string` in argument 1 to `log.println`'
 }
 
 // test_eprint_bool_compile_uses_stringification validates this v3 regression case.

@@ -34,7 +34,7 @@ jobs:
     env:
       VFLAGS: -cc tcc
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && sudo ./v symlink

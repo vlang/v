@@ -950,6 +950,7 @@ pub mut:
 	is_c_variadic          bool // it is a C variadic
 	is_c_type_cast         bool // unresolved `C.Type(x)` reclassified by checker after imports are parsed
 	args                   []CallArg
+	args_start_on_new_line bool // the arguments each start on their own line (a newline right after `(`); vfmt keeps them expanded, one per line with a trailing comma
 	expected_arg_types     []Type
 	comptime_ret_val       bool
 	language               Language
@@ -1180,6 +1181,9 @@ pub mut:
 	//
 	is_parse_text    bool // true for files, produced by parse_text
 	is_template_text bool // true for files, produced by parse_comptime
+	// Set only for a V3->V1 retry. It is the SHA-256 digest of the exact scanner
+	// bytes, used to verify the retry before a fallback report is submitted.
+	source_digest string
 }
 
 @[unsafe]
@@ -1187,6 +1191,7 @@ pub fn (f &File) free() {
 	unsafe {
 		f.path.free()
 		f.path_base.free()
+		f.source_digest.free()
 		f.scope.free()
 		f.stmts.free()
 		f.imports.free()

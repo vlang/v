@@ -1,3 +1,4 @@
+// vtest build: !windows && !musl?
 module pg
 
 fn test_ssl_mode_conninfo_values() {

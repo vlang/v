@@ -72,7 +72,16 @@ fn test_fully_unaliased_type_preserves_nested_c_alias_pointers() {
 
 	assert t.fully_unaliased_type(wchar_typ) == ast.u16_type
 	assert t.fully_unaliased_type(pwide_typ) == ast.u16_type.ref()
+	assert t.is_scalar_ptr_type(pwide_typ)
 	assert t.fully_unaliased_type(share_mode_typ) == ast.u32_type
+}
+
+fn test_scalar_ptr_type_excludes_option_and_result_wrappers() {
+	t := ast.new_table()
+	assert t.is_scalar_ptr_type(ast.int_type.ref())
+	assert !t.is_scalar_ptr_type(ast.int_type.ref().set_flag(.option))
+	assert !t.is_scalar_ptr_type(ast.int_type.ref().set_flag(.result))
+	assert !t.is_scalar_ptr_type(ast.int_type.ref().set_flag(.shared_f))
 }
 
 fn test_known_type_names_skips_partial_array_symbols() {

@@ -7,12 +7,14 @@ on:
     paths:
       - 'vlib/**'
       - '!vlib/v3/**'
+      - '.github/actions/setup-v/**'
       - '**/toml_ci.yml'
       - '!**.md'
   pull_request:
     paths:
       - 'vlib/**'
       - '!vlib/v3/**'
+      - '.github/actions/setup-v/**'
       - '**/toml_ci.yml'
       - '!**.md'
 
@@ -25,9 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - name: Build V
-        run: make -j4 && ./v symlink
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/setup-v
       - name: Install dependencies
         run: |
           v retry -- v download https://github.com/jqlang/jq/releases/download/jq-1.6/jq-linux64

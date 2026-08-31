@@ -1,0 +1,42 @@
+module main
+
+fn many(a int, b int, c int, d int) int {
+	return a
+}
+
+fn adder(base int) fn (int, int) int {
+	return fn (a int, b int) int {
+		return a + b
+	}
+}
+
+fn run() {
+	// a trailing comma after the last argument keeps the arguments expanded
+	x := many(
+		1,
+		2,
+		3,
+		4,
+	)
+	// the source line grouping is preserved (like gofmt), not forced one per line
+	y := many(
+		1, 2,
+		3, 4,
+	)
+	// without a trailing comma, the call is collapsed/wrapped as before
+	z := many(
+		1,
+		2,
+		3,
+		4)
+	// a returned-function call expands its own arguments too
+	r := adder(1)(
+		2,
+		3,
+	)
+	// and collapses without a trailing comma
+	s := adder(1)(
+		4,
+		5)
+	_ := x + y + z + r + s
+}

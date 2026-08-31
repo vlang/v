@@ -12,7 +12,7 @@ import term
 import os
 import encoding.utf8.east_asian
 
-fn C.raise(sig i32)
+fn C.raise(sig int) int
 
 fn C.getppid() i32
 

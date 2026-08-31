@@ -163,3 +163,58 @@ fn test_qualify_import_stops_at_nearest_vmod_issue_26828() {
 	assert qualify_import(p, 'sub', main_file) == 'sub'
 	assert qualify_import(p, 'sub', 'cli004.v') == 'sub'
 }
+
+fn test_qualify_import_resolves_module_alias_and_submodule() {
+	root := os.join_path(os.vtmp_dir(), 'v_module_alias_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	vlib_dir := os.join_path(root, 'vlib')
+	canonical_dir := os.join_path(vlib_dir, 'canonical')
+	os.mkdir_all(os.join_path(canonical_dir, 'sub'))!
+	os.mkdir_all(os.join_path(vlib_dir, 'legacy'))!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'alias_test'\n}\n")!
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\n')!
+	os.write_file(os.join_path(canonical_dir, 'sub', 'sub.v'), 'module sub\n')!
+	os.write_file(os.join_path(vlib_dir, 'legacy', 'alias.v'),
+		"@[alias: '@VMODROOT/vlib/canonical'] module legacy\n")!
+
+	mut p := pref.new_preferences()
+	p.lookup_path = [vlib_dir]
+	p.path = os.join_path(root, 'main.v')
+
+	assert qualify_import(p, 'legacy', p.path) == 'canonical'
+	assert qualify_import(p, 'legacy.sub', p.path) == 'canonical.sub'
+}
+
+fn test_module_alias_lookup_stops_at_nearest_vmod() {
+	root := os.join_path(os.vtmp_dir(), 'v_module_alias_nested_vmod_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	outer_root := os.join_path(root, 'outer')
+	nested_root := os.join_path(outer_root, 'nested')
+	canonical_dir := os.join_path(outer_root, 'modules', 'canonical')
+	alias_dir := os.join_path(outer_root, 'modules', 'legacy')
+	os.mkdir_all(os.join_path(nested_root, 'src'))!
+	os.mkdir_all(canonical_dir)!
+	os.mkdir_all(alias_dir)!
+	os.write_file(os.join_path(outer_root, 'v.mod'), "Module {\n\tname: 'outer'\n}\n")!
+	os.write_file(os.join_path(nested_root, 'v.mod'), "Module {\n\tname: 'nested'\n}\n")!
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\n')!
+	os.write_file(os.join_path(alias_dir, 'alias.v'),
+		"@[alias: '@VMODROOT/modules/canonical'] module legacy\n")!
+	main_file := os.join_path(nested_root, 'src', 'main.v')
+	os.write_file(main_file, 'module main\n\nimport legacy\n\nfn main() {}\n')!
+
+	mut p := pref.new_preferences()
+	p.lookup_path = []
+	p.path = main_file
+
+	if alias_mod := resolve_module_alias_from_importer_path(p, main_file, 'legacy') {
+		assert false, 'nested project resolved parent alias to `${alias_mod}`'
+	}
+	assert qualify_import(p, 'legacy', main_file) == 'legacy'
+}

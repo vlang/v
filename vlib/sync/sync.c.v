@@ -1,7 +1,5 @@
 module sync
 
-import time
-
 @[noreturn]
 fn cpanic(res int) {
 	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
@@ -72,7 +70,7 @@ pub fn (s &SpinLock) lock() {
 			// Calculate delay with cap: 100ns to 10μs
 			exponent := int_min(spin_count / max_spins, 10)
 			delay := int_min(base_delay * (1 << exponent), max_delay)
-			time.sleep(delay * time.nanosecond)
+			sync_sleep_nanoseconds(delay)
 		} else {
 			// Reduce power/bus contention during spinning
 			C.cpu_relax()

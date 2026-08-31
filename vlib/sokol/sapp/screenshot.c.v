@@ -10,18 +10,28 @@ mut:
 }
 
 @[manualfree]
-pub fn screenshot_window() &Screenshot {
+fn screenshot_window_checked() !&Screenshot {
 	img_width := width()
 	img_height := height()
 	img_size := img_width * img_height * 4
 	img_pixels := unsafe { &u8(malloc(img_size)) }
-	C.v_sapp_gl_read_rgba_pixels(0, 0, img_width, img_height, img_pixels)
+	readback_status := C.v_sapp_read_rgba_pixels(0, 0, img_width, img_height, img_pixels)
+	if readback_status != 0 {
+		unsafe { free(img_pixels) }
+		return error('sokol.sapp screenshot readback failed with code ${readback_status}')
+	}
 	return &Screenshot{
 		width:  img_width
 		height: img_height
 		size:   img_size
 		pixels: img_pixels
 	}
+}
+
+// screenshot_window captures the current backend framebuffer/window contents at call time.
+@[manualfree]
+pub fn screenshot_window() &Screenshot {
+	return screenshot_window_checked() or { panic(err) }
 }
 
 // free - free *only* the Screenshot pixels.

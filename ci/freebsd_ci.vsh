@@ -63,7 +63,7 @@ fn build_fast_script() {
 	} else {
 		println('### Build fast script')
 	}
-	exec('cd cmd/tools/fast && v fast.v')
+	exec('cd cmd/tools/fast && v -o fast .')
 	if common.is_github_job {
 		println('::endgroup::')
 	}

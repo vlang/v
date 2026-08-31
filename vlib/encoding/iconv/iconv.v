@@ -45,8 +45,9 @@ pub fn encoding_to_vstring(bytes []u8, fromcode string) !string {
 		}
 	}
 	mut dst := conv('UTF-8', encoding_name, bytes.data, bytes.len)!
-	dst << 0 // add a tail zero, to build a vstring
-	return unsafe { cstring_to_vstring(dst.data) }
+	// Preserve embedded NUL bytes. `cstring_to_vstring` truncated decoded
+	// streams at the first NUL, which is observable by binary-aware readers.
+	return dst.bytestr()
 }
 
 // create_utf_string_with_bom will create a utf8/utf16/utf32 string with BOM header

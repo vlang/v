@@ -47,11 +47,14 @@ fn result_maybe_defer(flag bool) !&T {
 	return error('no value')
 }
 
-fn check_question_unwrap() ! {
+fn check_question_unwrap() ? {
 	a := maybe(true)?
 	assert a == unsafe { nil }
 	c := maybe_defer(true)?
 	assert c == unsafe { nil }
+}
+
+fn check_result_unwrap() ! {
 	r := result_maybe(true)!
 	assert r == unsafe { nil }
 	rd := result_maybe_defer(true)!
@@ -60,6 +63,7 @@ fn check_question_unwrap() ! {
 
 fn main() {
 	check_question_unwrap() or { panic(err) }
+	check_result_unwrap() or { panic(err) }
 	b := maybe(false) or { unsafe { nil } }
 	assert b == unsafe { nil }
 	d := maybe_defer(false) or { unsafe { nil } }
@@ -86,12 +90,13 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('return (Optional_Tptr){.ok = true, .value = NULL};'), c_code
-	assert c_code.contains('Optional_Tptr _t')
-		&& c_code.contains('= (Optional_Tptr){.ok = true, .value =') && c_code.contains('NULL};'), c_code
+	assert c_code.contains('return (Optional_main__Tptr){.ok = true, .value = NULL};'), c_code
+	assert c_code.contains('Optional_main__Tptr _t')
+		&& c_code.contains('= (Optional_main__Tptr){.ok = true, .value =')
+		&& c_code.contains('NULL};'), c_code
 
-	assert c_code.contains('return (Optional_Tptr){.ok = false};'), c_code
-	assert c_code.contains('return (Optional_Tptr){.ok = false, .err = (IError)'), c_code
+	assert c_code.contains('return (Optional_main__Tptr){.ok = false};'), c_code
+	assert c_code.contains('return (Optional_main__Tptr){.ok = false, .err = (IError)'), c_code
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

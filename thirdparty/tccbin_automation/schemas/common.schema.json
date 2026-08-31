@@ -1,0 +1,1253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "common.schema.json",
+  "$defs": {
+    "contract_version": {"type": "integer", "const": 1},
+    "sha40": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "normal_lane_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._\\-]{0,127}$"
+    },
+    "target_id": {
+      "type": "string",
+      "enum": [
+        "freebsd-amd64",
+        "linux-amd64",
+        "macos-amd64",
+        "macos-arm64",
+        "openbsd-amd64",
+        "windows-amd64"
+      ]
+    },
+    "os_family": {
+      "type": "string",
+      "enum": ["freebsd", "linux", "macos", "openbsd", "windows"]
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.\\-]+/[A-Za-z0-9_.\\-]+$"
+    },
+    "relative_path": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._+\\-]+(/[A-Za-z0-9._+\\-]+)*$",
+      "not": {
+        "anyOf": [
+          {"pattern": "^\\.{1,3}$"},
+          {"pattern": "^\\.{1,3}/.*$"},
+          {"pattern": "^.*/\\.{1,3}$"},
+          {"pattern": "^.*/\\.{1,3}/.*$"}
+        ]
+      }
+    },
+    "symlink_target": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._+\\-]+(/[A-Za-z0-9._+\\-]+)*$"
+        },
+        {
+          "type": "string",
+          "const": "/System/DriverKit/usr/lib/libSystem.dylib"
+        }
+      ]
+    },
+    "branch": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._/\\-]+$",
+      "not": {
+        "anyOf": [
+          {"pattern": "^\\.{1,3}$"},
+          {"pattern": "^\\.{1,3}/.*$"},
+          {"pattern": "^.*/\\.{1,3}$"},
+          {"pattern": "^.*/\\.{1,3}/.*$"}
+        ]
+      }
+    },
+    "contract_mode": {
+      "type": "string",
+      "enum": ["fork-dry-run", "production"]
+    },
+    "provenance_status": {
+      "type": "string",
+      "enum": ["complete", "opaque-accepted", "incomplete"]
+    },
+    "git_mode": {
+      "type": "string",
+      "enum": ["100644", "100755", "120000"]
+    },
+    "run_id": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "nullable_run_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/run_id"}
+      ]
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "nullable_timestamp": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/timestamp"}
+      ]
+    },
+    "nullable_sha40": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/sha40"}
+      ]
+    },
+    "nullable_sha256": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/sha256"}
+      ]
+    },
+    "string_map_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 128},
+        "value": {"type": "string", "minLength": 1, "maxLength": 512}
+      }
+    },
+    "digest_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relative_path"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "artifact_tuple": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha",
+        "tree",
+        "input_fingerprint",
+        "artifact_fingerprint",
+        "manifest_hash",
+        "digests"
+      ],
+      "properties": {
+        "sha": {"$ref": "#/$defs/sha40"},
+        "tree": {"$ref": "#/$defs/sha40"},
+        "input_fingerprint": {"$ref": "#/$defs/sha256"},
+        "artifact_fingerprint": {"$ref": "#/$defs/sha256"},
+        "manifest_hash": {"$ref": "#/$defs/sha256"},
+        "digests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/digest_entry"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "candidate_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha", "tree", "parent", "artifact_fingerprint", "manifest_hash", "digests"],
+      "properties": {
+        "sha": {"$ref": "#/$defs/sha40"},
+        "tree": {"$ref": "#/$defs/sha40"},
+        "parent": {"$ref": "#/$defs/sha40"},
+        "artifact_fingerprint": {"$ref": "#/$defs/sha256"},
+        "manifest_hash": {"$ref": "#/$defs/sha256"},
+        "digests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/digest_entry"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "validation_subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha",
+        "tree",
+        "input_fingerprint",
+        "artifact_fingerprint",
+        "manifest_hash",
+        "digests",
+        "candidate_ref"
+      ],
+      "properties": {
+        "sha": {"$ref": "#/$defs/sha40"},
+        "tree": {"$ref": "#/$defs/sha40"},
+        "input_fingerprint": {"$ref": "#/$defs/sha256"},
+        "artifact_fingerprint": {"$ref": "#/$defs/sha256"},
+        "manifest_hash": {"$ref": "#/$defs/sha256"},
+        "digests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/digest_entry"},
+          "uniqueItems": true
+        },
+        "candidate_ref": {
+          "type": "string",
+          "pattern": "^((tccbin-candidate/((freebsd-amd64)|(linux-amd64)|(macos-amd64)|(macos-arm64)|(openbsd-amd64)|(windows-amd64))/[0-9a-f]{64})|(thirdparty-((freebsd-amd64)|(linux-amd64)|(macos-amd64)|(macos-arm64)|(openbsd-amd64)|(windows-amd64))))$"
+        }
+      }
+    },
+    "source_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "repository", "ref", "sha", "tree"],
+      "properties": {
+        "id": {"type": "string", "enum": ["tinycc", "v-libgc", "bdwgc", "libatomic_ops"]},
+        "repository": {"type": "string", "minLength": 3, "maxLength": 256},
+        "ref": {"$ref": "#/$defs/branch"},
+        "sha": {"$ref": "#/$defs/sha40"},
+        "tree": {"$ref": "#/$defs/sha40"}
+      }
+    },
+    "source_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "resolved_sha", "status", "evidence_digest"],
+      "properties": {
+        "source_id": {"type": "string", "enum": ["tinycc", "v-libgc", "bdwgc", "libatomic_ops"]},
+        "resolved_sha": {"$ref": "#/$defs/sha40"},
+        "status": {"type": "string", "const": "resolved"},
+        "evidence_digest": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "check_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "repository", "integration_id", "workflow_id", "workflow_path", "event"],
+      "properties": {
+        "name": {"type": "string", "enum": ["tccbin-candidate-gate", "v-candidate-smoke"]},
+        "repository": {"type": "string", "enum": ["vlang/v", "vlang/tccbin"]},
+        "integration_id": {"$ref": "#/$defs/run_id"},
+        "workflow_id": {"$ref": "#/$defs/run_id"},
+        "workflow_path": {"$ref": "#/$defs/relative_path"},
+        "event": {"type": "string", "enum": ["push", "workflow_dispatch"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"name": {"const": "tccbin-candidate-gate"}}, "required": ["name"]},
+          "then": {
+            "properties": {
+              "repository": {"const": "vlang/tccbin"},
+              "workflow_path": {"const": ".github/workflows/build-and-test.yml"},
+              "event": {"const": "push"}
+            }
+          },
+          "else": {
+            "properties": {
+              "repository": {"const": "vlang/v"},
+              "workflow_path": {"const": ".github/workflows/tccbin_revalidate.yml"},
+              "event": {"const": "workflow_dispatch"}
+            }
+          }
+        }
+      ]
+    },
+    "gate_run": {
+      "$comment": "run_name is exactly tccbin-native-gate/<consumer_id> or tccbin-v-smoke/<consumer_id>. external_id is SHA-256(JCS({schema_version:1,audience,consumer_id,subject_hash,run_id,run_attempt})), where audience is vlang/tccbin:native-gate-check:v1 or vlang/tccbin:v-smoke-check:v1; semantic validation binds every App, actor, workflow, ref, SHA, ID and sanitized URL to the enclosing target state.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check_name",
+        "repository",
+        "integration_id",
+        "workflow_id",
+        "workflow_path",
+        "event",
+        "run_id",
+        "run_attempt",
+        "check_suite_id",
+        "check_suite_integration_id",
+        "job_id",
+        "subject_hash",
+        "check_run_id",
+        "external_id",
+        "run_name",
+        "run_url",
+        "job_url",
+        "details_url",
+        "ref",
+        "workflow_head_sha",
+        "sha",
+        "check_sha",
+        "actor",
+        "actor_integration_id",
+        "triggering_actor",
+        "triggering_actor_integration_id",
+        "created_at",
+        "completed_at",
+        "run_conclusion",
+        "check_conclusion",
+        "output_digest",
+        "evidence_digest"
+      ],
+      "properties": {
+        "check_name": {"type": "string", "enum": ["tccbin-candidate-gate", "v-candidate-smoke"]},
+        "repository": {"type": "string", "enum": ["vlang/v", "vlang/tccbin"]},
+        "integration_id": {"$ref": "#/$defs/run_id"},
+        "workflow_id": {"$ref": "#/$defs/run_id"},
+        "workflow_path": {"$ref": "#/$defs/relative_path"},
+        "event": {"type": "string", "enum": ["push", "workflow_dispatch"]},
+        "run_id": {"$ref": "#/$defs/run_id"},
+        "run_attempt": {"type": "integer", "minimum": 1, "maximum": 2},
+        "check_suite_id": {"$ref": "#/$defs/run_id"},
+        "check_suite_integration_id": {"$ref": "#/$defs/run_id"},
+        "job_id": {"$ref": "#/$defs/run_id"},
+        "subject_hash": {"$ref": "#/$defs/sha256"},
+        "check_run_id": {"$ref": "#/$defs/run_id"},
+        "external_id": {"$ref": "#/$defs/sha256"},
+        "run_name": {"type": "string", "pattern": "^tccbin-((native-gate)|(v-smoke))/[0-9a-f]{64}$"},
+        "run_url": {"type": "string", "pattern": "^https://github\\.com/((vlang/v)|(vlang/tccbin))/actions/runs/[1-9][0-9]*$", "maxLength": 2048},
+        "job_url": {"type": "string", "pattern": "^https://github\\.com/((vlang/v)|(vlang/tccbin))/actions/runs/[1-9][0-9]*/job/[1-9][0-9]*$", "maxLength": 2048},
+        "details_url": {"type": "string", "pattern": "^https://github\\.com/((vlang/v)|(vlang/tccbin))/actions/runs/[1-9][0-9]*/job/[1-9][0-9]*$", "maxLength": 2048},
+        "ref": {"$ref": "#/$defs/branch"},
+        "workflow_head_sha": {"$ref": "#/$defs/sha40"},
+        "sha": {"$ref": "#/$defs/sha40"},
+        "check_sha": {"$ref": "#/$defs/sha40"},
+        "actor": {"type": "string", "minLength": 1, "maxLength": 128},
+        "actor_integration_id": {"$ref": "#/$defs/run_id"},
+        "triggering_actor": {"type": "string", "minLength": 1, "maxLength": 128},
+        "triggering_actor_integration_id": {"$ref": "#/$defs/run_id"},
+        "created_at": {"$ref": "#/$defs/timestamp"},
+        "completed_at": {"$ref": "#/$defs/timestamp"},
+        "run_conclusion": {"type": "string", "enum": ["success", "failure", "cancelled", "timed_out", "neutral", "skipped"]},
+        "check_conclusion": {"type": "string", "enum": ["success", "failure", "cancelled", "timed_out", "neutral", "skipped"]},
+        "output_digest": {"$ref": "#/$defs/sha256"},
+        "evidence_digest": {"$ref": "#/$defs/sha256"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"check_name": {"const": "tccbin-candidate-gate"}}, "required": ["check_name"]},
+          "then": {
+            "properties": {
+              "repository": {"const": "vlang/tccbin"},
+              "workflow_path": {"const": ".github/workflows/build-and-test.yml"},
+              "event": {"const": "push"},
+              "run_name": {"type": "string", "pattern": "^tccbin-native-gate/[0-9a-f]{64}$"}
+            }
+          },
+          "else": {
+            "properties": {
+              "repository": {"const": "vlang/v"},
+              "workflow_path": {"const": ".github/workflows/tccbin_revalidate.yml"},
+              "event": {"const": "workflow_dispatch"},
+              "ref": {"const": "master"},
+              "run_name": {"type": "string", "pattern": "^tccbin-v-smoke/[0-9a-f]{64}$"}
+            }
+          }
+        }
+      ]
+    },
+    "v_smoke_dispatch_reservation": {
+      "$comment": "A durable CAS reservation written before any Actions side effect. facts_digest is SHA-256(JCS({schema_version:1,audience:vlang/v:tccbin-v-smoke-dispatch:v1,consumer and subject/workflow authority fields from the enclosing execution}+this object excluding facts_digest)).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt_index",
+        "mode",
+        "rerun_of_run_id",
+        "expected_run_attempt",
+        "dispatch_operation_id",
+        "requested_at",
+        "discovery_deadline",
+        "facts_digest"
+      ],
+      "properties": {
+        "attempt_index": {"type": "integer", "minimum": 1, "maximum": 2},
+        "mode": {"type": "string", "enum": ["workflow_dispatch", "api_rerun"]},
+        "rerun_of_run_id": {"$ref": "#/$defs/nullable_run_id"},
+        "expected_run_attempt": {"type": "integer", "minimum": 1, "maximum": 2},
+        "dispatch_operation_id": {"$ref": "#/$defs/sha256"},
+        "requested_at": {"$ref": "#/$defs/timestamp"},
+        "discovery_deadline": {"$ref": "#/$defs/timestamp"},
+        "facts_digest": {"$ref": "#/$defs/sha256"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"attempt_index": {"const": 1}}, "required": ["attempt_index"]},
+          "then": {
+            "properties": {
+              "mode": {"const": "workflow_dispatch"},
+              "rerun_of_run_id": {"type": "null"},
+              "expected_run_attempt": {"const": 1}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"mode": {"const": "api_rerun"}}, "required": ["mode"]},
+          "then": {
+            "properties": {
+              "attempt_index": {"const": 2},
+              "rerun_of_run_id": {"$ref": "#/$defs/run_id"},
+              "expected_run_attempt": {"const": 2}
+            }
+          },
+          "else": {
+            "properties": {
+              "rerun_of_run_id": {"type": "null"},
+              "expected_run_attempt": {"const": 1}
+            }
+          }
+        }
+      ]
+    },
+    "v_smoke_attempt": {
+      "$comment": "Each item chains one durable dispatch reservation to one immutable Actions ACK followed by zero or one terminal completion. actor and triggering_actor are validator-dispatcher[bot]. ack_facts_digest covers dispatch_facts_digest and all observed fields through ack_operation_id. completion_facts_digest covers completion_kind, the ACK digest and every terminal run/check field. Check fields are all-null when no validator check exists.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt_index",
+        "dispatch_operation_id",
+        "dispatch_facts_digest",
+        "repository",
+        "workflow_id",
+        "workflow_path",
+        "workflow_ref",
+        "event",
+        "run_id",
+        "run_attempt",
+        "check_suite_id",
+        "check_suite_integration_id",
+        "job_id",
+        "run_name",
+        "run_url",
+        "job_url",
+        "head_sha",
+        "subject_ref",
+        "subject_sha",
+        "actor",
+        "actor_integration_id",
+        "triggering_actor",
+        "triggering_actor_integration_id",
+        "created_at",
+        "deadline",
+        "rerunnable_until",
+        "ack_operation_id",
+        "ack_facts_digest",
+        "completion_kind",
+        "run_conclusion",
+        "completion_operation_id",
+        "completion_facts_digest",
+        "check_run_id",
+        "check_name",
+        "check_sha",
+        "details_url",
+        "external_id",
+        "validator_integration_id",
+        "check_conclusion",
+        "output_digest",
+        "evidence_digest",
+        "completed_at"
+      ],
+      "properties": {
+        "attempt_index": {"type": "integer", "minimum": 1, "maximum": 2},
+        "dispatch_operation_id": {"$ref": "#/$defs/sha256"},
+        "dispatch_facts_digest": {"$ref": "#/$defs/sha256"},
+        "repository": {"type": "string", "const": "vlang/v"},
+        "workflow_id": {"$ref": "#/$defs/run_id"},
+        "workflow_path": {"type": "string", "const": ".github/workflows/tccbin_revalidate.yml"},
+        "workflow_ref": {"type": "string", "const": "master"},
+        "event": {"type": "string", "const": "workflow_dispatch"},
+        "run_id": {"$ref": "#/$defs/run_id"},
+        "run_attempt": {"type": "integer", "minimum": 1, "maximum": 2},
+        "check_suite_id": {"$ref": "#/$defs/run_id"},
+        "check_suite_integration_id": {"$ref": "#/$defs/run_id"},
+        "job_id": {"$ref": "#/$defs/run_id"},
+        "run_name": {"type": "string", "pattern": "^tccbin-v-smoke/[0-9a-f]{64}$"},
+        "run_url": {"type": "string", "pattern": "^https://github\\.com/vlang/v/actions/runs/[1-9][0-9]*$", "maxLength": 2048},
+        "job_url": {"type": "string", "pattern": "^https://github\\.com/vlang/v/actions/runs/[1-9][0-9]*/job/[1-9][0-9]*$", "maxLength": 2048},
+        "head_sha": {"$ref": "#/$defs/sha40"},
+        "subject_ref": {"$ref": "#/$defs/branch"},
+        "subject_sha": {"$ref": "#/$defs/sha40"},
+        "actor": {"type": "string", "minLength": 1, "maxLength": 128},
+        "actor_integration_id": {"$ref": "#/$defs/run_id"},
+        "triggering_actor": {"type": "string", "minLength": 1, "maxLength": 128},
+        "triggering_actor_integration_id": {"$ref": "#/$defs/run_id"},
+        "created_at": {"$ref": "#/$defs/timestamp"},
+        "deadline": {"$ref": "#/$defs/timestamp"},
+        "rerunnable_until": {"$ref": "#/$defs/timestamp"},
+        "ack_operation_id": {"$ref": "#/$defs/sha256"},
+        "ack_facts_digest": {"$ref": "#/$defs/sha256"},
+        "completion_kind": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "enum": ["actions_terminal", "deadline_exceeded"]}
+          ]
+        },
+        "run_conclusion": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "enum": ["success", "failure", "cancelled", "timed_out", "neutral", "skipped"]}
+          ]
+        },
+        "completion_operation_id": {"$ref": "#/$defs/nullable_sha256"},
+        "completion_facts_digest": {"$ref": "#/$defs/nullable_sha256"},
+        "check_run_id": {"$ref": "#/$defs/nullable_run_id"},
+        "check_name": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "const": "v-candidate-smoke"}
+          ]
+        },
+        "check_sha": {"$ref": "#/$defs/nullable_sha40"},
+        "details_url": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^https://github\\.com/vlang/v/actions/runs/[1-9][0-9]*/job/[1-9][0-9]*$", "maxLength": 2048}
+          ]
+        },
+        "external_id": {"$ref": "#/$defs/nullable_sha256"},
+        "validator_integration_id": {"$ref": "#/$defs/nullable_run_id"},
+        "check_conclusion": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "enum": ["success", "failure", "cancelled", "timed_out", "neutral", "skipped"]}
+          ]
+        },
+        "output_digest": {"$ref": "#/$defs/nullable_sha256"},
+        "evidence_digest": {"$ref": "#/$defs/nullable_sha256"},
+        "completed_at": {"$ref": "#/$defs/nullable_timestamp"}
+      },
+      "oneOf": [
+        {
+          "$comment": "ACKed run is still active",
+          "properties": {
+            "completion_kind": {"type": "null"},
+            "run_conclusion": {"type": "null"},
+            "completion_operation_id": {"type": "null"},
+            "completion_facts_digest": {"type": "null"},
+            "check_run_id": {"type": "null"},
+            "check_name": {"type": "null"},
+            "check_sha": {"type": "null"},
+            "details_url": {"type": "null"},
+            "external_id": {"type": "null"},
+            "validator_integration_id": {"type": "null"},
+            "check_conclusion": {"type": "null"},
+            "output_digest": {"type": "null"},
+            "evidence_digest": {"type": "null"},
+            "completed_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "Actions supplied a terminal conclusion, with either no check or one complete check",
+          "properties": {
+            "completion_kind": {"const": "actions_terminal"},
+            "run_conclusion": {"type": "string", "enum": ["success", "failure", "cancelled", "timed_out", "neutral", "skipped"]},
+            "completion_operation_id": {"$ref": "#/$defs/sha256"},
+            "completion_facts_digest": {"$ref": "#/$defs/sha256"},
+            "output_digest": {"$ref": "#/$defs/sha256"},
+            "evidence_digest": {"$ref": "#/$defs/sha256"},
+            "completed_at": {"$ref": "#/$defs/timestamp"}
+          },
+          "oneOf": [
+            {
+              "$comment": "terminal Actions run with no validator check (infrastructure retry evidence)",
+              "properties": {
+                "check_run_id": {"type": "null"},
+                "check_name": {"type": "null"},
+                "check_sha": {"type": "null"},
+                "details_url": {"type": "null"},
+                "external_id": {"type": "null"},
+                "validator_integration_id": {"type": "null"},
+                "check_conclusion": {"type": "null"}
+              }
+            },
+            {
+              "$comment": "terminal Actions run with the complete validator check projection",
+              "properties": {
+                "check_run_id": {"$ref": "#/$defs/run_id"},
+                "check_name": {"type": "string", "const": "v-candidate-smoke"},
+                "check_sha": {"$ref": "#/$defs/sha40"},
+                "details_url": {"type": "string", "pattern": "^https://github\\.com/vlang/v/actions/runs/[1-9][0-9]*/job/[1-9][0-9]*$", "maxLength": 2048},
+                "external_id": {"$ref": "#/$defs/sha256"},
+                "validator_integration_id": {"$ref": "#/$defs/run_id"},
+                "check_conclusion": {"type": "string", "enum": ["success", "failure", "cancelled", "timed_out", "neutral", "skipped"]}
+              }
+            }
+          ]
+        },
+        {
+          "$comment": "The selected run remained nonterminal at the persisted 90-minute deadline; no GitHub conclusion is invented",
+          "properties": {
+            "completion_kind": {"const": "deadline_exceeded"},
+            "run_conclusion": {"type": "null"},
+            "completion_operation_id": {"$ref": "#/$defs/sha256"},
+            "completion_facts_digest": {"$ref": "#/$defs/sha256"},
+            "check_run_id": {"type": "null"},
+            "check_name": {"type": "null"},
+            "check_sha": {"type": "null"},
+            "details_url": {"type": "null"},
+            "external_id": {"type": "null"},
+            "validator_integration_id": {"type": "null"},
+            "check_conclusion": {"type": "null"},
+            "output_digest": {"$ref": "#/$defs/sha256"},
+            "evidence_digest": {"$ref": "#/$defs/sha256"},
+            "completed_at": {"$ref": "#/$defs/timestamp"}
+          }
+        }
+      ]
+    },
+    "v_smoke_run_absent_attempt": {
+      "$comment": "A durable logical dispatch that exhausted its bounded run-discovery window without fabricating an Actions run. facts_digest is SHA-256(JCS({schema_version:1,audience:vlang/v:tccbin-v-smoke-run-absent:v1,consumer_id,subject_hash}+this object excluding facts_digest)).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt_index",
+        "dispatch_operation_id",
+        "dispatch_facts_digest",
+        "run_absent_operation_id",
+        "outcome",
+        "completed_at",
+        "facts_digest"
+      ],
+      "properties": {
+        "attempt_index": {"type": "integer", "minimum": 1, "maximum": 2},
+        "dispatch_operation_id": {"$ref": "#/$defs/sha256"},
+        "dispatch_facts_digest": {"$ref": "#/$defs/sha256"},
+        "run_absent_operation_id": {"$ref": "#/$defs/sha256"},
+        "outcome": {"const": "run_absent"},
+        "completed_at": {"$ref": "#/$defs/timestamp"},
+        "facts_digest": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "v_smoke_execution": {
+      "$comment": "run_name is exactly tccbin-v-smoke/<consumer_id>. external_id is SHA-256(JCS({schema_version:1,audience:vlang/tccbin:v-smoke-check:v1,consumer_id,subject_hash,run_id,run_attempt})). run_absent_attempts retain logical dispatches that produced no Actions ACK, with audience vlang/v:tccbin-v-smoke-run-absent:v1. replay_facts_digest is SHA-256(JCS(the complete execution object excluding replay_facts_digest)); block_facts_digest uses audience vlang/v:tccbin-v-smoke-block:v1 and covers consumer_id, subject_hash, operation, reason and time.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "consumer_id",
+        "consumer_kind",
+        "intent_or_operation_id",
+        "target_id",
+        "subject_hash",
+        "subject_generation",
+        "subject_ref",
+        "subject_sha",
+        "v_master_sha",
+        "repository",
+        "workflow_id",
+        "workflow_path",
+        "workflow_ref",
+        "event",
+        "actions_integration_id",
+        "validator_integration_id",
+        "run_name",
+        "reservation_operation_id",
+        "expected_ledger_generation",
+        "state",
+        "dispatches",
+        "active_dispatch",
+        "active_attempt",
+        "attempts",
+        "run_absent_attempts",
+        "infra_retry_count",
+        "ack_operation_ids",
+        "completion_operation_ids",
+        "block_operation_id",
+        "block_facts_digest",
+        "block_reason",
+        "blocked_at",
+        "replay_facts_digest",
+        "created_at"
+      ],
+      "properties": {
+        "schema_version": {"type": "integer", "const": 1},
+        "consumer_id": {"$ref": "#/$defs/sha256"},
+        "consumer_kind": {
+          "type": "string",
+          "enum": ["publish_candidate", "rollback_candidate", "adopt_current", "initial_adopt_current", "publish_post", "rollback_post", "remediation"]
+        },
+        "intent_or_operation_id": {"$ref": "#/$defs/sha256"},
+        "target_id": {"$ref": "#/$defs/target_id"},
+        "subject_hash": {"$ref": "#/$defs/sha256"},
+        "subject_generation": {"$ref": "#/$defs/generation"},
+        "subject_ref": {"$ref": "#/$defs/branch"},
+        "subject_sha": {"$ref": "#/$defs/sha40"},
+        "v_master_sha": {"$ref": "#/$defs/sha40"},
+        "repository": {"type": "string", "const": "vlang/v"},
+        "workflow_id": {"$ref": "#/$defs/run_id"},
+        "workflow_path": {"type": "string", "const": ".github/workflows/tccbin_revalidate.yml"},
+        "workflow_ref": {"type": "string", "const": "master"},
+        "event": {"type": "string", "const": "workflow_dispatch"},
+        "actions_integration_id": {"$ref": "#/$defs/run_id"},
+        "validator_integration_id": {"$ref": "#/$defs/run_id"},
+        "run_name": {"type": "string", "pattern": "^tccbin-v-smoke/[0-9a-f]{64}$"},
+        "reservation_operation_id": {"$ref": "#/$defs/sha256"},
+        "expected_ledger_generation": {"$ref": "#/$defs/generation"},
+        "state": {"type": "string", "enum": ["pending", "dispatched", "completed", "blocked"]},
+        "dispatches": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/v_smoke_dispatch_reservation"}
+        },
+        "active_dispatch": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "integer", "minimum": 1, "maximum": 2}
+          ]
+        },
+        "active_attempt": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "integer", "minimum": 1, "maximum": 2}
+          ]
+        },
+        "attempts": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/v_smoke_attempt"}
+        },
+        "run_absent_attempts": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/v_smoke_run_absent_attempt"}
+        },
+        "infra_retry_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "ack_operation_ids": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/sha256"}
+        },
+        "completion_operation_ids": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/sha256"}
+        },
+        "block_operation_id": {"$ref": "#/$defs/nullable_sha256"},
+        "block_facts_digest": {"$ref": "#/$defs/nullable_sha256"},
+        "block_reason": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "enum": ["permission", "audience", "workflow_missing", "run_absent_exhausted", "state_corrupt"]}
+          ]
+        },
+        "blocked_at": {"$ref": "#/$defs/nullable_timestamp"},
+        "replay_facts_digest": {"$ref": "#/$defs/sha256"},
+        "created_at": {"$ref": "#/$defs/timestamp"}
+      },
+      "oneOf": [
+        {
+          "$comment": "initial pending reservation",
+          "properties": {
+            "state": {"const": "pending"},
+            "dispatches": {"maxItems": 0},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"maxItems": 0},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 0},
+            "ack_operation_ids": {"maxItems": 0},
+            "completion_operation_ids": {"maxItems": 0},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "initial dispatch durably reserved before an Actions ACK",
+          "properties": {
+            "state": {"const": "pending"},
+            "dispatches": {"minItems": 1, "maxItems": 1},
+            "active_dispatch": {"const": 1},
+            "active_attempt": {"type": "null"},
+            "attempts": {"maxItems": 0},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 0},
+            "ack_operation_ids": {"maxItems": 0},
+            "completion_operation_ids": {"maxItems": 0},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "retry pending after the initial dispatch produced no Actions run to acknowledge",
+          "properties": {
+            "state": {"const": "pending"},
+            "dispatches": {"minItems": 1, "maxItems": 1},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"maxItems": 0},
+            "run_absent_attempts": {"minItems": 1, "maxItems": 1},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"maxItems": 0},
+            "completion_operation_ids": {"maxItems": 0},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "retry pending with first terminal infrastructure attempt retained",
+          "properties": {
+            "state": {"const": "pending"},
+            "dispatches": {"minItems": 1, "maxItems": 1},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"minItems": 1, "maxItems": 1},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"minItems": 1, "maxItems": 1},
+            "completion_operation_ids": {"minItems": 1, "maxItems": 1},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "second dispatch reserved after the initial dispatch produced no Actions run",
+          "properties": {
+            "state": {"const": "pending"},
+            "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"const": 2},
+            "active_attempt": {"type": "null"},
+            "attempts": {"maxItems": 0},
+            "run_absent_attempts": {"minItems": 1, "maxItems": 1},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"maxItems": 0},
+            "completion_operation_ids": {"maxItems": 0},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "second dispatch reserved after the first ACKed infrastructure attempt",
+          "properties": {
+            "state": {"const": "pending"},
+            "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"const": 2},
+            "active_attempt": {"type": "null"},
+            "attempts": {"minItems": 1, "maxItems": 1},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"minItems": 1, "maxItems": 1},
+            "completion_operation_ids": {"minItems": 1, "maxItems": 1},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "first selected Actions run is active",
+          "properties": {
+            "state": {"const": "dispatched"},
+            "dispatches": {"minItems": 1, "maxItems": 1},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"const": 1},
+            "attempts": {"minItems": 1, "maxItems": 1},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 0},
+            "ack_operation_ids": {"minItems": 1, "maxItems": 1},
+            "completion_operation_ids": {"maxItems": 0},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "second and final selected Actions run is active",
+          "properties": {
+            "state": {"const": "dispatched"},
+            "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"const": 2},
+            "attempts": {"minItems": 2, "maxItems": 2},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"minItems": 2, "maxItems": 2},
+            "completion_operation_ids": {"minItems": 1, "maxItems": 1},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "second selected Actions run is active after the first dispatch produced no run",
+          "properties": {
+            "state": {"const": "dispatched"},
+            "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"const": 2},
+            "attempts": {"minItems": 1, "maxItems": 1},
+            "run_absent_attempts": {"minItems": 1, "maxItems": 1},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"minItems": 1, "maxItems": 1},
+            "completion_operation_ids": {"maxItems": 0},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "terminal first attempt",
+          "properties": {
+            "state": {"enum": ["completed", "blocked"]},
+            "dispatches": {"minItems": 1, "maxItems": 1},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"minItems": 1, "maxItems": 1},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 0},
+            "ack_operation_ids": {"minItems": 1, "maxItems": 1},
+            "completion_operation_ids": {"minItems": 1, "maxItems": 1},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "terminal second attempt",
+          "properties": {
+            "state": {"enum": ["completed", "blocked"]},
+            "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"minItems": 2, "maxItems": 2},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"minItems": 2, "maxItems": 2},
+            "completion_operation_ids": {"minItems": 2, "maxItems": 2},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "terminal second attempt after the first dispatch produced no run",
+          "properties": {
+            "state": {"enum": ["completed", "blocked"]},
+            "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"minItems": 1, "maxItems": 1},
+            "run_absent_attempts": {"minItems": 1, "maxItems": 1},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"minItems": 1, "maxItems": 1},
+            "completion_operation_ids": {"minItems": 1, "maxItems": 1},
+            "block_operation_id": {"type": "null"},
+            "block_facts_digest": {"type": "null"},
+            "block_reason": {"type": "null"},
+            "blocked_at": {"type": "null"}
+          }
+        },
+        {
+          "$comment": "blocked before any Actions ACK",
+          "properties": {
+            "state": {"const": "blocked"},
+          "dispatches": {"minItems": 1, "maxItems": 1},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"maxItems": 0},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 0},
+            "ack_operation_ids": {"maxItems": 0},
+            "completion_operation_ids": {"maxItems": 0},
+            "block_operation_id": {"$ref": "#/$defs/sha256"},
+            "block_facts_digest": {"$ref": "#/$defs/sha256"},
+            "block_reason": {"type": "string", "enum": ["permission", "audience", "workflow_missing", "state_corrupt"]},
+            "blocked_at": {"$ref": "#/$defs/timestamp"}
+          }
+        },
+        {
+          "$comment": "blocked after the one create-only retry also produced no Actions run",
+          "properties": {
+            "state": {"const": "blocked"},
+            "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"maxItems": 0},
+            "run_absent_attempts": {"minItems": 2, "maxItems": 2},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"maxItems": 0},
+            "completion_operation_ids": {"maxItems": 0},
+            "block_operation_id": {"$ref": "#/$defs/sha256"},
+            "block_facts_digest": {"$ref": "#/$defs/sha256"},
+            "block_reason": {"const": "run_absent_exhausted"},
+            "blocked_at": {"$ref": "#/$defs/timestamp"}
+          }
+        },
+        {
+          "$comment": "blocked before the second ACK after the first dispatch produced no run",
+          "properties": {
+            "state": {"const": "blocked"},
+          "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"maxItems": 0},
+            "run_absent_attempts": {"minItems": 1, "maxItems": 1},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"maxItems": 0},
+            "completion_operation_ids": {"maxItems": 0},
+            "block_operation_id": {"$ref": "#/$defs/sha256"},
+            "block_facts_digest": {"$ref": "#/$defs/sha256"},
+            "block_reason": {"type": "string", "enum": ["permission", "audience", "workflow_missing", "state_corrupt"]},
+            "blocked_at": {"$ref": "#/$defs/timestamp"}
+          }
+        },
+        {
+          "$comment": "blocked before the second Actions ACK after retaining the one terminal infrastructure attempt",
+          "properties": {
+            "state": {"const": "blocked"},
+          "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"minItems": 1, "maxItems": 1},
+            "run_absent_attempts": {"maxItems": 0},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"minItems": 1, "maxItems": 1},
+            "completion_operation_ids": {"minItems": 1, "maxItems": 1},
+            "block_operation_id": {"$ref": "#/$defs/sha256"},
+            "block_facts_digest": {"$ref": "#/$defs/sha256"},
+            "block_reason": {"type": "string", "enum": ["permission", "audience", "workflow_missing", "state_corrupt"]},
+            "blocked_at": {"$ref": "#/$defs/timestamp"}
+          }
+        },
+        {
+          "$comment": "blocked after a retained first infrastructure run and a second dispatch with no run",
+          "properties": {
+            "state": {"const": "blocked"},
+            "dispatches": {"minItems": 2, "maxItems": 2},
+            "active_dispatch": {"type": "null"},
+            "active_attempt": {"type": "null"},
+            "attempts": {"minItems": 1, "maxItems": 1},
+            "run_absent_attempts": {"minItems": 1, "maxItems": 1},
+            "infra_retry_count": {"const": 1},
+            "ack_operation_ids": {"minItems": 1, "maxItems": 1},
+            "completion_operation_ids": {"minItems": 1, "maxItems": 1},
+            "block_operation_id": {"$ref": "#/$defs/sha256"},
+            "block_facts_digest": {"$ref": "#/$defs/sha256"},
+            "block_reason": {"const": "run_absent_exhausted"},
+            "blocked_at": {"$ref": "#/$defs/timestamp"}
+          }
+        }
+      ]
+    },
+    "intent_deadlines": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["build_deadline", "checks_deadline", "promotion_deadline"],
+      "properties": {
+        "build_deadline": {"$ref": "#/$defs/timestamp"},
+        "checks_deadline": {"$ref": "#/$defs/timestamp"},
+        "promotion_deadline": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "producer_toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "profile_sha256",
+        "observation_sha256",
+        "observation_digest"
+      ],
+      "properties": {
+        "profile_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._\\-]{2,127}$"
+        },
+        "profile_sha256": {"$ref": "#/$defs/sha256"},
+        "observation_sha256": {"$ref": "#/$defs/sha256"},
+        "observation_digest": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "resolved_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sources",
+        "source_checks",
+        "recipe_path",
+        "recipe_hash",
+        "contract_repository",
+        "contract_sha",
+        "v_source_sha",
+        "producer_toolchain"
+      ],
+      "properties": {
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/source_binding"}
+        },
+        "source_checks": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/source_check"}
+        },
+        "recipe_path": {"$ref": "#/$defs/relative_path"},
+        "recipe_hash": {"$ref": "#/$defs/sha256"},
+        "contract_repository": {"$ref": "#/$defs/repository"},
+        "contract_sha": {"$ref": "#/$defs/sha40"},
+        "v_source_sha": {"$ref": "#/$defs/sha40"},
+        "producer_toolchain": {"$ref": "#/$defs/producer_toolchain"}
+      }
+    },
+    "source_refetch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_id",
+        "expected_generation",
+        "expected_canonical_head",
+		"source_state_id",
+		"source_state_generation",
+		"resolution_operation_id",
+        "source_id",
+        "source_repository",
+        "requested_ref",
+        "previous_sha",
+        "resolved_sha",
+        "resolved_tree",
+        "status",
+        "failure_kind",
+        "evidence_digest",
+        "input_fingerprint",
+        "checked_at",
+        "operation_id"
+      ],
+      "properties": {
+        "target_id": {"$ref": "#/$defs/target_id"},
+        "expected_generation": {"$ref": "#/$defs/generation"},
+        "expected_canonical_head": {"$ref": "#/$defs/sha40"},
+		"source_state_id": {"type": "string", "enum": ["tinycc-mob", "bdwgc-master", "libatomic_ops-master"]},
+		"source_state_generation": {"$ref": "#/$defs/generation"},
+		"resolution_operation_id": {"$ref": "#/$defs/sha256"},
+        "source_id": {"type": "string", "enum": ["tinycc", "v-libgc", "bdwgc", "libatomic_ops"]},
+        "source_repository": {"type": "string", "minLength": 3, "maxLength": 256},
+        "requested_ref": {"$ref": "#/$defs/branch"},
+        "previous_sha": {"$ref": "#/$defs/sha40"},
+        "resolved_sha": {"$ref": "#/$defs/nullable_sha40"},
+        "resolved_tree": {"$ref": "#/$defs/nullable_sha40"},
+        "status": {"type": "string", "enum": ["unreachable", "resolved"]},
+        "failure_kind": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "enum": ["dns", "connectivity", "tls_transient", "timeout", "http_429", "http_5xx"]}
+          ]
+        },
+        "evidence_digest": {"$ref": "#/$defs/sha256"},
+        "input_fingerprint": {"$ref": "#/$defs/sha256"},
+        "checked_at": {"$ref": "#/$defs/timestamp"},
+        "operation_id": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "native_validation_record": {
+      "$comment": "Replayable T2c2 fact. validation_digest is SHA-256(JCS(the complete object excluding validation_digest plus audience vlang/v:tccbin-native-validation-record:v1)). manifest_hash binds the exact manifest_source bytes; matrix_digest binds JCS(native_lane_matrix); capsule_digest binds manifest, subject, matrix and the sorted exact evidence projection.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "operation_id",
+        "transition",
+        "resulting_generation",
+        "verdict",
+        "manifest_source",
+        "manifest_hash",
+        "native_lane_matrix",
+        "matrix_digest",
+        "evidence",
+        "capsule_digest",
+        "native_gate",
+        "v_smoke_gate",
+        "validation_digest"
+      ],
+      "properties": {
+        "schema_version": {"type": "integer", "const": 1},
+        "operation_id": {"$ref": "#/$defs/sha256"},
+        "transition": {
+          "type": "string",
+          "enum": [
+            "bootstrap_green",
+            "bootstrap_red",
+            "remediation_green",
+            "remediation_red",
+            "candidate_checks_green",
+            "candidate_failed",
+            "post_check_green",
+            "post_check_red",
+            "post_check_infra_exhausted",
+            "rollback_post_green",
+            "rollback_failed"
+          ]
+        },
+        "resulting_generation": {"type": "integer", "minimum": 1},
+        "verdict": {"type": "string", "enum": ["green", "functional", "infrastructure"]},
+        "manifest_source": {"type": "string", "minLength": 1, "maxLength": 524288},
+        "manifest_hash": {"$ref": "#/$defs/sha256"},
+        "native_lane_matrix": {"$ref": "native-lane-matrix.schema.json"},
+        "matrix_digest": {"$ref": "#/$defs/sha256"},
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1028,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sha256", "size"],
+            "properties": {
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "size": {"type": "integer", "minimum": 1, "maximum": 262144}
+            }
+          }
+        },
+        "capsule_digest": {"$ref": "#/$defs/sha256"},
+        "native_gate": {"$ref": "#/$defs/gate_run"},
+        "v_smoke_gate": {"$ref": "#/$defs/gate_run"},
+        "validation_digest": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "remediation_trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "ref", "before", "after", "tree", "diff_fingerprint", "owner_domain"],
+      "properties": {
+        "repository": {"$ref": "#/$defs/repository"},
+        "ref": {"$ref": "#/$defs/branch"},
+        "before": {"$ref": "#/$defs/sha40"},
+        "after": {"$ref": "#/$defs/sha40"},
+        "tree": {"$ref": "#/$defs/sha40"},
+        "diff_fingerprint": {"$ref": "#/$defs/sha256"},
+        "owner_domain": {"type": "string", "enum": ["tccbin", "v"]}
+      }
+    }
+  }
+}

@@ -16,6 +16,7 @@ struct Param2 {
 
 type AliasParam1 = Param1
 type AliasParam2 = Param2
+type ChainedAliasParam1 = AliasParam1
 
 interface MyInterface {
 	method1(p1 Param1, p2 Param2) f32
@@ -43,10 +44,28 @@ fn (i ImplWithAliasedParams) method1(p1 AliasParam1, p2 AliasParam2) f32 {
 	return i.v + p1.x + p2.y
 }
 
+interface ReturnsParam {
+	value() Param1
+}
+
+struct ReturnsAlias {}
+
+fn (r ReturnsAlias) value() ChainedAliasParam1 {
+	_ = r
+	return ChainedAliasParam1{
+		x: 42
+	}
+}
+
 fn test_interface_method_can_be_called_with_aliased_type_values() {
 	isdirect := MyInterface(ImplDirect{1000})
 	isalias := MyInterface(ImplWithAliasedParams{2000})
 
 	assert isdirect.method1(AliasParam1{123}, AliasParam2{1.1}) == 1124.1
 	assert isalias.method1(AliasParam1{456}, AliasParam2{2.2}) == 2458.2
+}
+
+fn test_interface_method_can_return_a_chained_alias() {
+	implementation := ReturnsParam(ReturnsAlias{})
+	assert implementation.value().x == 42
 }

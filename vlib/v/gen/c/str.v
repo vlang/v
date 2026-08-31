@@ -14,6 +14,73 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	}
 }
 
+fn c_string_literal_payload_units(value string) ?[]string {
+	mut units := []string{cap: value.len}
+	mut i := 0
+	for i < value.len {
+		start := i
+		if value[i] != `\\` {
+			i++
+			units << value[start..i]
+			continue
+		}
+		if i + 1 >= value.len {
+			return none
+		}
+		escape := value[i + 1]
+		match escape {
+			`'`, `"`, `?`, `\\`, `a`, `b`, `e`, `f`, `n`, `r`, `t`, `v` {
+				i += 2
+			}
+			`0`...`7` {
+				i += 2
+				mut digits := 1
+				for digits < 3 && i < value.len && value[i].is_oct_digit() {
+					i++
+					digits++
+				}
+			}
+			`x` {
+				i += 2
+				digits_start := i
+				for i < value.len && value[i].is_hex_digit() {
+					i++
+				}
+				if i == digits_start {
+					return none
+				}
+			}
+			else {
+				return none
+			}
+		}
+		units << value[start..i]
+	}
+	return units
+}
+
+fn (mut g Gen) write_c_string_literal_exact_array_initializer(value string, size int, elem_styp string) bool {
+	units := c_string_literal_payload_units(value) or { return false }
+	if units.len != size {
+		return false
+	}
+	g.write('{')
+	for i, unit in units {
+		if i > 0 {
+			g.write(', ')
+		}
+		mut escaped_unit := cescape_nonascii(unit)
+		if unit == "'" {
+			escaped_unit = "\\'"
+		} else if unit == r'\' {
+			escaped_unit = r'\\'
+		}
+		g.write("(${elem_styp})'${escaped_unit}'")
+	}
+	g.write('}')
+	return true
+}
+
 // optimize string interpolation in string builders:
 // `sb.writeln('a=${a}')` =>
 // `sb.writeln('a='); sb.writeln(a.str())`
@@ -98,10 +165,13 @@ fn (g &Gen) option_mut_param_surface_type_from_var(name string, var ast.Var) ast
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	old_inside_opt_or_res := g.inside_opt_or_res
+	str_interp_s_fmt := g.inside_str_interp_s_fmt
 	g.inside_opt_or_res = true
+	g.inside_str_interp_s_fmt = false
 	g.expected_fixed_arr = true
 	defer {
 		g.inside_opt_or_res = old_inside_opt_or_res
+		g.inside_str_interp_s_fmt = str_interp_s_fmt
 		g.expected_fixed_arr = false
 	}
 	mut expr_type := etype
@@ -157,15 +227,45 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	}
 	// `mut ?T` params are passed by pointer in C, but should still stringify as
 	// option values rather than as raw `&...` pointers.
-	is_ptr := typ.is_ptr() || (typ.has_flag(.option_mut_param_t) && !typ.has_flag(.option))
+	resolved_typ := g.table.fully_unaliased_type(typ)
+	is_ptr := resolved_typ.is_ptr() || (typ.has_flag(.option_mut_param_t) && !typ.has_flag(.option))
 	mut sym := g.table.sym(typ)
+	// Go-style: a reference to a scalar (int, float, bool, string, rune, or an
+	// alias of them) prints its address, while a reference to a struct/array/map
+	// prints `&` + the pointed-to value. Done before the alias rewrite below so
+	// pointer aliases keep their pointer semantics.
+	if is_ptr && !is_shared && !str_interp_s_fmt && mut_arg_option_type == 0
+		&& !typ.has_option_or_result() && !g.expr_is_auto_deref_var(expr)
+		&& g.table.is_scalar_ptr_type(typ) {
+		g.write('${g.get_str_fn(ast.voidptr_type)}((voidptr)(')
+		g.expr(expr)
+		g.write('))')
+		return
+	}
 	// when type is non-option alias and doesn't has `str()`, print the aliased value
 	if mut sym.info is ast.Alias && !sym.has_method('str') && !expr_type.has_flag(.option) {
 		parent_sym := g.table.sym(sym.info.parent_type)
 		if parent_sym.has_method('str') {
-			typ = sym.info.parent_type
+			parent_type := sym.info.parent_type
+			typ = if parent_type.has_option_or_result() {
+				parent_type.set_nr_muls(parent_type.nr_muls() + typ.nr_muls())
+			} else {
+				parent_type.derive_add_muls(typ)
+			}
 			sym = unsafe { parent_sym }
 		}
+	}
+	is_ptr_alias_with_str := !typ.is_ptr() && resolved_typ.is_ptr() && sym.kind == .alias
+		&& sym.has_method('str')
+	if is_ptr && typ.has_option_or_result() && expr is ast.PrefixExpr && expr.op == .amp {
+		// `&option_value` is not materialized as the option-pointer wrapper that a
+		// pointer variable uses. Stringify the option value directly and retain the
+		// reference prefix instead of treating the wrapper as its scalar payload.
+		ref_str := '&'.repeat(typ.nr_muls())
+		g.write('builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code}, {.d_s = ')
+		g.gen_expr_to_string(expr.right, expr.right_type)
+		g.write('}, 0, 0, 0}}))')
+		return
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	// When interface smartcast expr produces a pointer in C but type was already dereffed,
@@ -191,13 +291,21 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.expr(expr)
 		g.write('))')
 	} else if typ == ast.string_type {
-		if expr_type.is_ptr() {
-			g.write('*')
+		if is_shared {
+			g.expr(expr)
+			g.write('->val')
+		} else {
+			if expr_type.is_ptr() {
+				g.write('*')
+			}
+			g.expr(expr)
 		}
-		g.expr(expr)
 	} else if typ == ast.bool_type {
 		g.write('(')
 		g.expr(expr)
+		if is_shared {
+			g.write('->val')
+		}
 		g.write(' ? _S("true") : _S("false"))')
 	} else if sym.kind == .none || typ == ast.void_type.set_flag(.option) {
 		if expr is ast.CallExpr {
@@ -263,7 +371,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.writeln(';')
 			g.write(line)
 		}
-		if is_ptr && !is_var_mut {
+		if is_ptr && !is_ptr_alias_with_str && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code}, {.d_s = builtin__isnil(')
 			if typ.has_flag(.option) || mut_arg_option_type != 0 {
@@ -303,7 +411,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			}
 		}
 		g.write2(str_fn_name, '(')
-		if str_method_expects_ptr && !is_ptr {
+		if str_method_expects_ptr && (!is_ptr || is_ptr_alias_with_str) {
 			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
 				g.write('ADDR(${g.styp(typ)}, ')
 				defer(fn) {
@@ -320,11 +428,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			} else {
 				g.write('*(${g.styp(typ)}*)&')
 			}
-		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
+		} else if !str_method_expects_ptr && !is_shared && ((is_ptr && !is_ptr_alias_with_str)
+			|| is_var_mut) {
 			if sym.is_c_struct() {
 				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 			} else {
-				g.write('*'.repeat(expr_type.nr_muls()))
+				g.write('*'.repeat(resolved_typ.nr_muls()))
 			}
 		} else if !str_method_expects_ptr && is_interface_smartcast_to_nonptr {
 			g.write('*')
@@ -358,7 +467,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('->val')
 		}
 		g.write(')')
-		if is_ptr && !is_var_mut {
+		if is_ptr && !is_ptr_alias_with_str && !is_var_mut {
 			g.write('}, 0, 0, 0}}))')
 		}
 	} else {

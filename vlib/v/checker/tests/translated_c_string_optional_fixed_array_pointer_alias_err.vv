@@ -1,0 +1,18 @@
+@[translated]
+module main
+
+type FixedBytes = [4]u8
+type FixedBytesPointer = &FixedBytes
+type OptionalFixedBytesPointer = ?&FixedBytes
+
+struct OptionalPointerAliases {
+	option_pointer_alias ?FixedBytesPointer
+	option_parent_alias  OptionalFixedBytesPointer
+}
+
+fn main() {
+	_ := OptionalPointerAliases{
+		option_pointer_alias: c'abcd'
+		option_parent_alias:  c'abcd'
+	}
+}

@@ -6,9 +6,21 @@ const selective_import_v3_dir = os.dir(selective_import_tests_dir)
 const selective_import_vlib_dir = os.dir(selective_import_v3_dir)
 const selective_import_v3_src = os.join_path(selective_import_v3_dir, 'v3.v')
 
+fn selective_import_setup_v3_cache() {
+	cache_dir := os.join_path(os.temp_dir(), 'v3_selective_import_cache_${os.getpid()}')
+	if os.getenv('V3CACHE') == cache_dir {
+		return
+	}
+	os.rmdir_all(cache_dir) or {}
+	os.setenv('V3CACHE', cache_dir, true)
+}
+
 fn selective_import_build_v3() string {
+	selective_import_setup_v3_cache()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}')
-	os.rm(v3_bin) or {}
+	if os.is_executable(v3_bin) {
+		return v3_bin
+	}
 	build :=
 		os.execute('${selective_import_vexe} -gc none -path "${selective_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${selective_import_v3_src}')
 	assert build.exit_code == 0, build.output
@@ -64,7 +76,7 @@ fn selective_import_compile_run_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_run_root(v3_bin string, root string) (string, string) {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
@@ -84,7 +96,7 @@ fn selective_import_compile_bad_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_bad_root(v3_bin string, name string, root string) string {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), compile.output
 	return compile.output
@@ -218,9 +230,9 @@ pub fn sum(values ...int) int {
 	assert !generated.contains('logger__sum(log'), generated
 }
 
-fn test_selective_import_json_decode_uses_stub() {
+fn test_selective_import_json_decode_uses_fast_path() {
 	v3_bin := selective_import_build_v3()
-	json_output, json_generated := selective_import_compile_run_with_extra(v3_bin, 'json_decode', 'module main
+	json_output, json_generated := selective_import_compile_run(v3_bin, 'json_decode', 'module main
 
 import json { decode }
 
@@ -229,47 +241,130 @@ struct Config {
 }
 
 fn main() {
-	cfg := decode[Config]("{\\"value\\":1}") or { Config{value: 9} }
+	cfg := decode(Config, "{\\"value\\":1}")!
 	println(int_str(cfg.value))
 }
-', {
-		'json/json.v': 'module json
-
-pub fn decode[T](src string) !T {
-	_ = src
-	return error("real decode should not be emitted")
-}
-'
-	})
-	assert json_output == '9'
-	assert !json_generated.contains('json__decode'), json_generated
+')
+	assert json_output == '1'
+	assert json_generated.contains('cJSON_ParseWithLength((char*)'), json_generated
 	json2_output, json2_generated := selective_import_compile_run_with_extra(v3_bin,
 		'json2_decode', 'module main
 
-import x.json2 { DecoderOptions, decode }
+import json2
 
 struct Config {
 	value int
 }
 
 fn main() {
-	cfg := decode[Config]("{\\"value\\":2}", DecoderOptions{}) or { Config{value: 8} }
+	cfg := json2.decode[Config]("{\\"value\\":2}", json2.DecoderOptions{}) or { Config{value: 8} }
 	println(int_str(cfg.value))
 }
 ', {
-		'x/json2/decode.v': 'module json2
+		'json2/decode.v': 'module json2
 
 pub struct DecoderOptions {}
 
 pub fn decode[T](val string, params DecoderOptions) !T {
 	_ = val
 	_ = params
-	return error("real decode should not be emitted")
+	return T{}
 }
 '
 	})
-	assert json2_output == '8'
-	assert !json2_generated.contains('json2__decode'), json2_generated
+	assert json2_output == '0'
+	assert json2_generated.contains('json2__decode'), json2_generated
+}
+
+fn test_const_ref_expansion_uses_referenced_const_file_imports() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'const_ref_file_context', 'module main
+
+import y.other as json
+
+const outer = imported_value
+const local_marker = json.Any{
+	value: 1
+}
+
+fn main() {
+	println(int_str(outer.value + local_marker.value))
+}
+', {
+		'b.v':             'module main
+
+import json2 as json
+
+const imported_value = json.Any{
+	value: 41
+}
+'
+		'json2/json2.v':   'module json2
+
+pub struct Any {
+pub:
+	value int
+}
+'
+		'y/other/other.v': 'module other
+
+pub struct Any {
+pub:
+	value int
+}
+'
+	})
+	assert output == '42'
+	assert generated.contains('json2__Any'), generated
+	assert generated.contains('other__Any'), generated
+}
+
+fn test_selective_import_json_encode_uses_fast_path() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run(v3_bin, 'json_encode', 'module main
+
+import json { encode }
+
+struct User {
+	name string
+}
+
+fn main() {
+	println(encode(User{name: "x"}))
+}
+')
+	assert output == '{"name":"x"}'
+	assert generated.contains('v3_json_encode_string('), generated
+}
+
+fn test_json2_encode_pure_v_is_specialized() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'json2_encode_specialized', 'module main
+
+import json2
+
+struct User {
+	name string
+}
+
+fn main() {
+	println(json2.encode(User{name: "x"}, json2.EncoderOptions{}))
+}
+', {
+		'json2/encode.v': 'module json2
+
+pub struct EncoderOptions {}
+
+pub fn encode[T](value T, options EncoderOptions) string {
+	_ = value
+	_ = options
+	return "pure-v"
+}
+'
+	})
+	assert output == 'pure-v'
+	assert generated.contains('json2__encode'), generated
 }
 
 fn test_selective_import_inside_generic_clone_keeps_source_file_symbol() {
@@ -623,6 +718,45 @@ pub fn value() string {
 	assert !generated.contains('int foo__value(void);'), generated
 }
 
+fn test_module_local_error_method_signature_uses_module_key() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'module_local_error_method_signature', 'module main
+
+import foo
+
+fn main() {
+	err := foo.make_error()
+	println(err.str())
+}
+', {
+		'foo/foo.v': 'module foo
+
+pub struct Error {
+	message string
+}
+
+pub fn make_error() Error {
+	return Error{
+		message: "local"
+	}
+}
+
+pub fn (err Error) msg() string {
+	return err.message
+}
+
+pub fn (err Error) str() string {
+	return err.msg()
+}
+'
+	})
+	assert output == 'local'
+	assert generated.contains('string foo__Error__msg(foo__Error err)'), generated
+	assert generated.contains('return foo__Error__msg(err);'), generated
+	assert !generated.contains('string foo__Error__msg(Error err)'), generated
+}
+
 fn test_selective_import_with_module_alias_keeps_symbol_authority() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run(v3_bin, 'alias', 'module main
@@ -815,10 +949,79 @@ fn main() {
 ',
 		selective_import_type_collision_modules())
 	assert output == 'on'
-	assert generated.contains('return mode == 7;'), generated
-	assert generated.contains('is_on(7)'), generated
-	assert !generated.contains('return mode == 70;'), generated
-	assert !generated.contains('is_on(70)'), generated
+	assert generated.contains('return mode == geometry__Mode__on;'), generated
+	assert generated.contains('is_on(geometry__Mode__on)'), generated
+	assert !generated.contains('return mode == pixels__Mode__on;'), generated
+	assert !generated.contains('is_on(pixels__Mode__on)'), generated
+}
+
+fn test_selective_import_enum_from_uses_selected_type() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_from', 'module main
+
+import geometry { Mode }
+import pixels
+
+fn main() {
+	mode := Mode.from(8) or { panic(err) }
+	println(mode)
+	string_mode := Mode.from("on") or { panic(err) }
+	println(string_mode)
+}
+',
+		selective_import_type_collision_modules())
+	assert output == 'off\non'
+	assert !generated.contains('unknown__from'), generated
+}
+
+fn test_module_qualified_enum_from_uses_imported_type() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'qualified_enum_from', 'module main
+
+import colors
+
+fn main() {
+	numeric := colors.Color.from(1) or { panic(err) }
+	println(numeric)
+	text := colors.Color.from("red") or { panic(err) }
+	println(text)
+}
+', {
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+'
+	})
+	assert output == 'blue\nred'
+	assert !generated.contains('unknown__from'), generated
+}
+
+fn test_selective_imported_enum_alias_from_string() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_alias_from_string', 'module main
+
+import colors { Hue }
+
+fn main() {
+	value := Hue.from("blue") or { panic(err) }
+	println(value)
+}
+', {
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+
+pub type Hue = Color
+'
+	})
+	assert output == 'blue'
+	assert !generated.contains('unknown__from'), generated
 }
 
 fn test_selective_import_resolves_flag_enum_collision() {

@@ -3,7 +3,7 @@
 module des
 
 import crypto.cipher
-import crypto.internal.subtle
+import crypto.subtle
 import encoding.binary
 
 const block_size = 8

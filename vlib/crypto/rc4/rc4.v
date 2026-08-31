@@ -10,7 +10,7 @@ module rc4
 // applications.
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/rc4
 // Last commit: https://github.com/golang/go/commit/b35dacaac57b039205d9b07ea24098e2c3fcb12e
-import crypto.internal.subtle
+import crypto.subtle
 
 // A Cipher is an instance of RC4 using a particular key.
 struct Cipher {

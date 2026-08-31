@@ -4,6 +4,7 @@ import os
 import time
 import v.util
 import v.builder
+import v.pref
 import sync.pool
 import v.gen.c
 
@@ -26,6 +27,22 @@ fn parallel_cc_uses_tcc(cc_kind builder.CC, ccompiler string) bool {
 	normalized := ccompiler.replace('\\', '/').to_lower()
 	return normalized == 'tcc' || normalized.ends_with('/tcc') || normalized.ends_with('/tcc.exe')
 		|| normalized.contains('/thirdparty/tcc/')
+}
+
+fn parallel_cc_shell_safe_linker_arg(arg string) string {
+	if arg in ['-Wl,-(', '-Wl,-)'] {
+		return os.quoted_path(arg)
+	}
+	return arg
+}
+
+fn parallel_cc_compile_driver_args(compile_args []string, pkgconfig_pthread bool, cc_kind builder.CC, compiler_type pref.CompilerType) []string {
+	mut projected := compile_args.clone()
+	if pkgconfig_pthread && (cc_kind in [.gcc, .clang] || compiler_type == .cplusplus)
+		&& !projected.any(pref.contains_exact_cflag_token(it, '-pthread')) {
+		projected << '-pthread'
+	}
+	return projected
 }
 
 fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
@@ -121,9 +138,11 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 			linker_args << tcc_l_arg
 		}
 	}
-	scompile_args := compile_args.join(' ')
-	slinker_args := linker_args.join(' ')
 	scompile_args_for_linker := compile_args.filter(it != '-x objective-c').join(' ')
+	compile_args = parallel_cc_compile_driver_args(compile_args, b.has_pkgconfig_pthread(),
+		b.ccoptions.cc, b.pref.ccompiler_type)
+	scompile_args := compile_args.join(' ')
+	slinker_args := linker_args.map(parallel_cc_shell_safe_linker_arg(it)).join(' ')
 
 	mut o_postfixes := ['0', 'x']
 	mut cmds := []string{}
@@ -139,9 +158,10 @@ fn parallel_cc(mut b builder.Builder, result c.GenOutput) ! {
 	sw := time.new_stopwatch()
 	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
 	pp.set_max_jobs(util.nr_jobs)
-	pp.work_on_items(cmds)
-	for x in pp.get_results[os.Result]() {
-		failed += if x.exit_code == 0 { 0 } else { 1 }
+	// PoolProcessor stores erased item pointers internally, so avoid a generic wrapper here.
+	unsafe { pp.work_on_pointers(cmds.pointers()) }
+	for result_ptr in pp.get_result_pointers() {
+		failed += if isnil(result_ptr) { 0 } else { 1 }
 	}
 	eprint_time(sw,
 		'C compilation on ${util.nr_jobs} thread(s), processing ${cmds.len} commands, failed: ${failed}')
@@ -185,9 +205,12 @@ fn build_parallel_o_cb(mut p pool.PoolProcessor, idx int, _wid int) voidptr {
 	sw := time.new_stopwatch()
 	res := os.execute(cmd)
 	eprint_result_time(sw, 'cc_cmd', cmd, res)
-	return voidptr(&os.Result{
-		...res
-	})
+	// The caller only needs success/failure. Returning a sentinel avoids keeping
+	// pointers to worker-local os.Result values after the workers have exited.
+	if res.exit_code == 0 {
+		return pool.no_result
+	}
+	return unsafe { voidptr(1) }
 }
 
 fn eprint_result_time(sw time.StopWatch, label string, cmd string, res os.Result) {

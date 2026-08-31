@@ -42,6 +42,8 @@ INT vschannel_request_on_open(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHA
 // Streaming transport for the HTTP/2 driver: open the connection and keep it
 // open, then move raw application bytes across it. See vschannel.c.
 INT vschannel_h2_connect(TlsContext *tls_ctx, INT iport, LPWSTR host);
+void vschannel_set_io_timeouts(TlsContext *tls_ctx, DWORD recv_timeout_ms, DWORD send_timeout_ms);
+INT vschannel_wait_writable(TlsContext *tls_ctx, INT timeout_ms);
 INT vschannel_write(TlsContext *tls_ctx, const char *buf, INT len);
 INT vschannel_read(TlsContext *tls_ctx, char *buf, INT cap);
 void vschannel_h2_close(TlsContext *tls_ctx);

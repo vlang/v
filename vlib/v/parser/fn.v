@@ -15,6 +15,15 @@ fn table_fn_lookup(table &ast.Table, name string) (ast.Fn, bool) {
 	return unsafe { table.fns[name] }, true
 }
 
+fn table_call_fn_lookup(table &ast.Table, name string, mod string, language ast.Language) (ast.Fn, bool) {
+	if language == .c {
+		if f := table.find_c_fn_in_module(name, mod) {
+			return f, true
+		}
+	}
+	return table_fn_lookup(table, name)
+}
+
 fn comptime_define_idx(attrs []ast.Attr) int {
 	for idx in 0 .. attrs.len {
 		if attrs[idx].kind == .comptime_define {
@@ -76,10 +85,12 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.pos())
 	}
 	p.check(.lpar)
+	lpar_line := p.prev_tok.pos().line_nr
 	args := p.call_args()
+	args_trailing_comma := p.call_args_trailing_comma
 	if p.tok.kind != .rpar && !p.pref.is_vls {
 		mut params := []ast.Param{}
-		fn_info, has_fn_info := table_fn_lookup(p.table, fn_name)
+		fn_info, has_fn_info := table_call_fn_lookup(p.table, fn_name, p.mod, language)
 		if has_fn_info {
 			params = fn_info.params.clone()
 		} else {
@@ -138,27 +149,47 @@ fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	comments := p.eat_comments(same_line: true)
 	pos.update_last_line(p.prev_tok.line_nr)
 	return ast.CallExpr{
-		name:               fn_name
-		name_pos:           first_pos
-		args:               args
-		mod:                p.mod
-		kind:               p.call_kind(fn_name)
-		pos:                pos
-		language:           language
-		concrete_types:     concrete_types
-		concrete_list_pos:  concrete_list_pos
-		raw_concrete_types: concrete_types
-		or_block:           ast.OrExpr{
+		name:                   fn_name
+		name_pos:               first_pos
+		args:                   args
+		args_start_on_new_line: call_args_are_multiline(lpar_line, args_trailing_comma, args)
+		mod:                    p.mod
+		kind:                   p.call_kind(fn_name)
+		pos:                    pos
+		language:               language
+		concrete_types:         concrete_types
+		concrete_list_pos:      concrete_list_pos
+		raw_concrete_types:     concrete_types
+		or_block:               ast.OrExpr{
 			stmts: or_stmts
 			kind:  or_kind
 			pos:   or_pos
 			scope: or_scope
 		}
-		scope:              p.scope
-		comments:           comments
-		is_return_used:     p.expecting_value
-		is_static_method:   is_static_type_method
+		scope:                  p.scope
+		comments:               comments
+		is_return_used:         p.expecting_value
+		is_static_method:       is_static_type_method
 	}
+}
+
+// call_args_are_multiline reports whether the user asked for the call's arguments to
+// be kept expanded: the argument list begins on a line after the opening `(` (which
+// is on lpar_line) and ends with a trailing comma before `)`, e.g.
+//
+// 	f(
+// 		a,
+// 		b,
+// 	)
+//
+// vfmt then preserves the multi-line layout, keeping the source line grouping of the
+// arguments (like gofmt), with a trailing comma (see Fmt.call_args and #27909). The
+// trailing comma is the explicit opt-in: vfmt never emits one otherwise, so this
+// leaves every existing call untouched. A long single argument merely wrapped across
+// lines (e.g. `panic('...' + long_expr)`) has no trailing comma and is
+// collapsed/wrapped as before.
+fn call_args_are_multiline(lpar_line int, has_trailing_comma bool, args []ast.CallArg) bool {
+	return has_trailing_comma && args.len > 0 && args[0].pos.line_nr > lpar_line
 }
 
 fn min_required_call_args(params []ast.Param) int {
@@ -474,9 +505,11 @@ fn (mut p Parser) call_args() []ast.CallArg {
 	defer {
 		p.inside_call_args = prev_inside_call_args
 	}
+	mut trailing_comma := false
 	mut args := []ast.CallArg{}
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .eof {
+			p.call_args_trailing_comma = trailing_comma
 			return args
 		}
 		is_shared := p.tok.kind == .key_shared
@@ -532,7 +565,10 @@ fn (mut p Parser) call_args() []ast.CallArg {
 			continue
 		}
 		p.next()
+		// a comma directly before `)` is a trailing comma: `f(a, b,)`
+		trailing_comma = p.tok.kind == .rpar
 	}
+	p.call_args_trailing_comma = trailing_comma
 	return args
 }
 
@@ -1046,7 +1082,7 @@ run them via `v file.v` instead',
 				}
 			}
 		}
-		p.table.register_fn(ast.Fn{
+		new_fn := ast.Fn{
 			name:                  name
 			file_mode:             file_mode
 			params:                params
@@ -1080,7 +1116,27 @@ run them via `v file.v` instead',
 			language: language
 			//
 			is_expand_simple_interpolation: is_expand_simple_interpolation
-		})
+		}
+		mut should_register := true
+		if language == .c {
+			p.table.register_c_fn_in_module(new_fn)
+			existing, has_existing := table_fn_lookup(p.table, name)
+			if has_existing && existing.mod != new_fn.mod && existing.mod != 'builtin'
+				&& new_fn.mod != 'builtin' {
+				should_register = false
+				if !p.table.c_fn_declarations_are_compatible(&existing, &new_fn) {
+					existing_path := util.path_styled_for_error_messages(existing.file)
+					existing_line := existing.name_pos.line_nr + 1
+					existing_col := existing.name_pos.col + 1
+					existing_pos := '${existing_path}:${existing_line}:${existing_col}'
+					p.error_with_pos_no_advance('C function `${name}` was already declared with a different signature in module `${existing.mod}` at ${existing_pos}',
+						name_pos)
+				}
+			}
+		}
+		if should_register {
+			p.table.register_fn(new_fn)
+		}
 	}
 	/*
 	// Register implicit context var
@@ -1649,9 +1705,13 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				}
 			}
 			if is_variadic {
-				// derive flags, however nr_muls only needs to be set on the array elem type, so clear it on the arg type
+				// Preserve the flags used by variadic lowering, but keep optional/result function
+				// wrappers on the array element rather than on the variadic array itself.
 				typ =
 					ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_nr_muls(0).set_flag(.variadic)
+				if p.table.final_sym(orig_typ).kind == .function {
+					typ = typ.clear_flags(.option, .result, .option_mut_param_t)
+				}
 			}
 			for i, para_name in param_names {
 				alanguage := p.table.sym(typ).language

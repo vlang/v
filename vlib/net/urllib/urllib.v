@@ -51,7 +51,7 @@ fn should_escape(c u8, mode EncodingMode) bool {
 		// we could possibly allow, and parse will reject them if we
 		// escape them (because hosts can`t use %-encoding for
 		// ASCII bytes).
-		if c in [`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`,
+		if c in [`!`, `$`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`,
 			`"`] {
 			return false
 		}
@@ -203,7 +203,7 @@ fn unescape(s_ string, mode EncodingMode) !string {
 			else {
 				if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80
 					&& should_escape(s[i], mode) {
-					error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
+					return error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
 				}
 				i++
 			}
@@ -1025,7 +1025,7 @@ pub fn valid_userinfo(s string) bool {
 			continue
 		}
 		match r {
-			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`,
+			`-`, `.`, `_`, `:`, `~`, `!`, `$`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `%`,
 			`@` {
 				continue
 			}

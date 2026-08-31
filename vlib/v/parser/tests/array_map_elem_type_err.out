@@ -1,0 +1,5 @@
+vlib/v/parser/tests/array_map_elem_type_err.vv:1:14: error: cannot use the map type without key and value definition
+    1 | type Arr = []map
+      |              ~~~
+    2 | 
+    3 | fn main() {

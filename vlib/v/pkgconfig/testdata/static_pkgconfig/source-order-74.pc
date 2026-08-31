@@ -1,0 +1,6 @@
+Name: source-order-74
+Description: Source-relative ordered linker segment fixture
+Version: 1.0.0
+Libs: -Wl,--issue74-order-pkg-public
+Libs.private: -Wl,--issue74-order-pkg-private
+Cflags: -DISSUE74_ORDER_CFLAGS

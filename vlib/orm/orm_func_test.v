@@ -62,6 +62,22 @@ struct UserPart {
 	option_string ?string = 'this is not none'
 }
 
+struct UrlDefaultAttr {
+	id  int    @[primary; sql: serial]
+	url string @[default: '"https://example.test"']
+}
+
+fn test_orm_func_field_attribute_argument_with_colon() {
+	mut db := sqlite.connect(':memory:')!
+	defer { db.close() or {} }
+	mut qb := orm.new_query[UrlDefaultAttr](db)
+	qb.create()!
+
+	ddl :=
+		db.q_string("select sql from sqlite_master where type = 'table' and name = 'urldefaultattr'")!
+	assert ddl.contains('https://example.test')
+}
+
 fn test_orm_func_where() {
 	mut db := sqlite.connect(':memory:')!
 	defer { db.close() or {} }

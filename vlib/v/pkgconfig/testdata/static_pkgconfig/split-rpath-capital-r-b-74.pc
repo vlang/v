@@ -1,0 +1,4 @@
+Name: split-rpath-capital-r-b-74
+Description: Second split GNU capital R operand
+Version: 1.0.0
+Libs: -Wl,-R -Wl,/var/tmp

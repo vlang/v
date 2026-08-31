@@ -1,0 +1,6 @@
+Name: oracle-cycle-b-74
+Description: Second public cycle node
+Version: 1.0.0
+Requires: oracle-cycle-c-74
+Libs: -loracle_cycle_b
+Cflags: -DORACLE_CYCLE_B

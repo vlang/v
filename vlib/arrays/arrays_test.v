@@ -170,6 +170,10 @@ fn test_window() {
 		[4, 5, 6]]
 	assert window[int](x, size: 3, step: 2) == [[1, 2, 3], [3, 4, 5]]
 	assert window[int]([]int{}, size: 2) == [][]int{}
+	assert window([1, 2, 3], size: 2, step: 0) == [][]int{}
+	assert window([1, 2, 3], size: 2, step: -1) == [][]int{}
+	assert window([1, 2, 3], size: 0) == [][]int{}
+	assert window([1, 2, 3], size: 4) == [][]int{}
 }
 
 /////////////////////////////
@@ -398,6 +402,16 @@ fn test_copy() {
 	// check longer dst
 	assert copy(mut b, [8, 9]) == 2
 	assert b == [8, 9, 3, 7]
+}
+
+fn test_copy_overlapping_managed_elements() {
+	mut right := ['a', 'b', 'c', 'd']
+	assert copy(mut right[1..], right[..3]) == 3
+	assert right == ['a', 'a', 'b', 'c']
+
+	mut left := ['a', 'b', 'c', 'd']
+	assert copy(mut left[..3], left[1..]) == 3
+	assert left == ['b', 'c', 'd', 'd']
 }
 
 fn test_can_copy_bits() {

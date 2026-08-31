@@ -140,6 +140,27 @@ fn test_parse_authority() {
 	}
 }
 
+fn test_parse_rejects_backslash_in_authority() {
+	invalid_urls := [
+		r'http://127.0.0.1\@google.com/',
+		r'http://user@google.com\path',
+		r'http://google.com\path',
+	]
+	for url in invalid_urls {
+		if _ := urllib.parse(url) {
+			assert false, 'parser must reject "${url}"'
+		}
+	}
+}
+
+fn test_parse_allows_apostrophe_in_authority() {
+	url := urllib.parse("http://o'connor@example'host/")!
+	assert url.host == "example'host"
+	if user := url.user {
+		assert user.username == "o'connor"
+	}
+}
+
 fn test_parse_slashes() {
 	assert urllib.parse('/')!.str() == '/'
 	assert urllib.parse('//')!.str() == '//'

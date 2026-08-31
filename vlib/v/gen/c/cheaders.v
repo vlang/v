@@ -377,6 +377,11 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 	#define V_CRT_LINKAGE
 	#define V_CRT_CALL
 #endif
+#if (defined(__MINGW32__) || defined(__MINGW64__)) && defined(__V_GCC__)
+	#define V_CRT_STDIO_LINKAGE __attribute__((dllimport))
+#else
+	#define V_CRT_STDIO_LINKAGE V_CRT_LINKAGE
+#endif
 #if (defined(_MSC_VER) && !defined(__clang__)) || defined(__cplusplus)
 // Under C++ (g++/clang++), let libc declare FILE/stdio/string/stdlib to keep
 // noexcept specifiers consistent — the manual extern "C" prototypes below
@@ -549,6 +554,18 @@ typedef struct _IO_FILE FILE;
 extern FILE* stdin;
 extern FILE* stdout;
 extern FILE* stderr;
+#if defined(__GLIBC__) || defined(__GNU_LIBRARY__)
+// V declares the stdio functions manually here, instead of including <stdio.h>.
+// glibc defines L_tmpnam only while <stdio.h> is being processed (it sits behind
+// `#ifdef _STDIO_H` in <bits/stdio_lim.h>), and it is the one stdio limit macro that
+// <stdio.h> itself uses in a prototype: char *tmpnam(char[L_tmpnam]). So a <stdio.h>
+// pulled in later by a module header (sqlite3.h, gc.h, ...) can fail with L_tmpnam
+// being undeclared; see vlang/v#28108. Define it here, to the stable glibc value,
+// without adding an include. A later identical redefinition by glibc is a no-op.
+#ifndef L_tmpnam
+#define L_tmpnam 20
+#endif
+#endif
 	#endif
 typedef __builtin_va_list va_list;
 #ifndef va_start
@@ -611,9 +628,9 @@ V_CRT_LINKAGE int V_CRT_CALL fclose(FILE *stream);
 #if defined(__vinix__)
 V_CRT_LINKAGE FILE * V_CRT_CALL popen(char *command, char *mode);
 #else
-V_CRT_LINKAGE FILE * V_CRT_CALL popen(const char *command, const char *mode);
+V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL popen(const char *command, const char *mode);
 #endif
-V_CRT_LINKAGE int V_CRT_CALL pclose(FILE *stream);
+V_CRT_STDIO_LINKAGE int V_CRT_CALL pclose(FILE *stream);
 V_CRT_LINKAGE void * V_CRT_CALL malloc(size_t size);
 V_CRT_LINKAGE void * V_CRT_CALL calloc(size_t nitems, size_t size);
 V_CRT_LINKAGE void * V_CRT_CALL realloc(void *ptr, size_t size);
@@ -667,9 +684,15 @@ V_CRT_LINKAGE char * V_CRT_CALL strstr(const char *haystack, const char *needle)
 V_CRT_LINKAGE int V_CRT_CALL fseek(FILE *stream, long offset, int whence);
 V_CRT_LINKAGE isize V_CRT_CALL getline(char **lineptr, size_t *n, FILE *stream);
 #if defined(_WIN32) || defined(_WIN64)
-V_CRT_LINKAGE int V_CRT_CALL _fileno(FILE *stream);
-V_CRT_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);
-V_CRT_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);
+V_CRT_STDIO_LINKAGE int V_CRT_CALL _fseeki64(FILE *stream, i64 offset, int whence);
+V_CRT_LINKAGE int V_CRT_CALL fgetpos(FILE *stream, i64 *pos);
+V_CRT_STDIO_LINKAGE int V_CRT_CALL _fileno(FILE *stream);
+V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfopen(const unsigned short *filename, const unsigned short *mode);
+V_CRT_STDIO_LINKAGE int V_CRT_CALL freopen_s(FILE **new_stream, const char *filename, const char *mode, FILE *stream);
+V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wfreopen(const unsigned short *filename, const unsigned short *mode, FILE *stream);
+V_CRT_STDIO_LINKAGE FILE * V_CRT_CALL _wpopen(const unsigned short *command, const unsigned short *mode);
+V_CRT_STDIO_LINKAGE int V_CRT_CALL _pclose(FILE *stream);
+V_CRT_STDIO_LINKAGE int V_CRT_CALL _wremove(const unsigned short *path);
 V_CRT_LINKAGE void * V_CRT_CALL _aligned_malloc(size_t size, size_t alignment);
 V_CRT_LINKAGE void * V_CRT_CALL _aligned_realloc(void *memory, size_t size, size_t alignment);
 V_CRT_LINKAGE void V_CRT_CALL _aligned_free(void *memory);
@@ -714,6 +737,7 @@ enum {
 	#endif
 };
 #endif
+#undef V_CRT_STDIO_LINKAGE
 #undef V_CRT_LINKAGE
 #undef V_CRT_CALL
 static void v_stable_sort(void *base, size_t items, size_t item_size, qsort_callback_func cb) {

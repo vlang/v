@@ -8,9 +8,7 @@ module rand
 
 fn C.arc4random_buf(p &u8, n usize)
 
-// read returns an array of `bytes_needed` random bytes read from the OS.
-pub fn read(bytes_needed int) ![]u8 {
-	mut buffer := unsafe { malloc_noscan(bytes_needed) }
-	C.arc4random_buf(buffer, bytes_needed)
-	return unsafe { buffer.vbytes(bytes_needed) }
+// read fills `buffer` with random bytes from the OS.
+pub fn read(mut buffer []u8) ! {
+	C.arc4random_buf(buffer.data, buffer.len)
 }

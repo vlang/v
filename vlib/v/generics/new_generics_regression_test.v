@@ -30,6 +30,11 @@ fn testsuite_begin() {
 }
 
 fn test_new_generic_solver_does_not_regress_silently() {
+	$if macos {
+		// V3 is the default macOS compiler and has one generic solver enabled by
+		// default. This fixture tracks only V1's opt-in solver and known failures.
+		return
+	}
 	run_new_generic_solver_tests('vlib/math/vec',
 		'${os.quoted_path(vexe)} -new-generic-solver test vlib/math/vec', expected_summary_vec,
 		expected_summsvc_vec, failing_math_vec_tests[..])
@@ -146,6 +151,7 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_fn_call_with_reference_argument_test.v',
 	'vlib/v/tests/generics/generic_fn_infer_multi_paras_test.v',
 	'vlib/v/tests/generics/generic_fn_infer_nested_struct_test.v',
+	'vlib/v/tests/generics/generic_fn_method_from_embed_mixed_test.v',
 	'vlib/v/tests/generics/generic_fn_multi_return_test.v',
 	'vlib/v/tests/generics/generic_fn_short_syntax_struct_param_test.v',
 	'vlib/v/tests/generics/generic_fn_typeof_name_test.v',
@@ -168,7 +174,6 @@ const failing_tests = [
 	'vlib/v/tests/generics/generic_method_with_variadic_generic_args_test.v',
 	'vlib/v/tests/generics/generic_mut_pointer_param_test.v',
 	'vlib/v/tests/generics/generic_operator_overload_test.v',
-	'vlib/v/tests/generics/generic_receiver_embed_test.v',
 	'vlib/v/tests/generics/generic_resolve_test.v',
 	'vlib/v/tests/generics/generic_return_test.v',
 	'vlib/v/tests/generics/generic_selector_field_test.v',

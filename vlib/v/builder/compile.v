@@ -15,7 +15,27 @@ pub fn should_find_windows_host_c_compiler(pref_ &pref.Preferences) bool {
 	return pref_.backend == .c && pref_.os == .windows && !pref_.output_cross_c
 }
 
+fn resolve_ccompiler_type_and_pkgconfig_mode(mut prefs pref.Preferences) {
+	prefs.ccompiler_type = resolve_ccompiler_type(prefs.ccompiler, prefs.ccompiler_type)
+	prefs.resolve_pkgconfig_mode()
+}
+
 pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
+	compile_with_optional_external_c_error_report(pref_, backend_cb, none)
+}
+
+// compile_with_external_c_error_report compiles with the established compiler and submits
+// `report` only after that build succeeds.
+pub fn compile_with_external_c_error_report(command string, pref_ &pref.Preferences, backend_cb FnBackend, report ExternalCErrorBugReport) {
+	compile_with_optional_external_c_error_report(pref_, backend_cb, report)
+}
+
+fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backend_cb FnBackend, report ?ExternalCErrorBugReport) {
+	if failed := report {
+		// The compatibility compiler may exit from any validation, parser, checker, or
+		// C compilation path below. Register cleanup before entering those paths.
+		register_external_c_error_report_cleanup(failed.cleanup_dir)
+	}
 	if pref_.is_test {
 		disable_c_error_bug_reports()
 	}
@@ -31,13 +51,44 @@ pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 		}
 	}
 	mut pref_ref := unsafe { pref_ }
-	pref_ref.ccompiler_type = resolve_ccompiler_type(pref_ref.ccompiler, pref_ref.ccompiler_type)
+	if failed := report {
+		// Hash only retry inputs, from the scanner's exact bytes. This lets the stable
+		// build prove it compiled the same sources before reporting a V3-only failure.
+		pref_ref.capture_source_digests = failed.input_digests_complete
+	}
+	resolve_ccompiler_type_and_pkgconfig_mode(mut pref_ref)
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref_)
 	if b.should_rebuild() {
 		b.rebuild(backend_cb)
 	}
+	// Confirm the established compiler accepted the program before consuming the
+	// fallback report. With `-check-syntax`, an invalid program makes the backend
+	// callback return normally (it only stops after the parser), so exit_on_invalid_syntax
+	// is what turns that into a failure. Consuming the report earlier would submit a bug
+	// claiming the stable compiler built a program it actually rejected — both compilers
+	// failed. On exit(1) here the at_exit cleanup registered above drops the staged report.
 	b.exit_on_invalid_syntax()
+	if failed := report {
+		// Do this before run_compiled_executable_and_exit: successful builds and run
+		// commands exit there, so the caller cannot reliably submit the report later.
+		match b.v3_fallback_input_status(failed) {
+			.unchanged {
+				consume_external_c_error_bug_report(pref_, failed)
+			}
+			.unavailable {
+				// V3 failed before it could stage a complete parser manifest. The stable
+				// build succeeded, so preserve the documented fallback notice, but do not
+				// submit an unverified V3-only failure report.
+				print_v3_fallback_notice('', false, false, false)
+			}
+			.changed {
+				// The stable compiler succeeded, but not from the exact source snapshot V3
+				// parsed. Do not classify or upload this as a V3-only failure.
+				discard_unverified_v3_fallback_report()
+			}
+		}
+	}
 	// running does not require the parsers anymore
 	unsafe { b.myfree() }
 	b.run_compiled_executable_and_exit()

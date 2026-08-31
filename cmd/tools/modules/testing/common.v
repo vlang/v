@@ -78,9 +78,183 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 pub const max_compilation_retries = get_max_compilation_retries()
 
 const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
+// Each worker compiles a separate test program, so bound automatic parallelism
+// by a conservative memory budget. VJOBS remains an explicit override.
+const test_job_memory_budget = u64(8) * 1024 * 1024 * 1024
+const max_automatic_test_jobs = 4
 
 fn get_max_compilation_retries() int {
 	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
+}
+
+fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int {
+	if configured_jobs > 0 {
+		return configured_jobs
+	}
+	mut jobs := if cpu_jobs > 0 { cpu_jobs } else { 1 }
+	mut memory_jobs := int(total_memory / test_job_memory_budget)
+	if memory_jobs < 1 {
+		memory_jobs = 1
+	}
+	if jobs > memory_jobs {
+		jobs = memory_jobs
+	}
+	if jobs > max_automatic_test_jobs {
+		jobs = max_automatic_test_jobs
+	}
+	return jobs
+}
+
+fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
+	mut v2_path := ''
+	mut v1_memory_path := ''
+	for line in cgroups.split_into_lines() {
+		first_separator := line.index(':') or { continue }
+		second_separator := line.index_after(':', first_separator + 1) or { continue }
+		controllers := line[first_separator + 1..second_separator]
+		cgroup_path := line[second_separator + 1..]
+		if controllers == '' {
+			v2_path = cgroup_path
+		} else if 'memory' in controllers.split(',') {
+			v1_memory_path = cgroup_path
+		}
+	}
+	if v1_memory_path != '' {
+		if limit := cgroup_memory_limit_for_hierarchy(mountinfo, v1_memory_path, 'cgroup',
+			'memory.limit_in_bytes') {
+			return limit
+		}
+	}
+	if v2_path != '' {
+		return cgroup_memory_limit_for_hierarchy(mountinfo, v2_path, 'cgroup2', 'memory.max')
+	}
+	return error('no cgroup memory limit found')
+}
+
+fn cgroup_memory_limit_for_hierarchy(mountinfo string, cgroup_path string, fs_type string, limit_file string) !u64 {
+	for line in mountinfo.split_into_lines() {
+		parts := line.split(' - ')
+		if parts.len != 2 {
+			continue
+		}
+		mount_parts := parts[0].fields()
+		fs_parts := parts[1].fields()
+		if mount_parts.len < 5 || fs_parts.len < 3 {
+			continue
+		}
+		mount_root := decode_mountinfo_path(mount_parts[3])
+		mount_point := decode_mountinfo_path(mount_parts[4])
+		if fs_parts[0] != fs_type || (fs_type == 'cgroup' && 'memory' !in fs_parts[2].split(',')) {
+			continue
+		}
+		if limit := cgroup_memory_limit_in_hierarchy(mount_root, mount_point, cgroup_path, limit_file) {
+			return limit
+		}
+	}
+	return error('no cgroup memory limit found')
+}
+
+fn decode_mountinfo_path(path string) string {
+	mut result := strings.new_builder(path.len)
+	mut i := 0
+	for i < path.len {
+		if path[i] == `\\` && i + 3 < path.len && path[i + 1] >= `0` && path[i + 1] <= `7`
+			&& path[i + 2] >= `0` && path[i + 2] <= `7` && path[i + 3] >= `0` && path[i + 3] <= `7` {
+			value := (path[i + 1] - `0`) * 64 + (path[i + 2] - `0`) * 8 + path[i + 3] - `0`
+			result.write_u8(value)
+			i += 4
+			continue
+		}
+		result.write_u8(path[i])
+		i++
+	}
+	return result.str()
+}
+
+fn cgroup_memory_limit_in_hierarchy(mount_root string, mount_point string, cgroup_path string, limit_file string) !u64 {
+	mut relative_path := cgroup_path.trim_left('/')
+	trimmed_root := mount_root.trim_right('/')
+	if trimmed_root != '' {
+		if cgroup_path == trimmed_root {
+			relative_path = ''
+		} else if cgroup_path.starts_with(trimmed_root + '/') {
+			relative_path = cgroup_path[trimmed_root.len..].trim_left('/')
+		}
+		// Otherwise cgroup_path is relative to a cgroup namespace rooted at
+		// mount_root, so relative_path already maps from the visible mount point.
+	}
+	mut current_path := os.join_path(mount_point, relative_path)
+	mut memory_limit := u64(0)
+	for {
+		if content := os.read_file(os.join_path(current_path, limit_file)) {
+			if limit := cgroup_memory_limit_value(content) {
+				if memory_limit == 0 || limit < memory_limit {
+					memory_limit = limit
+				}
+			}
+		}
+		if current_path == mount_point {
+			break
+		}
+		parent_path := os.dir(current_path)
+		if parent_path == current_path || !parent_path.starts_with(mount_point) {
+			break
+		}
+		current_path = parent_path
+	}
+	if memory_limit == 0 {
+		return error('cgroup memory limit is unlimited')
+	}
+	return memory_limit
+}
+
+fn cgroup_memory_limit_value(content string) !u64 {
+	value := content.trim_space()
+	if value == '' || value == 'max' {
+		return error('cgroup memory limit is unlimited')
+	}
+	limit := value.u64()
+	if limit == 0 {
+		return error('invalid cgroup memory limit')
+	}
+	return limit
+}
+
+fn effective_test_memory(physical_memory u64, cgroup_memory_limit u64) u64 {
+	if cgroup_memory_limit > 0 && cgroup_memory_limit < physical_memory {
+		return cgroup_memory_limit
+	}
+	return physical_memory
+}
+
+fn test_runner_memory() !u64 {
+	physical_memory := u64(runtime.total_memory()!)
+	$if linux {
+		cgroup_memory_limit := cgroup_memory_limit_from_contents(os.read_file('/proc/self/cgroup')!, os.read_file('/proc/self/mountinfo')!) or {
+			return physical_memory
+		}
+		return effective_test_memory(physical_memory, cgroup_memory_limit)
+	}
+	return physical_memory
+}
+
+fn test_session_jobs(will_compile bool, cpu_jobs int, total_memory u64, configured_jobs int) int {
+	if !will_compile {
+		return cpu_jobs
+	}
+	return automatic_test_jobs(cpu_jobs, total_memory, configured_jobs)
+}
+
+fn test_runner_jobs(will_compile bool) int {
+	cpu_jobs := runtime.nr_jobs()
+	if !will_compile {
+		return test_session_jobs(false, cpu_jobs, 0, 0)
+	}
+	configured_jobs := os.getenv('VJOBS').int()
+	total_memory := test_runner_memory() or {
+		return test_session_jobs(true, cpu_jobs, 0, configured_jobs)
+	}
+	return test_session_jobs(true, cpu_jobs, total_memory, configured_jobs)
 }
 
 fn get_fail_retry_delay_ms() time.Duration {
@@ -122,6 +296,7 @@ pub struct TestSession {
 pub mut:
 	files         []string
 	skip_files    []string
+	will_compile  bool
 	vexe          string
 	vroot         string
 	vtmp_dir      string
@@ -352,6 +527,19 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 	return os.system(cmd)
 }
 
+fn should_retry_execution(result os.Result) bool {
+	output := result.output.trim_space()
+	return output.len == 0 || output.starts_with('exec failed')
+		|| (output.starts_with('exec(') && output.ends_with(') failed'))
+}
+
+fn add_automatic_execution_retry(mut details TestDetails, result os.Result) {
+	if should_retry_execution(result) {
+		// Empty output and process-start failures can both be transient under load on CI runners.
+		details.retry++
+	}
+}
+
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	os.setenv(c_error_bug_report_disabled_env, '1', true)
 	mut skip_files := []string{}
@@ -375,6 +563,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		os.setenv('VCOLORS', 'always', true)
 	}
 	mut ts := TestSession{
+		will_compile:  will_compile
 		vexe:          vexe
 		vroot:         vroot
 		skip_files:    skip_files
@@ -492,12 +681,15 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut njobs := runtime.nr_jobs()
+	mut njobs := test_runner_jobs(ts.will_compile)
 	if remaining_files.len < njobs {
 		njobs = remaining_files.len
 	}
 	ts.benchmark.njobs = njobs
-	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
+	mut pool_of_test_runners := pool.new_pool_processor(
+		callback: worker_trunner
+		maxjobs:  njobs
+	)
 	// ensure that the nmessages queue/channel, has enough capacity for handling many messages across threads, without blocking
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nmessage_idx = 0
@@ -637,32 +829,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut compile_args := '${skip_running} ${compile_options.join(' ')}'
 	mut reproduce_vexe := ts.vexe
 	mut reproduce_args := reproduce_options.join(' ')
-	// `_test.vv2` files are v2-only integration tests: full V programs that
-	// exercise v2-specific syntax. Compile them with the v2 binary instead of
-	// v1, forwarding only flags that v2 recognizes — v2 errors on unknown
-	// flags, so v1-specific options must be stripped. Preserving `-d <name>`,
-	// `-b`/`-backend`, `-cc`, `-stats`, etc. keeps `v test -d feature ...`
-	// and per-file `// vtest vflags` working for conditional code paths.
-	is_vv2 := relative_file.ends_with('_test.vv2')
-	if is_vv2 {
-		mut v2_bin := os.join_path(ts.vroot, 'cmd', 'v2', 'v2')
-		$if windows {
-			v2_bin += '.exe'
-		}
-		if !os.is_executable(v2_bin) {
-			ts.append_message(.info, 'SKIP ${relative_file}: v2 binary not built. Run: ${os.quoted_path(ts.vexe)} -o ${os.quoted_path(v2_bin)} ${os.quoted_path(os.join_path(ts.vroot,
-				'cmd', 'v2', 'v2.v'))}', mtc)
-			ts.benchmark_skip()
-			tls_bench.skip()
-			return pool.no_result
-		}
-		compile_vexe = v2_bin
-		compile_args = filter_args_for_v2(compile_options)
-		// Reproduction command must invoke v2 too, otherwise the suggested
-		// rerun fails immediately on v2-only syntax.
-		reproduce_vexe = v2_bin
-		reproduce_args = filter_args_for_v2(reproduce_options)
-	}
 	reproduce_cmd := '${os.quoted_path(reproduce_vexe)} ${reproduce_args} ${os.quoted_path(file)}'
 	cmd := '${os.quoted_path(compile_vexe)} ${compile_args} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
@@ -712,6 +878,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
 		if status != 0 {
+			add_automatic_execution_retry(mut details, res)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
 				if !details.hide_retries {
@@ -803,10 +970,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		if r.exit_code != 0 {
 			mut trimmed_output := r.output.trim_space()
-			if trimmed_output.len == 0 {
-				// retry running at least 1 more time, to avoid CI false positives as much as possible
-				details.retry++
-			}
+			add_automatic_execution_retry(mut details, r)
 			if details.retry != 0 {
 				failure_output.write_string(separator)
 				failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
@@ -996,39 +1160,6 @@ pub fn h_divider() {
 	eprintln(term.h_divider('-')#[..max_header_len])
 }
 
-// filter_args_for_v2 returns a command-line string containing only the flags
-// the v2 compiler accepts (`vlib/v2_toberemoved/pref/pref.v`). v2 errors on any unknown
-// flag, so this is used when forwarding `v test` options to v2 for
-// `_test.vv2` files. Keep these lists in sync with v2's pref validator.
-fn filter_args_for_v2(compile_options []string) string {
-	v2_value_flags := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc', '-d', '-hot-fn',
-		'-cc']
-	v2_bool_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin', '--skip-imports',
-		'--skip-type-check', '--no-parallel', '-nocache', '--nocache', '-nomarkused', '--nomarkused',
-		'-showcc', '--showcc', '-stats', '--stats', '-print-parsed-files', '--print-parsed-files',
-		'-keepc', '--profile-alloc', '-profile-alloc', '-enable-globals', '--enable-globals',
-		'-shared', '--shared', '-O0', '--single-backend', '-single-backend', '-prod', '-prealloc',
-		'-ownership']
-	tokens := vflags.tokenize_to_args(compile_options.join(' '))
-	mut out := []string{}
-	mut i := 0
-	for i < tokens.len {
-		t := tokens[i]
-		if t in v2_value_flags {
-			if i + 1 < tokens.len {
-				out << t
-				out << os.quoted_path(tokens[i + 1])
-				i += 2
-				continue
-			}
-		} else if t in v2_bool_flags {
-			out << t
-		}
-		i++
-	}
-	return out.join(' ')
-}
-
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,
 // so that V programs/tests will write their temporary files to new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
@@ -1113,7 +1244,7 @@ fn get_max_header_len() int {
 }
 
 fn check_openssl_present() bool {
-	if github_job.ends_with('-windows') {
+	if github_job != '' && os.user_os() == 'windows' {
 		// TODO: investigate the https://github.com/vlang/v/actions/runs/18590919000/job/53005499130 failure in more details
 		return false
 	}

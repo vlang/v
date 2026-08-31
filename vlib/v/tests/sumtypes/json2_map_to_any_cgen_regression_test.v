@@ -1,6 +1,6 @@
 module main
 
-import x.json2
+import json2
 
 struct RegressionReader {}
 

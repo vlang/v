@@ -4,18 +4,28 @@ const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
 const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
-const hello_src = os.join_path(tests_dir, 'hello.v')
+const hello_src = os.join_path(tests_dir, 'testdata', 'hello.v')
+
+fn has_non_runtime_include(c_code string) bool {
+	for line in c_code.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('#include') {
+			return true
+		}
+	}
+	return false
+}
 
 // test_prod_flag_before_input_uses_optimized_c_compile validates this v3 regression case.
 fn test_prod_flag_before_input_uses_optimized_c_compile() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_prod_flag_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_prod_hello')
 	compile := os.execute('${v3_bin} -prod ${hello_src} -o ${out_bin}')
 	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('cc -std=gnu11 -O2')
+	assert compile.output.contains('cc -std=gnu11 -O3')
 	assert !compile.output.contains('tcc.exe')
 
 	run := os.execute(out_bin)
@@ -26,13 +36,13 @@ fn test_prod_flag_before_input_uses_optimized_c_compile() {
 // test_c99_flag_uses_c99_c_compile_mode validates this v3 regression case.
 fn test_c99_flag_uses_c99_c_compile_mode() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_flag_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_c99_hello')
 	compile := os.execute('${v3_bin} -prod -c99 ${hello_src} -o ${out_bin}')
 	assert compile.exit_code == 0, compile.output
-	assert compile.output.contains('cc -std=c99 -O2')
+	assert compile.output.contains('cc -std=c99 -O3')
 	assert !compile.output.contains('cc -std=gnu11')
 	assert !compile.output.contains('tcc.exe')
 
@@ -44,7 +54,7 @@ fn test_c99_flag_uses_c99_c_compile_mode() {
 // test_c99_flag_emits_linux_feature_macros_in_headerless_preamble validates this v3 regression case.
 fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	out_c := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello.c')
@@ -60,13 +70,13 @@ fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
 	assert typedef_idx >= 0, c_code[..200]
 	assert gnu_idx < typedef_idx, c_code[..200]
 	assert posix_idx < typedef_idx, c_code[..200]
-	assert !c_code.contains('#include'), c_code[..200]
+	assert !has_non_runtime_include(c_code), c_code[..200]
 }
 
 // test_c99_flag_uses_headerless_stdatomic_fallback validates this v3 regression case.
 fn test_c99_flag_uses_headerless_stdatomic_fallback() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_swap.v')
@@ -88,7 +98,7 @@ fn test_c99_flag_uses_headerless_stdatomic_fallback() {
 // test_c99_flag_system_stdatomic_include_is_headerless validates this v3 regression case.
 fn test_c99_flag_system_stdatomic_include_is_headerless() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic.v')
@@ -101,7 +111,7 @@ fn test_c99_flag_system_stdatomic_include_is_headerless() {
 	gen_c := os.execute('${v3_bin} -c99 ${src} -o ${out_c}')
 	assert gen_c.exit_code == 0, gen_c.output
 	c_code := os.read_file(out_c) or { panic(err) }
-	assert !c_code.contains('#include'), c_code
+	assert !has_non_runtime_include(c_code), c_code
 	assert !c_code.contains('typedef volatile uintptr_t atomic_uintptr_t;'), c_code
 	assert c_code.contains('typedef void* atomic_uintptr_t;'), c_code
 	assert c_code.contains('static inline byte atomic_fetch_add_byte'), c_code

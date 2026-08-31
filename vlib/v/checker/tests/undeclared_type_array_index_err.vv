@@ -1,0 +1,11 @@
+type Array = [8]u8
+
+fn main() {
+	mut arr := Array{}
+	arr.update()
+}
+
+fn (mut a Array) update() {
+	a[0] = 0
+	a[Yo] = 0
+}

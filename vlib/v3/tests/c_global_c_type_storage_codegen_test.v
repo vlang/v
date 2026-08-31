@@ -14,6 +14,7 @@ fn gen_c_for_c_global_source(name string, source string) string {
 	mut a := p.parse_file(src)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	tc.diagnostic_files[src] = true
 	tc.check_semantics()
@@ -45,6 +46,7 @@ fn gen_c_for_c_global_sources(name string, files map[string]string) string {
 	mut a := p.parse_files(paths)
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
+	tc.enable_globals = true
 	tc.diagnose_unknown_calls = true
 	tc.diagnostic_files[os.join_path(root, 'main.v')] = true
 	tc.check_semantics()
@@ -54,6 +56,215 @@ fn gen_c_for_c_global_sources(name string, files map[string]string) string {
 	used_fns := markused.mark_used(a, tc)
 	mut g := cgen.FlatGen.new()
 	return g.gen_with_used_options(a, used_fns, &tc, true)
+}
+
+fn test_c_pointer_cast_selector_uses_cast_field_value() {
+	c_code := gen_c_for_c_global_source('c_pointer_cast_selector', 'module main
+
+@[typedef]
+struct C.log__Logger {
+mut:
+	_object voidptr
+}
+
+fn raw_object(logger &C.log__Logger) voidptr {
+	pobject := &C.log__Logger(logger)._object
+	return pobject
+}
+
+fn main() {
+	logger := &C.log__Logger(voidptr(0))
+	_ := raw_object(logger)
+}
+')
+	assert c_code.contains('void* pobject = ((log__Logger*)logger)->_object;')
+	assert !c_code.contains('void** pobject')
+	assert !c_code.contains('__addr_')
+}
+
+fn test_mut_parameter_address_uses_lowered_pointer() {
+	c_code := gen_c_for_c_global_source('mut_parameter_address', 'module main
+
+@[heap]
+struct Reader {
+mut:
+	pos int
+}
+
+struct ReaderBox {
+mut:
+	rdr &Reader
+}
+
+fn ReaderBox.new(rdr &Reader) ReaderBox {
+	return ReaderBox{
+		rdr: rdr
+	}
+}
+
+fn wrap(mut read_from Reader) ReaderBox {
+	return ReaderBox.new(&read_from)
+}
+
+fn main() {
+	mut reader := Reader{}
+	_ := wrap(mut reader)
+}
+')
+	assert c_code.contains('ReaderBox__new(read_from)'), c_code
+	assert !c_code.contains('ReaderBox__new(&read_from)'), c_code
+}
+
+fn test_mut_parameter_address_boxed_as_interface_uses_concrete_pointer() {
+	c_code := gen_c_for_c_global_source('mut_parameter_address_interface', 'module main
+
+interface Reader {
+	read() int
+}
+
+@[heap]
+struct FileReader {}
+
+fn (r FileReader) read() int {
+	return 1
+}
+
+struct ReaderBox {
+mut:
+	rdr &Reader
+}
+
+fn ReaderBox.new(rdr &Reader) ReaderBox {
+	return ReaderBox{
+		rdr: rdr
+	}
+}
+
+fn wrap(mut read_from FileReader) ReaderBox {
+	return ReaderBox.new(&read_from)
+}
+
+fn main() {
+	mut reader := FileReader{}
+	_ := wrap(mut reader)
+}
+')
+	assert c_code.contains('._object = read_from'), c_code
+	assert c_code.contains('(Reader){._typ = '), c_code
+	assert !c_code.contains('._object = &read_from'), c_code
+	assert !c_code.contains('FileReader** __iface_src_'), c_code
+}
+
+fn test_global_pointer_interface_arg_does_not_take_global_address() {
+	c_code := gen_c_for_c_global_source('global_pointer_interface_arg', 'module main
+
+interface Logger {
+mut:
+	free()
+}
+
+struct Log {}
+
+fn (mut l Log) free() {}
+
+__global default_logger &Logger = &Logger(Log{})
+
+fn deinit() {
+	free_logger(default_logger)
+}
+
+fn free_logger(logger &Logger) {
+	logger.free()
+}
+
+fn main() {
+	deinit()
+}
+')
+	assert c_code.contains('Logger* default_logger;'), c_code
+	assert c_code.contains('free_logger(default_logger);'), c_code
+	assert !c_code.contains('free_logger(&default_logger);'), c_code
+}
+
+fn test_mut_parameter_pointer_return_stays_pointer() {
+	c_code := gen_c_for_c_global_source('mut_parameter_pointer_return', 'module main
+
+struct Builder {
+mut:
+	value int
+}
+
+fn identity(mut builder Builder) &Builder {
+	builder.value = 1
+	return builder
+}
+
+fn main() {
+	mut builder := Builder{}
+	_ := identity(mut builder)
+}
+')
+	assert c_code.contains('main__Builder* identity(main__Builder* builder)'), c_code
+	assert c_code.contains('return builder;'), c_code
+	assert !c_code.contains('return *(builder);'), c_code
+}
+
+fn test_pointer_struct_field_from_mut_parameter_stays_pointer() {
+	c_code := gen_c_for_c_global_source('mut_parameter_pointer_struct_field', 'module main
+
+struct Reader {
+mut:
+	pos int
+}
+
+struct Holder {
+mut:
+	rdr &Reader
+}
+
+fn Holder.new(mut rdr Reader) Holder {
+	return Holder{
+		rdr: rdr
+	}
+}
+
+fn main() {
+	mut rdr := Reader{}
+	_ := Holder.new(mut rdr)
+}
+')
+	assert c_code.contains('.rdr = rdr'), c_code
+	assert !c_code.contains('.rdr = *(rdr)'), c_code
+}
+
+fn test_pointer_struct_field_from_selector_address_stays_pointer() {
+	c_code := gen_c_for_c_global_source('selector_address_pointer_struct_field', 'module main
+
+struct Config {}
+
+struct Searcher {
+mut:
+	config Config
+}
+
+struct Holder {
+mut:
+	config &Config
+}
+
+fn Holder.new(searcher &Searcher) Holder {
+	return Holder{
+		config: &searcher.config
+	}
+}
+
+fn main() {
+	searcher := Searcher{}
+	_ := Holder.new(&searcher)
+}
+')
+	assert c_code.contains('.config = &searcher->config'), c_code
+	assert !c_code.contains('.config = *(&searcher->config)'), c_code
 }
 
 fn test_v_owned_global_with_c_struct_type_gets_storage() {
@@ -90,6 +301,69 @@ fn main() {
 	assert c_code.contains('set_stream_unbuffered(stdout);'), c_code
 	assert !c_code.contains('C__stdout'), c_code
 	assert !c_code.contains('\nFILE* stdout'), c_code
+}
+
+fn test_c_namespace_global_keeps_name_when_v_global_collides() {
+	c_code := gen_c_for_c_global_sources('c_namespace_global_collision', {
+		'main.v':      'module main
+
+import moda
+
+fn main() {
+	moda.set_both()
+}
+'
+		'moda/moda.v': 'module moda
+
+__global C.foo int
+__global foo int
+
+pub fn set_both() {
+	C.foo = 7
+	foo = 11
+}
+'
+	})
+	assert c_code.contains('foo = 7;'), c_code
+	assert c_code.contains('moda__foo = 11;'), c_code
+	assert !c_code.contains('moda__foo = 7;'), c_code
+}
+
+fn test_legacy_closure_c_global_uses_runtime_storage() {
+	c_code := gen_c_for_c_global_sources('legacy_closure_c_global', {
+		'main.v':            'module main
+
+__global C.g_closure int
+
+fn closure_value() int {
+	return C.g_closure
+}
+
+fn main() {
+	_ := closure_value()
+}
+'
+		'closure/closure.v': 'module closure
+
+__global g_closure int
+'
+	})
+	assert c_code.contains('return closure__g_closure;'), c_code
+	assert !c_code.contains('return g_closure;'), c_code
+}
+
+fn test_empty_c_struct_initializer_uses_portable_zero_value() {
+	c_code := gen_c_for_c_global_source('empty_c_struct_initializer', 'struct C.NativeDesc {
+	value int
+}
+
+fn main() {
+	desc := C.NativeDesc{}
+	_ = desc
+}
+')
+	assert c_code.contains('NativeDesc desc = (NativeDesc){0};'), c_code
+	assert !c_code.contains('(NativeDesc){}'), c_code
 }
 
 fn test_module_v_owned_global_with_c_struct_type_gets_qualified_storage() {
@@ -135,4 +409,131 @@ pub fn owned_score() int {
 	assert c_code.contains('set_stream_unbuffered(stdout);'), c_code
 	assert !c_code.contains('C__stdout'), c_code
 	assert !c_code.contains('\nFILE* stdout'), c_code
+}
+
+fn test_map_for_bindings_shadowing_global_use_local_c_name() {
+	c_code := gen_c_for_c_global_source('map_for_binding_shadows_global', 'module main
+
+__global id int
+
+fn sum_entries(values map[int]int) int {
+	mut total := 0
+	for id, value in values {
+		total += id + value
+	}
+	return total
+}
+
+fn main() {
+	_ := sum_entries({1: 2})
+}
+')
+	assert c_code.contains('int id__local = *(int*)'), c_code
+	assert c_code.contains('total += id__local + value;'), c_code
+	assert !c_code.contains('int id = *(int*)'), c_code
+}
+
+fn test_mut_pointer_cast_uses_c_typedef_safe_parameter_name() {
+	c_code := gen_c_for_c_global_source('mut_pointer_cast_shadows_c_type', 'module main
+
+@[typedef]
+struct C.buf {
+	value int
+}
+
+fn cast_buffer(mut buf &u8) &u8 {
+	return &u8(buf)
+}
+
+fn main() {
+	mut value := u8(1)
+	mut ptr := &value
+	_ := cast_buffer(mut ptr)
+}
+')
+	assert c_code.contains('u8* cast_buffer(u8** buf__local)'), c_code
+	assert c_code.contains('return (u8*)(*buf__local);'), c_code
+	assert !c_code.contains('return (u8*)(*buf);'), c_code
+}
+
+fn test_builtin_copy_uses_c_typedef_safe_parameter_name() {
+	c_code := gen_c_for_c_global_source('builtin_copy_shadows_c_type', 'module main
+
+@[typedef]
+struct C.buf {
+	value int
+}
+
+fn copy(mut dst []u8, src []u8) int {
+	return 0
+}
+
+fn copy_buffer(mut buf []u8) int {
+	return copy(mut buf, [u8(1)])
+}
+
+fn main() {
+	mut values := [u8(0)]
+	_ := copy_buffer(mut values)
+}
+')
+	assert c_code.contains('int copy_buffer(Array* buf__local)'), c_code
+	assert c_code.contains('return copy(buf__local, '), c_code
+	assert !c_code.contains('return copy(buf, '), c_code
+}
+
+fn test_sizeof_uses_c_typedef_safe_local_name() {
+	c_code := gen_c_for_c_global_source('sizeof_local_shadows_c_type', 'module main
+
+@[typedef]
+struct C.buf {
+	value int
+}
+
+fn buffer_size() int {
+	mut buf := [1024]u8{}
+	return int(sizeof(buf))
+}
+
+fn main() {
+	_ := buffer_size()
+}
+')
+	assert c_code.contains('u8 buf__local[1024]'), c_code
+	assert c_code.contains('return (int)(sizeof(buf__local));'), c_code
+	assert !c_code.contains('return (int)(sizeof(buf));'), c_code
+}
+
+fn test_mut_interface_smartcast_loop_arg_forwards_object_pointer() {
+	c_code := gen_c_for_c_global_source('mut_interface_smartcast_loop_arg', 'module main
+
+interface Widget {
+	id int
+}
+
+struct Stack {
+mut:
+	id       int
+	children []Widget
+}
+
+fn increment(mut stack Stack) {
+	stack.id++
+}
+
+fn visit(mut stack Stack) {
+	for mut child in stack.children {
+		if mut child is Stack {
+			increment(mut child)
+		}
+	}
+}
+
+fn main() {
+	mut stack := Stack{}
+	visit(mut stack)
+}
+')
+	assert c_code.contains('increment((main__Stack*)(child->_object))'), c_code
+	assert !c_code.contains('increment(*(main__Stack*)(child->_object))'), c_code
 }

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - 'smoke/**'
     paths-ignore:
       - 'vlib/v3/**'
       - '**.md'
@@ -30,14 +31,52 @@ concurrency:
 jobs:
   msvc-windows:
     runs-on: windows-2022
-    timeout-minutes: 70
+    timeout-minutes: 90
     env:
       VFLAGS: -cc msvc
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+      - name: Install OpenSSL
+        run: |
+          $opensslBin = 'C:\Program Files\OpenSSL\bin'
+          $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
+          $cryptoLib = Join-Path $libDir 'libcrypto.lib'
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+            choco install openssl --version=3.5.4 --allow-downgrade -y --no-progress
+            if ($LASTEXITCODE -ne 0) {
+              throw "Chocolatey failed to install OpenSSL 3.5.4 (exit $LASTEXITCODE)"
+            }
+          }
+          # choco's openssl package (Win64OpenSSL installer under the hood)
+          # deploys to `C:\Program Files\OpenSSL\`, matching
+          # ecdsa.c.v/rsa_pss.c.v's SECOND `#flag windows` fallback path --
+          # NOT the first one (`...OpenSSL-Win64\...`), confirmed by an
+          # actual CI run after guessing wrong the first time.
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+            throw "OpenSSL installation is incomplete under C:\Program Files\OpenSSL"
+          }
+          Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
+
+          # ecdsa.c.v/rsa_pss.c.v use the unqualified `#flag -lcrypto`,
+          # which MSVC's linker (unlike gcc/tcc/clang's own `-l` convention,
+          # which implies a `lib` prefix automatically) passes straight
+          # through as a literal `crypto.lib` reference. This OpenSSL
+          # package only ships `libcrypto.lib` (confirmed via a real CI
+          # failure: `LNK1104: cannot open file 'crypto.lib'`) -- V's own
+          # `#flag` mechanism has no compiler-specific gating that can
+          # special-case MSVC here (only OS-name gates and one hardcoded
+          # `mingw` case are ever actually selected at build time, verified
+          # by reading vlib/v/builder/cflags.v's get_os_cflags()), so fix
+          # it here instead: alias the file under the name MSVC expects.
+          # A plain copy is safe -- a Windows import library doesn't embed
+          # its own filename.
+          Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib')
+
+          Write-Host "OpenSSL install:"
+          Get-ChildItem $libDir
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
@@ -46,611 +85,167 @@ jobs:
           where.exe cl.exe
           where.exe link.exe
           where.exe dumpbin.exe
+          $headers = @($env:INCLUDE -split ';' | Where-Object { $_ -and $_.Trim().Length -gt 0 } | ForEach-Object { Join-Path $_ 'd3d11.h' } | Where-Object { Test-Path $_ })
+          if ($headers.Count -eq 0) {
+            throw 'd3d11.h not found in INCLUDE; Windows SDK is not visible to the D3D11 multiwindow lane'
+          }
+          Write-Host "Found d3d11.h at $($headers[0])"
       - name: Build
         run: |
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
           .\v.exe symlink
-      - name: backend x64 regressions
-        if: ${{ false }} # Temporarily disabled.
+      - name: Pkg-config regressions (MSVC dynamic isolation)
         run: |
-          function Assert-LastExit([string] $label) {
+          $tests = @(
+            'vlib\v\pkgconfig\pkgconfig_static_test.v'
+            'vlib\v\checker\pkgconfig_static_mode_test.v'
+            'vlib\v\checker\pkgconfig_cross_compile_test.v'
+            'vlib\v\builder\pkgconfig_link_segment_test.v'
+          )
+          foreach ($test in $tests) {
+            .\v.exe -cc msvc -no-retry-compilation test $test
             if ($LASTEXITCODE -ne 0) {
-              throw "$label failed with exit code $LASTEXITCODE"
+              throw "pkg-config regression failed for $test with exit code $LASTEXITCODE"
             }
           }
-
-          $env:VJOBS = '1'
-          .\v.exe test `
-            vlib/v2_toberemoved/abi `
-            vlib/v2_toberemoved/gen/x64/x64_abi_test.v `
-            vlib/v2_toberemoved/gen/x64/x64_backend_diagnostics_test.v `
-            vlib/v2_toberemoved/gen/x64/x64_object_format_test.v `
-            vlib/v2_toberemoved/gen/x64/x64_pe_linker_test.v `
-            vlib/v2_toberemoved/ssa/tree_sumtype_lowering_test.v
-          Assert-LastExit 'stable V2 x64 unit tests'
-          .\v.exe test -run-only test_module_qualified_alias_array_field_index_has_alias_element_type,test_module_storage_legacy_direct_import_nested_module_selector_uses_declared_leaf_module,test_module_storage_flat_direct_import_nested_module_selector_uses_declared_leaf_module vlib/v2_toberemoved/ssa/module_storage_test.v
-          Assert-LastExit 'targeted vlib/v2_toberemoved/ssa/module_storage_test.v regressions'
-          .\v.exe test -run-only test_x64_macos_windows_math_log_20_stdout_exact_bytes,test_x64_macos_windows_generic_sumtype_repeated_base_specialization_stdout_exact_bytes,test_x64_macos_windows_formatted_int_interpolation_stdout_exact_bytes,test_x64_macos_windows_formatted_int_width_100_interpolation_stdout_exact_bytes,test_x64_macos_windows_formatted_f64_interpolation_stdout_exact_bytes,test_x64_macos_windows_formatted_string_return_lifetime_stdout_exact_bytes,test_x64_macos_windows_spectral_reduced_formatted_stdout_exact_bytes,test_x64_macos_windows_bits_len32_stdout_exact_bytes,test_x64_macos_windows_rand_u32n_interface_result_stdout_exact_bytes,test_x64_macos_windows_rand_intn_range_interface_result_stdout_exact_bytes,test_x64_macos_windows_textscanner_embedded_parser_stdout_exact_bytes,test_x64_macos_windows_struct_positional_side_effect_stdout_exact_bytes,test_x64_macos_windows_struct_named_side_effect_stdout_exact_bytes,test_x64_macos_windows_unrelated_same_shape_struct_stdout_exact_bytes,test_x64_macos_windows_named_init_embedded_value_stdout_exact_bytes,test_x64_macos_windows_get_raw_line_example_stdin_stdout_exact_bytes,test_x64_macos_windows_mini_calculator_example_stdin_stdout_exact_bytes,test_x64_macos_windows_mini_calculator_recursive_descent_example_stdin_stdout_exact_bytes vlib/v2_toberemoved/gen/x64/x64_runtime_smoke_test.v
-          Assert-LastExit 'reduced V2 x64 runtime smoke tests'
-          Remove-Item Env:\VJOBS -ErrorAction SilentlyContinue
-          .\v.exe test vlib/v2_toberemoved/builder/native_test.v vlib/v2_toberemoved/builder/target_os_test.v
-          Assert-LastExit 'vlib/v2_toberemoved/builder/native_test.v vlib/v2_toberemoved/builder/target_os_test.v'
-          .\v.exe test vlib/v2_toberemoved/ssa/optimize
-          Assert-LastExit 'vlib/v2_toberemoved/ssa/optimize'
-          $env:V2_VERIFY_STRICT = '1'
-          .\v.exe test vlib/v2_toberemoved/ssa/optimize
-          Assert-LastExit 'strict vlib/v2_toberemoved/ssa/optimize'
-          Remove-Item Env:\V2_VERIFY_STRICT -ErrorAction SilentlyContinue
-      - name: backend x64 examples
-        if: ${{ false }} # Temporarily disabled.
+      - name: Legacy gg import multiwindow isolation
+        run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
+      - name: Prepare multiwindow Job Object watchdog
+        shell: pwsh
         run: |
-          function Assert-LastExit([string] $label) {
-            if ($LASTEXITCODE -ne 0) {
-              throw "$label failed with exit code $LASTEXITCODE"
-            }
+          $source = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.v'
+          $runner = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.exe'
+          @'
+          module main
+
+          import gg.testdata.multiwindow_probe_watchdog
+          import os
+          import time
+
+          fn main() {
+              run_ci_watchdog() or {
+                  eprintln(err.msg())
+                  exit(1)
+              }
           }
 
-          function Assert-ByteArrayEqual([byte[]] $actual, [byte[]] $expected, [string] $label) {
-            if ($actual.Length -ne $expected.Length) {
-              $actual_text = [System.Text.Encoding]::UTF8.GetString($actual)
-              $expected_text = [System.Text.Encoding]::UTF8.GetString($expected)
-              throw "$label mismatch. Expected length $($expected.Length), got $($actual.Length).`nExpected:`n$expected_text`nActual:`n$actual_text"
-            }
-            for ($i = 0; $i -lt $actual.Length; $i++) {
-              if ($actual[$i] -ne $expected[$i]) {
-                $actual_text = [System.Text.Encoding]::UTF8.GetString($actual)
-                $expected_text = [System.Text.Encoding]::UTF8.GetString($expected)
-                throw "$label mismatch at byte $i.`nExpected:`n$expected_text`nActual:`n$actual_text"
+          fn run_ci_watchdog() ! {
+              if os.args.len < 4 {
+                  return error('usage: multiwindow_ci_watchdog timeout-seconds expected-final-line executable [args...]')
               }
-            }
-          }
-
-          function Get-PeImportedDlls([string] $exe) {
-            $output = & dumpbin.exe /imports $exe 2>&1
-            if ($LASTEXITCODE -ne 0) {
-              $text = ($output | Out-String).Trim()
-              throw "dumpbin import inspection failed for $exe with exit code $LASTEXITCODE`n$text"
-            }
-
-            $dlls = [System.Collections.Generic.List[string]]::new()
-            foreach ($lineObject in $output) {
-              $line = [string] $lineObject
-              if ($line -match '^\s*([A-Za-z0-9_.-]+\.dll)\s*$') {
-                $dlls.Add($matches[1].ToLowerInvariant())
+              timeout_seconds := os.args[1].int()
+              if timeout_seconds <= 0 {
+                  return error('multiwindow CI watchdog timeout must be positive')
               }
-            }
-            return $dlls | Sort-Object -Unique
-          }
-
-          function Assert-TinyPeImports([string] $name, [string] $exe, [string] $pe_import_mode) {
-            if ($pe_import_mode -eq '') {
-              return
-            }
-            if ($pe_import_mode -eq 'tiny-used') {
-              [string[]] $allowed_dlls = @('kernel32.dll')
-            } elseif ($pe_import_mode -eq 'tiny-shell32-argv') {
-              [string[]] $allowed_dlls = @('kernel32.dll', 'shell32.dll')
-            } else {
-              throw "$name has unknown PE import validation mode: $pe_import_mode"
-            }
-
-            [string[]] $dlls = @(Get-PeImportedDlls $exe)
-            if ($dlls.Count -eq 0) {
-              throw "$name PE import validation found no imported DLLs with dumpbin.exe"
-            }
-
-            $crt_dlls = $dlls | Where-Object {
-              $_ -match '^(msvcrt|ucrtbase|vcruntime)[0-9]*\.dll$' -or $_ -match '^api-ms-win-crt-.*\.dll$'
-            }
-            if ($crt_dlls.Count -gt 0) {
-              throw "$name tiny PE unexpectedly imports CRT DLL(s): $($crt_dlls -join ', ')"
-            }
-
-            $unexpected_dlls = $dlls | Where-Object { $_ -notin $allowed_dlls }
-            if ($unexpected_dlls.Count -gt 0) {
-              throw "$name PE imports unexpected DLL(s): $($unexpected_dlls -join ', ')"
-            }
-
-            $missing_dlls = $allowed_dlls | Where-Object { $_ -notin $dlls }
-            if ($missing_dlls.Count -gt 0) {
-              throw "$name PE import validation missed expected DLL(s): $($missing_dlls -join ', ')"
-            }
-          }
-
-          function Invoke-NativeX64Example([string] $source, [string] $name, [byte[]] $expected_stdout, [string] $pe_import_mode = '', [string[]] $program_args = @()) {
-            $exe = Join-Path $tmp "$name.exe"
-            $stdout_path = Join-Path $tmp "$name.out"
-            $stderr_path = Join-Path $tmp "$name.err"
-
-            $compile_output = & .\v.exe -v2 -no-parallel -b x64 $source -o $exe 2>&1
-            $compile_exit = $LASTEXITCODE
-            foreach ($line in $compile_output) {
-              Write-Host $line
-            }
-            if ($compile_exit -ne 0) {
-              throw "compile $source failed with exit code $compile_exit"
-            }
-            Assert-TinyPeImports $name $exe $pe_import_mode
-
-            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
-            if ($program_args.Count -gt 0) {
-              $process = Start-Process -FilePath $exe -ArgumentList $program_args -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
-            } else {
-              $process = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
-            }
-            if ($process.ExitCode -ne 0) {
-              if (Test-Path -LiteralPath $stderr_path) {
-                Get-Content -LiteralPath $stderr_path
+              expected_final_line := os.args[2]
+              gate_path := os.join_path(os.temp_dir(), 'multiwindow_ci_gate_${os.getpid()}_${time.now().unix_nano()}')
+              defer {
+                  os.rm(gate_path) or {}
               }
-              throw "$source exited with code $($process.ExitCode)"
-            }
-
-            [byte[]] $stdout = if (Test-Path -LiteralPath $stdout_path) { [System.IO.File]::ReadAllBytes($stdout_path) } else { New-Object byte[] 0 }
-            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
-            $empty = New-Object byte[] 0
-            Assert-ByteArrayEqual $stdout $expected_stdout "$source stdout"
-            Assert-ByteArrayEqual $stderr $empty "$source stderr"
-          }
-
-          function Invoke-NativeX64ExampleWithStdin([string] $source, [string] $name, [byte[]] $expected_stdout, [string] $stdin_path, [string] $pe_import_mode = '', [string[]] $program_args = @()) {
-            $exe = Join-Path $tmp "$name.exe"
-            $stdout_path = Join-Path $tmp "$name.out"
-            $stderr_path = Join-Path $tmp "$name.err"
-
-            $compile_output = & .\v.exe -v2 -no-parallel -b x64 $source -o $exe 2>&1
-            $compile_exit = $LASTEXITCODE
-            foreach ($line in $compile_output) {
-              Write-Host $line
-            }
-            if ($compile_exit -ne 0) {
-              throw "compile $source failed with exit code $compile_exit"
-            }
-            Assert-TinyPeImports $name $exe $pe_import_mode
-
-            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
-            if ($program_args.Count -gt 0) {
-              $process = Start-Process -FilePath $exe -ArgumentList $program_args -NoNewWindow -Wait -PassThru -RedirectStandardInput $stdin_path -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
-            } else {
-              $process = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardInput $stdin_path -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
-            }
-            if ($process.ExitCode -ne 0) {
-              if (Test-Path -LiteralPath $stderr_path) {
-                Get-Content -LiteralPath $stderr_path
+              result := multiwindow_probe_watchdog.run(
+                  executable: os.args[3]
+                  args:       os.args[4..]
+                  timeout:    timeout_seconds * time.second
+                  start_file: gate_path
+              )!
+              if result.stdout != '' {
+                  print(result.stdout)
               }
-              throw "$source exited with code $($process.ExitCode)"
-            }
-
-            [byte[]] $stdout = if (Test-Path -LiteralPath $stdout_path) { [System.IO.File]::ReadAllBytes($stdout_path) } else { New-Object byte[] 0 }
-            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
-            $empty = New-Object byte[] 0
-            Assert-ByteArrayEqual $stdout $expected_stdout "$source stdout"
-            Assert-ByteArrayEqual $stderr $empty "$source stderr"
-          }
-
-          function Invoke-NativeX64ExampleCapture([string] $source, [string] $name, [string[]] $program_args = @()) {
-            $exe = Join-Path $tmp "$name.exe"
-            $stdout_path = Join-Path $tmp "$name.out"
-            $stderr_path = Join-Path $tmp "$name.err"
-
-            $compile_output = & .\v.exe -v2 -no-parallel -b x64 $source -o $exe 2>&1
-            $compile_exit = $LASTEXITCODE
-            foreach ($line in $compile_output) {
-              Write-Host $line
-            }
-            if ($compile_exit -ne 0) {
-              throw "compile $source failed with exit code $compile_exit"
-            }
-
-            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
-            if ($program_args.Count -gt 0) {
-              $process = Start-Process -FilePath $exe -ArgumentList $program_args -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
-            } else {
-              $process = Start-Process -FilePath $exe -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
-            }
-            if ($process.ExitCode -ne 0) {
-              if (Test-Path -LiteralPath $stderr_path) {
-                Get-Content -LiteralPath $stderr_path
+              if result.stderr != '' {
+                  eprint(result.stderr)
               }
-              throw "$source exited with code $($process.ExitCode)"
-            }
-
-            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
-            $empty = New-Object byte[] 0
-            Assert-ByteArrayEqual $stderr $empty "$source stderr"
-            return $stdout_path
-          }
-
-          function Assert-RandomIpsStdout([string] $path) {
-            [string[]] $lines = [System.IO.File]::ReadAllLines($path)
-            if ($lines.Count -ne 10) {
-              throw "random_ips expected 10 lines, got $($lines.Count)"
-            }
-            $rows = [System.Collections.Generic.List[string]]::new()
-            $all_second_zero = $true
-            $all_fourth_zero = $true
-            foreach ($line in $lines) {
-              [string[]] $parts = $line.Split('.')
-              if ($parts.Count -ne 4) {
-                throw "random_ips invalid IPv4 shape: $line"
+              if result.timed_out {
+                  return error('multiwindow CI child timed out after ${timeout_seconds} seconds')
               }
-              [int[]] $octets = @()
-              foreach ($part in $parts) {
-                if ($part -notmatch '^[0-9]+$') {
-                  throw "random_ips non-numeric octet: $line"
-                }
-                $value = [int] $part
-                if ($value -lt 0 -or $value -gt 254) {
-                  throw "random_ips octet out of range: $line"
-                }
-                $octets += $value
+              if !result.reaped {
+                  return error('multiwindow CI child leader was not reaped')
               }
-              if ($octets[1] -ne 0) {
-                $all_second_zero = $false
+              if !result.confinement_empty {
+                  return error('multiwindow CI child process confinement is not empty')
               }
-              if ($octets[3] -ne 0) {
-                $all_fourth_zero = $false
+              if result.forced_cleanup {
+                  return error('multiwindow CI child required forced cleanup')
               }
-              $rows.Add(($octets -join '.'))
-            }
-            if (($rows | Sort-Object -Unique).Count -lt 3) {
-              throw 'random_ips output has too little row diversity'
-            }
-            if ($all_second_zero -and $all_fourth_zero) {
-              throw 'random_ips suspicious old x.0.x.0 pattern'
-            }
-          }
-
-          function Assert-Rule110Stdout([string] $path, [int] $width) {
-            [string[]] $lines = [System.IO.File]::ReadAllLines($path)
-            $title = 'Rule 110 V Implementation'
-            $idx = -1
-            for ($i = 0; $i -lt $lines.Count; $i++) {
-              if ($lines[$i].Contains($title)) {
-                $idx = $i
-                break
+              if result.exit_code != 0 {
+                  return error('multiwindow CI child exited with ${result.exit_code}')
               }
-            }
-            if ($idx -lt 0) {
-              throw 'rule110 missing title'
-            }
-            [string[]] $generations = @()
-            if ($idx + 1 -lt $lines.Count) {
-              $generations = @($lines[($idx + 1)..($lines.Count - 1)])
-            }
-            if ($generations.Count -gt 0 -and $generations[0] -eq '') {
-              if ($generations.Count -eq 1) {
-                $generations = @()
-              } else {
-                $generations = @($generations[1..($generations.Count - 1)])
+              if expected_final_line == '-' {
+                  return
               }
-            }
-            if ($generations.Count -ne $width) {
-              throw "rule110 expected $width generation lines, got $($generations.Count)"
-            }
-            $has_live_cell = $false
-            foreach ($line in $generations) {
-              if ($line.Length -ne $width) {
-                throw "rule110 generation line has width $($line.Length), expected $width`: '$line'"
-              }
-              if ($line -match '[^ *]') {
-                throw "rule110 invalid generation chars: '$line'"
-              }
-              if ($line.Contains('*')) {
-                $has_live_cell = $true
-              }
-            }
-            if (-not $has_live_cell) {
-              throw 'rule110 expected at least one live cell'
-            }
-            if (($generations | Sort-Object -Unique).Count -lt 3) {
-              throw 'rule110 expected at least 3 distinct generation lines'
-            }
-          }
-
-          $tmp = Join-Path $env:RUNNER_TEMP 'v2_x64_native'
-          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
-
-          function Get-VRunExpectedBytes([string] $source, [string] $name, [string[]] $program_args = @()) {
-            $stdout_path = Join-Path $tmp "$name.vrun.out"
-            $stderr_path = Join-Path $tmp "$name.vrun.err"
-            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
-
-            $v_args = @('run', $source) + $program_args
-            $process = Start-Process -FilePath '.\v.exe' -ArgumentList $v_args -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
-            if ($process.ExitCode -ne 0) {
-              if (Test-Path -LiteralPath $stderr_path) {
-                Get-Content -LiteralPath $stderr_path
-              }
-              throw "v run $source $($program_args -join ' ') failed with code $($process.ExitCode)"
-            }
-
-            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
-            $empty = New-Object byte[] 0
-            Assert-ByteArrayEqual $stderr $empty "v run $source stderr"
-            return [System.IO.File]::ReadAllBytes($stdout_path)
-          }
-
-          function Get-VRunExpectedBytesWithStdin([string] $source, [string] $name, [string] $stdin_path, [string[]] $program_args = @()) {
-            $stdout_path = Join-Path $tmp "$name.vrun.out"
-            $stderr_path = Join-Path $tmp "$name.vrun.err"
-            Remove-Item -LiteralPath $stdout_path, $stderr_path -Force -ErrorAction SilentlyContinue
-
-            $v_args = @('run', $source) + $program_args
-            $process = Start-Process -FilePath '.\v.exe' -ArgumentList $v_args -NoNewWindow -Wait -PassThru -RedirectStandardInput $stdin_path -RedirectStandardOutput $stdout_path -RedirectStandardError $stderr_path
-            if ($process.ExitCode -ne 0) {
-              if (Test-Path -LiteralPath $stderr_path) {
-                Get-Content -LiteralPath $stderr_path
-              }
-              throw "v run $source $($program_args -join ' ') failed with code $($process.ExitCode)"
-            }
-
-            [byte[]] $stderr = if (Test-Path -LiteralPath $stderr_path) { [System.IO.File]::ReadAllBytes($stderr_path) } else { New-Object byte[] 0 }
-            $empty = New-Object byte[] 0
-            Assert-ByteArrayEqual $stderr $empty "v run $source stderr"
-            return [System.IO.File]::ReadAllBytes($stdout_path)
-          }
-
-          $hello_expected = [System.Text.Encoding]::UTF8.GetBytes("Hello, World!`n")
-          Invoke-NativeX64Example 'examples/hello_world.v' 'hello_world' $hello_expected 'tiny-used'
-
-          $fizz_lines = 1..100 | ForEach-Object {
-            if ($_ % 15 -eq 0) {
-              'FizzBuzz'
-            } elseif ($_ % 3 -eq 0) {
-              'Fizz'
-            } elseif ($_ % 5 -eq 0) {
-              'Buzz'
-            } else {
-              [string] $_
-            }
-          }
-          $fizz_expected = [System.Text.Encoding]::UTF8.GetBytes(($fizz_lines -join "`n") + "`n")
-          Invoke-NativeX64Example 'examples/fizz_buzz.v' 'fizz_buzz' $fizz_expected 'tiny-used'
-
-          $fibonacci_expected = [System.Text.Encoding]::UTF8.GetBytes("1`n1`n2`n3`n5`n8`n13`n21`n34`n55`n89`n")
-          Invoke-NativeX64Example 'examples/fibonacci.v' 'fibonacci' $fibonacci_expected 'tiny-shell32-argv' @('10')
-
-          $dump_factorial_expected = [System.Text.Encoding]::UTF8.GetBytes("120`n")
-          Invoke-NativeX64Example 'examples/dump_factorial.v' 'dump_factorial' $dump_factorial_expected 'tiny-used'
-
-          function Get-HanoiExpectedLines([int] $n, [string] $a, [string] $b, [string] $c) {
-            if ($n -eq 1) {
-              "Disc 1 from $a to $c..."
-              return
-            }
-            Get-HanoiExpectedLines ($n - 1) $a $c $b
-            "Disc $n from $a to $c..."
-            Get-HanoiExpectedLines ($n - 1) $b $a $c
-          }
-
-          $hanoi_lines = @(Get-HanoiExpectedLines 7 'A' 'B' 'C')
-          $hanoi_expected = [System.Text.Encoding]::UTF8.GetBytes(($hanoi_lines -join "`n") + "`n")
-          Invoke-NativeX64Example 'examples/hanoi.v' 'hanoi' $hanoi_expected 'tiny-used'
-
-          function Get-SudokuExpectedLines {
-            $puzzle = @(
-              ,@(0, 3, 0, 0, 7, 0, 0, 0, 0)
-              ,@(0, 0, 0, 1, 3, 5, 0, 0, 0)
-              ,@(0, 0, 1, 0, 0, 0, 0, 5, 0)
-              ,@(1, 0, 0, 0, 6, 0, 0, 0, 3)
-              ,@(4, 0, 0, 8, 0, 3, 0, 0, 1)
-              ,@(7, 0, 0, 0, 2, 0, 0, 0, 6)
-              ,@(0, 0, 0, 0, 0, 0, 2, 1, 0)
-              ,@(0, 0, 0, 4, 1, 2, 0, 0, 5)
-              ,@(0, 0, 0, 0, 0, 0, 0, 7, 4)
-            )
-            $solution = @(
-              ,@(2, 3, 5, 6, 7, 8, 1, 4, 9)
-              ,@(9, 4, 7, 1, 3, 5, 8, 6, 2)
-              ,@(6, 8, 1, 2, 4, 9, 3, 5, 7)
-              ,@(1, 2, 8, 7, 6, 4, 5, 9, 3)
-              ,@(4, 5, 6, 8, 9, 3, 7, 2, 1)
-              ,@(7, 9, 3, 5, 2, 1, 4, 8, 6)
-              ,@(3, 6, 4, 9, 5, 7, 2, 1, 8)
-              ,@(8, 7, 9, 4, 1, 2, 6, 3, 5)
-              ,@(5, 1, 2, 3, 8, 6, 9, 7, 4)
-            )
-            $lines = [System.Collections.Generic.List[string]]::new()
-
-            function Add-SudokuGrid([string] $label, [object[]] $grid) {
-              $lines.Add($label)
-              for ($i = 0; $i -lt $grid.Count; $i++) {
-                if ($i % 3 -eq 0 -and $i -ne 0) {
-                  $lines.Add('- - - - - - - - - - - -')
-                }
-                $line = ''
-                for ($j = 0; $j -lt $grid[$i].Count; $j++) {
-                  if ($j % 3 -eq 0 -and $j -ne 0) {
-                    $line += ' | '
+              mut actual_final_line := ''
+              for line in result.stdout.split_into_lines() {
+                  if line.trim_space() != '' {
+                      actual_final_line = line.trim_space()
                   }
-                  $line += "$($grid[$i][$j]) "
-                }
-                $lines.Add($line)
               }
-            }
-
-            Add-SudokuGrid 'Sudoku Puzzle:' $puzzle
-            $lines.Add('Solving...')
-            Add-SudokuGrid 'Solution:' $solution
-            return $lines.ToArray()
-          }
-
-          $sudoku_lines = @(Get-SudokuExpectedLines)
-          $sudoku_expected = [System.Text.Encoding]::UTF8.GetBytes(($sudoku_lines -join "`n") + "`n")
-          if ($sudoku_expected.Length -ne 582) {
-            throw "sudoku stdout oracle shape changed: $($sudoku_expected.Length) bytes"
-          }
-          Invoke-NativeX64Example 'examples/sudoku.v' 'sudoku' $sudoku_expected
-
-          $function_types_expected = [System.Text.Encoding]::UTF8.GetBytes("HELLO WORLD`nHELLO WORLD`nHELLO WORLD`n")
-          Invoke-NativeX64Example 'examples/function_types.v' 'function_types' $function_types_expected
-
-          $submodule_expected = [System.Text.Encoding]::UTF8.GetBytes("5`n3`n")
-          Invoke-NativeX64Example 'examples/submodule/main.v' 'submodule' $submodule_expected 'tiny-used'
-
-          function Get-TreeOfNodesExpectedLines {
-            @(
-              'tree structure:'
-              ' Node{'
-              '    value: 10'
-              '    left: Tree(Node{'
-              '        value: 30'
-              '        left: Tree(Empty{})'
-              '        right: Tree(Empty{})'
-              '    })'
-              '    right: Tree(Node{'
-              '        value: 20'
-              '        left: Tree(Empty{})'
-              '        right: Tree(Empty{})'
-              '    })'
-              '}'
-              'tree size: 3'
-            )
-          }
-
-          $tree_of_nodes_lines = @(Get-TreeOfNodesExpectedLines)
-          $tree_of_nodes_expected = [System.Text.Encoding]::UTF8.GetBytes(($tree_of_nodes_lines -join "`n") + "`n")
-          if ($tree_of_nodes_expected.Length -ne 259) {
-            throw "tree_of_nodes stdout oracle shape changed: $($tree_of_nodes_expected.Length) bytes"
-          }
-          Invoke-NativeX64Example 'examples/tree_of_nodes.v' 'tree_of_nodes' $tree_of_nodes_expected
-
-          $js_hello_world_expected = [System.Text.Encoding]::UTF8.GetBytes("Hello from V.js (0)`nHello from V.js (1)`nHello from V.js (2)`n")
-          Invoke-NativeX64Example 'examples/js_hello_world.v' 'js_hello_world' $js_hello_world_expected 'tiny-used'
-
-          function Get-VSingleQuotedLiteralBytes([string] $literal) {
-            $bytes = [System.Collections.Generic.List[byte]]::new()
-            for ($i = 0; $i -lt $literal.Length; $i++) {
-              $ch = $literal[$i]
-              if ($ch -eq '\') {
-                $i++
-                if ($i -ge $literal.Length) {
-                  throw 'unterminated escape in V single-quoted literal'
-                }
-                $escaped = $literal[$i]
-                switch ([int][char] $escaped) {
-                  110 { [void] $bytes.Add(10) }
-                  116 { [void] $bytes.Add(9) }
-                  114 { [void] $bytes.Add(13) }
-                  92 { [void] $bytes.Add(92) }
-                  39 { [void] $bytes.Add(39) }
-                  34 { [void] $bytes.Add(34) }
-                  default {
-                    foreach ($byte in [System.Text.Encoding]::UTF8.GetBytes([string] $escaped)) {
-                      [void] $bytes.Add($byte)
-                    }
-                  }
-                }
-              } else {
-                foreach ($byte in [System.Text.Encoding]::UTF8.GetBytes([string] $ch)) {
-                  [void] $bytes.Add($byte)
-                }
+              if actual_final_line != expected_final_line {
+                  return error('multiwindow CI final record mismatch: expected `${expected_final_line}`, got `${actual_final_line}`')
               }
-            }
-            return $bytes.ToArray()
+          }
+          '@ | Set-Content -Encoding utf8 $source
+          .\v.exe -cc msvc -o $runner $source
+          if ($LASTEXITCODE -ne 0) {
+            throw "multiwindow watchdog compile failed with exit code $LASTEXITCODE"
+          }
+      - name: Multiwindow D3D11 WARP regressions and runtime probes
+        shell: pwsh
+        env:
+          VFLAGS: -cc msvc -d gg_multiwindow_d3d11_warp
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: win32
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: win32
+          V_MULTIWINDOW_PROBE_BACKEND: win32
+        run: |
+          $runner = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.exe'
+          $vexe = (Resolve-Path .\v.exe).Path
+          $interactive = Join-Path $env:RUNNER_TEMP 'gg_multiwindow.exe'
+          $runtime = Join-Path $env:RUNNER_TEMP 'gg_multiwindow_render_runtime.exe'
+
+          .\v.exe -cc msvc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp -subsystem console -o $interactive examples/gg/multiwindow.v
+          if ($LASTEXITCODE -ne 0) {
+            throw "interactive multiwindow example compile failed with exit code $LASTEXITCODE"
+          }
+          .\v.exe -cc msvc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp -subsystem console -o $runtime examples/gg/multiwindow_render_runtime.v
+          if ($LASTEXITCODE -ne 0) {
+            throw "runtime multiwindow example compile failed with exit code $LASTEXITCODE"
           }
 
-          function Get-VasciiExpectedBytes() {
-            $source = [System.IO.File]::ReadAllText((Join-Path (Get-Location) 'examples/vascii.v'), [System.Text.Encoding]::UTF8)
-            $start_marker = "println('"
-            $end_marker = "')"
-            $first = $source.IndexOf($start_marker, [System.StringComparison]::Ordinal)
-            if ($first -lt 0) {
-              throw 'missing vascii println literal start'
+          $tests = @(
+            'vlib/x/multiwindow/event_sequence_exhaustion_test.v',
+            'vlib/x/multiwindow/event_terminal_delivery_test.v',
+            'vlib/x/multiwindow/internal_fault_matrix_test.v',
+            'vlib/x/multiwindow/multiwindow_test.v',
+            'vlib/x/multiwindow/native_operation_proof_test.v',
+            'vlib/x/multiwindow/render_scheduler_test.v',
+            'vlib/x/multiwindow/render_target_lease_test.v',
+            'vlib/x/multiwindow/teardown_contract_test.v',
+            'vlib/x/multiwindow/win32_render_metrics_test.v',
+            'vlib/gg/multiwindow_api_d_gg_multiwindow_test.v',
+            'vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v',
+            'vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v',
+            'vlib/gg/multiwindow_render_runtime_contract_test.v',
+            'vlib/gg/frame_pacing_test.v',
+            'vlib/gg/draw_fns_api_test.v',
+            'vlib/gg/draw_rect_empty_test.v'
+          )
+          foreach ($test in $tests) {
+            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' 'test' $test
+            if ($LASTEXITCODE -ne 0) {
+              throw "multiwindow D3D11 WARP test '$test' failed with exit code $LASTEXITCODE"
             }
-            $second = $source.IndexOf($start_marker, $first + $start_marker.Length, [System.StringComparison]::Ordinal)
-            if ($second -ne -1) {
-              throw 'vascii stdout oracle expects one single-quoted println literal'
-            }
-            $start = $first + $start_marker.Length
-            $end = $source.LastIndexOf($end_marker, [System.StringComparison]::Ordinal)
-            if ($end -lt $start) {
-              throw 'missing vascii println literal end'
-            }
-            if ($source.Substring($end + $end_marker.Length).Trim() -ne '}') {
-              throw 'vascii stdout oracle expects the println literal to be the final main statement'
-            }
-            [byte[]] $bytes = Get-VSingleQuotedLiteralBytes ($source.Substring($start, $end - $start))
-            return $bytes + [byte] 10
           }
 
-          [byte[]] $vascii_expected = Get-VasciiExpectedBytes
-          Invoke-NativeX64Example 'examples/vascii.v' 'vascii' $vascii_expected 'tiny-used'
+          & $runner 120 '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' $runtime
+          if ($LASTEXITCODE -ne 0) {
+            throw "multiwindow D3D11 WARP runtime example failed with exit code $LASTEXITCODE"
+          }
 
-          [byte[]] $rune_expected = 0xF0, 0x9F, 0x98, 0x80, 0x0A, 0x40, 0x0A
-          Invoke-NativeX64Example 'examples/rune.v' 'rune' $rune_expected 'tiny-used'
-
-          [byte[]] $bfs_expected = Get-VRunExpectedBytes 'examples/graphs/bfs.v' 'bfs'
-          Invoke-NativeX64Example 'examples/graphs/bfs.v' 'bfs' $bfs_expected
-
-          [byte[]] $bfs3_expected = Get-VRunExpectedBytes 'examples/graphs/bfs3.v' 'bfs3'
-          Invoke-NativeX64Example 'examples/graphs/bfs3.v' 'bfs3' $bfs3_expected
-
-          [byte[]] $primes_expected = Get-VRunExpectedBytes 'examples/primes.v' 'primes' @('20')
-          Invoke-NativeX64Example 'examples/primes.v' 'primes' $primes_expected '' @('20')
-
-          [byte[]] $dfs_expected = Get-VRunExpectedBytes 'examples/graphs/dfs.v' 'dfs'
-          Invoke-NativeX64Example 'examples/graphs/dfs.v' 'dfs' $dfs_expected
-
-          [byte[]] $dijkstra_expected = Get-VRunExpectedBytes 'examples/graphs/dijkstra.v' 'dijkstra'
-          Invoke-NativeX64Example 'examples/graphs/dijkstra.v' 'dijkstra' $dijkstra_expected
-
-          [byte[]] $topological_sorting_greedy_expected = Get-VRunExpectedBytes 'examples/graphs/topological_sorting_greedy.v' 'topological_sorting_greedy'
-          Invoke-NativeX64Example 'examples/graphs/topological_sorting_greedy.v' 'topological_sorting_greedy' $topological_sorting_greedy_expected
-
-          [byte[]] $topological_sorting_dfs_expected = Get-VRunExpectedBytes 'examples/graphs/topological_sorting_dfs.v' 'topological_sorting_dfs'
-          Invoke-NativeX64Example 'examples/graphs/topological_sorting_dfs.v' 'topological_sorting_dfs' $topological_sorting_dfs_expected
-
-          [byte[]] $dfs2_expected = Get-VRunExpectedBytes 'examples/graphs/dfs2.v' 'dfs2'
-          Invoke-NativeX64Example 'examples/graphs/dfs2.v' 'dfs2' $dfs2_expected
-
-          [byte[]] $minimal_spann_tree_prim_expected = Get-VRunExpectedBytes 'examples/graphs/minimal_spann_tree_prim.v' 'minimal_spann_tree_prim'
-          Invoke-NativeX64Example 'examples/graphs/minimal_spann_tree_prim.v' 'minimal_spann_tree_prim' $minimal_spann_tree_prim_expected
-
-          [byte[]] $bellman_ford_expected = Get-VRunExpectedBytes 'examples/graphs/bellman-ford.v' 'bellman_ford'
-          Invoke-NativeX64Example 'examples/graphs/bellman-ford.v' 'bellman_ford' $bellman_ford_expected
-
-          [byte[]] $binary_search_tree_expected = Get-VRunExpectedBytes 'examples/binary_search_tree.v' 'binary_search_tree'
-          Invoke-NativeX64Example 'examples/binary_search_tree.v' 'binary_search_tree' $binary_search_tree_expected
-
-          # normal-required: IError/custom errors
-          [byte[]] $errors_expected = [System.Text.Encoding]::UTF8.GetBytes("wrong format`nempty input`n")
-          Invoke-NativeX64Example 'examples/errors.v' 'errors' $errors_expected
-
-          [byte[]] $custom_error_expected = Get-VRunExpectedBytes 'examples/custom_error.v' 'custom_error'
-          Invoke-NativeX64Example 'examples/custom_error.v' 'custom_error' $custom_error_expected
-
-          # normal-required: spectral norm/math.sqrt/formatted f64 interpolation
-          [byte[]] $spectral_expected = Get-VRunExpectedBytes 'examples/spectral.v' 'spectral' @('10')
-          Invoke-NativeX64Example 'examples/spectral.v' 'spectral' $spectral_expected '' @('10')
-
-          [byte[]] $quick_sort_expected = [System.Text.Encoding]::UTF8.GetBytes("length of random array is 1000`nbefore quick sort whether array is sorted: false`nafter quick sort whether array is sorted: true`n")
-          Invoke-NativeX64Example 'examples/quick_sort.v' 'quick_sort' $quick_sort_expected
-
-          $get_raw_line_input = Join-Path $tmp 'get_raw_line.in'
-          [System.IO.File]::WriteAllText($get_raw_line_input, "hello`nworld`n", [System.Text.UTF8Encoding]::new($false))
-          [byte[]] $get_raw_line_expected = Get-VRunExpectedBytesWithStdin 'examples/get_raw_line.v' 'get_raw_line' $get_raw_line_input
-          Invoke-NativeX64ExampleWithStdin 'examples/get_raw_line.v' 'get_raw_line' $get_raw_line_expected $get_raw_line_input
-
-          $mini_calculator_input = Join-Path $tmp 'mini_calculator.in'
-          [System.IO.File]::WriteAllText($mini_calculator_input, "3+4*2`nexit`n", [System.Text.UTF8Encoding]::new($false))
-          [byte[]] $mini_calculator_expected = Get-VRunExpectedBytesWithStdin 'examples/mini_calculator.v' 'mini_calculator' $mini_calculator_input
-          Invoke-NativeX64ExampleWithStdin 'examples/mini_calculator.v' 'mini_calculator' $mini_calculator_expected $mini_calculator_input
-
-          $mini_calculator_recursive_descent_input = Join-Path $tmp 'mini_calculator_recursive_descent.in'
-          [System.IO.File]::WriteAllText($mini_calculator_recursive_descent_input, "3+4*2`nexit`n", [System.Text.UTF8Encoding]::new($false))
-          [byte[]] $mini_calculator_recursive_descent_expected = Get-VRunExpectedBytesWithStdin 'examples/mini_calculator_recursive_descent.v' 'mini_calculator_recursive_descent' $mini_calculator_recursive_descent_input
-          Invoke-NativeX64ExampleWithStdin 'examples/mini_calculator_recursive_descent.v' 'mini_calculator_recursive_descent' $mini_calculator_recursive_descent_expected $mini_calculator_recursive_descent_input
-
-          $random_ips_stdout = Invoke-NativeX64ExampleCapture 'examples/random_ips.v' 'random_ips'
-          Assert-RandomIpsStdout $random_ips_stdout
-
-          $rule110_stdout = Invoke-NativeX64ExampleCapture 'examples/rule110.v' 'rule110' @('31')
-          Assert-Rule110Stdout $rule110_stdout 31
-      - name: Build V with WX
-        run: v -cflags /WX self
+          & $runner 120 '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' $interactive
+          if ($LASTEXITCODE -ne 0) {
+            throw "interactive multiwindow D3D11 WARP example failed with exit code $LASTEXITCODE"
+          }
       - name: All code is formatted
         run: v -silent test-cleancode
       - name: Test -cc msvc works
@@ -669,6 +264,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Test pure V math module
         run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Test fasthttp module
+        run: v -silent test vlib/fasthttp/
       - name: Self tests
         run: v -silent test-self vlib
       - name: Test v->js
@@ -677,5 +274,264 @@ jobs:
         run: v build-vbinaries
       - name: Build examples
         run: v build-examples
+      - name: Compile and run the veb example (fasthttp) and check its HTML
+        run: v run .github/workflows/veb_example_windows_smoke.v
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+
+  msvc-multiwindow:
+    runs-on: windows-2022
+    timeout-minutes: 70
+    env:
+      VFLAGS: -cc msvc
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Verify MSVC tools
+        run: |
+          where.exe cl.exe
+          where.exe link.exe
+          where.exe dumpbin.exe
+          $headers = @($env:INCLUDE -split ';' | Where-Object { $_ -and $_.Trim().Length -gt 0 } | ForEach-Object { Join-Path $_ 'd3d11.h' } | Where-Object { Test-Path $_ })
+          if ($headers.Count -eq 0) {
+            throw 'd3d11.h not found in INCLUDE; Windows SDK is not visible to the D3D11 multiwindow lane'
+          }
+          Write-Host "Found d3d11.h at $($headers[0])"
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\makev.bat -msvc
+          .\v.exe symlink
+      - name: Legacy gg import multiwindow isolation
+        run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
+      - name: Public gg Win32 services no-flag contract
+        run: v -cc msvc test vlib/gg/multiwindow_win32_public_services_contract_windows_test.v
+      - name: Win32 W3 native/public GREEN contracts
+        shell: pwsh
+        run: |
+          .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler msvc `
+            -ExpectedCompositeSha256 '6f20eb6d5cb7c3a774fbe75eac6c41f9598acfc87cabad2d73e6ed669f15e9c7' `
+            -ExpectedRunnerSha256 '7336fe67127c63cd70d978305e256eb1b515e0746433da084452cb5268938982'
+      - name: Package 2 native Win32 RED matrix
+        shell: pwsh
+        run: .\.github\workflows\run_multiwindow_win32_package2_red.ps1 -Compiler msvc
+      - name: Win32 W4 clipboard contracts
+        shell: pwsh
+        env:
+          VFLAGS: ''
+        run: |
+          .\.github\workflows\run_multiwindow_win32_w4.ps1 `
+            -Compiler msvc `
+            -Expectation Green `
+            -ExpectedOracleSha256 '804e8cbc5f5f7c390e90736d54a60d65d19b649a94afa4915bd9cb4e95c4e04d' `
+            -ExpectedNativeTestSha256 'e71a0856bcbe5b278b9a580c5151faacae66c0f0c3f9b0861c710b2238ed43bc' `
+            -ExpectedPublicTestSha256 'd08eafb919ae97b185fc480c22f6d990973396152e9a0b3a01035c3e9a30275c' `
+            -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
+            -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
+            -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
+            -ExpectedWin32BackendSha256 '8c915ec5bd9b116d98b8711bbd46f3afd5d6761800d7f91fed0deef6ac26cbaf' `
+            -ExpectedWin32ServiceBackendSha256 'faaf67be3e0381ea8a0e7a753b477b7965dde6e655f83f220eca036da19c5df6' `
+            -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
+            -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
+            -ExpectedGreenSurfaceSha256 '0ea0c7c0fb681cd1c6e6b61a5785cb57739b92c641eba55aab3d63174d0a6b45' `
+            -ExpectedRunnerSha256 'a80262a5d4d8e5f13b60e2f6583154060ed3eed9f21e90c6d5bf18c1a85fbc2e'
+      - name: Win32 W5 raw-input A0 preflight
+        shell: pwsh
+        run: |
+          .\.github\workflows\run_multiwindow_win32_w5_a0.ps1 -Compiler msvc `
+            -ExpectedHeaderSha256 '9decdc2e825c91da2b9d2ce0c98cb8ccdad5c4800a690863d166135eb188e916' `
+            -ExpectedMainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
+            -ExpectedTupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
+            -ExpectedRunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68'
+      - name: Win32 W5 raw-input A1 public GREEN
+        shell: pwsh
+        env:
+          VFLAGS: ''
+        run: |
+          .\.github\workflows\run_multiwindow_win32_w5_a1.ps1 -Compiler msvc `
+            -Expectation Green `
+            -ExpectedTestSha256 '005d3f7c7668bd18d593ba5f42e94cf247058c5f61ca46ce6d6a42bac03b5000' `
+            -ExpectedOracleSha256 '7362f17f06ea6b0ab5a64c74abf2407a0e284cbace2c10809a5235d406d16461' `
+            -ExpectedTupleSha256 '16739d9b8b73d9615ba3037c9e18219d6bf1271ef1d2f7dba4b2f2e53b1efac5' `
+            -ExpectedA0HeaderSha256 '9decdc2e825c91da2b9d2ce0c98cb8ccdad5c4800a690863d166135eb188e916' `
+            -ExpectedA0MainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
+            -ExpectedA0TupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
+            -ExpectedA0RunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68' `
+            -ExpectedGgFacadeSha256 '5823f13606204ce15b8ea41761c4a4fba47261b71666f8280f0023f1e83c4cc2' `
+            -ExpectedGgNoFlagSha256 'ad528c64cf18bce9415dd0e50513fb87d8d0b58c8ac4a99025a5c8955e7d9549' `
+            -ExpectedGgServiceTypesSha256 '9f17334ba5e5aff51f26d55476c83878856a8494a890aa64ee6434a52c1ecfeb' `
+            -ExpectedAppSha256 'af32eec55c119907a8bbf544842131018d36d3887347e26486e067a79d78a946' `
+            -ExpectedTypesSha256 '0a9058ba7928945e24284c867eb6182336ea3b1d41e1337786c71105b1fe93b3' `
+            -ExpectedBackendSha256 'dcd0f088c235ae030f8bbc9ab63082c38d93f6f1194373e74d8dcb454d100a3f' `
+            -ExpectedServiceApiSha256 'b7e4bc26e85f897a72387e82f4a7a3d545f21230be5c6b9df4fa40a4c82b701f' `
+            -ExpectedServiceTypesSha256 'cd8326b81201727618e758d79970b7a77223fd6418e18afda44a526a3b0b4267' `
+            -ExpectedServiceRegistrySha256 'db244497fd23974c1739d6c7a8bc57a2e3137c8765d4bc7f789efd80a59066b7' `
+            -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
+            -ExpectedPublicRoutingSurfaceSha256 'a4a03215a80f94584f7c9c11f0e58ecdc80175e959b6d3a9145d36606e0cbcd6' `
+            -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
+            -ExpectedEventDispatchSha256 '7ef6c7cbd34511d6c19c1a3a269b46876db791b9412bb88e3a8d4dcd543bfd4e' `
+            -ExpectedWin32BackendSha256 '8c915ec5bd9b116d98b8711bbd46f3afd5d6761800d7f91fed0deef6ac26cbaf' `
+            -ExpectedWin32BackendHelpersSha256 '2265a247f626621d69e823c09a79a5611dd187880120ba493636e73858c74a4d' `
+            -ExpectedWin32ServiceBackendSha256 'faaf67be3e0381ea8a0e7a753b477b7965dde6e655f83f220eca036da19c5df6' `
+            -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
+            -ExpectedGreenProductionSurfaceSha256 'f570ae10e0479b4628df305ea51ba44779f528a6767886e2b2fed4dbfa4e4f9e' `
+            -ExpectedRunnerSha256 'f9b63749bad6064f8de48744ef8d828ba6fe31b53c6a224568c6bf10805aae5e'
+      - name: Prepare multiwindow Job Object watchdog
+        shell: pwsh
+        run: |
+          $source = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.v'
+          $runner = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.exe'
+          @'
+          module main
+
+          import gg.testdata.multiwindow_probe_watchdog
+          import os
+          import time
+
+          fn main() {
+              run_ci_watchdog() or {
+                  eprintln(err.msg())
+                  exit(1)
+              }
+          }
+
+          fn run_ci_watchdog() ! {
+              if os.args.len < 4 {
+                  return error('usage: multiwindow_ci_watchdog timeout-seconds expected-final-line executable [args...]')
+              }
+              timeout_seconds := os.args[1].int()
+              if timeout_seconds <= 0 {
+                  return error('multiwindow CI watchdog timeout must be positive')
+              }
+              expected_final_line := os.args[2]
+              gate_path := os.join_path(os.temp_dir(), 'multiwindow_ci_gate_${os.getpid()}_${time.now().unix_nano()}')
+              defer {
+                  os.rm(gate_path) or {}
+              }
+              result := multiwindow_probe_watchdog.run(
+                  executable: os.args[3]
+                  args:       os.args[4..]
+                  timeout:    timeout_seconds * time.second
+                  start_file: gate_path
+              )!
+              if result.stdout != '' {
+                  print(result.stdout)
+              }
+              if result.stderr != '' {
+                  eprint(result.stderr)
+              }
+              if result.timed_out {
+                  return error('multiwindow CI child timed out after ${timeout_seconds} seconds')
+              }
+              if !result.reaped {
+                  return error('multiwindow CI child leader was not reaped')
+              }
+              if !result.confinement_empty {
+                  return error('multiwindow CI child process confinement is not empty')
+              }
+              if result.forced_cleanup {
+                  return error('multiwindow CI child required forced cleanup')
+              }
+              if result.exit_code != 0 {
+                  return error('multiwindow CI child exited with ${result.exit_code}')
+              }
+              if expected_final_line == '-' {
+                  return
+              }
+              mut actual_final_line := ''
+              for line in result.stdout.split_into_lines() {
+                  if line.trim_space() != '' {
+                      actual_final_line = line.trim_space()
+                  }
+              }
+              if actual_final_line != expected_final_line {
+                  return error('multiwindow CI final record mismatch: expected `${expected_final_line}`, got `${actual_final_line}`')
+              }
+          }
+          '@ | Set-Content -Encoding utf8 $source
+          .\v.exe -cc msvc -o $runner $source
+          if ($LASTEXITCODE -ne 0) {
+            throw "multiwindow watchdog compile failed with exit code $LASTEXITCODE"
+          }
+      - name: Multiwindow D3D11 WARP regressions and runtime probes
+        shell: pwsh
+        env:
+          VFLAGS: -cc msvc -d gg_multiwindow_d3d11_warp
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: win32
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: win32
+          V_MULTIWINDOW_PROBE_BACKEND: win32
+        run: |
+          $runner = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.exe'
+          $vexe = (Resolve-Path .\v.exe).Path
+          $interactive = Join-Path $env:RUNNER_TEMP 'gg_multiwindow.exe'
+          $runtime = Join-Path $env:RUNNER_TEMP 'gg_multiwindow_render_runtime.exe'
+
+          .\v.exe -cc msvc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp -subsystem console -o $interactive examples/gg/multiwindow.v
+          if ($LASTEXITCODE -ne 0) {
+            throw "interactive multiwindow example compile failed with exit code $LASTEXITCODE"
+          }
+          .\v.exe -cc msvc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp -subsystem console -o $runtime examples/gg/multiwindow_render_runtime.v
+          if ($LASTEXITCODE -ne 0) {
+            throw "runtime multiwindow example compile failed with exit code $LASTEXITCODE"
+          }
+
+          $publicServicesTestFile = 'vlib/gg/multiwindow_win32_public_services_contract_windows_test.v'
+          $publicServicesTests = @(
+            'test_win32_public_hwnd_borrow_route_red',
+            'test_win32_public_conditional_focus_refusal_is_not_a_capability_error_red',
+            'test_win32_public_partial_focus_is_never_reported_as_success_red',
+            'test_win32_public_controls_publish_observed_state_red'
+          )
+          $tests = @(
+            'vlib/x/multiwindow/event_sequence_exhaustion_test.v',
+            'vlib/x/multiwindow/event_terminal_delivery_test.v',
+            'vlib/x/multiwindow/internal_fault_matrix_test.v',
+            'vlib/x/multiwindow/multiwindow_test.v',
+            'vlib/x/multiwindow/native_operation_proof_test.v',
+            'vlib/x/multiwindow/render_scheduler_test.v',
+            'vlib/x/multiwindow/render_target_lease_test.v',
+            'vlib/x/multiwindow/teardown_contract_test.v',
+            'vlib/x/multiwindow/win32_render_metrics_test.v',
+            'vlib/x/multiwindow/service_native_win32_readback_d3d11_contract_test.v',
+            'vlib/gg/multiwindow_api_d_gg_multiwindow_test.v',
+            'vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v',
+            'vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v',
+            'vlib/gg/multiwindow_render_runtime_contract_test.v',
+            'vlib/gg/frame_pacing_test.v',
+            'vlib/gg/draw_fns_api_test.v',
+            'vlib/gg/draw_rect_empty_test.v'
+          )
+          foreach ($test in $tests) {
+            $diagnosticSubsystem = @()
+            if ($test -eq 'vlib/gg/multiwindow_render_runtime_contract_test.v') {
+              $diagnosticSubsystem = @('-subsystem', 'console')
+            }
+            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' @diagnosticSubsystem 'test' $test
+            if ($LASTEXITCODE -ne 0) {
+              throw "multiwindow D3D11 WARP test '$test' failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          foreach ($serviceTest in $publicServicesTests) {
+            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' '-subsystem' 'console' 'test' '-run-only' $serviceTest $publicServicesTestFile
+            if ($LASTEXITCODE -ne 0) {
+              throw "multiwindow D3D11 WARP public Win32 service test '$serviceTest' failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          & $runner 120 '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' $runtime
+          if ($LASTEXITCODE -ne 0) {
+            throw "multiwindow D3D11 WARP runtime example failed with exit code $LASTEXITCODE"
+          }
+
+          & $runner 120 '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' $interactive
+          if ($LASTEXITCODE -ne 0) {
+            throw "interactive multiwindow D3D11 WARP example failed with exit code $LASTEXITCODE"
+          }

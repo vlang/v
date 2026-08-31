@@ -149,10 +149,10 @@ fn main() {
 	assert inc(1) == 1001
 	got := read_from_local() or { -1 }
 	assert got == 52
-	worker := S{
+	local_worker := S{
 		inc: 7
 	}
-	local_f := worker.inc
+	local_f := local_worker.inc
 	assert local_f == 7
 	println('imported-ok')
 }
@@ -182,10 +182,10 @@ fn take(f fn (int) int) int {
 }
 
 fn main() {
-	worker := Holder{
+	local_holder := Holder{
 		inc: 7
 	}
-	got := take(worker.inc)
+	got := take(local_holder.inc)
 	println(int_str(got))
 }
 '
@@ -206,6 +206,29 @@ const optional_fn_src = "fn main() {
 	println('optional-bad')
 }
 "
+
+const optional_callback_param_src = 'fn accept_optional_callback(callback ?fn ()) {
+	_ = callback
+}
+
+fn run_optional_callback_handler(handler fn (?fn ())) {
+	handler(none)
+}
+
+fn accept_result_callback(callback !fn ()) {
+	_ = callback
+}
+
+fn run_result_callback_handler(handler fn (!fn ())) {
+	handler(fn () {})
+}
+
+fn main() {
+	run_optional_callback_handler(accept_optional_callback)
+	run_result_callback_handler(accept_result_callback)
+	println("callback-ok")
+}
+'
 
 const plain_fn_src = 'fn main() {
 	f := fn (i int) int {
@@ -320,6 +343,35 @@ println(use(actual))
 }
 "
 
+const local_fn_value_optional_call_shadow_src = 'fn f() ?int {
+	return 99
+}
+
+fn take(value ?int) int {
+	return value or { -1 }
+}
+
+fn main() {
+	f := fn () int {
+		return 7
+	}
+	println(int_str(take(f())))
+}
+'
+
+const drop_owned_callback_shadow_src = 'fn record(value int) {
+	println(int_str(value))
+}
+
+fn invoke(drop_owned fn (int), value int) {
+	drop_owned(value)
+}
+
+fn main() {
+	invoke(record, 7)
+}
+'
+
 const local_fn_value_ident_shadow_fn_src = 'fn foo(i int) int {
 	return i + 100
 }
@@ -349,13 +401,14 @@ fn take(f fn (int) int) int {
 
 fn main() {
 	foo := other_callback
-	println(int_str(take(foo)))
+println(int_str(take(foo)))
 }
 '
 
 fn test_local_fn_literal_decl_types_are_callable() {
 	v3_bin := build_v3()
 	assert run_good(v3_bin, 'fn_value_optional_void_local', optional_fn_src) == 'optional-ok'
+	assert run_good(v3_bin, 'fn_value_optional_callback_param', optional_callback_param_src) == 'callback-ok'
 	assert run_good(v3_bin, 'fn_value_plain_int_local', plain_fn_src) == '7'
 	assert run_good(v3_bin, 'fn_value_local_ident_shadow', local_ident_shadow_src) == '10'
 	assert run_good(v3_bin, 'fn_value_local_call_shadows_global_return',
@@ -399,6 +452,126 @@ fn main() {
 		imported_fn_value_project_files()) == 'imported-ok'
 }
 
+fn test_imported_generic_fn_alias_keeps_parameters() {
+	v3_bin := build_v3()
+	out := run_project_good(v3_bin, 'fn_value_imported_generic_alias', {
+		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias' }\n"
+		'callbacks/callbacks.v': 'module callbacks
+
+pub type Callback[T] = fn (T) int
+'
+		'main.v':                'module main
+
+import callbacks
+
+fn twice(value int) int {
+	return value * 2
+}
+
+fn invoke(callback callbacks.Callback[int]) int {
+	return callback(21)
+}
+
+fn main() {
+	println(int_str(invoke(twice)))
+}
+'
+	})
+	assert out == '42'
+	bad_output := run_project_bad(v3_bin, 'fn_value_imported_generic_alias_mismatch', {
+		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias_mismatch' }\n"
+		'callbacks/callbacks.v': 'module callbacks
+
+pub type Callback[T] = fn (T) int
+'
+		'main.v':                'module main
+
+import callbacks
+
+fn wrong(value string) int {
+	return value.len
+}
+
+fn invoke(callback callbacks.Callback[int]) int {
+	return callback(21)
+}
+
+fn main() {
+	_ := invoke(wrong)
+}
+'
+	})
+	assert bad_output.contains('cannot use `fn (string) int`'), bad_output
+	assert bad_output.contains('expected `fn (int) int`'), bad_output
+}
+
+fn test_resolved_fn_value_wins_over_imported_const_suffix() {
+	v3_bin := build_v3()
+	out := run_project_good(v3_bin, 'fn_value_imported_const_suffix', {
+		'v.mod':                 "Module { name: 'fn_value_imported_const_suffix' }\n"
+		'collision/collision.v': 'module collision
+
+pub const foo = 7
+'
+		'main.v':                'module main
+
+import collision
+
+fn foo() int {
+	return 42
+}
+
+fn take(callback fn () int) int {
+	return callback()
+}
+
+fn main() {
+	println(int_str(take(foo) + collision.foo))
+}
+'
+	})
+	assert out == '49'
+}
+
+fn test_main_runtime_shadowed_fn_values_use_declaration_symbol() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'fn_value_main_runtime_shadow_accept', 'fn accept(value int) int {
+	return value + 1
+}
+
+fn consume(callback fn (int) int) int {
+	return callback(41)
+}
+
+fn main() {
+	callback := accept
+	println(consume(callback))
+	println(consume(accept))
+}
+')
+	assert out == '42\n42'
+}
+
+fn test_const_generic_fn_factory_value_call_uses_const_storage() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'const_generic_fn_factory_value_call', '
+type Validator[T] = fn (value T) ?int
+
+fn make_validator[T]() Validator[T] {
+	return fn [T] (value T) ?int {
+		return none
+	}
+}
+
+const validate_int = make_validator[int]()
+
+fn main() {
+	println(validate_int(123) == none)
+}
+')
+	assert out == 'true'
+}
+
 fn test_fn_value_expected_context_respects_value_shadowing() {
 	v3_bin := build_v3()
 	ident_output := run_bad(v3_bin, 'fn_value_expected_ident_shadow',
@@ -418,6 +591,28 @@ fn test_fn_value_expected_context_respects_value_shadowing() {
 	assert !struct_output.contains('main__foo'), struct_output
 }
 
+fn test_variadic_fn_value_marker_uses_nearest_binding() {
+	v3_bin := build_v3()
+	output := run_bad(v3_bin, 'variadic_fn_value_shadowed_by_plain_fn', 'fn variadic(values ...int) int {
+	return values.len
+}
+
+fn one(value int) int {
+	return value
+}
+
+fn main() {
+	cb := variadic
+	{
+		cb := one
+		_ := cb(1, 2)
+	}
+	assert cb(1, 2) == 2
+}
+')
+	assert output.contains('expected 1 argument, but got 2'), output
+}
+
 fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	v3_bin := build_v3()
 	optional_c := gen_c(v3_bin, 'fn_value_optional_void_local_c', optional_fn_src)
@@ -425,6 +620,11 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	assert !optional_c.contains('int f = __anon_fn'), optional_c
 	assert optional_c.contains('typedef struct Optional (*_fn_ptr_'), optional_c
 	assert optional_c.contains(' f = __anon_fn_'), optional_c
+
+	optional_callback_c := gen_c(v3_bin, 'fn_value_optional_callback_param_c',
+		optional_callback_param_src)
+	assert !optional_callback_c.contains('Optional_fn_ptr:'), optional_callback_c
+	assert optional_callback_c.contains('struct Optional__fn_ptr_'), optional_callback_c
 
 	plain_c := gen_c(v3_bin, 'fn_value_plain_int_local_c', plain_fn_src)
 	assert !plain_c.contains('Optional f = __anon_fn'), plain_c
@@ -450,10 +650,25 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	assert !imported_c.contains('int f = worker__inc'), imported_c
 	assert !imported_c.contains('int loader = worker__read_ok'), imported_c
 	assert !imported_c.contains(' f = main__inc'), imported_c
-	assert imported_c.contains('int local_f = worker.inc'), imported_c
+	assert imported_c.contains('int local_f = local_worker.inc'), imported_c
 	assert imported_c.contains('typedef int (*_fn_ptr_'), imported_c
 	assert imported_c.contains(' f = worker__inc'), imported_c
 	assert imported_c.contains('f = worker__dec'), imported_c
 	assert imported_c.contains(' loader = worker__read_ok'), imported_c
 	assert imported_c.contains('loader = worker__read_other'), imported_c
+}
+
+fn test_shadowed_fn_value_calls_use_bound_callable_types() {
+	v3_bin := build_v3()
+	assert run_good(v3_bin, 'fn_value_optional_call_shadow',
+		local_fn_value_optional_call_shadow_src) == '7'
+	assert run_good(v3_bin, 'drop_owned_callback_shadow', drop_owned_callback_shadow_src) == '7'
+
+	optional_c := gen_c(v3_bin, 'fn_value_optional_call_shadow_c',
+		local_fn_value_optional_call_shadow_src)
+	assert optional_c.contains('take((Optional){.ok = true, .value = f()})'), optional_c
+	assert !optional_c.contains('take(f())'), optional_c
+
+	drop_owned_c := gen_c(v3_bin, 'drop_owned_callback_shadow_c', drop_owned_callback_shadow_src)
+	assert drop_owned_c.contains('drop_owned(value);'), drop_owned_c
 }

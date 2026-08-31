@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module sync
 
-import time
-
 #flag -lpthread
 
 @[trusted]
@@ -49,7 +47,8 @@ pub struct C.sem_t {}
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 @[heap]
 pub struct Mutex {
-	mutex C.pthread_mutex_t
+	mutex  C.pthread_mutex_t
+	inited u32
 }
 
 @[heap]
@@ -88,10 +87,22 @@ pub fn new_mutex() &Mutex {
 	return m
 }
 
-// init initialises the mutex. It should be called once before the mutex is used,
-// since it creates the associated resources needed for the mutex to work properly.
+// init initialises the mutex. Calling it on an already initialised mutex has no effect.
 pub fn (mut m Mutex) init() {
-	should_be_zero(C.pthread_mutex_init(&m.mutex, C.NULL))
+	m.lazy_init()
+}
+
+fn (mut m Mutex) lazy_init() {
+	if C.atomic_load_u32(&m.inited) == 2 {
+		return
+	}
+	mut expected := u32(0)
+	if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
+		should_be_zero(C.pthread_mutex_init(&m.mutex, C.NULL))
+		C.atomic_store_u32(&m.inited, 2)
+		return
+	}
+	for C.atomic_load_u32(&m.inited) != 2 {}
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.
@@ -128,13 +139,15 @@ fn (mut m RwMutex) lazy_init() {
 // If the mutex was already locked, it will block, till it is unlocked.
 @[inline]
 pub fn (mut m Mutex) lock() {
-	C.pthread_mutex_lock(&m.mutex)
+	m.lazy_init()
+	should_be_zero(C.pthread_mutex_lock(&m.mutex))
 }
 
 // try_lock try to lock the mutex instance and return immediately.
 // If the mutex was already locked, it will return false.
 @[inline]
 pub fn (mut m Mutex) try_lock() bool {
+	m.lazy_init()
 	return C.pthread_mutex_trylock(&m.mutex) == 0
 }
 
@@ -142,13 +155,18 @@ pub fn (mut m Mutex) try_lock() bool {
 // the other threads, that were blocked, because they called lock can continue.
 @[inline]
 pub fn (mut m Mutex) unlock() {
-	C.pthread_mutex_unlock(&m.mutex)
+	should_be_zero(C.pthread_mutex_unlock(&m.mutex))
 }
 
 // destroy frees the resources associated with the mutex instance.
 // Note: the mutex itself is not freed.
 pub fn (mut m Mutex) destroy() {
+	if C.atomic_load_u32(&m.inited) == 0 {
+		return
+	}
+	for C.atomic_load_u32(&m.inited) != 2 {}
 	should_be_zero(C.pthread_mutex_destroy(&m.mutex))
+	C.atomic_store_u32(&m.inited, 0)
 }
 
 // rlock locks the given RwMutex instance for reading.
@@ -310,7 +328,7 @@ pub fn (mut sem Semaphore) try_wait() bool {
 
 // timed_wait is similar to .wait(), but it also accepts a timeout duration,
 // thus it can return false early, if the timeout passed before the semaphore was posted.
-pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
+pub fn (mut sem Semaphore) timed_wait(timeout i64) bool {
 	mut c := C.atomic_load_u32(&sem.count)
 	for c > 0 {
 		if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
@@ -318,7 +336,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 		}
 	}
 	C.pthread_mutex_lock(&sem.mtx)
-	t_spec := timeout.timespec()
+	t_spec := sync_realtime_deadline(timeout)
 	mut res := 0
 	c = C.atomic_load_u32(&sem.count)
 
