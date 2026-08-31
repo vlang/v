@@ -6233,7 +6233,12 @@ pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool 
 	if consumer.kind == .infix && consumer.op == .plus && final_type is String && (raw_final_type !is Alias || !tc.type_has_infix_operator_method(raw_final_type, .plus)) {
 		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
 	}
-	if consumer.kind == .string_interp && (consumer.children_count > 1 || formatted_interp) && final_type is String {
+	if consumer.kind == .string_interp && (consumer.children_count > 1 || formatted_interp)
+		&& final_type is String
+		&& !tc.array_accessor_string_interp_part_can_run_user_code(consumed_id) {
+		// The consumed part's own type dispatches through `wrap_string_conversion`: a string
+		// alias with a custom `str()` could mutate the source array while reading the borrowed
+		// shallow receiver, so reject it here just like an unstable sibling.
 		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
 	}
 	if consumer.kind == .in_expr && consumer.children_count > 1
@@ -6268,6 +6273,17 @@ fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeI
 			continue
 		}
 		if parent.kind in [.block, .match_branch] && parent.children_count > 0 && tc.a.child(parent, parent.children_count - 1) == current {
+			if parent.kind == .match_branch {
+				// The branch conditions (children before the body) run before the borrowed tail,
+				// so a condition like `delete_last(mut arr)` could empty the array first; reject
+				// the borrow when any condition can mutate the source.
+				n_conditions := if parent.value == 'else' { 0 } else { parent.value.int() }
+				for i in 0 .. n_conditions {
+					if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(parent, i)) {
+						return false
+					}
+				}
+			}
 			current = parent_id
 			continue
 		}

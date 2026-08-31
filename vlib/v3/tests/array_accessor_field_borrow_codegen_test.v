@@ -589,6 +589,57 @@ fn main() {
 	assert comparison.output.contains('cannot return an independent array element'), comparison.output
 }
 
+fn test_owned_string_interpolation_with_custom_stringifier_part_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	// The borrowed interpolation part is itself a string alias with a custom `str()`. The
+	// interpolation dispatches through that method (not the builtin stringifier), and it mutates
+	// the source array before the borrowed shallow receiver is read, so the borrow is unsafe.
+	compile := compile_v3_ownership_program(v3_bin, 'owned_string_interp_self_stringifier', "type Name = string
+
+struct E {
+	name Name
+}
+
+__global entries []E
+
+fn (name Name) str() string {
+	entries.delete_last()
+	return string(name)
+}
+
+fn last_label() string {
+	return '\${entries.last().name}\${0}'
+}
+
+fn main() {
+	entries = [E{ name: Name('hello') }]
+	println(last_label())
+}
+", '-enable-globals')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+	// A plain `string` field uses the builtin stringifier, so the borrow stays safe.
+	safe := compile_v3_ownership_program(v3_bin, 'owned_string_interp_plain_part', "struct E {
+	name string
+}
+
+fn last_label(entries []E) string {
+	return '\${entries.last().name}\${0}'
+}
+
+fn main() {
+	entries := [E{ name: 'hello' }]
+	println(last_label(entries))
+}
+", '')
+	assert safe.exit_code == 0, safe.output
+	safe_bin_path := tmp_array_accessor_borrow_path('owned_string_interp_plain_part_bin')
+	safe_run := os.execute(os.quoted_path(safe_bin_path))
+	assert safe_run.exit_code == 0, safe_run.output
+	assert safe_run.output.trim_space() == 'hello0', safe_run.output
+}
+
 fn test_owned_string_index_with_mutating_index_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_ownership_program(v3_bin, 'owned_string_index_mutating_sibling', "struct E {
@@ -1225,6 +1276,58 @@ fn main() {
 ", '')
 	assert or_compile.exit_code != 0, or_compile.output
 	assert or_compile.output.contains('cannot return an independent array element'), or_compile.output
+}
+
+fn test_owned_match_branch_condition_that_mutates_source_is_rejected() {
+	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
+	// A branch condition is evaluated before the branch tail, so a condition that empties the
+	// array invalidates the accessor borrowed in that tail. It must keep copying semantics.
+	compile := compile_v3_ownership_program(v3_bin, 'owned_match_branch_condition_mutating', "struct E {
+	name string
+}
+
+fn delete_last(mut entries []E) int {
+	entries.delete_last()
+	return 1
+}
+
+fn last_length(mut entries []E) int {
+	return match 1 {
+		delete_last(mut entries) { entries.last().name.len }
+		else { 0 }
+	}
+}
+
+fn main() {
+	mut entries := [E{ name: 'hello' }]
+	println(last_length(mut entries))
+}
+", '')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('cannot return an independent array element'), compile.output
+
+	// A literal branch condition cannot mutate the source, so the tail still borrows in place.
+	safe := compile_v3_ownership_program(v3_bin, 'owned_match_branch_condition_stable', "struct E {
+	name string
+}
+
+fn last_length(entries []E) int {
+	return match 1 {
+		1 { entries.last().name.len }
+		else { 0 }
+	}
+}
+
+fn main() {
+	entries := [E{ name: 'hello' }]
+	println(last_length(entries))
+}
+", '')
+	assert safe.exit_code == 0, safe.output
+	safe_bin_path := tmp_array_accessor_borrow_path('owned_match_branch_condition_stable_bin')
+	safe_run := os.execute(os.quoted_path(safe_bin_path))
+	assert safe_run.exit_code == 0, safe_run.output
+	assert safe_run.output.trim_space() == '5', safe_run.output
 }
 
 fn test_owned_scalar_consumer_with_mutating_struct_default_sibling_is_rejected() {
