@@ -283,6 +283,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 					estimate += deferred_map_expansion_threshold + 1
 				}
 			}
+			if t.compiler_collection_clone_call_expands(node) {
+				// Ownership-aware collection clones synthesize element/key/value loops
+				// whose size is derived from type metadata, not source children.
+				estimate += deferred_map_expansion_threshold + 1
+			}
 		}
 		if node.kind == .cast_expr {
 			// External casts cannot rewrite their child IDs in place, so even an
@@ -358,6 +363,44 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 		}
 	}
 	return estimate
+}
+
+fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'clone' || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	mut clean := t.normalize_type_alias(base_type).trim_space()
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	clean = clean.trim_left('&')
+	mut owned_types := []string{}
+	if clean.starts_with('[]') {
+		owned_types << clean[2..]
+	} else if t.is_fixed_array_type(clean) {
+		owned_types << fixed_array_elem_type(clean)
+	} else if clean.starts_with('map[') {
+		key_type, value_type := t.map_type_parts(clean)
+		owned_types << key_type
+		owned_types << value_type
+	} else {
+		return false
+	}
+	for typ in owned_types {
+		if t.compiler_default_clone_type_needs_work(typ) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) external_equality_expands_from_type_metadata(node flat.Node) bool {
