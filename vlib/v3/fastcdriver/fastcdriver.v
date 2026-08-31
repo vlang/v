@@ -384,6 +384,13 @@ pub fn run(args []string) {
 	prefs.ccompiler = 'tinyc'
 	prefs.building_v = real_input.ends_with('/vlib/v3/v3.v')
 	prefs.selfhost = prefs.building_v
+	$if arm64? {
+		prefs.target = pref.target_from('macos', 'arm64') or { fail(err.msg()) }
+		prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'v3_no_parallel', 'arm64', 'skip_wasm',
+			'skip_eval']
+		fastc.generate_arm64_files([real_input], prefs, output) or { fail(err.msg()) }
+		return
+	}
 	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_wasm', 'skip_eval']
 	backtrace_enabled := fastc_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.target.arch)
 	// Mirror the driver's TinyCC compatibility plan (add_v3_tcc_compat_defines):

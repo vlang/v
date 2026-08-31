@@ -159,6 +159,12 @@ The standalone compiler supports `self` directly and defaults that command to Fa
 generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,
 and a single-generation `-o` destination are accepted.
 
+Building the FastC self-host compiler with `-d arm64` selects its scanner-direct native path. That
+path resolves sources with FastC's scanner passes, emits SSA while consuming parser tokens, and
+passes the result to `v3.gen.arm64` for Mach-O output. It creates neither Flat AST nor C source and
+does not run TinyCC. The native parser lives in `gen/fastc/arm64_d_arm64.v`; without the define,
+that file and the ARM64/SSA imports are excluded and FastC retains its lightweight C path.
+
 In selfhost mode, `t := spawn f(args)` and `t.wait()` lower to a generated pthread creator, run
 wrapper, and join helper per spawned function: `thread` values are a typed wrapper around
 `pthread_t` plus a heap block that packs the arguments and receives the result. Spawned threads
