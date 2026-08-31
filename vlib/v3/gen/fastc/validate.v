@@ -230,19 +230,8 @@ fn (g &Parser) local_is_pointer(name string) bool {
 }
 
 fn (g &Parser) is_enum_type_name(name string) bool {
-	if cached := g.enum_type_name_memo[name] {
-		return cached
-	}
-	mut result := false
-	if type_key := g.resolve_declared_type_key(name) {
-		result = g.underlying_enum_type_key(type_key) != none
-	}
-	mut parser := unsafe { &Parser(g) }
-	if parser.enum_type_name_memo.len == 0 {
-		parser.enum_type_name_memo = map[string]bool{}
-	}
-	parser.enum_type_name_memo[name] = result
-	return result
+	type_key := g.resolve_declared_type_key(name) or { return false }
+	return g.underlying_enum_type_key(type_key) != none
 }
 
 fn (g &Parser) underlying_enum_type_key(type_key string) ?string {

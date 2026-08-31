@@ -43,8 +43,6 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 	]) {
 		return none
 	}
-	// This is a read-only view of program metadata owned by the generation context.
-	fields := unsafe { g.struct_fields[layout_type] }
 	if open + 1 < close {
 		items := fastc_expression_list_items(tokens, open + 1, close) or { return none }
 		mut is_positional := false
@@ -53,7 +51,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				if item.len == 0 {
 					continue
 				}
-				if !(item.len >= 2 && item[0].tok == .name && item[1].tok == .colon) && !(item.len == 1 && item[0].tok == .name && item[0].lit in fields) {
+				if !(item.len >= 2 && item[0].tok == .name && item[1].tok == .colon) && !(item.len == 1 && item[0].tok == .name && g.struct_direct_member_type(c_type, item[0].lit) != '') {
 					is_positional = true
 					break
 				}
@@ -153,8 +151,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			if value_start == index {
 				return none
 			}
-			// The enclosing token array outlives this render pass and is never mutated here.
-			value_tokens = unsafe { tokens[value_start..index] }
+			value_tokens = tokens[value_start..index].clone()
 		} else {
 			value_tokens = [
 				FastcExpressionToken{
@@ -171,7 +168,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		mut expected_type := if layout_type == 'array' && field_name == 'init' {
 			g.array_element_type(c_type) or { '' }
 		} else {
-			fields[field_name] or { '' }
+			g.struct_direct_member_type(c_type, field_name)
 		}
 		if expected_type == '' && !is_c_struct_literal {
 			if field := g.struct_field_metadata(c_type, field_name) {
