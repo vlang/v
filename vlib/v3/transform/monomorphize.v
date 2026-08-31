@@ -4344,6 +4344,7 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 	}
 	mut params := []types.Type{}
 	mut variadic := false
+	mut source_param_idx := 0
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
@@ -4352,8 +4353,8 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 			}
 			continue
 		}
-		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl,
-			child.typ, args, generic_params))
+		param_type := t.explicit_mut_pointer_param_type_text(decl.node, source_param_idx, t.specialized_signature_type_text(decl, child.typ, args, generic_params))
+		source_param_idx++
 		if param_type.starts_with('...') {
 			variadic = true
 		}
@@ -5000,6 +5001,7 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 	}
 	params := t.generic_fn_param_names(decl.node, decl.module)
 	mut result := []types.Type{}
+	mut source_param_idx := 0
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
@@ -5008,8 +5010,8 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 			}
 			continue
 		}
-		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl,
-			child.typ, args, params))
+		param_type := t.explicit_mut_pointer_param_type_text(decl.node, source_param_idx, t.specialized_signature_type_text(decl, child.typ, args, params))
+		source_param_idx++
 		result << t.tc.parse_canonical_type(param_type)
 	}
 	if result.len == 0 {
@@ -5422,6 +5424,7 @@ fn (t &Transformer) concrete_fn_return_known(name string) bool {
 fn (mut t Transformer) specialized_generic_call_param_type_texts(decl GenericFnDecl, args []string) []string {
 	params := t.generic_fn_param_names(decl.node, decl.module)
 	mut result := []string{}
+	mut source_param_idx := 0
 	for i in 0 .. decl.node.children_count {
 		child := t.a.child_node(&decl.node, i)
 		if child.kind != .param {
@@ -5430,13 +5433,16 @@ fn (mut t Transformer) specialized_generic_call_param_type_texts(decl GenericFnD
 			}
 			continue
 		}
-		result << explicit_mut_pointer_param_type_text(child, t.specialized_call_target_type_text(decl,
-			child.typ, args, params))
+		result << t.explicit_mut_pointer_param_type_text(decl.node, source_param_idx, t.specialized_call_target_type_text(decl, child.typ, args, params))
+		source_param_idx++
 	}
 	return result
 }
 
-fn explicit_mut_pointer_param_type_text(param flat.Node, typ string) string {
+fn (t &Transformer) explicit_mut_pointer_param_type_text(fn_node flat.Node, param_idx int, typ string) string {
+	if !isnil(t.tc) && t.tc.fn_node_param_requires_mut_pointer_slot(fn_node, param_idx) && typ.starts_with('&') {
+		return '&${typ}'
+	}
 	return typ
 }
 

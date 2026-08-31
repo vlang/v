@@ -261,12 +261,16 @@ fn main() {
 
 fn test_mut_pointer_param_reassigns_caller_slot() {
 	v3_bin := mut_param_reassign_build_v3()
-	out := mut_param_reassign_run_good(v3_bin, 'mut_pointer_param_reassign', 'struct Item {
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'mut_pointer_param_reassign', 'struct Item {
 	value int
 }
 
 fn replace(mut current &Item, replacement &Item) {
 	current = replacement
+}
+
+fn forward_replace(mut current &Item, replacement &Item) {
+	replace(mut current, replacement)
 }
 
 fn main() {
@@ -277,13 +281,17 @@ fn main() {
 		value: 9
 	}
 	mut current := &first
-	replace(mut current, &second)
+	forward_replace(mut current, &second)
 	assert current == &second
 	assert first.value == 1
 	println(int_str(current.value))
 }
 ')
 	assert out == '9'
+	assert c_source.contains('void replace(main__Item** current, main__Item* replacement) {')
+	assert c_source.contains('void forward_replace(main__Item** current, main__Item* replacement) {')
+	assert c_source.contains('replace(current, replacement);')
+	assert c_source.contains('forward_replace(&current, &second);')
 	out_generic := mut_param_reassign_run_good(v3_bin, 'generic_mut_pointer_param_reassign', 'struct Item {
 	value int
 }
@@ -463,12 +471,12 @@ fn main() {
 }
 ')
 	assert out == '62'
-	assert c_source.contains('int read_field(main__Item** item) {'), 'missing main__Item** signature'
-	assert !c_source.contains('int read_field(main__Item*** item) {'), 'found over-indirected main__Item*** signature'
-	assert c_source.contains('return ((*item))->value;'), 'missing single slot dereference'
-	assert c_source.contains('return (*(*item));'), 'missing source dereference after slot dereference'
-	assert c_source.contains('copied_value = (*(*item));'), 'missing standalone assignment dereference'
-	assert c_source.contains('((*(*value)))++;'), 'missing standalone postfix dereference'
+	assert c_source.contains('int read_field(main__Item* item) {'), 'missing direct main__Item* signature'
+	assert !c_source.contains('int read_field(main__Item** item) {'), 'found unnecessary caller slot'
+	assert c_source.contains('return item->value;'), 'missing direct pointer selector'
+	assert c_source.contains('return *(item);'), 'missing direct pointer dereference'
+	assert c_source.contains('copied_value = *item;'), 'missing standalone direct dereference'
+	assert c_source.contains('(*value)++;'), 'missing standalone postfix dereference'
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
