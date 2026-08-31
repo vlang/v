@@ -8046,6 +8046,9 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 		emitted_arg_count++
 		param_idx := i
 		if param_idx < param_types.len {
+			if g.gen_mut_pointer_slot_arg(arg_id, arg_node, param_types[param_idx]) {
+				continue
+			}
 			if g.gen_fixed_array_pointer_lvalue_arg(arg_id, param_types[param_idx]) {
 				continue
 			}
@@ -12301,7 +12304,7 @@ fn (g &FlatGen) interface_method_param_types(name string) ?[]types.Type {
 			params << decl_params[i]
 		}
 	}
-	return params
+	return g.interface_effective_param_types_for_decl(params, decl_key)
 }
 
 // param_types_from_decl converts param types from decl data for c.
@@ -12767,6 +12770,11 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 			needs_wrapper = true
 			continue
 		}
+		if callback_mut_pointer_slot_can_read(actual_ct, expected_ct) {
+			call_args << '*arg${i}'
+			needs_wrapper = true
+			continue
+		}
 		if slot_ct := callback_mut_pointer_slot_value_c_type(actual_ct, expected_ct) {
 			setup_lines << '${slot_ct} arg${i}_slot = (${slot_ct})arg${i};'
 			call_args << '&arg${i}_slot'
@@ -12853,6 +12861,12 @@ fn callback_mut_pointer_slot_value_c_type(actual_ct string, expected_ct string) 
 		return none
 	}
 	return value_ct
+}
+
+fn callback_mut_pointer_slot_can_read(actual_ct string, expected_ct string) bool {
+	actual := trimmed_space(actual_ct)
+	expected := trimmed_space(expected_ct)
+	return expected.ends_with('*') && trimmed_space(expected[..expected.len - 1]) == actual
 }
 
 fn (mut g FlatGen) callback_c_type(typ types.Type) string {
@@ -15922,6 +15936,23 @@ fn (mut g FlatGen) gen_addressed_rvalue_arg(child_id flat.NodeId, pt types.Type)
 fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
 	if expected !is types.Pointer {
 		return false
+	}
+	// A transformed callback argument can retain the source `mut p` marker as
+	// `&(*p)`. When p already is a caller-owned pointer slot, forward the slot
+	// itself rather than reading its current pointer value.
+	if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count == 1 {
+		value := g.a.child_node(&arg_node, 0)
+		if value.kind == .prefix && value.op == .mul && value.children_count == 1 {
+			base := g.a.child_node(value, 0)
+			if base.kind == .ident && g.current_param_is_mut(base.value)
+				&& g.current_param_is_mut_pointer(base.value) {
+				param_type := g.current_param_type(base.value) or { types.Type(types.void_) }
+				if g.tc.c_type(param_type) == g.tc.c_type(expected) {
+					g.write(g.local_decl_cname(base.value))
+					return true
+				}
+			}
+		}
 	}
 	// A mutable parameter is already the address of its caller-owned storage. In
 	// particular, `mut p &T` is represented as `T**`; forwarding `mut p` to

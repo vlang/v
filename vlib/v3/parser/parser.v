@@ -12577,7 +12577,7 @@ fn interface_param_token_continues_type(tok token.Token, lit string, next token.
 
 // fn_type_param_with_mut supports fn type param with mut handling for parser.
 fn fn_type_param_with_mut(typ string, is_mut bool) string {
-	if !is_mut || typ.len == 0 || typ.starts_with('&') {
+	if !is_mut || typ.len == 0 {
 		return typ
 	}
 	return 'mut ' + typ

@@ -9274,14 +9274,50 @@ fn (tc &TypeChecker) fn_node_param_requires_mut_pointer_slot_inner(fn_node flat.
 		return false
 	}
 	for i in body_start .. int(fn_node.children_count) {
-		if tc.subtree_reassigns_or_forwards_ident(tc.a.child(&fn_node, i), param.value, module_name, mut visiting) {
+		if tc.subtree_reassigns_or_forwards_ident(tc.a.child(&fn_node, i), param.value, module_name, fn_node, mut visiting) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name string, module_name string, mut visiting map[u64]bool) bool {
+fn (tc &TypeChecker) fn_node_callback_param_requires_mut_pointer_slot(fn_node flat.Node, name string, param_idx int) bool {
+	for i in 0 .. fn_node.children_count {
+		param := tc.a.child_node(&fn_node, i)
+		if param.kind != .param {
+			break
+		}
+		if param.value != name {
+			continue
+		}
+		fn_type := fn_type_from_type(tc.parse_resolution_type(param.typ)) or { return false }
+		if param_idx < 0 || param_idx >= fn_type.params.len || !fn_param_is_mut(fn_type, param_idx) {
+			return false
+		}
+		return unalias_type(fn_param_type(fn_type, param_idx)) is Pointer
+	}
+	return false
+}
+
+fn (tc &TypeChecker) forwarded_mut_pointer_arg_matches(id flat.NodeId, name string) bool {
+	mut current := id
+	for _ in 0 .. 8 {
+		if tc.expr_key(current) == name {
+			return true
+		}
+		if !tc.valid_node_id(current) {
+			return false
+		}
+		node := tc.a.node(current)
+		if node.kind !in [.prefix, .paren, .expr_stmt] || node.children_count != 1 {
+			return false
+		}
+		current = tc.a.child(node, 0)
+	}
+	return false
+}
+
+fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name string, module_name string, fn_node flat.Node, mut visiting map[u64]bool) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -9299,6 +9335,17 @@ fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name st
 		}
 	}
 	if node.kind == .call {
+		if node.children_count > 0 {
+			callee_name := tc.expr_key(tc.a.child(node, 0))
+			if callee_name.len > 0 {
+				for i in 1 .. node.children_count {
+					arg_id := tc.call_arg_value(tc.a.child(node, i))
+					if tc.forwarded_mut_pointer_arg_matches(arg_id, name) && tc.fn_node_callback_param_requires_mut_pointer_slot(fn_node, callee_name, int(i) - 1) {
+						return true
+					}
+				}
+			}
+		}
 		called_name := tc.resolved_call_name(id) or {
 			tc.visible_mutation_call_name(id, *node, '', module_name)
 		}
@@ -9327,7 +9374,7 @@ fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name st
 		}
 	}
 	for i in 0 .. node.children_count {
-		if tc.subtree_reassigns_or_forwards_ident(tc.a.child(node, i), name, module_name, mut visiting) {
+		if tc.subtree_reassigns_or_forwards_ident(tc.a.child(node, i), name, module_name, fn_node, mut visiting) {
 			return true
 		}
 	}
@@ -9384,6 +9431,12 @@ fn is_channel_builtin_method_call_name(name string, method string) bool {
 		clean = clean[1..].trim_space()
 	}
 	return clean.starts_with('chan ') && clean.ends_with('.${method}')
+}
+
+// declaration_param_is_mut reports whether a registered declaration parameter is mutable.
+pub fn (tc &TypeChecker) declaration_param_is_mut(name string, param_idx int) bool {
+	params := tc.declaration_param_mutability[name] or { return false }
+	return param_idx >= 0 && param_idx < params.len && params[param_idx]
 }
 
 fn (tc &TypeChecker) call_param_is_mut(info CallInfo, param_idx int) bool {

@@ -396,6 +396,91 @@ fn main() {
 		'expected `&&Item`')
 }
 
+fn test_interface_mut_pointer_param_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'interface_mut_pointer_param_reassign', 'interface Writer {
+	write_byte(mut byte &u8)
+}
+
+struct Device {
+	replacement &u8
+}
+
+struct Observer {}
+
+fn (device Device) write_byte(mut byte &u8) {
+	byte = device.replacement
+}
+
+fn (Observer) write_byte(mut byte &u8) {
+	assert *byte == 9
+}
+
+fn main() {
+	mut first := u8(1)
+	replacement := u8(9)
+	mut current := &first
+	writer := Writer(Device{
+		replacement: &replacement
+	})
+	writer.write_byte(mut current)
+	assert current == &replacement
+	assert first == 1
+	observer := Writer(Observer{})
+	observer.write_byte(mut current)
+	assert current == &replacement
+	println(int_str(*current))
+}
+')
+	assert out == '9'
+	assert c_source.contains('Writer__write_byte(Writer* i, u8** _a0)')
+	assert c_source.contains('void Device__write_byte(main__Device device, u8** byte)')
+	assert c_source.contains('void Observer__write_byte(main__Observer _0, u8* byte)')
+	assert c_source.contains('Observer__write_byte(*(main__Observer*)i->_object, *_a0)')
+}
+
+fn test_callback_mut_pointer_param_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'callback_mut_pointer_param_reassign', 'struct Item {
+	value int
+}
+
+fn replace(mut current &Item, replacement &Item) {
+	current = replacement
+}
+
+fn inspect(mut current &Item, replacement &Item) {
+	assert current.value + replacement.value == 10
+}
+
+fn apply(callback fn (mut &Item, &Item), mut current &Item, replacement &Item) {
+	callback(mut current, replacement)
+}
+
+fn main() {
+	mut first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	mut current := &first
+	apply(inspect, mut current, &second)
+	assert current == &first
+	assert first.value == 1
+	apply(replace, mut current, &second)
+	assert current == &second
+	assert first.value == 1
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+	assert c_source.contains('void apply(_fn_ptr_')
+	assert c_source.contains('main__Item** current, main__Item* replacement)')
+	assert c_source.contains('inspect_callback_adapter_')
+	assert c_source.contains('inspect(*arg0, arg1)')
+}
+
 fn test_mut_pointer_param_signature_and_expression_conversions() {
 	v3_bin := mut_param_reassign_build_v3()
 	out, c_source := mut_param_reassign_run_good_with_c(v3_bin,
