@@ -10431,20 +10431,22 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for param_id in param_ids {
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ.len > 0 {
+			saved_param_pointer_flags[param.value] = t.pointer_value_lvalues[param.value] or {
+				false
+			}
+			saved_param_pointer_rvalue_flags[param.value] = t.pointer_value_rvalues[param.value] or {
+				false
+			}
+			t.pointer_value_lvalues.delete(param.value)
+			t.pointer_value_rvalues.delete(param.value)
 			t.set_var_type(param.value, param.typ)
 			if t.is_fixed_array_type(param.typ) {
 				t.fixed_array_param_values[param.value] = true
 			}
 			if param.is_mut || param.op == .amp || param.typ.starts_with('mut ') {
 				t.mut_param_values[param.value] = true
-				saved_param_pointer_flags[param.value] = t.pointer_value_lvalues[param.value] or {
-					false
-				}
 				t.pointer_value_lvalues[param.value] = true
 				if param.op == .amp {
-					saved_param_pointer_rvalue_flags[param.value] = t.pointer_value_rvalues[param.value] or {
-						false
-					}
 					t.pointer_value_rvalues[param.value] = true
 				}
 			}
