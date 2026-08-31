@@ -310,7 +310,11 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		element_type := g.array_element_type(array_type) or { return none }
 		length := field_values['len'] or { '0' }
 		capacity := field_values['cap'] or { '0' }
-		inner_array_element_type := g.array_element_type(element_type) or { '' }
+		inner_array_element_type := if element_type.starts_with('Array_') {
+			g.array_element_type(element_type) or { '' }
+		} else {
+			''
+		}
 		base := '((${array_type})builtin____new_array(${length},${capacity},sizeof(${element_type})))'
 		mut value_source := base
 		if initial := field_values['init'] {

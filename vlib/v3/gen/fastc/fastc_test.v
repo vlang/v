@@ -6265,6 +6265,40 @@ fn main() {
 	assert !c_source.contains('groups[index]'), c_source
 }
 
+fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() {
+	prefs := pref.new_preferences()
+	g := Parser{
+		prefs: &prefs
+		s: scanner.new_scanner(prefs, .normal)
+		struct_fields: {
+			'array': {
+				'len': 'int'
+			}
+		}
+	}
+	mut tokens := [
+		FastcExpressionToken{
+			tok: .name
+			lit: 'array'
+			typ: 'Array_FixedArray_2_int'
+		},
+		fastc_test_expression_token(.lcbr, '{'),
+		fastc_test_expression_token(.name, 'len'),
+		fastc_test_expression_token(.colon, ':'),
+		fastc_test_expression_token(.number, '1'),
+		fastc_test_expression_token(.rcbr, '}'),
+	]
+	fixed := g.render_struct_literal_expression(tokens) or { panic('fixed array literal was not rendered') }
+	assert fixed.source.contains('sizeof(' + 'FixedArray_2_int' + ')'), fixed.source
+	assert !fixed.source.contains('builtin____new_array(0,0,sizeof(int))'), fixed.source
+	assert !fixed.source.contains('((FixedArray_2_int *)__v_fastc_array_init.data)'), fixed.source
+
+	tokens[0].typ = 'Array_Array_int'
+	dynamic := g.render_struct_literal_expression(tokens) or { panic('dynamic array literal was not rendered') }
+	assert dynamic.source.contains('builtin____new_array(0,0,sizeof(int))'), dynamic.source
+	assert dynamic.source.contains('((Array_int *)__v_fastc_array_init.data)'), dynamic.source
+}
+
 fn test_selfhost_append_array_result_to_struct_field() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
