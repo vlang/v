@@ -2972,8 +2972,16 @@ fn array_map_local_path_is_possible_projection(path string, base string) bool {
 
 fn array_map_local_pointer_path(path string, root string, locals map[string]bool) string {
 	mut pointer_path := root
-	for local_path, _ in locals {
-		if local_path.len > pointer_path.len && array_map_local_path_is_possible_projection(path, local_path) {
+	for local_path, external in locals {
+		if !array_map_local_path_is_possible_projection(path, local_path) {
+			continue
+		}
+		if local_path.len > pointer_path.len {
+			pointer_path = local_path
+		} else if local_path.len == pointer_path.len && external && !locals[pointer_path] {
+			// A dynamic index read may resolve to any equally-specific element, so merge
+			// their origins by keeping an external alias over a first-seen local one; that
+			// stops a borrowed source from being freed while another slot still points at it.
 			pointer_path = local_path
 		}
 	}
