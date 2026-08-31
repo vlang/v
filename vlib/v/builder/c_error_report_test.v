@@ -4,6 +4,7 @@ import os
 import crypto.sha256
 import v.ast
 import v.gen.c as cgen
+import v.parser
 import v.pref
 
 fn restore_env_var(name string, old_value ?string) {
@@ -304,6 +305,200 @@ fn test_report_includes_v_source_counts_v_context() {
 	})
 }
 
+fn test_report_uploaded_complete_source_distinguishes_context_only() {
+	// A context-only upload (v_source empty, v_context present) is a bounded excerpt, not the
+	// complete file, even though report_includes_v_source is true — so the notice must not claim
+	// the complete source was submitted (PR #28234 review).
+	context_only := CErrorBugReport{
+		v_context: [CErrorReportLine{
+			line: 6
+			text: 'x := 1'
+		}]
+	}
+	assert report_includes_v_source(context_only)
+	assert !report_uploaded_complete_source(context_only)
+	// A nonempty, non-truncated v_source is the complete file.
+	assert report_uploaded_complete_source(CErrorBugReport{
+		v_source: 'fn main() {}'
+	})
+	// A truncated v_source is a bounded excerpt, not complete.
+	assert !report_uploaded_complete_source(CErrorBugReport{
+		v_source:           'fn main() {}'
+		v_source_truncated: true
+	})
+	assert !report_uploaded_complete_source(CErrorBugReport{})
+}
+
+fn test_env_c_output_budget_caps_at_value_limit_and_max() {
+	// The diagnostic budget is capped at both the per-variable value limit and the fixed maximum.
+	assert env_c_output_budget(1000, 500) == 500 // value limit binds
+	assert env_c_output_budget(500, 1000) == 500 // available binds
+	// The fixed maximum binds when both are larger.
+	big := 4 * c_error_bug_report_max_env_c_output_bytes
+	assert env_c_output_budget(big, big) == c_error_bug_report_max_env_c_output_bytes
+}
+
+fn test_plan_env_report_content_reclaims_omitted_source_budget_for_diagnostic() {
+	// A tiny content budget that cannot hold even the truncation marker omits the source; the half
+	// that was reserved for it must be reclaimed so a short missing-library diagnostic survives
+	// intact, staying recognizable to the receiver's filter instead of being reported as a compiler
+	// bug (PR #28234 review).
+	marker_min := c_error_v_source_truncation_notice.len + 2
+	short_diagnostic := "ld: library 'macos_v3_absent' not found"
+	value_limit := v3_report_max_env_payload_bytes
+	// A budget below marker_min forces omission; the source is larger than the budget.
+	tiny_budget := marker_min - 2
+	plan := plan_env_report_content(ExternalCErrorBugReport{
+		c_output: short_diagnostic
+		v_source: 'module main\nfn main() {}\n' + 'x'.repeat(1000)
+	}, tiny_budget, value_limit)
+	// Source is omitted (the budget cannot hold the marker)...
+	assert plan.v_source == ''
+	assert !plan.v_source_truncated
+	// ...and the reclaimed capacity keeps the whole short diagnostic (no truncation notice).
+	assert plan.c_output == short_diagnostic
+	assert !plan.c_output.contains(c_error_bug_report_truncation_notice)
+}
+
+fn test_plan_env_report_content_bounds_source_and_diagnostic_when_both_fit() {
+	// With ample budget both are forwarded whole; a source larger than its half-share is bounded
+	// (marked truncated) while the diagnostic stays intact.
+	value_limit := v3_report_max_env_payload_bytes
+	small := plan_env_report_content(ExternalCErrorBugReport{
+		c_output: 'error: use of undeclared identifier missing'
+		v_source: 'module main\nfn main() {}'
+	}, 4096, value_limit)
+	assert small.v_source == 'module main\nfn main() {}'
+	assert !small.v_source_truncated
+	assert small.c_output == 'error: use of undeclared identifier missing'
+	// A source that overflows its half-share is bounded and flagged truncated.
+	big_source := 'module main\n' + 'fn f() {}\n'.repeat(400)
+	bounded := plan_env_report_content(ExternalCErrorBugReport{
+		c_output: 'error: x'
+		v_source: big_source
+	}, 512, value_limit)
+	assert bounded.v_source.len < big_source.len
+	assert bounded.v_source_truncated
+}
+
+fn test_bounded_v_source_with_focus_reports_failing_line_in_excerpt() {
+	// A large file bounded around a middle failing line keeps that line and reports its new 1-based
+	// position within the excerpt, so a later re-bound can stay centered on it (PR #28234 review).
+	mut lines := []string{}
+	for i in 0 .. 4000 {
+		lines << 'fn f${i}() { println(${i}) }'
+	}
+	failing := 2000 // 1-based
+	lines[failing - 1] = 'fn the_failing_line() {}'
+	source := lines.join('\n')
+	excerpt, focus := bounded_v_source_with_focus(source, 4096, failing)
+	assert excerpt.len < source.len
+	assert excerpt.contains('fn the_failing_line() {}')
+	assert focus > 0
+	excerpt_lines := excerpt.split_into_lines()
+	assert excerpt_lines[focus - 1] == 'fn the_failing_line() {}'
+	// A whole file that fits keeps the focus unchanged; a head+tail window reports no focus.
+	whole, whole_focus := bounded_v_source_with_focus('module main\nfn main() {}', 4096, 2)
+	assert whole == 'module main\nfn main() {}'
+	assert whole_focus == 2
+	_, headtail_focus := bounded_v_source_with_focus(source, 4096, 0)
+	assert headtail_focus == 0
+}
+
+fn test_plan_env_report_content_reports_excerpt_focus_for_rebound() {
+	// When source is bounded, the plan reports the failing line's position within the excerpt so
+	// the wasm re-export re-bounds around it instead of dropping it (PR #28234 review).
+	value_limit := v3_report_max_env_payload_bytes
+	mut lines := []string{}
+	for i in 0 .. 400 {
+		lines << 'fn f${i}() {}'
+	}
+	failing := 200
+	lines[failing - 1] = 'fn the_failing_line() {}'
+	source := lines.join('\n')
+	plan := plan_env_report_content(ExternalCErrorBugReport{
+		c_output:       'error: x'
+		v_source:       source
+		v_source_focus: failing
+	}, 512, value_limit)
+	assert plan.v_source_truncated
+	assert plan.v_source.contains('fn the_failing_line() {}')
+	assert plan.v_source_focus > 0
+	plan_lines := plan.v_source.split_into_lines()
+	assert plan_lines[plan.v_source_focus - 1] == 'fn the_failing_line() {}'
+}
+
+fn test_plan_env_report_content_omits_focused_source_until_code_fits() {
+	// A focused middle excerpt needs two markers and at least one byte from the failing line.
+	// Smaller budgets must omit source instead of forwarding marker-only text whose focus points
+	// at a marker (PR #28234 review).
+	minimum := 2 * c_error_v_source_truncation_notice.len + 3
+	source := 'a'.repeat(100) + '\nX\n' + 'b'.repeat(100)
+	omitted := plan_env_report_content(ExternalCErrorBugReport{
+		v_source:       source
+		v_source_focus: 2
+	}, minimum - 1, v3_report_max_env_payload_bytes)
+	assert omitted.v_source == ''
+	assert omitted.v_source_focus == 0
+	kept := plan_env_report_content(ExternalCErrorBugReport{
+		v_source:       source
+		v_source_focus: 2
+	}, minimum, v3_report_max_env_payload_bytes)
+	assert kept.v_source_truncated
+	assert kept.v_source_focus > 0
+	assert kept.v_source.split_into_lines()[kept.v_source_focus - 1] == 'X'
+}
+
+fn test_export_external_v3_report_round_trips_v_source_focus() {
+	// The failing-line focus is carried through the environment handoff (PR #28234 review).
+	clear_v3_report_env()
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:           '' // generated-C compilation error
+		ccompiler:      'clang'
+		c_output:       'error: use of undeclared identifier missing'
+		v_file:         'main.v'
+		v_source:       'module main\nfn main() {}'
+		v_source_focus: 2
+		source_inline:  true
+		tag:            'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	if got.kind == external_v3_transport_limited_kind {
+		return
+	}
+	assert got.v_source == 'module main\nfn main() {}'
+	assert got.v_source_focus == 2
+}
+
+fn test_bounded_v_source_marks_single_oversized_line_hard_clamp() {
+	// The failing V line is the whole file and is longer than the byte budget. The safety
+	// hard-clamp used to drop a markerless prefix (PR #28234 review); it must now carry the
+	// truncation marker so a truncated upload is never a silently complete-looking prefix.
+	long_line := 'const x = "' + 'a'.repeat(200) + '"'
+	budget := 64
+	out := bounded_v_source(long_line, budget, 1) // focus on line 1 (the only line)
+	assert out.len <= budget
+	assert out.len < long_line.len
+	assert out.contains(c_error_v_source_truncation_notice)
+}
+
+fn test_bounded_v_source_focused_hard_clamp_keeps_code_between_markers() {
+	// A long focused line in the middle needs both markers plus actual source. A smaller budget
+	// must omit it, while the smallest useful budget keeps one source byte at the reported focus.
+	long_line := 'const x = "' + 'a'.repeat(200) + '"'
+	source := 'module main\n${long_line}\nfn main() {}'
+	minimum := 2 * c_error_v_source_truncation_notice.len + 3
+	too_small, too_small_focus := bounded_v_source_with_focus(source, minimum - 1, 2)
+	assert too_small == ''
+	assert too_small_focus == 0
+	out, focus := bounded_v_source_with_focus(source, minimum, 2)
+	assert out.len == minimum
+	assert out.split_into_lines()[focus - 1] == 'c'
+}
+
 fn test_external_v3_report_env_round_trip() {
 	// The fallback report is handed to the external builder as self-contained content
 	// through the environment: the owning process bounds the source (reading its own
@@ -318,20 +513,20 @@ fn test_external_v3_report_env_round_trip() {
 		os.rmdir_all(dir) or {}
 	}
 	c_file := os.join_path(dir, 'main.v')
-	// A program large enough to yield a bounded head+tail snippet (short files upload no
-	// source at all, per the no-whole-file guarantee).
+	// The full failing file is captured as content so the report is reproducible.
 	mut lines := []string{}
 	for i in 0 .. 4 * c_error_v_source_radius {
 		lines << 'fn f${i}() { println(${i}) }'
 	}
-	os.write_file(c_file, lines.join('\n'))!
-	// The owning process bounds the source into content...
-	v_file, v_source := bounded_v3_internal_fallback_source(c_file, lines.join('\n'))
+	source := lines.join('\n')
+	os.write_file(c_file, source)!
+	// The owning process captures the source as content, with focus 0 (head+tail if bounded)...
+	v_file, v_source, v_source_focus := bounded_v3_internal_fallback_source(c_file, source)
 	assert v_file == 'main.v'
-	assert v_source != ''
-	assert v_source.contains(c_error_v_source_truncation_notice)
+	assert v_source == source
+	assert v_source_focus == 0
 	// The path-based extractor must never reopen an internal-error input after V3 fails.
-	late_file, late_source := bounded_v3_fallback_source(external_v3_compiler_error_kind,
+	late_file, late_source, _ := bounded_v3_fallback_source(external_v3_compiler_error_kind,
 		'error: v3 failed', c_file, map[string]string{})
 	assert late_file == ''
 	assert late_source == ''
@@ -365,6 +560,8 @@ fn test_external_v3_report_env_round_trip() {
 	assert got.cleanup_dir == ''
 	assert got.v_file == 'main.v'
 	assert got.v_source == v_source
+	// The small source fit the budget, so it round-trips complete and untruncated.
+	assert !got.v_source_truncated
 	assert got.input_digests_complete
 	assert got.input_digests == {
 		parsed_path: parsed_digest
@@ -596,6 +793,110 @@ fn test_export_external_v3_report_bounds_combined_exec_payload() {
 	assert got.v_source.len < huge_source.len
 	assert got.c_output.contains(c_error_bug_report_truncation_notice)
 	assert got.v_source.contains(c_error_v_source_truncation_notice)
+	// The excerpt is flagged truncated explicitly through the handoff.
+	assert got.v_source_truncated
+}
+
+fn test_export_external_v3_report_preserves_failing_line_through_handoff() {
+	// A generated-C failure into a file larger than the environment budget must keep the exact
+	// failing line. The byte bound is applied once, at the handoff, centered on it, instead of a
+	// second head+tail truncation that would drop the middle — including the failing line
+	// (PR #28234 review). It is also never forwarded as a silent markerless prefix.
+	clear_v3_report_env()
+	mut lines := []string{}
+	for i in 0 .. 3000 {
+		lines << 'fn head_${i}() { println(${i}) }'
+	}
+	failing_line := lines.len + 1 // 1-based line of the unique failing marker inserted next
+	lines << 'fn the_unique_failing_line_marker() {}'
+	for i in 0 .. 3000 {
+		lines << 'fn tail_${i}() { println(${i}) }'
+	}
+	source := lines.join('\n')
+	// Far larger than the environment value limit, so export must truncate it.
+	assert source.len > c_error_bug_report_max_v_source_bytes
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:           '' // generated-C compilation error
+		ccompiler:      'clang'
+		c_output:       'error: use of undeclared identifier missing'
+		v_file:         'main.v'
+		v_source:       source
+		v_source_focus: failing_line
+		source_inline:  true
+		tag:            'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	if got.kind == external_v3_transport_limited_kind {
+		return // environment too small to forward any manifest; nothing to assert
+	}
+	// Either source was omitted (a budget too small to hold even the marker) or it was
+	// truncated with the marker present, keeping the failing line — never a markerless prefix.
+	if got.v_source != '' {
+		assert got.v_source.len < source.len
+		assert got.v_source.contains(c_error_v_source_truncation_notice)
+		assert got.v_source.contains('the_unique_failing_line_marker')
+	}
+}
+
+fn test_export_external_v3_report_marks_complete_file_containing_marker_text_as_untruncated() {
+	// A complete file that legitimately contains the truncation-marker comment text must NOT be
+	// classified as truncated. Truncation is carried explicitly through the handoff, computed
+	// from the byte budget, not inferred from (user-controlled) source content (PR #28234 review).
+	clear_v3_report_env()
+	source := 'fn main() {\n\t${c_error_v_source_truncation_notice}\n\tprintln(1)\n}'
+	assert source.contains(c_error_v_source_truncation_notice)
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:          '' // generated-C compilation error
+		ccompiler:     'clang'
+		c_output:      'error: use of undeclared identifier missing'
+		v_file:        'main.v'
+		v_source:      source
+		source_inline: true
+		tag:           'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	if got.kind == external_v3_transport_limited_kind {
+		return // environment too small to forward the manifest; nothing to assert
+	}
+	// The whole file fit the budget, so it was forwarded complete and reported as untruncated,
+	// even though its content contains the marker text.
+	assert got.v_source == source
+	assert !got.v_source_truncated
+}
+
+fn test_export_external_v3_report_preserves_incoming_truncation_flag() {
+	// A wasm re-export forwards a report whose source was already bounded by the first handoff.
+	// If that excerpt fits the second budget (no further bounding), the exporter must still mark
+	// it truncated rather than re-announce it as the complete file (PR #28234 review).
+	clear_v3_report_env()
+	excerpt := 'module main\n${c_error_v_source_truncation_notice}\nfn main() {}'
+	export_external_v3_report_to_env(ExternalCErrorBugReport{
+		kind:               '' // generated-C compilation error
+		ccompiler:          'clang'
+		c_output:           'error: use of undeclared identifier missing'
+		v_file:             'main.v'
+		v_source:           excerpt
+		v_source_truncated: true
+		source_inline:      true
+		tag:                'V3'
+	})
+	got := take_external_v3_report_from_env() or {
+		assert false, 'no report round-tripped'
+		return
+	}
+	if got.kind == external_v3_transport_limited_kind {
+		return // environment too small to forward the manifest; nothing to assert
+	}
+	// The small excerpt fits the budget (forwarded whole), but its incoming truncation flag is
+	// preserved through the re-export.
+	assert got.v_source == excerpt
+	assert got.v_source_truncated
 }
 
 fn test_v3_report_env_budget_reserves_existing_argv_and_environment() {
@@ -644,7 +945,8 @@ fn test_build_inline_c_error_report_classifies_and_filters() {
 	// (`v-c-compiler-error`) report carrying the bounded content — not misreported as an
 	// internal V3 error (which would emit `v3-compiler-error`) (PR #28131 review).
 	report := build_inline_c_error_report(&prefs, 'clang',
-		'main.tmp.c:3:9: error: use of undeclared identifier x', 'main.v', 'fn main() {}', 'V3') or {
+		'main.tmp.c:3:9: error: use of undeclared identifier x', 'main.v', 'fn main() {}',
+		false, 'V3') or {
 		assert false, 'an ordinary generated-C diagnostic must be reportable'
 		return
 	}
@@ -652,11 +954,13 @@ fn test_build_inline_c_error_report_classifies_and_filters() {
 	assert report.c_error.contains('undeclared identifier')
 	assert report.v_file == 'main.v'
 	assert report.v_source == 'fn main() {}'
+	// The explicit truncation flag is carried through, not inferred from source content.
+	assert !report.v_source_truncated
 	assert report.build_options.split(' ').first() == 'V3'
 	// An expected missing-library diagnostic is filtered out (not uploaded), exactly as
 	// the in-process generated-C path already does.
 	if _ := build_inline_c_error_report(&prefs, 'clang', "ld: library 'macos_v3_absent' not found",
-		'main.v', 'fn main() {}', 'V3')
+		'main.v', 'fn main() {}', false, 'V3')
 	{
 		assert false, 'a missing-library diagnostic must not be reported'
 	}
@@ -722,36 +1026,6 @@ fn test_v_source_and_context_expose_whole_file_checks_the_union() {
 	assert !v_source_and_context_expose_whole_file('', [], mapped)
 }
 
-fn test_v3_report_v_source_bounds_large_files() {
-	// A program at or below the window (2 * c_error_v_source_radius lines) cannot be
-	// reduced to a strict subset, so no source is uploaded for it at all — the whole
-	// file is never sent.
-	small := 'fn main() {\n\tprintln(1)\n}\n'
-	assert v3_report_v_source(small) == ''
-	// A larger program is reduced to a bounded head+tail window; the middle (which
-	// could hold unrelated proprietary code) is dropped and never uploaded.
-	mut lines := []string{}
-	for i in 0 .. 4 * c_error_v_source_radius {
-		lines << 'fn f${i}() { println(${i}) }'
-	}
-	big := lines.join('\n')
-	snippet := v3_report_v_source(big)
-	assert snippet != ''
-	assert snippet.len < big.len
-	assert snippet.contains(c_error_v_source_truncation_notice)
-	assert snippet.contains('fn f0() ') // head kept
-	assert snippet.contains('fn f${4 * c_error_v_source_radius - 1}() ') // tail kept
-	assert !snippet.contains('fn f${2 * c_error_v_source_radius}() ') // middle dropped
-	assert snippet.split_into_lines().len <= 2 * c_error_v_source_radius + 3
-	// A program just over the window whose only dropped (middle) line is blank still
-	// exposes every nonblank line via head+tail, so no source is uploaded even though
-	// the file is over 80 lines (PR #28131 review).
-	mut blank_middle := []string{}
-	for i in 0 .. 2 * c_error_v_source_radius + 1 {
-		blank_middle << if i == c_error_v_source_radius { '' } else { 'fn g${i}() {}' }
-	}
-	assert v3_report_v_source(blank_middle.join('\n')) == ''
-}
 
 fn test_selected_v_source_only_uploads_mapped_v_source_chunk() {
 	// a mapped V file yields a small chunk around the failing line
@@ -859,9 +1133,9 @@ fn test_v_source_location_mapping_from_line_directives() {
 }
 
 fn test_bounded_v3_fallback_source_maps_generated_c_error() {
-	// A generated-C compilation error is mapped back to its V source line (via the #line
-	// directives in the trusted staged C) and a bounded window of that V file is returned
-	// — a strict subset, never the whole file (PR #28131 review).
+	// A generated-C compilation error is mapped back to its V source file (via the #line
+	// directives in the trusted staged C) and the full file is returned, so the report is
+	// reproducible.
 	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_map_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
@@ -879,22 +1153,22 @@ fn test_bounded_v3_fallback_source_maps_generated_c_error() {
 	os.write_file(generated_c, '#line 100 "${v_path}"\nint a = 1;\nint b = missing;\n')!
 	c_output := '${generated_c}:3:9: error: use of undeclared identifier missing'
 	// kind '' selects the generated-C mapping path.
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+	v_file, v_source, focus := bounded_v3_fallback_source('', c_output, generated_c, {
 		v_path: sha256.hexhash(whole)
 	})
 	assert v_file == 'source.v'
-	assert v_source != ''
-	// A bounded strict subset centered on the mapped V line (~100), never the whole file.
-	assert v_source.len < whole.len
+	// The full mapped file is returned, plus the failing line to focus on, so the byte bound is
+	// applied once at the handoff without dropping the failing code.
+	assert v_source == whole
 	assert v_source.contains('fn f100()')
+	// `#line 100` makes the next C line map to V line 100, so the error one line later is 101.
+	assert focus == 101
 }
 
-fn test_bounded_v3_fallback_source_rejects_nonblank_whole_file_generated_c() {
-	// A generated-C error mapping near line 40 of an 81-line file whose omitted final line
-	// is only whitespace: the window (lines 1..80) covers every nonblank line, so exact
-	// line-array equality misses it but the nonblank coverage check must still drop the
-	// excerpt rather than upload the whole program (doc/docs.md, PR #28131 review).
-	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_nonblank_${os.getpid()}')
+fn test_bounded_v3_fallback_source_uploads_whole_mapped_file_generated_c() {
+	// A generated-C error mapping into a small file uploads the whole file (it is the
+	// reproducer), so the report reproduces rather than dropping to metadata-only.
+	dir := os.join_path(os.vtmp_dir(), 'v3_gen_c_wholefile_${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
 	defer {
@@ -911,12 +1185,12 @@ fn test_bounded_v3_fallback_source_rejects_nonblank_whole_file_generated_c() {
 	generated_c := os.join_path(dir, 'program.tmp.c')
 	os.write_file(generated_c, '#line 40 "${v_path}"\nint b = missing;\n')!
 	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+	v_file, v_source, _ := bounded_v3_fallback_source('', c_output, generated_c, {
 		v_path: sha256.hexhash(whole)
 	})
 	assert v_file == 'source.v'
-	// The mapped window exposes every nonblank line, so no source is uploaded.
-	assert v_source == '', v_source
+	// The full file is uploaded so the failure can be reproduced from the report.
+	assert v_source == whole, v_source
 }
 
 fn test_bounded_v3_fallback_source_rejects_unparsed_mapped_file() {
@@ -936,7 +1210,7 @@ fn test_bounded_v3_fallback_source_rejects_unparsed_mapped_file() {
 	generated_c := os.join_path(dir, 'program.tmp.c')
 	os.write_file(generated_c, '#line 1 "${unrelated_path}"\nint exposed = missing;\n')!
 	c_output := '${generated_c}:2:15: error: use of undeclared identifier missing'
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+	v_file, v_source, _ := bounded_v3_fallback_source('', c_output, generated_c, {
 		parsed_path: sha256.hexhash(os.read_file(parsed_path)!)
 	})
 	assert v_file == ''
@@ -963,7 +1237,7 @@ fn test_bounded_v3_fallback_source_rejects_changed_parsed_source() {
 	// Simulate an editor/build watcher replacing the mapped input after V3 parsed it.
 	os.write_file(v_path, original.replace('original_', 'new_private_'))!
 	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
-	v_file, v_source := bounded_v3_fallback_source('', c_output, generated_c, {
+	v_file, v_source, _ := bounded_v3_fallback_source('', c_output, generated_c, {
 		v_path: parsed_digest
 	})
 	assert v_file == 'source.v'
@@ -1168,7 +1442,7 @@ fn test_new_c_error_bug_report_with_vlines_is_skipped_when_already_vlines() {
 			is_vlines: true
 		}
 	}
-	if _ := b.new_c_error_bug_report_with_vlines('cc') {
+	if _ := b.new_c_error_bug_report_with_vlines('cc', false) {
 		assert false, 'expected none when the C source is already #line annotated'
 	}
 }
@@ -1180,9 +1454,40 @@ fn test_new_c_error_bug_report_with_vlines_is_skipped_without_a_recorded_command
 		pref:        &pref.Preferences{}
 		last_cc_cmd: ''
 	}
-	if _ := b.new_c_error_bug_report_with_vlines('cc') {
+	if _ := b.new_c_error_bug_report_with_vlines('cc', false) {
 		assert false, 'expected none when no C compiler command was recorded'
 	}
+}
+
+fn test_new_c_error_bug_report_limits_full_source_to_v3_fallbacks() {
+	dir := os.join_path(os.vtmp_dir(), 'c_error_source_scope_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	source := "module main\n\nfn helper() {\n\tprintln('needed')\n}\n\nfn main() {\n\thelper()\n}\n\nfn unrelated() {\n\tprintln('private')\n}"
+	v_path := os.join_path(dir, 'source.v')
+	os.write_file(v_path, source)!
+	generated_c := os.join_path(dir, 'program.tmp.c')
+	os.write_file(generated_c, '#line 8 "${v_path}"\nint b = missing;\n')!
+	c_output := '${generated_c}:2:9: error: use of undeclared identifier missing'
+	mut b := Builder{
+		pref:       &pref.Preferences{}
+		out_name_c: generated_c
+		table:      ast.new_table()
+	}
+	b.parsed_files = [parser.parse_file(v_path, mut b.table, .skip_comments, b.pref)]
+	repro := b.v_source_reproducer(v_path, 8, c_error_bug_report_max_v_source_bytes)
+	assert repro != ''
+	assert repro.contains('fn helper()')
+	assert !repro.contains('fn unrelated()')
+	direct_report := b.new_c_error_bug_report('clang', c_output, false)
+	assert direct_report.v_source == repro
+	assert direct_report.v_source_truncated
+	fallback_report := b.new_c_error_bug_report('clang', c_output, true)
+	assert fallback_report.v_source == source
+	assert !fallback_report.v_source_truncated
 }
 
 fn clear_v3_report_env() {

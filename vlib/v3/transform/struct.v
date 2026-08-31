@@ -668,6 +668,22 @@ fn (mut t Transformer) generic_struct_init_value_type(id flat.NodeId) string {
 	}
 }
 
+fn (mut t Transformer) specialize_struct_default_expr(struct_type string, default_id flat.NodeId) flat.NodeId {
+	base, args, is_generic := generic_app_parts(struct_type)
+	if !is_generic || args.len == 0 {
+		return default_id
+	}
+	params := t.generic_struct_param_names_for_base(base)
+	if params.len == 0 || params.len != args.len {
+		return default_id
+	}
+	old_params := t.active_generic_params.clone()
+	t.active_generic_params = params
+	clone_id := t.clone_generic_node(default_id, args)
+	t.active_generic_params = old_params
+	return clone_id
+}
+
 // add_missing_struct_defaults checks if any fields with default values are missing
 // from the struct initialization. This is a hook point for future default-fill logic.
 // Currently returns the node unchanged because StructInfo does not yet store default values.
@@ -738,17 +754,18 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			continue
 		}
 		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
-		default_node := t.a.nodes[int(field.default_expr)]
+		default_id := t.specialize_struct_default_expr(node.value, field.default_expr)
+		default_node := t.a.nodes[int(default_id)]
 		enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 		new_val := if default_node.kind == .enum_val && enum_field_type.len > 0 {
-			t.transform_enum_shorthand(field.default_expr, default_node, enum_field_type)
+			t.transform_enum_shorthand(default_id, default_node, enum_field_type)
 		} else if t.is_sum_type_name(field_type) {
 			// A sum-type field default (e.g. `typ_expr Expr = EmptyExpr{}`) must be
 			// wrapped into the sum, not emitted as the bare variant. wrap_sum_value
 			// is a no-op when the value already is the sum type.
-			t.wrap_sum_value(field.default_expr, field_type)
+			t.wrap_sum_value(default_id, field_type)
 		} else {
-			t.transform_expr_for_type(field.default_expr, field_type)
+			t.transform_expr_for_type(default_id, field_type)
 		}
 		t.drain_pending(mut prelude)
 		fi_start := t.a.children.len
@@ -813,6 +830,13 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 		bare := name['main.'.len..]
 		if bare in t.structs {
 			return t.structs[bare]
+		}
+	}
+	if alias_target := t.alias_target_type_preserving_main_lock(name) {
+		if alias_target != name {
+			if info := t.lookup_struct_info(alias_target) {
+				return info
+			}
 		}
 	}
 	base, args, has_generic_args := generic_app_parts(name)
@@ -1530,6 +1554,12 @@ fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) f
 		t.node_type(id)
 	}
 	map_type := t.normalize_type_alias(raw_type)
+	if t.is_optional_type_name(map_type) && node.children_count == 0 {
+		payload_type := t.optional_base_type(map_type)
+		if payload_type.starts_with('map[') {
+			return t.make_optional_none(t.qualify_optional_type(map_type))
+		}
+	}
 	if map_type.starts_with('map[') {
 		mut map_node := node
 		map_node.value = map_type

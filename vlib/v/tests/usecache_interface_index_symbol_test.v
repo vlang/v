@@ -43,7 +43,7 @@ fn test_usecache_interface_index_is_real_symbol() {
 	assert res2.output.contains('enum { _IError_None___index =')
 }
 
-fn test_usecache_builtin_fixed_array_globals_are_extern_only() {
+fn test_usecache_builtin_autostr_globals_are_extern_only() {
 	tmp_dir := os.join_path(os.vtmp_dir(), 'v_issue_27592')
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	defer {
@@ -56,10 +56,11 @@ fn test_usecache_builtin_fixed_array_globals_are_extern_only() {
 		os.execute('${os.quoted_path(vexe)} -old-compiler -usecache -o - ${os.quoted_path(source_path)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('extern Array_fixed_int_64 g_autostr_type_stack;'), res.output
-	assert res.output.contains('extern Array_fixed_voidptr_64 g_autostr_addr_stack;'), res.output
+	assert res.output.contains('extern AutostrAddrStackState g_autostr_addr_state;'), res.output
 	assert !res.output.contains('extern Array_fixed_int_64 g_autostr_type_stack = {0};'), res.output
+	assert !res.output.contains('extern AutostrAddrStackState g_autostr_addr_state ='), res.output
 	assert !res.output.contains('g_autostr_type_stack = {0}; // global 3'), res.output
-	assert !res.output.contains('g_autostr_addr_stack = {0}; // global 3'), res.output
+	assert !res.output.contains('g_autostr_addr_state = {0}; // global'), res.output
 }
 
 fn test_usecache_shared_interface_lock_uses_enum_index_in_case_labels() {

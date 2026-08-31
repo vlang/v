@@ -2,6 +2,29 @@ module fastc
 
 import v3.token
 
+fn fastc_match_common_numeric_variant(variants []string) string {
+	if variants.len < 2 {
+		return ''
+	}
+	mut has_float := false
+	for variant in variants {
+		if variant != 'bool' && !fastc_is_numeric_expression_type(variant) {
+			return ''
+		}
+		has_float = has_float || variant in ['f32', 'f64']
+	}
+	return if has_float { 'f64' } else { 'u64' }
+}
+
+fn fastc_match_multi_variant_value(subject string, access string, variants []string, common_type string) string {
+	mut source := '((${common_type})0)'
+	for i := variants.len - 1; i >= 0; i-- {
+		variant := variants[i]
+		source = '((${subject}${access}_typ == __v_typeid_${variant}) ? ((${common_type})(*(${variant} *)${subject}${access}_object)) : (${source}))'
+	}
+	return source
+}
+
 fn (mut g Parser) read_match_expression() !string {
 	outer_expected_type := g.expected_expression_type
 	g.expect(.key_match)!
@@ -10,6 +33,20 @@ fn (mut g Parser) read_match_expression() !string {
 	subject_type := g.last_expression_type
 	if subject == '' || subject_type == '' {
 		return g.unsupported('unverifiable match expression subject')
+	}
+	subject_tokens := g.last_expression.clone()
+	// A sum-type / interface subject dispatches on the boxed `_typ` tag; each branch
+	// names a variant type and (for a plain-local subject) is smart-cast inside its
+	// value expression.
+	is_boxed := g.is_boxed_type(fastc_normalize_inferred_type(subject_type))
+	boxed_access := if subject_type.ends_with('*') { '->' } else { '.' }
+	mut subject_local := ''
+	if is_boxed && subject_tokens.len == 1 && subject_tokens[0].tok == .name
+		&& subject_tokens[0].lit in g.locals {
+		subject_local = subject_tokens[0].lit
+	} else if is_boxed && subject_tokens.len == 2 && subject_tokens[0].tok in [.key_mut, .amp]
+		&& subject_tokens[1].tok == .name && subject_tokens[1].lit in g.locals {
+		subject_local = subject_tokens[1].lit
 	}
 	g.expect(.lcbr)!
 	temporary := g.temporary_name('match')
@@ -23,18 +60,46 @@ fn (mut g Parser) read_match_expression() !string {
 	for g.tok != .rcbr && g.tok != .eof {
 		mut is_else := false
 		mut branch_conditions := []string{}
+		mut branch_variant := ''
+		mut branch_variants := []string{}
+		mut variant_count := 0
+		mut branch_all_arrays := true
 		if g.tok == .key_else {
 			is_else = true
 			g.next()
+		} else if is_boxed {
+			for {
+				variant_key := g.read_match_type_key() or {
+					return g.unsupported('match expression type value')
+				}
+				variant_cname := fastc_c_declared_type_name(variant_key)
+				if variant_cname in handled_cases {
+					return g.unsupported('duplicate match case `${variant_cname}`')
+				}
+				handled_cases[variant_cname] = true
+				branch_conditions << '(${temporary}${boxed_access}_typ == __v_typeid_${variant_cname})'
+				branch_variant = variant_cname
+				branch_variants << variant_cname
+				if !variant_cname.starts_with('Array_') {
+					branch_all_arrays = false
+				}
+				variant_count++
+				if g.tok != .comma {
+					break
+				}
+				g.next()
+			}
 		} else {
 			for {
 				g.expected_expression_type = subject_type
-				start :=
-					g.read_expression([token.Token.comma, token.Token.lcbr, token.Token.dotdot])!
+				start := g.read_expression([token.Token.comma, token.Token.lcbr, token.Token.dotdot,
+					token.Token.ellipsis])!
 				start_tokens := g.last_expression.clone()
 				mut case_key := g.normalized_match_case_key(start_tokens, start)
 				mut case_source := start
-				if g.tok == .dotdot {
+				// A match range case uses `...` (inclusive, `.ellipsis`); `..` (`.dotdot`) is
+				// also accepted defensively.
+				if g.tok in [token.Token.dotdot, token.Token.ellipsis] {
 					g.next()
 					finish := g.read_expression([token.Token.comma, token.Token.lcbr])!
 					finish_tokens := g.last_expression.clone()
@@ -61,14 +126,66 @@ fn (mut g Parser) read_match_expression() !string {
 		}
 		g.expect(.lcbr)!
 		g.expected_expression_type = outer_expected_type
+		// A single-type branch smart-casts to that variant. A branch listing several
+		// array variants (`[]int, []string { value.len }`) cannot pick one concrete
+		// element type, but every V array shares the generic `array` layout, so casting
+		// to `array` still exposes the common fields (`len`, `cap`, `data`).
+		common_numeric_type := fastc_match_common_numeric_variant(branch_variants)
+		smartcast_type := if variant_count == 1 {
+			branch_variant
+		} else if variant_count > 1 && branch_all_arrays {
+			'array'
+		} else if common_numeric_type != '' {
+			common_numeric_type
+		} else {
+			''
+		}
+		mut smartcast_saved := FastcLocal{}
+		smartcast_active := is_boxed && !is_else && smartcast_type != '' && subject_local != ''
+		if smartcast_active {
+			smartcast_saved = g.locals[subject_local] or { FastcLocal{} }
+			g.locals[subject_local] = FastcLocal{
+				is_mut: smartcast_saved.is_mut
+				typ:    smartcast_type
+			}
+		}
 		mut value := g.read_match_block_expression_value()!
 		mut value_type := g.last_expression_type
+		if smartcast_active {
+			g.locals[subject_local] = smartcast_saved
+			smartcast_value := if common_numeric_type != '' {
+				fastc_match_multi_variant_value(temporary, boxed_access, branch_variants,
+					common_numeric_type)
+			} else {
+				'*(${smartcast_type} *)${temporary}${boxed_access}_object'
+			}
+			value = '({ ${smartcast_type} ${fastc_c_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
+		}
+		if g.selfhost && value_type != '' && outer_expected_type != ''
+			&& g.should_box_variant(outer_expected_type, value_type) {
+			// A branch value whose type is a variant of the match's (boxed) expected
+			// type must be boxed, so every branch shares the ternary's result type
+			// (e.g. a `[]Primitive` branch returning the smart-cast array as a `Primitive`).
+			value = g.interface_value_expression(outer_expected_type, value_type, value)
+			value_type = outer_expected_type
+		}
 		g.skip_semicolons()
 		if g.tok != .rcbr {
 			return g.unsupported('match branch `${value}` left `${g.token_source()}` (`${g.tok.str()}`)')
 		}
 		g.expect(.rcbr)!
 		g.skip_semicolons()
+		if g.selfhost && value_type.trim_right('*') == 'IError' && g.return_type == 'Option' {
+			error_result_type := if result_type != '' {
+				result_type
+			} else {
+				outer_expected_type
+			}
+			if error_result_type != '' && error_result_type != 'Option' {
+				value = '({ return (Option){.err=${value}, .state=1}; (${fastc_normalize_inferred_type(error_result_type)}){0}; })'
+				value_type = error_result_type
+			}
+		}
 		if g.selfhost && result_type == 'Option' && value_type !in ['', 'Option'] {
 			value = fastc_option_success_expression(value_type, value)
 			value_type = 'Option'
@@ -160,7 +277,7 @@ fn (mut g Parser) read_match_block_expression_value() !string {
 	}
 	mut packed_values := []string{cap: values.len}
 	for value in values {
-		packed_values << 'V_FASTC_MULTI_VALUE(${value})'
+		packed_values << 'V_FASTC_MULTI_VALUE((${value}))'
 	}
 	g.last_expression_type = 'MultiReturn'
 	g.last_expression = []FastcExpressionToken{}
@@ -174,7 +291,25 @@ fn (mut g Parser) read_block_expression_value() !string {
 		return g.read_if_expression()!
 	}
 	if !g.or_block_has_statements() {
-		return g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+		first := g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
+		if g.tok != .comma {
+			return first
+		}
+		mut values := [first]
+		mut value_types := [fastc_normalize_inferred_type(g.last_expression_type)]
+		for g.tok == .comma {
+			g.next()
+			values << g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
+			value_types << fastc_normalize_inferred_type(g.last_expression_type)
+		}
+		mut packed_values := []string{cap: values.len}
+		for value in values {
+			packed_values << 'V_FASTC_MULTI_VALUE((${value}))'
+		}
+		g.last_expression_type = 'MultiReturn'
+		g.last_expression = []FastcExpressionToken{}
+		g.last_multi_return_types = value_types.clone()
+		return '(MultiReturn){.values={${packed_values.join(', ')}}}'
 	}
 	previous_capture := g.capturing_defer
 	previous_lines := g.captured_defer_lines.clone()
@@ -199,9 +334,38 @@ fn (mut g Parser) read_block_expression_value() !string {
 	mut value := if g.tok == .name {
 		prefix := g.lit
 		g.next()
-		g.read_expression_with_prefix(prefix, [token.Token.semicolon, token.Token.rcbr])!
+		g.read_expression_with_prefix(prefix,
+			[token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
 	} else {
-		g.read_expression([token.Token.semicolon, token.Token.rcbr])!
+		g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
+	}
+	if g.tok == .comma {
+		// A multi-return block value (`{ c := ...; c, '.zst', 'zstd' }`, e.g. veb's
+		// compressed-static match): pack the comma-separated values into a MultiReturn,
+		// mirroring the single-line branch path above.
+		mut values := [value]
+		mut value_types := [fastc_normalize_inferred_type(g.last_expression_type)]
+		for g.tok == .comma {
+			g.next()
+			part := if g.tok == .name {
+				prefix := g.lit
+				g.next()
+				g.read_expression_with_prefix(prefix, [token.Token.comma, token.Token.semicolon,
+					token.Token.rcbr])!
+			} else {
+				g.read_expression([token.Token.comma, token.Token.semicolon, token.Token.rcbr])!
+			}
+			values << part
+			value_types << fastc_normalize_inferred_type(g.last_expression_type)
+		}
+		mut packed_values := []string{cap: values.len}
+		for packed_value in values {
+			packed_values << 'V_FASTC_MULTI_VALUE((${packed_value}))'
+		}
+		g.last_expression_type = 'MultiReturn'
+		g.last_expression = []FastcExpressionToken{}
+		g.last_multi_return_types = value_types.clone()
+		return '({ ${statements.join(' ')} (MultiReturn){.values={${packed_values.join(', ')}}}; })'
 	}
 	if g.tok == .name {
 		prefix := g.lit

@@ -3086,7 +3086,7 @@ pub fn c_source_typedef_identifiers(source string) map[string]bool {
 				bracket_depth--
 			}
 			`{` {
-				if function_depth == 0 && typedef_start < 0 {
+				if function_depth == 0 && brace_depth == 0 && typedef_start < 0 {
 					head := trim_leading_c_comments(source[item_start..i].trim_space())
 					if c_static_declaration_head_is_function(head) {
 						function_depth = 1
@@ -3105,6 +3105,11 @@ pub fn c_source_typedef_identifiers(source string) map[string]bool {
 					if function_depth == 0 {
 						item_start = i + 1
 					}
+				} else if brace_depth == 0 && typedef_start < 0 {
+					// Macro-decorated function heads are not always recognizable. Once
+					// their outer block closes, do not rescan that whole body as the
+					// prefix of every following declaration.
+					item_start = i + 1
 				}
 			}
 			`;` {

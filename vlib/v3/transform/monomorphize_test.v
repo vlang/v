@@ -3,6 +3,25 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_comptime_loop_type_metadata_survives_generic_specialization() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cloning_comptime_for_depth = 1
+	t.cloning_comptime_for_vars = ['field']
+
+	assert t.subst_comptime_type_operand('field.typ', ['Address']) == 'field.typ'
+	assert t.subst_comptime_type_operand('field.unaliased_typ', ['Address']) == 'field.unaliased_typ'
+	assert t.subst_comptime_type_operand('field.unaliased_typ.payload_type', [
+		'Address',
+	]) == 'field.unaliased_typ.payload_type'
+	t.cur_module = 'veb'
+	assert t.subst_comptime_type_operand("'Middleware'", ['App']) == "'Middleware'"
+	assert t.subst_comptime_type_condition("field.name == 'Middleware'", [
+		'App',
+	]) == "field.name == 'Middleware'"
+}
+
 fn test_generic_unresolved_type_detects_multi_return_placeholders() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -154,6 +173,8 @@ fn test_flattened_generic_struct_arg_canonicalizes_to_source_application() {
 	])
 	assert t.generic_specialized_source_type_name('StructType_int') or { '' } == 'StructType[int]'
 	assert t.canonical_generic_specialization_arg('StructType_int') == 'StructType[int]'
+	assert t.generic_specialized_source_type_name('&StructType_int') or { '' } == '&StructType[int]'
+	assert t.canonical_generic_specialization_arg('&StructType[int]') == '&StructType[int]'
 
 	t.record_generic_specialization_args_in_module('StructType', 'main', ['time.Time'])
 	assert c_name('StructType[time.Time]') == 'StructType_time__Time'
@@ -173,6 +194,88 @@ fn test_short_fixed_array_generic_arg_canonicalizes_to_source_type() {
 	assert t.canonical_generic_specialization_arg('int_3_2') == '[2][3]int'
 	tc.type_aliases['int_2'] = 'int'
 	assert t.canonical_generic_specialization_arg('int_2') == 'int_2'
+}
+
+fn test_composite_generic_inference_preserves_nested_alias() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Distance'] = 'int'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_generic_alias_name_index()
+
+	assert t.generic_composite_inference_alias_type('datatypes.LinkedList[Distance]', 'datatypes') == 'datatypes.LinkedList[Distance]'
+}
+
+fn test_composite_generic_inference_still_expands_direct_alias() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['Distances'] = '[]int'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.build_generic_alias_name_index()
+
+	assert t.generic_composite_inference_alias_type('Distances', 'main') == '[]int'
+}
+
+fn test_concrete_generic_fn_alias_call_expands_multi_return_signature() {
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'make_splitter'
+	})
+	children_start := a.children.len
+	a.children << callee_id
+	call_id := a.add_node(flat.Node{
+		kind:           .call
+		typ:            'fn(I) (O, R)[string, string, string]'
+		children_start: children_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['FnMultiReturn'] = 'fn (I) (O, R)'
+	tc.type_alias_generic_params['FnMultiReturn'] = ['I', 'O', 'R']
+	tc.fn_ret_types['make_splitter'] = types.Type(types.Alias{
+		name:      'FnMultiReturn[string, string, string]'
+		base_type: types.Type(types.void_)
+	})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+
+	concrete := t.concrete_fn_alias_call_return_type(int(call_id), a.nodes[int(call_id)]) or {
+		assert false, 'generic function type alias was not expanded'
+		return
+	}
+	assert concrete == 'fn(string) (string, string)'
+}
+
+fn test_concrete_generic_fn_alias_call_expands_result_signature() {
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'literal'
+	})
+	children_start := a.children.len
+	a.children << callee_id
+	call_id := a.add_node(flat.Node{
+		kind:           .call
+		typ:            'fn(string) !ParseResult[T][string]'
+		children_start: children_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases['ParseFunction'] = 'fn (string) !ParseResult[T]'
+	tc.type_alias_generic_params['ParseFunction'] = ['T']
+	tc.fn_ret_types['literal'] = types.Type(types.Alias{
+		name:      'ParseFunction[string]'
+		base_type: types.Type(types.void_)
+	})
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+
+	concrete := t.concrete_fn_alias_call_return_type(int(call_id), a.nodes[int(call_id)]) or {
+		assert false, 'generic result function type alias was not expanded'
+		return
+	}
+	assert concrete == 'fn(string) !ParseResult[string]'
 }
 
 fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base() {
@@ -230,6 +333,13 @@ fn test_lock_colliding_main_generic_type_text_locks_args_behind_qualified_base()
 	assert t.specialization_main_type_closure(['map[string]Event']) == {
 		'Event': true
 	}
+	tc.type_aliases['AliasContext'] = 'Context'
+	assert t.specialization_main_type_closure(['AliasContext']) == {
+		'AliasContext': true
+		'Context':      true
+	}
+	t.active_specialization_main_types['AliasContext'] = true
+	assert t.lock_colliding_main_generic_type_text('AliasContext', 'callee') == 'main.AliasContext'
 }
 
 fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
@@ -255,6 +365,12 @@ fn test_lock_colliding_main_substitution_keeps_decl_module_generic_base() {
 	t.active_specialization_main_types['Context'] = true
 	assert t.lock_colliding_main_substitution_type_text('other.Box[map[other.Key]T]',
 		'other.Box[map[other.Key]Context]', 'arc', ['T']) == 'other.Box[map[other.Key]main.Context]'
+}
+
+fn test_generic_fn_type_param_mode_payload_preserves_mutability() {
+	assert generic_fn_type_param_mode_payload('mut Item') == 'mut Item'
+	assert generic_fn_type_param_mode_payload('mut item Item') == 'mut Item'
+	assert generic_fn_type_param_mode_payload('item Item') == 'Item'
 }
 
 fn test_resolve_substituted_type_text_qualifies_local_generic_base() {
