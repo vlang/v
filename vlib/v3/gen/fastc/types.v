@@ -413,8 +413,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 				return fastc_c_declared_type_name(type_key)
 			}
 		}
-		if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[start].lit, g.imports,
-			g.declared_types)
+		if type_key := g.resolve_declared_type_key(tokens[start].lit)
 		{
 			if enum_type_key := g.underlying_enum_type_key(type_key) {
 				return fastc_c_declared_type_name(enum_type_key)
@@ -462,8 +461,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 	if start + 1 < end && tokens[start].tok == .name && tokens[start + 1].tok == .lcbr {
 		if close := fastc_matching_delimiter(tokens[start..end], 1, .lcbr, .rcbr) {
 			if close == end - start - 1 {
-				if type_key := fastc_resolve_declared_type_key(g.module_name, tokens[start].lit,
-					g.imports, g.declared_types)
+				if type_key := g.resolve_declared_type_key(tokens[start].lit)
 				{
 					return fastc_c_declared_type_name(type_key)
 				}
@@ -516,8 +514,7 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 					if primitive := fastc_primitive_c_type(name) {
 						return primitive
 					}
-					if type_key := fastc_resolve_declared_type_key(g.module_name, name, g.imports,
-						g.declared_types)
+					if type_key := g.resolve_declared_type_key(name)
 					{
 						return fastc_c_declared_type_name(type_key)
 					}
@@ -1110,12 +1107,10 @@ fn (g &Parser) array_element_type(typ string) ?string {
 		return element_type
 	}
 	layout_type := typ.trim_right('*')
-	if layout_type !in g.struct_fields {
-		return none
+	if fields := g.struct_fields[layout_type] {
+		return fields['__fastc_element_type'] or { none }
 	}
-	fields := g.struct_fields[layout_type].clone()
-	element_type := fields['__fastc_element_type'] or { return none }
-	return element_type
+	return none
 }
 
 fn fastc_is_integer_type(typ string) bool {
@@ -1136,30 +1131,42 @@ fn fastc_is_signed_integer_type(typ string) bool {
 }
 
 fn fastc_nondecimal_literal_is_type_sensitive(literal string) bool {
-	clean := literal.replace('_', '')
+	clean := fastc_number_without_separators(literal)
+	return fastc_clean_nondecimal_literal_is_type_sensitive(clean)
+}
+
+fn fastc_clean_nondecimal_literal_is_type_sensitive(clean string) bool {
 	if clean.len <= 2 || clean[0] != `0` {
 		return false
 	}
-	digits := clean[2..].trim_left('0')
+	mut first_digit := 2
+	for first_digit < clean.len && clean[first_digit] == `0` {
+		first_digit++
+	}
+	digits_len := clean.len - first_digit
 	if clean[1] in [`x`, `X`] {
-		if digits.len > 8 {
+		if digits_len > 8 {
 			return true
 		}
-		return digits.len == 8 && ((digits[0] >= `8` && digits[0] <= `9`)
-			|| (digits[0] >= `a` && digits[0] <= `f`)
-			|| (digits[0] >= `A` && digits[0] <= `F`))
+		return digits_len == 8 && ((clean[first_digit] >= `8` && clean[first_digit] <= `9`)
+			|| (clean[first_digit] >= `a` && clean[first_digit] <= `f`)
+			|| (clean[first_digit] >= `A` && clean[first_digit] <= `F`))
 	}
 	if clean[1] in [`b`, `B`] {
-		return digits.len >= 32
+		return digits_len >= 32
 	}
 	if clean[1] in [`o`, `O`] {
-		return digits.len > 11 || (digits.len == 11 && digits[0] >= `2`)
+		return digits_len > 11 || (digits_len == 11 && clean[first_digit] >= `2`)
 	}
 	return false
 }
 
 fn fastc_decimal_literal_is_type_sensitive(literal string) bool {
-	clean := literal.replace('_', '')
+	clean := fastc_number_without_separators(literal)
+	return fastc_clean_decimal_literal_is_type_sensitive(clean)
+}
+
+fn fastc_clean_decimal_literal_is_type_sensitive(clean string) bool {
 	if clean.len == 0 || clean.contains_any('.eE') {
 		return false
 	}
@@ -1168,27 +1175,39 @@ fn fastc_decimal_literal_is_type_sensitive(literal string) bool {
 			return false
 		}
 	}
-	digits := clean.trim_left('0')
-	int_max_literal := '2147483647'
-	if digits.len != int_max_literal.len {
-		return digits.len > int_max_literal.len
+	mut first_digit := 0
+	for first_digit < clean.len && clean[first_digit] == `0` {
+		first_digit++
 	}
-	for i in 0 .. digits.len {
-		if digits[i] != int_max_literal[i] {
-			return digits[i] > int_max_literal[i]
+	digits_len := clean.len - first_digit
+	int_max_literal := '2147483647'
+	if digits_len != int_max_literal.len {
+		return digits_len > int_max_literal.len
+	}
+	for i in 0 .. digits_len {
+		if clean[first_digit + i] != int_max_literal[i] {
+			return clean[first_digit + i] > int_max_literal[i]
 		}
 	}
 	return false
 }
 
+@[inline]
+fn fastc_number_without_separators(literal string) string {
+	if literal.index_u8(`_`) < 0 {
+		return literal
+	}
+	return literal.replace('_', '')
+}
+
 fn fastc_c_number(literal string) !string {
-	clean := literal.replace('_', '')
-	if fastc_decimal_literal_is_type_sensitive(literal) {
+	clean := fastc_number_without_separators(literal)
+	if fastc_clean_decimal_literal_is_type_sensitive(clean) {
 		// C assigns oversized decimal tokens a wider type before any surrounding
 		// operation. Reject them until the direct parser can preserve V inference.
 		return error('fastc parser does not support oversized decimal literal expressions')
 	}
-	if fastc_nondecimal_literal_is_type_sensitive(literal) {
+	if fastc_clean_nondecimal_literal_is_type_sensitive(clean) {
 		return error('fastc parser does not support high-bit nondecimal literals')
 	}
 	if clean.len > 2 && clean[0] == `0` && clean[1] in [`o`, `O`] {
@@ -1207,16 +1226,16 @@ fn fastc_c_number(literal string) !string {
 }
 
 fn fastc_c_selfhost_number(literal string) string {
-	clean := literal.replace('_', '')
+	clean := fastc_number_without_separators(literal)
 	if clean.len > 2 && clean[0] == `0` && clean[1] in [`o`, `O`] {
-		return '0${clean[2..]}${if fastc_nondecimal_literal_is_type_sensitive(literal) {
+		return '0${clean[2..]}${if fastc_clean_nondecimal_literal_is_type_sensitive(clean) {
 			'ULL'
 		} else {
 			''
 		}}'
 	}
-	if fastc_decimal_literal_is_type_sensitive(literal)
-		|| fastc_nondecimal_literal_is_type_sensitive(literal) {
+	if fastc_clean_decimal_literal_is_type_sensitive(clean)
+		|| fastc_clean_nondecimal_literal_is_type_sensitive(clean) {
 		return clean + 'ULL'
 	}
 	if clean.len < 2 || clean[0] != `0` || !clean[1].is_digit() || clean.contains_any('.eE') {

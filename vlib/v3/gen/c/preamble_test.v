@@ -1,5 +1,37 @@
 module c
 
+fn test_thread_local_decl_uses_portable_c_dialects() {
+	mut g := FlatGen.new()
+	g.emit_thread_local_decl_after_tinyc('int state;')
+	c_code := g.sb.str()
+	assert c_code.contains('#elif defined(_MSC_VER)\n__declspec(thread) int state;')
+	assert c_code.contains('#elif defined(__cplusplus)\nthread_local int state;')
+	assert c_code.contains('#else\n_Thread_local int state;\n#endif')
+}
+
+fn test_tinyc_windows_thread_local_slot_uses_win32_tls() {
+	mut g := FlatGen.new()
+	g.emit_tinyc_windows_thread_local_slot('state', 'int', '')
+	c_code := g.sb.str()
+	windows_code := c_code.all_before('#elif defined(__TINYC__)')
+	assert windows_code.contains('#if defined(__TINYC__) && defined(_WIN32)')
+	assert windows_code.contains('state_key = FlsAlloc(state_slot_free);')
+	assert windows_code.contains('FlsGetValue(state_key)')
+	assert windows_code.contains('FlsSetValue(state_key, p)')
+	assert windows_code.contains('state_slot_free(void* p) { free(p); }')
+	assert !windows_code.contains('pthread_')
+}
+
+fn test_autostr_thread_local_matching_is_restricted_to_builtin_global() {
+	mut g := FlatGen.new()
+	g.global_modules['g_autostr_addr_state'] = 'builtin'
+	g.global_modules['foo.g_autostr_addr_state'] = 'foo'
+	assert g.is_builtin_autostr_addr_state('g_autostr_addr_state')
+	assert !g.is_builtin_autostr_addr_state('foo.g_autostr_addr_state')
+	g.global_modules['g_autostr_addr_state'] = 'main'
+	assert !g.is_builtin_autostr_addr_state('g_autostr_addr_state')
+}
+
 fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	headers := manual_stdlib_c_headers()
 	for name in ['memcpy', 'memmove', 'memset'] {
@@ -48,6 +80,12 @@ fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
 	assert c_code.contains('int printf(const char* format, ...);'), c_code
 	assert c_code.contains('void perror(const char* message);'), c_code
 	assert c_code.contains('void* memchr(const void* s, int c, size_t n);'), c_code
+	assert c_code.contains('DWORD WINAPI TlsAlloc(void);'), c_code
+	assert c_code.contains('void* WINAPI TlsGetValue(DWORD index);'), c_code
+	assert c_code.contains('BOOL WINAPI TlsSetValue(DWORD index, void* value);'), c_code
+	assert c_code.contains('DWORD WINAPI FlsAlloc(void (WINAPI *callback)(void*));'), c_code
+	assert c_code.contains('void* WINAPI FlsGetValue(DWORD index);'), c_code
+	assert c_code.contains('BOOL WINAPI FlsSetValue(DWORD index, void* value);'), c_code
 }
 
 fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {

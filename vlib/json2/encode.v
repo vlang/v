@@ -575,6 +575,56 @@ struct EncoderFieldInfo {
 	is_json_null bool
 }
 
+struct EncoderFieldInfoCache {
+mut:
+	field_infos []EncoderFieldInfo
+}
+
+// Keep runtime attribute parsing outside the compile-time field loop. This is called only while
+// a struct type's field metadata cache is initialized.
+@[manualfree; noinline]
+fn encoder_field_info(field_name string, attrs []string) EncoderFieldInfo {
+	mut is_skip := false
+	mut key_name := ''
+	mut is_omitempty := false
+	mut is_required := false
+	mut is_json_null := false
+	for attr in attrs {
+		match attr {
+			'skip' {
+				is_skip = true
+				break
+			}
+			'omitempty' {
+				is_omitempty = true
+			}
+			'required' {
+				is_required = true
+			}
+			'json_null' {
+				is_json_null = true
+			}
+			else {}
+		}
+
+		if attr.starts_with('json:') {
+			json_attr := json_attr_value(attr) or { continue }
+			if json_attr == '-' {
+				is_skip = true
+				break
+			}
+			key_name = json_attr
+		}
+	}
+	return EncoderFieldInfo{
+		key_name:     if key_name == '' { field_name } else { key_name.clone() }
+		is_skip:      is_skip
+		is_omitempty: is_omitempty
+		is_required:  is_required
+		is_json_null: is_json_null
+	}
+}
+
 fn get_value_from_optional[T](val ?T) T {
 	return val or { T{} }
 }
@@ -624,53 +674,15 @@ fn check_not_empty[T](val T) ?bool {
 
 // TODO: fix compilation with -autofree, and remove the tag @[manualfree] here:
 @[manualfree; unsafe]
-fn (mut encoder Encoder) cached_field_infos[T]() []EncoderFieldInfo {
-	static field_infos := &[]EncoderFieldInfo(nil)
-	if field_infos == nil {
-		field_infos = &[]EncoderFieldInfo{}
+fn (mut encoder Encoder) cached_field_infos[T]() &EncoderFieldInfoCache {
+	static cache := &EncoderFieldInfoCache(nil)
+	if cache == nil {
+		cache = &EncoderFieldInfoCache{}
 		$for field in T.fields {
-			mut is_skip := false
-			mut key_name := ''
-			mut is_omitempty := false
-			mut is_required := false
-			mut is_json_null := false
-			for attr in field.attrs {
-				match attr {
-					'skip' {
-						is_skip = true
-						break
-					}
-					'omitempty' {
-						is_omitempty = true
-					}
-					'required' {
-						is_required = true
-					}
-					'json_null' {
-						is_json_null = true
-					}
-					else {}
-				}
-
-				if attr.starts_with('json:') {
-					json_attr := json_attr_value(attr) or { continue }
-					if json_attr == '-' {
-						is_skip = true
-						break
-					}
-					key_name = json_attr
-				}
-			}
-			field_infos << EncoderFieldInfo{
-				key_name:     if key_name == '' { field.name } else { key_name }
-				is_skip:      is_skip
-				is_omitempty: is_omitempty
-				is_required:  is_required
-				is_json_null: is_json_null
-			}
+			cache.field_infos << encoder_field_info(field.name, field.attrs)
 		}
 	}
-	return *field_infos
+	return cache
 }
 
 fn (mut encoder Encoder) encode_struct_field_value[T](val T) {
@@ -777,7 +789,7 @@ fn (mut encoder Encoder) encode_sumtype_struct_variant_with_embeds[T](val T, var
 
 @[unsafe]
 fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used_keys []string, prefix string) bool {
-	field_infos := encoder.cached_field_infos[T]()
+	field_info_cache := encoder.cached_field_infos[T]()
 	mut is_first := was_first
 	mut used_keys := old_used_keys
 	mut i := 0
@@ -785,7 +797,7 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 	$for field in T.fields {
 		$if !field.is_embed {
 			if !field.attrs.contains('skip') {
-				field_info := field_infos[i]
+				field_info := field_info_cache.field_infos[i]
 				mut write_field := true
 
 				$if field.typ is $shared {
@@ -832,7 +844,7 @@ fn (mut encoder Encoder) encode_struct_fields[T](val T, was_first bool, old_used
 
 @[unsafe]
 fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool, old_used_keys []string, reserved_keys []string, prefix string) bool {
-	field_infos := encoder.cached_field_infos[T]()
+	field_info_cache := encoder.cached_field_infos[T]()
 	mut is_first := was_first
 	mut used_keys := old_used_keys.clone()
 	mut i := 0
@@ -842,7 +854,7 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 			mut child_reserved_keys := reserved_keys.clone()
 			mut reserved_i := 0
 			$for reserved_field in T.fields {
-				reserved_field_info := field_infos[reserved_i]
+				reserved_field_info := field_info_cache.field_infos[reserved_i]
 				$if !reserved_field.is_embed {
 					if !reserved_field_info.is_skip {
 						child_reserved_keys << reserved_field_info.key_name
@@ -863,7 +875,7 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 			}
 		} $else {
 			if !field.attrs.contains('skip') {
-				field_info := field_infos[i]
+				field_info := field_info_cache.field_infos[i]
 				mut write_field := true
 				$if field.typ is $shared {
 					shared field_value := unsafe { val.$(field.name) }

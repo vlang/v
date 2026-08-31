@@ -2027,7 +2027,7 @@ fn (mut g Gen) assign_stmt(id flat.NodeId) {
 			}
 		}
 		for i, lhs_id in lhs {
-			if is_decl && !n.is_mut && g.a.node(lhs_id).is_mut && !g.suppress_mut {
+			if is_decl && g.a.node(lhs_id).is_mut && (!n.is_mut || i > 0) && !g.suppress_mut {
 				g.write('mut ')
 			}
 			g.expr(lhs_id)

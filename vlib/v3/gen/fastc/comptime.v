@@ -288,7 +288,7 @@ fn (mut g Parser) parse_comptime_if_statement() !bool {
 fn (mut g Parser) parse_comptime_match_statement() !bool {
 	g.expect(.dollar)!
 	g.expect(.key_match)!
-	if g.tok != .name {
+	if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.key_match)) {
 		return g.unsupported('compile-time `$match` subject')
 	}
 	subject_name := g.lit
@@ -353,7 +353,7 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 fn (mut g Parser) parse_comptime_for_statement() !bool {
 	g.expect(.dollar)!
 	g.expect(.key_for)!
-	if g.tok != .name {
+	if g.tok != .name && !(g.tok == .key_shared && g.shared_token_is_identifier(.key_for)) {
 		return g.unsupported('`$for` loop variable')
 	}
 	loop_var := g.lit
@@ -373,8 +373,9 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	}
 	mut type_key := ''
 	if g.lit == 'fields' {
-		type_key = fastc_resolve_declared_type_key(g.module_name, first, g.imports,
-			g.declared_types) or { return g.unsupported('`$for` over unknown type `${first}`') }
+		type_key = g.resolve_declared_type_key(first) or {
+			return g.unsupported('`$for` over unknown type `${first}`')
+		}
 		g.next()
 	} else {
 		// Qualified `mod.Type.fields`.
@@ -450,6 +451,10 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 // enclosing `$if` takes/skips the branch). Other `<var>.<member>` forms are left
 // as-is (they fail to parse, flagging the unsupported comptime feature). Uses
 // token positions so nothing inside strings or comments is touched.
+fn fastc_comptime_loop_var_token(tok token.Token) bool {
+	return tok in [.name, .key_shared]
+}
+
 fn (g &Parser) substitute_comptime_field(body string, loop_var string, field FastcStructField) string {
 	field_name := field.name
 	mut file_set := token.FileSet.new()
@@ -464,7 +469,8 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 		if tok == .key_for {
 			mut probe := s
 			if probe.scan() == .name && probe.lit == 'attr' && probe.scan() == .key_in
-				&& probe.scan() == .name && probe.lit == loop_var && probe.scan() == .dot
+				&& fastc_comptime_loop_var_token(probe.scan()) && probe.lit == loop_var
+				&& probe.scan() == .dot
 				&& probe.scan() == .name && probe.lit == 'attrs' && probe.scan() == .lcbr {
 				loop_start := s.pos
 				mut depth := 0
@@ -498,7 +504,7 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 			open := s.scan()
 			if open == .lpar {
 				name_tok := s.scan()
-				if name_tok == .name && s.lit == loop_var {
+				if fastc_comptime_loop_var_token(name_tok) && s.lit == loop_var {
 					dot_tok := s.scan()
 					if dot_tok == .dot {
 						member := s.scan()
@@ -522,7 +528,7 @@ fn (g &Parser) substitute_comptime_field(body string, loop_var string, field Fas
 			tok = open
 			continue
 		}
-		if tok == .name && s.lit == loop_var {
+		if fastc_comptime_loop_var_token(tok) && s.lit == loop_var {
 			var_pos := s.pos
 			after := s.scan()
 			if after == .dot {
@@ -701,7 +707,7 @@ fn (g &Parser) resolve_type_name_c(name string) string {
 	if fastc_primitive_c_type(name) != none {
 		return name
 	}
-	key := fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) or {
+	key := g.resolve_declared_type_key(name) or {
 		return name
 	}
 	return fastc_c_declared_type_name(key)
@@ -855,7 +861,7 @@ fn (g &Parser) comptime_named_type(name string) string {
 	if primitive := fastc_primitive_c_type(name) {
 		return primitive
 	}
-	if key := fastc_resolve_declared_type_key(g.module_name, name, g.imports, g.declared_types) {
+	if key := g.resolve_declared_type_key(name) {
 		return fastc_c_declared_type_name(key)
 	}
 	if name.len <= 3 && name[0].is_capital() {

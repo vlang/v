@@ -5,7 +5,7 @@ import v3.pref
 import v3.scanner
 import v3.token
 
-fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string) ! {
+fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string) !bool {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(path, source.len)
 	file.index_lines_without_digest(source)
@@ -16,6 +16,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	mut next_enum_is_flag := false
 	mut next_struct_is_params := false
 	mut next_type_is_enabled := true
+	mut has_type_declarations := false
 	mut previous_tok := token.Token.unknown
 	mut tok := scan.scan()
 	for tok != .eof {
@@ -24,9 +25,10 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
-					collect_declared_types(selected.source, path, module_name, prefs, mut
-						declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut
-						declaration_paths, mut declaration_modules)!
+					selected_has_types := collect_declared_types(selected.source, path, module_name,
+						prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs,
+						mut declaration_paths, mut declaration_modules)!
+					has_type_declarations = has_type_declarations || selected_has_types
 				}
 				tok = selected.tok
 				previous_tok = .unknown
@@ -50,6 +52,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 		}
 		if brace_depth == 0
 			&& tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union] {
+			has_type_declarations = true
 			is_public := previous_tok == .key_pub
 			kind := match tok {
 				.key_enum { FastcDeclaredTypeKind.enum_ }
@@ -104,6 +107,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 		previous_tok = tok
 		tok = scan.scan()
 	}
+	return has_type_declarations
 }
 
 fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, mut constants map[string]string, mut public_constants map[string]bool, mut constant_paths map[string]string) ! {
@@ -278,6 +282,7 @@ mut:
 	declared_kinds      map[string]FastcDeclaredTypeKind
 	enum_flags          map[string]bool
 	params_structs      map[string]bool
+	type_source_paths   map[string]bool
 	declaration_paths   map[string]string
 	declaration_modules map[string]string
 	constants           map[string]string
@@ -296,6 +301,7 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 		declared_kinds:      map[string]FastcDeclaredTypeKind{}
 		enum_flags:          map[string]bool{}
 		params_structs:      map[string]bool{}
+		type_source_paths:   map[string]bool{}
 		declaration_paths:   map[string]string{}
 		declaration_modules: map[string]string{}
 		constants:           map[string]string{}
@@ -307,7 +313,7 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 	}
 	for idx in start .. end {
 		source_file := sources[idx]
-		collect_declared_types(source_file.source, source_file.path,
+		has_type_declarations := collect_declared_types(source_file.source, source_file.path,
 			source_file.header.module_name, prefs, mut partial.declared_types, mut
 			partial.declared_kinds, mut partial.enum_flags, mut partial.params_structs, mut
 			partial.declaration_paths, mut partial.declaration_modules) or {
@@ -315,24 +321,31 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 			partial.error_message = err.msg()
 			return partial
 		}
-		collect_constant_names(source_file.source, source_file.path,
-			source_file.header.module_name, prefs, mut partial.constants, mut
-			partial.public_constants, mut partial.constant_paths) or {
-			partial.failed = true
-			partial.error_message = err.msg()
-			return partial
+		if has_type_declarations {
+			partial.type_source_paths[source_file.path] = true
 		}
-		collect_global_names(source_file.source, source_file.path, source_file.header, prefs, mut
-			partial.globals, mut partial.public_globals, mut partial.global_paths) or {
-			partial.failed = true
-			partial.error_message = err.msg()
-			return partial
+		if source_file.header.has_constants {
+			collect_constant_names(source_file.source, source_file.path,
+				source_file.header.module_name, prefs, mut partial.constants, mut
+				partial.public_constants, mut partial.constant_paths) or {
+				partial.failed = true
+				partial.error_message = err.msg()
+				return partial
+			}
+		}
+		if source_file.header.has_global_declarations {
+			collect_global_names(source_file.source, source_file.path, source_file.header, prefs, mut
+				partial.globals, mut partial.public_globals, mut partial.global_paths) or {
+				partial.failed = true
+				partial.error_message = err.msg()
+				return partial
+			}
 		}
 	}
 	return partial
 }
 
-fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut constants map[string]string, mut public_constants map[string]bool, mut globals map[string]string, mut public_globals map[string]bool) ! {
+fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut constants map[string]string, mut public_constants map[string]bool, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	if partial.failed {
 		return error(partial.error_message)
 	}
@@ -350,6 +363,9 @@ fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared
 	}
 	for key, _ in partial.params_structs {
 		params_structs[key] = true
+	}
+	for path, _ in partial.type_source_paths {
+		type_source_paths[path] = true
 	}
 	for key, c_name in partial.constants {
 		if key in constants {
@@ -379,6 +395,9 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 	helper_has_c_functions := fastc_functions_declare_c(functions)
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
 	for source_file in ordered_sources {
+		if !source_file.header.has_global_declarations {
+			continue
+		}
 		mut initializers := strings.new_builder(256)
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
@@ -421,7 +440,7 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 		gen.s.init(file, source_file.source)
 		gen.next()
 		gen.parse_selected_global_declarations(mut out, mut initializers, false)!
-		global_types = gen.global_types.clone()
+		global_types = gen.global_types.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
 		}
@@ -691,6 +710,9 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 	helper_has_c_functions := fastc_functions_declare_c(functions)
 	ordered_sources := fastc_sources_in_dependency_order(sources)!
 	for source_file in ordered_sources {
+		if !source_file.header.has_constants {
+			continue
+		}
 		mut file_set := token.FileSet.new()
 		mut file := file_set.add_file(source_file.path, source_file.source.len)
 		file.index_lines_without_digest(source_file.source)
@@ -734,7 +756,7 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, prefs &pref.P
 			diagnostic := gen.s.diagnostics[0]
 			return error('fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}')
 		}
-		constant_types = gen.constant_types.clone()
+		constant_types = gen.constant_types.move()
 		for name, _ in gen.composite_types {
 			composite_types[name] = true
 		}
@@ -971,6 +993,10 @@ fn (g &Parser) constant_expression_dependencies(tokens []FastcExpressionToken) [
 		if item.tok != .name || (i > 0 && tokens[i - 1].tok == .dot) {
 			continue
 		}
+		if i + 1 < tokens.len && tokens[i + 1].tok == .lpar
+			&& fastc_primitive_c_type(item.lit) != none {
+			continue
+		}
 		mut key := ''
 		if i + 2 < tokens.len && tokens[i + 1].tok == .dot && tokens[i + 2].tok == .name {
 			if imported_module := g.imports[item.lit] {
@@ -1008,8 +1034,7 @@ fn (g &Parser) constant_expression_requires_runtime_storage(tokens []FastcExpres
 		if i > 0 && tokens[i - 1].tok == .dot {
 			return true
 		}
-		if fastc_primitive_c_type(item.lit) != none
-			|| fastc_resolve_declared_type_key(g.module_name, item.lit, g.imports, g.declared_types) != none {
+		if fastc_primitive_c_type(item.lit) != none || g.resolve_declared_type_key(item.lit) != none {
 			continue
 		}
 		return true
@@ -1017,7 +1042,7 @@ fn (g &Parser) constant_expression_requires_runtime_storage(tokens []FastcExpres
 	return false
 }
 
-fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool) !FastcTypeDeclarations {
+fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Preferences, type_source_paths map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool) !FastcTypeDeclarations {
 	mut out := strings.new_builder(4096)
 	mut bodies := strings.new_builder(4096)
 	mut enum_infos := []FastcEnumInfo{}
@@ -1045,6 +1070,9 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, prefs &pref.Prefe
 	}
 	out.writeln('')
 	for source_file in sources {
+		if source_file.path !in type_source_paths {
+			continue
+		}
 		fastc_emit_source_type_declarations(source_file, prefs, declared_types, declared_kinds,
 			constants, public_constants, mut struct_fields, mut struct_field_info, mut
 			composite_types, mut alias_base_types, mut sum_types, mut enum_infos, mut bodies)!
@@ -1145,7 +1173,7 @@ fn fastc_order_c_composite_definitions(source string, struct_fields map[string]m
 				if dependency_start < dependent_start {
 					continue
 				}
-				next := fastc_move_c_composite_before(ordered, dependency, dependent)
+				next := fastc_move_c_composite_before(ordered, dependency_start, dependent_start)
 				if next != ordered {
 					ordered = next
 					changed = true
@@ -1158,8 +1186,7 @@ fn fastc_order_c_composite_definitions(source string, struct_fields map[string]m
 }
 
 // fastc_composite_definition_positions maps each C composite name to the start
-// offset of its `struct NAME {` / `union NAME {` definition, matching the first
-// occurrence that fastc_c_composite_definition_start would find via `.index`.
+// offset of the first `struct NAME {` / `union NAME {` definition.
 @[direct_array_access]
 fn fastc_composite_definition_positions(source string) map[string]int {
 	mut positions := map[string]int{}
@@ -1221,9 +1248,7 @@ fn fastc_by_value_composite_type(field_type string, by_value_composite_names map
 	return ''
 }
 
-fn fastc_move_c_composite_before(source string, dependency string, dependent string) string {
-	dependency_start := fastc_c_composite_definition_start(source, dependency) or { return source }
-	dependent_start := fastc_c_composite_definition_start(source, dependent) or { return source }
+fn fastc_move_c_composite_before(source string, dependency_start int, dependent_start int) string {
 	if dependency_start < dependent_start {
 		return source
 	}
@@ -1235,19 +1260,7 @@ fn fastc_move_c_composite_before(source string, dependency string, dependent str
 		end++
 	}
 	block := source[dependency_start..end]
-	without := source[..dependency_start] + source[end..]
-	insert_at := fastc_c_composite_definition_start(without, dependent) or { return source }
-	return without[..insert_at] + block + without[insert_at..]
-}
-
-fn fastc_c_composite_definition_start(source string, name string) ?int {
-	if start := source.index('struct ${name} {') {
-		return int(start)
-	}
-	if start := source.index('union ${name} {') {
-		return int(start)
-	}
-	return none
+	return source[..dependent_start] + block + source[dependent_start..dependency_start] + source[end..]
 }
 
 fn fastc_c_composite_definition_end(source string, start int) ?int {
@@ -1717,6 +1730,23 @@ fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports 
 	return none
 }
 
+fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
+	if cached := g.declared_type_key_memo[raw_type] {
+		return if cached == '' { none } else { cached }
+	}
+	mut resolved := ''
+	if type_key := fastc_resolve_declared_type_key(g.module_name, raw_type, g.imports,
+		g.declared_types) {
+		resolved = type_key
+	}
+	mut parser := unsafe { &Parser(g) }
+	if parser.declared_type_key_memo.len == 0 {
+		parser.declared_type_key_memo = map[string]string{}
+	}
+	parser.declared_type_key_memo[raw_type] = resolved
+	return if resolved == '' { none } else { resolved }
+}
+
 fn fastc_semantic_declared_type_key(c_type string, declared_type_c_names map[string]string) string {
 	base := c_type.trim_right('*')
 	// Resolve through the precomputed C-spelling index (first key per spelling
@@ -2168,7 +2198,7 @@ fn fastc_emit_function_alias(mut scan scanner.Scanner, source_file FastcSourceFi
 			continue
 		}
 		mut parameter_is_mut := false
-		if tok == .key_mut {
+		if tok in [.key_mut, .key_shared] {
 			parameter_is_mut = true
 			tok = scan.scan()
 		}

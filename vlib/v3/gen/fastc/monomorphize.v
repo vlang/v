@@ -43,14 +43,13 @@ struct FastcGenericMethodSource {
 	source                     string
 }
 
-// fastc_collect_generic_method_sources indexes every generic method (own type param) AND
-// generic FREE FUNCTION remaining in the post-monomorphization sources, so the parser can
-// instantiate them on demand. Methods are keyed `<receiver_type>.<name>`; functions are
-// keyed `<module>.<name>` (module-qualified, for aliased cross-module calls like
-// `json.encode`). Fully source-monomorphized entries are already blanked and absent here.
-fn fastc_collect_generic_method_sources(sources []FastcSourceFile, prefs &pref.Preferences) map[string]FastcGenericMethodSource {
+// fastc_collect_generic_method_source_chunk indexes the generic methods and free
+// functions in one contiguous source range. The parallel wrapper merges ranges in
+// source order so duplicate keys retain the serial scan's last-definition behavior.
+fn fastc_collect_generic_method_source_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) map[string]FastcGenericMethodSource {
 	mut result := map[string]FastcGenericMethodSource{}
-	for i, source_file in sources {
+	for i in start .. end {
+		source_file := sources[i]
 		module_name := source_file.header.module_name
 		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, i) {
 			receiver_type := if generic.receiver_type != '' {
@@ -203,6 +202,23 @@ fn (mut g Parser) queue_mono_method(receiver_type string, method string, concret
 	return mono
 }
 
+// queue_expression_monomorphization specializes the current call-name token when possible.
+fn (mut g Parser) queue_expression_monomorphization(tokens []FastcExpressionToken) ?string {
+	if !g.selfhost || g.in_generic_placeholder || g.generic_method_sources.len == 0 {
+		return none
+	}
+	if mono := g.queue_explicit_mono_method(tokens) {
+		return mono
+	}
+	if mono := g.queue_implicit_mono_method(tokens) {
+		return mono
+	}
+	if mono := g.queue_explicit_mono_function(tokens) {
+		return mono
+	}
+	return g.queue_implicit_mono_function(tokens)
+}
+
 // queue_explicit_mono_method recognizes `receiver.method[Type](...)` and queues the
 // concrete generic-method body before ordinary method rendering validates the call.
 fn (mut g Parser) queue_explicit_mono_method(tokens []FastcExpressionToken) ?string {
@@ -225,6 +241,42 @@ fn (mut g Parser) queue_explicit_mono_method(tokens []FastcExpressionToken) ?str
 	concrete, next := fastc_scan_type(mut look, first, g.path, g.module_name, g.imports, g.declared_types, g.selfhost) or { return none }
 	after := look.scan()
 	if next != .rsbr || after != .lpar {
+		return none
+	}
+	return g.queue_mono_method(receiver_base, method, concrete)
+}
+
+// queue_implicit_mono_method recognizes `receiver.method(arg)` for generic methods and
+// infers the method's concrete type from the corresponding argument.
+fn (mut g Parser) queue_implicit_mono_method(tokens []FastcExpressionToken) ?string {
+	if tokens.len < 3 || tokens.last().tok != .name || tokens[tokens.len - 2].tok != .dot {
+		return none
+	}
+	mut look := g.s
+	if look.scan() != .lpar {
+		return none
+	}
+	dot_index := tokens.len - 2
+	receiver_start := fastc_method_receiver_start(tokens, dot_index)
+	receiver_type := g.infer_expression_type(tokens[receiver_start..dot_index]) or { return none }
+	receiver_base := fastc_normalize_inferred_type(receiver_type).trim_right('*')
+	method := tokens.last().lit
+	source_key := '${receiver_base}.${method}'
+	if receiver_base == '' || source_key !in g.generic_method_sources {
+		return none
+	}
+	source := g.generic_method_sources[source_key] or { return none }
+	base_key := '${g.semantic_type_key(receiver_base)}.${method}'
+	base := g.functions[base_key] or { return none }
+	parameter_index := source.type_param_parameter_index
+	signature_index := parameter_index + 1
+	argument_type := g.mono_argument_type_at(mut look, parameter_index)
+	concrete := if parameter_index >= 0 && signature_index < base.parameter_types.len {
+		fastc_infer_generic_type_from_parameter(base.parameter_types[signature_index], argument_type)
+	} else {
+		''
+	}
+	if concrete == '' {
 		return none
 	}
 	return g.queue_mono_method(receiver_base, method, concrete)
@@ -798,23 +850,21 @@ fn fastc_render_generic_instance_with_call_rewrites(source string, generic Fastc
 	mut tok := s.scan()
 	mut renamed := false
 	for tok != .eof {
-		if tok == .name {
-			if !renamed && s.lit == generic.name {
+		if !renamed && tok in [.name, .key_shared] && s.lit == generic.name {
+			edits << FastcSourceEdit{
+				start: s.pos
+				end: s.offset
+				replacement: fastc_monomorphized_name(generic.name, concrete)
+			}
+			renamed = true
+		} else if tok == .name && !(s.pos >= bracket_low && s.pos < bracket_high) {
+			// Substitute each type parameter everywhere except inside `[...]`, which
+			// is removed by the edit above (overlapping edits would corrupt it).
+			if replacement := substitutions[s.lit] {
 				edits << FastcSourceEdit{
 					start: s.pos
 					end: s.offset
-					replacement: fastc_monomorphized_name(generic.name, concrete)
-				}
-				renamed = true
-			} else if !(s.pos >= bracket_low && s.pos < bracket_high) {
-				// Substitute each type parameter everywhere except inside `[...]`, which
-				// is removed by the edit above (overlapping edits would corrupt it).
-				if replacement := substitutions[s.lit] {
-					edits << FastcSourceEdit{
-						start: s.pos
-						end: s.offset
-						replacement: replacement
-					}
+					replacement: replacement
 				}
 			}
 		}
@@ -874,7 +924,7 @@ fn fastc_scan_generic_fns(source string, path string, prefs &pref.Preferences, s
 			}
 			tok = s.scan()
 		}
-		if tok != .name {
+		if tok !in [.name, .key_shared] {
 			continue
 		}
 		name := s.lit
@@ -973,6 +1023,7 @@ fn fastc_params_type_param_index(params_source string, type_param string, prefs 
 	for name in type_param.split(',') {
 		type_params[name] = true
 	}
+	no_imports := map[string]string{}
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file('params', params_source.len)
 	file.index_lines_without_digest(params_source)
@@ -985,10 +1036,11 @@ fn fastc_params_type_param_index(params_source string, type_param string, prefs 
 	tok = s.scan()
 	mut parameter_index := 0
 	for tok !in [.rpar, .eof] {
-		if tok in [.key_mut, .key_shared] {
+		shared_is_name := tok == .key_shared && fastc_shared_parameter_is_name(s, 'params', '', no_imports, type_params, prefs.building_v)
+		if tok == .key_mut || (tok == .key_shared && !shared_is_name) {
 			tok = s.scan()
 		}
-		if tok != .name {
+		if tok !in [.name, .key_shared] {
 			return -1
 		}
 		tok = s.scan()
@@ -1114,7 +1166,7 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 			pending_var = ''
 			pending_struct_var = ''
 			pending_struct_type = ''
-			tok = fastc_collect_params(mut s, mut var_types)
+			tok = fastc_collect_params(mut s, mut var_types, prefs)
 			previous = .rpar
 			previous_lit = ''
 			continue
@@ -1197,7 +1249,7 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 			}
 			tok = s.scan()
 			mut concrete := fastc_infer_literal_type(tok, s.lit)
-			if concrete == '' && tok == .name {
+			if concrete == '' && tok in [.name, .key_shared] {
 				// A bare variable argument (`f(x)`) or a struct-literal argument
 				// (`f(Foo{...})`); peek one token to tell them apart.
 				argument_name := s.lit
@@ -1207,7 +1259,7 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				} else if next_token in [.comma, .rpar] && argument_name !in var_ambiguous {
 					concrete = var_types[argument_name] or { '' }
 				}
-				previous = .name
+				previous = tok
 				previous_lit = argument_name
 				tok = next_token
 			} else {
@@ -1240,7 +1292,9 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 // fastc_collect_params records the single-name-typed parameters of the function
 // whose `fn` keyword was just consumed, so `f(param)` calls can infer their
 // concrete type. It returns the token just past the parameter list.
-fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string) token.Token {
+fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string, prefs &pref.Preferences) token.Token {
+	no_imports := map[string]string{}
+	no_declared_types := map[string]bool{}
 	mut tok := s.scan()
 	if tok == .lpar {
 		// Method receiver `(recv Type)`: skip it.
@@ -1287,10 +1341,11 @@ fn fastc_collect_params(mut s scanner.Scanner, mut var_types map[string]string) 
 	}
 	tok = s.scan()
 	for tok !in [.rpar, .eof] {
-		if tok in [.key_mut, .key_shared] {
+		shared_is_name := tok == .key_shared && fastc_shared_parameter_is_name(s, 'params', '', no_imports, no_declared_types, prefs.building_v)
+		if tok == .key_mut || (tok == .key_shared && !shared_is_name) {
 			tok = s.scan()
 		}
-		if tok != .name {
+		if tok !in [.name, .key_shared] {
 			tok = fastc_skip_to_param_boundary(mut s, tok)
 			if tok == .comma {
 				tok = s.scan()

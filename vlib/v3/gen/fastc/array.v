@@ -400,7 +400,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 			&& fastc_token_is_prefix_operator(tokens, i) && i + 2 < tokens.len
 			&& tokens[i + 1].tok == .name && tokens[i + 2].tok == .lpar
 			&& (fastc_primitive_c_type(tokens[i + 1].lit) != none
-			|| fastc_resolve_declared_type_key(g.module_name, tokens[i + 1].lit, g.imports, g.declared_types) != none)
+			|| g.resolve_declared_type_key(tokens[i + 1].lit) != none)
 		is_c_pointer_cast := item.tok in [.amp, .and] && fastc_token_is_prefix_operator(tokens, i)
 			&& i + 4 < tokens.len && tokens[i + 1].tok == .name && tokens[i + 1].lit == 'C'
 			&& tokens[i + 2].tok == .dot && tokens[i + 3].tok == .name && tokens[i + 4].tok == .lpar
@@ -430,8 +430,7 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 				}
 			}
 			if cast_type == '' && !is_member_call {
-				if type_key := fastc_resolve_declared_type_key(g.module_name, item.lit, g.imports,
-					g.declared_types)
+				if type_key := g.resolve_declared_type_key(item.lit)
 				{
 					cast_type = fastc_c_declared_type_name(type_key)
 				}
@@ -673,8 +672,7 @@ fn (g &Parser) type_from_expression_tokens(tokens []FastcExpressionToken) ?strin
 	if remaining.len == 1 && remaining[0].tok == .name {
 		mut base := fastc_primitive_c_type(remaining[0].lit) or { '' }
 		if base == '' {
-			type_key := fastc_resolve_declared_type_key(g.module_name, remaining[0].lit, g.imports,
-				g.declared_types) or { return none }
+			type_key := g.resolve_declared_type_key(remaining[0].lit) or { return none }
 			base = fastc_c_declared_type_name(type_key)
 		}
 		return base + '*'.repeat(pointers)
@@ -768,7 +766,9 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 					if item_start == i {
 						return error('empty expression-list item')
 					}
-					result << tokens[item_start..i]
+					// Items are consumed while `tokens` is alive and never mutated, so views are safe.
+					item := unsafe { tokens[item_start..i] }
+					result << item
 					item_start = i + 1
 				}
 			}
@@ -778,6 +778,7 @@ fn fastc_expression_list_items(tokens []FastcExpressionToken, start int, end int
 	if item_start == end {
 		return result
 	}
-	result << tokens[item_start..end]
+	item := unsafe { tokens[item_start..end] }
+	result << item
 	return result
 }
