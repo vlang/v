@@ -431,22 +431,25 @@ fn test_file_has_module_declaration(content string) bool {
 fn test_file_attribute_end(content string, start int) int {
 	mut depth := 0
 	mut quote := u8(0)
+	mut quote_is_raw := false
 	mut i := start
 	for i < content.len {
 		c := content[i]
 		if quote != 0 {
-			if c == `\\` {
+			if !quote_is_raw && c == `\\` {
 				i += 2
 				continue
 			}
 			if c == quote {
 				quote = 0
+				quote_is_raw = false
 			}
 			i++
 			continue
 		}
 		if c == `'` || c == `"` {
 			quote = c
+			quote_is_raw = i > 0 && content[i - 1] == `r`
 			i++
 			continue
 		}
