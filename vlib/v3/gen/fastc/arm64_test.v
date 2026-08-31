@@ -182,6 +182,20 @@ fn main() {
 		println("wrong slice growth")
 		return
 	}
+	mut spare_base := [1, 2, 3]
+	mut spare_slice := spare_base[1..2]
+	spare_slice << 9
+	if spare_slice.len != 2 || spare_slice[0] != 2 || spare_slice[1] != 9 || spare_base[0] != 1 || spare_base[1] != 2 || spare_base[2] != 3 {
+		println("wrong spare slice append")
+		return
+	}
+	mut delete_base := [1, 2, 3, 4]
+	mut delete_slice := delete_base[1..]
+	delete_slice.delete(0)
+	if delete_slice.len != 2 || delete_slice[0] != 3 || delete_slice[1] != 4 || delete_base[0] != 1 || delete_base[1] != 2 || delete_base[2] != 3 || delete_base[3] != 4 {
+		println("wrong sliced delete")
+		return
+	}
 	mut inserted := [1, 3]
 	insert_index := 1
 	inserted.insert(insert_index, 2)
@@ -273,10 +287,19 @@ fn test_fastc_arm64_array_index_bounds() {
 		mut prefs := pref.new_preferences()
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
+		mut sources := []string{}
 		for index in [-1, 2] {
+			sources << 'fn main() {\n\tvalues := [1, 2]\n\tindex := ${index}\n\tselected := values[index]\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+			sources << 'fn main() {\n\tmut values := [1, 2]\n\tindex := ${index}\n\tvalues.delete(index)\n}\n'
+			sources << 'fn main() {\n\ttext := "hi"\n\tindex := ${index}\n\tselected := text[index]\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		}
+		sources << 'fn main() {\n\tvalues := []int{}\n\tselected := values.last()\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		sources << 'fn main() {\n\tmut values := []int{}\n\tselected := values.pop()\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		sources << 'fn main() {\n\tmut values := []int{}\n\tvalues.delete_last()\n\tprintln("unused")\n}\n'
+		for index, source in sources {
 			source_path := os.join_path_single(test_dir, 'bounds_${index}.v')
 			output_path := os.join_path_single(test_dir, 'bounds_${index}')
-			os.write_file(source_path, 'fn main() {\n\tvalues := [1, 2]\n\tindex := ${index}\n\tselected := values[index]\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n') or {
+			os.write_file(source_path, source) or {
 				panic(err)
 			}
 			generate_arm64_files([source_path], prefs, output_path) or { panic(err) }

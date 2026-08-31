@@ -6208,6 +6208,11 @@ fn (mut p FastArm64Parser) emit_array_tail_method(array FastArm64Value, remove b
 	length := p.program.instr1(.load, p.cur_block, p.program.i32_type, length_ptr)
 	one := p.program.m.get_or_add_const(p.program.i32_type, '1')
 	last_index := p.program.instr2(.sub, p.cur_block, p.program.i32_type, length, one)
+	index64 := p.checked_array_index(FastArm64Value{
+		id: last_index
+		typ: p.program.i32_type
+		typ_name: 'int'
+	}, length, 'array_tail')
 	if remove {
 		p.program.instr2(.store, p.cur_block, p.program.void_type, last_index, length_ptr)
 	}
@@ -6218,7 +6223,6 @@ fn (mut p FastArm64Parser) emit_array_tail_method(array FastArm64Value, remove b
 		}
 	}
 	data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
-	index64 := p.program.instr1(.zext, p.cur_block, p.program.i64_type, last_index)
 	element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
 	offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index64, element_size)
 	bytes := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, offset)
@@ -6233,13 +6237,14 @@ fn (mut p FastArm64Parser) emit_array_tail_method(array FastArm64Value, remove b
 
 fn (mut p FastArm64Parser) emit_array_delete(array FastArm64Value, index FastArm64Value) FastArm64Value {
 	array_slot := p.mutable_array_slot(array)
-	data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
 	length_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 2)
 	length32 := p.program.instr1(.load, p.cur_block, p.program.i32_type, length_ptr)
+	index64 := p.checked_array_index(index, length32, 'array_delete')
+	p.emit_array_detach_if_slice(array_slot, 'array_delete')
+	data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
 	element_size32 := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 5))
 	length := p.program.instr1(.zext, p.cur_block, p.program.i64_type, length32)
 	element_size := p.program.instr1(.zext, p.cur_block, p.program.i64_type, element_size32)
-	index64 := p.integer_to_i64(index)
 	one := p.program.m.get_or_add_const(p.program.i64_type, '1')
 	next_index := p.program.instr2(.add, p.cur_block, p.program.i64_type, index64, one)
 	remaining := p.program.instr2(.sub, p.cur_block, p.program.i64_type, length, next_index)
@@ -6258,6 +6263,52 @@ fn (mut p FastArm64Parser) emit_array_delete(array FastArm64Value, index FastArm
 		typ: p.program.void_type
 		typ_name: 'void'
 	}
+}
+
+fn (mut p FastArm64Parser) emit_array_detach_if_slice(array_slot ssa.ValueID, label string) {
+	data_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0)
+	offset_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 1)
+	length_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 2)
+	capacity_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 3)
+	flags_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 4)
+	element_size_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 5)
+	old_data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, data_ptr)
+	offset := p.program.instr1(.load, p.cur_block, p.program.i32_type, offset_ptr)
+	length := p.program.instr1(.load, p.cur_block, p.program.i32_type, length_ptr)
+	capacity := p.program.instr1(.load, p.cur_block, p.program.i32_type, capacity_ptr)
+	flags := p.program.instr1(.load, p.cur_block, p.program.i32_type, flags_ptr)
+	element_size := p.program.instr1(.load, p.cur_block, p.program.i32_type, element_size_ptr)
+	zero32 := p.program.m.get_or_add_const(p.program.i32_type, '0')
+	has_offset := p.program.instr2(.ne, p.cur_block, p.program.i1_type, offset, zero32)
+	is_slice_flag := p.program.m.get_or_add_const(p.program.i32_type, '64')
+	masked_flags := p.program.instr2(.and_, p.cur_block, p.program.i32_type, flags, is_slice_flag)
+	has_slice_flag := p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked_flags, zero32)
+	is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, has_offset, has_slice_flag)
+	detach := p.program.m.add_block(p.func_id, '${label}_detach_slice')
+	ready := p.program.m.add_block(p.func_id, '${label}_detached')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, is_slice, ssa.ValueID(detach), ssa.ValueID(ready))
+	p.mark_terminated(p.cur_block)
+	capacity64 := p.program.instr1(.zext, detach, p.program.i64_type, capacity)
+	element_size64 := p.program.instr1(.zext, detach, p.program.i64_type, element_size)
+	allocation_size := p.program.instr2(.mul, detach, p.program.i64_type, capacity64, element_size64)
+	malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
+	detached_data := p.program.m.add_instr(.call, detach, p.program.ptr_i8, [
+		malloc_ref,
+		allocation_size,
+	])
+	length64 := p.program.instr1(.zext, detach, p.program.i64_type, length)
+	copy_size := p.program.instr2(.mul, detach, p.program.i64_type, length64, element_size64)
+	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
+	p.program.m.add_instr(.call, detach, p.program.ptr_i8, [memcpy_ref, detached_data, old_data,
+		copy_size])
+	p.program.instr2(.store, detach, p.program.void_type, detached_data, data_ptr)
+	p.program.instr2(.store, detach, p.program.void_type, zero32, offset_ptr)
+	non_slice_mask := p.program.m.get_or_add_const(p.program.i32_type, '-65')
+	detached_flags := p.program.instr2(.and_, detach, p.program.i32_type, flags, non_slice_mask)
+	p.program.instr2(.store, detach, p.program.void_type, detached_flags, flags_ptr)
+	p.program.instr1(.jmp, detach, p.program.void_type, ssa.ValueID(ready))
+	p.mark_terminated(detach)
+	p.cur_block = ready
 }
 
 fn (mut p FastArm64Parser) emit_map_items_array(map_value FastArm64Value, keys bool) !FastArm64Value {
@@ -6611,10 +6662,11 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		value_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
 		p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, value_slot)
 		data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.string_field_ptr(p.cur_block, value_slot, 0))
-		start64 := p.integer_to_i64(start)
-		start_data := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, start64)
 		if p.tok != .dotdot {
 			p.expect(.rsbr)!
+			length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.string_field_ptr(p.cur_block, value_slot, 1))
+			start64 := p.checked_array_index(start, length, 'string_index')
+			start_data := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, start64)
 			return FastArm64Value{
 				id: p.program.instr1(.load, p.cur_block, p.program.u8_type, start_data)
 				typ: p.program.u8_type
@@ -6623,6 +6675,8 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 			}
 		}
 		p.next()
+		start64 := p.integer_to_i64(start)
+		start_data := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, start64)
 		mut length := ssa.ValueID(0)
 		if p.tok == .rsbr {
 			original_len := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.string_field_ptr(p.cur_block, value_slot, 1))
@@ -7329,16 +7383,25 @@ fn (mut p FastArm64Parser) emit_array_push_at(array FastArm64Value, item FastArm
 		p.cur_block = valid_block
 	}
 	full := p.program.instr2(.ge, p.cur_block, p.program.i1_type, length, capacity)
+	array_offset := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 1))
+	flags := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 4))
+	has_offset := p.program.instr2(.ne, p.cur_block, p.program.i1_type, array_offset, zero32)
+	is_slice_flag := p.program.m.get_or_add_const(p.program.i32_type, '64')
+	masked_flags := p.program.instr2(.and_, p.cur_block, p.program.i32_type, flags, is_slice_flag)
+	has_slice_flag := p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked_flags, zero32)
+	is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, has_offset, has_slice_flag)
+	needs_storage := p.program.instr2(.or_, p.cur_block, p.program.i1_type, full, is_slice)
 	grow := p.program.m.add_block(p.func_id, 'array_push_grow')
 	append := p.program.m.add_block(p.func_id, 'array_push_append')
 	done := p.program.m.add_block(p.func_id, 'array_push_done')
-	p.program.instr3(.br, p.cur_block, p.program.void_type, full, ssa.ValueID(grow), ssa.ValueID(append))
+	p.program.instr3(.br, p.cur_block, p.program.void_type, needs_storage, ssa.ValueID(grow), ssa.ValueID(append))
 	p.mark_terminated(p.cur_block)
 	one32 := p.program.m.get_or_add_const(p.program.i32_type, '1')
 	two32 := p.program.m.get_or_add_const(p.program.i32_type, '2')
 	doubled := p.program.instr2(.mul, grow, p.program.i32_type, capacity, two32)
 	was_empty := p.program.instr2(.eq, grow, p.program.i1_type, capacity, zero32)
-	new_capacity := p.program.integer_select(grow, was_empty, one32, doubled, p.program.i32_type)
+	grown_capacity := p.program.integer_select(grow, was_empty, one32, doubled, p.program.i32_type)
+	new_capacity := p.program.integer_select(grow, full, grown_capacity, capacity, p.program.i32_type)
 	element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
 	element_size32 := p.program.m.get_or_add_const(p.program.i32_type, p.program.m.type_size(element_type).str())
 	p.emit_array_grow_storage(array_slot, grow, append, length, new_capacity, element_size, element_size32)
@@ -7477,45 +7540,23 @@ fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items Fa
 	p.cur_block = source_ready
 	required := p.program.instr2(.add, p.cur_block, p.program.i32_type, length, items_length)
 	needs_grow := p.program.instr2(.gt, p.cur_block, p.program.i1_type, required, capacity)
-	element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
-	element_size32 := p.program.m.get_or_add_const(p.program.i32_type, p.program.m.type_size(element_type).str())
-	items_length64 := p.program.instr1(.zext, p.cur_block, p.program.i64_type, items_length)
-	items_bytes := p.program.instr2(.mul, p.cur_block, p.program.i64_type, items_length64, element_size)
-	destination_before_grow := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
-	source_before_grow := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, items_slot, p.program.array_type, 0))
-	same_backing := p.program.instr2(.eq, p.cur_block, p.program.i1_type, destination_before_grow, source_before_grow)
-	source_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.ptr_i8))
-	owned_source_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.ptr_i8))
-	snapshot := p.program.m.add_block(p.func_id, 'array_append_many_snapshot')
-	direct := p.program.m.add_block(p.func_id, 'array_append_many_direct')
-	prepare := p.program.m.add_block(p.func_id, 'array_append_many_prepare')
-	p.program.instr3(.br, p.cur_block, p.program.void_type, same_backing, ssa.ValueID(snapshot), ssa.ValueID(direct))
-	p.mark_terminated(p.cur_block)
-	malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
-	snapshot_data := p.program.m.add_instr(.call, snapshot, p.program.ptr_i8, [
-		malloc_ref,
-		items_bytes,
-	])
-	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
-	p.program.m.add_instr(.call, snapshot, p.program.ptr_i8, [memcpy_ref, snapshot_data,
-		source_before_grow, items_bytes])
-	p.program.instr2(.store, snapshot, p.program.void_type, snapshot_data, source_slot)
-	p.program.instr2(.store, snapshot, p.program.void_type, snapshot_data, owned_source_slot)
-	p.program.instr1(.jmp, snapshot, p.program.void_type, ssa.ValueID(prepare))
-	p.mark_terminated(snapshot)
-	null_pointer := p.program.m.get_or_add_const(p.program.ptr_i8, '0')
-	p.program.instr2(.store, direct, p.program.void_type, source_before_grow, source_slot)
-	p.program.instr2(.store, direct, p.program.void_type, null_pointer, owned_source_slot)
-	p.program.instr1(.jmp, direct, p.program.void_type, ssa.ValueID(prepare))
-	p.mark_terminated(direct)
-	p.cur_block = prepare
+	zero32 := p.program.m.get_or_add_const(p.program.i32_type, '0')
+	offset := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 1))
+	flags := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 4))
+	has_offset := p.program.instr2(.ne, p.cur_block, p.program.i1_type, offset, zero32)
+	is_slice_flag := p.program.m.get_or_add_const(p.program.i32_type, '64')
+	masked_flags := p.program.instr2(.and_, p.cur_block, p.program.i32_type, flags, is_slice_flag)
+	has_slice_flag := p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked_flags, zero32)
+	is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, has_offset, has_slice_flag)
+	needs_storage := p.program.instr2(.or_, p.cur_block, p.program.i1_type, needs_grow, is_slice)
 	grow := p.program.m.add_block(p.func_id, 'array_append_many_grow')
 	copy_block := p.program.m.add_block(p.func_id, 'array_append_many_copy')
 	free_snapshot := p.program.m.add_block(p.func_id, 'array_append_many_free_snapshot')
 	done := p.program.m.add_block(p.func_id, 'array_append_many_done')
-	p.program.instr3(.br, p.cur_block, p.program.void_type, needs_grow, ssa.ValueID(grow), ssa.ValueID(copy_block))
+	p.program.instr3(.br, p.cur_block, p.program.void_type, needs_storage, ssa.ValueID(grow), ssa.ValueID(copy_block))
 	p.mark_terminated(p.cur_block)
-	p.emit_array_grow_storage(array_slot, grow, copy_block, length, required, element_size, element_size32)
+	new_capacity := p.program.integer_select(grow, needs_grow, required, capacity, p.program.i32_type)
+	p.emit_array_grow_storage(array_slot, grow, copy_block, length, new_capacity, element_size, element_size32)
 	destination_data := p.program.instr1(.load, copy_block, p.program.ptr_i8, p.program.struct_field_ptr(copy_block, array_slot, p.program.array_type, 0))
 	source_data := p.program.instr1(.load, copy_block, p.program.ptr_i8, source_slot)
 	length64 := p.program.instr1(.zext, copy_block, p.program.i64_type, length)
@@ -7537,8 +7578,7 @@ fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items Fa
 	free_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'free', p.program.fn_ids['free'])
 	p.program.m.add_instr(.call, copy_block, p.program.void_type, [free_ref, owned_source])
 	p.program.instr2(.store, copy_block, p.program.void_type, required, p.program.struct_field_ptr(copy_block, array_slot, p.program.array_type, 2))
-	p.program.instr3(.br, copy_block, p.program.void_type, aliases_destination,
-		ssa.ValueID(free_snapshot), ssa.ValueID(done))
+	p.program.instr3(.br, copy_block, p.program.void_type, aliases_destination, ssa.ValueID(free_snapshot), ssa.ValueID(done))
 	p.mark_terminated(copy_block)
 	free_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'free', p.program.fn_ids['free'])
 	p.program.m.add_instr(.call, free_snapshot, p.program.void_type, [free_ref, source_data])
