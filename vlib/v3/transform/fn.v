@@ -8410,13 +8410,14 @@ fn (mut t Transformer) try_lower_flag_enum_call(call_id flat.NodeId, node flat.N
 	return t.make_infix(.eq, masked, arg_copy)
 }
 
-// try_lower_struct_clone_method_call lowers `x.clone()` on a struct / sum-type value to a
-// plain copy of the receiver. Rust's `#[derive(Clone)]` maps to `implements IClone` in the
-// ownership translation, whose `clone()` is compiler-provided; V aggregates are value types,
-// so the copy is produced simply by evaluating the receiver (it is copied when assigned or
-// passed by value). Collection/string clones are lowered earlier, and a user-defined clone()
-// method is handled by try_lower_receiver_method_call before this runs.
-fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, node flat.Node) ?flat.NodeId {
+struct CompilerDefaultCloneCallInfo {
+	base_id       flat.NodeId
+	raw_base_type string
+	base_type     string
+	can_lower     bool
+}
+
+fn (t &Transformer) compiler_default_clone_call_info(node flat.Node) ?CompilerDefaultCloneCallInfo {
 	if node.children_count == 0 {
 		return none
 	}
@@ -8434,19 +8435,15 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
 	}
-	if base_type.starts_with('[]') || base_type.starts_with('map[') || base_type == 'string'
-		|| t.is_fixed_array_type(base_type) {
+	if base_type.starts_with('[]') || base_type.starts_with('map[') || base_type == 'string' || t.is_fixed_array_type(base_type) {
 		return none
 	}
-	parsed_base_type := if isnil(t.tc) {
-		types.Type(types.Unknown{})
-	} else {
-		t.tc.parse_type(base_type)
+	if isnil(t.tc) {
+		return none
 	}
-	is_default_sum_clone := t.is_sum_type_name(base_type) && !isnil(t.tc)
-		&& t.tc.ownership_default_clone_missing_method(parsed_base_type) == none
-	if isnil(t.tc) || (!t.tc.named_type_implements_marker(base_type, 'IClone')
-		&& !is_default_sum_clone) {
+	parsed_base_type := t.tc.parse_type(base_type)
+	is_default_sum_clone := t.is_sum_type_name(base_type) && t.tc.ownership_default_clone_missing_method(parsed_base_type) == none
+	if !t.tc.named_type_implements_marker(base_type, 'IClone') && !is_default_sum_clone {
 		return none
 	}
 	// A concrete generic receiver can have a handwritten clone() on its open
@@ -8458,22 +8455,37 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 		}
 	}
 	// A user-defined clone() would have been lowered already; only supply the default clone.
-	if t.tc.ownership_type_has_clone_method(t.tc.parse_type(base_type))
-		&& t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
+	if t.tc.ownership_type_has_clone_method(parsed_base_type) && t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
 		return none
 	}
+	return CompilerDefaultCloneCallInfo{
+		base_id: base_id
+		raw_base_type: raw_base_type
+		base_type: base_type
+		can_lower: t.tc.ownership_default_clone_missing_method(parsed_base_type) == none
+	}
+}
+
+// try_lower_struct_clone_method_call lowers `x.clone()` on a struct / sum-type value to a
+// plain copy of the receiver. Rust's `#[derive(Clone)]` maps to `implements IClone` in the
+// ownership translation, whose `clone()` is compiler-provided; V aggregates are value types,
+// so the copy is produced simply by evaluating the receiver (it is copied when assigned or
+// passed by value). Collection/string clones are lowered earlier, and a user-defined clone()
+// method is handled by try_lower_receiver_method_call before this runs.
+fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, node flat.Node) ?flat.NodeId {
+	info := t.compiler_default_clone_call_info(node) or { return none }
 	// The checker reports the concrete ownership-bearing field that has no safe clone.
 	// Do not turn the rejected default clone into a shallow aggregate copy while
 	// transforming the invalid program.
-	if _ := t.tc.ownership_default_clone_missing_method(parsed_base_type) {
+	if !info.can_lower {
 		return t.make_empty()
 	}
-	mut receiver := t.transform_expr(base_id)
-	if raw_base_type.starts_with('&') {
+	mut receiver := t.transform_expr(info.base_id)
+	if info.raw_base_type.starts_with('&') {
 		receiver = t.make_prefix(.mul, receiver)
-		t.set_node_typ(int(receiver), base_type)
+		t.set_node_typ(int(receiver), info.base_type)
 	}
-	return t.make_compiler_default_clone_value(receiver, base_type, false)
+	return t.make_compiler_default_clone_value(receiver, info.base_type, false)
 }
 
 // make_compiler_default_clone_value recursively clones the storage-owning fields of a

@@ -1843,6 +1843,51 @@ fn test_external_map_expansion_estimate_includes_call_reconstruction() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_defers_compiler_default_clone_calls() {
+	mut a := flat.FlatAst.new()
+	receiver := a.add_node(flat.Node{
+		kind: .ident
+		value: 'wide'
+		typ: 'Wide'
+	})
+	selector_start := a.children.len
+	a.children << receiver
+	selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'clone'
+		typ: 'fn () Wide'
+		children_start: selector_start
+		children_count: 1
+	})
+	call_start := a.children.len
+	a.children << selector
+	clone_call := a.add_node(flat.Node{
+		kind: .call
+		typ: 'Wide'
+		children_start: call_start
+		children_count: 1
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << clone_call
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string]Wide'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Wide'] = []
+	tc.struct_implements['Wide'] = ['IClone']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruction() {
 	mut a := flat.FlatAst.new()
 	mut level := []flat.NodeId{cap: 1024}
