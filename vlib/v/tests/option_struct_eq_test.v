@@ -100,6 +100,36 @@ fn test_option_struct_eq_in_short_circuit() {
 	assert !(false && a != b)
 }
 
+struct OptionCallCounter {
+mut:
+	calls int
+}
+
+fn counted_optional_string(mut counter OptionCallCounter, value string) ?string {
+	counter.calls++
+	return value
+}
+
+fn test_option_eq_side_effects_preserve_short_circuiting() {
+	mut left_counter := OptionCallCounter{}
+	mut right_counter := OptionCallCounter{}
+	assert !(false && counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same'))
+	assert left_counter.calls == 0
+	assert right_counter.calls == 0
+	assert true && counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same')
+	assert left_counter.calls == 1
+	assert right_counter.calls == 1
+	assert true || counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same')
+	assert left_counter.calls == 1
+	assert right_counter.calls == 1
+	assert false || counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same')
+	assert left_counter.calls == 2
+	assert right_counter.calls == 2
+	assert [1].any(it == 1) && counted_optional_string(mut left_counter, 'same') == counted_optional_string(mut right_counter, 'same')
+	assert left_counter.calls == 3
+	assert right_counter.calls == 3
+}
+
 fn test_option_ptr_struct_eq() {
 	a := ?&Id(&Id{
 		v: 1
