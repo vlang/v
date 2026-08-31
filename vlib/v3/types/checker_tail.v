@@ -9222,6 +9222,26 @@ fn (tc &TypeChecker) call_param_requires_mut_pointer_slot(info CallInfo, param_i
 	return tc.fn_node_param_requires_mut_pointer_slot(fn_node, source_param_idx)
 }
 
+fn (tc &TypeChecker) current_fn_param_requires_mut_pointer_slot(name string) bool {
+	fn_id := flat.NodeId(tc.fn_context.node_id)
+	if !tc.valid_node_id(fn_id) {
+		return false
+	}
+	fn_node := tc.a.node(fn_id)
+	mut param_idx := 0
+	for i in 0 .. fn_node.children_count {
+		param := tc.a.child_node(fn_node, i)
+		if param.kind != .param {
+			break
+		}
+		if param.value == name {
+			return tc.fn_node_param_requires_mut_pointer_slot(fn_node, param_idx)
+		}
+		param_idx++
+	}
+	return false
+}
+
 // fn_node_param_requires_mut_pointer_slot reports whether an explicit mutable
 // pointer parameter reassigns its caller-owned pointer slot.
 pub fn (tc &TypeChecker) fn_node_param_requires_mut_pointer_slot(fn_node flat.Node, param_idx int) bool {
@@ -11544,11 +11564,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				Type(void_)
 			}
 			mut_param_base_depth, _ := type_pointer_depth_and_base(mut_param_base)
-			is_implicit_mut_param_pointer := mut_arg_node.kind == .ident
-				&& mut_arg_node.value in tc.fn_context.mut_param_base_types
-				&& actual_mut_depth > mut_param_base_depth
-			if is_implicit_mut_param_pointer
-				|| !tc.mut_pointer_slot_arg_compatible(actual_mut_type, expected) {
+			is_implicit_mut_param_pointer := mut_arg_node.kind == .ident && mut_arg_node.value in tc.fn_context.mut_param_base_types && actual_mut_depth > mut_param_base_depth && !tc.current_fn_param_requires_mut_pointer_slot(mut_arg_node.value)
+			if is_implicit_mut_param_pointer || !tc.mut_pointer_slot_arg_compatible(actual_mut_type, expected) {
 				argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
 				actual_display := tc.diagnostic_expr_type_name(arg_id, actual_mut_type)
 				expected_display := '&${call_argument_type_name(expected)}'
