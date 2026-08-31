@@ -271,6 +271,15 @@ fn canonical_output_path(path string) string {
 	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 }
 
+fn validate_output_source_paths(output string, real_input string, source_paths []string) ! {
+	canonical_output := canonical_output_path(output)
+	for source_path in source_paths {
+		if canonical_output == source_path && source_path != real_input {
+			return error('fastc output path `${output}` aliases imported source `${source_path}`')
+		}
+	}
+}
+
 fn fastc_canonical_vroot(vroot string) string {
 	if vroot == '' {
 		return ''
@@ -440,12 +449,7 @@ pub fn run(args []string) {
 		loc_per_s := f64(total_lines) * 1_000_000.0 / f64(gen_us)
 		eprintln('fastc-bench: files=${generation.source_paths.len} lines=${total_lines} gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f}')
 	}
-	canonical_output := canonical_output_path(output)
-	for source_path in generation.source_paths {
-		if canonical_output == source_path && source_path != real_input {
-			fail('fastc output path `${output}` aliases imported source `${source_path}`')
-		}
-	}
+	validate_output_source_paths(output, real_input, generation.source_paths) or { fail(err.msg()) }
 	c_source := generation.c_source
 	build_prefix := '${output}.fastc-build-${os.getpid()}'
 	c_path := build_prefix + '.c'
