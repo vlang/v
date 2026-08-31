@@ -33,6 +33,7 @@ mut:
 	repeated_expr         shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
 	potential_non_inlined shared map[string]map[string]token.Pos              // fns might be inlined
 	call_counter          shared map[string]int // fn call counter
+	builtin_call_counter  shared map[string]int // unqualified fn call counter, keyed by bare name (for builtin fns)
 	cur_fn                ast.FnDecl            // current fn declaration
 }
 
@@ -114,6 +115,15 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 					}
 					vt.call_counter[fn_name]++
 				}
+				if !expr.name.contains('.') {
+					// Builtin functions have a bare `fkey()` (e.g. `println`), but an
+					// unqualified call from another module is stored with the caller's
+					// module (e.g. `main.println`). Count unqualified calls by bare name
+					// too, so builtin calls from any module contribute to the threshold.
+					lock vt.builtin_call_counter {
+						vt.builtin_call_counter[expr.name]++
+					}
+				}
 				vt.save_expr(callexpr_cutoff,
 					'${expr.name}(${expr.args.map(it.str()).join(', ')})', vet.file, expr.pos)
 			}
@@ -182,7 +192,13 @@ fn (mut vt VetAnalyze) vet_repeated_code(mut vet Vet) {
 fn (mut vt VetAnalyze) vet_inlining_fn(mut vet Vet) {
 	for fn_name, info in vt.potential_non_inlined {
 		for file, pos in info {
-			calls := vt.call_counter[fn_name] or { 0 }
+			// A bare key (no module prefix) belongs to a builtin function, whose
+			// unqualified calls from other modules are tracked by bare name.
+			calls := if fn_name.contains('.') {
+				vt.call_counter[fn_name] or { 0 }
+			} else {
+				vt.builtin_call_counter[fn_name] or { 0 }
+			}
 			if calls < fns_call_cutoff {
 				continue
 			}
