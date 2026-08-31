@@ -51,6 +51,10 @@ struct FastArm64Defaults {
 	mode FastArm64DefaultMode = .warm
 }
 
+struct FastArm64MapDefaults {
+	values map[string]int
+}
+
 struct FastArm64CustomError {}
 
 fn (err FastArm64CustomError) msg() string {
@@ -203,6 +207,35 @@ fn main() {
 		println("wrong insertion")
 		return
 	}
+	mut trimmed := [1, 2]
+	trimmed.trim(100)
+	if trimmed.len != 2 || trimmed[0] != 1 || trimmed[1] != 2 {
+		println("wrong trim")
+		return
+	}
+	map_defaults := FastArm64MapDefaults{}
+	if map_defaults.values.len != 0 || map_defaults.values["missing"] != 0 {
+		println("wrong zero map")
+		return
+	}
+	mut shifted := u64(1) << 63
+	shifted >>= 1
+	mut divided := u64(1) << 63
+	divided /= 2
+	mut remainder := (u64(1) << 63) + 1
+	remainder %= 3
+	if shifted != u64(1) << 62 || divided != u64(1) << 62 || remainder != 0 {
+		println("wrong unsigned compound operation")
+		return
+	}
+	formatted_value := 42
+	elapsed := 1.25
+	max_unsigned := u64(18446744073709551615)
+	long_float := "\${1.0:.200f}"
+	if "\${formatted_value:05d}" != "00042" || "\${-7:04d}" != "-007" || "\${formatted_value:x}" != "2a" || "\${formatted_value:04X}" != "002A" || "\${formatted_value:b}" != "101010" || "\${formatted_value:o}" != "52" || "\${max_unsigned:020d}" != "18446744073709551615" || "\${elapsed:.2f}" != "1.25" || "\${elapsed:7.2f}" != "   1.25" || long_float.len != 202 || long_float[0] != `1` || long_float[1] != `.` || long_float[201] != `0` {
+		println("wrong interpolation format")
+		return
+	}
 	mut option_handler_ran := false
 	option_fallback := maybe_value(false) or {
 		option_handler_ran = true
@@ -292,7 +325,12 @@ fn test_fastc_arm64_array_index_bounds() {
 			sources << 'fn main() {\n\tvalues := [1, 2]\n\tindex := ${index}\n\tselected := values[index]\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 			sources << 'fn main() {\n\tmut values := [1, 2]\n\tindex := ${index}\n\tvalues.delete(index)\n}\n'
 			sources << 'fn main() {\n\ttext := "hi"\n\tindex := ${index}\n\tselected := text[index]\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+			sources << 'struct FixedHolder {\n\tvalues [2]int\n}\n\nfn main() {\n\tholder := FixedHolder{}\n\tindex := ${index}\n\tselected := holder.values[index]\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		}
+		sources << 'fn main() {\n\tvalues := [1, 2]\n\tstart := -1\n\tsliced := values[start..]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		sources << 'fn main() {\n\tvalues := [1, 2]\n\tstart := 3\n\tsliced := values[start..]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		sources << 'fn main() {\n\tvalues := [1, 2]\n\tend := 5\n\tsliced := values[1..end]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		sources << 'fn main() {\n\tvalues := [1, 2]\n\tstart := 2\n\tend := 1\n\tsliced := values[start..end]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tvalues := []int{}\n\tselected := values.last()\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tmut values := []int{}\n\tselected := values.pop()\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tmut values := []int{}\n\tvalues.delete_last()\n\tprintln("unused")\n}\n'
