@@ -85,6 +85,7 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	tc.structs['async.Task_mcp__Response'] = []types.StructField{}
 	tc.structs['types.Array'] = []types.StructField{}
 	tc.file_imports['main.v\njson'] = 'json2'
+	tc.cur_file = 'main.v'
 	mut g := FlatGen.new()
 	g.a = ast
 	g.tc = &tc
@@ -111,6 +112,25 @@ fn test_optional_payload_qualifies_concrete_generic_struct() {
 	})
 	assert g.concrete_optional_type_name(result_type) == 'Optional_json2__StructKeyDecodeResult_TestEchoArgs'
 	assert g.needed_optional_types['Optional_json2__StructKeyDecodeResult_TestEchoArgs'] == 'json2__StructKeyDecodeResult_TestEchoArgs'
+}
+
+fn test_optional_payload_ignores_import_aliases_from_other_files() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	tc.cur_file = 'json/any.v'
+	tc.structs['json.Any'] = []types.StructField{}
+	tc.structs['json2.Any'] = []types.StructField{}
+	tc.structs['AnyStruct[json.Any]'] = []types.StructField{}
+	tc.structs['AnyStruct[json2.Any]'] = []types.StructField{}
+	tc.file_imports['unrelated.v\njson'] = 'json2'
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+
+	alias_payload := g.optional_payload_c_type(types.Type(types.Struct{
+		name: 'main.AnyStruct[json.Any]'
+	}))
+	assert alias_payload == 'main__AnyStruct_json__Any'
 }
 
 fn test_optional_payload_qualifies_interface() {

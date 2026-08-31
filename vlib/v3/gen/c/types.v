@@ -427,29 +427,18 @@ fn (g &FlatGen) canonical_import_alias_type_text(typ string) string {
 	}
 	if clean.contains('.') {
 		alias := clean.all_before('.')
-		if module_name := g.unique_import_alias_module(alias) {
+		if module_name := g.current_file_import_alias_module(alias) {
 			return module_name + clean[alias.len..]
 		}
 	}
 	return clean
 }
 
-fn (g &FlatGen) unique_import_alias_module(alias string) ?string {
-	mut found := ''
-	suffix := '\n${alias}'
-	for key, module_name in g.tc.file_imports {
-		if !key.ends_with(suffix) {
-			continue
-		}
-		if found.len > 0 && found != module_name {
-			return none
-		}
-		found = module_name
+fn (g &FlatGen) current_file_import_alias_module(alias string) ?string {
+	if g.tc.cur_file.len == 0 {
+		return none
 	}
-	if found.len > 0 {
-		return found
-	}
-	return none
+	return g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { none }
 }
 
 fn optional_payload_is_bare_struct(t types.Type) bool {
