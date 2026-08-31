@@ -9133,7 +9133,8 @@ fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) 
 				cur_mod = node.value
 			}
 			.fn_decl {
-				if fallback_mod.len > 0 && cur_mod != fallback_mod {
+				if fallback_mod.len > 0 && cur_mod != fallback_mod && !(cur_mod in ['', 'main'] && fallback_mod in ['',
+					'main']) {
 					continue
 				}
 				qname := checker_qualified_fn_name(cur_mod, node.value)
@@ -9849,10 +9850,13 @@ fn (tc &TypeChecker) indirect_call_param_storage_source_params(call flat.Node, t
 
 fn (tc &TypeChecker) visible_mutation_call_module(call flat.Node, call_name string) string {
 	if module_name := tc.fn_type_modules[call_name] {
-		return module_name
+		if module_name.len > 0 {
+			return module_name
+		}
 	}
 	if source_file := tc.a.source_files[call.pos.id] {
-		return tc.file_modules[source_file.name] or { '' }
+		module_name := tc.file_modules[source_file.name] or { 'main' }
+		return if module_name.len > 0 { module_name } else { 'main' }
 	}
 	return ''
 }

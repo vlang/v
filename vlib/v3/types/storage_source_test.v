@@ -240,18 +240,18 @@ fn replace(mut target &OtherBox, replacement &OtherBox) {
 	_ = replacement
 }
 ') or { panic(err) }
-	os.write_file(main_path, 'module main
+	os.write_file(main_path, 'struct Box {}
 
-struct Box {}
-
-fn replace(mut target &Box, replacement &Box) {
+fn replace(mut target &Box, replacement &Box) bool {
 	target = replacement
+	return true
 }
 
 fn main() {
 	mut first := &Box{}
 	second := &Box{}
-	replace(mut first, second)
+	changed := replace(mut first, second)
+	assert changed
 }
 ') or { panic(err) }
 

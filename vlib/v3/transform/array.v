@@ -3737,13 +3737,17 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 	}
 	if stmt.kind in [.assign, .selector_assign, .index_assign] {
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
+			rhs_id := t.a.child(&stmt, i + 1)
+			if !t.array_map_update_local_pointer_origins_flow(rhs_id, elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
+				return false
+			}
 			lhs_id := t.a.child(&stmt, i)
 			if path := t.array_map_lvalue_local_path(lhs_id) {
 				root := t.array_map_lvalue_root_ident(lhs_id) or { continue }
 				if root in locals {
 					origins := locals.clone()
 					overlapping := array_map_clear_local_pointer_origins(path, mut locals)
-					t.array_map_record_local_pointer_origins(path, t.a.child(&stmt, i + 1), elem_name, origins, mut locals)
+					t.array_map_record_local_pointer_origins(path, rhs_id, elem_name, origins, mut locals)
 					array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
 				}
 			}
