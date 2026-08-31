@@ -912,6 +912,71 @@ fn test_external_map_expansion_estimate_includes_index_reconstruction() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) == 5
 }
 
+fn test_external_map_expansion_estimate_includes_range_reconstruction() {
+	mut a := flat.FlatAst.new()
+	mut value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+	})
+	for i in 0 .. deferred_map_expansion_threshold / 8 + 1 {
+		low_callee := a.add_node(flat.Node{
+			kind: .ident
+			value: 'low_${i}'
+		})
+		low_start := a.children.len
+		a.children << low_callee
+		low := a.add_node(flat.Node{
+			kind: .call
+			children_start: low_start
+			children_count: 1
+		})
+		high_callee := a.add_node(flat.Node{
+			kind: .ident
+			value: 'high_${i}'
+		})
+		high_start := a.children.len
+		a.children << high_callee
+		high := a.add_node(flat.Node{
+			kind: .call
+			children_start: high_start
+			children_count: 1
+		})
+		range_start := a.children.len
+		a.children << low
+		a.children << high
+		range := a.add_node(flat.Node{
+			kind: .range
+			children_start: range_start
+			children_count: 2
+		})
+		index_start := a.children.len
+		a.children << value
+		a.children << range
+		value = a.add_node(flat.Node{
+			kind: .index
+			children_start: index_start
+			children_count: 2
+		})
+	}
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'value'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << value
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string][]int'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_selector_reconstruction() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{
