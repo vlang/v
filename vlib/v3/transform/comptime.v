@@ -1240,6 +1240,19 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 	return t.clone_method_subst_scoped(id, var_name, method, []string{})
 }
 
+fn (t &Transformer) comptime_method_call_arity_matches(node flat.Node, method MethodMeta) bool {
+	for i in 1 .. node.children_count {
+		if t.call_arg_is_spread(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	actual_count := int(node.children_count) - 1
+	if method.params.len > 0 && method.params[method.params.len - 1].typ.starts_with('...') {
+		return actual_count >= method.params.len - 1
+	}
+	return actual_count == method.params.len
+}
+
 fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string, method MethodMeta, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
@@ -1260,7 +1273,7 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 		callee := t.a.child_node(&node, 0)
 		if callee.kind == .selector && callee.value == '$' && callee.children_count >= 2
 			&& t.comptime_method_name_expr_matches(t.a.child(callee, 1), var_name)
-			&& int(node.children_count) - 1 != method.params.len {
+			&& !t.comptime_method_call_arity_matches(node, method) {
 			// A `$method` call can appear in the runtime branch paired with a
 			// method-metadata condition. V1 leaves that branch in place but skips
 			// specializations whose argument list cannot call the current method.
