@@ -81,6 +81,7 @@ mut:
 	function_keys_by_name      map[string][]string
 	type_decls_by_id           map[int]FastArm64TypeDecl
 	native_used_function_names map[string]bool
+	module_init_function_keys  []string
 	main_argc_global           ssa.ValueID
 	main_argv_global           ssa.ValueID
 }
@@ -144,6 +145,11 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 
 	mut program := FastArm64Program.new(prefs, declared_types, functions, type_decls, constant_sources, enum_values)
 	program.register_functions()
+	module_init_calls := fastc_module_init_calls(sources, functions)!
+	module_cleanup_calls := fastc_module_cleanup_calls(sources, functions)!
+	module_init_function_keys := fast_arm64_lifecycle_function_keys(module_init_calls, 'init', functions)
+	module_cleanup_function_keys := fast_arm64_lifecycle_function_keys(module_cleanup_calls, 'cleanup', functions)
+	program.register_module_lifecycle(module_init_function_keys, module_cleanup_function_keys)
 	program.register_print_runtime()
 	reachable_modules := fast_arm64_reachable_modules(sources)
 	mut pending_paths := fast_arm64_entry_source_paths(functions)
@@ -224,6 +230,19 @@ fn fast_arm64_entry_source_paths(functions map[string]FastcFunctionSignature) ma
 		}
 	}
 	return paths
+}
+
+fn fast_arm64_lifecycle_function_keys(calls []string, hook_name string, functions map[string]FastcFunctionSignature) []string {
+	mut function_keys := []string{cap: calls.len}
+	for call in calls {
+		for function_key, signature in functions {
+			if function_key == fastc_function_key(signature.module_name, hook_name) && call == fastc_c_function_name(signature.module_name, hook_name) {
+				function_keys << function_key
+				break
+			}
+		}
+	}
+	return function_keys
 }
 
 fn fast_arm64_pending_source_paths(program &FastArm64Program) map[string]bool {
@@ -988,6 +1007,7 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_function('memset', 'memset', p.ptr_i8, true)
 	p.register_function('memmove', 'memmove', p.ptr_i8, true)
 	p.register_function('system', 'system', p.i32_type, true)
+	p.register_function('atexit', 'atexit', p.i32_type, true)
 	p.register_function('getcwd', 'getcwd', p.ptr_i8, true)
 	p.register_function('__error', '__error', p.m.type_store.get_ptr(p.i32_type), true)
 	p.main_argc_global = p.m.add_global('g_main_argc', p.i64_type)
@@ -1007,6 +1027,26 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_integer_string_runtime()
 	p.register_integer_str_wrappers()
 	p.register_string_sort_runtime()
+}
+
+fn (mut p FastArm64Program) register_module_lifecycle(init_function_keys []string, cleanup_function_keys []string) {
+	p.module_init_function_keys = init_function_keys.clone()
+	for function_key in init_function_keys {
+		p.register_signature_function(function_key) or { continue }
+		p.native_used_function_names[function_key] = true
+	}
+	if cleanup_function_keys.len == 0 {
+		return
+	}
+	cleanup_id := p.register_function('v_fastc_cleanup_modules', 'v_fastc_cleanup_modules', p.void_type, false)
+	entry := p.m.add_block(cleanup_id, 'cleanup_modules_entry')
+	for function_key in cleanup_function_keys {
+		function_id := p.register_signature_function(function_key) or { continue }
+		p.native_used_function_names[function_key] = true
+		function_ref := p.m.add_value(.func_ref, p.fn_returns[function_key], p.fn_symbols[function_key], function_id)
+		p.m.add_instr(.call, entry, p.fn_returns[function_key], [function_ref])
+	}
+	p.instr0(.ret, entry, p.void_type)
 }
 
 fn (mut p FastArm64Program) register_os_path_runtime() {
@@ -2498,6 +2538,7 @@ fn (mut p FastArm64Parser) parse_script() ! {
 	p.break_scopes = []int{}
 	p.continue_scopes = []int{}
 	p.cur_block = p.program.m.add_block(func_id, 'main_entry')
+	p.emit_main_startup()!
 	for p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -2703,6 +2744,9 @@ fn (mut p FastArm64Parser) parse_function() ! {
 			typ_name: typ_name
 		}
 	}
+	if func_id == p.program.fn_ids['main'] {
+		p.emit_main_startup()!
+	}
 	p.parse_block()!
 	if !p.block_is_terminated(p.cur_block) {
 		if name == 'main' || p.return_typ == p.program.void_type {
@@ -2716,6 +2760,23 @@ fn (mut p FastArm64Parser) parse_function() ! {
 			return p.unsupported('non-void function `${name}` that can fall through')
 		}
 		p.mark_terminated(p.cur_block)
+	}
+}
+
+fn (mut p FastArm64Parser) emit_main_startup() ! {
+	for function_key in p.program.module_init_function_keys {
+		function_id := p.program.register_signature_function(function_key) or {
+			return p.unsupported('registered module init `${function_key}`')
+		}
+		function_ref := p.program.m.add_value(.func_ref, p.program.fn_returns[function_key], p.program.fn_symbols[function_key], function_id)
+		p.program.m.add_instr(.call, p.cur_block, p.program.fn_returns[function_key], [
+			function_ref,
+		])
+	}
+	if cleanup_id := p.program.fn_ids['v_fastc_cleanup_modules'] {
+		cleanup_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'v_fastc_cleanup_modules', cleanup_id)
+		atexit_ref := p.program.m.add_value(.func_ref, p.program.i32_type, 'atexit', p.program.fn_ids['atexit'])
+		p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [atexit_ref, cleanup_ref])
 	}
 }
 
@@ -4809,7 +4870,8 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 			}
 		}
 		if global_id == ssa.ValueID(0) {
-			global_id = p.program.m.add_global_with_data(first_name, p.program.u8_type, false, []u8{len: 128})
+			storage_type := p.program.m.type_store.get_array(p.program.u8_type, 128)
+			global_id = p.program.m.add_global(first_name, storage_type)
 		}
 		return FastArm64Value{
 			id: global_id
@@ -5092,12 +5154,8 @@ fn (mut p FastArm64Parser) parse_struct_literal(type_name string) !FastArm64Valu
 	if layout.kind != .struct_t {
 		return p.unsupported('`${type_name}` literal')
 	}
-	slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(typ))
-	byte_slot := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, slot)
-	memset_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memset', p.program.fn_ids['memset'])
-	zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
-	size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(typ).str())
-	p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memset_ref, byte_slot, zero, size])
+	initial := p.default_struct_value_for_type(typ, type_name)!
+	slot := initial.address
 	p.expect(.lcbr)!
 	mut positional_field := 0
 	for p.tok != .rcbr {
@@ -5841,19 +5899,26 @@ fn (mut p FastArm64Parser) emit_map_items_array(map_value FastArm64Value, keys b
 	data_field := if keys { 0 } else { 1 }
 	size_field := if keys { 4 } else { 5 }
 	data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, state, p.program.map_state_type, data_field))
-	capacity64 := p.program.instr1(.load, p.cur_block, p.program.i64_type, p.program.struct_field_ptr(p.cur_block, state, p.program.map_state_type, 2))
 	length64 := p.program.instr1(.load, p.cur_block, p.program.i64_type, p.program.struct_field_ptr(p.cur_block, state, p.program.map_state_type, 3))
 	element_size64 := p.program.instr1(.load, p.cur_block, p.program.i64_type, p.program.struct_field_ptr(p.cur_block, state, p.program.map_state_type, size_field))
+	byte_count := p.program.instr2(.mul, p.cur_block, p.program.i64_type, length64, element_size64)
+	malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
+	owned_data := p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [
+		malloc_ref,
+		byte_count,
+	])
+	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
+	p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memcpy_ref, owned_data, data,
+		byte_count])
 	array_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
-	p.program.instr2(.store, p.cur_block, p.program.void_type, data, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, owned_data, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
 	zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
 	p.program.instr2(.store, p.cur_block, p.program.void_type, zero, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 1))
 	length := p.program.instr1(.trunc, p.cur_block, p.program.i32_type, length64)
-	capacity := p.program.instr1(.trunc, p.cur_block, p.program.i32_type, capacity64)
 	element_size := p.program.instr1(.trunc, p.cur_block, p.program.i32_type, element_size64)
 	for field, item in {
 		2: length
-		3: capacity
+		3: length
 		4: zero
 		5: element_size
 	} {
@@ -6521,6 +6586,10 @@ fn (mut p FastArm64Parser) parse_named_argument_struct(type_name string) !FastAr
 
 fn (mut p FastArm64Parser) default_struct_value(type_name string) !FastArm64Value {
 	typ := p.program.type_id(type_name)
+	return p.default_struct_value_for_type(typ, type_name)
+}
+
+fn (mut p FastArm64Parser) default_struct_value_for_type(typ ssa.TypeID, type_name string) !FastArm64Value {
 	mut result := p.zero_value(typ, type_name)
 	declaration := p.program.type_decls_by_id[int(typ)] or {
 		return result
@@ -6529,7 +6598,7 @@ fn (mut p FastArm64Parser) default_struct_value(type_name string) !FastArm64Valu
 		if field.default_source == '' {
 			continue
 		}
-		mut value := p.parse_constant_expression(field.default_source)!
+		mut value := p.parse_struct_field_default(field.default_source, field.typ)!
 		field_type := p.program.m.type_store.types[typ].fields[i]
 		if value.typ != field_type {
 			value = p.convert_value(value, field_type, field.typ)
@@ -6541,6 +6610,22 @@ fn (mut p FastArm64Parser) default_struct_value(type_name string) !FastArm64Valu
 		id: p.program.instr1(.load, p.cur_block, typ, result.address)
 	}
 	return result
+}
+
+fn (mut p FastArm64Parser) parse_struct_field_default(source string, type_name string) !FastArm64Value {
+	outer_scanner := p.s
+	outer_tok := p.tok
+	outer_lit := p.lit
+	p.enter_source(source)
+	value := if p.tok == .dot {
+		p.parse_enum_shorthand(type_name)!
+	} else {
+		p.parse_expression(0)!
+	}
+	p.s = outer_scanner
+	p.tok = outer_tok
+	p.lit = outer_lit
+	return value
 }
 
 fn (mut p FastArm64Parser) call_argument(argument FastArm64Value, expected_type_name string) ssa.ValueID {

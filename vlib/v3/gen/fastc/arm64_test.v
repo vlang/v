@@ -40,6 +40,17 @@ fn test_fastc_arm64_lexical_scopes_and_array_mutation() {
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
 		source := '
+enum FastArm64DefaultMode {
+	cold
+	warm
+}
+
+struct FastArm64Defaults {
+	retries int = 3
+	enabled bool = true
+	mode FastArm64DefaultMode = .warm
+}
+
 fn add_after_return(mut value int) {
 	defer {
 		value += 7
@@ -140,6 +151,25 @@ fn main() {
 		println("wrong insertion")
 		return
 	}
+	defaults := FastArm64Defaults{}
+	explicit := FastArm64Defaults{retries: 7}
+	if defaults.retries != 3 || !defaults.enabled || defaults.mode != .warm || explicit.retries != 7 || !explicit.enabled || explicit.mode != .warm {
+		println("wrong struct defaults")
+		return
+	}
+	mut indexed := {"b": 2, "a": 1}
+	mut keys := indexed.keys()
+	keys.sort()
+	if keys[0] != "a" || keys[1] != "b" || indexed["a"] != 1 || indexed["b"] != 2 {
+		println("wrong map keys copy")
+		return
+	}
+	mut values := indexed.values()
+	values[0] = 99
+	if indexed["a"] != 1 || indexed["b"] != 2 {
+		println("wrong map values copy")
+		return
+	}
 	println("native")
 }
 '
@@ -151,6 +181,54 @@ fn main() {
 		result := os.execute(output_path)
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
+	}
+}
+
+fn test_fastc_arm64_module_lifecycle_hooks() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_lifecycle_${os.getpid()}')
+		dependency_dir := os.join_path_single(test_dir, 'dependency')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(dependency_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		dependency_path := os.join_path_single(dependency_dir, 'dependency.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'module main
+
+import dependency
+
+fn init() {
+	println("main init")
+}
+
+fn cleanup() {
+	println("main cleanup")
+}
+
+fn main() {
+	println("main")
+}
+') or { panic(err) }
+		os.write_file(dependency_path, 'module dependency
+
+fn init() {
+	println("dependency init")
+}
+
+fn cleanup() {
+	println("dependency cleanup")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'dependency init\nmain init\nmain\nmain cleanup\ndependency cleanup\n'
 	}
 }
 
