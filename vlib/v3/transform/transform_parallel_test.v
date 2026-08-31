@@ -1813,6 +1813,55 @@ fn test_string_interp_expansion_estimate_defers_nested_literal_interpolation() {
 	}
 }
 
+fn test_string_interp_expansion_estimate_defers_interface_auto_stringification() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+		typ: 'View'
+	})
+	interp_start := a.children.len
+	a.children << value
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['View'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.string_interp_expr_needs_deferred_lowering(value)
+	_, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert needs_deferred_lowering
+}
+
+fn test_string_interp_expansion_estimate_defers_typed_map_stringification() {
+	for typ in ['map[string]?int', 'map[string][]int', 'map[string]&int'] {
+		mut a := flat.FlatAst.new()
+		value := a.add_node(flat.Node{
+			kind: .ident
+			value: 'value'
+			typ: typ
+		})
+		interp_start := a.children.len
+		a.children << value
+		interp := a.add_node(flat.Node{
+			kind: .string_interp
+			typ: 'string'
+			children_start: interp_start
+			children_count: 1
+		})
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+		assert t.string_interp_expr_needs_deferred_lowering(value), typ
+		_, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+		assert needs_deferred_lowering, typ
+	}
+}
+
 fn test_pointer_formatted_interp_skips_aggregate_stringify_expansion() {
 	mut a := flat.FlatAst.new()
 	pointer := a.add_node(flat.Node{

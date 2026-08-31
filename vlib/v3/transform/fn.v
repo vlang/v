@@ -6315,10 +6315,33 @@ fn (mut t Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId
 		// synthesize conditionals and pending statements that are absent from this AST.
 		return true
 	}
-	clean_type := t.normalize_type_alias(t.reliable_stringify_type(id).trim_space())
+	raw_type := t.reliable_stringify_type(id).trim_space()
+	clean_type := t.normalize_type_alias(raw_type)
 	if clean_type.starts_with('[]') || t.is_fixed_array_type(clean_type) {
 		// Collection stringification always synthesizes a loop and temporaries.
 		return true
+	}
+	iface_name := t.resolve_interface_type_name(clean_type)
+	if iface_name.len > 0 {
+		// Interfaces without a concrete str dispatch expand through every boxed
+		// implementation and emit their result tree through pending statements.
+		str_key := '${iface_name}.str'
+		has_bounded_str := !isnil(t.tc) && ('str' in t.tc.interface_abstract_method_names(iface_name) || str_key in t.fn_ret_types || str_key in t.tc.fn_ret_types)
+		if !has_bounded_str {
+			return true
+		}
+	}
+	if clean_type.starts_with('map[') {
+		if _ := t.resolve_receiver_method_for_type(raw_type, 'str') {
+			// A user-defined map str method remains a bounded call.
+		} else {
+			key_type, raw_value_type := t.map_type_parts(clean_type)
+			fixed_value_type := t.fixed_array_map_value_type_text(raw_value_type)
+			value_type := if fixed_value_type.len > 0 { fixed_value_type } else { raw_value_type }
+			if t.map_str_types_need_typed_lowering(key_type, value_type) {
+				return true
+			}
+		}
 	}
 	if t.runtime_type_metadata_call_expands(id, node) {
 		return true
@@ -8049,13 +8072,8 @@ fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat
 	}
 	key_kind := t.map_str_kind_for_type(key_type)
 	value_kind := t.map_str_kind_for_type(value_type)
-	if key_kind == 0 || value_kind == 0 {
-		key_has_conversion := key_kind != 0 || t.map_str_type_has_transform_conversion(key_type)
-		value_has_conversion := value_kind != 0
-			|| t.map_str_type_has_transform_conversion(value_type)
-		if key_has_conversion && value_has_conversion {
-			return t.lower_typed_map_str(map_expr, map_type, key_type, value_type)
-		}
+	if t.map_str_types_need_typed_lowering(key_type, value_type) {
+		return t.lower_typed_map_str(map_expr, map_type, key_type, value_type)
 	}
 	lowered := if t.expr_is_transformed_deref(map_expr) {
 		t.stable_transformed_expr_for_reuse(map_expr, map_type, 'map_str_base')
@@ -8065,6 +8083,17 @@ fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat
 	return t.make_call_typed('v3_map_str', [lowered, t.make_int_literal(key_kind),
 		t.make_int_literal(value_kind), t.make_int_literal(t.map_str_fixed_len_for_type(value_type))],
 		'string')
+}
+
+fn (t &Transformer) map_str_types_need_typed_lowering(key_type string, value_type string) bool {
+	key_kind := t.map_str_kind_for_type(key_type)
+	value_kind := t.map_str_kind_for_type(value_type)
+	if key_kind != 0 && value_kind != 0 {
+		return false
+	}
+	key_has_conversion := key_kind != 0 || t.map_str_type_has_transform_conversion(key_type)
+	value_has_conversion := value_kind != 0 || t.map_str_type_has_transform_conversion(value_type)
+	return key_has_conversion && value_has_conversion
 }
 
 fn (t &Transformer) expr_is_transformed_deref(id flat.NodeId) bool {
