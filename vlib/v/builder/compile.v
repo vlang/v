@@ -384,21 +384,27 @@ pub fn (v Builder) get_builtin_files() []string {
 fn test_file_has_module_declaration(content string) bool {
 	mut in_block_comment := false
 	for source_line in content.split_into_lines() {
-		line := source_line.trim_space()
-		if in_block_comment {
-			if line.contains('*/') {
+		mut line := source_line.trim_space()
+		for {
+			if in_block_comment {
+				end := line.index('*/') or { break }
 				in_block_comment = false
+				line = line[end + 2..].trim_space()
+				continue
 			}
-			continue
+			if line == '' || line.starts_with('//') || line.starts_with('#!') {
+				break
+			}
+			if line.starts_with('/*') {
+				end := line.index('*/') or {
+					in_block_comment = true
+					break
+				}
+				line = line[end + 2..].trim_space()
+				continue
+			}
+			return line.starts_with('module ')
 		}
-		if line == '' || line.starts_with('//') || line.starts_with('#!') {
-			continue
-		}
-		if line.starts_with('/*') {
-			in_block_comment = !line.contains('*/')
-			continue
-		}
-		return line.starts_with('module ')
 	}
 	return false
 }
