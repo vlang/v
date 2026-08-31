@@ -1158,6 +1158,41 @@ fn test_string_interp_expansion_estimate_includes_possible_temp_hoisting() {
 	assert !needs_deferred_lowering
 }
 
+fn test_reflected_comptime_for_interpolation_defers_with_bounded_join_estimate() {
+	mut a := flat.FlatAst.new()
+	comptime_loop := a.add_node(flat.Node{
+		kind: .comptime_for
+	})
+	literal := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'part'
+		typ: 'string'
+	})
+	metadata := a.add_node(flat.Node{
+		kind: .ident
+		value: 'field_name'
+		typ: 'string'
+	})
+	interp_start := a.children.len
+	a.children << literal
+	a.children << metadata
+	interp := a.add_node(flat.Node{
+		kind: .string_interp
+		typ: 'string'
+		children_start: interp_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	part_estimate, part_needs_deferred := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+	assert part_estimate == 3
+	assert !part_needs_deferred
+	span_estimate, span_needs_deferred := t.fn_span_interp_estimate(int(comptime_loop), int(interp) + 1)
+	assert span_estimate == part_estimate
+	assert span_needs_deferred
+}
+
 fn test_string_interp_expansion_estimate_includes_container_cast_hoisting() {
 	mut a := flat.FlatAst.new()
 	literal := a.add_node(flat.Node{

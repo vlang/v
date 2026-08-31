@@ -6244,8 +6244,11 @@ fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) (int, bool) {
 	// A reflected `$for` substitutes its loop metadata after this estimate. An
 	// interpolation that looks bounded here can become a large aggregate in every
 	// iteration, so keep it out of fixed `.nogrow` worker regions.
-	if est == 0 && has_comptime_for && has_interp {
-		return unresolved_interp_expansion_estimate, true
+	if has_comptime_for && has_interp {
+		if est == 0 {
+			est = unresolved_interp_expansion_estimate
+		}
+		return est, true
 	}
 	return est, needs_deferred_lowering
 }
