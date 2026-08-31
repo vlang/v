@@ -1785,6 +1785,34 @@ fn test_string_interp_expansion_estimate_defers_unresolved_values() {
 	assert needs_deferred_lowering
 }
 
+fn test_string_interp_expansion_estimate_defers_nested_literal_interpolation() {
+	for value in [
+		'prefix \${if true { "yes" } else { "no" }}',
+		'prefix \${match 1 { 1 { "yes" } else { "no" } }}',
+	] {
+		mut a := flat.FlatAst.new()
+		nested := a.add_node(flat.Node{
+			kind: .string_literal
+			value: value
+			typ: 'string'
+		})
+		interp_start := a.children.len
+		a.children << nested
+		interp := a.add_node(flat.Node{
+			kind: .string_interp
+			typ: 'string'
+			children_start: interp_start
+			children_count: 1
+		})
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+		_, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+		assert t.string_interp_expr_needs_deferred_lowering(nested)
+		assert needs_deferred_lowering
+	}
+}
+
 fn test_pointer_formatted_interp_skips_aggregate_stringify_expansion() {
 	mut a := flat.FlatAst.new()
 	pointer := a.add_node(flat.Node{
