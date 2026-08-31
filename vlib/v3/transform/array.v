@@ -3045,6 +3045,37 @@ fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId
 	return root != elem_name && (root !in locals || locals[root])
 }
 
+fn (mut t Transformer) array_map_slice_backing_origin_is_external(id flat.NodeId, elem_name string, origins map[string]bool) ?bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init] && node.children_count > 0 {
+		return t.array_map_slice_backing_origin_is_external(t.a.child(&node, 0), elem_name, origins)
+	}
+	if node.kind in [.block, .match_branch] && node.children_count > 0 {
+		return t.array_map_slice_backing_origin_is_external(t.a.child(&node, node.children_count - 1), elem_name, origins)
+	}
+	if node.kind != .index || node.value != 'range' || node.children_count < 2 {
+		return none
+	}
+	result_type := t.normalize_type_alias(t.checker_expr_type_name(id) or { t.node_type(id) })
+	if !result_type.starts_with('[]') {
+		return none
+	}
+	base_id := t.a.child(&node, 0)
+	root := t.array_map_lvalue_root_ident(base_id) or { return true }
+	if root == elem_name {
+		return false
+	}
+	if root !in origins {
+		return true
+	}
+	base_path := t.array_map_lvalue_local_path(base_id) or { return origins[root] }
+	backing_path := '${base_path}[*]'
+	return origins[array_map_local_pointer_path(backing_path, root, origins)]
+}
+
 fn array_map_local_path_with_assignment_wildcards(path string, assignment_path string) string {
 	mut wildcard_indexes := []int{}
 	mut assignment_pos := 0
@@ -3254,6 +3285,12 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 		return
 	}
 	locals[path] = false
+	if external := t.array_map_slice_backing_origin_is_external(id, elem_name, origins) {
+		// A range-index view keeps the source array's backing allocation. Track the
+		// wildcard storage path so writes through a local slice still reach external
+		// storage without treating a later reassignment of the slice itself as external.
+		locals['${path}[*]'] = external
+	}
 	if node.kind == .call {
 		sources := t.tc.ownership_call_result_sources(id)
 		mut seen := map[string]bool{}

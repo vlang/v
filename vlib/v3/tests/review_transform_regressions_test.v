@@ -11405,6 +11405,46 @@ fn main() {
 	assert out == '0\nexternal'
 }
 
+fn test_array_map_keeps_source_for_external_array_slice_backing() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := []&Item{len: 1}
+	saved[0] = unsafe { &external }
+	selected := make_items().map(match true {
+		true {
+			mut alias := unsafe { saved[..] }
+			alias[0] = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved[0].text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_external_slice_backing_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_external_slice_backing', '-ownership', source)
+	assert out == '0\nsource'
+}
+
 fn test_struct_stringification_evaluates_dereferenced_pointer_call_once() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'struct_str_dereferenced_call_once', 'struct Node {
