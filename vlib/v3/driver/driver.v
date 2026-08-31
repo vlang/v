@@ -8336,7 +8336,7 @@ pub fn run(args []string) {
 		// A directly invoked host compiler may live outside the checkout (for example,
 		// a production benchmark binary in /tmp). The explicit compiler entry owns
 		// this build, so resolve builtin and vlib beside that input instead of VEXE.
-		resolve_vroot_for_input(prefs.vroot, input_file)
+		resolve_vroot_for_input(prefs.vroot, os.real_path(input_file))
 	} else if pref.has_macos_v3_caller_environment() && prefs.vexe.len > 0 {
 		// The macOS dispatcher sets VEXE to the invoking compiler. Preserve that
 		// checkout instead of selecting another V checkout around the input.

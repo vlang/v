@@ -58,9 +58,13 @@ fn test_direct_fastc_compiler_entry_selects_selfhost_driver() {
 	}
 	host_binary := os.join_path(root, 'v_host')
 	os.cp(@VEXE, host_binary) or { panic(err) }
+	linked_entry_dir := os.join_path(root, 'linked_entry')
+	os.mkdir_all(linked_entry_dir) or { panic(err) }
+	linked_entry := os.join_path(linked_entry_dir, 'v3.v')
+	os.symlink(fastc_backend_v3_source, linked_entry) or { panic(err) }
 	direct_binary := os.join_path(root, 'v_fastc_direct')
-	direct_build := cmdexec.run(host_binary, ['-silent', '-b', 'fastc', '-o', direct_binary,
-		fastc_backend_v3_source])
+	direct_build := cmdexec.run_in(host_binary, ['-silent', '-b', 'fastc', '-o', direct_binary,
+		linked_entry], root)
 	assert direct_build.exit_code == 0, direct_build.output
 	assert os.is_executable(direct_binary)
 
