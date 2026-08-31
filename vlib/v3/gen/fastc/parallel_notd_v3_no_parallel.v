@@ -3,6 +3,56 @@ module fastc
 import os
 import v3.pref
 
+struct FastcPendingReferences {
+mut:
+	workers    []thread map[string]bool
+	references map[string]bool
+}
+
+struct FastcPendingInterfaceDispatches {
+mut:
+	workers    []thread string
+	dispatches string
+}
+
+fn fastc_start_referenced_function_names(sources []FastcSourceFile, prefs &pref.Preferences, functions map[string]FastcFunctionSignature) FastcPendingReferences {
+	if fastc_parallel_job_count(sources.len, prefs) <= 1 {
+		return FastcPendingReferences{
+			references: fastc_collect_referenced_function_names(sources, prefs, functions)
+		}
+	}
+	return FastcPendingReferences{
+		workers: [spawn fastc_collect_referenced_function_names(sources, prefs, functions)]
+	}
+}
+
+fn fastc_wait_referenced_function_names(mut pending FastcPendingReferences) map[string]bool {
+	if pending.workers.len == 0 {
+		return pending.references
+	}
+	return pending.workers[0].wait()
+}
+
+fn fastc_start_interface_dispatches(declared_kinds map[string]FastcDeclaredTypeKind, functions map[string]FastcFunctionSignature, interface_methods map[string]bool, used_function_names map[string]bool, selfhost bool, prefs &pref.Preferences) FastcPendingInterfaceDispatches {
+	if fastc_parallel_job_count(functions.len, prefs) <= 1 {
+		return FastcPendingInterfaceDispatches{
+			dispatches: fastc_generate_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, selfhost)
+		}
+	}
+	return FastcPendingInterfaceDispatches{
+		workers: [
+			spawn fastc_generate_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, selfhost),
+		]
+	}
+}
+
+fn fastc_wait_interface_dispatches(mut pending FastcPendingInterfaceDispatches) string {
+	if pending.workers.len == 0 {
+		return pending.dispatches
+	}
+	return pending.workers[0].wait()
+}
+
 fn fastc_parallel_job_count(item_count int, prefs &pref.Preferences) int {
 	if prefs.no_parallel {
 		return 1
@@ -46,14 +96,17 @@ fn fastc_load_source_headers(paths []string, prefs &pref.Preferences) []FastcLoa
 		return fastc_load_source_chunk(paths, prefs, 0, paths.len)
 	}
 	first_end := paths.len / jobs
-	first_thread := spawn fastc_load_source_chunk(paths, prefs, 0, first_end)
-	mut chunk_threads := [first_thread]
-	for chunk_idx in 1 .. jobs {
+	second_start := paths.len / jobs
+	second_end := paths.len * 2 / jobs
+	second_thread := spawn fastc_load_source_chunk(paths, prefs, second_start, second_end)
+	mut chunk_threads := [second_thread]
+	for chunk_idx in 2 .. jobs {
 		start := paths.len * chunk_idx / jobs
 		end := paths.len * (chunk_idx + 1) / jobs
 		chunk_threads << spawn fastc_load_source_chunk(paths, prefs, start, end)
 	}
 	mut loaded := []FastcLoadedSource{cap: paths.len}
+	loaded << fastc_load_source_chunk(paths, prefs, 0, first_end)
 	for chunk_thread in chunk_threads {
 		loaded << chunk_thread.wait()
 	}
@@ -96,17 +149,15 @@ fn fastc_collect_generic_method_sources(sources []FastcSourceFile, prefs &pref.P
 		return fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
 	}
 	bounds := fastc_chunk_bounds(sources, jobs)
-	first_thread := spawn fastc_collect_generic_method_source_chunk(sources, prefs, bounds[0],
-		bounds[1])
-	mut chunk_threads := [first_thread]
-	for chunk_idx in 1 .. bounds.len / 2 {
-		chunk_thread := spawn fastc_collect_generic_method_source_chunk(sources, prefs,
-			bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
+	second_thread := spawn fastc_collect_generic_method_source_chunk(sources, prefs, bounds[2], bounds[3])
+	mut chunk_threads := [second_thread]
+	for chunk_idx in 2 .. bounds.len / 2 {
+		chunk_thread := spawn fastc_collect_generic_method_source_chunk(sources, prefs, bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
 		chunk_threads << chunk_thread
 	}
-	mut result := map[string]FastcGenericMethodSource{}
-	for chunk_idx in 0 .. chunk_threads.len {
-		chunk := chunk_threads[chunk_idx].wait()
+	mut result := fastc_collect_generic_method_source_chunk(sources, prefs, bounds[0], bounds[1])
+	for chunk_thread in chunk_threads {
+		chunk := chunk_thread.wait()
 		for key, generic in chunk {
 			result[key] = generic
 		}
@@ -182,15 +233,19 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 		return outputs
 	}
 	job_indices := fastc_file_generation_job_indices(sources, jobs)
-	first_thread := spawn fastc_generate_file_chunk(ctx, sources, job_indices[0])
-	mut chunk_threads := [first_thread]
-	for chunk_idx in 1 .. jobs {
+	second_thread := spawn fastc_generate_file_chunk(ctx, sources, job_indices[1])
+	mut chunk_threads := [second_thread]
+	for chunk_idx in 2 .. jobs {
 		chunk_thread := spawn fastc_generate_file_chunk(ctx, sources, job_indices[chunk_idx])
 		chunk_threads << chunk_thread
 	}
 	mut outputs := []FastcFileGenOutput{len: sources.len}
-	for chunk_idx in 0 .. chunk_threads.len {
-		chunk_outputs := chunk_threads[chunk_idx].wait()
+	first_outputs := fastc_generate_file_chunk(ctx, sources, job_indices[0])
+	for indexed_output in first_outputs {
+		outputs[indexed_output.index] = indexed_output.output
+	}
+	for chunk_thread in chunk_threads {
+		chunk_outputs := chunk_thread.wait()
 		for indexed_output in chunk_outputs {
 			outputs[indexed_output.index] = indexed_output.output
 		}
@@ -210,12 +265,27 @@ fn fastc_collect_reference_chunk(sources []FastcSourceFile, prefs &pref.Preferen
 	mut references := map[string]map[string]bool{}
 	mut top_level_references := map[string]bool{}
 	for idx in start .. end {
-		fastc_collect_file_references(sources[idx], prefs, available_names, mut references, mut
-			top_level_references)
+		fastc_collect_file_references(sources[idx], prefs, available_names, mut references, mut top_level_references)
 	}
 	return FastcReferencePartial{
-		references:           references
+		references: references
 		top_level_references: top_level_references
+	}
+}
+
+fn fastc_merge_reference_partial(chunk FastcReferencePartial, mut references map[string]map[string]bool, mut top_level_references map[string]bool) {
+	for function_name in chunk.references.keys() {
+		mut combined := map[string]bool{}
+		if function_name in references {
+			combined = references[function_name].clone()
+		}
+		for referenced_name, _ in chunk.references[function_name] {
+			combined[referenced_name] = true
+		}
+		references[function_name] = combined.clone()
+	}
+	for referenced_name, _ in chunk.top_level_references {
+		top_level_references[referenced_name] = true
 	}
 }
 
@@ -226,35 +296,22 @@ fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Prefe
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
 		for source_file in sources {
-			fastc_collect_file_references(source_file, prefs, available_names, mut references, mut
-				top_level_references)
+			fastc_collect_file_references(source_file, prefs, available_names, mut references, mut top_level_references)
 		}
 		return
 	}
 	bounds := fastc_chunk_bounds(sources, jobs)
-	first_thread := spawn fastc_collect_reference_chunk(sources, prefs, available_names, bounds[0],
-		bounds[1])
-	mut chunk_threads := [first_thread]
-	for chunk_idx in 1 .. bounds.len / 2 {
-		chunk_thread := spawn fastc_collect_reference_chunk(sources, prefs, available_names,
-			bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
+	second_thread := spawn fastc_collect_reference_chunk(sources, prefs, available_names, bounds[2], bounds[3])
+	mut chunk_threads := [second_thread]
+	for chunk_idx in 2 .. bounds.len / 2 {
+		chunk_thread := spawn fastc_collect_reference_chunk(sources, prefs, available_names, bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
 		chunk_threads << chunk_thread
 	}
-	for chunk_idx in 0 .. chunk_threads.len {
-		chunk := chunk_threads[chunk_idx].wait()
-		for function_name in chunk.references.keys() {
-			mut combined := map[string]bool{}
-			if function_name in references {
-				combined = references[function_name].clone()
-			}
-			for referenced_name, _ in chunk.references[function_name] {
-				combined[referenced_name] = true
-			}
-			references[function_name] = combined.clone()
-		}
-		for referenced_name, _ in chunk.top_level_references {
-			top_level_references[referenced_name] = true
-		}
+	first := fastc_collect_reference_chunk(sources, prefs, available_names, bounds[0], bounds[1])
+	fastc_merge_reference_partial(first, mut references, mut top_level_references)
+	for chunk_thread in chunk_threads {
+		chunk := chunk_thread.wait()
+		fastc_merge_reference_partial(chunk, mut references, mut top_level_references)
 	}
 }
 
@@ -262,49 +319,42 @@ fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Pref
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
 		partial := fastc_collect_declaration_chunk(sources, prefs, 0, sources.len)
-		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut
-			enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants,
-			mut globals, mut public_globals)!
+		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut globals, mut public_globals)!
 		return
 	}
 	bounds := fastc_chunk_bounds(sources, jobs)
-	first_thread := spawn fastc_collect_declaration_chunk(sources, prefs, bounds[0], bounds[1])
-	mut chunk_threads := [first_thread]
-	for chunk_idx in 1 .. bounds.len / 2 {
-		chunk_thread := spawn fastc_collect_declaration_chunk(sources, prefs,
-			bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
+	second_thread := spawn fastc_collect_declaration_chunk(sources, prefs, bounds[2], bounds[3])
+	mut chunk_threads := [second_thread]
+	for chunk_idx in 2 .. bounds.len / 2 {
+		chunk_thread := spawn fastc_collect_declaration_chunk(sources, prefs, bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
 		chunk_threads << chunk_thread
 	}
-	for chunk_idx in 0 .. chunk_threads.len {
-		partial := chunk_threads[chunk_idx].wait()
-		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut
-			enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants,
-			mut globals, mut public_globals)!
+	first := fastc_collect_declaration_chunk(sources, prefs, bounds[0], bounds[1])
+	fastc_merge_declaration_partial(first, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut globals, mut public_globals)!
+	for chunk_thread in chunk_threads {
+		partial := chunk_thread.wait()
+		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut globals, mut public_globals)!
 	}
 }
 
 fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
-		partial := fastc_collect_signature_chunk(sources, prefs, declared_types,
-			declared_type_c_names, params_structs, 0, sources.len)
-		fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut
-			interface_fields, mut embed_embedders, mut embed_embeddeds)!
+		partial := fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, 0, sources.len)
+		fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
 		return
 	}
 	bounds := fastc_chunk_bounds(sources, jobs)
-	first_thread := spawn fastc_collect_signature_chunk(sources, prefs, declared_types,
-		declared_type_c_names, params_structs, bounds[0], bounds[1])
-	mut chunk_threads := [first_thread]
-	for chunk_idx in 1 .. bounds.len / 2 {
-		chunk_thread := spawn fastc_collect_signature_chunk(sources, prefs, declared_types,
-			declared_type_c_names, params_structs, bounds[chunk_idx * 2],
-			bounds[chunk_idx * 2 + 1])
+	second_thread := spawn fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, bounds[2], bounds[3])
+	mut chunk_threads := [second_thread]
+	for chunk_idx in 2 .. bounds.len / 2 {
+		chunk_thread := spawn fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
 		chunk_threads << chunk_thread
 	}
-	for chunk_idx in 0 .. chunk_threads.len {
-		partial := chunk_threads[chunk_idx].wait()
-		fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut
-			interface_fields, mut embed_embedders, mut embed_embeddeds)!
+	first := fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, bounds[0], bounds[1])
+	fastc_merge_signature_partial(first, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
+	for chunk_thread in chunk_threads {
+		partial := chunk_thread.wait()
+		fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
 	}
 }
