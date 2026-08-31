@@ -870,13 +870,19 @@ fn (mut g Parser) parse_simple_statement() ! {
 			if !local.is_mut {
 				return g.unsupported('append to immutable name `${name}`')
 			}
-			_ := g.array_element_type(local.typ) or {
+			element_type := g.array_element_type(local.typ) or {
 				return g.unsupported('append to non-array `${name}` of type `${local.typ}`')
 			}
 			g.next()
 			value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 			value_type := fastc_normalize_inferred_type(g.last_expression_type)
-			is_array_append := value_type == local.typ
+			// `[]T << []T` is push-many, unless the element type is a sum type that lists
+			// `[]T` as a variant (a recursive sum type such as `type Value = []Value | int`),
+			// in which case the array is boxed as one element. Mirrors the main C backend's
+			// `sumtype_has_variant` guard (see vlib/v/gen/c/infix.v).
+			boxes_array_variant := value_type == local.typ
+				&& g.sumtype_has_variant(element_type, value_type)
+			is_array_append := value_type == local.typ && !boxes_array_variant
 			g.consume_statement_end()
 			c_name := fastc_c_identifier(name)
 			array_target := if local.typ.ends_with('*') {
@@ -885,11 +891,19 @@ fn (mut g Parser) parse_simple_statement() ! {
 				'(array *)&${c_name}'
 			}
 			value_name := g.temporary_name('push_value')
-			g.write_line('__typeof__((${value})) ${value_name} = (${value});')
-			if is_array_append {
-				g.write_line('builtin__array_push_many(${array_target}, ${value_name}.data, ${value_name}.len);')
-			} else {
+			if boxes_array_variant {
+				boxed := g.render_call_argument_expression(g.last_expression, element_type) or {
+					value
+				}
+				g.write_line('${element_type} ${value_name} = (${boxed});')
 				g.write_line('builtin__array_push(${array_target}, &${value_name});')
+			} else {
+				g.write_line('__typeof__((${value})) ${value_name} = (${value});')
+				if is_array_append {
+					g.write_line('builtin__array_push_many(${array_target}, ${value_name}.data, ${value_name}.len);')
+				} else {
+					g.write_line('builtin__array_push(${array_target}, &${value_name});')
+				}
 			}
 			return
 		}

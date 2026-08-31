@@ -7448,6 +7448,47 @@ fn main() {
 	assert c_source.contains('Array_Node v = *(Array_Node *)'), c_source
 }
 
+fn test_sum_type_recursive_array_variant_append_boxes_one_element() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Value = int | []Value
+
+fn main() {
+	mut dst := []Value{}
+	src := [Value(1)]
+	dst << src
+	_ := dst
+}
+', 'sum_type_recursive_append.v', prefs) or { panic(err) }
+	// `[]Value` is a variant of `Value`, so `dst << src` boxes the whole `src` array as
+	// one `Value` element instead of copying its elements. The append must use the
+	// single-element push and box `src` with the composite `Array_Value` type id.
+	assert !c_source.contains('builtin__array_push_many'), c_source
+	assert c_source.contains('__v_typeid_Array_Value'), c_source
+	assert c_source.contains('builtin__array_push('), c_source
+}
+
+fn test_sum_type_nonrecursive_array_append_is_push_many() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Plain = int | string
+
+fn main() {
+	mut dst := []Plain{}
+	src := [Plain(1)]
+	dst << src
+	_ := dst
+}
+', 'sum_type_nonrecursive_append.v', prefs) or { panic(err) }
+	// `Plain` has no array variant, so `[]Plain << []Plain` stays a push-many append
+	// that copies each element, matching the main C backend.
+	assert c_source.contains('builtin__array_push_many'), c_source
+}
+
 fn test_generic_monomorphization() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

@@ -2263,6 +2263,19 @@ fn (g &Parser) is_boxed_type(c_type string) bool {
 	return g.declared_kinds[g.semantic_type_key(c_type)] == .interface_
 }
 
+// sumtype_has_variant reports whether `sum_type` is a sum type that declares
+// `variant` (a normalized C type name) as one of its variants. It mirrors the main
+// C backend's `sumtype_has_variant` and is used to keep an array-valued variant of
+// a recursive sum type (`type Value = []Value | int`) boxed as a single element
+// rather than treated as a push-many append.
+fn (g &Parser) sumtype_has_variant(sum_type string, variant string) bool {
+	base := sum_type.trim_right('*')
+	if base !in g.sum_types {
+		return false
+	}
+	return g.sum_type_variants['${base}|${variant.trim_right('*')}']
+}
+
 // should_box_variant reports whether a value of `actual_type` used where the
 // boxed `expected_type` is expected must be boxed: a concrete struct into an
 // interface or sum type, or a primitive scalar into a sum type (interfaces have
@@ -2443,7 +2456,14 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 	element_type := g.array_element_type(left_type) or { return none }
 	right_tokens := tokens[operator_index + 1..]
 	right_type := g.infer_expression_type(right_tokens) or { return none }
-	is_array_append := fastc_normalize_inferred_type(right_type) == fastc_normalize_inferred_type(left_type)
+	normalized_right := fastc_normalize_inferred_type(right_type)
+	// `[]T << []T` is push-many (append each element), but when the element type is a
+	// sum type that lists `[]T` as a variant (a recursive sum type such as
+	// `type Value = []Value | int`), the array must be boxed as a single element
+	// instead. This mirrors the `sumtype_has_variant` guard the main C backend applies
+	// before selecting push-many (see vlib/v/gen/c/infix.v).
+	is_array_append := normalized_right == fastc_normalize_inferred_type(left_type)
+		&& !g.sumtype_has_variant(element_type, normalized_right)
 	separator := rendered_expression.index('<<') or { return none }
 	left_tokens := tokens[..operator_index]
 	mut left_source := rendered_expression[..separator]

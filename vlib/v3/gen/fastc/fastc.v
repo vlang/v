@@ -772,6 +772,9 @@ struct FastcTypeDeclarations {
 	// `{void*_object; u32 _typ;}` layout with interfaces; construction boxes a
 	// variant and `match` dispatches on `_typ`.
 	sum_types map[string]bool
+	// Declared variants per sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`
+	// (see Parser.sum_type_variants).
+	sum_type_variants map[string]bool
 }
 
 struct FastcLoopBlockResult {
@@ -808,6 +811,10 @@ struct Parser {
 	enum_field_types       map[string]string
 	alias_base_types       map[string]string
 	sum_types              map[string]bool
+	// Declared variants of each sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`.
+	// Lets an append distinguish push-many (`[]T << []T`) from boxing an array-valued
+	// variant of a recursive sum type as one element (see sumtype_has_variant).
+	sum_type_variants      map[string]bool
 	struct_fields          map[string]map[string]string
 	struct_field_info      map[string][]FastcStructField
 	struct_field_lookup    map[string]map[string]FastcStructField
@@ -985,6 +992,7 @@ struct FastcFileGenContext {
 	enum_field_types       map[string]string
 	alias_base_types       map[string]string
 	sum_types              map[string]bool
+	sum_type_variants      map[string]bool
 	struct_fields          map[string]map[string]string
 	struct_field_info      map[string][]FastcStructField
 	struct_field_lookup    map[string]map[string]FastcStructField
@@ -1048,6 +1056,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		enum_field_types: ctx.enum_field_types
 		alias_base_types: ctx.alias_base_types
 		sum_types: ctx.sum_types
+		sum_type_variants: ctx.sum_type_variants
 		struct_fields: ctx.struct_fields
 		struct_field_info: ctx.struct_field_info
 		struct_field_lookup: ctx.struct_field_lookup
@@ -1216,6 +1225,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		enum_field_types: enum_field_types
 		alias_base_types: type_output.alias_base_types
 		sum_types: type_output.sum_types
+		sum_type_variants: type_output.sum_type_variants
 		struct_fields: struct_fields
 		struct_field_info: struct_field_info
 		struct_field_lookup: struct_field_lookup
