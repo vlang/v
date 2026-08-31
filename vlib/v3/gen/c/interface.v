@@ -909,24 +909,6 @@ fn (g &FlatGen) interface_dispatch_param_types(iface_name string, decl_key strin
 	return decl_params
 }
 
-fn (g &FlatGen) interface_dispatch_effective_param_types(iface_name string, decl_key string, concrete_key string) []types.Type {
-	params := g.interface_dispatch_param_types(iface_name, decl_key, concrete_key)
-	return g.interface_effective_param_types_for_decl(params, decl_key)
-}
-
-fn (g &FlatGen) interface_effective_param_types_for_decl(params []types.Type, decl_key string) []types.Type {
-	mut result := params.clone()
-	for i in 1 .. result.len {
-		param := result[i]
-		if g.tc.declaration_param_is_mut(decl_key, i) && param is types.Pointer {
-			result[i] = types.Type(types.Pointer{
-				base_type: param
-			})
-		}
-	}
-	return result
-}
-
 fn (mut g FlatGen) collect_ierror_method_emit_names(impls []string) {
 	for concrete in impls {
 		for method in ['msg', 'code'] {
@@ -1719,7 +1701,7 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 				}
 			}
 			ret_type := g.interface_dispatch_return_type(iface_name, decl_key, sig_key)
-			sig_params := g.interface_dispatch_effective_param_types(iface_name, decl_key, sig_key)
+			sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
 			storage_cn := g.interface_storage_c_name(iface_name)
 			g.write('${g.fn_return_type_name(ret_type)} ${cn}__${method}(${storage_cn}* i')
 			for pi := 1; pi < sig_params.len; pi++ {
@@ -1836,7 +1818,7 @@ fn (mut g FlatGen) interface_dispatch_signature(iface_name string, cn string, me
 	}
 	ret_type := g.interface_dispatch_return_type(iface_name, decl_key, sig_key)
 	ret_ct := g.fn_return_type_name(ret_type)
-	sig_params := g.interface_dispatch_effective_param_types(iface_name, decl_key, sig_key)
+	sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
 	storage_cn := g.interface_storage_c_name(iface_name)
 	mut sig := '${ret_ct} ${cn}__${method}(${storage_cn}* i'
 	for pi := 1; pi < sig_params.len; pi++ {
@@ -1938,7 +1920,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	// wrapper struct (a C function cannot return an array by value), matching what the concrete
 	// implementer's method returns and what the call site unwraps.
 	ret_ct := g.fn_return_type_name(ret_type)
-	mut sig_params := g.interface_dispatch_effective_param_types(iface_name, decl_key, sig_key)
+	mut sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
 	mut arg_names := []string{}
 	storage_cn := g.interface_storage_c_name(iface_name)
 	g.write('${ret_ct} ${cn}__${method}(${storage_cn}* i')
@@ -1971,9 +1953,8 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 					&& !g.interface_dispatch_target_is_emitted(decl) {
 					continue
 				}
-				semantic_params := g.tc.fn_param_types[decl] or { []types.Type{} }
-				concrete_params := g.interface_effective_param_types_for_decl(semantic_params, decl)
-				if !g.interface_dispatch_signature_compatible(decl, ret_type, sig_params, concrete_params) {
+				concrete_params := g.tc.fn_param_types[decl] or { []types.Type{} }
+				if !g.interface_dispatch_signature_compatible(decl, ret_type, sig_params) {
 					continue
 				}
 				recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
@@ -1999,8 +1980,6 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 					if concrete_param is types.Pointer && dispatch_param !is types.Pointer {
 						call += ', &${an}'
 					} else if concrete_param !is types.Pointer && dispatch_param is types.Pointer {
-						call += ', *${an}'
-					} else if callback_mut_pointer_slot_can_read(g.tc.c_type(concrete_param), g.tc.c_type(dispatch_param)) {
 						call += ', *${an}'
 					} else {
 						call += ', ${an}'
@@ -2036,9 +2015,8 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 				}
 				continue
 			}
-			semantic_params := g.tc.fn_param_types[method_key] or { []types.Type{} }
-			concrete_params := g.callback_fn_emitted_param_types(method_key, semantic_params)
-			if !g.interface_dispatch_signature_compatible(method_key, ret_type, sig_params, concrete_params) {
+			concrete_params := g.tc.fn_param_types[method_key] or { []types.Type{} }
+			if !g.interface_dispatch_signature_compatible(method_key, ret_type, sig_params) {
 				continue
 			}
 			recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
@@ -2061,9 +2039,9 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 					call += ', &${an}'
 				} else if concrete_param !is types.Pointer && dispatch_param is types.Pointer {
 					call += ', *${an}'
-				} else if callback_mut_pointer_slot_can_read(g.tc.c_type(concrete_param), g.tc.c_type(dispatch_param)) {
-					call += ', *${an}'
-				} else if converted := g.interface_arg_conversion_expr(an, dispatch_param, concrete_param) {
+				} else if converted := g.interface_arg_conversion_expr(an, dispatch_param,
+					concrete_param)
+				{
 					call += ', ${converted}'
 				} else {
 					call += ', ${an}'
@@ -2329,19 +2307,18 @@ fn (g &FlatGen) interface_semantic_application_candidates(iface_name string, _co
 	return result
 }
 
-fn (mut g FlatGen) interface_dispatch_signature_compatible(method_key string, expected_ret types.Type, sig_params []types.Type, params []types.Type) bool {
+fn (mut g FlatGen) interface_dispatch_signature_compatible(method_key string, expected_ret types.Type, sig_params []types.Type) bool {
 	ret_type := g.tc.fn_ret_types[method_key] or { return false }
 	if g.fn_return_type_name(ret_type) != g.fn_return_type_name(expected_ret)
 		&& !g.interface_dispatch_wrapped_return_can_adapt(expected_ret, ret_type) {
 		return false
 	}
+	params := g.tc.fn_param_types[method_key] or { return false }
 	if params.len != sig_params.len {
 		return false
 	}
 	for i in 1 .. params.len {
-		param_ct := g.tc.c_type(params[i])
-		sig_ct := g.tc.c_type(sig_params[i])
-		if param_ct != sig_ct && !callback_mut_pointer_slot_can_read(param_ct, sig_ct) {
+		if g.tc.c_type(params[i]) != g.tc.c_type(sig_params[i]) {
 			return false
 		}
 	}

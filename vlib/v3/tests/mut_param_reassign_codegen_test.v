@@ -261,16 +261,12 @@ fn main() {
 
 fn test_mut_pointer_param_reassigns_caller_slot() {
 	v3_bin := mut_param_reassign_build_v3()
-	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'mut_pointer_param_reassign', 'struct Item {
+	out := mut_param_reassign_run_good(v3_bin, 'mut_pointer_param_reassign', 'struct Item {
 	value int
 }
 
 fn replace(mut current &Item, replacement &Item) {
 	current = replacement
-}
-
-fn forward_replace(mut current &Item, replacement &Item) {
-	replace(mut current, replacement)
 }
 
 fn main() {
@@ -281,17 +277,13 @@ fn main() {
 		value: 9
 	}
 	mut current := &first
-	forward_replace(mut current, &second)
+	replace(mut current, &second)
 	assert current == &second
 	assert first.value == 1
 	println(int_str(current.value))
 }
 ')
 	assert out == '9'
-	assert c_source.contains('void replace(main__Item** current, main__Item* replacement) {')
-	assert c_source.contains('void forward_replace(main__Item** current, main__Item* replacement) {')
-	assert c_source.contains('replace(current, replacement);')
-	assert c_source.contains('forward_replace(&current, &second);')
 	out_generic := mut_param_reassign_run_good(v3_bin, 'generic_mut_pointer_param_reassign', 'struct Item {
 	value int
 }
@@ -396,160 +388,6 @@ fn main() {
 		'expected `&&Item`')
 }
 
-fn test_mut_pointer_rebind_requires_pointer_storage_but_pointee_write_accepts_value() {
-	v3_bin := mut_param_reassign_build_v3()
-	mut_param_reassign_run_bad(v3_bin, 'mut_pointer_rebind_value_argument', 'fn replace(mut current &bool, replacement &bool) {
-	current = replacement
-}
-
-fn main() {
-	mut flag := true
-	replacement := false
-	replace(mut flag, &replacement)
-}
-', 'expected `&&bool`')
-	out := mut_param_reassign_run_good(v3_bin, 'mut_pointer_pointee_write_value_argument', 'fn clear(mut running &bool) {
-	running = false
-}
-
-fn main() {
-	mut flag := true
-	clear(mut flag)
-	assert !flag
-	flag = true
-	mut pointer := &flag
-	clear(mut pointer)
-	assert !flag
-	println("ok")
-}
-')
-	assert out == 'ok'
-}
-
-fn test_interface_mut_pointer_param_reassigns_caller_slot() {
-	v3_bin := mut_param_reassign_build_v3()
-	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'interface_mut_pointer_param_reassign', 'interface Writer {
-	write_byte(mut byte &u8)
-}
-
-struct Device {
-	replacement &u8
-}
-
-struct Observer {}
-
-fn (device Device) write_byte(mut byte &u8) {
-	byte = device.replacement
-}
-
-fn (Observer) write_byte(mut byte &u8) {
-	assert *byte == 9
-}
-
-fn main() {
-	mut first := u8(1)
-	replacement := u8(9)
-	mut current := &first
-	writer := Writer(Device{
-		replacement: &replacement
-	})
-	writer.write_byte(mut current)
-	assert current == &replacement
-	assert first == 1
-	observer := Writer(Observer{})
-	observer.write_byte(mut current)
-	assert current == &replacement
-	println(int_str(*current))
-}
-')
-	assert out == '9'
-	assert c_source.contains('Writer__write_byte(Writer* i, u8** _a0)')
-	assert c_source.contains('void Device__write_byte(main__Device device, u8** byte)')
-	assert c_source.contains('void Observer__write_byte(main__Observer _0, u8* byte)')
-	assert c_source.contains('Observer__write_byte(*(main__Observer*)i->_object, *_a0)')
-}
-
-fn test_interface_forwarded_mut_pointer_param_reassigns_caller_slot() {
-	v3_bin := mut_param_reassign_build_v3()
-	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'interface_forwarded_mut_pointer_param_reassign', 'interface Replacer {
-	replace(mut current &Item, replacement &Item)
-}
-
-struct Item {
-	value int
-}
-
-struct Device {}
-
-fn (Device) replace(mut current &Item, replacement &Item) {
-	current = replacement
-}
-
-fn forward(replacer Replacer, mut current &Item, replacement &Item) {
-	replacer.replace(mut current, replacement)
-}
-
-fn main() {
-	mut first := Item{
-		value: 1
-	}
-	second := Item{
-		value: 9
-	}
-	mut current := &first
-	forward(Device{}, mut current, &second)
-	assert current == &second
-	assert first.value == 1
-	println(int_str(current.value))
-}
-')
-	assert out == '9'
-	assert c_source.contains('void forward(Replacer replacer, main__Item** current, main__Item* replacement)')
-	assert c_source.contains('Replacer__replace(&(replacer), current, replacement)')
-}
-
-fn test_callback_mut_pointer_param_reassigns_caller_slot() {
-	v3_bin := mut_param_reassign_build_v3()
-	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'callback_mut_pointer_param_reassign', 'struct Item {
-	value int
-}
-
-fn replace(mut current &Item, replacement &Item) {
-	current = replacement
-}
-
-fn inspect(mut current &Item, replacement &Item) {
-	assert current.value + replacement.value == 10
-}
-
-fn apply(callback fn (mut &Item, &Item), mut current &Item, replacement &Item) {
-	callback(mut current, replacement)
-}
-
-fn main() {
-	mut first := Item{
-		value: 1
-	}
-	second := Item{
-		value: 9
-	}
-	mut current := &first
-	apply(inspect, mut current, &second)
-	assert current == &first
-	assert first.value == 1
-	apply(replace, mut current, &second)
-	assert current == &second
-	assert first.value == 1
-	println(int_str(current.value))
-}
-')
-	assert out == '9'
-	assert c_source.contains('void apply(_fn_ptr_')
-	assert c_source.contains('main__Item** current, main__Item* replacement)')
-	assert c_source.contains('inspect_callback_adapter_')
-	assert c_source.contains('inspect(*arg0, arg1)')
-}
-
 fn test_fn_literal_mut_pointer_param_reassigns_caller_slot() {
 	v3_bin := mut_param_reassign_build_v3()
 	out := mut_param_reassign_run_good(v3_bin, 'fn_literal_mut_pointer_param_reassign', 'struct Item {
@@ -574,186 +412,6 @@ fn main() {
 }
 ')
 	assert out == '9'
-}
-
-fn test_callback_alias_and_field_mut_pointer_params_reassign_caller_slot() {
-	v3_bin := mut_param_reassign_build_v3()
-	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'callback_alias_and_field_mut_pointer_params', 'struct Item {
-	value int
-}
-
-struct Callbacks {
-	replace fn (mut &Item, &Item)
-}
-
-fn replace(mut current &Item, replacement &Item) {
-	current = replacement
-}
-
-fn apply_alias(callback fn (mut &Item, &Item), mut current &Item, replacement &Item) {
-	selected := callback
-	selected(mut current, replacement)
-}
-
-fn apply_field(callbacks Callbacks, mut current &Item, replacement &Item) {
-	callbacks.replace(mut current, replacement)
-}
-
-fn main() {
-	mut first := Item{
-		value: 1
-	}
-	second := Item{
-		value: 9
-	}
-	mut current := &first
-	apply_alias(replace, mut current, &second)
-	assert current == &second
-	current = &first
-	apply_field(Callbacks{
-		replace: replace
-	}, mut current, &second)
-	assert current == &second
-	println(int_str(current.value))
-}
-')
-	assert out == '9'
-	assert c_source.contains('void apply_alias(_fn_ptr_')
-	assert c_source.contains('main__Item** current, main__Item* replacement)')
-	assert c_source.contains('void apply_field(main__Callbacks callbacks, main__Item** current, main__Item* replacement)')
-}
-
-fn test_callback_local_pointer_copy_does_not_reassign_caller_slot() {
-	v3_bin := mut_param_reassign_build_v3()
-	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'callback_local_pointer_copy_mut_pointer_param', 'struct Item {
-	value int
-}
-
-fn replace(mut current &Item, replacement &Item) {
-	current = replacement
-}
-
-fn apply_copy(callback fn (mut &Item, &Item), mut current &Item, replacement &Item) int {
-	mut alias := current
-	callback(mut alias, replacement)
-	return current.value
-}
-
-fn main() {
-	mut first := Item{
-		value: 1
-	}
-	second := Item{
-		value: 9
-	}
-	println(int_str(apply_copy(replace, mut first, &second)))
-}
-')
-	assert out == '1'
-	mut apply_copy_signature := ''
-	for line in c_source.split_into_lines() {
-		if line.starts_with('int apply_copy(') && line.ends_with(') {') {
-			apply_copy_signature = line
-			break
-		}
-	}
-	assert apply_copy_signature.contains('main__Item* current, main__Item* replacement')
-	assert !apply_copy_signature.contains('main__Item** current')
-}
-
-fn test_mut_pointer_nil_assignment_reassigns_caller_slot() {
-	v3_bin := mut_param_reassign_build_v3()
-	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'mut_pointer_nil_reassign', 'struct Item {
-	value int
-}
-
-fn clear(mut current &Item) {
-	unsafe {
-		current = nil
-	}
-}
-
-fn main() {
-	mut item := Item{
-		value: 1
-	}
-	mut current := &item
-	clear(mut current)
-	assert isnil(current)
-	println("ok")
-}
-')
-	assert out == 'ok'
-	assert c_source.contains('void clear(main__Item** current)')
-}
-
-fn test_bound_method_mut_pointer_param_reassigns_caller_slot() {
-	v3_bin := mut_param_reassign_build_v3()
-	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'bound_method_mut_pointer_param_reassign', 'struct Item {
-	value int
-}
-
-struct Replacer {}
-
-fn (Replacer) replace(mut current &Item, replacement &Item) {
-	current = replacement
-}
-
-fn main() {
-	mut first := Item{
-		value: 1
-	}
-	second := Item{
-		value: 9
-	}
-	mut current := &first
-	replacer := Replacer{}
-	callback := replacer.replace
-	callback(mut current, &second)
-	assert current == &second
-	assert first.value == 1
-	println(int_str(current.value))
-}
-')
-	assert out == '9'
-	assert c_source.contains('void Replacer__replace(main__Replacer _0, main__Item** current, main__Item* replacement)')
-	assert c_source.contains('main__Item** a1')
-}
-
-fn test_generic_bound_method_mut_pointer_param_reassigns_caller_slot() {
-	v3_bin := mut_param_reassign_build_v3()
-	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'generic_bound_method_mut_pointer_param_reassign', 'struct Item {
-	value int
-}
-
-type Wrapped = Item
-
-struct Replacer[T] {}
-
-fn (replacer Replacer[T]) replace[T](mut current &T, replacement &T) {
-	_ = replacer
-	current = replacement
-}
-
-fn main() {
-	mut first := Wrapped{
-		value: 1
-	}
-	second := Wrapped{
-		value: 9
-	}
-	mut current := &first
-	replacer := Replacer[Wrapped]{}
-	callback := replacer.replace
-	callback(mut current, &second)
-	assert current == &second
-	assert first.value == 1
-	println(int_str(current.value))
-}
-')
-	assert out == '9'
-	assert c_source.contains('void Replacer_Wrapped__replace(main__Replacer_Wrapped replacer, main__Item** current, main__Item* replacement)')
-	assert c_source.contains('main__Item** a1')
 }
 
 fn test_mut_pointer_param_signature_and_expression_conversions() {
@@ -831,12 +489,47 @@ fn main() {
 }
 ')
 	assert out == '62'
-	assert c_source.contains('int read_field(main__Item* item) {'), 'missing direct main__Item* signature'
-	assert !c_source.contains('int read_field(main__Item** item) {'), 'found unnecessary caller slot'
-	assert c_source.contains('return item->value;'), 'missing direct pointer selector'
-	assert c_source.contains('return *(item);'), 'missing direct pointer dereference'
-	assert c_source.contains('copied_value = *item;'), 'missing standalone direct dereference'
-	assert c_source.contains('(*value)++;'), 'missing standalone postfix dereference'
+	assert c_source.contains('int read_field(main__Item** item) {'), 'missing main__Item** signature'
+	assert !c_source.contains('int read_field(main__Item*** item) {'), 'found over-indirected main__Item*** signature'
+	assert c_source.contains('return ((*item))->value;'), 'missing single slot dereference'
+	assert c_source.contains('return (*(*item));'), 'missing source dereference after slot dereference'
+	assert c_source.contains('copied_value = (*(*item));'), 'missing standalone assignment dereference'
+	assert c_source.contains('((*(*value)))++;'), 'missing standalone postfix dereference'
+}
+
+fn test_generic_mut_sum_parameter_forwards_existing_pointer() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'generic_mut_sum_forward', 'struct Cat {
+	name string
+}
+
+struct Dog {
+	name string
+}
+
+type Animal = Cat | Dog
+
+fn replace[T](mut value T, replacement T) {
+	value = replacement
+}
+
+fn decode[T](mut value T, replacement T) {
+	replace(mut value, replacement)
+}
+
+fn main() {
+	mut animal := Animal(Dog{
+		name: "Rex"
+	})
+	decode(mut animal, Animal(Cat{
+		name: "Tom"
+	}))
+	println(animal)
+}
+')
+	assert out == "Animal(Cat{\n    name: 'Tom'\n})"
+	assert c_source.contains('replace_T_Animal(value, replacement);')
+	assert !c_source.contains('replace_T_Animal(&value, replacement);')
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {

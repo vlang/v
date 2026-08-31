@@ -8410,19 +8410,9 @@ fn (tc &TypeChecker) fn_value_type(name string) ?Type {
 fn (tc &TypeChecker) fn_type_from_key(key string) ?Type {
 	params := tc.fn_param_types[key] or { return none }
 	ret := tc.fn_ret_types[key] or { return none }
-	params_mut := (tc.declaration_param_mutability[key] or { []bool{} }).clone()
-	mut effective_params := params.clone()
-	for i in 0 .. effective_params.len {
-		param := effective_params[i]
-		if i < params_mut.len && params_mut[i] && param is Pointer {
-			effective_params[i] = Type(Pointer{
-				base_type: param
-			})
-		}
-	}
 	return Type(FnType{
-		params: effective_params
-		params_mut: params_mut
+		params:      params.clone()
+		params_mut:  (tc.declaration_param_mutability[key] or { []bool{} }).clone()
 		return_type: ret
 	})
 }
@@ -13836,8 +13826,38 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	// unless `main` is an actual import alias in this file.
 	if typ.starts_with('main.') && !typ['main.'.len..].contains('.') {
 		if _ := tc.resolve_import_alias('main') {
-		} else if known := tc.type_from_known_symbol(typ['main.'.len..]) {
-			return known
+		} else {
+			rest := typ['main.'.len..]
+			if is_builtin_type_name(rest) {
+				return builtin_type_value(rest)
+			}
+			if known := tc.type_from_known_symbol(rest) {
+				return known
+			}
+			if generic_type_application(rest) {
+				base, args, _ := generic_type_application_parts(rest)
+				if !base.contains('.') {
+					suffix := tc.qualified_generic_suffix(args)
+					if base in tc.struct_generic_params || base in tc.structs {
+						return Type(Struct{
+							name: base + suffix
+						})
+					}
+					if base in tc.sum_generic_params || base in tc.sum_types {
+						return Type(SumType{
+							name: base + suffix
+						})
+					}
+					if base in tc.interface_names {
+						return Type(Interface{
+							name: base + suffix
+						})
+					}
+					if base in tc.type_aliases {
+						return tc.parse_generic_alias_application(base, args, suffix)
+					}
+				}
+			}
 		}
 	}
 	if typ.starts_with('&') {
@@ -17982,7 +18002,7 @@ fn normalize_fn_type_param_text(param string) string {
 			break
 		}
 	}
-	if is_mut && text.len > 0 {
+	if is_mut && text.len > 0 && !text.starts_with('&') {
 		return '&' + text
 	}
 	return text

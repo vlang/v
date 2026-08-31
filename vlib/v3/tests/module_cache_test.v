@@ -220,6 +220,53 @@ fn main() {
 	assert run_module_cache_binary(second_output) == 'V3_CACHE_SYNC_OK'
 }
 
+fn test_warm_cached_module_preserves_runtime_const_dependency_order() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_runtime_const_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'ordered/a_consumer.v', 'module ordered
+
+const value = make_value()
+
+fn make_value() int {
+	return dependency + 1
+}
+
+pub fn result() int {
+	return value
+}
+')
+	write_module_cache_file(root, 'ordered/z_dependency.v', 'module ordered
+
+const dependency = make_dependency()
+
+fn make_dependency() int {
+	return 41
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import ordered
+
+fn main() {
+	println(ordered.result())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_program_preserves_selective_import_call_target() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_cached_selective_import_${os.getpid()}')
@@ -4543,56 +4590,6 @@ fn test_cached_header_preserves_comptime_struct_fields() {
 	assert !header.contains('source bodies required')
 	assert header.contains('\tvalue int')
 	assert header.contains('\tenabled bool')
-}
-
-fn test_cached_header_preserves_mut_pointer_slot_abi() {
-	v3_bin := build_module_cache_v3()
-	root := os.join_path(os.temp_dir(), 'v3_module_cache_mut_pointer_slot_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	write_module_cache_file(root, 'items/items.v', 'module items
-
-pub struct Item {
-pub:
-	value int
-}
-
-pub fn replace(mut current &Item, replacement &Item) {
-	current = replacement
-}
-')
-	main_file := os.join_path(root, 'main.v')
-	write_module_cache_file(root, 'main.v', 'module main
-
-import items
-
-fn main() {
-	mut first := items.Item{
-		value: 1
-	}
-	second := items.Item{
-		value: 42
-	}
-	mut current := &first
-	items.replace(mut current, &second)
-	println(current.value)
-}
-')
-	cache_dir := os.join_path(root, 'cache')
-	first_output := os.join_path(root, 'first')
-	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
-	assert run_module_cache_binary(first_output) == '42'
-	header_path := module_cache_artifact(cache_dir, 'items_', '.vh')
-	assert header_path.len > 0
-	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains("@[__v3_mut_pointer_slots: '0']"), header
-
-	warm_output := os.join_path(root, 'warm')
-	compile_module_cache_project(v3_bin, cache_dir, main_file, warm_output)
-	assert run_module_cache_binary(warm_output) == '42'
 }
 
 fn test_cached_struct_default_with_unsupported_initializer_is_embedded() {

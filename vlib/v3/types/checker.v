@@ -1172,6 +1172,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_type_files:                      tc.fn_type_files
 		fn_type_modules:                    tc.fn_type_modules
 		fn_generic_params:                  tc.fn_generic_params
+		transform_signature_names_log:      []string{}
 		specialized_generic_fns:            tc.specialized_generic_fns
 		fn_variadic:                        tc.fn_variadic
 		c_variadic_fns:                     tc.c_variadic_fns
@@ -6071,7 +6072,8 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 			// `main.<name>` for C codegen; the post-transform re-check must still
 			// resolve them against the bare-keyed program symbol tables.
 			if !rest.contains('.') {
-				if tc.qualify_candidate_type_exists(rest) || rest in tc.const_types {
+				if is_builtin_type_name(rest) || tc.qualify_candidate_type_exists(rest)
+					|| rest in tc.const_types {
 					return rest
 				}
 				if _ := tc.file_scope.lookup(rest) {
@@ -7235,7 +7237,7 @@ fn (mut tc TypeChecker) annotate_assign_expected_exprs(node flat.Node) {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_type := tc.resolve_lvalue_type(lhs_id)
-		expected_type := tc.assignment_expected_type_for_rhs(lhs_id, lhs_type, rhs_id)
+		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		i += 2
 	}

@@ -2620,18 +2620,12 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		return none
 	}
 	arg_node := t.a.nodes[int(arg_id)]
-	if arg_node.kind == .ident && t.mut_pointer_slot_values[arg_node.value] {
-		storage_type := t.var_type(arg_node.value)
-		value := t.transform_expr_preserving_pointer_value(arg_id)
-		t.set_node_typ(int(value), '&${storage_type}')
-		return value
-	}
 	if expected_depth == actual_depth + 1 && arg_node.kind == .ident
 		&& t.pointer_value_rvalues[arg_node.value] {
 		storage_type := t.var_type(arg_node.value)
 		if storage_type == param_type {
 			value := t.transform_expr_preserving_pointer_value(arg_id)
-			t.set_node_typ(int(value), param_type)
+			t.set_node_typ(int(value), storage_type)
 			return value
 		}
 	}
@@ -2909,13 +2903,6 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 				}
 			}
 		}
-	}
-	if arg_node.kind == .ident && arg_node.is_mut
-		&& t.mut_pointer_slot_values[arg_node.value] {
-		storage_type := t.var_type(arg_node.value)
-		value := t.transform_expr_preserving_pointer_value(arg_id)
-		t.set_node_typ(int(value), '&${storage_type}')
-		return value
 	}
 	if param_type.starts_with('&') && arg_node.kind == .ident && arg_node.is_mut
 		&& t.mut_param_values[arg_node.value] {
@@ -10432,7 +10419,6 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	saved_vars := t.var_types.clone()
 	saved_fn_value_locals := t.fn_value_locals.clone()
 	saved_mut_param_values := t.mut_param_values.clone()
-	saved_mut_pointer_slot_values := t.mut_pointer_slot_values.clone()
 	saved_fixed_array_param_values := t.fixed_array_param_values.clone()
 	saved_local_closure_cleanup_decls := t.local_closure_cleanup_decls.clone()
 	saved_local_closure_cleanup_assigns := t.local_closure_cleanup_assigns.clone()
@@ -10442,7 +10428,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.reset_var_types()
 	mut saved_param_pointer_flags := map[string]bool{}
 	mut saved_param_pointer_rvalue_flags := map[string]bool{}
-	for param_idx, param_id in param_ids {
+	for param_id in param_ids {
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ.len > 0 {
 			t.set_var_type(param.value, param.typ)
@@ -10451,9 +10437,6 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			}
 			if param.is_mut || param.op == .amp || param.typ.starts_with('mut ') {
 				t.mut_param_values[param.value] = true
-				if param.is_mut && param.op == .amp && !isnil(t.tc) && t.tc.fn_node_param_requires_mut_pointer_slot(node, param_idx) {
-					t.mut_pointer_slot_values[param.value] = true
-				}
 				saved_param_pointer_flags[param.value] = t.pointer_value_lvalues[param.value] or {
 					false
 				}
@@ -10551,7 +10534,6 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.restore_var_types(saved_vars)
 	t.fn_value_locals = saved_fn_value_locals.clone()
 	t.mut_param_values = saved_mut_param_values.clone()
-	t.mut_pointer_slot_values = saved_mut_pointer_slot_values.clone()
 	t.fixed_array_param_values = saved_fixed_array_param_values.clone()
 	t.local_closure_cleanup_decls = saved_local_closure_cleanup_decls.clone()
 	t.local_closure_cleanup_assigns = saved_local_closure_cleanup_assigns.clone()
@@ -11307,7 +11289,7 @@ fn (mut t Transformer) try_lower_generic_named_type_cast_call(node flat.Node) ?f
 	fn_node := t.a.node(fn_id)
 	// A monomorphized method callee such as `Tree[int].size` contains a generic
 	// type spelling, but it is a function name rather than a named-type cast.
-	if fn_node.kind == .ident && !fn_node.value.trim_space().ends_with(']') {
+	if fn_node.kind == .ident && t.generic_callee_is_specialization(fn_node.value) {
 		return none
 	}
 	target := t.generic_call_type_arg_name(fn_id)
@@ -11336,8 +11318,7 @@ fn (t &Transformer) generic_sum_constructor_call_type(node flat.Node) ?string {
 		return none
 	}
 	fn_node := t.a.nodes[int(fn_id)]
-	if fn_node.kind == .ident && fn_node.value.contains(']')
-		&& !fn_node.value.trim_space().ends_with(']') {
+	if fn_node.kind == .ident && t.generic_callee_is_specialization(fn_node.value) {
 		return none
 	}
 	mut target := ''

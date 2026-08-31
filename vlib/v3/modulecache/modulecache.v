@@ -12,7 +12,7 @@ import v3.util
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-51'
+const cache_format = 'v3-module-cache-52'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -4311,6 +4311,85 @@ fn c_line_braces(line string, initial_block_comment bool) (int, bool, bool, u8, 
 
 // module_header serializes the declaration-only interface for one flat-AST module.
 pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string) string {
+	return module_header_with_const_order(a, tc, module_name, vroot, import_paths, []string{})
+}
+
+struct ModuleHeaderConstDecl {
+	id      flat.NodeId
+	rank    int
+	ordinal int
+}
+
+fn module_header_const_storage_name(module_name string, name string) string {
+	if module_name.len > 0 && module_name !in ['main', 'builtin'] && !name.contains('.') {
+		return '${module_name}.${name}'
+	}
+	return name
+}
+
+fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_order []string) (map[int]flat.NodeId, map[int]string) {
+	mut replacements := map[int]flat.NodeId{}
+	mut files := map[int]string{}
+	if const_order.len == 0 {
+		return replacements, files
+	}
+	mut ranks := map[string]int{}
+	for i, name in const_order {
+		ranks[name] = i
+	}
+	mut declarations := []ModuleHeaderConstDecl{}
+	for file_node in a.nodes {
+		if file_node.kind != .file || file_node.children_count == 0
+			|| file_module_name(a, file_node) != module_name {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			mut decl_ids := []flat.NodeId{}
+			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			for id in decl_ids {
+				node := a.nodes[int(id)]
+				if node.kind != .const_decl {
+					continue
+				}
+				mut rank := const_order.len + declarations.len
+				for j in 0 .. node.children_count {
+					field := a.child_node(&node, j)
+					name := module_header_const_storage_name(module_name, field.value)
+					if field_rank := ranks[name] {
+						if field_rank < rank {
+							rank = field_rank
+						}
+					}
+				}
+				files[int(id)] = file_node.value
+				declarations << ModuleHeaderConstDecl{
+					id:      id
+					rank:    rank
+					ordinal: declarations.len
+				}
+			}
+		}
+	}
+	mut ordered := declarations.clone()
+	for i := 1; i < ordered.len; i++ {
+		current := ordered[i]
+		mut j := i
+		for j > 0 && (current.rank < ordered[j - 1].rank
+			|| (current.rank == ordered[j - 1].rank && current.ordinal < ordered[j - 1].ordinal)) {
+			ordered[j] = ordered[j - 1]
+			j--
+		}
+		ordered[j] = current
+	}
+	for i, declaration in declarations {
+		replacements[int(declaration.id)] = ordered[i].id
+	}
+	return replacements, files
+}
+
+// module_header_with_const_order preserves dependency ordering for runtime
+// constants whose helper bodies are intentionally omitted from warm headers.
+pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string) string {
 	mut out := strings.new_builder(4096)
 	out.writeln('module ${module_name.all_after_last('.')}')
 	generic_specialization_callees := generic_specialization_callee_names(tc)
@@ -4342,6 +4421,7 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 	}
 	mut seen := map[string]bool{}
 	declaration_attrs := cached_declaration_attrs(a)
+	const_replacements, const_files := module_header_const_replacements(a, module_name, const_order)
 	for file_node in a.nodes {
 		if file_node.kind != .file || file_node.children_count == 0 {
 			continue
@@ -4354,7 +4434,9 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 			mut decl_ids := []flat.NodeId{}
 			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
 			for id in decl_ids {
-				node := a.nodes[int(id)]
+				effective_id := const_replacements[int(id)] or { id }
+				node := a.nodes[int(effective_id)]
+				source_file := const_files[int(effective_id)] or { file_node.value }
 				if node.kind == .module_decl {
 					continue
 				}
@@ -4362,14 +4444,14 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 				if key.len > 0 && seen[key] {
 					continue
 				}
-				attrs := declaration_attrs[int(id)] or { CachedDeclarationAttrs{} }
-				needs_declaration_source := declaration_node_needs_source(a, id)
-					|| node_creates_generic_specialization(a, tc, id, generic_specialization_callees)
+				attrs := declaration_attrs[int(effective_id)] or { CachedDeclarationAttrs{} }
+				needs_declaration_source := declaration_node_needs_source(a, effective_id)
+					|| node_creates_generic_specialization(a, tc, effective_id, generic_specialization_callees)
 				source_embedded := embed_source_bodies && needs_declaration_source
-					&& declaration_node_source_is_embeddable(a, id)
-				source_attrs_text := declaration_source_attrs_text(a, node, file_node.value, mut
+					&& declaration_node_source_is_embeddable(a, effective_id)
+				source_attrs_text := declaration_source_attrs_text(a, node, source_file, mut
 					source_cache)
-				source_is_public := declaration_source_is_public(a, node, file_node.value, mut
+				source_is_public := declaration_source_is_public(a, node, source_file, mut
 					source_cache)
 				mut effective_attrs := attrs.attrs.clone()
 				for source_attr in declaration_source_attr_values(source_attrs_text) {
@@ -4378,12 +4460,12 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 					}
 				}
 				mut text := if source_embedded {
-					raw_source := declaration_source_with_line(a, node, file_node.value, mut
+					raw_source := declaration_source_with_line(a, node, source_file, mut
 						source_cache) or { CachedDeclarationSource{} }
-					cached_embedded_declaration_source(raw_source.text, vroot, file_node.value,
+					cached_embedded_declaration_source(raw_source.text, vroot, source_file,
 						raw_source.line)
 				} else {
-					decl_text(a, tc, module_name, node, vroot, file_node.value, import_paths,
+					decl_text(a, tc, module_name, node, vroot, source_file, import_paths,
 						effective_attrs, source_is_public)
 				}
 				if text.len == 0 {
@@ -5649,10 +5731,10 @@ fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node fl
 			import_text(a, node, import_paths)
 		}
 		.fn_decl {
-			fn_text(a, tc, module_name, node, false, declaration_attrs, source_is_public)
+			fn_text(a, module_name, node, false, declaration_attrs, source_is_public)
 		}
 		.c_fn_decl {
-			fn_text(a, tc, module_name, node, true, declaration_attrs, source_is_public)
+			fn_text(a, module_name, node, true, declaration_attrs, source_is_public)
 		}
 		.struct_decl {
 			struct_text(a, node, declaration_attrs, source_is_public)
@@ -5869,7 +5951,7 @@ fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) 
 	return text
 }
 
-fn fn_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node flat.Node, is_c bool, declaration_attrs []string, source_is_public bool) string {
+fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, declaration_attrs []string, source_is_public bool) string {
 	mut params := []flat.Node{}
 	for i in 0 .. node.children_count {
 		child := a.child_node(&node, i)
@@ -5942,17 +6024,6 @@ fn fn_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node flat
 	if !cached_declaration_has_attr(declaration_attrs, 'noreturn')
 		&& fn_is_noreturn(a, module_name, name) {
 		attrs << 'noreturn'
-	}
-	if !is_c {
-		mut pointer_slots := []string{}
-		for i in 0 .. params.len {
-			if tc.fn_node_param_requires_mut_pointer_slot(node, i) {
-				pointer_slots << i.str()
-			}
-		}
-		if pointer_slots.len > 0 {
-			attrs << "__v3_mut_pointer_slots: '${pointer_slots.join(',')}'"
-		}
 	}
 	if attrs.len > 0 {
 		attr_lines << '@[${attrs.join('; ')}]'

@@ -2715,20 +2715,21 @@ fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 	if variants.len == 0 {
 		return t.make_memcmp_eq_expr(lhs, rhs, sum_type, 'eq')
 	}
-	helper := sum_eq_helper_name(clean_sum)
-	if clean_sum !in t.sum_eq_types {
-		// A concrete generic specialization is emitted in main even while it is
-		// transformed under its declaring module's type-resolution context.
-		helper_module := if t.sum_eq_helper_module.len > 0 {
-			t.sum_eq_helper_module
-		} else if t.validating_generic_spec {
-			'main'
-		} else if t.cur_module.len > 0 {
-			t.cur_module
-		} else {
-			'main'
-		}
-		t.sum_eq_types[clean_sum] = SumEqRequest{
+	// A concrete generic specialization is emitted in main even while it is
+	// transformed under its declaring module's type-resolution context.
+	helper_module := if t.sum_eq_helper_module.len > 0 {
+		t.sum_eq_helper_module
+	} else if t.validating_generic_spec {
+		'main'
+	} else if t.cur_module.len > 0 {
+		t.cur_module
+	} else {
+		'main'
+	}
+	helper := sum_eq_helper_name_in_module(clean_sum, helper_module)
+	if helper !in t.sum_eq_types {
+		t.sum_eq_types[helper] = SumEqRequest{
+			sum_name:      clean_sum
 			module:        t.cur_module
 			file:          t.cur_file
 			helper_module: helper_module
@@ -2775,6 +2776,16 @@ pub fn sum_eq_helper_name(sum_name string) string {
 	return '__v3_sum_eq_${c_name(sum_name)}'
 }
 
+// sum_eq_helper_name_in_module keeps program-specific helpers distinct from the
+// same stable helper already supplied by an imported module-cache object.
+fn sum_eq_helper_name_in_module(sum_name string, helper_module string) string {
+	base := sum_eq_helper_name(sum_name)
+	if helper_module == 'main' {
+		return '${base}__v3_program'
+	}
+	return base
+}
+
 // synthesize_sum_eq_helpers generates the fn_decl for every sum type whose
 // equality helper was requested during the transform. Building one helper body
 // can request helpers for nested sum types, so this drains a worklist. Runs
@@ -2794,24 +2805,26 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	t.used_fns_log_active = true
 	for {
 		mut pending := []string{}
-		for name, _ in t.sum_eq_types {
-			if name in t.sum_eq_synthesized {
+		for helper, req in t.sum_eq_types {
+			if helper in t.sum_eq_synthesized {
 				continue
 			}
-			if sum_eq_helper_name(name) in t.fn_ret_types {
+			if helper in t.fn_ret_types {
 				// already synthesized by an earlier Transformer over this AST
-				t.sum_eq_synthesized[name] = true
+				t.sum_eq_synthesized[helper] = true
 				continue
 			}
-			pending << name
+			if req.sum_name.len > 0 {
+				pending << helper
+			}
 		}
 		if pending.len == 0 {
 			break
 		}
 		pending.sort()
-		for name in pending {
-			t.sum_eq_synthesized[name] = true
-			req := t.sum_eq_types[name] or { SumEqRequest{} }
+		for helper in pending {
+			t.sum_eq_synthesized[helper] = true
+			req := t.sum_eq_types[helper] or { SumEqRequest{} }
 			t.cur_module = req.module
 			t.cur_file = req.file
 			t.sum_eq_helper_module = if req.helper_module.len > 0 {
@@ -2825,7 +2838,7 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 				t.tc.cur_module = req.module
 				t.tc.cur_file = req.file
 			}
-			t.build_sum_eq_helper_fn(name)
+			t.build_sum_eq_helper_fn(req.sum_name, helper)
 		}
 	}
 	mut new_names := []string{}
@@ -2855,12 +2868,11 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 // AST: tags must match, then the active variant's payload is unboxed and compared
 // by value (recursing through the usual membership-eq machinery, which routes
 // nested sum types back through their own helpers).
-fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
+fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string, helper string) {
 	variants := t.sum_eq_variants(clean_sum) or { return }
 	if variants.len == 0 {
 		return
 	}
-	helper := sum_eq_helper_name(clean_sum)
 	saved_pending := t.pending_stmts
 	t.pending_stmts = []flat.NodeId{}
 	param_a := t.a.add_node(flat.Node{

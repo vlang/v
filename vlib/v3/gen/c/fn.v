@@ -1274,7 +1274,8 @@ fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string
 	// Synthesized helpers carry their complete, globally unique C symbol in the
 	// source name. Their owning module only controls cache-object placement; it
 	// must not be prepended to calls made from that same module.
-	if name.starts_with('__v3_sum_eq_') || name.starts_with('__v3_autostr_') {
+	if name.starts_with('__v3_sum_eq_') || name.starts_with('__v3_autostr_')
+		|| name.starts_with('__v3_default_clone_') {
 		return g.direct_call_name(name)
 	}
 	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {
@@ -3090,6 +3091,14 @@ fn (mut g FlatGen) gen_mut_sum_lvalue_arg(arg_id flat.NodeId, expected types.Typ
 	if base !is types.SumType {
 		return false
 	}
+	// A `mut value SumType` parameter is already lowered to `SumType* value`.
+	// Forward that pointer directly; taking its address would pass a `SumType**`
+	// and leave the caller's sum value unchanged.
+	lvalue_node := g.a.nodes[int(lvalue_id)]
+	if lvalue_node.kind == .ident && g.current_param_is_mut(lvalue_node.value) {
+		g.write(g.cname(lvalue_node.value))
+		return true
+	}
 	if !g.expr_is_addressable(lvalue_id) {
 		return false
 	}
@@ -3204,7 +3213,6 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	} else {
 		g.resolve_method_name(receiver_name, method)
 	}
-	mut emitted_method_key := method_key
 	mut params := []types.Type{}
 	mut ret := types.Type(types.void_)
 	mut cname := ''
@@ -3249,13 +3257,9 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 			}
 		}
 		ret = ci.return_type
-		emitted_method_key = '${receiver_name}.${method}'
-		cname = g.direct_call_name(emitted_method_key)
+		cname = g.direct_call_name('${receiver_name}.${method}')
 	} else {
 		return false
-	}
-	if !is_interface_receiver && emitted_method_key.len > 0 {
-		params = g.callback_fn_emitted_param_types(emitted_method_key, params)
 	}
 	if params.len == 0 {
 		return false
@@ -3292,7 +3296,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	// site and signature instead of the function-local temporary counter. Comptime
 	// expansion can reuse one selector node for methods with different concrete
 	// signatures, so the node id alone is not unique.
-	wrapper_key := '${emitted_method_key}|${ctx_receiver_ct}|${ret_ct}|${params.map(it.name()).join(',')}'
+	wrapper_key := '${method_key}|${ctx_receiver_ct}|${ret_ct}|${params.map(it.name()).join(',')}'
 	idx := '${int(selector_id)}_${callback_stable_key_hash(wrapper_key)}'
 	ctx_name := '_mvctx_${idx}'
 	wrap_name := '_mvwrap_${idx}'
@@ -4402,9 +4406,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		p := g.a.node(param_id)
 		if p.kind == .param {
 			decl_param_type := g.tc.parse_resolution_type(p.typ)
-			is_mut_pointer_slot := g.tc.fn_node_param_requires_mut_pointer_slot(node, param_idx)
 			param_type := if p.is_mut && p.op == .amp && param_idx < typed_params.len {
-				g.fn_node_effective_param_type(node, param_idx, p, typed_params[param_idx])
+				g.fn_node_effective_param_type(p, typed_params[param_idx])
 			} else if shared_alias_ptr := g.shared_alias_pointer_type_from_text(p.typ) {
 				shared_alias_ptr
 			} else if !concrete_optional_params && p.typ.len > 0
@@ -4429,7 +4432,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 				}
 				if p.is_mut {
 					g.cur_mut_params[p.value] = true
-					if is_mut_pointer_slot {
+					if p.op == .amp {
 						g.cur_mut_pointer_params[p.value] = true
 					}
 					g.cur_mut_param_owners[p.value] = owner
@@ -8051,9 +8054,6 @@ fn (mut g FlatGen) gen_interface_method_call(node flat.Node, fn_node flat.Node, 
 		emitted_arg_count++
 		param_idx := i
 		if param_idx < param_types.len {
-			if g.gen_mut_pointer_slot_arg(arg_id, arg_node, param_types[param_idx]) {
-				continue
-			}
 			if g.gen_fixed_array_pointer_lvalue_arg(arg_id, param_types[param_idx]) {
 				continue
 			}
@@ -11855,7 +11855,6 @@ fn (g &FlatGen) enum_receiver_method_name(enum_type types.Enum, method string) ?
 fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_type types.Type) bool {
 	field_type := g.field_type(base_type, fn_node.value) or { return false }
 	fn_type := fn_type_from(field_type) or { return false }
-	param_types := fn_type_effective_params(fn_type)
 	field_is_ptr := fn_type_is_pointer(field_type)
 	base_id := g.a.child(fn_node, 0)
 	base := g.a.nodes[int(base_id)]
@@ -11886,12 +11885,8 @@ fn (mut g FlatGen) gen_fn_field_call(node flat.Node, fn_node &flat.Node, base_ty
 		}
 		arg_id := g.a.child(&node, i)
 		arg_idx := i - 1
-		if arg_idx < param_types.len {
-			arg_node := g.a.node(arg_id)
-			if g.gen_mut_pointer_slot_arg(arg_id, arg_node, param_types[arg_idx]) {
-				continue
-			}
-			g.gen_arg_for_expected_type(arg_id, param_types[arg_idx])
+		if arg_idx < fn_type.params.len {
+			g.gen_arg_for_expected_type(arg_id, fn_type.params[arg_idx])
 		} else {
 			g.gen_expr(arg_id)
 		}
@@ -12314,7 +12309,7 @@ fn (g &FlatGen) interface_method_param_types(name string) ?[]types.Type {
 			params << decl_params[i]
 		}
 	}
-	return g.interface_effective_param_types_for_decl(params, decl_key)
+	return params
 }
 
 // param_types_from_decl converts param types from decl data for c.
@@ -12699,7 +12694,7 @@ fn (mut g FlatGen) callback_fn_emitted_param_types(name string, semantic []types
 				}
 				continue
 			}
-			result << g.fn_node_effective_param_type(node, param_idx, param, typed[param_idx])
+			result << g.fn_node_effective_param_type(param, typed[param_idx])
 			param_idx++
 		}
 		if result.len == semantic.len {
@@ -12777,11 +12772,6 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 		}
 		if callback_can_cast_const_abi_param(actual_ct, expected_ct) {
 			call_args << '(${actual_ct})arg${i}'
-			needs_wrapper = true
-			continue
-		}
-		if callback_mut_pointer_slot_can_read(actual_ct, expected_ct) {
-			call_args << '*arg${i}'
 			needs_wrapper = true
 			continue
 		}
@@ -12871,12 +12861,6 @@ fn callback_mut_pointer_slot_value_c_type(actual_ct string, expected_ct string) 
 		return none
 	}
 	return value_ct
-}
-
-fn callback_mut_pointer_slot_can_read(actual_ct string, expected_ct string) bool {
-	actual := trimmed_space(actual_ct)
-	expected := trimmed_space(expected_ct)
-	return expected.ends_with('*') && trimmed_space(expected[..expected.len - 1]) == actual
 }
 
 fn (mut g FlatGen) callback_c_type(typ types.Type) string {
@@ -15947,33 +15931,6 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	if expected !is types.Pointer {
 		return false
 	}
-	// Interface lowering can consume the source `mut` marker while preserving the
-	// identifier. A known caller-owned pointer slot still has the exact effective
-	// type expected by the dispatcher, so forward its storage rather than its value.
-	if arg_node.kind == .ident && g.current_param_is_mut_pointer(arg_node.value) {
-		param_type := g.current_param_type(arg_node.value) or { types.Type(types.void_) }
-		if g.tc.c_type(param_type) == g.tc.c_type(expected) {
-			g.write(g.local_decl_cname(arg_node.value))
-			return true
-		}
-	}
-	// A transformed callback argument can retain the source `mut p` marker as
-	// `&(*p)`. When p already is a caller-owned pointer slot, forward the slot
-	// itself rather than reading its current pointer value.
-	if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count == 1 {
-		value := g.a.child_node(&arg_node, 0)
-		if value.kind == .prefix && value.op == .mul && value.children_count == 1 {
-			base := g.a.child_node(value, 0)
-			if base.kind == .ident && g.current_param_is_mut(base.value)
-				&& g.current_param_is_mut_pointer(base.value) {
-				param_type := g.current_param_type(base.value) or { types.Type(types.void_) }
-				if g.tc.c_type(param_type) == g.tc.c_type(expected) {
-					g.write(g.local_decl_cname(base.value))
-					return true
-				}
-			}
-		}
-	}
 	// A mutable parameter is already the address of its caller-owned storage. In
 	// particular, `mut p &T` is represented as `T**`; forwarding `mut p` to
 	// another such parameter must pass that slot directly, not read `*p` first.
@@ -15987,14 +15944,7 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 	if arg_node.kind == .prefix && arg_node.op == .mul && arg_node.children_count == 1 {
 		child := g.a.child_node(&arg_node, 0)
 		if child.kind == .ident && g.current_param_is_mut(child.value) {
-			mut param_type := g.current_param_type(child.value) or {
-				types.Type(types.void_)
-			}
-			if g.current_param_is_mut_pointer(child.value) {
-				param_type = types.Type(types.Pointer{
-					base_type: param_type
-				})
-			}
+			param_type := g.current_param_type(child.value) or { types.Type(types.void_) }
 			if g.tc.c_type(param_type) == g.tc.c_type(expected) {
 				g.write(g.local_decl_cname(child.value))
 				return true
@@ -18031,8 +17981,8 @@ fn (mut g FlatGen) fn_node_signature_names(node flat.Node, module_name string) [
 	return deduped
 }
 
-fn (mut g FlatGen) fn_node_effective_param_type(fn_node flat.Node, param_idx int, param flat.Node, typed types.Type) types.Type {
-	if !g.tc.fn_node_param_requires_mut_pointer_slot(fn_node, param_idx) || typed !is types.Pointer {
+fn (mut g FlatGen) fn_node_effective_param_type(param flat.Node, typed types.Type) types.Type {
+	if !param.is_mut || param.op != .amp || typed !is types.Pointer {
 		return typed
 	}
 	declared := g.tc.parse_resolution_type(param.typ)
@@ -18087,7 +18037,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		} else {
 			g.tc.parse_resolution_type(p.typ)
 		}
-		effective_pt := g.fn_node_effective_param_type(node, param_idx, p, raw_pt)
+		effective_pt := g.fn_node_effective_param_type(p, raw_pt)
 		param_idx++
 		if concrete_optional_params && type_is_optional_result(effective_pt) && p.value.len > 0 {
 			g.cur_concrete_optional_params[p.value] = true
@@ -18137,6 +18087,31 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 	if needs_implicit_ctx && !implicit_ctx_written {
 		g.write_implicit_veb_ctx_param()
 	}
+}
+
+fn (mut g FlatGen) explicit_mut_pointer_param_type(param flat.Node, typ types.Type) types.Type {
+	if !param.is_mut || param.op != .amp || typ !is types.Pointer {
+		return typ
+	}
+	decl_type := g.tc.parse_resolution_type(param.typ)
+	mut decl_depth := 0
+	mut decl_base := decl_type
+	for decl_base is types.Pointer {
+		decl_depth++
+		decl_base = decl_base.base_type
+	}
+	mut actual_depth := 0
+	mut actual_base := typ
+	for actual_base is types.Pointer {
+		actual_depth++
+		actual_base = actual_base.base_type
+	}
+	if actual_depth > decl_depth {
+		return typ
+	}
+	return types.Type(types.Pointer{
+		base_type: typ
+	})
 }
 
 fn (g &FlatGen) is_specialized_generic_fn_node(node flat.Node) bool {

@@ -1429,18 +1429,6 @@ fn (tc &TypeChecker) assignment_expected_type(lhs_id flat.NodeId, lhs_type Type)
 	return lhs_type
 }
 
-fn (tc &TypeChecker) assignment_expected_type_for_rhs(lhs_id flat.NodeId, lhs_type Type, rhs_id flat.NodeId) Type {
-	expected := tc.assignment_expected_type(lhs_id, lhs_type)
-	if !tc.valid_node_id(lhs_id) || !tc.valid_node_id(rhs_id) || !tc.expr_tail_is_nil(rhs_id) {
-		return expected
-	}
-	lhs := tc.a.node(lhs_id)
-	if lhs.kind == .ident && tc.current_fn_param_requires_mut_pointer_slot(lhs.value) {
-		return lhs_type
-	}
-	return expected
-}
-
 fn (tc &TypeChecker) lvalue_matches_mut_param(lhs_type Type, base_type Type) bool {
 	if lhs_type is Pointer {
 		return tc.type_compatible(lhs_type.base_type, base_type)
@@ -9214,405 +9202,8 @@ fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node
 }
 
 fn (tc &TypeChecker) call_param_requires_mut_pointer_slot(info CallInfo, param_idx int) bool {
-	decl_module := if info.name.starts_with('C.') {
-		tc.cur_module
-	} else {
-		tc.fn_type_modules[info.name] or { '' }
-	}
-	if decl := tc.visible_mutation_fn_decl(info.name, decl_module) {
-		mut source_param_idx := param_idx
-		fn_node := tc.a.nodes[decl.idx]
-		if info.has_implicit_veb_ctx {
-			ctx_idx := tc.fn_implicit_veb_ctx_insert_index(fn_node)
-			if source_param_idx == ctx_idx {
-				return false
-			}
-			if source_param_idx > ctx_idx {
-				source_param_idx--
-			}
-		}
-		return tc.fn_node_param_requires_mut_pointer_slot(fn_node, source_param_idx)
-	}
-	if info.has_receiver && param_idx >= 0 && param_idx < info.params.len {
-		return tc.interface_param_requires_mut_pointer_slot(info.name, param_idx, info.params[param_idx])
-	}
-	return false
-}
-
-fn (tc &TypeChecker) interface_param_requires_mut_pointer_slot(name string, param_idx int, param_type Type) bool {
-	if unalias_type(param_type) !is Pointer {
-		return false
-	}
-	owner := name.all_before_last('.')
-	method := name.all_after_last('.')
-	signature := tc.interface_method_signature_key(owner, method) or { return false }
-	return tc.declaration_param_is_mut(signature, param_idx)
-}
-
-fn (tc &TypeChecker) current_fn_param_requires_mut_pointer_slot(name string) bool {
-	fn_id := flat.NodeId(tc.fn_context.node_id)
-	if !tc.valid_node_id(fn_id) {
-		return false
-	}
-	fn_node := tc.a.node(fn_id)
-	mut param_idx := 0
-	for i in 0 .. fn_node.children_count {
-		param := tc.a.child_node(fn_node, i)
-		if param.kind != .param {
-			break
-		}
-		if param.value == name {
-			return tc.fn_node_param_requires_mut_pointer_slot(fn_node, param_idx)
-		}
-		param_idx++
-	}
-	return false
-}
-
-// fn_node_param_requires_mut_pointer_slot reports whether an explicit mutable
-// pointer parameter reassigns its caller-owned pointer slot.
-pub fn (tc &TypeChecker) fn_node_param_requires_mut_pointer_slot(fn_node flat.Node, param_idx int) bool {
-	mut visiting := map[u64]bool{}
-	module_name := tc.fn_type_modules[fn_node.value] or { tc.cur_module }
-	return tc.fn_node_param_requires_mut_pointer_slot_inner(fn_node, module_name, param_idx,
-		mut visiting)
-}
-
-fn (tc &TypeChecker) fn_node_param_requires_mut_pointer_slot_inner(fn_node flat.Node, module_name string, param_idx int, mut visiting map[u64]bool) bool {
-	mut source_param_idx := 0
-	mut body_start := int(fn_node.children_count)
-	mut param_id := flat.empty_node
-	for i in 0 .. fn_node.children_count {
-		child_id := tc.a.child(&fn_node, i)
-		child := tc.a.node(child_id)
-		if child.kind != .param {
-			body_start = int(i)
-			break
-		}
-		if source_param_idx == param_idx {
-			param_id = child_id
-		}
-		source_param_idx++
-	}
-	if !tc.valid_node_id(param_id) {
-		return false
-	}
-	param := tc.a.node(param_id)
-	if !param.is_mut || param.op != .amp || !param.typ.trim_space().starts_with('&') {
-		return false
-	}
-	if tc.fn_node_param_has_cached_mut_pointer_slot(fn_node, module_name, param_idx) {
-		return true
-	}
-	for i in body_start .. int(fn_node.children_count) {
-		if tc.subtree_reassigns_or_forwards_ident(tc.a.child(&fn_node, i), param.value, module_name, fn_node, mut visiting) {
-			return true
-		}
-	}
-	return false
-}
-
-fn (tc &TypeChecker) fn_node_param_has_cached_mut_pointer_slot(fn_node flat.Node, module_name string, param_idx int) bool {
-	decl := tc.visible_mutation_fn_decl(fn_node.value, module_name) or { return false }
-	encoded := tc.declaration_attribute_value(flat.NodeId(decl.idx), '__v3_mut_pointer_slots') or {
-		return false
-	}
-	for raw_idx in encoded.split(',') {
-		clean := raw_idx.trim_space()
-		if clean == param_idx.str() {
-			return true
-		}
-	}
-	return false
-}
-
-fn fn_type_param_requires_mut_pointer_slot(fn_type FnType, param_idx int) bool {
-	return param_idx >= 0 && param_idx < fn_type.params.len && fn_param_is_mut(fn_type,
-		param_idx) && unalias_type(fn_param_type(fn_type, param_idx)) is Pointer
-}
-
-fn (tc &TypeChecker) fn_node_callback_param_requires_mut_pointer_slot(fn_node flat.Node, callee_id flat.NodeId, param_idx int) bool {
-	mut current_id := callee_id
-	for _ in 0 .. 8 {
-		if !tc.valid_node_id(current_id) {
-			return false
-		}
-		current := tc.a.node(current_id)
-		if current.kind == .selector && current.children_count > 0 {
-			base_id := tc.a.child(current, 0)
-			base := tc.a.node(base_id)
-			mut base_type := tc.expr_type(base_id) or { tc.resolve_type(base_id) }
-			if base_type is Unknown && base.kind == .ident {
-				for i in 0 .. fn_node.children_count {
-					param := tc.a.child_node(&fn_node, i)
-					if param.kind != .param {
-						break
-					}
-					if param.value == base.value {
-						base_type = tc.parse_resolution_type(param.typ)
-						break
-					}
-				}
-			}
-			if fn_type := tc.selector_field_fn_type(current, base_type) {
-				if fn_type_param_requires_mut_pointer_slot(fn_type, param_idx) {
-					return true
-				}
-			}
-		}
-		if fn_type := fn_type_from_type(tc.resolve_type(current_id)) {
-			if fn_type_param_requires_mut_pointer_slot(fn_type, param_idx) {
-				return true
-			}
-		}
-		name := tc.expr_key(current_id)
-		mut source_param_idx := 0
-		for i in 0 .. fn_node.children_count {
-			param := tc.a.child_node(&fn_node, i)
-			if param.kind != .param {
-				break
-			}
-			if param.value != name {
-				source_param_idx++
-				continue
-			}
-			param_types := tc.fn_param_types[fn_node.value] or { []Type{} }
-			if source_param_idx < param_types.len {
-				if fn_type := fn_type_from_type(param_types[source_param_idx]) {
-					if fn_type_param_requires_mut_pointer_slot(fn_type, param_idx) {
-						return true
-					}
-				}
-			}
-			fn_type := fn_type_from_type(tc.parse_resolution_type(param.typ)) or { return false }
-			return fn_type_param_requires_mut_pointer_slot(fn_type, param_idx)
-		}
-		rhs_id := tc.fn_node_local_decl_rhs_before(fn_node, name, callee_id) or { return false }
-		current_id = rhs_id
-		for tc.valid_node_id(current_id) {
-			current_node := tc.a.node(current_id)
-			if current_node.kind !in [.paren, .expr_stmt] || current_node.children_count != 1 {
-				break
-			}
-			current_id = tc.a.child(current_node, 0)
-		}
-	}
-	return false
-}
-
-fn (tc &TypeChecker) fn_node_local_decl_rhs_before(fn_node flat.Node, name string, use_id flat.NodeId) ?flat.NodeId {
-	if name.len == 0 || !tc.valid_node_id(use_id) {
-		return none
-	}
-	use_pos := tc.a.node(use_id).pos
-	mut stack := []flat.NodeId{}
-	for i in 0 .. fn_node.children_count {
-		child_id := tc.a.child(fn_node, i)
-		if tc.a.node(child_id).kind != .param {
-			stack << child_id
-		}
-	}
-	mut seen := map[int]bool{}
-	mut best_id := flat.empty_node
-	mut best_node := -1
-	for stack.len > 0 {
-		current_id := stack.pop()
-		if seen[int(current_id)] || !tc.valid_node_id(current_id) {
-			continue
-		}
-		seen[int(current_id)] = true
-		current := tc.a.node(current_id)
-		if current.kind in [.decl_assign, .assign] {
-			for i := 0; i + 1 < int(current.children_count); i += 2 {
-				lhs_id := tc.a.child(current, i)
-				lhs := tc.a.node(lhs_id)
-				positioned_before := lhs.pos.id == use_pos.id && lhs.pos.offset < use_pos.offset
-				if lhs.kind == .ident && lhs.value == name
-					&& (positioned_before || int(lhs_id) < int(use_id)) && int(lhs_id) > best_node {
-					best_id = tc.a.child(current, i + 1)
-					best_node = int(lhs_id)
-				}
-			}
-		}
-		if current.kind in [.fn_literal, .lambda_expr] {
-			continue
-		}
-		for i in 0 .. current.children_count {
-			stack << tc.a.child(current, i)
-		}
-	}
-	if best_id != flat.empty_node {
-		return best_id
-	}
-	return none
-}
-
-fn (tc &TypeChecker) forwarded_mut_pointer_arg_matches(id flat.NodeId, name string) bool {
-	mut current := id
-	for _ in 0 .. 16 {
-		if tc.expr_key(current) == name {
-			return true
-		}
-		if !tc.valid_node_id(current) {
-			return false
-		}
-		node := tc.a.node(current)
-		if node.kind in [.prefix, .paren, .expr_stmt] && node.children_count == 1 {
-			current = tc.a.child(node, 0)
-			continue
-		}
-		return false
-	}
-	return false
-}
-
-fn (tc &TypeChecker) fn_node_expr_is_pointer_value(fn_node flat.Node, id flat.NodeId, use_id flat.NodeId) bool {
-	mut current := id
-	for _ in 0 .. 16 {
-		if !tc.valid_node_id(current) {
-			return false
-		}
-		if tc.a.node(current).kind == .nil_literal {
-			return true
-		}
-		resolved := tc.resolve_type(current)
-		resolved_depth, _ := type_pointer_depth_and_base(resolved)
-		if resolved_depth > 0 {
-			return true
-		}
-		node := tc.a.node(current)
-		if node.kind == .prefix && node.op == .amp {
-			return true
-		}
-		if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr]
-			&& node.children_count > 0 {
-			current = tc.a.child(node, 0)
-			continue
-		}
-		if node.kind != .ident {
-			return false
-		}
-		for i in 0 .. fn_node.children_count {
-			param := tc.a.child_node(&fn_node, i)
-			if param.kind != .param {
-				break
-			}
-			if param.value == node.value {
-				return param.op == .amp || param.typ.trim_space().starts_with('&')
-			}
-		}
-		current = tc.fn_node_local_decl_rhs_before(fn_node, node.value, use_id) or {
-			return false
-		}
-	}
-	return false
-}
-
-fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name string, module_name string, fn_node flat.Node, mut visiting map[u64]bool) bool {
-	if !tc.valid_node_id(id) {
-		return false
-	}
-	node := tc.a.node(id)
-	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
-		return false
-	}
-	if node.kind == .assign {
-		mut i := 0
-		for i + 1 < node.children_count {
-			if tc.expr_key(tc.a.child(node, i)) == name {
-				rhs_id := tc.a.child(node, i + 1)
-				if tc.fn_node_expr_is_pointer_value(fn_node, rhs_id, id) {
-					return true
-				}
-			}
-			i += 2
-		}
-	}
-	if node.kind == .call {
-		if node.children_count > 0 {
-			callee_id := tc.a.child(node, 0)
-			callee_name := tc.expr_key(callee_id)
-			if callee_name.len > 0 {
-				for i in 1 .. node.children_count {
-					arg_id := tc.call_arg_value(tc.a.child(node, i))
-					if tc.forwarded_mut_pointer_arg_matches(arg_id, name) && tc.fn_node_callback_param_requires_mut_pointer_slot(fn_node, callee_id, int(i) - 1) {
-						return true
-					}
-				}
-			}
-		}
-		called_name := tc.resolved_call_name(id) or {
-			tc.visible_mutation_call_name(id, *node, '', module_name)
-		}
-		if called_name.len > 0 {
-			mut effective_called_name := called_name
-			callee := tc.a.child_node(node, 0)
-			if effective_called_name.starts_with('.') && callee.kind == .selector && callee.children_count > 0 {
-				receiver_id := tc.a.child(callee, 0)
-				receiver := tc.a.node(receiver_id)
-				mut receiver_name := ''
-				if receiver.kind == .ident {
-					for i in 0 .. fn_node.children_count {
-						param := tc.a.child_node(&fn_node, i)
-						if param.kind != .param {
-							break
-						}
-						if param.value == receiver.value {
-							receiver_name = visible_mutation_receiver_type_name(param.typ)
-							break
-						}
-					}
-				}
-				if receiver_name.len == 0 {
-					receiver_name = resolve_type_name_for_method(unalias_and_unwrap_pointer_type(tc.resolve_type(receiver_id)))
-				}
-				if receiver_name.len > 0 {
-					effective_called_name = receiver_name + effective_called_name
-				}
-			}
-			decl_module := tc.fn_type_modules[effective_called_name] or { module_name }
-			if decl := tc.visible_mutation_fn_decl(effective_called_name, decl_module) {
-				called_fn := tc.a.nodes[decl.idx]
-				first_param := tc.visible_mutation_fn_param(decl, 0) or { flat.Node{} }
-				param_offset := if first_param.kind == .param && first_param.op == .dot { 1 } else { 0 }
-				for i in 1 .. node.children_count {
-					arg_id := tc.a.child(node, i)
-					if tc.expr_key(arg_id) != name {
-						continue
-					}
-					called_param_idx := int(i) - 1 + param_offset
-					key := (u64(decl.idx) << 32) | u64(called_param_idx)
-					if visiting[key] {
-						continue
-					}
-					visiting[key] = true
-					if tc.fn_node_param_requires_mut_pointer_slot_inner(called_fn, decl.mod, called_param_idx, mut visiting) {
-						return true
-					}
-				}
-			} else if node.children_count > 0 {
-				if callee.kind == .selector {
-					owner := effective_called_name.all_before_last('.')
-					method := effective_called_name.all_after_last('.')
-					if signature := tc.interface_method_signature_key(owner, method) {
-						params, _ := tc.specialized_interface_method_signature(owner, signature)
-						for i in 1 .. node.children_count {
-							arg_id := tc.call_arg_value(tc.a.child(node, i))
-							if tc.forwarded_mut_pointer_arg_matches(arg_id, name) && i < params.len && tc.interface_param_requires_mut_pointer_slot(effective_called_name, int(i), params[i]) {
-								return true
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	for i in 0 .. node.children_count {
-		if tc.subtree_reassigns_or_forwards_ident(tc.a.child(node, i), name, module_name, fn_node, mut visiting) {
-			return true
-		}
-	}
-	return false
+	param := tc.visible_call_param(info, param_idx) or { return false }
+	return param.is_mut && param.op == .amp && param.typ.starts_with('&')
 }
 
 fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info CallInfo, param_idx int) bool {
@@ -9665,12 +9256,6 @@ fn is_channel_builtin_method_call_name(name string, method string) bool {
 		clean = clean[1..].trim_space()
 	}
 	return clean.starts_with('chan ') && clean.ends_with('.${method}')
-}
-
-// declaration_param_is_mut reports whether a registered declaration parameter is mutable.
-pub fn (tc &TypeChecker) declaration_param_is_mut(name string, param_idx int) bool {
-	params := tc.declaration_param_mutability[name] or { return false }
-	return param_idx >= 0 && param_idx < params.len && params[param_idx]
 }
 
 fn (tc &TypeChecker) call_param_is_mut(info CallInfo, param_idx int) bool {
@@ -9928,6 +9513,15 @@ fn (tc &TypeChecker) mut_pointer_slot_arg_compatible(actual Type, expected Type)
 		// `mut &value` passes the address of an existing pointer slot to a
 		// `mut value &T` parameter.
 		return true
+	}
+	if expected is Pointer {
+		if unalias_type(actual) is Primitive && tc.type_compatible(actual, expected.base_type) {
+			return true
+		}
+		if unalias_type(actual) is Primitive && expected.base_type is Pointer
+			&& tc.type_compatible(actual, expected.base_type.base_type) {
+			return true
+		}
 	}
 	return false
 }
@@ -11842,8 +11436,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				Type(void_)
 			}
 			mut_param_base_depth, _ := type_pointer_depth_and_base(mut_param_base)
-			is_implicit_mut_param_pointer := mut_arg_node.kind == .ident && mut_arg_node.value in tc.fn_context.mut_param_base_types && actual_mut_depth > mut_param_base_depth && !tc.current_fn_param_requires_mut_pointer_slot(mut_arg_node.value)
-			if is_implicit_mut_param_pointer || !tc.mut_pointer_slot_arg_compatible(actual_mut_type, expected) {
+			is_implicit_mut_param_pointer := mut_arg_node.kind == .ident
+				&& mut_arg_node.value in tc.fn_context.mut_param_base_types
+				&& !tc.current_fn_param_is_explicit_mut_pointer(mut_arg_node.value)
+				&& actual_mut_depth > mut_param_base_depth
+			if is_implicit_mut_param_pointer
+				|| !tc.mut_pointer_slot_arg_compatible(actual_mut_type, expected) {
 				argument_number := param_idx + 1 - (if info.has_receiver { 1 } else { 0 })
 				actual_display := tc.diagnostic_expr_type_name(arg_id, actual_mut_type)
 				expected_display := '&${call_argument_type_name(expected)}'
