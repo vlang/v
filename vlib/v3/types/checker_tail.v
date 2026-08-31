@@ -9435,7 +9435,7 @@ fn (tc &TypeChecker) fn_node_local_decl_rhs_before(fn_node flat.Node, name strin
 	return none
 }
 
-fn (tc &TypeChecker) forwarded_mut_pointer_arg_matches(id flat.NodeId, name string, fn_node flat.Node, use_id flat.NodeId) bool {
+fn (tc &TypeChecker) forwarded_mut_pointer_arg_matches(id flat.NodeId, name string) bool {
 	mut current := id
 	for _ in 0 .. 16 {
 		if tc.expr_key(current) == name {
@@ -9447,12 +9447,6 @@ fn (tc &TypeChecker) forwarded_mut_pointer_arg_matches(id flat.NodeId, name stri
 		node := tc.a.node(current)
 		if node.kind in [.prefix, .paren, .expr_stmt] && node.children_count == 1 {
 			current = tc.a.child(node, 0)
-			continue
-		}
-		if node.kind == .ident {
-			current = tc.fn_node_local_decl_rhs_before(fn_node, node.value, use_id) or {
-				return false
-			}
 			continue
 		}
 		return false
@@ -9526,9 +9520,7 @@ fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name st
 			if callee_name.len > 0 {
 				for i in 1 .. node.children_count {
 					arg_id := tc.call_arg_value(tc.a.child(node, i))
-					if tc.forwarded_mut_pointer_arg_matches(arg_id, name, fn_node, id)
-						&& tc.fn_node_callback_param_requires_mut_pointer_slot(fn_node, callee_id,
-							int(i) - 1) {
+					if tc.forwarded_mut_pointer_arg_matches(arg_id, name) && tc.fn_node_callback_param_requires_mut_pointer_slot(fn_node, callee_id, int(i) - 1) {
 						return true
 					}
 				}
@@ -9591,10 +9583,7 @@ fn (tc &TypeChecker) subtree_reassigns_or_forwards_ident(id flat.NodeId, name st
 						params, _ := tc.specialized_interface_method_signature(owner, signature)
 						for i in 1 .. node.children_count {
 							arg_id := tc.call_arg_value(tc.a.child(node, i))
-							if tc.forwarded_mut_pointer_arg_matches(arg_id, name, fn_node, id)
-								&& i < params.len
-								&& tc.interface_param_requires_mut_pointer_slot(effective_called_name,
-									int(i), params[i]) {
+							if tc.forwarded_mut_pointer_arg_matches(arg_id, name) && i < params.len && tc.interface_param_requires_mut_pointer_slot(effective_called_name, int(i), params[i]) {
 								return true
 							}
 						}

@@ -597,6 +597,44 @@ fn main() {
 	assert c_source.contains('void apply_field(main__Callbacks callbacks, main__Item** current, main__Item* replacement)')
 }
 
+fn test_callback_local_pointer_copy_does_not_reassign_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'callback_local_pointer_copy_mut_pointer_param', 'struct Item {
+	value int
+}
+
+fn replace(mut current &Item, replacement &Item) {
+	current = replacement
+}
+
+fn apply_copy(callback fn (mut &Item, &Item), mut current &Item, replacement &Item) int {
+	mut alias := current
+	callback(mut alias, replacement)
+	return current.value
+}
+
+fn main() {
+	mut first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	println(int_str(apply_copy(replace, mut first, &second)))
+}
+')
+	assert out == '1'
+	mut apply_copy_signature := ''
+	for line in c_source.split_into_lines() {
+		if line.starts_with('int apply_copy(') && line.ends_with(') {') {
+			apply_copy_signature = line
+			break
+		}
+	}
+	assert apply_copy_signature.contains('main__Item* current, main__Item* replacement')
+	assert !apply_copy_signature.contains('main__Item** current')
+}
+
 fn test_bound_method_mut_pointer_param_reassigns_caller_slot() {
 	v3_bin := mut_param_reassign_build_v3()
 	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'bound_method_mut_pointer_param_reassign', 'struct Item {
