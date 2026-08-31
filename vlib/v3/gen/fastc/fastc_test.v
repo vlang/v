@@ -411,10 +411,10 @@ fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 
 fn test_fastc_file_generation_jobs_balance_largest_files_first() {
 	sources := [
-		FastcSourceFile{source: 'a'.repeat(60)},
-		FastcSourceFile{source: 'b'.repeat(50)},
-		FastcSourceFile{source: 'c'.repeat(40)},
-		FastcSourceFile{source: 'd'.repeat(30)},
+		FastcSourceFile{ source: 'a'.repeat(60) },
+		FastcSourceFile{ source: 'b'.repeat(50) },
+		FastcSourceFile{ source: 'c'.repeat(40) },
+		FastcSourceFile{ source: 'd'.repeat(30) },
 	]
 	assert fastc_file_generation_job_indices(sources, 2) == [[0, 3], [1, 2]]
 }
@@ -1346,8 +1346,7 @@ fn test_source_resolver_preserves_aliases_for_scheduled_files() {
 	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(root, 'legacy', 'alias.v'),
-		"@[alias: '${canonical_dir}'] module legacy\n") or {
+	os.write_file(os.join_path(root, 'legacy', 'alias.v'), "@[alias: '${canonical_dir}'] module legacy\n") or {
 		panic(err)
 	}
 	mut prefs := pref.new_preferences()
@@ -1371,8 +1370,7 @@ fn test_source_resolver_preserves_aliases_for_symlinked_module_dirs() {
 	os.write_file(main_file, 'module main\nimport canonical\nimport legacy\nfn main() { canonical.ping(); legacy.ping() }\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(canonical_dir, 'canonical.v'),
-		'module canonical\npub fn ping() {}\n') or {
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\npub fn ping() {}\n') or {
 		panic(err)
 	}
 	mut prefs := pref.new_preferences()
@@ -1380,6 +1378,25 @@ fn test_source_resolver_preserves_aliases_for_symlinked_module_dirs() {
 	sources, aliases := fastc_resolve_source_files([main_file], prefs) or { panic(err) }
 	assert sources.len == 2
 	assert aliases['legacy'] == 'canonical'
+}
+
+fn test_source_resolver_canonicalizes_building_v_entry_path() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.vroot = os.real_path(@VEXEROOT)
+	canonical_entry := os.join_path(prefs.vroot, 'vlib', 'v3', 'v3.v')
+	// The regular V3 driver can pass a relative or otherwise non-canonical entry,
+	// while entry-module enumeration returns canonical absolute paths. Both spellings
+	// must resolve to one source or FastC reports a duplicate `main` during self-host.
+	noncanonical_entry := os.dir(canonical_entry) + '/../v3/v3.v'
+	sources, _ := fastc_resolve_source_files([noncanonical_entry], prefs) or { panic(err) }
+	mut entry_count := 0
+	for source in sources {
+		if source.path == canonical_entry {
+			entry_count++
+		}
+	}
+	assert entry_count == 1
 }
 
 fn test_header_discovers_imports_only_from_selected_comptime_branches() {
@@ -5961,6 +5978,14 @@ fn test_selfhost_type_aliases_are_hoisted_before_composite_fields() {
 	assert handle_index < alias_index && alias_index < request_index, ordered
 }
 
+fn test_c_directive_hoisting_preserves_source_order() {
+	source := 'one\n#include <x.h>\ntwo\n# if FLAG\nthree\n#ifdef INNER\nfour\n#endif\n#else\nfive\n#endif\nsix'
+	hoisted := fastc_hoist_c_directives(source)
+	assert hoisted.directives == '#include <x.h>\n\n'
+	assert hoisted.conditional_code == '# if FLAG\nthree\n#ifdef INNER\nfour\n#endif\n#else\nfive\n#endif\n\n'
+	assert hoisted.body == 'one\ntwo\nsix\n'
+}
+
 fn test_nested_fixed_array_struct_field_uses_native_c_dimensions() {
 	typ := fastc_fixed_array_type('4', fastc_fixed_array_type('256', 'u32'))
 	assert fastc_fixed_array_field_declaration(typ, 'values')? == 'u32 values[4][256]'
@@ -6235,6 +6260,8 @@ fn main() {
 ', 'selfhost_append_to_nested_array.v', prefs) or { panic(err) }
 	assert c_source.contains('__v_fastc_append_array_target'), c_source
 	assert c_source.contains('builtin__array_get(*(groups), index)'), c_source
+	assert c_source.contains('builtin____new_array(0,0,sizeof(int))'), c_source
+	assert c_source.contains('((Array_int *)__v_fastc_array_init.data)[__v_fastc_array_index]'), c_source
 	assert !c_source.contains('groups[index]'), c_source
 }
 
@@ -8177,6 +8204,27 @@ fn main() {
 	assert c_source.contains('__v_fastc_or_result'), c_source
 	assert c_source.contains('flag=9'), c_source
 	assert c_source.contains(' = (42)'), c_source
+}
+
+fn test_selfhost_or_block_with_multiline_struct_fallback_is_a_value() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {}
+
+fn get(items map[string]Item) Item {
+	return items[\'missing\'] or {
+		Item{}
+	}
+}
+
+fn main() {
+	_ := get(map[string]Item{})
+}
+', 'selfhost_multiline_struct_fallback.v', prefs) or { panic(err) }
+	assert c_source.contains('? ((Item){}) : *((Item *)'), c_source
+	assert !c_source.contains('if (__v_fastc_option_'), c_source
 }
 
 fn test_veb_template_compiles_to_builder() {
@@ -10405,6 +10453,33 @@ fn main() {
 	assert c_source.contains('builtin__map_get_check'), c_source
 	assert c_source.contains('builtin__map_set'), c_source
 	assert !c_source.contains('counts[key]+amount'), c_source
+}
+
+fn test_selfhost_map_assignment_keeps_overloaded_operation_in_value() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Text {
+	value string
+}
+
+fn (left Text) + (right Text) Text {
+	return Text{ value: left.value + right.value }
+}
+
+fn append_value(mut values map[string]Text, key string, suffix Text) {
+	previous := values[key] or { Text{} }
+	values[key] = previous + suffix
+}
+
+fn main() {
+	mut values := map[string]Text{}
+	append_value(mut values, "compiler", Text{ value: " initializer" })
+}
+', 'selfhost_map_assignment_overloaded_operation.v', prefs) or { panic(err) }
+	assert c_source.contains('Text __v_fastc_map_value = (Text_plus(previous,suffix))'), c_source
+	assert !c_source.contains('Text_plus(({ string __v_fastc_map_key'), c_source
 }
 
 fn test_selfhost_map_assignment_with_propagated_result() {
