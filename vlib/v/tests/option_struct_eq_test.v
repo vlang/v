@@ -159,3 +159,28 @@ fn test_option_ptr_struct_ne() {
 	assert a != b
 	assert a != ?&Id(none)
 }
+
+struct OptionPointerOverloadValue {
+	value int
+}
+
+fn (a &OptionPointerOverloadValue) ==(b &OptionPointerOverloadValue) bool {
+	return a.value == b.value
+}
+
+fn test_option_pointer_payload_uses_reference_equality_overload() {
+	a := ?&OptionPointerOverloadValue(&OptionPointerOverloadValue{
+		value: 1
+	})
+	b := ?&OptionPointerOverloadValue(&OptionPointerOverloadValue{
+		value: 1
+	})
+	c := ?&OptionPointerOverloadValue(&OptionPointerOverloadValue{
+		value: 2
+	})
+	n := ?&OptionPointerOverloadValue(none)
+	assert a == b
+	assert a != c
+	assert a != n
+	assert n == ?&OptionPointerOverloadValue(none)
+}

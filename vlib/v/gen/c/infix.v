@@ -332,7 +332,11 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.write('(${lv}.state == 2 && ${rv}.state == 2) || ')
 		g.write('(${lv}.state == ${rv}.state && ${lv}.state != 2 && ')
 		if eq_operator_expects_ptr {
-			g.write('${method_name}((${base_styp}*)&${lv}.data, (${base_styp}*)&${rv}.data)')
+			if g.table.fully_unaliased_type(left_type.clear_flag(.option)).is_ptr() {
+				g.write('${method_name}(*(${base_styp}*)&${lv}.data, *(${base_styp}*)&${rv}.data)')
+			} else {
+				g.write('${method_name}((${base_styp}*)&${lv}.data, (${base_styp}*)&${rv}.data)')
+			}
 		} else {
 			g.write('${method_name}(*(${base_styp}*)&${lv}.data, *(${base_styp}*)&${rv}.data)')
 		}
