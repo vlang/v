@@ -52,6 +52,25 @@ fn (t &Transformer) shared_array_lhs_inner_type(id flat.NodeId) ?string {
 	}
 }
 
+fn (t &Transformer) ownership_array_repeat_call_expands(node flat.Node) bool {
+	if node.children_count != 2 || isnil(t.tc) {
+		return false
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'repeat' || fn_node.children_count == 0 {
+		return false
+	}
+	base_type := t.normalize_type_alias(t.node_type(t.a.child(fn_node, 0)).trim_left('&'))
+	if !base_type.starts_with('[]') {
+		return false
+	}
+	elem := t.tc.parse_type(base_type[2..])
+	if !t.tc.ownership_type_requires_destruction(elem) {
+		return false
+	}
+	return t.tc.ownership_default_clone_missing_method(elem) == none
+}
+
 fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count != 2 {
 		return none

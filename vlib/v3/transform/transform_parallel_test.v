@@ -1256,6 +1256,31 @@ fn test_string_interp_expansion_estimate_includes_possible_temp_hoisting() {
 	assert !needs_deferred_lowering
 }
 
+fn test_string_interp_expansion_estimate_includes_array_ident_hoisting() {
+	for array_type in ['[]int', '[4]int'] {
+		mut a := flat.FlatAst.new()
+		items := a.add_node(flat.Node{
+			kind: .ident
+			value: 'items'
+			typ: array_type
+		})
+		interp_start := a.children.len
+		a.children << items
+		interp := a.add_node(flat.Node{
+			kind: .string_interp
+			typ: 'string'
+			children_start: interp_start
+			children_count: 1
+		})
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+		estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
+		assert estimate >= string_interp_hoisted_part_expansion_estimate
+		assert needs_deferred_lowering
+	}
+}
+
 fn test_reflected_comptime_for_interpolation_defers_with_bounded_join_estimate() {
 	mut a := flat.FlatAst.new()
 	comptime_loop := a.add_node(flat.Node{
@@ -2189,6 +2214,72 @@ fn test_external_map_expansion_estimate_defers_ownership_collection_clone_calls(
 
 		assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 	}
+}
+
+fn test_external_map_expansion_estimate_defers_ownership_array_repeat_calls() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	make_items := a.add_node(flat.Node{
+		kind: .ident
+		value: 'make_items'
+	})
+	make_start := a.children.len
+	a.children << make_items
+	items := a.add_node(flat.Node{
+		kind: .call
+		typ: '[]Wide'
+		children_start: make_start
+		children_count: 1
+	})
+	selector_start := a.children.len
+	a.children << items
+	repeat_selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'repeat'
+		typ: 'fn (int) []Wide'
+		children_start: selector_start
+		children_count: 1
+	})
+	count := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '2'
+		typ: 'int'
+	})
+	repeat_start := a.children.len
+	a.children << repeat_selector
+	a.children << count
+	repeat_call := a.add_node(flat.Node{
+		kind: .call
+		typ: '[]Wide'
+		children_start: repeat_start
+		children_count: 2
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'items'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << repeat_call
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string][]Wide'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	tc.struct_implements['Wide'] = ['IClone']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.ownership_array_repeat_call_expands(a.nodes[int(repeat_call)])
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
 fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruction() {

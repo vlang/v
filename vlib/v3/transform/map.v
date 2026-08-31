@@ -288,6 +288,10 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 				// whose size is derived from type metadata, not source children.
 				estimate += deferred_map_expansion_threshold + 1
 			}
+			if t.ownership_array_repeat_call_expands(node) {
+				// Ownership-aware repeats synthesize a clone loop from element metadata.
+				estimate += deferred_map_expansion_threshold + 1
+			}
 		}
 		if node.kind == .cast_expr {
 			// External casts cannot rewrite their child IDs in place, so even an

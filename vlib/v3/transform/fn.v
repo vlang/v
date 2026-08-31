@@ -6309,6 +6309,11 @@ fn (mut t Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return true
 	}
+	clean_type := t.normalize_type_alias(t.reliable_stringify_type(id).trim_space())
+	if clean_type.starts_with('[]') || t.is_fixed_array_type(clean_type) {
+		// Collection stringification always synthesizes a loop and temporaries.
+		return true
+	}
 	node := t.a.nodes[int(id)]
 	if t.runtime_type_metadata_call_expands(id, node) {
 		return true
