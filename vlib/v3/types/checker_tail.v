@@ -1429,6 +1429,18 @@ fn (tc &TypeChecker) assignment_expected_type(lhs_id flat.NodeId, lhs_type Type)
 	return lhs_type
 }
 
+fn (tc &TypeChecker) assignment_expected_type_for_rhs(lhs_id flat.NodeId, lhs_type Type, rhs_id flat.NodeId) Type {
+	expected := tc.assignment_expected_type(lhs_id, lhs_type)
+	if !tc.valid_node_id(lhs_id) || !tc.valid_node_id(rhs_id) || !tc.expr_tail_is_nil(rhs_id) {
+		return expected
+	}
+	lhs := tc.a.node(lhs_id)
+	if lhs.kind == .ident && tc.current_fn_param_requires_mut_pointer_slot(lhs.value) {
+		return lhs_type
+	}
+	return expected
+}
+
 fn (tc &TypeChecker) lvalue_matches_mut_param(lhs_type Type, base_type Type) bool {
 	if lhs_type is Pointer {
 		return tc.type_compatible(lhs_type.base_type, base_type)
@@ -9459,6 +9471,9 @@ fn (tc &TypeChecker) fn_node_expr_is_pointer_value(fn_node flat.Node, id flat.No
 	for _ in 0 .. 16 {
 		if !tc.valid_node_id(current) {
 			return false
+		}
+		if tc.a.node(current).kind == .nil_literal {
+			return true
 		}
 		resolved := tc.resolve_type(current)
 		resolved_depth, _ := type_pointer_depth_and_base(resolved)

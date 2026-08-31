@@ -7235,7 +7235,7 @@ fn (mut tc TypeChecker) annotate_assign_expected_exprs(node flat.Node) {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_type := tc.resolve_lvalue_type(lhs_id)
-		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
+		expected_type := tc.assignment_expected_type_for_rhs(lhs_id, lhs_type, rhs_id)
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		i += 2
 	}

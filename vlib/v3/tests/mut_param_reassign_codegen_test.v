@@ -635,6 +635,32 @@ fn main() {
 	assert !apply_copy_signature.contains('main__Item** current')
 }
 
+fn test_mut_pointer_nil_assignment_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'mut_pointer_nil_reassign', 'struct Item {
+	value int
+}
+
+fn clear(mut current &Item) {
+	unsafe {
+		current = nil
+	}
+}
+
+fn main() {
+	mut item := Item{
+		value: 1
+	}
+	mut current := &item
+	clear(mut current)
+	assert isnil(current)
+	println("ok")
+}
+')
+	assert out == 'ok'
+	assert c_source.contains('void clear(main__Item** current)')
+}
+
 fn test_bound_method_mut_pointer_param_reassigns_caller_slot() {
 	v3_bin := mut_param_reassign_build_v3()
 	out, c_source := mut_param_reassign_run_good_with_c(v3_bin, 'bound_method_mut_pointer_param_reassign', 'struct Item {
