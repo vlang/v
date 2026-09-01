@@ -939,6 +939,19 @@ fn (t &Transformer) zero_value_expansion_estimate(id flat.NodeId, type_name stri
 	})
 }
 
+fn (mut t Transformer) comptime_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .string_literal || node.children_count != 1 || node.value !in [
+		'__v3_comptime_zero',
+		'__v3_comptime_new',
+	] {
+		return 0
+	}
+	target_type := t.comptime_type_expr_type(t.a.child(&node, 0)) or {
+		return deferred_map_expansion_threshold + 1
+	}
+	return t.zero_value_expansion_estimate(id, target_type)
+}
+
 fn (t &Transformer) map_index_zero_value_expansion_estimate(node flat.Node) int {
 	if node.kind != .index || node.children_count == 0 {
 		return 0
@@ -1089,6 +1102,7 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			continue
 		}
 		node := t.a.nodes[idx]
+		estimate += t.comptime_zero_value_expansion_estimate(flat.NodeId(idx), node)
 		if node.kind == .comptime_for {
 			_, kind := comptime_for_parts(node.value)
 			if kind in ['fields', 'values', 'variants', 'methods', 'params', 'attributes'] {

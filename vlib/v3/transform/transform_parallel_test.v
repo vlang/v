@@ -557,6 +557,32 @@ fn test_fn_span_map_expansion_estimate_includes_fixed_array_runtime_init() {
 	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_includes_comptime_zero_value_markers() {
+	mut a := flat.FlatAst.new()
+	mut markers := []flat.NodeId{}
+	for marker_name in ['__v3_comptime_zero', '__v3_comptime_new'] {
+		target := a.add_node(flat.Node{
+			kind: .ident
+			value: '[4096][]int'
+		})
+		start := a.children.len
+		a.children << target
+		markers << a.add_node(flat.Node{
+			kind: .string_literal
+			value: marker_name
+			typ: 'string'
+			children_start: start
+			children_count: 1
+		})
+	}
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	for marker in markers {
+		assert t.fn_span_map_expansion_estimate(int(marker), int(marker) + 1) > deferred_map_expansion_threshold
+	}
+}
+
 fn test_fn_span_map_expansion_estimate_includes_map_index_zero_value() {
 	mut a := flat.FlatAst.new()
 	base := a.add_node(flat.Node{
