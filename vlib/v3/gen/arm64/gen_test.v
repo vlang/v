@@ -164,6 +164,34 @@ fn test_c_homogeneous_float_aggregate_return_uses_simd_registers() {
 	assert asm_sub_imm(Reg(8), fp, 24) !in words
 }
 
+fn test_c_f32_homogeneous_float_aggregate_return_uses_simd_registers() {
+	mut m := ssa.Module.new()
+	f32_type := m.type_store.get_float(32)
+	pair_type := m.type_store.register(ssa.Type{
+		kind: .struct_t
+		fields: [f32_type, f32_type]
+		is_c_struct: true
+	})
+	external_id := m.new_function('make_pair', pair_type)
+	mut external := m.funcs[external_id]
+	external.is_c_extern = true
+	m.funcs[external_id] = external
+	make_pair := m.add_value(.func_ref, pair_type, 'make_pair', external_id)
+	caller_id := m.new_function('caller', ssa.TypeID(0))
+	block_id := m.add_block(caller_id, 'entry')
+	call := m.add_instr(.call, block_id, pair_type, [make_pair])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[caller_id])
+	g.set_stack_slot(call, -8)
+	g.gen_call(int(call), m.instrs[m.values[call].index])
+	mut words := []u32{}
+	for i := 0; i < g.macho.text_data.len; i += 4 {
+		words << read_u32_le(g.macho.text_data, i)
+	}
+	assert asm_fmov_w_s(Reg(8), 0) in words
+	assert asm_fmov_w_s(Reg(8), 1) in words
+}
+
 fn test_literal_c_variadic_string_stores_both_words() {
 	mut m := ssa.Module.new()
 	i64_type := m.type_store.get_int(64)
