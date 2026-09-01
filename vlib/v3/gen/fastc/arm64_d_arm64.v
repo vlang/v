@@ -8118,17 +8118,19 @@ fn (mut p FastArm64Parser) fill_array(array FastArm64Value, element_type_name st
 	more := p.program.instr2(.lt, condition, p.program.i1_type, index, length32.id)
 	p.program.instr3(.br, condition, p.program.void_type, more, ssa.ValueID(body), ssa.ValueID(done))
 	p.mark_terminated(condition)
-	index64 := p.program.instr1(.zext, body, p.program.i64_type, index)
+	p.cur_block = body
+	stored_fill := p.clone_array_default_value(fill, element_type_name)
+	index64 := p.program.instr1(.zext, p.cur_block, p.program.i64_type, index)
 	element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
-	offset := p.program.instr2(.mul, body, p.program.i64_type, index64, element_size)
-	address := p.program.instr2(.add, body, p.program.ptr_i8, data, offset)
-	typed_address := p.program.instr1(.bitcast, body, p.program.m.type_store.get_ptr(element_type), address)
-	p.program.instr2(.store, body, p.program.void_type, fill.id, typed_address)
+	offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index64, element_size)
+	address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, offset)
+	typed_address := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), address)
+	p.program.instr2(.store, p.cur_block, p.program.void_type, stored_fill.id, typed_address)
 	one := p.program.m.get_or_add_const(p.program.i32_type, '1')
-	next := p.program.instr2(.add, body, p.program.i32_type, index, one)
-	p.program.instr2(.store, body, p.program.void_type, next, index_slot)
-	p.program.instr1(.jmp, body, p.program.void_type, ssa.ValueID(condition))
-	p.mark_terminated(body)
+	next := p.program.instr2(.add, p.cur_block, p.program.i32_type, index, one)
+	p.program.instr2(.store, p.cur_block, p.program.void_type, next, index_slot)
+	p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(condition))
+	p.mark_terminated(p.cur_block)
 	p.cur_block = done
 	return array
 }
@@ -8494,16 +8496,72 @@ fn (mut p FastArm64Parser) emit_array_clone(array FastArm64Value) FastArm64Value
 	result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
 	p.program.instr2(.store, p.cur_block, p.program.void_type, result, result_slot)
 	result_data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, result_slot, p.program.array_type, 0))
-	bytes := p.program.instr2(.mul, p.cur_block, p.program.i64_type, length, element_size)
-	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
-	p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memcpy_ref, result_data, data,
-		bytes])
+	element_type_name := p.program.array_element_type_name(array.typ_name) or { '' }
+	element_type := p.program.type_id(element_type_name)
+	if element_type == p.program.array_type {
+		index_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.i32_type))
+		zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
+		p.program.instr2(.store, p.cur_block, p.program.void_type, zero, index_slot)
+		condition := p.program.m.add_block(p.func_id, 'array_clone_condition')
+		body := p.program.m.add_block(p.func_id, 'array_clone_body')
+		done := p.program.m.add_block(p.func_id, 'array_clone_done')
+		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(condition))
+		p.mark_terminated(p.cur_block)
+		index := p.program.instr1(.load, condition, p.program.i32_type, index_slot)
+		more := p.program.instr2(.lt, condition, p.program.i1_type, index, length32)
+		p.program.instr3(.br, condition, p.program.void_type, more, ssa.ValueID(body), ssa.ValueID(done))
+		p.mark_terminated(condition)
+		index64 := p.program.instr1(.zext, body, p.program.i64_type, index)
+		offset := p.program.instr2(.mul, body, p.program.i64_type, index64, element_size)
+		source_address := p.program.instr2(.add, body, p.program.ptr_i8, data, offset)
+		typed_source := p.program.instr1(.bitcast, body, p.program.m.type_store.get_ptr(element_type), source_address)
+		element := FastArm64Value{
+			id: p.program.instr1(.load, body, element_type, typed_source)
+			typ: element_type
+			typ_name: element_type_name
+			address: typed_source
+		}
+		p.cur_block = body
+		cloned_element := p.emit_array_clone(element)
+		destination_address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, result_data, offset)
+		typed_destination := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), destination_address)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, cloned_element.id, typed_destination)
+		one := p.program.m.get_or_add_const(p.program.i32_type, '1')
+		next := p.program.instr2(.add, p.cur_block, p.program.i32_type, index, one)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, next, index_slot)
+		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(condition))
+		p.mark_terminated(p.cur_block)
+		p.cur_block = done
+	} else {
+		bytes := p.program.instr2(.mul, p.cur_block, p.program.i64_type, length, element_size)
+		memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
+		p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memcpy_ref, result_data, data,
+			bytes])
+	}
 	return FastArm64Value{
 		id: result
 		typ: p.program.array_type
 		typ_name: array.typ_name
 		address: result_slot
 	}
+}
+
+fn (mut p FastArm64Parser) clone_array_default_value(value FastArm64Value, type_name string) FastArm64Value {
+	if value.typ == p.program.array_type {
+		return p.emit_array_clone(value)
+	}
+	if value.typ == p.program.map_type {
+		clone_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_clone', p.program.fn_ids['fast_map_clone'])
+		return FastArm64Value{
+			id: p.program.m.add_instr(.call, p.cur_block, p.program.map_type, [
+				clone_ref,
+				value.id,
+			])
+			typ: p.program.map_type
+			typ_name: type_name
+		}
+	}
+	return value
 }
 
 fn (mut p FastArm64Parser) emit_array_reverse(array FastArm64Value) FastArm64Value {

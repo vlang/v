@@ -1125,6 +1125,47 @@ fn main() {
 	}
 }
 
+fn test_fastc_arm64_array_aggregate_defaults_and_nested_clones_are_independent() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_array_clone_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		source := '
+fn main() {
+	mut rows := [][]int{len: 2, init: [1, 2]}
+	rows[0][0] = 9
+	mut maps := []map[string]int{len: 2, init: {"x": 1}}
+	maps[0]["x"] = 9
+	original := [[1, 2], [3]]
+	mut copied := original.clone()
+	copied[0][0] = 9
+	cube := [[[1]]]
+	mut cube_copy := cube.clone()
+	cube_copy[0][0][0] = 9
+	if rows[1][0] != 1 || maps[1]["x"] != 1 || original[0][0] != 1
+		|| copied[0][0] != 9 || cube[0][0][0] != 1 || cube_copy[0][0][0] != 9 {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+'
+		os.write_file(source_path, source) or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n'
+	}
+}
+
 fn test_fastc_arm64_path_overrides_match_os_normalization() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_paths_${os.getpid()}')
