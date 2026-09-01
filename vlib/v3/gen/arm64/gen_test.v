@@ -58,3 +58,19 @@ fn test_external_global_address_uses_got_load_relocations() {
 	assert g.macho.relocs[1].type_ == arm64_reloc_got_load_pageoff12
 	assert read_u32_le(g.macho.text_data, 4) == asm_ldr_pageoff(Reg(8))
 }
+
+fn test_aggregate_bitcast_copies_every_word() {
+	mut m := ssa.Module.new()
+	i64_type := m.type_store.get_int(64)
+	pair_type := m.type_store.get_tuple([i64_type, i64_type])
+	func_id := m.new_function('copy_pair', pair_type)
+	block_id := m.add_block(func_id, 'entry')
+	source := m.add_instr(.struct_init, block_id, pair_type, [])
+	result := m.add_instr(.bitcast, block_id, pair_type, [source])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[func_id])
+	g.set_stack_slot(source, -16)
+	g.set_stack_slot(result, -32)
+	g.gen_instr(result)
+	assert g.macho.text_data.len == 16
+}

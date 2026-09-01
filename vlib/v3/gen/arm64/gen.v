@@ -964,6 +964,10 @@ fn (mut g Gen) gen_instr(val_id int) {
 			if instr.operands.len > 0 {
 				src_id := instr.operands[0]
 				src_typ := g.m.values[src_id].typ
+				if g.is_aggregate_type(val.typ) {
+					g.emit_phi_copy_value(src_id, val_id)
+					return
+				}
 				// The builder lowers f32<->f64 casts as a bitcast. Those need a
 				// real representation conversion, not a bit copy: widen the source
 				// into a `d` register and narrow back per the result type.
@@ -1129,9 +1133,35 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	mut arg_reg := 0
 	mut float_reg := 0
 	mut stack_off := 0
+	c_variadic_start := g.c_variadic_start(instr) or { -1 }
 	for ai in 1 .. instr.operands.len {
 		arg_id := instr.operands[ai]
 		arg_val := g.m.values[arg_id]
+		if c_variadic_start >= 0 && ai - 1 >= c_variadic_start {
+			if g.is_float_type(arg_val.typ) {
+				g.load_float_bits_to_reg(arg_id, 8)
+				g.emit_store_sp(8, stack_off)
+				stack_off += 8
+			} else {
+				n_words := g.call_arg_word_count(arg_val)
+				if n_words > 1 {
+					if off := g.stack_slot(arg_id) {
+						for wi in 0 .. n_words {
+							g.emit_load_fp(8, off + wi * 8)
+							g.emit_store_sp(8, stack_off + wi * 8)
+						}
+					} else {
+						src_reg := g.load_val(arg_id, 8)
+						g.emit_store_sp(src_reg, stack_off)
+					}
+				} else {
+					src_reg := g.load_val(arg_id, 8)
+					g.emit_store_sp(src_reg, stack_off)
+				}
+				stack_off += n_words * 8
+			}
+			continue
+		}
 
 		if arg_val.kind == .string_literal {
 			if arg_reg + 2 <= 8 {
@@ -1356,12 +1386,17 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 	mut arg_reg := 0
 	mut float_reg := 0
 	mut stack_words := 0
+	c_variadic_start := g.c_variadic_start(instr) or { -1 }
 	for ai in 1 .. instr.operands.len {
 		arg_id := instr.operands[ai]
 		if arg_id <= 0 || arg_id >= g.m.values.len {
 			continue
 		}
 		arg_val := g.m.values[arg_id]
+		if c_variadic_start >= 0 && ai - 1 >= c_variadic_start {
+			stack_words += g.call_arg_word_count(arg_val)
+			continue
+		}
 		if g.is_float_type(arg_val.typ) {
 			if float_reg < 8 {
 				float_reg++
@@ -1389,6 +1424,36 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 		return 0
 	}
 	return (stack_words * 8 + 15) & ~0xF
+}
+
+fn (g &Gen) c_variadic_start(instr ssa.Instruction) ?int {
+	if instr.operands.len == 0 {
+		return none
+	}
+	fn_ref_id := instr.operands[0]
+	if fn_ref_id <= 0 || fn_ref_id >= g.m.values.len {
+		return none
+	}
+	fn_ref := g.m.values[fn_ref_id]
+	if fn_ref.kind != .func_ref || fn_ref.index < 0 || fn_ref.index >= g.m.funcs.len {
+		return none
+	}
+	function := g.m.funcs[fn_ref.index]
+	if !function.is_c_extern || !function.is_variadic {
+		return none
+	}
+	return function.variadic_start
+}
+
+fn (g &Gen) call_arg_word_count(value ssa.Value) int {
+	if value.kind == .string_literal {
+		return 2
+	}
+	size := g.m.type_size(value.typ)
+	if size > 8 && g.is_value_aggregate_type(value.typ) {
+		return if g.is_large_struct_type(value.typ) { 1 } else { (size + 7) / 8 }
+	}
+	return 1
 }
 
 // emit_value_address emits emit value address output for arm64.

@@ -175,6 +175,7 @@ struct FastArm64Generation {
 pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output string) !FastArm64Generation {
 	input_sources, _ := fastc_resolve_source_files(paths, prefs)!
 	fast_arm64_validate_output_source_paths(output, input_sources)!
+	fast_arm64_validate_unsupported_calls(input_sources, prefs)!
 	sources := fastc_monomorphize_sources(input_sources, prefs)!
 	mut declared_types := map[string]bool{}
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
@@ -186,6 +187,18 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut globals, mut public_globals)!
+	// Non-selfhost programs do not resolve builtin source files, but imported module
+	// signatures can still use V's intrinsic error interface.
+	declared_types['IError'] = true
+	declared_types['Error'] = true
+	// Library generic definitions remain in the monomorphized source until they are
+	// instantiated on demand. Treat their parameters as opaque while indexing the
+	// otherwise unreachable signatures in the imported module.
+	for source_index, source_file in sources {
+		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, source_index) {
+			declared_types[generic.type_param] = true
+		}
+	}
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
@@ -243,6 +256,43 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	}
 	return FastArm64Generation{
 		source_paths: source_paths
+	}
+}
+
+fn fast_arm64_validate_unsupported_calls(sources []FastcSourceFile, prefs &pref.Preferences) ! {
+	for source_file in sources {
+		if source_file.header.module_name == 'os' {
+			continue
+		}
+		mut file_set := token.FileSet.new()
+		mut file := file_set.add_file(source_file.path, source_file.source.len)
+		file.index_lines_without_digest(source_file.source)
+		mut scan := scanner.new_scanner(prefs, .normal)
+		scan.init(file, source_file.source)
+		mut previous_3 := token.Token.unknown
+		mut previous_3_literal := ''
+		mut previous_2 := token.Token.unknown
+		mut previous_2_literal := ''
+		mut previous_1 := token.Token.unknown
+		mut previous_1_literal := ''
+		mut tok := scan.scan()
+		for tok != .eof {
+			if tok == .lpar && previous_1 == .name && previous_1_literal == 'exec' && previous_2 == .dot && previous_3 == .name {
+				module_name := source_file.header.imports[previous_3_literal] or {
+					previous_3_literal
+				}
+				if module_name == 'os' {
+					return error('fastc parser does not support `os.exec` on the direct ARM64 backend')
+				}
+			}
+			previous_3 = previous_2
+			previous_3_literal = previous_2_literal
+			previous_2 = previous_1
+			previous_2_literal = previous_1_literal
+			previous_1 = tok
+			previous_1_literal = if tok == .name { scan.lit } else { '' }
+			tok = scan.scan()
+		}
 	}
 }
 
@@ -386,7 +436,12 @@ fn fast_arm64_vmod_hash(source_path string) !string {
 }
 
 fn fast_arm64_collect_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, type_source_paths map[string]bool) !(map[string]FastArm64TypeDecl, map[string]string, map[string]string) {
-	mut declarations := map[string]FastArm64TypeDecl{}
+	mut declarations := {
+		'Error': FastArm64TypeDecl{
+			key: 'Error'
+			c_name: 'Error'
+		}
+	}
 	mut constants := map[string]string{}
 	mut enum_values := map[string]string{}
 	for source_file in sources {
@@ -1064,6 +1119,12 @@ fn (mut p FastArm64Program) register_signature_function(key string) ?int {
 	if key.starts_with('C.') {
 		symbol := key['C.'.len..]
 		id := p.register_function(key, symbol, ret, true)
+		if signature.is_variadic {
+			mut function := p.m.funcs[id]
+			function.is_variadic = true
+			function.variadic_start = fast_arm64_c_variadic_fixed_parameter_count(signature)
+			p.m.funcs[id] = function
+		}
 		p.fn_ids[symbol] = id
 		p.fn_returns[symbol] = ret
 		p.fn_symbols[symbol] = symbol
@@ -1105,6 +1166,9 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_function('pthread_key_create', 'pthread_key_create', p.i32_type, true)
 	p.register_function('pthread_getspecific', 'pthread_getspecific', p.ptr_i8, true)
 	p.register_function('pthread_setspecific', 'pthread_setspecific', p.i32_type, true)
+	p.register_function('C.pthread_mutex_init', 'pthread_mutex_init', p.i32_type, true)
+	p.register_function('C.pthread_mutex_lock', 'pthread_mutex_lock', p.i32_type, true)
+	p.register_function('C.pthread_mutex_unlock', 'pthread_mutex_unlock', p.i32_type, true)
 	p.register_function('getcwd', 'getcwd', p.ptr_i8, true)
 	p.register_function('gcvt', 'gcvt', p.ptr_i8, true)
 	p.register_function('ecvt', 'ecvt', p.ptr_i8, true)
@@ -1555,19 +1619,24 @@ fn (mut p FastArm64Program) register_os_process_runtime() {
 		command := p.instr1(.load, entry, p.ptr_i8, p.string_field_ptr(entry, command_slot, 0))
 		command_length32 := p.instr1(.load, entry, p.i32_type, p.string_field_ptr(entry, command_slot, 1))
 		command_length := p.instr1(.zext, entry, p.u64_type, command_length32)
-		suffix_value := p.m.add_value(.string_literal, p.str_type, ' 2>&1', 0)
+		suffix_value := p.m.add_value(.string_literal, p.str_type, ') 2>&1', 0)
 		suffix_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.str_type))
 		p.instr2(.store, entry, p.void_type, suffix_value, suffix_slot)
 		suffix := p.instr1(.load, entry, p.ptr_i8, p.string_field_ptr(entry, suffix_slot, 0))
-		suffix_length := p.m.get_or_add_const(p.u64_type, '5')
-		merged_length := p.instr2(.add, entry, p.u64_type, command_length, suffix_length)
+		suffix_length := p.m.get_or_add_const(p.u64_type, '6')
 		one64 := p.m.get_or_add_const(p.u64_type, '1')
+		prefixed_length := p.instr2(.add, entry, p.u64_type, command_length, one64)
+		merged_length := p.instr2(.add, entry, p.u64_type, prefixed_length, suffix_length)
 		allocation_size := p.instr2(.add, entry, p.u64_type, merged_length, one64)
 		malloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'malloc', p.fn_ids['malloc'])
 		merged_command := p.m.add_instr(.call, entry, p.ptr_i8, [malloc_ref, allocation_size])
+		open_parenthesis := p.m.get_or_add_const(p.u8_type, '40')
+		p.instr2(.store, entry, p.void_type, open_parenthesis, merged_command)
 		memcpy_ref := p.m.add_value(.func_ref, p.ptr_i8, 'memcpy', p.fn_ids['memcpy'])
-		p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, merged_command, command, command_length])
-		suffix_destination := p.instr2(.add, entry, p.ptr_i8, merged_command, command_length)
+		command_destination := p.instr2(.add, entry, p.ptr_i8, merged_command, one64)
+		p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, command_destination, command,
+			command_length])
+		suffix_destination := p.instr2(.add, entry, p.ptr_i8, command_destination, command_length)
 		p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, suffix_destination, suffix, suffix_length])
 		terminator := p.instr2(.add, entry, p.ptr_i8, merged_command, merged_length)
 		zero8 := p.m.get_or_add_const(p.u8_type, '0')
@@ -4977,13 +5046,12 @@ fn (mut p FastArm64Parser) parse_collection_for(index_name string, name string, 
 	}
 	element_address := p.program.instr2(.add, body_block, p.program.ptr_i8, data, offset)
 	typed_address := p.program.instr1(.bitcast, body_block, p.program.m.type_store.get_ptr(element_type), element_address)
-	local_address := if value_is_mut {
-		typed_address
-	} else {
-		element := p.program.instr1(.load, body_block, element_type, typed_address)
+	mut local_address := typed_address
+	if !value_is_mut {
+		loaded_element := p.program.instr1(.load, body_block, element_type, typed_address)
 		address := p.program.instr0(.alloca, body_block, p.program.m.type_store.get_ptr(element_type))
-		p.program.instr2(.store, body_block, p.program.void_type, element, address)
-		address
+		p.program.instr2(.store, body_block, p.program.void_type, loaded_element, address)
+		local_address = address
 	}
 	p.declare_local(name, FastArm64Local{
 		addr: local_address
@@ -5504,7 +5572,7 @@ fn (mut p FastArm64Parser) parse_expression(min_precedence int) !FastArm64Value 
 			continue
 		}
 		contextual_right_type := if op in [.key_in, .not_in] && p.tok == .lsbr {
-			left.typ_name
+			fastc_array_c_type(left.typ_name)
 		} else if op == .left_shift && left.typ == p.program.array_type {
 			p.program.array_element_type_name(left.typ_name) or { '' }
 		} else {
@@ -7366,6 +7434,10 @@ fn (mut p FastArm64Parser) parse_contextual_value(type_name string) !FastArm64Va
 	return p.parse_contextual_value_with_precedence(type_name, 0)
 }
 
+fn fast_arm64_contextual_map_types(type_name string) (string, string) {
+	return fastc_map_key_value_types(type_name) or { return '', '' }
+}
+
 fn (mut p FastArm64Parser) parse_contextual_value_with_precedence(type_name string, precedence int) !FastArm64Value {
 	previous_array_element := p.array_element
 	previous_map_key := p.map_key
@@ -7373,7 +7445,8 @@ fn (mut p FastArm64Parser) parse_contextual_value_with_precedence(type_name stri
 	p.array_element = p.program.array_element_type_name(type_name) or { '' }
 	p.map_key = ''
 	p.map_value = ''
-	if key_type, value_type := fastc_map_key_value_types(p.program.resolved_type_name(type_name)) {
+	key_type, value_type := fast_arm64_contextual_map_types(p.program.resolved_type_name(type_name))
+	if key_type != '' {
 		p.map_key = key_type
 		p.map_value = value_type
 	}
@@ -9029,10 +9102,27 @@ fn (mut p FastArm64Parser) convert_value(value FastArm64Value, typ ssa.TypeID, t
 	}
 	from := p.program.m.type_store.types[value.typ]
 	to := p.program.m.type_store.types[typ]
+	if to.kind == .array_t && from.kind != .array_t {
+		mut result := p.zero_value(typ, type_name)
+		element_type_name := fastc_fixed_array_element_type(type_name) or { '' }
+		mut element := value
+		if element.typ != to.elem_type {
+			element = p.convert_value(element, to.elem_type, element_type_name)
+		}
+		address := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(to.elem_type), result.address)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, element.id, address)
+		result = FastArm64Value{
+			...result
+			id: p.program.instr1(.load, p.cur_block, typ, result.address)
+		}
+		return result
+	}
 	op := if from.kind == .float_t && to.kind == .int_t {
 		if to.is_unsigned { ssa.OpCode.fptoui } else { ssa.OpCode.fptosi }
 	} else if from.kind == .int_t && to.kind == .float_t {
 		if from.is_unsigned { ssa.OpCode.uitofp } else { ssa.OpCode.sitofp }
+	} else if from.kind == .float_t && to.kind == .float_t {
+		ssa.OpCode.bitcast
 	} else if from.width > to.width {
 		ssa.OpCode.trunc
 	} else if from.width < to.width {
@@ -9164,7 +9254,7 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 	mut operands := []ssa.ValueID{cap: call_args.len + 1}
 	operands << fn_ref
 	c_variadic_fixed_count := if signature.is_variadic && resolved.starts_with('C.') {
-		signature.parameter_types.len - 1
+		fast_arm64_c_variadic_fixed_parameter_count(signature)
 	} else {
 		-1
 	}
@@ -9249,6 +9339,13 @@ fn (mut p FastArm64Parser) pack_v_variadic_arguments(signature FastcFunctionSign
 	}
 	packed << p.make_array(element_type_name, variadic_items, length, length)
 	return packed
+}
+
+fn fast_arm64_c_variadic_fixed_parameter_count(signature FastcFunctionSignature) int {
+	if signature.is_variadic && signature.parameter_types.len > 0 && signature.parameter_types.last().starts_with('Array_') {
+		return signature.parameter_types.len - 1
+	}
+	return signature.parameter_types.len
 }
 
 fn (mut p FastArm64Parser) promote_c_variadic_argument(argument FastArm64Value) FastArm64Value {
@@ -9752,11 +9849,10 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 				typ_name: 'bool'
 			}
 		}
-		result := if op == .eq {
-			failed
-		} else {
+		mut result := failed
+		if op != .eq {
 			zero := p.program.m.get_or_add_const(p.program.i1_type, '0')
-			p.program.instr2(.eq, p.cur_block, p.program.i1_type, failed, zero)
+			result = p.program.instr2(.eq, p.cur_block, p.program.i1_type, failed, zero)
 		}
 		return FastArm64Value{
 			id: result

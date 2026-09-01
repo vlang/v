@@ -905,10 +905,11 @@ fn test_fastc_arm64_c_variadic_default_promotions() {
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
 		source := '
-fn C.printf(format &char, args ...voidptr) int
+fn C.printf(format &char, ...)
 
 fn main() {
-	C.printf(c\'%.1f:%d\\n\', f32(1.5), u8(7))
+	format := "%.1f:%d\\n"
+	C.printf(format.str, f32(1.5), u8(7))
 }
 '
 		os.write_file(source_path, source) or { panic(err) }

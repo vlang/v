@@ -394,7 +394,14 @@ pub fn run(args []string) {
 	prefs.building_v = real_input.ends_with('/vlib/v3/v3.v')
 	prefs.selfhost = prefs.building_v
 	$if arm64? {
-		prefs.target = pref.target_from('macos', 'arm64') or { fail(err.msg()) }
+		prefs.target = pref.Target{
+			os: 'macos'
+			arch: 'arm64'
+			abi: 'darwin'
+			endian: 'little'
+			pointer_bits: 64
+			object_format: 'macho'
+		}
 		prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'v3_no_parallel', 'arm64', 'skip_wasm',
 			'skip_eval']
 		fastc.generate_arm64_files([real_input], prefs, output) or { fail(err.msg()) }

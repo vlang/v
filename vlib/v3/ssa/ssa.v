@@ -373,15 +373,17 @@ pub enum Linkage {
 // Function represents function data used by ssa.
 pub struct Function {
 pub mut:
-	id           int
-	name         string
-	typ          TypeID
-	blocks       []BlockID
-	params       []ValueID
-	is_c_extern  bool // C-language extern function (no V body)
-	is_prototype bool // Registered declaration/signature whose body is not materialized yet
-	linkage      Linkage
-	call_conv    CallConv
+	id             int
+	name           string
+	typ            TypeID
+	blocks         []BlockID
+	params         []ValueID
+	is_c_extern    bool // C-language extern function (no V body)
+	is_variadic    bool
+	variadic_start int
+	is_prototype   bool // Registered declaration/signature whose body is not materialized yet
+	linkage        Linkage
+	call_conv      CallConv
 }
 
 // GlobalVar represents global var data used by ssa.

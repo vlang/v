@@ -43,12 +43,16 @@ const csslot_requirements = u32(2)
 const csslot_cms_signature = u32(0x10000)
 const cs_adhoc = u32(0x2) // Ad-hoc signing flag
 
+
 const cs_hashtype_sha256 = u8(2)
 const cs_hash_size = 32 // SHA256 = 32 bytes
 
+
 const cs_page_size_arm64 = 16384 // Code signing page size for ARM64 macOS
 
+
 const cs_page_shift_arm64 = 14 // log2(16384)
+
 
 const o_wronly_creat_trunc = $if linux { 0x241 } $else { 0x601 }
 
@@ -79,7 +83,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_memmove', '_memset', '_memcmp', '___stdoutp', '___stderrp', '_puts', '_printf', '_write',
 	'_read', '_open', '_close', '_fwrite', '_fflush', '_fopen', '_fclose', '_putchar', '_sprintf',
 	'_snprintf', '_fprintf', '_sscanf', '_mmap', '_munmap', '_getcwd', '_access', '_readlink',
-	'_getenv', '_strlen', '_gcvt',
+	'_getenv', '_strlen', '_gcvt', '_ecvt',
 	// Filesystem/directory operations
 	'_opendir', '_readdir', '_closedir', '_mkdir', '_rmdir',
 	'_unlink', '_rename', '_remove', '_stat', '_lstat', '_fstat', '_chmod', '_chdir', '_realpath',
