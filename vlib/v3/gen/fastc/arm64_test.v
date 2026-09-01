@@ -1344,6 +1344,75 @@ fn main() {
 	}
 }
 
+fn test_fastc_arm64_overaligned_local_stack_storage() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_overaligned_local_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, '@[aligned: 64]
+struct CacheLine {
+	value u64
+}
+
+fn local_is_aligned() bool {
+	value := CacheLine{value: 7}
+	return usize(&value) % 64 == 0
+}
+
+fn main() {
+	if !local_is_aligned() {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
+fn test_fastc_arm64_zero_capacity_array_data_is_nil() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_empty_array_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn main() {
+	empty := []int{}
+	cloned := empty.clone()
+	with_zero_cap := []int{cap: 0}
+	if !isnil(empty.data) || !isnil(cloned.data) || !isnil(with_zero_cap.data) {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
 fn test_fastc_arm64_string_slice_owns_terminated_storage() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_string_slice_${os.getpid()}')

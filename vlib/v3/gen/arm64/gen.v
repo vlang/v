@@ -10,6 +10,7 @@ mut:
 	stack_offsets        []i32
 	alloca_offsets       []i32
 	alloca_sizes         []i32
+	alloca_alignments    []i32
 	slot_value_indices   []int
 	slot_value_base      int
 	slot_value_count     int
@@ -39,6 +40,7 @@ pub fn Gen.new(m &ssa.Module) &Gen {
 		stack_offsets:        []i32{}
 		alloca_offsets:       []i32{}
 		alloca_sizes:         []i32{}
+		alloca_alignments:    []i32{}
 		slot_value_indices:   []int{}
 		block_offsets:        []i32{}
 		block_offset_indices: []int{}
@@ -69,6 +71,7 @@ fn (mut g Gen) reset_value_slots(func &ssa.Function) {
 		g.stack_offsets[idx] = 0
 		g.alloca_offsets[idx] = 0
 		g.alloca_sizes[idx] = 0
+		g.alloca_alignments[idx] = 0
 	}
 	g.slot_value_indices.clear()
 	mut min_id := g.m.values.len
@@ -104,6 +107,7 @@ fn (mut g Gen) reset_value_slots(func &ssa.Function) {
 		g.stack_offsets = []i32{len: new_len}
 		g.alloca_offsets = []i32{len: new_len}
 		g.alloca_sizes = []i32{len: new_len}
+		g.alloca_alignments = []i32{len: new_len}
 	}
 }
 
@@ -159,13 +163,14 @@ fn (g &Gen) stack_slot(val_id int) ?int {
 }
 
 // set_alloca_slot updates set alloca slot state for arm64.
-fn (mut g Gen) set_alloca_slot(val_id int, off int, size int) {
+fn (mut g Gen) set_alloca_slot(val_id int, off int, size int, alignment int) {
 	idx := g.value_slot_index(val_id) or { return }
 	if g.stack_offsets[idx] == 0 && g.alloca_offsets[idx] == 0 {
 		g.slot_value_indices << idx
 	}
 	g.alloca_offsets[idx] = i32(off)
 	g.alloca_sizes[idx] = i32(size)
+	g.alloca_alignments[idx] = i32(alignment)
 }
 
 // alloca_slot supports alloca slot handling for Gen.
@@ -184,6 +189,15 @@ fn (g &Gen) alloca_byte_size(val_id int) ?int {
 	size := g.alloca_sizes[idx]
 	if size != 0 {
 		return int(size)
+	}
+	return none
+}
+
+fn (g &Gen) alloca_alignment(val_id int) ?int {
+	idx := g.value_slot_index(val_id) or { return none }
+	alignment := g.alloca_alignments[idx]
+	if alignment > 0 {
+		return int(alignment)
 	}
 	return none
 }
@@ -318,6 +332,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 			if instr.op == .alloca {
 				ptr_type := g.m.type_store.types[val.typ]
 				elem_size := g.m.type_size(ptr_type.elem_type)
+				alignment := g.m.type_align(ptr_type.elem_type)
 				mut count := 1
 				if instr.operands.len > 0 {
 					count_val := g.m.values[instr.operands[0]]
@@ -333,9 +348,14 @@ fn (mut g Gen) gen_func(func_idx int) {
 					}
 				}
 				alloc_size := if elem_size > 0 { (elem_size * count + 7) & ~7 } else { 8 }
+				storage_size := if alignment > 16 {
+					alloc_size + alignment - 1
+				} else {
+					alloc_size
+				}
 				slot_offset = (slot_offset + 15) & ~0xF
-				slot_offset += alloc_size
-				g.set_alloca_slot(val_id, -slot_offset, alloc_size)
+				slot_offset += storage_size
+				g.set_alloca_slot(val_id, -slot_offset, alloc_size, alignment)
 				slot_offset += 8
 			} else if instr.op != .store && instr.op != .ret && instr.op != .br && instr.op != .jmp
 				&& instr.op != .unreachable {
@@ -638,8 +658,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 
 	match instr.op {
 		.alloca {
-			off := g.alloca_slot(val_id) or { return }
-			g.emit_lea_fp(8, off)
+			g.emit_alloca_address(8, val_id)
 			g.store_val(8, val_id)
 		}
 		.store {
@@ -1277,12 +1296,12 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 			if arg_val.kind == .instruction {
 				arg_instr := g.m.instrs[arg_val.index]
 				if arg_instr.op == .alloca {
-					if alloca_off := g.alloca_slot(arg_id) {
+					if _ := g.alloca_slot(arg_id) {
 						if arg_reg < 8 {
-							g.emit_lea_fp(arg_reg, alloca_off)
+							g.emit_alloca_address(arg_reg, arg_id)
 							arg_reg += 1
 						} else {
-							g.emit_lea_fp(8, alloca_off)
+							g.emit_alloca_address(8, arg_id)
 							g.emit_store_sp(8, stack_off)
 							stack_off += 8
 						}
@@ -1481,8 +1500,8 @@ fn (mut g Gen) emit_value_address(val_id int, reg int) bool {
 		.instruction {
 			instr := g.m.instrs[val.index]
 			if instr.op == .alloca {
-				if off := g.alloca_slot(val_id) {
-					g.emit_lea_fp(reg, off)
+				if _ := g.alloca_slot(val_id) {
+					g.emit_alloca_address(reg, val_id)
 					return true
 				}
 			}
@@ -1555,8 +1574,8 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 		.instruction {
 			instr := g.m.instrs[val.index]
 			if instr.op == .alloca {
-				if off := g.alloca_slot(val_id) {
-					g.emit_lea_fp(reg, off)
+				if _ := g.alloca_slot(val_id) {
+					g.emit_alloca_address(reg, val_id)
 					return reg
 				}
 			}
@@ -1922,6 +1941,20 @@ fn (mut g Gen) emit_lea_fp(reg int, offset int) {
 		g.emit_mov_imm(reg, i64(offset))
 		g.emit32(asm_add_reg(Reg(reg), fp, Reg(reg)))
 	}
+}
+
+fn (mut g Gen) emit_alloca_address(reg int, val_id int) {
+	offset := g.alloca_slot(val_id) or { return }
+	g.emit_lea_fp(reg, offset)
+	alignment := g.alloca_alignment(val_id) or { return }
+	if alignment <= 16 {
+		return
+	}
+	scratch := if reg == 11 { 12 } else { 11 }
+	g.emit_mov_imm(scratch, i64(alignment - 1))
+	g.emit32(asm_add_reg(Reg(reg), Reg(reg), Reg(scratch)))
+	g.emit_mov_imm(scratch, i64(-alignment))
+	g.emit32(asm_and(Reg(reg), Reg(reg), Reg(scratch)))
 }
 
 // ptr_elem_type supports ptr elem type handling for Gen.

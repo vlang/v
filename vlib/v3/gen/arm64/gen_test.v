@@ -17,7 +17,7 @@ fn test_sparse_codegen_slots_only_store_current_function_ids() {
 	g.reset_value_slots(&func)
 	g.reset_block_offsets(&func)
 	g.set_stack_slot(3, -8)
-	g.set_alloca_slot(6, -16, 24)
+	g.set_alloca_slot(6, -16, 24, 32)
 	g.set_block_offset(0, 32)
 	assert g.stack_offsets.len == 64
 	assert g.slot_value_indices == [0, 3]
@@ -25,6 +25,7 @@ fn test_sparse_codegen_slots_only_store_current_function_ids() {
 	assert g.stack_slot(3)? == -8
 	assert g.alloca_slot(6)? == -16
 	assert g.alloca_byte_size(6)? == 24
+	assert g.alloca_alignment(6)? == 32
 	assert g.block_offset(0)? == 32
 	g.reset_value_slots(&func)
 	g.reset_block_offsets(&func)
@@ -33,6 +34,7 @@ fn test_sparse_codegen_slots_only_store_current_function_ids() {
 	assert g.stack_slot(3) == none
 	assert g.alloca_slot(6) == none
 	assert g.alloca_byte_size(6) == none
+	assert g.alloca_alignment(6) == none
 	assert g.block_offset(0) == none
 }
 
