@@ -15,7 +15,7 @@ concurrency:
 jobs:
   publish:
     if: contains(github.event.head_commit.message, '[publish-pr-28244]')
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 90
     env:
       ORIGINAL_BASE: cbf4e8509630da710d04cc9fd0f777761ebe55a7
@@ -53,7 +53,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          make -j2
+          VFLAGS="-cc cc" make -j2
           files=(
             vlib/v3/tests/ownership_borrowed_projection_error_test.v
             vlib/v3/tests/ownership_borrowed_projection_review_test.v
