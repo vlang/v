@@ -1,6 +1,7 @@
 module driver
 
 import os
+import v3.pref
 
 fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('macos', 'arm64', false)
@@ -71,4 +72,21 @@ fn test_v3_default_linker_flags_do_not_duplicate_existing_flags() {
 	mut flags := ['-lpthread', '-lm']
 	add_v3_default_linker_flags(mut flags, 'linux', false)
 	assert flags == ['-lpthread', '-lm']
+}
+
+fn test_add_c_language_runtime_link_flags() {
+	target := pref.Target{
+		os: 'linux'
+	}
+	mut objective_c := []string{}
+	add_c_language_runtime_link_flags(mut objective_c, [], 'objective-c', target)
+	assert objective_c == ['-lobjc']
+
+	mut objective_cpp := []string{}
+	add_c_language_runtime_link_flags(mut objective_cpp, [], 'objective-c++', target)
+	assert objective_cpp == ['-lstdc++', '-lobjc']
+
+	mut existing := ['-lstdc++', '-lobjc']
+	add_c_language_runtime_link_flags(mut existing, existing.clone(), 'objective-c++', target)
+	assert existing == ['-lstdc++', '-lobjc']
 }

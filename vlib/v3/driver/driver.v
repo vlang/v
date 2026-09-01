@@ -277,6 +277,19 @@ fn cpp_runtime_link_flag(target pref.Target) string {
 	return if target.os in ['macos', 'ios'] { '-lc++' } else { '-lstdc++' }
 }
 
+fn add_c_language_runtime_link_flags(mut prepared []string, original []string, language string, target pref.Target) {
+	if language in ['c++', 'objective-c++'] {
+		cpp_runtime := cpp_runtime_link_flag(target)
+		if cpp_runtime !in original && cpp_runtime !in prepared {
+			prepared << cpp_runtime
+		}
+	}
+	if language in ['objective-c', 'objective-c++'] && '-lobjc' !in original
+		&& '-lobjc' !in prepared {
+		prepared << '-lobjc'
+	}
+}
+
 fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	// Nothing to cache: without object-file or native-source flags the link
 	// plan adds no value, and preparing it costs a compiler-identity probe
@@ -292,10 +305,10 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bo
 	if !has_cacheable_flag {
 		mut passthrough := flags.clone()
 		if c_link_flags_use_cpp_language(passthrough) {
-			cpp_runtime := cpp_runtime_link_flag(target)
-			if cpp_runtime !in passthrough {
-				passthrough << cpp_runtime
-			}
+			add_c_language_runtime_link_flags(mut passthrough, flags, 'c++', target)
+		}
+		if c_link_flags_use_objective_c_language(passthrough) {
+			add_c_language_runtime_link_flags(mut passthrough, flags, 'objective-c', target)
 		}
 		return passthrough
 	}
@@ -335,24 +348,19 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bo
 		}
 		if c_flag_is_object_file(clean) {
 			stats.requests++
-			adjacent_cpp_source := if !os.exists(clean) {
+			adjacent_language := if !os.exists(clean) {
 				if source_file := c_source_from_object_file(clean) {
-					c_source_language(source_file, active_language) in ['c++', 'objective-c++']
+					c_source_language(source_file, active_language)
 				} else {
-					false
+					''
 				}
 			} else {
-				false
+				''
 			}
 			object_path := ensure_c_object_file(clean, active_language, support_flags, c99,
 				pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)!
 			append_c_link_object(mut prepared, object_path, active_language)
-			if adjacent_cpp_source {
-				cpp_runtime := cpp_runtime_link_flag(target)
-				if cpp_runtime !in flags && cpp_runtime !in prepared {
-					prepared << cpp_runtime
-				}
-			}
+			add_c_language_runtime_link_flags(mut prepared, flags, adjacent_language, target)
 		} else if clean.ends_with('.mm') {
 			stats.requests++
 			language := c_source_language(clean, active_language)
@@ -362,12 +370,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bo
 			if c_generated_native_source_context(clean, uncached_dir) {
 				os.rm(clean) or {}
 			}
-			if language in ['c++', 'objective-c++'] {
-				cpp_runtime := cpp_runtime_link_flag(target)
-				if cpp_runtime !in flags && cpp_runtime !in prepared {
-					prepared << cpp_runtime
-				}
-			}
+			add_c_language_runtime_link_flags(mut prepared, flags, language, target)
 		} else if c_flag_is_c_source_file(clean) {
 			prepared << flag
 		} else {
@@ -376,10 +379,10 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bo
 		i++
 	}
 	if c_link_flags_use_cpp_language(prepared) {
-		cpp_runtime := cpp_runtime_link_flag(target)
-		if cpp_runtime !in flags && cpp_runtime !in prepared {
-			prepared << cpp_runtime
-		}
+		add_c_language_runtime_link_flags(mut prepared, flags, 'c++', target)
+	}
+	if c_link_flags_use_objective_c_language(prepared) {
+		add_c_language_runtime_link_flags(mut prepared, flags, 'objective-c', target)
 	}
 	if stats.dependency_scan_fallbacks == 0 && stats.temporary_objects.len == 0 {
 		write_c_link_plan(plan_path, prepared, stats) or {}
@@ -391,7 +394,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, c99 bo
 fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v2', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v3', os.getwd(), flags.join('\x00'),
 		support_flags.join('\x00'), c99.str(), pic_flag, target_args.join('\x00'), compiler_path,
 		compiler_version, target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
 		target.object_format] {
@@ -404,7 +407,7 @@ fn c_link_plan_path(cache_dir string, flags []string, support_flags []string, c9
 fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	content := os.read_file(plan_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v2' {
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v3' {
 		return none
 	}
 	mut plan := CLinkPlan{}
@@ -468,7 +471,7 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
 	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
-	out.writeln('format=v3-c-link-plan-v2')
+	out.writeln('format=v3-c-link-plan-v3')
 	out.writeln('requests=${stats.requests}')
 	out.writeln('direct_objects=${stats.direct_objects}')
 	out.writeln('dependency_files=${stats.dependency_files}')
@@ -515,6 +518,40 @@ fn c_link_flags_use_non_c_language(flags []string) bool {
 
 fn c_link_flags_use_cpp_language(flags []string) bool {
 	return c_link_flags_use_language(flags, false)
+}
+
+fn c_link_flags_use_objective_c_language(flags []string) bool {
+	mut language := ''
+	mut skip_operand := false
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
+		if skip_operand {
+			skip_operand = false
+			i++
+			continue
+		}
+		if clean == '-x' && i + 1 < flags.len {
+			language = flags[i + 1].trim_space()
+			i += 2
+			continue
+		}
+		if c_flag_consumes_next_operand(clean) {
+			skip_operand = true
+			i++
+			continue
+		}
+		if c_flag_is_c_source_file(clean) || c_flag_is_existing_file(clean) {
+			if language in ['objective-c', 'objective-c++'] {
+				return true
+			}
+			if language in ['', 'none'] && (clean.ends_with('.m') || clean.ends_with('.mm')) {
+				return true
+			}
+		}
+		i++
+	}
+	return false
 }
 
 fn c_link_flags_use_language(flags []string, include_objective_c bool) bool {

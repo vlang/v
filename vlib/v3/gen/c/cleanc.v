@@ -3608,8 +3608,10 @@ fn (mut g FlatGen) write_type_declaration_block() {
 }
 
 fn (mut g FlatGen) gen_vinit() {
+	needs_closure_init := g.used_fn_contains('closure.closure_init')
+		|| g.used_fn_contains('closure__closure_init')
 	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
-		&& g.global_inits.len == 0 {
+		&& g.global_inits.len == 0 && !needs_closure_init {
 		return
 	}
 	fn_start_pos := g.sb.len
@@ -3625,6 +3627,9 @@ fn (mut g FlatGen) gen_vinit() {
 		}
 	}
 	g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
+	if needs_closure_init {
+		g.writeln('\t${g.cname('closure.closure_init')}();')
+	}
 	g.writeln('}')
 	g.writeln('')
 	if '_vinit' in g.print_fn_names {
@@ -20209,6 +20214,7 @@ fn (mut g FlatGen) headerless_bsd_net_constants(af_inet6 string, msg_nosignal st
 	g.writeln('#define IPV6_LEAVE_GROUP 13')
 	g.writeln('#define IPV6_V6ONLY 27')
 	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define SOMAXCONN 128')
 	g.writeln('#define MSG_DONTWAIT 0x80')
 	g.writeln('#define MSG_NOSIGNAL ${msg_nosignal}')
 }
@@ -20261,6 +20267,7 @@ fn (mut g FlatGen) headerless_solaris_net_constants() {
 	g.writeln('#define IPV6_LEAVE_GROUP 0xa')
 	g.writeln('#define IPV6_V6ONLY 0x27')
 	g.writeln('#define AI_PASSIVE 0x0008')
+	g.writeln('#define SOMAXCONN 128')
 	g.writeln('#define MSG_DONTWAIT 0x80')
 	g.writeln('#define MSG_NOSIGNAL 0x200')
 }
@@ -20313,6 +20320,7 @@ fn (mut g FlatGen) headerless_qnx_net_constants() {
 	g.writeln('#define IPV6_LEAVE_GROUP 13')
 	g.writeln('#define IPV6_V6ONLY 27')
 	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define SOMAXCONN 128')
 	g.writeln('#define MSG_DONTWAIT 0x80')
 	g.writeln('#define MSG_NOSIGNAL 0x0800')
 }
@@ -20425,6 +20433,7 @@ fn (mut g FlatGen) headerless_windows_net_constants() {
 	g.writeln('#define IPV6_LEAVE_GROUP 13')
 	g.writeln('#define IPV6_V6ONLY 27')
 	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define SOMAXCONN 0x7fffffff')
 	g.writeln('#define MSG_DONTWAIT 0')
 	g.writeln('#define MSG_NOSIGNAL 0')
 }
