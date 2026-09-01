@@ -2947,6 +2947,86 @@ fn array_map_local_index_component(kind flat.NodeKind, value string) string {
 	return '${kind}:${encoded.bytestr()}'
 }
 
+const array_map_local_pointer_pointee_prefix = '@pointee:'
+
+fn array_map_local_pointer_pointee_marker(owner string, target string) string {
+	return '${array_map_local_pointer_pointee_prefix}${owner}=>${target}'
+}
+
+fn array_map_local_pointer_pointee_owner(marker string) ?string {
+	if !marker.starts_with(array_map_local_pointer_pointee_prefix) {
+		return none
+	}
+	body := marker[array_map_local_pointer_pointee_prefix.len..]
+	separator := body.index('=>') or { return none }
+	return body[..separator]
+}
+
+fn array_map_local_pointer_pointee_target(marker string) ?string {
+	if !marker.starts_with(array_map_local_pointer_pointee_prefix) {
+		return none
+	}
+	body := marker[array_map_local_pointer_pointee_prefix.len..]
+	separator := body.index('=>') or { return none }
+	return body[separator + 2..]
+}
+
+fn array_map_local_pointer_pointee_targets(owner string, locals map[string]bool) []string {
+	mut targets := []string{}
+	for marker, _ in locals {
+		marker_owner := array_map_local_pointer_pointee_owner(marker) or { continue }
+		if marker_owner != owner {
+			continue
+		}
+		target := array_map_local_pointer_pointee_target(marker) or { continue }
+		if target !in targets {
+			targets << target
+		}
+	}
+	return targets
+}
+
+fn (t &Transformer) array_map_lvalue_local_paths(id flat.NodeId, locals map[string]bool) []string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return []
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident {
+		return [node.value]
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr, .prefix] && node.children_count > 0 {
+		base_paths := t.array_map_lvalue_local_paths(t.a.child(&node, 0), locals)
+		if node.kind != .prefix || node.op != .mul {
+			return base_paths
+		}
+		mut pointee_paths := []string{}
+		for base_path in base_paths {
+			for target in array_map_local_pointer_pointee_targets(base_path, locals) {
+				if target !in pointee_paths {
+					pointee_paths << target
+				}
+			}
+		}
+		return if pointee_paths.len > 0 { pointee_paths } else { base_paths }
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		mut paths := []string{}
+		for base in t.array_map_lvalue_local_paths(t.a.child(&node, 0), locals) {
+			paths << '${base}.${node.value}'
+		}
+		return paths
+	}
+	if node.kind == .index && node.children_count > 1 {
+		index := t.a.child_node(&node, 1)
+		mut paths := []string{}
+		for base in t.array_map_lvalue_local_paths(t.a.child(&node, 0), locals) {
+			paths << array_map_local_index_path(base, index)
+		}
+		return paths
+	}
+	return []
+}
+
 fn array_map_local_path_is_projection(path string, base string) bool {
 	return path == base || path.starts_with('${base}.') || path.starts_with('${base}[')
 }
@@ -2984,6 +3064,9 @@ fn array_map_local_path_is_possible_projection(path string, base string) bool {
 fn array_map_local_pointer_path(path string, root string, locals map[string]bool) string {
 	mut pointer_path := root
 	for local_path, external in locals {
+		if local_path.starts_with(array_map_local_pointer_pointee_prefix) {
+			continue
+		}
 		if !array_map_local_path_is_possible_projection(path, local_path) {
 			continue
 		}
@@ -3126,9 +3209,10 @@ fn array_map_clear_local_pointer_origins(path string, mut locals map[string]bool
 	mut overlapping := map[string]bool{}
 	has_wildcard := path.contains('[*]')
 	for local_path, external in locals {
-		if array_map_local_path_is_projection(local_path, path) || (has_wildcard && array_map_local_path_is_possible_projection(local_path, path)) {
+		marker_owner := array_map_local_pointer_pointee_owner(local_path) or { local_path }
+		if array_map_local_path_is_projection(marker_owner, path) || (has_wildcard && array_map_local_path_is_possible_projection(marker_owner, path)) {
 			stale << local_path
-			if has_wildcard {
+			if has_wildcard && marker_owner == local_path {
 				merged_path := array_map_local_path_with_assignment_wildcards(local_path, path)
 				overlapping[merged_path] = overlapping[merged_path] || external
 			}
@@ -3147,6 +3231,9 @@ fn array_map_merge_overlapping_pointer_origins(overlapping map[string]bool, mut 
 }
 
 fn array_map_local_path_root(path string) string {
+	if owner := array_map_local_pointer_pointee_owner(path) {
+		return array_map_local_path_root(owner)
+	}
 	for i, ch in path {
 		if ch in [`.`, `[`] {
 			return path[..i]
@@ -3282,6 +3369,7 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 	clean_type := t.normalize_type_alias(typ)
 	if clean_type.starts_with('&') || clean_type.starts_with('chan ') {
 		locals[path] = t.array_map_pointer_alias_origin_is_external(id, elem_name, origins)
+		t.array_map_record_local_pointer_pointees(path, id, origins, mut locals)
 		return
 	}
 	locals[path] = false
@@ -3348,6 +3436,38 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 				suffix := local_path[source_path.len..]
 				locals['${path}${suffix}'] = external
 			}
+		}
+	}
+}
+
+fn (mut t Transformer) array_map_record_local_pointer_pointees(path string, id flat.NodeId, origins map[string]bool, mut locals map[string]bool) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .cast_expr, .as_expr, .dump_expr, .expr_stmt, .field_init] && node.children_count > 0 {
+		t.array_map_record_local_pointer_pointees(path, t.a.child(&node, 0), origins, mut locals)
+		return
+	}
+	if node.kind in [.block, .match_branch] && node.children_count > 0 {
+		t.array_map_record_local_pointer_pointees(path, t.a.child(&node, node.children_count - 1), origins, mut locals)
+		return
+	}
+	if node.kind in [.if_expr, .match_stmt] {
+		for i in 1 .. node.children_count {
+			t.array_map_record_local_pointer_pointees(path, t.a.child(&node, i), origins, mut locals)
+		}
+		return
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		for target in t.array_map_lvalue_local_paths(t.a.child(&node, 0), origins) {
+			locals[array_map_local_pointer_pointee_marker(path, target)] = false
+		}
+		return
+	}
+	for source_path in t.array_map_lvalue_local_paths(id, origins) {
+		for target in array_map_local_pointer_pointee_targets(source_path, origins) {
+			locals[array_map_local_pointer_pointee_marker(path, target)] = false
 		}
 	}
 }
@@ -3714,6 +3834,13 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 		return true
 	}
 	if stmt.kind == .call && stmt.children_count > 0 {
+		// Evaluate the callee and physical arguments first. Nested calls can rebind a
+		// pointer that the outer call or a later statement observes.
+		for i in 0 .. stmt.children_count {
+			if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
+				return false
+			}
+		}
 		call_name := t.call_name_for_node(stmt_id, stmt)
 		params := t.call_param_types_for_node(call_name, stmt)
 		param_offset := t.call_param_offset_for_node(call_name, stmt, params)
@@ -3796,8 +3923,8 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 		for pair_idx, rhs_id in rhs_ids {
 			i := pair_idx * 2
 			lhs_id := t.a.child(&stmt, i)
-			if path := t.array_map_lvalue_local_path(lhs_id) {
-				root := t.array_map_lvalue_root_ident(lhs_id) or { continue }
+			for path in t.array_map_lvalue_local_paths(lhs_id, locals) {
+				root := array_map_local_path_root(path)
 				if root in locals {
 					overlapping := array_map_clear_local_pointer_origins(path, mut locals)
 					t.array_map_record_local_pointer_origins(path, rhs_id, elem_name, rhs_origins[pair_idx], mut locals)

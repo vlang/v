@@ -7573,6 +7573,89 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_updates_pointer_origins_through_nested_calls_and_dereferences() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn replace(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn consume(changed bool) {
+	assert changed
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut nested_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	nested := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			consume(replace(mut alias, &nested_saved))
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	mut dereferenced_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	dereferenced := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			{
+				mut slot := &alias
+				unsafe {
+					*slot = &dereferenced_saved
+				}
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(nested[0])
+	println(nested_saved.value.text)
+	println(dereferenced[0])
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_call_and_dereference_pointer_origin_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_nested_call_and_dereference_pointer_origin', '-ownership', source)
+	assert out == '0\nsource\n0'
+}
+
 fn test_array_map_updates_pointer_origins_through_declaration_initializer_call() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
