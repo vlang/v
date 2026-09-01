@@ -545,6 +545,45 @@ fn test_external_map_expansion_estimate_includes_empty_fixed_array_runtime_init(
 	assert t.fixed_array_init_expansion_estimate(plain, a.nodes[int(plain)]) == 0
 }
 
+fn test_fn_span_map_expansion_estimate_includes_fixed_array_runtime_init() {
+	mut a := flat.FlatAst.new()
+	root := a.add_node(flat.Node{
+		kind: .array_init
+		typ: '[4096][]int'
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_fn_span_map_expansion_estimate_includes_map_index_zero_value() {
+	mut a := flat.FlatAst.new()
+	base := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: 'map[string][4096][]int'
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'missing'
+		typ: 'string'
+	})
+	index_start := a.children.len
+	a.children << base
+	a.children << key
+	root := a.add_node(flat.Node{
+		kind: .index
+		typ: '[4096][]int'
+		children_start: index_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
 	mut a := flat.FlatAst.new()
 	length := a.add_node(flat.Node{
