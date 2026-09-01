@@ -81,6 +81,14 @@ struct FastArm64InterpolationFormat {
 	zero_pad  bool
 }
 
+struct FastArm64DeclarationAttribute {
+	tok        token.Token
+	is_enabled bool
+	is_packed  bool
+	is_aligned bool
+	alignment  int
+}
+
 struct FastArm64TypeDecl {
 	key       string
 	c_name    string
@@ -696,6 +704,60 @@ fn fast_arm64_constant_expression_source(mut scan scanner.Scanner, first_token t
 	return scan.src[start..scan.src.len].trim_space(), tok
 }
 
+fn fast_arm64_scan_layout_attribute(mut scan scanner.Scanner, path string, prefs &pref.Preferences) !FastArm64DeclarationAttribute {
+	mut tok := scan.scan()
+	mut depth := 1
+	mut is_enabled := true
+	mut is_packed := false
+	mut is_aligned := false
+	mut alignment := 0
+	mut reading_alignment := false
+	mut at_item_start := true
+	for depth > 0 {
+		if tok == .eof {
+			return error('fastc arm64 does not support unfinished declaration attribute in ${path}')
+		}
+		if depth == 1 && at_item_start && tok == .key_if {
+			condition := fastc_scan_comptime_or(mut scan, scan.scan(), path, prefs)!
+			is_enabled = is_enabled && condition.value
+			tok = condition.tok
+			if tok !in [.semicolon, .rsbr] {
+				return error('fastc arm64 does not support conditional attribute expression in ${path}')
+			}
+			continue
+		}
+		if depth == 1 && at_item_start && tok == .name && scan.lit == 'packed' {
+			is_packed = true
+		}
+		if depth == 1 && at_item_start && tok == .name && scan.lit == 'aligned' {
+			is_aligned = true
+			reading_alignment = true
+		} else if depth == 1 && reading_alignment && tok == .number {
+			alignment = scan.lit.int()
+			reading_alignment = false
+		}
+		if depth == 1 && tok == .semicolon {
+			at_item_start = true
+			reading_alignment = false
+		} else if depth == 1 {
+			at_item_start = false
+		}
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+		}
+		tok = scan.scan()
+	}
+	return FastArm64DeclarationAttribute{
+		tok: tok
+		is_enabled: is_enabled
+		is_packed: is_packed
+		is_aligned: is_aligned
+		alignment: alignment
+	}
+}
+
 fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, mut declarations map[string]FastArm64TypeDecl, mut constants map[string]FastArm64ConstantDecl, mut enum_values map[string]string) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(source_file.path, source_file.source.len)
@@ -704,8 +766,8 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 	scan.init(file, source_file.source)
 	mut tok := scan.scan()
 	mut depth := 0
-	mut pending_is_packed := false
-	mut pending_alignment := 0
+	mut next_struct_is_packed := false
+	mut next_struct_alignment := 0
 	for tok != .eof {
 		if depth == 0 && tok == .dollar {
 			mut lookahead := scan
@@ -723,11 +785,18 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 			}
 		}
 		if depth == 0 && tok == .attribute {
-			attribute := fastc_scan_declaration_attribute(mut scan, source_file.path, prefs)!
+			attribute := fast_arm64_scan_layout_attribute(mut scan, source_file.path, prefs)!
 			if attribute.is_enabled {
-				pending_is_packed = pending_is_packed || attribute.is_packed
-				if attribute.alignment > 0 {
-					pending_alignment = attribute.alignment
+				next_struct_is_packed = next_struct_is_packed || attribute.is_packed
+				if attribute.is_aligned {
+					next_struct_alignment = if attribute.alignment > 0 {
+						attribute.alignment
+					} else {
+						16
+					}
+					if next_struct_alignment & (next_struct_alignment - 1) != 0 {
+						return error('fastc arm64 struct alignment must be a power of two in ${source_file.path}')
+					}
 				}
 			}
 			tok = attribute.tok
@@ -737,11 +806,9 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 			tok = scan.scan()
 			continue
 		}
-		if depth == 0 && tok !in [.attribute, .key_pub, .key_static, .key_struct, .key_union] {
-			pending_is_packed = false
-			pending_alignment = 0
-		}
 		if depth == 0 && tok == .key_const {
+			next_struct_is_packed = false
+			next_struct_alignment = 0
 			tok = fast_arm64_collect_constant_declaration(mut scan, source_file, mut constants)!
 			continue
 		}
@@ -836,16 +903,18 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 				embeds: embeds
 				is_union: is_union
 				is_c: is_c
-				is_packed: pending_is_packed
-				alignment: pending_alignment
+				is_packed: next_struct_is_packed
+				alignment: next_struct_alignment
 			}
-			pending_is_packed = false
-			pending_alignment = 0
 			declarations[key] = declaration
 			declarations[c_name] = declaration
+			next_struct_is_packed = false
+			next_struct_alignment = 0
 			continue
 		}
 		if depth == 0 && tok == .key_enum {
+			next_struct_is_packed = false
+			next_struct_alignment = 0
 			tok = scan.scan()
 			if tok != .name {
 				return error('fastc arm64 expected an enum name in ${source_file.path}')
@@ -919,6 +988,8 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 			continue
 		}
 		if depth == 0 && tok == .key_type {
+			next_struct_is_packed = false
+			next_struct_alignment = 0
 			tok = scan.scan()
 			if tok != .name {
 				return error('fastc arm64 expected an alias name in ${source_file.path}')
@@ -949,6 +1020,10 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 		} else if tok == .rcbr && depth > 0 {
 			depth--
 		}
+		if depth == 0 && tok != .semicolon {
+			next_struct_is_packed = false
+			next_struct_alignment = 0
+		}
 		tok = scan.scan()
 	}
 }
@@ -966,6 +1041,8 @@ fn (mut p FastArm64Program) register_declared_types() {
 		id := p.m.type_store.register(ssa.Type{
 			kind: .struct_t
 			is_union: declaration.is_union
+			is_packed: declaration.is_packed
+			alignment: declaration.alignment
 		})
 		p.type_ids[declaration.key] = id
 		p.type_ids[declaration.c_name] = id

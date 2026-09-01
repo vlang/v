@@ -1368,8 +1368,6 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 	mut is_flag := false
 	mut is_params := false
 	mut is_typedef := false
-	mut is_packed := false
-	mut alignment := 0
 	mut is_enabled := true
 	mut at_item_start := true
 	for depth > 0 {
@@ -1394,18 +1392,6 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		if tok == .name && scan.lit == 'typedef' {
 			is_typedef = true
 		}
-		if depth == 1 && at_item_start && tok == .name && scan.lit == 'packed' {
-			is_packed = true
-		}
-		if depth == 1 && at_item_start && tok == .name && scan.lit == 'aligned' {
-			// GCC/Clang use the target's maximum useful alignment when `aligned`
-			// has no argument. Direct ARM64's stack and ABI alignment is 16 bytes.
-			alignment = 16
-			mut lookahead := scan
-			if lookahead.scan() == .colon && lookahead.scan() == .number {
-				alignment = lookahead.lit.int()
-			}
-		}
 		if depth == 1 && tok == .semicolon {
 			at_item_start = true
 		} else if depth == 1 {
@@ -1424,8 +1410,6 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		is_flag:    is_flag
 		is_params:  is_params
 		is_typedef: is_typedef
-		is_packed:  is_packed
-		alignment:  alignment
 	}
 }
 

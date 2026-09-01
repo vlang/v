@@ -132,8 +132,8 @@ pub:
 	ret_type    TypeID
 	is_c_struct bool // True for C interop structs (raw field names, typedef to C struct)
 	is_union    bool // True for union types (all fields overlap at offset 0)
-	is_packed   bool // True when struct fields use byte alignment
-	alignment   int // Explicit minimum aggregate alignment, or 0 for the ABI default
+	is_packed   bool // True when struct fields have byte alignment
+	alignment   int  // Explicit aggregate alignment in bytes; 0 uses the natural alignment
 }
 
 // TypeStore represents type store data used by ssa.
@@ -890,11 +890,9 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 				max_align = a
 			}
 		}
-		if typ.alignment > max_align {
-			max_align = typ.alignment
-		}
-		total = if max_align > 1 && max_size % max_align != 0 {
-			(max_size + max_align - 1) & ~(max_align - 1)
+		aggregate_align := if typ.alignment > max_align { typ.alignment } else { max_align }
+		total = if aggregate_align > 1 && max_size % aggregate_align != 0 {
+			(max_size + aggregate_align - 1) & ~(aggregate_align - 1)
 		} else {
 			max_size
 		}
@@ -912,11 +910,9 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 			}
 			offset += m.type_size_inner(field_typ, depth + 1, mut visiting, mut cache)
 		}
-		if typ.alignment > max_align {
-			max_align = typ.alignment
-		}
-		total = if max_align > 1 && offset % max_align != 0 {
-			(offset + max_align - 1) & ~(max_align - 1)
+		aggregate_align := if typ.alignment > max_align { typ.alignment } else { max_align }
+		total = if aggregate_align > 1 && offset % aggregate_align != 0 {
+			(offset + aggregate_align - 1) & ~(aggregate_align - 1)
 		} else {
 			offset
 		}
@@ -948,6 +944,12 @@ fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 		return 8
 	}
 	typ := m.type_store.types[typ_id]
+	if typ.alignment > 0 {
+		return typ.alignment
+	}
+	if typ.is_packed {
+		return 1
+	}
 	if typ.width > 0 {
 		size := (typ.width + 7) / 8
 		if size >= 8 {
@@ -965,12 +967,6 @@ fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 		return 8
 	}
 	if typ.fields.len > 0 {
-		if typ.is_packed {
-			return if typ.alignment > 1 { typ.alignment } else { 1 }
-		}
-		if typ.alignment > 8 {
-			return typ.alignment
-		}
 		return 8
 	}
 	if typ.params.len > 0 || typ.ret_type > 0 {
