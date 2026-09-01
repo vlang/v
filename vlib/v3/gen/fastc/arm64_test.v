@@ -213,8 +213,9 @@ fn main() {
 		println("wrong trim")
 		return
 	}
-	map_defaults := FastArm64MapDefaults{}
-	if map_defaults.values.len != 0 || map_defaults.values["missing"] != 0 {
+	mut map_defaults := FastArm64MapDefaults{}
+	map_defaults.values["present"] = 7
+	if map_defaults.values.len != 1 || map_defaults.values["missing"] != 0 || map_defaults.values["present"] != 7 {
 		println("wrong zero map")
 		return
 	}
@@ -331,6 +332,9 @@ fn test_fastc_arm64_array_index_bounds() {
 		sources << 'fn main() {\n\tvalues := [1, 2]\n\tstart := 3\n\tsliced := values[start..]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tvalues := [1, 2]\n\tend := 5\n\tsliced := values[1..end]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tvalues := [1, 2]\n\tstart := 2\n\tend := 1\n\tsliced := values[start..end]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		sources << 'fn main() {\n\ttext := "hi"\n\tstart := -1\n\tsliced := text[start..]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		sources << 'fn main() {\n\ttext := "hi"\n\tend := 100\n\tsliced := text[1..end]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		sources << 'fn main() {\n\ttext := "hi"\n\tstart := 2\n\tend := 1\n\tsliced := text[start..end]\n\tif sliced.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tvalues := []int{}\n\tselected := values.last()\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tmut values := []int{}\n\tselected := values.pop()\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tmut values := []int{}\n\tvalues.delete_last()\n\tprintln("unused")\n}\n'
@@ -344,6 +348,47 @@ fn test_fastc_arm64_array_index_bounds() {
 			result := os.execute(output_path)
 			assert result.exit_code != 0
 		}
+	}
+}
+
+fn test_fastc_arm64_source_location_pseudo_values() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_location_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		source := 'struct LocationOwner {}
+
+fn (receiver LocationOwner) instance_location() {
+	println(@FILE_LINE)
+	println(@LOCATION)
+}
+
+fn LocationOwner.static_location() {
+	println(@FILE_LINE)
+	println(@LOCATION)
+}
+
+fn main() {
+	receiver := LocationOwner{}
+	receiver.instance_location()
+	LocationOwner.static_location()
+}
+'
+		os.write_file(source_path, source) or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		resolved_source_path := os.real_path(source_path)
+		expected := 'main.v:4\n${resolved_source_path}:5, main.LocationOwner{}.instance_location\nmain.v:9\n${resolved_source_path}:10, main.LocationOwner.static_location (static)\n'
+		assert result.output == expected, 'expected `${expected}`, got `${result.output}`'
 	}
 }
 

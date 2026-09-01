@@ -132,6 +132,9 @@ mut:
 	local_starts     []int
 	array_element    string
 	last_map_found   ssa.ValueID
+	current_function string
+	current_receiver string
+	current_method_is_static bool
 }
 
 struct FastArm64Generation {
@@ -2848,6 +2851,9 @@ fn (mut p FastArm64Parser) parse_script() ! {
 	p.func_id = func_id
 	p.return_typ = p.program.i32_type
 	p.return_is_option = false
+	p.current_function = 'main'
+	p.current_receiver = ''
+	p.current_method_is_static = false
 	p.locals = map[string]FastArm64Local{}
 	p.terminated = map[int]bool{}
 	p.labels = map[string]ssa.BlockID{}
@@ -3027,6 +3033,9 @@ fn (mut p FastArm64Parser) parse_function() ! {
 		return
 	}
 	p.func_id = func_id
+	p.current_function = name
+	p.current_receiver = if static_owner != '' { static_owner } else { receiver_type.trim_right('*') }
+	p.current_method_is_static = static_owner != ''
 	p.return_typ = p.program.fn_returns[key]
 	p.return_name = if signature.return_type == 'Option' {
 		signature.option_type
@@ -5627,6 +5636,7 @@ fn (mut p FastArm64Parser) parse_if_expression() !FastArm64Value {
 
 fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 	first_name := p.lit
+	pseudo_position := p.s.pos
 	p.next()
 	if first_name == 'error' && p.tok == .lpar {
 		p.next()
@@ -5643,13 +5653,41 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 		}
 	}
 	if first_name.starts_with('@') {
-		function_name := p.program.m.funcs[p.func_id].name
+		pseudo_line, pseudo_column := fastc_line_column(p.s.src, pseudo_position)
+		module_name := if p.source_file.header.module_name == '' {
+			'main'
+		} else {
+			p.source_file.header.module_name
+		}
+		function_name := if p.current_function != '' {
+			p.current_function
+		} else {
+			p.program.m.funcs[p.func_id].name
+		}
+		receiver_name := p.current_receiver.all_after_last('.').all_after_last('__')
+		method_name := if receiver_name != '' {
+			'${receiver_name}.${function_name}'
+		} else {
+			function_name
+		}
+		location_method := if receiver_name == '' {
+			'${module_name}.${function_name}'
+		} else if p.current_method_is_static {
+			'${module_name}.${receiver_name}.${function_name} (static)'
+		} else {
+			'${module_name}.${receiver_name}{}.${function_name}'
+		}
 		literal := match first_name {
-			'@FN', '@METHOD', '@STRUCT' { function_name }
-			'@MOD' { p.source_file.header.module_name }
+			'@FN' { function_name }
+			'@METHOD' { method_name }
+			'@STRUCT' { receiver_name }
+			'@MOD' { module_name }
 			'@FILE' { p.source_file.path }
 			'@DIR' { p.source_file.path.all_before_last('/') }
-			'@FILE_LINE', '@LOCATION' { '${p.source_file.path}, ${function_name}' }
+			'@LINE' { pseudo_line.str() }
+			'@COLUMN' { pseudo_column.str() }
+			'@FILE_LINE' { '${os.file_name(p.source_file.path)}:${pseudo_line}' }
+			'@LOCATION' { '${p.source_file.path}:${pseudo_line}, ${location_method}' }
 			'@VEXE' { p.program.prefs.vexe }
 			'@VEXEROOT', '@VROOT', '@VMODROOT' { p.program.prefs.vroot }
 			'@OS' { 'macos' }
@@ -7096,17 +7134,22 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 			}
 		}
 		p.next()
-		start64 := p.integer_to_i64(start)
-		start_data := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, start64)
-		mut length := ssa.ValueID(0)
-		if p.tok == .rsbr {
-			original_len := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.string_field_ptr(p.cur_block, value_slot, 1))
-			length = p.program.instr2(.sub, p.cur_block, p.program.i32_type, original_len, start.id)
+		original_len := p.program.instr1(.load, p.cur_block, p.program.i32_type,
+			p.program.string_field_ptr(p.cur_block, value_slot, 1))
+		end := if p.tok == .rsbr {
+			FastArm64Value{
+				id: original_len
+				typ: p.program.i32_type
+				typ_name: 'int'
+			}
 		} else {
-			end := p.parse_expression(0)!
-			length = p.program.instr2(.sub, p.cur_block, p.program.i32_type, end.id, start.id)
+			p.parse_expression(0)!
 		}
 		p.expect(.rsbr)!
+		start64, end64 := p.checked_array_slice_bounds(start, end, original_len, 'string_slice')
+		start_data := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, start64)
+		length64 := p.program.instr2(.sub, p.cur_block, p.program.i64_type, end64, start64)
+		length := p.program.instr1(.trunc, p.cur_block, p.program.i32_type, length64)
 		result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
 		p.program.instr2(.store, p.cur_block, p.program.void_type, start_data, p.program.string_field_ptr(p.cur_block, result_slot, 0))
 		p.program.instr2(.store, p.cur_block, p.program.void_type, length, p.program.string_field_ptr(p.cur_block, result_slot, 1))
@@ -7278,22 +7321,7 @@ fn (mut p FastArm64Parser) parse_map_literal() !FastArm64Value {
 	p.tok = value_next
 	p.lit = p.s.lit
 	map_type_name := fastc_map_c_type(key_type_name, value_type_name)
-	key_type := p.program.type_id(key_type_name)
-	value_type := p.program.type_id(value_type_name)
-	key_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(key_type).str())
-	value_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value_type).str())
-	string_key := p.program.m.get_or_add_const(p.program.i64_type, if key_type == p.program.str_type {
-		'1'
-	} else {
-		'0'
-	})
-	new_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_new', p.program.fn_ids['fast_map_new'])
-	mut result := FastArm64Value{
-		id: p.program.m.add_instr(.call, p.cur_block, p.program.map_type, [new_ref, key_size,
-			value_size, string_key])
-		typ: p.program.map_type
-		typ_name: map_type_name
-	}
+	mut result := p.new_empty_map_value(map_type_name)!
 	p.expect(.lcbr)!
 	for p.tok != .rcbr {
 		if p.tok == .semicolon {
@@ -7312,6 +7340,29 @@ fn (mut p FastArm64Parser) parse_map_literal() !FastArm64Value {
 	}
 	p.next()
 	return result
+}
+
+fn (mut p FastArm64Parser) new_empty_map_value(map_type_name string) !FastArm64Value {
+	key_type_name, value_type_name := fastc_map_key_value_types(map_type_name) or {
+		return p.unsupported('map type `${map_type_name}`')
+	}
+	key_type := p.program.type_id(key_type_name)
+	value_type := p.program.type_id(value_type_name)
+	key_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(key_type).str())
+	value_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value_type).str())
+	string_key := p.program.m.get_or_add_const(p.program.i64_type, if key_type == p.program.str_type {
+		'1'
+	} else {
+		'0'
+	})
+	new_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_new',
+		p.program.fn_ids['fast_map_new'])
+	return FastArm64Value{
+		id: p.program.m.add_instr(.call, p.cur_block, p.program.map_type, [new_ref, key_size,
+			value_size, string_key])
+		typ: p.program.map_type
+		typ_name: map_type_name
+	}
 }
 
 fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
@@ -7620,11 +7671,16 @@ fn (mut p FastArm64Parser) default_struct_value_for_type(typ ssa.TypeID, type_na
 		return result
 	}
 	for i, field in declaration.fields {
+		field_type := p.program.m.type_store.types[typ].fields[i]
 		if field.default_source == '' {
+			if field_type == p.program.map_type {
+				value := p.new_empty_map_value(field.typ)!
+				p.program.instr2(.store, p.cur_block, p.program.void_type, value.id,
+					p.program.struct_field_ptr(p.cur_block, result.address, typ, i))
+			}
 			continue
 		}
 		mut value := p.parse_struct_field_default(field.default_source, field.typ)!
-		field_type := p.program.m.type_store.types[typ].fields[i]
 		if value.typ != field_type {
 			value = p.convert_value(value, field_type, field.typ)
 		}
