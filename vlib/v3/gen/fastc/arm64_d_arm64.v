@@ -8279,6 +8279,7 @@ fn (mut p FastArm64Parser) emit_array_tail_method(array FastArm64Value, remove b
 		typ_name: 'int'
 	}, length, 'array_tail')
 	if remove {
+		p.emit_array_detach_if_slice(array_slot, 'array_tail')
 		p.program.instr2(.store, p.cur_block, p.program.void_type, last_index, length_ptr)
 	}
 	if !return_value {

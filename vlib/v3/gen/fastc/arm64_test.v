@@ -854,6 +854,14 @@ fn main() {
 	parameter_growing_base << 9
 	parameter_growing_view := slice_from_parameter(parameter_growing_base)
 	parameter_growing_base << 10
+	mut tail_base := [11, 12, 13]
+	tail_view := tail_base[..]
+	tail_base.delete_last()
+	tail_base << 14
+	mut pop_base := [15, 16, 17]
+	pop_view := pop_base[..]
+	popped := pop_base.pop()
+	pop_base << 18
 	mut mutable_map := {"a": 1, "b": 2}
 	for _, mut value in mutable_map {
 		value += 10
@@ -890,7 +898,9 @@ fn main() {
 		|| propagated_map["value"][0] != 9 || slice_base != [2, 3] || slice_view != [1, 2, 3]
 		|| growing_base != [4, 5] || growing_view != [4] || parameter_base != [7, 8]
 		|| parameter_view != [6, 7, 8] || parameter_growing_base != [9, 10]
-		|| parameter_growing_view != [9] || dependency.answer != 42 || base != 1 {
+		|| parameter_growing_view != [9] || tail_base != [11, 12, 14]
+		|| tail_view != [11, 12, 13] || pop_base != [15, 16, 18]
+		|| pop_view != [15, 16, 17] || popped != 17 || dependency.answer != 42 || base != 1 {
 		println("wrong aggregate context or propagation cleanup")
 		return
 	}

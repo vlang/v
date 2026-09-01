@@ -74,3 +74,31 @@ fn test_aggregate_bitcast_copies_every_word() {
 	g.gen_instr(result)
 	assert g.macho.text_data.len == 16
 }
+
+fn test_large_c_variadic_aggregate_passes_its_address() {
+	mut m := ssa.Module.new()
+	i64_type := m.type_store.get_int(64)
+	large_type := m.type_store.get_tuple([i64_type, i64_type, i64_type])
+	external_id := m.new_function('consume', ssa.TypeID(0))
+	mut external := m.funcs[external_id]
+	external.is_c_extern = true
+	external.is_variadic = true
+	external.variadic_start = 1
+	m.funcs[external_id] = external
+	consume := m.add_value(.func_ref, ssa.TypeID(0), 'consume', external_id)
+	caller_id := m.new_function('caller', ssa.TypeID(0))
+	block_id := m.add_block(caller_id, 'entry')
+	tag := m.add_value(.constant, i64_type, '1', 0)
+	large := m.add_instr(.struct_init, block_id, large_type, [])
+	call := m.add_instr(.call, block_id, ssa.TypeID(0), [consume, tag, large])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[caller_id])
+	g.set_stack_slot(large, -24)
+	g.gen_call(int(call), m.instrs[m.values[call].index])
+	mut words := []u32{}
+	for i := 0; i < g.macho.text_data.len; i += 4 {
+		words << read_u32_le(g.macho.text_data, i)
+	}
+	assert asm_sub_imm(Reg(8), fp, 24) in words
+	assert asm_str(Reg(8), sp) in words
+}

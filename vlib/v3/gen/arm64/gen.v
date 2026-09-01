@@ -1143,6 +1143,14 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 				g.emit_store_sp(8, stack_off)
 				stack_off += 8
 			} else {
+				if g.is_large_struct_type(arg_val.typ) {
+					if !g.emit_value_address(arg_id, 8) {
+						g.emit_mov_imm(8, 0)
+					}
+					g.emit_store_sp(8, stack_off)
+					stack_off += 8
+					continue
+				}
 				n_words := g.call_arg_word_count(arg_val)
 				if n_words > 1 {
 					if off := g.stack_slot(arg_id) {
