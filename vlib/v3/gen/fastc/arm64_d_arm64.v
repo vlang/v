@@ -2141,6 +2141,7 @@ fn (mut p FastArm64Program) register_map_new_runtime() {
 	key_size := p.add_arg(id, p.i64_type, 'key_size')
 	val_size := p.add_arg(id, p.i64_type, 'val_size')
 	string_key := p.add_arg(id, p.i64_type, 'string_key')
+	default_value := p.add_arg(id, p.ptr_i8, 'default_value')
 	eight := p.m.get_or_add_const(p.i64_type, '8')
 	zero := p.m.get_or_add_const(p.i64_type, '0')
 	one := p.m.get_or_add_const(p.i64_type, '1')
@@ -2151,6 +2152,8 @@ fn (mut p FastArm64Program) register_map_new_runtime() {
 	keys := p.m.add_instr(.call, entry, p.ptr_i8, [calloc_ref, eight, key_size])
 	vals := p.m.add_instr(.call, entry, p.ptr_i8, [calloc_ref, eight, val_size])
 	zero_value := p.m.add_instr(.call, entry, p.ptr_i8, [calloc_ref, one, val_size])
+	memcpy_ref := p.m.add_value(.func_ref, p.ptr_i8, 'memcpy', p.fn_ids['memcpy'])
+	p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, zero_value, default_value, val_size])
 	for field, value in [keys, vals, eight, zero, key_size, val_size, string_key] {
 		p.instr2(.store, entry, p.void_type, value, p.struct_field_ptr(entry, state, p.map_state_type, field))
 	}
@@ -2358,8 +2361,10 @@ fn (mut p FastArm64Program) register_map_clone_runtime() {
 	key_size := p.instr1(.load, copy_map, p.i64_type, p.struct_field_ptr(copy_map, state, p.map_state_type, 4))
 	value_size := p.instr1(.load, copy_map, p.i64_type, p.struct_field_ptr(copy_map, state, p.map_state_type, 5))
 	string_key := p.instr1(.load, copy_map, p.i64_type, p.struct_field_ptr(copy_map, state, p.map_state_type, 6))
+	zero_value := p.instr1(.load, copy_map, p.ptr_i8, p.struct_field_ptr(copy_map, state, p.map_state_type, 10))
 	new_ref := p.m.add_value(.func_ref, p.map_type, 'fast_map_new', p.fn_ids['fast_map_new'])
-	result := p.m.add_instr(.call, copy_map, p.map_type, [new_ref, key_size, value_size, string_key])
+	result := p.m.add_instr(.call, copy_map, p.map_type, [new_ref, key_size, value_size, string_key,
+		zero_value])
 	result_slot := p.instr0(.alloca, copy_map, p.m.type_store.get_ptr(p.map_type))
 	p.instr2(.store, copy_map, p.void_type, result, result_slot)
 	result_state := p.instr1(.load, copy_map, state_ptr_type, p.struct_field_ptr(copy_map, result_slot, p.map_type, 0))
@@ -7413,6 +7418,8 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 				} else {
 					p.array_element
 				})!
+			} else if expected_element_type_name != '' {
+				p.parse_contextual_value(expected_element_type_name)!
 			} else {
 				p.parse_expression(0)!
 			}
@@ -8461,6 +8468,8 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		p.program.instr2(.store, p.cur_block, p.program.void_type, key.id, key_slot)
 		key_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, key_slot)
 		empty_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value_type))
+		empty_value := p.default_value_for_type(value_type, value_type_name)!
+		p.program.instr2(.store, p.cur_block, p.program.void_type, empty_value.id, empty_slot)
 		empty_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, empty_slot)
 		value_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value_type).str())
 		find_ref := p.program.m.add_value(.func_ref, p.program.i64_type, 'fast_map_find', p.program.fn_ids['fast_map_find'])
@@ -8790,10 +8799,14 @@ fn (mut p FastArm64Parser) new_empty_map_value(map_type_name string) !FastArm64V
 	} else {
 		'0'
 	})
+	default_value := p.default_value_for_type(value_type, value_type_name)!
+	default_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value_type))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, default_value.id, default_slot)
+	default_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, default_slot)
 	new_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_new', p.program.fn_ids['fast_map_new'])
 	return FastArm64Value{
 		id: p.program.m.add_instr(.call, p.cur_block, p.program.map_type, [new_ref, key_size,
-			value_size, string_key])
+			value_size, string_key, default_pointer])
 		typ: p.program.map_type
 		typ_name: map_type_name
 	}
@@ -8841,22 +8854,7 @@ fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
 	} else {
 		expected_value_type_name
 	}
-	key_type := p.program.type_id(key_type_name)
-	value_type := p.program.type_id(value_type_name)
-	key_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(key_type).str())
-	value_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value_type).str())
-	string_key := p.program.m.get_or_add_const(p.program.i64_type, if key_type == p.program.str_type {
-		'1'
-	} else {
-		'0'
-	})
-	new_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_new', p.program.fn_ids['fast_map_new'])
-	result := FastArm64Value{
-		id: p.program.m.add_instr(.call, p.cur_block, p.program.map_type, [new_ref, key_size,
-			value_size, string_key])
-		typ: p.program.map_type
-		typ_name: fastc_map_c_type(key_type_name, value_type_name)
-	}
+	mut result := p.new_empty_map_value(fastc_map_c_type(key_type_name, value_type_name))!
 	for i, key in keys {
 		p.emit_map_set(result, key, values[i])!
 	}
@@ -9301,7 +9299,6 @@ fn (mut p FastArm64Parser) parse_named_argument_struct(type_name string) !FastAr
 		field_name := p.lit
 		p.next()
 		p.expect(.colon)!
-		mut field_value := p.parse_expression(0)!
 		mut field := -1
 		for candidate_index, candidate_name in layout.field_names {
 			if candidate_name == field_name {
@@ -9313,6 +9310,7 @@ fn (mut p FastArm64Parser) parse_named_argument_struct(type_name string) !FastAr
 			return p.unsupported('named argument `${type_name}.${field_name}`')
 		}
 		field_type := layout.fields[field]
+		mut field_value := p.parse_contextual_value(p.program.field_type_name(typ, field))!
 		if field_value.typ != field_type {
 			field_value = p.convert_value(field_value, field_type, p.program.field_type_name(typ, field))
 		}
@@ -9370,7 +9368,7 @@ fn (mut p FastArm64Parser) parse_struct_field_default(source string, type_name s
 	value := if p.tok == .dot {
 		p.parse_enum_shorthand(type_name)!
 	} else {
-		p.parse_expression(0)!
+		p.parse_contextual_value(type_name)!
 	}
 	p.s = outer_scanner
 	p.tok = outer_tok

@@ -604,6 +604,19 @@ struct MapValues {
 	values map[u64]f64
 }
 
+struct DefaultFloatValues {
+	values []f64 = [1, 2]
+}
+
+struct Config {
+	retries int = 3
+}
+
+@[params]
+struct FloatParams {
+	values []f64
+}
+
 struct NumericReceiver {}
 
 struct MutableValue {
@@ -629,6 +642,10 @@ fn sum_contextual_array(values []f64) f64 {
 
 fn read_contextual_map(values map[string]f64) f64 {
 	return values["value"]
+}
+
+fn read_float_params(params FloatParams) f64 {
+	return params.values[0] + params.values[1]
 }
 
 fn inferred_float_values() []f64 {
@@ -699,6 +716,10 @@ fn main() {
 	numeric_map[u64(2)] = 3
 	numeric_map.delete(2)
 	typed_values := []f64{1, 2}
+	typed_nested_values := [][]f64{[1, 2]}
+	default_float_values := DefaultFloatValues{}
+	params_float_value := read_float_params(values: [1, 2])
+	missing_config := map[string]Config{}["missing"]
 	normalized := []int{len: 3, cap: 1}
 	left := f64(1.5)
 	contextual_array := sum_contextual_array([1, 2])
@@ -772,7 +793,7 @@ fn main() {
 	thread_options_ok := failure_a.wait() && success_a.wait() && failure_b.wait()
 		&& success_b.wait()
 	scalar_text := "\${true}:\${u64(9223372036854775808)}"
-	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || contextual_array != 3.0 || contextual_map != 3.0 || returned_values[0] != 1.0 || returned_values[1] != 2.0 || returned_float_map["value"] != 3.0 || appended_arrays[0][0] != 1.0 || appended_arrays[0][1] != 2.0 || appended_maps[0]["value"] != 3.0 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || delayed_fallback != 42 || conditional_fallback != 52 || conditional_zero != 0 || matched_fallback != 62 || matched_zero != 0 || float_values.values[0] != 1.0 || float_values.values[1] != 2.0 || map_values.values[1] != 2.0 || mutable_values[0].value != 11 || mutable_values[1].value != 12 || mutable_numbers[0] != 2 || mutable_numbers[1] != 3 || mutable_map["a"] != 11 || mutable_map["b"] != 12 || deleting_map.len != 0 || expanding_map[1] != 1 || expanding_map[2] != 2 || returned_map["value"][0] != 7 || broken_map["value"][0] != 8 || executed.exit_code != 0 || executed.output != "arm64-capturedarm64-error" || terminated.exit_code != 15 || !none_comparison_ok || nested_values.len != 2 || nested_values[0].len != 2 || nested_values[0][0] != 1 || nested_values[0][1] != 2 || nested_values[1].len != 1 || nested_values[1][0] != 3 || !thread_options_ok || scalar_text != "true:9223372036854775808" {
+	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || typed_nested_values[0][0] != 1.0 || typed_nested_values[0][1] != 2.0 || default_float_values.values[0] != 1.0 || default_float_values.values[1] != 2.0 || params_float_value != 3.0 || missing_config.retries != 3 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || contextual_array != 3.0 || contextual_map != 3.0 || returned_values[0] != 1.0 || returned_values[1] != 2.0 || returned_float_map["value"] != 3.0 || appended_arrays[0][0] != 1.0 || appended_arrays[0][1] != 2.0 || appended_maps[0]["value"] != 3.0 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || delayed_fallback != 42 || conditional_fallback != 52 || conditional_zero != 0 || matched_fallback != 62 || matched_zero != 0 || float_values.values[0] != 1.0 || float_values.values[1] != 2.0 || map_values.values[1] != 2.0 || mutable_values[0].value != 11 || mutable_values[1].value != 12 || mutable_numbers[0] != 2 || mutable_numbers[1] != 3 || mutable_map["a"] != 11 || mutable_map["b"] != 12 || deleting_map.len != 0 || expanding_map[1] != 1 || expanding_map[2] != 2 || returned_map["value"][0] != 7 || broken_map["value"][0] != 8 || executed.exit_code != 0 || executed.output != "arm64-capturedarm64-error" || terminated.exit_code != 15 || !none_comparison_ok || nested_values.len != 2 || nested_values[0].len != 2 || nested_values[0][0] != 1 || nested_values[0][1] != 2 || nested_values[1].len != 1 || nested_values[1][0] != 3 || !thread_options_ok || scalar_text != "true:9223372036854775808" {
 		println("wrong")
 		return
 	}
