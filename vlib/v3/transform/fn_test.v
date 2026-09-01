@@ -18,68 +18,6 @@ fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
 	assert c_args == ['C.sg_pass_action']
 }
 
-fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
-	mut a := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&a)
-	tc.structs['orm.QueryBuilder'] = []types.StructField{}
-	tc.struct_generic_params['orm.QueryBuilder'] = ['T']
-	tc.struct_generic_params['QueryBuilder'] = ['T']
-	tc.struct_modules['orm.QueryBuilder'] = 'orm'
-	t := new_transformer(mut a, &tc, map[string]bool{})
-
-	assert t.qualify_or_storage_type('&QueryBuilder[main.User]') == '&orm.QueryBuilder[main.User]'
-	assert t.qualify_or_storage_type('(string, []string)') == '(string, []string)'
-}
-
-fn test_immediate_closure_generic_sum_pointer_result_may_alias_capture() {
-	mut a := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types['Maybe'] = ['T', 'IError']
-	tc.sum_generic_params['Maybe'] = ['T']
-	t := new_transformer(mut a, &tc, map[string]bool{})
-
-	assert t.immediate_closure_result_may_alias_capture('Maybe[&int]')
-}
-
-fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
-	mut a := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Box'] = [types.StructField{
-		name: 'value'
-		typ:  tc.parse_type('T')
-	}]
-	tc.struct_generic_params['Box'] = ['T']
-	t := new_transformer(mut a, &tc, map[string]bool{})
-
-	assert t.immediate_closure_result_may_alias_capture('Box[&int]')
-}
-
-fn test_immediate_closure_result_error_may_alias_capture() {
-	fallback := Transformer{}
-	assert fallback.immediate_closure_result_may_alias_capture('!int')
-	assert fallback.immediate_closure_result_may_alias_capture('[]int')
-	assert fallback.immediate_closure_result_may_alias_capture('map[string]int')
-	assert fallback.immediate_closure_result_may_alias_capture('chan int')
-	assert fallback.immediate_closure_result_may_alias_capture('string')
-	assert fallback.immediate_closure_result_may_alias_capture('?string')
-
-	mut a := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&a)
-	tc.structs['TextBox'] = [types.StructField{
-		name: 'text'
-		typ:  types.Type(types.String{})
-	}]
-	t := new_transformer(mut a, &tc, map[string]bool{})
-
-	assert t.immediate_closure_result_may_alias_capture('!int')
-	assert t.immediate_closure_result_may_alias_capture('[]int')
-	assert t.immediate_closure_result_may_alias_capture('map[string]int')
-	assert t.immediate_closure_result_may_alias_capture('chan int')
-	assert t.immediate_closure_result_may_alias_capture('string')
-	assert t.immediate_closure_result_may_alias_capture('?string')
-	assert t.immediate_closure_result_may_alias_capture('TextBox')
-}
-
 fn test_normalize_function_type_preserves_mut_parameter() {
 	t := Transformer{}
 	assert t.normalize_type_in_module('fn (mut Item)', 'main') == 'fn (&Item)'
@@ -136,24 +74,6 @@ fn test_auto_str_helper_call_uses_type_owner_module() {
 
 	assert callee.value == '__v3_autostr_v__token__Pos'
 	assert t.auto_str_types['v.token.Pos'].helper_module == 'token'
-}
-
-fn test_immediate_closure_thread_result_may_alias_capture() {
-	mut a := flat.FlatAst.new()
-	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Worker'] = [types.StructField{
-		name: 'handle'
-		typ: tc.parse_type('thread int')
-	}]
-	with_checker := Transformer{
-		a: &a
-		tc: &tc
-	}
-	assert with_checker.immediate_closure_result_may_alias_capture('thread int')
-	assert with_checker.immediate_closure_result_may_alias_capture('Worker')
-
-	without_checker := Transformer{}
-	assert without_checker.immediate_closure_result_may_alias_capture('thread int')
 }
 
 fn test_large_recursive_pointer_auto_str_stops_before_expanding_back_edge() {
@@ -450,4 +370,84 @@ fn test_multi_return_selector_suffix_does_not_match_free_fn() {
 		return
 	}
 	assert items.len == 2
+}
+
+fn test_qualify_or_storage_type_resolves_imported_generic_base_only() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['orm.QueryBuilder'] = []types.StructField{}
+	tc.struct_generic_params['orm.QueryBuilder'] = ['T']
+	tc.struct_generic_params['QueryBuilder'] = ['T']
+	tc.struct_modules['orm.QueryBuilder'] = 'orm'
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.qualify_or_storage_type('&QueryBuilder[main.User]') == '&orm.QueryBuilder[main.User]'
+	assert t.qualify_or_storage_type('(string, []string)') == '(string, []string)'
+}
+
+fn test_immediate_closure_generic_sum_pointer_result_may_alias_capture() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['Maybe'] = ['T', 'IError']
+	tc.sum_generic_params['Maybe'] = ['T']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.immediate_closure_result_may_alias_capture('Maybe[&int]')
+}
+
+fn test_immediate_closure_generic_struct_pointer_result_may_alias_capture() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Box'] = [types.StructField{
+		name: 'value'
+		typ:  tc.parse_type('T')
+	}]
+	tc.struct_generic_params['Box'] = ['T']
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.immediate_closure_result_may_alias_capture('Box[&int]')
+}
+
+fn test_immediate_closure_result_error_may_alias_capture() {
+	fallback := Transformer{}
+	assert fallback.immediate_closure_result_may_alias_capture('!int')
+	assert fallback.immediate_closure_result_may_alias_capture('[]int')
+	assert fallback.immediate_closure_result_may_alias_capture('map[string]int')
+	assert fallback.immediate_closure_result_may_alias_capture('chan int')
+	assert fallback.immediate_closure_result_may_alias_capture('string')
+	assert fallback.immediate_closure_result_may_alias_capture('?string')
+
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['TextBox'] = [types.StructField{
+		name: 'text'
+		typ:  types.Type(types.String{})
+	}]
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.immediate_closure_result_may_alias_capture('!int')
+	assert t.immediate_closure_result_may_alias_capture('[]int')
+	assert t.immediate_closure_result_may_alias_capture('map[string]int')
+	assert t.immediate_closure_result_may_alias_capture('chan int')
+	assert t.immediate_closure_result_may_alias_capture('string')
+	assert t.immediate_closure_result_may_alias_capture('?string')
+	assert t.immediate_closure_result_may_alias_capture('TextBox')
+}
+
+fn test_immediate_closure_thread_result_may_alias_capture() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Worker'] = [types.StructField{
+		name: 'handle'
+		typ: tc.parse_type('thread int')
+	}]
+	with_checker := Transformer{
+		a: &a
+		tc: &tc
+	}
+	assert with_checker.immediate_closure_result_may_alias_capture('thread int')
+	assert with_checker.immediate_closure_result_may_alias_capture('Worker')
+
+	without_checker := Transformer{}
+	assert without_checker.immediate_closure_result_may_alias_capture('thread int')
 }
