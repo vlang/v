@@ -2,7 +2,6 @@
 import os
 import v.vmod
 
-const vroot = os.quoted_path(@VEXEROOT)
 const vexe = os.quoted_path(@VEXE)
 // Expect has to be installed for the test.
 const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
@@ -28,7 +27,7 @@ fn init_and_check() ! {
 	main_last_modified := if main_exists { os.file_last_mod_unix('main.v') } else { 0 }
 
 	// Initialize project.
-	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
+	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vexe}')
 
 	x := os.execute_or_exit('${vexe} run .')
 	assert x.output.trim_space() == 'Hello World!'
@@ -132,7 +131,7 @@ fn test_v_init_in_git_dir() {
 fn test_v_init_no_overwrite_gitignore() {
 	prepare_test_path()!
 	os.write_file('.gitignore', 'foo')!
-	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
+	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vexe}')
 	assert os.read_file('.gitignore')! == 'foo'
 }
 
@@ -151,7 +150,7 @@ indent_style = tab
 	os.write_file('.gitattributes', git_attributes_content)!
 	os.write_file('.editorconfig', editor_config_content)!
 	res :=
-		os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vroot}')
+		os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path, 'init.expect')} ${vexe}')
 	assert res.output.contains('Created binary (application) project `${test_project_dir_name}`')
 	assert os.read_file('.gitattributes')! == git_attributes_content
 	assert os.read_file('.editorconfig')! == editor_config_content
@@ -162,10 +161,14 @@ fn test_v_init_in_dir_with_invalid_mod_name_input() {
 	dir_name_with_invalid_mod_name := 'my-proj'
 	corrected_mod_name := 'my_proj'
 	proj_path := os.join_path(os.vtmp_dir(), dir_name_with_invalid_mod_name)
+	os.rmdir_all(proj_path) or {}
 	os.mkdir_all(proj_path) or {}
+	defer {
+		os.rmdir_all(proj_path) or {}
+	}
 	os.chdir(proj_path)!
 	os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path,
-		'init_in_dir_with_invalid_mod_name.expect')} ${vroot} ${dir_name_with_invalid_mod_name} ${corrected_mod_name}')
+		'init_in_dir_with_invalid_mod_name.expect')} ${vexe} ${dir_name_with_invalid_mod_name} ${corrected_mod_name}')
 	// Assert mod data set in `new_with_model_arg.expect`.
 	mod := vmod.from_file(os.join_path(proj_path, 'v.mod')) or {
 		assert false, err.str()
@@ -178,7 +181,7 @@ fn test_v_init_with_model_arg_input() {
 	prepare_test_path()!
 	model := '--lib'
 	res := os.execute_or_exit('${expect_exe} ${os.join_path(expect_tests_path,
-		'init_with_model_arg.expect')} ${vroot} ${model}')
+		'init_with_model_arg.expect')} ${vexe} ${model}')
 	assert res.output.contains('Created library project `${test_project_dir_name}`'), res.output
 	project_path := os.join_path(test_path)
 	mod := vmod.from_file(os.join_path(project_path, 'v.mod')) or {

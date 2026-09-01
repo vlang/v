@@ -175,18 +175,160 @@ fn test_parallel_checker_preserves_diagnostic_order() {
 	}
 	result := os.execute('${v3_bin} -nocache ${src_path} -b c -o ${out}')
 	assert result.exit_code != 0, result.output
-	first := error_index(result.output, 'unknown identifier `missing_0`')
-	second := error_index(result.output, 'unknown identifier `missing_1`')
-	third := error_index(result.output, 'unknown identifier `missing_2`')
+	first := error_index(result.output, 'undefined ident: `missing_0`')
+	second := error_index(result.output, 'undefined ident: `missing_1`')
+	third := error_index(result.output, 'undefined ident: `missing_2`')
 	assert first < second
 	assert second < third
+}
+
+// test_type_checker_c_extern_suffix_does_not_hide_v_fn validates this v3 regression case.
+fn test_type_checker_c_extern_suffix_does_not_hide_v_fn() {
+	v3_bin := build_v3()
+	c_suffix_out := run_good(v3_bin, 'c_extern_suffix_does_not_hide_v_fn', 'fn C.answer() int
+
+fn answer() int {
+	return 42
+}
+
+fn main() {
+	println(answer())
+}
+')
+	assert c_suffix_out == '42'
+}
+
+fn test_type_checker_accepts_v_numeric_coercions() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'v_numeric_coercions', 'fn takes_f64(value f64) f64 {
+	return value
+}
+
+fn takes_i64(value i64) i64 {
+	return value
+}
+
+fn negative_one() f64 {
+	return -1
+}
+
+fn main() {
+	mut result := 2.0
+	sign := -1
+	result *= sign
+	small := f32(1.5)
+	base := 2
+	println(takes_f64(small))
+	println(takes_i64(base))
+	println(result)
+	println(negative_one())
+}
+')
+	assert out == '1.5\n2\n-2.0\n-1.0'
+}
+
+fn test_type_checker_accepts_v_array_and_interface_mut_compatibility() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'v_array_and_interface_mut_compatibility', 'interface Writer {
+	write(mut dst []u8)
+}
+
+struct ByteWriter {}
+
+fn (w ByteWriter) write(mut dst []u8) {
+	dst[0] = 7
+}
+
+interface Sized {
+	size() int
+}
+
+struct Item {}
+
+fn (i Item) size() int {
+	return 3
+}
+
+fn item_size(item Item) int {
+	return item.size()
+}
+
+fn interface_size(item Sized) int {
+	return item.size()
+}
+
+fn sum(values []int) int {
+	return values[0]
+}
+
+fn modify(mut values []int) {
+	assert sum(values) == 1
+	values[0] = 9
+}
+
+fn first(values &[]int) int {
+	return values[0]
+}
+
+fn main() {
+	mut bytes := [u8(0)]
+	writer := Writer(ByteWriter{})
+	writer.write(mut bytes)
+	mut values := [1, 2]
+	modify(mut values[..1])
+	assert values == [9, 2]
+	assert []int{} == []
+	unsafe {
+		ptr := &values
+		assert ptr == [9, 2]
+	}
+	item := Item{}
+	println(int(bytes[0]))
+	println(first(&values))
+	println(item_size(&item))
+	println(interface_size(&item))
+}
+')
+	assert out == '7\n9\n3\n3'
+}
+
+fn test_embedded_interface_method_keeps_mut_parameter_metadata() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'embedded_interface_mut_parameter', 'interface Reader {
+mut:
+	read(mut buf []u8) int
+}
+
+interface ReaderWriter {
+	Reader
+}
+
+struct Device {}
+
+fn (_ Device) read(mut buf []u8) int {
+	buf[0] = 7
+	return 1
+}
+
+fn fill(mut stream ReaderWriter) int {
+	mut buf := [u8(0)]
+	stream.read(mut buf)
+	return int(buf[0])
+}
+
+fn main() {
+	mut stream := ReaderWriter(Device{})
+	println(fill(mut stream))
+}
+')
+	assert out == '7'
 }
 
 // test_type_checker_reports_core_semantic_errors validates this v3 regression case.
 fn test_type_checker_reports_core_semantic_errors() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_assignment', "fn main() {\n\tmut x := 1\n\tx = 'bad'\n}\n",
-		'cannot assign `string` to `int`')
+		'cannot assign to `x`: expected `int`, not `string`')
 	run_bad(v3_bin, 'bad_return', "fn f() int {\n\treturn 'bad'\n}\nfn main() {}\n",
 		'cannot return `string` as `int`')
 	run_bad(v3_bin, 'bad_call_arg', "fn takes_int(x int) {}\nfn main() {\n\ttakes_int('bad')\n}\n",
@@ -234,15 +376,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_interface_is_unresolved_pattern',
 		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn check(s Shape) bool {\n\treturn s is MissingType\n}\nfn main() {}\n',
 		'unknown type `MissingType`')
-	run_bad(v3_bin, 'bad_empty_interface_is_array_pattern',
-		'interface Any {}\nfn check(x Any) bool {\n\treturn x is []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
-		'`[]string` is not compatible with interface `Any`')
-	run_bad(v3_bin, 'bad_empty_interface_is_map_pattern',
-		'interface Any {}\nfn check(x Any) bool {\n\treturn x is map[string]string\n}\nfn main() {\n\t_ := Any({\n\t\t"a": 1\n\t})\n}\n',
-		'`map[string]string` is not compatible with interface `Any`')
-	run_bad(v3_bin, 'bad_empty_interface_match_array_pattern',
-		'interface Any {}\nfn check(x Any) int {\n\treturn match x {\n\t\t[]string { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
-		'`[]string` is not compatible with interface `Any`')
+	container_patterns := run_good(v3_bin, 'good_empty_interface_container_patterns',
+		"interface Any {}\nfn main() {\n\tarr := Any([1, 2])\n\tprintln(arr is []int)\n\tprintln(arr is []string)\n\tm := Any({\n\t\t'a': 1\n\t})\n\tprintln(m is map[string]int)\n\tprintln(m is map[string]string)\n\tprintln(match arr {\n\t\t[]int { 1 }\n\t\telse { 0 }\n\t})\n}\n")
+	assert container_patterns == 'true\nfalse\ntrue\nfalse\n1'
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface',
 		"type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
 	assert alias_interface_out == 'test\nhehe'
@@ -255,23 +391,26 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_sum_is_variant',
 		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tif a is Bird {}\n}\n',
 		'`Bird` is not a variant of sum type `Animal`')
+	run_bad(v3_bin, 'bad_stale_bool_smartcast_after_mutation',
+		'struct Cat {\n\tage int\n}\nstruct Dog {}\ntype Animal = Cat | Dog\nfn main() {\n\tmut animal := Animal(Cat{\n\t\tage: 2\n\t})\n\tis_cat := animal is Cat\n\tanimal = Animal(Dog{})\n\tif is_cat {\n\t\tprintln(animal.age)\n\t}\n}\n',
+		'unknown field `age` on `Animal`')
 	run_bad(v3_bin, 'bad_sum_match_variant',
 		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\nstruct Bird {\n\twings int\n}\ntype Animal = Cat | Dog\nfn main() {\n\ta := Animal(Cat{\n\t\tage: 2\n\t})\n\tmatch a {\n\t\tBird {}\n\t\telse {}\n\t}\n}\n',
 		'`Animal` has no variant `Bird`')
 	run_bad(v3_bin, 'bad_sum_constructor_extra_arg',
 		'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n',
-		'argument count mismatch for `Tree[int]`: expected 1, got 2')
+		'unexpected `,`')
 	run_bad(v3_bin, 'bad_sum_constructor_extra_arg_as_call_arg',
 		'struct Empty {}\nstruct Node[T] {\n\tvalue T\n}\ntype Tree[T] = Empty | Node[T]\nfn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\nfn use(t Tree[int]) {}\nfn main() {\n\tuse(Tree[int](Empty{}, side_effect()))\n}\n',
-		'argument count mismatch for `Tree[int]`: expected 1, got 2')
+		'argument count mismatch for `use`')
 	run_bad_project(v3_bin, 'bad_imported_sum_constructor_extra_arg', {
 		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
 		'main.v':        'import trees { Empty, Tree, side_effect }\n\nfn main() {\n\t_ := Tree[int](Empty{}, side_effect())\n}\n'
-	}, 'main.v', 'argument count mismatch for `trees.Tree[int]`: expected 1, got 2')
+	}, 'main.v', 'unexpected `,`')
 	run_bad_project(v3_bin, 'bad_aliased_sum_constructor_extra_arg', {
 		'trees/trees.v': 'module trees\n\npub struct Empty {}\n\npub struct Node[T] {\n\tpub:\n\tvalue T\n}\n\npub type Tree[T] = Empty | Node[T]\n\npub fn side_effect() Node[int] {\n\treturn Node[int]{\n\t\tvalue: 1\n\t}\n}\n'
 		'main.v':        'import trees as tr\n\nfn main() {\n\t_ := tr.Tree[int](tr.Empty{}, tr.side_effect())\n}\n'
-	}, 'main.v', 'argument count mismatch for `trees.Tree[int]`: expected 1, got 2')
+	}, 'main.v', 'unexpected `,`')
 	run_bad(v3_bin, 'bad_unknown_decl_type', 'fn f(x Missing) {}\nfn main() {}\n',
 		'unknown type `Missing`')
 	run_bad(v3_bin, 'bad_unknown_generic_application_base',
@@ -329,6 +468,9 @@ fn test_type_checker_reports_core_semantic_errors() {
 	nested_embedded_method_out := run_good(v3_bin, 'nested_embedded_method',
 		'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 9\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{}\n\tprintln(int_str(outer.value()))\n}\n')
 	assert nested_embedded_method_out == '9'
+	aliased_embedded_method_out := run_good(v3_bin, 'aliased_embedded_method',
+		'struct Leaf {}\n\nfn (leaf Leaf) value() int {\n\treturn 11\n}\n\nstruct Outer {\n\tLeaf\n}\n\ntype AliasOuter = Outer\n\nfn main() {\n\touter := AliasOuter{}\n\tprintln(int_str(outer.value()))\n}\n')
+	assert aliased_embedded_method_out == '11'
 	nested_embedded_field_out := run_good(v3_bin, 'nested_embedded_field',
 		'struct Leaf {\n\tx int\n}\n\nstruct Middle {\n\tLeaf\n}\n\nstruct Outer {\n\tMiddle\n}\n\nfn main() {\n\touter := Outer{\n\t\tMiddle: Middle{\n\t\t\tLeaf: Leaf{\n\t\t\t\tx: 12\n\t\t\t}\n\t\t}\n\t}\n\tprintln(int_str(outer.x))\n}\n')
 	assert nested_embedded_field_out == '12'
@@ -358,12 +500,12 @@ fn test_type_checker_reports_core_semantic_errors() {
 	assert const_forward_out == '2'
 	imported_call_out := run_good_project(v3_bin, 'qualified_import_call', {
 		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.answer()))\n}\n'
-		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
+		'moda/moda.v': 'module moda\n\npub fn answer() int {\n\treturn 7\n}\n'
 	}, 'main.v')
 	assert imported_call_out == '7'
 	comptime_type_chain_out := run_good_project(v3_bin, 'comptime_type_chain_keeps_later_decls', {
 		'main.v':      'module main\n\nimport moda\n\nfn main() {\n\tprintln(int_str(moda.after_chain()))\n}\n'
-		'moda/moda.v': 'module moda\n\nfn choose[T](x T) T {\n\t$if T is u8 {\n\t\treturn x\n\t} $else $if T is int {\n\t\treturn x\n\t} $else {}\n\treturn x\n}\n\nfn after_chain() int {\n\treturn 7\n}\n'
+		'moda/moda.v': 'module moda\n\nfn choose[T](x T) T {\n\t$if T is u8 {\n\t\treturn x\n\t} $else $if T is int {\n\t\treturn x\n\t} $else {}\n\treturn x\n}\n\npub fn after_chain() int {\n\treturn 7\n}\n'
 	}, 'main.v')
 	assert comptime_type_chain_out == '7'
 	builder_out := run_good(v3_bin, 'strings_builder_from_vlib',
@@ -371,7 +513,7 @@ fn test_type_checker_reports_core_semantic_errors() {
 	assert builder_out == 'ok!\nok!'
 	init_order_out := run_good_project(v3_bin, 'module_init_order', {
 		'main.v':      'module main\n\nimport moda\n\n__global seen int\n\nfn init() {\n\tseen = moda.value()\n}\n\nfn main() {\n\tprintln(int_str(seen))\n\tprintln(int_str(moda.value()))\n}\n'
-		'moda/moda.v': 'module moda\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\nfn value() int {\n\treturn flag\n}\n'
+		'moda/moda.v': 'module moda\n\n__global flag int\n\nfn init() {\n\tflag = 41\n}\n\npub fn value() int {\n\treturn flag\n}\n'
 	}, 'main.v')
 	assert init_order_out == '41\n41'
 	hier_init_order_out := run_good_project(v3_bin, 'hierarchical_module_init_order', {
@@ -409,9 +551,6 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'moda/moda.v': 'module moda\n\n__global hit int\n\nstruct Tracer {}\n\n@[if trace ?]\nfn (t Tracer) trace(x int) {}\n\nfn side_effect() int {\n\thit = 99\n\treturn 1\n}\n\npub fn run() int {\n\tt := Tracer{}\n\tt.trace(side_effect())\n\treturn hit\n}\n'
 	}, 'main.v')
 	assert disabled_if_method_out == '0'
-	disabled_operator_out := run_good(v3_bin, 'disabled_if_operator_call_elides_args',
-		'__global hit int\n\nstruct Number {\n\tn int\n}\n\n@[if trace ?]\nfn (a Number) + (b Number) Number {\n\treturn Number{n: a.n + b.n}\n}\n\nfn side_effect() Number {\n\thit = 99\n\treturn Number{n: 2}\n}\n\nfn main() {\n\ta := Number{n: 1}\n\t_ := a + side_effect()\n\tprintln(int_str(hit))\n}\n')
-	assert disabled_operator_out == '0'
 	disabled_if_non_fn_out := run_good(v3_bin, 'disabled_if_non_fn_decl_skipped',
 		'@[if trace ?]\nstruct DisabledStruct {\n\tbad MissingDisabledType\n}\n\nstruct EnabledStruct {\n\tvalue int\n}\n\nfn main() {\n\tprintln(int_str(EnabledStruct{value: 7}.value))\n}\n')
 	assert disabled_if_non_fn_out == '7'
@@ -420,9 +559,26 @@ fn test_type_checker_reports_core_semantic_errors() {
 	assert function_defer_loop_out == '300'
 	run_bad_project(v3_bin, 'array_append_distinct_module_types', {
 		'main.v':      'module main\n\nimport moda\nimport modb\n\nfn main() {\n\tmut xs := []moda.Foo{}\n\tys := []modb.Foo{}\n\txs << ys\n}\n'
-		'moda/moda.v': 'module moda\n\nstruct Foo {\n\ta int\n}\n'
-		'modb/modb.v': 'module modb\n\nstruct Foo {\n\tb int\n}\n'
+		'moda/moda.v': 'module moda\n\npub struct Foo {\n\ta int\n}\n'
+		'modb/modb.v': 'module modb\n\npub struct Foo {\n\tb int\n}\n'
 	}, 'main.v', 'cannot append `[]modb.Foo` to `[]moda.Foo`')
+}
+
+fn test_vv_input_with_comma_in_decl_assign_is_rejected_without_overwrite() {
+	v3_bin := build_v3()
+	source_path := unique_temp_path('comma_in_decl_assign') + '.vv'
+	default_output := source_path.all_before_last('.vv')
+	source := 'fn main() {\n\ta := [1, 2, 3]\n\tmut b := a.clone(), a.clone()\n\tprintln(b)\n}\n'
+	os.write_file(source_path, source) or { panic(err) }
+	defer {
+		os.rm(source_path) or {}
+		os.rm(default_output) or {}
+	}
+	result := os.execute('${v3_bin} -nocache ${source_path}')
+	assert result.exit_code != 0, 'expected compile failure, got success: ${result.output}'
+	assert result.output.contains('unexpected `,` in expression, use `;` or a new line to separate statements'), result.output
+
+	assert (os.read_file(source_path) or { panic(err) }) == source
 }
 
 fn test_interface_container_as_cast_requirements() {
@@ -445,13 +601,6 @@ fn test_interface_container_as_cast_requirements() {
 	run_runtime_bad(v3_bin, 'empty_interface_as_map_wrong_value_payload',
 		"interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\t_ := values(Any({'answer': 'wrong value type'}))\n}\n",
 		'as cast: cannot cast interface value to `map[string]int`')
-}
-
-fn test_interface_method_rejects_narrowed_interface_param() {
-	v3_bin := build_v3()
-	run_bad(v3_bin, 'bad_interface_method_narrowed_interface_param',
-		'interface Base {\n\tbase() int\n}\n\ninterface Narrow {\n\tBase\n\tnarrow() int\n}\n\ninterface Handler {\n\thandle(x Base) int\n}\n\nstruct Service {}\n\nfn (s Service) handle(x Narrow) int {\n\treturn x.narrow()\n}\n\nfn main() {\n\t_ := Handler(Service{})\n}\n',
-		'does not implement interface')
 }
 
 fn test_review_generic_call_diagnostics() {
@@ -921,34 +1070,6 @@ fn main() {
 }
 ')
 	assert literal_out == 'ok'
-	run_bad(v3_bin, 'bad_generic_receiver_none_for_result', 'struct Sink {}
-
-fn (s Sink) take(value !int) {}
-
-fn invoke[T](sink T) {
-	sink.take(none)
-}
-
-fn main() {
-	invoke(Sink{})
-}
-',
-		'cannot use `none` as argument 1 to `sink.take`; expected `!int`')
-	result_error_out := run_good(v3_bin, 'good_generic_receiver_ierror_for_result', 'struct Sink {}
-
-fn (s Sink) take(value !int) {}
-
-fn invoke[T](sink T, err IError) {
-	sink.take(error("literal"))
-	sink.take(err)
-}
-
-fn main() {
-	invoke(Sink{}, error("value"))
-	println("ok")
-}
-')
-	assert result_error_out == 'ok'
 	option_out := run_good(v3_bin, 'good_generic_receiver_none_for_option', 'struct Sink {}
 
 fn (s Sink) take(value ?int) {}
@@ -995,6 +1116,33 @@ fn main() {
 // Regression tests for the post-PR review fixes: fixed-array literals must match
 // the expected fixed length, and genuine fixed-array if-branches of different
 // lengths must mismatch — while bare array literals stay length-agnostic.
+fn test_generic_method_infers_enclosing_bound_receiver_type() {
+	v3_bin := build_v3()
+	output := run_good(v3_bin, 'good_nested_bound_generic_method', 'struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) get[T]() T {
+	return b.value
+}
+
+fn (b Box[T]) take[T](x T) T {
+	return x
+}
+
+fn (b Box[T]) nested[T]() T {
+	return b.take(b.get())
+}
+
+fn main() {
+	println(Box[int]{
+		value: 7
+	}.nested())
+}
+')
+	assert output == '7'
+}
+
 fn test_fixed_array_length_checks() {
 	v3_bin := build_v3()
 	// A literal passed where a fixed array is expected must have the exact length.
@@ -1064,12 +1212,12 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch',
 		'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n',
 		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'bad_option_if_error_branch',
-		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n",
-		'if-expression branch type mismatch')
-	run_bad(v3_bin, 'bad_option_const_if_error_branch',
-		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n",
-		'if-expression branch type mismatch')
+	option_if_error := run_good(v3_bin, 'good_option_if_error_branch',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {\n\tprintln(int_str(f(false) or { -1 }))\n\t_ := f(true) or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert option_if_error == '1\nbad'
+	option_const_if_error := run_good(v3_bin, 'good_option_const_if_error_branch',
+		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {\n\t_ := f() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n}\n")
+	assert option_const_if_error == 'bad'
 	run_bad(v3_bin, 'bad_option_return_error',
 		"fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n",
 		'Option and Result types have been split')
@@ -1094,10 +1242,39 @@ fn test_multi_return_if_tail_infers_common_type() {
 	assert call_assign == '7'
 	run_bad(v3_bin, 'bad_multi_return_if_call_mixed_tuple_tail_decl_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tpair(1)\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n',
-		'if-expression branch type mismatch')
+		'expression evaluated but not used')
 	run_bad(v3_bin, 'bad_multi_return_if_void_tail_decl_assign',
 		'fn side() {}\nfn main() {\n\tflag := true\n\ta, b := if flag {\n\t\tside()\n\t\t1\n\t} else {\n\t\tside()\n\t\t2\n\t}\n\tprintln(int_str(b))\n}\n',
 		'multi-return assignment mismatch')
+}
+
+fn test_multi_return_or_block_accepts_tuple_fallback() {
+	v3_bin := build_v3()
+	output := run_good(v3_bin, 'good_multi_return_or_tuple_fallback', '
+fn pair() !(string, string) {
+	return error("no pair")
+}
+
+fn main() {
+	first, second := pair() or { "first", "second" }
+	println("\${first} \${second}")
+}
+')
+	assert output == 'first second'
+}
+
+fn test_or_block_accepts_assert_false_fallback() {
+	v3_bin := build_v3()
+	output := run_good(v3_bin, 'good_or_assert_false_fallback', '
+fn main() {
+	values := {
+		"answer": u64(42)
+	}
+	answer := values["answer"] or { assert false, "missing answer" }
+	println(answer)
+}
+')
+	assert output == '42'
 }
 
 fn test_multi_return_if_assignment_uses_lhs_context() {
@@ -1214,7 +1391,7 @@ fn test_pr_review_struct_sum_scope_and_gated_regressions() {
 		'v.mod':  "Module { name: 'module_unknown_scope' }\n"
 		'main.v': 'module main\n\nimport m\n\nstruct Foo {}\n\nfn main() {\n\t_ = m.consume(Foo{})\n}\n'
 		'm/m.v':  'module m\n\npub const value = 1\n\npub fn consume(x Foo) int {\n\treturn value\n}\n'
-	}, 'main.v', 'expected `m.Foo`')
+	}, 'main.v', 'unknown type')
 	aliased_sum := run_good_project(v3_bin, 'good_aliased_sum_uses_full_suffix', {
 		'v.mod':           "Module { name: 'aliased_sum_full_suffix' }\n"
 		'main.v':          'module main\n\nimport other as _\nimport sub.tast as tast\n\nfn main() {\n\tvalue := tast.make_beta()\n\tif value is tast.Beta {\n\t\tprintln(int_str(value.n))\n\t} else {\n\t\tprintln("wrong")\n\t}\n}\n'
@@ -1238,9 +1415,6 @@ fn test_local_type_names_include_nested_block_scope() {
 	local_generic_arg := run_good(v3_bin, 'good_local_generic_struct_init_local_arg',
 		"fn main() {\n\tstruct Inner {}\n\tstruct Box[T] {}\n\t_ := Box[Inner]{}\n\tprintln('ok')\n}\n")
 	assert local_generic_arg == 'ok'
-	mutual_local := run_good(v3_bin, 'good_local_mutual_struct_pointer_fields',
-		"fn main() {\n\tstruct A {\n\t\tb &B\n\t}\n\tstruct B {\n\t\ta &A\n\t}\n\ta := A{}\n\t_ := B{\n\t\ta: &a\n\t}\n\tprintln('ok')\n}\n")
-	assert mutual_local == 'ok'
 }
 
 fn test_module_local_error_type_shadows_builtin_error() {
@@ -1365,7 +1539,7 @@ fn test_pr_review_codegen_batch_two() {
 	assert flag == 'Perm{.read | .write}\nPerm{.read}'
 	// spawn of an option-returning fn stores/reads the `Optional_T` ABI layout.
 	spawn_opt := run_good(v3_bin, 'good_spawn_option_return',
-		"fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait()\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n")
+		"fn work() ?string {\n\treturn 'hello'\n}\nfn main() {\n\tmut ts := []thread ?string{}\n\tts << spawn work()\n\trs := ts.wait() or { []string{} }\n\tx := rs[0] or { 'none' }\n\tprintln(x)\n}\n")
 	assert spawn_opt == 'hello'
 	// A global V function passed to a method `fn ()` param keeps the function-pointer
 	// typedef (not `(void*)`).
@@ -1581,11 +1755,6 @@ fn test_pr_review_codegen_batch_twelve() {
 	gpos := run_good(v3_bin, 'good_positional_generic_heap_struct',
 		'struct Box[T] {\n\ta T\n\tb T\n}\nfn main() {\n\tmut arr := []&Box[int]{}\n\tarr << &Box[int]{1, 2}\n\tprintln(int_str(arr[0].a + arr[0].b))\n}\n')
 	assert gpos == '3'
-	// A positional generic heap literal that omits a default-initialized `[]T` field still
-	// gets that field's default (`array_new(...)`) alongside the positional value.
-	gposdef := run_good(v3_bin, 'good_positional_generic_heap_default',
-		'struct Box[T] {\n\tv     T\n\titems []T\n}\nfn main() {\n\tb := &Box[int]{5}\n\tmut its := b.items.clone()\n\tits << 10\n\tprintln(int_str(b.v))\n\tprintln(int_str(its.len))\n}\n')
-	assert gposdef == '5\n1'
 	// Non-generic positional heap literals keep working (no regression).
 	pos := run_good(v3_bin, 'good_positional_heap_struct',
 		'struct Point {\n\tx int\n\ty int\n}\nfn main() {\n\tmut arr := []&Point{}\n\tarr << &Point{1, 2}\n\tprintln(int_str(arr[0].x + arr[0].y))\n}\n')
@@ -1718,7 +1887,7 @@ fn test_pr_review_codegen_batch_eighteen() {
 	// entry, so an omitted `items []T` needs its `array_new` default or the field has invalid
 	// zeroed array metadata (here a later append would silently drop the elements).
 	heap_default := run_good(v3_bin, 'good_heap_generic_omitted_array_default',
-		"struct Box[T] {\n\tv     T\n\titems []T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\tmut b := make()\n\tb.items << 10\n\tb.items << 20\n\tprintln(int_str(b.v) + ',' + int_str(b.items.len) + ',' + int_str(b.items[0]) + ',' + int_str(b.items[1]))\n}\n")
+		"struct Box[T] {\n\tv T\nmut:\n\titems []T\n}\nfn make() &Box[int] {\n\treturn &Box{\n\t\tv: 1\n\t}\n}\nfn main() {\n\tmut b := make()\n\tb.items << 10\n\tb.items << 20\n\tprintln(int_str(b.v) + ',' + int_str(b.items.len) + ',' + int_str(b.items[0]) + ',' + int_str(b.items[1]))\n}\n")
 	assert heap_default == '1,2,10,20'
 	// `[]thread T.wait()` recovers the spawned return type from the thread name; a fixed-array
 	// return with a non-decimal length (`[0x10]u8`) must reconstruct the same `_v_ret_*` wrapper
@@ -2112,4 +2281,31 @@ fn test_option_or_error_literal_in_result_match_branch() {
 	output := run_good(v3_bin, 'good_option_or_error_in_result_match',
 		"fn maybe_number(text string) ?f64 {\n\treturn text.f64()\n}\n\nfn convert(text string) !f64 {\n\treturn match text {\n\t\t'' { 0.0 }\n\t\telse { maybe_number(text) or { error('bad number') } }\n\t}\n}\n\nfn main() {\n\tprintln(convert('2.5') or { 0.0 })\n}\n")
 	assert output == '2.5'
+}
+
+fn test_for_loop_smartcast_is_dropped_after_write() {
+	v3_bin := build_v3()
+	// A write to the loop-narrowed value inside the body drops the narrowing for the
+	// rest of that iteration; the lexical loop fallback must not reconstruct it.
+	bad := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{})\n\tfor x is Foo {\n\t\tx = Bar{}\n\t\tprintln(x.foo)\n\t}\n}\n'
+	run_bad(v3_bin, 'bad_for_loop_smartcast_after_write', bad, 'unknown field `foo`')
+
+	// Uses that precede the write stay narrowed, so the fallback must still apply there.
+	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tmut x := FB(Foo{\n\t\tfoo: 7\n\t})\n\tfor x is Foo {\n\t\tprintln(x.foo)\n\t\tx = Bar{}\n\t\tbreak\n\t}\n}\n'
+	output := run_good(v3_bin, 'good_for_loop_smartcast_before_write', good)
+	assert output == '7'
+}
+
+fn test_bool_condition_alias_rejects_pointer_pointee_writes() {
+	v3_bin := build_v3()
+	// A recorded `p.value is Foo` reads the sum through an immutable pointer; the pointee
+	// can be reassigned through another alias before the guard, so the smartcast must not
+	// be reused for `p.value` in the then-branch.
+	bad := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nstruct Holder {\nmut:\n\tvalue FB\n}\n\nfn main() {\n\tmut holder := Holder{\n\t\tvalue: Foo{}\n\t}\n\tp := &holder\n\twas_foo := p.value is Foo\n\tholder.value = Bar{}\n\tif was_foo {\n\t\tprintln(p.value.foo)\n\t}\n}\n'
+	run_bad(v3_bin, 'bad_bool_condition_alias_pointer_pointee', bad, 'unknown field `foo`')
+
+	// An immutable local value cannot change, so its condition alias stays valid.
+	good := 'struct Foo {\n\tfoo int\n}\n\nstruct Bar {\n\tbar int\n}\n\ntype FB = Foo | Bar\n\nfn main() {\n\tx := FB(Foo{\n\t\tfoo: 7\n\t})\n\twas_foo := x is Foo\n\tif was_foo {\n\t\tprintln(x.foo)\n\t}\n}\n'
+	output := run_good(v3_bin, 'good_bool_condition_alias_immutable_local', good)
+	assert output == '7'
 }

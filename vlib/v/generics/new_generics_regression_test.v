@@ -30,6 +30,11 @@ fn testsuite_begin() {
 }
 
 fn test_new_generic_solver_does_not_regress_silently() {
+	$if macos {
+		// V3 is the default macOS compiler and has one generic solver enabled by
+		// default. This fixture tracks only V1's opt-in solver and known failures.
+		return
+	}
 	run_new_generic_solver_tests('vlib/math/vec',
 		'${os.quoted_path(vexe)} -new-generic-solver test vlib/math/vec', expected_summary_vec,
 		expected_summsvc_vec, failing_math_vec_tests[..])

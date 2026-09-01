@@ -72,8 +72,17 @@ pub fn (mut app App) seal_window_destroy(ticket WindowDestroyTicket) ! {
 	if message := app.take_internal_fault(.teardown_seal) {
 		return error(message)
 	}
-	app.windows[index].destroy_stage = .sealed
+	plan := if app.windows[index].services_cancelled {
+		WindowServiceCancellationPlan{}
+	} else {
+		app.prepare_window_service_cancellation_locked(ticket.window)!
+	}
 	app.seal_render_window_close_locked(ticket.window)!
+	if !app.windows[index].services_cancelled {
+		app.commit_window_service_cancellation_locked(plan)
+		app.windows[index].services_cancelled = true
+	}
+	app.windows[index].destroy_stage = .sealed
 }
 
 // seal_window_destroy_terminal_for_stop is the irreversible fallback used only
@@ -102,14 +111,23 @@ fn (mut app App) seal_window_destroy_terminal_locked(id WindowId) !WindowDestroy
 	return app.seal_window_destroy_terminal_index_locked(id.slot)
 }
 
-fn (mut app App) seal_window_destroy_terminal_index_locked(index int) WindowDestroyTicket {
+fn (mut app App) seal_window_destroy_terminal_index_locked(index int) !WindowDestroyTicket {
 	mut slot := &app.windows[index]
 	id := slot.id
 	serial := terminal_destroy_serial(slot)
+	plan := if slot.services_cancelled {
+		WindowServiceCancellationPlan{}
+	} else {
+		app.prepare_window_service_cancellation_locked(id)!
+	}
+	app.seal_render_window_terminal_locked(id)
+	if !slot.services_cancelled {
+		app.commit_window_service_cancellation_locked(plan)
+		slot.services_cancelled = true
+	}
 	slot.destroy_stage = .sealed
 	slot.destroy_serial = serial
 	slot.backend_destroyed = false
-	app.seal_render_window_terminal_locked(id)
 	return WindowDestroyTicket{
 		app_instance: app.instance_id
 		window:       id
@@ -155,6 +173,18 @@ pub fn (mut app App) finish_window_destroy(ticket WindowDestroyTicket, prior_err
 		}
 		return err
 	}
+	destroy_order := app.services.child_first_order(ticket.window) or {
+		app.state_mutex.unlock()
+		return err
+	}
+	if destroy_order.len > 1 {
+		app.state_mutex.unlock()
+		return error(err_owner_relation_invalid)
+	}
+	app.services.ensure_no_active_borrows(ticket.window) or {
+		app.state_mutex.unlock()
+		return err
+	}
 	backend_destroyed := app.windows[index].backend_destroyed
 	mut destroy_event_delivery_token := u64(0)
 	if !app.windows[index].destroy_event_queued && !app.windows[index].destroy_event_emitted {
@@ -174,6 +204,7 @@ pub fn (mut app App) finish_window_destroy(ticket WindowDestroyTicket, prior_err
 	if index < app.windows.len && app.windows[index].id == ticket.window
 		&& app.windows[index].destroy_serial == ticket.serial {
 		mut slot := &app.windows[index]
+		app.services.remove_window(ticket.window) or { errors << err.msg() }
 		slot.status = .destroyed
 		slot.destroy_stage = .finished
 		slot.backend_destroyed = backend_destroyed
@@ -255,7 +286,7 @@ fn render_teardown_notice_from_slot(app_instance u64, slot WindowSlot) RenderTea
 	}
 }
 
-fn (mut app App) accept_backend_teardown_locked(id WindowId) bool {
+fn (mut app App) accept_backend_teardown_locked(id WindowId, native_destroyed bool) bool {
 	if id.app_instance != app.instance_id || id.slot < 0 || id.slot >= app.windows.len {
 		return false
 	}
@@ -263,7 +294,8 @@ fn (mut app App) accept_backend_teardown_locked(id WindowId) bool {
 	if slot.id != id || slot.status != .alive {
 		return false
 	}
-	if slot.backend_destroyed {
+	if slot.teardown_notice_pending {
+		slot.backend_destroyed = slot.backend_destroyed || native_destroyed
 		return true
 	}
 	sequence := app.take_teardown_sequence_locked()
@@ -285,7 +317,7 @@ fn (mut app App) accept_backend_teardown_locked(id WindowId) bool {
 	// fallback, but ordering is stamped only at actual backend acceptance.
 	slot.destroy_stage = .sealed
 	slot.destroy_serial = serial
-	slot.backend_destroyed = true
+	slot.backend_destroyed = native_destroyed
 	slot.teardown_sequence = sequence
 	slot.teardown_snapshot = snapshot
 	slot.teardown_notice_pending = true
@@ -299,8 +331,8 @@ fn (mut app App) queue_backend_teardown_event_locked(id WindowId, delivery_token
 		return false
 	}
 	mut slot := &app.windows[id.slot]
-	if slot.id != id || slot.status != .alive || !slot.backend_destroyed
-		|| slot.destroy_event_queued || slot.destroy_event_emitted {
+	if slot.id != id || slot.status != .alive || slot.destroy_stage != .sealed
+		|| !slot.teardown_notice_pending || slot.destroy_event_queued || slot.destroy_event_emitted {
 		return false
 	}
 	slot.destroy_event_queued = true
@@ -479,7 +511,11 @@ pub fn (mut app App) finish_stop(ticket AppStopTicket, prior_errors []string) ! 
 
 		// This is the final core guard. Higher layers get the same fallback earlier so
 		// their cleanup callbacks still run while renderer/native state is available.
-		for destroy_ticket in app.seal_remaining_windows_terminal_for_stop() {
+		terminal_tickets := app.seal_remaining_windows_terminal_for_stop() or {
+			errors << err.msg()
+			[]WindowDestroyTicket{}
+		}
+		for destroy_ticket in terminal_tickets {
 			app.finish_window_destroy(destroy_ticket, []string{}) or { errors << err.msg() }
 		}
 		pending_backend_error := app.backend.retained_delivery_error_for_stop()
@@ -538,27 +574,76 @@ fn (app &App) return_stop_terminal() ! {
 	}
 }
 
-fn (app &App) live_window_ids_for_stop() []WindowId {
+fn (app &App) live_window_ids_for_stop() ![]WindowId {
 	app.state_mutex.lock()
+	defer {
+		app.state_mutex.unlock()
+	}
 	mut ids := []WindowId{}
-	for slot in app.windows {
+	for id in app.services.child_first_all()! {
+		slot := app.windows[id.slot]
 		if slot.status == .alive && slot.destroy_stage in [.none, .prepared] {
 			ids << slot.id
 		}
 	}
-	app.state_mutex.unlock()
 	return ids
 }
 
-fn (mut app App) seal_remaining_windows_terminal_for_stop() []WindowDestroyTicket {
+fn (app &App) window_ids_for_ordered_stop() ![]WindowId {
 	app.state_mutex.lock()
-	mut tickets := []WindowDestroyTicket{}
-	for i, slot in app.windows {
+	defer {
+		app.state_mutex.unlock()
+	}
+	mut ids := []WindowId{}
+	for id in app.services.child_first_all()! {
+		slot := app.windows[id.slot]
 		if slot.status == .alive && slot.destroy_stage != .finished {
-			tickets << app.seal_window_destroy_terminal_index_locked(i)
+			ids << slot.id
 		}
 	}
-	app.state_mutex.unlock()
+	return ids
+}
+
+fn (app &App) window_destroy_state_for_stop(id WindowId) !(WindowDestroyStage, WindowDestroyTicket) {
+	app.state_mutex.lock()
+	defer {
+		app.state_mutex.unlock()
+	}
+	if id.app_instance != app.instance_id || id.slot < 0 || id.slot >= app.windows.len {
+		return error(err_stale_window)
+	}
+	slot := app.windows[id.slot]
+	if slot.id != id || slot.status != .alive || slot.destroy_stage == .finished {
+		return error(err_stale_window)
+	}
+	return slot.destroy_stage, WindowDestroyTicket{
+		app_instance: app.instance_id
+		window:       id
+		serial:       slot.destroy_serial
+	}
+}
+
+// live_window_ids_for_stop_for_gg is an internal bridge reserved for the gg
+// facade teardown. It is not a user API and must not be exposed in user README
+// documentation.
+pub fn (app &App) live_window_ids_for_stop_for_gg() ![]WindowId {
+	app.assert_owner_thread()!
+	return app.live_window_ids_for_stop()
+}
+
+fn (mut app App) seal_remaining_windows_terminal_for_stop() ![]WindowDestroyTicket {
+	app.state_mutex.lock()
+	defer {
+		app.state_mutex.unlock()
+	}
+	mut tickets := []WindowDestroyTicket{}
+	for id in app.services.child_first_all()! {
+		i := id.slot
+		slot := app.windows[i]
+		if slot.status == .alive && slot.destroy_stage != .finished {
+			tickets << app.seal_window_destroy_terminal_index_locked(i)!
+		}
+	}
 	return tickets
 }
 
@@ -573,8 +658,41 @@ fn (app &App) sealed_window_tickets_for_stop() []WindowDestroyTicket {
 fn (app &App) window_tickets_for_stop(stage WindowDestroyStage) []WindowDestroyTicket {
 	app.state_mutex.lock()
 	mut tickets := []WindowDestroyTicket{}
-	for slot in app.windows {
+	mut included := map[string]bool{}
+	if stage == .sealed {
+		for id in app.teardown_acceptance_order {
+			if id.slot < 0 || id.slot >= app.windows.len {
+				continue
+			}
+			slot := app.windows[id.slot]
+			if slot.id == id && slot.status == .alive && slot.destroy_stage == stage
+				&& slot.destroy_serial != 0 {
+				tickets << WindowDestroyTicket{
+					app_instance: app.instance_id
+					window:       slot.id
+					serial:       slot.destroy_serial
+				}
+				included[id.str()] = true
+			}
+		}
+	}
+	for id in app.services.child_first_all() or { []WindowId{} } {
+		if included[id.str()] {
+			continue
+		}
+		slot := app.windows[id.slot]
 		if slot.status == .alive && slot.destroy_stage == stage && slot.destroy_serial != 0 {
+			tickets << WindowDestroyTicket{
+				app_instance: app.instance_id
+				window:       slot.id
+				serial:       slot.destroy_serial
+			}
+			included[id.str()] = true
+		}
+	}
+	for slot in app.windows {
+		if slot.status == .alive && slot.destroy_stage == stage && slot.destroy_serial != 0
+			&& !included[slot.id.str()] {
 			tickets << WindowDestroyTicket{
 				app_instance: app.instance_id
 				window:       slot.id

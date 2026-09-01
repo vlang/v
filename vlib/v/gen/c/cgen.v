@@ -20,11 +20,11 @@ import sync.pool
 // in C++, or have special meaning in V
 const c_reserved = ['asm', 'array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class',
 	'complex', 'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error',
-	'exit', 'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int',
-	'long', 'malloc', 'namespace', 'new', 'nil', 'panic', 'register', 'restrict', 'return', 'short',
-	'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename', 'typeof',
-	'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'stdout', 'stdin',
-	'stderr', 'errno', 'environ', 'requires']
+	'exit', 'explicit', 'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline',
+	'int', 'long', 'malloc', 'namespace', 'new', 'nil', 'operator', 'panic', 'register', 'restrict',
+	'return', 'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef',
+	'typename', 'typeof', 'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template',
+	'true', 'stdout', 'stdin', 'stderr', 'errno', 'environ', 'requires']
 const c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 // same order as in token.Kind
 const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
@@ -469,7 +469,7 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				if stmt.kind == 'flag' && stmt.main.contains('-l') {
 					global_g.mods_with_c_libs[file.mod.name] = true
 				}
-				if stmt.kind in ['include', 'preinclude'] {
+				if stmt.kind in ['include', 'preinclude', 'insert'] {
 					global_g.mods_with_c_includes[file.mod.name] = true
 				}
 			}
@@ -931,7 +931,9 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 			if var := g.global_const_defs[var_name] {
 				if !var.def.starts_with('#define') {
 					helpers.writeln(var.def)
-					if var.def.starts_with('/*') || var.def.starts_with('extern ') {
+					if var.extern_def.len > 0 {
+						g.extern_out.writeln(var.extern_def)
+					} else if var.def.starts_with('/*') || var.def.starts_with('extern ') {
 						// skip C globals (comment-only placeholders) and
 						// already extern declarations (e.g. extern C globals)
 						g.extern_out.writeln(var.def)
@@ -1711,7 +1713,7 @@ fn (mut g Gen) expr_string_with_cast(expr ast.Expr, typ ast.Type, exp ast.Type) 
 	// pos2 := 	g.out_parallel[g.out_idx].len
 	g.expr_with_cast(expr, typ, exp)
 	// g.out_parallel[g.out_idx].cut_to(pos2)
-	return g.out.cut_to(pos).trim_space()
+	return g.normalize_extracted_stmt(g.out.cut_to(pos))
 }
 
 // Surround a potentially multi-statement expression safely with `prepend` and `append`.
@@ -3344,7 +3346,9 @@ pub fn (mut g Gen) write_array_fixed_return_types() {
 			g.type_definitions.writeln('\t${field_decl};')
 		} else {
 			mut fixed_elem_name := g.styp(resolved_elem_type.set_nr_muls(0))
-			if resolved_elem_type.is_ptr() {
+			if resolved_elem_type.has_option_or_result() {
+				fixed_elem_name = g.styp(resolved_elem_type)
+			} else if resolved_elem_type.is_ptr() {
 				fixed_elem_name += '*'.repeat(resolved_elem_type.nr_muls())
 			}
 			g.type_definitions.writeln('\t${fixed_elem_name} ret_arr[${info.size}];')
@@ -4320,7 +4324,16 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						g.write('${tmp_var} = ')
 					}
 				}
-				g.stmt(stmt)
+				if stmt is ast.ExprStmt {
+					// This final expression supplies the enclosing if/match temporary even when
+					// its AST node was not marked as an expression. Keep propagated call results
+					// alive so nested match branches emit the unwrapped value after their prelude.
+					mut value_stmt := stmt
+					value_stmt.is_expr = true
+					g.stmt(value_stmt)
+				} else {
+					g.stmt(stmt)
+				}
 				// Reset outer_tmp_var after processing
 				if is_if_expr_with_tmp {
 					g.outer_tmp_var = ''
@@ -5158,7 +5171,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		field_styp := g.styp(field.typ)
 		if got_sym.kind in [.sum_type, .interface] {
 			// the field is already a wrapped pointer; we shouldn't wrap it once again
-			sb.write_string(', .${c_name(field.name)} = ptr->${field.name}')
+			sb.write_string(', .${c_name(field.name)} = ptr->${c_name(field.name)}')
 		} else {
 			sb.write_string(', .${c_name(field.name)} = (${field_styp}*)((char*)${ptr} + __offsetof_ptr(${ptr}, ${type_cname}, ${c_name(field.name)}))')
 		}
@@ -8197,7 +8210,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							g.write('I_${field_sym.cname}_as_I_${cast_sym.cname}(${ptr}')
 							g.expr(node.expr)
 							dot := if lhs_expr_type.is_ptr() { '->' } else { '.' }
-							g.write('${dot}${node.field_name}))')
+							g.write('${dot}${field_name}))')
 							return
 						} else if !is_option_unwrap {
 							if i != 0 {
@@ -10513,14 +10526,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 						if obj_sym.kind == .interface && cast_sym.kind == .interface {
 							if cast_sym.cname != obj_sym.cname {
 								ptr := '*'.repeat(resolved_var.typ.nr_muls())
-								g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${node.name})')
+								g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}(${ptr}${name})')
 							} else {
 								ptr := if is_option {
 									''
 								} else {
 									'*'.repeat(resolved_var.typ.nr_muls())
 								}
-								g.write('${ptr}${node.name}')
+								g.write('${ptr}${name}')
 							}
 						} else {
 							if sumtype_fn_value_smartcast {
@@ -12760,7 +12773,9 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					fixed_elem_type := g.unalias_type_keep_muls(sym.info.elem_type)
 					resolved_elem_sym := g.table.sym(fixed_elem_type)
 					mut fixed_elem_name := g.styp(fixed_elem_type.set_nr_muls(0))
-					if fixed_elem_type.is_ptr() {
+					if fixed_elem_type.has_option_or_result() {
+						fixed_elem_name = g.styp(fixed_elem_type)
+					} else if fixed_elem_type.is_ptr() {
 						fixed_elem_name += '*'.repeat(fixed_elem_type.nr_muls())
 					}
 					len := sym.info.size
@@ -12907,10 +12922,19 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					field_deps << dep
 				}
 				for field in sym.info.fields {
+					fsym := g.table.sym(field.typ)
 					if field.typ.is_ptr() {
+						// Pointer fields do not normally require a complete pointee type. An
+						// alias to a fixed array is a typedef, however, so C must see that
+						// alias declaration before it can name a pointer to it.
+						if fsym.info is ast.Alias && g.alias_is_fixed_array_of_non_builtin(fsym) {
+							dep := fsym.scoped_name()
+							if dep in type_names && dep !in field_deps {
+								field_deps << dep
+							}
+						}
 						continue
 					}
-					fsym := g.table.sym(field.typ)
 					dep := fsym.name
 					// skip if not in types list or already in deps
 					if dep !in type_names || dep in field_deps {
@@ -13608,8 +13632,16 @@ fn (mut g Gen) type_default_impl(typ_ ast.Type, decode_sumtype bool) string {
 		.sum_type {
 			return if decode_sumtype { g.type_default_sumtype(typ, sym) } else { '{0}' }
 		}
-		.interface, .multi_return, .thread {
+		.interface, .multi_return {
 			return '{0}'
+		}
+		.thread {
+			// Windows uses a struct for typed thread handles, while untyped Windows
+			// handles and POSIX pthread_t values are scalar types.
+			if g.pref.os == .windows && g.styp(typ) != '__v_thread' {
+				return '{0}'
+			}
+			return '0'
 		}
 		.alias {
 			return g.type_default((sym.info as ast.Alias).parent_type)

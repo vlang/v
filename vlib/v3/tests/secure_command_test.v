@@ -70,6 +70,13 @@ fn test_command_argument_parser_preserves_quoted_values() {
 	assert invalid == []string{}
 }
 
+fn test_missing_program_error_identifies_program() {
+	program := 'v3_missing_command_17126'
+	result := cmdexec.run(program, [])
+	assert result.exit_code != 0
+	assert result.output.contains(program), result.output
+}
+
 fn test_split_linker_path_is_not_passed_to_object_compile() {
 	v3_bin := build_secure_command_v3()
 	root := secure_temp_path('split_linker_object')

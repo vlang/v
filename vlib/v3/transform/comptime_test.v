@@ -34,6 +34,25 @@ fn test_comptime_for_base_type_unwraps_storage_indirections() {
 	assert t.comptime_for_base_type('shared websocket.ClientState') == 'websocket.ClientState'
 }
 
+fn test_comptime_method_receiver_name_normalizes_main_qualification() {
+	assert comptime_method_receiver_name('main.App', 'veb') == 'App'
+	assert comptime_method_receiver_matches('App', 'main.App', 'main.App', 'main', 'veb')
+}
+
+fn test_comptime_sum_variants_normalize_main_specialization_lock() {
+	mut a := flat.FlatAst.new()
+	t := Transformer{
+		a:         &a
+		sum_types: {
+			'Sum': ['int', 'string']
+		}
+	}
+	variants := t.comptime_sum_variants('main.Sum')
+	assert variants.len == 2
+	assert variants[0].typ == 'int'
+	assert variants[1].typ == 'string'
+}
+
 fn test_comptime_condition_distinguishes_pointer_depth_from_logical_and() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{

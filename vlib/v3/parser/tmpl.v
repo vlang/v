@@ -784,14 +784,17 @@ fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[st
 	return out
 }
 
+fn (p &Parser) veb_context_name() string {
+	return if p.cur_veb_ctx_name.len > 0 { p.cur_veb_ctx_name } else { 'ctx' }
+}
+
 // expand_veb_tr_shorthand rewrites veb's translation shorthand on an HTML template text
 // line, mirroring v1: `%key` becomes an interpolation of `veb.tr(ctx.lang.str(), "key")`
 // and `%raw key` an interpolation of `veb.raw(veb.tr(ctx.lang.str(), "key"))`. A `%` not
 // followed by a valid key (letters/`_`) is left untouched. The result uses the template's
 // own `@{...}` interpolation syntax so tmpl_line_content renders it like any other value
-// (a non-raw key is HTML-escaped; `veb.raw` yields RawHtml, emitted verbatim). Requires a
-// veb request context named `ctx` with a `lang` field, exactly as in v1.
-fn expand_veb_tr_shorthand(line string) string {
+// (a non-raw key is HTML-escaped; `veb.raw` yields RawHtml, emitted verbatim).
+fn expand_veb_tr_shorthand(line string, ctx_name string) string {
 	mut out := line
 	mut search_start := 0
 	for {
@@ -809,7 +812,7 @@ fn expand_veb_tr_shorthand(line string) string {
 				// replace would also rewrite a longer key that has this one as a prefix
 				// (`%raw title` inside `%raw title_long`) before it is scanned as its own
 				// key. Advance past the inserted interpolation so scanning resumes after it.
-				replacement := '@{veb.raw(veb.tr(ctx.lang.str(), "${key}"))}'
+				replacement := '@{veb.raw(veb.tr(${ctx_name}.lang.str(), "${key}"))}'
 				out = out[..pos] + replacement + out[end..]
 				search_start = pos + replacement.len
 			} else {
@@ -825,7 +828,7 @@ fn expand_veb_tr_shorthand(line string) string {
 			// occurrence on the line: a global replace of `%title` would also corrupt a
 			// later `%title_long` (a key with `title` as its prefix), turning it into the
 			// `title` interpolation followed by a stray `_long` before it can be scanned.
-			replacement := '@{veb.tr(ctx.lang.str(), "${key}")}'
+			replacement := '@{veb.tr(${ctx_name}.lang.str(), "${key}")}'
 			out = out[..pos] + replacement + out[end..]
 			search_start = pos + replacement.len
 		} else {
@@ -1042,7 +1045,8 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 		// Only HTML text lines reach here (simple/js/css states are emitted and continue
 		// above), so expand veb's `%key` / `%raw key` translation shorthand before the
 		// line's `@`-interpolations are rendered, matching v1.
-		source.writeln(tmpl_line_content(expand_veb_tr_shorthand(line), escape))
+		source.writeln(tmpl_line_content(expand_veb_tr_shorthand(line, p.veb_context_name()),
+			escape))
 	}
 	source.writeln(tmpl_str_end)
 	return source.str(), lines
@@ -1116,6 +1120,7 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		return p.add_val_id(5, '')
 	}
 	path := p.resolve_veb_template_path(is_html, arg)
+	p.has_veb_template = true
 	return p.add_node(flat.Node{
 		kind:  .veb_template
 		value: path
@@ -1339,7 +1344,7 @@ fn (mut p Parser) remap_template_source(first_node int, first_diagnostic int, ge
 	for generated_index, generated_line in generated_lines {
 		for template_index in template_search_start .. source_lines.len {
 			template_line := source_lines[template_index].text
-			expanded_template_line := expand_veb_tr_shorthand(template_line)
+			expanded_template_line := expand_veb_tr_shorthand(template_line, p.veb_context_name())
 			plain := tmpl_line_content(expanded_template_line, false)
 			escaped := tmpl_line_content(expanded_template_line, true)
 			matches_content := (plain.len > 0 && generated_line.contains(plain))
@@ -1573,9 +1578,12 @@ fn template_interpolation_expr_span(line string, at int) ?(int, int) {
 
 // expand_veb_template_stmt lowers a statement whose value is a `.veb_template`
 // placeholder into inline builder statements: `return $veb.html()` becomes
-// `mut <b> := ''; <writes>; return ctx.html(<b>)`, and `x := $tmpl(p)` becomes
+// `mut <b> := ''; <writes>; return <context>.html(<b>)`, and `x := $tmpl(p)` becomes
 // `mut <b> := ''; <writes>; x := <b>`. Returns none for any other statement.
 fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
+	if !p.has_veb_template {
+		return none
+	}
 	if int(stmt_id) < 0 || int(stmt_id) >= p.a.nodes.len {
 		return none
 	}
@@ -1586,7 +1594,7 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 		if child.kind == .veb_template {
 			bname, mut src, source_lines := p.veb_template_builder_source(child)
 			src += if child.typ == 'html' {
-				'\nreturn ctx.html(${bname})\n'
+				'\nreturn ${p.veb_context_name()}.html(${bname})\n'
 			} else {
 				'\nreturn ${bname}\n'
 			}
@@ -1624,7 +1632,11 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 			// lowered as an immutable local and reject later mutation of `x`.
 			mut_prefix := if node.kind == .decl_assign && node.is_mut { 'mut ' } else { '' }
 			bname, mut src, source_lines := p.veb_template_builder_source(rhs)
-			value_expr := if rhs.typ == 'html' { 'ctx.html(${bname})' } else { bname }
+			value_expr := if rhs.typ == 'html' {
+				'${p.veb_context_name()}.html(${bname})'
+			} else {
+				bname
+			}
 			src += '\n${mut_prefix}${lhs.value} ${bind_op} ${value_expr}\n'
 			return p.parse_stmts_from_source(src, rhs.value, rhs.pos, source_lines)
 		}
@@ -1892,17 +1904,18 @@ fn (mut p Parser) veb_template_iife_replacement(tmpl flat.Node) ?flat.NodeId {
 	for bid in builder_ids {
 		p.collect_template_free_idents(bid, mut declared, mut seen, mut names, mut mut_names)
 	}
-	value_expr := if tmpl.typ == 'html' { 'ctx.html(${bname})' } else { bname }
+	ctx_name := p.veb_context_name()
+	value_expr := if tmpl.typ == 'html' { '${ctx_name}.html(${bname})' } else { bname }
 	ret_type := if tmpl.typ == 'html' { 'veb.Result' } else { 'string' }
 	mut captures := []string{}
 	if tmpl.typ == 'html' {
-		// The html value expression is `ctx.html(...)`, so the closure must capture
-		// `ctx` even when the template body never references it — and mutably, since
-		// `Context.html` has a mut receiver. Put it first (dropping any plain `ctx`).
-		captures << 'mut ctx'
+		// The html value expression calls the request context's `html` method, so the
+		// closure must capture that binding even when the template body never references
+		// it — and mutably, since `Context.html` has a mut receiver. Put it first.
+		captures << 'mut ${ctx_name}'
 	}
 	for name in names {
-		if tmpl.typ == 'html' && name == 'ctx' {
+		if tmpl.typ == 'html' && name == ctx_name {
 			continue
 		}
 		// A name used mutably (`@{fill(mut buf)}`) must be captured `mut`, or the

@@ -38,7 +38,7 @@ fn test_veb_html_requires_call_syntax() {
 	os.write_file(os.join_path(root, 'ok.v'), vhrc_app_source('\$veb.html()')) or { panic(err) }
 	ok_c := os.join_path(root, 'ok.c')
 	os.rm(ok_c) or {}
-	ok := os.execute('${v3_bin} ${os.join_path(root, 'ok.v')} -o ${ok_c}')
+	ok := os.execute('${v3_bin} -no-memory-limit ${os.join_path(root, 'ok.v')} -o ${ok_c}')
 	assert ok.exit_code == 0, ok.output
 	ok_code := os.read_file(ok_c) or { '' }
 	assert ok_code.contains('HELLO_TMPL'), 'the call form should render the handler template'
@@ -47,7 +47,7 @@ fn test_veb_html_requires_call_syntax() {
 	os.write_file(os.join_path(root, 'bad.v'), vhrc_app_source('\$veb.html')) or { panic(err) }
 	bad_c := os.join_path(root, 'bad.c')
 	os.rm(bad_c) or {}
-	bad := os.execute('${v3_bin} ${os.join_path(root, 'bad.v')} -o ${bad_c}')
+	bad := os.execute('${v3_bin} -no-memory-limit ${os.join_path(root, 'bad.v')} -o ${bad_c}')
 	assert bad.exit_code != 0, 'bare `\$veb.html` without a call must be rejected, got:\n${bad.output}'
 	bad_code := os.read_file(bad_c) or { '' }
 	assert !bad_code.contains('HELLO_TMPL'), 'bare `\$veb.html` must not render the handler template'

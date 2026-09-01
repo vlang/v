@@ -81,6 +81,7 @@ const libc_collisions = {
 	'j1':       true
 	'jn':       true
 	'ldexp':    true
+	'listen':   true
 	'log':      true
 	'memcmp':   true
 	'memcpy':   true
@@ -93,6 +94,7 @@ const libc_collisions = {
 	'read':     true
 	'realpath': true
 	'rint':     true
+	'round':    true
 	'scalb':    true
 	'send':     true
 	'setenv':   true
@@ -114,6 +116,9 @@ const libc_collisions = {
 // c_name returns the C identifier used for a V symbol or type name.
 pub fn c_name(name string) string {
 	if name.starts_with('C.') {
+		if name[2..].contains('.') {
+			return sanitize(name)
+		}
 		return name[2..]
 	}
 	if name == 'malloc' {

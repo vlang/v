@@ -118,10 +118,9 @@ fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
 		// vs the registered `map[string]toml.ast.Value`) match on the
 		// module-stripped spelling only when that spelling is unambiguous.
 		if variant.contains('.') || variant.contains('[') {
-			short_variant := short_module_type_text(variant)
 			mut short_match := 0
 			for i, v in g.tc.sum_types[sum_name] {
-				if short_module_type_text(v) == short_variant {
+				if short_module_type_texts_equal(v, variant) {
 					if short_match != 0 {
 						return 0
 					}
@@ -162,14 +161,18 @@ fn (mut g FlatGen) interface_dispatch_def_string(iface_name string, cn string, m
 }
 
 fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_params []types.Type, wants_ptr bool) string {
-	cct := g.interface_concrete_storage_c_type(concrete)
+	concrete_cct := g.interface_concrete_storage_c_type(concrete)
 	if concrete_params.len == 0 {
-		return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
+		return if wants_ptr {
+			'(${concrete_cct}*)i->_object'
+		} else {
+			'*(${concrete_cct}*)i->_object'
+		}
 	}
 	concrete_type := g.interface_concrete_type(concrete)
 	expected_type := concrete_params[0]
 	if path := g.embedded_receiver_path_for_expected(concrete_type, expected_type) {
-		base := '(${cct}*)i->_object'
+		base := '(${concrete_cct}*)i->_object'
 		mut access := base
 		mut access_is_ptr := true
 		for field in path {
@@ -182,7 +185,20 @@ fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_param
 		}
 		return if wants_ptr { '&(${access})' } else { '*(${access})' }
 	}
-	return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
+	// Generic interface indexes retain the open receiver spelling (Box), while
+	// the selected method signature carries its materialized receiver
+	// (Box[Local]). The boxed object uses the latter storage type.
+	expected_value_type := types.unwrap_pointer(expected_type)
+	storage_cct := if expected_value_type is types.Unknown {
+		concrete_cct
+	} else {
+		g.interface_storage_c_type(expected_value_type)
+	}
+	return if wants_ptr {
+		'(${storage_cct}*)i->_object'
+	} else {
+		'*(${storage_cct}*)i->_object'
+	}
 }
 
 fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type types.Type, target_type types.Type) ?string {
@@ -229,16 +245,7 @@ fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type types.Typ
 }
 
 fn (g &FlatGen) interface_method_signature_key(iface_name string, method string) ?string {
-	key := '${iface_name}.${method}'
-	if key in g.tc.fn_ret_types || key in g.tc.fn_param_types {
-		return key
-	}
-	for embed in g.tc.interface_embeds[iface_name] or { []string{} } {
-		if found := g.interface_method_signature_key(embed, method) {
-			return found
-		}
-	}
-	return none
+	return g.tc.interface_method_signature_key(iface_name, method)
 }
 
 fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
@@ -418,7 +425,7 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 		return resolved
 	}
 	if sum_name.contains('.') {
-		if resolved := g.sum_name_lookup[sum_name.all_after_last('.')] {
+		if resolved := g.sum_name_lookup[c_short_name_view(sum_name)] {
 			return resolved
 		}
 	}
@@ -427,12 +434,24 @@ fn (g &FlatGen) resolve_sum_name(sum_name string) string {
 
 fn (mut g FlatGen) precompute_sum_name_lookup() {
 	g.sum_name_lookup = map[string]string{}
-	for name, _ in g.tc.sum_types {
+	g.sum_variant_lookup = map[string]map[string]string{}
+	for name, variants in g.tc.sum_types {
 		g.sum_name_lookup[name] = name
-		short := name.all_after_last('.')
+		short := c_short_name_view(name)
 		if short.len > 0 && short !in g.sum_name_lookup {
 			g.sum_name_lookup[short] = name
 		}
+		mut lookup := map[string]string{}
+		for variant in variants {
+			lookup[variant] = variant
+		}
+		for variant in variants {
+			variant_short := c_short_name_view(variant)
+			if variant_short.len > 0 && variant_short !in lookup {
+				lookup[variant_short] = variant
+			}
+		}
+		g.sum_variant_lookup[name] = lookup.move()
 	}
 }
 
@@ -440,16 +459,9 @@ fn (mut g FlatGen) precompute_sum_name_lookup() {
 fn (g &FlatGen) resolve_variant(sum_name string, variant string) string {
 	resolved_sum := g.resolve_sum_name(sum_name)
 	normalized_variant := g.normalize_variant_name(variant)
-	if resolved_sum in g.tc.sum_types {
-		for v in g.tc.sum_types[resolved_sum] {
-			if v == normalized_variant {
-				return normalized_variant
-			}
-		}
-		for v in g.tc.sum_types[resolved_sum] {
-			if v.all_after_last('.') == normalized_variant {
-				return v
-			}
+	if lookup := g.sum_variant_lookup[resolved_sum] {
+		if resolved := lookup[normalized_variant] {
+			return resolved
 		}
 	}
 	return normalized_variant
@@ -600,6 +612,7 @@ fn (mut g FlatGen) register_interface_strings() {
 // what the generated method-dispatch switch matches on.
 fn (mut g FlatGen) collect_interface_impls() {
 	g.ierror_method_emit_names = map[string]bool{}
+	g.register_specialized_interface_applications()
 	g.collect_interface_boxed_types_for_dispatch()
 	mut boxed_concrete_types := map[string][]string{}
 	for key, _ in g.interface_boxed_types {
@@ -609,7 +622,12 @@ fn (mut g FlatGen) collect_interface_impls() {
 		}
 		mut concrete := parts[1]
 		is_container := concrete.starts_with('[]') || concrete.starts_with('map[')
-		if !is_container && concrete !in g.tc.structs && concrete !in g.tc.type_aliases {
+		concrete_base, _, concrete_is_generic := parse_shared_generic_app_parts(concrete)
+		is_materializable_generic := concrete_is_generic
+			&& (concrete_base in g.tc.structs || concrete_base in g.tc.type_aliases || g.tc.qualify_name(concrete_base) in g.tc.structs
+			|| g.tc.qualify_name(concrete_base) in g.tc.type_aliases)
+		if !is_container && !is_materializable_generic && concrete !in g.tc.structs
+			&& concrete !in g.tc.type_aliases {
 			qualified := g.tc.qualify_name(concrete)
 			if qualified !in g.tc.structs && qualified !in g.tc.type_aliases {
 				continue
@@ -646,6 +664,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 				}
 			}
 		}
+		impls = impls.filter(!g.interface_impl_is_open_generic(it))
 		g.iface_impls[iface] = impls
 		type_ids := if g.is_ierror_type_name(iface) {
 			types.stable_interface_type_ids(impls)
@@ -663,30 +682,228 @@ fn (mut g FlatGen) collect_interface_impls() {
 	}
 }
 
-fn (g &FlatGen) interface_dispatch_return_type(decl_key string, concrete_key string) types.Type {
+fn (g &FlatGen) interface_impl_is_open_generic(name string) bool {
+	_, _, is_specialized := parse_shared_generic_app_parts(name)
+	if is_specialized {
+		return false
+	}
+	for candidate in [name, g.tc.qualify_name(name)] {
+		if (g.tc.struct_generic_params[candidate] or { []string{} }).len > 0 || (g.tc.interface_generic_params[candidate] or {
+			[]string{}
+		}).len > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) register_specialized_interface_applications() {
+	if g.tc.interface_generic_params.len == 0 {
+		return
+	}
+	mut applications := map[string]string{}
+	for _, implemented_interfaces in g.tc.struct_implements {
+		for iface in implemented_interfaces {
+			g.collect_specialized_interface_application_text(iface, mut applications)
+		}
+	}
+	for _, params in g.tc.fn_param_type_texts {
+		for param in params {
+			g.collect_specialized_interface_application_text(param, mut applications)
+		}
+	}
+	for _, ret in g.tc.fn_ret_type_texts {
+		g.collect_specialized_interface_application_text(ret, mut applications)
+	}
+	for _, params in g.tc.fn_param_types {
+		for param in params {
+			g.collect_specialized_interface_application(param, mut applications)
+		}
+	}
+	for _, ret in g.tc.fn_ret_types {
+		g.collect_specialized_interface_application(ret, mut applications)
+	}
+	for _, fields in g.tc.structs {
+		for field in fields {
+			g.collect_specialized_interface_application(field.typ, mut applications)
+		}
+	}
+	for node in g.a.nodes {
+		if node.typ.contains('[') {
+			// Generic-interface storage intentionally parses to the shared base box.
+			// Preserve the concrete source application from specialized AST signatures
+			// before semantic parsing erases it, so its dispatch wrapper is emitted.
+			g.collect_specialized_interface_application_text(node.typ, mut applications)
+			g.collect_specialized_interface_application(g.tc.parse_type(node.typ), mut applications)
+		}
+		if node.kind in [.cast_expr, .struct_init] && node.value.contains('[') {
+			g.collect_specialized_interface_application(g.tc.parse_type(node.value), mut
+				applications)
+		}
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		callee := g.a.child_node(&node, 0)
+		if callee.kind != .selector || callee.children_count == 0 {
+			continue
+		}
+		receiver_type := types.unwrap_pointer(g.tc.resolve_type(g.a.child(callee, 0)))
+		if receiver_type !is types.Interface {
+			continue
+		}
+		application := g.specialized_interface_name_for_method_call(node, receiver_type.name(),
+			callee.value)
+		g.collect_specialized_interface_application(g.tc.parse_type(application), mut applications)
+	}
+	if applications.len > 0 {
+		// Declaration-type collection can run on a by-value generator fork. Detach
+		// before inserting, otherwise the fork mutates the shared map backing while
+		// the parent's map length remains stale and later dispatch emission skips the
+		// now-invisible specialized entry.
+		g.interfaces = g.interfaces.clone()
+	}
+	for application, base in applications {
+		if application !in g.interfaces {
+			// `applications` is temporary. Own the key retained by the generator so
+			// ownership-mode cleanup cannot leave g.interfaces pointing at freed text.
+			g.interfaces[application.clone()] = g.tc.interface_abstract_method_names(base)
+		}
+	}
+}
+
+fn (g &FlatGen) collect_specialized_interface_application_text(type_text string, mut applications map[string]string) {
+	mut clean := trimmed_space(type_text)
+	if clean.len == 0 {
+		return
+	}
+	for clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+		clean = trimmed_space(clean[1..])
+	}
+	if clean.starts_with('mut ') {
+		g.collect_specialized_interface_application_text(clean[4..], mut applications)
+		return
+	}
+	if clean.starts_with('...') {
+		g.collect_specialized_interface_application_text(clean[3..], mut applications)
+		return
+	}
+	if clean.starts_with('[]') {
+		g.collect_specialized_interface_application_text(clean[2..], mut applications)
+		return
+	}
+	base, args, is_generic := parse_shared_generic_app_parts(clean)
+	if !is_generic {
+		return
+	}
+	for arg in args {
+		g.collect_specialized_interface_application_text(arg, mut applications)
+		if codegen_generic_arg_is_unresolved(arg) {
+			return
+		}
+	}
+	resolved_base := if base in g.interfaces { base } else { g.tc.interface_metadata_name(base) }
+	if resolved_base !in g.interfaces {
+		return
+	}
+	application := if resolved_base == base {
+		clean
+	} else {
+		clean.replace_once(base, resolved_base)
+	}
+	applications[application] = resolved_base
+}
+
+fn (g &FlatGen) collect_specialized_interface_application(typ types.Type, mut applications map[string]string) {
+	match typ {
+		types.Interface {
+			base, _, is_generic := parse_shared_generic_app_parts(typ.name)
+			if is_generic && !g.type_contains_generic_placeholder(typ) {
+				resolved_base := if base in g.interfaces {
+					base
+				} else {
+					g.tc.interface_metadata_name(base)
+				}
+				if resolved_base in g.interfaces {
+					application := if resolved_base == base {
+						typ.name
+					} else {
+						typ.name.replace_once(base, resolved_base)
+					}
+					applications[application] = resolved_base
+				}
+			}
+		}
+		types.Pointer {
+			g.collect_specialized_interface_application(typ.base_type, mut applications)
+		}
+		types.OptionType {
+			g.collect_specialized_interface_application(typ.base_type, mut applications)
+		}
+		types.ResultType {
+			g.collect_specialized_interface_application(typ.base_type, mut applications)
+		}
+		types.Array {
+			g.collect_specialized_interface_application(typ.elem_type, mut applications)
+		}
+		types.ArrayFixed {
+			g.collect_specialized_interface_application(typ.elem_type, mut applications)
+		}
+		types.Map {
+			g.collect_specialized_interface_application(typ.key_type, mut applications)
+			g.collect_specialized_interface_application(typ.value_type, mut applications)
+		}
+		types.Alias {
+			g.collect_specialized_interface_application(typ.base_type, mut applications)
+		}
+		else {}
+	}
+}
+
+fn (g &FlatGen) interface_dispatch_return_type(iface_name string, decl_key string, concrete_key string) types.Type {
 	decl_type := g.tc.fn_ret_types[decl_key] or { types.Type(types.void_) }
-	if !g.type_contains_generic_placeholder(decl_type) || concrete_key.len == 0 {
+	_, _, is_specialized := parse_shared_generic_app_parts(iface_name)
+	if is_specialized {
+		_, specialized_ret := g.tc.specialized_interface_method_signature(iface_name, decl_key)
+		return specialized_ret
+	}
+	wrapped_base := interface_dispatch_wrapped_base_type(decl_type) or { types.Type(types.void_) }
+	needs_concrete := g.type_contains_generic_placeholder(decl_type)
+		|| wrapped_base is types.Unknown || wrapped_base is types.Void
+	if !needs_concrete || concrete_key.len == 0 {
 		return decl_type
 	}
 	return g.tc.fn_ret_types[concrete_key] or { decl_type }
 }
 
-fn (g &FlatGen) interface_dispatch_param_types(decl_key string, concrete_key string) []types.Type {
+fn (g &FlatGen) interface_dispatch_param_types(iface_name string, decl_key string, concrete_key string) []types.Type {
 	decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
+	_, _, is_specialized := parse_shared_generic_app_parts(iface_name)
+	if is_specialized {
+		specialized_params, _ := g.tc.specialized_interface_method_signature(iface_name, decl_key)
+		return specialized_params
+	}
 	concrete_params := if concrete_key.len > 0 {
 		g.tc.fn_param_types[concrete_key] or { []types.Type{} }
 	} else {
 		[]types.Type{}
 	}
 	mut decl_has_generic := false
-	for param in decl_params {
+	mut generic_params_use_pointer_abi := true
+	for i, param in decl_params {
 		if g.type_contains_generic_placeholder(param) {
 			decl_has_generic = true
-			break
+			// A generic interface has one runtime box for every specialization.
+			// Generic parameters passed through pointers therefore need one stable
+			// erased ABI instead of inheriting the first discovered implementer's
+			// concrete pointer type. `void *` is lossless for every such parameter;
+			// by-value generic parameters still require a concrete ABI below.
+			if i > 0 && param !is types.Pointer {
+				generic_params_use_pointer_abi = false
+			}
 		}
 	}
-	if concrete_params.len > 0
-		&& (decl_has_generic || decl_params.len == 0 || decl_params.len != concrete_params.len) {
+	if concrete_params.len > 0 && ((decl_has_generic && !generic_params_use_pointer_abi)
+		|| decl_params.len == 0 || decl_params.len != concrete_params.len) {
 		return concrete_params
 	}
 	return decl_params
@@ -1196,18 +1413,28 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		}
 	}
 	node := g.a.nodes[int(id)]
-	mut actual := g.usable_expr_type(id)
+	mut actual := g.interface_source_type(id)
 	if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
-			actual = param_type
+			// A `mut p &T` parameter uses `&&T` storage, but reading `p` yields
+			// the semantic `&T` value that is being boxed into the interface.
+			actual = if g.current_param_is_mut_pointer(node.value) && param_type is types.Pointer {
+				param_type.base_type
+			} else {
+				param_type
+			}
 		}
 	}
 	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
 	actual_base := cgen_unalias_type(actual_clean)
-	if actual_base is types.Interface {
+	actual_name := actual_base.name()
+	if actual_base is types.Interface || actual_name == iface.name
+		|| (actual_name.starts_with('main.') && actual_name['main.'.len..] == iface.name)
+		|| (iface.name.starts_with('main.') && iface.name['main.'.len..] == actual_name)
+		|| g.interface_unknown_qualified_name_matches(actual_name, iface.name) {
 		return false
 	}
-	concrete_name := actual_base.name()
+	concrete_name := actual_name
 	if concrete_name.len == 0 {
 		return false
 	}
@@ -1265,10 +1492,85 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	return true
 }
 
+fn (mut g FlatGen) gen_interface_pointer_value_expr(id flat.NodeId, expected types.Type) bool {
+	ptr_type := if expected is types.Pointer { expected } else { return false }
+	mut iface_type := cgen_unalias_type(ptr_type.base_type)
+	if iface_type is types.Alias {
+		iface_type = cgen_unalias_type(iface_type.base_type)
+	}
+	if iface_type !is types.Interface {
+		return false
+	}
+	ct := g.tc.c_type(iface_type)
+	if g.expr_is_nil_value(id) {
+		g.write('(${ct}*)')
+		g.gen_expr(id)
+		return true
+	}
+	actual := cgen_unalias_type(g.interface_source_type(id))
+	if actual is types.Nil || actual is types.Void
+		|| (actual is types.Pointer && cgen_unalias_type(actual.base_type) is types.Void) {
+		g.write('(${ct}*)')
+		g.gen_expr(id)
+		return true
+	}
+	if actual is types.Pointer && cgen_unalias_type(actual.base_type) is types.Interface {
+		return false
+	}
+	iface_value := g.interface_value_to_string(id, iface_type)
+	if iface_value.len == 0 {
+		return false
+	}
+	tmp := g.tmp_count
+	g.tmp_count++
+	g.write('({ ${ct} _iface_ptr${tmp} = ${iface_value}; (${ct}*)memdup(&_iface_ptr${tmp}, sizeof(${ct})); })')
+	return true
+}
+
+fn (mut g FlatGen) interface_source_type(id flat.NodeId) types.Type {
+	node := g.a.node(id)
+	if node.kind == .ident {
+		if local_type := g.local_ident_type(node.value) {
+			return local_type
+		}
+		if param_type := g.current_param_type(node.value) {
+			return param_type
+		}
+	}
+	if node.kind == .ident && g.current_param_type(node.value) == none
+		&& !g.cur_scope_has_local_name(node.value) {
+		current_global_name := qualify_name_in_module(g.tc.cur_module, node.value)
+		if typ := g.global_types[current_global_name] {
+			return typ
+		}
+		const_name := g.const_ref_name_from_node(node)
+		if const_name.len > 0 {
+			if typ := g.tc.const_types[const_name] {
+				return typ
+			}
+		}
+	}
+	return g.usable_expr_type(id)
+}
+
+fn (g &FlatGen) interface_unknown_qualified_name_matches(actual_name string, iface_name string) bool {
+	if !actual_name.contains('.')
+		|| actual_name.all_after_last('.') != iface_name.all_after_last('.') {
+		return false
+	}
+	actual_known := actual_name in g.tc.structs || actual_name in g.tc.interface_names
+		|| actual_name in g.tc.type_aliases || actual_name in g.tc.sum_types
+	if actual_known {
+		return false
+	}
+	return iface_name in g.tc.interface_names
+		|| g.tc.qualify_name(iface_name) in g.tc.interface_names
+}
+
 // is_interface_type_name reports whether is interface type name applies in c.
 fn (g &FlatGen) is_interface_type_name(name string) bool {
 	mut clean := name
-	base, _, is_generic := g.shared_generic_app_parts(clean)
+	base, _, is_generic := parse_shared_generic_app_parts(clean)
 	if is_generic {
 		clean = base
 	}
@@ -1296,11 +1598,19 @@ fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
 		if field.kind == .field_init && field.value == '_object' && field.children_count > 0 {
-			obj_type := g.tc.resolve_type(g.a.child(field, 0))
+			obj_id := g.a.child(field, 0)
+			obj_node := g.a.node(obj_id)
+			mut obj_type := g.tc.resolve_type(obj_id)
+			if obj_node.kind == .ident && g.current_param_is_mut_pointer(obj_node.value)
+				&& obj_type is types.Pointer {
+				obj_type = obj_type.base_type
+			}
 			concrete := types.unwrap_pointer(obj_type)
-			id := g.iface_type_id_for_concrete(iface, concrete)
-			if id != 0 {
-				return id
+			for candidate in g.interface_semantic_application_candidates(iface, concrete.name()) {
+				id := g.iface_type_id_for_concrete(candidate, concrete)
+				if id != 0 {
+					return id
+				}
 			}
 			return none
 		}
@@ -1340,20 +1650,10 @@ fn (g &FlatGen) interface_object_expr_is_boxed(id flat.NodeId) bool {
 // implementation, passing `_object` as the receiver. Interfaces with no known
 // implementers (and the special builtin `IError`) fall back to a panic stub.
 fn (mut g FlatGen) interface_method_stubs() {
-	mut wrote_prototype := false
-	for iface_name, methods in g.interfaces {
-		cn := g.cname(iface_name)
-		for method in methods {
-			if !g.should_emit_interface_dispatch(iface_name, method) {
-				continue
-			}
-			g.writeln('${g.interface_dispatch_signature(iface_name, cn, method)};')
-			wrote_prototype = true
-		}
-	}
-	if wrote_prototype {
-		g.writeln('')
-	}
+	// `interface_method_forward_decls` has already declared every dispatch stub.
+	// Recomputing the declarations here can observe a different current-module
+	// context after `_vinit` generation and give a generic interface placeholder a
+	// different C signature from its specialized forward declaration.
 	for iface_name, methods in g.interfaces {
 		cn := g.cname(iface_name)
 		for method in methods {
@@ -1400,16 +1700,12 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 					break
 				}
 			}
-			ret_type := g.interface_dispatch_return_type(decl_key, sig_key)
-			sig_params := g.interface_dispatch_param_types(decl_key, sig_key)
-			g.write('${g.fn_return_type_name(ret_type)} ${cn}__${method}(${cn}* i')
+			ret_type := g.interface_dispatch_return_type(iface_name, decl_key, sig_key)
+			sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
+			storage_cn := g.interface_storage_c_name(iface_name)
+			g.write('${g.fn_return_type_name(ret_type)} ${cn}__${method}(${storage_cn}* i')
 			for pi := 1; pi < sig_params.len; pi++ {
-				pt := sig_params[pi]
-				pct := if pt is types.OptionType || pt is types.ResultType {
-					g.optional_type_name(pt)
-				} else {
-					g.tc.c_type(pt)
-				}
+				pct := g.interface_dispatch_param_c_type(sig_params[pi])
 				g.write(', ${pct} _a${pi - 1}')
 			}
 			g.writeln(');')
@@ -1438,7 +1734,13 @@ fn (mut g FlatGen) ierror_dispatch_target_forward_decls(iface_name string, metho
 }
 
 fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string) bool {
+	if g.open_interface_dispatch_needs_specialization(iface_name, method) {
+		return false
+	}
 	if g.cache_split {
+		return true
+	}
+	if g.interface_name_is_specialized(iface_name) {
 		return true
 	}
 	if !g.has_used_fn_filter() {
@@ -1474,6 +1776,27 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 		&& g.used_interface_dispatch_key(short_name)
 }
 
+fn (g &FlatGen) open_interface_dispatch_needs_specialization(iface_name string, method string) bool {
+	_, _, is_specialized := parse_shared_generic_app_parts(iface_name)
+	if is_specialized || (g.tc.interface_generic_params[iface_name] or { []string{} }).len == 0 {
+		return false
+	}
+	decl_key := g.interface_method_signature_key(iface_name, method) or { return false }
+	if g.type_contains_generic_placeholder(g.tc.fn_ret_types[decl_key] or {
+		types.Type(types.void_)
+	})
+	{
+		return true
+	}
+	params := g.tc.fn_param_types[decl_key] or { return false }
+	for i in 1 .. params.len {
+		if g.type_contains_generic_placeholder(params[i]) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut g FlatGen) interface_dispatch_signature(iface_name string, cn string, method string) string {
 	if cn == 'IError' {
 		ret_ct := if method == 'code' { 'int' } else { 'string' }
@@ -1493,21 +1816,27 @@ fn (mut g FlatGen) interface_dispatch_signature(iface_name string, cn string, me
 			break
 		}
 	}
-	ret_type := g.interface_dispatch_return_type(decl_key, sig_key)
+	ret_type := g.interface_dispatch_return_type(iface_name, decl_key, sig_key)
 	ret_ct := g.fn_return_type_name(ret_type)
-	sig_params := g.interface_dispatch_param_types(decl_key, sig_key)
-	mut sig := '${ret_ct} ${cn}__${method}(${cn}* i'
+	sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
+	storage_cn := g.interface_storage_c_name(iface_name)
+	mut sig := '${ret_ct} ${cn}__${method}(${storage_cn}* i'
 	for pi := 1; pi < sig_params.len; pi++ {
-		pt := sig_params[pi]
-		pct := if pt is types.OptionType || pt is types.ResultType {
-			g.optional_type_name(pt)
-		} else {
-			g.tc.c_type(pt)
-		}
+		pct := g.interface_dispatch_param_c_type(sig_params[pi])
 		sig += ', ${pct} _a${pi - 1}'
 	}
 	sig += ')'
 	return sig
+}
+
+fn (g &FlatGen) interface_storage_c_name(iface_name string) string {
+	base, _, is_generic := parse_shared_generic_app_parts(iface_name)
+	return g.cname(if is_generic { base } else { iface_name })
+}
+
+fn (g &FlatGen) interface_name_is_specialized(iface_name string) bool {
+	_, _, is_generic := parse_shared_generic_app_parts(iface_name)
+	return is_generic
 }
 
 fn (g &FlatGen) interface_alias_names(iface_name string) []string {
@@ -1586,21 +1915,17 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			break
 		}
 	}
-	ret_type := g.interface_dispatch_return_type(decl_key, sig_key)
+	ret_type := g.interface_dispatch_return_type(iface_name, decl_key, sig_key)
 	// Use the ABI return type, not the bare value type: a fixed-array return is its `_v_ret_*`
 	// wrapper struct (a C function cannot return an array by value), matching what the concrete
 	// implementer's method returns and what the call site unwraps.
 	ret_ct := g.fn_return_type_name(ret_type)
-	mut sig_params := g.interface_dispatch_param_types(decl_key, sig_key)
+	mut sig_params := g.interface_dispatch_param_types(iface_name, decl_key, sig_key)
 	mut arg_names := []string{}
-	g.write('${ret_ct} ${cn}__${method}(${cn}* i')
+	storage_cn := g.interface_storage_c_name(iface_name)
+	g.write('${ret_ct} ${cn}__${method}(${storage_cn}* i')
 	for pi := 1; pi < sig_params.len; pi++ {
-		pt := sig_params[pi]
-		pct := if pt is types.OptionType || pt is types.ResultType {
-			g.optional_type_name(pt)
-		} else {
-			g.tc.c_type(pt)
-		}
+		pct := g.interface_dispatch_param_c_type(sig_params[pi])
 		an := '_a${pi - 1}'
 		arg_names << an
 		g.write(', ${pct} ${an}')
@@ -1663,9 +1988,13 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 				call += ')'
 				if ret_ct == 'void' {
 					g.writeln('${call}; return;')
+				} else if g.gen_interface_dispatch_optional_abi_return(call, ret_type, g.tc.fn_ret_types[decl] or {
+					ret_type
+				}, decl)
+				{
 				} else if g.gen_interface_dispatch_wrapped_return(call, ret_type, g.tc.fn_ret_types[decl] or {
 					ret_type
-				})
+				}, decl)
 				{
 				} else {
 					g.writeln('return ${call};')
@@ -1693,7 +2022,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
 			recv := g.interface_dispatch_receiver_expr(concrete, concrete_params, recv_is_ptr)
 			g.write('\t\tcase ${id}: ')
-			mut call := '${g.cname(method_key)}(${recv}'
+			mut call := '${g.interface_method_call_cname(method_key)}(${recv}'
 			for ai, an in arg_names {
 				arg_idx := ai + 1
 				concrete_param := if arg_idx < concrete_params.len {
@@ -1721,9 +2050,13 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			call += ')'
 			if ret_ct == 'void' {
 				g.writeln('${call}; return;')
+			} else if g.gen_interface_dispatch_optional_abi_return(call, ret_type, g.tc.fn_ret_types[method_key] or {
+				ret_type
+			}, method_key)
+			{
 			} else if g.gen_interface_dispatch_wrapped_return(call, ret_type, g.tc.fn_ret_types[method_key] or {
 				ret_type
-			})
+			}, method_key)
 			{
 			} else {
 				g.writeln('return ${call};')
@@ -1743,9 +2076,57 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	g.writeln('}')
 }
 
+// gen_interface_dispatch_optional_abi_value_return emits the adapted wrapper return
+// after a specialized generic method and its interface dispatch use different C ABIs.
+fn (mut g FlatGen) gen_interface_dispatch_optional_abi_value_return(expected_ct string, result string, expected_base types.Type) {
+	if _ := array_fixed_type(expected_base) {
+		out := g.interface_tmp('iface_abi_result_out')
+		g.writeln('\t\t\t${expected_ct} ${out} = { .ok = ${result}.ok, .err = ${result}.err };')
+		g.writeln('\t\t\tif (${result}.ok) {')
+		g.writeln('\t\t\t\tmemcpy(${out}.value, ${result}.value, sizeof(${out}.value));')
+		g.writeln('\t\t\t}')
+		g.writeln('\t\t\treturn ${out};')
+	} else {
+		g.writeln('\t\t\treturn (${expected_ct}){ .ok = ${result}.ok, .err = ${result}.err, .value = ${result}.value };')
+	}
+}
+
+// gen_interface_dispatch_optional_abi_return adapts specialized generic methods
+// whose option/result C ABI differs from the interface dispatch ABI.
+fn (mut g FlatGen) gen_interface_dispatch_optional_abi_return(call string, expected types.Type, actual types.Type, actual_key string) bool {
+	expected_wrapped := optional_result_unalias_type(expected)
+	actual_wrapped := optional_result_unalias_type(actual)
+	if (expected_wrapped is types.OptionType) != (actual_wrapped is types.OptionType)
+		|| (expected_wrapped is types.ResultType) != (actual_wrapped is types.ResultType) {
+		return false
+	}
+	expected_base := interface_dispatch_wrapped_base_type(expected) or { return false }
+	actual_base := interface_dispatch_wrapped_base_type(actual) or { return false }
+	if expected_base is types.Void || expected_base is types.Unknown || actual_base is types.Void
+		|| actual_base is types.Unknown {
+		return false
+	}
+	if !g.type_names_match(actual_base, expected_base)
+		&& g.value_c_type(actual_base) != g.value_c_type(expected_base) {
+		return false
+	}
+	expected_ct := g.fn_return_type_name_for_context(expected, false)
+	actual_ct := g.fn_return_type_name_for_context(actual,
+		g.call_uses_concrete_optional_params(actual_key))
+	if actual_ct == expected_ct {
+		return false
+	}
+	result := g.interface_tmp('iface_abi_result')
+	g.writeln('{')
+	g.writeln('\t\t\t${actual_ct} ${result} = ${call};')
+	g.gen_interface_dispatch_optional_abi_value_return(expected_ct, result, expected_base)
+	g.writeln('\t\t}')
+	return true
+}
+
 // gen_interface_dispatch_wrapped_return adapts an option/result whose successful
 // concrete payload implements the interface returned by the dispatch signature.
-fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected types.Type, actual types.Type) bool {
+fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected types.Type, actual types.Type, actual_key string) bool {
 	if !g.interface_dispatch_wrapped_return_can_adapt(expected, actual) {
 		return false
 	}
@@ -1765,8 +2146,9 @@ fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected t
 	if type_id == 0 {
 		return false
 	}
-	actual_ct := g.fn_return_type_name(actual)
-	expected_ct := g.fn_return_type_name(expected)
+	actual_ct := g.fn_return_type_name_for_context(actual,
+		g.call_uses_concrete_optional_params(actual_key))
+	expected_ct := g.fn_return_type_name_for_context(expected, false)
 	iface_ct := g.tc.c_type(expected_iface_type)
 	concrete_ct := g.tc.c_type(actual_value)
 	result := g.interface_tmp('iface_result')
@@ -1824,6 +2206,21 @@ fn interface_dispatch_wrapped_base_type(typ types.Type) ?types.Type {
 	}
 }
 
+fn (mut g FlatGen) interface_dispatch_param_c_type(typ types.Type) string {
+	if typ is types.Pointer && g.type_contains_generic_placeholder(typ) {
+		return 'void*'
+	}
+	mut ct := if typ is types.OptionType || typ is types.ResultType {
+		g.optional_type_name(typ)
+	} else {
+		g.tc.c_type(typ)
+	}
+	if ct.starts_with('fn_ptr:') {
+		ct = g.resolve_fn_ptr_type(ct)
+	}
+	return ct
+}
+
 fn (mut g FlatGen) interface_boxed_type_marked_for_dispatch(iface_name string, concrete string) bool {
 	g.collect_interface_boxed_types_for_dispatch()
 	return g.interface_boxed_type_collected_for_dispatch(iface_name, concrete)
@@ -1856,7 +2253,9 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 		if node.kind != .struct_init || node.children_count == 0 {
 			continue
 		}
-		iface_name := if node.value in g.interfaces {
+		iface_name := if node.typ in g.interfaces {
+			node.typ
+		} else if node.value in g.interfaces {
 			node.value
 		} else {
 			g.tc.qualify_name(node.value)
@@ -1869,15 +2268,43 @@ fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
 			if field.kind != .field_init || field.value != '_object' || field.children_count == 0 {
 				continue
 			}
-			obj_type := g.tc.resolve_type(g.a.child(field, 0))
+			mut obj_type := if field.typ.len > 0 {
+				g.tc.parse_type(field.typ)
+			} else {
+				g.tc.resolve_type(g.a.child(field, 0))
+			}
+			if obj_type is types.Unknown || obj_type is types.Void
+				|| (obj_type is types.Pointer && (obj_type.base_type is types.Unknown
+				|| obj_type.base_type is types.Void)) {
+				obj_type = g.interface_source_type(g.a.child(field, 0))
+			}
 			concrete := types.unwrap_pointer(obj_type)
 			concrete_name := concrete.name()
 			if concrete_name.len == 0 {
 				continue
 			}
-			g.mark_interface_boxed_type_for_dispatch(iface_name, concrete_name)
+			for candidate in g.interface_semantic_application_candidates(iface_name, concrete_name) {
+				g.mark_interface_boxed_type_for_dispatch(candidate, concrete_name)
+			}
 		}
 	}
+}
+
+fn (g &FlatGen) interface_semantic_application_candidates(iface_name string, _concrete_name string) []string {
+	mut result := [iface_name]
+	raw_base, _, iface_is_specialized := parse_shared_generic_app_parts(iface_name)
+	base := if iface_is_specialized { raw_base } else { iface_name }
+	for candidate, _ in g.interfaces {
+		candidate_base, _, candidate_is_specialized := parse_shared_generic_app_parts(candidate)
+		if !candidate_is_specialized
+			|| candidate_base.all_after_last('.') != base.all_after_last('.') {
+			continue
+		}
+		if candidate !in result {
+			result << candidate
+		}
+	}
+	return result
 }
 
 fn (mut g FlatGen) interface_dispatch_signature_compatible(method_key string, expected_ret types.Type, sig_params []types.Type) bool {
@@ -1887,7 +2314,15 @@ fn (mut g FlatGen) interface_dispatch_signature_compatible(method_key string, ex
 		return false
 	}
 	params := g.tc.fn_param_types[method_key] or { return false }
-	return params.len == sig_params.len
+	if params.len != sig_params.len {
+		return false
+	}
+	for i in 1 .. params.len {
+		if g.tc.c_type(params[i]) != g.tc.c_type(sig_params[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut g FlatGen) mark_interface_boxed_type_for_dispatch(iface_name string, concrete_name string) {
@@ -1907,16 +2342,22 @@ fn (g &FlatGen) interface_dispatch_boxed_value_expr(concrete string) string {
 
 fn (g &FlatGen) interface_concrete_storage_c_type(concrete string) string {
 	concrete_type := g.interface_concrete_type(concrete)
-	ct := if concrete_type is types.Unknown {
-		g.cname(concrete)
-	} else {
-		g.tc.c_type(concrete_type)
+	if concrete_type is types.Unknown {
+		if concrete.starts_with('fn_ptr:') {
+			return naming.fn_ptr_type_name(concrete)
+		}
+		return g.cname(concrete)
 	}
+	return g.interface_storage_c_type(concrete_type)
+}
+
+fn (g &FlatGen) interface_storage_c_type(typ types.Type) string {
+	ct := g.tc.c_type(typ)
 	if ct.starts_with('fn_ptr:') {
 		return naming.fn_ptr_type_name(ct)
 	}
-	if concrete.starts_with('fn_ptr:') {
-		return naming.fn_ptr_type_name(concrete)
+	if typ.name().starts_with('fn_ptr:') {
+		return naming.fn_ptr_type_name(typ.name())
 	}
 	return ct
 }
@@ -1956,32 +2397,69 @@ fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {
 	return g.tc.parse_type(concrete)
 }
 
-// short_module_type_text strips module qualifiers from every identifier in a
-// type text: `map[string]toml.ast.Value` -> `map[string]Value`.
-fn short_module_type_text(text string) string {
-	mut out := []u8{cap: text.len}
-	mut i := 0
-	for i < text.len {
-		c := text[i]
-		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
-			start := i
-			for i < text.len {
-				c2 := text[i]
-				if (c2 >= `a` && c2 <= `z`) || (c2 >= `A` && c2 <= `Z`)
-					|| (c2 >= `0` && c2 <= `9`) || c2 == `_` || c2 == `.` {
-					i++
-				} else {
-					break
-				}
+// short_module_type_texts_equal compares the module-stripped spellings without
+// allocating either temporary text. Identifier tokens retain only the suffix
+// after their final dot; punctuation is compared byte for byte.
+@[direct_array_access]
+fn short_module_type_texts_equal(a string, b string) bool {
+	mut ai := 0
+	mut bi := 0
+	for ai < a.len && bi < b.len {
+		ac := a[ai]
+		bc := b[bi]
+		a_ident := (ac >= `a` && ac <= `z`) || (ac >= `A` && ac <= `Z`) || ac == `_`
+		b_ident := (bc >= `a` && bc <= `z`) || (bc >= `A` && bc <= `Z`) || bc == `_`
+		if a_ident != b_ident {
+			return false
+		}
+		if !a_ident {
+			if ac != bc {
+				return false
 			}
-			token := text[start..i]
-			unsafe { out.push_many(token.all_after_last('.').str, token.all_after_last('.').len) }
+			ai++
+			bi++
 			continue
 		}
-		out << c
-		i++
+		mut a_short := ai
+		mut b_short := bi
+		mut a_end := ai
+		mut b_end := bi
+		for a_end < a.len {
+			c := a[a_end]
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+				|| (c >= `0` && c <= `9`) || c == `_` || c == `.` {
+				if c == `.` {
+					a_short = a_end + 1
+				}
+				a_end++
+				continue
+			}
+			break
+		}
+		for b_end < b.len {
+			c := b[b_end]
+			if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+				|| (c >= `0` && c <= `9`) || c == `_` || c == `.` {
+				if c == `.` {
+					b_short = b_end + 1
+				}
+				b_end++
+				continue
+			}
+			break
+		}
+		if a_end - a_short != b_end - b_short {
+			return false
+		}
+		for offset in 0 .. a_end - a_short {
+			if a[a_short + offset] != b[b_short + offset] {
+				return false
+			}
+		}
+		ai = a_end
+		bi = b_end
 	}
-	return out.bytestr()
+	return ai == a.len && bi == b.len
 }
 
 fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quote_string bool, mut stack []string) ?string {
@@ -2062,6 +2540,15 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			}
 			return g.interface_struct_str_expr(clean.name, expr, mut stack)
 		}
+		types.SumType {
+			return g.interface_sum_str_expr(clean, expr, mut stack)
+		}
+		types.Interface {
+			if g.is_ierror_type_name(clean.name) {
+				return 'IError__str(${expr})'
+			}
+			return g.interface_dynamic_str_expr(clean, expr, mut stack)
+		}
 		else {
 			return none
 		}
@@ -2078,6 +2565,20 @@ fn (g &FlatGen) interface_unaliased_type(typ types.Type) types.Type {
 		break
 	}
 	return clean
+}
+
+// interface_method_call_cname resolves a method to the symbol its definition is emitted
+// under: autofree renames a `main` module method to `main__Recv_method`.
+fn (g &FlatGen) interface_method_call_cname(method_key string) string {
+	plain := g.cname(method_key)
+	if !g.tc.autofree_mode {
+		return plain
+	}
+	candidate := g.qualified_fn_name_in_module_c('main', method_key.trim_string_left('main.'))
+	if candidate != plain && g.c_fn_symbol_exists(candidate) {
+		return candidate
+	}
+	return plain
 }
 
 fn (mut g FlatGen) interface_custom_str_expr(type_name string, typ types.Type, expr string) ?string {
@@ -2099,7 +2600,7 @@ fn (mut g FlatGen) interface_custom_str_expr(type_name string, typ types.Type, e
 	} else {
 		if typ is types.Pointer { '*(${expr})' } else { expr }
 	}
-	return '${g.cname(method_key)}(${arg})'
+	return '${g.interface_method_call_cname(method_key)}(${arg})'
 }
 
 fn (mut g FlatGen) interface_pointer_str_expr(base_type types.Type, expr string, prefix_pointer bool, mut stack []string) ?string {
@@ -2216,7 +2717,9 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 	}
 	tmp := g.interface_tmp('iface_str_struct')
 	out := g.interface_tmp('iface_str_out')
-	ct := g.cname(struct_name)
+	ct := g.tc.c_type(types.Type(types.Struct{
+		name: struct_name
+	}))
 	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('${display_name}{\n')};'
 	for field in fields {
 		field_expr := '${tmp}.${c_field_name(field.name)}'
@@ -2249,5 +2752,69 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 		body += ' ${out} = ${g.interface_str_plus(out, g.interface_str_lit('\n'))};'
 	}
 	body += ' ${g.interface_str_plus(out, g.interface_str_lit('}'))};'
+	return '({ ${body} })'
+}
+
+fn (mut g FlatGen) interface_sum_str_expr(sum_type types.SumType, expr string, mut stack []string) ?string {
+	sum_name := g.resolve_sum_name(sum_type.name)
+	variants := g.tc.sum_types[sum_name] or { return none }
+	ct := g.tc.c_type(sum_type)
+	tmp := g.interface_tmp('iface_str_sum')
+	out := g.interface_tmp('iface_str_out')
+	display_name := sum_name.all_after_last('.')
+	fallback := g.interface_str_lit('${display_name}(<unknown>)')
+	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${fallback}; switch (${tmp}.typ) {'
+	for variant in variants {
+		resolved := g.resolve_variant(sum_name, variant)
+		variant_type := g.tc.parse_type(resolved)
+		idx := g.sum_type_index(sum_name, resolved)
+		field := g.sum_field_name(resolved)
+		value_expr := if variant_type is types.Pointer {
+			'${tmp}.${field}'
+		} else {
+			'*${tmp}.${field}'
+		}
+		inner := g.interface_implicit_str_expr(variant_type, value_expr, false, mut stack) or {
+			g.interface_str_lit('<value>')
+		}
+		wrapped := g.interface_str_plus(g.interface_str_plus(g.interface_str_lit('${display_name}('),
+			inner), g.interface_str_lit(')'))
+		body += ' case ${idx}: if (${tmp}.${field} != 0) ${out} = ${wrapped}; break;'
+	}
+	body += ' default: break; } ${out};'
+	return '({ ${body} })'
+}
+
+fn (mut g FlatGen) interface_dynamic_str_expr(iface types.Interface, expr string, mut stack []string) ?string {
+	iface_name := iface.name
+	stack_key := 'interface:${g.tc.qualify_name(iface_name)}'
+	if stack_key in stack {
+		return none
+	}
+	stack << stack_key
+	defer {
+		stack.delete_last()
+	}
+	impls := g.iface_impls[iface_name] or {
+		qualified := g.tc.qualify_name(iface_name)
+		g.iface_impls[qualified] or { return none }
+	}
+	ct := g.tc.c_type(iface)
+	tmp := g.interface_tmp('iface_str_dynamic')
+	out := g.interface_tmp('iface_str_out')
+	fallback := g.interface_str_lit('${iface_name.all_after_last('.')}{}')
+	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${fallback}; if (${tmp}._object != 0) { switch (${tmp}._typ) {'
+	for concrete in impls {
+		id := g.iface_type_id(iface_name, concrete)
+		if id == 0 {
+			continue
+		}
+		concrete_type := g.interface_concrete_type(concrete)
+		storage_ct := g.interface_concrete_storage_c_type(concrete)
+		inner := g.interface_implicit_str_expr(concrete_type, '*(${storage_ct}*)${tmp}._object',
+			false, mut stack) or { continue }
+		body += ' case ${id}: ${out} = ${inner}; break;'
+	}
+	body += ' default: break; } } ${out};'
 	return '({ ${body} })'
 }

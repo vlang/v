@@ -45,3 +45,45 @@ fn main() {
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
 }
+
+// A compiler-provided IClone `clone()` (Rust `#[derive(Clone)]`) has no entry
+// in the fn tables. Inside a generic function body, generic specialization must
+// not diagnose `x.clone()` on such a struct as an unknown function.
+fn test_compiler_default_clone_inside_generic_fn() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_clone_${pid}')
+	src := os.join_path(os.temp_dir(), 'v3_generic_clone_${pid}.v')
+	out := os.join_path(os.temp_dir(), 'v3_generic_clone_program_${pid}')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rm(src) or {}
+		os.rm(out) or {}
+		os.rm(out + '.c') or {}
+	}
+	build :=
+		os.execute('${default_clone_vexe} -gc none -d ownership -path "${default_clone_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${default_clone_v3_src}')
+	assert build.exit_code == 0, build.output
+	os.write_file(src, 'module main
+
+struct Cfg implements IClone {
+	value int
+}
+
+// `.clone()` is called on a concrete IClone receiver inside a generic fn body.
+fn copy_in_generic[T](c &Cfg, x T) Cfg {
+	return c.clone()
+}
+
+fn main() {
+	c := Cfg{value: 7}
+	d := copy_in_generic[int](&c, 0)
+	assert d.value == 7
+}
+') or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} ${src} -d ownership -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+}

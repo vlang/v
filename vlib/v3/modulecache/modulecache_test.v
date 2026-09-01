@@ -1,6 +1,31 @@
 module modulecache
 
 import os
+import crypto.sha256
+
+fn test_cached_relative_flag_paths_preserve_path_selection_expressions() {
+	base_dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_flags')
+	value := r"darwin -I$when_first_existing('/opt/local/include','/opt/homebrew/include') -L$first_existing('/opt/local/lib','/opt/homebrew/lib')"
+	assert cached_resolve_relative_flag_paths(value, os.join_path(base_dir, 'source.v')) == value
+}
+
+fn test_cached_dependency_inputs_restore_empty_variable_value() {
+	expected_head := 'format=test\n'
+	stamp := expected_head + 'dependency=fixed\tvalue\n' + 'dependency=external-root-owner:c:0\t\n'
+	restored := cached_dependency_inputs_from_stamp(stamp, expected_head, {
+		'fixed': 'value'
+	}, ['external-root-owner:']) or { panic('expected cache dependency restore') }
+	assert 'external-root-owner:c:0' in restored
+	assert restored['external-root-owner:c:0'] == ''
+}
+
+fn test_native_declaration_api_macro_definition_is_not_localized() {
+	source := '#ifdef LIB_IMPL\nLIB_API_DECL void exported(void) {\n}\n#else\nLIB_API_DECL void exported(void);\n#endif\nint helper(void) {\n\treturn 1;\n}\n'
+	declarations := c_native_declaration_directives(source)
+	assert declarations.contains('LIB_API_DECL void exported(void) {')
+	assert !declarations.contains('static LIB_API_DECL void exported(void) {')
+	assert declarations.contains('static int helper(void) {')
+}
 
 fn test_cached_file_line_uses_source_file_name() {
 	source := 'return [@FILE, @FILE_LINE, @LINE]'
@@ -86,6 +111,12 @@ fn test_source_typedef_identifiers_ignore_comments_and_parse_declarators() {
 	assert !identifiers['StringOnly']
 }
 
+fn test_source_typedef_identifiers_resume_after_macro_decorated_function() {
+	source := 'SOKOL_API_IMPL void draw(void) { if (1) { while (0) {} } }\ntypedef unsigned AfterBody;\n'
+	identifiers := c_source_typedef_identifiers(source)
+	assert identifiers['AfterBody']
+}
+
 fn test_static_variable_identifiers_ignore_asm_labels() {
 	assert c_static_variable_declaration_identifiers('static int state __asm__("state_alias");') == [
 		'state',
@@ -102,12 +133,93 @@ fn test_static_variable_identifiers_ignore_asm_labels() {
 	assert !function_identifiers['helper_alias']
 }
 
+fn test_static_storage_detects_macro_generated_declarations() {
+	assert c_source_has_static_storage('#define DECL(name) static int name;\nDECL(shared_state)\n')
+	assert c_source_has_static_storage('#define STORAGE static\n#define DECL(name) STORAGE int name;\nDECL(shared_state)\n')
+	assert c_source_has_static_storage('#define LOCAL_FN(name) static int name(void)\nLOCAL_FN(helper) { return 1; }\n')
+	assert !c_source_has_static_storage('#define DECL(name) int name;\nDECL(shared_state)\n')
+}
+
+fn test_static_variable_identifiers_classify_attributes() {
+	identifiers, complete := c_source_static_variable_identifiers('__attribute__((availability(macos,introduced=14.0))) static const unsigned long DynamicStride = 42;
+static inline __attribute__((__always_inline__)) __attribute__((__overloadable__)) int simd_any(int value);
+')
+	assert complete
+	assert identifiers.keys() == ['DynamicStride']
+}
+
+fn test_static_variable_identifiers_ignore_preprocessor_directives() {
+	identifiers, complete := c_source_static_variable_identifiers('/* declaration guard */
+#if defined(ENABLE_STATE) \\
+	&& !defined(DISABLE_STATE)
+static int state;
+#endif
+')
+	assert complete
+	assert identifiers.keys() == ['state']
+}
+
+fn test_static_variable_identifiers_ignore_objc_declarations() {
+	identifiers, complete := c_source_static_variable_identifiers('@interface CacheDelegate : NSObject
+- (void)finish:(int)value;
+@end
+@protocol ForwardDeclaration;
+static int state;
+')
+	assert complete
+	assert identifiers.keys() == ['state']
+}
+
+fn test_static_variable_identifiers_track_objc_function_braces() {
+	identifiers, complete := c_source_static_variable_identifiers('static void helper(void) {
+	@autoreleasepool {
+		static int local_state;
+		if (local_state) {
+			local_state++;
+		}
+	}
+}
+static int file_state;
+')
+	assert complete
+	assert identifiers.keys() == ['file_state']
+}
+
+fn test_static_variable_identifiers_keep_anonymous_aggregate_declarator() {
+	identifiers, complete := c_source_static_variable_identifiers('static struct {
+	const char *str;
+	int code;
+} keymap[] = {
+	{"Enter", 1},
+};
+')
+	assert complete
+	assert identifiers.keys() == ['keymap']
+}
+
+fn test_static_variable_identifiers_scan_extern_c_block() {
+	identifiers, complete := c_source_static_variable_identifiers('extern "C" {
+static int state;
+}
+')
+	assert complete
+	assert identifiers.keys() == ['state']
+}
+
 fn test_function_identifiers_keep_name_before_suffix_macro() {
 	identifiers, complete :=
 		c_source_function_identifiers_with_status('#define API_SUFFIX(tag)\nstatic int api(void) API_SUFFIX(tag) {\n\treturn 1;\n}\n')
 	assert complete
 	assert identifiers['api']
 	assert !identifiers['API_SUFFIX']
+}
+
+fn test_static_function_identifiers_exclude_exported_functions() {
+	identifiers, complete :=
+		c_source_static_function_identifiers_with_status('static int local_helper(void) { return 1; }\nint exported_helper(void) { return local_helper(); }\n')
+	assert complete
+	assert identifiers['local_helper']
+	assert !identifiers['exported_helper']
 }
 
 fn test_function_identifiers_keep_name_after_return_type_macro() {
@@ -196,9 +308,11 @@ fn test_macro_identifiers_referencing_static_helpers() {
 }
 
 fn test_source_signature_cache_content_requires_stable_metadata() {
+	expected_digest := 'a'.repeat(sha256.size * 2)
 	details := SourceSignatureDetails{
-		signature:  'content-signature'
-		validation: ['env=NAME\tvalue']
+		signature:      'content-signature'
+		validation:     ['env=NAME\tvalue']
+		source_digests: [expected_digest]
 	}
 	if _ := source_signature_cache_content('before', 'after', details) {
 		assert false, 'changed metadata must prevent source signature caching'
@@ -212,8 +326,40 @@ fn test_source_signature_cache_content_requires_stable_metadata() {
 		return
 	}
 	assert content.contains('metadata=stable\n')
+	assert content.contains('digest=${expected_digest}\n')
 	assert content.contains('source=content-signature\n')
 	assert content.ends_with('complete=1\n')
+}
+
+fn test_cached_source_signature_keeps_per_file_sha256_digests() {
+	root := os.join_path(os.vtmp_dir(), 'v3_modulecache_source_digests_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first_path := os.join_path(root, 'first.v')
+	second_path := os.join_path(root, 'second.v')
+	first_source := 'module sample\n\npub fn first() {}\n'
+	second_source := 'module sample\n\npub fn second() {}\n'
+	os.write_file(first_path, first_source)!
+	os.write_file(second_path, second_source)!
+	cache_dir := os.join_path(root, 'cache')
+	details := cached_source_signature_details_with_build_values(cache_dir, 'digests', [
+		second_path,
+		first_path,
+	], '', '')
+	assert details.signature.len > 0
+	assert details.source_digests == [sha256.hexhash(first_source),
+		sha256.hexhash(second_source)]
+	// The metadata-valid fast path must restore the same per-file digests without
+	// dropping them from the cache validity result.
+	cached := cached_source_signature_details_with_build_values(cache_dir, 'digests', [
+		second_path,
+		first_path,
+	], '', '')
+	assert cached.signature == details.signature
+	assert cached.source_digests == details.source_digests
 }
 
 fn test_version_pseudo_signature_ignores_build_clock() {

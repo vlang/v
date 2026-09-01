@@ -44,6 +44,25 @@ fn parse_parser_regression_backend_diagnostics(name string, source string, backe
 	return p.diagnostics
 }
 
+fn test_assert_message_requires_a_comma() {
+	diagnostics := parse_parser_regression_diagnostics('assert_message_comma',
+		"fn main() {\n\tassert false 'bye'\n}\n")
+	assert diagnostics.len == 1, diagnostics.str()
+	assert diagnostics[0].message == 'unexpected string `bye`, expecting `,`', diagnostics.str()
+}
+
+fn test_vv_input_is_counted_as_v_source() {
+	path := os.join_path(os.temp_dir(), 'v3_parser_source_count_${os.getpid()}.vv')
+	os.write_file(path, 'fn main() {}\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	p.parse_into(path)
+	assert p.parsed_v_files == 1
+	assert p.parsed_v_file_paths == [path]
+}
+
 // interface_method_param_types supports interface method param types handling for v3 tests.
 fn interface_method_param_types(a &flat.FlatAst, iface string, method string) []string {
 	for node in a.nodes {
@@ -143,6 +162,39 @@ fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
 	assert interface_method_param_types(a, 'Sink', 'read') == ['[max_len]u8']
 }
 
+fn test_interface_method_keyword_named_param_makes_progress() {
+	a := parse_parser_regression_source('interface_keyword_named_param',
+		'interface Commands {\n\tfilter(module string) string\n\tafter(value int) int\n}\n')
+	assert fn_decl_param_pairs(a, .interface_field, 'filter') == ['module:string']
+	assert fn_decl_param_pairs(a, .interface_field, 'after') == ['value:int']
+}
+
+fn test_interface_method_type_head_keyword_param_name_is_disambiguated() {
+	a := parse_parser_regression_source('interface_type_head_keyword_param_name',
+		'struct Foo {}\ninterface Commands {\n\tuse(struct Foo)\n\tmerge(union Foo)\n\tcallback(fn string)\n\tinspect(typeof string)\n\tlookup(map string)\n\tinline_struct(struct { value int })\n\tinline_union(union { value int })\n\tfunction_type(fn (string) int)\n\treflected_type(typeof(string))\n\tmap_type(map[string]int)\n\tchannel_type(chan string)\n}\n')
+	assert fn_decl_param_pairs(a, .interface_field, 'use') == ['struct:Foo']
+	assert fn_decl_param_pairs(a, .interface_field, 'merge') == ['union:Foo']
+	assert fn_decl_param_pairs(a, .interface_field, 'callback') == ['fn:string']
+	assert fn_decl_param_pairs(a, .interface_field, 'inspect') == ['typeof:string']
+	assert fn_decl_param_pairs(a, .interface_field, 'lookup') == ['map:string']
+	struct_params := fn_decl_param_pairs(a, .interface_field, 'inline_struct')
+	assert struct_params.len == 1
+	assert struct_params[0].starts_with(':AnonStruct_')
+	union_params := fn_decl_param_pairs(a, .interface_field, 'inline_union')
+	assert union_params.len == 1
+	assert union_params[0].starts_with(':AnonUnion_')
+	assert fn_decl_param_pairs(a, .interface_field, 'function_type') == [
+		':fn(string) int',
+	]
+	assert fn_decl_param_pairs(a, .interface_field, 'reflected_type') == [
+		':typeof(string)',
+	]
+	assert fn_decl_param_pairs(a, .interface_field, 'map_type') == [':map[string]int']
+	assert fn_decl_param_pairs(a, .interface_field, 'channel_type') == [
+		':chan string',
+	]
+}
+
 fn test_lifetime_generic_suffixes_are_erased() {
 	a := parse_parser_regression_source('lifetime_generic_suffixes',
 		'struct IgnoreMatch {}\nstruct Match[T] {}\n\ninterface Matcher {\n\tmatched[^a](item Match[IgnoreMatch[^a]]) IgnoreMatch[^a]\n}\n\nfn use(item Match[IgnoreMatch[^a]]) {}\nfn after() int {\n\treturn 1\n}\n')
@@ -179,6 +231,22 @@ fn test_address_of_capitalized_index_keeps_postfix_on_operand() {
 	assert has_addressed_index_base(a, 'Foo')
 }
 
+fn test_address_expression_inside_index_is_not_parsed_as_a_type() {
+	a := parse_parser_regression_source('address_expression_inside_index',
+		'fn main() {\n\tmut values := map[voidptr]string{}\n\tvalue := 5\n\tvalues[&value] = "value"\n\t_ = values[&value]\n}\n')
+	mut addressed_values := 0
+	for node in a.nodes {
+		if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+			continue
+		}
+		child := a.child_node(&node, 0)
+		if child.kind == .ident && child.value == 'value' {
+			addressed_values++
+		}
+	}
+	assert addressed_values == 2
+}
+
 fn test_isreftype_qualified_type_names_parse_as_types() {
 	a := parse_parser_regression_source('isreftype_qualified_type_names',
 		'module main\n\nfn main() {\n\t_ = isreftype(foo.Bar)\n\t_ = isreftype(&foo.Bar)\n}\n')
@@ -190,6 +258,39 @@ fn test_isreftype_qualified_type_names_parse_as_types() {
 		}
 	}
 	assert type_args == ['foo.Bar', '&foo.Bar']
+}
+
+fn test_isreftype_shared_local_parses_as_expression() {
+	a := parse_parser_regression_source('isreftype_shared_local_expression', 'module main\n\nfn main() {\n\tshared := 1\n\t_ = isreftype(shared)\n}\n')
+	mut saw_shared_argument := false
+	for node in a.nodes {
+		if node.kind != .call || node.children_count != 2 {
+			continue
+		}
+		callee := a.child_node(&node, 0)
+		if callee.kind != .ident || callee.value != '__v3_isreftype' {
+			continue
+		}
+		argument := a.child_node(&node, 1)
+		saw_shared_argument = argument.kind == .ident && argument.value == 'shared'
+	}
+	assert saw_shared_argument
+}
+
+fn test_shared_local_index_parses_as_expression() {
+	a := parse_parser_regression_source('shared_local_index_expression', 'fn main() {\n\titems := [10, 20]\n\tshared := 1\n\t_ = items[shared]\n}\n')
+	mut saw_shared_index := false
+	for node in a.nodes {
+		if node.kind != .index || node.children_count != 2 {
+			continue
+		}
+		base := a.child_node(&node, 0)
+		index := a.child_node(&node, 1)
+		if base.kind == .ident && base.value == 'items' && index.kind == .ident && index.value == 'shared' {
+			saw_shared_index = true
+		}
+	}
+	assert saw_shared_index
 }
 
 fn test_or_block_inside_index_stays_in_index_expression() {
@@ -217,15 +318,10 @@ fn run() int {
 	assert saw_index_assign
 }
 
-fn test_dollar_prefixed_pseudo_functions_are_rejected() {
+fn test_dollar_prefixed_pseudo_functions_are_accepted() {
 	diagnostics := parse_parser_regression_diagnostics('dollar_pseudo_functions',
 		'struct Item {\n\tvalue int\n}\n\nfn main() {\n\tx := Item{}\n\t_ = $sizeof(int)\n\t_ = $typeof(x)\n\t_ = $isreftype(x)\n\t_ = $__offsetof(Item, value)\n\t_ = $dump(x)\n}\n')
-	assert diagnostics.len == 5, '${diagnostics}'
-	assert diagnostics[0].message.contains('`$sizeof` is not supported'), '${diagnostics}'
-	assert diagnostics[1].message.contains('`$typeof` is not supported'), '${diagnostics}'
-	assert diagnostics[2].message.contains('`$isreftype` is not supported'), '${diagnostics}'
-	assert diagnostics[3].message.contains('`$__offsetof` is not supported'), '${diagnostics}'
-	assert diagnostics[4].message.contains('`$dump` is not supported'), '${diagnostics}'
+	assert diagnostics.len == 0, '${diagnostics}'
 }
 
 fn test_res_is_rejected_outside_the_active_defer_body() {
@@ -310,13 +406,13 @@ fn main() {
 	}
 }
 
-fn test_memory_only_inline_assembly_is_not_treated_as_empty() {
-	barrier := parse_parser_regression_diagnostics('asm_memory_barrier',
+fn test_memory_only_inline_assembly_is_preserved_for_c_lowering() {
+	a := parse_parser_regression_source('asm_memory_barrier',
 		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t\t;\n\t\t;\n\t\tmemory\n\t}\n}\n')
-	assert barrier.any(it.message.contains('inline assembly is not supported')), '${barrier}'
-	empty := parse_parser_regression_diagnostics('asm_truly_empty',
-		'fn main() {\n\tasm volatile amd64 {\n\t\t;\n\t}\n}\n')
-	assert !empty.any(it.message.contains('inline assembly is not supported')), '${empty}'
+	asm_nodes := a.nodes.filter(it.kind == .asm_stmt)
+	assert asm_nodes.len == 1
+	assert asm_nodes[0].value.contains('volatile amd64')
+	assert asm_nodes[0].value.contains('memory')
 }
 
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {
@@ -720,6 +816,75 @@ fn test_parenthesized_statement_after_call_is_not_call_continuation() {
 	assert nested_call_continuations == 0
 	assert println_calls == 1
 	assert foo_calls == 1
+}
+
+fn test_generic_call_function_type_arguments_stay_type_expressions() {
+	source := 'fn accept[T]() bool {
+	return true
+}
+
+fn main() {
+	_ = accept[fn (int) int]()
+	_ = accept[&fn (int) int]()
+	_ = accept[shared fn (int) int]()
+	_ = accept[atomic fn (int) int]()
+	_ = accept[fn ([4]int) bool]()
+}
+'
+	a := parse_parser_regression_source('generic_call_function_type_args', source)
+	mut type_args := []string{}
+	for node in a.nodes {
+		if node.kind != .index || node.children_count != 2 {
+			continue
+		}
+		callee := a.child_node(&node, 0)
+		arg := a.child_node(&node, 1)
+		if callee.kind == .ident && callee.value == 'accept' && arg.kind == .ident {
+			type_args << arg.value
+		}
+	}
+	assert type_args == [
+		'fn(int) int',
+		'&fn(int) int',
+		'shared fn(int) int',
+		'atomic fn(int) int',
+		'fn([4]int) bool',
+	]
+}
+
+fn test_generic_method_chain_on_struct_init_is_not_parsed_as_cast() {
+	source := 'struct Seq[T] {}
+
+type Wrapper[T] = T
+
+fn main() {
+	_ := Seq[string]{}.map[int](fn (value string) int {
+		return value.len
+	}).map[string](fn (value int) string {
+		return value.str()
+	})
+	_ := Wrapper[int](1)
+}
+'
+	a := parse_parser_regression_source('generic_method_chain_on_struct_init', source)
+	casts := cast_expr_values(a)
+	assert 'Wrapper[int]' in casts
+	assert !casts.any(it.contains('.map[')), '${casts}'
+	mut map_calls := 0
+	for node in a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		callee := a.child_node(&node, 0)
+		if callee.kind != .index || callee.children_count == 0 {
+			continue
+		}
+		selector := a.child_node(callee, 0)
+		if selector.kind == .selector && selector.value == 'map' {
+			map_calls++
+		}
+	}
+	assert map_calls == 2
 }
 
 fn test_normalized_option_result_fixed_array_type_names_parse_as_wrapped_arrays() {

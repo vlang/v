@@ -82,11 +82,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Start FreeBSD VM for tcc
         id: vm-freebsd-tcc
-        uses: cross-platform-actions/action@v1.3.0
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: freebsd
           version: '15.1'
@@ -123,11 +123,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Start FreeBSD VM for clang
         id: vm-freebsd-clang
-        uses: cross-platform-actions/action@v1.3.0
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: freebsd
           version: '15.1'
@@ -164,11 +164,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Start FreeBSD VM for gcc
         id: vm-freebsd-gcc
-        uses: cross-platform-actions/action@v1.3.0
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: freebsd
           version: '15.1'

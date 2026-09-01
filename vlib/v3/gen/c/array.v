@@ -106,7 +106,12 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		g.write('array_new(sizeof(${sizeof_elem}), 0, 0)')
 		return
 	}
-	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${sizeof_elem}), (${c_elem}[]){')
+	new_fn := if count == 1 && array_literal_elem_can_use_noscan(elem_type) {
+		'new_array_from_c_array_noscan'
+	} else {
+		'new_array_from_c_array'
+	}
+	g.write('${new_fn}(${count}, ${count}, sizeof(${sizeof_elem}), (${c_elem}[]){')
 	for i in 0 .. count {
 		if i > 0 {
 			g.write(', ')
@@ -127,6 +132,28 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		g.gen_expr_with_expected_type(child_id, elem_type)
 	}
 	g.write('})')
+}
+
+fn array_literal_elem_can_use_noscan(elem_type types.Type) bool {
+	clean := cgen_unalias_type(elem_type)
+	return clean is types.Primitive || clean is types.Char || clean is types.Rune
+		|| clean is types.ISize || clean is types.USize || clean is types.Enum
+}
+
+fn (mut g FlatGen) gen_array_equality_literal_arg(names []string, arg_idx int, arg_id flat.NodeId, node flat.Node) bool {
+	if arg_idx !in [0, 1] || node.kind != .array_literal
+		|| !names.any(it in ['array_eq_raw', 'array_eq_string', 'array_eq_array']) {
+		return false
+	}
+	if arr := array_like_type(g.usable_expr_type(arg_id)) {
+		g.gen_array_literal_value(node, arr.elem_type)
+		return true
+	}
+	if arr := array_like_type(g.parse_node_type(&node)) {
+		g.gen_array_literal_value(node, arr.elem_type)
+		return true
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_array_literal_ptr_arg(node flat.Node, elem_type types.Type) {
@@ -178,6 +205,23 @@ fn (mut g FlatGen) gen_pointer_arg_from_array_literal(node flat.Node, expected t
 // gen_fixed_array_data_arg emits fixed array data arg output for c.
 fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed) {
 	node := g.a.nodes[int(id)]
+	if node.kind == .cast_expr && node.value in ['voidptr', 'builtin.voidptr']
+		&& node.children_count > 0 {
+		g.gen_fixed_array_data_arg(g.a.child(&node, 0), arr)
+		return
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		child_id := g.a.child(&node, 0)
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .ident {
+			if param_type := g.current_param_type(child.value) {
+				if array_fixed_type(param_type) != none {
+					g.gen_expr(child_id)
+					return
+				}
+			}
+		}
+	}
 	if node.kind in [.block, .expr_stmt] && node.children_count == 1 {
 		g.gen_fixed_array_data_arg(g.a.child(&node, 0), arr)
 		return
@@ -252,7 +296,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			return
 		}
 	}
-	annotated_is_fixed := node.typ.len > 0 && array_fixed_type(g.tc.parse_type(node.typ)) != none
+	annotated_is_fixed := node.typ.len > 0 && array_fixed_type(g.parse_node_type(&node)) != none
 	if !annotated_is_fixed
 		&& fixed_array_option_payload_type(types.unwrap_pointer(g.usable_expr_type(id))) != none {
 		g.gen_expr(id)
@@ -485,17 +529,28 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr types.Array) {
 	base_id := g.a.child(fn_node, 0)
 	mut elem_type := arr.elem_type
-	receiver_type := types.unwrap_pointer(g.usable_expr_type(base_id))
+	base_expr_type := g.usable_expr_type(base_id)
+	receiver_type0 := if g.a.nodes[int(base_id)].kind == .call {
+		declared := g.declared_call_return_type(base_id)
+		if declared !is types.Unknown && declared !is types.Void {
+			declared
+		} else {
+			base_expr_type
+		}
+	} else {
+		base_expr_type
+	}
+	receiver_type := types.unwrap_pointer(receiver_type0)
 	if receiver_arr := array_like_type(receiver_type) {
 		elem_type = receiver_arr.elem_type
 	}
 	c_elem := g.value_c_type(elem_type)
 	base_node := g.a.nodes[int(base_id)]
-	is_ptr := if base_node.kind == .ident {
-		g.usable_expr_type(base_id) is types.Pointer
-	} else {
-		false
-	}
+	// A receiver already yields a pointer (e.g. `arc.Arc[[]T].get()` returns
+	// `&[]T`) for any expression kind, not just idents. Detect it uniformly so
+	// `clone` does not take the address of a pointer rvalue (`array__clone(&p)`)
+	// and element accessors dereference correctly.
+	is_ptr := g.usable_expr_type(base_id) is types.Pointer
 	dot := if is_ptr { '->' } else { '.' }
 	match fn_node.value {
 		'clone' {
@@ -627,7 +682,7 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 		}
 		'join' {
 			g.write('Array_string__join(')
-			g.gen_expr(base_id)
+			g.gen_expr_with_expected_type(base_id, types.Type(arr))
 			g.write(', ')
 			g.gen_expr(g.a.child(&node, 1))
 			g.write(')')
@@ -730,7 +785,7 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 		return none
 	}
 	if node.typ.len > 0 {
-		if fixed := array_fixed_type(g.tc.parse_type(node.typ)) {
+		if fixed := array_fixed_type(g.parse_node_type(&node)) {
 			return fixed
 		}
 	}
@@ -759,7 +814,7 @@ fn (mut g FlatGen) to_fixed_size_call_fixed_type(id flat.NodeId) ?types.ArrayFix
 // `.wait()` on non-thread arrays (which is unsupported and falls through here rather than
 // joining elements as thread handles).
 fn (mut g FlatGen) gen_array_method_call_fallback(node flat.Node, mname string, base_id flat.NodeId, is_ptr bool, arr types.Array) {
-	best_mname := g.array_method_fallback_for_receiver(mname, arr)
+	best_mname := g.array_method_fallback_for_receiver(mname, base_id, arr)
 	if best_mname.len > 0 {
 		g.write(g.cname(best_mname))
 		g.write('(')
@@ -787,7 +842,7 @@ fn (mut g FlatGen) gen_array_method_call_fallback(node flat.Node, mname string, 
 // gen_array_pointers_expr emits `array.pointers()` without compiling the erased
 // raw `array` builtin body, which has no concrete element type in v3 Cgen.
 fn (mut g FlatGen) gen_array_pointers_expr(base_id flat.NodeId, is_ptr bool) {
-	base_type := types.unwrap_pointer(g.tc.resolve_type(base_id))
+	base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
 	if fixed := array_fixed_type(base_type) {
 		g.gen_fixed_array_pointers_expr(base_id, is_ptr, fixed)
 		return
@@ -880,9 +935,9 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	name := g.cname('__v_thread_arr_wait_${naming.type_name_part(ret_ct)}')
 	g.spawn_wrapper_names[key] = name
 	if is_void {
-		g.add_spawn_wrapper_def('static void ${name}(Array a) { for (int __i = 0; __i < a.len; __i++) { void* __r = __v_thread_join(((__v_thread*)a.data)[__i]); if (__r) free(__r); } }')
+		g.add_spawn_wrapper_def('static void ${name}(Array a) { for (int __i = 0; __i < a.len; __i++) { __v_thread __t = ((__v_thread*)a.data)[__i]; if (!__t.handle) continue; void* __r = __v_thread_join(__t); if (__r) free(__r); } }')
 	} else {
-		g.add_spawn_wrapper_def('static Array ${name}(Array a) { Array __res = array_new(sizeof(${ret_ct}), a.len, a.len); for (int __i = 0; __i < a.len; __i++) { void* __r = __v_thread_join(((__v_thread*)a.data)[__i]); if (__r) { ((${ret_ct}*)__res.data)[__i] = *(${ret_ct}*)__r; free(__r); } } return __res; }')
+		g.add_spawn_wrapper_def('static Array ${name}(Array a) { Array __res = array_new(sizeof(${ret_ct}), a.len, a.len); for (int __i = 0; __i < a.len; __i++) { __v_thread __t = ((__v_thread*)a.data)[__i]; if (!__t.handle) continue; void* __r = __v_thread_join(__t); if (__r) { ((${ret_ct}*)__res.data)[__i] = *(${ret_ct}*)__r; free(__r); } } return __res; }')
 	}
 	return name
 }
@@ -922,7 +977,7 @@ fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_type types.Type) strin
 	}
 	result_ct := g.optional_type_name(array_result_type)
 	if base_type is types.Void {
-		g.add_spawn_wrapper_def('static ${result_ct} ${name}(Array a) { bool __failed = false; IError __err; memset(&__err, 0, sizeof(__err)); for (int __i = 0; __i < a.len; __i++) { void* __r = __v_thread_join(((__v_thread*)a.data)[__i]); ${ret_ct} __item; if (__r) { __item = *((${ret_ct}*)__r); free(__r); } else { memset(&__item, 0, sizeof(__item)); } if (!__item.ok) { if (!__failed) { __failed = true; __err = __item.err; } } } if (__failed) return (${result_ct}){.ok = false, .err = __err}; return (${result_ct}){.ok = true}; }')
+		g.add_spawn_wrapper_def('static ${result_ct} ${name}(Array a) { bool __failed = false; IError __err; memset(&__err, 0, sizeof(__err)); for (int __i = 0; __i < a.len; __i++) { __v_thread __t = ((__v_thread*)a.data)[__i]; if (!__t.handle) continue; void* __r = __v_thread_join(__t); ${ret_ct} __item; if (__r) { __item = *((${ret_ct}*)__r); free(__r); } else { memset(&__item, 0, sizeof(__item)); } if (!__item.ok) { if (!__failed) { __failed = true; __err = __item.err; } } } if (__failed) return (${result_ct}){.ok = false, .err = __err}; return (${result_ct}){.ok = true}; }')
 		return name
 	}
 	value_ct := g.optional_payload_c_type(base_type)
@@ -931,7 +986,7 @@ fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_type types.Type) strin
 	} else {
 		'((${value_ct}*)__res.data)[__i] = __item.value;'
 	}
-	g.add_spawn_wrapper_def('static ${result_ct} ${name}(Array a) { Array __res = array_new(sizeof(${value_ct}), a.len, a.len); bool __failed = false; IError __err; memset(&__err, 0, sizeof(__err)); for (int __i = 0; __i < a.len; __i++) { void* __r = __v_thread_join(((__v_thread*)a.data)[__i]); ${ret_ct} __item; if (__r) { __item = *((${ret_ct}*)__r); free(__r); } else { memset(&__item, 0, sizeof(__item)); } if (!__item.ok) { if (!__failed) { __failed = true; __err = __item.err; } continue; } ${value_assign} } if (__failed) return (${result_ct}){.ok = false, .err = __err}; return (${result_ct}){.ok = true, .value = __res}; }')
+	g.add_spawn_wrapper_def('static ${result_ct} ${name}(Array a) { Array __res = array_new(sizeof(${value_ct}), a.len, a.len); bool __failed = false; IError __err; memset(&__err, 0, sizeof(__err)); for (int __i = 0; __i < a.len; __i++) { __v_thread __t = ((__v_thread*)a.data)[__i]; if (!__t.handle) continue; void* __r = __v_thread_join(__t); ${ret_ct} __item; if (__r) { __item = *((${ret_ct}*)__r); free(__r); } else { memset(&__item, 0, sizeof(__item)); } if (!__item.ok) { if (!__failed) { __failed = true; __err = __item.err; } continue; } ${value_assign} } if (__failed) return (${result_ct}){.ok = false, .err = __err}; return (${result_ct}){.ok = true, .value = __res}; }')
 	return name
 }
 
@@ -976,10 +1031,22 @@ fn (mut g FlatGen) array_method_fallback(method string) string {
 	return best_mname
 }
 
-fn (mut g FlatGen) array_method_fallback_for_receiver(method string, arr types.Array) string {
-	key := '${arr.elem_type.name()}.${method}'
+fn (mut g FlatGen) array_method_fallback_for_receiver(method string, base_id flat.NodeId, arr types.Array) string {
+	receiver_type := types.unwrap_pointer(g.usable_expr_type(base_id))
+	receiver_name := receiver_type.name()
+	key := '${receiver_name}|${arr.elem_type.name()}.${method}'
 	if key in g.array_method_cache {
 		return g.array_method_cache[key]
+	}
+	// Preserve custom methods on aliases such as `strings.Builder = []u8`.
+	// Falling back through the erased array type can select an unrelated method
+	// that happens to have the same short name.
+	if receiver_type is types.Alias {
+		alias_method := g.resolve_method_name(receiver_name, method)
+		if alias_method.len > 0 {
+			g.array_method_cache[key] = alias_method
+			return alias_method
+		}
 	}
 	suffix := '.${method}'
 	mut best_mname := ''
@@ -988,7 +1055,15 @@ fn (mut g FlatGen) array_method_fallback_for_receiver(method string, arr types.A
 			continue
 		}
 		recv := types.unwrap_pointer(ptypes[0])
-		if recv is types.Array && g.array_elem_type_matches(recv.elem_type, arr.elem_type) {
+		recv_array := if recv is types.Array {
+			recv
+		} else if recv is types.Alias && recv.base_type is types.Array {
+			recv.base_type
+		} else {
+			types.Array{}
+		}
+		if recv_array.elem_type !is types.Void
+			&& g.array_elem_type_matches(recv_array.elem_type, arr.elem_type) {
 			if best_mname.len == 0 || mname.len > best_mname.len {
 				best_mname = mname
 			}

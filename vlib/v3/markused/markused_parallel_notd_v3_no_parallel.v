@@ -11,7 +11,7 @@ import runtime
 import v3.flat
 import v3.workers
 
-const max_markused_jobs = 10
+const max_markused_jobs = 17
 const min_markused_parallel_bodies = 512
 const scoped_markused_chunk_oversubscribe = 2
 const scoped_markused_worker_batches = 4
@@ -147,6 +147,12 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 		return results
 	} $else {
 		mut ast := unsafe { collector.a }
+		scope_workers := collector.tc.scoped_parallel_workers_enabled()
+		if isnil(ast.worker_pool) && !scope_workers {
+			collector.collect_bodies_range(body_ids, body_modules, body_import_contexts, 0,
+				body_ids.len, mut results)
+			return results
+		}
 		if isnil(ast.worker_pool) {
 			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
@@ -159,7 +165,6 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 				body_ids.len, mut results)
 			return results
 		}
-		scope_workers := collector.tc.scoped_parallel_workers_enabled()
 		// Scoped chunks fork a private checker for each scratch batch, so their
 		// immutable outer collector can be shared. Queue twice as many chunks as
 		// cores to smooth out construct-heavy bodies whose cost is not captured

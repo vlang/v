@@ -24,7 +24,7 @@ jobs:
   lint-yml-workflows:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Verify formatting
         uses: creyD/prettier_action@v4.6
         with:

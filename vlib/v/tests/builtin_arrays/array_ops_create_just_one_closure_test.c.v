@@ -12,13 +12,20 @@ fn setup(fname string) (int, int, []int) {
 	return unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap }, 42, []int{len: 5, init: index * 5}
 }
 
+fn assert_at_most_one_new_closure(start_closure_cap int) {
+	closure_cap := unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap }
+	// V3 reclaims array callbacks at function exit, so later tests can reuse the
+	// first test's slot without consuming another slot from the current page.
+	assert start_closure_cap - closure_cap in [0, 1]
+}
+
 fn test_array_filter() {
 	start_closure_cap, x, a := setup(@LOCATION)
 	println(a.filter(fn [x] (i int) bool {
 		println('x: ${x} | i: ${i}')
 		return i < 20
 	}))
-	assert start_closure_cap - unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap } == 1
+	assert_at_most_one_new_closure(start_closure_cap)
 }
 
 fn test_array_map() {
@@ -27,7 +34,7 @@ fn test_array_map() {
 		println('x: ${x} | i: ${i}')
 		return x + i
 	}))
-	assert start_closure_cap - unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap } == 1
+	assert_at_most_one_new_closure(start_closure_cap)
 }
 
 fn test_array_any() {
@@ -36,7 +43,7 @@ fn test_array_any() {
 		println('x: ${x} | i: ${i}')
 		return i < x
 	}))
-	assert start_closure_cap - unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap } == 1
+	assert_at_most_one_new_closure(start_closure_cap)
 }
 
 fn test_array_all() {
@@ -45,5 +52,5 @@ fn test_array_all() {
 		println('x: ${x} | i: ${i}')
 		return i < x
 	}))
-	assert start_closure_cap - unsafe { &C.builtin__closure__Closure(voidptr(&C.g_closure)).closure_cap } == 1
+	assert_at_most_one_new_closure(start_closure_cap)
 }

@@ -162,7 +162,7 @@ fn test_assign_from_pointer_ident_emits_shared_copy_in_c_output() {
 	].join_lines()
 	os.write_file(source_path, source) or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}')
+		os.execute('${os.quoted_path(vexe)} -old-compiler -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}')
 	assert res.exit_code == 0, res.output
 	csrc := os.read_file(c_path) or { panic(err) }
 	assert csrc.contains('__shared__main__StructB* copy = (__shared__main__StructB*)__dup__shared__main__StructB')

@@ -35,6 +35,73 @@ fn function_window_containing(text string, marker string) string {
 	return rest[..end_offset]
 }
 
+fn braced_function_window(text string, marker string) string {
+	start := text.index(marker) or {
+		assert false, 'missing marker: ${marker}'
+		return ''
+	}
+	open_offset := text[start..].index_u8(`{`)
+	if open_offset < 0 {
+		assert false, 'missing function body for: ${marker}'
+		return ''
+	}
+	mut depth := 0
+	for i in start + open_offset .. text.len {
+		if text[i] == `{` {
+			depth++
+		} else if text[i] == `}` {
+			depth--
+			if depth == 0 {
+				return text[start..i + 1]
+			}
+		}
+	}
+	panic('unterminated function body for: ${marker}')
+}
+
+fn assert_v3_closure_context_codegen(generated string) {
+	assert generated.contains('sizeof(closure__ClosureLiveInfo)')
+	assert !generated.contains('new_map_noscan_value(sizeof(void*), sizeof(closure__ClosureLiveInfo)')
+	assert !generated.contains('new_map_noscan_key_value(sizeof(void*), sizeof(closure__ClosureLiveInfo)')
+
+	make_closure_fn := braced_function_window(generated, 'make_closure(int seed) {')
+	assert make_closure_fn.contains('closure__closure_create_with_data(')
+	assert make_closure_fn.contains('memdup(&(')
+	assert make_closure_fn.contains(', true)')
+
+	direct_fn := braced_function_window(generated, 'void local_direct_closure(void) {')
+	assert direct_fn.contains('closure__closure_try_destroy(h);')
+
+	escaped_fn := braced_function_window(generated, 'void local_escaped_closure(')
+	assert !escaped_fn.contains('closure__closure_try_destroy(h);')
+
+	return_value_fn := braced_function_window(generated, 'local_return_fn_value(int n) {')
+	assert !return_value_fn.contains('closure__closure_try_destroy(h);')
+
+	return_fn := braced_function_window(generated, 'int local_return_closure(int n) {')
+	return_call_pos := return_fn.index('h(n % 200)') or {
+		assert false, return_fn
+		return
+	}
+	return_cleanup_pos := return_fn.index('closure__closure_try_destroy(h);') or {
+		assert false, return_fn
+		return
+	}
+	assert return_call_pos < return_cleanup_pos
+
+	main_fn := braced_function_window(generated, 'int main(int argc, char** argv) {')
+	assert main_fn.count('closure__closure_create_with_data((void*)_mvwrap_') == 2
+	assert main_fn.count('closure__closure_try_destroy(') >= 2
+
+	spawn_fn := braced_function_window(generated, 'void local_spawn_closure(void) {')
+	assert spawn_fn.contains('__v_thread_spawn(')
+	assert !spawn_fn.contains('closure__closure_try_destroy(h);')
+
+	go_fn := braced_function_window(generated, 'void local_go_closure(void) {')
+	assert go_fn.contains('__v_thread_spawn(')
+	assert !go_fn.contains('closure__closure_try_destroy(h);')
+}
+
 fn test_closure_context_codegen_uses_collectable_memdup_and_ownership() {
 	workdir := os.join_path(os.vtmp_dir(), 'closure_context_codegen_${os.getpid()}')
 	os.mkdir_all(workdir)!
@@ -569,11 +636,21 @@ fn main() {
 }
 ')!
 
-	c_cmd := '${test_vexe} -enable-globals -gc boehm -skip-unused -o - ${os.quoted_path(source_path)}'
+	c_cmd := '${test_vexe} -old-compiler -enable-globals -gc boehm -skip-unused -o - ${os.quoted_path(source_path)}'
 	c_res := os.execute(c_cmd)
 	assert c_res.exit_code == 0, '${c_cmd}\n${c_res.output}'
 	generated := c_res.output.replace('\r\n', '\n')
 	assert !generated.contains('builtin__memdup_uncollectable')
+	if generated.contains('sizeof(closure__ClosureLiveInfo)') {
+		assert_v3_closure_context_codegen(generated)
+		compile_cmd := '${test_vexe} -old-compiler -enable-globals -gc none -skip-unused -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
+		compile_res := os.execute(compile_cmd)
+		assert compile_res.exit_code == 0, '${compile_cmd}\n${compile_res.output}'
+		run_res := os.execute(os.quoted_path(exe_path))
+		assert run_res.exit_code == 0, run_res.output
+		assert run_res.output.trim_space() == '71'
+		return
+	}
 	assert generated.contains('sizeof(builtin__closure__ClosureLiveInfo)')
 	assert !generated.contains('new_map_noscan_value(sizeof(voidptr), sizeof(builtin__closure__ClosureLiveInfo)')
 	assert !generated.contains('new_map_noscan_key_value(sizeof(voidptr), sizeof(builtin__closure__ClosureLiveInfo)')
@@ -885,7 +962,7 @@ fn main() {
 	assert go_fn.contains('/*spawn (thread) */') || go_fn.contains('/*go (coroutine) */')
 	assert !go_fn.contains('builtin__closure__closure_try_destroy((voidptr)h);')
 
-	compile_cmd := '${test_vexe} -enable-globals -gc none -skip-unused -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
+	compile_cmd := '${test_vexe} -old-compiler -enable-globals -gc none -skip-unused -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
 	compile_res := os.execute(compile_cmd)
 	assert compile_res.exit_code == 0, '${compile_cmd}\n${compile_res.output}'
 	run_res := os.execute(os.quoted_path(exe_path))

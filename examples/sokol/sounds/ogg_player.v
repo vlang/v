@@ -47,7 +47,9 @@ mut:
 	stream_len_seconds f32
 	xerror             vorbis.VorbisErrorCode
 	allocator          C.stb_vorbis_alloc = C.stb_vorbis_alloc{
-		alloc_buffer:                 0
+		// The allocator starts with no backing buffer (zero length); a real buffer is
+		// installed before `stb_vorbis` decodes, so the null pointer is valid here.
+		alloc_buffer:                 unsafe { nil }
 		alloc_buffer_length_in_bytes: 0
 	}
 	decoder            &C.stb_vorbis // TODO: cgen error with -cstrict -gcc, when this is = unsafe { nil } here

@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 import crypto.rand

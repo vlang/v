@@ -72,8 +72,8 @@ pub fn (mut c Controller) register_host_controller[A, X](host string, path strin
 }
 
 // controller_host generates a controller which only handles incoming requests from the `host` domain
-pub fn controller_host[A, X](host string, path string, mut global_app A) &ControllerPath {
-	mut ctrl := controller[A, X](path, mut global_app)
+pub fn controller_host[A, X](host string, path string, mut global_app A) !&ControllerPath {
+	mut ctrl := controller[A, X](path, mut global_app)!
 	ctrl.host = host
 	return ctrl
 }

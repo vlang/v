@@ -1,5 +1,7 @@
 module types
 
+import os
+
 // Scope represents scope data used by types.
 @[heap]
 pub struct Scope {
@@ -13,11 +15,17 @@ pub mut:
 	// the per-level map probe (most lookups walk many levels that do not bind
 	// the name at all). False positives only cost the probe they would have
 	// paid anyway.
-	name_mask       u64
-	generations     []int
-	storage_keys    []string
-	next_generation int
-	lifetime        int
+	name_mask        u64
+	fast_lookup      bool
+	fast_generation  u32
+	fast_name_ptrs   [32]voidptr
+	fast_name_lens   [32]u16
+	fast_indexes     [32]u32
+	fast_generations [32]u32
+	generations      []int
+	storage_keys     []string
+	next_generation  int
+	lifetime         int
 }
 
 pub struct ScopeBindingOwner {
@@ -35,11 +43,46 @@ fn scope_name_bit(name string) u64 {
 	return u64(1) << ((first * 33 + u32(name.len)) & 63)
 }
 
+@[inline]
+fn scope_fast_slot(name string) int {
+	return int(((u64(voidptr(name.str)) >> 4) ^ u64(name.len)) & 31)
+}
+
+@[direct_array_access; inline]
+fn (s &Scope) own_binding_index(name string) ?int {
+	if s.fast_lookup {
+		slot := scope_fast_slot(name)
+		if s.fast_generations[slot] == s.fast_generation
+			&& s.fast_name_ptrs[slot] == voidptr(name.str)
+			&& s.fast_name_lens[slot] == u16(name.len) {
+			return int(s.fast_indexes[slot])
+		}
+	}
+	if i := s.name_indexes[name] {
+		return i
+	}
+	return none
+}
+
+@[direct_array_access; inline]
+fn (mut s Scope) remember_fast_binding(name string, index int) {
+	if !s.fast_lookup || name.len > 65535 {
+		return
+	}
+	slot := scope_fast_slot(name)
+	s.fast_name_ptrs[slot] = voidptr(name.str)
+	s.fast_name_lens[slot] = u16(name.len)
+	s.fast_indexes[slot] = u32(index)
+	s.fast_generations[slot] = s.fast_generation
+}
+
 // new_scope returns a reusable type-checker scope with an optional parent.
 pub fn new_scope(parent &Scope) &Scope {
 	unsafe {
 		return &Scope{
-			parent: parent
+			parent:          parent
+			fast_lookup:     os.getenv('V3_NO_SCOPE_DIRECT') == ''
+			fast_generation: 1
 		}
 	}
 }
@@ -58,6 +101,11 @@ pub fn (mut s Scope) reset(parent &Scope) {
 	// nearest_binding_owned_by) stays exact in every build mode.
 	s.lifetime++
 	s.name_mask = 0
+	s.fast_generation++
+	if s.fast_generation == 0 {
+		s.fast_generations = [32]u32{}
+		s.fast_generation = 1
+	}
 	$if !ownership ? {
 		s.name_indexes.clear()
 	}
@@ -78,7 +126,7 @@ pub fn (s &Scope) lookup(name string) ?Type {
 		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if scope.name_mask & bit != 0 {
-				if i := scope.name_indexes[name] {
+				if i := scope.own_binding_index(name) {
 					return scope.types[i]
 				}
 			}
@@ -111,7 +159,7 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 				scope = scope.parent
 				continue
 			}
-			if i := scope.name_indexes[name] {
+			if i := scope.own_binding_index(name) {
 				return ScopeBindingOwner{
 					scope:       scope
 					index:       i
@@ -160,8 +208,8 @@ fn scope_binding_storage_key(scope &Scope, lifetime int, index int, generation i
 
 // belongs_to_scope reports whether this binding owner was declared directly in `scope`.
 pub fn (owner ScopeBindingOwner) belongs_to_scope(scope &Scope) bool {
-	return owner.scope != unsafe { nil } && scope != unsafe { nil } && owner.scope == scope
-		&& owner.lifetime == scope.lifetime
+	return owner.scope != unsafe { nil } && scope != unsafe { nil }
+		&& voidptr(owner.scope) == voidptr(scope) && owner.lifetime == scope.lifetime
 }
 
 // belongs_to_scope_chain_until reports whether this binding owner was declared
@@ -176,7 +224,7 @@ pub fn (owner ScopeBindingOwner) belongs_to_scope_chain_until(scope &Scope, stop
 		if owner.belongs_to_scope(cur) {
 			return true
 		}
-		if cur == stop {
+		if voidptr(cur) == voidptr(stop) {
 			return false
 		}
 		cur = cur.parent
@@ -191,18 +239,23 @@ pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner)
 		return false
 	}
 	$if !ownership ? {
-		if i := s.name_indexes[name] {
-			return s == owner.scope && s.lifetime == owner.lifetime && i == owner.index
-		}
-		if s.parent != unsafe { nil } {
-			return s.parent.nearest_binding_owned_by(name, owner)
+		bit := scope_name_bit(name)
+		mut scope := unsafe { &Scope(s) }
+		for scope != unsafe { nil } {
+			if scope.name_mask & bit != 0 {
+				if i := scope.own_binding_index(name) {
+					return voidptr(scope) == voidptr(owner.scope)
+						&& scope.lifetime == owner.lifetime && i == owner.index
+				}
+			}
+			scope = scope.parent
 		}
 		return false
 	}
 	for i := s.names.len - 1; i >= 0; i-- {
 		if s.names[i] == name {
-			return s == owner.scope && s.lifetime == owner.lifetime && i == owner.index
-				&& s.generations[i] == owner.generation
+			return voidptr(s) == voidptr(owner.scope) && s.lifetime == owner.lifetime
+				&& i == owner.index && s.generations[i] == owner.generation
 		}
 	}
 	if s.parent != unsafe { nil } {
@@ -222,6 +275,7 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 	$if !ownership ? {
 		if i := s.name_indexes[name] {
 			s.types[i] = typ
+			s.remember_fast_binding(name, i)
 			return ScopeBindingOwner{
 				scope:       s
 				index:       i
@@ -233,8 +287,9 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 		s.names << name
 		s.types << typ
 		s.name_mask |= scope_name_bit(name)
-		s.name_indexes[name] = s.names.len - 1
 		index := s.names.len - 1
+		s.name_indexes[name] = index
+		s.remember_fast_binding(name, index)
 		storage_key := scope_binding_storage_key(s, s.lifetime, index, 0)
 		s.storage_keys << storage_key
 		return ScopeBindingOwner{

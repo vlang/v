@@ -59,9 +59,10 @@ mut:
 pub struct Server {
 pub:
 	family                  net.AddrFamily = .ip6
-	port                    int            = 3000
-	max_request_buffer_size int            = 8192
-	timeout_in_seconds      int            = 30
+	host                    string
+	port                    int = 3000
+	max_request_buffer_size int = 8192
+	timeout_in_seconds      int = 30
 	user_data               voidptr
 mut:
 	listen_fd       C.SOCKET = iocp_invalid_socket
@@ -92,6 +93,7 @@ pub fn new_server(config ServerConfig) !&Server {
 	}
 	mut server := &Server{
 		family:                  config.family
+		host:                    config.host
 		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
 		timeout_in_seconds:      config.timeout_in_seconds
@@ -146,7 +148,11 @@ fn wsa_error_message(label string) string {
 }
 
 fn create_server_socket(server &Server) !C.SOCKET {
-	server_fd := C.WSASocketW(i32(server.family), i32(net.SocketType.tcp), 0, unsafe { nil }, 0,
+	// Resolve the bind address first: the socket family must match the address
+	// family, and a configured host may resolve to a different family than
+	// server.family (e.g. an IPv4 host with the default family: .ip6).
+	addr := resolve_bind_addr(server.host, server.family, server.port)!
+	server_fd := C.WSASocketW(i32(addr.family()), i32(net.SocketType.tcp), 0, unsafe { nil }, 0,
 		u32(C.WSA_FLAG_OVERLAPPED))
 	if server_fd == iocp_invalid_socket {
 		return error(wsa_error_message('WSASocketW'))
@@ -157,17 +163,12 @@ fn create_server_socket(server &Server) !C.SOCKET {
 		close_socket(server_fd)
 		return error(wsa_error_message('setsockopt SO_REUSEADDR'))
 	}
-	if server.family == .ip6 {
+	if addr.family() == .ip6 {
 		ipv6_only := 0
 		C.v_fasthttp_setsockopt(server_fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, voidptr(&ipv6_only),
 			sizeof(ipv6_only))
 	}
 
-	addr := if server.family == .ip6 {
-		net.new_ip6(u16(server.port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
-	} else {
-		net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
-	}
 	if C.v_fasthttp_bind(server_fd, voidptr(&addr), int(addr.len())) < 0 {
 		close_socket(server_fd)
 		return error(wsa_error_message('bind'))
@@ -822,7 +823,7 @@ pub fn (mut server Server) run() ! {
 	server.threads[max_thread_pool_size] = spawn accept_loop(server)
 
 	server.mark_running()
-	println('listening on http://0.0.0.0:${server.port}/')
+	println('listening on http://${listen_host_display(server.host, server.family)}:${server.port}/')
 
 	for i in 0 .. max_thread_pool_size + 1 {
 		server.threads[i].wait()

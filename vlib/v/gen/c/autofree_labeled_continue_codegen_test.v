@@ -22,7 +22,7 @@ fn function_window(source string, signature string) string {
 }
 
 fn test_labeled_loop_cleanup_codegen_order() {
-	cmd := '${test_vexe} -autofree -o - ${os.quoted_path(autofree_labeled_continue_testdata)}'
+	cmd := '${test_vexe} -old-compiler -autofree -o - ${os.quoted_path(autofree_labeled_continue_testdata)}'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	generated := res.output

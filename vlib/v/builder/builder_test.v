@@ -407,7 +407,7 @@ fn test_missing_library_is_reported_without_compiler_bug_hint() {
 	src_file := os.join_path('missing_library', 'main.v')
 	os.write_file(src_file, '#flag -l${lib_name}\nfn main() {}\n')!
 
-	res := os.execute('${os.quoted_path(vexe)} ${os.quoted_path(src_file)}')
+	res := os.execute('${os.quoted_path(vexe)} -old-compiler ${os.quoted_path(src_file)}')
 	normalized_output := res.output.replace('\r\n', '\n')
 
 	assert res.exit_code != 0

@@ -15,6 +15,25 @@ fn test_thread_bool_waiter_is_declared_before_array_waiter_uses_it_on_windows() 
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	lines := res.output.replace('\r\n', '\n').split_into_lines()
+	if res.output.contains('static Array __v_thread_arr_wait_bool(Array a) {') {
+		helper := 'static Array __v_thread_arr_wait_bool(Array a) {'
+		helper_idx := res.output.index(helper) or {
+			assert false, res.output
+			return
+		}
+		join_idx := res.output.index_after('__v_thread_join(((__v_thread*)a.data)[__i])',
+			helper_idx) or {
+			assert false, res.output
+			return
+		}
+		call_idx := res.output.index('Array results = __v_thread_arr_wait_bool(threads);') or {
+			assert false, res.output
+			return
+		}
+		assert join_idx > helper_idx
+		assert call_idx > join_idx
+		return
+	}
 	thread_wait_decl := 'bool __v_thread_bool_wait(__v_thread_bool thread);'
 	array_wait_def := 'Array_bool Array___v_thread_bool_wait(Array___v_thread_bool a) {'
 	wait_call := '((bool*)res.data)[i] = __v_thread_bool_wait(t);'
@@ -38,6 +57,14 @@ fn test_prealloc_spawn_args_use_c_malloc() {
 	cmd := '${os.quoted_path(thread_bool_wait_codegen_vexe)} -prealloc -o - ${os.quoted_path(source_path)}'
 	res := os.execute(cmd)
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
+	if res.output.contains('typedef struct { string a0; } worker_thread_args;') {
+		assert res.output.contains('(worker_thread_args*)__v_thread_alloc(sizeof(worker_thread_args))')
+		assert res.output.contains('free(p); return NULL;')
+		assert res.output.contains('int* __tr = (int*)__v_thread_alloc(sizeof(int));')
+		assert res.output.contains('if (__twres2) { __twval2 = *((int*)__twres2); free(__twres2); }')
+		assert !res.output.contains('prealloc_scope =')
+		return
+	}
 	assert res.output.contains('(thread_arg_main__worker *) malloc(sizeof(thread_arg_main__worker))'), res.output
 	assert res.output.contains('prealloc_scope = builtin__prealloc_scope_retain_current();'), res.output
 	assert res.output.contains('void* thread_prealloc_scope = builtin__prealloc_scope_begin();'), res.output

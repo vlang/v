@@ -1,0 +1,82 @@
+name: TCC bundle revalidation
+
+run-name: tccbin-recovery-${{ inputs.resume_handoff_id || 'scheduled-sweep' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      resume_handoff_id:
+        description: 'Opaque persisted recovery handoff identifier'
+        required: true
+        type: string
+  schedule:
+    - cron: '27 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tccbin-control-plane
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      authorized: ${{ steps.preflight.outputs.authorized }}
+      dispatch_requested: ${{ steps.preflight.outputs.dispatch_requested }}
+      receiver_id: ${{ steps.preflight.outputs.receiver_id }}
+    steps:
+      - name: Validate the dark-mode request envelope
+        id: preflight
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HANDOFF_ID: ${{ inputs.resume_handoff_id || '' }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            [[ "$HANDOFF_ID" =~ ^[0-9a-f]{64}$ ]]
+            [ "$GITHUB_REPOSITORY" = vlang/v ]
+            [ "$GITHUB_REF" = refs/heads/master ]
+            echo 'dispatch_requested=true' >> "$GITHUB_OUTPUT"
+            echo "receiver_id=$HANDOFF_ID" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT_NAME" != schedule ] || [ "$GITHUB_REF" != refs/heads/master ]; then
+            exit 1
+          else
+            echo 'dispatch_requested=false' >> "$GITHUB_OUTPUT"
+            echo 'receiver_id=' >> "$GITHUB_OUTPUT"
+          fi
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  reconcile-dark-mode:
+    needs: preflight
+    if: needs.preflight.outputs.authorized == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout the trusted workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build the local compiler
+        run: |
+          make
+          ./v -o ./vnew cmd/v
+      - name: Validate the scheduled reconciler without state or dispatch access
+        if: needs.preflight.outputs.dispatch_requested == 'false'
+        run: ./vnew run thirdparty/tccbin_automation/bin/cmd dry-run
+      - name: Resolve the selected handoff and stop if its ACK is not exact
+        if: needs.preflight.outputs.dispatch_requested == 'true'
+        env:
+          RECEIVER_ID: ${{ needs.preflight.outputs.receiver_id }}
+        run: |
+          ./vnew run thirdparty/tccbin_automation/bin/cmd receiver \
+            thirdparty/tccbin_automation/tests/fixtures/receiver-ledger.dark.json \
+            "$RECEIVER_ID" vlang/v 1002 .github/workflows/tccbin_revalidate.yml \
+            master workflow_dispatch "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            "$GITHUB_SHA" "tccbin-recovery-$RECEIVER_ID" \
+            cccccccccccccccccccccccccccccccccccccccc \
+            cccccccccccccccccccccccccccccccccccccccc false

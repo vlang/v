@@ -5,6 +5,7 @@ import v.ast
 import strings
 
 pub const reset_dbg_line = '#line 999999999'
+pub const generated_c_debug_path = '<generated C>'
 
 pub fn (mut g Gen) gen_c_main() {
 	if !g.has_main {
@@ -41,7 +42,11 @@ fn (mut g Gen) gen_vlines_reset() {
 		// At this point, the v files are transpiled.
 		// The rest is auto generated code, which will not have
 		// different .v source file/line numbers.
-		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
+		g.vlines_path = if g.pref.os == .macos && g.pref.building_v && g.pref.is_debug {
+			generated_c_debug_path
+		} else {
+			util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
+		}
 		g.writeln2('', '// Reset the C file/line numbers')
 		g.writeln2('${reset_dbg_line} "${g.vlines_path}"', '')
 	}
@@ -395,11 +400,14 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_${tnumber}, tcmod_${tnumber}, tcfile_${tnumber}, ${lnum});')
 		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
 		g.writeln('\tbool failed_${tnumber} = false;')
+		if g.pref.show_asserts {
+			// `longjmp` makes non-volatile automatic locals modified after `setjmp`
+			// indeterminate. Initialize the benchmark step first so `bt` remains valid
+			// when testing_step_end reads it after a failed assertion.
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
+		}
 		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
 		//
-		if g.pref.show_asserts {
-			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, tcname_${tnumber});')
-		}
 		if is_test_fn && before_each_fn != '' {
 			g.writeln('\t\t${before_each_fn}();')
 		}

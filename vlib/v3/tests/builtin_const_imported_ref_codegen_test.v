@@ -44,7 +44,9 @@ fn main() {
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('#define builtin__max_u64'), c_code
-	assert c_code.contains('builtin__max_u64 / (u64)(base)'), c_code
+	assert c_code.contains('= (u64)(builtin__max_u64);'), c_code
+	assert c_code.contains('= (u64)((u64)(base));'), c_code
+	assert c_code.contains('v_panic(_S("division by zero"))'), c_code
 	assert c_code.contains('__if_val_') && c_code.contains('builtin__max_u64;'), c_code
 	assert !c_code.contains('(max_u64 /'), c_code
 	assert !c_code.contains('= max_u64;'), c_code

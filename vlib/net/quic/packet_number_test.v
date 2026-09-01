@@ -1,3 +1,4 @@
+// vtest build: present_openssl?
 module quic
 
 // decode_from_bytes is a small test helper: parse a big-endian byte slice

@@ -1,0 +1,16 @@
+{
+  "repository": {
+    "full_name": "vlang/v"
+  },
+  "workflow_run": {
+    "id": 9001,
+    "run_attempt": 1,
+    "workflow_id": 1002,
+    "path": ".github/workflows/tccbin_revalidate.yml",
+    "head_branch": "master",
+    "event": "workflow_dispatch",
+    "head_sha": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "display_title": "tccbin-recovery-7777777777777777777777777777777777777777777777777777777777777777",
+    "conclusion": "success"
+  }
+}

@@ -42,13 +42,20 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 		output.write_string(process.stderr_slurp())
 	}
 	if process.err.len > 0 {
-		output.writeln(process.err)
+		output.write_string(process.err)
+		output.write_string(': ')
+		output.writeln(program)
 	}
 	exit_code := if process.code >= 0 { process.code } else { 1 }
 	process.close()
+	mut output_text := output.str()
+	if exit_code != 0 && output_text.contains('os: failed to find executable')
+		&& !output_text.contains(program) {
+		output_text += 'executable: ${program}\n'
+	}
 	return os.Result{
 		exit_code: exit_code
-		output:    output.str()
+		output:    output_text
 	}
 }
 

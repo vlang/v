@@ -25,6 +25,98 @@ fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.Node
 	})
 }
 
+fn test_inline_asm_quoted_label_references_drop_v_quotes() {
+	assert lower_c_inline_asm_template("jz '1f'", 'amd64', map[string]bool{}, false) == 'jz 1f'
+	assert lower_c_inline_asm_template("jnz '23b'", 'amd64', map[string]bool{}, false) == 'jnz 23b'
+	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', map[string]bool{}, false) == 'call named_target'
+	assert lower_c_inline_asm_template("jmp 'next_block'", 'i386', map[string]bool{}, false) == 'jmp next_block'
+	assert lower_c_inline_asm_template("jmp 'x'", 'amd64', map[string]bool{}, false) == 'jmp x'
+}
+
+fn test_inline_asm_quoted_numbered_operands_drop_v_quotes() {
+	assert lower_c_inline_asm_template("lock cmpxchgq '%1', '%2'", 'amd64', map[string]bool{}, true) == 'lock cmpxchgq %2, %1'
+}
+
+fn test_inline_asm_character_tokens_use_assembly_quotes() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('mov rax, `A`', 'amd64', aliases, false) == "mov 'A', %rax"
+	assert lower_c_inline_asm_template('mov rax, `,`', 'amd64', aliases, false) == "mov ',', %rax"
+	assert lower_c_inline_asm_template('mov x0, `A`', 'arm64', aliases, false) == "mov x0, 'A'"
+}
+
+fn test_inline_asm_x86_addresses_preserve_unscaled_indexes() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('mov rax, [rbx + rcx + 8]', 'amd64', aliases, false) == 'mov 8(%rbx, %rcx, 1), %rax'
+	assert lower_c_inline_asm_template('mov eax, [ebx + ecx + 4]', 'i386', aliases, false) == 'mov 4(%ebx, %ecx, 1), %eax'
+	assert lower_c_inline_asm_template('lea rax, [rip + named_target]', 'amd64', aliases, false) == 'lea named_target(%rip), %rax'
+}
+
+fn test_inline_asm_i386_uses_x86_att_operand_lowering() {
+	aliases := map[string]bool{}
+	assert lower_c_inline_asm_template('mov eax, ebx', 'i386', aliases, false) == 'mov %ebx, %eax'
+	assert lower_c_inline_asm_template('mov eax, 7', 'i386', aliases, false) == 'mov \$7, %eax'
+	assert lower_c_inline_asm_template('mov eax, [ebx + ecx*4 + 8]', 'i386', aliases, false) == 'mov 8(%ebx, %ecx, 4), %eax'
+}
+
+fn test_inline_asm_x86_register_branch_targets_are_indirect() {
+	aliases := {
+		'callback': true
+	}
+	assert lower_c_inline_asm_template('call rax', 'amd64', aliases, false) == 'call *%rax'
+	assert lower_c_inline_asm_template('call rax', 'amd64', aliases, true) == 'call *%%rax'
+	assert lower_c_inline_asm_template('jmp callback', 'amd64', aliases, true) == 'jmp *%[callback]'
+	assert lower_c_inline_asm_template('jmp eax', 'i386', aliases, false) == 'jmp *%eax'
+	assert lower_c_inline_asm_template("call 'named_target'", 'amd64', aliases, false) == 'call named_target'
+}
+
+fn test_inline_asm_block_comments_do_not_create_operand_sections() {
+	source := 'mov rax, "/* ; quoted */"
+/* outer ; /* nested ; */ still a comment ; */
+mov rbx, "// ; quoted"
+// line comment ;
+; +r (value)'
+	clean := strip_c_inline_asm_comments(source)
+	assert clean.contains('"/* ; quoted */"')
+	assert clean.contains('"// ; quoted"')
+	assert !clean.contains('outer')
+	assert !clean.contains('line comment')
+	sections := split_c_inline_asm_sections(clean)
+	assert sections.len == 2
+	assert sections[0].split_into_lines().filter(it.trim_space().len > 0) == [
+		'mov rax, "/* ; quoted */"',
+		'mov rbx, "// ; quoted"',
+	]
+	assert sections[1].trim_space() == '+r (value)'
+}
+
+fn test_lowered_storage_dereference_prefers_annotated_pointer_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	pointer_type := types.Type(types.Pointer{
+		base_type: types.Type(types.int_)
+	})
+	value_id := stmt_test_node(mut a, .ident, 'value', [])
+	tc.register_synth_type(value_id, pointer_type)
+	children_start := a.children.len
+	a.children << value_id
+	deref_id := a.add_node(flat.Node{
+		kind:           .prefix
+		op:             .mul
+		typ:            '&int'
+		children_start: i32(children_start)
+		children_count: 1
+	})
+
+	actual := g.usable_expr_type(deref_id)
+	assert actual is types.Pointer
+	if actual is types.Pointer {
+		assert actual.base_type == types.Type(types.int_)
+	}
+}
+
 fn test_primitive_fixed_array_zero_initializer_is_compact() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -55,6 +147,41 @@ fn test_primitive_fixed_array_zero_initializer_is_compact() {
 	}
 	dynamic_init := g.empty_fixed_array_initializer_string(dynamic_arrays)
 	assert dynamic_init.count('array_new(') == 2
+}
+
+fn test_fixed_array_optional_abi_conversions_use_memcpy() {
+	fixed := types.Type(types.ArrayFixed{
+		elem_type: types.Type(types.int_)
+		len:       2
+	})
+	mut forward_gen := FlatGen.new()
+	forward := forward_gen.optional_forward_return_abi_wrap_expr('Optional_source',
+		'Optional_destination', fixed, 'source()')
+	assert forward.contains('if (_t1.ok) { memcpy(_t2.value, _t1.value, sizeof(_t2.value)); }'), forward
+	assert !forward.contains('.value = _t1.value'), forward
+
+	mut interface_gen := FlatGen.new()
+	interface_gen.gen_interface_dispatch_optional_abi_value_return('Optional_destination',
+		'_iface_result', fixed)
+	interface_output := interface_gen.sb.str()
+	assert interface_output.contains('if (_iface_result.ok) {'), interface_output
+	copy_statement := 'memcpy(_iface_abi_result_out_0.value, _iface_result.value, sizeof(_iface_abi_result_out_0.value));'
+	assert interface_output.contains(copy_statement), interface_output
+	assert !interface_output.contains('.value = _iface_result.value'), interface_output
+}
+
+fn test_ownership_recursive_drop_helpers_deduplicate_emitted_c_symbol() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	// Distinct logical ownership keys can refer to the same runtime struct after
+	// lifetime erasure. Only one C helper definition may be emitted for it.
+	g.recursive_drop_helpers['struct:pkg.Sink[^p,^s,Writer]'] = 'pkg.Sink[Writer]'
+	g.recursive_drop_helpers['struct:pkg.Sink[^s,^s,Writer]'] = 'pkg.Sink[Writer]'
+	g.gen_ownership_recursive_drop_helpers()
+	assert g.sb.str().count('static void __v3_ownership_drop_pkg__Sink_Writer(') == 1
 }
 
 fn test_usable_resolved_sum_type_requires_exact_qualified_name() {

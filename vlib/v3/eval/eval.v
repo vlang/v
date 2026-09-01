@@ -1784,7 +1784,10 @@ fn (mut e Eval) set_index_value(container Value, index Value, value Value) !Valu
 fn (mut e Eval) set_selector_value(container Value, field_name string, value Value) !Value {
 	match container {
 		StructValue {
-			mut st := container
+			mut st := StructValue{
+				type_name: container.type_name
+				fields:    container.fields.clone()
+			}
 			st.fields[field_name] = e.adapt_value_to_type_name(value, e.struct_field_type_name(container,
 				field_name))
 			return st
@@ -5971,7 +5974,6 @@ fn (e &Eval) sizeof_type_name(name string) i64 {
 		'bool', 'i8', 'u8', 'byte', 'char' { i64(1) }
 		'i16', 'u16' { i64(2) }
 		'int', 'i32', 'u32', 'rune', 'f32' { i64(4) }
-		'i64', 'u64', 'isize', 'usize', 'f64' { i64(8) }
 		else { i64(8) }
 	}
 }

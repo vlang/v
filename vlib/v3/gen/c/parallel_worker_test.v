@@ -1,6 +1,7 @@
 module c
 
 import v3.flat
+import v3.pref
 import v3.types
 
 fn parallel_worker_test_gen(scoped bool) (&FlatGen, &types.TypeChecker) {
@@ -52,6 +53,100 @@ fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() 
 		'puts': true
 	}
 	assert w.c_extern_refs_ready
+}
+
+fn test_parallel_worker_shares_precomputed_const_short_index() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.const_vals = {
+		'moda.only':   flat.NodeId(0)
+		'moda.answer': flat.NodeId(1)
+		'modb.answer': flat.NodeId(2)
+	}
+	g.precompute_const_short_index()
+	assert g.const_short_index.built
+	assert g.const_short_index.entries['only'] == 'moda.only'
+	assert g.const_short_index.entries['answer'] == ''
+
+	w := g.new_parallel_worker(1)
+	assert w.const_short_index == g.const_short_index
+	assert w.unique_const_ref_name('only') or { '' } == 'moda.only'
+	assert w.unique_const_ref_name('answer') == none
+}
+
+fn test_parallel_worker_preserves_test_assertion_stats_mode() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.show_test_stats = true
+	w := g.new_parallel_worker(1)
+	assert w.show_test_stats
+}
+
+fn test_parallel_worker_preserves_target() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.target = pref.target_from('linux', 'x86') or { panic(err) }
+	w := g.new_parallel_worker(1)
+	assert w.target == g.target
+}
+
+fn test_windows_filelock_method_preseeds_parallel_compat_helpers() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut used := {
+		'filelock.FileLock.lock_handle': true
+	}
+	g.used_fns = &used
+	// Isolate used-function reachability from the later function-body reference scan.
+	g.c_extern_refs_ready = true
+	g.preseed_libc_compat_fns()
+	assert g.libc_compat_fns['filelock']
+
+	g.libc_compat_fns.delete('filelock')
+	g.filelock_compat_decls()
+	c_code := g.sb.str()
+	assert c_code.contains('static inline int v_filelock_lock(HANDLE handle'), c_code
+	assert c_code.contains('static inline int v_filelock_unlock(HANDLE handle'), c_code
+}
+
+fn test_builtin_gettid_preseeds_parallel_compat_helper() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut used := {
+		'v_gettid': true
+	}
+	g.used_fns = &used
+	// Isolate used-function reachability from the later function-body reference scan.
+	g.c_extern_refs_ready = true
+	g.preseed_libc_compat_fns()
+	assert g.libc_compat_fns['gettid']
+}
+
+fn test_parallel_tail_worker_preserves_runtime_init_module_order() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.const_runtime_inits = ['\tmoda__runtime_const = moda__make_const();']
+	g.const_runtime_init_modules = ['moda']
+	g.runtime_inits = ['\tmoda__runtime_global = moda__make_global();']
+	g.runtime_init_modules = ['moda']
+	g.module_init_fns = ['moda__init']
+	g.module_init_fn_modules['moda__init'] = 'moda'
+
+	mut tail := g.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
+	tail.gen_vinit()
+	output := tail.sb.str()
+	const_pos := output.index('moda__runtime_const = moda__make_const();') or { -1 }
+	global_pos := output.index('moda__runtime_global = moda__make_global();') or { -1 }
+	init_pos := output.index('moda__init();') or { -1 }
+	assert const_pos >= 0
+	assert global_pos > const_pos
+	assert init_pos > global_pos
+}
+
+fn test_parallel_tail_worker_preserves_shared_cleanup_mode() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.is_shared = true
+	assert g.module_cleanup_fns.len == 0
+
+	mut tail := g.new_parallel_tail_worker(max_flat_cgen_jobs + 1)
+	tail.gen_vcleanup()
+	output := tail.sb.str()
+	assert tail.is_shared
+	assert output.contains('void _vcleanup(void) {')
 }
 
 fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
@@ -164,6 +259,16 @@ fn test_fused_parallel_prep_interns_body_string_literals() {
 	assert g.str_lit_ids['worker literal'] == 0
 }
 
+fn test_serial_prep_interns_ast_string_literals_in_source_order() {
+	mut g, _ := parallel_worker_test_gen(false)
+	g.ast_string_literals = ['first', 'second']
+	g.ast_string_literals_ready = true
+	g.prepare_serial_fn_tables()
+	assert g.str_lits == ['first', 'second']
+	assert g.str_lit_ids['first'] == 0
+	assert g.str_lit_ids['second'] == 1
+}
+
 fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 	mut g, _ := parallel_worker_test_gen(true)
 	fn_id := g.a.add_node(flat.Node{
@@ -178,11 +283,13 @@ fn test_scoped_pre_dispatch_preserves_direct_array_access_flag() {
 			c_name:              'main__unchecked_index'
 			cost:                1
 			direct_array_access: true
+			ignore_overflow:     true
 		},
 	]
 	g.prepare_pre_dispatch_master()
 	assert g.fn_gen_items.len == 1
 	assert g.fn_gen_items[0].direct_array_access
+	assert g.fn_gen_items[0].ignore_overflow
 	g.release_scoped_fn_items()
 }
 
@@ -212,6 +319,19 @@ fn test_parallel_generic_app_cache_uses_frozen_base_and_private_overlays() {
 	assert 'Shared[string]' in dispatcher.generic_app_cache.entries
 	assert 'Shared[string]' in batch.generic_app_cache.entries
 	assert 'Shared[string]' !in frozen.entries
+}
+
+fn test_open_generic_receiver_template_bypasses_stale_generic_app_cache() {
+	mut g, _ := parallel_worker_test_gen(true)
+	mut cache := g.generic_app_cache
+	cache.entries['AtomicVal[T]'] = GenericAppInfo{}
+	node := flat.Node{
+		kind:  .fn_decl
+		value: 'AtomicVal[T].load'
+	}
+	assert g.fn_node_is_open_generic_template(node, 'stdatomic')
+	assert !g.should_emit_fn_node_in_module_known(node, 'stdatomic', 'atomic.v',
+		'stdatomic__AtomicVal_T__load', true)
 }
 
 fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {

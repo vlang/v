@@ -36,7 +36,7 @@ fn test_c_string_literal_pointer_codegen_preserves_regular_addresses() {
 	bad_bin := os.join_path(os.temp_dir(), 'v3_c_string_literal_address_input')
 	bad_compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
 	assert bad_compile.exit_code != 0, bad_compile.output
-	assert bad_compile.output.contains('cannot use `&&u8`'), bad_compile.output
+	assert bad_compile.output.contains("cannot take the address of 'bad'"), bad_compile.output
 	assert !bad_compile.output.contains('C compilation failed'), bad_compile.output
 }
 

@@ -23,7 +23,7 @@ fn run_v3_const_map_range_program(v3_bin string, name string, src string) string
 	bin_path := tmp_const_map_range_path('${name}_bin')
 	os.write_file(src_path, src) or { panic(err) }
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+		os.execute('${os.quoted_path(v3_bin)} -enable-globals ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(os.quoted_path(bin_path))

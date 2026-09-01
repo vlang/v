@@ -9,6 +9,7 @@ pub enum Version {
 	v1_1
 	v2_0
 	v1_0
+	v3_0
 }
 
 pub fn (v Version) str() string {
@@ -16,6 +17,7 @@ pub fn (v Version) str() string {
 		.v1_1 { 'HTTP/1.1' }
 		.v2_0 { 'HTTP/2.0' }
 		.v1_0 { 'HTTP/1.0' }
+		.v3_0 { 'HTTP/3.0' }
 		.unknown { 'unknown' }
 	}
 }
@@ -26,6 +28,7 @@ pub fn version_from_str(v string) Version {
 		'http/1.1' { Version.v1_1 }
 		'http/2.0' { Version.v2_0 }
 		'http/1.0' { Version.v1_0 }
+		'http/3.0' { Version.v3_0 }
 		else { Version.unknown }
 	}
 }
@@ -36,6 +39,7 @@ pub fn (v Version) protos() (int, int) {
 		.v1_1 { return 1, 1 }
 		.v2_0 { return 2, 0 }
 		.v1_0 { return 1, 0 }
+		.v3_0 { return 3, 0 }
 		.unknown { return 0, 0 }
 	}
 }

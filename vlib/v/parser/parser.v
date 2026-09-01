@@ -11,6 +11,7 @@ import v.util
 import v.errors
 import os
 import hash.fnv1a
+import crypto.sha256
 import strings
 
 @[minify]
@@ -429,6 +430,11 @@ pub fn (mut p Parser) parse() &ast.File {
 		global_labels:         p.global_labels
 		template_paths:        p.template_paths
 		unique_prefix:         p.unique_prefix
+		source_digest:         if p.pref.capture_source_digests {
+			sha256.hexhash(p.scanner.text)
+		} else {
+			''
+		}
 	}
 	$if trace_parse_file_path_and_mod ? {
 		eprintln('>> ast.File, tokens: ${ast_file.nr_tokens:5}, mname: ${ast_file.mod.name:20}, sname: ${ast_file.mod.short_name:11}, path: ${p.file_display_path}')

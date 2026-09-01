@@ -55,6 +55,8 @@ fn run_linux_tcc_source_git_case(with_options bool) {
 	source_workflow := os.join_path(tinycc_source, '.github', 'workflows', 'preserve.yml')
 	bundle_workflow_contents := 'preserved bundle workflow\n'
 	source_workflow_contents := 'source workflow must not replace the bundle workflow\n'
+	bundle_gitignore_contents := 'preserved bundle ignore rules\n'
+	bundle_gitattributes_contents := 'preserved bundle attributes\n'
 	poison_bin := os.join_path(root, 'poison-bin')
 	git_wrapper := os.join_path(root, 'custom-git')
 	git_trace := os.join_path(root, 'git-trace')
@@ -88,6 +90,10 @@ fn run_linux_tcc_source_git_case(with_options bool) {
 	}
 	os.write_file(os.join_path(tcc_dir, 'README.md'), 'preserved readme\n') or { panic(err) }
 	os.write_file(bundle_workflow, bundle_workflow_contents) or { panic(err) }
+	os.write_file(os.join_path(tcc_dir, '.gitignore'), bundle_gitignore_contents) or { panic(err) }
+	os.write_file(os.join_path(tcc_dir, '.gitattributes'), bundle_gitattributes_contents) or {
+		panic(err)
+	}
 	run_checked('git -C ${os.quoted_path(tcc_dir)} add .')
 	run_checked('git -C ${os.quoted_path(tcc_dir)} commit --quiet -m initial-bundle')
 
@@ -118,7 +124,7 @@ exit 0
 	os.write_file(os.join_path(tinycc_source, 'Makefile'), 'all:
 	@:
 install:
-	@prefix="\$\$(cat .test-prefix)"; mkdir -p "\$\$prefix/lib/tcc/include" "\$\$prefix/.github/workflows"; cp fake-tcc "\$\$prefix/tcc"; cp .github/workflows/preserve.yml "\$\$prefix/.github/workflows/preserve.yml"; printf "/* source test */\\n" > "\$\$prefix/lib/tcc/include/stddef.h"
+	@prefix="\$\$(cat .test-prefix)"; mkdir -p "\$\$prefix/lib/tcc/include" "\$\$prefix/.github/workflows"; cp fake-tcc "\$\$prefix/tcc"; cp .github/workflows/preserve.yml "\$\$prefix/.github/workflows/preserve.yml"; printf "source ignore rules\\n" > "\$\$prefix/.gitignore"; printf "source attributes\\n" > "\$\$prefix/.gitattributes"; printf "/* source test */\\n" > "\$\$prefix/lib/tcc/include/stddef.h"
 ') or {
 		panic(err)
 	}
@@ -140,6 +146,9 @@ printf "%s\\n" "\$*" >> ${os.quoted_path(rsync_trace)}
 archive=0
 delete_destination=0
 exclude_root_github=0
+exclude_root_git=0
+exclude_root_gitignore=0
+exclude_root_gitattributes=0
 while [ "\$#" -gt 0 ]; do
 	case "\$1" in
 		-a)
@@ -152,6 +161,18 @@ while [ "\$#" -gt 0 ]; do
 			;;
 		--exclude=/.github/)
 			exclude_root_github=1
+			shift
+			;;
+		--exclude=/.git|--exclude=/.git/)
+			exclude_root_git=1
+			shift
+			;;
+		--exclude=/.gitignore)
+			exclude_root_gitignore=1
+			shift
+			;;
+		--exclude=/.gitattributes)
+			exclude_root_gitattributes=1
 			shift
 			;;
 		--)
@@ -176,14 +197,24 @@ for argument in "\$@"; do
 	destination_path=\$argument
 done
 source_count=\$((\$# - 1))
-preserved_github_path=
+preserved_root_path=
 if [ "\$delete_destination" = 1 ]; then
 	destination_without_slash=\${destination_path%/}
-	if [ "\$exclude_root_github" = 1 ] && { [ -e "\$destination_without_slash/.github" ] || [ -L "\$destination_without_slash/.github" ]; }; then
-		preserved_github_path="\${destination_without_slash}.rsync-test-preserved-github"
-		rm -rf -- "\$preserved_github_path"
-		mv -- "\$destination_without_slash/.github" "\$preserved_github_path"
-	fi
+	preserved_root_path="\${destination_without_slash}.rsync-test-preserved"
+	rm -rf -- "\$preserved_root_path"
+	mkdir -p -- "\$preserved_root_path"
+	for entry_name in .git .github .gitignore .gitattributes; do
+		preserve_entry=0
+		case "\$entry_name" in
+			.git) preserve_entry=\$exclude_root_git ;;
+			.github) preserve_entry=\$exclude_root_github ;;
+			.gitignore) preserve_entry=\$exclude_root_gitignore ;;
+			.gitattributes) preserve_entry=\$exclude_root_gitattributes ;;
+		esac
+		if [ "\$preserve_entry" = 1 ] && { [ -e "\$destination_without_slash/\$entry_name" ] || [ -L "\$destination_without_slash/\$entry_name" ]; }; then
+			mv -- "\$destination_without_slash/\$entry_name" "\$preserved_root_path/"
+		fi
+	done
 	rm -rf -- "\$destination_path"
 	mkdir -p -- "\$destination_path"
 fi
@@ -195,12 +226,12 @@ for source_path in "\$@"; do
 	case "\$source_path" in
 		*/)
 			mkdir -p -- "\$destination_path"
-			if [ "\$exclude_root_github" = 1 ]; then
+			if [ "\$exclude_root_github" = 1 ] || [ "\$exclude_root_git" = 1 ] || [ "\$exclude_root_gitignore" = 1 ] || [ "\$exclude_root_gitattributes" = 1 ]; then
 				for source_entry in "\${source_path}".[!.]* "\${source_path}"..?* "\${source_path}"*; do
 					if [ ! -e "\$source_entry" ] && [ ! -L "\$source_entry" ]; then
 						continue
 					fi
-					if [ "\${source_entry##*/}" = ".github" ]; then
+					if { [ "\$exclude_root_github" = 1 ] && [ "\${source_entry##*/}" = ".github" ]; } || { [ "\$exclude_root_git" = 1 ] && [ "\${source_entry##*/}" = ".git" ]; } || { [ "\$exclude_root_gitignore" = 1 ] && [ "\${source_entry##*/}" = ".gitignore" ]; } || { [ "\$exclude_root_gitattributes" = 1 ] && [ "\${source_entry##*/}" = ".gitattributes" ]; }; then
 						continue
 					fi
 					cp -a -- "\$source_entry" "\$destination_path/"
@@ -232,8 +263,14 @@ for source_path in "\$@"; do
 	esac
 	source_index=\$((source_index + 1))
 done
-if [ -n "\$preserved_github_path" ]; then
-	mv -- "\$preserved_github_path" "\${destination_path%/}/.github"
+if [ -n "\$preserved_root_path" ]; then
+	for preserved_entry in "\$preserved_root_path"/.[!.]* "\$preserved_root_path"/..?*; do
+		if [ ! -e "\$preserved_entry" ] && [ ! -L "\$preserved_entry" ]; then
+			continue
+		fi
+		mv -- "\$preserved_entry" "\${destination_path%/}/"
+	done
+	rmdir -- "\$preserved_root_path"
 fi
 ')
 	git_options := if with_options { ' -c vlang.source-test=enabled' } else { '' }
@@ -254,14 +291,13 @@ fi
 		assert trace_lines[i].starts_with('${option_prefix}${operation}'), trace_lines.str()
 	}
 	rsync_lines := (os.read_file(rsync_trace) or { panic(err) }).trim_space().split_into_lines()
-	assert rsync_lines.len == 7, rsync_lines.str()
-	assert rsync_lines[0].starts_with('-a thirdparty/tcc/ '), rsync_lines.str()
-	assert rsync_lines[1].starts_with('-a --delete --exclude=/.github/ '), rsync_lines.str()
-	assert rsync_lines[2].contains('thirdparty/tcc.original/.git/'), rsync_lines.str()
-	assert rsync_lines[3].contains('thirdparty/tcc.original/lib/libgc'), rsync_lines.str()
-	assert rsync_lines[4].contains('thirdparty/tcc.original/lib/build'), rsync_lines.str()
-	assert rsync_lines[5].contains('thirdparty/tcc.original/README.md'), rsync_lines.str()
-	assert rsync_lines[6].ends_with('/build.sh'), rsync_lines.str()
+	assert rsync_lines.len == 6, rsync_lines.str()
+	assert rsync_lines[0].starts_with('-a --exclude=/.git --exclude=/.git/ thirdparty/tcc/ '), rsync_lines.str()
+	assert rsync_lines[1].starts_with('-a --delete --exclude=/.git --exclude=/.git/ --exclude=/.github/ --exclude=/.gitignore --exclude=/.gitattributes '), rsync_lines.str()
+	assert rsync_lines[2].contains('thirdparty/tcc.original/lib/libgc'), rsync_lines.str()
+	assert rsync_lines[3].contains('thirdparty/tcc.original/lib/build'), rsync_lines.str()
+	assert rsync_lines[4].contains('thirdparty/tcc.original/README.md'), rsync_lines.str()
+	assert rsync_lines[5].ends_with('/build.sh'), rsync_lines.str()
 	assert os.execute('${os.quoted_path(os.join_path(tcc_dir, 'tcc.exe'))} --version').output.trim_space() == 'source-test-tcc'
 	staged_source_workflow := os.join_path(root, 'tinycc', 'thirdparty', 'tcc', '.github',
 		'workflows', 'preserve.yml')
@@ -269,6 +305,8 @@ fi
 	assert staged_source_workflow_contents == source_workflow_contents
 	final_bundle_workflow_contents := os.read_file(bundle_workflow) or { panic(err) }
 	assert final_bundle_workflow_contents == bundle_workflow_contents
+	assert (os.read_file(os.join_path(tcc_dir, '.gitignore')) or { panic(err) }) == bundle_gitignore_contents
+	assert (os.read_file(os.join_path(tcc_dir, '.gitattributes')) or { panic(err) }) == bundle_gitattributes_contents
 	libgc := os.read_file(os.join_path(tcc_dir, 'lib', 'libgc.a')) or { panic(err) }
 	assert libgc == 'preserved-libgc\n'
 	extra_libgc := os.read_file(os.join_path(tcc_dir, 'lib', 'libgc_extra.a')) or { panic(err) }
@@ -312,8 +350,18 @@ fi
 '
 }
 
-fn gc_compatible_tcc_script(version string, includes_local bool) string {
-	return tcc_probe_script_prefix(version, includes_local) +
+fn gc_compatible_tcc_script(version string, includes_local bool, requires_include_environment bool) string {
+	include_environment_check := if requires_include_environment {
+		'
+if [ -z "\${C_INCLUDE_PATH:-}" ] && [ -z "\${CPATH:-}" ]; then
+	echo "include path environment is unavailable" >&2
+	exit 4
+fi
+'
+	} else {
+		''
+	}
+	return tcc_probe_script_prefix(version, includes_local) + include_environment_check +
 		'
 if [ ! -f thirdparty/tcc/lib/tcc/include/stddef.h ]; then
 	echo "tcc: error: thirdparty/tcc/lib/tcc/include/stddef.h is unavailable from the current directory" >&2
@@ -354,11 +402,15 @@ chmod +x "\$out"
 }
 
 fn compatible_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, true)
+	return gc_compatible_tcc_script(version, true, false)
 }
 
 fn missing_local_include_tcc_script(version string) string {
-	return gc_compatible_tcc_script(version, false)
+	return gc_compatible_tcc_script(version, false, false)
+}
+
+fn include_environment_dependent_tcc_script(version string) string {
+	return gc_compatible_tcc_script(version, true, true)
 }
 
 fn runtime_incompatible_tcc_script(version string) string {
@@ -454,9 +506,9 @@ fn new_tcc_history_fixture(with_compatible_ancestor bool) TccHistoryFixture {
 			runtime_incompatible_tcc_script('runtime-incompatible-tcc'),
 			'runtime-incompatible-libgc\n')
 	}
-	incompatible_sha := commit_bundle_state(source, 'missing-local-include-head',
-		missing_local_include_tcc_script('missing-local-include-head-tcc'),
-		'missing-local-include-head-libgc\n')
+	incompatible_sha := commit_bundle_state(source, 'include-environment-dependent',
+		include_environment_dependent_tcc_script('include-environment-dependent-tcc'),
+		'include-environment-dependent-libgc\n')
 	run_checked('git -C ${os.quoted_path(source)} push --quiet ${os.quoted_path(remote)} HEAD:refs/heads/thirdparty-linux-amd64')
 	create_unknown_branch(root, remote)
 	create_musl_branch(root, remote)
@@ -529,6 +581,14 @@ fn push_compatible_head(mut fixture TccHistoryFixture) string {
 	return compatible_head_sha
 }
 
+fn push_compatible_head_without_local_include(mut fixture TccHistoryFixture) string {
+	compatible_head_sha := commit_bundle_state(fixture.source, 'compatible-without-local-include',
+		missing_local_include_tcc_script('compatible-without-local-include-tcc'),
+		'compatible-without-local-include-libgc\n')
+	run_checked('git -C ${os.quoted_path(fixture.source)} push --quiet ${os.quoted_path(fixture.remote)} HEAD:refs/heads/thirdparty-linux-amd64')
+	return compatible_head_sha
+}
+
 fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	if os.user_os() != 'linux' {
 		return
@@ -538,17 +598,12 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 		os.rmdir_all(fixture.root) or {}
 	}
 
-	poisoned_search_result := os.execute('C_INCLUDE_PATH=/usr/local/include CPATH=/usr/local/include ${os.quoted_path(os.join_path(fixture.source,
-		'tcc.exe'))} -print-search-dirs 2>&1')
-	assert poisoned_search_result.exit_code == 0, poisoned_search_result.output
-	assert poisoned_search_result.output.split_into_lines().contains('  /usr/local/include'), poisoned_search_result.output
-
 	fresh_result :=
-		os.execute('export C_INCLUDE_PATH=/usr/local/include CPATH=/usr/local/include; ${fixture.fresh_cmd} 2>&1')
+		os.execute('export C_INCLUDE_PATH=/poison-c-include CPATH=/poison-cpath; ${fixture.fresh_cmd} 2>&1')
 	assert fresh_result.exit_code == 0, fresh_result.output
 	assert fresh_result.output.contains('is not host-compatible'), fresh_result.output
 	assert fresh_result.output.contains('TCC search directories:'), fresh_result.output
-	assert fresh_result.output.contains('the TCC bundle is missing required glibc include search path: /usr/local/include'), fresh_result.output
+	assert fresh_result.output.contains('include path environment is unavailable'), fresh_result.output
 	assert fresh_result.output.contains('Using newest host-compatible TCC commit ${fixture.compatible_sha}'), fresh_result.output
 
 	assert_historical_fallback(fixture)
@@ -584,6 +639,31 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == local_sha
 	assert os.read_file(local_file)! == 'preserve this branch commit\n'
+	assert_clean_checkout(fixture.tcc_dir)
+}
+
+fn test_linux_tcc_accepts_compatible_bundle_without_usr_local_include() {
+	if os.user_os() != 'linux' {
+		return
+	}
+	mut fixture := new_tcc_history_fixture(false)
+	defer {
+		os.rmdir_all(fixture.root) or {}
+	}
+
+	compatible_head_sha := push_compatible_head_without_local_include(mut fixture)
+	search_result :=
+		os.execute('${os.quoted_path(os.join_path(fixture.source, 'tcc.exe'))} -print-search-dirs 2>&1')
+	assert search_result.exit_code == 0, search_result.output
+	assert !search_result.output.split_into_lines().contains('  /usr/local/include'), search_result.output
+
+	fresh_result := os.execute('${fixture.fresh_cmd} 2>&1')
+	assert fresh_result.exit_code == 0, fresh_result.output
+	assert !fresh_result.output.contains('is not host-compatible'), fresh_result.output
+	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
+	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == compatible_head_sha
+	assert os.read_file(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))! == 'compatible-without-local-include-libgc\n'
+	assert !os.exists(compatible_marker_dir(fixture))
 	assert_clean_checkout(fixture.tcc_dir)
 }
 

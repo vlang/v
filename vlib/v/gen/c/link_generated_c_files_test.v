@@ -5,6 +5,56 @@ import v.pref
 
 const test_vexe = os.quoted_path(@VEXE)
 
+fn test_prealloc_tls_global_has_cplusplus_thread_local_branch() {
+	$if windows {
+		return
+	}
+	workdir := os.join_path(os.vtmp_dir(), 'v_cgen_prealloc_cplusplus_${os.getpid()}')
+	os.mkdir_all(workdir)!
+	defer {
+		os.rmdir_all(workdir) or {}
+	}
+	source_path := os.join_path(workdir, 'main.v')
+	generated_c_path := os.join_path(workdir, 'main.c')
+	os.write_file(source_path, 'fn main() {}\n')!
+
+	emit_cmd := '${test_vexe} -message-limit 199 -gc none -prealloc -o ${os.quoted_path(generated_c_path)} ${os.quoted_path(source_path)}'
+	emit_result := os.execute(emit_cmd)
+	assert emit_result.exit_code == 0, '${emit_cmd}\n${emit_result.output}'
+	generated := os.read_file(generated_c_path)!
+	assert generated.contains('#elif defined(__cplusplus)\nthread_local VMemoryBlock* g_memory_block; // global 6'), generated
+
+	assert generated.contains('#else\n_Thread_local VMemoryBlock* g_memory_block; // global 6'), generated
+}
+
+fn test_parallel_cc_prealloc_tls_extern_has_cplusplus_thread_local_branch() {
+	workdir := os.join_path(os.vtmp_dir(), 'v_cgen_parallel_prealloc_cplusplus_${os.getpid()}')
+	os.mkdir_all(workdir)!
+	defer {
+		os.rmdir_all(workdir) or {}
+	}
+	source_path := os.join_path(workdir, 'main.v')
+	os.write_file(source_path, 'fn main() {}\n')!
+	mut prefs, _ := pref.parse_args_and_show_errors([], [
+		'',
+		'-parallel-cc',
+		'-gc',
+		'none',
+		'-prealloc',
+		source_path,
+	], false)
+	mut b := builder.new_builder(prefs)
+	mut files := b.get_builtin_files()
+	files << b.get_user_files()
+	b.set_module_lookup_paths()
+	b.front_and_middle_stages(files)!
+	result := c.gen(b.parsed_files, mut b.table, b.pref)
+	externs := result.extern_str.replace('\r\n', '\n')
+	assert externs.contains('#elif defined(__cplusplus)\nextern thread_local VMemoryBlock* g_memory_block;'), externs
+
+	assert externs.contains('#else\nextern _Thread_local VMemoryBlock* g_memory_block;'), externs
+}
+
 fn test_is_o_generated_c_files_can_be_linked_together() {
 	cc_path := os.find_abs_path_of_executable('cc') or { return }
 	cc := os.quoted_path(cc_path)
@@ -42,9 +92,11 @@ int main(void) {
 	return 0;
 }
 ')!
+	// Each preallocated object must keep builtin globals object-local, including
+	// the thread-local g_memory_block arena root.
 	for cmd in [
-		'${test_vexe} -cc ${cc} -gc none -no-skip-unused -is_o -o ${os.quoted_path(a_c)} ${os.quoted_path(a_v)}',
-		'${test_vexe} -cc ${cc} -gc none -no-skip-unused -is_o -o ${os.quoted_path(b_c)} ${os.quoted_path(b_v)}',
+		'${test_vexe} -message-limit 199 -cc ${cc} -gc none -prealloc -no-skip-unused -is_o -o ${os.quoted_path(a_c)} ${os.quoted_path(a_v)}',
+		'${test_vexe} -message-limit 199 -cc ${cc} -gc none -prealloc -no-skip-unused -is_o -o ${os.quoted_path(b_c)} ${os.quoted_path(b_v)}',
 		'${cc} -o ${os.quoted_path(prog)} ${os.quoted_path(a_c)} ${os.quoted_path(b_c)} ${os.quoted_path(host_c)} -lm',
 	] {
 		res := os.execute(cmd)

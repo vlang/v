@@ -1705,9 +1705,13 @@ fn (mut p Parser) fn_params() ([]ast.Param, bool, bool, bool) {
 				}
 			}
 			if is_variadic {
-				// derive flags, however nr_muls only needs to be set on the array elem type, so clear it on the arg type
+				// Preserve the flags used by variadic lowering, but keep optional/result function
+				// wrappers on the array element rather than on the variadic array itself.
 				typ =
 					ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_nr_muls(0).set_flag(.variadic)
+				if p.table.final_sym(orig_typ).kind == .function {
+					typ = typ.clear_flags(.option, .result, .option_mut_param_t)
+				}
 			}
 			for i, para_name in param_names {
 				alanguage := p.table.sym(typ).language

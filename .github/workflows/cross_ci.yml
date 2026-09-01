@@ -31,7 +31,7 @@ jobs:
     env:
       VFLAGS: -cc clang
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 10
       - name: Cache Homebrew downloads
@@ -79,7 +79,7 @@ jobs:
     env:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 10
       - uses: ./.github/actions/cache-apt-packages-action
@@ -127,7 +127,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: Build
         run: |
           echo %VFLAGS%

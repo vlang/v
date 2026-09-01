@@ -404,6 +404,16 @@ fn test_copy() {
 	assert b == [8, 9, 3, 7]
 }
 
+fn test_copy_overlapping_managed_elements() {
+	mut right := ['a', 'b', 'c', 'd']
+	assert copy(mut right[1..], right[..3]) == 3
+	assert right == ['a', 'a', 'b', 'c']
+
+	mut left := ['a', 'b', 'c', 'd']
+	assert copy(mut left[..3], left[1..]) == 3
+	assert left == ['b', 'c', 'd', 'd']
+}
+
 fn test_can_copy_bits() {
 	assert can_copy_bits[u8]()
 	assert can_copy_bits[int]()

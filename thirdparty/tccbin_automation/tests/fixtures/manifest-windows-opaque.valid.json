@@ -1,0 +1,249 @@
+{
+  "schema_version": 1,
+  "contract_version": 1,
+  "contract_repository": "GGRei/v",
+  "contract_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "contract_mode": "fork-dry-run",
+  "v_source_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "target_id": "windows-amd64",
+  "branch": "thirdparty-windows-amd64",
+  "sources": [
+    {
+      "id": "tinycc",
+      "repository": "https://repo.or.cz/tinycc.git",
+      "ref": "mob",
+      "sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "tree": "dddddddddddddddddddddddddddddddddddddddd"
+    },
+    {
+      "id": "v-libgc",
+      "repository": "https://github.com/vlang/v.git",
+      "ref": "master",
+      "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tree": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  ],
+  "recipe": {
+    "path": "build.ps1",
+    "version": 1,
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "toolchain": {
+    "profile_id": null,
+    "profile_sha256": null,
+    "producer_observation": null
+  },
+  "patches": [
+    {
+      "id": "patch-0001",
+      "path": "patches/0001-tccpe-strip-quotes-and-default-.dll-extension-in-DEF.patch",
+      "sha256": "3101010101010101010101010101010101010101010101010101010101010101",
+      "order": 1,
+      "category": "upstream-candidate",
+      "auto_deprecatable": true,
+      "state": "auto-retirement-candidate",
+      "effects": [{"id": "patch-0001-effect", "owner": "tinycc", "files": ["tccpe.c"], "functions": ["pe_load_def"], "required_probe_ids": ["patch-0001"]}]
+    },
+    {
+      "id": "patch-0002",
+      "path": "patches/0002-debug-exception.patch",
+      "sha256": "3202020202020202020202020202020202020202020202020202020202020202",
+      "order": 2,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0002-effect", "owner": "tinycc", "files": ["win32/lib/wincrt1.c"], "functions": ["win_exception_handler"], "required_probe_ids": ["patch-0002"]}]
+    },
+    {
+      "id": "patch-0003",
+      "path": "patches/0003-create-symbolic-link.patch",
+      "sha256": "3303030303030303030303030303030303030303030303030303030303030303",
+      "order": 3,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0003-effect", "owner": "tinycc", "files": ["win32/include/winapi/windows.h"], "functions": ["CreateSymbolicLinkA", "CreateSymbolicLinkW"], "required_probe_ids": ["patch-0003"]}]
+    },
+    {
+      "id": "patch-0004",
+      "path": "patches/0004-wsa-connect-by.patch",
+      "sha256": "3404040404040404040404040404040404040404040404040404040404040404",
+      "order": 4,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0004-effect", "owner": "tinycc", "files": ["win32/include/winapi/winsock2.h"], "functions": ["WSAConnectByNameA", "WSAConnectByNameW"], "required_probe_ids": ["patch-0004"]}]
+    },
+    {
+      "id": "patch-0005",
+      "path": "patches/0005-inet-ntop-pton.patch",
+      "sha256": "3505050505050505050505050505050505050505050505050505050505050505",
+      "order": 5,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0005-effect", "owner": "tinycc", "files": ["win32/include/winapi/ws2tcpip.h"], "functions": ["InetNtopA", "InetPtonA"], "required_probe_ids": ["patch-0005"]}]
+    },
+    {
+      "id": "patch-0006",
+      "path": "patches/0006-shell-drag-drop.patch",
+      "sha256": "3606060606060606060606060606060606060606060606060606060606060606",
+      "order": 6,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0006-effect", "owner": "tinycc", "files": ["win32/include/winapi/shellapi.h"], "functions": ["DragQueryFileA", "DragQueryFileW"], "required_probe_ids": ["patch-0006"]}]
+    },
+    {
+      "id": "patch-0007",
+      "path": "patches/0007-secure-stdio.patch",
+      "sha256": "3707070707070707070707070707070707070707070707070707070707070707",
+      "order": 7,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0007-effect", "owner": "tinycc", "files": ["include/stdio.h"], "functions": ["fopen_s", "freopen_s"], "required_probe_ids": ["patch-0007"]}]
+    },
+    {
+      "id": "patch-0008",
+      "path": "patches/0008-exp2-range.patch",
+      "sha256": "3808080808080808080808080808080808080808080808080808080808080808",
+      "order": 8,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0008-effect", "owner": "tinycc", "files": ["lib/libm.c"], "functions": ["exp2", "exp2l"], "required_probe_ids": ["patch-0008"]}]
+    },
+    {
+      "id": "patch-0009",
+      "path": "patches/0009-cancel-io-ex.patch",
+      "sha256": "3909090909090909090909090909090909090909090909090909090909090909",
+      "order": 9,
+      "category": "upstream-candidate",
+      "auto_deprecatable": false,
+      "state": "active-required",
+      "effects": [{"id": "patch-0009-effect", "owner": "tinycc", "files": ["win32/include/winapi/windows.h"], "functions": ["CancelIoEx"], "required_probe_ids": ["patch-0009"]}]
+    }
+  ],
+  "transforms": [
+    {
+      "id": "vlang-header-compat",
+      "path": "vlang-header-compat.patch",
+      "sha256": "bc1f63053dedeae665a01ca508b6123f2145c4e1895642ca38e406f8eb7fdf55",
+      "owner": "bundle-overlay",
+      "order": 10,
+      "apply_stage": "bundle-payload-post-copy",
+      "effect_ids": ["header-gmtime-s", "header-condition-variable", "header-faststorefence"]
+    },
+    {
+      "id": "v-libgc-tinycc-compat",
+      "path": "v-ae88ee5-tinycc-bdwgc.patch",
+      "sha256": "3b42e3fcd1e8a544d31ccdc4a2b12b9da6ac44ce1af7562cd781fdacf6890196",
+      "owner": "v-libgc",
+      "order": 11,
+      "apply_stage": "v-libgc-source-prebuild",
+      "effect_ids": ["bdwgc-v-integration"]
+    }
+  ],
+  "header_effects": [
+    {"id": "header-gmtime-s", "owner": "bundle-overlay", "files": ["include/time.h"], "functions": ["gmtime_s"], "required_probe_ids": ["header-gmtime-s"]},
+    {"id": "header-condition-variable", "owner": "bundle-overlay", "files": ["include/winapi/synchapi.h"], "functions": ["CONDITION_VARIABLE"], "required_probe_ids": ["header-condition-variable"]},
+    {"id": "header-faststorefence", "owner": "bundle-overlay", "files": ["include/intrin.h"], "functions": ["__faststorefence"], "required_probe_ids": ["header-faststorefence"]}
+  ],
+  "integrations": [
+    {"id": "bdwgc-v-integration", "owner": "v-libgc", "files": ["thirdparty/libgc/gc.c"], "functions": ["GC_malloc"], "required_probe_ids": ["bdwgc-v-integration"]}
+  ],
+  "overlays": [
+    {
+      "path": "include/winapi/synchapi.h",
+      "kind": "file",
+      "git_mode": "100644",
+      "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+      "symlink_target": null,
+      "provenance": {"status": "complete", "repository": "vlang/tccbin", "sha": "ffffffffffffffffffffffffffffffffffffffff", "source_path": "include/winapi/synchapi.h", "license": "bundle-reviewed"},
+      "role": "windows-header-overlay",
+      "opaque": false,
+      "opaque_acceptance_id": null,
+      "format": null,
+      "object_type": null,
+      "machine": null,
+      "os_abi": null
+    }
+  ],
+  "inventory": [
+    {
+      "path": "src/tcc.c",
+      "kind": "file",
+      "git_mode": "100644",
+      "sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+      "symlink_target": null,
+      "provenance": {"status": "complete", "repository": "TinyCC/tinycc", "sha": "cccccccccccccccccccccccccccccccccccccccc", "source_path": "tcc.c", "license": "LGPL-2.1-or-later"},
+      "role": "compiler-source",
+      "opaque": false,
+      "opaque_acceptance_id": null,
+      "format": null,
+      "object_type": null,
+      "machine": null,
+      "os_abi": null
+    },
+    {
+      "path": "lib/openlibm.o",
+      "kind": "file",
+      "git_mode": "100644",
+      "sha256": "9a11e182e1f6b522030d1b8685666147de0ebb562b9d02cce189690fd07cb7db",
+      "symlink_target": null,
+      "provenance": {"status": "incomplete", "repository": null, "sha": null, "source_path": null, "license": null},
+      "role": "legacy-math-runtime",
+      "opaque": true,
+      "opaque_acceptance_id": "windows-amd64-openlibm-v1",
+      "format": "ELF64 little-endian",
+      "object_type": "ET_REL",
+      "machine": "EM_X86_64",
+      "os_abi": "System V"
+    }
+  ],
+  "outputs": [
+    {
+      "path": "tcc.exe",
+      "kind": "executable",
+      "git_mode": "100755",
+      "sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+      "symlink_target": null,
+      "provenance": {"status": "complete", "repository": "TinyCC/tinycc", "sha": "cccccccccccccccccccccccccccccccccccccccc", "source_path": "tcc.c", "license": "LGPL-2.1-or-later"},
+      "role": "native-compiler",
+      "opaque": false,
+      "opaque_acceptance_id": null,
+      "format": null,
+      "object_type": null,
+      "machine": null,
+      "os_abi": null
+    }
+  ],
+  "probes": [
+    {"id": "manifest-contract", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "strict schema and semantic validation"},
+    {"id": "source-provenance", "required": true, "expected_lanes": ["x64"], "oracle": "all non-opaque inputs complete and acceptance exact"},
+    {"id": "native-build", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "native and cross builds succeed"},
+    {"id": "payload-inventory", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "transitive payload and manifest match"},
+    {"id": "patch-probes", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "all declared patch effects pass"},
+    {"id": "tccbin-conformance", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "shared conformance passes"},
+    {"id": "v-no-fallback-smoke", "required": true, "expected_lanes": ["x64"], "oracle": "V uses the candidate without fallback"},
+    {"id": "artifact-digests", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "all output digests match"},
+    {"id": "publish-preflight-dry-run", "required": true, "expected_lanes": ["x64"], "oracle": "publication preflight is simulated only"},
+    {"id": "patch-0001", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "quoted and unquoted DEF names load with one dll suffix"},
+    {"id": "patch-0002", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "debug notification nonfatal and control crash fatal"},
+    {"id": "patch-0003", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "symbolic-link declarations and imports resolve"},
+    {"id": "patch-0004", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "WSAConnectBy declarations and imports resolve"},
+    {"id": "patch-0005", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "IPv4 and IPv6 conversions round trip"},
+    {"id": "patch-0006", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "shell drag and drop imports resolve"},
+    {"id": "patch-0007", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "secure stdio success and error contracts hold"},
+    {"id": "patch-0008", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "exp2 vectors and floating statuses match"},
+    {"id": "patch-0009", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "CancelIoEx ABI and import resolve"},
+    {"id": "header-gmtime-s", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "gmtime_s compile link and consumers pass"},
+    {"id": "header-condition-variable", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "condition variable include order and runtime pass"},
+    {"id": "header-faststorefence", "required": true, "expected_lanes": ["x64", "i386"], "oracle": "builtin and runtime fence behavior are isolated"},
+    {"id": "bdwgc-v-integration", "required": true, "expected_lanes": ["x64"], "oracle": "candidate builds libgc and V Boehm without fallback"},
+    {"id": "opaque-openlibm", "required": true, "expected_lanes": ["x64-fontstash", "x64-json", "x64-math", "x64-stbi", "x64-vorbis"], "oracle": "ELF tuple hash and five V consumer groups pass without fallback"}
+  ],
+  "provenance_status": "incomplete",
+  "affected_targets": ["windows-amd64"]
+}

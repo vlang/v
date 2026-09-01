@@ -11,6 +11,7 @@ import v3.types
 //   __or_tmp_N := maybe_call()
 //   if !__or_tmp_N.is_error { val := __or_tmp_N.data; body... }
 //
+@[direct_array_access]
 fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.kind != .if_expr || node.children_count < 2 {
 		return none
@@ -48,9 +49,24 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	rhs_type = t.qualify_optional_type(rhs_type)
 	value_type := t.optional_base_type(rhs_type)
 	tmp_name := t.new_temp('if_guard')
-	rhs_expr := t.transform_expr(rhs_id)
+	mut rhs_expr := flat.empty_node
+	mut source_clear := flat.empty_node
+	if !isnil(t.tc) && t.tc.ownership_guard_read_moves_value(rhs_id)
+		&& t.expr_can_take_address(rhs_id) {
+		source := t.stabilize_transformed_lvalue_for_reuse(t.transform_lvalue(rhs_id))
+		rhs_expr = source
+		source_clear = t.make_assign_without_ownership_drop(source, t.make_optional_none(rhs_type))
+	} else {
+		rhs_expr = t.transform_expr(rhs_id)
+	}
 	if !t.is_optional_type_name(t.node_type(rhs_expr)) {
-		t.set_node_typ(int(rhs_expr), rhs_type)
+		rhs_node := t.a.nodes[int(rhs_expr)]
+		if rhs_node.kind == .selector && rhs_node.children_count > 0 {
+			rhs_expr = t.make_selector_op(t.a.child(&rhs_node, 0), rhs_node.value, rhs_type,
+				rhs_node.op)
+		} else {
+			t.set_node_typ(int(rhs_expr), rhs_type)
+		}
 	}
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
@@ -109,11 +125,14 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 		else_node := t.a.nodes[int(else_id)]
 		else_block = t.transform_if_guard_else_block(else_id, else_node, tmp_name)
 	}
-	mut expanded := []flat.NodeId{cap: prelude.len + 2}
+	mut expanded := []flat.NodeId{cap: prelude.len + 3}
 	for stmt in prelude {
 		expanded << stmt
 	}
 	expanded << tmp_decl
+	if source_clear != flat.empty_node {
+		expanded << source_clear
+	}
 	expanded << t.make_if(ok_cond, then_block, else_block)
 	return expanded
 }
@@ -136,8 +155,8 @@ fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name 
 	channel_cast := t.make_cast('&sync.Channel', channel_source, '&sync.Channel')
 	prelude << t.make_decl_assign_typed(channel_name, channel_cast, '&sync.Channel')
 	t.mark_fn_used('sync__Channel__pop')
-	pop_call := t.make_call_typed('sync__Channel__pop', arr2(t.make_ident(channel_name), t.make_prefix(.amp,
-		t.make_ident(val_name))), 'bool')
+	pop_call := t.make_call_typed('sync__Channel__pop', [t.make_ident(channel_name),
+		t.make_prefix(.amp, t.make_ident(val_name))], 'bool')
 	prelude << t.make_decl_assign_typed(ok_name, pop_call, 'bool')
 
 	then_id := t.a.child(&node, 1)
@@ -185,6 +204,9 @@ fn (mut t Transformer) optional_result_expr_type_name(id flat.NodeId) string {
 	if !isnil(t.tc) {
 		node := t.a.nodes[int(id)]
 		if node.kind == .call {
+			if decode_ret := t.json_decode_or_expr_type(id, node) {
+				return decode_ret
+			}
 			concrete_ret := t.concrete_generic_call_return_type(id, node)
 			if t.is_optional_type_name(concrete_ret) {
 				return concrete_ret
@@ -636,6 +658,10 @@ fn (t &Transformer) if_expr_branch_type_overrides(branch_typ string, stale_typ s
 	if stale_typ in ['array', 'map', 'unknown'] {
 		return true
 	}
+	if t.is_optional_type_name(stale_typ) && !t.is_optional_type_name(branch_typ) {
+		stale_payload := t.optional_base_type(stale_typ)
+		return t.normalize_type_alias(stale_payload) == t.normalize_type_alias(branch_typ)
+	}
 	if stale_typ in t.enum_types && branch_typ == 'int' {
 		return false
 	}
@@ -734,6 +760,23 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
+		.call {
+			if node.children_count > 0 {
+				callee := t.a.child_node(&node, 0)
+				if callee.kind == .selector && callee.value == 'clone' && callee.children_count > 0 {
+					base_id := t.a.child(callee, 0)
+					raw_base_type := t.node_type(base_id)
+					narrowed_base_type := t.node_type_with_smartcasts(base_id, contexts)
+					call_type := t.node_type(id)
+					if t.is_optional_type_name(raw_base_type) && t.is_optional_type_name(call_type)
+						&& !t.is_optional_type_name(narrowed_base_type)
+						&& t.normalize_type_alias(t.optional_base_type(call_type)) == t.normalize_type_alias(narrowed_base_type) {
+						return narrowed_base_type
+					}
+				}
+			}
+			return t.node_type(id)
+		}
 		.ident {
 			if sc := t.find_smartcast_in_context(node.value, contexts) {
 				return t.smartcast_target_type(sc)
@@ -767,6 +810,9 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 				}
 			}
 			base_type := t.node_type_with_smartcasts(base_id, contexts)
+			if builtin_type := t.builtin_selector_type(base_type, node.value) {
+				return builtin_type
+			}
 			clean_base := if base_type.starts_with('&') { base_type[1..] } else { base_type }
 			if ftyp := t.lookup_struct_field_type(clean_base, node.value) {
 				return ftyp
@@ -850,10 +896,10 @@ fn (t &Transformer) find_smartcast_in_context(expr_name string, contexts []Smart
 
 // merge_if_expr_types supports merge if expr types handling for Transformer.
 fn (t &Transformer) merge_if_expr_types(current string, next string) string {
-	if current.len == 0 {
+	if current.len == 0 || current == 'unknown' {
 		return next
 	}
-	if next.len == 0 || current == next {
+	if next.len == 0 || next == 'unknown' || current == next {
 		return current
 	}
 	if current == 'array' && next.starts_with('[]') {
@@ -1439,16 +1485,31 @@ fn (mut t Transformer) transform_if_guard_condition(node flat.Node) flat.NodeId 
 	})
 }
 
+@[direct_array_access]
 fn (mut t Transformer) transform_if_branch_as_block(branch_id flat.NodeId) flat.NodeId {
 	if int(branch_id) < 0 {
 		return t.make_block([]flat.NodeId{})
 	}
+	// Auto-heaped locals are lexical bindings. Restore the incoming state after each
+	// branch so same-named locals in later branches cannot reuse stale pointer storage.
+	saved_heaped_amp_locals := t.heaped_amp_locals.clone()
+	saved_pointer_value_lvalues := t.pointer_value_lvalues.clone()
+	saved_pointer_value_rvalues := t.pointer_value_rvalues.clone()
+	defer {
+		t.heaped_amp_locals = saved_heaped_amp_locals.clone()
+		t.pointer_value_lvalues = saved_pointer_value_lvalues.clone()
+		t.pointer_value_rvalues = saved_pointer_value_rvalues.clone()
+	}
 	branch := t.a.nodes[int(branch_id)]
 	if branch.kind == .block {
-		return t.make_block(t.transform_stmts(t.a.children_of(&branch)))
+		children := t.transform_stmts(t.a.children_of(&branch))
+		if t.rewrite_children_in_place(branch_id, children) {
+			return branch_id
+		}
+		return t.make_block(children)
 	}
 	mut stmts := []flat.NodeId{}
-	if t.is_stmt_kind_id(node_kind_id(branch)) {
+	if t.is_stmt_kind_id(int(branch.kind)) {
 		expanded := t.transform_stmt(branch_id)
 		t.drain_pending(mut stmts)
 		stmts << expanded
@@ -1511,21 +1572,25 @@ fn (mut t Transformer) transform_plain_if_branches(id flat.NodeId, node flat.Nod
 		t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 	}
 
-	if_start := t.a.children.len
-	t.a.children << new_cond_id
-	t.a.children << new_then_id
 	mut child_count := 2
+	mut new_children := [new_cond_id, new_then_id]
 	if has_else {
-		t.a.children << new_else_id
+		new_children << new_else_id
 		child_count = 3
 	}
-	new_if := t.a.add_node(flat.Node{
-		kind:           .if_expr
-		children_start: if_start
-		children_count: flat.child_count(child_count)
-		typ:            node.typ
-		pos:            node.pos
-	})
+	new_if := if t.rewrite_children_in_place(id, new_children) {
+		id
+	} else {
+		if_start := t.a.children.len
+		t.a.children << new_children
+		t.a.add_node(flat.Node{
+			kind:           .if_expr
+			children_start: if_start
+			children_count: flat.child_count(child_count)
+			typ:            node.typ
+			pos:            node.pos
+		})
+	}
 	for pending in cond_pending {
 		t.pending_stmts << pending
 	}
@@ -1536,6 +1601,7 @@ fn (mut t Transformer) transform_plain_if_branches(id flat.NodeId, node flat.Nod
 // integrates smartcasting. When the condition contains an is_expr, it
 // pushes a smartcast for the then-branch, transforms the body under
 // that context, pops the smartcast, then transforms the else-block.
+@[direct_array_access]
 fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.kind != .if_expr || node.children_count < 2 {
 		return id
@@ -1596,21 +1662,25 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	t.smartcast_stack = t.non_invalidated_smartcasts(then_base_smartcasts)
 
 	// Rebuild the if_expr with (possibly) new children.
-	if_start := t.a.children.len
-	t.a.children << new_cond_id
-	t.a.children << new_then_id
 	mut child_count := 2
+	mut new_children := [new_cond_id, new_then_id]
 	if has_else {
-		t.a.children << new_else_id
+		new_children << new_else_id
 		child_count = 3
 	}
-	new_if := t.a.add_node(flat.Node{
-		kind:           .if_expr
-		children_start: if_start
-		children_count: flat.child_count(child_count)
-		typ:            node.typ
-		pos:            node.pos
-	})
+	new_if := if t.rewrite_children_in_place(id, new_children) {
+		id
+	} else {
+		if_start := t.a.children.len
+		t.a.children << new_children
+		t.a.add_node(flat.Node{
+			kind:           .if_expr
+			children_start: if_start
+			children_count: flat.child_count(child_count)
+			typ:            node.typ
+			pos:            node.pos
+		})
+	}
 	for pending in cond_pending {
 		t.pending_stmts << pending
 	}
@@ -1767,6 +1837,10 @@ fn (t &Transformer) collect_is_exprs(cond_id flat.NodeId, mut result []IsExprInf
 		return
 	}
 	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .paren && cond.children_count > 0 {
+		t.collect_is_exprs(t.a.child(&cond, 0), mut result)
+		return
+	}
 	if cond.kind == .is_expr && cond.children_count >= 1 {
 		expr_id := t.a.child(&cond, 0)
 		ek := t.expr_key(expr_id)
@@ -1857,6 +1931,9 @@ fn (t &Transformer) extract_else_branch_smartcasts(cond_id flat.NodeId) []IsExpr
 		return []IsExprInfo{}
 	}
 	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .paren && cond.children_count > 0 {
+		return t.extract_else_branch_smartcasts(t.a.child(&cond, 0))
+	}
 	if cond.kind == .prefix && cond.op == .not && cond.children_count > 0 {
 		inner_id := t.a.child(&cond, 0)
 		inner := t.a.nodes[int(inner_id)]

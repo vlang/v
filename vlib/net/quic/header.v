@@ -346,6 +346,43 @@ pub fn parse_short_header(buf []u8, dcid_len int) !(QuicShortHeader, int) {
 	}, 1 + dcid_len
 }
 
+// encode_short_header serializes a short header's unprotected portion (RFC
+// 9000 §17.3.1), everything up to (but not including) the packet number
+// field -- the caller appends the packet-number bytes separately and
+// applies header protection afterward, exactly mirroring
+// encode_long_header's own two-step convention (see its doc comment for why
+// the packet-number length must be decided before this is called). Unlike
+// a long header, there is no DCID length prefix on the wire (see
+// QuicShortHeader's own doc comment) -- `dcid` is written verbatim.
+pub fn encode_short_header(dcid []u8, spin_bit bool, reserved_bits u8, key_phase bool, pn_length_bits u8) ![]u8 {
+	if reserved_bits > 0x3 {
+		return error('reserved_bits must fit in 2 bits')
+	}
+	if pn_length_bits > 0x3 {
+		return error('pn_length_bits must fit in 2 bits')
+	}
+	if dcid.len > quic_v1_max_cid_len {
+		return error('QUIC v1 connection IDs must not exceed ${quic_v1_max_cid_len} bytes')
+	}
+	// RFC 9000 §17.3.1 first-byte layout (MSB to LSB): Header Form(1)=0,
+	// Fixed Bit(1)=1, Spin Bit(1), Reserved(2), Key Phase(1), Packet Number
+	// Length(2) -- matching header_protection.v's protected_bits_mask/
+	// reserved_bits_mask bit positions for the short-header form exactly.
+	mut first_byte := u8(0x40)
+	if spin_bit {
+		first_byte |= 0x20
+	}
+	first_byte |= reserved_bits << 3
+	if key_phase {
+		first_byte |= 0x04
+	}
+	first_byte |= pn_length_bits
+	mut out := []u8{cap: 1 + dcid.len}
+	out << first_byte
+	out << dcid
+	return out
+}
+
 // QuicVersionNegotiation represents a parsed Version Negotiation packet (RFC
 // 9000 §17.2.1) — distinguished by `version == 0`, and structurally distinct
 // from every other long-header packet: no packet number, no Length field, no

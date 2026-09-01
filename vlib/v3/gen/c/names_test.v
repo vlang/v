@@ -21,6 +21,23 @@ fn test_c_name_sanitize_escaped_keywords() {
 	assert c_name('Kind.@asm') == 'Kind___v_asm'
 }
 
+fn test_c_name_pre_sanitized_classifier() {
+	assert c_name_is_pre_sanitized('main__run')
+	assert c_name_is_pre_sanitized('foo__Bar__method')
+	assert !c_name_is_pre_sanitized('send')
+	assert !c_name_is_pre_sanitized('C.printf')
+	assert !c_name_is_pre_sanitized('foo__bar-baz')
+	assert !c_name_is_pre_sanitized('_str_1')
+}
+
+fn test_cached_cname_fast_paths_match_canonical_naming() {
+	mut g := FlatGen.new()
+	for name in ['run', 'int', 'send', 'malloc', 'int_str', 'exit', '_str_42', '_str_value',
+		'main.run', 'foo.Bar.method', 'C.printf', 'C.SSL_CTX.str', 'Point.<=', 'pkg.Box[int].value'] {
+		assert g.cname(name) == c_name(name)
+	}
+}
+
 fn test_c_name_sanitizes_compound_generic_type_arguments() {
 	name :=
 		c_name('json2.StructKeyDecodeResult[fn(&mbedtls.SSLListener, string) !&mbedtls.SSLCerts]')
@@ -39,6 +56,34 @@ fn test_c_name_libc_collision_abs() {
 	assert c_name('log') == 'v_log'
 	assert c_name('C.index') == 'index'
 	assert c_name('C.log') == 'log'
+}
+
+fn test_c_name_preserves_c_receiver_method_namespace() {
+	assert c_name('C.SSL_CTX.str') == 'C__SSL_CTX__str'
+}
+
+fn test_struct_init_main_type_lock_matches_only_a_type_component() {
+	assert struct_init_has_main_type_lock('main.Context')
+	assert struct_init_has_main_type_lock('other.Box[map[other.Key]main.Context]')
+	assert !struct_init_has_main_type_lock('domain.Context')
+	assert !struct_init_has_main_type_lock('some.main.Context')
+}
+
+fn test_struct_init_main_alias_target_keeps_declaration_scope() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Context'] = []types.StructField{}
+	tc.struct_modules['Context'] = 'main'
+	tc.structs['veb.Context'] = []types.StructField{}
+	tc.struct_modules['veb.Context'] = 'veb'
+	tc.type_aliases['AliasContext'] = 'Context'
+	tc.type_alias_modules['AliasContext'] = 'main'
+	tc.cur_module = 'veb'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+
+	assert g.struct_type_alias_target('main.AliasContext') or { '' } == 'main.Context'
 }
 
 fn test_c_name_generated_string_symbol_collision() {
@@ -60,6 +105,154 @@ fn test_direct_call_uses_custom_enum_method_symbol() {
 	assert g.direct_call_name_for_call(flat.empty_node, 'token.Kind.str') == 'token__Kind_str'
 	tc.enum_names['ast.Kind'] = true
 	assert g.direct_call_name('Kind.str') == 'Kind_str'
+}
+
+fn test_direct_call_does_not_prefix_synthetic_helper_with_owner_module() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'ast'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.non_generic_fn_names_by_module['ast\x01__v3_autostr_ast__Comment'] = true
+	g.non_generic_fn_names_by_module['ast\x01__v3_default_clone_json2__Any'] = true
+
+	assert g.direct_call_name_for_call(flat.empty_node, '__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
+	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_autostr_ast__Comment') == '__v3_autostr_ast__Comment'
+	assert g.direct_call_name_for_call(flat.empty_node, '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+	assert g.direct_call_name_for_call(flat.empty_node, 'ast.__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+	assert g.fn_c_name_in_module('main', '__v3_default_clone_json2__Any') == '__v3_default_clone_json2__Any'
+}
+
+fn test_main_function_is_prefixed_when_preserved_c_header_owns_typedef_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.inlined_c_typedef_names['sqlite3'] = true
+
+	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
+	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
+	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
+}
+
+fn test_main_function_is_prefixed_when_declared_c_type_owns_name() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.structs['C.sqlite3'] = []types.StructField{}
+
+	assert g.fn_c_name_in_module('main', 'sqlite3') == 'main__sqlite3'
+	assert g.main_runtime_shadow_fn_c_name('main', 'sqlite3') or { '' } == 'main__sqlite3'
+	assert g.fn_c_name_in_module('database', 'sqlite3') == 'database__sqlite3'
+}
+
+fn test_collect_cache_native_c_symbols_only_records_type_declarations() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.structs['C.HeaderTag'] = []types.StructField{}
+	tc.structs['C.HeaderAlias'] = []types.StructField{}
+	tc.structs['C.HeaderEnum'] = []types.StructField{}
+	tc.structs['C.HeaderScalar'] = []types.StructField{}
+	tc.structs['C.HeaderOther'] = []types.StructField{}
+	tc.structs['C.CommentOnly'] = []types.StructField{}
+	tc.structs['C.StringOnly'] = []types.StructField{}
+	tc.structs['C.UnrelatedOpaque'] = []types.StructField{}
+	tc.structs['C.HEADER_ENUM_VALUE'] = []types.StructField{}
+	tc.structs['C.BOOL'] = []types.StructField{}
+
+	g.collect_cache_native_c_symbols('// typedef int CommentOnly;\n"typedef int StringOnly;";\nint f(int UnrelatedOpaque);\ntypedef struct HeaderTag { int field_name; } HeaderAlias;\nenum HeaderEnum { HEADER_ENUM_VALUE };\ntypedef int HeaderScalar, HeaderOther;')
+
+	assert g.cache_native_c_symbols['HeaderTag']
+	assert g.cache_native_c_symbols['HeaderAlias']
+	assert g.cache_native_c_symbols['HeaderEnum']
+	assert g.cache_native_c_symbols['HeaderScalar']
+	assert g.cache_native_c_symbols['HeaderOther']
+	assert !g.cache_native_c_symbols['CommentOnly']
+	assert !g.cache_native_c_symbols['StringOnly']
+	assert !g.cache_native_c_symbols['UnrelatedOpaque']
+	assert g.cache_native_c_symbols['HEADER_ENUM_VALUE']
+	assert !g.cache_native_c_symbols['field_name']
+	assert g.skip_builtin_struct('C.HeaderScalar')
+	assert !g.skip_builtin_struct('C.UnrelatedOpaque')
+	g.inlined_c_typedef_names['BOOL'] = true
+	assert g.skip_builtin_struct('C.BOOL')
+}
+
+fn test_collect_cache_native_c_symbols_records_sokol_enum_constants() {
+	mut g := FlatGen.new()
+	header := os.read_file(os.join_path(@VEXEROOT, 'thirdparty', 'sokol', 'sokol_app.h')) or {
+		panic(err)
+	}
+	g.collect_cache_native_c_symbols(header)
+	assert g.cache_native_c_symbols['SAPP_MOUSECURSOR_DEFAULT']
+}
+
+fn test_voidptr_method_value_arg_does_not_panic_for_alias_to_voidptr() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	alias_to_voidptr := types.Type(types.Alias{
+		name:      'Data'
+		base_type: types.Type(types.Pointer{
+			base_type: types.Type(types.void_)
+		})
+	})
+	assert !g.voidptr_method_value_arg(flat.empty_node, alias_to_voidptr)
+}
+
+fn test_same_named_user_context_does_not_route_to_embedded_framework_context() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tc.cur_module = 'veb'
+	tc.structs['main.Context'] = [
+		types.StructField{
+			name:     'veb.Context'
+			typ:      types.Type(types.Struct{
+				name: 'veb.Context'
+			})
+			is_embed: true
+		},
+	]
+
+	base := types.Type(types.Struct{
+		name: 'main.Context'
+	})
+	expected := types.Type(types.Struct{
+		name: 'Context'
+	})
+	assert g.embedded_receiver_path_for_expected(base, expected) == none
+	assert g.emitted_method_belongs_to_receiver(base, 'before_request', 'Context__before_request')
+	assert !g.emitted_method_belongs_to_receiver(base, 'before_request',
+		'veb__Context__before_request')
+}
+
+fn test_array_receiver_method_is_not_reselected_as_generic() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.generic_method_candidates[generic_method_candidate_key('jsonrpc', 'encode_batch')] = [
+		GenericMethodCandidate{
+			name: 'jsonrpc.[]Request.encode_batch'
+			ret:  types.Type(types.string_)
+		},
+	]
+
+	assert g.specialized_generic_method_name_for_call_with_arg_count(flat.empty_node,
+		'jsonrpc.[]Response.encode_batch', -1) == none
 }
 
 fn test_context_lookup_cache_tracks_source_file_imports() {
@@ -131,6 +324,26 @@ fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
 }
 
+fn test_sum_type_index_emission_override_is_limited_to_flatgen() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut used := {
+		'main': true
+	}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.used_fns = &used
+	assert g.should_emit_fn_node_in_module_known(flat.Node{
+		kind:  .fn_decl
+		value: 'FlatGen.sum_type_index'
+	}, 'c', 'interface.v', 'c__FlatGen__sum_type_index', false)
+	assert !g.should_emit_fn_node_in_module_known(flat.Node{
+		kind:  .fn_decl
+		value: 'Transformer.sum_type_index'
+	}, 'transform', 'sum.v', 'transform__Transformer__sum_type_index', false)
+}
+
 fn test_typeof_type_index_fallback_uses_matching_sum_variant() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -169,21 +382,63 @@ fn test_guarded_preamble_externs_keep_explicit_declarations() {
 	g.c_directives << CDirective{
 		text: '#include <math.h>'
 	}
-	for name in ['accept', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl', 'rmdir'] {
+	for name in ['accept', 'accept4', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl',
+		'pthread_rwlockattr_destroy', 'pthread_sigmask', 'rmdir', 'sigtimedwait', 'syscall'] {
 		assert !g.should_emit_c_extern_decl(name)
 	}
 }
 
+fn test_preinclude_uses_system_libc_preamble() {
+	mut g := FlatGen.new()
+	g.preinclude_directives << '#include <X11/Xlib.h>'
+	assert g.c_directives_use_system_libc()
+}
+
+fn test_system_libc_preamble_identifies_glibc_before_manual_stdio_declarations() {
+	mut g := FlatGen.new()
+	g.c_directives << CDirective{
+		text: '#include <math.h>'
+	}
+	g.preamble()
+	preamble := g.sb.str()
+	features := preamble.index('#include <features.h>') or { -1 }
+	manual_stdio := preamble.index('// c_headers') or { -1 }
+	assert features >= 0
+	assert manual_stdio >= 0
+	assert features < manual_stdio
+}
+
 fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_declared_fns('<stdio.h>').len == 0
+	assert 'sqlite3_bind_text' in c_preserved_system_include_declared_fns('"sqlite3.h"')
+	assert 'sqlite3_column_name' in c_preserved_system_include_declared_fns('<sqlite3.h>')
+	assert 'mbedtls_pk_parse_key' in c_preserved_system_include_declared_fns('<mbedtls/ssl.h>')
+	assert 'mbedtls_net_accept' in c_preserved_system_include_declared_fns('<mbedtls/net_sockets.h>')
 	assert c_preserved_system_include_declared_fns('<openssl/ssl.h>') == ['X509_free']
 	assert c_preserved_system_include_declared_fns('<openssl/x509.h>') == [
 		'X509_free',
 	]
+	assert 'EC_POINT_mul' in c_preserved_system_include_declared_fns('<openssl/ec.h>')
+	assert 'OPENSSL_free' in c_preserved_system_include_declared_fns('<openssl/ec.h>')
 	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
 		'objc_msgSend',
 	]
 	assert c_preserved_system_include_struct_names('<poll.h>') == ['pollfd']
+}
+
+fn test_unresolved_openssl_headers_are_preserved() {
+	assert c_should_preserve_uninlined_include('<openssl/ecdsa.h>')
+	assert c_should_preserve_uninlined_include('<openssl/obj_mac.h>')
+}
+
+fn test_objective_c_message_header_remains_in_generated_source() {
+	assert c_include_should_remain_in_inlined_text('<objc/message.h>')
+}
+
+fn test_preserved_include_keeps_macro_declared_functions_authoritative() {
+	mut g := FlatGen.new()
+	g.collect_preserved_include_metadata('<openssl/ssl.h>', '')
+	assert !g.should_emit_c_extern_decl('X509_free')
 }
 
 fn test_apple_framework_include_does_not_match_x11() {
@@ -304,6 +559,13 @@ fn test_objective_c_header_detection() {
 	assert !c_header_text_needs_objective_c_for_target('#if !defined(FEATURE)\n@interface Disabled\n@end\n#endif\n', [
 		'-DFEATURE(x)=x',
 	], false, pref.host_target())
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	private_platform_header := '#if defined(__APPLE__)\n#define _LIB_MACOS 1\n#elif defined(__linux__)\n#define _LIB_LINUX 1\n#endif\n#if defined(_LIB_MACOS)\n@interface MacOnly\n@end\n#endif\n'
+	assert !c_header_text_needs_objective_c_for_target(private_platform_header, []string{}, false,
+		linux)
+	assert c_header_text_needs_objective_c_for_target(private_platform_header, [
+		'-D_LIB_MACOS=1',
+	], false, linux)
 	assert c_header_text_needs_objective_c('#if 0\n@interface Disabled\n@end\n#else\n@interface Enabled\n@end\n#endif\n')
 	assert c_header_text_needs_objective_c('#ifdef COMPILER_MACRO\n@interface PossiblyEnabled\n@end\n#endif\n')
 	imports :=
@@ -312,6 +574,50 @@ fn test_objective_c_header_detection() {
 	guarded :=
 		c_header_objective_c_framework_imports('#ifdef __APPLE__\n#include <Cocoa/Cocoa.h>\n#else\n#include <X11/Xlib.h>\n#endif\n')
 	assert guarded == '#ifdef __APPLE__\n#include <Cocoa/Cocoa.h>\n#endif'
+}
+
+fn test_sokol_header_does_not_select_objective_c_on_linux() {
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	header := os.join_path(@VEXEROOT, 'thirdparty', 'sokol', 'sokol_app.h')
+	assert !cache_native_input_path_needs_objective_c(header, [
+		'-DSOKOL_GLCORE',
+		'-USOKOL_D3D11',
+		'-USOKOL_GLES3',
+		'-USOKOL_METAL',
+		'-USOKOL_VULKAN',
+		'-USOKOL_WGPU',
+		'-DSOKOL_NO_ENTRY',
+	], false, linux)
+}
+
+fn test_x11_system_headers_preserve_external_structs() {
+	assert 'XGetWindowAttributes' in c_preserved_system_include_declared_fns('<X11/Xlib.h>')
+	assert 'XCreateSimpleWindow' in c_preserved_system_include_declared_fns('<X11/Xlib.h>')
+	assert 'WhitePixel' in c_preserved_system_include_declared_fns('<X11/Xlib.h>')
+	assert 'XSetWMNormalHints' in c_preserved_system_include_declared_fns('<X11/Xutil.h>')
+	assert 'XrmGetResource' in c_preserved_system_include_declared_fns('<X11/Xresource.h>')
+	assert 'XkbGetMap' in c_preserved_system_include_declared_fns('<X11/XKBlib.h>')
+	assert 'XISelectEvents' in c_preserved_system_include_declared_fns('<X11/extensions/XInput2.h>')
+	assert 'XcursorImageCreate' in c_preserved_system_include_declared_fns('<X11/Xcursor/Xcursor.h>')
+	assert 'accept4' in c_preserved_system_include_declared_fns('<sys/socket.h>')
+	assert 'sendfile' in c_preserved_system_include_declared_fns('<sys/sendfile.h>')
+	assert c_should_preserve_uninlined_include('<sys/sendfile.h>')
+	assert 'pthread_sigmask' in c_preserved_system_include_declared_fns('<pthread.h>')
+	assert 'sigtimedwait' in c_preserved_system_include_declared_fns('<signal.h>')
+	assert 'Display' in c_preserved_system_include_struct_names('<X11/Xlib.h>')
+	assert 'Display' in c_preserved_system_include_typedef_names('<X11/Xlib.h>')
+	assert 'XEvent' in c_preserved_system_include_struct_names('<X11/Xlib.h>')
+	assert 'XVisualInfo' in c_preserved_system_include_struct_names('<X11/Xutil.h>')
+	assert 'XrmValue' in c_preserved_system_include_struct_names('<X11/Xresource.h>')
+	assert 'XkbDescRec' in c_preserved_system_include_struct_names('<X11/XKBlib.h>')
+	assert 'XIEventMask' in c_preserved_system_include_struct_names('<X11/extensions/XInput2.h>')
+	assert 'XcursorImage' in c_preserved_system_include_struct_names('<X11/Xcursor/Xcursor.h>')
+	assert 'XRRCrtcInfo' in c_preserved_system_include_struct_names('<X11/extensions/Xrandr.h>')
+	assert 'XRRCrtcInfo' in c_preserved_system_include_typedef_names('<X11/extensions/Xrandr.h>')
+}
+
+fn test_apple_framework_typedef_names_are_preserved() {
+	assert 'BOOL' in c_preserved_system_include_typedef_names('<Cocoa/Cocoa.h>')
 }
 
 fn test_large_transitive_header_tree_is_preserved() {
@@ -332,4 +638,15 @@ fn test_large_transitive_header_tree_is_preserved() {
 	assert !c_header_tree_exceeds_inline_limit(one_path, '', []string{}, mut one_size)
 	mut two_size := CHeaderTreeSize{}
 	assert c_header_tree_exceeds_inline_limit(two_path, '', []string{}, mut two_size)
+}
+
+fn test_specialized_generic_abi_name_does_not_classify_array_receivers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	assert g.name_uses_specialized_generic_abi('pick[int]')
+	assert !g.name_uses_specialized_generic_abi('cli.[]Flag.get_int')
+	assert !g.name_uses_specialized_generic_abi('[]Flag.get_int')
 }

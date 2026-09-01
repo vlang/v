@@ -27,12 +27,39 @@ fn test_direct_test_file_run_executes_harness() {
 	os.write_file(fail_src, 'fn test_failure() {\n\tassert false\n}\n')!
 	fail := os.execute('cd ${os.quoted_path(tmp_dir)} && ${os.quoted_path(v3_bin)} failing_test.v')
 	assert fail.exit_code != 0, fail.output
-	assert fail.output.contains('assert failed'), fail.output
+	assert fail.output.contains('Assertion failed'), fail.output
 
 	pass_src := os.join_path(tmp_dir, 'passing_test.v')
 	os.write_file(pass_src, 'fn test_success() {\n\tassert true\n}\n')!
 	pass := os.execute('cd ${os.quoted_path(tmp_dir)} && ${os.quoted_path(v3_bin)} passing_test.v')
 	assert pass.exit_code == 0, pass.output
+
+	module_test_src := os.join_path(tmp_dir, 'module_test.v')
+	os.write_file(module_test_src, 'module helper
+
+fn test_non_main_module() {
+	assert true
+}
+')!
+	module_test_bin := os.join_path(tmp_dir, 'module_test')
+	module_test_build :=
+		os.execute('${os.quoted_path(v3_bin)} -o ${os.quoted_path(module_test_bin)} ${os.quoted_path(module_test_src)}')
+	assert module_test_build.exit_code == 0, module_test_build.output
+	module_test_run := os.execute(os.quoted_path(module_test_bin))
+	assert module_test_run.exit_code == 0, module_test_run.output
+
+	propagation_test_src := os.join_path(tmp_dir, 'propagation_test.v')
+	os.write_file(propagation_test_src, 'import os
+
+fn test_implicit_result_propagation() {
+	path := os.join_path(os.temp_dir(), "v3_test_propagation_${os.getpid()}")
+	os.write_file(path, "ok")!
+	os.rm(path)!
+}
+')!
+	propagation_test :=
+		os.execute('cd ${os.quoted_path(tmp_dir)} && ${os.quoted_path(v3_bin)} propagation_test.v')
+	assert propagation_test.exit_code == 0, propagation_test.output
 }
 
 fn test_directory_test_command_sets_test_define_before_collecting_inputs() {
@@ -45,14 +72,14 @@ fn test_directory_test_command_sets_test_define_before_collecting_inputs() {
 	}
 
 	support_src := os.join_path(tmp_dir, 'support_d_test.v')
-	os.write_file(support_src, 'fn test_only_value() bool {
+	os.write_file(support_src, 'fn value_for_test() bool {
 	return true
 }
 ')!
 	test_src := os.join_path(tmp_dir, 'directory_test.v')
 	os.write_file(test_src, 'fn test_test_define_and_support_file() {
 	$if test {
-		assert test_only_value()
+		assert value_for_test()
 	} $else {
 		assert false
 	}

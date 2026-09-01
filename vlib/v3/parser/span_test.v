@@ -3,6 +3,7 @@ module parser
 import os
 import v3.flat
 import v3.pref
+import v3.token
 
 // Parses `src` on its own and returns the flat AST plus the exact bytes the
 // parser saw, so a node's [offset, end) span can be checked against the source.
@@ -74,6 +75,66 @@ fn test_supported_unix_comptime_aliases_have_no_diagnostics() {
 	mut p := Parser.new(pref.new_preferences())
 	p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
+}
+
+fn test_parser_and_parallel_remap_keep_file_ids_beyond_u16() {
+	path := os.join_path(os.temp_dir(), 'v3_wide_file_id_${os.getpid()}.v')
+	os.write_file(path, 'fn main() {}\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	wide_file_id := int(max_u16) + 1
+	mut p := Parser.new(pref.new_preferences())
+	p.next_file_id = wide_file_id
+	a := p.parse_file(path)
+	assert wide_file_id in a.source_files
+	assert a.nodes.any(it.pos.id == wide_file_id)
+
+	remapped := remap_worker_pos(token.new_span(wide_file_id, 1, 2), wide_file_id,
+		wide_file_id + 1, 1)
+	assert remapped.id == wide_file_id + 1
+}
+
+fn test_attribute_before_module_preserves_qualified_noreturn_name() {
+	path := os.join_path(os.temp_dir(), 'v3_module_attribute_${os.getpid()}.v')
+	os.write_file(path, '@[has_globals]
+module decorated
+
+@[noreturn]
+fn stop() {
+	exit(1)
+}
+') or {
+		panic(err)
+	}
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := Parser.new(pref.new_preferences())
+	p.parse_file(path)
+	assert 'decorated.stop' in p.a.noreturn_fns
+}
+
+fn test_module_qualified_double_pointer_cast_is_one_cast_expression() {
+	ast, _ := parse_span_source('module_pointer_cast', 'import v.ast
+
+fn cast_file(raw voidptr) &ast.File {
+	return unsafe { *(&&ast.File(raw)) }
+}
+')
+	mut saw := false
+	for node in ast.nodes {
+		if node.kind == .cast_expr && node.value == '&&ast.File' {
+			saw = true
+		}
+	}
+	assert saw
+}
+
+fn test_interpolation_segment_preserves_escaped_trailing_quote() {
+	assert strip_interp_quotes(r'\"', `"`) == '"'
+	assert strip_interp_quotes('tail"', `"`) == 'tail'
+	assert strip_interp_quotes(r'\\"', `"`) == '\\'
 }
 
 // Literal nodes must carry their own span, not the span of the token that
@@ -281,6 +342,96 @@ fn main() {
 	assert saw_decl
 	assert saw_loop
 	assert type_ident_count >= 5
+}
+
+fn test_shared_keyword_identifier_in_mut_declaration() {
+	ast, src := parse_span_source('shared_keyword_ident', 'fn main() {
+	mut shared := [1]
+	shared[0]++
+	_ = shared[0]
+	shared()
+	shared?
+	shared!
+	_ = shared & 1
+	shared type := 1
+	println(shared type)
+	x := shared
+	println(x)
+	y := shared
+	if true {
+		println(y)
+	}
+	println(shared)
+}
+')
+	mut shared_spans := []string{}
+	for node in ast.nodes {
+		if node.kind == .ident && node.value == 'shared' {
+			shared_spans << span_text(src, node)
+		}
+	}
+	assert shared_spans.len >= 7, shared_spans.str()
+	assert shared_spans.all(it == 'shared')
+	assert ast.nodes.any(it.kind == .if_expr)
+}
+
+fn test_shared_keyword_identifier_in_fn_literal_capture() {
+	ast, _ := parse_span_source('shared_fn_literal_capture', 'fn main() {
+	shared := 1
+	callback := fn [shared] () {
+		println(shared)
+	}
+	callback()
+}
+')
+	mut saw_capture := false
+	for node in ast.nodes {
+		if node.kind != .fn_literal || node.children_count == 0 {
+			continue
+		}
+		capture := ast.child_node(&node, 0)
+		if capture.kind == .ident && capture.value == 'shared' {
+			saw_capture = true
+		}
+	}
+	assert saw_capture
+}
+
+fn test_shared_keyword_identifier_as_parameter_name() {
+	ast, _ := parse_span_source('shared_parameter_name', 'fn id(shared int) int {
+	return shared
+}
+')
+	assert ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ == 'int' && !it.is_mut)
+	grouped_ast, _ := parse_span_source('grouped_shared_parameter_name', 'fn pair(shared, other int) int {
+	return shared + other
+}
+')
+	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'shared' && it.typ == 'int' && !it.is_mut)
+	assert grouped_ast.nodes.any(it.kind == .param && it.value == 'other' && it.typ == 'int' && !it.is_mut)
+}
+
+fn test_multiline_shared_call_argument_stays_a_modifier() {
+	ast, _ := parse_span_source('multiline_shared_argument', 'struct Box {}
+
+fn consume(shared value Box) {}
+
+fn main() {
+	value := Box{}
+	consume(shared
+		value)
+}
+')
+	mut saw_shared_prefix := false
+	for node in ast.nodes {
+		if node.kind == .prefix && node.value == 'shared' && node.children_count == 1 {
+			child := ast.nodes[int(ast.children[int(node.children_start)])]
+			if child.kind == .ident && child.value == 'value' {
+				saw_shared_prefix = true
+			}
+		}
+	}
+	assert saw_shared_prefix
 }
 
 // Address-of expressions (`&Foo{}`, `&[]T{}`, `&T(x)`) span from the `&` through

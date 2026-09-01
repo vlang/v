@@ -654,6 +654,350 @@ fn test_h2_server_accepts_post_with_trailers() {
 	assert status == 200, 'trailers POST should succeed, got status ${status}'
 }
 
+struct BodyTrailerHandler {
+	body string
+}
+
+fn (mut h BodyTrailerHandler) handle(req Request) Response {
+	mut trailers := new_header()
+	trailers.add_custom('grpc-status', '0') or {}
+	trailers.add_custom('grpc-message', 'ok') or {}
+	return Response{
+		status_code: 200
+		body:        h.body
+		trailers:    trailers
+	}
+}
+
+fn test_h2_server_sends_trailers_after_body() {
+	mut client_end, mut server_end := new_pipe()
+	mut handler_iface := Handler(BodyTrailerHandler{
+		body: 'hello'
+	})
+	spawn fn [mut server_end, mut handler_iface] () {
+		mut transport := H2Transport(server_end)
+		serve_h2_conn(mut transport, mut handler_iface) or {}
+	}()
+
+	mut conn := new_h2_conn(client_end)
+	resp := conn.do(H2ClientRequest{ authority: 'h.example' }) or {
+		assert false, 'client do() failed: ${err}'
+		return
+	}
+	assert resp.status == 200
+	assert resp.body.bytestr() == 'hello'
+	assert resp.headers.any(it.name == 'grpc-status' && it.value == '0')
+	assert resp.headers.any(it.name == 'grpc-message' && it.value == 'ok')
+}
+
+// test_h2_server_sends_trailers_as_separate_headers_block drives the raw wire
+// protocol (rather than the high-level client) to verify the actual frame
+// sequence: the DATA frames carrying the body must NOT set END_STREAM when
+// trailers follow, and the trailers must arrive as a second HEADERS block
+// (not merged into the first) that alone carries END_STREAM.
+fn test_h2_server_sends_trailers_as_separate_headers_block() {
+	mut client_end, mut server_end := new_pipe()
+	mut handler_iface := Handler(BodyTrailerHandler{
+		body: 'x'.repeat(20)
+	})
+	spawn fn [mut server_end, mut handler_iface] () {
+		mut transport := H2Transport(server_end)
+		serve_h2_conn(mut transport, mut handler_iface) or {}
+	}()
+
+	mut enc := H2HpackEncoder{}
+	block := enc.encode([
+		H2HeaderField{':method', 'GET'},
+		H2HeaderField{':scheme', 'https'},
+		H2HeaderField{':authority', 'h.example'},
+		H2HeaderField{':path', '/stream'},
+	])
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	client_end.write(out) or {
+		assert false, 'client write failed: ${err}'
+		return
+	}
+
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut dec := H2HpackDecoder{}
+	mut data_end_stream_seen := false
+	mut headers_frame_count := 0
+	mut trailer_fields := []H2HeaderField{}
+	mut got_end := false
+	for !got_end {
+		f := fr.next() or {
+			assert false, 'frame read failed: ${err}'
+			return
+		}
+		match f {
+			H2HeadersFrame {
+				headers_frame_count++
+				decoded := dec.decode(f.fragment) or { []H2HeaderField{} }
+				if headers_frame_count == 2 {
+					trailer_fields = decoded.clone()
+				}
+				if f.end_stream {
+					got_end = true
+				}
+			}
+			H2DataFrame {
+				if f.end_stream {
+					data_end_stream_seen = true
+				}
+			}
+			else {}
+		}
+	}
+	assert headers_frame_count == 2, 'expected response HEADERS + trailer HEADERS, got ${headers_frame_count}'
+	assert !data_end_stream_seen, 'DATA frame must not carry END_STREAM when trailers follow'
+	assert trailer_fields.any(it.name == 'grpc-status' && it.value == '0')
+	assert !trailer_fields.any(it.name == ':status'), 'trailer block must not repeat :status'
+}
+
+struct TrailersOnlyHandler {}
+
+fn (mut h TrailersOnlyHandler) handle(req Request) Response {
+	mut trailers := new_header()
+	trailers.add_custom('grpc-status', '5') or {}
+	trailers.add_custom('grpc-message', 'not found') or {}
+	return Response{
+		status_code: 200
+		trailers:    trailers
+	}
+}
+
+// test_h2_server_trailers_only_response_is_single_frame covers the empty-body
+// case: response and trailer fields must be folded into ONE HEADERS frame
+// (RFC 9113 §8.1 allows this when no DATA separates them) rather than always
+// splitting into two frames with nothing in between.
+fn test_h2_server_trailers_only_response_is_single_frame() {
+	mut client_end, mut server_end := new_pipe()
+	mut handler_iface := Handler(TrailersOnlyHandler{})
+	spawn fn [mut server_end, mut handler_iface] () {
+		mut transport := H2Transport(server_end)
+		serve_h2_conn(mut transport, mut handler_iface) or {}
+	}()
+
+	mut enc := H2HpackEncoder{}
+	block := enc.encode([
+		H2HeaderField{':method', 'GET'},
+		H2HeaderField{':scheme', 'https'},
+		H2HeaderField{':authority', 'h.example'},
+		H2HeaderField{':path', '/fail'},
+	])
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    block
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	client_end.write(out) or {
+		assert false, 'client write failed: ${err}'
+		return
+	}
+
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut dec := H2HpackDecoder{}
+	mut headers_frame_count := 0
+	mut fields := []H2HeaderField{}
+	mut got_end := false
+	for !got_end {
+		f := fr.next() or {
+			assert false, 'frame read failed: ${err}'
+			return
+		}
+		match f {
+			H2HeadersFrame {
+				headers_frame_count++
+				fields = dec.decode(f.fragment) or { []H2HeaderField{} }
+				if f.end_stream {
+					got_end = true
+				}
+			}
+			H2DataFrame {
+				assert false, 'unexpected DATA frame in a Trailers-Only response'
+			}
+			else {}
+		}
+	}
+	assert headers_frame_count == 1, 'Trailers-Only response must be a single HEADERS frame, got ${headers_frame_count}'
+	assert fields.any(it.name == ':status' && it.value == '200')
+	assert fields.any(it.name == 'grpc-status' && it.value == '5')
+	assert fields.any(it.name == 'grpc-message' && it.value == 'not found')
+}
+
+struct FilteredTrailerHandler {}
+
+fn (mut h FilteredTrailerHandler) handle(req Request) Response {
+	mut trailers := new_header()
+	trailers.add_custom('grpc-status', '0') or {}
+	trailers.add_custom('connection', 'close') or {}
+	return Response{
+		status_code: 200
+		trailers:    trailers
+	}
+}
+
+// test_h2_server_drops_connection_specific_outbound_trailer_fields checks the
+// same RFC 9113 §8.2.2 hop-by-hop filter applied to normal response headers
+// also applies to handler-authored trailers.
+fn test_h2_server_drops_connection_specific_outbound_trailer_fields() {
+	mut client_end, mut server_end := new_pipe()
+	mut handler_iface := Handler(FilteredTrailerHandler{})
+	spawn fn [mut server_end, mut handler_iface] () {
+		mut transport := H2Transport(server_end)
+		serve_h2_conn(mut transport, mut handler_iface) or {}
+	}()
+
+	mut conn := new_h2_conn(client_end)
+	resp := conn.do(H2ClientRequest{ authority: 'h.example' }) or {
+		assert false, 'client do() failed: ${err}'
+		return
+	}
+	assert resp.status == 200
+	assert resp.headers.any(it.name == 'grpc-status' && it.value == '0')
+	assert !resp.headers.any(it.name == 'connection')
+}
+
+struct HugeBodyTrailerHandler {
+	size int
+}
+
+fn (mut h HugeBodyTrailerHandler) handle(req Request) Response {
+	mut trailers := new_header()
+	if req.url == '/verify' {
+		trailers.add_custom('grpc-status', '9') or {}
+		return Response{
+			status_code: 200
+			trailers:    trailers
+		}
+	}
+	trailers.add_custom('grpc-status', '0') or {}
+	return Response{
+		status_code: 200
+		body:        'x'.repeat(h.size)
+		trailers:    trailers
+	}
+}
+
+// test_h2_server_skips_trailers_after_stream_reset_during_body covers the case
+// where the peer RST_STREAMs a response while send_body is blocked on flow
+// control: send_response must not encode or send a trailer HEADERS block for a
+// stream that no longer exists — sending a frame on a torn-down stream aside,
+// encoding a block that is never transmitted would still mutate the HPACK
+// encoder's dynamic table, desyncing it from the client's decoder for every
+// later response on the connection. A second, independent Trailers-Only
+// exchange on the SAME connection afterward proves the encoder stayed in sync.
+//
+// The 100-byte body / 10-byte initial window are chosen so the window is
+// exhausted by the very first DATA frame (10 < h2_default_max_frame_size, so
+// the first chunk is capped at exactly the 10-byte window, not split
+// further); send_body then blocks on its very next iteration and
+// pump_for_window reads the already-buffered RST_STREAM immediately. The
+// test does not depend on how many chunks the remaining 90 bytes would take —
+// only on window << body size, guaranteeing at least one block-and-check
+// cycle happens strictly before the body could complete.
+fn test_h2_server_skips_trailers_after_stream_reset_during_body() {
+	mut client_end, mut server_end := new_pipe()
+	mut handler_iface := Handler(HugeBodyTrailerHandler{
+		size: 100
+	})
+	spawn fn [mut server_end, mut handler_iface] () {
+		mut transport := H2Transport(server_end)
+		serve_h2_conn(mut transport, mut handler_iface) or {}
+	}()
+
+	mut enc := H2HpackEncoder{}
+	req1 := enc.encode([
+		H2HeaderField{':method', 'GET'},
+		H2HeaderField{':scheme', 'https'},
+		H2HeaderField{':authority', 'h.example'},
+		H2HeaderField{':path', '/big'},
+	])
+	req2 := enc.encode([
+		H2HeaderField{':method', 'GET'},
+		H2HeaderField{':scheme', 'https'},
+		H2HeaderField{':authority', 'h.example'},
+		H2HeaderField{':path', '/verify'},
+	])
+	mut out := []u8{}
+	out << h2_client_preface.bytes()
+	out << H2Frame(H2SettingsFrame{
+		settings: [H2Setting{h2_settings_initial_window_size, 10}]
+	}).encode()
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   1
+		fragment:    req1
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	// The server can send only 10 bytes of the 100-byte body before blocking on
+	// flow control; reset the stream instead of granting more window.
+	out << H2Frame(H2RstStreamFrame{
+		stream_id:  1
+		error_code: 8 // CANCEL
+	}).encode()
+	// A second, independent request on the same connection — Trailers-Only, so
+	// it does not depend on flow control at all.
+	out << H2Frame(H2HeadersFrame{
+		stream_id:   3
+		fragment:    req2
+		end_headers: true
+		end_stream:  true
+	}).encode()
+	client_end.write(out) or {
+		assert false, 'client write failed: ${err}'
+		return
+	}
+
+	mut fr := FrameReader{
+		end: client_end
+	}
+	mut dec := H2HpackDecoder{}
+	mut stream1_headers_frames := 0
+	mut verify_fields := []H2HeaderField{}
+	mut got_verify := false
+	for !got_verify {
+		f := fr.next() or {
+			assert false, 'frame read failed: ${err}'
+			return
+		}
+		match f {
+			H2HeadersFrame {
+				decoded := dec.decode(f.fragment) or {
+					assert false, 'HPACK decode failed (encoder desynced): ${err}'
+					return
+				}
+				if f.stream_id == 1 {
+					stream1_headers_frames++
+				} else if f.stream_id == 3 {
+					verify_fields = decoded.clone()
+					got_verify = true
+				}
+			}
+			else {}
+		}
+	}
+	assert stream1_headers_frames == 1, 'expected only the initial response HEADERS on stream 1, got ${stream1_headers_frames} (a 2nd would be an illegal post-reset trailer block)'
+	assert verify_fields.any(it.name == ':status' && it.value == '200')
+	assert verify_fields.any(it.name == 'grpc-status' && it.value == '9')
+}
+
 // drive_until_goaway_or_close writes `out`, then reads frames until it sees a
 // GOAWAY (returns its error code) or the connection closes (returns -1). A
 // RST_STREAM on any stream is a wrong-scope answer for a connection error and

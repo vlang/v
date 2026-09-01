@@ -5,23 +5,15 @@ module ecdsa
 
 // See https://docs.openssl.org/master/man7/openssl_user_macros/#description
 // should be 0x30000000L, but a lot of EC_KEY method was deprecated on version 3.0
-// #define OPENSSL_API_COMPAT 0x10100000L
+#define OPENSSL_API_COMPAT 0x10100000L
 
 #flag darwin -L/opt/homebrew/opt/openssl/lib
 #flag darwin -I/opt/homebrew/opt/openssl/include
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 
-// -I points at the PARENT of the openssl/ header dir (matching the darwin
-// flags above), not at .../openssl itself -- #include <openssl/ecdsa.h>
-// below already spells out the openssl/ prefix, so an -I ending in
-// .../openssl would make the compiler look for .../openssl/openssl/ecdsa.h.
-// This was silently masked on every OTHER compiler by /usr/include being
-// implicitly on the default search path regardless of this flag being
-// wrong -- musl-gcc's -nostdinc removes that implicit fallback, and was the
-// first to surface it (confirmed via an actual CI failure: "Header file
-// <openssl/ecdsa.h> ... was not found" on docker-ubuntu-musl, even with
-// libssl-dev/openssl/ecdsa.h genuinely present on disk).
+// -I points at the parent of the openssl/ header directory. Do not add
+// /usr/include explicitly: musl-gcc would then mix glibc headers into a musl build.
 #flag linux -I/usr/local/include
 #flag linux -L/usr/local/lib64/
 
@@ -35,8 +27,6 @@ module ecdsa
 // Installed on the CI:
 #flag windows -IC:/Program Files/OpenSSL/include
 #flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
-
-#flag -I/usr/include
 
 #flag -lcrypto
 
@@ -68,6 +58,9 @@ pub const C.EVP_PKEY_PUBLIC_KEY int
 @[typedef]
 struct C.EVP_PKEY {}
 
+@[typedef]
+struct C.ENGINE {}
+
 fn C.EVP_PKEY_new() &C.EVP_PKEY
 fn C.EVP_PKEY_free(key &C.EVP_PKEY)
 fn C.EVP_PKEY_base_id(key &C.EVP_PKEY) i32
@@ -77,7 +70,7 @@ fn C.EVP_PKEY_eq(a &C.EVP_PKEY, b &C.EVP_PKEY) i32
 fn C.EVP_PKEY_check(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_public_check(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_dup(key &C.EVP_PKEY) &C.EVP_PKEY
-fn C.EVP_PKEY_set_bn_param(pkey &C.EVP_PKEY, key_name &char, bn &C.BIGNUM) i32
+fn C.EVP_PKEY_set_bn_param(pkey &C.EVP_PKEY, const_key_name &char, const_bn &C.BIGNUM) i32
 
 fn C.EVP_PKEY_get_group_name(pkey &C.EVP_PKEY, gname &u8, gname_sz u32, gname_len &usize) i32
 fn C.EVP_PKEY_get1_encoded_public_key(pkey &C.EVP_PKEY, ppub &&u8) usize
@@ -101,10 +94,10 @@ fn C.EVP_DigestUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
 fn C.EVP_DigestFinal(ctx &C.EVP_MD_CTX, md &u8, s &u32) i32
 
 // Recommended hashed signing/verifying routines
-fn C.EVP_DigestSignInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e voidptr, pkey &C.EVP_PKEY) i32
+fn C.EVP_DigestSignInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e &C.ENGINE, pkey &C.EVP_PKEY) i32
 fn C.EVP_DigestSignUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
 fn C.EVP_DigestSignFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize) i32
-fn C.EVP_DigestVerifyInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e voidptr, pkey &C.EVP_PKEY) i32
+fn C.EVP_DigestVerifyInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e &C.ENGINE, pkey &C.EVP_PKEY) i32
 fn C.EVP_DigestVerifyUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
 fn C.EVP_DigestVerifyFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen i32) i32
 
@@ -112,8 +105,8 @@ fn C.EVP_DigestVerifyFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen i32) i32
 @[typedef]
 struct C.EVP_PKEY_CTX {}
 
-fn C.EVP_PKEY_CTX_new(pkey &C.EVP_PKEY, e voidptr) &C.EVP_PKEY_CTX
-fn C.EVP_PKEY_CTX_new_id(id i32, e voidptr) &C.EVP_PKEY_CTX
+fn C.EVP_PKEY_CTX_new(pkey &C.EVP_PKEY, e &C.ENGINE) &C.EVP_PKEY_CTX
+fn C.EVP_PKEY_CTX_new_id(id i32, e &C.ENGINE) &C.EVP_PKEY_CTX
 fn C.EVP_PKEY_keygen_init(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_keygen(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY) i32
 fn C.EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx &C.EVP_PKEY_CTX, nid i32) i32
@@ -206,7 +199,7 @@ struct C.OSSL_PARAM_BLD {}
 fn C.OSSL_PARAM_free(params &C.OSSL_PARAM)
 fn C.OSSL_PARAM_BLD_free(param_bld &C.OSSL_PARAM_BLD)
 fn C.OSSL_PARAM_BLD_new() &C.OSSL_PARAM_BLD
-fn C.OSSL_PARAM_BLD_push_utf8_string(bld &C.OSSL_PARAM_BLD, key &char, buf &char, bsize usize) i32
-fn C.OSSL_PARAM_BLD_push_BN(bld &C.OSSL_PARAM_BLD, key &char, bn &C.BIGNUM) i32
-fn C.OSSL_PARAM_BLD_push_octet_string(bld &C.OSSL_PARAM_BLD, key &char, buf voidptr, bsize usize) i32
+fn C.OSSL_PARAM_BLD_push_utf8_string(bld &C.OSSL_PARAM_BLD, const_key &char, const_buf &char, bsize usize) i32
+fn C.OSSL_PARAM_BLD_push_BN(bld &C.OSSL_PARAM_BLD, const_key &char, const_bn &C.BIGNUM) i32
+fn C.OSSL_PARAM_BLD_push_octet_string(bld &C.OSSL_PARAM_BLD, const_key &char, const_buf voidptr, bsize usize) i32
 fn C.OSSL_PARAM_BLD_to_param(bld &C.OSSL_PARAM_BLD) &C.OSSL_PARAM

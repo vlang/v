@@ -9,6 +9,7 @@ struct MultiReturnTailParts {
 }
 
 // gen_if emits if output for c.
+@[direct_array_access]
 fn (mut g FlatGen) gen_if(node flat.Node) {
 	// Iterate the `else if` chain rather than recursing through gen_if/gen_if_else for
 	// each link. A lowered match can produce hundreds of chained `if_expr` nodes (one
@@ -271,12 +272,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 			g.tc.cur_scope.insert(lhs.value, base_type.value_type)
 		} else {
 			opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
-			val_ct0, val_type := g.optional_value_ct(rhs_type)
-			val_ct := if val_type is types.MultiReturn {
-				g.optional_payload_c_type(val_type)
-			} else {
-				val_ct0
-			}
+			val_ct, val_type := g.optional_value_info(rhs_type, opt_ct)
 			g.write('${opt_ct} ${tmp} = ')
 			if rhs_needs_deref {
 				g.write('*(')
@@ -293,12 +289,7 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 		}
 	} else {
 		opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
-		val_ct0, val_type := g.optional_value_ct(rhs_type)
-		val_ct := if val_type is types.MultiReturn {
-			g.optional_payload_c_type(val_type)
-		} else {
-			val_ct0
-		}
+		val_ct, val_type := g.optional_value_info(rhs_type, opt_ct)
 		g.write('${opt_ct} ${tmp} = ')
 		if rhs_needs_deref {
 			g.write('*(')
@@ -720,7 +711,7 @@ fn (mut g FlatGen) seed_scope_from_decl(node flat.Node) {
 	// disagree for lowered temps (`__or_val := <zero []Val>` resolving to the
 	// element sum type) and would poison every later use of the binding.
 	if node.typ.len > 0 {
-		typ := g.tc.parse_type(node.typ)
+		typ := g.parse_node_type(&node)
 		if !decl_annotation_is_unusable(typ, node.typ) {
 			g.tc.cur_scope.insert(lhs.value, typ)
 			return
@@ -779,7 +770,7 @@ fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
 // gen_if_expr_stmt emits if expr stmt output for c.
 fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 	ret_type := if node.typ.len > 0 {
-		g.tc.parse_type(node.typ)
+		g.parse_node_type(&node)
 	} else if g.expected_expr_type !is types.Void {
 		g.expected_expr_type
 	} else {
@@ -833,7 +824,7 @@ fn (mut g FlatGen) gen_if_expr_else_if(node flat.Node, ret_type types.Type) {
 			}
 			return
 		}
-		g.writeln('{ _ifexpr = (typeof(_ifexpr)){0}; }')
+		g.writeln('{ _ifexpr = (${g.value_c_type(ret_type)}){0}; }')
 		return
 	}
 }

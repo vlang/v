@@ -49,7 +49,7 @@ fn main() {
 	mut data := 'THIS IS THE DATA'.bytes()
 
 	println('generating cipher')
-	cipher := aes.new_cipher(key)
+	cipher := aes.new_cipher(key)!
 
 	println('performing encryption')
 	mut encrypted := []u8{len: aes.block_size}

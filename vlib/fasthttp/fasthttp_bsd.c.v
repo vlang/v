@@ -165,6 +165,7 @@ fn (mut c Conn) free_request_arena() {
 pub struct Server {
 pub mut:
 	family                  net.AddrFamily = .ip6
+	host                    string
 	port                    int
 	max_request_buffer_size int = 8192
 	timeout_in_seconds      int = 30
@@ -195,6 +196,7 @@ pub fn new_server(config ServerConfig) !&Server {
 	}
 	mut server := &Server{
 		family:                  config.family
+		host:                    config.host
 		port:                    config.port
 		max_request_buffer_size: config.max_request_buffer_size
 		timeout_in_seconds:      config.timeout_in_seconds
@@ -678,7 +680,11 @@ fn (mut s Server) close_pollers() {
 }
 
 fn create_server_socket(server Server) !int {
-	socket_fd := C.socket(i32(server.family), i32(net.SocketType.tcp), 0)
+	// Resolve the bind address first: the socket family must match the address
+	// family, and a configured host may resolve to a different family than
+	// server.family (e.g. an IPv4 host with the default family: .ip6).
+	addr := resolve_bind_addr(server.host, server.family, server.port)!
+	socket_fd := C.socket(i32(addr.family()), i32(net.SocketType.tcp), 0)
 	if socket_fd < 0 {
 		C.perror(c'socket')
 		return error('socket creation failed')
@@ -689,11 +695,6 @@ fn create_server_socket(server Server) !int {
 		C.perror(c'setsockopt SO_REUSEADDR failed')
 		C.close(socket_fd)
 		return error('setsockopt SO_REUSEADDR failed')
-	}
-	addr := if server.family == .ip6 {
-		net.new_ip6(u16(server.port), [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]!)
-	} else {
-		net.new_ip(u16(server.port), [u8(0), 0, 0, 0]!)
 	}
 	alen := addr.len()
 
@@ -839,7 +840,7 @@ pub fn (mut s Server) run() ! {
 	}
 
 	s.mark_running()
-	println('listening on http://0.0.0.0:${s.port}/')
+	println('listening on http://${listen_host_display(s.host, s.family)}:${s.port}/')
 
 	for i in 0 .. bsd_thread_pool_size {
 		s.threads[i].wait()

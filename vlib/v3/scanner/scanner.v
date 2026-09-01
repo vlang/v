@@ -27,6 +27,7 @@ pub struct Scanner {
 mut:
 	file        &token.File = unsafe { nil }
 	insert_semi bool
+	after_dot   bool
 pub mut:
 	src                 string
 	offset              int
@@ -67,6 +68,7 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.pos = 0
 	s.lit = ''
 	s.insert_semi = false
+	s.after_dot = false
 	s.in_str_incomplete = false
 	s.in_str_inter = false
 	s.in_str_inter_format = false
@@ -153,6 +155,8 @@ pub fn (mut s Scanner) scan() token.Token {
 		s.lit = s.source_lit(s.pos, s.offset)
 		return .string
 	}
+	follows_dot := s.after_dot
+	s.after_dot = false
 	start:
 	s.whitespace()
 	if s.offset >= s.src.len {
@@ -213,9 +217,11 @@ pub fn (mut s Scanner) scan() token.Token {
 			break
 		}
 		s.lit = s.source_lit(s.pos, s.offset)
-		if s.lit == 'c' && s.offset < s.src.len && s.src[s.offset] == `'` {
+		if s.lit == 'c' && s.offset < s.src.len
+			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
+			quote := s.src[s.offset]
 			s.pos = s.offset
-			tok := s.scan_char_literal(`'`)
+			tok := s.scan_char_literal(quote)
 			s.lit = 'c:${s.lit}'
 			return tok
 		}
@@ -231,9 +237,21 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.insert_semi = true
 			return .string
 		}
+		if s.lit == 'js' && s.offset < s.src.len
+			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
+			quote := s.src[s.offset]
+			s.offset++
+			if !s.in_str_inter {
+				s.str_quote = quote
+			}
+			s.string_literal(false, quote)
+			s.lit = s.source_lit(s.pos, s.offset)
+			s.insert_semi = true
+			return .string
+		}
 		tok := token.Token.from_string_tinyv(s.lit)
 		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
-			.name] {
+			.name] || (follows_dot && tok.is_keyword()) {
 			s.insert_semi = true
 		}
 		return tok
@@ -266,6 +284,7 @@ pub fn (mut s Scanner) scan() token.Token {
 				}
 				return .dotdot
 			}
+			s.after_dot = true
 			return .dot
 		}
 		`:` {

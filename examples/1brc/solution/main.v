@@ -5,11 +5,11 @@ import os
 
 #include <sys/mman.h>
 
-fn C.mmap(addr voidptr, len u64, prot i32, flags i32, fd i32, offset i64) voidptr
-fn C.munmap(addr voidptr, len u64) i32
+fn C.mmap(addr voidptr, len usize, prot i32, flags i32, fd i32, offset i64) voidptr
+fn C.munmap(addr voidptr, len usize) i32
 
 struct MemoryMappedFile {
-	size u64
+	size usize
 mut:
 	data &u8
 	file os.File
@@ -18,11 +18,14 @@ mut:
 fn mmap_file(path string) MemoryMappedFile {
 	mut mf := MemoryMappedFile{
 		file: os.open_file(path, 'r', 0) or { panic('fail') }
-		size: os.file_size(path)
+		size: usize(os.file_size(path))
 		data: C.NULL
 	}
 
-	mf.data = &u8(C.mmap(C.NULL, mf.size, C.PROT_READ, C.MAP_SHARED, mf.file.fd, 0))
+	// `mmap` returns an untyped mapping pointer; reinterpret it as `&u8` to read the file
+	// bytes. The mapping is owned by this `MemoryMappedFile` and stays valid until `unmap`
+	// calls `munmap`, so the pointer is live for as long as the struct is used.
+	mf.data = unsafe { &u8(C.mmap(C.NULL, mf.size, C.PROT_READ, C.MAP_SHARED, mf.file.fd, 0)) }
 	return mf
 }
 
@@ -152,7 +155,7 @@ fn process_chunk(addr &u8, from u64, to u64) map[string]Result {
 
 fn process_in_parallel(mf MemoryMappedFile, thread_count u32) map[string]Result {
 	mut threads := []thread map[string]Result{}
-	approx_chunk_size := mf.size / thread_count
+	approx_chunk_size := u64(mf.size) / thread_count
 	mut from := u64(0)
 	mut to := approx_chunk_size
 	for _ in 0 .. thread_count - 1 {
@@ -165,7 +168,7 @@ fn process_in_parallel(mf MemoryMappedFile, thread_count u32) map[string]Result 
 		from = to + 1
 		to = from + approx_chunk_size
 	}
-	to = mf.size
+	to = u64(mf.size)
 	threads << spawn process_chunk(mf.data, from, to)
 	res := threads.wait()
 	return combine_results(res)
@@ -193,7 +196,7 @@ fn main() {
 	results := if thread_count > 1 {
 		process_in_parallel(mf, thread_count)
 	} else {
-		process_chunk(mf.data, 0, mf.size)
+		process_chunk(mf.data, 0, u64(mf.size))
 	}
 
 	if !quiet {

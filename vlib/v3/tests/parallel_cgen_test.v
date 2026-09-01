@@ -77,14 +77,29 @@ fn write_parallel_module_init_project(name string) string {
 
 	os.write_file(os.join_path(project_dir, 'moda', 'moda.v'), 'module moda
 
-__global x int
+const runtime_const = make_const()
+
+__global (
+	runtime_global = make_global()
+	seen_const int
+	seen_global int
+)
+
+fn make_const() int {
+	return 5
+}
+
+fn make_global() int {
+	return 7
+}
 
 fn init() {
-	x = 7
+	seen_const = runtime_const
+	seen_global = runtime_global
 }
 
 pub fn value() int {
-	return x
+	return seen_const + seen_global
 }
 ') or {
 		panic(err)
@@ -413,6 +428,14 @@ fn test_prealloc_keeps_parallel_transform_enabled() {
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('transform (parallel)'), compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
+	c_code := os.read_file(c_out) or { panic(err) }
+	vinit := c_code.all_after('void _vinit() {')
+	const_init := vinit.index('moda__runtime_const =') or { -1 }
+	global_init := vinit.index('moda__runtime_global =') or { -1 }
+	module_init := vinit.index('moda__init();') or { -1 }
+	assert const_init >= 0
+	assert global_init > const_init
+	assert module_init > global_init
 }
 
 fn test_parallel_transform_generates_v3_c_with_vjobs_4_and_12() {

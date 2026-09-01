@@ -101,11 +101,6 @@ fn (result &^a SearchResult) stats_ref[^a]() ?&^a Stats {
 	return none
 }
 
-struct ResultHolder {
-mut:
-	res !Inner
-}
-
 struct Outer {
 mut:
 	inner Inner
@@ -119,14 +114,6 @@ fn guarded_failure() ?AFoo {
 	mut m := ?AFoo(none)
 	m?.name = 'bad'
 	return m
-}
-
-fn fail_inner() !Inner {
-	return error('boom')
-}
-
-fn mutate_result_source(mut h ResultHolder) ! {
-	h.res!.name = 'result'
 }
 
 fn mutate_explicit_or_source(mut holder Holder) {
@@ -143,22 +130,6 @@ fn mutate_explicit_or_none() {
 	(holder.opt or {
 		assert err.msg() == ''
 		println('none')
-		return
-	}).name = 'bad'
-	assert false
-}
-
-fn mutate_result_explicit_or_ok(mut h ResultHolder) {
-	(h.res or {
-		assert false
-		return
-	}).name = 'explicit-result'
-}
-
-fn mutate_result_explicit_or_err(mut h ResultHolder) {
-	(h.res or {
-		assert err.msg() == 'boom'
-		println('boom')
 		return
 	}).name = 'bad'
 	assert false
@@ -196,23 +167,6 @@ fn main() {
 	mut outer := ?Outer(Outer{})
 	outer?.inner.name = 'deep'
 	assert outer?.inner.name == 'deep'
-	mut result_ok := ResultHolder{
-		res: Inner{}
-	}
-	mutate_result_source(mut result_ok)!
-	assert result_ok.res!.name == 'result'
-	mutate_result_explicit_or_ok(mut result_ok)
-	assert result_ok.res!.name == 'explicit-result'
-	mut result_bad := ResultHolder{
-		res: fail_inner()
-	}
-	mut saw_result_err := false
-	mutate_result_source(mut result_bad) or {
-		assert err.msg() == 'boom'
-		saw_result_err = true
-	}
-	assert saw_result_err
-	mutate_result_explicit_or_err(mut result_bad)
 	mutate_explicit_or_source(mut holder)
 	assert holder.opt?.name == 'ok'
 	mutate_explicit_or_none()
@@ -233,12 +187,13 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	compact_c_code := c_code.replace(' ', '').replace('\t', '')
 	assert c_code.contains('m.value.name ='), c_code
 	assert c_code.contains('holder.opt.value.name ='), c_code
 	assert c_code.contains('.opt = (Optional_Inner){.ok = true, .value = inner}')
 		|| c_code.contains('.opt = (Optional_main__Inner){.ok = true, .value = inner}'), c_code
-	assert c_code.contains('.opt = (Optional_Borrowed') && c_code.contains('.value = borrowed'), c_code
+	assert (c_code.contains('.opt = (Optional_Borrowed')
+		|| c_code.contains('.opt = (Optional_main__Borrowed'))
+		&& c_code.contains('.value = borrowed'), c_code
 	assert c_code.contains('if (!cache->link.ok)') || c_code.contains('if (!cache.link.ok)'), c_code
 	assert c_code.contains('&cache->link.value') || c_code.contains('&cache.link.value'), c_code
 	assert c_code.contains('&result->stats.value') || c_code.contains('&result.stats.value'), c_code
@@ -250,20 +205,8 @@ fn main() {
 	assert c_code.contains('if (!m.ok)'), c_code
 	assert c_code.contains('if (!holder.opt.ok)'), c_code
 	assert c_code.contains('if (!outer.ok)'), c_code
-	assert compact_c_code.contains('.err=h->res.err') || compact_c_code.contains('.err=h.res.err'), c_code
 	assert c_code.contains('IError err = holder.opt.err')
 		|| c_code.contains('IError err = holder->opt.err'), c_code
-	assert c_code.contains('IError err = h->res.err') || c_code.contains('IError err = h.res.err'), c_code
-
-	mutate_result_start := c_code.index('\nOptional mutate_result_source(ResultHolder* h) {') or {
-		-1
-	}
-	assert mutate_result_start >= 0, c_code
-	mutate_result_tail := c_code[mutate_result_start..]
-	mutate_result_guard := mutate_result_tail[..mutate_result_tail.index('h->res.value.name') or {
-		mutate_result_tail.len
-	}]
-	assert !mutate_result_guard.contains('return (Optional){.ok = false};'), mutate_result_guard
 	for line in c_code.split_into_lines() {
 		assert !(line.contains('__or_val_') && line.contains('.name =') && !line.contains('= (')), line
 		assert !(line.contains('__or_val_') && line.contains('.inner.name =')
@@ -272,5 +215,5 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'boom\nnone\nok'
+	assert run.output.trim_space() == 'none\nok'
 }

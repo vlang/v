@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "native-lane-matrix.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "subject",
+    "subject_hash",
+    "producer_toolchain",
+    "selected_run",
+    "validator_observation",
+    "results"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "subject": {"$ref": "native-gate-subject.schema.json"},
+    "subject_hash": {"$ref": "common.schema.json#/$defs/sha256"},
+    "producer_toolchain": {"$ref": "common.schema.json#/$defs/producer_toolchain"},
+    "selected_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "run_attempt", "check_suite_id"],
+      "properties": {
+        "run_id": {"$ref": "common.schema.json#/$defs/run_id"},
+        "run_attempt": {"type": "integer", "minimum": 1, "maximum": 2},
+        "check_suite_id": {"$ref": "common.schema.json#/$defs/run_id"}
+      }
+    },
+    "validator_observation": {"$ref": "toolchain-observation.schema.json"},
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1024,
+      "items": {"$ref": "lane-result.schema.json"}
+    }
+  }
+}

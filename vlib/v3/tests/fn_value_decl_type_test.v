@@ -343,6 +343,35 @@ println(use(actual))
 }
 "
 
+const local_fn_value_optional_call_shadow_src = 'fn f() ?int {
+	return 99
+}
+
+fn take(value ?int) int {
+	return value or { -1 }
+}
+
+fn main() {
+	f := fn () int {
+		return 7
+	}
+	println(int_str(take(f())))
+}
+'
+
+const drop_owned_callback_shadow_src = 'fn record(value int) {
+	println(int_str(value))
+}
+
+fn invoke(drop_owned fn (int), value int) {
+	drop_owned(value)
+}
+
+fn main() {
+	invoke(record, 7)
+}
+'
+
 const local_fn_value_ident_shadow_fn_src = 'fn foo(i int) int {
 	return i + 100
 }
@@ -627,4 +656,19 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	assert imported_c.contains('f = worker__dec'), imported_c
 	assert imported_c.contains(' loader = worker__read_ok'), imported_c
 	assert imported_c.contains('loader = worker__read_other'), imported_c
+}
+
+fn test_shadowed_fn_value_calls_use_bound_callable_types() {
+	v3_bin := build_v3()
+	assert run_good(v3_bin, 'fn_value_optional_call_shadow',
+		local_fn_value_optional_call_shadow_src) == '7'
+	assert run_good(v3_bin, 'drop_owned_callback_shadow', drop_owned_callback_shadow_src) == '7'
+
+	optional_c := gen_c(v3_bin, 'fn_value_optional_call_shadow_c',
+		local_fn_value_optional_call_shadow_src)
+	assert optional_c.contains('take((Optional){.ok = true, .value = f()})'), optional_c
+	assert !optional_c.contains('take(f())'), optional_c
+
+	drop_owned_c := gen_c(v3_bin, 'drop_owned_callback_shadow_c', drop_owned_callback_shadow_src)
+	assert drop_owned_c.contains('drop_owned(value);'), drop_owned_c
 }

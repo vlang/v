@@ -129,6 +129,12 @@ fn (context &Context) str() string {
 }
 
 fn (mut context Context) is_ext_ignored(pf string, pf_ext string) bool {
+	if pf.starts_with('.') && pf.contains('.v3cc.') {
+		// V3 creates its temporary C build directory next to the output binary.
+		// Watching it would interrupt the active compiler and start an endless
+		// create/change/restart loop before the user's program can run.
+		return true
+	}
 	for ipattern in context.ignore_exts {
 		if pf_ext.match_glob(ipattern) {
 			return true

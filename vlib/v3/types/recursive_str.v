@@ -740,8 +740,11 @@ fn (mut tc TypeChecker) recursive_str_process_loop_match(node flat.Node, source 
 			continue
 		}
 		start := if branch.value.is_int() { branch.value.int() } else { 0 }
+		mut branch_env := base.clone_env()
+		tc.recursive_str_apply_match_branch_progress(tc.a.child(&node, 0), *branch, mut branch_env,
+			ctx)
 		flow := tc.recursive_str_process_loop_sequence(*branch, start, [
-			base.clone_env(),
+			branch_env,
 		], ctx)
 		fallthrough << flow.fallthrough
 		breaks << flow.breaks
@@ -800,7 +803,18 @@ fn (mut tc TypeChecker) recursive_str_eval_expr(id flat.NodeId, mut env Recursiv
 		}
 		.paren, .cast_expr, .as_expr {
 			if node.children_count > 0 {
-				return tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
+				mut binding := tc.recursive_str_eval_expr(tc.a.child(node, 0), mut env, ctx)
+				if node.kind == .cast_expr && binding.can_recurse {
+					target := unwrap_all_pointers(tc.resolve_type(id))
+					receiver := unwrap_all_pointers(ctx.receiver_type)
+					if target !is Unknown && target !is Interface && receiver !is Unknown
+						&& target.name() != receiver.name() {
+						binding.progressed = true
+						binding.nonreversible_progress = true
+						binding.numeric_deltas = map[string]i64{}
+					}
+				}
+				return binding
 			}
 		}
 		.dump_expr {
@@ -1957,10 +1971,8 @@ fn (tc &TypeChecker) recursive_str_receiver_is_concrete_match_variant(call_id fl
 			condition_count := if parent.value.is_int() { parent.value.int() } else { 0 }
 			for i in 0 .. int_min(condition_count, int(parent.children_count)) {
 				pattern := tc.a.child_node(parent, i)
-				if pattern.kind != .ident || !tc.type_name_known(pattern.value) {
-					continue
-				}
-				pattern_type := unalias_and_unwrap_pointer_type(tc.parse_type(pattern.value))
+				pattern_name := tc.match_type_pattern(pattern) or { continue }
+				pattern_type := unalias_and_unwrap_pointer_type(tc.parse_type(pattern_name))
 				if pattern_type !is Unknown && pattern_type.name() != expected.name() {
 					return true
 				}
@@ -2058,6 +2070,8 @@ fn (mut tc TypeChecker) recursive_str_process_match_stmt(id flat.NodeId, mut env
 			continue
 		}
 		mut branch_env := base.clone_env()
+		tc.recursive_str_apply_match_branch_progress(tc.a.child(node, 0), *branch, mut branch_env,
+			ctx)
 		if tc.recursive_str_process_match_branch(*branch, mut branch_env, ctx) {
 			branch_envs << branch_env
 		}
@@ -2084,6 +2098,49 @@ fn (mut tc TypeChecker) recursive_str_process_match_branch(branch flat.Node, mut
 	}
 	tc.recursive_str_run_current_defer_scope(mut env, ctx)
 	return falls_through
+}
+
+fn (tc &TypeChecker) recursive_str_apply_match_branch_progress(subject_id flat.NodeId, branch flat.Node, mut env RecursiveStrEnv, ctx RecursiveStrContext) {
+	if !tc.valid_node_id(subject_id) || branch.kind != .match_branch || !branch.value.is_int() {
+		return
+	}
+	subject := tc.a.node(subject_id)
+	if subject.kind != .ident {
+		return
+	}
+	mut binding := env.bindings[subject.value] or { return }
+	if !binding.can_recurse || binding.progressed {
+		return
+	}
+	condition_count := branch.value.int()
+	if condition_count == 0 || condition_count > branch.children_count {
+		return
+	}
+	subject_type := unalias_type(unwrap_pointer(tc.resolve_type(subject_id)))
+	receiver_type := unalias_type(unwrap_pointer(ctx.receiver_type))
+	for i in 0 .. condition_count {
+		condition := tc.a.child_node(&branch, i)
+		pattern := tc.match_type_pattern(*condition) or { return }
+		smartcast_text := if subject_type is SumType {
+			tc.sum_variant_type_for_pattern(subject_type.name, pattern) or { return }
+		} else if is_ierror_type(subject_type) {
+			tc.resolve_ierror_match_pattern(pattern) or { return }
+		} else if subject_type is Interface {
+			tc.resolve_interface_match_pattern(pattern) or { return }
+		} else {
+			return
+		}
+		smartcast_type := unalias_type(unwrap_pointer(tc.parse_type(smartcast_text)))
+		if smartcast_type.name() == receiver_type.name() {
+			return
+		}
+	}
+	// Every condition narrows the receiver to a distinct variant. Formatting
+	// that variant cannot dispatch back to the sum/interface str method.
+	binding.progressed = true
+	binding.nonreversible_progress = true
+	binding.numeric_deltas = map[string]i64{}
+	env.bindings[subject.value] = binding
 }
 
 fn (mut tc TypeChecker) recursive_str_eval_if_expr(id flat.NodeId, mut env RecursiveStrEnv, ctx RecursiveStrContext) RecursiveStrBinding {
@@ -2158,6 +2215,8 @@ fn (mut tc TypeChecker) recursive_str_eval_match_expr(id flat.NodeId, mut env Re
 			continue
 		}
 		mut branch_env := base.clone_env()
+		tc.recursive_str_apply_match_branch_progress(tc.a.child(node, 0), *branch, mut branch_env,
+			ctx)
 		recursive_str_push_defer_scope(mut branch_env)
 		condition_count := if branch.value.is_int() { branch.value.int() } else { 0 }
 		mut result := RecursiveStrBinding{}

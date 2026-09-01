@@ -115,7 +115,7 @@ pub fn (c &RawConn) read_ptr(buf_ptr &u8, len int) !(int, Addr) {
 			Ip6: Ip6{}
 		}
 	}
-	addr_len := sizeof(Addr)
+	addr_len := u32(sizeof(Addr))
 	mut res := wrap_read_result(C.recvfrom(c.sock.handle, voidptr(buf_ptr), len, 0, voidptr(&addr),
 		&addr_len))!
 	if res > 0 {

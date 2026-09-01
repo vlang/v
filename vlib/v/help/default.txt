@@ -62,8 +62,8 @@ V supports the following commands:
 * Installation Management Utilities:
   symlink                      Create a symbolic link for V.
   up                           Run the V self-updater.
-  self [-prod]                 Run the V self-compiler, use -prod to optimize
-                               compilation.
+  self [-prod | -b fastc]      Run the V self-compiler. Use -prod to optimize
+                               C builds; FastC self-builds do not support it.
   version                      Print the version text and exits.
 
 * Package Management Utilities:

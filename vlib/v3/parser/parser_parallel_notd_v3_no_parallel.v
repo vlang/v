@@ -19,8 +19,8 @@ import v3.workers
 
 const min_parallel_parse_files = 4
 const min_parallel_parse_bytes = 131072
-const max_parallel_parse_jobs = 10
-const max_parallel_parse_chunks = 32
+const max_parallel_parse_jobs = 18
+const max_parallel_parse_chunks = 48
 const parallel_parse_chunks_per_job = 2
 const comptime_const_prepass_alias_prefix = '\x00v3-comptime-alias:'
 
@@ -39,21 +39,21 @@ mut:
 	decls []ComptimeConstPrepassDecl
 }
 
-$if !windows {
-	// ParseChunkArgs is the payload handed to each worker thread.
-	struct ParseChunkArgs {
-		worker        voidptr // &Parser
-		paths_ptr     voidptr // &[]string
-		starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
-		prepass_chunk voidptr // &ComptimeConstPrepassChunk
-		start         int
-		end           int
-		chunk_bytes   int
-		scope_enabled bool
-	mut:
-		scope voidptr
-	}
+// ParseChunkArgs is the payload handed to each worker thread.
+struct ParseChunkArgs {
+	worker        voidptr // &Parser
+	paths_ptr     voidptr // &[]string
+	starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
+	prepass_chunk voidptr // &ComptimeConstPrepassChunk
+	start         int
+	end           int
+	chunk_bytes   int
+	scope_enabled bool
+mut:
+	scope voidptr
+}
 
+$if !windows {
 	// parse_chunk_thread parses one worker's contiguous range of files into the
 	// worker's private FlatAst, recording each file's worker-local first node id
 	// into its own preallocated slot of the shared starts array.
@@ -257,9 +257,17 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		for ci in 1 .. n_chunks {
 			order << ci
 		}
-		order.sort_with_compare(fn [worker_chunk_bytes] (a &int, b &int) int {
-			return worker_chunk_bytes[*b - 1] - worker_chunk_bytes[*a - 1]
-		})
+		// Keep this capture-free so the compiler can self-host with `-no-closures`.
+		for i in 1 .. order.len {
+			current := order[i]
+			current_bytes := worker_chunk_bytes[current - 1]
+			mut j := i
+			for j > 0 && worker_chunk_bytes[order[j - 1] - 1] < current_bytes {
+				order[j] = order[j - 1]
+				j--
+			}
+			order[j] = current
+		}
 		mut tasks := []workers.Task{cap: n_chunks}
 		for ci in order {
 			helper_idx := ci - 1
@@ -971,6 +979,9 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 	}
 	mut cache_ptrs := unsafe { []voidptr{len: 4096} }
 	mut cache_vals := []string{len: 4096}
+	mut type_cache_ptrs := unsafe { []voidptr{len: 4096} }
+	mut type_cache_vals := []string{len: 4096}
+	mut type_cache_ids := []u16{len: 4096}
 	for k in 0 .. w.a.nodes.len {
 		mut node := w.a.nodes[k]
 		if node.children_count != 0 {
@@ -988,7 +999,10 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 		mut all_hit := true
 		node.value, all_hit = p.a.probe_text_ptr_cached(node.value, mut cache_ptrs, mut cache_vals)
 		mut hit := true
-		node.typ, hit = p.a.probe_text_ptr_cached(node.typ, mut cache_ptrs, mut cache_vals)
+		mut type_id := u16(0)
+		type_id, node.typ, hit = p.a.probe_type_text_ptr_cached(node.typ, mut type_cache_ptrs, mut
+			type_cache_vals, mut type_cache_ids)
+		node.set_type_text_id(type_id)
 		all_hit = all_hit && hit
 		params := node.generic_params()
 		if params.len > 0 {
@@ -1035,6 +1049,9 @@ fn parse_merge_copy_thread(arg voidptr) voidptr {
 fn clone_parser_source_file(file &token.File) &token.File {
 	mut file_set := token.FileSet.new()
 	mut stored_file := file_set.add_file(file.name.clone(), file.size)
+	if file.has_source_sha256() {
+		stored_file.set_source_sha256(file.source_sha256())
+	}
 	for line in 2 .. file.line_count() + 1 {
 		stored_file.add_line(file.line_start(line))
 	}
@@ -1062,6 +1079,17 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 	for ci in 0 .. thread_count {
 		node_offsets[ci + 1] = node_offsets[ci] + parser_workers[ci].a.nodes.len
 		child_offsets[ci + 1] = child_offsets[ci] + parser_workers[ci].a.children.len
+	}
+	// Each worker has already interned its node payloads in source order. Merge
+	// those unique tables once, in chunk order, so the copy threads can rebind
+	// every payload without leaving a serial per-node miss pass behind.
+	mut text_headroom := 0
+	for worker in parser_workers {
+		text_headroom += worker.a.text_count()
+	}
+	p.a.reserve_transform_texts(text_headroom)
+	for worker in parser_workers {
+		p.a.intern_texts_from(worker.a)
 	}
 	unsafe {
 		p.a.nodes.grow_len(node_offsets[thread_count] - base_nodes)

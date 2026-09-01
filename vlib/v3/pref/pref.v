@@ -8,6 +8,8 @@ const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
 const macos_v3_caller_vchild_env = 'V_MACOS_V3_CALLER_VCHILD'
 const macos_v3_caller_vchild_present_env = 'V_MACOS_V3_CALLER_VCHILD_PRESENT'
+const macos_v3_caller_no_fallback_env = 'V_MACOS_V3_CALLER_NO_FALLBACK'
+const macos_v3_caller_no_fallback_present_env = 'V_MACOS_V3_CALLER_NO_FALLBACK_PRESENT'
 const macos_v3_private_environment_names = [
 	'V_MACOS_V3_FALLBACK_FILE',
 	'V_MACOS_V3_C_ERROR_DIR',
@@ -21,32 +23,46 @@ const macos_v3_private_environment_names = [
 	macos_v3_caller_vexe_present_env,
 	macos_v3_caller_vchild_env,
 	macos_v3_caller_vchild_present_env,
+	macos_v3_caller_no_fallback_env,
+	macos_v3_caller_no_fallback_present_env,
 ]
 
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
-	verbose           bool
-	output_file       string
-	target            Target = host_target()
-	user_defines      []string
-	compile_values    map[string]string
-	backend           string = 'c'
-	ccompiler         string = 'gcc'
-	c99               bool
-	vroot             string = detect_vroot()
-	vexe              string = detect_vexe()
-	vhash             string
-	vcurrent_hash     string
-	selfhost          bool
-	building_v        bool // compiling the V compiler itself: no generics, skip monomorphization
-	is_prod           bool
-	is_debug          bool
-	is_test           bool // at least one compatible user test file is being compiled
-	thread_stack_size int = 8 * 1024 * 1024
+	verbose               bool
+	no_parallel           bool
+	output_file           string
+	target                Target = host_target()
+	user_defines          []string
+	compile_values        map[string]string
+	backend               string = 'c'
+	ccompiler             string = 'gcc'
+	c99                   bool
+	force_bounds_checking bool
+	enable_globals        bool
+	vroot                 string = detect_vroot()
+	vexe                  string = detect_vexe()
+	vhash                 string
+	vcurrent_hash         string
+	selfhost              bool
+	building_v            bool // compiling the V compiler itself: no generics, skip monomorphization
+	is_prod               bool
+	is_debug              bool
+	is_test               bool // at least one compatible user test file is being compiled
+	is_fmt                bool // preserve source-only syntax needed by the V formatter
+	migrate_json2         bool // rewrite supported legacy json calls while formatting
+	is_livemain           bool
+	is_liveshared         bool
+	is_shared             bool
+	no_builtin            bool
+	no_preludes           bool
+	module_search_paths   []string
+	thread_stack_size     int = 8 * 1024 * 1024
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
-	supports_inline_asm bool
+	supports_inline_asm            bool
+	preserve_comptime_conditionals bool
 pub:
 	build_date      string
 	build_time      string
@@ -115,15 +131,15 @@ pub fn target_from(os_name string, arch_name string) !Target {
 		'wasm32_emscripten'] {
 		return error('unsupported target OS `${os_name}`')
 	}
-	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x',
-		'loongarch64', 'wasm32'] {
+	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'wasm32'] {
 		return error('unsupported target architecture `${arch_name}`')
 	}
 	if target_os == 'wasm32_emscripten' && target_arch != 'wasm32' {
 		return error('target OS `wasm32_emscripten` requires architecture `wasm32`')
 	}
-	endian := if target_arch in ['ppc64', 's390x'] { 'big' } else { 'little' }
-	pointer_bits := if target_arch in ['x86', 'arm32', 'wasm32'] { 32 } else { 64 }
+	endian := if target_arch in ['ppc', 'ppc64', 's390x'] { 'big' } else { 'little' }
+	pointer_bits := if target_arch in ['x86', 'arm32', 'ppc', 'wasm32'] { 32 } else { 64 }
 	abi := match target_os {
 		'windows' { 'windows' }
 		'macos', 'ios' { 'darwin' }
@@ -188,6 +204,14 @@ pub fn macos_v3_caller_env_value(name string) string {
 			''
 		}
 	}
+	if name == 'V_MACOS_V3_NO_FALLBACK'
+		&& os.getenv(macos_v3_caller_no_fallback_present_env) in ['0', '1'] {
+		return if os.getenv(macos_v3_caller_no_fallback_present_env) == '1' {
+			os.getenv(macos_v3_caller_no_fallback_env)
+		} else {
+			''
+		}
+	}
 	return os.getenv(name)
 }
 
@@ -199,6 +223,10 @@ pub fn macos_v3_caller_environment() map[string]string {
 			macos_v3_caller_vexe_env, macos_v3_caller_vexe_present_env)
 		restore_macos_v3_caller_environment_value(mut environment, 'VCHILD',
 			macos_v3_caller_vchild_env, macos_v3_caller_vchild_present_env)
+	}
+	if os.getenv(macos_v3_caller_no_fallback_present_env) in ['0', '1'] {
+		restore_macos_v3_caller_environment_value(mut environment, 'V_MACOS_V3_NO_FALLBACK',
+			macos_v3_caller_no_fallback_env, macos_v3_caller_no_fallback_present_env)
 	}
 	for name in macos_v3_private_environment_names {
 		environment.delete(name)
@@ -309,16 +337,25 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	if local_modules_path := module_path_from_search_root(mod, mod_path, local_modules_root) {
 		return local_modules_path
 	}
-	// 3. vlib
+	// 3. explicitly ordered module search paths, when supplied with `-path`
+	if p.module_search_paths.len > 0 {
+		for search_root in p.module_search_paths {
+			if explicit_path := module_path_from_search_root(mod, mod_path, search_root) {
+				return explicit_path
+			}
+		}
+		return ''
+	}
+	// 4. vlib
 	vlib_root := os.join_path_single(p.vroot, 'vlib')
 	if vlib_path := module_path_from_search_root(mod, mod_path, vlib_root) {
 		return vlib_path
 	}
-	// 4. ~/.vmodules (or $VMODULES)
+	// 5. ~/.vmodules (or $VMODULES)
 	if vmodules_path := module_path_from_search_root(mod, mod_path, vmodules_dir()) {
 		return vmodules_path
 	}
-	// 5. walk up the parent directories of the importing file, like V1's
+	// 6. walk up the parent directories of the importing file, like V1's
 	// Builder.find_module_path. This finds sibling projects: e.g. importing
 	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
 	mut current_dir := importer_dir
@@ -476,8 +513,8 @@ pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 		return true
 	}
 	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
-		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc64', 'ppc64le', 's390x',
-		'loongarch64', 'wasm32'] {
+		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'wasm32'] {
 		if normalized_arch(arch) != target.arch
 			&& (file.contains('.${arch}.') || file.contains('_${arch}.')) {
 			return true
@@ -925,7 +962,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'rv64', 'riscv64' {
 			return p.target.arch == 'riscv64'
 		}
-		's390x', 'ppc64', 'ppc64le', 'loongarch64', 'wasm32' {
+		's390x', 'ppc', 'ppc64', 'ppc64le', 'loongarch64', 'wasm32' {
 			return p.target.arch == name
 		}
 		'little_endian' {
@@ -937,27 +974,23 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'debug' {
 			return p.is_debug
 		}
+		'prod' {
+			return p.is_prod
+		}
 		'test' {
 			return p.is_test
 		}
-		'native' {
-			return p.backend == 'arm64'
-		}
-		'builtin_write_buf_to_fd_should_use_c_write' {
+		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
 			return p.backend == 'arm64'
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend == 'arm64' || (p.backend == 'c' && p.ccompiler == 'tinyc')
+			return p.backend == 'arm64' || (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
 			return p.backend == 'arm64' || name in p.user_defines
-		}
-		'gcboehm', 'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding',
-		'nofloat' {
-			return name in p.user_defines
 		}
 		else {
 			return name in p.user_defines
@@ -967,6 +1000,12 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 
 // comptime_optional_flag_value supports comptime optional flag value handling for pref.
 pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
+	// Test mode is added internally to `user_defines` so `_d_test.v` source
+	// selection works, but `$if test ?` only asks whether the user supplied
+	// `-d test`. Explicit `-d` values are recorded in `compile_values`.
+	if name == 'test' && name !in p.compile_values {
+		return false
+	}
 	return name in p.user_defines
 }
 
