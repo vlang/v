@@ -760,6 +760,49 @@ fn (mut t Transformer) ownership_for_in_binding_clone_expands(node flat.Node) bo
 	return t.ownership_for_in_type_needs_clone(value_type)
 }
 
+fn (mut t Transformer) ownership_for_in_map_snapshot_clone_expands(node flat.Node) bool {
+	if node.kind != .for_in_stmt || node.children_count < 3 || isnil(t.tc) {
+		return false
+	}
+	iter_type := t.clean_map_type(t.normalize_type_alias(t.detect_for_in_type(node)))
+	if !iter_type.starts_with('map[') {
+		return false
+	}
+	header_count := node.value.int()
+	children := t.a.children_of(&node)
+	if header_count < 3 || header_count > children.len {
+		return false
+	}
+	container_id := t.a.child(&node, 2)
+	if !t.for_in_body_contains_map_delete(children[header_count..], container_id) {
+		return false
+	}
+	key_type, value_type := t.map_type_parts(iter_type)
+	key_needs_clone := t.normalize_type_alias(key_type).trim_space() != 'string' && t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
+	value_needs_clone := t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type))
+	if !key_needs_clone && !value_needs_clone {
+		return false
+	}
+	if t.tc.ownership_default_clone_missing_method(t.tc.parse_type(key_type)) != none || t.tc.ownership_default_clone_missing_method(t.tc.parse_type(value_type)) != none {
+		return false
+	}
+	return (key_needs_clone && t.compiler_default_clone_type_needs_work(key_type)) || (value_needs_clone && t.compiler_default_clone_type_needs_work(value_type))
+}
+
+fn (mut t Transformer) ownership_map_assignment_clone_expands(node flat.Node) bool {
+	if node.kind !in [.assign, .index_assign] || node.op != .assign || node.children_count < 2 || isnil(t.tc) {
+		return false
+	}
+	lhs_id := t.a.child(&node, 0)
+	info := t.map_index_info(lhs_id) or { return false }
+	rhs_id := t.a.child(&node, 1)
+	if !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
+		return false
+	}
+	value_type := t.tc.parse_type(info.value_type)
+	return t.tc.ownership_type_requires_destruction(value_type) && t.tc.ownership_default_clone_missing_method(value_type) == none && t.compiler_default_clone_type_needs_work(info.value_type)
+}
+
 fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len || isnil(t.tc) {
 		return none
@@ -923,6 +966,9 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			}
 		}
 		if t.ownership_for_in_binding_clone_expands(node) {
+			estimate += deferred_map_expansion_threshold + 1
+		}
+		if t.ownership_for_in_map_snapshot_clone_expands(node) || t.ownership_map_assignment_clone_expands(node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
 		if t.ownership_array_append_expands(node) {
