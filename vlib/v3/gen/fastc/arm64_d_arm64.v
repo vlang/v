@@ -8355,15 +8355,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 			if value.typ == p.program.array_type {
 				return p.emit_array_clone(value)
 			}
-			clone_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_clone', p.program.fn_ids['fast_map_clone'])
-			return FastArm64Value{
-				id: p.program.m.add_instr(.call, p.cur_block, p.program.map_type, [
-					clone_ref,
-					value.id,
-				])
-				typ: p.program.map_type
-				typ_name: value.typ_name
-			}
+			return p.emit_map_clone(value)
 		}
 		if value.typ == p.program.array_type && member == 'reverse' {
 			p.expect(.lpar)!
@@ -8609,7 +8601,7 @@ fn (mut p FastArm64Parser) emit_array_clone(array FastArm64Value) FastArm64Value
 	result_data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, result_slot, p.program.array_type, 0))
 	element_type_name := p.program.array_element_type_name(array.typ_name) or { '' }
 	element_type := p.program.type_id(element_type_name)
-	if element_type == p.program.array_type {
+	if p.array_default_value_needs_clone(element_type, 0) {
 		index_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.i32_type))
 		zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
 		p.program.instr2(.store, p.cur_block, p.program.void_type, zero, index_slot)
@@ -8633,7 +8625,7 @@ fn (mut p FastArm64Parser) emit_array_clone(array FastArm64Value) FastArm64Value
 			address: typed_source
 		}
 		p.cur_block = body
-		cloned_element := p.emit_array_clone(element)
+		cloned_element := p.clone_array_default_value(element, element_type_name)
 		destination_address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, result_data, offset)
 		typed_destination := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), destination_address)
 		p.program.instr2(.store, p.cur_block, p.program.void_type, cloned_element.id, typed_destination)
@@ -8657,26 +8649,140 @@ fn (mut p FastArm64Parser) emit_array_clone(array FastArm64Value) FastArm64Value
 	}
 }
 
+fn (mut p FastArm64Parser) emit_map_clone(map_value FastArm64Value) FastArm64Value {
+	clone_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_clone', p.program.fn_ids['fast_map_clone'])
+	result := p.program.m.add_instr(.call, p.cur_block, p.program.map_type, [
+		clone_ref,
+		map_value.id,
+	])
+	mut cloned := FastArm64Value{
+		id: result
+		typ: p.program.map_type
+		typ_name: map_value.typ_name
+	}
+	key_type_name, value_type_name := fastc_map_key_value_types(map_value.typ_name) or {
+		return cloned
+	}
+	key_type := p.program.type_id(key_type_name)
+	value_type := p.program.type_id(value_type_name)
+	clone_keys := p.array_default_value_needs_clone(key_type, 0)
+	clone_values := p.array_default_value_needs_clone(value_type, 0)
+	if !clone_keys && !clone_values {
+		return cloned
+	}
+	result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.map_type))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, result, result_slot)
+	state := p.program.instr1(.load, p.cur_block, p.program.m.type_store.get_ptr(p.program.map_state_type), p.program.struct_field_ptr(p.cur_block, result_slot, p.program.map_type, 0))
+	zero_state := p.program.m.get_or_add_const(p.program.m.type_store.get_ptr(p.program.map_state_type), '0')
+	has_state := p.program.instr2(.ne, p.cur_block, p.program.i1_type, state, zero_state)
+	owned := p.program.m.add_block(p.func_id, 'map_clone_owned')
+	condition := p.program.m.add_block(p.func_id, 'map_clone_owned_condition')
+	body := p.program.m.add_block(p.func_id, 'map_clone_owned_body')
+	finished := p.program.m.add_block(p.func_id, 'map_clone_owned_finished')
+	done := p.program.m.add_block(p.func_id, 'map_clone_owned_done')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, has_state, ssa.ValueID(owned), ssa.ValueID(done))
+	p.mark_terminated(p.cur_block)
+	length := p.program.instr1(.load, owned, p.program.i64_type, p.program.struct_field_ptr(owned, state, p.program.map_state_type, 3))
+	keys := p.program.instr1(.load, owned, p.program.ptr_i8, p.program.struct_field_ptr(owned, state, p.program.map_state_type, 0))
+	values := p.program.instr1(.load, owned, p.program.ptr_i8, p.program.struct_field_ptr(owned, state, p.program.map_state_type, 1))
+	key_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(key_type).str())
+	value_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value_type).str())
+	index_slot := p.program.instr0(.alloca, owned, p.program.m.type_store.get_ptr(p.program.i64_type))
+	zero := p.program.m.get_or_add_const(p.program.i64_type, '0')
+	one := p.program.m.get_or_add_const(p.program.i64_type, '1')
+	p.program.instr2(.store, owned, p.program.void_type, zero, index_slot)
+	p.program.instr1(.jmp, owned, p.program.void_type, ssa.ValueID(condition))
+	p.mark_terminated(owned)
+	index := p.program.instr1(.load, condition, p.program.i64_type, index_slot)
+	more := p.program.instr2(.lt, condition, p.program.i1_type, index, length)
+	p.program.instr3(.br, condition, p.program.void_type, more, ssa.ValueID(body), ssa.ValueID(finished))
+	p.mark_terminated(condition)
+	p.cur_block = body
+	if clone_keys {
+		key_offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index, key_size)
+		key_address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, keys, key_offset)
+		typed_key := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(key_type), key_address)
+		key := FastArm64Value{
+			id: p.program.instr1(.load, p.cur_block, key_type, typed_key)
+			typ: key_type
+			typ_name: key_type_name
+			address: typed_key
+		}
+		cloned_key := p.clone_array_default_value(key, key_type_name)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, cloned_key.id, typed_key)
+	}
+	if clone_values {
+		value_offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index, value_size)
+		value_address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, values, value_offset)
+		typed_value := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(value_type), value_address)
+		value := FastArm64Value{
+			id: p.program.instr1(.load, p.cur_block, value_type, typed_value)
+			typ: value_type
+			typ_name: value_type_name
+			address: typed_value
+		}
+		cloned_value := p.clone_array_default_value(value, value_type_name)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, cloned_value.id, typed_value)
+	}
+	next := p.program.instr2(.add, p.cur_block, p.program.i64_type, index, one)
+	p.program.instr2(.store, p.cur_block, p.program.void_type, next, index_slot)
+	p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(condition))
+	p.mark_terminated(p.cur_block)
+	if clone_keys {
+		rehash_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'fast_map_rehash', p.program.fn_ids['fast_map_rehash'])
+		p.program.m.add_instr(.call, finished, p.program.void_type, [rehash_ref, state])
+	}
+	p.program.instr1(.jmp, finished, p.program.void_type, ssa.ValueID(done))
+	p.mark_terminated(finished)
+	p.cur_block = done
+	cloned = FastArm64Value{
+		...cloned
+		address: result_slot
+	}
+	return cloned
+}
+
 fn (mut p FastArm64Parser) clone_array_default_value(value FastArm64Value, type_name string) FastArm64Value {
 	if value.typ == p.program.array_type {
 		return p.emit_array_clone(value)
 	}
 	if value.typ == p.program.map_type {
-		clone_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_clone', p.program.fn_ids['fast_map_clone'])
-		return FastArm64Value{
-			id: p.program.m.add_instr(.call, p.cur_block, p.program.map_type, [
-				clone_ref,
-				value.id,
-			])
-			typ: p.program.map_type
+		return p.emit_map_clone(FastArm64Value{
+			...value
 			typ_name: type_name
+		})
+	}
+	layout := p.program.m.type_store.types[value.typ]
+	if layout.kind == .array_t && p.array_default_value_needs_clone(layout.elem_type, 1) {
+		element_type_name := fastc_fixed_array_element_type(type_name) or { '' }
+		slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value.typ))
+		p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, slot)
+		base := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, slot)
+		element_size := p.program.m.type_size(layout.elem_type)
+		for i in 0 .. layout.len {
+			offset := p.program.m.get_or_add_const(p.program.i64_type, (i * element_size).str())
+			address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, base, offset)
+			typed_address := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(layout.elem_type), address)
+			element := FastArm64Value{
+				id: p.program.instr1(.load, p.cur_block, layout.elem_type, typed_address)
+				typ: layout.elem_type
+				typ_name: element_type_name
+				address: typed_address
+			}
+			cloned_element := p.clone_array_default_value(element, element_type_name)
+			p.program.instr2(.store, p.cur_block, p.program.void_type, cloned_element.id, typed_address)
+		}
+		return FastArm64Value{
+			id: p.program.instr1(.load, p.cur_block, value.typ, slot)
+			typ: value.typ
+			typ_name: type_name
+			address: slot
 		}
 	}
 	if !p.array_default_value_needs_clone(value.typ, 0) {
 		return value
 	}
 	declaration := p.program.type_decls_by_id[int(value.typ)] or { return value }
-	layout := p.program.m.type_store.types[value.typ]
 	slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value.typ))
 	p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, slot)
 	for i, field in declaration.fields {
@@ -8712,11 +8818,14 @@ fn (p &FastArm64Parser) array_default_value_needs_clone(typ ssa.TypeID, depth in
 	if depth >= 32 {
 		return false
 	}
+	layout := p.program.m.type_store.types[typ]
+	if layout.kind == .array_t {
+		return p.array_default_value_needs_clone(layout.elem_type, depth + 1)
+	}
 	declaration := p.program.type_decls_by_id[int(typ)] or { return false }
 	if declaration.is_union || declaration.is_c {
 		return false
 	}
-	layout := p.program.m.type_store.types[typ]
 	if layout.kind != .struct_t {
 		return false
 	}
@@ -8729,6 +8838,9 @@ fn (p &FastArm64Parser) array_default_value_needs_clone(typ ssa.TypeID, depth in
 }
 
 fn (mut p FastArm64Parser) emit_array_reverse(array FastArm64Value) FastArm64Value {
+	element_type_name := p.program.array_element_type_name(array.typ_name) or { '' }
+	element_type := p.program.type_id(element_type_name)
+	clone_elements := p.array_default_value_needs_clone(element_type, 0)
 	array_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
 	p.program.instr2(.store, p.cur_block, p.program.void_type, array.id, array_slot)
 	data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
@@ -8767,13 +8879,27 @@ fn (mut p FastArm64Parser) emit_array_reverse(array FastArm64Value) FastArm64Val
 	destination_offset := p.program.instr2(.mul, body, p.program.i64_type, index, element_size)
 	source := p.program.instr2(.add, body, p.program.ptr_i8, data, source_offset)
 	destination := p.program.instr2(.add, body, p.program.ptr_i8, result_data, destination_offset)
-	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
-	p.program.m.add_instr(.call, body, p.program.ptr_i8, [memcpy_ref, destination, source,
-		element_size])
-	next := p.program.instr2(.add, body, p.program.i64_type, index, one)
-	p.program.instr2(.store, body, p.program.void_type, next, index_slot)
-	p.program.instr1(.jmp, body, p.program.void_type, ssa.ValueID(condition))
-	p.mark_terminated(body)
+	p.cur_block = body
+	if clone_elements {
+		typed_source := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), source)
+		typed_destination := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), destination)
+		element := FastArm64Value{
+			id: p.program.instr1(.load, p.cur_block, element_type, typed_source)
+			typ: element_type
+			typ_name: element_type_name
+			address: typed_source
+		}
+		cloned_element := p.clone_array_default_value(element, element_type_name)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, cloned_element.id, typed_destination)
+	} else {
+		memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
+		p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memcpy_ref, destination, source,
+			element_size])
+	}
+	next := p.program.instr2(.add, p.cur_block, p.program.i64_type, index, one)
+	p.program.instr2(.store, p.cur_block, p.program.void_type, next, index_slot)
+	p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(condition))
+	p.mark_terminated(p.cur_block)
 	p.cur_block = done
 	return FastArm64Value{
 		id: result
@@ -8977,6 +9103,7 @@ fn (mut p FastArm64Parser) emit_map_items_array(map_value FastArm64Value, keys b
 	}
 	element_type_name := if keys { key_type_name } else { value_type_name }
 	element_type := p.program.type_id(element_type_name)
+	clone_items := p.array_default_value_needs_clone(element_type, 0)
 	map_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.map_type))
 	p.program.instr2(.store, p.cur_block, p.program.void_type, map_value.id, map_slot)
 	array_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
@@ -9005,11 +9132,47 @@ fn (mut p FastArm64Parser) emit_map_items_array(map_value FastArm64Value, keys b
 	])
 	p.program.instr2(.store, p.cur_block, p.program.void_type, owned_array, array_slot)
 	owned_data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
-	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
-	p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memcpy_ref, owned_data, data,
-		byte_count])
-	p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(done))
-	p.mark_terminated(p.cur_block)
+	if clone_items {
+		index_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.i64_type))
+		zero := p.program.m.get_or_add_const(p.program.i64_type, '0')
+		one := p.program.m.get_or_add_const(p.program.i64_type, '1')
+		p.program.instr2(.store, p.cur_block, p.program.void_type, zero, index_slot)
+		condition := p.program.m.add_block(p.func_id, 'map_items_owned_condition')
+		body := p.program.m.add_block(p.func_id, 'map_items_owned_body')
+		copied := p.program.m.add_block(p.func_id, 'map_items_owned_done')
+		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(condition))
+		p.mark_terminated(p.cur_block)
+		index := p.program.instr1(.load, condition, p.program.i64_type, index_slot)
+		more := p.program.instr2(.lt, condition, p.program.i1_type, index, length64)
+		p.program.instr3(.br, condition, p.program.void_type, more, ssa.ValueID(body), ssa.ValueID(copied))
+		p.mark_terminated(condition)
+		p.cur_block = body
+		offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index, element_size64)
+		source_address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, offset)
+		destination_address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, owned_data, offset)
+		typed_source := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), source_address)
+		typed_destination := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), destination_address)
+		item := FastArm64Value{
+			id: p.program.instr1(.load, p.cur_block, element_type, typed_source)
+			typ: element_type
+			typ_name: element_type_name
+			address: typed_source
+		}
+		cloned_item := p.clone_array_default_value(item, element_type_name)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, cloned_item.id, typed_destination)
+		next := p.program.instr2(.add, p.cur_block, p.program.i64_type, index, one)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, next, index_slot)
+		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(condition))
+		p.mark_terminated(p.cur_block)
+		p.program.instr1(.jmp, copied, p.program.void_type, ssa.ValueID(done))
+		p.mark_terminated(copied)
+	} else {
+		memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
+		p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memcpy_ref, owned_data, data,
+			byte_count])
+		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(done))
+		p.mark_terminated(p.cur_block)
+	}
 	p.cur_block = empty
 	element_size_empty := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
 	zero64 := p.program.m.get_or_add_const(p.program.i64_type, '0')

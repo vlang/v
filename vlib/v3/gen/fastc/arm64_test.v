@@ -1460,6 +1460,63 @@ fn test_fastc_arm64_typed_pointer_arithmetic_scales_offsets() {
 	}
 }
 
+fn test_fastc_arm64_ownership_returning_collection_methods_deep_clone() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_collection_ownership_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'struct Holder {
+mut:
+	values []int
+}
+
+fn main() {
+	original_map := {"a": [1, 2]}
+	mut copied_map := original_map.clone()
+	copied_map["a"][0] = 9
+	original_nested_map := {"a": {"x": 1}}
+	mut copied_nested_map := original_nested_map.clone()
+	copied_nested_map["a"]["x"] = 6
+	original_holders := {"a": Holder{values: [1, 2]}}
+	mut copied_holders := original_holders.clone()
+	copied_holders["a"].values[0] = 5
+	original_array := [[1, 2], [3, 4]]
+	mut reversed := original_array.reverse()
+	reversed[0][0] = 8
+	holders := [Holder{values: [1]}, Holder{values: [2]}]
+	mut reversed_holders := holders.reverse()
+	reversed_holders[0].values[0] = 4
+	mut extracted := original_map.values()
+	extracted[0][0] = 7
+	mut extracted_holders := original_holders.values()
+	extracted_holders[0].values[0] = 3
+	if original_map["a"][0] != 1 || copied_map["a"][0] != 9
+		|| original_nested_map["a"]["x"] != 1 || copied_nested_map["a"]["x"] != 6
+		|| original_holders["a"].values[0] != 1 || copied_holders["a"].values[0] != 5
+		|| original_array[1][0] != 3 || reversed[0][0] != 8 || holders[1].values[0] != 2
+		|| reversed_holders[0].values[0] != 4 || extracted[0][0] != 7
+		|| extracted_holders[0].values[0] != 3 {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
 fn test_fastc_arm64_path_overrides_match_os_normalization() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_paths_${os.getpid()}')
