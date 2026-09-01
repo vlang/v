@@ -65,6 +65,8 @@ struct FastArm64FieldDecl {
 	name           string
 	typ            string
 	default_source string
+	default_path   string
+	default_header FastcSourceHeader
 }
 
 struct FastArm64ConstantDecl {
@@ -108,7 +110,7 @@ struct FastArm64Program {
 	functions        map[string]FastcFunctionSignature
 	type_decls       map[string]FastArm64TypeDecl
 	constant_sources map[string]FastArm64ConstantDecl
-	enum_values      map[string]string
+	enum_values      map[string]FastArm64ConstantDecl
 mut:
 	m                          &ssa.Module = unsafe { nil }
 	void_type                  ssa.TypeID
@@ -463,7 +465,7 @@ fn fast_arm64_vmod_hash(source_path string) !string {
 	return hash[..7] or { error('failed to limit hash `${hash}` to 7 characters') }
 }
 
-fn fast_arm64_collect_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, type_source_paths map[string]bool) !(map[string]FastArm64TypeDecl, map[string]FastArm64ConstantDecl, map[string]string) {
+fn fast_arm64_collect_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, type_source_paths map[string]bool) !(map[string]FastArm64TypeDecl, map[string]FastArm64ConstantDecl, map[string]FastArm64ConstantDecl) {
 	mut declarations := {
 		'Error': FastArm64TypeDecl{
 			key: 'Error'
@@ -471,7 +473,7 @@ fn fast_arm64_collect_declarations(sources []FastcSourceFile, prefs &pref.Prefer
 		}
 	}
 	mut constants := map[string]FastArm64ConstantDecl{}
-	mut enum_values := map[string]string{}
+	mut enum_values := map[string]FastArm64ConstantDecl{}
 	for source_file in sources {
 		if source_file.path !in type_source_paths && !source_file.header.has_constants {
 			continue
@@ -543,8 +545,8 @@ fn fast_arm64_collect_constant_sources(sources []FastcSourceFile, prefs &pref.Pr
 	return constants
 }
 
-fn fast_arm64_collect_enum_values(sources []FastcSourceFile, prefs &pref.Preferences, type_source_paths map[string]bool) !map[string]string {
-	mut values := map[string]string{}
+fn fast_arm64_collect_enum_values(sources []FastcSourceFile, prefs &pref.Preferences, type_source_paths map[string]bool) !map[string]FastArm64ConstantDecl {
+	mut values := map[string]FastArm64ConstantDecl{}
 	for source_file in sources {
 		if source_file.path !in type_source_paths {
 			continue
@@ -598,8 +600,13 @@ fn fast_arm64_collect_enum_values(sources []FastcSourceFile, prefs &pref.Prefere
 					} else {
 						'${source_file.header.module_name}.'
 					}
-					values['${module_prefix}${enum_name}.${field}'] = value
-					values['${enum_name}.${field}'] = value
+					declaration := FastArm64ConstantDecl{
+						source: value
+						path: source_file.path
+						header: source_file.header
+					}
+					values['${module_prefix}${enum_name}.${field}'] = declaration
+					values['${enum_name}.${field}'] = declaration
 					ordinal++
 				}
 				if tok == .rcbr {
@@ -758,7 +765,7 @@ fn fast_arm64_scan_layout_attribute(mut scan scanner.Scanner, path string, prefs
 	}
 }
 
-fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, mut declarations map[string]FastArm64TypeDecl, mut constants map[string]FastArm64ConstantDecl, mut enum_values map[string]string) ! {
+fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, mut declarations map[string]FastArm64TypeDecl, mut constants map[string]FastArm64ConstantDecl, mut enum_values map[string]FastArm64ConstantDecl) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(source_file.path, source_file.source.len)
 	file.index_lines_without_digest(source_file.source)
@@ -894,6 +901,8 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 					name: field_name
 					typ: field_type
 					default_source: default_source
+					default_path: source_file.path
+					default_header: source_file.header
 				}
 			}
 			declaration := FastArm64TypeDecl{
@@ -970,8 +979,13 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 					} else {
 						'${source_file.header.module_name}.'
 					}
-					enum_values['${module_prefix}${short_name}.${field}'] = value
-					enum_values['${short_name}.${field}'] = value
+					declaration := FastArm64ConstantDecl{
+						source: value
+						path: source_file.path
+						header: source_file.header
+					}
+					enum_values['${module_prefix}${short_name}.${field}'] = declaration
+					enum_values['${short_name}.${field}'] = declaration
 					ordinal++
 				}
 				if tok == .rcbr {
@@ -1074,7 +1088,7 @@ fn (mut p FastArm64Program) register_declared_types() {
 	}
 }
 
-fn FastArm64Program.new(prefs &pref.Preferences, declared_types map[string]bool, functions map[string]FastcFunctionSignature, type_decls map[string]FastArm64TypeDecl, constant_sources map[string]FastArm64ConstantDecl, enum_values map[string]string) &FastArm64Program {
+fn FastArm64Program.new(prefs &pref.Preferences, declared_types map[string]bool, functions map[string]FastcFunctionSignature, type_decls map[string]FastArm64TypeDecl, constant_sources map[string]FastArm64ConstantDecl, enum_values map[string]FastArm64ConstantDecl) &FastArm64Program {
 	mut m := ssa.Module.new()
 	// FastC hands this SSA directly to the ARM64 emitter. It does not run SSA
 	// rewrites, so maintaining a unique user list for every operand is pure cost.
@@ -4792,29 +4806,29 @@ fn (mut p FastArm64Parser) parse_enum_shorthand(type_name string) !FastArm64Valu
 	}
 	short_type_name := type_name.all_after_last('.').all_after_last('__')
 	key := '${module_prefix}${short_type_name}.${field}'
-	mut source := p.program.enum_values[key] or {
-		p.program.enum_values['${short_type_name}.${field}'] or { '' }
+	mut declaration := p.program.enum_values[key] or {
+		p.program.enum_values['${short_type_name}.${field}'] or { FastArm64ConstantDecl{} }
 	}
-	if source == '' {
+	if declaration.source == '' {
 		// FastC signatures lower some enum aliases to their integer storage type.
 		// Recover shorthand fields from the unique short enum key in that case.
-		mut candidate := ''
-		for enum_key, enum_source in p.program.enum_values {
+		mut candidate := FastArm64ConstantDecl{}
+		for enum_key, enum_declaration in p.program.enum_values {
 			if enum_key.count('.') != 1 || !enum_key.ends_with('.${field}') {
 				continue
 			}
-			if candidate != '' && candidate != enum_source {
-				candidate = ''
+			if candidate.source != '' && (candidate.source != enum_declaration.source || candidate.path != enum_declaration.path) {
+				candidate = FastArm64ConstantDecl{}
 				break
 			}
-			candidate = enum_source
+			candidate = enum_declaration
 		}
-		source = candidate
+		declaration = candidate
 	}
-	if source == '' {
+	if declaration.source == '' {
 		return p.unsupported('enum shorthand `${type_name}.${field}`')
 	}
-	mut value := p.parse_constant_expression(source)!
+	mut value := p.parse_constant_declaration(declaration)!
 	typ := p.program.type_id(type_name)
 	value = p.convert_value(value, typ, type_name)
 	return value
@@ -7735,8 +7749,8 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 	}
 	if display_name != first_name {
 		if display_name.count('.') > 1 {
-			if enum_source := p.program.enum_values[constant_key] {
-				mut enum_value := p.parse_constant_expression(enum_source)!
+			if enum_declaration := p.program.enum_values[constant_key] {
+				mut enum_value := p.parse_constant_declaration(enum_declaration)!
 				enum_type := p.program.type_id(qualified_type_key)
 				enum_value = p.convert_value(enum_value, enum_type, qualified_type_key)
 				return enum_value
@@ -7748,14 +7762,14 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 			'${p.source_file.header.module_name}.'
 		}
 		enum_key := '${module_prefix}${display_name}'
-		if enum_source := p.program.enum_values[enum_key] {
-			mut enum_value := p.parse_constant_expression(enum_source)!
+		if enum_declaration := p.program.enum_values[enum_key] {
+			mut enum_value := p.parse_constant_declaration(enum_declaration)!
 			enum_type := p.program.type_id(first_name)
 			enum_value = p.convert_value(enum_value, enum_type, first_name)
 			return enum_value
 		}
-		if enum_source := p.program.enum_values[display_name] {
-			mut enum_value := p.parse_constant_expression(enum_source)!
+		if enum_declaration := p.program.enum_values[display_name] {
+			mut enum_value := p.parse_constant_declaration(enum_declaration)!
 			enum_type := p.program.type_id(first_name)
 			enum_value = p.convert_value(enum_value, enum_type, first_name)
 			return enum_value
@@ -9429,8 +9443,21 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		start_data := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, start64)
 		length64 := p.program.instr2(.sub, p.cur_block, p.program.i64_type, end64, start64)
 		length := p.program.instr1(.trunc, p.cur_block, p.program.i32_type, length64)
+		one64 := p.program.m.get_or_add_const(p.program.i64_type, '1')
+		allocation_size := p.program.instr2(.add, p.cur_block, p.program.i64_type, length64, one64)
+		malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
+		owned_data := p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [
+			malloc_ref,
+			allocation_size,
+		])
+		memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
+		p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memcpy_ref, owned_data,
+			start_data, length64])
+		end_data := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, owned_data, length64)
+		zero_byte := p.program.m.get_or_add_const(p.program.u8_type, '0')
+		p.program.instr2(.store, p.cur_block, p.program.void_type, zero_byte, end_data)
 		result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
-		p.program.instr2(.store, p.cur_block, p.program.void_type, start_data, p.program.string_field_ptr(p.cur_block, result_slot, 0))
+		p.program.instr2(.store, p.cur_block, p.program.void_type, owned_data, p.program.string_field_ptr(p.cur_block, result_slot, 0))
 		p.program.instr2(.store, p.cur_block, p.program.void_type, length, p.program.string_field_ptr(p.cur_block, result_slot, 1))
 		zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
 		p.program.instr2(.store, p.cur_block, p.program.void_type, zero, p.program.string_field_ptr(p.cur_block, result_slot, 2))
@@ -10297,7 +10324,7 @@ fn (mut p FastArm64Parser) default_struct_value_for_type(typ ssa.TypeID, type_na
 			}
 			continue
 		}
-		mut value := p.parse_struct_field_default(field.default_source, field.typ)!
+		mut value := p.parse_struct_field_default(field)!
 		if value.typ != field_type {
 			value = p.convert_value(value, field_type, field.typ)
 		}
@@ -10310,19 +10337,28 @@ fn (mut p FastArm64Parser) default_struct_value_for_type(typ ssa.TypeID, type_na
 	return result
 }
 
-fn (mut p FastArm64Parser) parse_struct_field_default(source string, type_name string) !FastArm64Value {
+fn (mut p FastArm64Parser) parse_struct_field_default(field FastArm64FieldDecl) !FastArm64Value {
 	outer_scanner := p.s
 	outer_tok := p.tok
 	outer_lit := p.lit
-	p.enter_source(source)
-	value := if p.tok == .dot {
-		p.parse_enum_shorthand(type_name)!
-	} else {
-		p.parse_contextual_value(type_name)!
+	outer_source_file := p.source_file
+	defer {
+		p.s = outer_scanner
+		p.tok = outer_tok
+		p.lit = outer_lit
+		p.source_file = outer_source_file
 	}
-	p.s = outer_scanner
-	p.tok = outer_tok
-	p.lit = outer_lit
+	p.source_file = FastcSourceFile{
+		path: field.default_path
+		source: field.default_source
+		header: field.default_header
+	}
+	p.enter_source(field.default_source)
+	value := if p.tok == .dot {
+		p.parse_enum_shorthand(field.typ)!
+	} else {
+		p.parse_contextual_value(field.typ)!
+	}
 	return value
 }
 
@@ -10659,6 +10695,19 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 	mut converted_right := right
 	left_layout := p.program.m.type_store.types[left.typ]
 	right_layout := p.program.m.type_store.types[right.typ]
+	if left_layout.kind == .ptr_t && right_layout.kind == .int_t && op in [.plus, .minus] {
+		mut offset := p.integer_to_i64(right)
+		element_size := p.program.m.type_size(left_layout.elem_type)
+		if element_size > 1 {
+			scale := p.program.m.get_or_add_const(p.program.i64_type, element_size.str())
+			offset = p.program.instr2(.mul, p.cur_block, p.program.i64_type, offset, scale)
+		}
+		return FastArm64Value{
+			id: p.program.instr2(if op == .plus { .add } else { .sub }, p.cur_block, left.typ, left.id, offset)
+			typ: left.typ
+			typ_name: left.typ_name
+		}
+	}
 	if left.typ != right.typ && left_layout.kind in [.int_t, .float_t] && right_layout.kind in [
 		.int_t,
 		.float_t,

@@ -1344,6 +1344,122 @@ fn main() {
 	}
 }
 
+fn test_fastc_arm64_string_slice_owns_terminated_storage() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_string_slice_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn C.strlen(value &char) usize
+fn C.free(value voidptr)
+
+fn main() {
+	text := "abcd"
+	part := text[1..3]
+	if part != "bc" || C.strlen(part.str) != 2 {
+		println("wrong")
+		return
+	}
+	unsafe { C.free(part.str) }
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
+fn test_fastc_arm64_replays_imported_initializers_in_declaring_module() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_imported_initializers_${os.getpid()}')
+		dependency_dir := os.join_path_single(test_dir, 'dependency')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(dependency_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		dependency_path := os.join_path_single(dependency_dir, 'dependency.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(dependency_path, 'module dependency
+
+pub const base = 40
+
+pub struct Config {
+pub:
+	value int = base
+}
+
+pub enum Answer {
+	value = base + 2
+}
+') or { panic(err) }
+		os.write_file(source_path, 'module main
+
+import dependency
+
+const base = 1
+
+fn main() {
+	config := dependency.Config{}
+	if config.value != 40 || int(dependency.Answer.value) != 42 || base != 1 {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
+fn test_fastc_arm64_typed_pointer_arithmetic_scales_offsets() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_pointer_arithmetic_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn main() {
+	items := [u64(11), 22]
+	unsafe {
+		next := (&items[0]) + 1
+		if *next != 22 {
+			println("wrong")
+			return
+		}
+	}
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
 fn test_fastc_arm64_path_overrides_match_os_normalization() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_paths_${os.getpid()}')
