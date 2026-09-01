@@ -1876,7 +1876,7 @@ fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
 		return key
 	}
 	if imported_module := g.imports[fastc_selective_import_key(raw_type)] {
-		if fastc_type_key_matches_module(key, imported_module, raw_type) {
+		if g.declared_types[key] && fastc_type_key_matches_module(key, imported_module, raw_type) {
 			return key
 		}
 	}

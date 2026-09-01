@@ -2345,6 +2345,16 @@ fn test_generate_files_restricts_unqualified_imported_type_lookup() {
 		''
 	}
 	assert message.contains('private type `Widget` from imported module `widgets`'), message
+
+	os.write_file(main_file, 'module main\nimport widgets { Widget }\nfn main() { _ := Widget{} }\n') or {
+		panic(err)
+	}
+	message = ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('unresolved name `Widget`'), message
 }
 
 fn test_selfhost_struct_field_defaults_are_preserved() {
