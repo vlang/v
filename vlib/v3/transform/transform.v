@@ -390,8 +390,8 @@ mut:
 	stringify_depth_cap                int = max_stringify_nesting_depth
 	struct_autostr_recurse_types       map[string]bool
 	str_expansion_memo                 map[string]int
-	deferred_str_items                 []FnWorkItem
-	deferred_str_count                 int
+	deferred_expansion_items           []FnWorkItem
+	deferred_expansion_count           int
 	node_module_map_cache              []string
 	node_file_map_cache                []string
 	node_module_map_nodes              int = -1
@@ -3169,14 +3169,16 @@ fn (mut t Transformer) append_transformed_top_level_stmts(mut out []flat.NodeId,
 // the file/module context active at its declaration and a rough cost estimate
 // (subtree node count) used to balance work across parallel workers.
 struct FnWorkItem {
-	fn_idx             int
-	range_lo           int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
-	file               string
-	module             string
-	cost               int
-	rank               i64
-	escape_scan_known  bool
-	escape_scan_needed bool
+	fn_idx                 int
+	range_lo               int // first node id of this fn's subtree (fn subtree = [range_lo, fn_idx])
+	file                   string
+	module                 string
+	cost                   int
+	rank                   i64
+	map_expansion_estimate    int
+	interp_expansion_estimate int
+	escape_scan_known      bool
+	escape_scan_needed     bool
 }
 
 // DeferredBaseWrite is an in-place base-node write recorded by the master
@@ -3232,7 +3234,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 				pure_items := t.transform_serial_then_collect_pure(literal_decls)
 				t.prepare_parallel_call_param_types()
 				t.transform_scoped_helper_batches(pure_items, scoped_transform_batches)
-				t.transform_deferred_str_items()
+				t.transform_deferred_expansion_items()
 				if !has_entry_main {
 					t.transform_top_level_user_stmts()
 				}
@@ -3265,11 +3267,10 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	was_parallel := t.run_parallel_transform(pure_items, base_nodes, base_children)
 	t.timing_profile('  [ttime] parallel run       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	ttsw.restart()
-	// Aggregate-interpolating functions were held back from the parallel regions
-	// (their inline autostr expansion overflows cost-proportional worker slots);
-	// lower them now against the freely growable master arena.
-	t.transform_deferred_str_items()
-	t.timing_profile('  [ttime] deferred str       ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${t.deferred_str_count})')
+	// Functions with oversized auto-str or const-map expansion were held back
+	// from cost-proportional worker slots; lower them against the growable arena.
+	t.transform_deferred_expansion_items()
+	t.timing_profile('  [ttime] deferred expansion ${f64(ttsw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${t.deferred_expansion_count})')
 	ttsw.restart()
 	if !has_entry_main {
 		t.transform_top_level_user_stmts()
@@ -3390,30 +3391,31 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 				t.item_range_lo = old_range_lo
 				t.item_range_hi = old_range_hi
 			} else {
-				// Interpolating an auto-str struct/sum expands inline to node counts
-				// wildly out of proportion to parse cost. Estimate that expansion:
-				// a large one would overflow a cost-proportional worker append region
-				// in the shared parallel transform, so defer such functions to a
-				// serial pass over the freely growable master arena; a small one just
-				// folds into this item's cost so its region is sized to fit. The
-				// estimate is 0 for every type v3 self-host interpolates, so its work
-				// items and node numbering are untouched.
-				str_est := if t.building_v && t.parallel_enabled {
+				// Some lowering expands far beyond the parsed subtree cost. Aggregate
+				// interpolation emits inline autostr trees, while a const map reference
+				// can point outside this function's range at a map with thousands of
+				// entries. Fold bounded expansion into the worker cost, but defer an
+				// unbounded item to the growable master arena: the shared workers use
+				// fixed .nogrow regions, and even the complete reserved pool can be
+				// smaller than one expanded constant map.
+				if sc_profile {
+					scsw.restart()
+				}
+				mut str_est := 0
+				mut str_needs_deferred_lowering := false
+				if t.building_v && t.parallel_enabled {
 					// The compiler's interpolated types are all bounded primitives and
 					// metadata names; none can trigger aggregate auto-str expansion.
-					0
+					str_est = 0
 				} else {
-					if sc_profile {
-						scsw.restart()
-					}
-					estimate := t.fn_span_interp_estimate(range_lo, i)
-					if sc_profile {
-						est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
-					}
-					estimate
+					str_est, str_needs_deferred_lowering = t.fn_span_interp_estimate(range_lo, i)
 				}
-				if str_est > deferred_str_expansion_threshold {
-					t.deferred_str_items << FnWorkItem{
+				map_est := t.fn_span_map_expansion_estimate(range_lo, i)
+				if sc_profile {
+					est_ms += f64(scsw.elapsed().microseconds()) / 1000.0
+				}
+				if str_needs_deferred_lowering || map_est > deferred_map_expansion_threshold {
+					t.deferred_expansion_items << FnWorkItem{
 						fn_idx:             i
 						range_lo:           range_lo
 						file:               t.cur_file
@@ -3424,15 +3426,17 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				} else {
-					adj_cost := cost + str_est
+					adj_cost := cost + str_est + map_est
 					pure << FnWorkItem{
-						fn_idx:             i
-						range_lo:           range_lo
-						file:               t.cur_file
-						module:             t.cur_module
-						cost:               adj_cost
-						rank:               i64(adj_cost) * 1_000_000_000 - i64(i)
-						escape_scan_known:  escape_scan_flags & 1 != 0
+						fn_idx: i
+						range_lo: range_lo
+						file: t.cur_file
+						module: t.cur_module
+						cost: adj_cost
+						rank: i64(adj_cost) * 1_000_000_000 - i64(i)
+						map_expansion_estimate:    map_est
+						interp_expansion_estimate: str_est
+						escape_scan_known: escape_scan_flags & 1 != 0
 						escape_scan_needed: escape_scan_flags & 2 != 0
 					}
 				}
@@ -3449,7 +3453,7 @@ fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) [
 	}
 	t.fn_scan_costs = []int{}
 	t.fn_escape_scan_flags = []u8{}
-	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, interp est ${est_ms:.2f} ms')
+	t.timing_profile('  [ttime]   sc consts ${const_ms:.2f} ms, closures ${lit_ms:.2f} ms, expansion est ${est_ms:.2f} ms')
 	return pure
 }
 
@@ -3556,19 +3560,16 @@ fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
 	t.item_escape_scan_needed = false
 }
 
-// transform_deferred_str_items lowers the functions held back from the parallel
-// regions because they interpolate struct/sum values (see
-// transform_serial_then_collect_pure). They run serially against the master
-// arena, which grows freely, so their large inline autostr expansion cannot
-// overflow a bounded worker append region. The list is empty unless the program
-// actually interpolates aggregates, so common builds (v3 self-host) skip it.
-fn (mut t Transformer) transform_deferred_str_items() {
-	t.deferred_str_count = t.deferred_str_items.len
-	if t.deferred_str_items.len == 0 {
+// transform_deferred_expansion_items lowers functions whose auto-str or const-map
+// expansion cannot fit safely in a bounded parallel worker region. They run
+// serially against the growable master arena after the workers finish.
+fn (mut t Transformer) transform_deferred_expansion_items() {
+	t.deferred_expansion_count = t.deferred_expansion_items.len
+	if t.deferred_expansion_items.len == 0 {
 		return
 	}
-	items := t.deferred_str_items
-	t.deferred_str_items = []FnWorkItem{}
+	items := t.deferred_expansion_items
+	t.deferred_expansion_items = []FnWorkItem{}
 	t.transform_pure_items_serial(items)
 }
 
@@ -15519,6 +15520,16 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 	if t.source_parent_ids.len > 0 && !t.shared_local_decl_names[name] {
 		return false
 	}
+	return t.local_binding_before(name, before) or { false }
+}
+
+// local_binding_before reports whether `name` resolves to a visible parameter or local at
+// `before`; the returned bool records whether that binding is shared. It follows the use's
+// ancestor path so declarations in sibling blocks do not leak into the lookup.
+fn (t &Transformer) local_binding_before(name string, before flat.NodeId) ?bool {
+	if name.len == 0 || int(before) < 0 || int(before) >= t.a.nodes.len {
+		return none
+	}
 	// Follow the mutation's ancestor path and inspect only declarations preceding that
 	// path in each enclosing scope; bindings inside sibling blocks must not leak out.
 	mut path := [int(before)]
@@ -15538,23 +15549,43 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 		cursor = parent_id
 	}
 	if !found_fn_scope {
-		return false
+		return none
 	}
 	mut found := false
 	mut is_shared := false
 	for path_idx := path.len - 1; path_idx > 0; path_idx-- {
 		parent := t.a.nodes[path[path_idx]]
 		next_id := path[path_idx - 1]
+		mut inside_for_in_body := false
+		if parent.kind == .for_in_stmt {
+			header_count := parent.value.int()
+			if header_count >= 3 && header_count < parent.children_count {
+				for i in header_count .. parent.children_count {
+					if int(t.a.child(&parent, i)) == next_id {
+						inside_for_in_body = true
+						break
+					}
+				}
+			}
+		}
 		for i in 0 .. parent.children_count {
 			child_id := int(t.a.child(&parent, i))
 			if child_id == next_id {
 				break
+			}
+			// An if-guard declaration is visible only in the guarded (then) branch.
+			// Do not let it shadow a constant while resolving an else-branch use.
+			if parent.kind == .if_expr && i == 0 && parent.children_count > 1 && next_id != int(t.a.child(&parent, 1)) {
+				continue
 			}
 			if child_id < 0 || child_id >= t.a.nodes.len {
 				continue
 			}
 			child := t.a.nodes[child_id]
 			if child.kind == .param && child.value == name {
+				found = true
+				is_shared = child.typ.trim_space().starts_with('shared ')
+			} else if parent.kind == .for_in_stmt && inside_for_in_body && i < 2 && child.kind == .ident && child.value == name {
 				found = true
 				is_shared = false
 			} else if child.kind == .decl_assign {
@@ -15565,7 +15596,10 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 			}
 		}
 	}
-	return found && is_shared
+	if !found {
+		return none
+	}
+	return is_shared
 }
 
 fn (mut t Transformer) build_source_parent_index() {

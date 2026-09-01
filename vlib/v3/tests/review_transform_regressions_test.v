@@ -6483,6 +6483,82 @@ fn main() {
 	assert out == '7\n4\n1'
 }
 
+fn test_parallel_transform_defers_large_const_map_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut entries := []string{cap: 512}
+	for i in 0 .. 512 {
+		entries << "\t\t'key_${i}': ${i}"
+	}
+	source := "const large_lookup = {\n\t'group': {\n${entries.join('\n')}\n\t}\n}\n\nfn read_large_lookup(key string) int {\n\treturn large_lookup['group'][key]\n}\n\nfn main() {\n\tprintln(read_large_lookup('key_511'))\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_large_const_map', 'VJOBS=4', source)
+	assert out == '511'
+}
+
+fn test_parallel_transform_defers_external_const_collection_clone_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform_ownership()
+	mut fields := []string{cap: 256}
+	for i in 0 .. 256 {
+		fields << '\tfield_${i} string'
+	}
+	mut readers := []string{cap: 64}
+	mut calls := []string{cap: 64}
+	for i in 0 .. 64 {
+		readers << "fn read_${i}() int {\n\treturn if clone_lookup.len == 1 { ${i} } else { -10000 }\n}"
+		calls << '\ttotal += read_${i}()'
+	}
+	source := "struct Wide implements IClone {\n${fields.join('\n')}\n}\n\nfn make_items() []Wide {\n\treturn [Wide{\n\t\tfield_255: 'ok'\n\t}]\n}\n\nconst clone_lookup = {\n\t'items': make_items().clone()\n}\n\n${readers.join('\n\n')}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_collection_clone', 'VJOBS=4', source)
+	assert out == '2016'
+}
+
+fn test_parallel_transform_defers_large_const_map_membership_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut entries := []string{cap: 512}
+	for i in 0 .. 512 {
+		entries << "\t'key_${i}': ${i}"
+	}
+	source := "const large_lookup = {\n${entries.join('\n')}\n}\n\nfn has_key(key string) bool {\n\treturn key in large_lookup\n}\n\nfn lacks_key(key string) bool {\n\treturn key !in large_lookup\n}\n\nfn main() {\n\tprintln(has_key('key_511'))\n\tprintln(lacks_key('missing'))\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_large_const_map_membership', 'VJOBS=4', source)
+	assert out == 'true\ntrue'
+}
+
+fn test_parallel_transform_defers_external_const_map_conditional_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut conditionals := []string{cap: 300}
+	for i in 0 .. 300 {
+		conditionals << 'if false { 0 } else { ${i} }'
+	}
+	source := "const conditional_lookup = {\n\t'value': [${conditionals.join(',\n\t\t')}]\n}\n\nfn read_conditional_lookup() int {\n\treturn conditional_lookup['value'][299]\n}\n\nfn main() {\n\tprintln(read_conditional_lookup())\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_map_conditional', 'VJOBS=4', source)
+	assert out == '299'
+}
+
+fn test_parallel_transform_defers_external_const_map_match_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut arms := []string{cap: 300}
+	for i in 0 .. 300 {
+		arms << '${i} { ${i} }'
+	}
+	source := "const match_lookup = {\n\t'value': [match 299 {\n\t\t${arms.join('\n\t\t')}\n\t\telse { -1 }\n\t}]\n}\n\nfn read_match_lookup() int {\n\treturn match_lookup['value'][0]\n}\n\nfn main() {\n\tprintln(read_match_lookup())\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_map_match', 'VJOBS=4', source)
+	assert out == '299'
+}
+
 fn test_parallel_transform_merges_generic_call_metadata() {
 	v3_bin := build_v3_review_transform()
 	mut source := 'fn identity[T](value T) T {\n\treturn value\n}\n\n'

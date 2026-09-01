@@ -17,19 +17,14 @@ const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 // expansion is combinatorial in this depth: v1's ast graph is unbounded past ~5.
 const max_stringify_nesting_depth = 3
 
-// deferred_str_expansion_threshold is the estimated inline-autostr node count
-// above which a function is lowered serially (against the growable master arena)
-// instead of inside a bounded parallel worker region. It is 0: any function that
-// inline-expands an auto-str struct/sum is deferred, because that expansion is a
-// poor fit for a cost-proportional region and hard to size precisely. Functions
-// with only scalar / custom-str() interps estimate to 0 and stay parallel — this
-// is every function during v3 self-host, whose parallel path is thus unchanged.
-const deferred_str_expansion_threshold = 0
-
 // unresolved_interp_expansion_estimate is charged for an interpolation part whose
 // value type cannot be resolved at collection time, forcing the function onto the
 // serial deferred path in case the transform expands it inline.
 const unresolved_interp_expansion_estimate = 1000
+
+// A hoisted interpolation part adds two identifiers, a declaration node, and
+// the declaration's two child IDs.
+const string_interp_hoisted_part_expansion_estimate = 5
 
 // recursive_pointer_str_expansion_threshold bounds an indirect recursive pointer
 // expansion before it is rendered as circular. Small recursive structs retain the
@@ -6217,18 +6212,17 @@ fn (mut t Transformer) stringify_expansion_estimate_at(typ string, depth_left in
 	return total
 }
 
-// fn_span_interp_estimate sums the inline autostr expansion estimate over every
-// string-interpolation part in a function's parsed subtree [lo, hi). It is 0
-// unless the function interpolates an auto-str struct/sum, in which case the
-// return value approximates how many nodes the lowering will emit for those
-// interps — used to size the function's parallel append region (or defer it).
+// fn_span_interp_estimate sums the expansion reserve over every string
+// interpolation in a function's parsed subtree [lo, hi), and separately reports
+// whether unresolved or inline auto-str work requires serial deferred lowering.
 // A part whose value type cannot be resolved at collection time is treated as
 // heavy: the transform can still resolve it to an aggregate (e.g. through a
 // smartcast or a method return) and inline-expand it, which must not land in a
-// bounded worker region. Scalar / str-method interps resolve cleanly to 0, so
-// v3 self-host — whose interps are all scalars — defers nothing.
-fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) int {
+// bounded worker region. Scalar / str-method interpolations reserve their bounded
+// joins and temporary declarations while remaining eligible for parallel lowering.
+fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) (int, bool) {
 	mut est := 0
+	mut needs_deferred_lowering := false
 	mut has_comptime_for := false
 	mut has_interp := false
 	for idx in lo .. hi {
@@ -6243,36 +6237,239 @@ fn (mut t Transformer) fn_span_interp_estimate(lo int, hi int) int {
 			continue
 		}
 		has_interp = true
-		for ci in 0 .. int(node.children_count) {
-			part_id := t.a.child(&node, ci)
-			mut expr_id := part_id
-			part := t.a.nodes[int(part_id)]
-			if part.kind == .directive && part.value == 'string_interp_format'
-				&& part.children_count > 0 {
-				expr_id = t.a.child(&part, 0)
+		interp_est, interp_needs_deferred_lowering := t.string_interp_expansion_estimates(node)
+		est += interp_est
+		needs_deferred_lowering = needs_deferred_lowering || interp_needs_deferred_lowering
+	}
+	// A reflected `$for` substitutes its loop metadata after this estimate. An
+	// interpolation that looks bounded here can become a large aggregate in every
+	// iteration, so keep it out of fixed `.nogrow` worker regions.
+	if has_comptime_for && has_interp {
+		if est == 0 {
+			est = unresolved_interp_expansion_estimate
+		}
+		return est, true
+	}
+	return est, needs_deferred_lowering
+}
+
+fn (mut t Transformer) string_interp_expansion_estimates(node flat.Node) (int, bool) {
+	// transform_string_interp joins every part after the first with string__plus.
+	// Each join appends two nodes and three child IDs, so charge the larger pool.
+	mut estimate := if node.children_count > 1 { 3 * (int(node.children_count) - 1) } else { 0 }
+	mut may_hoist := false
+	mut needs_deferred_lowering := false
+	for ci in 0 .. int(node.children_count) {
+		part_id := t.a.child(&node, ci)
+		mut expr_id := part_id
+		part := t.a.nodes[int(part_id)]
+		mut format := ''
+		if part.kind == .directive && part.value == 'string_interp_format' && part.children_count > 0 {
+			expr_id = t.a.child(&part, 0)
+			format = part.typ
+		}
+		expr_needs_deferred_lowering := t.string_interp_expr_needs_deferred_lowering(expr_id)
+		may_hoist = may_hoist || expr_needs_deferred_lowering || t.string_interp_expr_may_hoist(expr_id)
+		needs_deferred_lowering = needs_deferred_lowering || expr_needs_deferred_lowering
+		if format == 'p' {
+			// Pointer formatting lowers directly to bounded ptr_str work, regardless of
+			// the pointee's aggregate auto-string expansion.
+			continue
+		}
+		part_expr := t.a.nodes[int(expr_id)]
+		// Literal segments of the interpolation are always plain strings.
+		if part_expr.kind in [.string_literal, .int_literal, .float_literal, .bool_literal,
+			.char_literal] {
+			continue
+		}
+		typ := t.reliable_stringify_type(expr_id)
+		if typ.len == 0 || typ == 'unknown' {
+			estimate += unresolved_interp_expansion_estimate
+			needs_deferred_lowering = true
+		} else {
+			if t.is_optional_type_name(typ.trim_space()) {
+				// Option/result conversion emits a prelude and conditional through
+				// pending_stmts even when its scalar payload has no stringify expansion.
+				needs_deferred_lowering = true
 			}
-			part_expr := t.a.nodes[int(expr_id)]
-			// Literal segments of the interpolation are always plain strings.
-			if part_expr.kind in [.string_literal, .int_literal, .float_literal, .bool_literal,
-				.char_literal] {
-				continue
-			}
-			typ := t.reliable_stringify_type(expr_id)
-			if typ.len == 0 {
-				est += unresolved_interp_expansion_estimate
-			} else {
-				est += t.stringify_expansion_estimate(typ)
+			stringify_estimate := t.stringify_expansion_estimate(typ)
+			estimate += stringify_estimate
+			needs_deferred_lowering = needs_deferred_lowering || stringify_estimate > 0
+		}
+	}
+	if may_hoist {
+		// Once one part emits pending statements, transform_string_interp binds
+		// every part to a temp so evaluation order remains stable.
+		estimate += int(node.children_count) * string_interp_hoisted_part_expansion_estimate
+	}
+	return estimate, needs_deferred_lowering
+}
+
+fn (mut t Transformer) string_interp_expr_needs_deferred_lowering(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .string_literal && string_literal_has_unescaped_interp_start(node.value) {
+		// Nested interpolation is encoded inside the literal text. Transforming it can
+		// synthesize conditionals and pending statements that are absent from this AST.
+		return true
+	}
+	raw_type := t.reliable_stringify_type(id).trim_space()
+	clean_type := t.normalize_type_alias(raw_type)
+	if clean_type.starts_with('[]') || t.is_fixed_array_type(clean_type) {
+		// Collection stringification always synthesizes a loop and temporaries.
+		return true
+	}
+	iface_name := t.resolve_interface_type_name(clean_type)
+	if iface_name.len > 0 {
+		// Interfaces without a concrete str dispatch expand through every boxed
+		// implementation and emit their result tree through pending statements.
+		str_key := '${iface_name}.str'
+		has_bounded_str := !isnil(t.tc) && ('str' in t.tc.interface_abstract_method_names(iface_name) || str_key in t.fn_ret_types || str_key in t.tc.fn_ret_types)
+		if !has_bounded_str {
+			return true
+		}
+	}
+	if clean_type.starts_with('map[') {
+		if _ := t.resolve_receiver_method_for_type(raw_type, 'str') {
+			// A user-defined map str method remains a bounded call.
+		} else {
+			key_type, raw_value_type := t.map_type_parts(clean_type)
+			fixed_value_type := t.fixed_array_map_value_type_text(raw_value_type)
+			value_type := if fixed_value_type.len > 0 { fixed_value_type } else { raw_value_type }
+			if t.map_str_types_need_typed_lowering(key_type, value_type) {
+				return true
 			}
 		}
 	}
-	// A reflected `$for` substitutes its loop metadata after this estimate. An
-	// interpolation that looks like a bounded metadata value here can therefore
-	// become a large struct literal in every iteration. Keep such functions out
-	// of cost-proportional `.nogrow` worker regions.
-	if est == 0 && has_comptime_for && has_interp {
-		return unresolved_interp_expansion_estimate
+	if t.runtime_type_metadata_call_expands(id, node) {
+		return true
 	}
-	return est
+	if node.kind == .call {
+		if info := t.compiler_default_clone_call_info(node) {
+			if info.can_lower {
+				return true
+			}
+		}
+		if t.compiler_collection_clone_call_expands(node) {
+			return true
+		}
+	}
+	if node.kind == .is_expr || t.external_equality_expands_from_type_metadata(node) {
+		// These predicates can expand from interface implementations or struct
+		// fields that are not represented by their physical AST children.
+		return true
+	}
+	if node.kind == .as_expr && node.children_count > 0 {
+		source_id := t.a.child(&node, 0)
+		mut source_type := t.raw_expr_type_without_smartcast(source_id)
+		if source_type.len == 0 {
+			source_type = t.node_type(source_id)
+		}
+		source_iface := t.resolve_interface_type_name(source_type)
+		target_iface := t.resolve_interface_type_name(node.value)
+		if source_iface.len > 0 && target_iface.len > 0 && source_iface != target_iface {
+			return true
+		}
+	}
+	if node.kind == .selector && t.external_selector_expands_from_type_metadata(node) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.string_interp_expr_needs_deferred_lowering(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn string_literal_has_unescaped_interp_start(value string) bool {
+	if value.len < 2 {
+		return false
+	}
+	for i in 0 .. value.len - 1 {
+		if value[i] == `$` && value[i + 1] == `{` && !nested_interp_start_is_escaped(value, i) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) runtime_type_metadata_call_expands(id flat.NodeId, node flat.Node) bool {
+	if node.kind != .call {
+		return false
+	}
+	if _ := t.enum_from_string_info(id) {
+		return true
+	}
+	if node.children_count != 1 {
+		return false
+	}
+	fn_id := t.a.child(&node, 0)
+	if int(fn_id) < 0 || int(fn_id) >= t.a.nodes.len {
+		return false
+	}
+	fn_node := t.a.nodes[int(fn_id)]
+	if fn_node.kind != .selector || fn_node.value !in ['type_name', 'type_idx'] || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(&fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	if base_type.len == 0 {
+		base_type = t.raw_checker_node_type(base_id)
+	}
+	if base_type.len == 0 {
+		return false
+	}
+	clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	_, variants := t.concrete_sum_name_and_variants(clean_type)
+	return variants.len > 0 || t.resolve_interface_type_name(clean_type).len > 0
+}
+
+fn (t &Transformer) string_interp_expr_may_hoist(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal] {
+		return false
+	}
+	if t.is_optional_type_name(t.reliable_stringify_type(id).trim_space()) {
+		return true
+	}
+	if node.kind == .ident {
+		if t.source_parent_ids.len > 0 {
+			return t.local_binding_before(node.value, id) or { false }
+		}
+		return t.raw_var_type(node.value).trim_space().starts_with('shared ')
+	}
+	if node.kind == .as_expr && interface_pattern_is_collapsed_container_type(node.value) {
+		// Interface-to-container casts emit a runtime type check before producing the
+		// value, so interpolation lowering hoists every part to preserve evaluation order.
+		return true
+	}
+	if node.kind == .cast_expr {
+		target_type := t.normalize_type_alias(node.value)
+		if target_type.starts_with('&') && t.is_sum_type_name(t.normalize_type_alias(target_type[1..])) {
+			// Taking a pointer to a sum materializes the wrapped value in a temporary.
+			return true
+		}
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr, .prefix, .postfix, .selector] {
+		for i in 0 .. node.children_count {
+			if t.string_interp_expr_may_hoist(t.a.child(&node, i)) {
+				return true
+			}
+		}
+		return false
+	}
+	// Calls, indexing, control-flow expressions, and collection/aggregate lowering
+	// can all append pending statements depending on their resolved types.
+	return true
 }
 
 fn (t &Transformer) stringify_aggregate_type_name(typ string) ?string {
@@ -7875,13 +8072,8 @@ fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat
 	}
 	key_kind := t.map_str_kind_for_type(key_type)
 	value_kind := t.map_str_kind_for_type(value_type)
-	if key_kind == 0 || value_kind == 0 {
-		key_has_conversion := key_kind != 0 || t.map_str_type_has_transform_conversion(key_type)
-		value_has_conversion := value_kind != 0
-			|| t.map_str_type_has_transform_conversion(value_type)
-		if key_has_conversion && value_has_conversion {
-			return t.lower_typed_map_str(map_expr, map_type, key_type, value_type)
-		}
+	if t.map_str_types_need_typed_lowering(key_type, value_type) {
+		return t.lower_typed_map_str(map_expr, map_type, key_type, value_type)
 	}
 	lowered := if t.expr_is_transformed_deref(map_expr) {
 		t.stable_transformed_expr_for_reuse(map_expr, map_type, 'map_str_base')
@@ -7891,6 +8083,17 @@ fn (mut t Transformer) lower_map_str(map_expr flat.NodeId, map_type string) flat
 	return t.make_call_typed('v3_map_str', [lowered, t.make_int_literal(key_kind),
 		t.make_int_literal(value_kind), t.make_int_literal(t.map_str_fixed_len_for_type(value_type))],
 		'string')
+}
+
+fn (t &Transformer) map_str_types_need_typed_lowering(key_type string, value_type string) bool {
+	key_kind := t.map_str_kind_for_type(key_type)
+	value_kind := t.map_str_kind_for_type(value_type)
+	if key_kind != 0 && value_kind != 0 {
+		return false
+	}
+	key_has_conversion := key_kind != 0 || t.map_str_type_has_transform_conversion(key_type)
+	value_has_conversion := value_kind != 0 || t.map_str_type_has_transform_conversion(value_type)
+	return key_has_conversion && value_has_conversion
 }
 
 fn (t &Transformer) expr_is_transformed_deref(id flat.NodeId) bool {
@@ -8317,13 +8520,14 @@ fn (mut t Transformer) try_lower_flag_enum_call(call_id flat.NodeId, node flat.N
 	return t.make_infix(.eq, masked, arg_copy)
 }
 
-// try_lower_struct_clone_method_call lowers `x.clone()` on a struct / sum-type value to a
-// plain copy of the receiver. Rust's `#[derive(Clone)]` maps to `implements IClone` in the
-// ownership translation, whose `clone()` is compiler-provided; V aggregates are value types,
-// so the copy is produced simply by evaluating the receiver (it is copied when assigned or
-// passed by value). Collection/string clones are lowered earlier, and a user-defined clone()
-// method is handled by try_lower_receiver_method_call before this runs.
-fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, node flat.Node) ?flat.NodeId {
+struct CompilerDefaultCloneCallInfo {
+	base_id       flat.NodeId
+	raw_base_type string
+	base_type     string
+	can_lower     bool
+}
+
+fn (t &Transformer) compiler_default_clone_call_info(node flat.Node) ?CompilerDefaultCloneCallInfo {
 	if node.children_count == 0 {
 		return none
 	}
@@ -8341,19 +8545,15 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
 	}
-	if base_type.starts_with('[]') || base_type.starts_with('map[') || base_type == 'string'
-		|| t.is_fixed_array_type(base_type) {
+	if base_type.starts_with('[]') || base_type.starts_with('map[') || base_type == 'string' || t.is_fixed_array_type(base_type) {
 		return none
 	}
-	parsed_base_type := if isnil(t.tc) {
-		types.Type(types.Unknown{})
-	} else {
-		t.tc.parse_type(base_type)
+	if isnil(t.tc) {
+		return none
 	}
-	is_default_sum_clone := t.is_sum_type_name(base_type) && !isnil(t.tc)
-		&& t.tc.ownership_default_clone_missing_method(parsed_base_type) == none
-	if isnil(t.tc) || (!t.tc.named_type_implements_marker(base_type, 'IClone')
-		&& !is_default_sum_clone) {
+	parsed_base_type := t.tc.parse_type(base_type)
+	is_default_sum_clone := t.is_sum_type_name(base_type) && t.tc.ownership_default_clone_missing_method(parsed_base_type) == none
+	if !t.tc.named_type_implements_marker(base_type, 'IClone') && !is_default_sum_clone {
 		return none
 	}
 	// A concrete generic receiver can have a handwritten clone() on its open
@@ -8365,22 +8565,37 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 		}
 	}
 	// A user-defined clone() would have been lowered already; only supply the default clone.
-	if t.tc.ownership_type_has_clone_method(t.tc.parse_type(base_type))
-		&& t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
+	if t.tc.ownership_type_has_clone_method(parsed_base_type) && t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
 		return none
 	}
+	return CompilerDefaultCloneCallInfo{
+		base_id: base_id
+		raw_base_type: raw_base_type
+		base_type: base_type
+		can_lower: t.tc.ownership_default_clone_missing_method(parsed_base_type) == none
+	}
+}
+
+// try_lower_struct_clone_method_call lowers `x.clone()` on a struct / sum-type value to a
+// plain copy of the receiver. Rust's `#[derive(Clone)]` maps to `implements IClone` in the
+// ownership translation, whose `clone()` is compiler-provided; V aggregates are value types,
+// so the copy is produced simply by evaluating the receiver (it is copied when assigned or
+// passed by value). Collection/string clones are lowered earlier, and a user-defined clone()
+// method is handled by try_lower_receiver_method_call before this runs.
+fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, node flat.Node) ?flat.NodeId {
+	info := t.compiler_default_clone_call_info(node) or { return none }
 	// The checker reports the concrete ownership-bearing field that has no safe clone.
 	// Do not turn the rejected default clone into a shallow aggregate copy while
 	// transforming the invalid program.
-	if _ := t.tc.ownership_default_clone_missing_method(parsed_base_type) {
+	if !info.can_lower {
 		return t.make_empty()
 	}
-	mut receiver := t.transform_expr(base_id)
-	if raw_base_type.starts_with('&') {
+	mut receiver := t.transform_expr(info.base_id)
+	if info.raw_base_type.starts_with('&') {
 		receiver = t.make_prefix(.mul, receiver)
-		t.set_node_typ(int(receiver), base_type)
+		t.set_node_typ(int(receiver), info.base_type)
 	}
-	return t.make_compiler_default_clone_value(receiver, base_type, false)
+	return t.make_compiler_default_clone_value(receiver, info.base_type, false)
 }
 
 // make_compiler_default_clone_value recursively clones the storage-owning fields of a
