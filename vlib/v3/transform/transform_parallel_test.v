@@ -888,6 +888,94 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_for_in_binding_clones() 
 	assert t.fn_span_map_expansion_estimate(0, int(loop) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_defers_ownership_array_append_clone() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	items := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: '[]Wide'
+	})
+	borrowed := a.add_node(flat.Node{
+		kind: .ident
+		value: 'borrowed'
+		typ: 'Wide'
+	})
+	append_start := a.children.len
+	a.children << items
+	a.children << borrowed
+	append := a.add_node(flat.Node{
+		kind: .infix
+		op: .left_shift
+		typ: '[]Wide'
+		children_start: append_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.ownership_array_append_expands(a.nodes[int(append)])
+	assert t.fn_span_map_expansion_estimate(0, int(append) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_fn_span_map_expansion_estimate_defers_ownership_map_index_append_clone() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	values := a.add_node(flat.Node{
+		kind: .ident
+		value: 'values'
+		typ: 'map[string][]Wide'
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'key'
+		typ: 'string'
+	})
+	index_start := a.children.len
+	a.children << values
+	a.children << key
+	index := a.add_node(flat.Node{
+		kind: .index
+		typ: '[]Wide'
+		children_start: index_start
+		children_count: 2
+	})
+	item := a.add_node(flat.Node{
+		kind: .ident
+		value: 'item'
+		typ: 'Wide'
+	})
+	append_start := a.children.len
+	a.children << index
+	a.children << item
+	append := a.add_node(flat.Node{
+		kind: .infix
+		op: .left_shift
+		typ: '[]Wide'
+		children_start: append_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.ownership_array_append_expands(a.nodes[int(append)])
+	assert t.fn_span_map_expansion_estimate(0, int(append) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
 	mut a := flat.FlatAst.new()
 	length := a.add_node(flat.Node{
