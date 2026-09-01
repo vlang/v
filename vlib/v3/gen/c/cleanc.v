@@ -10915,6 +10915,13 @@ struct CTypedefBraceState {
 mut:
 	depth int
 	stack []bool
+	// Literal/comment scan state, persisted across the incremental
+	// c_typedef_brace_state_advance calls so a string, char literal or comment
+	// that straddles a scan boundary keeps its `{`/`}` out of the brace count.
+	in_block_comment bool
+	in_line_comment  bool
+	quote            u8
+	escaped          bool
 }
 
 fn c_brace_opens_extern_linkage(text string, pos int) bool {
@@ -10930,20 +10937,73 @@ fn c_brace_opens_extern_linkage(text string, pos int) bool {
 }
 
 fn c_typedef_brace_state_advance(text string, start int, end int, mut state CTypedefBraceState) {
-	for i in start .. end {
-		if text[i] == `{` {
+	mut i := start
+	for i < end {
+		c := text[i]
+		// A `{`/`}` inside a comment or string/char literal is not a real block
+		// delimiter, so it must not move the brace depth (otherwise an unbalanced
+		// `{` in e.g. `fprintf(f, "struct %s {\n", ...)` or a comment leaves the
+		// depth stuck > 0 and every later file-scope typedef is dropped). The
+		// literal/comment state lives on `state` so a span that straddles a scan
+		// boundary is still handled correctly.
+		if state.in_line_comment {
+			if c == `\n` {
+				state.in_line_comment = false
+			}
+			i++
+			continue
+		}
+		if state.in_block_comment {
+			if c == `*` && i + 1 < end && text[i + 1] == `/` {
+				state.in_block_comment = false
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		if state.quote != 0 {
+			if state.escaped {
+				state.escaped = false
+			} else if c == `\\` {
+				state.escaped = true
+			} else if c == state.quote {
+				state.quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `'` || c == `"` {
+			state.quote = c
+			i++
+			continue
+		}
+		if c == `/` && i + 1 < end {
+			if text[i + 1] == `/` {
+				state.in_line_comment = true
+				i += 2
+				continue
+			}
+			if text[i + 1] == `*` {
+				state.in_block_comment = true
+				i += 2
+				continue
+			}
+		}
+		if c == `{` {
 			counted := !c_brace_opens_extern_linkage(text, i)
 			state.stack << counted
 			if counted {
 				state.depth++
 			}
-		} else if text[i] == `}` && state.stack.len > 0 {
+		} else if c == `}` && state.stack.len > 0 {
 			counted := state.stack.last()
 			state.stack.delete_last()
 			if counted && state.depth > 0 {
 				state.depth--
 			}
 		}
+		i++
 	}
 }
 
