@@ -4386,6 +4386,55 @@ fn test_external_map_expansion_estimate_defers_ownership_array_repeat_calls() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_expansion_estimate_defers_interface_array_literal_repeat_calls_without_ownership() {
+	mut a := flat.FlatAst.new()
+	item := a.add_node(flat.Node{
+		kind: .ident
+		value: 'item'
+		typ: 'IValue'
+	})
+	literal_start := a.children.len
+	for _ in 0 .. 8 {
+		a.children << item
+	}
+	literal := a.add_node(flat.Node{
+		kind: .array_literal
+		typ: '[]IValue'
+		children_start: literal_start
+		children_count: 8
+	})
+	selector_start := a.children.len
+	a.children << literal
+	repeat_selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'repeat'
+		typ: 'fn (int) []IValue'
+		children_start: selector_start
+		children_count: 1
+	})
+	count := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '32'
+		typ: 'int'
+	})
+	repeat_start := a.children.len
+	a.children << repeat_selector
+	a.children << count
+	repeat_call := a.add_node(flat.Node{
+		kind: .call
+		typ: '[]IValue'
+		children_start: repeat_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['IValue'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.interface_array_literal_repeat_call_expands(a.nodes[int(repeat_call)])
+	assert t.fn_span_map_expansion_estimate(0, int(repeat_call) + 1) > deferred_map_expansion_threshold
+	assert t.external_map_tree_expansion_estimate(repeat_call, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruction() {
 	mut a := flat.FlatAst.new()
 	mut level := []flat.NodeId{cap: 1024}

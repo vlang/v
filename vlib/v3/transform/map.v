@@ -381,6 +381,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 				// Ownership-aware repeats synthesize a clone loop from element metadata.
 				estimate += deferred_map_expansion_threshold + 1
 			}
+			if t.interface_array_literal_repeat_call_expands(node) {
+				// Interface literal repeats duplicate the literal child span up to 32
+				// times before ownership-aware repeat lowering runs.
+				estimate += deferred_map_expansion_threshold + 1
+			}
 		}
 		if node.kind == .cast_expr {
 			// External casts cannot rewrite their child IDs in place, so even an
@@ -725,7 +730,7 @@ fn (mut t Transformer) compiler_call_expands_from_type_metadata(id flat.NodeId, 
 			return true
 		}
 	}
-	return t.compiler_collection_clone_call_expands(node) || t.compiler_owned_map_items_call_expands(node) || t.compiler_array_search_call_expands(node) || t.compiler_owned_array_accessor_call_expands(node) || t.compiler_owned_array_filter_call_expands(node) || t.compiler_owned_array_map_call_expands(node) || t.compiler_collection_str_call_expands(node) || t.ownership_array_repeat_call_expands(node) || t.ownership_nested_map_delete_key_clone_expands(node)
+	return t.compiler_collection_clone_call_expands(node) || t.compiler_owned_map_items_call_expands(node) || t.compiler_array_search_call_expands(node) || t.compiler_owned_array_accessor_call_expands(node) || t.compiler_owned_array_filter_call_expands(node) || t.compiler_owned_array_map_call_expands(node) || t.compiler_collection_str_call_expands(node) || t.ownership_array_repeat_call_expands(node) || t.interface_array_literal_repeat_call_expands(node) || t.ownership_nested_map_delete_key_clone_expands(node)
 }
 
 fn (mut t Transformer) disabled_call_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {

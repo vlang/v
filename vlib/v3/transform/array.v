@@ -71,6 +71,35 @@ fn (t &Transformer) ownership_array_repeat_call_expands(node flat.Node) bool {
 	return t.tc.ownership_default_clone_missing_method(elem) == none
 }
 
+fn (t &Transformer) interface_array_literal_repeat_can_expand(base_id flat.NodeId, count_id flat.NodeId, base_type string) bool {
+	if isnil(t.tc) || !base_type.starts_with('[]') {
+		return false
+	}
+	elem_type := base_type[2..]
+	if elem_type !in t.tc.interface_names && t.tc.qualify_name(elem_type) !in t.tc.interface_names {
+		return false
+	}
+	base := t.a.nodes[int(base_id)]
+	count_node := t.a.nodes[int(count_id)]
+	if base.kind != .array_literal || count_node.kind != .int_literal {
+		return false
+	}
+	count := count_node.value.int()
+	return count >= 0 && count <= 32 && t.array_repeat_literal_can_duplicate(base)
+}
+
+fn (t &Transformer) interface_array_literal_repeat_call_expands(node flat.Node) bool {
+	if node.children_count != 2 {
+		return false
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'repeat' || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(fn_node, 0)
+	return t.interface_array_literal_repeat_can_expand(base_id, t.a.child(&node, 1), t.node_type(base_id))
+}
+
 fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count != 2 {
 		return none
@@ -180,25 +209,12 @@ fn (mut t Transformer) make_owned_array_repeat_value(base_id flat.NodeId, count_
 }
 
 fn (mut t Transformer) try_expand_interface_array_literal_repeat(base_id flat.NodeId, count_id flat.NodeId, base_type string) ?flat.NodeId {
-	if !base_type.starts_with('[]') {
-		return none
-	}
-	elem_type := base_type[2..]
-	if elem_type !in t.tc.interface_names && t.tc.qualify_name(elem_type) !in t.tc.interface_names {
+	if !t.interface_array_literal_repeat_can_expand(base_id, count_id, base_type) {
 		return none
 	}
 	base := t.a.nodes[int(base_id)]
 	count_node := t.a.nodes[int(count_id)]
-	if base.kind != .array_literal || count_node.kind != .int_literal {
-		return none
-	}
 	count := count_node.value.int()
-	if count < 0 || count > 32 {
-		return none
-	}
-	if !t.array_repeat_literal_can_duplicate(base) {
-		return none
-	}
 	mut values := []flat.NodeId{cap: int(base.children_count) * count}
 	for _ in 0 .. count {
 		for i in 0 .. base.children_count {
