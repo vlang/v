@@ -172,11 +172,6 @@ struct FastcIndexedFileGenOutput {
 	output FastcFileGenOutput
 }
 
-// __atomic_fetch_add is the GCC/Clang atomic builtin (also supported by the
-// bundled TinyCC); it needs no header or library, so it stays available in both
-// the gen/c host build and the FastC self-host output.
-fn C.__atomic_fetch_add(voidptr, u32, int) u32
-
 // FastcGenQueue is a shared work-stealing counter for per-file generation. On a
 // heterogeneous CPU (Apple Silicon's performance + efficiency cores) a static
 // byte-weighted chunk per worker leaves the slowest efficiency core setting the
@@ -217,13 +212,17 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 	mut outputs := []FastcIndexedFileGenOutput{}
 	limit := u32(order.len)
 	for {
-		claimed := C.__atomic_fetch_add(&queue.next, 1, 0)
+		// Relaxed ordering is enough: the counter only hands out unique indices,
+		// and `order`/`sources` are fully initialized and read-only before the
+		// workers start. fastc_atomic_fetch_add_u32 is platform-specialized (the
+		// GCC/Clang/TCC builtin on Unix, InterlockedExchangeAdd on Windows).
+		claimed := fastc_atomic_fetch_add_u32(&queue.next, 1)
 		if claimed >= limit {
 			break
 		}
 		file_index := order[claimed]
 		outputs << FastcIndexedFileGenOutput{
-			index:  file_index
+			index: file_index
 			output: fastc_generate_single_file(ctx, sources[file_index])
 		}
 	}

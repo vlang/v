@@ -422,6 +422,47 @@ fn test_fastc_file_generation_order_is_largest_first() {
 	assert fastc_file_generation_order(sources) == [1, 3, 2, 0]
 }
 
+fn fastc_test_steal_claimed_indices(queue &FastcGenQueue, limit u32) []u32 {
+	mut claimed := []u32{}
+	for {
+		index := fastc_atomic_fetch_add_u32(&queue.next, 1)
+		if index >= limit {
+			break
+		}
+		claimed << index
+	}
+	return claimed
+}
+
+fn test_fastc_gen_queue_claims_every_index_exactly_once() {
+	// Several workers drain one shared queue concurrently, exactly as
+	// fastc_generate_file_outputs spawns them. The atomic counter must hand each
+	// index to exactly one worker — the property the work-stealing scheduler relies
+	// on to generate every file once — regardless of how the OS interleaves them.
+	limit := u32(4000)
+	mut queue := &FastcGenQueue{
+		next: 0
+	}
+	mut workers := []thread []u32{}
+	for _ in 0 .. 8 {
+		workers << spawn fastc_test_steal_claimed_indices(queue, limit)
+	}
+	mut claim_counts := []int{len: int(limit)}
+	mut total := 0
+	for worker in workers {
+		for index in worker.wait() {
+			assert index < limit
+			claim_counts[index]++
+			total++
+		}
+	}
+	// Every index claimed exactly once, and nothing beyond the end leaks through.
+	assert total == int(limit)
+	for count in claim_counts {
+		assert count == 1
+	}
+}
+
 fn test_fastc_fragmented_generation_matches_serial_output() {
 	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
 	sources := [
