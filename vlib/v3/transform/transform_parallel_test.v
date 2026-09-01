@@ -584,6 +584,34 @@ fn test_fn_span_map_expansion_estimate_includes_map_index_zero_value() {
 	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_defers_sum_type_map_index_zero_value() {
+	mut a := flat.FlatAst.new()
+	base := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: 'map[string]Item'
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'missing'
+		typ: 'string'
+	})
+	index_start := a.children.len
+	a.children << base
+	a.children << key
+	root := a.add_node(flat.Node{
+		kind: .index
+		typ: 'Item'
+		children_start: index_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['Item'] = ['Wide', 'int']
+
+	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
 	mut a := flat.FlatAst.new()
 	length := a.add_node(flat.Node{

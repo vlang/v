@@ -213,6 +213,9 @@ fn (t &Transformer) fixed_array_empty_init_requires_deferral(elem_type string) b
 	if t.is_fixed_array_type(clean_type) {
 		return true
 	}
+	if t.sum_default_may_expand(clean_type) {
+		return true
+	}
 	if isnil(t.tc) {
 		return false
 	}
@@ -229,6 +232,9 @@ fn (t &Transformer) fixed_array_empty_init_may_expand(elem_type string) bool {
 	if t.is_fixed_array_type(clean_type) {
 		fixed_type := t.resolved_fixed_array_canonical_type(clean_type)
 		return t.fixed_array_empty_init_may_expand(fixed_array_elem_type(fixed_type))
+	}
+	if t.sum_default_may_expand(clean_type) {
+		return true
 	}
 	if isnil(t.tc) {
 		return false
@@ -732,6 +738,11 @@ fn (t &Transformer) map_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	return t.collection_const_expr_for_ident(id)
 }
 
+fn (t &Transformer) sum_default_may_expand(typ string) bool {
+	resolved := t.resolve_sum_name(t.normalize_type_alias(typ))
+	return resolved.len > 0 && (resolved in t.sum_types || (!isnil(t.tc) && resolved in t.tc.sum_types))
+}
+
 fn (t &Transformer) map_index_zero_value_expansion_estimate(node flat.Node) int {
 	if node.kind != .index || node.children_count == 0 {
 		return 0
@@ -742,7 +753,11 @@ fn (t &Transformer) map_index_zero_value_expansion_estimate(node flat.Node) int 
 		return 0
 	}
 	_, value_type := t.map_type_parts(map_type)
-	fixed_type := t.resolved_fixed_array_canonical_type(t.normalize_type_alias(value_type))
+	clean_value_type := t.normalize_type_alias(value_type)
+	if t.sum_default_may_expand(clean_value_type) {
+		return deferred_map_expansion_threshold + 1
+	}
+	fixed_type := t.resolved_fixed_array_canonical_type(clean_value_type)
 	if !t.is_fixed_array_type(fixed_type) {
 		return 0
 	}
