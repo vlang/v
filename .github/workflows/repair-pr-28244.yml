@@ -52,7 +52,9 @@ jobs:
         run: |
           set -euxo pipefail
           files=(
+            vlib/v3/tests/ownership_borrowed_projection_error_test.v
             vlib/v3/tests/ownership_borrowed_projection_review_test.v
+            vlib/v3/tests/ownership_toml_decode_test.v
             vlib/v3/transform/array.v
             vlib/v3/transform/fn.v
             vlib/v3/transform/fn_test.v
@@ -72,7 +74,7 @@ jobs:
             ./v fmt -w "$file"
           done
 
-      - name: Build the ownership compiler and localize clone counts
+      - name: Build the ownership compiler
         shell: bash
         run: |
           set -euxo pipefail
@@ -80,65 +82,13 @@ jobs:
             -path "$PWD/vlib|@vlib|@vmodules" \
             -o /tmp/v3-pr-28244 vlib/v3/v3.v
 
-          fixture_dir=vlib/v3/tests/testdata/ownership_borrowed_projection
-          categories=(assignments calls_and_conversions collections indexed_aliases constants)
-          counts_file=/tmp/pr-28244-counts.tsv
-          : > "$counts_file"
-          total=0
-          for category in "${categories[@]}"; do
-            source="/tmp/pr-28244-${category}.v"
-            cat "$fixture_dir/common.v.txt" "$fixture_dir/${category}.v.txt" > "$source"
-            serial_count=-1
-            for mode in -no-parallel parallel; do
-              args=()
-              if [[ "$mode" == -no-parallel ]]; then
-                args+=("-no-parallel")
-              fi
-              if ! output=$(/tmp/v3-pr-28244 -nocache -ownership -d ownership "${args[@]}" run "$source" 2>&1); then
-                printf '%s\n' "$output"
-                exit 1
-              fi
-              count=$(printf '%s\n' "$output" | grep -xc 'clone' || true)
-              if [[ "$serial_count" == -1 ]]; then
-                serial_count=$count
-              elif [[ "$serial_count" != "$count" ]]; then
-                echo "$category clone count differs: serial=$serial_count parallel=$count"
-                printf '%s\n' "$output"
-                exit 1
-              fi
-            done
-            printf '%s\t%s\n' "$category" "$serial_count" | tee -a "$counts_file"
-            total=$((total + serial_count))
-          done
-          [[ "$total" == 63 ]]
-
-          python3 - "$counts_file" <<'PY'
-          from pathlib import Path
-          import sys
-
-          counts = []
-          for line in Path(sys.argv[1]).read_text().splitlines():
-              name, count = line.split('\t')
-              counts.append(
-                  "\t\tBorrowedProjectionCase{\n"
-                  f"\t\t\tname: '{name}'\n"
-                  f"\t\t\texpected_clones: {count}\n"
-                  "\t\t},"
-              )
-          path = Path('vlib/v3/tests/ownership_borrowed_projection_review_test.v')
-          text = path.read_text()
-          marker = '__EXPECTED_COUNTS__'
-          if text.count(marker) != 1:
-              raise SystemExit(f'expected one count marker, found {text.count(marker)}')
-          path.write_text(text.replace(marker, '\n'.join(counts)))
-          PY
-          ./v fmt -w vlib/v3/tests/ownership_borrowed_projection_review_test.v
-
       - name: Run focused ownership and TOML tests
         shell: bash
         run: |
           set -euxo pipefail
           ./v test vlib/v3/tests/ownership_borrowed_projection_review_test.v
+          ./v test vlib/v3/tests/ownership_borrowed_projection_error_test.v
+          ./v test vlib/v3/tests/ownership_toml_decode_test.v
           ./v test vlib/v3/tests/ownership/ownership_test.v
           ./v test vlib/v3/types/checker_ownership_alias_test.v
           ./v test vlib/v3/transform/fn_test.v
@@ -172,12 +122,13 @@ jobs:
           git commit -m "v3: model borrowed owned-value copies explicitly"
 
           git add \
+            vlib/v3/tests/ownership_borrowed_projection_error_test.v \
             vlib/v3/tests/ownership_borrowed_projection_review_test.v \
-            vlib/v3/tests/testdata/ownership_borrowed_projection \
+            vlib/v3/tests/ownership_toml_decode_test.v \
             vlib/v3/transform/fn_test.v \
             vlib/v3/transform/transform_parallel_test.v \
             vlib/v3/types/checker_ownership_alias_test.v
-          git commit -m "v3: split borrowed ownership regressions by context"
+          git commit -m "v3: organize borrowed ownership regressions by context"
 
           test -z "$(git status --porcelain)"
           git log --oneline --decorate -4
