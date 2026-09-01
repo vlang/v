@@ -29,6 +29,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			mut lookahead := scan
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
+				comptime_end := if selected.tok == .eof { scan.offset } else { scan.pos }
 				if selected.source != '' {
 					mut selected_types := strings.new_builder(256)
 					selected_has_types := collect_declared_types(selected.source, path, module_name,
@@ -37,9 +38,9 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 					has_type_declarations = has_type_declarations || selected_has_types
 					if selected_types.len > 0 {
 						start := if pending_start >= 0 { pending_start } else { comptime_start }
-						fastc_append_filtered_source_span(source, emitted_end, start, scan.pos,
+						fastc_append_filtered_source_span(source, emitted_end, start, comptime_end,
 							mut type_source)
-						emitted_end = scan.pos
+						emitted_end = comptime_end
 					}
 				}
 				pending_start = -1
@@ -170,14 +171,15 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 			mut lookahead := scan
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
+				comptime_end := if selected.tok == .eof { scan.offset } else { scan.pos }
 				if selected.source != '' {
 					mut selected_constants := strings.new_builder(256)
 					collect_constant_names(selected.source, path, module_name, prefs, mut
 						constants, mut public_constants, mut constant_paths, mut selected_constants)!
 					if selected_constants.len > 0 {
 						fastc_append_filtered_source_span(source, emitted_end, comptime_start,
-							scan.pos, mut constant_source)
-						emitted_end = scan.pos
+							comptime_end, mut constant_source)
+						emitted_end = comptime_end
 					}
 				}
 				tok = selected.tok
