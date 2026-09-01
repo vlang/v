@@ -9631,31 +9631,44 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 		return
 	}
 	if node.kind in [.decl_assign, .assign, .selector_assign, .index_assign] {
+		mut lhs_ids := []flat.NodeId{cap: int(node.children_count) / 2}
+		mut rhs_sources := [][]int{cap: int(node.children_count) / 2}
+		mut rhs_alias_sources := [][]int{cap: int(node.children_count) / 2}
 		for i := 0; i + 1 < int(node.children_count); i += 2 {
 			lhs_id := tc.a.child(&node, i)
 			rhs_id := tc.a.child(&node, i + 1)
 			lhs := tc.a.nodes[int(lhs_id)]
 			tc.collect_param_storage_sources(rhs_id, target_name, target_type, target_param_idx, decl_mod, mut aliases, mut visiting, mut writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+			mut assigned_sources := []int{}
+			tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut
+				assigned_sources)
+			mut alias_sources := assigned_sources.clone()
+			if lhs.kind == .ident && lhs.value != target_name
+				&& unalias_type(tc.resolve_type(rhs_id)) !is Pointer
+				&& !tc.storage_expr_contains_target_pointer(rhs_id, aliases, target_param_idx) {
+				// Aggregate temporaries can retain non-target parameter sources in their
+				// fields, but copying the mutable target by value must not make the copy
+				// another lvalue rooted at that target.
+				alias_sources = alias_sources.filter(it != target_param_idx)
+			}
+			lhs_ids << lhs_id
+			rhs_sources << assigned_sources
+			rhs_alias_sources << alias_sources
+		}
+		lhs_aliases := storage_param_sources_clone(aliases)
+		for pair_idx, lhs_id in lhs_ids {
+			lhs := tc.a.nodes[int(lhs_id)]
 			if lhs.kind != .ident || lhs.value == target_name {
-				if target_path := tc.storage_lvalue_path_from_param(lhs_id, target_name, aliases, target_param_idx) {
-					mut assigned_sources := []int{}
-					tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut assigned_sources)
+				if target_path := tc.storage_lvalue_path_from_param(lhs_id, target_name, lhs_aliases,
+					target_param_idx) {
 					if target_path.len == 0 {
 						writes.clear()
 					}
-					writes[target_path] = assigned_sources
+					writes[target_path] = rhs_sources[pair_idx]
 				}
 			}
 			if lhs.kind == .ident && lhs.value != target_name {
-				mut alias_sources := []int{}
-				tc.collect_storage_source_params(rhs_id, aliases, target_param_idx, mut alias_sources)
-				if unalias_type(tc.resolve_type(rhs_id)) !is Pointer && !tc.storage_expr_contains_target_pointer(rhs_id, aliases, target_param_idx) {
-					// Aggregate temporaries can retain non-target parameter sources in their
-					// fields, but copying the mutable target by value must not make the copy
-					// another lvalue rooted at that target.
-					alias_sources = alias_sources.filter(it != target_param_idx)
-				}
-				aliases[lhs.value] = alias_sources
+				aliases[lhs.value] = rhs_alias_sources[pair_idx]
 			}
 		}
 		return

@@ -276,3 +276,57 @@ fn main() {
 	assert int(replace_call) >= 0
 	assert tc.call_param_storage_source_params(replace_call, 0) == [1]
 }
+
+fn test_param_storage_sources_snapshot_aliases_before_multi_assignment() {
+	path := os.join_path(os.vtmp_dir(), 'v3_storage_source_multi_assign_${os.getpid()}.v')
+	os.write_file(path, 'struct Value {}
+
+struct Box {
+mut:
+	value &Value
+}
+
+fn swap_aliases_then_store(mut target &Box, value &Value) {
+	mut local_value := Value{}
+	mut local := &Box{
+		value: &local_value
+	}
+	mut alias := target
+	mut other := local
+	alias, other = other, alias
+	other.value = value
+}
+
+fn main() {
+	mut value := Value{}
+	mut target := &Box{
+		value: &value
+	}
+	swap_aliases_then_store(mut target, &value)
+}
+') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+
+	mut call_id := flat.empty_node
+	for i, node in a.nodes {
+		if node.kind != .call {
+			continue
+		}
+		name := tc.resolved_call_name(flat.NodeId(i)) or { continue }
+		if name.ends_with('swap_aliases_then_store') {
+			call_id = flat.NodeId(i)
+		}
+	}
+	assert int(call_id) >= 0
+	assert tc.call_param_storage_source_params(call_id, 0) == [1]
+}

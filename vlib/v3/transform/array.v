@@ -3720,34 +3720,48 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 		return true
 	}
 	if stmt.kind == .decl_assign {
+		mut rhs_ids := []flat.NodeId{cap: int(stmt.children_count) / 2}
+		mut rhs_origins := map[int]map[string]bool{}
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
 			rhs_id := t.a.child(&stmt, i + 1)
 			if !t.array_map_update_local_pointer_origins_flow(rhs_id, elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
 				return false
 			}
+			pair_idx := rhs_ids.len
+			rhs_ids << rhs_id
+			rhs_origins[pair_idx] = locals.clone()
+		}
+		for pair_idx, rhs_id in rhs_ids {
+			i := pair_idx * 2
 			lhs := t.a.child_node(&stmt, i)
 			if lhs.kind == .ident && lhs.value.len > 0 {
-				origins := locals.clone()
 				overlapping := array_map_clear_local_pointer_origins(lhs.value, mut locals)
-				t.array_map_record_local_pointer_origins(lhs.value, rhs_id, elem_name, origins, mut locals)
+				t.array_map_record_local_pointer_origins(lhs.value, rhs_id, elem_name, rhs_origins[pair_idx], mut locals)
 				array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
 			}
 		}
 		return true
 	}
 	if stmt.kind in [.assign, .selector_assign, .index_assign] {
+		mut rhs_ids := []flat.NodeId{cap: int(stmt.children_count) / 2}
+		mut rhs_origins := map[int]map[string]bool{}
 		for i := 0; i + 1 < int(stmt.children_count); i += 2 {
 			rhs_id := t.a.child(&stmt, i + 1)
 			if !t.array_map_update_local_pointer_origins_flow(rhs_id, elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
 				return false
 			}
+			pair_idx := rhs_ids.len
+			rhs_ids << rhs_id
+			rhs_origins[pair_idx] = locals.clone()
+		}
+		for pair_idx, rhs_id in rhs_ids {
+			i := pair_idx * 2
 			lhs_id := t.a.child(&stmt, i)
 			if path := t.array_map_lvalue_local_path(lhs_id) {
 				root := t.array_map_lvalue_root_ident(lhs_id) or { continue }
 				if root in locals {
-					origins := locals.clone()
 					overlapping := array_map_clear_local_pointer_origins(path, mut locals)
-					t.array_map_record_local_pointer_origins(path, rhs_id, elem_name, origins, mut locals)
+					t.array_map_record_local_pointer_origins(path, rhs_id, elem_name, rhs_origins[pair_idx], mut locals)
 					array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
 				}
 			}
