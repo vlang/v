@@ -4165,11 +4165,7 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		p.next()
 		op := p.tok
 		p.next()
-		mut right := if p.tok == .dot {
-			p.parse_enum_shorthand(local.typ_name)!
-		} else {
-			p.parse_expression(0)!
-		}
+		mut right := p.parse_contextual_value(local.typ_name)!
 		if right.typ != local.typ {
 			right = p.convert_value(right, local.typ, local.typ_name)
 		}
@@ -7484,7 +7480,11 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 				field := p.lit
 				p.next()
 				p.next()
-				field_value := p.parse_expression(0)!
+				field_value := if field == 'init' {
+					p.parse_contextual_value(element_type_name)!
+				} else {
+					p.parse_expression(0)!
+				}
 				if field == 'len' {
 					length = field_value
 					explicit_length = true
@@ -8359,8 +8359,25 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 			p.next()
 		}
 		argument_index := call_args.len + 1
-		if p.tok == .dot && argument_index < signature.parameter_types.len {
-			call_args << p.parse_enum_shorthand(signature.parameter_types[argument_index])!
+		mut expected_type_name := ''
+		if signature.is_variadic && argument_index >= signature.parameter_types.len - 1 {
+			if !resolved.starts_with('C.') {
+				expected_type_name = p.program.array_element_type_name(signature.parameter_types.last()) or {
+					''
+				}
+			}
+		} else if argument_index < signature.parameter_types.len {
+			expected_type_name = signature.parameter_types[argument_index]
+		}
+		if p.tok == .name && expected_type_name != '' {
+			mut look := p.s
+			if look.scan() == .colon {
+				call_args << p.parse_named_argument_struct(expected_type_name)!
+				break
+			}
+		}
+		if expected_type_name != '' {
+			call_args << p.parse_contextual_value(expected_type_name)!
 		} else {
 			call_args << p.parse_expression(0)!
 		}
@@ -8371,6 +8388,12 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		}
 	}
 	p.next()
+	if signature.is_variadic && !resolved.starts_with('C.') {
+		call_args = p.pack_v_variadic_arguments(signature, call_args, 1)!
+	}
+	if signature.last_parameter_is_params && call_args.len < signature.parameter_types.len - 1 {
+		call_args << p.default_struct_value(signature.parameter_types.last())!
+	}
 	expected_receiver := p.program.type_id(signature.parameter_types[0])
 	mut receiver_id := value.id
 	if p.program.m.type_store.types[expected_receiver].kind == .ptr_t && value.typ != expected_receiver {
@@ -8774,7 +8797,7 @@ fn (mut p FastArm64Parser) parse_map_literal() !FastArm64Value {
 			key = p.convert_value(key, key_type, key_type_name)
 		}
 		p.expect(.colon)!
-		item := p.parse_expression(0)!
+		item := p.parse_contextual_value(value_type_name)!
 		p.emit_map_set(result, key, item)!
 		if p.tok in [.comma, .semicolon] {
 			p.next()
@@ -9046,25 +9069,7 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		if is_spawn_call {
 			return p.unsupported('spawn of variadic function `${display_name}`')
 		}
-		fixed_count := signature.parameter_types.len - 1
-		mut packed := []FastArm64Value{cap: signature.parameter_types.len}
-		for i in 0 .. fixed_count {
-			packed << call_args[i]
-		}
-		mut variadic_items := []FastArm64Value{}
-		for i in fixed_count .. call_args.len {
-			variadic_items << call_args[i]
-		}
-		element_type_name := p.program.array_element_type_name(signature.parameter_types.last()) or {
-			return p.unsupported('variadic parameter `${signature.parameter_types.last()}`')
-		}
-		length := FastArm64Value{
-			id: p.program.m.get_or_add_const(p.program.i32_type, variadic_items.len.str())
-			typ: p.program.i32_type
-			typ_name: 'int'
-		}
-		packed << p.make_array(element_type_name, variadic_items, length, length)
-		call_args = packed.clone()
+		call_args = p.pack_v_variadic_arguments(signature, call_args, 0)!
 	}
 	if signature.last_parameter_is_params && call_args.len < signature.parameter_types.len {
 		params_type := signature.parameter_types.last()
@@ -9144,6 +9149,31 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 			signature.return_type}
 		tuple_types: signature.return_types
 	}
+}
+
+fn (mut p FastArm64Parser) pack_v_variadic_arguments(signature FastcFunctionSignature, arguments []FastArm64Value, parameter_offset int) ![]FastArm64Value {
+	fixed_count := signature.parameter_types.len - parameter_offset - 1
+	if fixed_count < 0 || arguments.len < fixed_count {
+		return p.unsupported('variadic argument count')
+	}
+	mut packed := []FastArm64Value{cap: signature.parameter_types.len - parameter_offset}
+	for i in 0 .. fixed_count {
+		packed << arguments[i]
+	}
+	mut variadic_items := []FastArm64Value{cap: arguments.len - fixed_count}
+	for i in fixed_count .. arguments.len {
+		variadic_items << arguments[i]
+	}
+	element_type_name := p.program.array_element_type_name(signature.parameter_types.last()) or {
+		return p.unsupported('variadic parameter `${signature.parameter_types.last()}`')
+	}
+	length := FastArm64Value{
+		id: p.program.m.get_or_add_const(p.program.i32_type, variadic_items.len.str())
+		typ: p.program.i32_type
+		typ_name: 'int'
+	}
+	packed << p.make_array(element_type_name, variadic_items, length, length)
+	return packed
 }
 
 fn (mut p FastArm64Parser) promote_c_variadic_argument(argument FastArm64Value) FastArm64Value {
