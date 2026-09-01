@@ -1095,6 +1095,21 @@ fn test_fn_span_map_expansion_estimate_defers_owned_method_value_receiver_clone(
 	assert t.fn_span_map_expansion_estimate(0, int(method_value) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_defers_reflected_comptime_loops() {
+	for kind in ['fields', 'values', 'variants', 'methods', 'params', 'attributes'] {
+		mut a := flat.FlatAst.new()
+		comptime_loop := a.add_node(flat.Node{
+			kind: .comptime_for
+			value: 'item|${kind}'
+			typ: 'Wide'
+		})
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+		assert t.fn_span_map_expansion_estimate(0, int(comptime_loop) + 1) > deferred_map_expansion_threshold
+	}
+}
+
 fn test_fn_span_map_expansion_estimate_defers_ownership_array_append_clone() {
 	$if !ownership? {
 		return

@@ -958,6 +958,12 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			continue
 		}
 		node := t.a.nodes[idx]
+		if node.kind == .comptime_for {
+			_, kind := comptime_for_parts(node.value)
+			if kind in ['fields', 'values', 'variants', 'methods', 'params', 'attributes'] {
+				estimate += deferred_map_expansion_threshold + 1
+			}
+		}
 		if node.kind in [.struct_init, .assoc] {
 			estimate += deferred_map_expansion_threshold + 1
 		}
