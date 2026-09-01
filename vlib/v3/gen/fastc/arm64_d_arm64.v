@@ -4016,7 +4016,7 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 				address: typed_address
 			}
 			p.next()
-			item := p.parse_expression(0)!
+			item := p.parse_contextual_value(selected.typ_name)!
 			updated := p.emit_array_push(selected, item, false)!
 			p.program.instr2(.store, p.cur_block, p.program.void_type, updated.id, typed_address)
 			return
@@ -7510,10 +7510,10 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 					has_init = true
 				}
 			} else {
-				initial << p.parse_expression(0)!
+				initial << p.parse_contextual_value(element_type_name)!
 			}
 		} else {
-			initial << p.parse_expression(0)!
+			initial << p.parse_contextual_value(element_type_name)!
 		}
 		if p.tok == .comma {
 			p.next()
@@ -7749,17 +7749,17 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 		}
 		if value.typ == p.program.array_type && member in ['prepend', 'insert'] {
 			p.expect(.lpar)!
+			element_type_name := p.program.array_element_type_name(value.typ_name) or {
+				return p.unsupported('array ${member} type `${value.typ_name}`')
+			}
 			if member == 'insert' {
 				index := p.parse_expression(0)!
 				p.expect(.comma)!
-				element_type_name := p.program.array_element_type_name(value.typ_name) or {
-					return p.unsupported('array insert type `${value.typ_name}`')
-				}
 				item := p.parse_contextual_value(element_type_name)!
 				p.expect(.rpar)!
 				return p.emit_array_insert(value, item, index)
 			}
-			item := p.parse_expression(0)!
+			item := p.parse_contextual_value(element_type_name)!
 			p.expect(.rpar)!
 			return p.emit_array_push(value, item, true)
 		}
