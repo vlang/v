@@ -7601,7 +7601,7 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 	p.expect(.lsbr)!
 	if p.tok != .rsbr {
 		mut look := p.s
-		mut look_token := look.scan()
+		mut look_token := p.tok
 		mut nested := 0
 		mut could_be_fixed := true
 		for look_token != .eof {
