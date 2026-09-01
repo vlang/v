@@ -51,6 +51,16 @@ struct FastArm64Local {
 	spawn_result_name    string
 }
 
+struct FastArm64MapLoopWriteback {
+	map_value            ssa.ValueID
+	state                ssa.ValueID
+	iteration_generation ssa.ValueID
+	key_address          ssa.ValueID
+	value_address        ssa.ValueID
+	snapshot_keys_slot   ssa.ValueID
+	snapshot_values_slot ssa.ValueID
+}
+
 struct FastArm64FieldDecl {
 	name           string
 	typ            string
@@ -139,6 +149,7 @@ mut:
 	continue_to              []ssa.BlockID
 	break_scopes             []int
 	continue_scopes          []int
+	map_loop_writebacks      []FastArm64MapLoopWriteback
 	defer_sources            []string
 	defer_starts             []int
 	local_names              []string
@@ -146,6 +157,8 @@ mut:
 	local_existed            []bool
 	local_starts             []int
 	array_element            string
+	map_key                  string
+	map_value                string
 	last_map_found           ssa.ValueID
 	current_function         string
 	current_receiver         string
@@ -1538,18 +1551,38 @@ fn (mut p FastArm64Program) register_os_process_runtime() {
 		command_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.str_type))
 		p.instr2(.store, entry, p.void_type, process_args[0], command_slot)
 		command := p.instr1(.load, entry, p.ptr_i8, p.string_field_ptr(entry, command_slot, 0))
+		command_length32 := p.instr1(.load, entry, p.i32_type, p.string_field_ptr(entry, command_slot, 1))
+		command_length := p.instr1(.zext, entry, p.u64_type, command_length32)
+		suffix_value := p.m.add_value(.string_literal, p.str_type, ' 2>&1', 0)
+		suffix_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.str_type))
+		p.instr2(.store, entry, p.void_type, suffix_value, suffix_slot)
+		suffix := p.instr1(.load, entry, p.ptr_i8, p.string_field_ptr(entry, suffix_slot, 0))
+		suffix_length := p.m.get_or_add_const(p.u64_type, '5')
+		merged_length := p.instr2(.add, entry, p.u64_type, command_length, suffix_length)
+		one64 := p.m.get_or_add_const(p.u64_type, '1')
+		allocation_size := p.instr2(.add, entry, p.u64_type, merged_length, one64)
+		malloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'malloc', p.fn_ids['malloc'])
+		merged_command := p.m.add_instr(.call, entry, p.ptr_i8, [malloc_ref, allocation_size])
+		memcpy_ref := p.m.add_value(.func_ref, p.ptr_i8, 'memcpy', p.fn_ids['memcpy'])
+		p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, merged_command, command, command_length])
+		suffix_destination := p.instr2(.add, entry, p.ptr_i8, merged_command, command_length)
+		p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, suffix_destination, suffix, suffix_length])
+		terminator := p.instr2(.add, entry, p.ptr_i8, merged_command, merged_length)
+		zero8 := p.m.get_or_add_const(p.u8_type, '0')
+		p.instr2(.store, entry, p.void_type, zero8, terminator)
 		mode_value := p.m.add_value(.string_literal, p.str_type, 'r', 0)
 		mode_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.str_type))
 		p.instr2(.store, entry, p.void_type, mode_value, mode_slot)
 		mode := p.instr1(.load, entry, p.ptr_i8, p.string_field_ptr(entry, mode_slot, 0))
 		popen_ref := p.m.add_value(.func_ref, p.ptr_i8, 'popen', p.fn_ids['popen'])
-		stream := p.m.add_instr(.call, entry, p.ptr_i8, [popen_ref, command, mode])
+		stream := p.m.add_instr(.call, entry, p.ptr_i8, [popen_ref, merged_command, mode])
+		free_ref := p.m.add_value(.func_ref, p.void_type, 'free', p.fn_ids['free'])
+		p.m.add_instr(.call, entry, p.void_type, [free_ref, merged_command])
 		null_pointer := p.m.get_or_add_const(p.ptr_i8, '0')
 		open_succeeded := p.instr2(.ne, entry, p.i1_type, stream, null_pointer)
 		p.instr3(.br, entry, p.void_type, open_succeeded, ssa.ValueID(opened), ssa.ValueID(open_failed))
 
 		initial_capacity := p.m.get_or_add_const(p.u64_type, '4096')
-		malloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'malloc', p.fn_ids['malloc'])
 		buffer := p.m.add_instr(.call, opened, p.ptr_i8, [malloc_ref, initial_capacity])
 		p.instr2(.store, opened, p.void_type, buffer, buffer_slot)
 		p.instr2(.store, opened, p.void_type, zero64, length_slot)
@@ -3317,6 +3350,7 @@ fn (mut p FastArm64Parser) parse_script() ! {
 	p.push_local_scope()
 	p.break_scopes = []int{}
 	p.continue_scopes = []int{}
+	p.map_loop_writebacks = []FastArm64MapLoopWriteback{}
 	p.cur_block = p.program.m.add_block(func_id, 'main_entry')
 	p.emit_main_startup()!
 	for p.tok != .eof {
@@ -3508,6 +3542,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 	p.local_starts = []int{}
 	p.break_scopes = []int{}
 	p.continue_scopes = []int{}
+	p.map_loop_writebacks = []FastArm64MapLoopWriteback{}
 	p.cur_block = p.program.m.add_block(func_id, '${name}_entry')
 	for i, parameter_name in parameter_names {
 		mut typ_name := parameter_types[i]
@@ -3680,6 +3715,7 @@ fn (mut p FastArm64Parser) parse_statement() ! {
 				return p.unsupported('`break` outside a loop')
 			}
 			p.emit_deferred_scopes(p.break_scopes.last())!
+			p.emit_active_map_loop_writebacks(p.map_loop_writebacks.len - 1, false)
 			p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(p.break_to.last()))
 			p.mark_terminated(p.cur_block)
 			p.next()
@@ -4140,7 +4176,7 @@ fn (mut p FastArm64Parser) parse_enum_shorthand(type_name string) !FastArm64Valu
 fn (mut p FastArm64Parser) parse_return() ! {
 	p.next()
 	if p.tok in [.semicolon, .rcbr] {
-		p.emit_deferred_scopes(0)!
+		p.emit_return_cleanup()!
 		if p.return_is_option {
 			p.store_option_success()
 		}
@@ -4176,13 +4212,13 @@ fn (mut p FastArm64Parser) parse_return() ! {
 				typ: p.return_typ
 				typ_name: p.return_name
 			}
-			p.emit_deferred_scopes(0)!
+			p.emit_return_cleanup()!
 			if p.return_is_option {
 				result = p.prepare_option_return(result)
 			}
 			p.program.instr1(.ret, p.cur_block, p.program.void_type, result.id)
 		} else {
-			p.emit_deferred_scopes(0)!
+			p.emit_return_cleanup()!
 			mut result := first
 			if p.return_is_option {
 				result = p.prepare_option_return(first)
@@ -4343,6 +4379,52 @@ fn (mut p FastArm64Parser) push_loop(break_to ssa.BlockID, continue_to ssa.Block
 	p.continue_to << continue_to
 	p.break_scopes << p.defer_starts.len
 	p.continue_scopes << p.defer_starts.len
+	p.map_loop_writebacks << FastArm64MapLoopWriteback{}
+}
+
+fn (mut p FastArm64Parser) emit_map_loop_writeback_to(writeback FastArm64MapLoopWriteback, continuation ssa.BlockID) {
+	if writeback.map_value == ssa.ValueID(0) {
+		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(continuation))
+		p.mark_terminated(p.cur_block)
+		p.cur_block = continuation
+		return
+	}
+	current_generation := p.program.instr1(.load, p.cur_block, p.program.i64_type, p.program.struct_field_ptr(p.cur_block, writeback.state, p.program.map_state_type, 11))
+	map_unchanged := p.program.instr2(.eq, p.cur_block, p.program.i1_type, current_generation, writeback.iteration_generation)
+	writeback_block := p.program.m.add_block(p.func_id, 'map_collection_writeback')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, map_unchanged, ssa.ValueID(writeback_block), ssa.ValueID(continuation))
+	p.mark_terminated(p.cur_block)
+	set_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'fast_map_set', p.program.fn_ids['fast_map_set'])
+	writeback_key := p.program.instr1(.bitcast, writeback_block, p.program.ptr_i8, writeback.key_address)
+	writeback_value := p.program.instr1(.bitcast, writeback_block, p.program.ptr_i8, writeback.value_address)
+	p.program.m.add_instr(.call, writeback_block, p.program.void_type, [set_ref, writeback.map_value,
+		writeback_key, writeback_value])
+	p.program.instr1(.jmp, writeback_block, p.program.void_type, ssa.ValueID(continuation))
+	p.mark_terminated(writeback_block)
+	p.cur_block = continuation
+}
+
+fn (mut p FastArm64Parser) emit_active_map_loop_writebacks(first int, cleanup_snapshots bool) {
+	for i := p.map_loop_writebacks.len - 1; i >= first; i-- {
+		writeback := p.map_loop_writebacks[i]
+		if writeback.map_value == ssa.ValueID(0) {
+			continue
+		}
+		continuation := p.program.m.add_block(p.func_id, 'map_collection_exit')
+		p.emit_map_loop_writeback_to(writeback, continuation)
+		if cleanup_snapshots {
+			free_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'free', p.program.fn_ids['free'])
+			keys := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, writeback.snapshot_keys_slot)
+			values := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, writeback.snapshot_values_slot)
+			p.program.m.add_instr(.call, p.cur_block, p.program.void_type, [free_ref, keys])
+			p.program.m.add_instr(.call, p.cur_block, p.program.void_type, [free_ref, values])
+		}
+	}
+}
+
+fn (mut p FastArm64Parser) emit_return_cleanup() ! {
+	p.emit_deferred_scopes(0)!
+	p.emit_active_map_loop_writebacks(0, true)
 }
 
 fn (mut p FastArm64Parser) pop_loop() {
@@ -4350,6 +4432,7 @@ fn (mut p FastArm64Parser) pop_loop() {
 	p.continue_to.delete_last()
 	p.break_scopes.delete_last()
 	p.continue_scopes.delete_last()
+	p.map_loop_writebacks.delete_last()
 }
 
 fn (mut p FastArm64Parser) parse_if() ! {
@@ -4886,29 +4969,24 @@ fn (mut p FastArm64Parser) parse_map_collection_for(key_name string, value_name 
 		})
 	}
 	p.push_loop(done_block, increment_block)
+	if value_is_mut && key_name != '' {
+		p.map_loop_writebacks[p.map_loop_writebacks.len - 1] = FastArm64MapLoopWriteback{
+			map_value: collection.id
+			state: state
+			iteration_generation: iteration_generation
+			key_address: key_address
+			value_address: local_value_address
+			snapshot_keys_slot: snapshot_keys_slot
+			snapshot_values_slot: snapshot_values_slot
+		}
+	}
 	p.parse_block()!
 	if !p.block_is_terminated(p.cur_block) {
 		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(increment_block))
 		p.mark_terminated(p.cur_block)
 	}
 	p.cur_block = increment_block
-	if value_is_mut && key_name != '' {
-		current_generation := p.program.instr1(.load, increment_block, p.program.i64_type, p.program.struct_field_ptr(increment_block, state, p.program.map_state_type, 11))
-		map_unchanged := p.program.instr2(.eq, increment_block, p.program.i1_type, current_generation, iteration_generation)
-		writeback_block := p.program.m.add_block(p.func_id, 'map_collection_writeback')
-		p.program.instr3(.br, increment_block, p.program.void_type, map_unchanged, ssa.ValueID(writeback_block), ssa.ValueID(advance_block))
-		p.mark_terminated(increment_block)
-		set_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'fast_map_set', p.program.fn_ids['fast_map_set'])
-		writeback_key := p.program.instr1(.bitcast, writeback_block, p.program.ptr_i8, key_address)
-		writeback_value := p.program.instr1(.bitcast, writeback_block, p.program.ptr_i8, local_value_address)
-		p.program.m.add_instr(.call, writeback_block, p.program.void_type, [set_ref, collection.id,
-			writeback_key, writeback_value])
-		p.program.instr1(.jmp, writeback_block, p.program.void_type, ssa.ValueID(advance_block))
-		p.mark_terminated(writeback_block)
-	} else {
-		p.program.instr1(.jmp, increment_block, p.program.void_type, ssa.ValueID(advance_block))
-		p.mark_terminated(increment_block)
-	}
+	p.emit_map_loop_writeback_to(p.map_loop_writebacks.last(), advance_block)
 	current := p.program.instr1(.load, advance_block, p.program.i64_type, index_slot)
 	one := p.program.m.get_or_add_const(p.program.i64_type, '1')
 	next := p.program.instr2(.add, advance_block, p.program.i64_type, current, one)
@@ -6994,13 +7072,23 @@ fn (mut p FastArm64Parser) parse_struct_literal(type_name string) !FastArm64Valu
 
 fn (mut p FastArm64Parser) parse_contextual_value(type_name string) !FastArm64Value {
 	previous_array_element := p.array_element
+	previous_map_key := p.map_key
+	previous_map_value := p.map_value
 	p.array_element = p.program.array_element_type_name(type_name) or { '' }
+	p.map_key = ''
+	p.map_value = ''
+	if key_type, value_type := fastc_map_key_value_types(p.program.resolved_type_name(type_name)) {
+		p.map_key = key_type
+		p.map_value = value_type
+	}
 	value := if p.tok == .dot {
 		p.parse_enum_shorthand(type_name)!
 	} else {
 		p.parse_expression(0)!
 	}
 	p.array_element = previous_array_element
+	p.map_key = previous_map_key
+	p.map_value = previous_map_value
 	return value
 }
 
@@ -8489,6 +8577,8 @@ fn (mut p FastArm64Parser) new_empty_map_value(map_type_name string) !FastArm64V
 }
 
 fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
+	expected_key_type_name := p.map_key
+	expected_value_type_name := p.map_value
 	p.expect(.lcbr)!
 	mut keys := []FastArm64Value{}
 	mut values := []FastArm64Value{}
@@ -8497,9 +8587,17 @@ fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
 			p.next()
 			continue
 		}
-		keys << p.parse_expression(0)!
+		keys << if expected_key_type_name == '' {
+			p.parse_expression(0)!
+		} else {
+			p.parse_contextual_value(expected_key_type_name)!
+		}
 		p.expect(.colon)!
-		values << p.parse_expression(0)!
+		values << if expected_value_type_name == '' {
+			p.parse_expression(0)!
+		} else {
+			p.parse_contextual_value(expected_value_type_name)!
+		}
 		if p.tok in [.comma, .semicolon] {
 			p.next()
 		} else if p.tok != .rcbr {
@@ -8510,10 +8608,18 @@ fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
 	if keys.len == 0 {
 		return p.unsupported('empty inferred map literal')
 	}
-	key_type_name := keys[0].typ_name
-	value_type_name := values[0].typ_name
-	key_type := keys[0].typ
-	value_type := values[0].typ
+	key_type_name := if expected_key_type_name == '' {
+		keys[0].typ_name
+	} else {
+		expected_key_type_name
+	}
+	value_type_name := if expected_value_type_name == '' {
+		values[0].typ_name
+	} else {
+		expected_value_type_name
+	}
+	key_type := p.program.type_id(key_type_name)
+	value_type := p.program.type_id(value_type_name)
 	key_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(key_type).str())
 	value_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value_type).str())
 	string_key := p.program.m.get_or_add_const(p.program.i64_type, if key_type == p.program.str_type {

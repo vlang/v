@@ -595,6 +595,10 @@ struct FloatValues {
 	values []f64
 }
 
+struct MapValues {
+	values map[u64]f64
+}
+
 struct NumericReceiver {}
 
 struct MutableValue {
@@ -649,6 +653,20 @@ fn option_worker(expect_success bool) bool {
 	return true
 }
 
+fn writeback_before_return(mut values map[string][]int) {
+	for _, mut value in values {
+		value[0] = 7
+		return
+	}
+}
+
+fn writeback_before_break(mut values map[string][]int) {
+	for _, mut value in values {
+		value[0] = 8
+		break
+	}
+}
+
 fn main() {
 	mut wide_map_defaults := [1]WideMapDefaults{}
 	wide_map_defaults[0].values["present"] = 9
@@ -670,6 +688,7 @@ fn main() {
 	conditional_success := if false { maybe_zero(false) } else { maybe_zero(true) }
 	conditional_zero := conditional_success or { 53 }
 	float_values := FloatValues{values: [1, 2]}
+	map_values := MapValues{values: {1: 2}}
 	mut mutable_values := [MutableValue{value: 1}, MutableValue{value: 2}]
 	for mut item in mutable_values {
 		item.value += 10
@@ -701,7 +720,11 @@ fn main() {
 		}
 		value = 99
 	}
-	executed := os.execute("printf arm64-captured")
+	mut returned_map := map[string][]int{"value": [1]}
+	writeback_before_return(mut returned_map)
+	mut broken_map := map[string][]int{"value": [1]}
+	writeback_before_break(mut broken_map)
+	executed := os.execute("printf arm64-captured; printf arm64-error >&2")
 	failure_a := spawn option_worker(false)
 	success_a := spawn option_worker(true)
 	failure_b := spawn option_worker(false)
@@ -709,7 +732,7 @@ fn main() {
 	thread_options_ok := failure_a.wait() && success_a.wait() && failure_b.wait()
 		&& success_b.wait()
 	scalar_text := "\${true}:\${u64(9223372036854775808)}"
-	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || delayed_fallback != 42 || conditional_fallback != 52 || conditional_zero != 0 || float_values.values[0] != 1.0 || float_values.values[1] != 2.0 || mutable_values[0].value != 11 || mutable_values[1].value != 12 || mutable_numbers[0] != 2 || mutable_numbers[1] != 3 || mutable_map["a"] != 11 || mutable_map["b"] != 12 || deleting_map.len != 0 || expanding_map[1] != 1 || expanding_map[2] != 2 || executed.exit_code != 0 || executed.output != "arm64-captured" || !none_comparison_ok || nested_values.len != 2 || nested_values[0].len != 2 || nested_values[0][0] != 1 || nested_values[0][1] != 2 || nested_values[1].len != 1 || nested_values[1][0] != 3 || !thread_options_ok || scalar_text != "true:9223372036854775808" {
+	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || delayed_fallback != 42 || conditional_fallback != 52 || conditional_zero != 0 || float_values.values[0] != 1.0 || float_values.values[1] != 2.0 || map_values.values[1] != 2.0 || mutable_values[0].value != 11 || mutable_values[1].value != 12 || mutable_numbers[0] != 2 || mutable_numbers[1] != 3 || mutable_map["a"] != 11 || mutable_map["b"] != 12 || deleting_map.len != 0 || expanding_map[1] != 1 || expanding_map[2] != 2 || returned_map["value"][0] != 7 || broken_map["value"][0] != 8 || executed.exit_code != 0 || executed.output != "arm64-capturedarm64-error" || !none_comparison_ok || nested_values.len != 2 || nested_values[0].len != 2 || nested_values[0][0] != 1 || nested_values[0][1] != 2 || nested_values[1].len != 1 || nested_values[1][0] != 3 || !thread_options_ok || scalar_text != "true:9223372036854775808" {
 		println("wrong")
 		return
 	}
