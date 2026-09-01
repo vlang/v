@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply-fixes:
-    runs-on: ubuntu-slim
+    runs-on: [self-hosted, macOS, gitly-ci]
     steps:
       - uses: actions/checkout@v4
         with:
