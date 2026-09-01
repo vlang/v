@@ -1393,11 +1393,18 @@ fn test_fastc_arm64_zero_capacity_array_data_is_nil() {
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
 		os.write_file(source_path, 'fn main() {
-	empty := []int{}
-	cloned := empty.clone()
-	with_zero_cap := []int{cap: 0}
-	if !isnil(empty.data) || !isnil(cloned.data) || !isnil(with_zero_cap.data) {
+	mut empty := []int{}
+	mut cloned := empty.clone()
+	mut constructed := []int{len: 0, cap: 0}
+	if u64(empty.data) != 0 || u64(cloned.data) != 0 || u64(constructed.data) != 0 {
 		println("wrong")
+		return
+	}
+	empty << 1
+	cloned << 2
+	constructed << 3
+	if empty != [1] || cloned != [2] || constructed != [3] {
+		println("wrong append")
 		return
 	}
 	println("native")
