@@ -119,6 +119,11 @@ fn propagated_option(ok bool) ?int {
 }
 
 fn main() {
+	values_for_sizeof := [1, 2, 3]
+	if sizeof(values_for_sizeof) != 32 {
+		println("wrong dynamic array sizeof")
+		return
+	}
 	mut features := FastArm64Features.read
 	features.set(.write)
 	if !features.has(.read) || !features.has(.write) {
@@ -428,6 +433,58 @@ fn main() {
 		resolved_source_path := os.real_path(source_path)
 		expected := 'main.v:4\n${resolved_source_path}:5, main.LocationOwner{}.instance_location\nmain.v:9\n${resolved_source_path}:10, main.LocationOwner.static_location (static)\n'
 		assert result.output == expected, 'expected `${expected}`, got `${result.output}`'
+	}
+}
+
+fn test_fastc_arm64_remaining_pseudo_values() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_pseudo_${os.getpid()}')
+		git_dir := os.join_path_single(test_dir, '.git')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(git_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		manifest := "Module { name: 'arm64_pseudo' }\n"
+		full_hash := '0123456789abcdef0123456789abcdef01234567'
+		os.write_file(os.join_path_single(test_dir, 'v.mod'), manifest) or { panic(err) }
+		os.write_file(os.join_path_single(git_dir, 'HEAD'), full_hash + '\n') or { panic(err) }
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn main() {
+	println(@VHASH)
+	println(@VCURRENTHASH)
+	println(@BUILD_DATE)
+	println(@BUILD_TIME)
+	println(@BUILD_TIMESTAMP)
+	println(@CCOMPILER)
+	println(@VMODROOT)
+	println(@VMOD_FILE)
+	println(@VMODHASH)
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.ccompiler = 'clang'
+		prefs.vhash = 'arm64-vhash'
+		prefs.vcurrent_hash = 'arm64-vcurrent-hash'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		expected := '${prefs.vhash}\n${prefs.vcurrent_hash}\n${prefs.build_date}\n${prefs.build_time}\n${prefs.build_timestamp}\n${prefs.ccompiler}\n${os.real_path(test_dir)}\n${manifest}\n${full_hash[..7]}\n'
+		assert result.output == expected, 'expected `${expected}`, got `${result.output}`'
+
+		unknown_path := os.join_path_single(test_dir, 'unknown.v')
+		os.write_file(unknown_path, 'fn main() { println(@UNKNOWN_PSEUDO) }\n') or {
+			panic(err)
+		}
+		mut rejected := false
+		generate_arm64_files([unknown_path], prefs, output_path) or {
+			rejected = true
+			assert err.msg().contains('compile-time pseudo value `@UNKNOWN_PSEUDO`')
+		}
+		assert rejected
 	}
 }
 

@@ -331,6 +331,33 @@ fn fast_arm64_uses_source_file(source_file FastcSourceFile, reachable_modules ma
 	] && !source_file.path.ends_with('/v3/ssa/builder.v')
 }
 
+fn fast_arm64_vmod_file(source_path string) !string {
+	vmod_file := os.join_path_single(fastc_vmod_root_for_file(source_path), 'v.mod')
+	content := os.read_file(vmod_file) or {
+		return error('`@VMOD_FILE` can only be used in projects that have a `v.mod` file')
+	}
+	return content.replace('\r\n', '\n')
+}
+
+fn fast_arm64_vmod_hash(source_path string) !string {
+	vmod_root := fastc_vmod_root_for_file(source_path)
+	if !os.is_file(os.join_path_single(vmod_root, 'v.mod')) {
+		return error('`@VMODHASH` can only be used in projects that have a `v.mod` file')
+	}
+	head_file := os.join_path(vmod_root, '.git', 'HEAD')
+	head_content := os.read_file(head_file) or {
+		return error('failed to read `${head_file}`')
+	}
+	mut hash := head_content
+	if head_content.starts_with('ref: ') {
+		revision_path := os.join_path(vmod_root, '.git', head_content[5..].trim_space())
+		hash = os.read_file(revision_path) or {
+			return error('failed to read `${revision_path}`')
+		}
+	}
+	return hash[..7] or { error('failed to limit hash `${hash}` to 7 characters') }
+}
+
 fn fast_arm64_collect_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, type_source_paths map[string]bool) !(map[string]FastArm64TypeDecl, map[string]string, map[string]string) {
 	mut declarations := map[string]FastArm64TypeDecl{}
 	mut constants := map[string]string{}
@@ -5310,18 +5337,6 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 	}
 	value := p.parse_expression(0)!
 	p.expect(.rpar)!
-	if value.typ == p.program.array_type {
-		slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
-		p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, slot)
-		length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, slot, p.program.array_type, 2))
-		element_size := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, slot, p.program.array_type, 5))
-		bytes := p.program.instr2(.mul, p.cur_block, p.program.i32_type, length, element_size)
-		return FastArm64Value{
-			id: bytes
-			typ: p.program.i32_type
-			typ_name: 'int'
-		}
-	}
 	return FastArm64Value{
 		id: p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value.typ).str())
 		typ: p.program.i64_type
@@ -5711,11 +5726,30 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 			'@FILE_LINE' { '${os.file_name(p.source_file.path)}:${pseudo_line}' }
 			'@LOCATION' { '${p.source_file.path}:${pseudo_line}, ${location_method}' }
 			'@VEXE' { p.program.prefs.vexe }
-			'@VEXEROOT', '@VROOT', '@VMODROOT' { p.program.prefs.vroot }
-			'@OS' { 'macos' }
-			'@BACKEND' { 'fastc' }
-			'@PLATFORM' { 'macos' }
-			else { '' }
+			'@VEXEROOT', '@VROOT' { p.program.prefs.vroot }
+			'@VMODROOT' { fastc_vmod_root_for_file(p.source_file.path) }
+			'@VMOD_FILE' {
+				fast_arm64_vmod_file(p.source_file.path) or {
+					return p.unsupported(err.msg())
+				}
+			}
+			'@VMODHASH' {
+				fast_arm64_vmod_hash(p.source_file.path) or {
+					return p.unsupported(err.msg())
+				}
+			}
+			'@VHASH' { p.program.prefs.vhash }
+			'@VCURRENTHASH' { p.program.prefs.vcurrent_hash }
+			'@BUILD_DATE' { p.program.prefs.build_date }
+			'@BUILD_TIME' { p.program.prefs.build_time }
+			'@BUILD_TIMESTAMP' { p.program.prefs.build_timestamp }
+			'@OS' { p.program.prefs.normalized_target_os() }
+			'@CCOMPILER' { p.program.prefs.ccompiler }
+			'@BACKEND' { p.program.prefs.backend }
+			'@PLATFORM' { p.program.prefs.comptime_platform() }
+			else {
+				return p.unsupported('compile-time pseudo value `${first_name}`')
+			}
 		}
 		return FastArm64Value{
 			id: p.program.m.add_value(.string_literal, p.program.str_type, literal, 0)
