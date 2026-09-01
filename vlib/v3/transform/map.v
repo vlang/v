@@ -786,6 +786,16 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 		}
 		if node.kind == .array_init {
 			estimate += t.fixed_array_init_expansion_estimate(flat.NodeId(idx), node)
+			if t.dynamic_array_init_requires_deferral(flat.NodeId(idx), node) {
+				estimate += deferred_map_expansion_threshold + 1
+			}
+		}
+		if node.kind == .call {
+			if info := t.compiler_default_clone_call_info(node) {
+				if info.can_lower {
+					estimate += deferred_map_expansion_threshold + 1
+				}
+			}
 		}
 		// Map index lowering replaces a constant identifier with its initializer
 		// through const_expr_for_ident(). That edge is semantic and is not present
