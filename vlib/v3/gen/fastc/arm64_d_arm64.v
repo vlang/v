@@ -136,8 +136,8 @@ mut:
 }
 
 struct FastArm64Parser {
-	source_file FastcSourceFile
 mut:
+	source_file              FastcSourceFile
 	program                  &FastArm64Program = unsafe { nil }
 	s                        scanner.Scanner
 	tok                      token.Token
