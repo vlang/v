@@ -1107,6 +1107,7 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_function('pthread_setspecific', 'pthread_setspecific', p.i32_type, true)
 	p.register_function('getcwd', 'getcwd', p.ptr_i8, true)
 	p.register_function('gcvt', 'gcvt', p.ptr_i8, true)
+	p.register_function('ecvt', 'ecvt', p.ptr_i8, true)
 	p.register_function('__error', '__error', p.m.type_store.get_ptr(p.i32_type), true)
 	p.main_argc_global = p.m.add_global('g_main_argc', p.i64_type)
 	p.main_argv_global = p.m.add_global('g_main_argv', p.m.type_store.get_ptr(p.ptr_i8))
@@ -1132,6 +1133,7 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_string_padding_runtime()
 	p.register_string_zero_extension_runtime()
 	p.register_fixed_float_string_runtime()
+	p.register_scientific_float_string_runtime()
 	p.register_float_string_runtime()
 	p.register_integer_str_wrappers()
 	p.register_string_sort_runtime()
@@ -1622,8 +1624,16 @@ fn (mut p FastArm64Program) register_os_process_runtime() {
 		status := p.m.add_instr(.call, close_process, p.i32_type, [pclose_ref, stream])
 		eight := p.m.get_or_add_const(p.i32_type, '8')
 		close_failed := p.instr2(.lt, close_process, p.i1_type, status, zero32)
-		normal_exit := p.instr2(.ashr, close_process, p.i32_type, status, eight)
-		exit_code := p.integer_select(close_process, close_failed, status, normal_exit, p.i32_type)
+		shifted_exit := p.instr2(.ashr, close_process, p.i32_type, status, eight)
+		byte_mask := p.m.get_or_add_const(p.i32_type, '255')
+		normal_exit := p.instr2(.and_, close_process, p.i32_type, shifted_exit, byte_mask)
+		signal_mask := p.m.get_or_add_const(p.i32_type, '127')
+		signal := p.instr2(.and_, close_process, p.i32_type, status, signal_mask)
+		has_signal := p.instr2(.ne, close_process, p.i1_type, signal, zero32)
+		not_stopped := p.instr2(.ne, close_process, p.i1_type, signal, signal_mask)
+		is_signaled := p.instr2(.and_, close_process, p.i1_type, has_signal, not_stopped)
+		decoded_status := p.integer_select(close_process, is_signaled, signal, normal_exit, p.i32_type)
+		exit_code := p.integer_select(close_process, close_failed, status, decoded_status, p.i32_type)
 		mut stored_exit := exit_code
 		if layout.fields[exit_field] != p.i32_type {
 			stored_exit = p.instr1(.sext, close_process, layout.fields[exit_field], exit_code)
@@ -2898,6 +2908,105 @@ fn (mut p FastArm64Program) register_fixed_float_string_runtime() {
 	p.instr1(.ret, done, p.void_type, result)
 }
 
+fn (mut p FastArm64Program) register_scientific_float_string_runtime() {
+	id := p.register_function('fast_scientific_from_float', 'fast_scientific_from_float', p.str_type, false)
+	entry := p.m.add_block(id, 'scientific_float_entry')
+	value := p.add_arg(id, p.f64_type, 'value')
+	precision := p.add_arg(id, p.i32_type, 'precision')
+	uppercase := p.add_arg(id, p.i1_type, 'uppercase')
+	zero32 := p.m.get_or_add_const(p.i32_type, '0')
+	one32 := p.m.get_or_add_const(p.i32_type, '1')
+	two32 := p.m.get_or_add_const(p.i32_type, '2')
+	max_real_precision := p.m.get_or_add_const(p.i32_type, '16')
+	precision_is_large := p.instr2(.gt, entry, p.i1_type, precision, max_real_precision)
+	real_precision := p.integer_select(entry, precision_is_large, max_real_precision, precision, p.i32_type)
+	significant_digits := p.instr2(.add, entry, p.i32_type, real_precision, one32)
+	decimal_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.i32_type))
+	sign_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.i32_type))
+	ecvt_ref := p.m.add_value(.func_ref, p.ptr_i8, 'ecvt', p.fn_ids['ecvt'])
+	digits := p.m.add_instr(.call, entry, p.ptr_i8, [ecvt_ref, value, significant_digits,
+		decimal_slot, sign_slot])
+	decimal := p.instr1(.load, entry, p.i32_type, decimal_slot)
+	exponent := p.instr2(.sub, entry, p.i32_type, decimal, one32)
+	exponent_negative := p.instr2(.lt, entry, p.i1_type, exponent, zero32)
+	negated_exponent := p.instr1(.neg, entry, p.i32_type, exponent)
+	exponent_magnitude := p.integer_select(entry, exponent_negative, negated_exponent, exponent, p.i32_type)
+	exponent64 := p.instr1(.sext, entry, p.i64_type, exponent_magnitude)
+	integer_ref := p.m.add_value(.func_ref, p.str_type, 'fast_i64_to_string', p.fn_ids['fast_i64_to_string'])
+	exponent_string := p.m.add_instr(.call, entry, p.str_type, [integer_ref, exponent64])
+	exponent_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.str_type))
+	p.instr2(.store, entry, p.void_type, exponent_string, exponent_slot)
+	exponent_data := p.instr1(.load, entry, p.ptr_i8, p.string_field_ptr(entry, exponent_slot, 0))
+	exponent_length := p.instr1(.load, entry, p.i32_type, p.string_field_ptr(entry, exponent_slot, 1))
+	exponent_needs_padding := p.instr2(.lt, entry, p.i1_type, exponent_length, two32)
+	exponent_padding_candidate := p.instr2(.sub, entry, p.i32_type, two32, exponent_length)
+	exponent_padding := p.integer_select(entry, exponent_needs_padding, exponent_padding_candidate, zero32, p.i32_type)
+	exponent_width := p.instr2(.add, entry, p.i32_type, exponent_length, exponent_padding)
+	sign_value := p.instr1(.load, entry, p.i32_type, sign_slot)
+	has_sign := p.instr2(.ne, entry, p.i1_type, sign_value, zero32)
+	sign_length := p.instr1(.zext, entry, p.i32_type, has_sign)
+	has_fraction := p.instr2(.gt, entry, p.i1_type, precision, zero32)
+	fraction_candidate := p.instr2(.add, entry, p.i32_type, precision, one32)
+	fraction_size := p.integer_select(entry, has_fraction, fraction_candidate, zero32, p.i32_type)
+	mantissa_length := p.instr2(.add, entry, p.i32_type, fraction_size, one32)
+	exponent_section_length := p.instr2(.add, entry, p.i32_type, exponent_width, two32)
+	signed_mantissa_length := p.instr2(.add, entry, p.i32_type, sign_length, mantissa_length)
+	total_length := p.instr2(.add, entry, p.i32_type, signed_mantissa_length, exponent_section_length)
+	total64 := p.instr1(.zext, entry, p.i64_type, total_length)
+	one64 := p.m.get_or_add_const(p.i64_type, '1')
+	allocation_size := p.instr2(.add, entry, p.i64_type, total64, one64)
+	malloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'malloc', p.fn_ids['malloc'])
+	buffer := p.m.add_instr(.call, entry, p.ptr_i8, [malloc_ref, allocation_size])
+	minus := p.m.get_or_add_const(p.u8_type, '45')
+	p.instr2(.store, entry, p.void_type, minus, buffer)
+	sign_length64 := p.instr1(.zext, entry, p.i64_type, sign_length)
+	mantissa := p.instr2(.add, entry, p.ptr_i8, buffer, sign_length64)
+	first_digit := p.instr1(.load, entry, p.u8_type, digits)
+	p.instr2(.store, entry, p.void_type, first_digit, mantissa)
+	dot_address := p.instr2(.add, entry, p.ptr_i8, mantissa, one64)
+	dot := p.m.get_or_add_const(p.u8_type, '46')
+	p.instr2(.store, entry, p.void_type, dot, dot_address)
+	fraction_start := p.instr2(.add, entry, p.ptr_i8, dot_address, one64)
+	digit_source := p.instr2(.add, entry, p.ptr_i8, digits, one64)
+	real_precision64 := p.instr1(.zext, entry, p.i64_type, real_precision)
+	memcpy_ref := p.m.add_value(.func_ref, p.ptr_i8, 'memcpy', p.fn_ids['memcpy'])
+	p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, fraction_start, digit_source,
+		real_precision64])
+	extra_precision := p.instr2(.sub, entry, p.i32_type, precision, real_precision)
+	extra_precision64 := p.instr1(.zext, entry, p.i64_type, extra_precision)
+	extra_start := p.instr2(.add, entry, p.ptr_i8, fraction_start, real_precision64)
+	ascii_zero := p.m.get_or_add_const(p.i32_type, '48')
+	memset_ref := p.m.add_value(.func_ref, p.ptr_i8, 'memset', p.fn_ids['memset'])
+	p.m.add_instr(.call, entry, p.ptr_i8, [memset_ref, extra_start, ascii_zero, extra_precision64])
+	mantissa_length64 := p.instr1(.zext, entry, p.i64_type, mantissa_length)
+	marker_address := p.instr2(.add, entry, p.ptr_i8, mantissa, mantissa_length64)
+	lowercase_e := p.m.get_or_add_const(p.u8_type, '101')
+	uppercase_e := p.m.get_or_add_const(p.u8_type, '69')
+	marker := p.integer_select(entry, uppercase, uppercase_e, lowercase_e, p.u8_type)
+	p.instr2(.store, entry, p.void_type, marker, marker_address)
+	exponent_sign_address := p.instr2(.add, entry, p.ptr_i8, marker_address, one64)
+	plus := p.m.get_or_add_const(p.u8_type, '43')
+	exponent_sign := p.integer_select(entry, exponent_negative, minus, plus, p.u8_type)
+	p.instr2(.store, entry, p.void_type, exponent_sign, exponent_sign_address)
+	exponent_digits_start := p.instr2(.add, entry, p.ptr_i8, exponent_sign_address, one64)
+	exponent_padding64 := p.instr1(.zext, entry, p.i64_type, exponent_padding)
+	p.m.add_instr(.call, entry, p.ptr_i8, [memset_ref, exponent_digits_start, ascii_zero,
+		exponent_padding64])
+	exponent_destination := p.instr2(.add, entry, p.ptr_i8, exponent_digits_start, exponent_padding64)
+	exponent_length64 := p.instr1(.zext, entry, p.i64_type, exponent_length)
+	p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, exponent_destination, exponent_data,
+		exponent_length64])
+	terminator := p.instr2(.add, entry, p.ptr_i8, buffer, total64)
+	zero8 := p.m.get_or_add_const(p.u8_type, '0')
+	p.instr2(.store, entry, p.void_type, zero8, terminator)
+	result_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.str_type))
+	p.instr2(.store, entry, p.void_type, buffer, p.string_field_ptr(entry, result_slot, 0))
+	p.instr2(.store, entry, p.void_type, total_length, p.string_field_ptr(entry, result_slot, 1))
+	p.instr2(.store, entry, p.void_type, zero32, p.string_field_ptr(entry, result_slot, 2))
+	result := p.instr1(.load, entry, p.str_type, result_slot)
+	p.instr1(.ret, entry, p.void_type, result)
+}
+
 fn (mut p FastArm64Program) register_float_string_runtime() {
 	id := p.register_function('fast_float_to_string', 'fast_float_to_string', p.str_type, false)
 	entry := p.m.add_block(id, 'float_string_entry')
@@ -2908,6 +3017,8 @@ fn (mut p FastArm64Program) register_float_string_runtime() {
 	finish := p.m.add_block(id, 'float_string_finish')
 	value := p.add_arg(id, p.f64_type, 'value')
 	digits := p.add_arg(id, p.i32_type, 'digits')
+	append_decimal := p.add_arg(id, p.i1_type, 'append_decimal')
+	uppercase := p.add_arg(id, p.i1_type, 'uppercase')
 	buffer_size := p.m.get_or_add_const(p.i64_type, '64')
 	malloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'malloc', p.fn_ids['malloc'])
 	buffer := p.m.add_instr(.call, entry, p.ptr_i8, [malloc_ref, buffer_size])
@@ -2938,6 +3049,16 @@ fn (mut p FastArm64Program) register_float_string_runtime() {
 	is_digit := p.instr2(.and_, body, p.i1_type, at_least_zero, at_most_nine)
 	is_minus := p.instr2(.eq, body, p.i1_type, character, minus)
 	is_plain_character := p.instr2(.or_, body, p.i1_type, is_digit, is_minus)
+	lowercase_a := p.m.get_or_add_const(p.u8_type, '97')
+	lowercase_z := p.m.get_or_add_const(p.u8_type, '122')
+	is_at_least_a := p.instr2(.ge, body, p.i1_type, character, lowercase_a)
+	is_at_most_z := p.instr2(.le, body, p.i1_type, character, lowercase_z)
+	is_lowercase := p.instr2(.and_, body, p.i1_type, is_at_least_a, is_at_most_z)
+	should_uppercase := p.instr2(.and_, body, p.i1_type, uppercase, is_lowercase)
+	case_offset := p.m.get_or_add_const(p.u8_type, '32')
+	upper_character := p.instr2(.sub, body, p.u8_type, character, case_offset)
+	output_character := p.integer_select(body, should_uppercase, upper_character, character, p.u8_type)
+	p.instr2(.store, body, p.void_type, output_character, character_ptr)
 	was_plain := p.instr1(.load, body, p.i1_type, plain_slot)
 	still_plain := p.instr2(.and_, body, p.i1_type, was_plain, is_plain_character)
 	p.instr2(.store, body, p.void_type, still_plain, plain_slot)
@@ -2946,7 +3067,8 @@ fn (mut p FastArm64Program) register_float_string_runtime() {
 	p.instr2(.store, body, p.void_type, next, index_slot)
 	p.instr1(.jmp, body, p.void_type, ssa.ValueID(condition))
 	plain_integer := p.instr1(.load, done, p.i1_type, plain_slot)
-	p.instr3(.br, done, p.void_type, plain_integer, ssa.ValueID(append_dot), ssa.ValueID(finish))
+	needs_decimal := p.instr2(.and_, done, p.i1_type, plain_integer, append_decimal)
+	p.instr3(.br, done, p.void_type, needs_decimal, ssa.ValueID(append_dot), ssa.ValueID(finish))
 	dot_ptr := p.instr2(.add, append_dot, p.ptr_i8, buffer, length64)
 	dot := p.m.get_or_add_const(p.u8_type, '46')
 	p.instr2(.store, append_dot, p.void_type, dot, dot_ptr)
@@ -6222,7 +6344,7 @@ fn fast_arm64_interpolation_format(source string) FastArm64InterpolationFormat {
 	mut body := source
 	mut specifier := u8(0)
 	last := body[body.len - 1]
-	if last in [`d`, `f`, `s`, `x`, `X`, `o`, `b`, `c`] {
+	if last in [`d`, `e`, `E`, `f`, `F`, `g`, `G`, `s`, `x`, `X`, `o`, `b`, `c`] {
 		specifier = last
 		body = body[..body.len - 1]
 	}
@@ -6249,20 +6371,83 @@ fn fast_arm64_interpolation_format(source string) FastArm64InterpolationFormat {
 fn (mut p FastArm64Parser) format_interpolation(value FastArm64Value, source string) !FastArm64Value {
 	format := fast_arm64_interpolation_format(source)
 	mut formatted := FastArm64Value{}
-	if value.typ in [p.program.f32_type, p.program.f64_type] && (format.specifier in [
+	is_float := value.typ in [p.program.f32_type, p.program.f64_type]
+	float_value := if value.typ == p.program.f64_type {
+		value
+	} else if is_float {
+		p.convert_value(value, p.program.f64_type, 'f64')
+	} else {
+		FastArm64Value{}
+	}
+	uppercase_float := p.program.m.get_or_add_const(p.program.i1_type, if format.specifier in [
+		`E`,
+		`F`,
+		`G`,
+	] {
+		'1'
+	} else {
+		'0'
+	})
+	if is_float && format.precision < 0 && format.specifier in [u8(0), `e`, `E`, `f`, `F`, `g`,
+		`G`] {
+		digits := p.program.m.get_or_add_const(p.program.i32_type, if value.typ == p.program.f32_type {
+			'8'
+		} else {
+			'17'
+		})
+		append_decimal := p.program.m.get_or_add_const(p.program.i1_type, '1')
+		format_ref := p.program.m.add_value(.func_ref, p.program.str_type, 'fast_float_to_string', p.program.fn_ids['fast_float_to_string'])
+		formatted = FastArm64Value{
+			id: p.program.m.add_instr(.call, p.cur_block, p.program.str_type, [
+				format_ref,
+				float_value.id,
+				digits,
+				append_decimal,
+				uppercase_float,
+			])
+			typ: p.program.str_type
+			typ_name: 'string'
+		}
+	} else if is_float && format.specifier in [`e`, `E`] {
+		precision := if format.precision >= 0 { format.precision } else { 6 }
+		precision_value := p.program.m.get_or_add_const(p.program.i32_type, precision.str())
+		format_ref := p.program.m.add_value(.func_ref, p.program.str_type, 'fast_scientific_from_float', p.program.fn_ids['fast_scientific_from_float'])
+		formatted = FastArm64Value{
+			id: p.program.m.add_instr(.call, p.cur_block, p.program.str_type, [
+				format_ref,
+				float_value.id,
+				precision_value,
+				uppercase_float,
+			])
+			typ: p.program.str_type
+			typ_name: 'string'
+		}
+	} else if is_float && format.specifier in [`g`, `G`] {
+		precision := if format.precision > 0 { format.precision } else { 1 }
+		digits := p.program.m.get_or_add_const(p.program.i32_type, precision.str())
+		append_decimal := p.program.m.get_or_add_const(p.program.i1_type, '0')
+		format_ref := p.program.m.add_value(.func_ref, p.program.str_type, 'fast_float_to_string', p.program.fn_ids['fast_float_to_string'])
+		formatted = FastArm64Value{
+			id: p.program.m.add_instr(.call, p.cur_block, p.program.str_type, [
+				format_ref,
+				float_value.id,
+				digits,
+				append_decimal,
+				uppercase_float,
+			])
+			typ: p.program.str_type
+			typ_name: 'string'
+		}
+	} else if is_float && (format.specifier in [
 		u8(0),
 		`f`,
+		`F`,
 	] || format.precision >= 0) {
 		precision := if format.precision >= 0 { format.precision } else { 6 }
 		scale_precision := if precision > 15 { 15 } else { precision }
 		mut factor := i64(1)
 		for _ in 0 .. scale_precision {
 			factor *= 10
-		}
-		float_value := if value.typ == p.program.f64_type {
-			value
-		} else {
-			p.convert_value(value, p.program.f64_type, 'f64')
 		}
 		factor_value := p.program.m.get_or_add_const(p.program.f64_type, factor.str() + '.0')
 		scaled := p.program.instr2(.fmul, p.cur_block, p.program.f64_type, float_value.id, factor_value)
@@ -6393,11 +6578,15 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 			'17'
 		})
 		convert_ref := p.program.m.add_value(.func_ref, p.program.str_type, 'fast_float_to_string', p.program.fn_ids['fast_float_to_string'])
+		append_decimal := p.program.m.get_or_add_const(p.program.i1_type, '1')
+		uppercase := p.program.m.get_or_add_const(p.program.i1_type, '0')
 		return FastArm64Value{
 			id: p.program.m.add_instr(.call, p.cur_block, p.program.str_type, [
 				convert_ref,
 				float_value.id,
 				digits,
+				append_decimal,
+				uppercase,
 			])
 			typ: p.program.str_type
 			typ_name: 'string'
