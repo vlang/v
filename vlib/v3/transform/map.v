@@ -721,7 +721,35 @@ fn (mut t Transformer) compiler_call_expands_from_type_metadata(id flat.NodeId, 
 			return true
 		}
 	}
-	return t.compiler_collection_clone_call_expands(node) || t.compiler_owned_map_items_call_expands(node) || t.compiler_array_search_call_expands(node) || t.compiler_owned_array_accessor_call_expands(node) || t.compiler_owned_array_filter_call_expands(node) || t.compiler_owned_array_map_call_expands(node) || t.compiler_collection_str_call_expands(node) || t.ownership_array_repeat_call_expands(node)
+	return t.compiler_collection_clone_call_expands(node) || t.compiler_owned_map_items_call_expands(node) || t.compiler_array_search_call_expands(node) || t.compiler_owned_array_accessor_call_expands(node) || t.compiler_owned_array_filter_call_expands(node) || t.compiler_owned_array_map_call_expands(node) || t.compiler_collection_str_call_expands(node) || t.ownership_array_repeat_call_expands(node) || t.ownership_nested_map_delete_key_clone_expands(node)
+}
+
+fn (mut t Transformer) ownership_nested_map_delete_key_clone_expands(node flat.Node) bool {
+	if node.kind != .call || node.children_count < 2 || isnil(t.tc) {
+		return false
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.value != 'delete' || callee.children_count == 0 {
+		return false
+	}
+	outer_info := t.map_index_info(t.a.child(callee, 0)) or { return false }
+	inner_map_type := t.clean_map_type(outer_info.value_type)
+	if !inner_map_type.starts_with('map[') {
+		return false
+	}
+	if t.ownership_borrowed_map_key_clone_expands(outer_info.key_id, outer_info.key_type) {
+		return true
+	}
+	inner_key_type, _ := t.map_type_parts(inner_map_type)
+	return t.ownership_borrowed_map_key_clone_expands(t.a.child(&node, 1), inner_key_type)
+}
+
+fn (mut t Transformer) ownership_borrowed_map_key_clone_expands(key_id flat.NodeId, key_type_name string) bool {
+	if isnil(t.tc) || t.normalize_type_alias(key_type_name).trim_space() == 'string' || t.map_key_expr_creates_owned_value(key_id, key_type_name) {
+		return false
+	}
+	key_type := t.tc.parse_type(key_type_name)
+	return t.tc.ownership_type_requires_destruction(key_type) && t.tc.ownership_default_clone_missing_method(key_type) == none && t.compiler_default_clone_type_needs_work(key_type_name)
 }
 
 fn (mut t Transformer) ownership_for_in_binding_clone_expands(node flat.Node) bool {
@@ -795,8 +823,7 @@ fn (mut t Transformer) ownership_map_assignment_clone_expands(node flat.Node) bo
 	}
 	lhs_id := t.a.child(&node, 0)
 	info := t.map_assignment_underlying_index_info(lhs_id) or { return false }
-	key_type := t.tc.parse_type(info.key_type)
-	if t.normalize_type_alias(info.key_type).trim_space() != 'string' && !t.map_key_expr_creates_owned_value(info.key_id, info.key_type) && t.tc.ownership_type_requires_destruction(key_type) && t.tc.ownership_default_clone_missing_method(key_type) == none && t.compiler_default_clone_type_needs_work(info.key_type) {
+	if t.ownership_borrowed_map_key_clone_expands(info.key_id, info.key_type) {
 		return true
 	}
 	if node.op != .assign {

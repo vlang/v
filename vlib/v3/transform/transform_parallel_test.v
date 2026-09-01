@@ -949,6 +949,64 @@ fn test_fn_span_map_expansion_estimate_defers_owned_map_delete_snapshot_clone() 
 	assert t.fn_span_map_expansion_estimate(0, int(loop) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_defers_nested_map_delete_key_clone() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	items := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: 'map[Wide]map[string]int'
+	})
+	outer_key := a.add_node(flat.Node{
+		kind: .ident
+		value: 'outer_key'
+		typ: 'Wide'
+	})
+	outer_index_start := a.children.len
+	a.children << items
+	a.children << outer_key
+	outer_index := a.add_node(flat.Node{
+		kind: .index
+		typ: 'map[string]int'
+		children_start: outer_index_start
+		children_count: 2
+	})
+	selector_start := a.children.len
+	a.children << outer_index
+	delete_selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'delete'
+		children_start: selector_start
+		children_count: 1
+	})
+	inner_key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'inner'
+		typ: 'string'
+	})
+	call_start := a.children.len
+	a.children << delete_selector
+	a.children << inner_key
+	delete_call := a.add_node(flat.Node{
+		kind: .call
+		children_start: call_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	tc.struct_implements['Wide'] = ['IClone']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.ownership_nested_map_delete_key_clone_expands(a.nodes[int(delete_call)])
+	assert t.fn_span_map_expansion_estimate(0, int(delete_call) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_fn_span_map_expansion_estimate_defers_overlapping_owned_map_assignment() {
 	$if !ownership? {
 		return
