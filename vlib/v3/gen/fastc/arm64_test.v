@@ -1744,7 +1744,7 @@ fn main() {
 		println("wrong")
 		return
 	}
-println("native")
+	println("native")
 }
 '
 		os.write_file(source_path, source) or { panic(err) }
