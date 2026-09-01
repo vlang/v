@@ -172,16 +172,30 @@ struct FastcIndexedFileGenOutput {
 	output FastcFileGenOutput
 }
 
-// fastc_file_generation_job_indices assigns the largest files first to the
-// currently lightest worker. This avoids clustering the generator's largest
-// source files at the end of the dependency-ordered source list.
-fn fastc_file_generation_job_indices(sources []FastcSourceFile, jobs int) [][]int {
+// __atomic_fetch_add is the GCC/Clang atomic builtin (also supported by the
+// bundled TinyCC); it needs no header or library, so it stays available in both
+// the gen/c host build and the FastC self-host output.
+fn C.__atomic_fetch_add(voidptr, u32, int) u32
+
+// FastcGenQueue is a shared work-stealing counter for per-file generation. On a
+// heterogeneous CPU (Apple Silicon's performance + efficiency cores) a static
+// byte-weighted chunk per worker leaves the slowest efficiency core setting the
+// wall time while performance cores idle; a lock-free atomic index lets every
+// core keep pulling files until the queue drains, so all finish together.
+struct FastcGenQueue {
+mut:
+	next u32
+}
+
+// fastc_file_generation_order returns file indices largest-first, so the biggest
+// files are claimed before the queue tail thins out (bounding end-of-run skew).
+fn fastc_file_generation_order(sources []FastcSourceFile) []int {
 	mut order := []int{len: sources.len}
 	for i in 0 .. sources.len {
 		order[i] = i
 	}
-	// There are normally only a few hundred files; insertion sort avoids a
-	// closure and keeps this scheduling helper in FastC's self-hostable subset.
+	// A few hundred files at most; insertion sort avoids a closure and keeps this
+	// helper in FastC's self-hostable subset.
 	for i in 1 .. order.len {
 		index := order[i]
 		weight := sources[index].source.len
@@ -192,31 +206,25 @@ fn fastc_file_generation_job_indices(sources []FastcSourceFile, jobs int) [][]in
 		}
 		order[insert_at] = index
 	}
-	mut job_indices := [][]int{len: jobs}
-	mut job_weights := []i64{len: jobs}
-	for index in order {
-		mut lightest := 0
-		for job in 1 .. jobs {
-			if job_weights[job] < job_weights[lightest] {
-				lightest = job
-			}
-		}
-		job_indices[lightest] << index
-		job_weights[lightest] += i64(sources[index].source.len) + 1
-	}
-	return job_indices
+	return order
 }
 
-// fastc_generate_file_chunk generates one worker's files. The backing source
-// data is shared and read-only. It runs as a value-returning spawn: under
-// -prealloc, V frees a void thread's arena when the thread exits, so outputs
-// must travel through the thread result.
-fn fastc_generate_file_chunk(ctx &FastcFileGenContext, sources []FastcSourceFile, indices []int) []FastcIndexedFileGenOutput {
-	mut outputs := []FastcIndexedFileGenOutput{cap: indices.len}
-	for index in indices {
+// fastc_generate_file_steal drains the shared queue: each worker atomically
+// claims the next order slot until the queue empties. The backing source data is
+// shared and read-only. It runs as a value-returning spawn: under -prealloc, V
+// frees a void thread's arena on exit, so outputs travel through the return value.
+fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile, order []int, queue &FastcGenQueue) []FastcIndexedFileGenOutput {
+	mut outputs := []FastcIndexedFileGenOutput{}
+	limit := u32(order.len)
+	for {
+		claimed := C.__atomic_fetch_add(&queue.next, 1, 0)
+		if claimed >= limit {
+			break
+		}
+		file_index := order[claimed]
 		outputs << FastcIndexedFileGenOutput{
-			index: index
-			output: fastc_generate_single_file(ctx, sources[index])
+			index:  file_index
+			output: fastc_generate_single_file(ctx, sources[file_index])
 		}
 	}
 	return outputs
@@ -342,21 +350,23 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 		return outputs
 	}
 	generation_sources := fastc_generation_fragments(sources, ctx.prefs)
-	job_indices := fastc_file_generation_job_indices(generation_sources, jobs)
-	second_thread := spawn fastc_generate_file_chunk(ctx, generation_sources, job_indices[1])
-	mut chunk_threads := [second_thread]
-	for chunk_idx in 2 .. jobs {
-		chunk_thread := spawn fastc_generate_file_chunk(ctx, generation_sources, job_indices[chunk_idx])
-		chunk_threads << chunk_thread
+	order := fastc_file_generation_order(generation_sources)
+	mut queue := &FastcGenQueue{
+		next: 0
+	}
+	second_thread := spawn fastc_generate_file_steal(ctx, generation_sources, order, queue)
+	mut worker_threads := [second_thread]
+	for _ in 2 .. jobs {
+		worker_threads << spawn fastc_generate_file_steal(ctx, generation_sources, order, queue)
 	}
 	mut outputs := []FastcFileGenOutput{len: generation_sources.len}
-	first_outputs := fastc_generate_file_chunk(ctx, generation_sources, job_indices[0])
+	first_outputs := fastc_generate_file_steal(ctx, generation_sources, order, queue)
 	for indexed_output in first_outputs {
 		outputs[indexed_output.index] = indexed_output.output
 	}
-	for chunk_thread in chunk_threads {
-		chunk_outputs := chunk_thread.wait()
-		for indexed_output in chunk_outputs {
+	for worker_thread in worker_threads {
+		worker_outputs := worker_thread.wait()
+		for indexed_output in worker_outputs {
 			outputs[indexed_output.index] = indexed_output.output
 		}
 	}
