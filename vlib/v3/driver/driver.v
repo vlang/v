@@ -8228,10 +8228,11 @@ pub fn run(args []string) {
 		// allocation-heavy phases) — so compiler builds default to it.
 		// -no-prealloc opts out (also restores tcc linking: tcc has no
 		// thread-local storage support, so prealloc builds link with cc).
-		// FastC output is always compiled by bundled TinyCC, where the arena
-		// pointer cannot be thread-local; a FastC compiler generation spawns
-		// worker threads, so it must use plain thread-safe malloc instead.
-		if !no_prealloc && 'prealloc' !in user_defines && backend != 'fastc' {
+		// The FastC backend honors it too: it emits the arena root
+		// `g_memory_block` as per-thread storage (a pthread key under bundled
+		// TinyCC, which lacks thread-local storage), so its worker-thread
+		// generations bump-allocate safely (see fastc_write_prealloc_tls_global).
+		if !no_prealloc && 'prealloc' !in user_defines {
 			user_defines << 'prealloc'
 		}
 	}
@@ -8502,12 +8503,6 @@ pub fn run(args []string) {
 			}
 			if translated_mode || is_repl {
 				unsupported_modes << 'translated/REPL mode'
-			}
-			// Bundled TinyCC has no thread-local storage, so the prealloc arena
-			// pointer would become one shared global while FastC compiler
-			// generations spawn worker threads; concurrent bumps corrupt it.
-			if 'prealloc' in prefs.user_defines {
-				unsupported_modes << '`-prealloc` builds'
 			}
 			if unsupported_modes.len > 0 {
 				eprintln('fastc parser does not support ${unsupported_modes.join(', ')}')

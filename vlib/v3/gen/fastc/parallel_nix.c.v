@@ -13,3 +13,16 @@ fn fastc_nr_cpus() int {
 	}
 	return count
 }
+
+// __atomic_fetch_add is the GCC/Clang atomic builtin (also supported by the
+// bundled TinyCC); it needs no header or library, so it stays available in both
+// the gen/c host build and the FastC self-host output. `0` is memory_order_relaxed.
+fn C.__atomic_fetch_add(voidptr, u32, int) u32
+
+// fastc_atomic_fetch_add_u32 atomically adds `delta` to `*ptr` and returns the
+// previous value, used by the work-stealing per-file generator. Windows builds
+// use InterlockedExchangeAdd instead (see parallel_windows.c.v); MSVC has no
+// __atomic_fetch_add builtin.
+fn fastc_atomic_fetch_add_u32(ptr &u32, delta u32) u32 {
+	return C.__atomic_fetch_add(ptr, delta, 0)
+}

@@ -650,6 +650,43 @@ fn (mut g Parser) parse_selected_comptime_global_declarations(mut out strings.Bu
 	}
 }
 
+// fastc_prealloc_enabled reports whether the arena allocator is active for this
+// build (`-prealloc`, or the driver's building_v default). It gates the
+// per-thread arena root so a serial-runtime FastC build is unaffected.
+fn fastc_prealloc_enabled(prefs &pref.Preferences) bool {
+	return 'prealloc' in prefs.user_defines
+}
+
+// fastc_write_prealloc_tls_global emits the arena root `g_memory_block` as
+// per-thread storage, so the parallel per-file generator's worker threads each
+// bump-allocate from their own chunk instead of racing one shared global. This
+// mirrors gen/c's `write_prealloc_tls_global`: bundled TinyCC on macOS has no
+// working thread-local storage, so there the identifier is redirected to a
+// pthread-key slot; every other target uses `_Thread_local`.
+fn fastc_write_prealloc_tls_global(mut out strings.Builder, styp string, c_name string) {
+	out.writeln('#if defined(__TINYC__) && defined(__APPLE__)')
+	out.writeln('#include <pthread.h>')
+	out.writeln('static pthread_key_t v_prealloc_tls_key;')
+	out.writeln('static pthread_once_t v_prealloc_tls_once = PTHREAD_ONCE_INIT;')
+	out.writeln('static void v_prealloc_tls_slot_free(void *slot) { free(slot); }')
+	out.writeln('static void v_prealloc_tls_key_init(void) { pthread_key_create(&v_prealloc_tls_key, v_prealloc_tls_slot_free); }')
+	out.writeln('static void **v_prealloc_tls_slot(void) {')
+	out.writeln('\tpthread_once(&v_prealloc_tls_once, v_prealloc_tls_key_init);')
+	out.writeln('\tvoid **slot = (void **)pthread_getspecific(v_prealloc_tls_key);')
+	out.writeln('\tif (slot == ((void *)0)) {')
+	out.writeln('\t\tslot = (void **)calloc(1, sizeof(void *));')
+	out.writeln('\t\tpthread_setspecific(v_prealloc_tls_key, slot);')
+	out.writeln('\t}')
+	out.writeln('\treturn slot;')
+	out.writeln('}')
+	out.writeln('#define ${c_name} (*(${styp} *)v_prealloc_tls_slot())')
+	out.writeln('#elif defined(__cplusplus)')
+	out.writeln('thread_local ${styp} ${c_name};')
+	out.writeln('#else')
+	out.writeln('_Thread_local ${styp} ${c_name};')
+	out.writeln('#endif')
+}
+
 fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initializers strings.Builder) ! {
 	g.expect(.key_global)!
 	if g.tok == .lpar {
@@ -696,7 +733,13 @@ fn (mut g Parser) parse_global_declaration(mut out strings.Builder, mut initiali
 		return
 	}
 	typ := g.parse_type()!
-	out.writeln('static ${typ} ${c_name};')
+	if g.selfhost && name == 'g_memory_block' && fastc_prealloc_enabled(g.prefs) {
+		// The prealloc arena root must be per-thread; a shared global would be
+		// corrupted by the parallel per-file generator's concurrent bump-allocations.
+		fastc_write_prealloc_tls_global(mut out, typ, c_name)
+	} else {
+		out.writeln('static ${typ} ${c_name};')
+	}
 	g.global_types[key] = typ
 	if g.tok == .assign {
 		g.next()

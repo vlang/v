@@ -410,14 +410,78 @@ fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	assert fastc_chunk_bounds(sources, 2) == [0, 3, 3, 4]
 }
 
-fn test_fastc_file_generation_jobs_balance_largest_files_first() {
+fn test_fastc_file_generation_order_is_largest_first() {
 	sources := [
-		FastcSourceFile{ source: 'a'.repeat(60) },
-		FastcSourceFile{ source: 'b'.repeat(50) },
+		FastcSourceFile{ source: 'a'.repeat(30) },
+		FastcSourceFile{ source: 'b'.repeat(60) },
 		FastcSourceFile{ source: 'c'.repeat(40) },
-		FastcSourceFile{ source: 'd'.repeat(30) },
+		FastcSourceFile{ source: 'd'.repeat(50) },
 	]
-	assert fastc_file_generation_job_indices(sources, 2) == [[0, 3], [1, 2]]
+	// Work-stealing claims files in this order, so the biggest files start before
+	// the shared queue's tail thins out.
+	assert fastc_file_generation_order(sources) == [1, 3, 2, 0]
+}
+
+fn fastc_test_steal_claimed_indices(queue &FastcGenQueue, limit u32) []u32 {
+	mut claimed := []u32{}
+	for {
+		index := fastc_atomic_fetch_add_u32(&queue.next, 1)
+		if index >= limit {
+			break
+		}
+		claimed << index
+	}
+	return claimed
+}
+
+fn test_fastc_gen_queue_claims_every_index_exactly_once() {
+	// Several workers drain one shared queue concurrently, exactly as
+	// fastc_generate_file_outputs spawns them. The atomic counter must hand each
+	// index to exactly one worker — the property the work-stealing scheduler relies
+	// on to generate every file once — regardless of how the OS interleaves them.
+	limit := u32(4000)
+	mut queue := &FastcGenQueue{
+		next: 0
+	}
+	mut workers := []thread []u32{}
+	for _ in 0 .. 8 {
+		workers << spawn fastc_test_steal_claimed_indices(queue, limit)
+	}
+	mut claim_counts := []int{len: int(limit)}
+	mut total := 0
+	for worker in workers {
+		for index in worker.wait() {
+			assert index < limit
+			claim_counts[index]++
+			total++
+		}
+	}
+	// Every index claimed exactly once, and nothing beyond the end leaks through.
+	assert total == int(limit)
+	for count in claim_counts {
+		assert count == 1
+	}
+}
+
+fn test_fastc_prealloc_enabled_reads_user_defines() {
+	mut with_prealloc := pref.new_preferences()
+	with_prealloc.user_defines = ['prealloc']
+	assert fastc_prealloc_enabled(with_prealloc)
+	assert !fastc_prealloc_enabled(pref.new_preferences())
+}
+
+fn test_fastc_prealloc_arena_root_is_per_thread() {
+	mut out := strings.new_builder(256)
+	fastc_write_prealloc_tls_global(mut out, 'VMemoryBlock*', 'g_memory_block')
+	rendered := out.str()
+	// The arena root must be per-thread so the parallel per-file generator's
+	// workers never share it: a pthread-key slot under bundled TinyCC on macOS
+	// (no working thread-local storage), `_Thread_local` everywhere else. It must
+	// never be emitted as a plain shared global.
+	assert rendered.contains('#define g_memory_block (*(VMemoryBlock* *)v_prealloc_tls_slot())')
+	assert rendered.contains('pthread_getspecific(v_prealloc_tls_key)')
+	assert rendered.contains('_Thread_local VMemoryBlock* g_memory_block;')
+	assert !rendered.contains('static VMemoryBlock* g_memory_block;')
 }
 
 fn test_fastc_fragmented_generation_matches_serial_output() {
@@ -4658,7 +4722,7 @@ fn fastc_test_expression_token(tok token.Token, lit string) FastcExpressionToken
 fn test_literal_membership_materializes_candidates_before_comparison() {
 	prefs := pref.new_preferences()
 	g := Parser{
-		prefs: &prefs
+		prefs: prefs
 		selfhost: true
 		s: scanner.new_scanner(prefs, .normal)
 		locals: {
@@ -6398,7 +6462,7 @@ fn main() {
 fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() {
 	prefs := pref.new_preferences()
 	g := Parser{
-		prefs: &prefs
+		prefs: prefs
 		s: scanner.new_scanner(prefs, .normal)
 		struct_fields: {
 			'array': {
@@ -10368,7 +10432,7 @@ fn test_failed_generic_placeholder_block_unwinds_local_scope() {
 	mut file := file_set.add_file('failed_generic_scope.v', source.len)
 	file.index_lines_without_digest(source)
 	mut g := Parser{
-		prefs: &prefs
+		prefs: prefs
 		selfhost: true
 		in_generic_placeholder: true
 		locals: {
