@@ -682,6 +682,13 @@ fn maybe_zero(ok bool) ?int {
 	return none
 }
 
+fn maybe_floats(ok bool) ?[]f64 {
+	if ok {
+		return [9.0]
+	}
+	return none
+}
+
 fn option_worker(expect_success bool) bool {
 	for _ in 0 .. 20000 {
 		if expect_success {
@@ -711,6 +718,14 @@ fn writeback_before_break(mut values map[string][]int) {
 		value[0] = 8
 		break
 	}
+}
+
+fn writeback_before_propagation(mut values map[string][]int) ?bool {
+	for _, mut value in values {
+		value[0] = 9
+		_ := maybe_zero(false)?
+	}
+	return true
 }
 
 fn main() {
@@ -771,6 +786,12 @@ fn main() {
 		else { maybe_zero(true) }
 	}
 	matched_zero := matched_success or { 63 }
+	aggregate_fallback := maybe_floats(false) or { [1, 2] }
+	conditional_floats := if false { []f64{1.0} } else { [2, 3] }
+	matched_floats := match false {
+		true { []f64{1.0} }
+		else { [2, 3] }
+	}
 	float_values := FloatValues{values: [1, 2]}
 	map_values := MapValues{values: {1: 2}}
 	mut mutable_values := [MutableValue{value: 1}, MutableValue{value: 2}]
@@ -808,6 +829,8 @@ fn main() {
 	writeback_before_return(mut returned_map)
 	mut broken_map := map[string][]int{"value": [1]}
 	writeback_before_break(mut broken_map)
+	mut propagated_map := map[string][]int{"value": [1]}
+	_ := writeback_before_propagation(mut propagated_map) or { false }
 	executed := os.execute("printf arm64-captured; printf arm64-error >&2")
 	terminated := os.execute("kill -TERM $$")
 	failure_a := spawn option_worker(false)
@@ -817,6 +840,11 @@ fn main() {
 	thread_options_ok := failure_a.wait() && success_a.wait() && failure_b.wait()
 		&& success_b.wait()
 	scalar_text := "\${true}:\${u64(9223372036854775808)}"
+	if aggregate_fallback != [1.0, 2.0] || conditional_floats != [2.0, 3.0]
+		|| matched_floats != [2.0, 3.0] || propagated_map["value"][0] != 9 {
+		println("wrong aggregate context or propagation cleanup")
+		return
+	}
 	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || typed_nested_values[0][0] != 1.0 || typed_nested_values[0][1] != 2.0 || assigned_float_values[0] != 1.0 || assigned_float_values[1] != 2.0 || indexed_float_values[0][0] != 1.0 || indexed_float_values[0][1] != 2.0 || indexed_map_float_values["value"][0] != 1.0 || indexed_map_float_values["value"][1] != 2.0 || field_float_values.values[0] != 1.0 || field_float_values.values[1] != 2.0 || inserted_float_values[0][0] != 1.0 || inserted_float_values[0][1] != 2.0 || prepended_float_values[0][0] != 1.0 || prepended_float_values[0][1] != 2.0 || nested_appended_float_values[0].len != 3 || nested_appended_float_values[0][0] != 9.0 || nested_appended_float_values[0][1] != 1.0 || nested_appended_float_values[0][2] != 2.0 || typed_map_float_values["value"][0] != 1.0 || typed_map_float_values["value"][1] != 2.0 || initialized_float_values[0][0] != 1.0 || initialized_float_values[0][1] != 2.0 || initialized_float_values[1][0] != 1.0 || initialized_float_values[1][1] != 2.0 || default_float_values.values[0] != 1.0 || default_float_values.values[1] != 2.0 || params_float_value != 3.0 || missing_config.retries != 3 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || contextual_array != 3.0 || contextual_map != 3.0 || returned_values[0] != 1.0 || returned_values[1] != 2.0 || returned_float_map["value"] != 3.0 || appended_arrays[0][0] != 1.0 || appended_arrays[0][1] != 2.0 || appended_maps[0]["value"] != 3.0 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || NumericReceiver{}.sum([1, 2]) != 3.0 || NumericReceiver{}.take(1, 2) != 3 || delayed_fallback != 42 || conditional_fallback != 52 || conditional_zero != 0 || matched_fallback != 62 || matched_zero != 0 || float_values.values[0] != 1.0 || float_values.values[1] != 2.0 || map_values.values[1] != 2.0 || mutable_values[0].value != 11 || mutable_values[1].value != 12 || mutable_numbers[0] != 2 || mutable_numbers[1] != 3 || mutable_map["a"] != 11 || mutable_map["b"] != 12 || deleting_map.len != 0 || expanding_map[1] != 1 || expanding_map[2] != 2 || returned_map["value"][0] != 7 || broken_map["value"][0] != 8 || executed.exit_code != 0 || executed.output != "arm64-capturedarm64-error" || terminated.exit_code != 15 || !none_comparison_ok || nested_values.len != 2 || nested_values[0].len != 2 || nested_values[0][0] != 1 || nested_values[0][1] != 2 || nested_values[1].len != 1 || nested_values[1][0] != 3 || !thread_options_ok || scalar_text != "true:9223372036854775808" {
 		println("wrong")
 		return
@@ -903,6 +931,14 @@ fn test_fastc_arm64_spawn_for_general_programs() {
 		result := os.execute(output_path)
 		assert result.exit_code == 0
 		assert result.output == 'spawned\n'
+		double_wait_source := os.join_path_single(test_dir, 'double_wait.v')
+		double_wait_output := os.join_path_single(test_dir, 'double_wait')
+		os.write_file(double_wait_source, 'fn worker() int { return 1 }\nfn main() { handle := spawn worker(); _ := handle.wait(); _ := handle.wait() }\n') or {
+			panic(err)
+		}
+		generate_arm64_files([double_wait_source], prefs, double_wait_output) or { panic(err) }
+		double_wait_result := os.execute(double_wait_output)
+		assert double_wait_result.exit_code != 0
 	}
 }
 

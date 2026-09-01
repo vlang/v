@@ -5714,7 +5714,7 @@ fn (mut p FastArm64Parser) propagate_option_failure(value FastArm64Value) !FastA
 	p.program.instr3(.br, p.cur_block, p.program.void_type, failed, ssa.ValueID(failure_block), ssa.ValueID(success_block))
 	p.mark_terminated(p.cur_block)
 	p.cur_block = failure_block
-	p.emit_deferred_scopes(0)!
+	p.emit_return_cleanup()!
 	if p.return_is_option {
 		p.store_option_error_details(value.option_error_type, value.option_error_message, value.option_error_code)
 		p.store_option_failure(p.program.m.get_or_add_const(p.program.i1_type, '1'))
@@ -5826,7 +5826,11 @@ fn (mut p FastArm64Parser) parse_option_handler_block(option_value FastArm64Valu
 			p.parse_statement()!
 			continue
 		}
-		candidate := p.parse_expression(0)!
+		candidate := if p.option_handler_expression_is_final() {
+			p.parse_contextual_value(option_value.typ_name)!
+		} else {
+			p.parse_expression(0)!
+		}
 		mut is_last := p.tok == .rcbr
 		if p.tok == .semicolon {
 			p.next()
@@ -5844,6 +5848,41 @@ fn (mut p FastArm64Parser) parse_option_handler_block(option_value FastArm64Valu
 	p.pop_defer_scope()
 	p.pop_local_scope()
 	return fallback, has_fallback
+}
+
+fn (p &FastArm64Parser) option_handler_expression_is_final() bool {
+	mut look := p.s
+	mut parentheses := if p.tok == .lpar { 1 } else { 0 }
+	mut brackets := if p.tok == .lsbr { 1 } else { 0 }
+	mut braces := if p.tok == .lcbr { 1 } else { 0 }
+	for {
+		tok := look.scan()
+		match tok {
+			.lpar { parentheses++ }
+			.rpar { parentheses-- }
+			.lsbr { brackets++ }
+			.rsbr { brackets-- }
+			.lcbr { braces++ }
+			.rcbr {
+				if parentheses == 0 && brackets == 0 && braces == 0 {
+					return true
+				}
+				braces--
+			}
+			.semicolon {
+				if parentheses == 0 && brackets == 0 && braces == 0 {
+					mut next := look.scan()
+					for next == .semicolon {
+						next = look.scan()
+					}
+					return next == .rcbr
+				}
+			}
+			.eof { return false }
+			else {}
+		}
+	}
+	return false
 }
 
 fn (mut p FastArm64Parser) option_handler_token_is_statement() bool {
@@ -5970,7 +6009,7 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 			return value
 		}
 		.key_if {
-			return p.parse_if_expression()
+			return p.parse_if_expression('')
 		}
 		.key_match {
 			return p.parse_match_expression()
@@ -6098,12 +6137,27 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 			p.parse_return()!
 			arm_terminated = true
 		} else {
-			arm_value = p.parse_expression(0)!
+			expected_arm_type := if result_tuple_types.len > 0 {
+				result_tuple_types[0]
+			} else {
+				result_name
+			}
+			arm_value = if result_slot == ssa.ValueID(0) {
+				p.parse_expression(0)!
+			} else {
+				p.parse_contextual_value(expected_arm_type)!
+			}
 			if p.tok == .comma {
 				mut values := [arm_value]
 				for p.tok == .comma {
 					p.next()
-					values << p.parse_expression(0)!
+					value_index := values.len
+					values << if result_slot != ssa.ValueID(0)
+						&& value_index < result_tuple_types.len {
+						p.parse_contextual_value(result_tuple_types[value_index])!
+					} else {
+						p.parse_expression(0)!
+					}
 				}
 				mut types := []ssa.TypeID{cap: values.len}
 				mut type_names := []string{cap: values.len}
@@ -6676,7 +6730,7 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 	}
 }
 
-fn (mut p FastArm64Parser) parse_if_expression() !FastArm64Value {
+fn (mut p FastArm64Parser) parse_if_expression(expected_type_name string) !FastArm64Value {
 	p.expect(.key_if)!
 	condition := p.parse_expression(0)!
 	for p.tok == .semicolon {
@@ -6692,7 +6746,11 @@ fn (mut p FastArm64Parser) parse_if_expression() !FastArm64Value {
 	p.mark_terminated(p.cur_block)
 	p.cur_block = then_block
 	p.expect(.lcbr)!
-	then_value := p.parse_expression(0)!
+	then_value := if expected_type_name == '' {
+		p.parse_expression(0)!
+	} else {
+		p.parse_contextual_value(expected_type_name)!
+	}
 	for p.tok == .semicolon {
 		p.next()
 	}
@@ -6717,14 +6775,14 @@ fn (mut p FastArm64Parser) parse_if_expression() !FastArm64Value {
 	mut else_value := FastArm64Value{}
 	mut else_terminated := false
 	if p.tok == .key_if {
-		else_value = p.parse_if_expression()!
+		else_value = p.parse_if_expression(then_value.typ_name)!
 	} else {
 		p.expect(.lcbr)!
 		if p.tok == .key_return {
 			p.parse_return()!
 			else_terminated = true
 		} else {
-			else_value = p.parse_expression(0)!
+			else_value = p.parse_contextual_value(then_value.typ_name)!
 		}
 		for p.tok == .semicolon {
 			p.next()
@@ -9314,8 +9372,20 @@ fn (mut p FastArm64Parser) emit_spawn_call(function_key string, symbol string, f
 fn (mut p FastArm64Parser) emit_spawn_wait(value FastArm64Value) FastArm64Value {
 	null_pointer := p.program.m.get_or_add_const(p.program.ptr_i8, '0')
 	join_ref := p.program.m.add_value(.func_ref, p.program.i32_type, 'pthread_join', p.program.fn_ids['pthread_join'])
-	p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [join_ref, value.spawn_handle,
-		null_pointer])
+	status := p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [join_ref,
+		value.spawn_handle, null_pointer])
+	zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
+	joined := p.program.instr2(.eq, p.cur_block, p.program.i1_type, status, zero)
+	ready := p.program.m.add_block(p.func_id, 'thread_join_ready')
+	failed := p.program.m.add_block(p.func_id, 'thread_join_failed')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, joined, ssa.ValueID(ready), ssa.ValueID(failed))
+	p.mark_terminated(p.cur_block)
+	exit_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'exit', p.program.fn_ids['exit'])
+	one := p.program.m.get_or_add_const(p.program.i32_type, '1')
+	p.program.m.add_instr(.call, failed, p.program.void_type, [exit_ref, one])
+	p.program.instr0(.unreachable, failed, p.program.void_type)
+	p.mark_terminated(failed)
+	p.cur_block = ready
 	mut result_id := ssa.ValueID(0)
 	if value.spawn_result_type != p.program.void_type {
 		context := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(value.spawn_context_type), value.spawn_context)
