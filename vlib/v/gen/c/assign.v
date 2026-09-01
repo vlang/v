@@ -1325,6 +1325,13 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							if sym.kind in [.map, .array] {
 								g.expr(val)
 								g.writeln('});')
+								// Pop the `cur_indexexpr` entry pushed by the index expr
+								// above, otherwise it leaks and corrupts later assignments.
+								ci := g.cur_indexexpr.index(left.pos.pos)
+								if ci >= 0 {
+									g.cur_indexexpr.delete(ci)
+								}
+								g.is_arraymap_set = g.cur_indexexpr.len > 0
 								continue
 							}
 						}
