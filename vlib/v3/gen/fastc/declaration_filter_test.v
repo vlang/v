@@ -78,6 +78,27 @@ fn test_filtered_eof_comptime_spans_include_closing_brace() {
 	assert partial.constant_sources[path].ends_with('}')
 }
 
+fn test_constant_visibility_resets_after_each_declaration() {
+	prefs := pref.new_preferences()
+	path := 'constant_visibility.v'
+	source := 'module example\n\npub const public_one = 1\nconst private_one = 2\npub const (\n\tpublic_group = 3\n)\nconst private_after_group = 4\n'
+	partial := fastc_collect_declaration_chunk([
+		FastcSourceFile{
+			path: path
+			source: source
+			header: FastcSourceHeader{
+				module_name: 'example'
+				has_constants: true
+			}
+		},
+	], prefs, 0, 1)
+	assert !partial.failed, partial.error_message
+	assert 'example.public_one' in partial.public_constants
+	assert 'example.public_group' in partial.public_constants
+	assert 'example.private_one' !in partial.public_constants
+	assert 'example.private_after_group' !in partial.public_constants
+}
+
 fn test_partitioned_c_directives_match_materialized_hoisting() {
 	for source in [
 		'one\n#include <x.h>\ntwo\n# if FLAG\nthree\n#ifdef INNER\nfour\n#endif\n#else\nfive\n#endif\nsix',

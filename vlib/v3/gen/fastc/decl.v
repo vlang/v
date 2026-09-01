@@ -224,6 +224,7 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 					}
 					tok = scan.scan()
 				}
+				previous_tok = .unknown
 				continue
 			}
 			if tok != .name {
@@ -260,6 +261,7 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 					source.len, mut constant_source)
 				emitted_end = source.len
 			}
+			previous_tok = .unknown
 			continue
 		}
 		if tok == .lcbr {
