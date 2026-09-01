@@ -4304,16 +4304,23 @@ fn (mut p FastArm64Parser) parse_return() ! {
 		}
 		p.program.instr0(.ret, p.cur_block, p.program.void_type)
 	} else {
-		first := if p.tok == .dot {
-			p.parse_enum_shorthand(p.return_name)!
-		} else {
-			p.parse_expression(0)!
-		}
+		first_type_name := if p.return_names.len > 0 { p.return_names[0] } else { p.return_name }
+		first := p.parse_contextual_value(first_type_name)!
 		if p.tok == .comma {
 			mut values := [first]
 			for p.tok == .comma {
 				p.next()
-				values << p.parse_expression(0)!
+				value_index := values.len
+				value_type_name := if value_index < p.return_names.len {
+					p.return_names[value_index]
+				} else {
+					''
+				}
+				values << if value_type_name == '' {
+					p.parse_expression(0)!
+				} else {
+					p.parse_contextual_value(value_type_name)!
+				}
 			}
 			layout := p.program.m.type_store.types[p.return_typ]
 			if layout.kind != .struct_t || layout.fields.len != values.len {
@@ -5481,16 +5488,20 @@ fn (mut p FastArm64Parser) parse_expression(min_precedence int) !FastArm64Value 
 			}
 			continue
 		}
-		old_array_element := p.array_element
-		if op in [.key_in, .not_in] && p.tok == .lsbr {
-			p.array_element = left.typ_name
+		contextual_right_type := if op in [.key_in, .not_in] && p.tok == .lsbr {
+			left.typ_name
+		} else if op == .left_shift && left.typ == p.program.array_type {
+			p.program.array_element_type_name(left.typ_name) or { '' }
+		} else {
+			''
 		}
-		right := if p.tok == .dot {
+		right := if contextual_right_type != '' {
+			p.parse_contextual_value_with_precedence(contextual_right_type, precedence + 1)!
+		} else if p.tok == .dot {
 			p.parse_enum_shorthand(left.typ_name)!
 		} else {
 			p.parse_expression(precedence + 1)!
 		}
-		p.array_element = old_array_element
 		left = p.emit_binary(op, left, right)!
 	}
 	return left
@@ -6011,11 +6022,16 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 	value := p.parse_expression(0)!
 	p.expect(.lcbr)!
 	merge_block := p.program.m.add_block(p.func_id, 'match_expr_merge')
+	option_failed_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.i1_type))
+	option_error_type_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.u64_type))
+	option_error_code_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.i32_type))
+	option_error_message_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
 	mut test_block := p.cur_block
 	mut result_slot := ssa.ValueID(0)
 	mut result_type := ssa.TypeID(0)
 	mut result_name := ''
 	mut result_tuple_types := []string{}
+	mut has_option_metadata := false
 	mut has_else := false
 	for p.tok !in [.rcbr, .eof] {
 		if p.tok == .semicolon {
@@ -6099,6 +6115,8 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 		}
 		p.expect(.rcbr)!
 		if !arm_terminated {
+			has_option_metadata = has_option_metadata || p.if_expression_value_has_option_metadata(arm_value)
+			p.store_if_expression_option_metadata(arm_value, option_failed_slot, option_error_type_slot, option_error_code_slot, option_error_message_slot)
 			if result_slot == ssa.ValueID(0) {
 				result_type = arm_value.typ
 				result_name = arm_value.typ_name
@@ -6132,6 +6150,18 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 		typ: result_type
 		typ_name: result_name
 		tuple_types: result_tuple_types
+		option_failed: if has_option_metadata {
+			p.program.instr1(.load, merge_block, p.program.i1_type, option_failed_slot)} else {
+			ssa.ValueID(0)}
+		option_error_type: if has_option_metadata {
+			p.program.instr1(.load, merge_block, p.program.u64_type, option_error_type_slot)} else {
+			ssa.ValueID(0)}
+		option_error_code: if has_option_metadata {
+			p.program.instr1(.load, merge_block, p.program.i32_type, option_error_code_slot)} else {
+			ssa.ValueID(0)}
+		option_error_message: if has_option_metadata {
+			p.program.instr1(.load, merge_block, p.program.str_type, option_error_message_slot)} else {
+			ssa.ValueID(0)}
 	}
 }
 
@@ -7260,6 +7290,10 @@ fn (mut p FastArm64Parser) parse_struct_literal(type_name string) !FastArm64Valu
 }
 
 fn (mut p FastArm64Parser) parse_contextual_value(type_name string) !FastArm64Value {
+	return p.parse_contextual_value_with_precedence(type_name, 0)
+}
+
+fn (mut p FastArm64Parser) parse_contextual_value_with_precedence(type_name string, precedence int) !FastArm64Value {
 	previous_array_element := p.array_element
 	previous_map_key := p.map_key
 	previous_map_value := p.map_value
@@ -7273,7 +7307,7 @@ fn (mut p FastArm64Parser) parse_contextual_value(type_name string) !FastArm64Va
 	value := if p.tok == .dot {
 		p.parse_enum_shorthand(type_name)!
 	} else {
-		p.parse_expression(0)!
+		p.parse_expression(precedence)!
 	}
 	p.array_element = previous_array_element
 	p.map_key = previous_map_key
