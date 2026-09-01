@@ -732,6 +732,50 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 		name: 'Wide'
 	}
 	assert equality_transformer.fn_span_map_expansion_estimate(0, int(equality) + 1) > deferred_map_expansion_threshold
+
+	mut predicate_ast := flat.FlatAst.new()
+	predicate_value := predicate_ast.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+		typ: 'View'
+	})
+	predicate_start := predicate_ast.children.len
+	predicate_ast.children << predicate_value
+	predicate := predicate_ast.add_node(flat.Node{
+		kind: .is_expr
+		value: 'Target'
+		typ: 'bool'
+		children_start: predicate_start
+		children_count: 1
+	})
+	mut predicate_tc := types.TypeChecker.new(&predicate_ast)
+	predicate_tc.interface_names['View'] = true
+	mut predicate_transformer := new_transformer(mut predicate_ast, &predicate_tc, map[string]bool{})
+	assert predicate_transformer.fn_span_map_expansion_estimate(0, int(predicate) + 1) > deferred_map_expansion_threshold
+
+	mut selector_ast := flat.FlatAst.new()
+	selector_base := selector_ast.add_node(flat.Node{
+		kind: .ident
+		value: 'view'
+		typ: 'View'
+	})
+	selector_start := selector_ast.children.len
+	selector_ast.children << selector_base
+	selector := selector_ast.add_node(flat.Node{
+		kind: .selector
+		value: 'value'
+		typ: 'int'
+		children_start: selector_start
+		children_count: 1
+	})
+	mut selector_tc := types.TypeChecker.new(&selector_ast)
+	selector_tc.interface_names['View'] = true
+	selector_tc.interface_fields['View'] = [types.StructField{
+		name: 'value'
+		typ: types.Type(types.int_)
+	}]
+	mut selector_transformer := new_transformer(mut selector_ast, &selector_tc, map[string]bool{})
+	assert selector_transformer.fn_span_map_expansion_estimate(0, int(selector) + 1) > deferred_map_expansion_threshold
 }
 
 fn test_fn_span_map_expansion_estimate_defers_ownership_collection_clones() {
@@ -2750,6 +2794,7 @@ fn test_external_map_expansion_estimate_defers_owned_map_item_calls() {
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.compiler_owned_map_items_call_expands(a.nodes[int(items_call)]), method
+		assert t.fn_span_map_expansion_estimate(0, int(items_call) + 1) > deferred_map_expansion_threshold, method
 		assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold, method
 	}
 }
@@ -2804,6 +2849,7 @@ fn test_external_map_expansion_estimate_defers_array_equality_calls() {
 	}
 
 	assert t.compiler_array_search_call_expands(a.nodes[int(equals_call)])
+	assert t.fn_span_map_expansion_estimate(0, int(equals_call) + 1) > deferred_map_expansion_threshold
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
@@ -2856,6 +2902,7 @@ fn external_map_array_search_expansion_estimate(method string) int {
 		name: 'Wide'
 	}
 	assert t.compiler_array_search_call_expands(a.nodes[int(search_call)]), method
+	assert t.fn_span_map_expansion_estimate(0, int(search_call) + 1) > deferred_map_expansion_threshold, method
 	return t.external_map_tree_expansion_estimate(root, 0, 0)
 }
 
@@ -2916,6 +2963,7 @@ fn test_external_map_expansion_estimate_defers_owned_array_accessor_calls() {
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.compiler_owned_array_accessor_call_expands(a.nodes[int(accessor_call)]), method
+		assert t.fn_span_map_expansion_estimate(0, int(accessor_call) + 1) > deferred_map_expansion_threshold, method
 		assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold, method
 	}
 }
@@ -2976,6 +3024,7 @@ fn test_external_map_expansion_estimate_defers_owned_array_filter_calls() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.compiler_owned_array_filter_call_expands(a.nodes[int(filter_call)])
+	assert t.fn_span_map_expansion_estimate(0, int(filter_call) + 1) > deferred_map_expansion_threshold
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
@@ -3042,6 +3091,7 @@ fn test_external_map_expansion_estimate_defers_owned_array_map_calls() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.compiler_owned_array_map_call_expands(a.nodes[int(map_call)])
+	assert t.fn_span_map_expansion_estimate(0, int(map_call) + 1) > deferred_map_expansion_threshold
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
@@ -3098,6 +3148,7 @@ fn test_external_map_expansion_estimate_defers_compiler_collection_str_calls() {
 		}
 
 		assert t.compiler_collection_str_call_expands(a.nodes[int(str_call)]), collection_type
+		assert t.fn_span_map_expansion_estimate(0, int(str_call) + 1) > deferred_map_expansion_threshold, collection_type
 		assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold,
 			collection_type
 	}
@@ -3166,6 +3217,7 @@ fn test_external_map_expansion_estimate_defers_ownership_array_repeat_calls() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_array_repeat_call_expands(a.nodes[int(repeat_call)])
+	assert t.fn_span_map_expansion_estimate(0, int(repeat_call) + 1) > deferred_map_expansion_threshold
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 

@@ -712,6 +712,18 @@ fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node)
 	return t.sum_shared_field_type_name(base_type, node.value) != none
 }
 
+fn (mut t Transformer) compiler_call_expands_from_type_metadata(id flat.NodeId, node flat.Node) bool {
+	if t.runtime_type_metadata_call_expands(id, node) {
+		return true
+	}
+	if info := t.compiler_default_clone_call_info(node) {
+		if info.can_lower {
+			return true
+		}
+	}
+	return t.compiler_collection_clone_call_expands(node) || t.compiler_owned_map_items_call_expands(node) || t.compiler_array_search_call_expands(node) || t.compiler_owned_array_accessor_call_expands(node) || t.compiler_owned_array_filter_call_expands(node) || t.compiler_owned_array_map_call_expands(node) || t.compiler_collection_str_call_expands(node) || t.ownership_array_repeat_call_expands(node)
+}
+
 fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len || isnil(t.tc) {
 		return none
@@ -793,16 +805,11 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 		if t.external_equality_expands_from_type_metadata(node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
+		if node.kind in [.is_expr, .as_expr] || (node.kind == .selector && t.external_selector_expands_from_type_metadata(node)) {
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if node.kind == .call {
-			if t.runtime_type_metadata_call_expands(flat.NodeId(idx), node) {
-				estimate += deferred_map_expansion_threshold + 1
-			}
-			if info := t.compiler_default_clone_call_info(node) {
-				if info.can_lower {
-					estimate += deferred_map_expansion_threshold + 1
-				}
-			}
-			if t.compiler_collection_clone_call_expands(node) {
+			if t.compiler_call_expands_from_type_metadata(flat.NodeId(idx), node) {
 				estimate += deferred_map_expansion_threshold + 1
 			}
 		}
