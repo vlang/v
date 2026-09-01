@@ -711,6 +711,9 @@ fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node)
 	if node.children_count == 0 {
 		return false
 	}
+	if node.value == 'variant_types' && t.selector_base_is_comptime_type_value(t.a.child(&node, 0)) {
+		return true
+	}
 	base_type := t.node_type(t.a.child(&node, 0))
 	iface_name := t.resolve_interface_type_name(base_type)
 	if iface_name.len > 0 && node.value !in ['_typ', '_object'] {

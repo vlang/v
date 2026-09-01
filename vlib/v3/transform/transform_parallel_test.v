@@ -1175,6 +1175,30 @@ fn test_disabled_struct_operator_zero_value_expansion_is_reserved() {
 	assert t.fn_span_map_expansion_estimate(int(lhs), int(infix) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_variant_types_metadata_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	type_value := a.add_node(flat.Node{
+		kind: .typeof_expr
+		value: 'WideSum'
+		typ: 'TypeInfo'
+	})
+	selector_start := a.children.len
+	a.children << type_value
+	variant_types := a.add_node(flat.Node{
+		kind: .selector
+		value: 'variant_types'
+		typ: '[]int'
+		children_start: selector_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types['WideSum'] = ['First', 'Second']
+
+	assert t.external_selector_expands_from_type_metadata(a.nodes[int(variant_types)])
+	assert t.fn_span_map_expansion_estimate(int(type_value), int(variant_types) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_or_expr_zero_value_expansion_is_reserved() {
 	mut a := flat.FlatAst.new()
 	optional_value := a.add_node(flat.Node{
