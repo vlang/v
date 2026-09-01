@@ -2113,6 +2113,14 @@ fn test_external_map_expansion_estimate_defers_metadata_driven_equality() {
 	assert external_map_equality_expansion_estimate('map[string]WideRecord', 'WideRecord', false) > deferred_map_expansion_threshold
 }
 
+fn test_map_fixed_array_equality_reserves_missing_value_zeroing() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.equality_type_expands_from_metadata('map[string][4096][]int', 0)
+}
+
 fn test_external_map_expansion_estimate_includes_index_reconstruction() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{

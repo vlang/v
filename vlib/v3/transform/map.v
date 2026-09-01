@@ -693,6 +693,9 @@ fn (t &Transformer) equality_type_expands_from_metadata(typ string, depth int) b
 	}
 	if clean.starts_with('map[') {
 		_, value_type := t.map_type_parts(clean)
+		if t.zero_value_expansion_estimate(flat.NodeId(-1), value_type) > 0 {
+			return true
+		}
 		return value_type.len > 0 && t.equality_type_expands_from_metadata(value_type, depth + 1)
 	}
 	return t.resolve_interface_type_name(clean).len > 0 || t.struct_lookup_name(clean).len > 0
