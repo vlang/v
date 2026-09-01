@@ -7834,7 +7834,8 @@ fn c_flag_framework_include_dirs(flags []string) []string {
 			expect_include_dir = false
 		} else if tok in ['-F', '-iframework'] {
 			expect_include_dir = true
-		} else if tok.starts_with('-F') && tok.len > 2 {
+		} else if tok.starts_with('-F') && tok.len > 2 && tok != '-framework' {
+			// `-framework <name>` links a framework; only `-F<dir>` adds a search path.
 			dir = tok[2..].trim_left('=')
 		} else if tok.starts_with('-iframework') && tok.len > '-iframework'.len {
 			dir = tok['-iframework'.len..].trim_left('=')
