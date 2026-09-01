@@ -3737,18 +3737,26 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 		locals = merged.move()
 		return true
 	}
-	if stmt.kind == .infix && stmt.op in [.logical_and, .logical_or] && stmt.children_count > 0 {
-		// The left operand is always evaluated, while every later operand is
-		// conditional. Preserve pointer origins from both the short-circuit path
-		// and the path that evaluates the remaining operands.
-		if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
-			return false
+	if stmt.kind == .infix && stmt.children_count > 0 {
+		if stmt.op in [.logical_and, .logical_or] {
+			// The left operand is always evaluated, while every later operand is
+			// conditional. Preserve pointer origins from both the short-circuit path
+			// and the path that evaluates the remaining operands.
+			if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 0), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+				return false
+			}
+			for i in 1 .. stmt.children_count {
+				before := locals.clone()
+				mut evaluated := before.clone()
+				if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut evaluated, mut loop_exits, mut return_exits, '', active_defer_count) {
+					array_map_merge_local_pointer_origins(mut locals, evaluated, before)
+				}
+			}
+			return true
 		}
-		for i in 1 .. stmt.children_count {
-			before := locals.clone()
-			mut evaluated := before.clone()
-			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut evaluated, mut loop_exits, mut return_exits, '', active_defer_count) {
-				array_map_merge_local_pointer_origins(mut locals, evaluated, before)
+		for i in 0 .. stmt.children_count {
+			if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut locals, mut loop_exits, mut return_exits, '', active_defer_count) {
+				return false
 			}
 		}
 		return true
