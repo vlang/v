@@ -12002,3 +12002,60 @@ fn main() {
 	out := run_good_with_flags(v3_bin, 'array_map_c_for_pointer_origin', '-ownership', source)
 	assert out == '0\nsource'
 }
+
+fn test_array_map_applies_c_for_post_to_continue_pointer_origins() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			local := Item{
+				text: "local"
+			}
+			mut local_box := PointerBox{
+				value: unsafe { &local }
+			}
+			mut alias := &local_box
+			mut i := 0
+			for i = 0; i < 1; alias = &local_box {
+				alias = &saved
+				i++
+				continue
+			}
+			alias.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_c_for_continue_post_pointer_origin_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_c_for_continue_post_pointer_origin', '-ownership', source)
+	assert out == '0'
+}

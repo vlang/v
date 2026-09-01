@@ -3695,7 +3695,13 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 			if exit.is_goto {
 				loop_exits << exit
 			} else if exit.label.len == 0 || exit.label == loop_label {
-				array_map_merge_local_pointer_origins(mut locals, exit.origins, loop_entry)
+				mut exit_origins := exit.origins.clone()
+				if exit.is_continue && stmt.kind == .for_stmt && stmt.children_count >= 3 {
+					mut post_exits := []ArrayMapLoopPointerExit{}
+					mut post_returns := []ArrayMapReturnPointerExit{}
+					t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, 2), elem_name, mut exit_origins, mut post_exits, mut post_returns, '', active_defer_count)
+				}
+				array_map_merge_local_pointer_origins(mut locals, exit_origins, loop_entry)
 			} else {
 				loop_exits << exit
 			}
