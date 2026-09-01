@@ -1205,6 +1205,43 @@ fn main() {
 	}
 }
 
+fn test_fastc_arm64_array_many_insert_and_slice_byte_offsets() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_insert_slice_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		source := '
+fn main() {
+	mut values := [1, 4]
+	values.insert(1, [2, 3])
+	mut base := [u64(1), 2, 3]
+	view := base[1..]
+	nested := view[1..]
+	base.insert(0, u64(0))
+	if values != [1, 2, 3, 4] || view != [u64(2), 3] || nested != [u64(3)]
+		|| view.offset != int(sizeof(u64)) || nested.offset != 2 * int(sizeof(u64)) {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+'
+		os.write_file(source_path, source) or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n'
+	}
+}
+
 fn test_fastc_arm64_path_overrides_match_os_normalization() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_paths_${os.getpid()}')
