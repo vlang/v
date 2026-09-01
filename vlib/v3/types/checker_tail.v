@@ -9304,9 +9304,8 @@ fn (tc &TypeChecker) storage_lvalue_path_from_param(id flat.NodeId, name string,
 	if node.kind == .ident {
 		return if node.value == name || target_param_idx in aliases[node.value] { '' } else { none }
 	}
-	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count > 0 {
-		return tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name, aliases,
-			target_param_idx)
+	if (node.kind in [.paren, .cast_expr, .as_expr] || (node.kind == .prefix && node.op == .mul)) && node.children_count > 0 {
+		return tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name, aliases, target_param_idx)
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.storage_lvalue_path_from_param(tc.a.child(&node, 0), name, aliases,
