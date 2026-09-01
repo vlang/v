@@ -697,6 +697,34 @@ fn test_fn_span_map_expansion_estimate_defers_compiler_default_clone_calls() {
 	assert t.fn_span_map_expansion_estimate(int(receiver), int(clone_call) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_defers_struct_defaults() {
+	mut a := flat.FlatAst.new()
+	default_value := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+		typ: 'int'
+	})
+	init := a.add_node(flat.Node{
+		kind: .struct_init
+		value: 'Wide'
+		typ: 'Wide'
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Wide'] = StructInfo{
+		name: 'Wide'
+		fields: [
+			FieldInfo{
+				name: 'value'
+				typ: 'int'
+				default_expr: default_value
+			},
+		]
+	}
+
+	assert t.fn_span_map_expansion_estimate(int(init), int(init) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality() {
 	mut metadata_ast := flat.FlatAst.new()
 	type_idx_call := add_runtime_metadata_call(mut metadata_ast, 'item', 'Item', 'type_idx', 'int')
@@ -815,6 +843,49 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_collection_clones() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.fn_span_map_expansion_estimate(0, int(reverse_call) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_fn_span_map_expansion_estimate_defers_ownership_for_in_binding_clones() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	index := a.add_node(flat.Node{
+		kind: .ident
+		value: '_'
+		typ: 'int'
+	})
+	item := a.add_node(flat.Node{
+		kind: .ident
+		value: 'item'
+		typ: 'Wide'
+	})
+	items := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: '[]Wide'
+	})
+	loop_start := a.children.len
+	a.children << index
+	a.children << item
+	a.children << items
+	loop := a.add_node(flat.Node{
+		kind: .for_in_stmt
+		value: '3'
+		children_start: loop_start
+		children_count: 3
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	tc.struct_implements['Wide'] = ['IClone']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.ownership_for_in_binding_clone_expands(a.nodes[int(loop)])
+	assert t.fn_span_map_expansion_estimate(0, int(loop) + 1) > deferred_map_expansion_threshold
 }
 
 fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {

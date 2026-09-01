@@ -724,6 +724,42 @@ fn (mut t Transformer) compiler_call_expands_from_type_metadata(id flat.NodeId, 
 	return t.compiler_collection_clone_call_expands(node) || t.compiler_owned_map_items_call_expands(node) || t.compiler_array_search_call_expands(node) || t.compiler_owned_array_accessor_call_expands(node) || t.compiler_owned_array_filter_call_expands(node) || t.compiler_owned_array_map_call_expands(node) || t.compiler_collection_str_call_expands(node) || t.ownership_array_repeat_call_expands(node)
 }
 
+fn (mut t Transformer) ownership_for_in_binding_clone_expands(node flat.Node) bool {
+	if node.kind != .for_in_stmt || node.children_count < 3 {
+		return false
+	}
+	key_id := t.a.child(&node, 0)
+	value_id := t.a.child(&node, 1)
+	has_index := int(value_id) >= 0
+	iter_type := t.normalize_type_alias(t.detect_for_in_type(node))
+	map_iter_type := t.clean_map_type(iter_type)
+	if map_iter_type.starts_with('map[') {
+		key_type, value_type := t.map_type_parts(map_iter_type)
+		if has_index {
+			key_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+			if key_name !in ['', '_'] && t.normalize_type_alias(key_type).trim_space() != 'string'
+				&& t.ownership_for_in_type_needs_clone(key_type) {
+				return true
+			}
+			value_name := t.a.nodes[int(value_id)].value
+			return value_name !in ['', '_'] && t.ownership_for_in_type_needs_clone(value_type)
+		}
+		value_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+		return value_name !in ['', '_'] && t.ownership_for_in_type_needs_clone(value_type)
+	}
+	if !iter_type.starts_with('[]') && !t.is_fixed_array_type(iter_type) {
+		return false
+	}
+	binding_id := if has_index { value_id } else { key_id }
+	binding_name := if int(binding_id) >= 0 { t.a.nodes[int(binding_id)].value } else { '' }
+	if binding_name in ['', '_'] {
+		return false
+	}
+	elem_type := t.infer_for_in_elem_type(iter_type, node)
+	value_type := if node.op == .amp { '&${elem_type}' } else { elem_type }
+	return t.ownership_for_in_type_needs_clone(value_type)
+}
+
 fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len || isnil(t.tc) {
 		return none
@@ -790,6 +826,9 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			continue
 		}
 		node := t.a.nodes[idx]
+		if node.kind in [.struct_init, .assoc] {
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if node.kind == .map_init {
 			estimate += t.map_init_expansion_estimate(flat.NodeId(idx), node)
 		}
@@ -812,6 +851,9 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			if t.compiler_call_expands_from_type_metadata(flat.NodeId(idx), node) {
 				estimate += deferred_map_expansion_threshold + 1
 			}
+		}
+		if t.ownership_for_in_binding_clone_expands(node) {
+			estimate += deferred_map_expansion_threshold + 1
 		}
 		// Map index lowering replaces a constant identifier with its initializer
 		// through const_expr_for_ident(). That edge is semantic and is not present
