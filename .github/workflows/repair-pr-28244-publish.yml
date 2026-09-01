@@ -13,18 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  publish:
+  publish-windows:
     if: contains(github.event.head_commit.message, '[publish-pr-28244]')
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-24.04-arm
-          - macos-15
-          - macos-15-intel
-          - macos-26
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    runs-on: windows-latest
+    timeout-minutes: 120
     env:
       ORIGINAL_BASE: cbf4e8509630da710d04cc9fd0f777761ebe55a7
       ORIGINAL_HEAD: 2a6677b34d621f7b44e48c73ad773180aa9d8ea8
@@ -40,6 +32,8 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          repair_script="$RUNNER_TEMP/repair_pr_28244.py"
+          patch_file="$RUNNER_TEMP/pr-28244.patch"
           cat \
             .github/pr28244-repair/00.py.part \
             .github/pr28244-repair/00z.py.part \
@@ -48,64 +42,71 @@ jobs:
             .github/pr28244-repair/04.py.part \
             .github/pr28244-repair/05.py.part \
             .github/pr28244-repair/99.py.part \
-            > /tmp/repair_pr_28244.py
-          python3 -m py_compile /tmp/repair_pr_28244.py
+            > "$repair_script"
+          python -m py_compile "$repair_script"
           git fetch --no-tags origin master
-          git diff --binary "$ORIGINAL_BASE" "$ORIGINAL_HEAD" > /tmp/pr-28244.patch
+          git diff --binary "$ORIGINAL_BASE" "$ORIGINAL_HEAD" > "$patch_file"
           git checkout -B repaired origin/master
-          git apply --3way --index --whitespace=nowarn /tmp/pr-28244.patch
+          git apply --3way --index --whitespace=nowarn "$patch_file"
           git reset
-          REPO_ROOT="$GITHUB_WORKSPACE" python3 /tmp/repair_pr_28244.py
+          REPO_ROOT="$GITHUB_WORKSPACE" python "$repair_script"
           git diff --check
 
-      - name: Bootstrap and format
-        shell: bash
+      - name: Bootstrap V with MSVC
+        shell: pwsh
         run: |
-          set -euxo pipefail
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            VFLAGS="-cc clang" make -j2
-          else
-            VFLAGS="-cc cc" make -j2
-          fi
-          files=(
-            vlib/v3/tests/ownership_borrowed_projection_error_test.v
-            vlib/v3/tests/ownership_borrowed_projection_review_test.v
-            vlib/v3/tests/ownership_toml_decode_test.v
-            vlib/v3/transform/array.v
-            vlib/v3/transform/fn.v
-            vlib/v3/transform/fn_test.v
-            vlib/v3/transform/if.v
-            vlib/v3/transform/interface.v
-            vlib/v3/transform/map.v
-            vlib/v3/transform/or.v
-            vlib/v3/transform/return.v
-            vlib/v3/transform/struct.v
-            vlib/v3/transform/transform.v
-            vlib/v3/transform/transform_parallel_test.v
-            vlib/v3/types/checker_ownership_alias_test.v
-            vlib/v3/types/checker_ownership_d_ownership.v
-            vlib/v3/types/checker_ownership_notd_ownership.v
+          ./makev.bat -msvc
+          if ($LASTEXITCODE -ne 0) { throw "makev.bat failed with exit code $LASTEXITCODE" }
+
+      - name: Format changed V sources
+        shell: pwsh
+        run: |
+          $files = @(
+            'vlib/v3/tests/ownership_borrowed_projection_error_test.v',
+            'vlib/v3/tests/ownership_borrowed_projection_review_test.v',
+            'vlib/v3/tests/ownership_toml_decode_test.v',
+            'vlib/v3/transform/array.v',
+            'vlib/v3/transform/fn.v',
+            'vlib/v3/transform/fn_test.v',
+            'vlib/v3/transform/if.v',
+            'vlib/v3/transform/interface.v',
+            'vlib/v3/transform/map.v',
+            'vlib/v3/transform/or.v',
+            'vlib/v3/transform/return.v',
+            'vlib/v3/transform/struct.v',
+            'vlib/v3/transform/transform.v',
+            'vlib/v3/transform/transform_parallel_test.v',
+            'vlib/v3/types/checker_ownership_alias_test.v',
+            'vlib/v3/types/checker_ownership_d_ownership.v',
+            'vlib/v3/types/checker_ownership_notd_ownership.v'
           )
-          for file in "${files[@]}"; do
-            ./v fmt -w "$file"
-          done
+          foreach ($file in $files) {
+            ./v.exe fmt -w $file
+            if ($LASTEXITCODE -ne 0) { throw "v fmt failed for $file" }
+          }
           git diff --check
+          if ($LASTEXITCODE -ne 0) { throw "git diff --check failed" }
 
       - name: Compile V3 and run focused regressions
-        shell: bash
+        shell: pwsh
         run: |
-          set -euxo pipefail
-          ./v -nocache -gc none -d ownership \
-            -path "$PWD/vlib|@vlib|@vmodules" \
-            -o /tmp/v3-pr-28244 vlib/v3/v3.v
-          ./v test vlib/v3/tests/ownership_borrowed_projection_review_test.v
-          ./v test vlib/v3/tests/ownership_borrowed_projection_error_test.v
-          ./v test vlib/v3/tests/ownership_toml_decode_test.v
-          ./v test vlib/v3/types/checker_ownership_alias_test.v
-          ./v test vlib/v3/transform/fn_test.v
-          ./v test vlib/v3/transform/transform_parallel_test.v
-          ./v -nocache -gc none -path "$PWD/vlib|@vlib|@vmodules" \
-            -o /tmp/v3-pr-28244-no-ownership vlib/v3/v3.v
+          $vlib = "$($PWD.Path)\vlib|@vlib|@vmodules"
+          ./v.exe -nocache -gc none -d ownership -path $vlib -o "$env:RUNNER_TEMP\v3-pr-28244.exe" vlib/v3/v3.v
+          if ($LASTEXITCODE -ne 0) { throw "ownership V3 build failed" }
+          $tests = @(
+            'vlib/v3/tests/ownership_borrowed_projection_review_test.v',
+            'vlib/v3/tests/ownership_borrowed_projection_error_test.v',
+            'vlib/v3/tests/ownership_toml_decode_test.v',
+            'vlib/v3/types/checker_ownership_alias_test.v',
+            'vlib/v3/transform/fn_test.v',
+            'vlib/v3/transform/transform_parallel_test.v'
+          )
+          foreach ($test in $tests) {
+            ./v.exe test $test
+            if ($LASTEXITCODE -ne 0) { throw "test failed: $test" }
+          }
+          ./v.exe -nocache -gc none -path $vlib -o "$env:RUNNER_TEMP\v3-pr-28244-no-ownership.exe" vlib/v3/v3.v
+          if ($LASTEXITCODE -ne 0) { throw "non-ownership V3 build failed" }
 
       - name: Create clean semantic commits
         shell: bash
@@ -146,5 +147,4 @@ jobs:
             echo "PR branch moved from $GITHUB_SHA to $current; not publishing stale repair" >&2
             exit 1
           fi
-          staging_branch="pr-28244-repair-staging-${{ matrix.os }}"
-          git push --force origin "HEAD:refs/heads/${staging_branch}"
+          git push --force origin HEAD:refs/heads/pr-28244-repair-staging-windows
