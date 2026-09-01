@@ -1,0 +1,174 @@
+
+
+def patch_transformer() -> None:
+    array_path = ROOT / "vlib/v3/transform/array.v"
+    fn_path = ROOT / "vlib/v3/transform/fn.v"
+    struct_path = ROOT / "vlib/v3/transform/struct.v"
+
+    replace_once(
+        array_path,
+        """fn (t &Transformer) borrowed_projection_clone_required(source_id flat.NodeId, typ string) bool {
+\tif isnil(t.tc) {
+\t\treturn false
+\t}
+\t// The checker resolves a bare identifier against its lexical scope before constants.
+\t// Preserve that decision after checking, when its active scope is no longer available.
+\tif t.expr_is_local_ident_read(source_id) {
+\t\treturn false
+\t}
+\t// The checker resolves the field/slice/cast shapes from node-annotated types alone, so it
+\t// and the transformer agree without a shared map. A `const` read is resolved separately in
+\t// transformer contexts that need the suffix fallback, so exclude active locals before using
+\t// that module-independent resolver.
+\tif !t.tc.ownership_expr_is_borrowed_projection(source_id)
+\t\t&& !t.expr_reads_owned_const(source_id) {
+\t\treturn false
+\t}
+\treturn t.compiler_default_clone_type_needs_work(typ)
+}
+""",
+        """fn (t &Transformer) borrowed_projection_clone_required(source_id flat.NodeId, typ string) bool {
+\treturn !isnil(t.tc) && t.tc.ownership_expr_requires_borrowed_clone(source_id)
+\t\t&& t.compiler_default_clone_type_needs_work(typ)
+}
+""",
+    )
+
+    remove_regex_once(
+        array_path,
+        r"\nfn \(t &Transformer\) expr_is_local_ident_read\(id flat\.NodeId\) bool \{.*?\n\}\n(?=\n// clone_borrowed_assignment_value)",
+    )
+    remove_regex_once(
+        array_path,
+        r"\n// expr_reads_owned_const reports whether `id`.*?\nfn \(t &Transformer\) expr_reads_owned_const\(id flat\.NodeId\) bool \{.*?\n\}\n(?=\n// clean_array_append_lhs_type)",
+    )
+
+    replace_once(
+        fn_path,
+        """\t// transform_call_arg_for_param already clones borrowed projections and extracts index
+\t// moves into an owned temporary. Cloning either transformed result again would leak the
+\t// first independent value.
+\tif (!isnil(t.tc) && (t.tc.ownership_expr_is_borrowed_projection(arg_id)
+\t\t|| t.tc.ownership_index_read_moves_value(arg_id)))
+\t\t|| t.expr_reads_owned_const(arg_id) {
+\t\treturn value
+\t}
+""",
+        """\t// transform_call_arg_for_param already materializes checker-marked borrowed clones
+\t// and extracts index moves into an owned temporary. Do not clone either result again.
+\tif !isnil(t.tc) && (t.tc.ownership_expr_requires_borrowed_clone(arg_id)
+\t\t|| t.tc.ownership_index_read_moves_value(arg_id)) {
+\t\treturn value
+\t}
+""",
+    )
+
+    replace_once(
+        struct_path,
+        """\tif isnil(t.tc) || !t.tc.ownership_expr_is_borrowed_projection(value_id) {
+\t\treturn t.fixed_array_value_to_array(value_id, fixed_type, array_type)
+\t}
+""",
+        """\tif isnil(t.tc) || !t.tc.ownership_expr_requires_borrowed_clone(value_id) {
+\t\treturn t.fixed_array_value_to_array(value_id, fixed_type, array_type)
+\t}
+""",
+    )
+
+
+def patch_nonownership_stub() -> None:
+    path = ROOT / "vlib/v3/types/checker_ownership_notd_ownership.v"
+    replace_once(
+        path,
+        """pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(_ flat.NodeId) bool {
+\treturn false
+}
+
+// ownership_expr_clones_borrowed_storage reports no clone metadata when ownership is disabled.
+""",
+        """pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(_ flat.NodeId) bool {
+\treturn false
+}
+
+// ownership_expr_requires_borrowed_clone reports no checker action without ownership analysis.
+pub fn (tc &TypeChecker) ownership_expr_requires_borrowed_clone(_ flat.NodeId) bool {
+\treturn false
+}
+
+// ownership_expr_clones_borrowed_storage reports no clone metadata when ownership is disabled.
+""",
+    )
+
+
+def find_matching_brace(text: str, open_pos: int) -> int:
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    line_comment = False
+    block_comment = 0
+    i = open_pos
+    while i < len(text):
+        ch = text[i]
+        nxt = text[i + 1] if i + 1 < len(text) else ""
+        if line_comment:
+            if ch == "\n":
+                line_comment = False
+            i += 1
+            continue
+        if block_comment:
+            if ch == "/" and nxt == "*":
+                block_comment += 1
+                i += 2
+                continue
+            if ch == "*" and nxt == "/":
+                block_comment -= 1
+                i += 2
+                continue
+            i += 1
+            continue
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif ch == "\\" and quote != "`":
+                escaped = True
+            elif ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch == "/" and nxt == "/":
+            line_comment = True
+            i += 2
+            continue
+        if ch == "/" and nxt == "*":
+            block_comment = 1
+            i += 2
+            continue
+        if ch in {"'", '"', "`"}:
+            quote = ch
+            i += 1
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    raise RuntimeError("unterminated function body while splitting borrowed-projection test")
+
+
+def extract_function_blocks(source: str) -> dict[str, tuple[int, int, str]]:
+    blocks: dict[str, tuple[int, int, str]] = {}
+    for match in re.finditer(r"(?m)^fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", source):
+        name = match.group(1)
+        open_pos = source.find("{", match.end())
+        if open_pos < 0:
+            raise RuntimeError(f"missing body for {name}")
+        close_pos = find_matching_brace(source, open_pos)
+        end = close_pos + 1
+        if end < len(source) and source[end] == "\n":
+            end += 1
+        blocks[name] = (match.start(), end, source[match.start():end].rstrip())
+    return blocks
+
+
