@@ -10426,15 +10426,29 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.cur_fn_name = name
 	t.cur_fn_ret_type = ret_type
 	t.reset_var_types()
+	mut saved_param_pointer_flags := map[string]bool{}
+	mut saved_param_pointer_rvalue_flags := map[string]bool{}
 	for param_id in param_ids {
 		param := t.a.nodes[int(param_id)]
 		if param.value.len > 0 && param.typ.len > 0 {
+			saved_param_pointer_flags[param.value] = t.pointer_value_lvalues[param.value] or {
+				false
+			}
+			saved_param_pointer_rvalue_flags[param.value] = t.pointer_value_rvalues[param.value] or {
+				false
+			}
+			t.pointer_value_lvalues.delete(param.value)
+			t.pointer_value_rvalues.delete(param.value)
 			t.set_var_type(param.value, param.typ)
 			if t.is_fixed_array_type(param.typ) {
 				t.fixed_array_param_values[param.value] = true
 			}
 			if param.is_mut || param.op == .amp || param.typ.starts_with('mut ') {
 				t.mut_param_values[param.value] = true
+				t.pointer_value_lvalues[param.value] = true
+				if param.op == .amp {
+					t.pointer_value_rvalues[param.value] = true
+				}
 			}
 		}
 	}
@@ -10493,6 +10507,18 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.mark_local_closure_cleanup_decls(lifted_body)
 	new_body := t.transform_stmts(lifted_body)
 	t.pending_stmts = outer_pending
+	for param_name in param_names {
+		if saved_param_pointer_flags[param_name] or { false } {
+			t.pointer_value_lvalues[param_name] = true
+		} else {
+			t.pointer_value_lvalues.delete(param_name)
+		}
+		if saved_param_pointer_rvalue_flags[param_name] or { false } {
+			t.pointer_value_rvalues[param_name] = true
+		} else {
+			t.pointer_value_rvalues.delete(param_name)
+		}
+	}
 	for capture_name in capture_names {
 		if capture_by_ref[capture_name] or { false } {
 			if saved_capture_pointer_flags[capture_name] or { false } {
