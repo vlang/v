@@ -249,10 +249,15 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 
 	// Second pass: collect truly external symbols.
 	// force_external_syms should go through GOT/stubs.
-	// All other undefined symbols are internal V functions or V-embedded C functions
-	// (like wyhash) that resolve to local stubs.
+	// Any remaining undefined symbol (N_UNDF | N_EXT) with no local definition is a C
+	// extern beyond the force_external_syms allowlist (e.g. `fn C.arc4random()`); it must
+	// be bound through the GOT/stubs too, otherwise the relocation stays unresolved and
+	// aborts the link below. Undefined symbols that do resolve locally (forward references
+	// to internal V functions, V-embedded C helpers like wyhash) are in defined_syms and
+	// are intentionally left out so they keep resolving to their local definition.
 	for sym in l.macho.symbols {
-		if sym.name in force_external_syms && sym.name !in l.extern_syms {
+		is_undefined_extern := sym.type_ == 0x01 && sym.name !in defined_syms
+		if (sym.name in force_external_syms || is_undefined_extern) && sym.name !in l.extern_syms {
 			l.extern_syms << sym.name
 			l.sym_to_got[sym.name] = l.extern_syms.len - 1
 		}
@@ -1206,12 +1211,11 @@ fn (mut l Linker) write_text_with_relocations() {
 			eprintln('LINKER: unresolved symbol "${sym_name}" (idx=${r.sym_idx}) at text offset ${r.addr}')
 			exit(1)
 		}
-		if sym_name in force_external_syms {
-			// Use stub address for external symbols
-			if sym_name in l.sym_to_got {
-				got_idx := l.sym_to_got[sym_name]
-				sym_addr = stubs_vmaddr + u64(got_idx * 12)
-			}
+		// Use the stub address for every external symbol routed through the GOT
+		// (force_external_syms plus C externs bound in the pass above). Locally
+		// defined symbols are never in sym_to_got, so they keep their real address.
+		if got_idx := l.sym_to_got[sym_name] {
+			sym_addr = stubs_vmaddr + u64(got_idx * 12)
 		}
 		pc := code_vmaddr + u64(r.addr)
 

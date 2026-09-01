@@ -182,6 +182,10 @@ mut:
 	current_receiver         string
 	current_method_is_static bool
 	parsing_spawn            bool
+	// Set while `sizeof` speculatively parses an expression that is thrown away
+	// afterwards. Emitting a spawn wrapper here would register a cached, body-less
+	// wrapper that discard_emission cannot roll back, so wrappers are suppressed.
+	suppress_spawn_wrapper bool
 }
 
 struct FastArm64EmissionCheckpoint {
@@ -6804,10 +6808,14 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 		}
 	}
 	mut checkpoint := p.emission_checkpoint()
+	previous_suppress := p.suppress_spawn_wrapper
+	p.suppress_spawn_wrapper = true
 	value := p.parse_expression(0) or {
+		p.suppress_spawn_wrapper = previous_suppress
 		p.discard_emission(mut checkpoint)
 		return err
 	}
+	p.suppress_spawn_wrapper = previous_suppress
 	p.discard_emission(mut checkpoint)
 	p.expect(.rpar)!
 	return FastArm64Value{
@@ -8387,6 +8395,21 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 				return p.emit_array_clone(value)
 			}
 			return p.emit_map_clone(value)
+		}
+		if value.typ == p.program.map_type && member == 'move' {
+			p.expect(.lpar)!
+			p.expect(.rpar)!
+			if value.address != ssa.ValueID(0) {
+				state_type := p.program.m.type_store.get_ptr(p.program.map_state_type)
+				zero_state := p.program.m.get_or_add_const(state_type, '0')
+				state_address := p.program.struct_field_ptr(p.cur_block, value.address, p.program.map_type,
+					0)
+				p.program.instr2(.store, p.cur_block, p.program.void_type, zero_state, state_address)
+			}
+			return FastArm64Value{
+				...value
+				address: ssa.ValueID(0)
+			}
 		}
 		if value.typ == p.program.array_type && member == 'reverse' {
 			p.expect(.lpar)!
@@ -10349,6 +10372,20 @@ fn (mut p FastArm64Parser) emit_spawn_call(function_key string, symbol string, f
 	for parameter_type_name in parameter_type_names {
 		parameter_types << p.program.type_id(parameter_type_name)
 	}
+	if p.suppress_spawn_wrapper {
+		// A `sizeof(spawn f())` only needs the thread-handle type. Registering the spawn
+		// wrapper (and its inline body) here would leak a cached, body-less wrapper once
+		// the speculative parse is discarded, so a later real `spawn f()` would reuse the
+		// cached wrapper id and emit an unresolved call. Return the type only.
+		return FastArm64Value{
+			id: p.program.m.get_or_add_const(p.program.u64_type, '0')
+			typ: p.program.u64_type
+			typ_name: 'thread ${return_type_name}'
+			is_spawned: true
+			spawn_result_type: return_type
+			spawn_result_name: return_type_name
+		}
+	}
 	context_type, wrapper_id := p.program.register_spawn_wrapper(function_key, function_id, symbol, return_type, parameter_types)
 	context_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(context_type).str())
 	malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
@@ -10915,8 +10952,9 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 			scale := p.program.m.get_or_add_const(p.program.i64_type, element_size.str())
 			offset = p.program.instr2(.mul, p.cur_block, p.program.i64_type, offset, scale)
 		}
+		pointer_op := if op == .plus { ssa.OpCode.add } else { ssa.OpCode.sub }
 		return FastArm64Value{
-			id: p.program.instr2(if op == .plus { .add } else { .sub }, p.cur_block, left.typ, left.id, offset)
+			id: p.program.instr2(pointer_op, p.cur_block, left.typ, left.id, offset)
 			typ: left.typ
 			typ_name: left.typ_name
 		}

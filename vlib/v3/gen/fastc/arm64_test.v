@@ -999,6 +999,44 @@ fn test_fastc_arm64_spawn_for_general_programs() {
 		generate_arm64_files([double_wait_source], prefs, double_wait_output) or { panic(err) }
 		double_wait_result := os.execute(double_wait_output)
 		assert double_wait_result.exit_code != 0
+		// `sizeof` must not leave a cached, body-less spawn wrapper behind: a real
+		// `spawn worker()` after `sizeof(spawn worker())` has to run the worker body.
+		sizeof_spawn_source := os.join_path_single(test_dir, 'sizeof_spawn.v')
+		sizeof_spawn_output := os.join_path_single(test_dir, 'sizeof_spawn')
+		os.write_file(sizeof_spawn_source, 'fn worker() int { return 42 }\nfn main() { size := sizeof(spawn worker()); handle := spawn worker(); if size == sizeof(u64) && handle.wait() == 42 { println("spawned") } else { println("wrong") } }\n') or {
+			panic(err)
+		}
+		generate_arm64_files([sizeof_spawn_source], prefs, sizeof_spawn_output) or { panic(err) }
+		sizeof_spawn_result := os.execute(sizeof_spawn_output)
+		assert sizeof_spawn_result.exit_code == 0
+		assert sizeof_spawn_result.output == 'spawned\n', sizeof_spawn_result.output
+	}
+}
+
+fn test_fastc_arm64_binds_c_externs_beyond_the_linker_allowlist() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_cextern_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		// `arc4random` / `arc4random_uniform` are valid libSystem symbols that are not in
+		// the linker's force_external_syms allowlist. They must still be bound through the
+		// GOT/stubs instead of aborting the link with an unresolved symbol.
+		os.write_file(source_path, 'fn C.arc4random() u32\nfn C.arc4random_uniform(upper_bound u32) u32\nfn main() {\n\ttouch := C.arc4random()\n\tbounded := C.arc4random_uniform(u32(1))\n\tif touch == touch && bounded == u32(0) {\n\t\tprintln("bound")\n\t} else {\n\t\tprintln("wrong")\n\t}\n}\n') or {
+			panic(err)
+		}
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		assert os.is_executable(output_path)
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'bound\n', result.output
 	}
 }
 
@@ -1903,6 +1941,29 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+	}
+}
+
+fn test_fastc_arm64_map_move_transfers_state() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_map_move_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, "fn main() {\n\tmut original := {'answer': 42}\n\tmoved := original.move()\n\tprintln('\${original.len}:\${moved['answer']}')\n}\n") or {
+			panic(err)
+		}
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == '0:42\n', result.output
 	}
 }
 
