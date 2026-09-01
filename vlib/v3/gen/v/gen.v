@@ -526,6 +526,17 @@ fn (mut g Gen) collect_top_level(ids []flat.NodeId, mut out []flat.NodeId) {
 
 // stmt_list_ids renders a list of statements, one indentation level deeper.
 fn (mut g Gen) stmt_list_ids(ids []flat.NodeId) {
+	// A statement list is always emitted as a multi-line braced body, so it opens
+	// a fresh statement scope where every statement must terminate with a newline.
+	// Compact/inline renderings never reach this function; they emit statements
+	// directly with `in_init` set. Reset `in_init` here so that a body nested
+	// inside an initializer (e.g. an anonymous fn used as a struct field value)
+	// does not have its statements collapsed onto a single line.
+	saved_in_init := g.in_init
+	g.in_init = false
+	defer {
+		g.in_init = saved_in_init
+	}
 	mut previous := flat.empty_node
 	mut i := 0
 	for i < ids.len {
