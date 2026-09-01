@@ -736,6 +736,10 @@ fn writeback_before_propagation(mut values map[string][]int) ?bool {
 	return true
 }
 
+fn slice_from_parameter(values []int) []int {
+	return values[..]
+}
+
 fn main() {
 	mut wide_map_defaults := [1]WideMapDefaults{}
 	wide_map_defaults[0].values["present"] = 9
@@ -834,6 +838,13 @@ fn main() {
 	growing_base << 4
 	growing_view := growing_base[..]
 	growing_base << 5
+	mut parameter_base := [6, 7, 8]
+	parameter_view := slice_from_parameter(parameter_base)
+	parameter_base.delete(0)
+	mut parameter_growing_base := []int{cap: 1}
+	parameter_growing_base << 9
+	parameter_growing_view := slice_from_parameter(parameter_growing_base)
+	parameter_growing_base << 10
 	mut mutable_map := {"a": 1, "b": 2}
 	for _, mut value in mutable_map {
 		value += 10
@@ -868,7 +879,9 @@ fn main() {
 	if aggregate_fallback != [1.0, 2.0] || conditional_floats != [2.0, 3.0]
 		|| matched_floats != [2.0, 3.0] || !statement_case_matched || !expression_case_matched
 		|| propagated_map["value"][0] != 9 || slice_base != [2, 3] || slice_view != [1, 2, 3]
-		|| growing_base != [4, 5] || growing_view != [4] || dependency.answer != 42 || base != 1 {
+		|| growing_base != [4, 5] || growing_view != [4] || parameter_base != [7, 8]
+		|| parameter_view != [6, 7, 8] || parameter_growing_base != [9, 10]
+		|| parameter_growing_view != [9] || dependency.answer != 42 || base != 1 {
 		println("wrong aggregate context or propagation cleanup")
 		return
 	}

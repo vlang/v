@@ -1201,8 +1201,9 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_cleanup_runtime()
 	p.register_string_conversion_runtime()
 	p.register_preferences_runtime()
-	p.register_arguments_runtime()
 	p.register_array_new_runtime()
+	p.register_array_buffer_runtime()
+	p.register_arguments_runtime()
 	p.register_map_runtime()
 	p.register_integer_string_runtime()
 	p.register_integer_format_runtime()
@@ -1910,21 +1911,12 @@ fn (mut p FastArm64Program) register_arguments_runtime() {
 	one64 := p.m.get_or_add_const(p.i64_type, '1')
 	eight64 := p.m.get_or_add_const(p.i64_type, '8')
 	sixteen64 := p.m.get_or_add_const(p.i64_type, '16')
-	zero32 := p.m.get_or_add_const(p.i32_type, '0')
 	one32 := p.m.get_or_add_const(p.i32_type, '1')
-	sixteen32 := p.m.get_or_add_const(p.i32_type, '16')
-	bytes := p.instr2(.mul, entry, p.i64_type, argc, sixteen64)
-	malloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'malloc', p.fn_ids['malloc'])
-	data := p.m.add_instr(.call, entry, p.ptr_i8, [malloc_ref, bytes])
+	new_ref := p.m.add_value(.func_ref, p.array_type, 'fast_array_new', p.fn_ids['fast_array_new'])
+	array_value := p.m.add_instr(.call, entry, p.array_type, [new_ref, sixteen64, argc, argc])
 	array_slot := p.instr0(.alloca, entry, ptr_array)
-	p.instr2(.store, entry, p.void_type, data, p.struct_field_ptr(entry, array_slot, p.array_type, 0))
-	p.instr2(.store, entry, p.void_type, zero32, p.struct_field_ptr(entry, array_slot, p.array_type, 1))
-	argc32 := p.instr1(.trunc, entry, p.i32_type, argc)
-	for field in [2, 3] {
-		p.instr2(.store, entry, p.void_type, argc32, p.struct_field_ptr(entry, array_slot, p.array_type, field))
-	}
-	p.instr2(.store, entry, p.void_type, zero32, p.struct_field_ptr(entry, array_slot, p.array_type, 4))
-	p.instr2(.store, entry, p.void_type, sixteen32, p.struct_field_ptr(entry, array_slot, p.array_type, 5))
+	p.instr2(.store, entry, p.void_type, array_value, array_slot)
+	data := p.instr1(.load, entry, p.ptr_i8, p.struct_field_ptr(entry, array_slot, p.array_type, 0))
 	index_slot := p.instr0(.alloca, entry, ptr_i64)
 	p.instr2(.store, entry, p.void_type, zero64, index_slot)
 	condition := p.m.add_block(id, 'arguments_condition')
@@ -1979,8 +1971,13 @@ fn (mut p FastArm64Program) register_array_new_runtime() {
 	p.instr0(.unreachable, invalid, p.void_type)
 	capacity_is_short := p.instr2(.lt, ready, p.i1_type, capacity, length)
 	normalized_capacity := p.integer_select(ready, capacity_is_short, length, capacity, p.i64_type)
+	data_size := p.instr2(.mul, ready, p.i64_type, normalized_capacity, element_size)
+	header_size := p.m.get_or_add_const(p.i64_type, '8')
+	allocation_size := p.instr2(.add, ready, p.i64_type, data_size, header_size)
 	calloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'calloc', p.fn_ids['calloc'])
-	data := p.m.add_instr(.call, ready, p.ptr_i8, [calloc_ref, normalized_capacity, element_size])
+	one64 := p.m.get_or_add_const(p.i64_type, '1')
+	raw_data := p.m.add_instr(.call, ready, p.ptr_i8, [calloc_ref, one64, allocation_size])
+	data := p.instr2(.add, ready, p.ptr_i8, raw_data, header_size)
 	slot := p.instr0(.alloca, ready, p.m.type_store.get_ptr(p.array_type))
 	p.instr2(.store, ready, p.void_type, data, p.struct_field_ptr(ready, slot, p.array_type, 0))
 	zero32 := p.m.get_or_add_const(p.i32_type, '0')
@@ -1991,13 +1988,76 @@ fn (mut p FastArm64Program) register_array_new_runtime() {
 	for field, value in {
 		2: length32
 		3: capacity32
-		4: zero32
+		4: p.m.get_or_add_const(p.i32_type, '16')
 		5: element_size32
 	} {
 		p.instr2(.store, ready, p.void_type, value, p.struct_field_ptr(ready, slot, p.array_type, field))
 	}
 	result := p.instr1(.load, ready, p.array_type, slot)
 	p.instr1(.ret, ready, p.void_type, result)
+}
+
+fn (mut p FastArm64Program) register_array_buffer_runtime() {
+	mark_id := p.register_function('fast_array_mark_has_slices', 'fast_array_mark_has_slices', p.void_type, false)
+	mark_entry := p.m.add_block(mark_id, 'array_mark_slices_entry')
+	mark_buffer := p.m.add_block(mark_id, 'array_mark_slices_buffer')
+	mark_done := p.m.add_block(mark_id, 'array_mark_slices_done')
+	mark_array := p.add_arg(mark_id, p.array_type, 'array_value')
+	mark_slot := p.instr0(.alloca, mark_entry, p.m.type_store.get_ptr(p.array_type))
+	p.instr2(.store, mark_entry, p.void_type, mark_array, mark_slot)
+	mark_managed := p.array_is_managed(mark_entry, mark_slot)
+	mark_data := p.instr1(.load, mark_entry, p.ptr_i8, p.struct_field_ptr(mark_entry, mark_slot, p.array_type, 0))
+	zero_pointer := p.m.get_or_add_const(p.ptr_i8, '0')
+	mark_has_data := p.instr2(.ne, mark_entry, p.i1_type, mark_data, zero_pointer)
+	mark_ready := p.instr2(.and_, mark_entry, p.i1_type, mark_managed, mark_has_data)
+	p.instr3(.br, mark_entry, p.void_type, mark_ready, ssa.ValueID(mark_buffer), ssa.ValueID(mark_done))
+	mark_header := p.array_data_header(mark_buffer, mark_slot)
+	one8 := p.m.get_or_add_const(p.i8_type, '1')
+	p.instr2(.store, mark_buffer, p.void_type, one8, mark_header)
+	p.instr1(.jmp, mark_buffer, p.void_type, ssa.ValueID(mark_done))
+	p.instr0(.ret, mark_done, p.void_type)
+
+	has_id := p.register_function('fast_array_buffer_has_slices', 'fast_array_buffer_has_slices', p.i1_type, false)
+	has_entry := p.m.add_block(has_id, 'array_has_slices_entry')
+	has_buffer := p.m.add_block(has_id, 'array_has_slices_buffer')
+	has_none := p.m.add_block(has_id, 'array_has_slices_none')
+	has_array := p.add_arg(has_id, p.array_type, 'array_value')
+	has_slot := p.instr0(.alloca, has_entry, p.m.type_store.get_ptr(p.array_type))
+	p.instr2(.store, has_entry, p.void_type, has_array, has_slot)
+	has_managed := p.array_is_managed(has_entry, has_slot)
+	has_data := p.instr1(.load, has_entry, p.ptr_i8, p.struct_field_ptr(has_entry, has_slot, p.array_type, 0))
+	has_has_data := p.instr2(.ne, has_entry, p.i1_type, has_data, zero_pointer)
+	has_ready := p.instr2(.and_, has_entry, p.i1_type, has_managed, has_has_data)
+	p.instr3(.br, has_entry, p.void_type, has_ready, ssa.ValueID(has_buffer), ssa.ValueID(has_none))
+	header := p.array_data_header(has_buffer, has_slot)
+	marked := p.instr1(.load, has_buffer, p.i8_type, header)
+	zero8 := p.m.get_or_add_const(p.i8_type, '0')
+	has_slices := p.instr2(.ne, has_buffer, p.i1_type, marked, zero8)
+	p.instr1(.ret, has_buffer, p.void_type, has_slices)
+	false_value := p.m.get_or_add_const(p.i1_type, '0')
+	p.instr1(.ret, has_none, p.void_type, false_value)
+}
+
+fn (mut p FastArm64Program) array_is_managed(block ssa.BlockID, array_slot ssa.ValueID) ssa.ValueID {
+	flags := p.instr1(.load, block, p.i32_type, p.struct_field_ptr(block, array_slot, p.array_type, 4))
+	managed_flag := p.m.get_or_add_const(p.i32_type, '16')
+	managed_flags := p.instr2(.and_, block, p.i32_type, flags, managed_flag)
+	zero32 := p.m.get_or_add_const(p.i32_type, '0')
+	return p.instr2(.ne, block, p.i1_type, managed_flags, zero32)
+}
+
+fn (mut p FastArm64Program) array_data_header(block ssa.BlockID, array_slot ssa.ValueID) ssa.ValueID {
+	data := p.instr1(.load, block, p.ptr_i8, p.struct_field_ptr(block, array_slot, p.array_type, 0))
+	offset32 := p.instr1(.load, block, p.i32_type, p.struct_field_ptr(block, array_slot, p.array_type, 1))
+	element_size32 := p.instr1(.load, block, p.i32_type, p.struct_field_ptr(block, array_slot, p.array_type, 5))
+	offset := p.instr1(.zext, block, p.i64_type, offset32)
+	element_size := p.instr1(.zext, block, p.i64_type, element_size32)
+	byte_offset := p.instr2(.mul, block, p.i64_type, offset, element_size)
+	header_size := p.m.get_or_add_const(p.i64_type, '8')
+	data_address := p.instr1(.bitcast, block, p.u64_type, data)
+	base_address := p.instr2(.sub, block, p.u64_type, data_address, byte_offset)
+	header_address := p.instr2(.sub, block, p.u64_type, base_address, header_size)
+	return p.instr1(.bitcast, block, p.ptr_i8, header_address)
 }
 
 fn (mut p FastArm64Program) register_map_runtime() {
@@ -8281,29 +8341,31 @@ fn (mut p FastArm64Parser) emit_array_detach_if_slice(array_slot ssa.ValueID, la
 	is_slice_flag := p.program.m.get_or_add_const(p.program.i32_type, '64')
 	masked_flags := p.program.instr2(.and_, p.cur_block, p.program.i32_type, flags, is_slice_flag)
 	has_slice_flag := p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked_flags, zero32)
-	is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, has_offset, has_slice_flag)
+	descriptor_is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, has_offset, has_slice_flag)
+	buffer_has_slices := p.emit_array_buffer_has_slices(array_slot)
+	is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, descriptor_is_slice, buffer_has_slices)
 	detach := p.program.m.add_block(p.func_id, '${label}_detach_slice')
 	ready := p.program.m.add_block(p.func_id, '${label}_detached')
 	p.program.instr3(.br, p.cur_block, p.program.void_type, is_slice, ssa.ValueID(detach), ssa.ValueID(ready))
 	p.mark_terminated(p.cur_block)
 	capacity64 := p.program.instr1(.zext, detach, p.program.i64_type, capacity)
 	element_size64 := p.program.instr1(.zext, detach, p.program.i64_type, element_size)
-	allocation_size := p.program.instr2(.mul, detach, p.program.i64_type, capacity64, element_size64)
-	malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
-	detached_data := p.program.m.add_instr(.call, detach, p.program.ptr_i8, [
-		malloc_ref,
-		allocation_size,
-	])
+	new_ref := p.program.m.add_value(.func_ref, p.program.array_type, 'fast_array_new', p.program.fn_ids['fast_array_new'])
 	length64 := p.program.instr1(.zext, detach, p.program.i64_type, length)
+	detached_array := p.program.m.add_instr(.call, detach, p.program.array_type, [
+		new_ref,
+		element_size64,
+		length64,
+		capacity64,
+	])
+	detached_slot := p.program.instr0(.alloca, detach, p.program.m.type_store.get_ptr(p.program.array_type))
+	p.program.instr2(.store, detach, p.program.void_type, detached_array, detached_slot)
+	detached_data := p.program.instr1(.load, detach, p.program.ptr_i8, p.program.struct_field_ptr(detach, detached_slot, p.program.array_type, 0))
 	copy_size := p.program.instr2(.mul, detach, p.program.i64_type, length64, element_size64)
 	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
 	p.program.m.add_instr(.call, detach, p.program.ptr_i8, [memcpy_ref, detached_data, old_data,
 		copy_size])
-	p.program.instr2(.store, detach, p.program.void_type, detached_data, data_ptr)
-	p.program.instr2(.store, detach, p.program.void_type, zero32, offset_ptr)
-	non_slice_mask := p.program.m.get_or_add_const(p.program.i32_type, '-65')
-	detached_flags := p.program.instr2(.and_, detach, p.program.i32_type, flags, non_slice_mask)
-	p.program.instr2(.store, detach, p.program.void_type, detached_flags, flags_ptr)
+	p.program.instr2(.store, detach, p.program.void_type, detached_array, array_slot)
 	p.program.instr1(.jmp, detach, p.program.void_type, ssa.ValueID(ready))
 	p.mark_terminated(detach)
 	p.cur_block = ready
@@ -8322,6 +8384,7 @@ fn (mut p FastArm64Parser) emit_map_items_array(map_value FastArm64Value, keys b
 	state := p.program.instr1(.load, p.cur_block, state_ptr_type, p.program.struct_field_ptr(p.cur_block, map_slot, p.program.map_type, 0))
 	zero_state := p.program.m.get_or_add_const(state_ptr_type, '0')
 	has_state := p.program.instr2(.ne, p.cur_block, p.program.i1_type, state, zero_state)
+	new_ref := p.program.m.add_value(.func_ref, p.program.array_type, 'fast_array_new', p.program.fn_ids['fast_array_new'])
 	copy_items := p.program.m.add_block(p.func_id, 'map_items_copy')
 	empty := p.program.m.add_block(p.func_id, 'map_items_empty')
 	done := p.program.m.add_block(p.func_id, 'map_items_done')
@@ -8334,33 +8397,22 @@ fn (mut p FastArm64Parser) emit_map_items_array(map_value FastArm64Value, keys b
 	length64 := p.program.instr1(.load, p.cur_block, p.program.i64_type, p.program.struct_field_ptr(p.cur_block, state, p.program.map_state_type, 3))
 	element_size64 := p.program.instr1(.load, p.cur_block, p.program.i64_type, p.program.struct_field_ptr(p.cur_block, state, p.program.map_state_type, size_field))
 	byte_count := p.program.instr2(.mul, p.cur_block, p.program.i64_type, length64, element_size64)
-	malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
-	owned_data := p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [
-		malloc_ref,
-		byte_count,
+	owned_array := p.program.m.add_instr(.call, p.cur_block, p.program.array_type, [
+		new_ref,
+		element_size64,
+		length64,
+		length64,
 	])
+	p.program.instr2(.store, p.cur_block, p.program.void_type, owned_array, array_slot)
+	owned_data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
 	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
 	p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memcpy_ref, owned_data, data,
 		byte_count])
-	p.program.instr2(.store, p.cur_block, p.program.void_type, owned_data, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
-	zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
-	p.program.instr2(.store, p.cur_block, p.program.void_type, zero, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 1))
-	length := p.program.instr1(.trunc, p.cur_block, p.program.i32_type, length64)
-	element_size := p.program.instr1(.trunc, p.cur_block, p.program.i32_type, element_size64)
-	for field, item in {
-		2: length
-		3: length
-		4: zero
-		5: element_size
-	} {
-		p.program.instr2(.store, p.cur_block, p.program.void_type, item, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, field))
-	}
 	p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(done))
 	p.mark_terminated(p.cur_block)
 	p.cur_block = empty
 	element_size_empty := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
 	zero64 := p.program.m.get_or_add_const(p.program.i64_type, '0')
-	new_ref := p.program.m.add_value(.func_ref, p.program.array_type, 'fast_array_new', p.program.fn_ids['fast_array_new'])
 	empty_array := p.program.m.add_instr(.call, p.cur_block, p.program.array_type, [
 		new_ref,
 		element_size_empty,
@@ -8880,9 +8932,6 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 	p.program.instr2(.store, p.cur_block, p.program.void_type, new_length, len_ptr)
 	p.program.instr2(.store, p.cur_block, p.program.void_type, new_capacity, cap_ptr)
 	p.emit_array_mark_has_slice(slot)
-	if value.address != ssa.ValueID(0) {
-		p.emit_array_mark_has_slice(value.address)
-	}
 	return FastArm64Value{
 		id: p.program.instr1(.load, p.cur_block, p.program.array_type, slot)
 		typ: p.program.array_type
@@ -8896,6 +8945,19 @@ fn (mut p FastArm64Parser) emit_array_mark_has_slice(array_slot ssa.ValueID) {
 	is_slice_flag := p.program.m.get_or_add_const(p.program.i32_type, '64')
 	new_flags := p.program.instr2(.or_, p.cur_block, p.program.i32_type, flags, is_slice_flag)
 	p.program.instr2(.store, p.cur_block, p.program.void_type, new_flags, flags_ptr)
+	array_value := p.program.instr1(.load, p.cur_block, p.program.array_type, array_slot)
+	mark_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'fast_array_mark_has_slices', p.program.fn_ids['fast_array_mark_has_slices'])
+	p.program.m.add_instr(.call, p.cur_block, p.program.void_type, [mark_ref, array_value])
+}
+
+fn (mut p FastArm64Parser) emit_array_buffer_has_slices(array_slot ssa.ValueID) ssa.ValueID {
+	return p.emit_array_buffer_has_slices_at(array_slot, p.cur_block)
+}
+
+fn (mut p FastArm64Parser) emit_array_buffer_has_slices_at(array_slot ssa.ValueID, block ssa.BlockID) ssa.ValueID {
+	array_value := p.program.instr1(.load, block, p.program.array_type, array_slot)
+	has_ref := p.program.m.add_value(.func_ref, p.program.i1_type, 'fast_array_buffer_has_slices', p.program.fn_ids['fast_array_buffer_has_slices'])
+	return p.program.m.add_instr(.call, block, p.program.i1_type, [has_ref, array_value])
 }
 
 fn (mut p FastArm64Parser) checked_array_index(index FastArm64Value, length ssa.ValueID, label string) ssa.ValueID {
@@ -10077,7 +10139,11 @@ fn (mut p FastArm64Parser) emit_array_push_at(array FastArm64Value, item FastArm
 	masked_flags := p.program.instr2(.and_, p.cur_block, p.program.i32_type, flags, is_slice_flag)
 	has_slice_flag := p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked_flags, zero32)
 	is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, has_offset, has_slice_flag)
-	needs_storage := p.program.instr2(.or_, p.cur_block, p.program.i1_type, full, is_slice)
+	mut needs_storage := p.program.instr2(.or_, p.cur_block, p.program.i1_type, full, is_slice)
+	if prepend || has_requested_index {
+		buffer_has_slices := p.emit_array_buffer_has_slices(array_slot)
+		needs_storage = p.program.instr2(.or_, p.cur_block, p.program.i1_type, needs_storage, buffer_has_slices)
+	}
 	grow := p.program.m.add_block(p.func_id, 'array_push_grow')
 	append := p.program.m.add_block(p.func_id, 'array_push_append')
 	done := p.program.m.add_block(p.func_id, 'array_push_done')
@@ -10142,38 +10208,60 @@ fn (mut p FastArm64Parser) emit_array_grow_storage(array_slot ssa.ValueID, grow 
 	is_slice_flag := p.program.m.get_or_add_const(p.program.i32_type, '64')
 	masked_flags := p.program.instr2(.and_, grow, p.program.i32_type, flags, is_slice_flag)
 	has_slice_flag := p.program.instr2(.ne, grow, p.program.i1_type, masked_flags, zero32)
-	is_slice := p.program.instr2(.or_, grow, p.program.i1_type, has_offset, has_slice_flag)
+	descriptor_is_slice := p.program.instr2(.or_, grow, p.program.i1_type, has_offset, has_slice_flag)
+	buffer_has_slices := p.emit_array_buffer_has_slices_at(array_slot, grow)
+	is_slice := p.program.instr2(.or_, grow, p.program.i1_type, descriptor_is_slice, buffer_has_slices)
 	detach := p.program.m.add_block(p.func_id, 'array_grow_detach_slice')
 	reallocate := p.program.m.add_block(p.func_id, 'array_grow_reallocate')
+	managed_reallocate := p.program.m.add_block(p.func_id, 'array_grow_reallocate_managed')
+	unmanaged_reallocate := p.program.m.add_block(p.func_id, 'array_grow_reallocate_unmanaged')
 	finish := p.program.m.add_block(p.func_id, 'array_grow_finish')
 	p.program.instr3(.br, grow, p.program.void_type, is_slice, ssa.ValueID(detach), ssa.ValueID(reallocate))
 	p.mark_terminated(grow)
-	malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
-	detached_data := p.program.m.add_instr(.call, detach, p.program.ptr_i8, [
-		malloc_ref,
-		allocation_size,
-	])
+	new_ref := p.program.m.add_value(.func_ref, p.program.array_type, 'fast_array_new', p.program.fn_ids['fast_array_new'])
 	length64 := p.program.instr1(.zext, detach, p.program.i64_type, length)
+	detached_array := p.program.m.add_instr(.call, detach, p.program.array_type, [
+		new_ref,
+		element_size,
+		length64,
+		new_capacity64,
+	])
+	detached_slot := p.program.instr0(.alloca, detach, p.program.m.type_store.get_ptr(p.program.array_type))
+	p.program.instr2(.store, detach, p.program.void_type, detached_array, detached_slot)
+	detached_data := p.program.instr1(.load, detach, p.program.ptr_i8, p.program.struct_field_ptr(detach, detached_slot, p.program.array_type, 0))
 	copy_size := p.program.instr2(.mul, detach, p.program.i64_type, length64, element_size)
 	memcpy_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memcpy', p.program.fn_ids['memcpy'])
 	p.program.m.add_instr(.call, detach, p.program.ptr_i8, [memcpy_ref, detached_data, old_data,
 		copy_size])
-	p.program.instr2(.store, detach, p.program.void_type, detached_data, data_ptr)
-	p.program.instr2(.store, detach, p.program.void_type, zero32, offset_ptr)
-	non_slice_mask := p.program.m.get_or_add_const(p.program.i32_type, '-65')
-	detached_flags := p.program.instr2(.and_, detach, p.program.i32_type, flags, non_slice_mask)
-	p.program.instr2(.store, detach, p.program.void_type, detached_flags, flags_ptr)
+	p.program.instr2(.store, detach, p.program.void_type, detached_array, array_slot)
 	p.program.instr1(.jmp, detach, p.program.void_type, ssa.ValueID(finish))
 	p.mark_terminated(detach)
+	is_managed := p.program.array_is_managed(reallocate, array_slot)
+	p.program.instr3(.br, reallocate, p.program.void_type, is_managed, ssa.ValueID(managed_reallocate), ssa.ValueID(unmanaged_reallocate))
+	p.mark_terminated(reallocate)
 	realloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'realloc', p.program.fn_ids['realloc'])
-	reallocated_data := p.program.m.add_instr(.call, reallocate, p.program.ptr_i8, [
+	header_size := p.program.m.get_or_add_const(p.program.i64_type, '8')
+	old_data_address := p.program.instr1(.bitcast, managed_reallocate, p.program.u64_type, old_data)
+	raw_address := p.program.instr2(.sub, managed_reallocate, p.program.u64_type, old_data_address, header_size)
+	raw_data := p.program.instr1(.bitcast, managed_reallocate, p.program.ptr_i8, raw_address)
+	managed_allocation_size := p.program.instr2(.add, managed_reallocate, p.program.i64_type, allocation_size, header_size)
+	reallocated_raw := p.program.m.add_instr(.call, managed_reallocate, p.program.ptr_i8, [
+		realloc_ref,
+		raw_data,
+		managed_allocation_size,
+	])
+	reallocated_data := p.program.instr2(.add, managed_reallocate, p.program.ptr_i8, reallocated_raw, header_size)
+	p.program.instr2(.store, managed_reallocate, p.program.void_type, reallocated_data, data_ptr)
+	p.program.instr1(.jmp, managed_reallocate, p.program.void_type, ssa.ValueID(finish))
+	p.mark_terminated(managed_reallocate)
+	unmanaged_data := p.program.m.add_instr(.call, unmanaged_reallocate, p.program.ptr_i8, [
 		realloc_ref,
 		old_data,
 		allocation_size,
 	])
-	p.program.instr2(.store, reallocate, p.program.void_type, reallocated_data, data_ptr)
-	p.program.instr1(.jmp, reallocate, p.program.void_type, ssa.ValueID(finish))
-	p.mark_terminated(reallocate)
+	p.program.instr2(.store, unmanaged_reallocate, p.program.void_type, unmanaged_data, data_ptr)
+	p.program.instr1(.jmp, unmanaged_reallocate, p.program.void_type, ssa.ValueID(finish))
+	p.mark_terminated(unmanaged_reallocate)
 	p.program.instr2(.store, finish, p.program.void_type, new_capacity, p.program.struct_field_ptr(finish, array_slot, p.program.array_type, 3))
 	p.program.instr2(.store, finish, p.program.void_type, element_size32, p.program.struct_field_ptr(finish, array_slot, p.program.array_type, 5))
 	p.program.instr1(.jmp, finish, p.program.void_type, ssa.ValueID(resume))
@@ -10235,7 +10323,11 @@ fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items Fa
 	masked_flags := p.program.instr2(.and_, p.cur_block, p.program.i32_type, flags, is_slice_flag)
 	has_slice_flag := p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked_flags, zero32)
 	is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, has_offset, has_slice_flag)
-	needs_storage := p.program.instr2(.or_, p.cur_block, p.program.i1_type, needs_grow, is_slice)
+	mut needs_storage := p.program.instr2(.or_, p.cur_block, p.program.i1_type, needs_grow, is_slice)
+	if prepend {
+		buffer_has_slices := p.emit_array_buffer_has_slices(array_slot)
+		needs_storage = p.program.instr2(.or_, p.cur_block, p.program.i1_type, needs_storage, buffer_has_slices)
+	}
 	grow := p.program.m.add_block(p.func_id, 'array_append_many_grow')
 	copy_block := p.program.m.add_block(p.func_id, 'array_append_many_copy')
 	free_snapshot := p.program.m.add_block(p.func_id, 'array_append_many_free_snapshot')
