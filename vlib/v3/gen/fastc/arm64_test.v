@@ -473,13 +473,36 @@ fn test_fastc_arm64_map_storage_and_numeric_conversions() {
 	values map[string][100]int
 }
 
+struct NumericReceiver {}
+
+fn scalar_return() f64 {
+	return 3
+}
+
+fn tuple_return() (f64, u64) {
+	return 4, 5
+}
+
+fn numeric_argument(value f64) f64 {
+	return value
+}
+
+fn (receiver NumericReceiver) numeric_argument(value f64) f64 {
+	return value
+}
+
 fn main() {
 	wide_map_defaults := [1]WideMapDefaults{}
 	wide_missing := wide_map_defaults[0].values["missing"]
 	mut reassigned_float := f64(0)
 	reassigned_float = 1
-	numeric_map := map[u64]f64{1: 2}
-	if wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[u64(1)] != 2.0 {
+	mut numeric_map := map[u64]f64{}
+	numeric_map[1] = 2
+	typed_values := []f64{1, 2}
+	normalized := []int{len: 3, cap: 1}
+	left := f64(1.5)
+	tuple_float, tuple_unsigned := tuple_return()
+	if wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 {
 		println("wrong")
 		return
 	}
@@ -494,6 +517,15 @@ fn main() {
 		result := os.execute(output_path)
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
+		for field in ['len', 'cap'] {
+			invalid_source_path := os.join_path_single(test_dir, 'invalid_${field}.v')
+			invalid_output_path := os.join_path_single(test_dir, 'invalid_${field}')
+			invalid_source := 'fn negative() int { return -1 }\nfn main() { _ := []int{${field}: negative()} }\n'
+			os.write_file(invalid_source_path, invalid_source) or { panic(err) }
+			generate_arm64_files([invalid_source_path], prefs, invalid_output_path) or { panic(err) }
+			invalid_result := os.execute(invalid_output_path)
+			assert invalid_result.exit_code != 0
+		}
 	}
 }
 

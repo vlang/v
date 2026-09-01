@@ -114,32 +114,33 @@ mut:
 struct FastArm64Parser {
 	source_file FastcSourceFile
 mut:
-	program          &FastArm64Program = unsafe { nil }
-	s                scanner.Scanner
-	tok              token.Token
-	lit              string
-	func_id          int
-	cur_block        ssa.BlockID
-	return_typ       ssa.TypeID
-	return_name      string
-	return_is_option bool
-	locals           map[string]FastArm64Local
-	terminated       map[int]bool
-	labels           map[string]ssa.BlockID
-	break_to         []ssa.BlockID
-	continue_to      []ssa.BlockID
-	break_scopes     []int
-	continue_scopes  []int
-	defer_sources    []string
-	defer_starts     []int
-	local_names      []string
-	local_values     []FastArm64Local
-	local_existed    []bool
-	local_starts     []int
-	array_element    string
-	last_map_found   ssa.ValueID
-	current_function string
-	current_receiver string
+	program                  &FastArm64Program = unsafe { nil }
+	s                        scanner.Scanner
+	tok                      token.Token
+	lit                      string
+	func_id                  int
+	cur_block                ssa.BlockID
+	return_typ               ssa.TypeID
+	return_name              string
+	return_types             []string
+	return_is_option         bool
+	locals                   map[string]FastArm64Local
+	terminated               map[int]bool
+	labels                   map[string]ssa.BlockID
+	break_to                 []ssa.BlockID
+	continue_to              []ssa.BlockID
+	break_scopes             []int
+	continue_scopes          []int
+	defer_sources            []string
+	defer_starts             []int
+	local_names              []string
+	local_values             []FastArm64Local
+	local_existed            []bool
+	local_starts             []int
+	array_element            string
+	last_map_found           ssa.ValueID
+	current_function         string
+	current_receiver         string
 	current_method_is_static bool
 }
 
@@ -1662,25 +1663,47 @@ fn (mut p FastArm64Program) register_array_new_runtime() {
 	element_size := p.add_arg(id, p.i64_type, 'element_size')
 	length := p.add_arg(id, p.i64_type, 'length')
 	capacity := p.add_arg(id, p.i64_type, 'capacity')
+	zero64 := p.m.get_or_add_const(p.i64_type, '0')
+	length_negative := p.instr2(.lt, entry, p.i1_type, length, zero64)
+	capacity_negative := p.instr2(.lt, entry, p.i1_type, capacity, zero64)
+	invalid_dimensions := p.instr2(.or_, entry, p.i1_type, length_negative, capacity_negative)
+	invalid := p.m.add_block(id, 'array_new_invalid')
+	valid := p.m.add_block(id, 'array_new_valid')
+	normalize_capacity := p.m.add_block(id, 'array_new_normalize_capacity')
+	keep_capacity := p.m.add_block(id, 'array_new_keep_capacity')
+	allocate := p.m.add_block(id, 'array_new_allocate')
+	capacity_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.i64_type))
+	p.instr3(.br, entry, p.void_type, invalid_dimensions, ssa.ValueID(invalid), ssa.ValueID(valid))
+	exit_ref := p.m.add_value(.func_ref, p.void_type, 'exit', p.fn_ids['exit'])
+	exit_code := p.m.get_or_add_const(p.i32_type, '1')
+	p.m.add_instr(.call, invalid, p.void_type, [exit_ref, exit_code])
+	p.instr0(.unreachable, invalid, p.void_type)
+	capacity_too_small := p.instr2(.lt, valid, p.i1_type, capacity, length)
+	p.instr3(.br, valid, p.void_type, capacity_too_small, ssa.ValueID(normalize_capacity), ssa.ValueID(keep_capacity))
+	p.instr2(.store, normalize_capacity, p.void_type, length, capacity_slot)
+	p.instr1(.jmp, normalize_capacity, p.void_type, ssa.ValueID(allocate))
+	p.instr2(.store, keep_capacity, p.void_type, capacity, capacity_slot)
+	p.instr1(.jmp, keep_capacity, p.void_type, ssa.ValueID(allocate))
+	effective_capacity := p.instr1(.load, allocate, p.i64_type, capacity_slot)
 	calloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'calloc', p.fn_ids['calloc'])
-	data := p.m.add_instr(.call, entry, p.ptr_i8, [calloc_ref, capacity, element_size])
-	slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.array_type))
-	p.instr2(.store, entry, p.void_type, data, p.struct_field_ptr(entry, slot, p.array_type, 0))
+	data := p.m.add_instr(.call, allocate, p.ptr_i8, [calloc_ref, effective_capacity, element_size])
+	slot := p.instr0(.alloca, allocate, p.m.type_store.get_ptr(p.array_type))
+	p.instr2(.store, allocate, p.void_type, data, p.struct_field_ptr(allocate, slot, p.array_type, 0))
 	zero32 := p.m.get_or_add_const(p.i32_type, '0')
-	p.instr2(.store, entry, p.void_type, zero32, p.struct_field_ptr(entry, slot, p.array_type, 1))
-	length32 := p.instr1(.trunc, entry, p.i32_type, length)
-	capacity32 := p.instr1(.trunc, entry, p.i32_type, capacity)
-	element_size32 := p.instr1(.trunc, entry, p.i32_type, element_size)
+	p.instr2(.store, allocate, p.void_type, zero32, p.struct_field_ptr(allocate, slot, p.array_type, 1))
+	length32 := p.instr1(.trunc, allocate, p.i32_type, length)
+	capacity32 := p.instr1(.trunc, allocate, p.i32_type, effective_capacity)
+	element_size32 := p.instr1(.trunc, allocate, p.i32_type, element_size)
 	for field, value in {
 		2: length32
 		3: capacity32
 		4: zero32
 		5: element_size32
 	} {
-		p.instr2(.store, entry, p.void_type, value, p.struct_field_ptr(entry, slot, p.array_type, field))
+		p.instr2(.store, allocate, p.void_type, value, p.struct_field_ptr(allocate, slot, p.array_type, field))
 	}
-	result := p.instr1(.load, entry, p.array_type, slot)
-	p.instr1(.ret, entry, p.void_type, result)
+	result := p.instr1(.load, allocate, p.array_type, slot)
+	p.instr1(.ret, allocate, p.void_type, result)
 }
 
 fn (mut p FastArm64Program) register_map_runtime() {
@@ -3294,6 +3317,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 	} else {
 		signature.return_type
 	}
+	p.return_types = signature.return_types.clone()
 	p.return_is_option = signature.return_type == 'Option'
 	p.locals = map[string]FastArm64Local{}
 	p.terminated = map[int]bool{}
@@ -3724,7 +3748,20 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		if op != .assign {
 			return p.unsupported('map indexed compound assignment')
 		}
-		p.emit_map_set(map_value, key, value)
+		key_type_name, value_type_name := fastc_map_key_value_types(local.typ_name) or {
+			return p.unsupported('map type `${local.typ_name}`')
+		}
+		key_type := p.program.type_id(key_type_name)
+		value_type := p.program.type_id(value_type_name)
+		mut converted_key := key
+		mut converted_value := value
+		if converted_key.typ != key_type {
+			converted_key = p.convert_value(converted_key, key_type, key_type_name)
+		}
+		if converted_value.typ != value_type {
+			converted_value = p.convert_value(converted_value, value_type, value_type_name)
+		}
+		p.emit_map_set(map_value, converted_key, converted_value)
 		return
 	}
 	if next_token in [.inc, .dec] {
@@ -3915,7 +3952,13 @@ fn (mut p FastArm64Parser) parse_return() ! {
 			slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.return_typ))
 			for i, value in values {
 				address := p.program.struct_field_ptr(p.cur_block, slot, p.return_typ, i)
-				p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, address)
+				field_type := layout.fields[i]
+				field_type_name := if i < p.return_types.len { p.return_types[i] } else { '' }
+				mut field_value := value
+				if field_value.typ != field_type {
+					field_value = p.convert_value(field_value, field_type, field_type_name)
+				}
+				p.program.instr2(.store, p.cur_block, p.program.void_type, field_value.id, address)
 			}
 			mut result := FastArm64Value{
 				id: p.program.instr1(.load, p.cur_block, p.return_typ, slot)
@@ -3932,6 +3975,8 @@ fn (mut p FastArm64Parser) parse_return() ! {
 			mut result := first
 			if p.return_is_option {
 				result = p.prepare_option_return(first)
+			} else if result.typ != p.return_typ {
+				result = p.convert_value(result, p.return_typ, p.return_name)
 			}
 			p.program.instr1(.ret, p.cur_block, p.program.void_type, result.id)
 		}
@@ -6680,7 +6725,11 @@ fn (mut p FastArm64Parser) make_array(element_type_name string, initial []FastAr
 			offset := p.program.m.get_or_add_const(p.program.i64_type, (i * p.program.m.type_size(element_type)).str())
 			address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, offset)
 			typed_address := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), address)
-			p.program.instr2(.store, p.cur_block, p.program.void_type, item.id, typed_address)
+			mut stored := item
+			if stored.typ != element_type {
+				stored = p.convert_value(stored, element_type, element_type_name)
+			}
+			p.program.instr2(.store, p.cur_block, p.program.void_type, stored.id, typed_address)
 		}
 	}
 	return result
@@ -7565,10 +7614,14 @@ fn (mut p FastArm64Parser) integer_to_i64(value FastArm64Value) ssa.ValueID {
 fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !FastArm64Value {
 	if value.typ == p.program.map_type {
 		p.expect(.lsbr)!
-		key := p.parse_expression(0)!
+		mut key := p.parse_expression(0)!
 		p.expect(.rsbr)!
-		_, value_type_name := fastc_map_key_value_types(value.typ_name) or {
+		key_type_name, value_type_name := fastc_map_key_value_types(value.typ_name) or {
 			return p.unsupported('map type `${value.typ_name}`')
+		}
+		key_type := p.program.type_id(key_type_name)
+		if key.typ != key_type {
+			key = p.convert_value(key, key_type, key_type_name)
 		}
 		value_type := p.program.type_id(value_type_name)
 		value_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value_type).str())
@@ -8341,7 +8394,8 @@ fn (mut p FastArm64Parser) call_argument(argument FastArm64Value, expected_type_
 		p.program.instr2(.store, p.cur_block, p.program.void_type, argument.id, slot)
 		return slot
 	}
-	if expected.kind == .int_t && p.program.m.type_store.types[argument.typ].kind == .int_t {
+	actual := p.program.m.type_store.types[argument.typ]
+	if expected.kind in [.int_t, .float_t] && actual.kind in [.int_t, .float_t] {
 		return p.convert_value(argument, expected_type, expected_type_name).id
 	}
 	return argument.id
@@ -8581,8 +8635,16 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 		return p.emit_array_push(left, right, false)
 	}
 	if op in [.key_in, .not_in] && right.typ == p.program.map_type {
-		key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(left.typ))
-		p.program.instr2(.store, p.cur_block, p.program.void_type, left.id, key_slot)
+		key_type_name, _ := fastc_map_key_value_types(right.typ_name) or {
+			return p.unsupported('map type `${right.typ_name}`')
+		}
+		key_type := p.program.type_id(key_type_name)
+		mut key := left
+		if key.typ != key_type {
+			key = p.convert_value(key, key_type, key_type_name)
+		}
+		key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(key.typ))
+		p.program.instr2(.store, p.cur_block, p.program.void_type, key.id, key_slot)
 		key_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, key_slot)
 		find_ref := p.program.m.add_value(.func_ref, p.program.i64_type, 'fast_map_find', p.program.fn_ids['fast_map_find'])
 		index := p.program.m.add_instr(.call, p.cur_block, p.program.i64_type, [
@@ -8629,7 +8691,12 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 		}
 	}
 	mut converted_right := right
-	if left.typ != right.typ && p.program.m.type_store.types[left.typ].kind == .int_t && p.program.m.type_store.types[right.typ].kind == .int_t {
+	left_kind := p.program.m.type_store.types[left.typ].kind
+	right_kind := p.program.m.type_store.types[right.typ].kind
+	if left.typ != right.typ && left_kind in [.int_t, .float_t] && right_kind in [
+		.int_t,
+		.float_t,
+	] {
 		converted_right = p.convert_value(right, left.typ, left.typ_name)
 	}
 	result_type := if op in [.eq, .ne, .lt, .le, .gt, .ge, .and, .logical_or] {
