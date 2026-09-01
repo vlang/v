@@ -4372,7 +4372,6 @@ fn (mut p FastArm64Parser) parse_map_collection_for(key_name string, value_name 
 	p.program.instr2(.store, p.cur_block, p.program.void_type, collection.id, map_slot)
 	state_type := p.program.m.type_store.get_ptr(p.program.map_state_type)
 	state := p.program.instr1(.load, p.cur_block, state_type, p.program.struct_field_ptr(p.cur_block, map_slot, p.program.map_type, 0))
-	length := p.program.instr1(.load, p.cur_block, p.program.i64_type, p.program.struct_field_ptr(p.cur_block, state, p.program.map_state_type, 3))
 	index_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.i64_type))
 	zero := p.program.m.get_or_add_const(p.program.i64_type, '0')
 	p.program.instr2(.store, p.cur_block, p.program.void_type, zero, index_slot)
@@ -4380,8 +4379,11 @@ fn (mut p FastArm64Parser) parse_map_collection_for(key_name string, value_name 
 	body_block := p.program.m.add_block(p.func_id, 'map_collection_body')
 	increment_block := p.program.m.add_block(p.func_id, 'map_collection_increment')
 	done_block := p.program.m.add_block(p.func_id, 'map_collection_done')
-	p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(condition_block))
+	state_bytes := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, state)
+	has_state := p.program.instr2(.ne, p.cur_block, p.program.i1_type, state_bytes, p.program.m.get_or_add_const(p.program.ptr_i8, '0'))
+	p.program.instr3(.br, p.cur_block, p.program.void_type, has_state, ssa.ValueID(condition_block), ssa.ValueID(done_block))
 	p.mark_terminated(p.cur_block)
+	length := p.program.instr1(.load, condition_block, p.program.i64_type, p.program.struct_field_ptr(condition_block, state, p.program.map_state_type, 3))
 	index := p.program.instr1(.load, condition_block, p.program.i64_type, index_slot)
 	more := p.program.instr2(.lt, condition_block, p.program.i1_type, index, length)
 	p.program.instr3(.br, condition_block, p.program.void_type, more, ssa.ValueID(body_block), ssa.ValueID(done_block))
@@ -5271,6 +5273,9 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 		.key_spawn {
 			// The native bootstrap runs FastC phases serially. Preserve the value
 			// returned by a spawned call so a following `.wait()` is an identity.
+			if !p.program.prefs.building_v {
+				return p.unsupported('spawn outside the compiler bootstrap')
+			}
 			p.next()
 			value := p.parse_atom()!
 			return FastArm64Value{
@@ -7940,10 +7945,19 @@ fn (mut p FastArm64Parser) default_struct_value_for_type(typ ssa.TypeID, type_na
 	for i, field in declaration.fields {
 		field_type := p.program.m.type_store.types[typ].fields[i]
 		if field.default_source == '' {
+			mut value := FastArm64Value{}
+			mut has_nonzero_default := false
 			if field_type == p.program.map_type {
-				value := p.new_empty_map_value(field.typ)!
-				p.program.instr2(.store, p.cur_block, p.program.void_type, value.id,
-					p.program.struct_field_ptr(p.cur_block, result.address, typ, i))
+				value = p.new_empty_map_value(field.typ)!
+				has_nonzero_default = true
+			} else if nested := p.program.type_decls_by_id[int(field_type)] {
+				if !nested.is_union && !nested.is_c {
+					value = p.default_struct_value_for_type(field_type, field.typ)!
+					has_nonzero_default = true
+				}
+			}
+			if has_nonzero_default {
+				p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, p.program.struct_field_ptr(p.cur_block, result.address, typ, i))
 			}
 			continue
 		}
@@ -8652,20 +8666,14 @@ fn (mut p FastArm64Parser) emit_array_membership(op token.Token, needle FastArm6
 	address := p.program.instr2(.add, body, p.program.ptr_i8, data, offset)
 	typed_address := p.program.instr1(.bitcast, body, p.program.m.type_store.get_ptr(element_type), address)
 	element := p.program.instr1(.load, body, element_type, typed_address)
-	mut equal := ssa.ValueID(0)
-	if element_type == p.program.str_type {
-		p.cur_block = body
-		equal_value := p.emit_string_binary(.eq, FastArm64Value{
-			id: element
-			typ: element_type
-			typ_name: element_type_name
-		}, expected)!
-		equal = equal_value.id
-	} else {
-		equal = p.program.instr2(.eq, body, p.program.i1_type, element, expected.id)
-	}
-	p.program.instr3(.br, body, p.program.void_type, equal, ssa.ValueID(found), ssa.ValueID(increment))
-	p.mark_terminated(body)
+	p.cur_block = body
+	equal := p.emit_value_equality(FastArm64Value{
+		id: element
+		typ: element_type
+		typ_name: element_type_name
+	}, expected)!
+	p.program.instr3(.br, p.cur_block, p.program.void_type, equal.id, ssa.ValueID(found), ssa.ValueID(increment))
+	p.mark_terminated(p.cur_block)
 	true_value := p.program.m.get_or_add_const(p.program.i1_type, '1')
 	p.program.instr2(.store, found, p.program.void_type, true_value, result_slot)
 	p.program.instr1(.jmp, found, p.program.void_type, ssa.ValueID(done))

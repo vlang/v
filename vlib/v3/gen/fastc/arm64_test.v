@@ -165,6 +165,10 @@ fn main() {
 		println("wrong aggregate equality")
 		return
 	}
+	if struct_same !in [struct_left] || struct_different in [struct_left] || fixed_same !in [fixed] || fixed_different in [fixed] || array_same !in [array_left] || array_different in [array_left] {
+		println("wrong aggregate membership")
+		return
+	}
 	mut features := FastArm64Features.read
 	features.set(.write)
 	if !features.has(.read) || !features.has(.write) {
@@ -179,11 +183,6 @@ fn main() {
 	waiter := FastArm64Waiter{value: 6}
 	if waiter.wait() != 7 {
 		println("wrong ordinary wait")
-		return
-	}
-	spawned := spawn fast_arm64_spawned_value()
-	if spawned.wait() != 11 {
-		println("wrong spawned wait")
 		return
 	}
 	mut shadow := 1
@@ -304,6 +303,12 @@ fn main() {
 		println("wrong zero map")
 		return
 	}
+	mut nested_map_defaults := FastArm64CloneOuter{}
+	nested_map_defaults.inner.values["present"] = 9
+	if nested_map_defaults.inner.values["present"] != 9 {
+		println("wrong nested zero map insertion")
+		return
+	}
 	cloned_empty := FastArm64CloneOuter{}.inner.values.clone()
 	if cloned_empty.len != 0 {
 		println("wrong zero map clone")
@@ -313,6 +318,14 @@ fn main() {
 	empty_values := FastArm64CloneOuter{}.inner.values.values()
 	if empty_keys.len != 0 || empty_values.len != 0 {
 		println("wrong zero map items")
+		return
+	}
+	mut zero_map_iterations := 0
+	for _, _ in FastArm64CloneOuter{}.inner.values {
+		zero_map_iterations++
+	}
+	if zero_map_iterations != 0 {
+		println("wrong zero map iteration")
 		return
 	}
 	mut unsigned_range_ran := false
@@ -412,6 +425,30 @@ fn main() {
 		result := os.execute(output_path)
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
+	}
+}
+
+fn test_fastc_arm64_rejects_synchronous_spawn_for_general_programs() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_spawn_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn worker() int { return 1 }\nfn main() { handle := spawn worker(); println(handle.wait()) }\n') or {
+			panic(err)
+		}
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or {
+			assert err.msg().contains('spawn outside the compiler bootstrap'), err.msg()
+			return
+		}
+		assert false, 'general ARM64 input compiled a synchronous spawn'
 	}
 }
 
