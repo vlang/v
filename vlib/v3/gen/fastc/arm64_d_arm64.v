@@ -1119,7 +1119,7 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_map_runtime()
 	p.register_integer_string_runtime()
 	p.register_integer_format_runtime()
-	p.register_character_format_runtime()
+	p.register_character_string_runtime()
 	p.register_string_padding_runtime()
 	p.register_string_zero_extension_runtime()
 	p.register_fixed_float_string_runtime()
@@ -2445,114 +2445,110 @@ fn (mut p FastArm64Program) register_integer_format_runtime() {
 	p.instr1(.ret, done, p.void_type, result)
 }
 
-fn (mut p FastArm64Program) register_character_format_runtime() {
+fn (mut p FastArm64Program) register_character_string_runtime() {
 	id := p.register_function('fast_character_to_string', 'fast_character_to_string', p.str_type, false)
-	entry := p.m.add_block(id, 'character_format_entry')
-	check_two := p.m.add_block(id, 'character_format_check_two')
-	check_three := p.m.add_block(id, 'character_format_check_three')
-	check_four := p.m.add_block(id, 'character_format_check_four')
-	one_byte := p.m.add_block(id, 'character_format_one_byte')
-	two_bytes := p.m.add_block(id, 'character_format_two_bytes')
-	three_bytes := p.m.add_block(id, 'character_format_three_bytes')
-	four_bytes := p.m.add_block(id, 'character_format_four_bytes')
-	invalid := p.m.add_block(id, 'character_format_invalid')
-	done := p.m.add_block(id, 'character_format_done')
-	code := p.add_arg(id, p.i64_type, 'code')
-	five := p.m.get_or_add_const(p.i64_type, '5')
+	entry := p.m.add_block(id, 'character_string_entry')
+	ascii := p.m.add_block(id, 'character_string_ascii')
+	check_two := p.m.add_block(id, 'character_string_check_two')
+	two := p.m.add_block(id, 'character_string_two')
+	check_three := p.m.add_block(id, 'character_string_check_three')
+	three := p.m.add_block(id, 'character_string_three')
+	check_four := p.m.add_block(id, 'character_string_check_four')
+	four := p.m.add_block(id, 'character_string_four')
+	done := p.m.add_block(id, 'character_string_done')
+	value := p.add_arg(id, p.i64_type, 'value')
+	allocation_size := p.m.get_or_add_const(p.i64_type, '5')
 	malloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'malloc', p.fn_ids['malloc'])
-	buffer := p.m.add_instr(.call, entry, p.ptr_i8, [malloc_ref, five])
+	buffer := p.m.add_instr(.call, entry, p.ptr_i8, [malloc_ref, allocation_size])
 	length_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.i32_type))
-	max_one := p.m.get_or_add_const(p.i64_type, '127')
-	is_one := p.instr2(.ule, entry, p.i1_type, code, max_one)
-	p.instr3(.br, entry, p.void_type, is_one, ssa.ValueID(one_byte), ssa.ValueID(check_two))
-
-	max_two := p.m.get_or_add_const(p.i64_type, '2047')
-	is_two := p.instr2(.ule, check_two, p.i1_type, code, max_two)
-	p.instr3(.br, check_two, p.void_type, is_two, ssa.ValueID(two_bytes), ssa.ValueID(check_three))
-	max_three := p.m.get_or_add_const(p.i64_type, '65535')
-	is_three := p.instr2(.ule, check_three, p.i1_type, code, max_three)
-	p.instr3(.br, check_three, p.void_type, is_three, ssa.ValueID(three_bytes), ssa.ValueID(check_four))
-	max_four := p.m.get_or_add_const(p.i64_type, '1114111')
-	is_four := p.instr2(.ule, check_four, p.i1_type, code, max_four)
-	p.instr3(.br, check_four, p.void_type, is_four, ssa.ValueID(four_bytes), ssa.ValueID(invalid))
-
-	one32 := p.m.get_or_add_const(p.i32_type, '1')
-	one_value := p.instr1(.trunc, one_byte, p.u8_type, code)
-	p.instr2(.store, one_byte, p.void_type, one_value, buffer)
-	p.instr2(.store, one_byte, p.void_type, one32, length_slot)
-	p.instr1(.jmp, one_byte, p.void_type, ssa.ValueID(done))
-
-	mask63 := p.m.get_or_add_const(p.i64_type, '63')
-	shift6 := p.m.get_or_add_const(p.i64_type, '6')
-	continuation_prefix := p.m.get_or_add_const(p.u8_type, '128')
-	two_first_shifted := p.instr2(.lshr, two_bytes, p.i64_type, code, shift6)
-	two_first_byte := p.instr1(.trunc, two_bytes, p.u8_type, two_first_shifted)
-	two_prefix := p.m.get_or_add_const(p.u8_type, '192')
-	two_first := p.instr2(.or_, two_bytes, p.u8_type, two_first_byte, two_prefix)
-	p.instr2(.store, two_bytes, p.void_type, two_first, buffer)
-	one64 := p.m.get_or_add_const(p.i64_type, '1')
-	two_second_address := p.instr2(.add, two_bytes, p.ptr_i8, buffer, one64)
-	two_second_masked := p.instr2(.and_, two_bytes, p.i64_type, code, mask63)
-	two_second_byte := p.instr1(.trunc, two_bytes, p.u8_type, two_second_masked)
-	two_second := p.instr2(.or_, two_bytes, p.u8_type, two_second_byte, continuation_prefix)
-	p.instr2(.store, two_bytes, p.void_type, two_second, two_second_address)
-	two32 := p.m.get_or_add_const(p.i32_type, '2')
-	p.instr2(.store, two_bytes, p.void_type, two32, length_slot)
-	p.instr1(.jmp, two_bytes, p.void_type, ssa.ValueID(done))
-
-	shift12 := p.m.get_or_add_const(p.i64_type, '12')
-	three_first_shifted := p.instr2(.lshr, three_bytes, p.i64_type, code, shift12)
-	three_first_byte := p.instr1(.trunc, three_bytes, p.u8_type, three_first_shifted)
-	three_prefix := p.m.get_or_add_const(p.u8_type, '224')
-	three_first := p.instr2(.or_, three_bytes, p.u8_type, three_first_byte, three_prefix)
-	p.instr2(.store, three_bytes, p.void_type, three_first, buffer)
-	three_second_address := p.instr2(.add, three_bytes, p.ptr_i8, buffer, one64)
-	three_second_shifted := p.instr2(.lshr, three_bytes, p.i64_type, code, shift6)
-	three_second_masked := p.instr2(.and_, three_bytes, p.i64_type, three_second_shifted, mask63)
-	three_second_byte := p.instr1(.trunc, three_bytes, p.u8_type, three_second_masked)
-	three_second := p.instr2(.or_, three_bytes, p.u8_type, three_second_byte, continuation_prefix)
-	p.instr2(.store, three_bytes, p.void_type, three_second, three_second_address)
-	two64 := p.m.get_or_add_const(p.i64_type, '2')
-	three_third_address := p.instr2(.add, three_bytes, p.ptr_i8, buffer, two64)
-	three_third_masked := p.instr2(.and_, three_bytes, p.i64_type, code, mask63)
-	three_third_byte := p.instr1(.trunc, three_bytes, p.u8_type, three_third_masked)
-	three_third := p.instr2(.or_, three_bytes, p.u8_type, three_third_byte, continuation_prefix)
-	p.instr2(.store, three_bytes, p.void_type, three_third, three_third_address)
-	three32 := p.m.get_or_add_const(p.i32_type, '3')
-	p.instr2(.store, three_bytes, p.void_type, three32, length_slot)
-	p.instr1(.jmp, three_bytes, p.void_type, ssa.ValueID(done))
-
-	shift18 := p.m.get_or_add_const(p.i64_type, '18')
-	four_first_shifted := p.instr2(.lshr, four_bytes, p.i64_type, code, shift18)
-	four_first_byte := p.instr1(.trunc, four_bytes, p.u8_type, four_first_shifted)
-	four_prefix := p.m.get_or_add_const(p.u8_type, '240')
-	four_first := p.instr2(.or_, four_bytes, p.u8_type, four_first_byte, four_prefix)
-	p.instr2(.store, four_bytes, p.void_type, four_first, buffer)
-	four_second_address := p.instr2(.add, four_bytes, p.ptr_i8, buffer, one64)
-	four_second_shifted := p.instr2(.lshr, four_bytes, p.i64_type, code, shift12)
-	four_second_masked := p.instr2(.and_, four_bytes, p.i64_type, four_second_shifted, mask63)
-	four_second_byte := p.instr1(.trunc, four_bytes, p.u8_type, four_second_masked)
-	four_second := p.instr2(.or_, four_bytes, p.u8_type, four_second_byte, continuation_prefix)
-	p.instr2(.store, four_bytes, p.void_type, four_second, four_second_address)
-	four_third_address := p.instr2(.add, four_bytes, p.ptr_i8, buffer, two64)
-	four_third_shifted := p.instr2(.lshr, four_bytes, p.i64_type, code, shift6)
-	four_third_masked := p.instr2(.and_, four_bytes, p.i64_type, four_third_shifted, mask63)
-	four_third_byte := p.instr1(.trunc, four_bytes, p.u8_type, four_third_masked)
-	four_third := p.instr2(.or_, four_bytes, p.u8_type, four_third_byte, continuation_prefix)
-	p.instr2(.store, four_bytes, p.void_type, four_third, four_third_address)
-	three64 := p.m.get_or_add_const(p.i64_type, '3')
-	four_fourth_address := p.instr2(.add, four_bytes, p.ptr_i8, buffer, three64)
-	four_fourth_masked := p.instr2(.and_, four_bytes, p.i64_type, code, mask63)
-	four_fourth_byte := p.instr1(.trunc, four_bytes, p.u8_type, four_fourth_masked)
-	four_fourth := p.instr2(.or_, four_bytes, p.u8_type, four_fourth_byte, continuation_prefix)
-	p.instr2(.store, four_bytes, p.void_type, four_fourth, four_fourth_address)
-	four32 := p.m.get_or_add_const(p.i32_type, '4')
-	p.instr2(.store, four_bytes, p.void_type, four32, length_slot)
-	p.instr1(.jmp, four_bytes, p.void_type, ssa.ValueID(done))
-
 	zero32 := p.m.get_or_add_const(p.i32_type, '0')
-	p.instr2(.store, invalid, p.void_type, zero32, length_slot)
-	p.instr1(.jmp, invalid, p.void_type, ssa.ValueID(done))
+	p.instr2(.store, entry, p.void_type, zero32, length_slot)
+	ascii_limit := p.m.get_or_add_const(p.i64_type, '127')
+	is_ascii := p.instr2(.ule, entry, p.i1_type, value, ascii_limit)
+	p.instr3(.br, entry, p.void_type, is_ascii, ssa.ValueID(ascii), ssa.ValueID(check_two))
+
+	ascii_byte := p.instr1(.trunc, ascii, p.u8_type, value)
+	p.instr2(.store, ascii, p.void_type, ascii_byte, buffer)
+	one32 := p.m.get_or_add_const(p.i32_type, '1')
+	p.instr2(.store, ascii, p.void_type, one32, length_slot)
+	p.instr1(.jmp, ascii, p.void_type, ssa.ValueID(done))
+
+	two_limit := p.m.get_or_add_const(p.i64_type, '2047')
+	fits_two := p.instr2(.ule, check_two, p.i1_type, value, two_limit)
+	p.instr3(.br, check_two, p.void_type, fits_two, ssa.ValueID(two), ssa.ValueID(check_three))
+	shift_six := p.m.get_or_add_const(p.i64_type, '6')
+	shifted_six := p.instr2(.lshr, two, p.i64_type, value, shift_six)
+	first_two := p.instr1(.trunc, two, p.u8_type, shifted_six)
+	two_prefix := p.m.get_or_add_const(p.u8_type, '192')
+	first_two_encoded := p.instr2(.or_, two, p.u8_type, first_two, two_prefix)
+	p.instr2(.store, two, p.void_type, first_two_encoded, buffer)
+	continuation_mask := p.m.get_or_add_const(p.i64_type, '63')
+	second_two_bits := p.instr2(.and_, two, p.i64_type, value, continuation_mask)
+	second_two := p.instr1(.trunc, two, p.u8_type, second_two_bits)
+	continuation_prefix := p.m.get_or_add_const(p.u8_type, '128')
+	second_two_encoded := p.instr2(.or_, two, p.u8_type, second_two, continuation_prefix)
+	one64 := p.m.get_or_add_const(p.i64_type, '1')
+	second_two_address := p.instr2(.add, two, p.ptr_i8, buffer, one64)
+	p.instr2(.store, two, p.void_type, second_two_encoded, second_two_address)
+	two32 := p.m.get_or_add_const(p.i32_type, '2')
+	p.instr2(.store, two, p.void_type, two32, length_slot)
+	p.instr1(.jmp, two, p.void_type, ssa.ValueID(done))
+
+	three_limit := p.m.get_or_add_const(p.i64_type, '65535')
+	fits_three := p.instr2(.ule, check_three, p.i1_type, value, three_limit)
+	p.instr3(.br, check_three, p.void_type, fits_three, ssa.ValueID(three), ssa.ValueID(check_four))
+	shift_twelve := p.m.get_or_add_const(p.i64_type, '12')
+	shifted_twelve := p.instr2(.lshr, three, p.i64_type, value, shift_twelve)
+	first_three := p.instr1(.trunc, three, p.u8_type, shifted_twelve)
+	three_prefix := p.m.get_or_add_const(p.u8_type, '224')
+	first_three_encoded := p.instr2(.or_, three, p.u8_type, first_three, three_prefix)
+	p.instr2(.store, three, p.void_type, first_three_encoded, buffer)
+	shifted_three_six := p.instr2(.lshr, three, p.i64_type, value, shift_six)
+	second_three_bits := p.instr2(.and_, three, p.i64_type, shifted_three_six, continuation_mask)
+	second_three := p.instr1(.trunc, three, p.u8_type, second_three_bits)
+	second_three_encoded := p.instr2(.or_, three, p.u8_type, second_three, continuation_prefix)
+	second_three_address := p.instr2(.add, three, p.ptr_i8, buffer, one64)
+	p.instr2(.store, three, p.void_type, second_three_encoded, second_three_address)
+	third_three_bits := p.instr2(.and_, three, p.i64_type, value, continuation_mask)
+	third_three := p.instr1(.trunc, three, p.u8_type, third_three_bits)
+	third_three_encoded := p.instr2(.or_, three, p.u8_type, third_three, continuation_prefix)
+	two64 := p.m.get_or_add_const(p.i64_type, '2')
+	third_three_address := p.instr2(.add, three, p.ptr_i8, buffer, two64)
+	p.instr2(.store, three, p.void_type, third_three_encoded, third_three_address)
+	three32 := p.m.get_or_add_const(p.i32_type, '3')
+	p.instr2(.store, three, p.void_type, three32, length_slot)
+	p.instr1(.jmp, three, p.void_type, ssa.ValueID(done))
+
+	four_limit := p.m.get_or_add_const(p.i64_type, '1114111')
+	fits_four := p.instr2(.ule, check_four, p.i1_type, value, four_limit)
+	p.instr3(.br, check_four, p.void_type, fits_four, ssa.ValueID(four), ssa.ValueID(done))
+	shift_eighteen := p.m.get_or_add_const(p.i64_type, '18')
+	shifted_eighteen := p.instr2(.lshr, four, p.i64_type, value, shift_eighteen)
+	first_four := p.instr1(.trunc, four, p.u8_type, shifted_eighteen)
+	four_prefix := p.m.get_or_add_const(p.u8_type, '240')
+	first_four_encoded := p.instr2(.or_, four, p.u8_type, first_four, four_prefix)
+	p.instr2(.store, four, p.void_type, first_four_encoded, buffer)
+	shifted_four_twelve := p.instr2(.lshr, four, p.i64_type, value, shift_twelve)
+	second_four_bits := p.instr2(.and_, four, p.i64_type, shifted_four_twelve, continuation_mask)
+	second_four := p.instr1(.trunc, four, p.u8_type, second_four_bits)
+	second_four_encoded := p.instr2(.or_, four, p.u8_type, second_four, continuation_prefix)
+	second_four_address := p.instr2(.add, four, p.ptr_i8, buffer, one64)
+	p.instr2(.store, four, p.void_type, second_four_encoded, second_four_address)
+	shifted_four_six := p.instr2(.lshr, four, p.i64_type, value, shift_six)
+	third_four_bits := p.instr2(.and_, four, p.i64_type, shifted_four_six, continuation_mask)
+	third_four := p.instr1(.trunc, four, p.u8_type, third_four_bits)
+	third_four_encoded := p.instr2(.or_, four, p.u8_type, third_four, continuation_prefix)
+	third_four_address := p.instr2(.add, four, p.ptr_i8, buffer, two64)
+	p.instr2(.store, four, p.void_type, third_four_encoded, third_four_address)
+	fourth_four_bits := p.instr2(.and_, four, p.i64_type, value, continuation_mask)
+	fourth_four := p.instr1(.trunc, four, p.u8_type, fourth_four_bits)
+	fourth_four_encoded := p.instr2(.or_, four, p.u8_type, fourth_four, continuation_prefix)
+	three64 := p.m.get_or_add_const(p.i64_type, '3')
+	fourth_four_address := p.instr2(.add, four, p.ptr_i8, buffer, three64)
+	p.instr2(.store, four, p.void_type, fourth_four_encoded, fourth_four_address)
+	four32 := p.m.get_or_add_const(p.i32_type, '4')
+	p.instr2(.store, four, p.void_type, four32, length_slot)
+	p.instr1(.jmp, four, p.void_type, ssa.ValueID(done))
 
 	length := p.instr1(.load, done, p.i32_type, length_slot)
 	length64 := p.instr1(.zext, done, p.i64_type, length)
@@ -4073,7 +4069,6 @@ fn (mut p FastArm64Parser) prepare_option_return(value FastArm64Value) FastArm64
 		return value
 	}
 	if value.is_none || value.typ_name == 'IError' || p.option_return_types_are_incompatible(value.typ, p.return_typ) {
-		p.store_option_failure(p.program.m.get_or_add_const(p.program.i1_type, '1'))
 		mut error_type := value.option_error_type
 		mut error_message := value.option_error_message
 		mut error_code := value.option_error_code
@@ -4082,18 +4077,18 @@ fn (mut p FastArm64Parser) prepare_option_return(value FastArm64Value) FastArm64
 		}
 		if !value.is_none && value.typ_name != 'IError' {
 			if error_message == ssa.ValueID(0) {
-				if message := p.emit_noarg_method_call(value, 'msg') {
-					if message.typ == p.program.str_type {
-						error_message = message.id
-					}
+				if message := p.emit_zero_argument_method(value, 'msg') {
+					error_message = message.id
 				}
 			}
 			if error_code == ssa.ValueID(0) {
-				if code := p.emit_noarg_method_call(value, 'code') {
-					error_code = p.convert_value(code, p.program.i32_type, 'int').id
+				if code := p.emit_zero_argument_method(value, 'code') {
+					converted := p.convert_value(code, p.program.i32_type, 'int')
+					error_code = converted.id
 				}
 			}
 		}
+		p.store_option_failure(p.program.m.get_or_add_const(p.program.i1_type, '1'))
 		p.store_option_error_details(error_type, error_message, error_code)
 		return p.zero_value(p.return_typ, p.return_name)
 	}
@@ -4248,6 +4243,9 @@ fn (mut p FastArm64Parser) parse_if() ! {
 				addr: address
 				typ: value.typ
 				typ_name: value.typ_name
+				option_error_type: value.option_error_type
+				option_error_message: value.option_error_message
+				option_error_code: value.option_error_code
 				is_spawned: value.is_spawned
 				spawn_handle: value.spawn_handle
 				spawn_context: value.spawn_context
@@ -6262,11 +6260,11 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 	if first_name in ['error', 'error_with_code'] && p.tok == .lpar {
 		p.next()
 		mut message := p.parse_expression(0)!
-		mut code := ssa.ValueID(0)
+		mut error_code := p.program.m.get_or_add_const(p.program.i32_type, '0')
 		if first_name == 'error_with_code' {
 			p.expect(.comma)!
-			code_value := p.parse_expression(0)!
-			code = p.convert_value(code_value, p.program.i32_type, 'int').id
+			code := p.parse_expression(0)!
+			error_code = p.convert_value(code, p.program.i32_type, 'int').id
 		}
 		p.expect(.rpar)!
 		if message.typ != p.program.str_type {
@@ -6277,7 +6275,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 			...value
 			is_none: true
 			option_error_message: message.id
-			option_error_code: code
+			option_error_code: error_code
 		}
 	}
 	if first_name.starts_with('@') {
@@ -6634,6 +6632,23 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 }
 
 fn (mut p FastArm64Program) ensure_c_fd_type(name string) {
+	if existing := p.type_ids[name] {
+		if name == 'C.fd_set' && p.m.type_store.types[existing].fields.len == 0 {
+			mut fields := []ssa.TypeID{}
+			mut field_names := []string{}
+			for i in 0 .. 16 {
+				fields << p.u64_type
+				field_names << 'bits_${i}'
+			}
+			p.m.type_store.types[existing] = ssa.Type{
+				kind: .struct_t
+				fields: fields
+				field_names: field_names
+				is_c_struct: true
+			}
+		}
+		return
+	}
 	mut fields := []ssa.TypeID{}
 	mut field_names := []string{}
 	if name == 'C.timeval' {
@@ -7666,10 +7681,10 @@ fn (mut p FastArm64Parser) resolve_method_key(value FastArm64Value, method strin
 	return none
 }
 
-fn (mut p FastArm64Parser) emit_noarg_method_call(value FastArm64Value, method string) ?FastArm64Value {
+fn (mut p FastArm64Parser) emit_zero_argument_method(value FastArm64Value, method string) ?FastArm64Value {
 	resolved := p.resolve_method_key(value, method) or { return none }
-	signature := p.program.functions[resolved] or { return none }
-	if signature.parameter_types.len != 1 || signature.return_type == 'Option' {
+	signature := p.program.functions[resolved]
+	if signature.parameter_types.len != 1 {
 		return none
 	}
 	p.program.native_used_function_names[resolved] = true
@@ -7692,6 +7707,7 @@ fn (mut p FastArm64Parser) emit_noarg_method_call(value FastArm64Value, method s
 		id: p.program.m.add_instr(.call, p.cur_block, ret, [fn_ref, receiver_id])
 		typ: ret
 		typ_name: signature.return_type
+		tuple_types: signature.return_types
 	}
 }
 
@@ -7724,13 +7740,13 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		if method == 'msg' {
 			return message_value
 		}
+		result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
+		p.program.instr2(.store, p.cur_block, p.program.void_type, message, result_slot)
+		with_code_block := p.program.m.add_block(p.func_id, 'error_str_with_code')
+		done_block := p.program.m.add_block(p.func_id, 'error_str_done')
 		zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
 		has_code := p.program.instr2(.gt, p.cur_block, p.program.i1_type, code, zero)
-		with_code_block := p.program.m.add_block(p.func_id, 'ierror_str_with_code')
-		plain_block := p.program.m.add_block(p.func_id, 'ierror_str_plain')
-		done_block := p.program.m.add_block(p.func_id, 'ierror_str_done')
-		result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
-		p.program.instr3(.br, p.cur_block, p.program.void_type, has_code, ssa.ValueID(with_code_block), ssa.ValueID(plain_block))
+		p.program.instr3(.br, p.cur_block, p.program.void_type, has_code, ssa.ValueID(with_code_block), ssa.ValueID(done_block))
 		p.mark_terminated(p.cur_block)
 		p.cur_block = with_code_block
 		separator := FastArm64Value{
@@ -7744,17 +7760,13 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 			typ: p.program.i32_type
 			typ_name: 'int'
 		})!
-		with_code := p.emit_string_binary(.plus, prefix, code_string)!
-		p.program.instr2(.store, p.cur_block, p.program.void_type, with_code.id, result_slot)
-		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(done_block))
-		p.mark_terminated(p.cur_block)
-		p.cur_block = plain_block
-		p.program.instr2(.store, p.cur_block, p.program.void_type, message, result_slot)
+		formatted := p.emit_string_binary(.plus, prefix, code_string)!
+		p.program.instr2(.store, p.cur_block, p.program.void_type, formatted.id, result_slot)
 		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(done_block))
 		p.mark_terminated(p.cur_block)
 		p.cur_block = done_block
 		return FastArm64Value{
-			id: p.program.instr1(.load, p.cur_block, p.program.str_type, result_slot)
+			id: p.program.instr1(.load, done_block, p.program.str_type, result_slot)
 			typ: p.program.str_type
 			typ_name: 'string'
 		}
@@ -7832,6 +7844,11 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 	}
 	option_error_message := if signature.return_type == 'Option' {
 		p.load_option_error_message()
+	} else {
+		ssa.ValueID(0)
+	}
+	option_error_code := if signature.return_type == 'Option' {
+		p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.option_error_code_global)
 	} else {
 		ssa.ValueID(0)
 	}
@@ -8549,6 +8566,11 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 	} else {
 		ssa.ValueID(0)
 	}
+	option_error_code := if signature.return_type == 'Option' {
+		p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.option_error_code_global)
+	} else {
+		ssa.ValueID(0)
+	}
 	return FastArm64Value{
 		id: result
 		typ: ret
@@ -8560,6 +8582,59 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 			signature.option_type} else {
 			signature.return_type}
 		tuple_types: signature.return_types
+	}
+}
+
+fn (mut p FastArm64Parser) parse_fd_set_macro(display_name string) !FastArm64Value {
+	p.program.ensure_c_fd_type('C.fd_set')
+	p.expect(.lpar)!
+	mut descriptor := FastArm64Value{}
+	if display_name != 'C.FD_ZERO' {
+		descriptor = p.parse_expression(0)!
+		p.expect(.comma)!
+	}
+	set := p.parse_expression(0)!
+	p.expect(.rpar)!
+	if p.program.m.type_store.types[set.typ].kind != .ptr_t {
+		return p.unsupported('`${display_name}` fd-set pointer')
+	}
+	set_bytes := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, set.id)
+	if display_name == 'C.FD_ZERO' {
+		memset_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memset', p.program.fn_ids['memset'])
+		zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
+		fd_set_size := p.program.m.get_or_add_const(p.program.i64_type, '128')
+		p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memset_ref, set_bytes, zero,
+			fd_set_size])
+		return FastArm64Value{
+			typ: p.program.void_type
+			typ_name: 'void'
+		}
+	}
+	descriptor64 := p.integer_to_i64(descriptor)
+	three := p.program.m.get_or_add_const(p.program.i64_type, '3')
+	byte_index := p.program.instr2(.lshr, p.cur_block, p.program.i64_type, descriptor64, three)
+	byte_address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, set_bytes, byte_index)
+	current := p.program.instr1(.load, p.cur_block, p.program.u8_type, byte_address)
+	seven := p.program.m.get_or_add_const(p.program.i64_type, '7')
+	bit_index := p.program.instr2(.and_, p.cur_block, p.program.i64_type, descriptor64, seven)
+	one := p.program.m.get_or_add_const(p.program.i64_type, '1')
+	mask64 := p.program.instr2(.shl, p.cur_block, p.program.i64_type, one, bit_index)
+	mask := p.program.instr1(.trunc, p.cur_block, p.program.u8_type, mask64)
+	selected := p.program.instr2(.and_, p.cur_block, p.program.u8_type, current, mask)
+	if display_name == 'C.FD_ISSET' {
+		zero := p.program.m.get_or_add_const(p.program.u8_type, '0')
+		is_set := p.program.instr2(.ne, p.cur_block, p.program.i1_type, selected, zero)
+		return FastArm64Value{
+			id: p.program.instr1(.zext, p.cur_block, p.program.i32_type, is_set)
+			typ: p.program.i32_type
+			typ_name: 'int'
+		}
+	}
+	updated := p.program.instr2(.or_, p.cur_block, p.program.u8_type, current, mask)
+	p.program.instr2(.store, p.cur_block, p.program.void_type, updated, byte_address)
+	return FastArm64Value{
+		typ: p.program.void_type
+		typ_name: 'void'
 	}
 }
 

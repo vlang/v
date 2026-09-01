@@ -79,6 +79,9 @@ struct FastArm64Waiter {
 	value int
 }
 
+@[typedef]
+struct C.fd_set {}
+
 fn C.usleep(microseconds u32) int
 
 fn (waiter FastArm64Waiter) wait() int {
@@ -135,7 +138,7 @@ fn custom_error_value() !int {
 }
 
 fn coded_error_value() !int {
-	return error_with_code("coded", 17)
+	return error_with_code("coded", 73)
 }
 
 fn propagated_result(ok bool) !int {
@@ -395,7 +398,7 @@ fn main() {
 	elapsed := 1.25
 	max_unsigned := u64(18446744073709551615)
 	long_float := "\${1.0:.200f}"
-	if "\${formatted_value:05d}" != "00042" || "\${-7:04d}" != "-007" || "\${formatted_value:x}" != "2a" || "\${formatted_value:04X}" != "002A" || "\${formatted_value:b}" != "101010" || "\${formatted_value:o}" != "52" || "\${max_unsigned:020d}" != "18446744073709551615" || "\${u8(65):c}" != "A" || "\${u8(65):3c}" != "  A" || "\${rune(0x20ac):c}" != "€" || "\${elapsed}" != "1.25" || "\${elapsed:.2f}" != "1.25" || "\${elapsed:7.2f}" != "   1.25" || long_float.len != 202 || long_float[0] != `1` || long_float[1] != `.` || long_float[201] != `0` {
+	if "\${formatted_value:05d}" != "00042" || "\${-7:04d}" != "-007" || "\${formatted_value:x}" != "2a" || "\${formatted_value:04X}" != "002A" || "\${formatted_value:b}" != "101010" || "\${formatted_value:o}" != "52" || "\${max_unsigned:020d}" != "18446744073709551615" || "\${u8(65):c}" != "A" || "\${u8(65):3c}" != "  A" || "\${rune(8364):c}" != "€" || "\${elapsed}" != "1.25" || "\${elapsed:.2f}" != "1.25" || "\${elapsed:7.2f}" != "   1.25" || long_float.len != 202 || long_float[0] != `1` || long_float[1] != `.` || long_float[201] != `0` {
 		println("wrong interpolation format")
 		return
 	}
@@ -414,23 +417,36 @@ fn main() {
 	mut custom_error_seen := false
 	mut custom_error_details_ok := false
 	custom_error_fallback := custom_error_value() or {
-		if err is FastArm64CustomError {
+		if err is FastArm64CustomError && err.msg() == "custom" && err.code() == 42 && err.str() == "custom; code: 42" {
 			custom_error_seen = true
 		}
 		custom_error_details_ok = err.code() == 42 && err.msg() == "custom" && err.str() == "custom; code: 42"
 		46
 	}
-	mut coded_error_details_ok := false
+	mut coded_error_ok := false
 	coded_error_fallback := coded_error_value() or {
-		coded_error_details_ok = err.code() == 17 && err.msg() == "coded" && err.str() == "coded; code: 17"
+		coded_error_ok = err.msg() == "coded" && err.code() == 73 && err.str() == "coded; code: 73"
 		47
 	}
 	propagated_result_fallback := propagated_result(false) or { 44 }
 	propagated_result_success := propagated_result(true) or { 99 }
 	propagated_option_fallback := propagated_option(false) or { 45 }
 	propagated_option_success := propagated_option(true) or { 99 }
-	if !option_handler_ran || !error_message_ok || !custom_error_seen || !custom_error_details_ok || !coded_error_details_ok || option_fallback != 42 || option_success != 7 || result_fallback != 43 || result_success != 9 || custom_error_fallback != 46 || coded_error_fallback != 47 || propagated_result_fallback != 44 || propagated_result_success != 10 || propagated_option_fallback != 45 || propagated_option_success != 9 {
+	if !option_handler_ran || !error_message_ok || !custom_error_seen || !coded_error_ok || option_fallback != 42 || option_success != 7 || result_fallback != 43 || result_success != 9 || custom_error_fallback != 46 || coded_error_fallback != 47 || propagated_result_fallback != 44 || propagated_result_success != 10 || propagated_option_fallback != 45 || propagated_option_success != 9 {
 		println("wrong option result handling")
+		return
+	}
+	mut fd_set := C.fd_set{}
+	C.FD_ZERO(&fd_set)
+	C.FD_SET(3, &fd_set)
+	C.FD_SET(70, &fd_set)
+	if C.FD_ISSET(3, &fd_set) == 0 || C.FD_ISSET(70, &fd_set) == 0 || C.FD_ISSET(4, &fd_set) != 0 {
+		println("wrong fd set operations")
+		return
+	}
+	C.FD_ZERO(&fd_set)
+	if C.FD_ISSET(3, &fd_set) != 0 || C.FD_ISSET(70, &fd_set) != 0 {
+		println("wrong fd set zero")
 		return
 	}
 	mut aliased := [1, 2]
