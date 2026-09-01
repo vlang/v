@@ -750,6 +750,57 @@ fn (mut t Transformer) disabled_call_zero_value_expansion_estimate(id flat.NodeI
 	return t.zero_value_expansion_estimate(id, result_type)
 }
 
+fn (mut t Transformer) disabled_struct_operator_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .infix || node.children_count < 2 {
+		return 0
+	}
+	lhs_id := t.a.child(&node, 0)
+	mut lhs_type := t.node_type(lhs_id)
+	checker_lhs_type := t.checker_node_type(lhs_id)
+	lhs_key := t.expr_key(lhs_id)
+	if lhs_key.len > 0 {
+		if sc := t.find_smartcast(lhs_key) {
+			lhs_type = t.smartcast_target_type(sc)
+		}
+	}
+	if lhs_type.len == 0 || (t.generic_arg_is_unresolved(lhs_type) && !t.generic_arg_is_unresolved(checker_lhs_type)) {
+		lhs_type = checker_lhs_type
+	}
+	lhs_node := t.a.nodes[int(lhs_id)]
+	lhs_is_pointer := lhs_type.starts_with('&') || checker_lhs_type.starts_with('&') || (lhs_node.kind == .ident && t.mut_param_values[lhs_node.value])
+	if lhs_is_pointer && lhs_type.starts_with('&') {
+		lhs_type = lhs_type[1..]
+	}
+	mut struct_type := ''
+	mut is_alias_operator := false
+	if alias_type := t.operator_alias_type_for_operand(lhs_id, node.op) {
+		struct_type = alias_type
+		is_alias_operator = true
+	} else {
+		struct_type = t.struct_lookup_name(lhs_type)
+	}
+	if struct_type.len == 0 {
+		struct_type = t.generic_struct_instance_name(lhs_type)
+	}
+	if struct_type.len == 0 {
+		return 0
+	}
+	call_info := t.struct_operator_call_info_for_operand(struct_type, node.op, is_alias_operator) or {
+		return 0
+	}
+	if !t.is_disabled_fn_name(call_info.name) {
+		return 0
+	}
+	result_type := t.struct_operator_return_type(call_info.name)
+	if result_type == 'void' {
+		return 0
+	}
+	if result_type.len == 0 || result_type in ['array', 'map', 'unknown'] || t.generic_arg_is_unresolved(result_type) {
+		return deferred_map_expansion_threshold + 1
+	}
+	return t.zero_value_expansion_estimate(id, result_type)
+}
+
 fn (mut t Transformer) ownership_nested_map_delete_key_clone_expands(node flat.Node) bool {
 	if node.kind != .call || node.children_count < 2 || isnil(t.tc) {
 		return false
@@ -1343,6 +1394,9 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			if t.compiler_call_expands_from_type_metadata(flat.NodeId(idx), node) || t.builtin_call_auto_stringify_expands(flat.NodeId(idx), node) {
 				estimate += deferred_map_expansion_threshold + 1
 			}
+		}
+		if node.kind == .infix {
+			estimate += t.disabled_struct_operator_zero_value_expansion_estimate(flat.NodeId(idx), node)
 		}
 		if t.ownership_for_in_binding_clone_expands(node) {
 			estimate += deferred_map_expansion_threshold + 1

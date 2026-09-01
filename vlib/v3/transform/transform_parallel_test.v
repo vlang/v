@@ -1139,6 +1139,42 @@ fn test_disabled_call_zero_value_expansion_is_reserved() {
 	assert t.fn_span_map_expansion_estimate(int(callee), int(call) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_disabled_struct_operator_zero_value_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	lhs := a.add_node(flat.Node{
+		kind: .ident
+		value: 'lhs'
+		typ: 'Box'
+	})
+	rhs := a.add_node(flat.Node{
+		kind: .ident
+		value: 'rhs'
+		typ: 'Box'
+	})
+	infix_start := a.children.len
+	a.children << lhs
+	a.children << rhs
+	infix := a.add_node(flat.Node{
+		kind: .infix
+		typ: '[4096][]int'
+		op: .plus
+		children_start: infix_start
+		children_count: 2
+	})
+	a.disabled_fns['Box.+'] = true
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs['Box'] = []types.StructField{}
+	box_type := tc.parse_type('Box')
+	tc.fn_param_types['Box.+'] = [box_type, box_type]
+	tc.fn_ret_types['Box.+'] = tc.parse_type('[4096][]int')
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Box'] = StructInfo{
+		name: 'Box'
+	}
+
+	assert t.fn_span_map_expansion_estimate(int(lhs), int(infix) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_or_expr_zero_value_expansion_is_reserved() {
 	mut a := flat.FlatAst.new()
 	optional_value := a.add_node(flat.Node{
