@@ -945,6 +945,29 @@ fn (t &Transformer) map_index_zero_value_expansion_estimate(node flat.Node) int 
 	})
 }
 
+fn (t &Transformer) owned_array_index_zero_value_expansion_estimate(node flat.Node, moves_value bool) int {
+	if !moves_value || node.kind != .index || node.children_count == 0 {
+		return 0
+	}
+	base_id := t.a.child(&node, 0)
+	base_type := t.normalize_type_alias(t.node_type(base_id).trim_left('&'))
+	if !base_type.starts_with('[]') && !t.is_fixed_array_type(base_type) {
+		return 0
+	}
+	value_type := t.normalize_type_alias(node.typ)
+	if t.sum_default_may_expand(value_type) {
+		return deferred_map_expansion_threshold + 1
+	}
+	fixed_type := t.resolved_fixed_array_canonical_type(value_type)
+	if !t.is_fixed_array_type(fixed_type) {
+		return 0
+	}
+	return t.fixed_array_init_expansion_estimate(base_id, flat.Node{
+		kind: .array_init
+		typ: fixed_type
+	})
+}
+
 fn (mut t Transformer) ownership_array_append_expands(node flat.Node) bool {
 	if node.kind != .infix || node.op != .left_shift || node.children_count < 2 || isnil(t.tc) {
 		return false
@@ -1075,6 +1098,7 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 		// in the parsed FlatAst, so account for it explicitly here.
 		if node.kind == .index && node.children_count > 0 {
 			estimate += t.map_index_zero_value_expansion_estimate(node)
+			estimate += t.owned_array_index_zero_value_expansion_estimate(node, !isnil(t.tc) && t.tc.ownership_index_read_moves_value(flat.NodeId(idx)))
 			base_id := t.a.child(&node, 0)
 			if const_expr := t.map_const_expr_for_ident(base_id) {
 				estimate += t.external_map_tree_expansion_estimate(const_expr, lo, hi)
