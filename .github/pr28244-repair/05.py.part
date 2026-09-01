@@ -1,0 +1,13 @@
+
+
+_split_review_test_with_fixture_files = split_review_test
+
+
+def split_review_test() -> None:
+    _split_review_test_with_fixture_files()
+    error_path = ROOT / "vlib/v3/tests/ownership_borrowed_projection_error_test.v"
+    error_path.write_text(error_path.read_text().replace(r"\t", "\t"))
+
+    toml_path = ROOT / "vlib/v3/tests/ownership_toml_decode_test.v"
+    toml_text = toml_path.read_text().replace(r"\t", "\t")
+    toml_path.write_text(toml_text.replace(r'\\"', r'\"'))
