@@ -10,4 +10,12 @@ def split_review_test() -> None:
 
     toml_path = ROOT / "vlib/v3/tests/ownership_toml_decode_test.v"
     toml_text = toml_path.read_text().replace(r"\t", "\t")
-    toml_path.write_text(toml_text.replace(r'\\"', r'\"'))
+    old_parse = r'doc := toml.parse_text(\"field = \\\\\"some\\\\\"\")!'
+    new_parse = r'doc := toml.parse_text("field = \"some\"")!'
+    if old_parse not in toml_text:
+        raise RuntimeError("generated TOML parse source anchor was not found")
+    toml_text = toml_text.replace(old_parse, new_parse, 1)
+    old_assert = r'assert decoded.field == \"some\"'
+    if old_assert not in toml_text:
+        raise RuntimeError("generated TOML assertion anchor was not found")
+    toml_path.write_text(toml_text.replace(old_assert, 'assert decoded.field == "some"', 1))
