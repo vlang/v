@@ -977,22 +977,66 @@ fn (t &Transformer) owned_array_index_zero_value_expansion_estimate(node flat.No
 	return t.zero_value_expansion_estimate(base_id, node.typ)
 }
 
-fn (mut t Transformer) if_expr_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
-	if node.kind != .if_expr || node.children_count < 3 {
+fn (mut t Transformer) channel_receive_if_guard_zero_value_expansion_estimate(node flat.Node) int {
+	if node.kind != .if_expr || node.children_count < 2 {
 		return 0
+	}
+	condition := t.a.child_node(&node, 0)
+	if condition.kind != .decl_assign || condition.children_count < 2
+		|| t.multi_assign_lhs_ids(condition).len != 1 {
+		return 0
+	}
+	rhs_id := t.a.child(condition, 1)
+	info := t.channel_receive_info(rhs_id) or { return 0 }
+	return t.zero_value_expansion_estimate(rhs_id, info.value_type)
+}
+
+fn (mut t Transformer) multi_return_if_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .if_expr {
+		return 0
+	}
+	parent_id := t.source_parent_id(int(id))
+	if parent_id < 0 || parent_id >= t.a.nodes.len {
+		return 0
+	}
+	parent := t.a.nodes[parent_id]
+	if parent.kind != .decl_assign || parent.children_count < 3
+		|| t.multi_assign_rhs_count(parent) != 1 {
+		return 0
+	}
+	lhs_ids := t.multi_assign_lhs_ids(parent)
+	if !t.if_expr_has_tuple_tail_values(id, lhs_ids.len) {
+		return 0
+	}
+	value_types := t.promoted_multi_if_value_types(id, node, lhs_ids.len)
+	mut estimate := 0
+	for value_type in value_types {
+		estimate += t.zero_value_expansion_estimate(id, value_type)
+	}
+	return estimate
+}
+
+fn (mut t Transformer) if_expr_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .if_expr {
+		return 0
+	}
+	mut estimate := t.channel_receive_if_guard_zero_value_expansion_estimate(node)
+	estimate += t.multi_return_if_zero_value_expansion_estimate(id, node)
+	if node.children_count < 3 {
+		return estimate
 	}
 	mut result_type := t.if_expr_result_type(id, node)
 	if guard_result_type := t.if_expr_guard_result_type(node) {
 		result_type = guard_result_type
 	}
 	if result_type.len == 0 || result_type == 'void' {
-		return 0
+		return estimate
 	}
 	branch_type := t.if_expr_branch_result_type(node)
 	if t.if_expr_branch_overrides_sum_target(branch_type, result_type) {
 		result_type = branch_type
 	}
-	return t.zero_value_expansion_estimate(id, result_type)
+	return estimate + t.zero_value_expansion_estimate(id, result_type)
 }
 
 fn (mut t Transformer) match_expr_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {

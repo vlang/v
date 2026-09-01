@@ -686,6 +686,120 @@ fn test_if_expr_zero_value_expansion_is_reserved() {
 	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_channel_receive_if_guard_zero_value_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	channel := a.add_node(flat.Node{
+		kind: .ident
+		value: 'values'
+		typ: 'chan [4096][]int'
+	})
+	receive_start := a.children.len
+	a.children << channel
+	receive := a.add_node(flat.Node{
+		kind: .prefix
+		op: .arrow
+		typ: '[4096][]int'
+		children_start: receive_start
+		children_count: 1
+	})
+	lhs := a.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+	})
+	guard_start := a.children.len
+	a.children << lhs
+	a.children << receive
+	guard := a.add_node(flat.Node{
+		kind: .decl_assign
+		children_start: guard_start
+		children_count: 2
+	})
+	body := a.add_node(flat.Node{
+		kind: .block
+	})
+	if_start := a.children.len
+	a.children << guard
+	a.children << body
+	root := a.add_node(flat.Node{
+		kind: .if_expr
+		children_start: if_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_multi_return_if_zero_value_expansion_is_reserved_per_slot() {
+	mut a := flat.FlatAst.new()
+	condition := a.add_node(flat.Node{
+		kind: .bool_literal
+		value: 'true'
+		typ: 'bool'
+	})
+	mut branches := []flat.NodeId{}
+	for name in ['first', 'second'] {
+		large := a.add_node(flat.Node{
+			kind: .call
+			value: '${name}_large'
+			typ: '[4096][]int'
+		})
+		number := a.add_node(flat.Node{
+			kind: .call
+			value: '${name}_number'
+			typ: 'int'
+		})
+		expr_start := a.children.len
+		a.children << large
+		a.children << number
+		expr := a.add_node(flat.Node{
+			kind: .expr_stmt
+			children_start: expr_start
+			children_count: 2
+		})
+		block_start := a.children.len
+		a.children << expr
+		branches << a.add_node(flat.Node{
+			kind: .block
+			children_start: block_start
+			children_count: 1
+		})
+	}
+	if_start := a.children.len
+	a.children << condition
+	a.children << branches[0]
+	a.children << branches[1]
+	root := a.add_node(flat.Node{
+		kind: .if_expr
+		typ: '([4096][]int, int)'
+		children_start: if_start
+		children_count: 3
+	})
+	large_lhs := a.add_node(flat.Node{
+		kind: .ident
+		value: 'large'
+	})
+	number_lhs := a.add_node(flat.Node{
+		kind: .ident
+		value: 'number'
+	})
+	decl_start := a.children.len
+	a.children << large_lhs
+	a.children << root
+	a.children << number_lhs
+	a.add_node(flat.Node{
+		kind: .decl_assign
+		value: '2'
+		children_start: decl_start
+		children_count: 3
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_match_expr_zero_value_expansion_is_reserved() {
 	mut a := flat.FlatAst.new()
 	subject := a.add_node(flat.Node{
