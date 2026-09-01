@@ -7756,6 +7756,11 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 	if has_init {
 		return p.fill_array(result, element_type_name, init_value, length)
 	}
+	element_type := p.program.type_id(element_type_name)
+	if explicit_length && initial.len == 0 && p.type_needs_default_initialization(element_type, 0) {
+		default_value := p.default_value_for_type(element_type, element_type_name)!
+		return p.fill_array(result, element_type_name, default_value, length)
+	}
 	return result
 }
 
