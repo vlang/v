@@ -8315,14 +8315,18 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 				}
 			}
 			length_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 2)
-			mut new_length := length.id
-			if member == 'trim' {
-				current_length := p.program.instr1(.load, p.cur_block, p.program.i32_type, length_ptr)
-				shorter := p.program.instr2(.lt, p.cur_block, p.program.i1_type, length.id, current_length)
-				new_length = p.program.integer_select(p.cur_block, shorter, length.id, current_length, p.program.i32_type)
-			}
-			p.emit_array_detach_if_slice(array_slot, new_length, 'array_trim')
-			p.program.instr2(.store, p.cur_block, p.program.void_type, new_length, length_ptr)
+			current_length := p.program.instr1(.load, p.cur_block, p.program.i32_type, length_ptr)
+			shorter := p.program.instr2(.lt, p.cur_block, p.program.i1_type, length.id, current_length)
+			trim_array := p.program.m.add_block(p.func_id, 'array_trim_shorter')
+			trim_done := p.program.m.add_block(p.func_id, 'array_trim_done')
+			p.program.instr3(.br, p.cur_block, p.program.void_type, shorter, ssa.ValueID(trim_array), ssa.ValueID(trim_done))
+			p.mark_terminated(p.cur_block)
+			p.cur_block = trim_array
+			p.emit_array_detach_if_slice(array_slot, length.id, 'array_trim')
+			p.program.instr2(.store, p.cur_block, p.program.void_type, length.id, length_ptr)
+			p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(trim_done))
+			p.mark_terminated(p.cur_block)
+			p.cur_block = trim_done
 			return FastArm64Value{
 				id: p.program.instr1(.load, p.cur_block, p.program.array_type, array_slot)
 				typ: p.program.array_type
@@ -11201,7 +11205,7 @@ fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items Fa
 		p.cur_block = valid_block
 	}
 	items_length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, items_slot, p.program.array_type, 2))
-	has_items := p.program.instr2(.ne, p.cur_block, p.program.i1_type, items_length, zero32)
+	has_items := p.program.instr2(.gt, p.cur_block, p.program.i1_type, items_length, zero32)
 	append_items := p.program.m.add_block(p.func_id, 'array_append_many_items')
 	done := p.program.m.add_block(p.func_id, 'array_append_many_done')
 	p.program.instr3(.br, p.cur_block, p.program.void_type, has_items, ssa.ValueID(append_items), ssa.ValueID(done))

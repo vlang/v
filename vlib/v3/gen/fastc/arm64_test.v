@@ -1485,6 +1485,68 @@ fn test_fastc_arm64_empty_multi_append_preserves_slice_storage() {
 	}
 }
 
+fn test_fastc_arm64_trim_noop_preserves_slice_storage() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_trim_noop_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn main() {
+	mut base := [1, 2, 3]
+	mut view := base[..]
+	view.trim(100)
+	view[0] = 9
+	if base[0] != 9 || view.len != 3 {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
+fn test_fastc_arm64_nonpositive_raw_push_many_is_noop() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_push_many_noop_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn main() {
+	mut values := [1, 2]
+	unsafe { values.push_many(&values[0], -1) }
+	if values != [1, 2] {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
 fn test_fastc_arm64_string_slice_owns_terminated_storage() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_string_slice_${os.getpid()}')
