@@ -2053,7 +2053,8 @@ fn (mut p FastArm64Program) register_os_process_runtime() {
 		p.instr3(.br, entry, p.void_type, open_succeeded, ssa.ValueID(opened), ssa.ValueID(open_failed))
 
 		initial_capacity := p.m.get_or_add_const(p.u64_type, '4096')
-		buffer := p.m.add_instr(.call, opened, p.ptr_i8, [malloc_ref, initial_capacity])
+		initial_allocation_size := p.instr2(.add, opened, p.u64_type, initial_capacity, one64)
+		buffer := p.m.add_instr(.call, opened, p.ptr_i8, [malloc_ref, initial_allocation_size])
 		p.instr2(.store, opened, p.void_type, buffer, buffer_slot)
 		p.instr2(.store, opened, p.void_type, zero64, length_slot)
 		p.instr2(.store, opened, p.void_type, initial_capacity, capacity_slot)
@@ -2067,9 +2068,10 @@ fn (mut p FastArm64Program) register_os_process_runtime() {
 		current_buffer := p.instr1(.load, grow, p.ptr_i8, buffer_slot)
 		two := p.m.get_or_add_const(p.u64_type, '2')
 		new_capacity := p.instr2(.mul, grow, p.u64_type, capacity, two)
+		new_allocation_size := p.instr2(.add, grow, p.u64_type, new_capacity, one64)
 		realloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'realloc', p.fn_ids['realloc'])
 		grown_buffer := p.m.add_instr(.call, grow, p.ptr_i8, [realloc_ref, current_buffer,
-			new_capacity])
+			new_allocation_size])
 		p.instr2(.store, grow, p.void_type, grown_buffer, buffer_slot)
 		p.instr2(.store, grow, p.void_type, new_capacity, capacity_slot)
 		p.instr1(.jmp, grow, p.void_type, ssa.ValueID(read_condition))
@@ -2110,6 +2112,8 @@ fn (mut p FastArm64Program) register_os_process_runtime() {
 		captured_buffer := p.instr1(.load, close_process, p.ptr_i8, buffer_slot)
 		captured_length64 := p.instr1(.load, close_process, p.u64_type, length_slot)
 		captured_length := p.instr1(.trunc, close_process, p.i32_type, captured_length64)
+		captured_terminator := p.instr2(.add, close_process, p.ptr_i8, captured_buffer, captured_length64)
+		p.instr2(.store, close_process, p.void_type, zero8, captured_terminator)
 		p.instr2(.store, close_process, p.void_type, captured_buffer, p.string_field_ptr(close_process, output_slot, 0))
 		p.instr2(.store, close_process, p.void_type, captured_length, p.string_field_ptr(close_process, output_slot, 1))
 		p.instr2(.store, close_process, p.void_type, zero32, p.string_field_ptr(close_process, output_slot, 2))
@@ -11191,6 +11195,12 @@ fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items Fa
 		p.cur_block = valid_block
 	}
 	items_length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, items_slot, p.program.array_type, 2))
+	has_items := p.program.instr2(.ne, p.cur_block, p.program.i1_type, items_length, zero32)
+	append_items := p.program.m.add_block(p.func_id, 'array_append_many_items')
+	done := p.program.m.add_block(p.func_id, 'array_append_many_done')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, has_items, ssa.ValueID(append_items), ssa.ValueID(done))
+	p.mark_terminated(p.cur_block)
+	p.cur_block = append_items
 	destination_data_before := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0))
 	source_data_before := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, items_slot, p.program.array_type, 0))
 	items_length64 := p.program.instr1(.zext, p.cur_block, p.program.i64_type, items_length)
@@ -11241,7 +11251,6 @@ fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items Fa
 	grow := p.program.m.add_block(p.func_id, 'array_append_many_grow')
 	copy_block := p.program.m.add_block(p.func_id, 'array_append_many_copy')
 	free_snapshot := p.program.m.add_block(p.func_id, 'array_append_many_free_snapshot')
-	done := p.program.m.add_block(p.func_id, 'array_append_many_done')
 	p.program.instr3(.br, p.cur_block, p.program.void_type, needs_storage, ssa.ValueID(grow), ssa.ValueID(copy_block))
 	p.mark_terminated(p.cur_block)
 	new_capacity := p.program.integer_select(grow, needs_grow, required, capacity, p.program.i32_type)

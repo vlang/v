@@ -1413,6 +1413,71 @@ fn test_fastc_arm64_zero_capacity_array_data_is_nil() {
 	}
 }
 
+fn test_fastc_arm64_execute_output_is_nul_terminated() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_execute_terminated_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'import os
+
+fn main() {
+	result := os.execute("printf captured")
+	unsafe {
+		if result.output.str[result.output.len] != 0 {
+			println("wrong")
+			return
+		}
+	}
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
+fn test_fastc_arm64_empty_multi_append_preserves_slice_storage() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_empty_append_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'fn main() {
+	mut base := [1, 2, 3]
+	mut view := base[1..]
+	view << []int{}
+	view[0] = 9
+	if base[1] != 9 || view.len != 2 {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
+	}
+}
+
 fn test_fastc_arm64_string_slice_owns_terminated_storage() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_string_slice_${os.getpid()}')
