@@ -315,8 +315,8 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 		ast.ForCStmt {
 			vt.stmt(stmt.init)
 			vt.expr(stmt.cond)
-			vt.stmt(stmt.inc)
 			vt.stmts(stmt.stmts)
+			vt.stmt(stmt.inc)
 		}
 		ast.ForInStmt {
 			vt.expr(stmt.cond)

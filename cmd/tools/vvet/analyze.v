@@ -29,12 +29,13 @@ const long_fns_cutoff = os.getenv_opt('VET_LONG_FNS_CUTOFF') or { '300' }.int()
 
 struct VetAnalyze {
 mut:
-	repeated_expr_cutoff  shared map[string]int // repeated code cutoff	
-	repeated_expr         shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
-	potential_non_inlined shared map[string]map[string]token.Pos              // fns might be inlined
-	call_counter          shared map[string]int // fn call counter
-	builtin_call_counter  shared map[string]int // unqualified fn call counter, keyed by bare name (for builtin fns)
-	cur_fn                ast.FnDecl            // current fn declaration
+	repeated_expr_cutoff     shared map[string]int // repeated code cutoff	
+	repeated_expr            shared map[string]map[string]map[string][]token.Pos // repeated exprs in fn scope
+	potential_non_inlined    shared map[string]map[string]token.Pos              // fns might be inlined
+	call_counter             shared map[string]int // fn call counter
+	unqualified_call_counter shared map[string]int // calls keyed by `<caller module>.<bare name>`
+	declared_fns             shared map[string]bool // all function declarations, keyed by fkey
+	cur_fn                   ast.FnDecl            // current fn declaration
 }
 
 // stmt checks for repeated code in statements
@@ -116,12 +117,11 @@ fn (mut vt VetAnalyze) expr(vet &Vet, expr ast.Expr) {
 					vt.call_counter[fn_name]++
 				}
 				if !expr.name.contains('.') {
-					// Builtin functions have a bare `fkey()` (e.g. `println`), but an
-					// unqualified call from another module is stored with the caller's
-					// module (e.g. `main.println`). Count unqualified calls by bare name
-					// too, so builtin calls from any module contribute to the threshold.
-					lock vt.builtin_call_counter {
-						vt.builtin_call_counter[expr.name]++
+					// Keep the caller module so builtin fallback calls can later be
+					// distinguished from calls shadowed by a same-module function.
+					caller_fn_name := '${expr.mod}.${expr.name}'
+					lock vt.unqualified_call_counter {
+						vt.unqualified_call_counter[caller_fn_name]++
 					}
 				}
 				vt.save_expr(callexpr_cutoff,
@@ -155,12 +155,16 @@ fn (mut vt VetAnalyze) long_or_empty_fns(mut vet Vet, fn_decl ast.FnDecl) {
 
 // potential_non_inlined checks for potential fns to be inlined
 fn (mut vt VetAnalyze) potential_non_inlined(mut vet Vet, fn_decl ast.FnDecl) {
+	fn_key := fn_decl.fkey()
+	lock vt.declared_fns {
+		vt.declared_fns[fn_key] = true
+	}
 	nr_lines := fn_decl.end_pos.line_nr - fn_decl.pos.line_nr - 2
 	if nr_lines < short_fns_cutoff {
 		attr := fn_decl.attrs.find_first('inline')
 		if attr == none {
 			lock vt.potential_non_inlined {
-				vt.potential_non_inlined[fn_decl.fkey()][vet.file] = fn_decl.pos
+				vt.potential_non_inlined[fn_key][vet.file] = fn_decl.pos
 			}
 		}
 	}
@@ -190,14 +194,27 @@ fn (mut vt VetAnalyze) vet_repeated_code(mut vet Vet) {
 
 // vet_inlining_fn reports possible fn to be inlined
 fn (mut vt VetAnalyze) vet_inlining_fn(mut vet Vet) {
+	mut declared_fns := map[string]bool{}
+	rlock vt.declared_fns {
+		declared_fns = vt.declared_fns.clone()
+	}
+	mut unqualified_calls := map[string]int{}
+	rlock vt.unqualified_call_counter {
+		unqualified_calls = vt.unqualified_call_counter.clone()
+	}
+	mut builtin_calls := map[string]int{}
+	for caller_fn_name, count in unqualified_calls {
+		caller_mod := caller_fn_name.all_before_last('.')
+		if caller_mod == 'builtin' || caller_fn_name !in declared_fns {
+			builtin_calls[caller_fn_name.all_after_last('.')] += count
+		}
+	}
 	for fn_name, info in vt.potential_non_inlined {
 		for file, pos in info {
-			// A bare key (no module prefix) belongs to a builtin function, whose
-			// unqualified calls from other modules are tracked by bare name.
 			calls := if fn_name.contains('.') {
 				vt.call_counter[fn_name] or { 0 }
 			} else {
-				vt.builtin_call_counter[fn_name] or { 0 }
+				builtin_calls[fn_name] or { 0 }
 			}
 			if calls < fns_call_cutoff {
 				continue
