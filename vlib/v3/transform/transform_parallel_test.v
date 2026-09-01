@@ -1061,8 +1061,7 @@ fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
 	})
 	mut array_tc := types.TypeChecker.new(&array_ast)
 	mut array_transformer := new_transformer(mut array_ast, &array_tc, map[string]bool{})
-	assert array_transformer.fn_span_map_expansion_estimate(int(array_value), int(array_fn)) >
-		deferred_map_expansion_threshold
+	assert array_transformer.fn_span_map_expansion_estimate(int(array_value), int(array_fn)) > deferred_map_expansion_threshold
 
 	mut map_ast := flat.FlatAst.new()
 	map_value := map_ast.add_node(flat.Node{
@@ -1089,8 +1088,34 @@ fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
 	})
 	mut map_tc := types.TypeChecker.new(&map_ast)
 	mut map_transformer := new_transformer(mut map_ast, &map_tc, map[string]bool{})
-	assert map_transformer.fn_span_map_expansion_estimate(int(map_value), int(map_fn)) >
-		deferred_map_expansion_threshold
+	assert map_transformer.fn_span_map_expansion_estimate(int(map_value), int(map_fn)) > deferred_map_expansion_threshold
+
+	mut lookup_ast := flat.FlatAst.new()
+	lookup_value := lookup_ast.add_node(flat.Node{
+		kind: .ident
+		value: 'values'
+		typ: 'map[int][4096][]int'
+	})
+	lookup_return_start := lookup_ast.children.len
+	lookup_ast.children << lookup_value
+	lookup_return := lookup_ast.add_node(flat.Node{
+		kind: .return_stmt
+		typ: 'map[i64][4096][]int'
+		children_start: lookup_return_start
+		children_count: 1
+	})
+	lookup_fn_start := lookup_ast.children.len
+	lookup_ast.children << lookup_return
+	lookup_fn := lookup_ast.add_node(flat.Node{
+		kind: .fn_decl
+		value: 'promote_map_key'
+		typ: 'map[i64][4096][]int'
+		children_start: lookup_fn_start
+		children_count: 1
+	})
+	mut lookup_tc := types.TypeChecker.new(&lookup_ast)
+	mut lookup_transformer := new_transformer(mut lookup_ast, &lookup_tc, map[string]bool{})
+	assert lookup_transformer.fn_span_map_expansion_estimate(int(lookup_value), int(lookup_fn)) > deferred_map_expansion_threshold
 }
 
 fn test_disabled_call_zero_value_expansion_is_reserved() {

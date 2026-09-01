@@ -1251,7 +1251,12 @@ fn (mut t Transformer) forwarded_return_conversion_expansion_estimate(actual_typ
 		if value_estimate > deferred_map_expansion_threshold - key_estimate {
 			return deferred_map_expansion_threshold + 1
 		}
-		return key_estimate + value_estimate
+		conversion_estimate := key_estimate + value_estimate
+		lookup_zero_estimate := t.zero_value_expansion_estimate(flat.NodeId(-1), t.semantic_type_name(actual.value_type))
+		if lookup_zero_estimate > deferred_map_expansion_threshold - conversion_estimate {
+			return deferred_map_expansion_threshold + 1
+		}
+		return conversion_estimate + lookup_zero_estimate
 	}
 	if actual !is types.ArrayFixed || expected !is types.ArrayFixed {
 		return 0
