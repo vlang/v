@@ -293,6 +293,16 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 				// size is derived from item metadata, not source children.
 				estimate += deferred_map_expansion_threshold + 1
 			}
+			if t.compiler_array_equality_call_expands(node) {
+				// Builtin array equals() can synthesize an element loop and recursively
+				// expand aggregate equality from metadata absent from source children.
+				estimate += deferred_map_expansion_threshold + 1
+			}
+			if t.compiler_owned_array_accessor_call_expands(node) {
+				// Ownership-aware first()/last() recursively clone aggregate elements
+				// from metadata that is not represented by the physical call children.
+				estimate += deferred_map_expansion_threshold + 1
+			}
 			if t.compiler_collection_str_call_expands(node) {
 				// Compiler-provided collection stringification synthesizes loops and
 				// recursively formats elements that are absent from physical children.
@@ -443,6 +453,59 @@ fn (t &Transformer) compiler_owned_map_items_call_expands(node flat.Node) bool {
 		return false
 	}
 	return fn_node.value == 'values' || t.normalize_type_alias(elem_type).trim_space() != 'string'
+}
+
+fn (t &Transformer) compiler_array_equality_call_expands(node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'equals' || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	clean_type := transform_unshared_receiver_type(t.normalize_type_alias(base_type)).trim_left('&')
+	elem_type := if clean_type.starts_with('[]') {
+		clean_type[2..]
+	} else if t.is_fixed_array_type(clean_type) {
+		fixed_array_elem_type(clean_type)
+	} else {
+		return false
+	}
+	return elem_type.len > 0 && t.array_elem_needs_element_eq(elem_type)
+}
+
+fn (t &Transformer) compiler_owned_array_accessor_call_expands(node flat.Node) bool {
+	if node.children_count == 0 || isnil(t.tc) {
+		return false
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value !in ['first', 'last']
+		|| fn_node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	clean_type := transform_unshared_receiver_type(t.normalize_type_alias(base_type)).trim_left('&')
+	elem_type := if clean_type.starts_with('[]') {
+		clean_type[2..]
+	} else if t.is_fixed_array_type(clean_type) {
+		fixed_array_elem_type(clean_type)
+	} else {
+		return false
+	}
+	if elem_type.len == 0 || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
+		|| !t.compiler_default_clone_type_needs_work(elem_type) {
+		return false
+	}
+	return t.tc.ownership_default_clone_missing_method(t.tc.parse_type(elem_type)) == none
 }
 
 fn (t &Transformer) compiler_collection_str_call_expands(node flat.Node) bool {
