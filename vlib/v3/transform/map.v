@@ -391,6 +391,9 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// External casts cannot rewrite their child IDs in place, so even an
 			// otherwise unchanged cast appends a replacement node and child span.
 			estimate += int(node.children_count) + 1
+			if t.interface_cast_expands_from_type_metadata(node) {
+				estimate += deferred_map_expansion_threshold + 1
+			}
 		}
 		if node.kind == .index {
 			// A changed external index appends a replacement node and child span;
@@ -722,6 +725,10 @@ fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node)
 		}
 	}
 	return t.sum_shared_field_type_name(base_type, node.value) != none
+}
+
+fn (t &Transformer) interface_cast_expands_from_type_metadata(node flat.Node) bool {
+	return node.kind == .cast_expr && t.is_interface_type(node.value)
 }
 
 fn (mut t Transformer) compiler_call_expands_from_type_metadata(id flat.NodeId, node flat.Node) bool {
@@ -1386,6 +1393,9 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 		if node.kind == .sql_expr {
 			// SQL joins synthesize table field and column arrays from ORM metadata that
 			// is not represented by the parsed expression's physical children.
+			estimate += deferred_map_expansion_threshold + 1
+		}
+		if t.interface_cast_expands_from_type_metadata(node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
 		if t.external_equality_expands_from_type_metadata(node) {

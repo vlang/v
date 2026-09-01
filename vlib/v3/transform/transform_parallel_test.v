@@ -1209,6 +1209,30 @@ fn test_sql_expr_metadata_expansion_is_reserved() {
 	assert t.fn_span_map_expansion_estimate(int(sql_expr), int(sql_expr) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_interface_cast_metadata_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'value'
+		typ: 'Concrete'
+	})
+	cast_start := a.children.len
+	a.children << value
+	cast := a.add_node(flat.Node{
+		kind: .cast_expr
+		value: 'WideInterface'
+		typ: 'WideInterface'
+		children_start: cast_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names['WideInterface'] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.interface_cast_expands_from_type_metadata(a.nodes[int(cast)])
+	assert t.fn_span_map_expansion_estimate(int(value), int(cast) + 1) > deferred_map_expansion_threshold
+	assert t.external_map_tree_expansion_estimate(cast, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_or_expr_zero_value_expansion_is_reserved() {
 	mut a := flat.FlatAst.new()
 	optional_value := a.add_node(flat.Node{
