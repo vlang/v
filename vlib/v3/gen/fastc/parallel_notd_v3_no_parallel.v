@@ -224,6 +224,18 @@ fn fastc_generate_file_chunk(ctx &FastcFileGenContext, sources []FastcSourceFile
 
 const fastc_generation_fragment_size = 56 * 1024
 
+fn fastc_generation_fragment_is_followed_by_comptime_else(scan scanner.Scanner) bool {
+	mut lookahead := scan
+	mut tok := lookahead.scan()
+	for tok == .semicolon {
+		tok = lookahead.scan()
+	}
+	if tok == .dollar {
+		tok = lookahead.scan()
+	}
+	return tok == .key_else
+}
+
 fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Preferences) []FastcSourceFile {
 	if !prefs.building_v || !source_file.header.module_name.ends_with('fastc') || source_file.source.len <= fastc_generation_fragment_size {
 		return [source_file]
@@ -243,7 +255,7 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 			depth++
 		} else if tok == .rcbr {
 			depth--
-			if depth == 0 && scan.offset >= next_target {
+			if depth == 0 && scan.offset >= next_target && !fastc_generation_fragment_is_followed_by_comptime_else(scan) {
 				cuts << scan.offset
 				next_target = source_file.source.len * cuts.len / part_count
 			}

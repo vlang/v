@@ -459,6 +459,23 @@ fn test_fastc_fragmented_generation_matches_serial_output() {
 	assert parallel == serial
 }
 
+fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	source := 'module fastc\n\$if linux {\n\tfn fastc_fragment_comptime_branch() {\n\t\t${large_comment}\n\t}\n} \$else \$if windows {\n\tfn fastc_fragment_comptime_else_if() {}\n} \$else {\n\tfn fastc_fragment_comptime_else() {}\n}\nfn fastc_fragment_after_chain() {}\n'
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	fragments := fastc_source_generation_fragments(FastcSourceFile{
+		path: 'large_comptime_chain.v'
+		source: source
+		header: FastcSourceHeader{
+			module_name: 'v3.gen.fastc'
+		}
+	}, prefs)
+	assert fragments.len == 2
+	assert !fragments[1].source.trim_space().starts_with('\$else')
+	assert fragments[1].source.trim_space().starts_with('fn fastc_fragment_after_chain')
+}
+
 fn test_fastc_overlap_workers_honor_serial_preferences() {
 	mut prefs := pref.new_preferences()
 	prefs.no_parallel = true
