@@ -8687,6 +8687,11 @@ pub fn invoke_goto(callback fn (&Item), value &Item) {
 	invoke:
 	alias(value)
 }
+
+pub fn invoke_container(callback fn (&Item), value &Item) {
+	callbacks := [callback]
+	callbacks[0](value)
+}
 '
 		'main.v':       'module main
 
@@ -8732,6 +8737,17 @@ fn main() {
 	})
 	println(goto_selected[0])
 	println(api.retained_text())
+	container_selected := make_items().map(match true {
+		true {
+			api.invoke_container(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(container_selected[0])
+	println(api.retained_text())
 }
 '
 	}
@@ -8742,7 +8758,7 @@ fn main() {
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	out := run_good_project_with_flags(v3_bin, 'array_map_branch_callback_alias', '-ownership',
 		files, 'main.v')
-	assert out == '0\nsource\n0\nsource\n0\nsource'
+	assert out == '0\nsource\n0\nsource\n0\nsource\n0\nsource'
 }
 
 fn test_array_map_keeps_source_forwarded_through_nested_callback_wrappers() {
