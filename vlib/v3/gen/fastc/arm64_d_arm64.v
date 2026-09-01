@@ -84,43 +84,39 @@ struct FastArm64Program {
 	constant_sources map[string]string
 	enum_values      map[string]string
 mut:
-	m                                  &ssa.Module = unsafe { nil }
-	void_type                          ssa.TypeID
-	i1_type                            ssa.TypeID
-	i8_type                            ssa.TypeID
-	i16_type                           ssa.TypeID
-	i32_type                           ssa.TypeID
-	i64_type                           ssa.TypeID
-	u8_type                            ssa.TypeID
-	u16_type                           ssa.TypeID
-	u32_type                           ssa.TypeID
-	u64_type                           ssa.TypeID
-	f32_type                           ssa.TypeID
-	f64_type                           ssa.TypeID
-	ptr_i8                             ssa.TypeID
-	str_type                           ssa.TypeID
-	array_type                         ssa.TypeID
-	map_state_type                     ssa.TypeID
-	map_type                           ssa.TypeID
-	type_ids                           map[string]ssa.TypeID
-	type_aliases                       map[string]string
-	fn_ids                             map[string]int
-	fn_returns                         map[string]ssa.TypeID
-	fn_symbols                         map[string]string
-	function_keys_by_name              map[string][]string
-	type_decls_by_id                   map[int]FastArm64TypeDecl
-	native_used_function_names         map[string]bool
-	module_init_function_keys          []string
-	main_argc_global                   ssa.ValueID
-	main_argv_global                   ssa.ValueID
-	option_failed_global               ssa.ValueID
-	option_error_type_global           ssa.ValueID
-	option_error_code_global           ssa.ValueID
-	option_error_message_data_global   ssa.ValueID
-	option_error_message_len_global    ssa.ValueID
-	option_error_message_is_lit_global ssa.ValueID
-	spawn_context_types                map[string]ssa.TypeID
-	spawn_wrapper_ids                  map[string]int
+	m                          &ssa.Module = unsafe { nil }
+	void_type                  ssa.TypeID
+	i1_type                    ssa.TypeID
+	i8_type                    ssa.TypeID
+	i16_type                   ssa.TypeID
+	i32_type                   ssa.TypeID
+	i64_type                   ssa.TypeID
+	u8_type                    ssa.TypeID
+	u16_type                   ssa.TypeID
+	u32_type                   ssa.TypeID
+	u64_type                   ssa.TypeID
+	f32_type                   ssa.TypeID
+	f64_type                   ssa.TypeID
+	ptr_i8                     ssa.TypeID
+	str_type                   ssa.TypeID
+	array_type                 ssa.TypeID
+	map_state_type             ssa.TypeID
+	map_type                   ssa.TypeID
+	type_ids                   map[string]ssa.TypeID
+	type_aliases               map[string]string
+	fn_ids                     map[string]int
+	fn_returns                 map[string]ssa.TypeID
+	fn_symbols                 map[string]string
+	function_keys_by_name      map[string][]string
+	type_decls_by_id           map[int]FastArm64TypeDecl
+	native_used_function_names map[string]bool
+	module_init_function_keys  []string
+	main_argc_global           ssa.ValueID
+	main_argv_global           ssa.ValueID
+	option_state_type          ssa.TypeID
+	option_state_key_global    ssa.ValueID
+	spawn_context_types        map[string]ssa.TypeID
+	spawn_wrapper_ids          map[string]int
 }
 
 struct FastArm64Parser {
@@ -1090,17 +1086,17 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_function('atexit', 'atexit', p.i32_type, true)
 	p.register_function('pthread_create', 'pthread_create', p.i32_type, true)
 	p.register_function('pthread_join', 'pthread_join', p.i32_type, true)
+	p.register_function('pthread_key_create', 'pthread_key_create', p.i32_type, true)
+	p.register_function('pthread_getspecific', 'pthread_getspecific', p.ptr_i8, true)
+	p.register_function('pthread_setspecific', 'pthread_setspecific', p.i32_type, true)
 	p.register_function('getcwd', 'getcwd', p.ptr_i8, true)
 	p.register_function('gcvt', 'gcvt', p.ptr_i8, true)
 	p.register_function('__error', '__error', p.m.type_store.get_ptr(p.i32_type), true)
 	p.main_argc_global = p.m.add_global('g_main_argc', p.i64_type)
 	p.main_argv_global = p.m.add_global('g_main_argv', p.m.type_store.get_ptr(p.ptr_i8))
-	p.option_failed_global = p.m.add_global('g_fastc_option_failed', p.i1_type)
-	p.option_error_type_global = p.m.add_global('g_fastc_option_error_type', p.u64_type)
-	p.option_error_code_global = p.m.add_global('g_fastc_option_error_code', p.i32_type)
-	p.option_error_message_data_global = p.m.add_global('g_fastc_option_error_message_data', p.ptr_i8)
-	p.option_error_message_len_global = p.m.add_global('g_fastc_option_error_message_len', p.i32_type)
-	p.option_error_message_is_lit_global = p.m.add_global('g_fastc_option_error_message_is_lit', p.i32_type)
+	p.option_state_type = p.m.type_store.get_tuple([p.i1_type, p.u64_type, p.i32_type, p.str_type])
+	p.option_state_key_global = p.m.add_global('g_fastc_option_state_key', p.u64_type)
+	p.register_option_state_runtime()
 	p.register_os_path_runtime()
 	p.register_os_abs_path_runtime()
 	p.register_os_process_runtime()
@@ -1642,6 +1638,37 @@ fn (mut p FastArm64Program) struct_field_ptr(block ssa.BlockID, base ssa.ValueID
 
 fn (mut p FastArm64Program) string_field_ptr(block ssa.BlockID, base ssa.ValueID, field int) ssa.ValueID {
 	return p.struct_field_ptr(block, base, p.str_type, field)
+}
+
+fn (mut p FastArm64Program) register_option_state_runtime() {
+	state_ptr_type := p.m.type_store.get_ptr(p.option_state_type)
+	id := p.register_function('fastc_option_state', 'fastc_option_state', state_ptr_type, false)
+	entry := p.m.add_block(id, 'option_state_entry')
+	key := p.instr1(.load, entry, p.u64_type, p.option_state_key_global)
+	get_ref := p.m.add_value(.func_ref, p.ptr_i8, 'pthread_getspecific', p.fn_ids['pthread_getspecific'])
+	current := p.m.add_instr(.call, entry, p.ptr_i8, [get_ref, key])
+	null_pointer := p.m.get_or_add_const(p.ptr_i8, '0')
+	has_state := p.instr2(.ne, entry, p.i1_type, current, null_pointer)
+	result_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.ptr_i8))
+	p.instr2(.store, entry, p.void_type, current, result_slot)
+	ready := p.m.add_block(id, 'option_state_ready')
+	missing := p.m.add_block(id, 'option_state_missing')
+	p.instr3(.br, entry, p.void_type, has_state, ssa.ValueID(ready), ssa.ValueID(missing))
+	one := p.m.get_or_add_const(p.i64_type, '1')
+	size := p.m.get_or_add_const(p.i64_type, p.m.type_size(p.option_state_type).str())
+	calloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'calloc', p.fn_ids['calloc'])
+	created := p.m.add_instr(.call, missing, p.ptr_i8, [calloc_ref, one, size])
+	set_ref := p.m.add_value(.func_ref, p.i32_type, 'pthread_setspecific', p.fn_ids['pthread_setspecific'])
+	p.m.add_instr(.call, missing, p.i32_type, [set_ref, key, created])
+	p.instr2(.store, missing, p.void_type, created, result_slot)
+	p.instr1(.jmp, missing, p.void_type, ssa.ValueID(ready))
+	result := p.instr1(.load, ready, p.ptr_i8, result_slot)
+	typed_result := p.instr1(.bitcast, ready, state_ptr_type, result)
+	p.instr1(.ret, ready, p.void_type, typed_result)
+	mut function := p.m.funcs[id]
+	function.is_prototype = false
+	function.is_c_extern = false
+	p.m.funcs[id] = function
 }
 
 fn (mut p FastArm64Program) register_arguments_runtime() {
@@ -3435,6 +3462,10 @@ fn (mut p FastArm64Parser) parse_function() ! {
 }
 
 fn (mut p FastArm64Parser) emit_main_startup() ! {
+	create_key_ref := p.program.m.add_value(.func_ref, p.program.i32_type, 'pthread_key_create', p.program.fn_ids['pthread_key_create'])
+	free_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'free', p.program.fn_ids['free'])
+	p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [create_key_ref,
+		p.program.option_state_key_global, free_ref])
 	for function_key in p.program.module_init_function_keys {
 		function_id := p.program.register_signature_function(function_key) or {
 			return p.unsupported('registered module init `${function_key}`')
@@ -4119,8 +4150,15 @@ fn (p &FastArm64Parser) option_return_types_are_incompatible(actual ssa.TypeID, 
 	return true
 }
 
+fn (mut p FastArm64Parser) option_state_pointer() ssa.ValueID {
+	state_ptr_type := p.program.m.type_store.get_ptr(p.program.option_state_type)
+	state_ref := p.program.m.add_value(.func_ref, state_ptr_type, 'fastc_option_state', p.program.fn_ids['fastc_option_state'])
+	return p.program.m.add_instr(.call, p.cur_block, state_ptr_type, [state_ref])
+}
+
 fn (mut p FastArm64Parser) store_option_failure(failed ssa.ValueID) {
-	p.program.instr2(.store, p.cur_block, p.program.void_type, failed, p.program.option_failed_global)
+	state := p.option_state_pointer()
+	p.program.instr2(.store, p.cur_block, p.program.void_type, failed, p.program.struct_field_ptr(p.cur_block, state, p.program.option_state_type, 0))
 }
 
 fn (mut p FastArm64Parser) store_option_error_details(error_type ssa.ValueID, error_message ssa.ValueID, error_code ssa.ValueID) {
@@ -4139,27 +4177,14 @@ fn (mut p FastArm64Parser) store_option_error_details(error_type ssa.ValueID, er
 	} else {
 		error_message
 	}
-	p.program.instr2(.store, p.cur_block, p.program.void_type, typ, p.program.option_error_type_global)
-	p.program.instr2(.store, p.cur_block, p.program.void_type, code, p.program.option_error_code_global)
-	message_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
-	p.program.instr2(.store, p.cur_block, p.program.void_type, message, message_slot)
-	data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.string_field_ptr(p.cur_block, message_slot, 0))
-	length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.string_field_ptr(p.cur_block, message_slot, 1))
-	is_lit := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.string_field_ptr(p.cur_block, message_slot, 2))
-	p.program.instr2(.store, p.cur_block, p.program.void_type, data, p.program.option_error_message_data_global)
-	p.program.instr2(.store, p.cur_block, p.program.void_type, length, p.program.option_error_message_len_global)
-	p.program.instr2(.store, p.cur_block, p.program.void_type, is_lit, p.program.option_error_message_is_lit_global)
+	state := p.option_state_pointer()
+	p.program.instr2(.store, p.cur_block, p.program.void_type, typ, p.program.struct_field_ptr(p.cur_block, state, p.program.option_state_type, 1))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, code, p.program.struct_field_ptr(p.cur_block, state, p.program.option_state_type, 2))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, message, p.program.struct_field_ptr(p.cur_block, state, p.program.option_state_type, 3))
 }
 
-fn (mut p FastArm64Parser) load_option_error_message() ssa.ValueID {
-	message_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
-	data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.option_error_message_data_global)
-	length := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.option_error_message_len_global)
-	is_lit := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.option_error_message_is_lit_global)
-	p.program.instr2(.store, p.cur_block, p.program.void_type, data, p.program.string_field_ptr(p.cur_block, message_slot, 0))
-	p.program.instr2(.store, p.cur_block, p.program.void_type, length, p.program.string_field_ptr(p.cur_block, message_slot, 1))
-	p.program.instr2(.store, p.cur_block, p.program.void_type, is_lit, p.program.string_field_ptr(p.cur_block, message_slot, 2))
-	return p.program.instr1(.load, p.cur_block, p.program.str_type, message_slot)
+fn (mut p FastArm64Parser) load_option_error_message(state ssa.ValueID) ssa.ValueID {
+	return p.program.instr1(.load, p.cur_block, p.program.str_type, p.program.struct_field_ptr(p.cur_block, state, p.program.option_state_type, 3))
 }
 
 fn (mut p FastArm64Parser) store_option_success() {
@@ -7655,6 +7680,14 @@ fn (p &FastArm64Program) array_element_type_name(type_name string) ?string {
 	return none
 }
 
+fn (p &FastArm64Program) resolved_type_name(type_name string) string {
+	mut current := fastc_normalize_inferred_type(type_name)
+	for _ in 0 .. 8 {
+		current = p.type_aliases[current] or { return current }
+	}
+	return current
+}
+
 fn (mut p FastArm64Parser) resolve_method_key(value FastArm64Value, method string) ?string {
 	receiver_name := value.typ_name.trim_right('*')
 	for semantic_receiver in [receiver_name, receiver_name.replace('__', '.')] {
@@ -7829,23 +7862,28 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 		p.store_option_success()
 	}
 	result := p.program.m.add_instr(.call, p.cur_block, ret, operands)
+	option_state := if signature.return_type == 'Option' {
+		p.option_state_pointer()
+	} else {
+		ssa.ValueID(0)
+	}
 	option_failed := if signature.return_type == 'Option' {
-		p.program.instr1(.load, p.cur_block, p.program.i1_type, p.program.option_failed_global)
+		p.program.instr1(.load, p.cur_block, p.program.i1_type, p.program.struct_field_ptr(p.cur_block, option_state, p.program.option_state_type, 0))
 	} else {
 		ssa.ValueID(0)
 	}
 	option_error_type := if signature.return_type == 'Option' {
-		p.program.instr1(.load, p.cur_block, p.program.u64_type, p.program.option_error_type_global)
+		p.program.instr1(.load, p.cur_block, p.program.u64_type, p.program.struct_field_ptr(p.cur_block, option_state, p.program.option_state_type, 1))
 	} else {
 		ssa.ValueID(0)
 	}
 	option_error_code := if signature.return_type == 'Option' {
-		p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.option_error_code_global)
+		p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, option_state, p.program.option_state_type, 2))
 	} else {
 		ssa.ValueID(0)
 	}
 	option_error_message := if signature.return_type == 'Option' {
-		p.load_option_error_message()
+		p.load_option_error_message(option_state)
 	} else {
 		ssa.ValueID(0)
 	}
@@ -8498,23 +8536,28 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		p.store_option_success()
 	}
 	result := p.program.m.add_instr(.call, p.cur_block, ret, operands)
+	option_state := if signature.return_type == 'Option' {
+		p.option_state_pointer()
+	} else {
+		ssa.ValueID(0)
+	}
 	option_failed := if signature.return_type == 'Option' {
-		p.program.instr1(.load, p.cur_block, p.program.i1_type, p.program.option_failed_global)
+		p.program.instr1(.load, p.cur_block, p.program.i1_type, p.program.struct_field_ptr(p.cur_block, option_state, p.program.option_state_type, 0))
 	} else {
 		ssa.ValueID(0)
 	}
 	option_error_type := if signature.return_type == 'Option' {
-		p.program.instr1(.load, p.cur_block, p.program.u64_type, p.program.option_error_type_global)
+		p.program.instr1(.load, p.cur_block, p.program.u64_type, p.program.struct_field_ptr(p.cur_block, option_state, p.program.option_state_type, 1))
 	} else {
 		ssa.ValueID(0)
 	}
 	option_error_code := if signature.return_type == 'Option' {
-		p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.option_error_code_global)
+		p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.struct_field_ptr(p.cur_block, option_state, p.program.option_state_type, 2))
 	} else {
 		ssa.ValueID(0)
 	}
 	option_error_message := if signature.return_type == 'Option' {
-		p.load_option_error_message()
+		p.load_option_error_message(option_state)
 	} else {
 		ssa.ValueID(0)
 	}
@@ -9159,7 +9202,7 @@ fn (mut p FastArm64Parser) emit_array_push_at(array FastArm64Value, item FastArm
 	element_type_name := p.program.array_element_type_name(array.typ_name) or {
 		return p.unsupported('array append type `${array.typ_name}`')
 	}
-	if item.typ == p.program.array_type {
+	if item.typ == p.program.array_type && p.program.resolved_type_name(item.typ_name) == p.program.resolved_type_name(array.typ_name) {
 		return p.emit_array_append_many(array, item, element_type_name, prepend)
 	}
 	element_type := p.program.type_id(element_type_name)

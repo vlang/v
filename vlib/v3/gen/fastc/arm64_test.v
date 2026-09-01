@@ -626,6 +626,23 @@ fn maybe_zero(ok bool) ?int {
 	return none
 }
 
+fn option_worker(expect_success bool) bool {
+	for _ in 0 .. 20000 {
+		if expect_success {
+			value := maybe_zero(true) or { return false }
+			if value != 0 {
+				return false
+			}
+		} else {
+			value := maybe_zero(false) or { continue }
+			if value == 0 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 fn main() {
 	mut wide_map_defaults := [1]WideMapDefaults{}
 	wide_map_defaults[0].values["present"] = 9
@@ -654,8 +671,17 @@ fn main() {
 	successful_zero := maybe_zero(true)
 	none_comparison_ok := absent == none && !(absent != none)
 		&& successful_zero != none && !(successful_zero == none)
+	mut nested_values := [][]int{}
+	nested_values << [1, 2]
+	nested_values << [3]
+	failure_a := spawn option_worker(false)
+	success_a := spawn option_worker(true)
+	failure_b := spawn option_worker(false)
+	success_b := spawn option_worker(true)
+	thread_options_ok := failure_a.wait() && success_a.wait() && failure_b.wait()
+		&& success_b.wait()
 	scalar_text := "\${true}:\${u64(9223372036854775808)}"
-	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || delayed_fallback != 42 || mutable_values[0].value != 11 || mutable_values[1].value != 12 || mutable_numbers[0] != 2 || mutable_numbers[1] != 3 || !none_comparison_ok || scalar_text != "true:9223372036854775808" {
+	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || delayed_fallback != 42 || mutable_values[0].value != 11 || mutable_values[1].value != 12 || mutable_numbers[0] != 2 || mutable_numbers[1] != 3 || !none_comparison_ok || nested_values.len != 2 || nested_values[0].len != 2 || nested_values[0][0] != 1 || nested_values[0][1] != 2 || nested_values[1].len != 1 || nested_values[1][0] != 3 || !thread_options_ok || scalar_text != "true:9223372036854775808" {
 		println("wrong")
 		return
 	}
