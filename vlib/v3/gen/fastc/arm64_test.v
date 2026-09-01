@@ -981,7 +981,7 @@ fn test_fastc_arm64_spawn_for_general_programs() {
 		}
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
-		os.write_file(source_path, 'fn worker() int { return 1 }\nfn main() { handle := spawn worker(); if handle.wait() == 1 { println("spawned") } }\n') or {
+		os.write_file(source_path, 'fn worker() int { mut stack := [1048576]u8{}; stack[0] = 7; stack[1048575] = 9; return int(stack[0]) + int(stack[1048575]) }\nfn main() { handle := spawn worker(); if handle.wait() == 16 { println("spawned") } }\n') or {
 			panic(err)
 		}
 		mut prefs := pref.new_preferences()
@@ -1298,6 +1298,17 @@ struct AlignedOuter {
 	value  Aligned
 }
 
+struct BytePair {
+	left  u8
+	right u8
+}
+
+struct NestedBytePair {
+	head u8
+	pair BytePair
+	tail u8
+}
+
 fn main() {
 	if sizeof(Header) != 9 {
 		println("wrong header")
@@ -1313,6 +1324,10 @@ fn main() {
 	}
 	if sizeof(AlignedOuter) != 64 {
 		println("wrong aligned outer")
+		return
+	}
+	if sizeof(NestedBytePair) != 4 {
+		println("wrong nested byte pair")
 		return
 	}
 	println("native")

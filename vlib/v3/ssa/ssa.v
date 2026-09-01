@@ -967,7 +967,14 @@ fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 		return 8
 	}
 	if typ.fields.len > 0 {
-		return 8
+		mut max_align := 1
+		for field_typ in typ.fields {
+			field_align := m.type_align_for_layout_inner(field_typ, depth + 1)
+			if field_align > max_align {
+				max_align = field_align
+			}
+		}
+		return max_align
 	}
 	if typ.params.len > 0 || typ.ret_type > 0 {
 		return 8

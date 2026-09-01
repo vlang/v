@@ -1284,6 +1284,9 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_function('pclose', 'pclose', p.i32_type, true)
 	p.register_function('fread', 'fread', p.u64_type, true)
 	p.register_function('atexit', 'atexit', p.i32_type, true)
+	p.register_function('pthread_attr_init', 'pthread_attr_init', p.i32_type, true)
+	p.register_function('pthread_attr_setstacksize', 'pthread_attr_setstacksize', p.i32_type, true)
+	p.register_function('pthread_attr_destroy', 'pthread_attr_destroy', p.i32_type, true)
 	p.register_function('pthread_create', 'pthread_create', p.i32_type, true)
 	p.register_function('pthread_join', 'pthread_join', p.i32_type, true)
 	p.register_function('pthread_key_create', 'pthread_key_create', p.i32_type, true)
@@ -10119,24 +10122,68 @@ fn (mut p FastArm64Parser) emit_spawn_call(function_key string, symbol string, f
 		p.program.instr2(.store, p.cur_block, p.program.void_type, argument, p.program.struct_field_ptr(p.cur_block, context, context_type, argument_start + i))
 	}
 	handle_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.u64_type))
-	null_pointer := p.program.m.get_or_add_const(p.program.ptr_i8, '0')
+	// pthread_attr_t is opaque to FastC. Reserve enough aligned storage for the
+	// Darwin and Linux AArch64 layouts before configuring the promised 8 MiB stack.
+	attributes_type := p.program.m.type_store.get_array(p.program.u64_type, 16)
+	attributes_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(attributes_type))
+	attributes := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, attributes_slot)
+	zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
+	one := p.program.m.get_or_add_const(p.program.i32_type, '1')
+	free_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'free', p.program.fn_ids['free'])
+	exit_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'exit', p.program.fn_ids['exit'])
+	attr_init_ref := p.program.m.add_value(.func_ref, p.program.i32_type, 'pthread_attr_init', p.program.fn_ids['pthread_attr_init'])
+	attr_init_status := p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [
+		attr_init_ref,
+		attributes,
+	])
+	attr_initialized := p.program.instr2(.eq, p.cur_block, p.program.i1_type, attr_init_status, zero)
+	attr_ready := p.program.m.add_block(p.func_id, 'spawn_attr_ready')
+	attr_init_failed := p.program.m.add_block(p.func_id, 'spawn_attr_init_failed')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, attr_initialized, ssa.ValueID(attr_ready), ssa.ValueID(attr_init_failed))
+	p.mark_terminated(p.cur_block)
+	p.program.m.add_instr(.call, attr_init_failed, p.program.void_type, [free_ref, raw_context])
+	p.program.m.add_instr(.call, attr_init_failed, p.program.void_type, [exit_ref, one])
+	p.program.instr0(.unreachable, attr_init_failed, p.program.void_type)
+	p.mark_terminated(attr_init_failed)
+	p.cur_block = attr_ready
+	attr_stack_ref := p.program.m.add_value(.func_ref, p.program.i32_type, 'pthread_attr_setstacksize', p.program.fn_ids['pthread_attr_setstacksize'])
+	stack_size := p.program.m.get_or_add_const(p.program.u64_type, (8 * 1024 * 1024).str())
+	attr_stack_status := p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [
+		attr_stack_ref,
+		attributes,
+		stack_size,
+	])
+	attr_configured := p.program.instr2(.eq, p.cur_block, p.program.i1_type, attr_stack_status, zero)
+	create_thread := p.program.m.add_block(p.func_id, 'spawn_create')
+	attr_config_failed := p.program.m.add_block(p.func_id, 'spawn_attr_config_failed')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, attr_configured, ssa.ValueID(create_thread), ssa.ValueID(attr_config_failed))
+	p.mark_terminated(p.cur_block)
+	attr_destroy_ref := p.program.m.add_value(.func_ref, p.program.i32_type, 'pthread_attr_destroy', p.program.fn_ids['pthread_attr_destroy'])
+	p.program.m.add_instr(.call, attr_config_failed, p.program.i32_type, [
+		attr_destroy_ref,
+		attributes,
+	])
+	p.program.m.add_instr(.call, attr_config_failed, p.program.void_type, [free_ref, raw_context])
+	p.program.m.add_instr(.call, attr_config_failed, p.program.void_type, [exit_ref, one])
+	p.program.instr0(.unreachable, attr_config_failed, p.program.void_type)
+	p.mark_terminated(attr_config_failed)
+	p.cur_block = create_thread
 	wrapper_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, p.program.m.funcs[wrapper_id].name, wrapper_id)
 	create_ref := p.program.m.add_value(.func_ref, p.program.i32_type, 'pthread_create', p.program.fn_ids['pthread_create'])
 	status := p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [
 		create_ref,
 		handle_slot,
-		null_pointer,
+		attributes,
 		wrapper_ref,
 		raw_context,
 	])
-	zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
+	p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [attr_destroy_ref, attributes])
 	created := p.program.instr2(.eq, p.cur_block, p.program.i1_type, status, zero)
 	ready := p.program.m.add_block(p.func_id, 'spawn_ready')
 	failed := p.program.m.add_block(p.func_id, 'spawn_failed')
 	p.program.instr3(.br, p.cur_block, p.program.void_type, created, ssa.ValueID(ready), ssa.ValueID(failed))
 	p.mark_terminated(p.cur_block)
-	exit_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'exit', p.program.fn_ids['exit'])
-	one := p.program.m.get_or_add_const(p.program.i32_type, '1')
+	p.program.m.add_instr(.call, failed, p.program.void_type, [free_ref, raw_context])
 	p.program.m.add_instr(.call, failed, p.program.void_type, [exit_ref, one])
 	p.program.instr0(.unreachable, failed, p.program.void_type)
 	p.mark_terminated(failed)
