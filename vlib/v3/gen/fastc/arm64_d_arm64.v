@@ -4028,7 +4028,25 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		}
 		op := p.tok
 		p.next()
-		mut value := p.parse_expression(0)!
+		local_layout := p.program.m.type_store.types[local.typ]
+		mut indexed_value_type_name := ''
+		if local_layout.kind == .ptr_t && local.typ_name.starts_with('&') {
+			indexed_value_type_name = local.typ_name[1..]
+		} else if local_layout.kind == .array_t {
+			indexed_value_type_name = fastc_fixed_array_element_type(local.typ_name) or { '' }
+		} else if local.typ == p.program.array_type {
+			indexed_value_type_name = p.program.array_element_type_name(local.typ_name) or { '' }
+		} else if local.typ == p.program.map_type {
+			_, map_value_type_name := fastc_map_key_value_types(local.typ_name) or {
+				return p.unsupported('map type `${local.typ_name}`')
+			}
+			indexed_value_type_name = map_value_type_name
+		}
+		mut value := if indexed_value_type_name == '' {
+			p.parse_expression(0)!
+		} else {
+			p.parse_contextual_value(indexed_value_type_name)!
+		}
 		if p.program.m.type_store.types[local.typ].kind == .ptr_t {
 			base := p.program.instr1(.load, p.cur_block, local.typ, local.addr)
 			element_type := p.program.m.type_store.types[local.typ].elem_type
@@ -4217,11 +4235,7 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		}
 		op := p.tok
 		p.next()
-		mut right := if p.tok == .dot {
-			p.parse_enum_shorthand(left.typ_name)!
-		} else {
-			p.parse_expression(0)!
-		}
+		mut right := p.parse_contextual_value(left.typ_name)!
 		if right.typ != left.typ {
 			right = p.convert_value(right, left.typ, left.typ_name)
 		}
@@ -7738,7 +7752,10 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 			if member == 'insert' {
 				index := p.parse_expression(0)!
 				p.expect(.comma)!
-				item := p.parse_expression(0)!
+				element_type_name := p.program.array_element_type_name(value.typ_name) or {
+					return p.unsupported('array insert type `${value.typ_name}`')
+				}
+				item := p.parse_contextual_value(element_type_name)!
 				p.expect(.rpar)!
 				return p.emit_array_insert(value, item, index)
 			}
