@@ -1737,7 +1737,8 @@ exec "\$REAL_CC" "\$@"
 		exit_code := process.code
 		process.close()
 		assert exit_code == 0, compiler_output
-		assert compiler_output.contains('source inputs changed'), compiler_output
+		// The unverified V3 fallback report is dropped silently, without any user-facing note.
+		assert !compiler_output.contains('source inputs changed'), compiler_output
 		assert !compiler_output.contains('V3 could not build this program'), compiler_output
 		assert os.is_executable(output)
 		run := os.execute(os.quoted_path(output))
