@@ -329,6 +329,7 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			// Calls outside the writable function span are always reconstructed by
 			// transform_call_args, including a new child-ID span.
 			estimate += int(node.children_count) + 1
+			estimate += t.disabled_call_zero_value_expansion_estimate(id, node)
 			if t.runtime_type_metadata_call_expands(id, node) {
 				// Runtime type metadata calls expand into comparison chains derived from
 				// sum variants or interface implementations, not physical call children.
@@ -725,6 +726,23 @@ fn (mut t Transformer) compiler_call_expands_from_type_metadata(id flat.NodeId, 
 		}
 	}
 	return t.compiler_collection_clone_call_expands(node) || t.compiler_owned_map_items_call_expands(node) || t.compiler_array_search_call_expands(node) || t.compiler_owned_array_accessor_call_expands(node) || t.compiler_owned_array_filter_call_expands(node) || t.compiler_owned_array_map_call_expands(node) || t.compiler_collection_str_call_expands(node) || t.ownership_array_repeat_call_expands(node) || t.ownership_nested_map_delete_key_clone_expands(node)
+}
+
+fn (mut t Transformer) disabled_call_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .call || !t.is_disabled_fn_call(id, node) || t.is_cgen_magic_json_call(id, node) {
+		return 0
+	}
+	mut result_type := t.node_type(id)
+	if result_type.len == 0 || result_type in ['array', 'map', 'unknown'] || t.generic_arg_is_unresolved(result_type) {
+		result_type = t.get_call_return_type(id, node)
+	}
+	if result_type == 'void' {
+		return 0
+	}
+	if result_type.len == 0 || result_type in ['array', 'map', 'unknown'] || t.generic_arg_is_unresolved(result_type) {
+		return deferred_map_expansion_threshold + 1
+	}
+	return t.zero_value_expansion_estimate(id, result_type)
 }
 
 fn (mut t Transformer) ownership_nested_map_delete_key_clone_expands(node flat.Node) bool {
@@ -1196,15 +1214,27 @@ fn (mut t Transformer) forwarded_fixed_array_return_expansion_estimate(node flat
 	}
 	actual_type := t.tc.parse_type(actual_name)
 	expected_type := t.tc.parse_type(expected_name)
+	return t.forwarded_return_conversion_expansion_estimate(actual_type, expected_type, 0)
+}
+
+fn (mut t Transformer) forwarded_return_conversion_expansion_estimate(actual_type types.Type, expected_type types.Type, depth int) int {
+	if depth >= 32 || !t.forwarded_slot_conversion_supported(actual_type, expected_type) {
+		return 0
+	}
 	actual := forwarded_return_unalias_type(actual_type)
 	expected := forwarded_return_unalias_type(expected_type)
+	if actual is types.OptionType && expected is types.OptionType {
+		return t.forwarded_return_conversion_expansion_estimate(actual.base_type, expected.base_type, depth + 1)
+	}
+	if actual is types.ResultType && expected is types.ResultType {
+		return t.forwarded_return_conversion_expansion_estimate(actual.base_type, expected.base_type, depth + 1)
+	}
 	if actual !is types.ArrayFixed || expected !is types.ArrayFixed {
 		return 0
 	}
 	actual_fixed := actual as types.ArrayFixed
 	expected_fixed := expected as types.ArrayFixed
-	if t.semantic_type_name(actual_fixed.elem_type) == t.semantic_type_name(expected_fixed.elem_type)
-		|| !t.forwarded_slot_conversion_supported(actual_type, expected_type) {
+	if t.semantic_type_name(actual_fixed.elem_type) == t.semantic_type_name(expected_fixed.elem_type) || !t.forwarded_slot_conversion_supported(actual_type, expected_type) {
 		return 0
 	}
 	len := t.tc.fixed_array_len_value(expected_fixed) or { return 0 }
@@ -1275,6 +1305,7 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			estimate += deferred_map_expansion_threshold + 1
 		}
 		if node.kind == .call {
+			estimate += t.disabled_call_zero_value_expansion_estimate(flat.NodeId(idx), node)
 			if t.compiler_call_expands_from_type_metadata(flat.NodeId(idx), node) || t.builtin_call_auto_stringify_expands(flat.NodeId(idx), node) {
 				estimate += deferred_map_expansion_threshold + 1
 			}

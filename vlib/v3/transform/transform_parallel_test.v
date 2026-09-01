@@ -1005,6 +1005,57 @@ fn test_forwarded_fixed_array_return_expansion_is_reserved() {
 	assert t.fn_span_map_expansion_estimate(int(value), int(fn_decl)) > deferred_map_expansion_threshold
 }
 
+fn test_forwarded_wrapped_fixed_array_return_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'values'
+		typ: '?[4096]int'
+	})
+	return_start := a.children.len
+	a.children << value
+	return_stmt := a.add_node(flat.Node{
+		kind: .return_stmt
+		typ: '?[4096]i64'
+		children_start: return_start
+		children_count: 1
+	})
+	fn_start := a.children.len
+	a.children << return_stmt
+	fn_decl := a.add_node(flat.Node{
+		kind: .fn_decl
+		value: 'forward_optional'
+		typ: '?[4096]i64'
+		children_start: fn_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(value), int(fn_decl)) > deferred_map_expansion_threshold
+}
+
+fn test_disabled_call_zero_value_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{
+		kind: .ident
+		value: 'disabled_big'
+	})
+	call_start := a.children.len
+	a.children << callee
+	call := a.add_node(flat.Node{
+		kind: .call
+		typ: '[4096][]int'
+		children_start: call_start
+		children_count: 1
+	})
+	a.disabled_fns['disabled_big'] = true
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(callee), int(call) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_or_expr_zero_value_expansion_is_reserved() {
 	mut a := flat.FlatAst.new()
 	optional_value := a.add_node(flat.Node{
