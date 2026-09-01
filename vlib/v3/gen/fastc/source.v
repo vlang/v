@@ -577,20 +577,19 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 }
 
 fn fastc_source_declaration_flags(source string) (bool, bool) {
-	mut has_constants := false
-	mut has_global_declarations := false
-	for i := 0; i < source.len && (!has_constants || !has_global_declarations); i++ {
-		if i > 0 && fastc_identifier_byte(source[i - 1]) {
-			continue
+	return fastc_source_has_declaration(source, 'const'), fastc_source_has_declaration(source, '__global')
+}
+
+fn fastc_source_has_declaration(source string, keyword string) bool {
+	mut search_start := 0
+	for {
+		index := source.index_after(keyword, search_start) or { return false }
+		if (index == 0 || !fastc_identifier_byte(source[index - 1])) && (index + keyword.len == source.len || !fastc_identifier_byte(source[index + keyword.len])) {
+			return true
 		}
-		if !has_constants && source[i] == `c` && i + 5 <= source.len && source[i..i + 5] == 'const' && (i + 5 == source.len || !fastc_identifier_byte(source[i + 5])) {
-			has_constants = true
-		}
-		if !has_global_declarations && source[i] == `_` && i + 8 <= source.len && source[i..i + 8] == '__global' && (i + 8 == source.len || !fastc_identifier_byte(source[i + 8])) {
-			has_global_declarations = true
-		}
+		search_start = index + keyword.len
 	}
-	return has_constants, has_global_declarations
+	return false
 }
 
 fn fastc_identifier_byte(value u8) bool {

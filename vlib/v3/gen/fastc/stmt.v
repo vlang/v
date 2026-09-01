@@ -5,7 +5,7 @@ import v3.pref
 import v3.token
 
 fn (mut g Parser) parse_block_body() !bool {
-	outer_locals := g.locals.clone()
+	mut outer_locals := g.locals.clone()
 	outer_statement_reachable := g.statement_reachable
 	deferred_line_start := g.deferred_lines.len
 	deferred_block_start := g.deferred_block_starts.len
@@ -36,7 +36,7 @@ fn (mut g Parser) parse_block_body() !bool {
 	g.write_deferred_blocks_from(deferred_block_start)
 	g.deferred_lines.trim(deferred_line_start)
 	g.deferred_block_starts.trim(deferred_block_start)
-	g.locals = outer_locals.clone()
+	g.locals = outer_locals.move()
 	g.statement_reachable = outer_statement_reachable
 	return terminates
 }

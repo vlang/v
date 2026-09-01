@@ -1702,9 +1702,11 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			return g.unsupported('mutation without a target')
 		}
 	}
-	g.validate_expression_mutation_lvalue(expression_tokens)!
-	g.validate_expression_field_visibility(expression_tokens)!
-	g.validate_expression_calls(expression_tokens)!
+	if !g.selfhost {
+		g.validate_expression_mutation_lvalue(expression_tokens)!
+		g.validate_expression_field_visibility(expression_tokens)!
+		g.validate_expression_calls(expression_tokens)!
+	}
 	mut rendered_expression := result.str().trim_space()
 	rendered_expression = g.render_enum_alias_member_references(expression_tokens, rendered_expression)
 	rendered_expression = g.render_constant_references(expression_tokens, rendered_expression)
@@ -2358,9 +2360,9 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 			}
 		}
 	}
-	if g.selfhost && g.expression_uses_member_smartcast(tokens) {
+	if g.selfhost && has_dot && g.expression_uses_member_smartcast(tokens) {
 		if source := g.render_member_receiver(tokens) {
-			if typ := g.infer_member_access_type(tokens) {
+			if typ := g.infer_member_access_type(tokens, 0, tokens.len) {
 				return FastcRenderedExpression{
 					source: source
 					typ: typ
@@ -2395,10 +2397,12 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 	}
 	if g.selfhost {
 		if tokens.len > 1 && tokens.last().tok == .not {
-			if map_expression := g.render_map_expression(tokens) {
-				// A propagated RHS in `values[key] = load()!` must remain part of
-				// the map assignment lowering, not become a raw C subexpression.
-				return map_expression
+			if has_lsbr {
+				if map_expression := g.render_map_expression(tokens) {
+					// A propagated RHS in `values[key] = load()!` must remain part of
+					// the map assignment lowering, not become a raw C subexpression.
+					return map_expression
+				}
 			}
 			if assignment := g.render_assignment_expression(tokens) {
 				// Assignment supplies the target type to its RHS. In particular, an
@@ -2445,8 +2449,10 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				return defaulted_call
 			}
 		}
-		if map_expression := g.render_map_expression(tokens) {
-			return map_expression
+		if has_lsbr {
+			if map_expression := g.render_map_expression(tokens) {
+				return map_expression
+			}
 		}
 		if has_lcbr {
 			if struct_literal := g.render_struct_literal_expression(tokens) {
@@ -2681,8 +2687,10 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 				return array_access
 			}
 		}
-		if pointer_members := g.render_pointer_member_access_expression(tokens, rendered_expression) {
-			return pointer_members
+		if has_dot {
+			if pointer_members := g.render_pointer_member_access_expression(tokens, rendered_expression) {
+				return pointer_members
+			}
 		}
 		if has_dot && has_lpar {
 			if method_expression := g.render_method_call_expression(tokens, rendered_expression) {

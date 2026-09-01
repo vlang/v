@@ -419,6 +419,80 @@ fn test_fastc_file_generation_jobs_balance_largest_files_first() {
 	assert fastc_file_generation_job_indices(sources, 2) == [[0, 3], [1, 2]]
 }
 
+fn test_fastc_fragmented_generation_matches_serial_output() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	sources := [
+		FastcSourceFile{
+			path: 'large.v'
+			source: 'module fastc\nfn fastc_fragment_first() {\n${large_comment}\n}\nfn fastc_fragment_second() {}\n'
+			header: FastcSourceHeader{
+				module_name: 'v3.gen.fastc'
+			}
+		},
+		FastcSourceFile{
+			path: 'small_1.v'
+			source: 'module fastc\nfn fastc_fragment_small_1() {}\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+		FastcSourceFile{
+			path: 'small_2.v'
+			source: 'module fastc\nfn fastc_fragment_small_2() {}\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+		FastcSourceFile{
+			path: 'small_3.v'
+			source: 'module fastc\nfn fastc_fragment_small_3() {}\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+	]
+	mut parallel_prefs := pref.new_preferences()
+	parallel_prefs.building_v = true
+	parallel, _, _ := generate_source_files(sources, map[string]string{}, parallel_prefs) or {
+		panic(err)
+	}
+	mut serial_prefs := pref.new_preferences()
+	serial_prefs.building_v = true
+	serial_prefs.no_parallel = true
+	serial, _, _ := generate_source_files(sources, map[string]string{}, serial_prefs) or {
+		panic(err)
+	}
+	assert parallel == serial
+}
+
+fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	source := 'module fastc\n\$if linux {\n\tfn fastc_fragment_comptime_branch() {\n\t\t${large_comment}\n\t}\n} \$else \$if windows {\n\tfn fastc_fragment_comptime_else_if() {}\n} \$else {\n\tfn fastc_fragment_comptime_else() {}\n}\nfn fastc_fragment_after_chain() {}\n'
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	fragments := fastc_source_generation_fragments(FastcSourceFile{
+		path: 'large_comptime_chain.v'
+		source: source
+		header: FastcSourceHeader{
+			module_name: 'v3.gen.fastc'
+		}
+	}, prefs)
+	assert fragments.len == 2
+	assert !fragments[1].source.trim_space().starts_with('\$else')
+	assert fragments[1].source.trim_space().starts_with('fn fastc_fragment_after_chain')
+}
+
+fn test_fastc_generation_fragments_keep_top_level_initializer_together() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	source := 'module fastc\nstruct FastcFragmentValue {}\n@[inline]\nfn (v FastcFragmentValue) value() int {\n\treturn 1\n}\n${large_comment}\nconst fastc_fragment_result = FastcFragmentValue{}.value()\nfn fastc_fragment_after_initializer() {}\n'
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	fragments := fastc_source_generation_fragments(FastcSourceFile{
+		path: 'large_top_level_initializer.v'
+		source: source
+		header: FastcSourceHeader{
+			module_name: 'v3.gen.fastc'
+		}
+	}, prefs)
+	assert fragments.len == 2
+	assert fragments[0].source.contains('FastcFragmentValue{}.value()')
+	assert fragments[1].source.trim_space().starts_with('fn fastc_fragment_after_initializer')
+}
+
 fn test_fastc_overlap_workers_honor_serial_preferences() {
 	mut prefs := pref.new_preferences()
 	prefs.no_parallel = true
@@ -2288,6 +2362,16 @@ fn test_generate_files_restricts_unqualified_imported_type_lookup() {
 		''
 	}
 	assert message.contains('private type `Widget` from imported module `widgets`'), message
+
+	os.write_file(main_file, 'module main\nimport widgets { Widget }\nfn main() { _ := Widget{} }\n') or {
+		panic(err)
+	}
+	message = ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('unresolved name `Widget`'), message
 }
 
 fn test_selfhost_struct_field_defaults_are_preserved() {

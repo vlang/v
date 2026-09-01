@@ -2,6 +2,8 @@ module fastc
 
 import os
 import v3.pref
+import v3.scanner
+import v3.token
 
 struct FastcPendingReferences {
 mut:
@@ -220,6 +222,113 @@ fn fastc_generate_file_chunk(ctx &FastcFileGenContext, sources []FastcSourceFile
 	return outputs
 }
 
+const fastc_generation_fragment_size = 56 * 1024
+
+fn fastc_generation_fragment_is_followed_by_comptime_else(scan scanner.Scanner) bool {
+	mut lookahead := scan
+	mut tok := lookahead.scan()
+	for tok == .semicolon {
+		tok = lookahead.scan()
+	}
+	if tok == .dollar {
+		tok = lookahead.scan()
+	}
+	return tok == .key_else
+}
+
+fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Preferences) []FastcSourceFile {
+	if !prefs.building_v || !source_file.header.module_name.ends_with('fastc') || source_file.source.len <= fastc_generation_fragment_size {
+		return [source_file]
+	}
+	part_count := (source_file.source.len + fastc_generation_fragment_size - 1) / fastc_generation_fragment_size
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file(source_file.path, source_file.source.len)
+	file.index_lines_without_digest(source_file.source)
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(file, source_file.source)
+	mut cuts := [0]
+	mut brace_depth := 0
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut pending_cut := false
+	mut next_target := source_file.source.len / part_count
+	mut tok := scan.scan()
+	for tok != .eof && cuts.len < part_count {
+		match tok {
+			.lcbr {
+				brace_depth++
+			}
+			.rcbr {
+				brace_depth--
+				if brace_depth == 0 && paren_depth == 0 && bracket_depth == 0 && scan.offset >= next_target {
+					pending_cut = true
+				}
+			}
+			.lpar {
+				paren_depth++
+			}
+			.rpar {
+				paren_depth--
+			}
+			.attribute {
+				// The scanner consumes `@[` as one token.
+				bracket_depth++
+			}
+			.lsbr {
+				bracket_depth++
+			}
+			.rsbr {
+				bracket_depth--
+			}
+			.semicolon {
+				if pending_cut && brace_depth == 0 && paren_depth == 0 && bracket_depth == 0 && !fastc_generation_fragment_is_followed_by_comptime_else(scan) {
+					cuts << scan.offset
+					next_target = source_file.source.len * cuts.len / part_count
+					pending_cut = false
+				}
+			}
+			else {}
+		}
+		tok = scan.scan()
+	}
+	if cuts.len == 1 {
+		return [source_file]
+	}
+	cuts << source_file.source.len
+	mut fragments := []FastcSourceFile{cap: cuts.len - 1}
+	mut position_offset := 0
+	mut position_lines := 0
+	mut position_column := 0
+	for i in 0 .. cuts.len - 1 {
+		start := cuts[i]
+		for position_offset < start {
+			if source_file.source[position_offset] == `\n` {
+				position_lines++
+				position_column = 0
+			} else {
+				position_column++
+			}
+			position_offset++
+		}
+		prefix := '\n'.repeat(position_lines) + ' '.repeat(position_column)
+		fragments << FastcSourceFile{
+			path: source_file.path
+			source: prefix + source_file.source[start..cuts[i + 1]]
+			source_offset: source_file.source_offset + start - prefix.len
+			header: source_file.header
+		}
+	}
+	return fragments
+}
+
+fn fastc_generation_fragments(sources []FastcSourceFile, prefs &pref.Preferences) []FastcSourceFile {
+	mut fragments := []FastcSourceFile{cap: sources.len + 8}
+	for source_file in sources {
+		fragments << fastc_source_generation_fragments(source_file, prefs)
+	}
+	return fragments
+}
+
 // fastc_generate_file_outputs runs per-file code generation, in parallel when
 // more than one job is available. Results are restored to file order, so the
 // emitted C is identical to a serial run.
@@ -232,15 +341,16 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 		}
 		return outputs
 	}
-	job_indices := fastc_file_generation_job_indices(sources, jobs)
-	second_thread := spawn fastc_generate_file_chunk(ctx, sources, job_indices[1])
+	generation_sources := fastc_generation_fragments(sources, ctx.prefs)
+	job_indices := fastc_file_generation_job_indices(generation_sources, jobs)
+	second_thread := spawn fastc_generate_file_chunk(ctx, generation_sources, job_indices[1])
 	mut chunk_threads := [second_thread]
 	for chunk_idx in 2 .. jobs {
-		chunk_thread := spawn fastc_generate_file_chunk(ctx, sources, job_indices[chunk_idx])
+		chunk_thread := spawn fastc_generate_file_chunk(ctx, generation_sources, job_indices[chunk_idx])
 		chunk_threads << chunk_thread
 	}
-	mut outputs := []FastcFileGenOutput{len: sources.len}
-	first_outputs := fastc_generate_file_chunk(ctx, sources, job_indices[0])
+	mut outputs := []FastcFileGenOutput{len: generation_sources.len}
+	first_outputs := fastc_generate_file_chunk(ctx, generation_sources, job_indices[0])
 	for indexed_output in first_outputs {
 		outputs[indexed_output.index] = indexed_output.output
 	}
