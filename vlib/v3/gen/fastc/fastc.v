@@ -298,6 +298,14 @@ const fastc_c_reserved_identifiers = {
 }
 
 fn fastc_c_identifier(name string) string {
+	if name.len < 2 || name.len > 8 {
+		return name
+	}
+	first := name[0]
+	// Bitset of the initial letters used by the reserved-identifier table (`a` is bit 0).
+	if first < `a` || first > `w` || (u32(8_259_967) & (u32(1) << (first - `a`))) == 0 {
+		return name
+	}
 	return if name in fastc_c_reserved_identifiers {
 		'__v_fastc_keyword_${name}'
 	} else {
@@ -610,6 +618,12 @@ struct FastcLocal {
 	chan_element_type string
 }
 
+struct FastcLocalScopeChange {
+	name         string
+	previous     FastcLocal
+	had_previous bool
+}
+
 struct FastcExpressionToken {
 	tok             token.Token
 	source          string
@@ -711,6 +725,12 @@ struct FastcPartitionedCSource {
 	conditional_ranges []int
 	body_ranges        []int
 	final_kind         int
+}
+
+struct FastcCDirectiveLine {
+	start int
+	end   int
+	kind  int
 }
 
 // GenerationResult contains generated C and the complete resolved V source graph.
@@ -855,6 +875,8 @@ mut:
 	unsafe_depth             int
 	temp_id                  int
 	locals                   map[string]FastcLocal
+	local_scope_changes      []FastcLocalScopeChange
+	local_scope_depth        int
 	functions                map[string]FastcFunctionSignature
 	constant_types           map[string]string
 	global_types             map[string]string
@@ -1034,6 +1056,7 @@ struct FastcFileGenOutput {
 mut:
 	prototypes        string
 	body              string
+	directive_lines   []FastcCDirectiveLine
 	has_main_entry    bool
 	fixed_array_types map[string]string
 	composite_types   map[string]bool
@@ -1124,6 +1147,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	return FastcFileGenOutput{
 		prototypes: gen.protos.str()
 		body: generated
+		directive_lines: fastc_scan_c_directive_lines(generated)
 		has_main_entry: source_file.header.module_name in ['', 'main'] && gen.has_main
 		fixed_array_types: gen.fixed_array_types
 		composite_types: gen.composite_types
@@ -1218,6 +1242,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	}
 	mut prototypes := strings.new_builder(1024)
 	mut body := strings.new_builder(4096)
+	mut body_directive_lines := []FastcCDirectiveLine{}
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
 	for name, array_type in global_output.fixed_array_types {
 		fixed_array_types[name] = array_type
@@ -1273,7 +1298,15 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 			return error(output.error_message)
 		}
 		prototypes.write_string(output.prototypes)
+		body_offset := body.len
 		body.write_string(output.body)
+		for line in output.directive_lines {
+			body_directive_lines << FastcCDirectiveLine{
+				start: body_offset + line.start
+				end: body_offset + line.end
+				kind: line.kind
+			}
+		}
 		mut mono_names := output.mono_definitions.keys()
 		mono_names.sort()
 		for mono_name in mono_names {
@@ -1332,7 +1365,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	interface_dispatches := fastc_wait_interface_dispatches(mut pending_interface_dispatches)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
-	hoisted_body := fastc_partition_c_directives(body.str())
+	hoisted_body := fastc_partition_c_directive_lines(body.str(), body_directive_lines)
 	mut result := strings.new_builder(preamble.len + c_integer_comparison_helpers.len + type_declarations.len + type_output.enum_string_helpers.len + constant_output.macros.len + constant_output.declarations.len + global_output.declarations.len + prototypes.len + body.len + startup_initializers.len + 96)
 	result.write_string(preamble)
 	result.write_string(c_integer_comparison_helpers)
@@ -1662,6 +1695,67 @@ fn fastc_partition_c_directives(source string) FastcPartitionedCSource {
 		conditional_ranges: conditional_ranges
 		body_ranges: body_ranges
 		final_kind: run_kind
+	}
+}
+
+fn fastc_scan_c_directive_lines(source string) []FastcCDirectiveLine {
+	mut lines := []FastcCDirectiveLine{}
+	mut line_start := 0
+	for line_end := 0; line_end <= source.len; line_end++ {
+		if line_end < source.len && source[line_end] != `\n` {
+			continue
+		}
+		kind := fastc_c_directive_kind(source, line_start, line_end)
+		if kind != 0 {
+			lines << FastcCDirectiveLine{
+				start: line_start
+				end: if line_end < source.len { line_end + 1 } else { line_end }
+				kind: kind
+			}
+		}
+		line_start = line_end + 1
+	}
+	return lines
+}
+
+fn fastc_partition_c_directive_lines(source string, lines []FastcCDirectiveLine) FastcPartitionedCSource {
+	mut directive_ranges := []int{cap: lines.len * 2}
+	mut conditional_ranges := []int{cap: lines.len * 2}
+	mut body_ranges := []int{cap: lines.len * 2 + 2}
+	mut conditional_depth := 0
+	mut cursor := 0
+	mut final_kind := 0
+	for line in lines {
+		if cursor < line.start {
+			final_kind = if conditional_depth > 0 { 2 } else { 0 }
+			fastc_append_c_source_range(cursor, line.start, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+		}
+		if conditional_depth > 0 {
+			final_kind = 2
+			if line.kind == 2 {
+				conditional_depth++
+			} else if line.kind == 3 {
+				conditional_depth--
+			}
+		} else if line.kind == 2 {
+			final_kind = 2
+			conditional_depth = 1
+		} else {
+			final_kind = 1
+		}
+		fastc_append_c_source_range(line.start, line.end, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+		cursor = line.end
+	}
+	if cursor < source.len {
+		final_kind = if conditional_depth > 0 { 2 } else { 0 }
+		fastc_append_c_source_range(cursor, source.len, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+	}
+	return FastcPartitionedCSource{
+		source: source
+		directive_ranges: directive_ranges
+		conditional_ranges: conditional_ranges
+		body_ranges: body_ranges
+		final_kind: final_kind
 	}
 }
 

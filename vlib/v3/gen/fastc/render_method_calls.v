@@ -158,7 +158,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
 		receiver_tokens := tokens[receiver_start..i - 1]
 		receiver_type := g.infer_expression_type(receiver_tokens) or { continue }
-		if tokens[i].lit == 'contains' && fastc_normalize_inferred_type(receiver_type).trim_right('*').starts_with('Array_') {
+		if tokens[i].lit == 'contains' && fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_') {
 			call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
 			if call_args.len != 1 {
@@ -170,7 +170,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 			access := if receiver_type.ends_with('*') { '->' } else { '.' }
-			comparison := if g.underlying_alias_type(element_type).trim_right('*') == 'string' {
+			comparison := if fastc_trim_pointer_suffix(g.underlying_alias_type(element_type)) == 'string' {
 				'builtin__string_eq(__v_fastc_contains_item, ((${element_type} *)__v_fastc_contains_collection${access}data)[__v_fastc_contains_index])'
 			} else {
 				'(__v_fastc_contains_item == ((${element_type} *)__v_fastc_contains_collection${access}data)[__v_fastc_contains_index])'

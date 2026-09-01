@@ -2012,7 +2012,7 @@ fn (g &Parser) semicolon_continues_expression() bool {
 }
 
 fn fastc_runtime_c_type(typ string) string {
-	base := typ.trim_right('*')
+	base := fastc_trim_pointer_suffix(typ)
 	mut runtime_type := if base.starts_with('Map_') {
 		'map'
 	} else if base.starts_with('Array_') {
@@ -2181,7 +2181,7 @@ fn (g &Parser) channel_element_type(tokens []FastcExpressionToken) string {
 	}
 	if tokens.len >= 3 && tokens.last().tok == .name && tokens[tokens.len - 2].tok == .dot {
 		receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { return '' }
-		receiver_layout := fastc_normalize_inferred_type(receiver_type).trim_right('*')
+		receiver_layout := fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type))
 		field_name := tokens.last().lit
 		if fields := g.struct_field_info[receiver_layout] {
 			for field in fields {
@@ -2245,6 +2245,19 @@ fn (g &Parser) expected_call_argument_type(tokens []FastcExpressionToken) string
 }
 
 fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
+	if tokens.len == 1 {
+		if tokens[0].tok == .name {
+			if local := g.locals[tokens[0].lit] {
+				if local.is_reference {
+					return FastcRenderedExpression{
+						source: '*(${rendered_expression})'
+						typ: local.typ.trim_right('*')
+					}
+				}
+			}
+		}
+		return none
+	}
 	if tokens.len == 6 && tokens[0].tok == .key_sizeof {
 		if c_sizeof := g.render_c_struct_sizeof(tokens) {
 			return c_sizeof
@@ -2348,16 +2361,6 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		}
 		if string_print := g.render_ordinary_string_print_expression(tokens) {
 			return string_print
-		}
-	}
-	if tokens.len == 1 && tokens[0].tok == .name {
-		if local := g.locals[tokens[0].lit] {
-			if local.is_reference {
-				return FastcRenderedExpression{
-					source: '*(${rendered_expression})'
-					typ: local.typ.trim_right('*')
-				}
-			}
 		}
 	}
 	if g.selfhost && has_dot && g.expression_uses_member_smartcast(tokens) {
@@ -2575,7 +2578,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 							typ: 'bool'
 						}
 					}
-					if right_type.trim_right('*').starts_with('Map_') {
+					if fastc_trim_pointer_suffix(right_type).starts_with('Map_') {
 						key_type, _ := g.map_key_value_types(right_type) or { return none }
 						key_source := g.render_membership_candidate(tokens[..i], key_type) or {
 							return none
@@ -2594,7 +2597,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 							typ: 'bool'
 						}
 					}
-					right_layout := right_type.trim_right('*')
+					right_layout := fastc_trim_pointer_suffix(right_type)
 					if right_layout.starts_with('Array_') || right_layout.starts_with('FixedArray_') {
 						element_type := g.array_element_type(right_type) or { return none }
 						candidate := g.render_membership_candidate(tokens[..i], element_type) or {
@@ -2761,7 +2764,7 @@ fn (g &Parser) render_special_expression(tokens []FastcExpressionToken, rendered
 		// The erased `void*` chan stub has no fields. Channels are non-functional in
 		// this scanner lane, so report the empty/open stub state.
 		receiver_type := g.infer_expression_type(tokens[..tokens.len - 2]) or { '' }
-		if fastc_normalize_inferred_type(receiver_type).trim_right('*') == 'chan' {
+		if fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)) == 'chan' {
 			return FastcRenderedExpression{
 				source: if tokens.last().lit == 'closed' { 'false' } else { '0' }
 				typ: if tokens.last().lit == 'closed' { 'bool' } else { 'int' }

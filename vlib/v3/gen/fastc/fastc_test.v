@@ -4961,6 +4961,29 @@ fn main() {
 	assert deferred_one < print_three
 }
 
+fn test_block_locals_are_released_when_their_scope_exits() {
+	prefs := pref.new_preferences()
+	c_source := generate("module main
+
+fn main() {
+	if true {
+		value := 1
+		println(value)
+		if true {
+			nested := 2
+			println(nested)
+		}
+		nested := 'inner'
+		println(nested)
+	}
+	value := 'outer'
+	println(value)
+}
+", 'block_local_scope.v', prefs) or { panic(err) }
+	assert c_source.contains('__typeof__((1)) value = (1);'), c_source
+	assert c_source.contains('string value = ("outer");'), c_source
+}
+
 fn test_return_expression_is_evaluated_before_deferred_blocks() {
 	prefs := pref.new_preferences()
 	c_source := generate('module main

@@ -385,6 +385,40 @@ fn (g &Parser) render_leading_member_chain_promotion(tokens []FastcExpressionTok
 }
 
 fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?string {
+	if tokens.len == 1 {
+		item := tokens[0]
+		if item.source != '' {
+			return item.source
+		}
+		return match item.tok {
+			.name { g.resolved_expression_name(item.lit, .unknown) }
+			.number {
+				if g.selfhost {
+					fastc_c_selfhost_number(item.lit)
+				} else {
+					fastc_c_number(item.lit) or { return none }
+				}
+			}
+			.string {
+				literal := fastc_c_string(item.lit) or { return none }
+				if g.selfhost { '_S(${literal})' } else { literal }
+			}
+			.char {
+				if item.lit.starts_with('c:') {
+					fastc_c_string("'" + item.lit['c:'.len..] + "'") or { return none }
+				} else {
+					fastc_c_rune(item.lit) or { return none }
+				}
+			}
+			.key_true { '((bool)true)' }
+			.key_false { '((bool)false)' }
+			.key_nil { 'NULL' }
+			.key_none { '(Option){.state=2}' }
+			else {
+				if item.lit == '' { item.tok.str() } else { item.lit }
+			}
+		}
+	}
 	mut result := strings.new_builder(32)
 	mut cast_closes := []int{}
 	mut cast_open := -1
