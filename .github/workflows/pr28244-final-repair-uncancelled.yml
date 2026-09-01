@@ -1,0 +1,198 @@
+name: Final uncancelled repair for PR 28244
+
+on:
+  push:
+    branches:
+      - v3-ownership-toml-value-copy
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  repair:
+    if: contains(github.event.head_commit.message, '[final-repair-pr28244]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      ORIGINAL_BASE: cbf4e8509630da710d04cc9fd0f777761ebe55a7
+      ORIGINAL_HEAD: 2a6677b34d621f7b44e48c73ad773180aa9d8ea8
+      PR_BRANCH: v3-ownership-toml-value-copy
+      TEST_SUBJECT: v3: organize borrowed ownership regressions by context
+      SOURCE_SUBJECT: v3: model borrowed owned-value copies explicitly
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Locate or reconstruct the semantic repair
+        id: prepare
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git fetch --force origin master \
+            "refs/heads/${PR_BRANCH}:refs/remotes/origin/${PR_BRANCH}"
+          existing=$(git log "origin/${PR_BRANCH}" --format='%H' \
+            --grep="^${TEST_SUBJECT}$" -1 || true)
+          if [ -n "$existing" ]; then
+            source_commit=$(git rev-parse "${existing}^")
+            test "$(git log -1 --format='%s' "$source_commit")" = "$SOURCE_SUBJECT"
+            git checkout -B repaired "$existing"
+            echo 'reconstructed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          test -f .github/pr28244-repair/00.py.part
+          cat \
+            .github/pr28244-repair/00.py.part \
+            .github/pr28244-repair/00z.py.part \
+            .github/pr28244-repair/01.py.part \
+            .github/pr28244-repair/01z.py.part \
+            .github/pr28244-repair/02.py.part \
+            .github/pr28244-repair/03.py.part \
+            > /tmp/repair_pr_28244.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('/tmp/repair_pr_28244.py')
+          text = path.read_text()
+          text, count = re.subn(
+              r'\nif __name__\s*==\s*["\x27]__main__["\x27]:\s*\n\s+main\(\)\s*\Z',
+              '\n',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'could not remove the early main invocation: matches={count}')
+          path.write_text(text)
+          PY
+          cat \
+            .github/pr28244-repair/04.py.part \
+            .github/pr28244-repair/05.py.part \
+            >> /tmp/repair_pr_28244.py
+          printf '\nif __name__ == "__main__":\n    main()\n' >> /tmp/repair_pr_28244.py
+          python3 -m py_compile /tmp/repair_pr_28244.py
+
+          git diff --binary "$ORIGINAL_BASE" "$ORIGINAL_HEAD" > /tmp/pr-28244.patch
+          git checkout -B repaired origin/master
+          git apply --3way --index --whitespace=nowarn /tmp/pr-28244.patch
+          git reset
+          REPO_ROOT="$GITHUB_WORKSPACE" python3 /tmp/repair_pr_28244.py
+          git diff --check
+          echo 'reconstructed=true' >> "$GITHUB_OUTPUT"
+
+      - name: Bootstrap and format reconstructed sources
+        if: steps.prepare.outputs.reconstructed == 'true'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          make -j2
+          files=(
+            vlib/v3/tests/ownership_borrowed_projection_error_test.v
+            vlib/v3/tests/ownership_borrowed_projection_review_test.v
+            vlib/v3/tests/ownership_toml_decode_test.v
+            vlib/v3/transform/array.v
+            vlib/v3/transform/fn.v
+            vlib/v3/transform/fn_test.v
+            vlib/v3/transform/if.v
+            vlib/v3/transform/interface.v
+            vlib/v3/transform/map.v
+            vlib/v3/transform/or.v
+            vlib/v3/transform/return.v
+            vlib/v3/transform/struct.v
+            vlib/v3/transform/transform.v
+            vlib/v3/transform/transform_parallel_test.v
+            vlib/v3/types/checker_ownership_alias_test.v
+            vlib/v3/types/checker_ownership_d_ownership.v
+            vlib/v3/types/checker_ownership_notd_ownership.v
+          )
+          for file in "${files[@]}"; do ./v fmt -w "$file"; done
+          git diff --check
+
+      - name: Create the semantic commits when reconstructed
+        if: steps.prepare.outputs.reconstructed == 'true'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "OpenAI Codex"
+          git config user.email "codex@openai.com"
+          git reset
+          git add \
+            vlib/v3/transform/array.v \
+            vlib/v3/transform/fn.v \
+            vlib/v3/transform/if.v \
+            vlib/v3/transform/interface.v \
+            vlib/v3/transform/map.v \
+            vlib/v3/transform/or.v \
+            vlib/v3/transform/return.v \
+            vlib/v3/transform/struct.v \
+            vlib/v3/transform/transform.v \
+            vlib/v3/types/checker_ownership_d_ownership.v \
+            vlib/v3/types/checker_ownership_notd_ownership.v
+          git commit -m "$SOURCE_SUBJECT"
+          git add \
+            vlib/v3/tests/ownership_borrowed_projection_error_test.v \
+            vlib/v3/tests/ownership_borrowed_projection_review_test.v \
+            vlib/v3/tests/ownership_toml_decode_test.v \
+            vlib/v3/tests/testdata/ownership_borrowed_projection \
+            vlib/v3/transform/fn_test.v \
+            vlib/v3/transform/transform_parallel_test.v \
+            vlib/v3/types/checker_ownership_alias_test.v
+          git commit -m "$TEST_SUBJECT"
+          test -z "$(git status --porcelain)"
+
+      - name: Validate the exact semantic head
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test "$(git log -1 --format='%s')" = "$TEST_SUBJECT"
+          test "$(git log -2 --format='%s' | tail -1)" = "$SOURCE_SUBJECT"
+          git cat-file -e "HEAD:vlib/v3/tests/ownership_borrowed_projection_error_test.v"
+          git cat-file -e "HEAD:vlib/v3/tests/ownership_borrowed_projection_review_test.v"
+          git cat-file -e "HEAD:vlib/v3/tests/ownership_toml_decode_test.v"
+          git cat-file -e "HEAD:vlib/v3/tests/testdata/ownership_borrowed_projection/assignments.v.txt"
+          git cat-file -e "HEAD:vlib/v3/types/checker_ownership_d_ownership.v"
+          if git cat-file -e "HEAD:.github/workflows/repair-pr-28244.yml" 2>/dev/null; then
+            echo 'temporary repair workflow leaked into semantic head' >&2
+            exit 1
+          fi
+          git diff --check HEAD^
+          if [ ! -x ./v ]; then make -j2; fi
+          ./v -nocache -gc none -d ownership \
+            -path "$PWD/vlib|@vlib|@vmodules" \
+            -o /tmp/v3-pr-28244 vlib/v3/v3.v
+          ./v -nocache -gc none \
+            -path "$PWD/vlib|@vlib|@vmodules" \
+            -o /tmp/v3-pr-28244-no-ownership vlib/v3/v3.v
+          ./v test vlib/v3/tests/ownership_borrowed_projection_review_test.v
+          ./v test vlib/v3/tests/ownership_borrowed_projection_error_test.v
+          ./v test vlib/v3/tests/ownership_toml_decode_test.v
+          ./v test vlib/v3/tests/ownership/ownership_test.v
+          ./v test vlib/v3/types/checker_ownership_alias_test.v
+          ./v test vlib/v3/transform/fn_test.v
+          ./v test vlib/v3/transform/transform_parallel_test.v
+          ./v test vlib/v3/tests/type_checker_errors_test.v
+          ./v test vlib/toml/
+
+      - name: Publish the validated two-commit head
+        shell: bash
+        run: |
+          set -euxo pipefail
+          target=$(git rev-parse HEAD)
+          git push --force origin "${target}:refs/heads/${PR_BRANCH}"
+          gh pr comment 28244 --body "Final uncancelled validation passed. Published the two semantic commits at \`${target}\`; all temporary repair workflows and marker commits were removed from the PR history."
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-28244-final-repair-diagnostics
+          path: |
+            /tmp/repair_pr_28244.py
+            /tmp/pr-28244.patch
+          if-no-files-found: ignore
+          retention-days: 3
