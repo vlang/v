@@ -590,7 +590,15 @@ fn test_fastc_arm64_map_storage_and_numeric_conversions() {
 		}
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
+		dependency_dir := os.join_path_single(test_dir, 'dependency')
+		os.mkdir_all(dependency_dir) or { panic(err) }
+		os.write_file(os.join_path_single(dependency_dir, 'dependency.v'), 'module dependency\n\npub const base = 40\npub const answer = base + 2\n') or {
+			panic(err)
+		}
 		source := 'import os
+import dependency
+
+const base = 1
 
 struct WideMapDefaults {
 	values map[string][100]int
@@ -819,6 +827,13 @@ fn main() {
 	mut nested_values := [][]int{}
 	nested_values << [1, 2]
 	nested_values << [3]
+	mut slice_base := [1, 2, 3]
+	slice_view := slice_base[..]
+	slice_base.delete(0)
+	mut growing_base := []int{cap: 1}
+	growing_base << 4
+	growing_view := growing_base[..]
+	growing_base << 5
 	mut mutable_map := {"a": 1, "b": 2}
 	for _, mut value in mutable_map {
 		value += 10
@@ -852,7 +867,8 @@ fn main() {
 	scalar_text := "\${true}:\${u64(9223372036854775808)}"
 	if aggregate_fallback != [1.0, 2.0] || conditional_floats != [2.0, 3.0]
 		|| matched_floats != [2.0, 3.0] || !statement_case_matched || !expression_case_matched
-		|| propagated_map["value"][0] != 9 {
+		|| propagated_map["value"][0] != 9 || slice_base != [2, 3] || slice_view != [1, 2, 3]
+		|| growing_base != [4, 5] || growing_view != [4] || dependency.answer != 42 || base != 1 {
 		println("wrong aggregate context or propagation cleanup")
 		return
 	}
