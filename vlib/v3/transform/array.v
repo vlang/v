@@ -4270,10 +4270,13 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 			}
 		}
 	}
+	mut child_locals := locals.clone()
 	for i in 0 .. node.children_count {
-		if t.array_map_expr_side_effect_retains_element_address_in_scope(t.a.child(&node, i), elem_name, locals, block, before_idx) {
+		child_id := t.a.child(&node, i)
+		if t.array_map_expr_side_effect_retains_element_address_in_scope(child_id, elem_name, child_locals, block, before_idx) {
 			return true
 		}
+		t.array_map_update_local_pointer_origins(child_id, elem_name, mut child_locals)
 	}
 	return false
 }
