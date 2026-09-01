@@ -10143,6 +10143,16 @@ fn (tc &TypeChecker) callback_arg_is_rooted_at_ident(id flat.NodeId, name string
 			pending << tc.a.child(node, 0)
 			continue
 		}
+		if node.kind in [.if_expr, .match_stmt] {
+			for i in 1 .. node.children_count {
+				pending << tc.a.child(node, i)
+			}
+			continue
+		}
+		if node.kind in [.block, .match_branch] && node.children_count > 0 {
+			pending << tc.a.child(node, node.children_count - 1)
+			continue
+		}
 	}
 	return false
 }
