@@ -173,14 +173,15 @@ mut:
 }
 
 struct FastArm64EmissionCheckpoint {
-	value_count           int
-	instruction_count     int
-	block_count           int
-	cur_block             ssa.BlockID
+	value_count       int
+	instruction_count int
+	block_count       int
+	cur_block         ssa.BlockID
+	last_map_found    ssa.ValueID
+	parsing_spawn     bool
+mut:
 	terminated            map[int]bool
 	native_used_functions map[string]bool
-	last_map_found        ssa.ValueID
-	parsing_spawn         bool
 }
 
 struct FastArm64Generation {
@@ -6664,12 +6665,12 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 			}
 		}
 	}
-	checkpoint := p.emission_checkpoint()
+	mut checkpoint := p.emission_checkpoint()
 	value := p.parse_expression(0) or {
-		p.discard_emission(checkpoint)
+		p.discard_emission(mut checkpoint)
 		return err
 	}
-	p.discard_emission(checkpoint)
+	p.discard_emission(mut checkpoint)
 	p.expect(.rpar)!
 	return FastArm64Value{
 		id: p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value.typ).str())
@@ -6691,11 +6692,11 @@ fn (p &FastArm64Parser) emission_checkpoint() FastArm64EmissionCheckpoint {
 	}
 }
 
-fn (mut p FastArm64Parser) discard_emission(checkpoint FastArm64EmissionCheckpoint) {
+fn (mut p FastArm64Parser) discard_emission(mut checkpoint FastArm64EmissionCheckpoint) {
 	p.program.m.discard_emission_since(checkpoint.value_count, checkpoint.instruction_count, checkpoint.block_count)
 	p.cur_block = checkpoint.cur_block
-	p.terminated = checkpoint.terminated
-	p.program.native_used_function_names = checkpoint.native_used_functions
+	p.terminated = checkpoint.terminated.move()
+	p.program.native_used_function_names = checkpoint.native_used_functions.move()
 	p.last_map_found = checkpoint.last_map_found
 	p.parsing_spawn = checkpoint.parsing_spawn
 }
