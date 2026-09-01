@@ -459,6 +459,44 @@ fn main() {
 	}
 }
 
+fn test_fastc_arm64_map_storage_and_numeric_conversions() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_map_numeric_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		source := 'struct WideMapDefaults {
+	values map[string][100]int
+}
+
+fn main() {
+	wide_map_defaults := [1]WideMapDefaults{}
+	wide_missing := wide_map_defaults[0].values["missing"]
+	mut reassigned_float := f64(0)
+	reassigned_float = 1
+	numeric_map := map[u64]f64{1: 2}
+	if wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[u64(1)] != 2.0 {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+'
+		os.write_file(source_path, source) or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n'
+	}
+}
+
 fn test_fastc_arm64_rejects_synchronous_spawn_for_general_programs() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_spawn_${os.getpid()}')
