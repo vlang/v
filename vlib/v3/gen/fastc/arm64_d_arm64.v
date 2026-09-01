@@ -4377,7 +4377,9 @@ fn (mut p FastArm64Parser) parse_for() ! {
 
 fn (mut p FastArm64Parser) parse_for_inner() ! {
 	p.next()
+	mut value_is_mut := false
 	if p.tok == .key_mut {
+		value_is_mut = true
 		p.next()
 	}
 	if p.tok == .semicolon {
@@ -4388,7 +4390,7 @@ fn (mut p FastArm64Parser) parse_for_inner() ! {
 		mut look := p.s
 		next_token := look.scan()
 		if next_token == .key_in {
-			p.parse_range_for()!
+			p.parse_range_for(value_is_mut)!
 			return
 		}
 		if next_token == .comma {
@@ -4517,13 +4519,13 @@ fn (mut p FastArm64Parser) parse_match_statement() ! {
 	}
 }
 
-fn (mut p FastArm64Parser) parse_range_for() ! {
+fn (mut p FastArm64Parser) parse_range_for(value_is_mut bool) ! {
 	name := p.lit
 	p.next()
 	p.expect(.key_in)!
 	start := p.parse_expression(0)!
 	if p.tok != .dotdot {
-		return p.parse_collection_for('', name, start)
+		return p.parse_collection_for('', name, start, value_is_mut)
 	}
 	p.expect(.dotdot)!
 	end := p.parse_expression(0)!
@@ -4574,7 +4576,9 @@ fn (mut p FastArm64Parser) parse_collection_for_pair() ! {
 	index_name := p.lit
 	p.next()
 	p.expect(.comma)!
+	mut value_is_mut := false
 	if p.tok == .key_mut {
+		value_is_mut = true
 		p.next()
 	}
 	if p.tok != .name {
@@ -4584,10 +4588,10 @@ fn (mut p FastArm64Parser) parse_collection_for_pair() ! {
 	p.next()
 	p.expect(.key_in)!
 	collection := p.parse_expression(0)!
-	p.parse_collection_for(index_name, value_name, collection)!
+	p.parse_collection_for(index_name, value_name, collection, value_is_mut)!
 }
 
-fn (mut p FastArm64Parser) parse_collection_for(index_name string, name string, collection FastArm64Value) ! {
+fn (mut p FastArm64Parser) parse_collection_for(index_name string, name string, collection FastArm64Value, value_is_mut bool) ! {
 	if collection.typ == p.program.map_type {
 		return p.parse_map_collection_for(index_name, name, collection)
 	}
@@ -4627,9 +4631,14 @@ fn (mut p FastArm64Parser) parse_collection_for(index_name string, name string, 
 	}
 	element_address := p.program.instr2(.add, body_block, p.program.ptr_i8, data, offset)
 	typed_address := p.program.instr1(.bitcast, body_block, p.program.m.type_store.get_ptr(element_type), element_address)
-	element := p.program.instr1(.load, body_block, element_type, typed_address)
-	local_address := p.program.instr0(.alloca, body_block, p.program.m.type_store.get_ptr(element_type))
-	p.program.instr2(.store, body_block, p.program.void_type, element, local_address)
+	local_address := if value_is_mut {
+		typed_address
+	} else {
+		element := p.program.instr1(.load, body_block, element_type, typed_address)
+		address := p.program.instr0(.alloca, body_block, p.program.m.type_store.get_ptr(element_type))
+		p.program.instr2(.store, body_block, p.program.void_type, element, address)
+		address
+	}
 	p.declare_local(name, FastArm64Local{
 		addr: local_address
 		typ: element_type
@@ -8987,11 +8996,31 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 			typ_name: 'bool'
 		}
 	}
-	if left.is_none {
-		return p.emit_binary(op, p.zero_value(right.typ, right.typ_name), right)
-	}
-	if right.is_none {
-		return p.emit_binary(op, left, p.zero_value(left.typ, left.typ_name))
+	if left.is_none || right.is_none {
+		if op !in [.eq, .ne] {
+			return p.unsupported('operator `${op.str()}` with `none`')
+		}
+		value := if left.is_none { right } else { left }
+		failed := p.value_option_failure(value)
+		if failed == ssa.ValueID(0) {
+			result := if op == .eq { '0' } else { '1' }
+			return FastArm64Value{
+				id: p.program.m.get_or_add_const(p.program.i1_type, result)
+				typ: p.program.i1_type
+				typ_name: 'bool'
+			}
+		}
+		result := if op == .eq {
+			failed
+		} else {
+			zero := p.program.m.get_or_add_const(p.program.i1_type, '0')
+			p.program.instr2(.eq, p.cur_block, p.program.i1_type, failed, zero)
+		}
+		return FastArm64Value{
+			id: result
+			typ: p.program.i1_type
+			typ_name: 'bool'
+		}
 	}
 	if op == .left_shift && left.typ == p.program.array_type {
 		return p.emit_array_push(left, right, false)
