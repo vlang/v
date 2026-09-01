@@ -1199,6 +1199,16 @@ fn test_variant_types_metadata_expansion_is_reserved() {
 	assert t.fn_span_map_expansion_estimate(int(type_value), int(variant_types) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_sql_expr_metadata_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	sql_expr := a.add_node(flat.Node{
+		kind: .sql_expr
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert t.fn_span_map_expansion_estimate(int(sql_expr), int(sql_expr) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_or_expr_zero_value_expansion_is_reserved() {
 	mut a := flat.FlatAst.new()
 	optional_value := a.add_node(flat.Node{

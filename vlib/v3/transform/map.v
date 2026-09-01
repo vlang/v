@@ -1383,6 +1383,11 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 		if node.kind == .dump_expr {
 			estimate += deferred_map_expansion_threshold + 1
 		}
+		if node.kind == .sql_expr {
+			// SQL joins synthesize table field and column arrays from ORM metadata that
+			// is not represented by the parsed expression's physical children.
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if t.external_equality_expands_from_type_metadata(node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
