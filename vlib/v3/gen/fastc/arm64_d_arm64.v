@@ -9226,6 +9226,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		index := p.parse_expression(0)!
 		p.expect(.rsbr)!
 		element_type := p.program.m.type_store.types[value.typ].elem_type
+		element_type_name := fast_arm64_pointer_element_type_name(value.typ_name)
 		element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
 		index64 := p.integer_to_i64(index)
 		offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index64, element_size)
@@ -9233,7 +9234,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		return FastArm64Value{
 			id: p.program.instr1(.load, p.cur_block, element_type, address)
 			typ: element_type
-			typ_name: 'u8'
+			typ_name: element_type_name
 			address: address
 		}
 	}
@@ -10657,6 +10658,8 @@ fn (mut p FastArm64Parser) emit_array_grow_storage(array_slot ssa.ValueID, grow 
 	reallocate := p.program.m.add_block(p.func_id, 'array_grow_reallocate')
 	managed_reallocate := p.program.m.add_block(p.func_id, 'array_grow_reallocate_managed')
 	unmanaged_reallocate := p.program.m.add_block(p.func_id, 'array_grow_reallocate_unmanaged')
+	unmanaged_existing := p.program.m.add_block(p.func_id, 'array_grow_reallocate_unmanaged_existing')
+	empty_allocate := p.program.m.add_block(p.func_id, 'array_grow_allocate_empty')
 	finish := p.program.m.add_block(p.func_id, 'array_grow_finish')
 	p.program.instr3(.br, grow, p.program.void_type, is_slice, ssa.ValueID(detach), ssa.ValueID(reallocate))
 	p.mark_terminated(grow)
@@ -10696,18 +10699,45 @@ fn (mut p FastArm64Parser) emit_array_grow_storage(array_slot ssa.ValueID, grow 
 	p.program.instr2(.store, managed_reallocate, p.program.void_type, reallocated_data, data_ptr)
 	p.program.instr1(.jmp, managed_reallocate, p.program.void_type, ssa.ValueID(finish))
 	p.mark_terminated(managed_reallocate)
-	unmanaged_data := p.program.m.add_instr(.call, unmanaged_reallocate, p.program.ptr_i8, [
+	null_pointer := p.program.m.get_or_add_const(p.program.ptr_i8, '0')
+	has_old_data := p.program.instr2(.ne, unmanaged_reallocate, p.program.i1_type, old_data, null_pointer)
+	p.program.instr3(.br, unmanaged_reallocate, p.program.void_type, has_old_data, ssa.ValueID(unmanaged_existing), ssa.ValueID(empty_allocate))
+	p.mark_terminated(unmanaged_reallocate)
+	unmanaged_data := p.program.m.add_instr(.call, unmanaged_existing, p.program.ptr_i8, [
 		realloc_ref,
 		old_data,
 		allocation_size,
 	])
-	p.program.instr2(.store, unmanaged_reallocate, p.program.void_type, unmanaged_data, data_ptr)
-	p.program.instr1(.jmp, unmanaged_reallocate, p.program.void_type, ssa.ValueID(finish))
-	p.mark_terminated(unmanaged_reallocate)
+	p.program.instr2(.store, unmanaged_existing, p.program.void_type, unmanaged_data, data_ptr)
+	p.program.instr1(.jmp, unmanaged_existing, p.program.void_type, ssa.ValueID(finish))
+	p.mark_terminated(unmanaged_existing)
+	empty_length := p.program.instr1(.zext, empty_allocate, p.program.i64_type, length)
+	empty_array := p.program.m.add_instr(.call, empty_allocate, p.program.array_type, [
+		new_ref,
+		element_size,
+		empty_length,
+		new_capacity64,
+	])
+	p.program.instr2(.store, empty_allocate, p.program.void_type, empty_array, array_slot)
+	p.program.instr1(.jmp, empty_allocate, p.program.void_type, ssa.ValueID(finish))
+	p.mark_terminated(empty_allocate)
 	p.program.instr2(.store, finish, p.program.void_type, new_capacity, p.program.struct_field_ptr(finish, array_slot, p.program.array_type, 3))
 	p.program.instr2(.store, finish, p.program.void_type, element_size32, p.program.struct_field_ptr(finish, array_slot, p.program.array_type, 5))
 	p.program.instr1(.jmp, finish, p.program.void_type, ssa.ValueID(resume))
 	p.mark_terminated(finish)
+}
+
+fn fast_arm64_pointer_element_type_name(type_name string) string {
+	if type_name.starts_with('&') {
+		return type_name[1..]
+	}
+	if type_name.ends_with('*') {
+		return type_name[..type_name.len - 1]
+	}
+	if type_name in ['voidptr', 'byteptr', 'charptr'] {
+		return 'u8'
+	}
+	return type_name
 }
 
 fn (mut p FastArm64Parser) emit_array_append_many(array FastArm64Value, items FastArm64Value, element_type_name string, prepend bool) !FastArm64Value {
