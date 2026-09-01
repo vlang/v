@@ -69,6 +69,12 @@ struct FastArm64CloneOuter {
 	inner FastArm64CloneInner
 }
 
+struct FastArm64Equality {
+	head   u64
+	tail   u64
+	values []int
+}
+
 struct FastArm64Waiter {
 	value int
 }
@@ -141,6 +147,22 @@ fn main() {
 	fixed[1] = 3
 	if sizeof(fixed) != 8 || fixed_array_sum(fixed) != 5 || fixed_array_sum([2]int{}) != 0 {
 		println("wrong fixed array literal")
+		return
+	}
+	array_left := [1, 2]
+	array_same := [1, 2]
+	array_different := [1, 3]
+	mut fixed_same := [2]int{}
+	fixed_same[0] = 2
+	fixed_same[1] = 3
+	mut fixed_different := [2]int{}
+	fixed_different[0] = 2
+	fixed_different[1] = 4
+	struct_left := FastArm64Equality{head: 1, tail: 2, values: [3, 4]}
+	struct_same := FastArm64Equality{head: 1, tail: 2, values: [3, 4]}
+	struct_different := FastArm64Equality{head: 1, tail: 9, values: [3, 4]}
+	if array_left != array_same || array_left == array_different || fixed != fixed_same || fixed == fixed_different || struct_left != struct_same || struct_left == struct_different {
+		println("wrong aggregate equality")
 		return
 	}
 	mut features := FastArm64Features.read
@@ -285,6 +307,21 @@ fn main() {
 	cloned_empty := FastArm64CloneOuter{}.inner.values.clone()
 	if cloned_empty.len != 0 {
 		println("wrong zero map clone")
+		return
+	}
+	empty_keys := FastArm64CloneOuter{}.inner.values.keys()
+	empty_values := FastArm64CloneOuter{}.inner.values.values()
+	if empty_keys.len != 0 || empty_values.len != 0 {
+		println("wrong zero map items")
+		return
+	}
+	mut unsigned_range_ran := false
+	for _ in u64(0) .. (u64(1) << 63) {
+		unsigned_range_ran = true
+		break
+	}
+	if !unsigned_range_ran {
+		println("wrong unsigned range")
 		return
 	}
 	mut shifted := u64(1) << 63
