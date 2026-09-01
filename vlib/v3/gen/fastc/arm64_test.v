@@ -1071,11 +1071,81 @@ fn main() {
 	trim_view := trim_base[..]
 	trim_base.trim(1)
 	trim_base << 8
+	mut bounded_base := []int{len: 3, cap: 10}
+	bounded_slice := bounded_base[0..1]
+	mut delete_base := []int{len: 3, cap: 10}
+	delete_base[0] = 1
+	delete_base[1] = 2
+	delete_base[2] = 3
+	delete_view := delete_base[..]
+	delete_base.delete(1)
+	mut pop_base := []int{len: 3, cap: 10}
+	pop_base[0] = 4
+	pop_base[1] = 5
+	pop_base[2] = 6
+	pop_view := pop_base[..]
+	popped := pop_base.pop()
+	mut tail_base := []int{len: 3, cap: 10}
+	tail_base[0] = 7
+	tail_base[1] = 8
+	tail_base[2] = 9
+	tail_view := tail_base[..]
+	tail_base.delete_last()
+	mut compact_trim_base := []int{len: 3, cap: 10}
+	compact_trim_base[0] = 10
+	compact_trim_base[1] = 11
+	compact_trim_base[2] = 12
+	compact_trim_view := compact_trim_base[..]
+	compact_trim_base.trim(2)
 	empty := []int{}
 	element_size := sizeof(empty[0])
 	call_size := sizeof(side_effect())
 	if clear_cap != 0 || clear_base != [9] || clear_view != [1, 2] || trim_base != [3, 8]
-		|| trim_view != [3, 4, 5] || element_size != sizeof(int) || call_size != sizeof(int) {
+		|| trim_view != [3, 4, 5] || bounded_slice.cap != 1 || delete_base != [1, 3]
+		|| delete_base.cap != 2 || delete_view != [1, 2, 3] || popped != 6
+		|| pop_base != [4, 5] || pop_base.cap != 2 || pop_view != [4, 5, 6]
+		|| tail_base != [7, 8] || tail_base.cap != 2 || tail_view != [7, 8, 9]
+		|| compact_trim_base != [10, 11] || compact_trim_base.cap != 2
+		|| compact_trim_view != [10, 11, 12] || element_size != sizeof(int)
+		|| call_size != sizeof(int) {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+'
+		os.write_file(source_path, source) or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n'
+	}
+}
+
+fn test_fastc_arm64_path_overrides_match_os_normalization() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_paths_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		source := '
+import os
+
+fn main() {
+	joined := os.join_path_single("/tmp/", "file")
+	dotted := os.join_path_single("/tmp//a", "./b")
+	parent := os.join_path_single("/tmp/a", "../b")
+	absolute := os.abs_path("/tmp/a/../b")
+	canonical := os.abs_path("/tmp//a/./")
+	if joined != "/tmp/file" || dotted != "/tmp/a/b" || parent != "/tmp/a/../b"
+		|| absolute != "/tmp/b" || canonical != "/tmp/a" {
 		println("wrong")
 		return
 	}
