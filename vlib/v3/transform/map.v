@@ -40,6 +40,9 @@ fn (t &Transformer) map_init_expansion_estimate(id flat.NodeId, node flat.Node) 
 	if node.kind != .map_init {
 		return 0
 	}
+	if t.map_init_spread_requires_deferral(id, node) {
+		return deferred_map_expansion_threshold + 1
+	}
 	entry_count := int(node.children_count) / 2
 	mut entry_estimate := map_init_entry_expansion_estimate
 	if !isnil(t.tc) {
@@ -64,7 +67,30 @@ fn (t &Transformer) map_init_expansion_estimate(id flat.NodeId, node flat.Node) 
 	return map_init_base_expansion_estimate + entry_count * entry_estimate
 }
 
-fn (t &Transformer) array_literal_expansion_estimate(node flat.Node, is_external bool) int {
+fn (t &Transformer) map_init_spread_requires_deferral(id flat.NodeId, node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	first := t.a.child_node(&node, 0)
+	if first.kind != .prefix || first.value != '...' || first.children_count == 0 {
+		return false
+	}
+	mut map_type := if node.value.len > 0 {
+		node.value
+	} else if node.typ.len > 0 {
+		node.typ
+	} else {
+		t.node_type(id)
+	}
+	map_type = t.normalize_type_alias(t.resolve_type_text_import_aliases(map_type))
+	if !map_type.starts_with('map[') {
+		return false
+	}
+	key_type, value_type := t.map_type_parts(map_type)
+	return (t.normalize_type_alias(key_type).trim_space() != 'string' && t.compiler_default_clone_type_needs_work(key_type)) || t.compiler_default_clone_type_needs_work(value_type)
+}
+
+fn (t &Transformer) array_literal_expansion_estimate(id flat.NodeId, node flat.Node, is_external bool) int {
 	if node.kind != .array_literal {
 		return 0
 	}
@@ -74,7 +100,33 @@ fn (t &Transformer) array_literal_expansion_estimate(node flat.Node, is_external
 		// child-ID span, so it must still fit in the bounded worker arena.
 		return if is_external { int(node.children_count) + 1 } else { 0 }
 	}
+	if t.array_literal_spread_requires_deferral(id, node) {
+		return deferred_map_expansion_threshold + 1
+	}
 	return array_literal_base_expansion_estimate + int(node.children_count) * array_literal_entry_expansion_estimate
+}
+
+fn (t &Transformer) array_literal_spread_requires_deferral(id flat.NodeId, node flat.Node) bool {
+	mut has_spread := false
+	for i in 0 .. node.children_count {
+		child := t.a.child_node(&node, i)
+		if child.kind == .prefix && child.value == '...' && child.children_count > 0 {
+			has_spread = true
+			break
+		}
+	}
+	if !has_spread {
+		return false
+	}
+	mut array_type := if node.typ.len > 0 {
+		node.typ
+	} else if node.value.len > 0 {
+		node.value
+	} else {
+		t.node_type(id)
+	}
+	array_type = t.normalize_type_alias(t.resolve_type_text_import_aliases(array_type))
+	return array_type.starts_with('[]') && t.compiler_default_clone_type_needs_work(array_type[2..])
 }
 
 fn (t &Transformer) fixed_array_init_expansion_estimate(id flat.NodeId, node flat.Node) int {
@@ -231,7 +283,7 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 			estimate += t.map_init_expansion_estimate(id, node)
 		}
 		if node.kind == .array_literal {
-			estimate += t.array_literal_expansion_estimate(node, true)
+			estimate += t.array_literal_expansion_estimate(id, node, true)
 		}
 		if node.kind == .array_init {
 			estimate += t.fixed_array_init_expansion_estimate(id, node)
@@ -631,7 +683,7 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			estimate += t.map_init_expansion_estimate(flat.NodeId(idx), node)
 		}
 		if node.kind == .array_literal {
-			estimate += t.array_literal_expansion_estimate(node, false)
+			estimate += t.array_literal_expansion_estimate(flat.NodeId(idx), node, false)
 		}
 		// Map index lowering replaces a constant identifier with its initializer
 		// through const_expr_for_ident(). That edge is semantic and is not present

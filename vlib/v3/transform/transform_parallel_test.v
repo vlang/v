@@ -240,6 +240,65 @@ fn test_map_expansion_estimate_includes_owned_value_cleanup() {
 	assert t.map_init_expansion_estimate(owned_id, a.nodes[int(owned_id)]) > deferred_map_expansion_threshold
 }
 
+fn test_map_expansion_estimate_defers_metadata_driven_spread_clone() {
+	mut a := flat.FlatAst.new()
+	spread_source := a.add_node(flat.Node{
+		kind: .ident
+		typ:  'map[int][]string'
+	})
+	spread_start := a.children.len
+	a.children << spread_source
+	spread := a.add_node(flat.Node{
+		kind:           .prefix
+		value:          '...'
+		children_start: spread_start
+		children_count: 1
+	})
+	map_start := a.children.len
+	a.children << spread
+	a.children << a.add_node(flat.Node{
+		kind: .empty
+	})
+	root := a.add_node(flat.Node{
+		kind:           .map_init
+		typ:            'map[int][]string'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.map_init_expansion_estimate(root, a.nodes[int(root)]) > deferred_map_expansion_threshold
+}
+
+fn test_array_literal_expansion_estimate_defers_metadata_driven_spread_clone() {
+	mut a := flat.FlatAst.new()
+	spread_source := a.add_node(flat.Node{
+		kind: .ident
+		typ:  '[][]string'
+	})
+	spread_start := a.children.len
+	a.children << spread_source
+	spread := a.add_node(flat.Node{
+		kind:           .prefix
+		value:          '...'
+		children_start: spread_start
+		children_count: 1
+	})
+	array_start := a.children.len
+	a.children << spread
+	root := a.add_node(flat.Node{
+		kind:           .array_literal
+		typ:            '[][]string'
+		children_start: array_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.array_literal_expansion_estimate(root, a.nodes[int(root)], false) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_includes_nested_array_lowering() {
 	mut a := flat.FlatAst.new()
 	mut inner_arrays := []flat.NodeId{cap: 130}
