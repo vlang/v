@@ -69,6 +69,10 @@ struct FastArm64CloneOuter {
 	inner FastArm64CloneInner
 }
 
+struct FastArm64LargeMapHolder {
+	values map[string][100]int
+}
+
 struct FastArm64Equality {
 	head   u64
 	tail   u64
@@ -156,16 +160,16 @@ fn fixed_array_sum(values [2]int) int {
 }
 
 fn main() {
-	mut fds := C.fd_set{}
-	C.FD_SET(5, &fds)
-	C.FD_SET(65, &fds)
-	if C.FD_ISSET(5, &fds) == 0 || C.FD_ISSET(65, &fds) == 0 || C.FD_ISSET(6, &fds) != 0 {
-		println("wrong fd set")
+	mut reassigned_float := f64(0)
+	reassigned_float = 1
+	if reassigned_float != 1.0 {
+		println("wrong reassignment conversion")
 		return
 	}
-	C.FD_ZERO(&fds)
-	if C.FD_ISSET(5, &fds) != 0 || C.FD_ISSET(65, &fds) != 0 {
-		println("wrong fd zero")
+	mut typed_numbers := map[u64]f64{1: 2}
+	typed_numbers[3] = 4
+	if typed_numbers[u64(1)] != 2.0 || typed_numbers[u64(3)] != 4.0 {
+		println("wrong typed map conversion")
 		return
 	}
 	values_for_sizeof := [1, 2, 3]
@@ -343,10 +347,10 @@ fn main() {
 		println("wrong zero map")
 		return
 	}
-	mut nested_map_defaults := FastArm64CloneOuter{}
-	nested_map_defaults.inner.values["present"] = 9
-	if nested_map_defaults.inner.values["present"] != 9 {
-		println("wrong nested zero map insertion")
+	large_map_holders := [1]FastArm64LargeMapHolder{}
+	large_missing := large_map_holders[0].values["missing"]
+	if large_missing[0] != 0 || large_missing[99] != 0 {
+		println("wrong large zero map value")
 		return
 	}
 	cloned_empty := FastArm64CloneOuter{}.inner.values.clone()

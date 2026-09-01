@@ -119,8 +119,6 @@ mut:
 	option_error_message_data_global   ssa.ValueID
 	option_error_message_len_global    ssa.ValueID
 	option_error_message_is_lit_global ssa.ValueID
-	map_empty_zero_global              ssa.ValueID
-	map_empty_zero_size_global         ssa.ValueID
 	spawn_context_types                map[string]ssa.TypeID
 	spawn_wrapper_ids                  map[string]int
 }
@@ -1103,8 +1101,6 @@ fn (mut p FastArm64Program) register_functions() {
 	p.option_error_message_data_global = p.m.add_global('g_fastc_option_error_message_data', p.ptr_i8)
 	p.option_error_message_len_global = p.m.add_global('g_fastc_option_error_message_len', p.i32_type)
 	p.option_error_message_is_lit_global = p.m.add_global('g_fastc_option_error_message_is_lit', p.i32_type)
-	p.map_empty_zero_global = p.m.add_global('g_fastc_map_empty_zero', p.ptr_i8)
-	p.map_empty_zero_size_global = p.m.add_global('g_fastc_map_empty_zero_size', p.i64_type)
 	p.register_os_path_runtime()
 	p.register_os_abs_path_runtime()
 	p.register_os_process_runtime()
@@ -2030,10 +2026,9 @@ fn (mut p FastArm64Program) register_map_get_runtime() {
 	missing := p.m.add_block(id, 'map_get_missing')
 	missing_state := p.m.add_block(id, 'map_get_missing_state')
 	missing_empty := p.m.add_block(id, 'map_get_missing_empty')
-	missing_empty_alloc := p.m.add_block(id, 'map_get_missing_empty_alloc')
-	missing_empty_ready := p.m.add_block(id, 'map_get_missing_empty_ready')
 	map_value := p.add_arg(id, p.map_type, 'map_value')
 	key := p.add_arg(id, p.ptr_i8, 'key')
+	empty_value := p.add_arg(id, p.ptr_i8, 'empty_value')
 	empty_value_size := p.add_arg(id, p.i64_type, 'empty_value_size')
 	map_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.map_type))
 	p.instr2(.store, entry, p.void_type, map_value, map_slot)
@@ -2053,24 +2048,11 @@ fn (mut p FastArm64Program) register_map_get_runtime() {
 	p.instr3(.br, missing, p.void_type, has_state, ssa.ValueID(missing_state), ssa.ValueID(missing_empty))
 	missing_value := p.instr1(.load, missing_state, p.ptr_i8, p.struct_field_ptr(missing_state, state, p.map_state_type, 10))
 	p.instr1(.ret, missing_state, p.void_type, missing_value)
-	cached_empty := p.instr1(.load, missing_empty, p.ptr_i8, p.map_empty_zero_global)
-	cached_empty_size := p.instr1(.load, missing_empty, p.i64_type, p.map_empty_zero_size_global)
-	null_pointer := p.m.get_or_add_const(p.ptr_i8, '0')
-	has_cached_empty := p.instr2(.ne, missing_empty, p.i1_type, cached_empty, null_pointer)
-	cached_empty_is_large_enough := p.instr2(.uge, missing_empty, p.i1_type, cached_empty_size, empty_value_size)
-	can_reuse_cached_empty := p.instr2(.and_, missing_empty, p.i1_type, has_cached_empty, cached_empty_is_large_enough)
-	p.instr3(.br, missing_empty, p.void_type, can_reuse_cached_empty, ssa.ValueID(missing_empty_ready), ssa.ValueID(missing_empty_alloc))
-	free_ref := p.m.add_value(.func_ref, p.void_type, 'free', p.fn_ids['free'])
-	p.m.add_instr(.call, missing_empty_alloc, p.void_type, [free_ref, cached_empty])
-	one := p.m.get_or_add_const(p.i64_type, '1')
-	calloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'calloc', p.fn_ids['calloc'])
-	empty_value := p.m.add_instr(.call, missing_empty_alloc, p.ptr_i8, [calloc_ref, one,
+	memset_ref := p.m.add_value(.func_ref, p.ptr_i8, 'memset', p.fn_ids['memset'])
+	zero_byte := p.m.get_or_add_const(p.i32_type, '0')
+	p.m.add_instr(.call, missing_empty, p.ptr_i8, [memset_ref, empty_value, zero_byte,
 		empty_value_size])
-	p.instr2(.store, missing_empty_alloc, p.void_type, empty_value, p.map_empty_zero_global)
-	p.instr2(.store, missing_empty_alloc, p.void_type, empty_value_size, p.map_empty_zero_size_global)
-	p.instr1(.jmp, missing_empty_alloc, p.void_type, ssa.ValueID(missing_empty_ready))
-	ready_empty := p.instr1(.load, missing_empty_ready, p.ptr_i8, p.map_empty_zero_global)
-	p.instr1(.ret, missing_empty_ready, p.void_type, ready_empty)
+	p.instr1(.ret, missing_empty, p.void_type, empty_value)
 }
 
 fn (mut p FastArm64Program) register_map_set_runtime() {
@@ -7892,6 +7874,9 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 		key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(key.typ))
 		p.program.instr2(.store, p.cur_block, p.program.void_type, key.id, key_slot)
 		key_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, key_slot)
+		empty_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value_type))
+		empty_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, empty_slot)
+		value_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value_type).str())
 		find_ref := p.program.m.add_value(.func_ref, p.program.i64_type, 'fast_map_find', p.program.fn_ids['fast_map_find'])
 		index := p.program.m.add_instr(.call, p.cur_block, p.program.i64_type, [
 			find_ref,
@@ -7906,6 +7891,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 			get_ref,
 			value.id,
 			key_pointer,
+			empty_pointer,
 			value_size,
 		])
 		typed_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(value_type), value_pointer)
@@ -8275,6 +8261,19 @@ fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
 }
 
 fn (mut p FastArm64Parser) emit_map_set(map_value FastArm64Value, key FastArm64Value, value FastArm64Value) ! {
+	key_type_name, value_type_name := fastc_map_key_value_types(map_value.typ_name) or {
+		return p.unsupported('map type `${map_value.typ_name}`')
+	}
+	key_type := p.program.type_id(key_type_name)
+	value_type := p.program.type_id(value_type_name)
+	mut stored_key := key
+	mut stored_value := value
+	if stored_key.typ != key_type {
+		stored_key = p.convert_value(stored_key, key_type, key_type_name)
+	}
+	if stored_value.typ != value_type {
+		stored_value = p.convert_value(stored_value, value_type, value_type_name)
+	}
 	mut initialized_map := map_value
 	if map_value.address != ssa.ValueID(0) {
 		map_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.map_type))
@@ -8303,10 +8302,10 @@ fn (mut p FastArm64Parser) emit_map_set(map_value FastArm64Value, key FastArm64V
 			id: p.program.instr1(.load, ready, p.program.map_type, result_slot)
 		}
 	}
-	key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(key.typ))
-	value_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value.typ))
-	p.program.instr2(.store, p.cur_block, p.program.void_type, key.id, key_slot)
-	p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, value_slot)
+	key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(key_type))
+	value_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value_type))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, stored_key.id, key_slot)
+	p.program.instr2(.store, p.cur_block, p.program.void_type, stored_value.id, value_slot)
 	key_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, key_slot)
 	value_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, value_slot)
 	set_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'fast_map_set', p.program.fn_ids['fast_map_set'])
