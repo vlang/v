@@ -995,16 +995,10 @@ fn (mut t Transformer) multi_return_if_zero_value_expansion_estimate(id flat.Nod
 	if node.kind != .if_expr {
 		return 0
 	}
-	parent_id := t.source_parent_id(int(id))
-	if parent_id < 0 || parent_id >= t.a.nodes.len {
+	lhs_ids := t.multi_return_decl_lhs_ids(id)
+	if lhs_ids.len == 0 {
 		return 0
 	}
-	parent := t.a.nodes[parent_id]
-	if parent.kind != .decl_assign || parent.children_count < 3
-		|| t.multi_assign_rhs_count(parent) != 1 {
-		return 0
-	}
-	lhs_ids := t.multi_assign_lhs_ids(parent)
 	if !t.if_expr_has_tuple_tail_values(id, lhs_ids.len) {
 		return 0
 	}
@@ -1012,6 +1006,34 @@ fn (mut t Transformer) multi_return_if_zero_value_expansion_estimate(id flat.Nod
 	mut estimate := 0
 	for value_type in value_types {
 		estimate += t.zero_value_expansion_estimate(id, value_type)
+	}
+	return estimate
+}
+
+fn (t &Transformer) multi_return_decl_lhs_ids(id flat.NodeId) []flat.NodeId {
+	parent_id := t.source_parent_id(int(id))
+	if parent_id < 0 || parent_id >= t.a.nodes.len {
+		return []
+	}
+	parent := t.a.nodes[parent_id]
+	if parent.kind != .decl_assign || parent.children_count < 3 || t.multi_assign_rhs_count(parent) != 1 {
+		return []
+	}
+	return t.multi_assign_lhs_ids(parent)
+}
+
+fn (mut t Transformer) multi_return_match_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .match_stmt || isnil(t.tc) {
+		return 0
+	}
+	lhs_ids := t.multi_return_decl_lhs_ids(id)
+	if lhs_ids.len == 0 {
+		return 0
+	}
+	value_types := t.tc.multi_expr_tail_types_for_transform(id, lhs_ids.len) or { return 0 }
+	mut estimate := 0
+	for value_type in value_types {
+		estimate += t.zero_value_expansion_estimate(id, value_type.name())
 	}
 	return estimate
 }
@@ -1043,12 +1065,14 @@ fn (mut t Transformer) match_expr_zero_value_expansion_estimate(id flat.NodeId, 
 	if node.kind != .match_stmt {
 		return 0
 	}
+	mut estimate := t.multi_return_match_zero_value_expansion_estimate(id, node)
 	mut result_type := t.match_expr_type(node)
 	if (result_type.len == 0 || result_type == 'void' || t.generic_arg_is_unresolved(result_type))
 		&& decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
 		result_type = node.typ
 	}
-	return t.zero_value_expansion_estimate(id, result_type)
+	estimate += t.zero_value_expansion_estimate(id, result_type)
+	return estimate
 }
 
 fn (mut t Transformer) or_expr_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
