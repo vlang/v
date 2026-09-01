@@ -288,6 +288,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 				// whose size is derived from type metadata, not source children.
 				estimate += deferred_map_expansion_threshold + 1
 			}
+			if t.compiler_owned_map_items_call_expands(node) {
+				// Ownership-aware map keys()/values() synthesize a clone loop whose
+				// size is derived from item metadata, not source children.
+				estimate += deferred_map_expansion_threshold + 1
+			}
 			if t.compiler_collection_str_call_expands(node) {
 				// Compiler-provided collection stringification synthesizes loops and
 				// recursively formats elements that are absent from physical children.
@@ -410,6 +415,34 @@ fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool 
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) compiler_owned_map_items_call_expands(node flat.Node) bool {
+	if node.children_count == 0 || isnil(t.tc) {
+		return false
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value !in ['keys', 'values'] || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	clean_type := t.clean_map_type(base_type)
+	if !clean_type.starts_with('map[') {
+		return false
+	}
+	elem_type := if fn_node.value == 'keys' {
+		t.map_key_type(clean_type)
+	} else {
+		t.map_value_type(clean_type)
+	}
+	if elem_type.len == 0 || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) || !t.compiler_default_clone_type_needs_work(elem_type) {
+		return false
+	}
+	return fn_node.value == 'values' || t.normalize_type_alias(elem_type).trim_space() != 'string'
 }
 
 fn (t &Transformer) compiler_collection_str_call_expands(node flat.Node) bool {
