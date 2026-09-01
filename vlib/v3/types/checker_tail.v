@@ -9440,7 +9440,7 @@ fn (tc &TypeChecker) param_storage_direct_definite_write_paths_for_decl(decl Vis
 	return paths
 }
 
-fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name string, target_type string, target_param_idx int, decl_mod string, mut aliases map[string][]int, mut visiting map[u64]bool, mut writes map[string][]int, mut exited_writes map[string][]int, mut loop_exits []StorageParamLoopExit, mut exited_aliases []map[string][]int, active_defer_count int, mut exited_defer_counts []int) {
+fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name string, target_type string, target_param_idx int, decl_mod string, mut aliases map[string][]int, mut visiting map[u64]bool, mut writes map[string][]int, mut exited_writes map[string][]int, mut loop_exits []StorageParamLoopExit, mut exited_aliases []map[string][]int, active_defer_count int, mut exited_defer_counts []int) {
 	if !tc.valid_node_id(id) {
 		return
 	}
@@ -9875,7 +9875,7 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 	}
 }
 
-fn (mut tc TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) map[string][]int {
+fn (tc &TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) map[string][]int {
 	target_param := tc.visible_mutation_fn_param(decl, target_param_idx) or {
 		return map[string][]int{}
 	}
@@ -9951,7 +9951,7 @@ fn (mut tc TypeChecker) param_storage_writes_for_decl(decl VisibleMutationFnDecl
 	return exited_writes
 }
 
-fn (mut tc TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) []int {
+fn (tc &TypeChecker) param_storage_source_params_for_decl(decl VisibleMutationFnDecl, target_param_idx int, mut visiting map[u64]bool) []int {
 	writes := tc.param_storage_writes_for_decl(decl, target_param_idx, mut visiting)
 	mut sources := []int{}
 	for _, params in writes {
@@ -9997,7 +9997,7 @@ fn (tc &TypeChecker) visible_mutation_call_module(call flat.Node, call_name stri
 
 // call_param_storage_source_params returns parameters whose values a source function
 // may assign into the mutable target parameter or one of its descendants.
-pub fn (mut tc TypeChecker) call_param_storage_source_params(id flat.NodeId, target_param_idx int) []int {
+pub fn (tc &TypeChecker) call_param_storage_source_params(id flat.NodeId, target_param_idx int) []int {
 	if !tc.valid_node_id(id) || target_param_idx < 0 {
 		return []int{}
 	}
@@ -10143,6 +10143,65 @@ fn (tc &TypeChecker) callback_arg_is_rooted_at_ident(id flat.NodeId, name string
 	return false
 }
 
+fn (tc &TypeChecker) callback_binding_arg_is_ident(id flat.NodeId, name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return node.value == name
+	}
+	if node.kind in [.paren, .prefix, .cast_expr, .as_expr, .expr_stmt] && node.children_count > 0 {
+		return tc.callback_binding_arg_is_ident(tc.a.child(node, 0), name)
+	}
+	return false
+}
+
+fn (tc &TypeChecker) callback_binding_call_sources(id flat.NodeId, name string) []flat.NodeId {
+	if !tc.valid_node_id(id) || name.len == 0 {
+		return []
+	}
+	call := tc.a.node(id)
+	if call.kind != .call || call.children_count == 0 {
+		return []
+	}
+	call_name := tc.resolved_call_name(id) or { return [] }
+	decl_module := tc.visible_mutation_call_module(call, call_name)
+	decl := tc.visible_mutation_fn_decl(call_name, decl_module) or { return [] }
+	first_param := tc.visible_mutation_fn_param(decl, 0) or { flat.Node{} }
+	is_method := first_param.kind == .param && first_param.op == .dot
+	param_offset := if is_method { 1 } else { 0 }
+	callee := tc.a.child_node(call, 0)
+	mut target_param_idxs := []int{}
+	if is_method && callee.kind == .selector && callee.children_count > 0 && tc.callback_binding_arg_is_ident(tc.a.child(callee, 0), name) {
+		target_param_idxs << 0
+	}
+	for i in 1 .. call.children_count {
+		arg_id := tc.call_arg_value(tc.a.child(call, i))
+		if tc.callback_binding_arg_is_ident(arg_id, name) {
+			target_param_idxs << i - 1 + param_offset
+		}
+	}
+	mut result := []flat.NodeId{}
+	for target_param_idx in target_param_idxs {
+		for source_param_idx in tc.call_param_storage_source_params(id, target_param_idx) {
+			mut source_id := flat.empty_node
+			if is_method && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
+				source_id = tc.a.child(callee, 0)
+			} else {
+				child_idx := source_param_idx - param_offset + 1
+				if child_idx >= 1 && child_idx < call.children_count {
+					source_id = tc.call_arg_value(tc.a.child(call, child_idx))
+				}
+			}
+			if tc.valid_node_id(source_id) && source_id !in result {
+				result << source_id
+			}
+		}
+	}
+	return result
+}
+
 fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnDecl, name string, use_id flat.NodeId) []flat.NodeId {
 	if name.len == 0 || !tc.valid_node_id(use_id) || decl.idx < 0 || decl.idx >= tc.a.nodes.len {
 		return []
@@ -10159,7 +10218,7 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 		}
 	}
 	mut seen := map[int]bool{}
-	mut latest_definite_id := flat.empty_node
+	mut latest_definite_ids := []flat.NodeId{}
 	mut latest_definite_offset := -1
 	mut conditional_ids := []flat.NodeId{}
 	mut conditional_offsets := []int{}
@@ -10180,9 +10239,23 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 						conditional_ids << rhs_id
 						conditional_offsets << lhs.pos.offset
 					} else if lhs.pos.offset > latest_definite_offset {
-						latest_definite_id = rhs_id
+						latest_definite_ids = [rhs_id]
 						latest_definite_offset = lhs.pos.offset
 					}
+				}
+			}
+		}
+		if current_node.kind == .call && current_node.pos.id == use_pos.id && current_node.pos.offset < use_pos.offset {
+			call_sources := tc.callback_binding_call_sources(current_id, name)
+			if call_sources.len > 0 {
+				if current_conditional {
+					for source_id in call_sources {
+						conditional_ids << source_id
+						conditional_offsets << current_node.pos.offset
+					}
+				} else if current_node.pos.offset > latest_definite_offset {
+					latest_definite_ids = call_sources.clone()
+					latest_definite_offset = current_node.pos.offset
 				}
 			}
 		}
@@ -10198,9 +10271,7 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 		}
 	}
 	mut result := []flat.NodeId{}
-	if latest_definite_id != flat.empty_node {
-		result << latest_definite_id
-	}
+	result << latest_definite_ids
 	for i, conditional_id in conditional_ids {
 		if conditional_offsets[i] > latest_definite_offset {
 			result << conditional_id
