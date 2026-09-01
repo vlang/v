@@ -10149,6 +10149,12 @@ fn (tc &TypeChecker) callback_arg_is_rooted_at_ident(id flat.NodeId, name string
 			}
 			continue
 		}
+		if node.kind == .or_expr {
+			for i in 0 .. node.children_count {
+				pending << tc.a.child(node, i)
+			}
+			continue
+		}
 		if node.kind in [.block, .match_branch] && node.children_count > 0 {
 			pending << tc.a.child(node, node.children_count - 1)
 			continue
@@ -10265,6 +10271,40 @@ fn visible_binding_scope_at_offset(scope int, offset int, root_scope int, scope_
 	return root_scope
 }
 
+fn (tc &TypeChecker) collect_visible_binding_gotos_and_labels(id flat.NodeId, mut gotos []flat.NodeId, mut labels map[string][]flat.NodeId) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.node(id)
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return
+	}
+	if node.kind == .goto_stmt {
+		gotos << id
+	} else if node.kind == .label_stmt && node.value.len > 0 {
+		labels[node.value] << id
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_visible_binding_gotos_and_labels(tc.a.child(node, i), mut gotos, mut labels)
+	}
+}
+
+fn (tc &TypeChecker) visible_binding_can_be_bypassed_by_goto(binding_pos token.Pos, use_pos token.Pos, gotos []flat.NodeId, labels map[string][]flat.NodeId) bool {
+	for goto_id in gotos {
+		jump := tc.a.node(goto_id)
+		if jump.pos.id != binding_pos.id || jump.pos.offset >= binding_pos.offset {
+			continue
+		}
+		for label_id in labels[jump.value] {
+			label := tc.a.node(label_id)
+			if label.pos.id == binding_pos.id && label.pos.offset > binding_pos.offset && label.pos.offset <= use_pos.offset {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnDecl, name string, use_id flat.NodeId) []flat.NodeId {
 	if name.len == 0 || !tc.valid_node_id(use_id) || decl.idx < 0 || decl.idx >= tc.a.nodes.len {
 		return []
@@ -10278,6 +10318,11 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 	mut use_scope := [root_scope]
 	for i in 0 .. fn_node.children_count {
 		tc.collect_visible_binding_scopes(tc.a.child(&fn_node, i), use_id, name, root_scope, mut scope_parents, mut decl_offsets, mut use_scope)
+	}
+	mut gotos := []flat.NodeId{}
+	mut labels := map[string][]flat.NodeId{}
+	for i in 0 .. fn_node.children_count {
+		tc.collect_visible_binding_gotos_and_labels(tc.a.child(&fn_node, i), mut gotos, mut labels)
 	}
 	target_scope := visible_binding_scope_at_offset(use_scope[0], use_pos.offset, root_scope, scope_parents, decl_offsets)
 	mut stack := []flat.NodeId{}
@@ -10316,7 +10361,7 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 				}
 				if lhs.kind == .ident && lhs.value == name && binding_scope == target_scope && lhs.pos.id == use_pos.id && lhs.pos.offset < use_pos.offset {
 					rhs_id := tc.a.child(current_node, i + 1)
-					if current_conditional {
+					if current_conditional || tc.visible_binding_can_be_bypassed_by_goto(lhs.pos, use_pos, gotos, labels) {
 						conditional_ids << rhs_id
 						conditional_offsets << lhs.pos.offset
 					} else if lhs.pos.offset > latest_definite_offset {
@@ -10330,7 +10375,7 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 		if current_node.kind == .call && call_binding_scope == target_scope && current_node.pos.id == use_pos.id && current_node.pos.offset < use_pos.offset {
 			call_sources := tc.callback_binding_call_sources(current_id, name)
 			if call_sources.len > 0 {
-				if current_conditional {
+				if current_conditional || tc.visible_binding_can_be_bypassed_by_goto(current_node.pos, use_pos, gotos, labels) {
 					for source_id in call_sources {
 						conditional_ids << source_id
 						conditional_offsets << current_node.pos.offset

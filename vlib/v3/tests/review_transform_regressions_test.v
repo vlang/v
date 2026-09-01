@@ -8660,6 +8660,10 @@ pub fn retained_text() string {
 
 fn ignore(_ &Item) {}
 
+fn maybe_callback() ?fn (&Item) {
+	return none
+}
+
 pub fn invoke(callback fn (&Item), value &Item, use_callback bool) {
 	selected := if use_callback { callback } else { ignore }
 	chosen := match use_callback {
@@ -8667,6 +8671,21 @@ pub fn invoke(callback fn (&Item), value &Item, use_callback bool) {
 		else { ignore }
 	}
 	chosen(value)
+}
+
+pub fn invoke_or(callback fn (&Item), value &Item) {
+	chosen := maybe_callback() or { callback }
+	chosen(value)
+}
+
+pub fn invoke_goto(callback fn (&Item), value &Item) {
+	mut alias := callback
+	unsafe {
+		goto invoke
+	}
+	alias = ignore
+	invoke:
+	alias(value)
 }
 '
 		'main.v':       'module main
@@ -8691,6 +8710,28 @@ fn main() {
 	})
 	println(selected[0])
 	println(api.retained_text())
+	or_selected := make_items().map(match true {
+		true {
+			api.invoke_or(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(or_selected[0])
+	println(api.retained_text())
+	goto_selected := make_items().map(match true {
+		true {
+			api.invoke_goto(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(goto_selected[0])
+	println(api.retained_text())
 }
 '
 	}
@@ -8701,7 +8742,7 @@ fn main() {
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	out := run_good_project_with_flags(v3_bin, 'array_map_branch_callback_alias', '-ownership',
 		files, 'main.v')
-	assert out == '0\nsource'
+	assert out == '0\nsource\n0\nsource\n0\nsource'
 }
 
 fn test_array_map_keeps_source_forwarded_through_nested_callback_wrappers() {
