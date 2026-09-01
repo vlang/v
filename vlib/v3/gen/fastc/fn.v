@@ -497,7 +497,7 @@ fn (mut g Parser) skip_semicolons() {
 }
 
 fn (g &Parser) unsupported(feature string) IError {
-	return error('fastc parser does not support ${feature} at byte ${g.s.pos} in ${g.path}')
+	return error('fastc parser does not support ${feature} at byte ${g.s.pos + g.source_offset} in ${g.path}')
 }
 
 fn (mut g Parser) expect(expected token.Token) ! {
@@ -558,6 +558,7 @@ fn (mut g Parser) skip_import() ! {
 
 fn (mut g Parser) parse_function(enabled bool) ! {
 	g.locals = map[string]FastcLocal{}
+	g.temp_id = 0
 	g.next()
 	mut receiver_type := ''
 	mut receiver_key := ''
@@ -913,7 +914,13 @@ fn (mut g Parser) parse_generic_body_or_stub(return_type string, out_checkpoint 
 		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type)
 		return true
 	}
+	local_scope_start := g.local_scope_changes.len
+	local_scope_depth := g.local_scope_depth
+	statement_reachable := g.statement_reachable
 	terminates := g.parse_block_body() or {
+		g.restore_local_scope(local_scope_start)
+		g.local_scope_depth = local_scope_depth
+		g.statement_reachable = statement_reachable
 		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type)
 		return true
 	}

@@ -825,10 +825,6 @@ fn v3_fallback_backend_specific_builtin_source(path string, builtin_root string)
 		&& os.file_name(path) in ['ownership_interface_d_v3_backend.v', 'ownership_interface_notd_v3_backend.v', 'prealloc.c.v']
 }
 
-fn discard_unverified_v3_fallback_report() {
-	eprintln('note: source inputs changed before the stable compiler retry completed; the V3 fallback report was not submitted.')
-}
-
 // submit_external_v3_compiler_error_bug_report reports metadata for a V3 internal
 // compiler error after the stable compiler has confirmed the program is buildable.
 // Source may only be supplied through the pre-V3 snapshot/content path, so this legacy

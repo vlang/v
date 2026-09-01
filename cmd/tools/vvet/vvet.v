@@ -312,6 +312,21 @@ fn (mut vt Vet) stmt(stmt ast.Stmt) {
 			vt.analyze.cur_fn = old_fn_decl
 			vt.regex_vars = old_regex_vars.clone()
 		}
+		ast.ForCStmt {
+			vt.stmt(stmt.init)
+			vt.expr(stmt.cond)
+			vt.stmts(stmt.stmts)
+			vt.stmt(stmt.inc)
+		}
+		ast.ForInStmt {
+			vt.expr(stmt.cond)
+			vt.expr(stmt.high)
+			vt.stmts(stmt.stmts)
+		}
+		ast.ForStmt {
+			vt.expr(stmt.cond)
+			vt.stmts(stmt.stmts)
+		}
 		ast.StructDecl {
 			vt.exprs(stmt.fields.map(it.default_expr))
 		}

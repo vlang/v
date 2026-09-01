@@ -92,16 +92,17 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		if fixed_arguments < 0 || fixed_arguments > rendered_arguments.len {
 			return none
 		}
-		variadic_arguments := rendered_arguments[fixed_arguments..].clone()
-		packed := if variadic_arguments.len == 0 {
+		variadic_count := rendered_arguments.len - fixed_arguments
+		variadic_values := rendered_arguments[fixed_arguments..].join(',')
+		packed := if variadic_count == 0 {
 			'(${variadic_type}){0}'
 		} else {
-			'((${variadic_type})builtin__new_array_from_c_array(${variadic_arguments.len}, ${variadic_arguments.len}, sizeof(${element_type}), (${element_type}[]){${variadic_arguments.join(',')}}))'
+			'((${variadic_type})builtin__new_array_from_c_array(${variadic_count}, ${variadic_count}, sizeof(${element_type}), (${element_type}[]){${variadic_values}}))'
 		}
-		mut c_arguments := rendered_arguments[..fixed_arguments].clone()
-		c_arguments << packed
+		rendered_arguments.trim(fixed_arguments)
+		rendered_arguments << packed
 		return FastcRenderedExpression{
-			source: '${fastc_c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
+			source: '${fastc_c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
 			typ: signature.return_type
 		}
 	}
@@ -157,7 +158,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 		receiver_start := fastc_method_receiver_start(tokens, i - 1)
 		receiver_tokens := tokens[receiver_start..i - 1]
 		receiver_type := g.infer_expression_type(receiver_tokens) or { continue }
-		if tokens[i].lit == 'contains' && fastc_normalize_inferred_type(receiver_type).trim_right('*').starts_with('Array_') {
+		if tokens[i].lit == 'contains' && fastc_trim_pointer_suffix(fastc_normalize_inferred_type(receiver_type)).starts_with('Array_') {
 			call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 			call_args := fastc_call_arguments(tokens, i + 1, call_end) or { continue }
 			if call_args.len != 1 {
@@ -169,7 +170,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				continue
 			}
 			access := if receiver_type.ends_with('*') { '->' } else { '.' }
-			comparison := if g.underlying_alias_type(element_type).trim_right('*') == 'string' {
+			comparison := if fastc_trim_pointer_suffix(g.underlying_alias_type(element_type)) == 'string' {
 				'builtin__string_eq(__v_fastc_contains_item, ((${element_type} *)__v_fastc_contains_collection${access}data)[__v_fastc_contains_index])'
 			} else {
 				'(__v_fastc_contains_item == ((${element_type} *)__v_fastc_contains_collection${access}data)[__v_fastc_contains_index])'
@@ -431,13 +432,14 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 			}
 			variadic_type := signature.parameter_types.last()
 			element_type := g.array_element_type(variadic_type) or { continue }
-			variadic_arguments := direct_arguments[fixed_arguments..].clone()
-			packed := if variadic_arguments.len == 0 {
+			variadic_count := direct_arguments.len - fixed_arguments
+			variadic_values := direct_arguments[fixed_arguments..].join(',')
+			packed := if variadic_count == 0 {
 				'(${variadic_type}){0}'
 			} else {
-				'((${variadic_type})builtin__new_array_from_c_array(${variadic_arguments.len}, ${variadic_arguments.len}, sizeof(${element_type}), (${element_type}[]){${variadic_arguments.join(',')}}))'
+				'((${variadic_type})builtin__new_array_from_c_array(${variadic_count}, ${variadic_count}, sizeof(${element_type}), (${element_type}[]){${variadic_values}}))'
 			}
-			direct_arguments = direct_arguments[..fixed_arguments].clone()
+			direct_arguments.trim(fixed_arguments)
 			direct_arguments << packed
 		}
 		if signature.last_parameter_is_params && direct_arguments.len + 1 == signature.parameter_types.len - 1 {

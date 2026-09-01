@@ -119,6 +119,7 @@ fn test_rebuild_scoped_transform_signatures_and_suffix_index_after_growth() {
 	$if prealloc {
 		a := flat.FlatAst.new()
 		mut tc := TypeChecker.new(&a)
+		tc.ensure_private_transform_signatures()
 		scope := unsafe { prealloc_scope_begin() }
 		// Model a transform that leaves enough scoped map capacity for the
 		// subsequent suffix rebuild to reuse unless it explicitly replaces the map.
@@ -150,6 +151,7 @@ fn test_rebuild_scoped_transform_signatures_and_suffix_index_after_growth() {
 		unsafe { prealloc_scope_leave(scope) }
 		tc.rebuild_scoped_transform_signature_maps()
 		tc.rebuild_fn_param_suffix_index()
+		assert tc.transform_signature_names_log.len == 0
 		ret_rebuilt := unsafe { &SignatureMapLayoutForTest(&tc.fn_ret_types) }
 		params_rebuilt := unsafe { &SignatureMapLayoutForTest(&tc.fn_param_types) }
 		variadic_rebuilt := unsafe { &SignatureMapLayoutForTest(&tc.fn_variadic) }
@@ -161,6 +163,8 @@ fn test_rebuild_scoped_transform_signatures_and_suffix_index_after_growth() {
 		assert !signature_map_storage_owned_by_scope(scope, specialized_rebuilt)
 		assert !signature_map_storage_owned_by_scope(scope, suffix_rebuilt)
 		unsafe { prealloc_scope_free_after(scope) }
+		tc.register_generated_fn_param_types('generated.after_scope', [Type(int_)])
+		assert tc.transform_signature_names_log == ['generated.after_scope']
 
 		for idx in [0, 2048, 4095] {
 			name := 'generated.Box_${idx}.open'
@@ -190,9 +194,10 @@ fn test_parallel_transform_fork_owns_mutable_signature_maps() {
 	mut transform_fork := tc.fork_for_parallel_transform(&a)
 	transform_fork.ensure_private_transform_signatures()
 	transform_fork.fn_ret_types['generated'] = Type(bool_)
-	transform_fork.fn_param_types['generated'] = [Type(int_)]
+	transform_fork.register_generated_fn_param_types('generated', [Type(int_)])
 	transform_fork.fn_variadic['generated'] = false
 	transform_fork.specialized_generic_fns['generated'] = true
+	assert transform_fork.transform_signature_names_log == ['generated']
 
 	assert 'generated' !in tc.fn_ret_types
 	assert 'generated' !in tc.fn_param_types

@@ -178,7 +178,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       - name: Start FreeBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.4.0
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: freebsd
           version: '15.1'
@@ -240,7 +240,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       - name: Start OpenBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.4.0
+        uses: cross-platform-actions/action@v1.5.0
         with:
           operating_system: openbsd
           version: '7.8'

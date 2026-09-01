@@ -473,7 +473,7 @@ fn (g &Parser) method_function_key(receiver_type string, name string) string {
 	if g.selfhost && name in ['keys', 'values'] && 'map.${name}' in g.functions {
 		return 'map.${name}'
 	}
-	mut layout_type := receiver_type.trim_right('*')
+	mut layout_type := fastc_trim_pointer_suffix(receiver_type)
 	if layout_type.starts_with('Array_') {
 		layout_type = 'array'
 	} else if layout_type.starts_with('Map_') {
@@ -500,7 +500,7 @@ fn (g &Parser) resolve_method(receiver_type string, name string) (string, []stri
 	if direct in g.functions {
 		return direct, []string{}
 	}
-	layout_type := receiver_type.trim_right('*')
+	layout_type := fastc_trim_pointer_suffix(receiver_type)
 	for field in g.struct_field_info[layout_type] {
 		if !field.name.starts_with('__embedded_') {
 			continue
@@ -536,8 +536,8 @@ fn (g &Parser) specialized_method_return_type(receiver_type string, method_key s
 			}
 		}
 	}
-	if method_key.starts_with('map.') && signature.return_type == 'map' && receiver_type.trim_right('*').starts_with('Map_') {
-		return receiver_type.trim_right('*')
+	if method_key.starts_with('map.') && signature.return_type == 'map' && fastc_trim_pointer_suffix(receiver_type).starts_with('Map_') {
+		return fastc_trim_pointer_suffix(receiver_type)
 	}
 	return signature.return_type
 }
@@ -586,7 +586,7 @@ fn (g &Parser) render_interface_cast_expression(tokens []FastcExpressionToken, r
 	// text (`[1,2,3]` is not valid C), so render it through the argument path.
 	// A struct literal likewise needs its designated-initializer lowering before boxing.
 	// Scalars and pointers keep the already-streamed spelling.
-	actual_base := actual_type.trim_right('*')
+	actual_base := fastc_trim_pointer_suffix(actual_type)
 	inner_source := if struct_literal := g.render_struct_literal_expression(inner_tokens) {
 		struct_literal.source
 	} else if actual_base.starts_with('Array_') || actual_base.starts_with('Map_') {

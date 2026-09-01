@@ -84,8 +84,8 @@ fn compile_with_optional_external_c_error_report(pref_ &pref.Preferences, backen
 			}
 			.changed {
 				// The stable compiler succeeded, but not from the exact source snapshot V3
-				// parsed. Do not classify or upload this as a V3-only failure.
-				discard_unverified_v3_fallback_report()
+				// parsed. Do not classify or upload this as a V3-only failure. The staged
+				// report is simply left unconsumed, so the at_exit cleanup drops it silently.
 			}
 		}
 	}

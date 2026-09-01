@@ -3544,7 +3544,10 @@ fn (mut g FlatGen) write_type_declaration_block() {
 }
 
 fn (mut g FlatGen) gen_vinit() {
-	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0 && g.global_inits.len == 0 {
+	needs_closure_init := g.used_fn_contains('closure.closure_init')
+		|| g.used_fn_contains('closure__closure_init')
+	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
+		&& g.global_inits.len == 0 && !needs_closure_init {
 		return
 	}
 	fn_start_pos := g.sb.len
@@ -3560,6 +3563,9 @@ fn (mut g FlatGen) gen_vinit() {
 		}
 	}
 	g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
+	if needs_closure_init {
+		g.writeln('\t${g.cname('closure.closure_init')}();')
+	}
 	g.writeln('}')
 	g.writeln('')
 	if '_vinit' in g.print_fn_names {
@@ -3887,7 +3893,11 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			pt = shared_alias_ptr
 		} else if raw_pt is types.Pointer && param_idx < typed_params.len {
 			typed_pt := typed_params[param_idx]
-			if typed_pt is types.Pointer && raw_pt.base_type is types.FnType && typed_pt.base_type is types.FnType {
+			if child.is_mut && child.op == .amp && typed_pt is types.Pointer
+				&& typed_pt.base_type is types.Pointer {
+				pt = typed_pt
+			} else if typed_pt is types.Pointer && raw_pt.base_type is types.FnType
+				&& typed_pt.base_type is types.FnType {
 				// Specialized `mut T` parameters keep a pointer-to-function type in
 				// the flat declaration. The registered signature retains the concrete
 				// module identity when same-named callback parameter types coexist.
@@ -3895,6 +3905,9 @@ fn (mut g FlatGen) compute_collect_gen_fn_prep(node flat.Node, module_name strin
 			}
 		} else if raw_pt !is types.Pointer && param_idx < typed_params.len {
 			pt = typed_params[param_idx]
+		}
+		if child.is_mut && child.op == .amp {
+			pt = g.explicit_mut_pointer_param_type(child, pt)
 		}
 		mut is_shared_param := false
 		if child.typ.len > 0 && child.typ[0] in [`s`, ` `, `\t`, `\n`, `\r`] {
@@ -9908,6 +9921,65 @@ fn (mut g FlatGen) collect_const_init_order_from_files() {
 	}
 }
 
+// module_const_init_order returns the dependency-safe constant initialization
+// order that declaration-only module headers must preserve.
+pub fn module_const_init_order(a &flat.FlatAst, tc &types.TypeChecker) []string {
+	mut g := FlatGen.new()
+	g.a = a
+	g.tc = tc
+	old_module := tc.cur_module
+	old_file := tc.cur_file
+	defer {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+	}
+	mut cur_module := 'main'
+	mut cur_file := ''
+	for node_idx, node in a.nodes {
+		match node.kind {
+			.file {
+				cur_file = node.value
+				cur_module = 'main'
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.fn_decl {
+				g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
+			}
+			.const_decl {
+				for i in 0 .. node.children_count {
+					field := a.child_node(&node, i)
+					if field.kind != .const_field || field.children_count == 0 {
+						continue
+					}
+					qname := g.const_storage_name(cur_module, field.value)
+					g.const_vals[qname] = a.child(field, 0)
+					g.const_modules[qname] = cur_module
+					g.const_files[qname] = cur_file
+					if cur_module in ['', 'main', 'builtin'] && field.value !in g.const_vals {
+						g.const_vals[field.value] = a.child(field, 0)
+						g.const_modules[field.value] = cur_module
+						g.const_files[field.value] = cur_file
+					}
+				}
+			}
+			.import_decl {
+				if node.typ.len > 0 && node.value.len > 0 {
+					g.modules[node.typ] = node.value
+				}
+				if cur_module.len > 0 && node.value.len > 0
+					&& node.value !in g.module_imports[cur_module] {
+					g.module_imports[cur_module] << node.value
+				}
+			}
+			else {}
+		}
+	}
+	g.collect_const_init_order_from_files()
+	return g.const_emission_order()
+}
+
 // ordered_module_init_fns supports ordered module init fns handling for FlatGen.
 fn (g &FlatGen) ordered_module_init_fns() []string {
 	module_to_init := g.module_init_fn_map()
@@ -15515,7 +15587,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					// semantic `&T` value. Synthetic dereferences only read the slot.
 					g.write('(*')
 					if g.source_mut_pointer_param_deref_type(id) != none {
-						g.gen_expr(child_id)
+						g.write('(*')
+						g.gen_mut_pointer_slot_expr(child_id)
+						g.write(')')
 					} else {
 						g.gen_mut_pointer_slot_expr(child_id)
 					}
@@ -19805,6 +19879,7 @@ fn (mut g FlatGen) headerless_bsd_net_constants(af_inet6 string, msg_nosignal st
 	g.writeln('#define IPV6_LEAVE_GROUP 13')
 	g.writeln('#define IPV6_V6ONLY 27')
 	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define SOMAXCONN 128')
 	g.writeln('#define MSG_DONTWAIT 0x80')
 	g.writeln('#define MSG_NOSIGNAL ${msg_nosignal}')
 }
@@ -19857,6 +19932,7 @@ fn (mut g FlatGen) headerless_solaris_net_constants() {
 	g.writeln('#define IPV6_LEAVE_GROUP 0xa')
 	g.writeln('#define IPV6_V6ONLY 0x27')
 	g.writeln('#define AI_PASSIVE 0x0008')
+	g.writeln('#define SOMAXCONN 128')
 	g.writeln('#define MSG_DONTWAIT 0x80')
 	g.writeln('#define MSG_NOSIGNAL 0x200')
 }
@@ -19909,6 +19985,7 @@ fn (mut g FlatGen) headerless_qnx_net_constants() {
 	g.writeln('#define IPV6_LEAVE_GROUP 13')
 	g.writeln('#define IPV6_V6ONLY 27')
 	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define SOMAXCONN 128')
 	g.writeln('#define MSG_DONTWAIT 0x80')
 	g.writeln('#define MSG_NOSIGNAL 0x0800')
 }
@@ -20021,6 +20098,7 @@ fn (mut g FlatGen) headerless_windows_net_constants() {
 	g.writeln('#define IPV6_LEAVE_GROUP 13')
 	g.writeln('#define IPV6_V6ONLY 27')
 	g.writeln('#define AI_PASSIVE 0x00000001')
+	g.writeln('#define SOMAXCONN 0x7fffffff')
 	g.writeln('#define MSG_DONTWAIT 0')
 	g.writeln('#define MSG_NOSIGNAL 0')
 }

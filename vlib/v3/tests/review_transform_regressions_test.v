@@ -2936,6 +2936,343 @@ fn main() {
 	assert out == '1249975000'
 }
 
+fn test_immediately_invoked_bound_method_keeps_escaped_receiver_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+struct State {
+	value int
+}
+
+fn (state &State) install(registry &Registry) {
+	unsafe {
+		registry.callbacks << fn [state] () int {
+			return state.value
+		}
+	}
+}
+
+fn main() {
+	registry := &Registry{}
+	(State{
+		value: 42
+	}.install)(registry)
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_bound_method_escaped_receiver_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	call_pos := main_body.index('println(int__str') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert call_pos >= 0, main_body
+	assert destroy_pos > call_pos, main_body
+	out := run_good(v3_bin, 'immediate_bound_method_escaped_receiver', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_pointer_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	x := 41
+	p := (fn [x] () &int {
+		return unsafe { &x }
+	})()
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_pointer_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_pointer', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_integer_encoded_capture_address_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 41
+	address := (fn [mut value] () usize {
+		return usize(voidptr(&value))
+	})()
+	p := unsafe { &int(voidptr(address)) }
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_integer_capture_address_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_integer_capture_address', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_integer_capture_address_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 41
+	address := (fn [mut value] () usize {
+		encoded := usize(voidptr(&value))
+		return encoded
+	})()
+	p := unsafe { &int(voidptr(address)) }
+	println(int_str(unsafe { *p + 1 }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_integer_capture_address_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	deref_pos := main_body.index('*p') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert deref_pos >= 0, main_body
+	assert destroy_pos > deref_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_integer_capture_address', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_result_error_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct CaptureError {
+	ptr &int
+}
+
+fn (err CaptureError) msg() string {
+	return "capture error"
+}
+
+fn main() {
+	x := 41
+	value := (fn [x] () !int {
+		return CaptureError{
+			ptr: unsafe { &x }
+		}
+	})() or {
+		if err is CaptureError {
+			println(int_str(unsafe { *err.ptr + 1 }))
+		}
+		return
+	}
+	println(int_str(value))
+}
+'
+	out := run_good(v3_bin, 'immediate_closure_aliased_result_error', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_slice_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	fixed := [3]int{41, 42, 43}
+	slice := (fn [fixed] () []int {
+		return fixed[..]
+	})()
+	println(slice)
+}
+'
+	out := run_good(v3_bin, 'immediate_closure_aliased_slice', source)
+	assert out == '[41, 42, 43]'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_string_result_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut bytes := [2]u8{}
+	bytes[0] = `O`
+	bytes[1] = `K`
+	text := (fn [bytes] () string {
+		return unsafe { tos(&bytes[0], bytes.len) }
+	})()
+	println(text)
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_string_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_string', source)
+	assert out == 'OK'
+}
+
+fn test_immediately_invoked_closure_keeps_spawned_nested_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 41
+	worker := (fn [mut value] () thread int {
+		return spawn fn [mut value] () int {
+			return value + 1
+		}()
+	})()
+	println(int_str(worker.wait()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_spawned_capture_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	wait_pos := main_body.index('__v_thread_join') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert wait_pos >= 0, main_body
+	assert destroy_pos > wait_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_spawned_capture', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_aliased_spawn_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	mut value := 42
+	worker := (fn [value] () thread int {
+		p := unsafe { &value }
+		return spawn fn [p] () int {
+			return unsafe { *p }
+		}()
+	})()
+	println(int_str(worker.wait()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_aliased_spawn_capture_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	wait_pos := main_body.index('__v_thread_join') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert wait_pos >= 0, main_body
+	assert destroy_pos > wait_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_aliased_spawn_capture', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_side_effect_capture_escape_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+fn install(mut registry Registry, callback fn () int) {
+	registry.callbacks << callback
+}
+
+fn main() {
+	mut registry := &Registry{}
+	mut value := 42
+	(fn [mut registry, mut value] () {
+		install(mut registry, fn [mut value] () int {
+			return value
+		})
+	})()
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_side_effect_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_side_effect_escape', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_factory_closure_keeps_side_effect_capture_escape_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Registry {
+mut:
+	callbacks []fn () int
+}
+
+fn install(mut registry Registry, callback fn () int) {
+	registry.callbacks << callback
+}
+
+fn make_callback(mut registry Registry) fn () {
+	mut value := 42
+	return fn [mut registry, mut value] () {
+		install(mut registry, fn [mut value] () int {
+			return value
+		})
+	}
+}
+
+fn main() {
+	mut registry := Registry{}
+	make_callback(mut registry)()
+	println(int_str(registry.callbacks[0]()))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_factory_closure_side_effect_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_factory_closure_side_effect_escape', source)
+	assert out == '42'
+}
+
+fn test_immediately_invoked_closure_keeps_projected_capture_escapes_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct PointerHolder {
+mut:
+	value &int
+}
+
+fn main() {
+	external := 0
+	mut holder := &PointerHolder{
+		value: unsafe { &external }
+	}
+	mut selector_value := 40
+	(fn [mut holder, mut selector_value] () {
+		holder.value = unsafe { &selector_value }
+	})()
+
+	mut pointers := [unsafe { &external }]!
+	mut index_value := 41
+	(fn [mut pointers, mut index_value] () {
+		pointers[0] = unsafe { &index_value }
+	})()
+
+	println(int_str(unsafe { *holder.value }))
+	println(int_str(unsafe { *pointers[0] }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_projected_escapes_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.last_index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_projected_escapes', source)
+	assert out == '40\n41'
+}
+
+fn test_immediately_invoked_closure_keeps_channel_sent_capture_alive() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn main() {
+	ch := chan &int{cap: 1}
+	mut value := 42
+	(fn [ch, mut value] () {
+		ch <- unsafe { &value }
+	})()
+	p := <-ch
+	println(int_str(unsafe { *p }))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'immediate_closure_channel_escape_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	println_pos := main_body.index('println') or { -1 }
+	destroy_pos := main_body.index('closure__closure_try_destroy(__immediate_closure_') or { -1 }
+	assert println_pos >= 0, main_body
+	assert destroy_pos > println_pos, main_body
+	out := run_good(v3_bin, 'immediate_closure_channel_escape', source)
+	assert out == '42'
+}
+
 fn test_disjoint_same_name_closure_bindings_are_reclaimed() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
@@ -6481,6 +6818,82 @@ fn main() {
 }
 ')
 	assert out == '7\n4\n1'
+}
+
+fn test_parallel_transform_defers_large_const_map_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut entries := []string{cap: 512}
+	for i in 0 .. 512 {
+		entries << "\t\t'key_${i}': ${i}"
+	}
+	source := "const large_lookup = {\n\t'group': {\n${entries.join('\n')}\n\t}\n}\n\nfn read_large_lookup(key string) int {\n\treturn large_lookup['group'][key]\n}\n\nfn main() {\n\tprintln(read_large_lookup('key_511'))\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_large_const_map', 'VJOBS=4', source)
+	assert out == '511'
+}
+
+fn test_parallel_transform_defers_external_const_collection_clone_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform_ownership()
+	mut fields := []string{cap: 256}
+	for i in 0 .. 256 {
+		fields << '\tfield_${i} string'
+	}
+	mut readers := []string{cap: 64}
+	mut calls := []string{cap: 64}
+	for i in 0 .. 64 {
+		readers << "fn read_${i}() int {\n\treturn if clone_lookup.len == 1 { ${i} } else { -10000 }\n}"
+		calls << '\ttotal += read_${i}()'
+	}
+	source := "struct Wide implements IClone {\n${fields.join('\n')}\n}\n\nfn make_items() []Wide {\n\treturn [Wide{\n\t\tfield_255: 'ok'\n\t}]\n}\n\nconst clone_lookup = {\n\t'items': make_items().clone()\n}\n\n${readers.join('\n\n')}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_collection_clone', 'VJOBS=4', source)
+	assert out == '2016'
+}
+
+fn test_parallel_transform_defers_large_const_map_membership_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut entries := []string{cap: 512}
+	for i in 0 .. 512 {
+		entries << "\t'key_${i}': ${i}"
+	}
+	source := "const large_lookup = {\n${entries.join('\n')}\n}\n\nfn has_key(key string) bool {\n\treturn key in large_lookup\n}\n\nfn lacks_key(key string) bool {\n\treturn key !in large_lookup\n}\n\nfn main() {\n\tprintln(has_key('key_511'))\n\tprintln(lacks_key('missing'))\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_large_const_map_membership', 'VJOBS=4', source)
+	assert out == 'true\ntrue'
+}
+
+fn test_parallel_transform_defers_external_const_map_conditional_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut conditionals := []string{cap: 300}
+	for i in 0 .. 300 {
+		conditionals << 'if false { 0 } else { ${i} }'
+	}
+	source := "const conditional_lookup = {\n\t'value': [${conditionals.join(',\n\t\t')}]\n}\n\nfn read_conditional_lookup() int {\n\treturn conditional_lookup['value'][299]\n}\n\nfn main() {\n\tprintln(read_conditional_lookup())\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_map_conditional', 'VJOBS=4', source)
+	assert out == '299'
+}
+
+fn test_parallel_transform_defers_external_const_map_match_expansion() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut arms := []string{cap: 300}
+	for i in 0 .. 300 {
+		arms << '${i} { ${i} }'
+	}
+	source := "const match_lookup = {\n\t'value': [match 299 {\n\t\t${arms.join('\n\t\t')}\n\t\telse { -1 }\n\t}]\n}\n\nfn read_match_lookup() int {\n\treturn match_lookup['value'][0]\n}\n\nfn main() {\n\tprintln(read_match_lookup())\n}\n"
+	out := run_good_with_env(v3_bin, 'parallel_const_map_match', 'VJOBS=4', source)
+	assert out == '299'
 }
 
 fn test_parallel_transform_merges_generic_call_metadata() {

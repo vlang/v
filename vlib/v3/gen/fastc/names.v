@@ -29,6 +29,19 @@ fn fastc_declared_type_c_names(declared_types map[string]bool) map[string]string
 	return index
 }
 
+fn fastc_declared_type_key_by_name(declared_types map[string]bool) map[string]string {
+	mut index := map[string]string{}
+	for key in declared_types.keys() {
+		name := key.all_after_last('.')
+		if name in index {
+			index[name] = ''
+		} else {
+			index[name] = key
+		}
+	}
+	return index
+}
+
 fn fastc_function_key(module_name string, name string) string {
 	if module_name in ['', 'main'] {
 		return name

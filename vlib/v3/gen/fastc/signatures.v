@@ -243,6 +243,14 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			tok = scan.scan()
 			mut is_variadic := false
 			for tok != .rpar {
+				if is_c_function && tok == .ellipsis {
+					mut look := scan
+					if look.scan() == .rpar {
+						is_variadic = true
+						tok = scan.scan()
+						break
+					}
+				}
 				mut parameter_is_mut := false
 				if tok == .key_mut || (tok == .key_shared && !fastc_shared_parameter_is_name(scan, path, header.module_name, header.imports, declared_types, prefs.building_v)) {
 					parameter_is_mut = true

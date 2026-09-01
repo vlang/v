@@ -298,6 +298,14 @@ const fastc_c_reserved_identifiers = {
 }
 
 fn fastc_c_identifier(name string) string {
+	if name.len < 2 || name.len > 8 {
+		return name
+	}
+	first := name[0]
+	// Bitset of the initial letters used by the reserved-identifier table (`a` is bit 0).
+	if first < `a` || first > `w` || (u32(8_259_967) & (u32(1) << (first - `a`))) == 0 {
+		return name
+	}
 	return if name in fastc_c_reserved_identifiers {
 		'__v_fastc_keyword_${name}'
 	} else {
@@ -610,6 +618,12 @@ struct FastcLocal {
 	chan_element_type string
 }
 
+struct FastcLocalScopeChange {
+	name         string
+	previous     FastcLocal
+	had_previous bool
+}
+
 struct FastcExpressionToken {
 	tok             token.Token
 	source          string
@@ -680,14 +694,16 @@ struct FastcSourceHeader {
 }
 
 struct FastcSourceFile {
-	path   string
-	source string
-	header FastcSourceHeader
+	path          string
+	source        string
+	source_offset int
+	header        FastcSourceHeader
 }
 
 struct FastcQueuedSource {
-	path        string
-	module_name string
+	path         string
+	module_name  string
+	is_canonical bool
 }
 
 struct FastcLoadedSource {
@@ -701,6 +717,20 @@ struct FastcHoistedCSource {
 	directives       string
 	conditional_code string
 	body             string
+}
+
+struct FastcPartitionedCSource {
+	source             string
+	directive_ranges   []int
+	conditional_ranges []int
+	body_ranges        []int
+	final_kind         int
+}
+
+struct FastcCDirectiveLine {
+	start int
+	end   int
+	kind  int
 }
 
 // GenerationResult contains generated C and the complete resolved V source graph.
@@ -802,7 +832,8 @@ struct Parser {
 	declared_types map[string]bool
 	// Generated C spelling -> declared type key, precomputed once per program
 	// (see fastc_declared_type_c_names); semantic_type_key resolves through it.
-	declared_type_c_names map[string]string
+	declared_type_c_names     map[string]string
+	declared_type_key_by_name map[string]string
 	// `__v_fastc_`-prefixed generated C names, the only possible collisions for
 	// temporary_namespace candidates (see fastc_reserved_temporary_c_names).
 	fastc_prefixed_c_names []string
@@ -814,22 +845,23 @@ struct Parser {
 	// Declared variants of each sum type, keyed `"${sum_type_c_name}|${variant_c_name}"`.
 	// Lets an append distinguish push-many (`[]T << []T`) from boxing an array-valued
 	// variant of a recursive sum type as one element (see sumtype_has_variant).
-	sum_type_variants      map[string]bool
-	struct_fields          map[string]map[string]string
-	struct_field_info      map[string][]FastcStructField
-	struct_field_lookup    map[string]map[string]FastcStructField
-	interface_fields       map[string]FastcInterfaceField
-	constants              map[string]string
-	constant_values        map[string]string
-	public_constants       map[string]bool
-	globals                map[string]string
-	public_globals         map[string]bool
-	used_function_names    map[string]bool
-	selfhost               bool
-	has_startup_inits      bool
-	has_cleanup_hooks      bool
+	sum_type_variants   map[string]bool
+	struct_fields       map[string]map[string]string
+	struct_field_info   map[string][]FastcStructField
+	struct_field_lookup map[string]map[string]FastcStructField
+	interface_fields    map[string]FastcInterfaceField
+	constants           map[string]string
+	constant_values     map[string]string
+	public_constants    map[string]bool
+	globals             map[string]string
+	public_globals      map[string]bool
+	used_function_names map[string]bool
+	selfhost            bool
+	has_startup_inits   bool
+	has_cleanup_hooks   bool
 mut:
 	path                     string
+	source_offset            int
 	module_name              string
 	imports                  map[string]string
 	s                        scanner.Scanner
@@ -843,6 +875,8 @@ mut:
 	unsafe_depth             int
 	temp_id                  int
 	locals                   map[string]FastcLocal
+	local_scope_changes      []FastcLocalScopeChange
+	local_scope_depth        int
 	functions                map[string]FastcFunctionSignature
 	constant_types           map[string]string
 	global_types             map[string]string
@@ -982,36 +1016,37 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 // code-generation Parser starts from. Workers share it across threads and
 // return their per-file registration deltas to the stitch pass.
 struct FastcFileGenContext {
-	prefs                  &pref.Preferences = unsafe { nil }
-	declared_types         map[string]bool
-	declared_type_c_names  map[string]string
-	fastc_prefixed_c_names []string
-	has_c_functions        bool
-	declared_kinds         map[string]FastcDeclaredTypeKind
-	enum_flags             map[string]bool
-	enum_field_types       map[string]string
-	alias_base_types       map[string]string
-	sum_types              map[string]bool
-	sum_type_variants      map[string]bool
-	struct_fields          map[string]map[string]string
-	struct_field_info      map[string][]FastcStructField
-	struct_field_lookup    map[string]map[string]FastcStructField
-	interface_fields       map[string]FastcInterfaceField
-	constants              map[string]string
-	constant_values        map[string]string
-	public_constants       map[string]bool
-	globals                map[string]string
-	public_globals         map[string]bool
-	used_function_names    map[string]bool
-	has_startup_inits      bool
-	has_cleanup_hooks      bool
-	functions              map[string]FastcFunctionSignature
-	constant_types         map[string]string
-	global_types           map[string]string
-	fixed_array_types      map[string]string
-	composite_types        map[string]bool
-	generic_method_sources map[string]FastcGenericMethodSource
-	module_aliases         map[string]string
+	prefs                     &pref.Preferences = unsafe { nil }
+	declared_types            map[string]bool
+	declared_type_c_names     map[string]string
+	declared_type_key_by_name map[string]string
+	fastc_prefixed_c_names    []string
+	has_c_functions           bool
+	declared_kinds            map[string]FastcDeclaredTypeKind
+	enum_flags                map[string]bool
+	enum_field_types          map[string]string
+	alias_base_types          map[string]string
+	sum_types                 map[string]bool
+	sum_type_variants         map[string]bool
+	struct_fields             map[string]map[string]string
+	struct_field_info         map[string][]FastcStructField
+	struct_field_lookup       map[string]map[string]FastcStructField
+	interface_fields          map[string]FastcInterfaceField
+	constants                 map[string]string
+	constant_values           map[string]string
+	public_constants          map[string]bool
+	globals                   map[string]string
+	public_globals            map[string]bool
+	used_function_names       map[string]bool
+	has_startup_inits         bool
+	has_cleanup_hooks         bool
+	functions                 map[string]FastcFunctionSignature
+	constant_types            map[string]string
+	global_types              map[string]string
+	fixed_array_types         map[string]string
+	composite_types           map[string]bool
+	generic_method_sources    map[string]FastcGenericMethodSource
+	module_aliases            map[string]string
 }
 
 // FastcFileGenOutput is one source file's generation result. The sequential
@@ -1021,6 +1056,7 @@ struct FastcFileGenOutput {
 mut:
 	prototypes        string
 	body              string
+	directive_lines   []FastcCDirectiveLine
 	has_main_entry    bool
 	fixed_array_types map[string]string
 	composite_types   map[string]bool
@@ -1040,10 +1076,12 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	mut gen := Parser{
 		prefs: unsafe { prefs }
 		path: source_file.path
+		source_offset: source_file.source_offset
 		module_name: source_file.header.module_name
 		imports: source_file.header.imports
 		declared_types: ctx.declared_types
 		declared_type_c_names: ctx.declared_type_c_names
+		declared_type_key_by_name: ctx.declared_type_key_by_name
 		fastc_prefixed_c_names: ctx.fastc_prefixed_c_names
 		has_c_functions: ctx.has_c_functions
 		comparison_memo: map[i64]FastcRenderedExpression{}
@@ -1103,12 +1141,13 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		diagnostic := gen.s.diagnostics[0]
 		return FastcFileGenOutput{
 			failed: true
-			error_message: 'fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}'
+			error_message: 'fastc scanner error at byte ${diagnostic.offset + source_file.source_offset} in ${source_file.path}: ${diagnostic.message}'
 		}
 	}
 	return FastcFileGenOutput{
 		prototypes: gen.protos.str()
 		body: generated
+		directive_lines: fastc_scan_c_directive_lines(generated)
 		has_main_entry: source_file.header.module_name in ['', 'main'] && gen.has_main
 		fixed_array_types: gen.fixed_array_types
 		composite_types: gen.composite_types
@@ -1135,10 +1174,11 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	mut type_source_paths := map[string]bool{}
-	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut
-		enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut
-		globals, mut public_globals)!
+	mut type_sources := map[string]string{}
+	mut constant_sources := map[string]string{}
+	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
+	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
 	mut interface_fields := map[string]FastcInterfaceField{}
@@ -1146,14 +1186,12 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	// interface it embeds), kept flat to stay in FastC's self-hostable subset.
 	mut embed_embedders := []string{}
 	mut embed_embeddeds := []string{}
-	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut
-		functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut
-		embed_embeddeds)!
+	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
 	// An interface that embeds another (`interface B { A; ... }`) inherits A's
 	// methods. Copy them onto B (with the receiver re-keyed to B) so calls on a B
 	// value resolve and B gets its own dispatch table entries.
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
-	used_function_names := fastc_collect_referenced_function_names(sources, prefs, functions)
+	mut pending_references := fastc_start_referenced_function_names(sources, prefs, functions)
 	has_c_functions := fastc_functions_declare_c(functions)
 	fastc_prefixed_c_names := fastc_reserved_temporary_c_names(functions, globals)
 	module_init_calls := fastc_module_init_calls(sources, functions)!
@@ -1170,14 +1208,14 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
-	type_output := fastc_generate_type_declarations(sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
+	type_output := fastc_generate_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
 	declared_composite_types := composite_types.clone()
 	type_declarations := type_output.declarations
 	enum_field_types := type_output.enum_field_types.clone()
 	mut constant_types := map[string]string{}
 	mut global_types := map[string]string{}
 	fastc_render_struct_field_defaults(prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, mut struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)!
-	constant_output := fastc_generate_constant_declarations(sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	constant_output := fastc_generate_constant_declarations(sources, constant_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
 	}
@@ -1192,6 +1230,8 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
 	startup_initializers := fastc_generate_startup_initializers(sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls)!
+	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
+	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v, prefs)
 	mut struct_field_lookup := map[string]map[string]FastcStructField{}
 	for layout_type, fields in struct_field_info {
 		mut fields_by_name := map[string]FastcStructField{}
@@ -1202,6 +1242,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	}
 	mut prototypes := strings.new_builder(1024)
 	mut body := strings.new_builder(4096)
+	mut body_directive_lines := []FastcCDirectiveLine{}
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
 	for name, array_type in global_output.fixed_array_types {
 		fixed_array_types[name] = array_type
@@ -1218,6 +1259,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		prefs: unsafe { prefs }
 		declared_types: declared_types
 		declared_type_c_names: declared_type_c_names
+		declared_type_key_by_name: declared_type_key_by_name
 		fastc_prefixed_c_names: fastc_prefixed_c_names
 		has_c_functions: has_c_functions
 		declared_kinds: declared_kinds
@@ -1256,7 +1298,15 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 			return error(output.error_message)
 		}
 		prototypes.write_string(output.prototypes)
+		body_offset := body.len
 		body.write_string(output.body)
+		for line in output.directive_lines {
+			body_directive_lines << FastcCDirectiveLine{
+				start: body_offset + line.start
+				end: body_offset + line.end
+				kind: line.kind
+			}
+		}
 		mut mono_names := output.mono_definitions.keys()
 		mono_names.sort()
 		for mono_name in mono_names {
@@ -1312,14 +1362,20 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	if late_composite_declarations.len > 0 {
 		late_composite_declarations.writeln('')
 	}
-	interface_dispatches := fastc_generate_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v)
+	interface_dispatches := fastc_wait_interface_dispatches(mut pending_interface_dispatches)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
-	hoisted_body := fastc_hoist_c_directives(body.str())
+	hoisted_body := fastc_partition_c_directive_lines(body.str(), body_directive_lines)
 	mut result := strings.new_builder(preamble.len + c_integer_comparison_helpers.len + type_declarations.len + type_output.enum_string_helpers.len + constant_output.macros.len + constant_output.declarations.len + global_output.declarations.len + prototypes.len + body.len + startup_initializers.len + 96)
 	result.write_string(preamble)
 	result.write_string(c_integer_comparison_helpers)
-	result.write_string(hoisted_body.directives)
+	fastc_write_c_source_ranges(mut result, hoisted_body.source, hoisted_body.directive_ranges)
+	if hoisted_body.final_kind == 1 {
+		result.write_u8(`\n`)
+	}
+	if hoisted_body.directive_ranges.len > 0 {
+		result.writeln('')
+	}
 	if prefs.building_v {
 		result.write_string(c_selfhost_post_directives)
 	}
@@ -1377,8 +1433,17 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		result.writeln('')
 	}
 	result.write_string(synthesized_main)
-	result.write_string(hoisted_body.conditional_code)
-	result.write_string(hoisted_body.body)
+	fastc_write_c_source_ranges(mut result, hoisted_body.source, hoisted_body.conditional_ranges)
+	if hoisted_body.final_kind == 2 {
+		result.write_u8(`\n`)
+	}
+	if hoisted_body.conditional_ranges.len > 0 {
+		result.writeln('')
+	}
+	fastc_write_c_source_ranges(mut result, hoisted_body.source, hoisted_body.body_ranges)
+	if hoisted_body.final_kind == 0 {
+		result.write_u8(`\n`)
+	}
 	return result.str(), spawn_typedefs.len > 0, c_flags
 }
 
@@ -1511,8 +1576,7 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 			}
 			for candidate_index in 0 .. candidate_count {
 				candidate_key := function_keys[candidate_index]
-				if candidate_key == interface_method_key
-					|| function_method_names[candidate_index] != method_name {
+				if candidate_key == interface_method_key || function_method_names[candidate_index] != method_name {
 					continue
 				}
 				receiver_key := candidate_key.all_before_last('.')
@@ -1556,33 +1620,27 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 }
 
 fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
+	partitioned := fastc_partition_c_directives(source)
 	mut directives := strings.new_builder(256)
-	mut conditional_code := strings.new_builder(256)
-	mut body := strings.new_builder(source.len)
-	mut conditional_depth := 0
-	for line in source.split('\n') {
-		directive_name := fastc_c_directive_name(line)
-		if conditional_depth > 0 {
-			conditional_code.writeln(line)
-			if directive_name in ['if', 'ifdef', 'ifndef'] {
-				conditional_depth++
-			} else if directive_name == 'endif' {
-				conditional_depth--
-			}
-		} else if directive_name in ['if', 'ifdef', 'ifndef'] {
-			conditional_code.writeln(line)
-			conditional_depth = 1
-		} else if directive_name != '' {
-			directives.writeln(line)
-		} else {
-			body.writeln(line)
-		}
+	fastc_write_c_source_ranges(mut directives, partitioned.source, partitioned.directive_ranges)
+	if partitioned.final_kind == 1 {
+		directives.write_u8(`\n`)
 	}
-	if directives.len > 0 {
+	if partitioned.directive_ranges.len > 0 {
 		directives.writeln('')
 	}
-	if conditional_code.len > 0 {
+	mut conditional_code := strings.new_builder(256)
+	fastc_write_c_source_ranges(mut conditional_code, partitioned.source, partitioned.conditional_ranges)
+	if partitioned.final_kind == 2 {
+		conditional_code.write_u8(`\n`)
+	}
+	if partitioned.conditional_ranges.len > 0 {
 		conditional_code.writeln('')
+	}
+	mut body := strings.new_builder(source.len)
+	fastc_write_c_source_ranges(mut body, partitioned.source, partitioned.body_ranges)
+	if partitioned.final_kind == 0 {
+		body.write_u8(`\n`)
 	}
 	return FastcHoistedCSource{
 		directives: directives.str()
@@ -1591,9 +1649,170 @@ fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 	}
 }
 
-fn fastc_c_directive_name(line string) string {
-	if !line.starts_with('#') {
-		return ''
+fn fastc_partition_c_directives(source string) FastcPartitionedCSource {
+	mut directive_ranges := []int{}
+	mut conditional_ranges := []int{}
+	mut body_ranges := []int{}
+	mut conditional_depth := 0
+	mut line_start := 0
+	mut run_start := 0
+	mut run_kind := -1
+	for line_end := 0; line_end <= source.len; line_end++ {
+		if line_end < source.len && source[line_end] != `\n` {
+			continue
+		}
+		directive_kind := fastc_c_directive_kind(source, line_start, line_end)
+		mut line_kind := 0
+		if conditional_depth > 0 {
+			line_kind = 2
+			if directive_kind == 2 {
+				conditional_depth++
+			} else if directive_kind == 3 {
+				conditional_depth--
+			}
+		} else if directive_kind == 2 {
+			line_kind = 2
+			conditional_depth = 1
+		} else if directive_kind != 0 {
+			line_kind = 1
+		}
+		if run_kind == -1 {
+			run_kind = line_kind
+		} else if line_kind != run_kind {
+			fastc_append_c_source_range(run_start, line_start, run_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+			run_start = line_start
+			run_kind = line_kind
+		}
+		if line_end == source.len {
+			break
+		}
+		line_start = line_end + 1
 	}
-	return line[1..].trim_space().fields()[0] or { '' }
+	fastc_append_c_source_range(run_start, source.len, run_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+	return FastcPartitionedCSource{
+		source: source
+		directive_ranges: directive_ranges
+		conditional_ranges: conditional_ranges
+		body_ranges: body_ranges
+		final_kind: run_kind
+	}
+}
+
+fn fastc_scan_c_directive_lines(source string) []FastcCDirectiveLine {
+	mut lines := []FastcCDirectiveLine{}
+	mut line_start := 0
+	for line_end := 0; line_end <= source.len; line_end++ {
+		if line_end < source.len && source[line_end] != `\n` {
+			continue
+		}
+		kind := fastc_c_directive_kind(source, line_start, line_end)
+		if kind != 0 {
+			lines << FastcCDirectiveLine{
+				start: line_start
+				end: if line_end < source.len { line_end + 1 } else { line_end }
+				kind: kind
+			}
+		}
+		line_start = line_end + 1
+	}
+	return lines
+}
+
+fn fastc_partition_c_directive_lines(source string, lines []FastcCDirectiveLine) FastcPartitionedCSource {
+	mut directive_ranges := []int{cap: lines.len * 2}
+	mut conditional_ranges := []int{cap: lines.len * 2}
+	mut body_ranges := []int{cap: lines.len * 2 + 2}
+	mut conditional_depth := 0
+	mut cursor := 0
+	mut final_kind := 0
+	for line in lines {
+		if cursor < line.start {
+			final_kind = if conditional_depth > 0 { 2 } else { 0 }
+			fastc_append_c_source_range(cursor, line.start, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+		}
+		if conditional_depth > 0 {
+			final_kind = 2
+			if line.kind == 2 {
+				conditional_depth++
+			} else if line.kind == 3 {
+				conditional_depth--
+			}
+		} else if line.kind == 2 {
+			final_kind = 2
+			conditional_depth = 1
+		} else {
+			final_kind = 1
+		}
+		fastc_append_c_source_range(line.start, line.end, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+		cursor = line.end
+	}
+	if cursor < source.len {
+		final_kind = if conditional_depth > 0 { 2 } else { 0 }
+		fastc_append_c_source_range(cursor, source.len, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+	}
+	return FastcPartitionedCSource{
+		source: source
+		directive_ranges: directive_ranges
+		conditional_ranges: conditional_ranges
+		body_ranges: body_ranges
+		final_kind: final_kind
+	}
+}
+
+fn fastc_append_c_source_range(start int, end int, kind int, mut directive_ranges []int, mut conditional_ranges []int, mut body_ranges []int) {
+	match kind {
+		1 {
+			directive_ranges << start
+			directive_ranges << end
+		}
+		2 {
+			conditional_ranges << start
+			conditional_ranges << end
+		}
+		else {
+			body_ranges << start
+			body_ranges << end
+		}
+	}
+}
+
+@[direct_array_access]
+fn fastc_write_c_source_ranges(mut out strings.Builder, source string, ranges []int) {
+	for i := 0; i < ranges.len; i += 2 {
+		out.write_string(source[ranges[i]..ranges[i + 1]])
+	}
+}
+
+// fastc_c_directive_kind classifies a source line without allocating a
+// substring: 0 is ordinary code, 1 a plain directive, 2 a conditional opener,
+// and 3 `#endif`.
+fn fastc_c_directive_kind(source string, start int, end int) int {
+	if start >= end || source[start] != `#` {
+		return 0
+	}
+	mut name_start := start + 1
+	for name_start < end && source[name_start] in [` `, `\t`, `\r`, `\v`, `\f`] {
+		name_start++
+	}
+	if name_start == end {
+		return 0
+	}
+	mut name_end := name_start
+	for name_end < end && source[name_end] !in [` `, `\t`, `\r`, `\v`, `\f`] {
+		name_end++
+	}
+	name_len := name_end - name_start
+	if name_len == 2 && source[name_start] == `i` && source[name_start + 1] == `f` {
+		return 2
+	}
+	if name_len == 5 && source[name_start] == `i` && source[name_start + 1] == `f` && source[name_start + 2] == `d` && source[name_start + 3] == `e` && source[name_start + 4] == `f` {
+		return 2
+	}
+	if name_len == 6 && source[name_start] == `i` && source[name_start + 1] == `f` && source[name_start + 2] == `n` && source[name_start + 3] == `d` && source[name_start + 4] == `e` && source[name_start + 5] == `f` {
+		return 2
+	}
+	if name_len == 5 && source[name_start] == `e` && source[name_start + 1] == `n` && source[name_start + 2] == `d` && source[name_start + 3] == `i` && source[name_start + 4] == `f` {
+		return 3
+	}
+	return 1
 }
