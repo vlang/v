@@ -491,18 +491,31 @@ fn (receiver NumericReceiver) numeric_argument(value f64) f64 {
 	return value
 }
 
+fn delayed_value(ok bool) ?int {
+	if ok {
+		return 7
+	}
+	return none
+}
+
 fn main() {
-	wide_map_defaults := [1]WideMapDefaults{}
+	mut wide_map_defaults := [1]WideMapDefaults{}
+	wide_map_defaults[0].values["present"] = 9
 	wide_missing := wide_map_defaults[0].values["missing"]
 	mut reassigned_float := f64(0)
 	reassigned_float = 1
 	mut numeric_map := map[u64]f64{}
 	numeric_map[1] = 2
+	numeric_map[u64(2)] = 3
+	numeric_map.delete(2)
 	typed_values := []f64{1, 2}
 	normalized := []int{len: 3, cap: 1}
 	left := f64(1.5)
 	tuple_float, tuple_unsigned := tuple_return()
-	if wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 {
+	pending := delayed_value(false)
+	delayed_fallback := pending or { 42 }
+	scalar_text := "\${true}:\${u64(9223372036854775808)}"
+	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || delayed_fallback != 42 || scalar_text != "true:9223372036854775808" {
 		println("wrong")
 		return
 	}

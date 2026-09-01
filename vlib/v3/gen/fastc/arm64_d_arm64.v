@@ -33,6 +33,7 @@ struct FastArm64Local {
 	addr                 ssa.ValueID
 	typ                  ssa.TypeID
 	typ_name             string
+	option_failed        ssa.ValueID
 	option_error_type    ssa.ValueID
 	option_error_message ssa.ValueID
 	option_error_code    ssa.ValueID
@@ -3789,6 +3790,10 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 			addr: address
 			typ: value.typ
 			typ_name: value.typ_name
+			option_failed: value.option_failed
+			option_error_type: value.option_error_type
+			option_error_message: value.option_error_message
+			option_error_code: value.option_error_code
 			is_spawned: value.is_spawned
 		})
 		return
@@ -3830,6 +3835,10 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		if op == .assign {
 			p.locals[name] = FastArm64Local{
 				...local
+				option_failed: value.option_failed
+				option_error_type: value.option_error_type
+				option_error_message: value.option_error_message
+				option_error_code: value.option_error_code
 				is_spawned: value.is_spawned
 			}
 		}
@@ -5691,6 +5700,93 @@ fn (mut p FastArm64Parser) zero_value(typ ssa.TypeID, type_name string) FastArm6
 	}
 }
 
+fn (p &FastArm64Parser) type_needs_default_initialization(typ ssa.TypeID, depth int) bool {
+	if typ == p.program.map_type {
+		return true
+	}
+	if depth >= 32 {
+		return true
+	}
+	layout := p.program.m.type_store.types[typ]
+	if layout.kind == .array_t {
+		return p.type_needs_default_initialization(layout.elem_type, depth + 1)
+	}
+	declaration := p.program.type_decls_by_id[int(typ)] or { return false }
+	if declaration.is_union || declaration.is_c {
+		return false
+	}
+	for i, field in declaration.fields {
+		if field.default_source != '' {
+			return true
+		}
+		if i < layout.fields.len && p.type_needs_default_initialization(layout.fields[i], depth + 1) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut p FastArm64Parser) default_value_for_type(typ ssa.TypeID, type_name string) !FastArm64Value {
+	if typ == p.program.map_type {
+		return p.new_empty_map_value(type_name)
+	}
+	layout := p.program.m.type_store.types[typ]
+	if layout.kind == .array_t {
+		return p.default_fixed_array_value(typ, type_name)
+	}
+	if declaration := p.program.type_decls_by_id[int(typ)] {
+		if !declaration.is_union && !declaration.is_c {
+			return p.default_struct_value_for_type(typ, type_name)
+		}
+	}
+	return p.zero_value(typ, type_name)
+}
+
+fn (mut p FastArm64Parser) default_fixed_array_value(typ ssa.TypeID, type_name string) !FastArm64Value {
+	mut result := p.zero_value(typ, type_name)
+	layout := p.program.m.type_store.types[typ]
+	if layout.kind != .array_t || layout.len <= 0 || !p.type_needs_default_initialization(layout.elem_type, 0) {
+		return result
+	}
+	element_type_name := fastc_fixed_array_element_type(type_name) or { '' }
+	index_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.i64_type))
+	zero := p.program.m.get_or_add_const(p.program.i64_type, '0')
+	p.program.instr2(.store, p.cur_block, p.program.void_type, zero, index_slot)
+	condition := p.program.m.add_block(p.func_id, 'fixed_array_default_condition')
+	body := p.program.m.add_block(p.func_id, 'fixed_array_default_body')
+	increment := p.program.m.add_block(p.func_id, 'fixed_array_default_increment')
+	done := p.program.m.add_block(p.func_id, 'fixed_array_default_done')
+	p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(condition))
+	p.mark_terminated(p.cur_block)
+	index := p.program.instr1(.load, condition, p.program.i64_type, index_slot)
+	length := p.program.m.get_or_add_const(p.program.i64_type, layout.len.str())
+	more := p.program.instr2(.ult, condition, p.program.i1_type, index, length)
+	p.program.instr3(.br, condition, p.program.void_type, more, ssa.ValueID(body), ssa.ValueID(done))
+	p.mark_terminated(condition)
+	p.cur_block = body
+	element := p.default_value_for_type(layout.elem_type, element_type_name)!
+	base := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, result.address)
+	element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(layout.elem_type).str())
+	offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index, element_size)
+	address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, base, offset)
+	typed_address := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(layout.elem_type), address)
+	p.program.instr2(.store, p.cur_block, p.program.void_type, element.id, typed_address)
+	p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(increment))
+	p.mark_terminated(p.cur_block)
+	current := p.program.instr1(.load, increment, p.program.i64_type, index_slot)
+	one := p.program.m.get_or_add_const(p.program.i64_type, '1')
+	next := p.program.instr2(.add, increment, p.program.i64_type, current, one)
+	p.program.instr2(.store, increment, p.program.void_type, next, index_slot)
+	p.program.instr1(.jmp, increment, p.program.void_type, ssa.ValueID(condition))
+	p.mark_terminated(increment)
+	p.cur_block = done
+	result = FastArm64Value{
+		...result
+		id: p.program.instr1(.load, done, typ, result.address)
+	}
+	return result
+}
+
 fn (mut p FastArm64Parser) parse_comptime_if_expression() !FastArm64Value {
 	selected := fastc_scan_selected_comptime_branch(mut p.s, p.s.scan(), p.source_file.path, p.program.prefs)!
 	outer_scanner := p.s
@@ -5909,6 +6005,29 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 	if value.typ == p.program.str_type {
 		return value
 	}
+	if value.typ == p.program.i1_type {
+		result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
+		true_block := p.program.m.add_block(p.func_id, 'bool_string_true')
+		false_block := p.program.m.add_block(p.func_id, 'bool_string_false')
+		done := p.program.m.add_block(p.func_id, 'bool_string_done')
+		p.program.instr3(.br, p.cur_block, p.program.void_type, value.id, ssa.ValueID(true_block), ssa.ValueID(false_block))
+		p.mark_terminated(p.cur_block)
+		true_value := p.program.m.add_value(.string_literal, p.program.str_type, 'true', 0)
+		p.program.instr2(.store, true_block, p.program.void_type, true_value, result_slot)
+		p.program.instr1(.jmp, true_block, p.program.void_type, ssa.ValueID(done))
+		p.mark_terminated(true_block)
+		false_value := p.program.m.add_value(.string_literal, p.program.str_type, 'false', 0)
+		p.program.instr2(.store, false_block, p.program.void_type, false_value, result_slot)
+		p.program.instr1(.jmp, false_block, p.program.void_type, ssa.ValueID(done))
+		p.mark_terminated(false_block)
+		p.cur_block = done
+		return FastArm64Value{
+			id: p.program.instr1(.load, done, p.program.str_type, result_slot)
+			typ: p.program.str_type
+			typ_name: 'string'
+			address: result_slot
+		}
+	}
 	if value.typ in [p.program.f32_type, p.program.f64_type] {
 		float_value := if value.typ == p.program.f64_type {
 			value
@@ -5926,6 +6045,27 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 				convert_ref,
 				float_value.id,
 				digits,
+			])
+			typ: p.program.str_type
+			typ_name: 'string'
+		}
+	}
+	if p.program.m.type_store.types[value.typ].kind == .int_t {
+		base := p.program.m.get_or_add_const(p.program.i64_type, '10')
+		uppercase := p.program.m.get_or_add_const(p.program.i1_type, '0')
+		is_signed := p.program.m.get_or_add_const(p.program.i1_type, if p.program.m.type_store.types[value.typ].is_unsigned {
+			'0'
+		} else {
+			'1'
+		})
+		convert_ref := p.program.m.add_value(.func_ref, p.program.str_type, 'fast_integer_to_string', p.program.fn_ids['fast_integer_to_string'])
+		return FastArm64Value{
+			id: p.program.m.add_instr(.call, p.cur_block, p.program.str_type, [
+				convert_ref,
+				p.integer_to_i64(value),
+				base,
+				uppercase,
+				is_signed,
 			])
 			typ: p.program.str_type
 			typ_name: 'string'
@@ -6126,6 +6266,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 			typ: local.typ
 			typ_name: local.typ_name
 			address: local.addr
+			option_failed: local.option_failed
 			option_error_type: local.option_error_type
 			option_error_message: local.option_error_message
 			option_error_code: local.option_error_code
@@ -6595,7 +6736,7 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 				return p.unsupported('fixed array length')
 			}
 			fixed_type_name := fastc_fixed_array_type(fixed_length.str(), element_type_name)
-			return p.zero_value(p.program.type_id(fixed_type_name), fixed_type_name)
+			return p.default_fixed_array_value(p.program.type_id(fixed_type_name), fixed_type_name)
 		}
 	}
 	if p.tok != .rsbr {
@@ -6936,9 +7077,16 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 		}
 		if value.typ == p.program.map_type && member == 'delete' {
 			p.expect(.lpar)!
-			key := p.parse_expression(0)!
+			mut key := p.parse_expression(0)!
 			p.expect(.rpar)!
-			key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(key.typ))
+			key_type_name, _ := fastc_map_key_value_types(value.typ_name) or {
+				return p.unsupported('map type `${value.typ_name}`')
+			}
+			key_type := p.program.type_id(key_type_name)
+			if key.typ != key_type {
+				key = p.convert_value(key, key_type, key_type_name)
+			}
+			key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(key_type))
 			p.program.instr2(.store, p.cur_block, p.program.void_type, key.id, key_slot)
 			key_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, key_slot)
 			delete_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'fast_map_delete', p.program.fn_ids['fast_map_delete'])
@@ -8335,18 +8483,8 @@ fn (mut p FastArm64Parser) default_struct_value_for_type(typ ssa.TypeID, type_na
 	for i, field in declaration.fields {
 		field_type := p.program.m.type_store.types[typ].fields[i]
 		if field.default_source == '' {
-			mut value := FastArm64Value{}
-			mut has_nonzero_default := false
-			if field_type == p.program.map_type {
-				value = p.new_empty_map_value(field.typ)!
-				has_nonzero_default = true
-			} else if nested := p.program.type_decls_by_id[int(field_type)] {
-				if !nested.is_union && !nested.is_c {
-					value = p.default_struct_value_for_type(field_type, field.typ)!
-					has_nonzero_default = true
-				}
-			}
-			if has_nonzero_default {
+			if p.type_needs_default_initialization(field_type, 0) {
+				value := p.default_value_for_type(field_type, field.typ)!
 				p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, p.program.struct_field_ptr(p.cur_block, result.address, typ, i))
 			}
 			continue
