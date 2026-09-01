@@ -330,3 +330,59 @@ fn main() {
 	assert int(call_id) >= 0
 	assert tc.call_param_storage_source_params(call_id, 0) == [1]
 }
+
+fn test_param_storage_sources_follow_c_for_execution_order() {
+	path := os.join_path(os.vtmp_dir(), 'v3_storage_source_c_for_${os.getpid()}.v')
+	os.write_file(path, 'struct Value {}
+
+struct Box {
+mut:
+	value &Value
+}
+
+fn store_in_c_for(mut target &Box, value &Value, replacement &Value) {
+	mut local := &Box{
+		value: unsafe { replacement }
+	}
+	mut alias := local
+	mut i := 0
+	for alias = target; i < 1; alias = local {
+		alias.value = value
+		i++
+	}
+}
+
+fn main() {
+	mut value := Value{}
+	mut target := &Box{
+		value: &value
+	}
+	store_in_c_for(mut target, &value, &value)
+}
+') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+
+	mut call_id := flat.empty_node
+	for i, node in a.nodes {
+		if node.kind != .call {
+			continue
+		}
+		name := tc.resolved_call_name(flat.NodeId(i)) or { continue }
+		if name.ends_with('store_in_c_for') {
+			call_id = flat.NodeId(i)
+		}
+	}
+	assert int(call_id) >= 0
+	sources := tc.call_param_storage_source_params(call_id, 0)
+	assert 1 in sources, sources.str()
+}

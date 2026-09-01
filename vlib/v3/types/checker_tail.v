@@ -9246,6 +9246,23 @@ fn storage_param_loop_exit_writes_merge(mut target map[string][]int, exits []Sto
 	}
 }
 
+fn storage_param_loop_iteration_child_indices(node flat.Node) []int {
+	if node.kind != .for_stmt || node.children_count < 3 {
+		mut indices := []int{cap: int(node.children_count)}
+		for i in 0 .. node.children_count {
+			indices << int(i)
+		}
+		return indices
+	}
+	mut indices := []int{cap: int(node.children_count) - 1}
+	indices << 1
+	for i in 3 .. node.children_count {
+		indices << int(i)
+	}
+	indices << 2
+	return indices
+}
+
 fn (tc &TypeChecker) storage_lvalue_path_from_param(id flat.NodeId, name string, aliases map[string][]int, target_param_idx int) ?string {
 	if !tc.valid_node_id(id) || name.len == 0 {
 		return none
@@ -9599,11 +9616,14 @@ fn (mut tc TypeChecker) collect_param_storage_sources(id flat.NodeId, target_nam
 		before := storage_param_sources_clone(aliases)
 		mut loop_aliases := storage_param_sources_clone(aliases)
 		mut loop_writes := storage_param_sources_clone(writes)
+		if node.kind == .for_stmt && node.children_count > 0 {
+			tc.collect_param_storage_sources(tc.a.child(&node, 0), target_name, target_type, target_param_idx, decl_mod, mut loop_aliases, mut visiting, mut loop_writes, mut exited_writes, mut loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
+		}
 		for {
 			mut pass_aliases := storage_param_sources_clone(loop_aliases)
-			mut pass_writes := storage_param_sources_clone(writes)
+			mut pass_writes := storage_param_sources_clone(loop_writes)
 			mut pass_loop_exits := []StorageParamLoopExit{}
-			for i in 0 .. node.children_count {
+			for i in storage_param_loop_iteration_child_indices(node) {
 				tc.collect_param_storage_sources(tc.a.child(&node, i), target_name, target_type, target_param_idx, decl_mod, mut pass_aliases, mut visiting, mut pass_writes, mut exited_writes, mut pass_loop_exits, mut exited_aliases, active_defer_count, mut exited_defer_counts)
 			}
 			mut next_aliases := storage_param_sources_clone(loop_aliases)
