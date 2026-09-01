@@ -697,6 +697,82 @@ fn test_fn_span_map_expansion_estimate_defers_compiler_default_clone_calls() {
 	assert t.fn_span_map_expansion_estimate(int(receiver), int(clone_call) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality() {
+	mut metadata_ast := flat.FlatAst.new()
+	type_idx_call := add_runtime_metadata_call(mut metadata_ast, 'item', 'Item', 'type_idx', 'int')
+	mut metadata_tc := types.TypeChecker.new(&metadata_ast)
+	mut metadata_transformer := new_transformer(mut metadata_ast, &metadata_tc, map[string]bool{})
+	metadata_transformer.sum_types['Item'] = ['First', 'Second']
+	assert metadata_transformer.fn_span_map_expansion_estimate(0, int(type_idx_call) + 1) > deferred_map_expansion_threshold
+
+	mut equality_ast := flat.FlatAst.new()
+	left := equality_ast.add_node(flat.Node{
+		kind: .ident
+		value: 'left'
+		typ: 'Wide'
+	})
+	right := equality_ast.add_node(flat.Node{
+		kind: .ident
+		value: 'right'
+		typ: 'Wide'
+	})
+	equality_start := equality_ast.children.len
+	equality_ast.children << left
+	equality_ast.children << right
+	equality := equality_ast.add_node(flat.Node{
+		kind: .infix
+		op: .eq
+		typ: 'bool'
+		children_start: equality_start
+		children_count: 2
+	})
+	mut equality_tc := types.TypeChecker.new(&equality_ast)
+	mut equality_transformer := new_transformer(mut equality_ast, &equality_tc, map[string]bool{})
+	equality_transformer.structs['Wide'] = StructInfo{
+		name: 'Wide'
+	}
+	assert equality_transformer.fn_span_map_expansion_estimate(0, int(equality) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_fn_span_map_expansion_estimate_defers_ownership_collection_clones() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	receiver := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: '[]Wide'
+	})
+	selector_start := a.children.len
+	a.children << receiver
+	selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'reverse'
+		typ: 'fn () []Wide'
+		children_start: selector_start
+		children_count: 1
+	})
+	call_start := a.children.len
+	a.children << selector
+	reverse_call := a.add_node(flat.Node{
+		kind: .call
+		typ: '[]Wide'
+		children_start: call_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	tc.struct_implements['Wide'] = ['IClone']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(0, int(reverse_call) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
 	mut a := flat.FlatAst.new()
 	length := a.add_node(flat.Node{

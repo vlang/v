@@ -790,11 +790,20 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 				estimate += deferred_map_expansion_threshold + 1
 			}
 		}
+		if t.external_equality_expands_from_type_metadata(node) {
+			estimate += deferred_map_expansion_threshold + 1
+		}
 		if node.kind == .call {
+			if t.runtime_type_metadata_call_expands(flat.NodeId(idx), node) {
+				estimate += deferred_map_expansion_threshold + 1
+			}
 			if info := t.compiler_default_clone_call_info(node) {
 				if info.can_lower {
 					estimate += deferred_map_expansion_threshold + 1
 				}
+			}
+			if t.compiler_collection_clone_call_expands(node) {
+				estimate += deferred_map_expansion_threshold + 1
 			}
 		}
 		// Map index lowering replaces a constant identifier with its initializer
