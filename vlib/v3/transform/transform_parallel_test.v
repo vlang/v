@@ -657,8 +657,81 @@ fn test_if_expr_zero_value_expansion_is_reserved() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) >
-		deferred_map_expansion_threshold
+	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_match_expr_zero_value_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	subject := a.add_node(flat.Node{
+		kind: .bool_literal
+		value: 'true'
+		typ: 'bool'
+	})
+	condition := a.add_node(flat.Node{
+		kind: .bool_literal
+		value: 'true'
+		typ: 'bool'
+	})
+	value := a.add_node(flat.Node{
+		kind: .call
+		value: 'make_big'
+		typ: '[4096][]int'
+	})
+	branch_start := a.children.len
+	a.children << condition
+	a.children << value
+	branch := a.add_node(flat.Node{
+		kind: .match_branch
+		children_start: branch_start
+		children_count: 2
+	})
+	root_start := a.children.len
+	a.children << subject
+	a.children << branch
+	root := a.add_node(flat.Node{
+		kind: .match_stmt
+		typ: '[4096][]int'
+		children_start: root_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_or_expr_zero_value_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	optional_value := a.add_node(flat.Node{
+		kind: .call
+		value: 'make_big'
+		typ: '?[4096][]int'
+	})
+	fallback_value := a.add_node(flat.Node{
+		kind: .call
+		value: 'fallback'
+		typ: '[4096][]int'
+	})
+	fallback_start := a.children.len
+	a.children << fallback_value
+	fallback_block := a.add_node(flat.Node{
+		kind: .block
+		children_start: fallback_start
+		children_count: 1
+	})
+	root_start := a.children.len
+	a.children << optional_value
+	a.children << fallback_block
+	root := a.add_node(flat.Node{
+		kind: .or_expr
+		typ: '[4096][]int'
+		children_start: root_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
 }
 
 fn test_fn_span_map_expansion_estimate_defers_sum_type_map_index_zero_value() {

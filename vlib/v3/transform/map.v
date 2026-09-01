@@ -979,6 +979,35 @@ fn (mut t Transformer) if_expr_zero_value_expansion_estimate(id flat.NodeId, nod
 	return t.zero_value_expansion_estimate(id, result_type)
 }
 
+fn (mut t Transformer) match_expr_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .match_stmt {
+		return 0
+	}
+	mut result_type := t.match_expr_type(node)
+	if (result_type.len == 0 || result_type == 'void' || t.generic_arg_is_unresolved(result_type))
+		&& decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
+		result_type = node.typ
+	}
+	return t.zero_value_expansion_estimate(id, result_type)
+}
+
+fn (mut t Transformer) or_expr_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .or_expr || node.children_count < 2 {
+		return 0
+	}
+	expr_id := t.a.child(&node, 0)
+	fallback_type := if decl_type_is_usable(node.typ) && !t.generic_arg_is_unresolved(node.typ) {
+		node.typ
+	} else {
+		t.stmt_value_type(t.a.child(&node, 1))
+	}
+	_, value_type := t.or_expr_types(expr_id, fallback_type)
+	if value_type in ['', 'void', 'Optional', '!', '?'] {
+		return 0
+	}
+	return t.zero_value_expansion_estimate(id, value_type)
+}
+
 fn (mut t Transformer) ownership_array_append_expands(node flat.Node) bool {
 	if node.kind != .infix || node.op != .left_shift || node.children_count < 2 || isnil(t.tc) {
 		return false
@@ -1068,6 +1097,12 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 		}
 		if node.kind == .if_expr {
 			estimate += t.if_expr_zero_value_expansion_estimate(flat.NodeId(idx), node)
+		}
+		if node.kind == .match_stmt {
+			estimate += t.match_expr_zero_value_expansion_estimate(flat.NodeId(idx), node)
+		}
+		if node.kind == .or_expr {
+			estimate += t.or_expr_zero_value_expansion_estimate(flat.NodeId(idx), node)
 		}
 		if node.kind == .map_init {
 			estimate += t.map_init_expansion_estimate(flat.NodeId(idx), node)
