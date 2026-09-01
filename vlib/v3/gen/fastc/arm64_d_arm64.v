@@ -7650,6 +7650,8 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 				})!
 			} else if expected_element_type_name != '' {
 				p.parse_contextual_value(expected_element_type_name)!
+			} else if initial.len > 0 {
+				p.parse_contextual_value(initial[0].typ_name)!
 			} else {
 				p.parse_expression(0)!
 			}
@@ -9097,16 +9099,24 @@ fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
 			p.next()
 			continue
 		}
-		keys << if expected_key_type_name == '' {
+		keys << if expected_key_type_name == '' && keys.len == 0 {
 			p.parse_expression(0)!
 		} else {
-			p.parse_contextual_value(expected_key_type_name)!
+			p.parse_contextual_value(if expected_key_type_name == '' {
+				keys[0].typ_name
+			} else {
+				expected_key_type_name
+			})!
 		}
 		p.expect(.colon)!
-		values << if expected_value_type_name == '' {
+		values << if expected_value_type_name == '' && values.len == 0 {
 			p.parse_expression(0)!
 		} else {
-			p.parse_contextual_value(expected_value_type_name)!
+			p.parse_contextual_value(if expected_value_type_name == '' {
+				values[0].typ_name
+			} else {
+				expected_value_type_name
+			})!
 		}
 		if p.tok in [.comma, .semicolon] {
 			p.next()
