@@ -194,7 +194,7 @@ fn (g &Parser) render_ordinary_string_print_expression(tokens []FastcExpressionT
 		return none
 	}
 	argument_type := g.infer_expression_type(call_arguments[0]) or { return none }
-	if g.underlying_alias_type(argument_type).trim_right('*') != 'string' {
+	if fastc_trim_pointer_suffix(g.underlying_alias_type(argument_type)) != 'string' {
 		return none
 	}
 	argument := g.render_call_argument_expression(call_arguments[0], 'string') or { return none }
@@ -247,7 +247,7 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 	argument_type := fastc_normalize_inferred_type(g.infer_expression_type(call_arguments[0]) or {
 		return none
 	})
-	if g.underlying_alias_type(argument_type).trim_right('*') == 'string' {
+	if fastc_trim_pointer_suffix(g.underlying_alias_type(argument_type)) == 'string' {
 		return none
 	}
 	argument := g.render_call_argument_expression(call_arguments[0], argument_type) or {
@@ -277,7 +277,7 @@ fn (g &Parser) render_selfhost_print_expression(tokens []FastcExpressionToken) ?
 }
 
 fn (g &Parser) render_struct_literal_with_defaults(c_type string, layout_type string, explicit_initializers []string, rendered_fields []string, rendered_fields_by_name map[string]string) FastcRenderedExpression {
-	base_type := c_type.trim_right('*')
+	base_type := fastc_trim_pointer_suffix(c_type)
 	mut assignments := []string{cap: rendered_fields.len}
 	mut initializers := []string{}
 	mut initialized_fields := map[string]bool{}
@@ -313,7 +313,7 @@ fn (g &Parser) render_struct_literal_with_defaults(c_type string, layout_type st
 }
 
 fn (g &Parser) render_empty_struct_initializer(c_type string) string {
-	layout_type := c_type.trim_right('*')
+	layout_type := fastc_trim_pointer_suffix(c_type)
 	mut rendered_fields := []string{}
 	mut rendered_fields_by_name := map[string]string{}
 	for field in g.struct_field_info[layout_type] {
@@ -384,7 +384,7 @@ fn (g &Parser) render_struct_literal_field_names(tokens []FastcExpressionToken, 
 	c_type := g.type_from_expression_tokens(tokens[..open]) or { return none }
 	mut rendered := rendered_expression
 	mut changed := false
-	if fields := g.struct_fields[c_type.trim_right('*')] {
+	if fields := g.struct_fields[fastc_trim_pointer_suffix(c_type)] {
 		for field_name, _ in fields {
 			for module_name in [g.module_name, 'builtin'] {
 				constant_name := g.constants[fastc_constant_key(module_name, field_name)] or { '' }
@@ -510,7 +510,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 	}
 	rhs_tokens := tokens[assignment_index + 1..]
 	mut right := ''
-	if rhs_tokens.len == 2 && rhs_tokens[0].tok == .lsbr && rhs_tokens[1].tok == .rsbr && left_type.trim_right('*').starts_with('Array_') {
+	if rhs_tokens.len == 2 && rhs_tokens[0].tok == .lsbr && rhs_tokens[1].tok == .rsbr && fastc_trim_pointer_suffix(left_type).starts_with('Array_') {
 		// An empty array literal `[]` has no element type of its own; assigned to an
 		// array target it lowers to a typed empty array from the target's type (the
 		// standalone `x = []` case is handled where `expected_expression_type` is set).
@@ -523,7 +523,7 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 	if g.selfhost && operator == .assign && left_type == 'Option' && option_payload_type != '' {
 		rhs_type := fastc_normalize_inferred_type(g.infer_expression_type(rhs_tokens) or { '' })
 		if rhs_type != 'Option' {
-			if rhs_type.trim_right('*') == 'IError' {
+			if fastc_trim_pointer_suffix(rhs_type) == 'IError' {
 				right = '(Option){.err=${right}, .state=1}'
 			} else {
 				payload := g.render_call_argument_expression(rhs_tokens, option_payload_type) or {
@@ -573,7 +573,7 @@ fn (g &Parser) render_overloaded_assignment(target string, value string, target_
 }
 
 fn (g &Parser) render_unsigned_right_shift_assignment(target string, value string, target_type string) ?string {
-	resolved_type := g.underlying_alias_type(target_type).trim_right('*')
+	resolved_type := fastc_trim_pointer_suffix(g.underlying_alias_type(target_type))
 	unsigned_type, bits := match resolved_type {
 		'byte', 'char', 'i8', 'u8' { 'u8', '8' }
 		'i16', 'u16' { 'u16', '16' }
@@ -680,12 +680,12 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 	right_type := fastc_normalize_inferred_type(g.infer_expression_type(right_tokens) or {
 		return none
 	})
-	left_layout := left_type.trim_right('*')
+	left_layout := fastc_trim_pointer_suffix(left_type)
 	if left_type != right_type || (!left_layout.starts_with('Array_') && !left_layout.starts_with('FixedArray_')) {
 		return none
 	}
 	element_type := g.array_element_type(left_type) or { return none }
-	resolved_element := g.underlying_alias_type(element_type).trim_right('*')
+	resolved_element := fastc_trim_pointer_suffix(g.underlying_alias_type(element_type))
 	is_scalar := fastc_is_numeric_expression_type(resolved_element) || resolved_element == 'bool' || fastc_is_pointer_type(element_type) || g.underlying_enum_type_key(g.semantic_type_key(element_type)) != none
 	if resolved_element != 'string' && !is_scalar {
 		return none
@@ -722,7 +722,7 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 }
 
 fn (g &Parser) render_fixed_array_equality_data(tokens []FastcExpressionToken, c_type string) ?string {
-	layout_type := c_type.trim_right('*')
+	layout_type := fastc_trim_pointer_suffix(c_type)
 	if literal := g.render_array_literal_argument(tokens, layout_type) {
 		return '(${literal.source}).data'
 	}
@@ -1028,7 +1028,7 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 		}
 		base_tokens := tokens[start..open]
 		base_type := g.infer_expression_type(base_tokens) or { continue }
-		if base_type.trim_right('*').starts_with('Map_') {
+		if fastc_trim_pointer_suffix(base_type).starts_with('Map_') {
 			lookup_tokens := tokens[start..close + 1]
 			lookup := g.render_map_expression(lookup_tokens) or { continue }
 			raw_lookup := g.render_raw_expression_tokens(lookup_tokens) or { continue }
@@ -1044,7 +1044,7 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 		} else if is_array_pointer {
 			g.array_element_type(base_type) or { continue }
 		} else if base_type.ends_with('*') {
-			base_type.trim_right('*')
+			fastc_trim_pointer_suffix(base_type)
 		} else {
 			g.array_element_type(base_type) or { continue }
 		}
@@ -1058,7 +1058,7 @@ fn (g &Parser) render_chained_array_access_expression(tokens []FastcExpressionTo
 		index_source := g.render_membership_candidate(tokens[open + 1..close], 'int') or {
 			continue
 		}
-		is_raw_fixed_array := base_type.trim_right('*').starts_with('FixedArray_') && (base_tokens.len > 1 || (base_tokens.len == 1 && fastc_global_key(g.module_name, base_tokens[0].lit) in g.globals))
+		is_raw_fixed_array := fastc_trim_pointer_suffix(base_type).starts_with('FixedArray_') && (base_tokens.len > 1 || (base_tokens.len == 1 && fastc_global_key(g.module_name, base_tokens[0].lit) in g.globals))
 		replacement := if checked_access := g.render_array_access_expression(tokens[start..close + 1]) {
 			checked_access.source
 		} else if is_raw_fixed_array {
@@ -1207,7 +1207,7 @@ fn (g &Parser) struct_equality_is_supported(typ string, seen []string) bool {
 	if fastc_is_pointer_type(typ) {
 		return true
 	}
-	layout_type := g.underlying_alias_type(typ).trim_right('*')
+	layout_type := fastc_trim_pointer_suffix(g.underlying_alias_type(typ))
 	if layout_type == 'string' || layout_type == 'bool' || fastc_is_numeric_expression_type(layout_type) {
 		return true
 	}
@@ -1246,7 +1246,7 @@ fn (g &Parser) struct_equality_source(left string, right string, typ string, see
 	if fastc_is_pointer_type(typ) {
 		return '((${left}) == (${right}))'
 	}
-	layout_type := g.underlying_alias_type(typ).trim_right('*')
+	layout_type := fastc_trim_pointer_suffix(g.underlying_alias_type(typ))
 	if layout_type == 'string' {
 		return 'builtin__string_eq(${left}, ${right})'
 	}
@@ -1385,8 +1385,8 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			if fastc_is_pointer_type(left_type) || fastc_is_pointer_type(right_type) {
 				return none
 			}
-			left_layout := g.underlying_alias_type(left_type).trim_right('*')
-			right_layout := g.underlying_alias_type(right_type).trim_right('*')
+			left_layout := fastc_trim_pointer_suffix(g.underlying_alias_type(left_type))
+			right_layout := fastc_trim_pointer_suffix(g.underlying_alias_type(right_type))
 			if left_layout == right_layout && left_layout in g.sum_types {
 				// Sum-type equality (`value == Primitive(Null{})`): the boxed struct
 				// cannot be compared with C `==`, so compare the variant tag (and, for a
@@ -1656,7 +1656,7 @@ fn (g &Parser) render_string_comparison_expression(tokens []FastcExpressionToken
 		right_tokens := tokens[i + 1..]
 		left_type := g.infer_expression_type(left_tokens) or { return none }
 		right_type := g.infer_expression_type(right_tokens) or { return none }
-		if g.underlying_alias_type(left_type).trim_right('*') != 'string' || g.underlying_alias_type(right_type).trim_right('*') != 'string' {
+		if fastc_trim_pointer_suffix(g.underlying_alias_type(left_type)) != 'string' || fastc_trim_pointer_suffix(g.underlying_alias_type(right_type)) != 'string' {
 			return none
 		}
 		left_source := g.render_comparison_operand(left_tokens, 'string') or { return none }
@@ -1963,7 +1963,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 	if actual_type == 'voidptr' && !expected_type.ends_with('*') && (expected_type.trim_right('*') in g.struct_fields || expected_type.trim_right('*').starts_with('Array_') || expected_type.trim_right('*').starts_with('Map_') || expected_type.trim_right('*').starts_with('FixedArray_')) {
 		return '*((${expected_type} *)(${rendered}))'
 	}
-	if expected_type == 'string' && actual_type.trim_right('*') == 'IError' {
+	if expected_type == 'string' && fastc_trim_pointer_suffix(actual_type) == 'IError' {
 		return 'builtin__IError_msg(${rendered})'
 	}
 	if actual_type.ends_with('*') && expected_type == actual_type.trim_right('*') && !fastc_expression_tokens_contain(tokens, .lsbr) {
@@ -1989,7 +1989,7 @@ fn (g &Parser) render_call_argument_expression(tokens []FastcExpressionToken, ex
 }
 
 fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expected_type string) ?FastcRenderedExpression {
-	array_type := expected_type.trim_right('*')
+	array_type := fastc_trim_pointer_suffix(expected_type)
 	is_fixed := array_type.starts_with('FixedArray_')
 	if (!array_type.starts_with('Array_') && !is_fixed) || tokens.len < 2 || tokens[0].tok != .lsbr {
 		return none
@@ -2123,7 +2123,7 @@ fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?st
 }
 
 fn (g &Parser) render_map_literal_argument(tokens []FastcExpressionToken, expected_type string) ?FastcRenderedExpression {
-	map_type := expected_type.trim_right('*')
+	map_type := fastc_trim_pointer_suffix(expected_type)
 	key_type, value_type := g.map_key_value_types(map_type) or { return none }
 	if tokens.len < 2 || tokens[0].tok != .lcbr || tokens.last().tok != .rcbr {
 		return none
@@ -2237,7 +2237,7 @@ fn fastc_map_literal_entries(tokens []FastcExpressionToken, start int, end int) 
 // representation: interfaces and sum types. A concrete struct used where such a
 // type is expected is boxed with its type id (see interface_value_expression).
 fn (g &Parser) is_boxed_type(c_type string) bool {
-	if c_type.trim_right('*') in g.sum_types {
+	if fastc_trim_pointer_suffix(c_type) in g.sum_types {
 		return true
 	}
 	return g.declared_kinds[g.semantic_type_key(c_type)] == .interface_
@@ -2249,7 +2249,7 @@ fn (g &Parser) is_boxed_type(c_type string) bool {
 // a recursive sum type (`type Value = []Value | int`) boxed as a single element
 // rather than treated as a push-many append.
 fn (g &Parser) sumtype_has_variant(sum_type string, variant string) bool {
-	base := sum_type.trim_right('*')
+	base := fastc_trim_pointer_suffix(sum_type)
 	if base !in g.sum_types {
 		return false
 	}
@@ -2268,10 +2268,10 @@ fn (g &Parser) should_box_variant(expected_type string, actual_type string) bool
 	if g.declared_kinds[g.semantic_type_key(resolved_actual)] == .struct_ {
 		return true
 	}
-	if expected_type.trim_right('*') in g.sum_types {
+	if fastc_trim_pointer_suffix(expected_type) in g.sum_types {
 		// Primitive or composite (`Array_`/`Map_`) value into a sum type. Interfaces
 		// have no primitive/composite implementers, so this is sum-type only.
-		normalized := fastc_normalize_inferred_type(actual_type).trim_right('*')
+		normalized := fastc_trim_pointer_suffix(fastc_normalize_inferred_type(actual_type))
 		return fastc_primitive_c_type(normalized) != none || normalized.starts_with('Array_') || normalized.starts_with('Map_')
 	}
 	return false
@@ -2347,7 +2347,7 @@ fn (g &Parser) render_array_lookup_option_expression(tokens []FastcExpressionTok
 	}
 	base_tokens := lookup_tokens[..open]
 	base_type := g.infer_expression_type(base_tokens) or { return none }
-	if !base_type.trim_right('*').starts_with('Array_') {
+	if !fastc_trim_pointer_suffix(base_type).starts_with('Array_') {
 		return none
 	}
 	element_type := g.array_element_type(base_type) or { return none }
@@ -2492,7 +2492,7 @@ fn (g &Parser) render_append_expression(tokens []FastcExpressionToken, rendered_
 				}
 			}
 			base_type := g.infer_expression_type(base_tokens) or { '' }
-			base_layout := g.underlying_alias_type(base_type).trim_right('*')
+			base_layout := fastc_trim_pointer_suffix(g.underlying_alias_type(base_type))
 			if base_layout.starts_with('Array_') {
 				outer_element_type := g.array_element_type(base_type) or { '' }
 				if fastc_normalize_inferred_type(outer_element_type) == fastc_normalize_inferred_type(left_type) {
@@ -2559,7 +2559,7 @@ fn (g &Parser) render_composed_string_concatenation(tokens []FastcExpressionToke
 			.plus {
 				if depth == 0 {
 					operand_type := g.infer_expression_type(tokens[operand_start..i]) or { '' }
-					string_operands << g.underlying_alias_type(operand_type).trim_right('*') == 'string'
+					string_operands << fastc_trim_pointer_suffix(g.underlying_alias_type(operand_type)) == 'string'
 					operand_start = i + 1
 					plus_count++
 				}
@@ -2571,7 +2571,7 @@ fn (g &Parser) render_composed_string_concatenation(tokens []FastcExpressionToke
 		return none
 	}
 	last_operand_type := g.infer_expression_type(tokens[operand_start..]) or { '' }
-	string_operands << g.underlying_alias_type(last_operand_type).trim_right('*') == 'string'
+	string_operands << fastc_trim_pointer_suffix(g.underlying_alias_type(last_operand_type)) == 'string'
 	mut has_string_operand := false
 	for is_string in string_operands {
 		if is_string {

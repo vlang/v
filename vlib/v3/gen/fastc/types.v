@@ -251,11 +251,11 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 		if array_end - operator_index - 1 >= 2 && tokens[operator_index + 1].tok == .lsbr && tokens[array_end - 1].tok == .rsbr {
 			return 'bool'
 		}
-		if right_type.trim_right('*').starts_with('Map_') {
+		if fastc_trim_pointer_suffix(right_type).starts_with('Map_') {
 			_, _ := g.map_key_value_types(right_type) or {
 				return g.unsupported('membership `${operator.str()}` with unverifiable map type `${right_type}`')
 			}
-		} else if right_type.trim_right('*') == 'string' {
+		} else if fastc_trim_pointer_suffix(right_type) == 'string' {
 		} else {
 			_ := g.array_element_type(right_type) or {
 				return g.unsupported('membership `${operator.str()}` in non-collection type `${right_type}`')
@@ -273,8 +273,8 @@ fn (g &Parser) infer_boolean_binary_expression_type(tokens []FastcExpressionToke
 			left_type = right_type
 		}
 		if !fastc_is_pointer_type(left_type) && !fastc_is_pointer_type(right_type) {
-			left_layout := g.underlying_alias_type(left_type).trim_right('*')
-			right_layout := g.underlying_alias_type(right_type).trim_right('*')
+			left_layout := fastc_trim_pointer_suffix(g.underlying_alias_type(left_type))
+			right_layout := fastc_trim_pointer_suffix(g.underlying_alias_type(right_type))
 			left_key := g.semantic_type_key(left_layout)
 			if left_layout == right_layout && left_layout !in ['Option', '_option', '_result'] && left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_ && !g.struct_equality_is_supported(left_type, []string{}) {
 				return g.unsupported('struct equality for `${left_type}` with unsupported fields')
@@ -340,28 +340,6 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 	if start >= end {
 		return ''
 	}
-	if end - start == 1 && tokens[start].tok == .name && tokens[start].typ != '' && tokens[start].source != '' {
-		// A synthetic token carrying its own rendered `source` and recorded `typ` (e.g. an
-		// or-unwrap `({ ... })` produced for `(expr or {…}).method()`): trust its recorded
-		// type rather than looking the name up as a local variable.
-		return tokens[start].typ
-	}
-	if end - start >= 4 && tokens[start].tok == .key_sizeof && tokens[start + 1].tok == .lpar && tokens[end - 1].tok == .rpar {
-		return 'int'
-	}
-	if reflection_type := fastc_typeof_generic_field_type(tokens, start, end) {
-		return reflection_type
-	}
-	if c_field_type := g.infer_c_pointer_cast_member_type(tokens, start, end) {
-		return c_field_type
-	}
-	if tokens[start].tok == .not {
-		_ = g.infer_expression_type_range(tokens, start + 1, end)!
-		return 'bool'
-	}
-	if operator_index := fastc_lowest_precedence_operator_index(tokens, start, end) {
-		return g.infer_boolean_binary_expression_type(tokens, start, end, operator_index)!
-	}
 	if end - start == 1 {
 		item := tokens[start]
 		if item.typ != '' {
@@ -415,6 +393,26 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 				''
 			}
 		}
+	}
+	if end - start >= 4 && tokens[start].tok == .key_sizeof && tokens[start + 1].tok == .lpar && tokens[end - 1].tok == .rpar {
+		return 'int'
+	}
+	if end - start >= 8 && tokens[start].lit == 'typeof' {
+		if reflection_type := fastc_typeof_generic_field_type(tokens, start, end) {
+			return reflection_type
+		}
+	}
+	if end - start >= 9 && tokens[start].tok in [.amp, .and] {
+		if c_field_type := g.infer_c_pointer_cast_member_type(tokens, start, end) {
+			return c_field_type
+		}
+	}
+	if tokens[start].tok == .not {
+		_ = g.infer_expression_type_range(tokens, start + 1, end)!
+		return 'bool'
+	}
+	if operator_index := fastc_lowest_precedence_operator_index(tokens, start, end) {
+		return g.infer_boolean_binary_expression_type(tokens, start, end, operator_index)!
 	}
 	if end - start == 2 && tokens[start].tok == .dot && tokens[start + 1].typ != '' {
 		return tokens[start + 1].typ
@@ -625,7 +623,7 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 	}
 	if tokens[start].tok == .mul {
 		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
-		return operand_type.trim_right('*')
+		return fastc_trim_pointer_suffix(operand_type)
 	}
 	if tokens[start].tok == .bit_not {
 		operand_type := g.infer_expression_type_range(tokens, start + 1, end)!
@@ -658,20 +656,21 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 		}
 		if open_index > start {
 			base_type := g.infer_expression_type_range(tokens, start, open_index)!
+			base_layout := fastc_trim_pointer_suffix(base_type)
 			if fastc_expression_tokens_contain(tokens[open_index + 1..end - 1], .dotdot) {
 				// Slicing a fixed array yields a dynamic array of its element type.
-				if base_type.trim_right('*').starts_with('FixedArray_') {
-					if element := g.array_element_type(base_type.trim_right('*')) {
+				if base_layout.starts_with('FixedArray_') {
+					if element := g.array_element_type(base_layout) {
 						return fastc_array_c_type(fastc_normalize_inferred_type(element))
 					}
 				}
 				return base_type
 			}
-			if base_type.trim_right('*').starts_with('Map_') {
+			if base_layout.starts_with('Map_') {
 				_, value_type := g.map_key_value_types(base_type) or { return '' }
 				return value_type
 			}
-			if base_type.trim_right('*') == 'string' {
+			if base_layout == 'string' {
 				return 'u8'
 			}
 			if element_type := g.array_element_type(base_type) {
@@ -730,7 +729,7 @@ fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expres
 			if right_element := g.indexed_array_operand_type(tokens, i + 1, end, right_type) {
 				right_type = right_element
 			}
-			if tokens[i].tok == .plus && g.underlying_alias_type(left_type).trim_right('*') == 'string' && g.underlying_alias_type(right_type).trim_right('*') == 'string' {
+			if tokens[i].tok == .plus && fastc_trim_pointer_suffix(g.underlying_alias_type(left_type)) == 'string' && fastc_trim_pointer_suffix(g.underlying_alias_type(right_type)) == 'string' {
 				return 'string'
 			}
 			if g.selfhost && tokens[i].tok == .plus && ((left_type == 'string' && right_type == '') || (right_type == 'string' && left_type == '')) {
@@ -847,19 +846,20 @@ fn (g &Parser) infer_member_access_type(tokens []FastcExpressionToken, start int
 			close := fastc_matching_delimiter_before(tokens, index, end, .lsbr, .rsbr) or {
 				return none
 			}
+			current_layout := fastc_trim_pointer_suffix(current_type)
 			if fastc_expression_tokens_contain_range(tokens, index + 1, close, .dotdot) {
-				if current_type.trim_right('*') != 'string' && g.array_element_type(current_type) == none {
+				if current_layout != 'string' && g.array_element_type(current_type) == none {
 					return none
 				}
 				// A fixed-array slice becomes a dynamic array of its element type.
-				if current_type.trim_right('*').starts_with('FixedArray_') {
-					if element := g.array_element_type(current_type.trim_right('*')) {
+				if current_layout.starts_with('FixedArray_') {
+					if element := g.array_element_type(current_layout) {
 						current_type = fastc_array_c_type(fastc_normalize_inferred_type(element))
 					}
 				}
-			} else if current_type.trim_right('*') == 'string' {
+			} else if current_layout == 'string' {
 				current_type = 'u8'
-			} else if current_type.trim_right('*').starts_with('Map_') {
+			} else if current_layout.starts_with('Map_') {
 				_, value_type := g.map_key_value_types(current_type) or { return none }
 				current_type = value_type
 			} else if element_type := g.array_element_type(current_type) {
@@ -911,8 +911,16 @@ fn fastc_matching_delimiter_before(tokens []FastcExpressionToken, open_index int
 	return none
 }
 
+@[inline]
+fn fastc_trim_pointer_suffix(typ string) string {
+	if typ.len == 0 || typ[typ.len - 1] != `*` {
+		return typ
+	}
+	return typ.trim_right('*')
+}
+
 fn (g &Parser) semantic_type_key(c_type string) string {
-	base := c_type.trim_right('*')
+	base := fastc_trim_pointer_suffix(c_type)
 	if key := g.declared_type_c_names[base] {
 		return key
 	}
@@ -924,13 +932,13 @@ fn (g &Parser) underlying_alias_type(c_type string) string {
 	// allocating the cycle-guard map. underlying_alias_type is called for
 	// nearly every inferred expression type; the unconditional map allocation
 	// showed up as a hot allocation site under -prealloc.
-	base0 := c_type.trim_right('*')
+	base0 := fastc_trim_pointer_suffix(c_type)
 	first := g.alias_base_types[base0] or { return c_type }
 	mut resolved := first + c_type[base0.len..]
 	mut seen := map[string]bool{}
 	seen[base0] = true
 	for {
-		base := resolved.trim_right('*')
+		base := fastc_trim_pointer_suffix(resolved)
 		if base in seen {
 			return resolved
 		}
@@ -1041,8 +1049,8 @@ fn fastc_selfhost_types_share_lowering_representation(actual string, expected st
 	if actual == expected + '*' || expected == actual + '*' {
 		return true
 	}
-	actual_base := actual.trim_right('*')
-	expected_base := expected.trim_right('*')
+	actual_base := fastc_trim_pointer_suffix(actual)
+	expected_base := fastc_trim_pointer_suffix(expected)
 	if (actual_base == 'array' && expected_base.starts_with('Array_')) || (expected_base == 'array' && actual_base.starts_with('Array_')) || (actual_base == 'map' && expected_base.starts_with('Map_')) || (expected_base == 'map' && actual_base.starts_with('Map_')) {
 		return true
 	}
@@ -1079,7 +1087,7 @@ fn fastc_is_pointer_type(typ string) bool {
 }
 
 fn fastc_array_element_type(typ string) ?string {
-	base := typ.trim_right('*')
+	base := fastc_trim_pointer_suffix(typ)
 	if base.starts_with('Array_') && base.len > 'Array_'.len {
 		return fastc_decode_ptr_element_type(base['Array_'.len..])
 	}
@@ -1112,7 +1120,7 @@ fn (g &Parser) array_element_type(typ string) ?string {
 	if element_type := fastc_array_element_type(typ) {
 		return element_type
 	}
-	layout_type := typ.trim_right('*')
+	layout_type := fastc_trim_pointer_suffix(typ)
 	if fields := g.struct_fields[layout_type] {
 		return fields['__fastc_element_type'] or { none }
 	}

@@ -914,7 +914,13 @@ fn (mut g Parser) parse_generic_body_or_stub(return_type string, out_checkpoint 
 		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type)
 		return true
 	}
+	local_scope_start := g.local_scope_changes.len
+	local_scope_depth := g.local_scope_depth
+	statement_reachable := g.statement_reachable
 	terminates := g.parse_block_body() or {
+		g.restore_local_scope(local_scope_start)
+		g.local_scope_depth = local_scope_depth
+		g.statement_reachable = statement_reachable
 		g.emit_generic_body_stub(out_checkpoint, saved_indent, body_end, return_type)
 		return true
 	}

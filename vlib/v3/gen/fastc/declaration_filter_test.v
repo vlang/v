@@ -107,8 +107,17 @@ fn test_partitioned_c_directives_match_materialized_hoisting() {
 	] {
 		hoisted := fastc_hoist_c_directives(source)
 		partitioned := fastc_partition_c_directives(source)
+		event_partitioned := fastc_partition_c_directive_lines(source, fastc_scan_c_directive_lines(source))
+		assert event_partitioned.final_kind == partitioned.final_kind
+		mut event_directives := strings.new_builder(256)
+		fastc_write_c_source_ranges(mut event_directives, event_partitioned.source, event_partitioned.directive_ranges)
+		mut event_conditional_code := strings.new_builder(256)
+		fastc_write_c_source_ranges(mut event_conditional_code, event_partitioned.source, event_partitioned.conditional_ranges)
+		mut event_body := strings.new_builder(source.len)
+		fastc_write_c_source_ranges(mut event_body, event_partitioned.source, event_partitioned.body_ranges)
 		mut directives := strings.new_builder(256)
 		fastc_write_c_source_ranges(mut directives, partitioned.source, partitioned.directive_ranges)
+		assert event_directives.str() == directives.str()
 		if partitioned.final_kind == 1 {
 			directives.write_u8(`\n`)
 		}
@@ -117,6 +126,7 @@ fn test_partitioned_c_directives_match_materialized_hoisting() {
 		}
 		mut conditional_code := strings.new_builder(256)
 		fastc_write_c_source_ranges(mut conditional_code, partitioned.source, partitioned.conditional_ranges)
+		assert event_conditional_code.str() == conditional_code.str()
 		if partitioned.final_kind == 2 {
 			conditional_code.write_u8(`\n`)
 		}
@@ -125,6 +135,7 @@ fn test_partitioned_c_directives_match_materialized_hoisting() {
 		}
 		mut body := strings.new_builder(source.len)
 		fastc_write_c_source_ranges(mut body, partitioned.source, partitioned.body_ranges)
+		assert event_body.str() == body.str()
 		if partitioned.final_kind == 0 {
 			body.write_u8(`\n`)
 		}
