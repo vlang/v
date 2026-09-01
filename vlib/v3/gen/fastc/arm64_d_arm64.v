@@ -8980,15 +8980,26 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		if p.tok == .key_mut {
 			p.next()
 		}
-		if p.tok == .name && call_args.len < signature.parameter_types.len {
+		argument_index := call_args.len
+		mut expected_type_name := ''
+		if signature.is_variadic && argument_index >= signature.parameter_types.len - 1 {
+			if !resolved.starts_with('C.') {
+				expected_type_name = p.program.array_element_type_name(signature.parameter_types.last()) or {
+					''
+				}
+			}
+		} else if argument_index < signature.parameter_types.len {
+			expected_type_name = signature.parameter_types[argument_index]
+		}
+		if p.tok == .name && expected_type_name != '' {
 			mut look := p.s
 			if look.scan() == .colon {
-				call_args << p.parse_named_argument_struct(signature.parameter_types[call_args.len])!
+				call_args << p.parse_named_argument_struct(expected_type_name)!
 				break
 			}
 		}
-		if p.tok == .dot && call_args.len < signature.parameter_types.len {
-			call_args << p.parse_enum_shorthand(signature.parameter_types[call_args.len])!
+		if expected_type_name != '' {
+			call_args << p.parse_contextual_value(expected_type_name)!
 		} else {
 			call_args << p.parse_expression(0)!
 		}
@@ -9040,11 +9051,18 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 	fn_ref := p.program.m.add_value(.func_ref, ret, symbol, func_id)
 	mut operands := []ssa.ValueID{cap: call_args.len + 1}
 	operands << fn_ref
-	for i, argument in call_args {
-		if i < signature.parameter_types.len {
-			operands << p.call_argument(argument, signature.parameter_types[i])
+	c_variadic_fixed_count := if signature.is_variadic && resolved.starts_with('C.') {
+		signature.parameter_types.len - 1
+	} else {
+		-1
+	}
+	for i, original_argument in call_args {
+		if c_variadic_fixed_count >= 0 && i >= c_variadic_fixed_count {
+			operands << p.promote_c_variadic_argument(original_argument).id
+		} else if i < signature.parameter_types.len {
+			operands << p.call_argument(original_argument, signature.parameter_types[i])
 		} else {
-			operands << argument.id
+			operands << original_argument.id
 		}
 	}
 	if is_spawn_call {
@@ -9094,6 +9112,17 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 			signature.return_type}
 		tuple_types: signature.return_types
 	}
+}
+
+fn (mut p FastArm64Parser) promote_c_variadic_argument(argument FastArm64Value) FastArm64Value {
+	layout := p.program.m.type_store.types[argument.typ]
+	if layout.kind == .float_t && layout.width < 64 {
+		return p.convert_value(argument, p.program.f64_type, 'f64')
+	}
+	if layout.kind == .int_t && layout.width < 32 {
+		return p.convert_value(argument, p.program.i32_type, 'int')
+	}
+	return argument
 }
 
 fn (mut p FastArm64Parser) parse_fd_set_macro(display_name string) !FastArm64Value {
