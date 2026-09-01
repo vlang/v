@@ -134,7 +134,7 @@ mut:
 	cur_block                ssa.BlockID
 	return_typ               ssa.TypeID
 	return_name              string
-	return_types             []string
+	return_names             []string
 	return_is_option         bool
 	locals                   map[string]FastArm64Local
 	terminated               map[int]bool
@@ -3361,7 +3361,7 @@ fn (mut p FastArm64Parser) parse_function() ! {
 	} else {
 		signature.return_type
 	}
-	p.return_types = signature.return_types.clone()
+	p.return_names = signature.return_types.clone()
 	p.return_is_option = signature.return_type == 'Option'
 	p.locals = map[string]FastArm64Local{}
 	p.terminated = map[int]bool{}
@@ -4002,14 +4002,13 @@ fn (mut p FastArm64Parser) parse_return() ! {
 			}
 			slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.return_typ))
 			for i, value in values {
-				address := p.program.struct_field_ptr(p.cur_block, slot, p.return_typ, i)
-				field_type := layout.fields[i]
-				field_type_name := if i < p.return_types.len { p.return_types[i] } else { '' }
-				mut field_value := value
-				if field_value.typ != field_type {
-					field_value = p.convert_value(field_value, field_type, field_type_name)
+				mut stored_value := value
+				if stored_value.typ != layout.fields[i] {
+					type_name := if i < p.return_names.len { p.return_names[i] } else { '' }
+					stored_value = p.convert_value(stored_value, layout.fields[i], type_name)
 				}
-				p.program.instr2(.store, p.cur_block, p.program.void_type, field_value.id, address)
+				address := p.program.struct_field_ptr(p.cur_block, slot, p.return_typ, i)
+				p.program.instr2(.store, p.cur_block, p.program.void_type, stored_value.id, address)
 			}
 			mut result := FastArm64Value{
 				id: p.program.instr1(.load, p.cur_block, p.return_typ, slot)

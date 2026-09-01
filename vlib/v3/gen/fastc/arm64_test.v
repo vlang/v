@@ -159,6 +159,24 @@ fn fixed_array_sum(values [2]int) int {
 	return values[0] + values[1]
 }
 
+fn fast_arm64_return_f64() f64 {
+	return 1
+}
+
+fn fast_arm64_return_pair() (f64, u64) {
+	return 2, 3
+}
+
+fn fast_arm64_accept_f64(value f64) f64 {
+	return value
+}
+
+struct FastArm64FloatReceiver {}
+
+fn (receiver FastArm64FloatReceiver) accept_f64(value f64) f64 {
+	return value
+}
+
 fn main() {
 	mut reassigned_float := f64(0)
 	reassigned_float = 1
@@ -175,6 +193,19 @@ fn main() {
 	typed_numbers[3] = 4
 	if typed_numbers[1] != 2.0 || typed_numbers[3] != 4.0 {
 		println("wrong typed map conversion")
+		return
+	}
+	mut assigned_numbers := map[u64]f64{}
+	assigned_numbers[1] = 2
+	if assigned_numbers[1] != 2.0 {
+		println("wrong indexed map assignment conversion")
+		return
+	}
+	return_left, return_right := fast_arm64_return_pair()
+	receiver := FastArm64FloatReceiver{}
+	if fast_arm64_return_f64() != 1.0 || return_left != 2.0 || return_right != u64(3)
+		|| fast_arm64_accept_f64(4) != 4.0 || receiver.accept_f64(5) != 5.0 {
+		println("wrong return or argument conversion")
 		return
 	}
 	typed_floats := []f64{1, 2}
