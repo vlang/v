@@ -451,7 +451,7 @@ fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool 
 		return false
 	}
 	fn_node := t.a.child_node(&node, 0)
-	if fn_node.kind != .selector || fn_node.value != 'clone' || fn_node.children_count == 0 {
+	if fn_node.kind != .selector || fn_node.value !in ['clone', 'reverse'] || fn_node.children_count == 0 {
 		return false
 	}
 	base_id := t.a.child(fn_node, 0)
@@ -464,6 +464,13 @@ fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool 
 		clean = clean[7..].trim_space()
 	}
 	clean = clean.trim_left('&')
+	if fn_node.value == 'reverse' {
+		if !clean.starts_with('[]') || isnil(t.tc) {
+			return false
+		}
+		elem_type := clean[2..]
+		return t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) && t.compiler_default_clone_type_needs_work(elem_type) && t.tc.ownership_default_clone_missing_method(t.tc.parse_type(elem_type)) == none
+	}
 	mut owned_types := []string{}
 	if clean.starts_with('[]') {
 		owned_types << clean[2..]
