@@ -585,8 +585,14 @@ fn test_fastc_arm64_map_storage_and_numeric_conversions() {
 		}
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
-		source := 'struct WideMapDefaults {
+		source := 'import os
+
+struct WideMapDefaults {
 	values map[string][100]int
+}
+
+struct FloatValues {
+	values []f64
 }
 
 struct NumericReceiver {}
@@ -659,6 +665,11 @@ fn main() {
 	tuple_float, tuple_unsigned := tuple_return()
 	pending := delayed_value(false)
 	delayed_fallback := pending or { 42 }
+	conditional_absent := if true { maybe_zero(false) } else { maybe_zero(true) }
+	conditional_fallback := conditional_absent or { 52 }
+	conditional_success := if false { maybe_zero(false) } else { maybe_zero(true) }
+	conditional_zero := conditional_success or { 53 }
+	float_values := FloatValues{values: [1, 2]}
 	mut mutable_values := [MutableValue{value: 1}, MutableValue{value: 2}]
 	for mut item in mutable_values {
 		item.value += 10
@@ -674,6 +685,23 @@ fn main() {
 	mut nested_values := [][]int{}
 	nested_values << [1, 2]
 	nested_values << [3]
+	mut mutable_map := {"a": 1, "b": 2}
+	for _, mut value in mutable_map {
+		value += 10
+	}
+	mut deleting_map := {"a": 1, "b": 2}
+	for key, mut value in deleting_map {
+		deleting_map.delete(key)
+		value = 99
+	}
+	mut expanding_map := {1: 1, 2: 2}
+	for key, mut value in expanding_map {
+		for extra in 0 .. 20 {
+			expanding_map[key * 100 + extra + 10] = extra
+		}
+		value = 99
+	}
+	executed := os.execute("printf arm64-captured")
 	failure_a := spawn option_worker(false)
 	success_a := spawn option_worker(true)
 	failure_b := spawn option_worker(false)
@@ -681,7 +709,7 @@ fn main() {
 	thread_options_ok := failure_a.wait() && success_a.wait() && failure_b.wait()
 		&& success_b.wait()
 	scalar_text := "\${true}:\${u64(9223372036854775808)}"
-	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || delayed_fallback != 42 || mutable_values[0].value != 11 || mutable_values[1].value != 12 || mutable_numbers[0] != 2 || mutable_numbers[1] != 3 || !none_comparison_ok || nested_values.len != 2 || nested_values[0].len != 2 || nested_values[0][0] != 1 || nested_values[0][1] != 2 || nested_values[1].len != 1 || nested_values[1][0] != 3 || !thread_options_ok || scalar_text != "true:9223372036854775808" {
+	if wide_map_defaults[0].values["present"] != 9 || wide_missing[0] != 0 || wide_missing[99] != 0 || reassigned_float != 1.0 || numeric_map[1] != 2.0 || 1 !in numeric_map || 2 in numeric_map || typed_values[0] != 1.0 || typed_values[1] != 2.0 || normalized.len != 3 || normalized.cap < normalized.len || normalized[2] != 0 || left + 1 != 2.5 || scalar_return() != 3.0 || tuple_float != 4.0 || tuple_unsigned != u64(5) || numeric_argument(6) != 6.0 || NumericReceiver{}.numeric_argument(7) != 7.0 || delayed_fallback != 42 || conditional_fallback != 52 || conditional_zero != 0 || float_values.values[0] != 1.0 || float_values.values[1] != 2.0 || mutable_values[0].value != 11 || mutable_values[1].value != 12 || mutable_numbers[0] != 2 || mutable_numbers[1] != 3 || mutable_map["a"] != 11 || mutable_map["b"] != 12 || deleting_map.len != 0 || expanding_map[1] != 1 || expanding_map[2] != 2 || executed.exit_code != 0 || executed.output != "arm64-captured" || !none_comparison_ok || nested_values.len != 2 || nested_values[0].len != 2 || nested_values[0][0] != 1 || nested_values[0][1] != 2 || nested_values[1].len != 1 || nested_values[1][0] != 3 || !thread_options_ok || scalar_text != "true:9223372036854775808" {
 		println("wrong")
 		return
 	}
@@ -705,6 +733,17 @@ fn main() {
 			invalid_result := os.execute(invalid_output_path)
 			assert invalid_result.exit_code != 0
 		}
+		exec_source_path := os.join_path_single(test_dir, 'unsupported_exec.v')
+		exec_output_path := os.join_path_single(test_dir, 'unsupported_exec')
+		os.write_file(exec_source_path, 'import os\n\nfn main() { _ := os.exec(["true"]) }\n') or {
+			panic(err)
+		}
+		mut exec_rejected := false
+		generate_arm64_files([exec_source_path], prefs, exec_output_path) or {
+			exec_rejected = true
+			assert err.msg().contains('does not support `os.exec` on the direct ARM64 backend')
+		}
+		assert exec_rejected
 	}
 }
 
