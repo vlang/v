@@ -1,0 +1,68 @@
+
+def patch_transformer() -> None:
+    array_path = ROOT / "vlib/v3/transform/array.v"
+    fn_path = ROOT / "vlib/v3/transform/fn.v"
+
+    replace_once(
+        array_path,
+        """fn (t &Transformer) borrowed_projection_clone_required(source_id flat.NodeId, typ string) bool {
+\tif isnil(t.tc) {
+\t\treturn false
+\t}
+\t// The checker resolves a bare identifier against its lexical scope before constants.
+\t// Preserve that decision after checking, when its active scope is no longer available.
+\tif t.expr_is_local_ident_read(source_id) {
+\t\treturn false
+\t}
+\t// The checker resolves the field/slice/cast shapes from node-annotated types alone, so it
+\t// and the transformer agree without a shared map. A `const` read is resolved separately in
+\t// transformer contexts that need the suffix fallback, so exclude active locals before using
+\t// that module-independent resolver.
+\tif !t.tc.ownership_expr_is_borrowed_projection(source_id)
+\t\t&& !t.expr_reads_owned_const(source_id) {
+\t\treturn false
+\t}
+\treturn t.compiler_default_clone_type_needs_work(typ)
+}
+""",
+        """fn (t &Transformer) borrowed_projection_clone_required(source_id flat.NodeId, typ string) bool {
+\treturn !isnil(t.tc) && t.tc.ownership_expr_is_borrowed_projection(source_id)
+\t\t&& t.compiler_default_clone_type_needs_work(typ)
+}
+""",
+    )
+
+    remove_regex_once(
+        array_path,
+        r"\nfn \(t &Transformer\) expr_is_local_ident_read\(id flat\.NodeId\) bool \{.*?\n\}\n(?=\n// clone_borrowed_assignment_value)",
+    )
+    remove_regex_once(
+        array_path,
+        r"\n// expr_reads_owned_const reports whether `id`.*?\nfn \(t &Transformer\) expr_reads_owned_const\(id flat\.NodeId\) bool \{.*?\n\}\n(?=\n// clean_array_append_lhs_type)",
+    )
+
+    replace_once(
+        fn_path,
+        """\t// transform_call_arg_for_param already clones borrowed projections and extracts index
+\t// moves into an owned temporary. Cloning either transformed result again would leak the
+\t// first independent value.
+\tif (!isnil(t.tc) && (t.tc.ownership_expr_is_borrowed_projection(arg_id)
+\t\t|| t.tc.ownership_index_read_moves_value(arg_id)))
+\t\t|| t.expr_reads_owned_const(arg_id) {
+\t\treturn value
+\t}
+""",
+        """\t// transform_call_arg_for_param already materializes checker-marked borrowed clones
+\t// and extracts index moves into an owned temporary. Do not clone either result again.
+\tif !isnil(t.tc) && (t.tc.ownership_expr_is_borrowed_projection(arg_id)
+\t\t|| t.tc.ownership_index_read_moves_value(arg_id)) {
+\t\treturn value
+\t}
+""",
+    )
+
+
+def patch_nonownership_stub() -> None:
+    # The existing no-ownership stub for ownership_expr_is_borrowed_projection remains the
+    # complete transformer contract; no additional policy accessor is needed.
+    pass
