@@ -7914,7 +7914,16 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 				array_slot = p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
 				p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, array_slot)
 			}
-			p.emit_array_detach_if_slice(array_slot, 'array_${member}')
+			if member == 'clear' {
+				p.emit_array_clear(array_slot)
+				return FastArm64Value{
+					id: p.program.instr1(.load, p.cur_block, p.program.array_type, array_slot)
+					typ: p.program.array_type
+					typ_name: value.typ_name.trim_right('*')
+					address: array_slot
+				}
+			}
+			p.emit_array_detach_if_slice(array_slot, 'array_trim')
 			length_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 2)
 			mut new_length := length.id
 			if member == 'trim' {
@@ -8372,25 +8381,14 @@ fn (mut p FastArm64Parser) emit_array_delete(array FastArm64Value, index FastArm
 
 fn (mut p FastArm64Parser) emit_array_detach_if_slice(array_slot ssa.ValueID, label string) {
 	data_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 0)
-	offset_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 1)
 	length_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 2)
 	capacity_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 3)
-	flags_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 4)
 	element_size_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 5)
 	old_data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, data_ptr)
-	offset := p.program.instr1(.load, p.cur_block, p.program.i32_type, offset_ptr)
 	length := p.program.instr1(.load, p.cur_block, p.program.i32_type, length_ptr)
 	capacity := p.program.instr1(.load, p.cur_block, p.program.i32_type, capacity_ptr)
-	flags := p.program.instr1(.load, p.cur_block, p.program.i32_type, flags_ptr)
 	element_size := p.program.instr1(.load, p.cur_block, p.program.i32_type, element_size_ptr)
-	zero32 := p.program.m.get_or_add_const(p.program.i32_type, '0')
-	has_offset := p.program.instr2(.ne, p.cur_block, p.program.i1_type, offset, zero32)
-	is_slice_flag := p.program.m.get_or_add_const(p.program.i32_type, '64')
-	masked_flags := p.program.instr2(.and_, p.cur_block, p.program.i32_type, flags, is_slice_flag)
-	has_slice_flag := p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked_flags, zero32)
-	descriptor_is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, has_offset, has_slice_flag)
-	buffer_has_slices := p.emit_array_buffer_has_slices(array_slot)
-	is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, descriptor_is_slice, buffer_has_slices)
+	is_slice := p.emit_array_needs_unique_shrink(array_slot)
 	detach := p.program.m.add_block(p.func_id, '${label}_detach_slice')
 	ready := p.program.m.add_block(p.func_id, '${label}_detached')
 	p.program.instr3(.br, p.cur_block, p.program.void_type, is_slice, ssa.ValueID(detach), ssa.ValueID(ready))
@@ -8416,6 +8414,47 @@ fn (mut p FastArm64Parser) emit_array_detach_if_slice(array_slot ssa.ValueID, la
 	p.program.instr1(.jmp, detach, p.program.void_type, ssa.ValueID(ready))
 	p.mark_terminated(detach)
 	p.cur_block = ready
+}
+
+fn (mut p FastArm64Parser) emit_array_needs_unique_shrink(array_slot ssa.ValueID) ssa.ValueID {
+	offset_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 1)
+	flags_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 4)
+	offset := p.program.instr1(.load, p.cur_block, p.program.i32_type, offset_ptr)
+	flags := p.program.instr1(.load, p.cur_block, p.program.i32_type, flags_ptr)
+	zero32 := p.program.m.get_or_add_const(p.program.i32_type, '0')
+	has_offset := p.program.instr2(.ne, p.cur_block, p.program.i1_type, offset, zero32)
+	is_slice_flag := p.program.m.get_or_add_const(p.program.i32_type, '64')
+	masked_flags := p.program.instr2(.and_, p.cur_block, p.program.i32_type, flags, is_slice_flag)
+	has_slice_flag := p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked_flags, zero32)
+	descriptor_is_slice := p.program.instr2(.or_, p.cur_block, p.program.i1_type, has_offset, has_slice_flag)
+	buffer_has_slices := p.emit_array_buffer_has_slices(array_slot)
+	return p.program.instr2(.or_, p.cur_block, p.program.i1_type, descriptor_is_slice, buffer_has_slices)
+}
+
+fn (mut p FastArm64Parser) emit_array_clear(array_slot ssa.ValueID) {
+	needs_reset := p.emit_array_needs_unique_shrink(array_slot)
+	reset := p.program.m.add_block(p.func_id, 'array_clear_reset')
+	ready := p.program.m.add_block(p.func_id, 'array_clear_ready')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, needs_reset, ssa.ValueID(reset), ssa.ValueID(ready))
+	p.mark_terminated(p.cur_block)
+	zero32 := p.program.m.get_or_add_const(p.program.i32_type, '0')
+	null_pointer := p.program.m.get_or_add_const(p.program.ptr_i8, '0')
+	data_ptr := p.program.struct_field_ptr(reset, array_slot, p.program.array_type, 0)
+	offset_ptr := p.program.struct_field_ptr(reset, array_slot, p.program.array_type, 1)
+	capacity_ptr := p.program.struct_field_ptr(reset, array_slot, p.program.array_type, 3)
+	flags_ptr := p.program.struct_field_ptr(reset, array_slot, p.program.array_type, 4)
+	flags := p.program.instr1(.load, reset, p.program.i32_type, flags_ptr)
+	clear_flags_mask := p.program.m.get_or_add_const(p.program.i32_type, '-113')
+	cleared_flags := p.program.instr2(.and_, reset, p.program.i32_type, flags, clear_flags_mask)
+	p.program.instr2(.store, reset, p.program.void_type, null_pointer, data_ptr)
+	p.program.instr2(.store, reset, p.program.void_type, zero32, offset_ptr)
+	p.program.instr2(.store, reset, p.program.void_type, zero32, capacity_ptr)
+	p.program.instr2(.store, reset, p.program.void_type, cleared_flags, flags_ptr)
+	p.program.instr1(.jmp, reset, p.program.void_type, ssa.ValueID(ready))
+	p.mark_terminated(reset)
+	p.cur_block = ready
+	length_ptr := p.program.struct_field_ptr(ready, array_slot, p.program.array_type, 2)
+	p.program.instr2(.store, ready, p.program.void_type, zero32, length_ptr)
 }
 
 fn (mut p FastArm64Parser) emit_map_items_array(map_value FastArm64Value, keys bool) !FastArm64Value {

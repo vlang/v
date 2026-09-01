@@ -1161,6 +1161,9 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 					} else {
 						src_reg := g.load_val(arg_id, 8)
 						g.emit_store_sp(src_reg, stack_off)
+						if arg_val.kind == .string_literal {
+							g.emit_store_sp(10, stack_off + 8)
+						}
 					}
 				} else {
 					src_reg := g.load_val(arg_id, 8)

@@ -102,3 +102,35 @@ fn test_large_c_variadic_aggregate_passes_its_address() {
 	assert asm_sub_imm(Reg(8), fp, 24) in words
 	assert asm_str(Reg(8), sp) in words
 }
+
+fn test_literal_c_variadic_string_stores_both_words() {
+	mut m := ssa.Module.new()
+	i64_type := m.type_store.get_int(64)
+	i32_type := m.type_store.get_int(32)
+	ptr_type := m.type_store.get_ptr(m.type_store.get_int(8))
+	string_type := m.type_store.register(ssa.Type{
+		kind: .struct_t
+		fields: [ptr_type, i32_type, i32_type]
+	})
+	external_id := m.new_function('consume', ssa.TypeID(0))
+	mut external := m.funcs[external_id]
+	external.is_c_extern = true
+	external.is_variadic = true
+	external.variadic_start = 1
+	m.funcs[external_id] = external
+	consume := m.add_value(.func_ref, ssa.TypeID(0), 'consume', external_id)
+	caller_id := m.new_function('caller', ssa.TypeID(0))
+	block_id := m.add_block(caller_id, 'entry')
+	tag := m.add_value(.constant, i64_type, '1', 0)
+	literal := m.add_value(.string_literal, string_type, 'hello', 0)
+	call := m.add_instr(.call, block_id, ssa.TypeID(0), [consume, tag, literal])
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[caller_id])
+	g.gen_call(int(call), m.instrs[m.values[call].index])
+	mut words := []u32{}
+	for i := 0; i < g.macho.text_data.len; i += 4 {
+		words << read_u32_le(g.macho.text_data, i)
+	}
+	assert asm_str_imm(Reg(8), sp, 0) in words
+	assert asm_str_imm(Reg(10), sp, 1) in words
+}

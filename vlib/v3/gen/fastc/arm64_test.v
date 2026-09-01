@@ -1065,6 +1065,7 @@ fn main() {
 	mut clear_base := [1, 2]
 	clear_view := clear_base[..]
 	clear_base.clear()
+	clear_cap := clear_base.cap
 	clear_base << 9
 	mut trim_base := [3, 4, 5]
 	trim_view := trim_base[..]
@@ -1073,7 +1074,7 @@ fn main() {
 	empty := []int{}
 	element_size := sizeof(empty[0])
 	call_size := sizeof(side_effect())
-	if clear_base != [9] || clear_view != [1, 2] || trim_base != [3, 8]
+	if clear_cap != 0 || clear_base != [9] || clear_view != [1, 2] || trim_base != [3, 8]
 		|| trim_view != [3, 4, 5] || element_size != sizeof(int) || call_size != sizeof(int) {
 		println("wrong")
 		return
