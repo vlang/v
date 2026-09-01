@@ -45,6 +45,12 @@ enum FastArm64DefaultMode {
 	warm
 }
 
+@[flag]
+enum FastArm64Features {
+	read
+	write
+}
+
 struct FastArm64Defaults {
 	retries int = 3
 	enabled bool = true
@@ -53,6 +59,18 @@ struct FastArm64Defaults {
 
 struct FastArm64MapDefaults {
 	values map[string]int
+}
+
+struct FastArm64Waiter {
+	value int
+}
+
+fn (waiter FastArm64Waiter) wait() int {
+	return waiter.value + 1
+}
+
+fn fast_arm64_spawned_value() int {
+	return 11
 }
 
 struct FastArm64CustomError {}
@@ -101,6 +119,27 @@ fn propagated_option(ok bool) ?int {
 }
 
 fn main() {
+	mut features := FastArm64Features.read
+	features.set(.write)
+	if !features.has(.read) || !features.has(.write) {
+		println("wrong flag set")
+		return
+	}
+	features.clear(.read)
+	if features.has(.read) || !features.has(.write) {
+		println("wrong flag clear")
+		return
+	}
+	waiter := FastArm64Waiter{value: 6}
+	if waiter.wait() != 7 {
+		println("wrong ordinary wait")
+		return
+	}
+	spawned := spawn fast_arm64_spawned_value()
+	if spawned.wait() != 11 {
+		println("wrong spawned wait")
+		return
+	}
 	mut shadow := 1
 	if true {
 		shadow := 2

@@ -19,6 +19,7 @@ struct FastArm64Value {
 	option_error_type    ssa.ValueID
 	option_error_message ssa.ValueID
 	is_temporary         bool
+	is_spawned           bool
 	map_found            ssa.ValueID
 	map_id               ssa.ValueID
 	map_type             string
@@ -33,6 +34,7 @@ struct FastArm64Local {
 	typ_name             string
 	option_error_type    ssa.ValueID
 	option_error_message ssa.ValueID
+	is_spawned           bool
 }
 
 struct FastArm64FieldDecl {
@@ -164,7 +166,7 @@ pub fn generate_arm64_files(paths []string, prefs &pref.Preferences, output stri
 	mut embed_embedders := []string{}
 	mut embed_embeddeds := []string{}
 	fastc_collect_signatures(sources, prefs, declared_types, declared_type_c_names, params_structs, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
-	type_decls, constant_sources, enum_values := fast_arm64_collect_declarations(sources, prefs, declared_types, type_source_paths)!
+	type_decls, constant_sources, enum_values := fast_arm64_collect_declarations(sources, prefs, declared_types, enum_flags, type_source_paths)!
 
 	mut program := FastArm64Program.new(prefs, declared_types, functions, type_decls, constant_sources, enum_values)
 	program.register_functions()
@@ -329,7 +331,7 @@ fn fast_arm64_uses_source_file(source_file FastcSourceFile, reachable_modules ma
 	] && !source_file.path.ends_with('/v3/ssa/builder.v')
 }
 
-fn fast_arm64_collect_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, type_source_paths map[string]bool) !(map[string]FastArm64TypeDecl, map[string]string, map[string]string) {
+fn fast_arm64_collect_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, type_source_paths map[string]bool) !(map[string]FastArm64TypeDecl, map[string]string, map[string]string) {
 	mut declarations := map[string]FastArm64TypeDecl{}
 	mut constants := map[string]string{}
 	mut enum_values := map[string]string{}
@@ -337,7 +339,7 @@ fn fast_arm64_collect_declarations(sources []FastcSourceFile, prefs &pref.Prefer
 		if source_file.path !in type_source_paths && !source_file.header.has_constants {
 			continue
 		}
-		fast_arm64_collect_source_declarations(source_file, prefs, declared_types, mut declarations, mut constants, mut enum_values)!
+		fast_arm64_collect_source_declarations(source_file, prefs, declared_types, enum_flags, mut declarations, mut constants, mut enum_values)!
 	}
 	for key, declaration in declarations {
 		if declaration.c_name != key || declaration.embeds.len == 0 {
@@ -557,7 +559,7 @@ fn fast_arm64_constant_expression_source(mut scan scanner.Scanner, first_token t
 	return scan.src[start..scan.src.len].trim_space(), tok
 }
 
-fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, mut declarations map[string]FastArm64TypeDecl, mut constants map[string]string, mut enum_values map[string]string) ! {
+fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, mut declarations map[string]FastArm64TypeDecl, mut constants map[string]string, mut enum_values map[string]string) ! {
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file(source_file.path, source_file.source.len)
 	file.index_lines_without_digest(source_file.source)
@@ -575,7 +577,7 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 						path: source_file.path
 						source: selected.source
 						header: source_file.header
-					}, prefs, declared_types, mut declarations, mut constants, mut enum_values)!
+					}, prefs, declared_types, enum_flags, mut declarations, mut constants, mut enum_values)!
 				}
 				tok = selected.tok
 				continue
@@ -698,7 +700,8 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 			short_name := scan.lit
 			key := fastc_type_key(source_file.header.module_name, short_name)
 			c_name := fastc_c_declared_type_name(key)
-			mut underlying := 'int'
+			is_flag := enum_flags[key]
+			mut underlying := if is_flag { 'u64' } else { 'int' }
 			tok = scan.scan()
 			if tok == .key_as {
 				tok = scan.scan()
@@ -727,8 +730,15 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 					}
 					field := scan.lit
 					tok = scan.scan()
-					mut value := ordinal.str()
+					mut value := if is_flag {
+						(u64(1) << u64(ordinal)).str()
+					} else {
+						ordinal.str()
+					}
 					if tok == .assign {
+						if is_flag {
+							return error('fastc arm64 does not support custom value for flag enum field `${short_name}.${field}` in ${source_file.path}')
+						}
 						tok = scan.scan()
 						start := scan.pos
 						value, tok = fast_arm64_constant_expression_source(mut scan, tok, start, false)!
@@ -3474,6 +3484,7 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 			addr: address
 			typ: value.typ
 			typ_name: value.typ_name
+			is_spawned: value.is_spawned
 		})
 		return
 	}
@@ -3508,6 +3519,12 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 			}
 		}
 		p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, local.addr)
+		if op == .assign {
+			p.locals[name] = FastArm64Local{
+				...local
+				is_spawned: value.is_spawned
+			}
+		}
 		return
 	}
 	if after_mut {
@@ -3811,6 +3828,7 @@ fn (mut p FastArm64Parser) parse_if() ! {
 				addr: address
 				typ: value.typ
 				typ_name: value.typ_name
+				is_spawned: value.is_spawned
 			})
 			condition = if p.last_map_found != ssa.ValueID(0) {
 				FastArm64Value{
@@ -5117,7 +5135,11 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 			// The native bootstrap runs FastC phases serially. Preserve the value
 			// returned by a spawned call so a following `.wait()` is an identity.
 			p.next()
-			return p.parse_primary()
+			value := p.parse_atom()!
+			return FastArm64Value{
+				...value
+				is_spawned: true
+			}
 		}
 		.dollar {
 			return p.parse_comptime_if_expression()
@@ -5712,6 +5734,7 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 			address: local.addr
 			option_error_type: local.option_error_type
 			option_error_message: local.option_error_message
+			is_spawned: local.is_spawned
 		}
 	}
 	if first_name == 'g_v_os_execute_mutex_storage' {
@@ -6320,7 +6343,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 	member := p.lit
 	p.next()
 	if p.tok == .lpar {
-		if member == 'wait' {
+		if member == 'wait' && value.is_spawned {
 			p.expect(.lpar)!
 			p.expect(.rpar)!
 			return value
@@ -6491,8 +6514,32 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 		}
 		if value.typ in [p.program.i32_type, p.program.u32_type, p.program.i64_type,
 			p.program.u64_type] && member in ['set', 'clear'] {
-			p.skip_group(.lpar, .rpar)!
-			return value
+			p.expect(.lpar)!
+			mut flag := if p.tok == .dot {
+				p.parse_enum_shorthand(value.typ_name)!
+			} else {
+				p.parse_expression(0)!
+			}
+			p.expect(.rpar)!
+			if value.address == ssa.ValueID(0) {
+				return p.unsupported('`${member}` on a non-addressable flag value')
+			}
+			if flag.typ != value.typ {
+				flag = p.convert_value(flag, value.typ, value.typ_name)
+			}
+			mut updated := ssa.ValueID(0)
+			if member == 'set' {
+				updated = p.program.instr2(.or_, p.cur_block, value.typ, value.id, flag.id)
+			} else {
+				updated = p.program.instr2(.and_, p.cur_block, value.typ, value.id, p.program.instr2(.xor, p.cur_block, value.typ, flag.id, p.program.m.get_or_add_const(value.typ, '-1')))
+			}
+			p.program.instr2(.store, p.cur_block, p.program.void_type, updated, value.address)
+			return FastArm64Value{
+				id: updated
+				typ: value.typ
+				typ_name: value.typ_name
+				address: value.address
+			}
 		}
 		return p.parse_method_call(value, member)
 	}
