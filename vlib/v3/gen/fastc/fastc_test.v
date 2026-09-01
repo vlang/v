@@ -463,6 +463,27 @@ fn test_fastc_gen_queue_claims_every_index_exactly_once() {
 	}
 }
 
+fn test_fastc_prealloc_enabled_reads_user_defines() {
+	mut with_prealloc := pref.new_preferences()
+	with_prealloc.user_defines = ['prealloc']
+	assert fastc_prealloc_enabled(with_prealloc)
+	assert !fastc_prealloc_enabled(pref.new_preferences())
+}
+
+fn test_fastc_prealloc_arena_root_is_per_thread() {
+	mut out := strings.new_builder(256)
+	fastc_write_prealloc_tls_global(mut out, 'VMemoryBlock*', 'g_memory_block')
+	rendered := out.str()
+	// The arena root must be per-thread so the parallel per-file generator's
+	// workers never share it: a pthread-key slot under bundled TinyCC on macOS
+	// (no working thread-local storage), `_Thread_local` everywhere else. It must
+	// never be emitted as a plain shared global.
+	assert rendered.contains('#define g_memory_block (*(VMemoryBlock* *)v_prealloc_tls_slot())')
+	assert rendered.contains('pthread_getspecific(v_prealloc_tls_key)')
+	assert rendered.contains('_Thread_local VMemoryBlock* g_memory_block;')
+	assert !rendered.contains('static VMemoryBlock* g_memory_block;')
+}
+
 fn test_fastc_fragmented_generation_matches_serial_output() {
 	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
 	sources := [
