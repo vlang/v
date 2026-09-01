@@ -506,10 +506,17 @@ fn (g &Gen) c_homogeneous_float_aggregate(typ_id ssa.TypeID) ?Arm64HfaLayout {
 		return none
 	}
 	element_type := elements[0].typ
-	for element in elements[1..] {
+	element_size := g.m.type_size(element_type)
+	for i, element in elements {
 		if element.typ != element_type {
 			return none
 		}
+		if element.offset != i * element_size {
+			return none
+		}
+	}
+	if g.m.type_size(typ_id) != elements.len * element_size {
+		return none
 	}
 	return Arm64HfaLayout{
 		elements: elements

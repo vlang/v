@@ -9417,6 +9417,7 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 	if signature.last_parameter_is_params && call_args.len < signature.parameter_types.len - 1 {
 		call_args << p.default_struct_value(signature.parameter_types.last())!
 	}
+	p.validate_call_argument_count(method, resolved, signature, call_args, 1)!
 	expected_receiver := p.program.type_id(signature.parameter_types[0])
 	mut receiver_id := value.id
 	if p.program.m.type_store.types[expected_receiver].kind == .ptr_t && value.typ != expected_receiver {
@@ -10153,6 +10154,7 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 		params_type := signature.parameter_types.last()
 		call_args << p.default_struct_value(params_type)!
 	}
+	p.validate_call_argument_count(display_name, resolved, signature, call_args, 0)!
 	if resolved in ['print', 'println', 'builtin.print', 'builtin.println'] {
 		if call_args.len != 1 || call_args[0].typ != p.program.str_type {
 			return p.unsupported('`${display_name}` with a non-string argument')
@@ -10252,6 +10254,23 @@ fn (mut p FastArm64Parser) pack_v_variadic_arguments(signature FastcFunctionSign
 	}
 	packed << p.make_array(element_type_name, variadic_items, length, length)
 	return packed
+}
+
+fn (p &FastArm64Parser) validate_call_argument_count(display_name string, resolved string, signature FastcFunctionSignature, arguments []FastArm64Value, parameter_offset int) ! {
+	expected_count := signature.parameter_types.len - parameter_offset
+	if expected_count < 0 {
+		return p.unsupported('function `${display_name}` parameter count')
+	}
+	if signature.is_variadic && resolved.starts_with('C.') {
+		fixed_count := fast_arm64_c_variadic_fixed_parameter_count(signature) - parameter_offset
+		if fixed_count < 0 || arguments.len < fixed_count {
+			return p.unsupported('function `${display_name}` call with ${arguments.len} arguments instead of at least ${fixed_count}')
+		}
+		return
+	}
+	if arguments.len != expected_count {
+		return p.unsupported('function `${display_name}` call with ${arguments.len} arguments instead of ${expected_count}')
+	}
 }
 
 fn fast_arm64_c_variadic_fixed_parameter_count(signature FastcFunctionSignature) int {

@@ -170,6 +170,30 @@ fn test_c_homogeneous_float_aggregate_overflow_uses_the_stack() {
 	assert asm_ldur(Reg(1), fp, -8) !in words
 }
 
+fn test_overaligned_c_float_aggregate_with_padding_is_not_hfa() {
+	mut m := ssa.Module.new()
+	f64_type := m.type_store.get_float(64)
+	padded_pair_type := m.type_store.register(ssa.Type{
+		kind: .struct_t
+		fields: [f64_type, f64_type]
+		is_c_struct: true
+		alignment: 32
+	})
+	aligned_quad_type := m.type_store.register(ssa.Type{
+		kind: .struct_t
+		fields: [f64_type, f64_type, f64_type, f64_type]
+		is_c_struct: true
+		alignment: 32
+	})
+	g := Gen.new(m)
+	assert m.type_size(padded_pair_type) == 32
+	assert g.c_homogeneous_float_aggregate(padded_pair_type) == none
+	quad := g.c_homogeneous_float_aggregate(aligned_quad_type) or {
+		panic('aligned C quad should remain an HFA when it has no padding')
+	}
+	assert quad.elements.len == 4
+}
+
 fn test_c_homogeneous_float_aggregate_return_uses_simd_registers() {
 	mut m := ssa.Module.new()
 	f64_type := m.type_store.get_float(64)

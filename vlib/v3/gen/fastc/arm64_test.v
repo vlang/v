@@ -1855,6 +1855,57 @@ fn test_fastc_arm64_map_rehash_frees_superseded_buckets() {
 	}
 }
 
+fn test_fastc_arm64_rejects_fixed_arity_call_mismatches() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_call_arity_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		for invocation in ['sum(1)', 'sum(1, 2, 3)'] {
+			os.write_file(source_path, 'fn sum(a int, b int) int {\n\treturn a + b\n}\n\nfn main() {\n\tprintln(${invocation})\n}\n') or { panic(err) }
+			mut prefs := pref.new_preferences()
+			prefs.backend = 'fastc'
+			prefs.user_defines = ['arm64']
+			generate_arm64_files([source_path], prefs, output_path) or {
+				assert err.msg().contains('function `sum` call with')
+				continue
+			}
+			assert false, '`${invocation}` should fail argument-count validation'
+		}
+		os.write_file(source_path, '@[params]
+struct Options {
+	bonus int
+}
+
+fn total(base int, rest ...int) int {
+	return base + rest.len
+}
+
+fn with_options(base int, options Options) int {
+	return base + options.bonus
+}
+
+fn C.printf(format &char, ...)
+
+fn main() {
+	_ = total(1, 2, 3)
+	_ = with_options(1)
+	_ = with_options(1, bonus: 2)
+	format := "%d"
+	C.printf(format.str, 1)
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+	}
+}
+
 fn test_fastc_arm64_source_location_pseudo_values() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_location_${os.getpid()}')
