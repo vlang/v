@@ -755,6 +755,8 @@ struct FastcDeclarationAttribute {
 	is_flag    bool
 	is_params  bool
 	is_typedef bool
+	is_packed  bool
+	alignment  int
 }
 
 struct FastcEnumInfo {

@@ -132,6 +132,8 @@ pub:
 	ret_type    TypeID
 	is_c_struct bool // True for C interop structs (raw field names, typedef to C struct)
 	is_union    bool // True for union types (all fields overlap at offset 0)
+	is_packed   bool // True when struct fields use byte alignment
+	alignment   int // Explicit minimum aggregate alignment, or 0 for the ABI default
 }
 
 // TypeStore represents type store data used by ssa.
@@ -883,10 +885,13 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 			if s > max_size {
 				max_size = s
 			}
-			a := m.type_align_for_layout(field_typ)
+			a := if typ.is_packed { 1 } else { m.type_align_for_layout(field_typ) }
 			if a > max_align {
 				max_align = a
 			}
+		}
+		if typ.alignment > max_align {
+			max_align = typ.alignment
 		}
 		total = if max_align > 1 && max_size % max_align != 0 {
 			(max_size + max_align - 1) & ~(max_align - 1)
@@ -898,7 +903,7 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 		mut max_align := 1
 		for i in 0 .. typ.fields.len {
 			field_typ := typ.fields[i]
-			align := m.type_align_for_layout(field_typ)
+			align := if typ.is_packed { 1 } else { m.type_align_for_layout(field_typ) }
 			if align > max_align {
 				max_align = align
 			}
@@ -906,6 +911,9 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 				offset = (offset + align - 1) & ~(align - 1)
 			}
 			offset += m.type_size_inner(field_typ, depth + 1, mut visiting, mut cache)
+		}
+		if typ.alignment > max_align {
+			max_align = typ.alignment
 		}
 		total = if max_align > 1 && offset % max_align != 0 {
 			(offset + max_align - 1) & ~(max_align - 1)
@@ -957,6 +965,12 @@ fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 		return 8
 	}
 	if typ.fields.len > 0 {
+		if typ.is_packed {
+			return if typ.alignment > 1 { typ.alignment } else { 1 }
+		}
+		if typ.alignment > 8 {
+			return typ.alignment
+		}
 		return 8
 	}
 	if typ.params.len > 0 || typ.ret_type > 0 {
@@ -1022,7 +1036,7 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 		if i >= typ.fields.len {
 			break
 		}
-		align := m.type_align_for_layout(typ.fields[i])
+		align := if typ.is_packed { 1 } else { m.type_align_for_layout(typ.fields[i]) }
 		if align > 1 && offset % align != 0 {
 			offset = (offset + align - 1) & ~(align - 1)
 		}
@@ -1030,7 +1044,7 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 			mm.type_size_cache)
 	}
 	if field_idx < typ.fields.len {
-		align := m.type_align_for_layout(typ.fields[field_idx])
+		align := if typ.is_packed { 1 } else { m.type_align_for_layout(typ.fields[field_idx]) }
 		if align > 1 && offset % align != 0 {
 			offset = (offset + align - 1) & ~(align - 1)
 		}

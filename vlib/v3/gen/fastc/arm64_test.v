@@ -29,6 +29,47 @@ fn test_fastc_parser_emits_arm64_without_c() {
 	}
 }
 
+fn test_fastc_arm64_preserves_struct_layout_attributes() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_layout_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, '@[packed]
+struct Header {
+	tag   u8
+	value u64
+}
+
+@[aligned: 16]
+struct AlignedHeader {
+	tag u8
+}
+
+fn main() {
+	if sizeof(Header) != 9 || sizeof(AlignedHeader) != 16 {
+		println("wrong layout")
+		return
+	}
+	println("layout")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		result := generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		assert result.source_paths.len > 0
+		assert os.is_executable(output_path)
+		run_result := os.execute(output_path)
+		assert run_result.exit_code == 0
+		assert run_result.output == 'layout\n'
+	}
+}
+
 fn test_fastc_arm64_lexical_scopes_and_array_mutation() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_scopes_${os.getpid()}')

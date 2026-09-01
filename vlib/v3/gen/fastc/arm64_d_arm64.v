@@ -82,13 +82,15 @@ struct FastArm64InterpolationFormat {
 }
 
 struct FastArm64TypeDecl {
-	key      string
-	c_name   string
-	fields   []FastArm64FieldDecl
-	embeds   []string
-	alias_of string
-	is_union bool
-	is_c     bool
+	key       string
+	c_name    string
+	fields    []FastArm64FieldDecl
+	embeds    []string
+	alias_of  string
+	is_union  bool
+	is_c      bool
+	is_packed bool
+	alignment int
 }
 
 @[heap]
@@ -702,6 +704,8 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 	scan.init(file, source_file.source)
 	mut tok := scan.scan()
 	mut depth := 0
+	mut pending_is_packed := false
+	mut pending_alignment := 0
 	for tok != .eof {
 		if depth == 0 && tok == .dollar {
 			mut lookahead := scan
@@ -720,12 +724,22 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 		}
 		if depth == 0 && tok == .attribute {
 			attribute := fastc_scan_declaration_attribute(mut scan, source_file.path, prefs)!
+			if attribute.is_enabled {
+				pending_is_packed = pending_is_packed || attribute.is_packed
+				if attribute.alignment > 0 {
+					pending_alignment = attribute.alignment
+				}
+			}
 			tok = attribute.tok
 			continue
 		}
 		if depth == 0 && tok in [.key_pub, .key_static] {
 			tok = scan.scan()
 			continue
+		}
+		if depth == 0 && tok !in [.attribute, .key_pub, .key_static, .key_struct, .key_union] {
+			pending_is_packed = false
+			pending_alignment = 0
 		}
 		if depth == 0 && tok == .key_const {
 			tok = fast_arm64_collect_constant_declaration(mut scan, source_file, mut constants)!
@@ -822,7 +836,11 @@ fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pr
 				embeds: embeds
 				is_union: is_union
 				is_c: is_c
+				is_packed: pending_is_packed
+				alignment: pending_alignment
 			}
+			pending_is_packed = false
+			pending_alignment = 0
 			declarations[key] = declaration
 			declarations[c_name] = declaration
 			continue
@@ -972,6 +990,8 @@ fn (mut p FastArm64Program) register_declared_types() {
 			field_names: field_names
 			is_union: declaration.is_union
 			is_c_struct: declaration.is_c
+			is_packed: declaration.is_packed
+			alignment: declaration.alignment
 		}
 		p.type_decls_by_id[int(id)] = declaration
 	}
