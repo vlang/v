@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module arm64
 
 import os
@@ -43,14 +42,23 @@ const csslot_codedirectory = u32(0)
 const csslot_requirements = u32(2)
 const csslot_cms_signature = u32(0x10000)
 const cs_adhoc = u32(0x2) // Ad-hoc signing flag
+
+
 const cs_hashtype_sha256 = u8(2)
 const cs_hash_size = 32 // SHA256 = 32 bytes
+
+
 const cs_page_size_arm64 = 16384 // Code signing page size for ARM64 macOS
+
+
 const cs_page_shift_arm64 = 14 // log2(16384)
+
+
 const o_wronly_creat_trunc = $if linux { 0x241 } $else { 0x601 }
 
 // ARM64 page size on macOS
 const page_size = 0x4000 // 16KB
+
 
 // Base address for executables
 const base_addr = u64(0x100000000)
@@ -75,7 +83,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_memmove', '_memset', '_memcmp', '___stdoutp', '___stderrp', '_puts', '_printf', '_write',
 	'_read', '_open', '_close', '_fwrite', '_fflush', '_fopen', '_fclose', '_putchar', '_sprintf',
 	'_snprintf', '_fprintf', '_sscanf', '_mmap', '_munmap', '_getcwd', '_access', '_readlink',
-	'_getenv', '_strlen',
+	'_getenv', '_strlen', '_gcvt', '_ecvt',
 	// Filesystem/directory operations
 	'_opendir', '_readdir', '_closedir', '_mkdir', '_rmdir',
 	'_unlink', '_rename', '_remove', '_stat', '_lstat', '_fstat', '_chmod', '_chdir', '_realpath',
@@ -163,11 +171,13 @@ const metal_syms = ['_MTLCreateSystemDefaultDevice']
 // Linker represents linker data used by arm64.
 pub struct Linker {
 	macho &MachOObject
-pub mut:
+
 	// Frameworks to link (e.g. ['Metal', 'Cocoa', 'QuartzCore'])
+pub mut:
 	frameworks []string
-mut:
+
 	// Output buffer
+mut:
 	buf []u8
 
 	// Segment/section info
@@ -195,7 +205,7 @@ mut:
 	sym_to_got map[string]int
 
 	// Multi-dylib support: dylib paths and per-symbol ordinal mapping
-	dylibs       []string       // ['/usr/lib/libSystem.B.dylib', '/usr/lib/libobjc.A.dylib', ...]
+	dylibs       []string // ['/usr/lib/libSystem.B.dylib', '/usr/lib/libobjc.A.dylib', ...]
 	sym_to_dylib map[string]int // symbol name → index into dylibs[] (ordinal = idx + 1)
 
 	// Code start offset (after header + load commands)
@@ -206,12 +216,12 @@ mut:
 pub fn Linker.new(macho &MachOObject) &Linker {
 	return unsafe {
 		&Linker{
-			macho:        macho
-			frameworks:   []string{}
-			buf:          []u8{}
-			extern_syms:  []string{}
-			sym_to_got:   map[string]int{}
-			dylibs:       []string{}
+			macho: macho
+			frameworks: []string{}
+			buf: []u8{}
+			extern_syms: []string{}
+			sym_to_got: map[string]int{}
+			dylibs: []string{}
 			sym_to_dylib: map[string]int{}
 		}
 	}
@@ -239,10 +249,15 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 
 	// Second pass: collect truly external symbols.
 	// force_external_syms should go through GOT/stubs.
-	// All other undefined symbols are internal V functions or V-embedded C functions
-	// (like wyhash) that resolve to local stubs.
+	// Any remaining undefined symbol (N_UNDF | N_EXT) with no local definition is a C
+	// extern beyond the force_external_syms allowlist (e.g. `fn C.arc4random()`); it must
+	// be bound through the GOT/stubs too, otherwise the relocation stays unresolved and
+	// aborts the link below. Undefined symbols that do resolve locally (forward references
+	// to internal V functions, V-embedded C helpers like wyhash) are in defined_syms and
+	// are intentionally left out so they keep resolving to their local definition.
 	for sym in l.macho.symbols {
-		if sym.name in force_external_syms && sym.name !in l.extern_syms {
+		is_undefined_extern := sym.type_ == 0x01 && sym.name !in defined_syms
+		if (sym.name in force_external_syms || is_undefined_extern) && sym.name !in l.extern_syms {
 			l.extern_syms << sym.name
 			l.sym_to_got[sym.name] = l.extern_syms.len - 1
 		}
@@ -320,10 +335,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	source_version_cmd_size := 16
 	code_signature_cmd_size := 16
 
-	load_cmds_size := pagezero_cmd_size + text_cmd_size + data_cmd_size + linkedit_cmd_size +
-		dyld_info_cmd_size + symtab_cmd_size + dysymtab_cmd_size + dylinker_cmd_size +
-		dylib_cmd_size + main_cmd_size + uuid_cmd_size + build_version_cmd_size +
-		source_version_cmd_size + code_signature_cmd_size
+	load_cmds_size := pagezero_cmd_size + text_cmd_size + data_cmd_size + linkedit_cmd_size + dyld_info_cmd_size + symtab_cmd_size + dysymtab_cmd_size + dylinker_cmd_size + dylib_cmd_size + main_cmd_size + uuid_cmd_size + build_version_cmd_size + source_version_cmd_size + code_signature_cmd_size
 
 	// __TEXT starts at file offset 0 and vmaddr base_addr
 	l.text_fileoff = 0
@@ -403,7 +415,8 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 
 	for sym in l.macho.symbols {
 		if (sym.type_ & 0x0E) != 0x0E {
-			continue // Skip undefined symbols
+			// Skip undefined symbols
+			continue
 		}
 		if sym.name in force_external_syms {
 			continue
@@ -970,9 +983,25 @@ fn (l &Linker) generate_code_signature(ident string) []u8 {
 	// Compute page hashes in parallel (16KB pages)
 	mut all_hashes := []u8{len: n_pages * 32}
 	data_ptr := unsafe { &u8(l.buf.data) }
-	// Hash all pages sequentially. V's `spawn` is not supported on the native
-	// ARM64 backend, so we avoid threads here for self-hosting compatibility.
-	sha256_hash_pages(data_ptr, mut all_hashes, 0, n_pages, code_limit)
+	$if clang {
+		// The bootstrap compiler uses the C backend, where hashing independent
+		// code-signature pages in parallel saves most of the signing pass. Native
+		// descendants keep the sequential fallback until spawn is supported there.
+		if n_pages >= 64 {
+			worker_count := 8
+			mut workers := []thread{}
+			for worker in 0 .. worker_count {
+				start := n_pages * worker / worker_count
+				end := n_pages * (worker + 1) / worker_count
+				workers << spawn sha256_hash_pages(data_ptr, mut all_hashes, start, end, code_limit)
+			}
+			workers.wait()
+		} else {
+			sha256_hash_pages(data_ptr, mut all_hashes, 0, n_pages, code_limit)
+		}
+	} $else {
+		sha256_hash_pages(data_ptr, mut all_hashes, 0, n_pages, code_limit)
+	}
 	for i in 0 .. all_hashes.len {
 		sig << all_hashes[i]
 	}
@@ -1182,12 +1211,11 @@ fn (mut l Linker) write_text_with_relocations() {
 			eprintln('LINKER: unresolved symbol "${sym_name}" (idx=${r.sym_idx}) at text offset ${r.addr}')
 			exit(1)
 		}
-		if sym_name in force_external_syms {
-			// Use stub address for external symbols
-			if sym_name in l.sym_to_got {
-				got_idx := l.sym_to_got[sym_name]
-				sym_addr = stubs_vmaddr + u64(got_idx * 12)
-			}
+		// Use the stub address for every external symbol routed through the GOT
+		// (force_external_syms plus C externs bound in the pass above). Locally
+		// defined symbols are never in sym_to_got, so they keep their real address.
+		if got_idx := l.sym_to_got[sym_name] {
+			sym_addr = stubs_vmaddr + u64(got_idx * 12)
 		}
 		pc := code_vmaddr + u64(r.addr)
 
@@ -1389,7 +1417,6 @@ fn (mut l Linker) write_zeros(n int) {
 
 // Self-contained SHA-256 implementation. Zero heap allocations —
 // uses fixed-size arrays and operates on raw pointers.
-
 const sha256_k = [
 	u32(0x428a2f98),
 	0x71374491,
@@ -1498,8 +1525,7 @@ fn sha256_hash(data &u8, data_len int, out_ptr &u8) {
 		for i in 0 .. 16 {
 			j := off + i * 4
 			unsafe {
-				w[i] = (u32(data[j]) << 24) | (u32(data[j + 1]) << 16) | (u32(data[j + 2]) << 8) | u32(data[
-					j + 3])
+				w[i] = (u32(data[j]) << 24) | (u32(data[j + 1]) << 16) | (u32(data[j + 2]) << 8) | u32(data[j + 3])
 			}
 		}
 		sha256_compress(&state[0], &w[0])
@@ -1537,8 +1563,7 @@ fn sha256_hash(data &u8, data_len int, out_ptr &u8) {
 		off := blk * 64
 		for i in 0 .. 16 {
 			j := off + i * 4
-			w[i] = (u32(pad[j]) << 24) | (u32(pad[j + 1]) << 16) | (u32(pad[j + 2]) << 8) | u32(pad[
-				j + 3])
+			w[i] = (u32(pad[j]) << 24) | (u32(pad[j + 1]) << 16) | (u32(pad[j + 2]) << 8) | u32(pad[j + 3])
 		}
 		sha256_compress(&state[0], &w[0])
 	}

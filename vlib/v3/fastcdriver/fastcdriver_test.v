@@ -32,6 +32,27 @@ fn test_fastc_parse_bench_child_output() {
 	assert sample.lines == 64516
 }
 
+fn test_validate_output_source_paths_rejects_import_alias() {
+	root := os.join_path(os.temp_dir(), 'fastc_output_alias_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	entry := os.join_path_single(root, 'main.v')
+	imported := os.join_path_single(root, 'dependency.v')
+	os.write_file(entry, 'module main') or { panic(err) }
+	os.write_file(imported, 'module dependency') or { panic(err) }
+	mut rejected := false
+	validate_output_source_paths(imported, os.real_path(entry), [os.real_path(entry),
+		os.real_path(imported)]) or {
+		rejected = true
+		assert err.msg().contains('aliases imported source')
+	}
+	assert rejected
+	assert os.read_file(imported) or { '' } == 'module dependency'
+}
+
 fn assert_in_place_self_chain_survives(compiler_name string) {
 	dir := os.join_path(os.temp_dir(), 'fastc_self_${compiler_name}_chain_${os.getpid()}')
 	os.rmdir_all(dir) or {}

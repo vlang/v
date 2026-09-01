@@ -115,6 +115,17 @@ fn test_formatter_preserves_unsafe_and_defer_source_layout() {
 	assert vfmt('unsafe_defer_layout_twice', out) == out
 }
 
+fn test_formatter_keeps_anon_fn_body_statements_expanded_inside_init() {
+	// Regression: an anonymous fn used as a struct init field value kept the
+	// `in_init` flag set while emitting its body, collapsing the body statements
+	// (and any nested `or {}` block) onto a single line, e.g.
+	// `c := codem := msg_ = c_ = m}`, which broke compilation.
+	source := "struct Events {\n\ton_error fn(code int, msg string)\n\ton_close fn(id int)\n}\n\nstruct Registry {\nmut:\n\tclosed bool\n}\n\nfn (r &Registry) find(id int) ?int {\n\treturn id\n}\n\nfn handlers() {\n\tmut reg := Registry{}\n\te := Events{\n\t\ton_error: fn (code int, msg string) {\n\t\t\tc := code\n\t\t\tm := msg\n\t\t\t_ = c\n\t\t\t_ = m\n\t\t}\n\t\ton_close: fn (id int) {\n\t\t\tn := reg.find(id) or { return }\n\t\t\t_ = n\n\t\t}\n\t}\n\t_ = e\n\t_ = reg\n}\n"
+	out := vfmt('anon_fn_body_inside_init', source)
+	assert out == source, out
+	assert vfmt('anon_fn_body_inside_init_twice', out) == out
+}
+
 fn test_formatter_preserves_compact_empty_literals_and_declarations() {
 	source := "interface Compact {}\n\nstruct Between {}\n\ninterface Expanded {\n}\n\nenum CompactEnum {}\n\nstruct Between2 {}\n\nenum ExpandedEnum {\n}\n\nfn literal_layouts() {\n\tcompact := fn (_s string) {}\n\texpanded := fn (_s string) {\n\t}\n\t_ = compact\n\t_ = expanded\n}\n"
 	out := vfmt('compact_empty_literals_declarations', source)

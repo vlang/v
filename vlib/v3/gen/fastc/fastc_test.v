@@ -1,6 +1,7 @@
 module fastc
 
 import os
+import strings
 import v3.cmdexec
 import v3.pref
 import v3.scanner
@@ -409,14 +410,174 @@ fn test_fastc_chunk_bounds_reserve_files_for_later_workers() {
 	assert fastc_chunk_bounds(sources, 2) == [0, 3, 3, 4]
 }
 
-fn test_fastc_file_generation_jobs_balance_largest_files_first() {
+fn test_fastc_file_generation_order_is_largest_first() {
 	sources := [
-		FastcSourceFile{source: 'a'.repeat(60)},
-		FastcSourceFile{source: 'b'.repeat(50)},
-		FastcSourceFile{source: 'c'.repeat(40)},
-		FastcSourceFile{source: 'd'.repeat(30)},
+		FastcSourceFile{ source: 'a'.repeat(30) },
+		FastcSourceFile{ source: 'b'.repeat(60) },
+		FastcSourceFile{ source: 'c'.repeat(40) },
+		FastcSourceFile{ source: 'd'.repeat(50) },
 	]
-	assert fastc_file_generation_job_indices(sources, 2) == [[0, 3], [1, 2]]
+	// Work-stealing claims files in this order, so the biggest files start before
+	// the shared queue's tail thins out.
+	assert fastc_file_generation_order(sources) == [1, 3, 2, 0]
+}
+
+fn fastc_test_steal_claimed_indices(queue &FastcGenQueue, limit u32) []u32 {
+	mut claimed := []u32{}
+	for {
+		index := fastc_atomic_fetch_add_u32(&queue.next, 1)
+		if index >= limit {
+			break
+		}
+		claimed << index
+	}
+	return claimed
+}
+
+fn test_fastc_gen_queue_claims_every_index_exactly_once() {
+	// Several workers drain one shared queue concurrently, exactly as
+	// fastc_generate_file_outputs spawns them. The atomic counter must hand each
+	// index to exactly one worker — the property the work-stealing scheduler relies
+	// on to generate every file once — regardless of how the OS interleaves them.
+	limit := u32(4000)
+	mut queue := &FastcGenQueue{
+		next: 0
+	}
+	mut workers := []thread []u32{}
+	for _ in 0 .. 8 {
+		workers << spawn fastc_test_steal_claimed_indices(queue, limit)
+	}
+	mut claim_counts := []int{len: int(limit)}
+	mut total := 0
+	for worker in workers {
+		for index in worker.wait() {
+			assert index < limit
+			claim_counts[index]++
+			total++
+		}
+	}
+	// Every index claimed exactly once, and nothing beyond the end leaks through.
+	assert total == int(limit)
+	for count in claim_counts {
+		assert count == 1
+	}
+}
+
+fn test_fastc_prealloc_enabled_reads_user_defines() {
+	mut with_prealloc := pref.new_preferences()
+	with_prealloc.user_defines = ['prealloc']
+	assert fastc_prealloc_enabled(with_prealloc)
+	assert !fastc_prealloc_enabled(pref.new_preferences())
+}
+
+fn test_fastc_prealloc_arena_root_is_per_thread() {
+	mut out := strings.new_builder(256)
+	fastc_write_prealloc_tls_global(mut out, 'VMemoryBlock*', 'g_memory_block')
+	rendered := out.str()
+	// The arena root must be per-thread so the parallel per-file generator's
+	// workers never share it: a pthread-key slot under bundled TinyCC on macOS
+	// (no working thread-local storage), `_Thread_local` everywhere else. It must
+	// never be emitted as a plain shared global.
+	assert rendered.contains('#define g_memory_block (*(VMemoryBlock* *)v_prealloc_tls_slot())')
+	assert rendered.contains('pthread_getspecific(v_prealloc_tls_key)')
+	assert rendered.contains('_Thread_local VMemoryBlock* g_memory_block;')
+	assert !rendered.contains('static VMemoryBlock* g_memory_block;')
+}
+
+fn test_fastc_fragmented_generation_matches_serial_output() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	sources := [
+		FastcSourceFile{
+			path: 'large.v'
+			source: 'module fastc\nfn fastc_fragment_first() {\n${large_comment}\n}\nfn fastc_fragment_second() {}\n'
+			header: FastcSourceHeader{
+				module_name: 'v3.gen.fastc'
+			}
+		},
+		FastcSourceFile{
+			path: 'small_1.v'
+			source: 'module fastc\nfn fastc_fragment_small_1() {}\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+		FastcSourceFile{
+			path: 'small_2.v'
+			source: 'module fastc\nfn fastc_fragment_small_2() {}\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+		FastcSourceFile{
+			path: 'small_3.v'
+			source: 'module fastc\nfn fastc_fragment_small_3() {}\n'
+			header: FastcSourceHeader{ module_name: 'v3.gen.fastc' }
+		},
+	]
+	mut parallel_prefs := pref.new_preferences()
+	parallel_prefs.building_v = true
+	parallel, _, _ := generate_source_files(sources, map[string]string{}, parallel_prefs) or {
+		panic(err)
+	}
+	mut serial_prefs := pref.new_preferences()
+	serial_prefs.building_v = true
+	serial_prefs.no_parallel = true
+	serial, _, _ := generate_source_files(sources, map[string]string{}, serial_prefs) or {
+		panic(err)
+	}
+	assert parallel == serial
+}
+
+fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	source := 'module fastc\n\$if linux {\n\tfn fastc_fragment_comptime_branch() {\n\t\t${large_comment}\n\t}\n} \$else \$if windows {\n\tfn fastc_fragment_comptime_else_if() {}\n} \$else {\n\tfn fastc_fragment_comptime_else() {}\n}\nfn fastc_fragment_after_chain() {}\n'
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	fragments := fastc_source_generation_fragments(FastcSourceFile{
+		path: 'large_comptime_chain.v'
+		source: source
+		header: FastcSourceHeader{
+			module_name: 'v3.gen.fastc'
+		}
+	}, prefs)
+	assert fragments.len == 2
+	assert !fragments[1].source.trim_space().starts_with('\$else')
+	assert fragments[1].source.trim_space().starts_with('fn fastc_fragment_after_chain')
+}
+
+fn test_fastc_generation_fragments_keep_top_level_initializer_together() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	source := 'module fastc\nstruct FastcFragmentValue {}\n@[inline]\nfn (v FastcFragmentValue) value() int {\n\treturn 1\n}\n${large_comment}\nconst fastc_fragment_result = FastcFragmentValue{}.value()\nfn fastc_fragment_after_initializer() {}\n'
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	fragments := fastc_source_generation_fragments(FastcSourceFile{
+		path: 'large_top_level_initializer.v'
+		source: source
+		header: FastcSourceHeader{
+			module_name: 'v3.gen.fastc'
+		}
+	}, prefs)
+	assert fragments.len == 2
+	assert fragments[0].source.contains('FastcFragmentValue{}.value()')
+	assert fragments[1].source.trim_space().starts_with('fn fastc_fragment_after_initializer')
+}
+
+fn test_fastc_overlap_workers_honor_serial_preferences() {
+	mut prefs := pref.new_preferences()
+	prefs.no_parallel = true
+	sources := [
+		FastcSourceFile{ source: 'module main\nfn a() {}\n' },
+		FastcSourceFile{ source: 'module main\nfn b() {}\n' },
+		FastcSourceFile{ source: 'module main\nfn c() {}\n' },
+		FastcSourceFile{ source: 'module main\nfn d() {}\n' },
+	]
+	mut pending_references := fastc_start_referenced_function_names(sources, prefs, map[string]FastcFunctionSignature{})
+	assert pending_references.workers.len == 0
+	assert fastc_wait_referenced_function_names(mut pending_references).len > 0
+
+	mut functions := map[string]FastcFunctionSignature{}
+	for name in ['a', 'b', 'c', 'd'] {
+		functions[name] = FastcFunctionSignature{}
+	}
+	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]bool{}, map[string]bool{}, false, prefs)
+	assert pending_dispatches.workers.len == 0
+	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
 }
 
 fn test_fastc_source_declaration_flags_respect_identifier_boundaries() {
@@ -1346,8 +1507,7 @@ fn test_source_resolver_preserves_aliases_for_scheduled_files() {
 	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(root, 'legacy', 'alias.v'),
-		"@[alias: '${canonical_dir}'] module legacy\n") or {
+	os.write_file(os.join_path(root, 'legacy', 'alias.v'), "@[alias: '${canonical_dir}'] module legacy\n") or {
 		panic(err)
 	}
 	mut prefs := pref.new_preferences()
@@ -1371,8 +1531,7 @@ fn test_source_resolver_preserves_aliases_for_symlinked_module_dirs() {
 	os.write_file(main_file, 'module main\nimport canonical\nimport legacy\nfn main() { canonical.ping(); legacy.ping() }\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(canonical_dir, 'canonical.v'),
-		'module canonical\npub fn ping() {}\n') or {
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\npub fn ping() {}\n') or {
 		panic(err)
 	}
 	mut prefs := pref.new_preferences()
@@ -1380,6 +1539,25 @@ fn test_source_resolver_preserves_aliases_for_symlinked_module_dirs() {
 	sources, aliases := fastc_resolve_source_files([main_file], prefs) or { panic(err) }
 	assert sources.len == 2
 	assert aliases['legacy'] == 'canonical'
+}
+
+fn test_source_resolver_canonicalizes_building_v_entry_path() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	prefs.vroot = os.real_path(@VEXEROOT)
+	canonical_entry := os.join_path(prefs.vroot, 'vlib', 'v3', 'v3.v')
+	// The regular V3 driver can pass a relative or otherwise non-canonical entry,
+	// while entry-module enumeration returns canonical absolute paths. Both spellings
+	// must resolve to one source or FastC reports a duplicate `main` during self-host.
+	noncanonical_entry := os.dir(canonical_entry) + '/../v3/v3.v'
+	sources, _ := fastc_resolve_source_files([noncanonical_entry], prefs) or { panic(err) }
+	mut entry_count := 0
+	for source in sources {
+		if source.path == canonical_entry {
+			entry_count++
+		}
+	}
+	assert entry_count == 1
 }
 
 fn test_header_discovers_imports_only_from_selected_comptime_branches() {
@@ -2249,6 +2427,16 @@ fn test_generate_files_restricts_unqualified_imported_type_lookup() {
 		''
 	}
 	assert message.contains('private type `Widget` from imported module `widgets`'), message
+
+	os.write_file(main_file, 'module main\nimport widgets { Widget }\nfn main() { _ := Widget{} }\n') or {
+		panic(err)
+	}
+	message = ''
+	_ := generate_files([main_file], prefs) or {
+		message = err.msg()
+		''
+	}
+	assert message.contains('unresolved name `Widget`'), message
 }
 
 fn test_selfhost_struct_field_defaults_are_preserved() {
@@ -4534,7 +4722,7 @@ fn fastc_test_expression_token(tok token.Token, lit string) FastcExpressionToken
 fn test_literal_membership_materializes_candidates_before_comparison() {
 	prefs := pref.new_preferences()
 	g := Parser{
-		prefs: &prefs
+		prefs: prefs
 		selfhost: true
 		s: scanner.new_scanner(prefs, .normal)
 		locals: {
@@ -4836,6 +5024,29 @@ fn main() {
 	print_three := c_source.index_after('println(3);', deferred_one) or { panic(c_source) }
 	assert print_two < deferred_one
 	assert deferred_one < print_three
+}
+
+fn test_block_locals_are_released_when_their_scope_exits() {
+	prefs := pref.new_preferences()
+	c_source := generate("module main
+
+fn main() {
+	if true {
+		value := 1
+		println(value)
+		if true {
+			nested := 2
+			println(nested)
+		}
+		nested := 'inner'
+		println(nested)
+	}
+	value := 'outer'
+	println(value)
+}
+", 'block_local_scope.v', prefs) or { panic(err) }
+	assert c_source.contains('__typeof__((1)) value = (1);'), c_source
+	assert c_source.contains('string value = ("outer");'), c_source
 }
 
 fn test_return_expression_is_evaluated_before_deferred_blocks() {
@@ -5860,6 +6071,25 @@ fn main() {
 	assert !c_source.contains('text.str[index]'), c_source
 }
 
+fn test_selfhost_double_pointer_index_preserves_one_pointer_level() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn take(value &u8) {}
+
+fn pass(values &&u8, index int) {
+	take(values[index])
+}
+
+fn main() {
+	pass(&&u8(0), 0)
+}
+', 'selfhost_double_pointer_index.v', prefs) or { panic(err) }
+	assert c_source.contains('take(((values)[index]))'), c_source
+	assert !c_source.contains('take(&(((values)[index])))'), c_source
+}
+
 fn test_selfhost_selector_assignment_accepts_array_initializer() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -5940,6 +6170,14 @@ fn test_selfhost_type_aliases_are_hoisted_before_composite_fields() {
 	request_index := ordered.index('struct Request {') or { -1 }
 	assert redirect_index >= 0 && status_index > redirect_index && status_index < handle_index, ordered
 	assert handle_index < alias_index && alias_index < request_index, ordered
+}
+
+fn test_c_directive_hoisting_preserves_source_order() {
+	source := 'one\n#include <x.h>\ntwo\n# if FLAG\nthree\n#ifdef INNER\nfour\n#endif\n#else\nfive\n#endif\nsix'
+	hoisted := fastc_hoist_c_directives(source)
+	assert hoisted.directives == '#include <x.h>\n\n'
+	assert hoisted.conditional_code == '# if FLAG\nthree\n#ifdef INNER\nfour\n#endif\n#else\nfive\n#endif\n\n'
+	assert hoisted.body == 'one\ntwo\nsix\n'
 }
 
 fn test_nested_fixed_array_struct_field_uses_native_c_dimensions() {
@@ -6198,6 +6436,88 @@ fn main() {
 	assert c_source.contains('__v_fastc_append_map_target'), c_source
 	assert c_source.contains('builtin__map_get_check'), c_source
 	assert !c_source.contains('groups[key]'), c_source
+}
+
+fn test_selfhost_append_to_nested_array() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+fn add(mut groups [][]int, index int, value int) {
+	groups[index] << value
+}
+
+fn main() {
+	mut groups := [][]int{len: 1}
+	add(mut groups, 0, 42)
+}
+', 'selfhost_append_to_nested_array.v', prefs) or { panic(err) }
+	assert c_source.contains('__v_fastc_append_array_target'), c_source
+	assert c_source.contains('builtin__array_get(*(groups), index)'), c_source
+	assert c_source.contains('builtin____new_array(0,0,sizeof(int))'), c_source
+	assert c_source.contains('((Array_int *)__v_fastc_array_init.data)[__v_fastc_array_index]'), c_source
+	assert !c_source.contains('groups[index]'), c_source
+}
+
+fn test_selfhost_fixed_array_elements_skip_dynamic_inner_array_initialization() {
+	prefs := pref.new_preferences()
+	g := Parser{
+		prefs: prefs
+		s: scanner.new_scanner(prefs, .normal)
+		struct_fields: {
+			'array': {
+				'len': 'int'
+			}
+		}
+	}
+	mut tokens := [
+		FastcExpressionToken{
+			tok: .name
+			lit: 'array'
+			typ: 'Array_FixedArray_2_int'
+		},
+		fastc_test_expression_token(.lcbr, '{'),
+		fastc_test_expression_token(.name, 'len'),
+		fastc_test_expression_token(.colon, ':'),
+		fastc_test_expression_token(.number, '1'),
+		fastc_test_expression_token(.rcbr, '}'),
+	]
+	fixed := g.render_struct_literal_expression(tokens) or { panic('fixed array literal was not rendered') }
+	assert fixed.source.contains('sizeof(' + 'FixedArray_2_int' + ')'), fixed.source
+	assert !fixed.source.contains('builtin____new_array(0,0,sizeof(int))'), fixed.source
+	assert !fixed.source.contains('((FixedArray_2_int *)__v_fastc_array_init.data)'), fixed.source
+
+	tokens[0].typ = 'Array_Array_int'
+	dynamic := g.render_struct_literal_expression(tokens) or { panic('dynamic array literal was not rendered') }
+	assert dynamic.source.contains('builtin____new_array(0,0,sizeof(int))'), dynamic.source
+	assert dynamic.source.contains('((Array_int *)__v_fastc_array_init.data)'), dynamic.source
+}
+
+fn test_selfhost_append_array_result_to_struct_field() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct State {
+mut:
+	values []string
+}
+
+fn load_values() ![]string {
+	return [\'one\', \'two\']
+}
+
+fn add_values(mut state State) ! {
+	state.values << load_values()!
+}
+
+fn main() {
+	mut state := State{}
+	add_values(mut state) or { panic(err) }
+}
+', 'selfhost_append_array_result_to_struct_field.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__array_push_many'), c_source
+	assert !c_source.contains('state->values<<'), c_source
 }
 
 fn test_selfhost_empty_array_assigned_to_member_field() {
@@ -7383,6 +7703,47 @@ fn main() {
 	assert c_source.contains('Array_Node v = *(Array_Node *)'), c_source
 }
 
+fn test_sum_type_recursive_array_variant_append_boxes_one_element() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Value = int | []Value
+
+fn main() {
+	mut dst := []Value{}
+	src := [Value(1)]
+	dst << src
+	_ := dst
+}
+', 'sum_type_recursive_append.v', prefs) or { panic(err) }
+	// `[]Value` is a variant of `Value`, so `dst << src` boxes the whole `src` array as
+	// one `Value` element instead of copying its elements. The append must use the
+	// single-element push and box `src` with the composite `Array_Value` type id.
+	assert !c_source.contains('builtin__array_push_many'), c_source
+	assert c_source.contains('__v_typeid_Array_Value'), c_source
+	assert c_source.contains('builtin__array_push('), c_source
+}
+
+fn test_sum_type_nonrecursive_array_append_is_push_many() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+type Plain = int | string
+
+fn main() {
+	mut dst := []Plain{}
+	src := [Plain(1)]
+	dst << src
+	_ := dst
+}
+', 'sum_type_nonrecursive_append.v', prefs) or { panic(err) }
+	// `Plain` has no array variant, so `[]Plain << []Plain` stays a push-many append
+	// that copies each element, matching the main C backend.
+	assert c_source.contains('builtin__array_push_many'), c_source
+}
+
 fn test_generic_monomorphization() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -8071,6 +8432,27 @@ fn main() {
 	assert c_source.contains('__v_fastc_or_result'), c_source
 	assert c_source.contains('flag=9'), c_source
 	assert c_source.contains(' = (42)'), c_source
+}
+
+fn test_selfhost_or_block_with_multiline_struct_fallback_is_a_value() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {}
+
+fn get(items map[string]Item) Item {
+	return items[\'missing\'] or {
+		Item{}
+	}
+}
+
+fn main() {
+	_ := get(map[string]Item{})
+}
+', 'selfhost_multiline_struct_fallback.v', prefs) or { panic(err) }
+	assert c_source.contains('? ((Item){}) : *((Item *)'), c_source
+	assert !c_source.contains('if (__v_fastc_option_'), c_source
 }
 
 fn test_veb_template_compiles_to_builder() {
@@ -10042,6 +10424,52 @@ fn main() {}
 	assert !c_source.contains('result+='), c_source
 }
 
+fn test_failed_generic_placeholder_block_unwinds_local_scope() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	source := 'mut local := result\nlocal += result\n}'
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('failed_generic_scope.v', source.len)
+	file.index_lines_without_digest(source)
+	mut g := Parser{
+		prefs: prefs
+		selfhost: true
+		in_generic_placeholder: true
+		locals: {
+			'result': FastcLocal{
+				is_mut: true
+				typ: 'voidptr'
+			}
+		}
+		s: scanner.new_scanner(prefs, .normal)
+		out: strings.new_builder(64)
+		statement_reachable: true
+	}
+	for _ in 0 .. 3 {
+		out_checkpoint := g.out.len
+		g.s.init(file, source)
+		g.next()
+		mut body_end := g.s
+		mut body_depth := 1
+		for body_depth > 0 {
+			body_tok := body_end.scan()
+			if body_tok == .eof {
+				break
+			}
+			if body_tok == .lcbr {
+				body_depth++
+			} else if body_tok == .rcbr {
+				body_depth--
+			}
+		}
+		assert g.parse_generic_body_or_stub('voidptr', out_checkpoint, 0, body_end, false)
+		assert g.local_scope_depth == 0
+		assert g.local_scope_changes.len == 0
+		assert 'local' !in g.locals
+		assert g.locals['result'].typ == 'voidptr'
+	}
+}
+
 fn test_selfhost_erased_generic_type_reflection_uses_stub() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -10299,6 +10727,60 @@ fn main() {
 	assert c_source.contains('builtin__map_get_check'), c_source
 	assert c_source.contains('builtin__map_set'), c_source
 	assert !c_source.contains('counts[key]+amount'), c_source
+}
+
+fn test_selfhost_map_assignment_keeps_overloaded_operation_in_value() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Text {
+	value string
+}
+
+fn (left Text) + (right Text) Text {
+	return Text{ value: left.value + right.value }
+}
+
+fn append_value(mut values map[string]Text, key string, suffix Text) {
+	previous := values[key] or { Text{} }
+	values[key] = previous + suffix
+}
+
+fn main() {
+	mut values := map[string]Text{}
+	append_value(mut values, "compiler", Text{ value: " initializer" })
+}
+', 'selfhost_map_assignment_overloaded_operation.v', prefs) or { panic(err) }
+	assert c_source.contains('Text __v_fastc_map_value = (Text_plus(previous,suffix))'), c_source
+	assert !c_source.contains('Text_plus(({ string __v_fastc_map_key'), c_source
+}
+
+fn test_selfhost_map_assignment_with_propagated_result() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	c_source := generate('module main
+
+struct Item {
+	value int
+}
+
+fn load_item() !Item {
+	return Item{ value: 42 }
+}
+
+fn insert(mut items map[string]Item) ! {
+	items[\'answer\'] = load_item()!
+}
+
+fn main() {
+	mut items := map[string]Item{}
+	insert(mut items) or { panic(err) }
+}
+', 'selfhost_map_assignment_propagated_result.v', prefs) or { panic(err) }
+	assert c_source.contains('builtin__map_set'), c_source
+	assert c_source.contains('__v_fastc_option_propagate'), c_source
+	assert !c_source.contains('items[_S("answer")]'), c_source
 }
 
 fn test_selfhost_nested_map_assignment_initializes_addressable_inner_map() {

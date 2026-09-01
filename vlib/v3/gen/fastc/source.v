@@ -63,13 +63,13 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 	source := os.read_file(path) or {
 		return FastcLoadedSource{
-			failed:        true
+			failed: true
 			error_message: err.msg()
 		}
 	}
 	header := fastc_scan_source_header(source, path, prefs) or {
 		return FastcLoadedSource{
-			failed:        true
+			failed: true
 			error_message: err.msg()
 		}
 	}
@@ -82,19 +82,22 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]FastcSourceFile, map[string]string) {
 	mut queue := []FastcQueuedSource{}
 	if prefs.building_v {
-		builtin_dir := prefs.get_vlib_module_path('builtin')
+		builtin_dir := os.real_path(prefs.get_vlib_module_path('builtin'))
 		for builtin_file in pref.get_v_files_from_dir_for_target(builtin_dir, prefs.user_defines, prefs.target) {
 			if fastc_source_file_matches_backend(builtin_file) {
 				queue << FastcQueuedSource{
 					path: builtin_file
 					module_name: 'builtin'
+					is_canonical: true
 				}
 			}
 		}
 	}
 	for path in paths {
+		entry_path := if prefs.building_v { os.real_path(path) } else { path }
 		queue << FastcQueuedSource{
-			path: path
+			path: entry_path
+			is_canonical: prefs.building_v
 		}
 		// A V module spans every source file in its directory, plus any `subdirs`
 		// its v.mod lists that belong to the same module (e.g. gitly's `ssh/`,
@@ -103,10 +106,11 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 		// path does this: the bootstrap runtime compiles single entry files, and its
 		// tests place several independent programs in one scratch directory.
 		if prefs.building_v {
-			for module_file in fastc_entry_module_files(path, prefs) {
+			for module_file in fastc_entry_module_files(entry_path, prefs) {
 				if fastc_source_file_matches_backend(module_file) {
 					queue << FastcQueuedSource{
 						path: module_file
+						is_canonical: true
 					}
 				}
 			}
@@ -139,9 +143,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 			queued := queue[queue_index]
 			queue_index++
 			mut path := ''
-			if prefs.building_v {
-				// The self-host driver canonicalizes its entry path and derives vroot
-				// from it, so every queued vlib path is already absolute and canonical.
+			if queued.is_canonical {
 				path = queued.path
 			} else if cached := real_path_cache[queued.path] {
 				path = cached
@@ -228,14 +230,16 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 					if prefs.building_v {
 						vlib_module_dir := prefs.get_vlib_module_path(imported_module)
 						// Alias modules need the generic resolver to follow `alias.v`.
-						if os.is_dir(vlib_module_dir)
-							&& !os.is_file(os.join_path_single(vlib_module_dir, 'alias.v')) {
+						if os.is_dir(vlib_module_dir) && !os.is_file(os.join_path_single(vlib_module_dir, 'alias.v')) {
 							module_dir = vlib_module_dir
 						} else {
 							module_dir = prefs.get_module_path(imported_module, source_file.path)
 						}
 					} else {
 						module_dir = prefs.get_module_path(imported_module, source_file.path)
+					}
+					if prefs.building_v {
+						module_dir = os.real_path(module_dir)
 					}
 					module_path_cache[module_cache_key] = module_dir
 				}
@@ -254,14 +258,14 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 					module_dir_files[module_dir] = module_files
 				}
 				for module_file in module_files {
-					mut module_file_real := ''
-					if prefs.building_v {
-						module_file_real = module_file
-					} else if cached := real_path_cache[module_file] {
-						module_file_real = cached
-					} else {
-						module_file_real = os.real_path(module_file)
-						real_path_cache[module_file] = module_file_real
+					mut module_file_real := module_file
+					if !prefs.building_v {
+						if cached := real_path_cache[module_file] {
+							module_file_real = cached
+						} else {
+							module_file_real = os.real_path(module_file)
+							real_path_cache[module_file] = module_file_real
+						}
 					}
 					if scheduled_module := scheduled_path_modules[module_file_real] {
 						loaded_module := path_module[module_file_real] or { scheduled_module }
@@ -272,8 +276,9 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 					}
 					scheduled_path_modules[module_file_real] = imported_module
 					queue << FastcQueuedSource{
-						path: module_file
+						path: module_file_real
 						module_name: imported_module
+						is_canonical: prefs.building_v
 					}
 				}
 			}
@@ -299,8 +304,7 @@ fn fastc_entry_module_files(entry_path string, prefs &pref.Preferences) []string
 		for subdir in fastc_vmod_subdirs(vmod_root) {
 			subdir_path := os.join_path(vmod_root, subdir)
 			if os.is_dir(subdir_path) {
-				files << pref.get_v_files_from_dir_for_target(subdir_path, prefs.user_defines,
-					prefs.target)
+				files << pref.get_v_files_from_dir_for_target(subdir_path, prefs.user_defines, prefs.target)
 			}
 		}
 	}
@@ -441,9 +445,7 @@ fn fastc_append_module_sources(module_name string, sources []FastcSourceFile, mu
 }
 
 fn fastc_source_file_matches_backend(path string) bool {
-	return !path.ends_with('.arm64.v') && !path.ends_with('.amd64.v')
-		&& !path.ends_with('.native.v') && !path.ends_with('.wasm.v') && !path.ends_with('.rv64.v')
-		&& !path.ends_with('.js.v')
+	return !path.ends_with('.arm64.v') && !path.ends_with('.amd64.v') && !path.ends_with('.native.v') && !path.ends_with('.wasm.v') && !path.ends_with('.rv64.v') && !path.ends_with('.js.v')
 }
 
 fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences) !FastcSourceHeader {
@@ -491,16 +493,15 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
 					selected_header := fastc_scan_source_header(selected.source, path, prefs)!
-					fastc_merge_source_header_imports(selected_header, path, mut imports, mut
-						import_order, mut blank_imports)!
+					fastc_merge_source_header_imports(selected_header, path, mut imports, mut import_order, mut blank_imports)!
 					has_globals = has_globals || selected_header.has_globals
 				}
 				tok = selected.tok
 				continue
 			}
 		}
-		if brace_depth == 0
-			&& tok in [.key_fn, .key_struct, .key_enum, .key_interface, .key_type, .key_const, .key_global] {
+		if brace_depth == 0 && tok in [.key_fn, .key_struct, .key_enum, .key_interface, .key_type,
+			.key_const, .key_global] {
 			break
 		}
 		if tok != .key_import || brace_depth > 0 {
@@ -520,10 +521,8 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 					tok = scan.scan()
 					continue
 				}
-				import_path, alias, selected_names, next_token :=
-					fastc_scan_import(mut scan, tok, path)!
-				fastc_register_import_alias(import_path, alias, path, mut imports, mut
-					blank_imports)!
+				import_path, alias, selected_names, next_token := fastc_scan_import(mut scan, tok, path)!
+				fastc_register_import_alias(import_path, alias, path, mut imports, mut blank_imports)!
 				fastc_register_selective_imports(import_path, selected_names, path, mut imports)!
 				if import_path !in import_order {
 					import_order << import_path
@@ -550,15 +549,13 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	// Mirror that so the ORM lowering resolves `orm.Table`/`orm.QueryData`/... and the
 	// `orm` module is pulled into the source set. Only the real-builtin path has the
 	// runtime the ORM needs; the toy runtime cannot compile `orm`.
-	if prefs.building_v && module_name != 'orm' && 'orm' !in imports
-		&& fastc_source_uses_sql(source, prefs) {
+	if prefs.building_v && module_name != 'orm' && 'orm' !in imports && fastc_source_uses_sql(source, prefs) {
 		imports['orm'] = 'orm'
 		if 'orm' !in import_order {
 			import_order << 'orm'
 		}
 	}
-	if prefs.building_v && prefs.backend == 'fastc' && imports['driver'] == 'v3.driver'
-		&& 'fastcdriver' in imports {
+	if prefs.building_v && prefs.backend == 'fastc' && imports['driver'] == 'v3.driver' && 'fastcdriver' in imports {
 		fastcdriver_module := imports['fastcdriver']
 		imports['driver'] = fastcdriver_module
 		for i, imported_module in import_order {
@@ -569,40 +566,34 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 	}
 	has_constants, has_global_declarations := fastc_source_declaration_flags(source)
 	return FastcSourceHeader{
-		module_name:             module_name
-		imports:                 imports
-		import_order:            import_order
-		blank_imports:           blank_imports
-		has_globals:             has_globals
-		has_constants:           has_constants
+		module_name: module_name
+		imports: imports
+		import_order: import_order
+		blank_imports: blank_imports
+		has_globals: has_globals
+		has_constants: has_constants
 		has_global_declarations: has_global_declarations
 	}
 }
 
 fn fastc_source_declaration_flags(source string) (bool, bool) {
-	mut has_constants := false
-	mut has_global_declarations := false
-	for i := 0; i < source.len && (!has_constants || !has_global_declarations); i++ {
-		if i > 0 && fastc_identifier_byte(source[i - 1]) {
-			continue
+	return fastc_source_has_declaration(source, 'const'), fastc_source_has_declaration(source, '__global')
+}
+
+fn fastc_source_has_declaration(source string, keyword string) bool {
+	mut search_start := 0
+	for {
+		index := source.index_after(keyword, search_start) or { return false }
+		if (index == 0 || !fastc_identifier_byte(source[index - 1])) && (index + keyword.len == source.len || !fastc_identifier_byte(source[index + keyword.len])) {
+			return true
 		}
-		if !has_constants && source[i] == `c` && i + 5 <= source.len
-			&& source[i..i + 5] == 'const'
-			&& (i + 5 == source.len || !fastc_identifier_byte(source[i + 5])) {
-			has_constants = true
-		}
-		if !has_global_declarations && source[i] == `_` && i + 8 <= source.len
-			&& source[i..i + 8] == '__global'
-			&& (i + 8 == source.len || !fastc_identifier_byte(source[i + 8])) {
-			has_global_declarations = true
-		}
+		search_start = index + keyword.len
 	}
-	return has_constants, has_global_declarations
+	return false
 }
 
 fn fastc_identifier_byte(value u8) bool {
-	return value == `_` || (value >= `a` && value <= `z`) || (value >= `A` && value <= `Z`)
-		|| (value >= `0` && value <= `9`)
+	return value == `_` || (value >= `a` && value <= `z`) || (value >= `A` && value <= `Z`) || (value >= `0` && value <= `9`)
 }
 
 // fastc_source_uses_sql reports whether a file contains a `sql <conn> { ... }` ORM
@@ -642,16 +633,15 @@ fn fastc_source_uses_sql(source string, prefs &pref.Preferences) bool {
 fn fastc_merge_source_header_imports(header FastcSourceHeader, path string, mut destination_imports map[string]string, mut destination_import_order []string, mut destination_blank_imports []string) ! {
 	for alias, imported_module in header.imports {
 		if alias.starts_with('#select#') {
-			fastc_register_selective_imports(imported_module, [alias['#select#'.len..]], path, mut
-				destination_imports)!
+			fastc_register_selective_imports(imported_module, [
+				alias['#select#'.len..],
+			], path, mut destination_imports)!
 		} else {
-			fastc_register_import_alias(imported_module, alias, path, mut destination_imports, mut
-				destination_blank_imports)!
+			fastc_register_import_alias(imported_module, alias, path, mut destination_imports, mut destination_blank_imports)!
 		}
 	}
 	for imported_module in header.blank_imports {
-		fastc_register_import_alias(imported_module, '_', path, mut destination_imports, mut
-			destination_blank_imports)!
+		fastc_register_import_alias(imported_module, '_', path, mut destination_imports, mut destination_blank_imports)!
 	}
 	for imported_module in header.import_order {
 		if imported_module !in destination_import_order {
