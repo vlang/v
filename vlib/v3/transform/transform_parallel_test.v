@@ -1009,6 +1009,92 @@ fn test_fn_span_map_expansion_estimate_defers_overlapping_owned_map_assignment()
 	assert t.fn_span_map_expansion_estimate(0, int(assignment) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_defers_borrowed_owned_map_key_clone() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	items := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: 'map[Wide]int'
+	})
+	key := a.add_node(flat.Node{
+		kind: .ident
+		value: 'key'
+		typ: 'Wide'
+	})
+	lhs_start := a.children.len
+	a.children << items
+	a.children << key
+	lhs := a.add_node(flat.Node{
+		kind: .index
+		typ: 'int'
+		children_start: lhs_start
+		children_count: 2
+	})
+	value := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+		typ: 'int'
+	})
+	assignment_start := a.children.len
+	a.children << lhs
+	a.children << value
+	assignment := a.add_node(flat.Node{
+		kind: .index_assign
+		op: .assign
+		children_start: assignment_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	tc.struct_implements['Wide'] = ['IClone']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.ownership_map_assignment_clone_expands(a.nodes[int(assignment)])
+	assert t.fn_span_map_expansion_estimate(0, int(assignment) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_fn_span_map_expansion_estimate_defers_owned_method_value_receiver_clone() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	receiver := a.add_node(flat.Node{
+		kind: .ident
+		value: 'wide'
+		typ: 'Wide'
+	})
+	selector_start := a.children.len
+	a.children << receiver
+	method_value := a.add_node(flat.Node{
+		kind: .selector
+		value: 'consume'
+		typ: 'fn () int'
+		children_start: selector_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	wide_type := tc.parse_type('Wide')
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	tc.struct_implements['Wide'] = ['IClone']
+	tc.fn_param_types['Wide.consume'] = [wide_type]
+	tc.fn_ret_types['Wide.consume'] = tc.parse_type('int')
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.ownership_method_value_clone_expands(method_value, a.nodes[int(method_value)])
+	assert t.fn_span_map_expansion_estimate(0, int(method_value) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_fn_span_map_expansion_estimate_defers_ownership_array_append_clone() {
 	$if !ownership? {
 		return

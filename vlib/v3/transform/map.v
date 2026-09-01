@@ -790,17 +790,39 @@ fn (mut t Transformer) ownership_for_in_map_snapshot_clone_expands(node flat.Nod
 }
 
 fn (mut t Transformer) ownership_map_assignment_clone_expands(node flat.Node) bool {
-	if node.kind !in [.assign, .index_assign] || node.op != .assign || node.children_count < 2 || isnil(t.tc) {
+	if node.kind !in [.assign, .index_assign] || node.children_count < 2 || isnil(t.tc) {
 		return false
 	}
 	lhs_id := t.a.child(&node, 0)
 	info := t.map_index_info(lhs_id) or { return false }
+	key_type := t.tc.parse_type(info.key_type)
+	if t.normalize_type_alias(info.key_type).trim_space() != 'string' && !t.map_key_expr_creates_owned_value(info.key_id, info.key_type) && t.tc.ownership_type_requires_destruction(key_type) && t.tc.ownership_default_clone_missing_method(key_type) == none && t.compiler_default_clone_type_needs_work(info.key_type) {
+		return true
+	}
+	if node.op != .assign {
+		return false
+	}
 	rhs_id := t.a.child(&node, 1)
 	if !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
 		return false
 	}
 	value_type := t.tc.parse_type(info.value_type)
 	return t.tc.ownership_type_requires_destruction(value_type) && t.tc.ownership_default_clone_missing_method(value_type) == none && t.compiler_default_clone_type_needs_work(info.value_type)
+}
+
+fn (mut t Transformer) ownership_method_value_clone_expands(id flat.NodeId, node flat.Node) bool {
+	if node.kind != .selector || node.children_count == 0 || isnil(t.tc) || !t.tc.expr_is_method_value(id) {
+		return false
+	}
+	base_id := t.a.child(&node, 0)
+	method_name := t.resolve_receiver_method_name(base_id, node.value)
+	method_params := t.call_param_types(method_name)
+	if method_params.len == 0 || method_params[0] is types.Pointer {
+		return false
+	}
+	receiver_type_name := t.node_type(base_id)
+	receiver_type := t.tc.parse_type(receiver_type_name)
+	return t.tc.ownership_type_requires_destruction(receiver_type) && t.tc.ownership_default_clone_missing_method(receiver_type) == none && t.compiler_default_clone_type_needs_work(receiver_type_name)
 }
 
 fn (t &Transformer) collection_const_expr_for_ident(id flat.NodeId) ?flat.NodeId {
@@ -958,6 +980,9 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 			estimate += deferred_map_expansion_threshold + 1
 		}
 		if node.kind in [.is_expr, .as_expr] || (node.kind == .selector && t.external_selector_expands_from_type_metadata(node)) {
+			estimate += deferred_map_expansion_threshold + 1
+		}
+		if t.ownership_method_value_clone_expands(flat.NodeId(idx), node) {
 			estimate += deferred_map_expansion_threshold + 1
 		}
 		if node.kind == .call {
