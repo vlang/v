@@ -3498,6 +3498,11 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 		return false
 	}
 	if stmt.kind == .return_stmt {
+		for i in 0 .. stmt.children_count {
+			if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
+				return false
+			}
+		}
 		return_exits << ArrayMapReturnPointerExit{
 			origins: locals.clone()
 			defer_count: active_defer_count

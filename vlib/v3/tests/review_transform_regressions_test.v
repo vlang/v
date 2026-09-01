@@ -9896,6 +9896,66 @@ fn main() {
 	assert direct_exit_out == '7\nsource'
 }
 
+fn test_array_map_evaluates_return_expression_before_deferred_origin_snapshot() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn rebind_and_return(mut alias &PointerBox, saved &PointerBox) int {
+	alias = saved
+	return 7
+}
+
+fn map_or_return(saved &PointerBox) int {
+	_ := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: saved.value
+			}
+			mut alias := &local
+			defer {
+				alias.value = unsafe { &it }
+			}
+			return rebind_and_return(mut alias, saved)
+		}
+		else {
+			0
+		}
+	})
+	return 0
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := map_or_return(&saved)
+	println(result)
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_return_expr_deferred_origin_c', '-ownership', source)
+	compact_c := c_source.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_c.contains('array__free(&(__map_source_'), c_source
+	out := run_good_with_flags(v3_bin, 'array_map_return_expr_deferred_origin', '-ownership', source)
+	assert out == '7\nsource'
+}
+
 fn test_array_map_keeps_temporary_source_through_mutator_or_success() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
