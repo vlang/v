@@ -8558,7 +8558,60 @@ fn (mut p FastArm64Parser) clone_array_default_value(value FastArm64Value, type_
 			typ_name: type_name
 		}
 	}
-	return value
+	if !p.array_default_value_needs_clone(value.typ, 0) {
+		return value
+	}
+	declaration := p.program.type_decls_by_id[int(value.typ)] or { return value }
+	layout := p.program.m.type_store.types[value.typ]
+	slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value.typ))
+	p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, slot)
+	for i, field in declaration.fields {
+		if i >= layout.fields.len {
+			break
+		}
+		field_type := layout.fields[i]
+		if !p.array_default_value_needs_clone(field_type, 1) {
+			continue
+		}
+		field_address := p.program.struct_field_ptr(p.cur_block, slot, value.typ, i)
+		field_value := FastArm64Value{
+			id: p.program.instr1(.load, p.cur_block, field_type, field_address)
+			typ: field_type
+			typ_name: field.typ
+			address: field_address
+		}
+		cloned_field := p.clone_array_default_value(field_value, field.typ)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, cloned_field.id, field_address)
+	}
+	return FastArm64Value{
+		id: p.program.instr1(.load, p.cur_block, value.typ, slot)
+		typ: value.typ
+		typ_name: type_name
+		address: slot
+	}
+}
+
+fn (p &FastArm64Parser) array_default_value_needs_clone(typ ssa.TypeID, depth int) bool {
+	if typ in [p.program.array_type, p.program.map_type] {
+		return true
+	}
+	if depth >= 32 {
+		return false
+	}
+	declaration := p.program.type_decls_by_id[int(typ)] or { return false }
+	if declaration.is_union || declaration.is_c {
+		return false
+	}
+	layout := p.program.m.type_store.types[typ]
+	if layout.kind != .struct_t {
+		return false
+	}
+	for field_type in layout.fields {
+		if p.array_default_value_needs_clone(field_type, depth + 1) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut p FastArm64Parser) emit_array_reverse(array FastArm64Value) FastArm64Value {

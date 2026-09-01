@@ -1136,18 +1136,41 @@ fn test_fastc_arm64_array_aggregate_defaults_and_nested_clones_are_independent()
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
 		source := '
+struct Config {
+mut:
+	values []int = [4, 5]
+	lookup map[string]int = {"x": 1}
+}
+
+struct Wrapper {
+mut:
+	config Config
+}
+
 fn main() {
 	mut rows := [][]int{len: 2, init: [1, 2]}
 	rows[0][0] = 9
 	mut maps := []map[string]int{len: 2, init: {"x": 1}}
 	maps[0]["x"] = 9
+	mut defaults := []Config{len: 2}
+	defaults[0].values[0] = 9
+	defaults[0].lookup["x"] = 9
+	mut initialized := []Config{len: 2, init: Config{values: [6, 7], lookup: {"x": 2}}}
+	initialized[0].values[0] = 9
+	initialized[0].lookup["x"] = 9
+	mut wrapped := []Wrapper{len: 2, init: Wrapper{config: Config{values: [8], lookup: {"x": 3}}}}
+	wrapped[0].config.values[0] = 9
+	wrapped[0].config.lookup["x"] = 9
 	original := [[1, 2], [3]]
 	mut copied := original.clone()
 	copied[0][0] = 9
 	cube := [[[1]]]
 	mut cube_copy := cube.clone()
 	cube_copy[0][0][0] = 9
-	if rows[1][0] != 1 || maps[1]["x"] != 1 || original[0][0] != 1
+	if rows[1][0] != 1 || maps[1]["x"] != 1 || defaults[1].values[0] != 4
+		|| defaults[1].lookup["x"] != 1 || initialized[1].values[0] != 6
+		|| initialized[1].lookup["x"] != 2 || wrapped[1].config.values[0] != 8
+		|| wrapped[1].config.lookup["x"] != 3 || original[0][0] != 1
 		|| copied[0][0] != 9 || cube[0][0][0] != 1 || cube_copy[0][0][0] != 9 {
 		println("wrong")
 		return
