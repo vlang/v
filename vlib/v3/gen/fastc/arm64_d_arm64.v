@@ -2579,6 +2579,7 @@ fn (mut p FastArm64Program) register_map_rehash_runtime() {
 	length := p.instr1(.load, entry, p.i64_type, p.struct_field_ptr(entry, state, p.map_state_type, 3))
 	key_size := p.instr1(.load, entry, p.i64_type, p.struct_field_ptr(entry, state, p.map_state_type, 4))
 	string_key := p.instr1(.load, entry, p.i64_type, p.struct_field_ptr(entry, state, p.map_state_type, 6))
+	old_buckets := p.instr1(.load, entry, p.ptr_i8, p.struct_field_ptr(entry, state, p.map_state_type, 7))
 	two := p.m.get_or_add_const(p.i64_type, '2')
 	eight := p.m.get_or_add_const(p.i64_type, '8')
 	bucket_capacity := p.instr2(.mul, entry, p.i64_type, capacity, two)
@@ -2618,6 +2619,8 @@ fn (mut p FastArm64Program) register_map_rehash_runtime() {
 	p.instr2(.store, body, p.void_type, entry_value, bucket_pointer)
 	p.instr2(.store, body, p.void_type, entry_value, index_slot)
 	p.instr1(.jmp, body, p.void_type, ssa.ValueID(condition))
+	free_ref := p.m.add_value(.func_ref, p.void_type, 'free', p.fn_ids['free'])
+	p.m.add_instr(.call, done, p.void_type, [free_ref, old_buckets])
 	p.instr0(.ret, done, p.void_type)
 }
 
@@ -3031,13 +3034,7 @@ fn (mut p FastArm64Program) register_integer_string_runtime() {
 	p.instr2(.store, minus, p.void_type, signed_length, length_slot)
 	p.instr1(.jmp, minus, p.void_type, ssa.ValueID(done))
 
-	result_slot := p.instr0(.alloca, done, p.m.type_store.get_ptr(p.str_type))
-	result_cursor := p.instr1(.load, done, p.ptr_i8, cursor_slot)
-	result_length := p.instr1(.load, done, p.i32_type, length_slot)
-	p.instr2(.store, done, p.void_type, result_cursor, p.string_field_ptr(done, result_slot, 0))
-	p.instr2(.store, done, p.void_type, result_length, p.string_field_ptr(done, result_slot, 1))
-	p.instr2(.store, done, p.void_type, zero32, p.string_field_ptr(done, result_slot, 2))
-	result := p.instr1(.load, done, p.str_type, result_slot)
+	result := p.finish_reverse_written_string(done, buffer, cursor_slot, length_slot)
 	p.instr1(.ret, done, p.void_type, result)
 }
 
@@ -3121,14 +3118,25 @@ fn (mut p FastArm64Program) register_integer_format_runtime() {
 	p.instr2(.store, minus, p.void_type, signed_length, length_slot)
 	p.instr1(.jmp, minus, p.void_type, ssa.ValueID(done))
 
-	result_slot := p.instr0(.alloca, done, p.m.type_store.get_ptr(p.str_type))
-	result_cursor := p.instr1(.load, done, p.ptr_i8, cursor_slot)
-	result_length := p.instr1(.load, done, p.i32_type, length_slot)
-	p.instr2(.store, done, p.void_type, result_cursor, p.string_field_ptr(done, result_slot, 0))
-	p.instr2(.store, done, p.void_type, result_length, p.string_field_ptr(done, result_slot, 1))
-	p.instr2(.store, done, p.void_type, zero32, p.string_field_ptr(done, result_slot, 2))
-	result := p.instr1(.load, done, p.str_type, result_slot)
+	result := p.finish_reverse_written_string(done, buffer, cursor_slot, length_slot)
 	p.instr1(.ret, done, p.void_type, result)
+}
+
+fn (mut p FastArm64Program) finish_reverse_written_string(block ssa.BlockID, buffer ssa.ValueID, cursor_slot ssa.ValueID, length_slot ssa.ValueID) ssa.ValueID {
+	result_cursor := p.instr1(.load, block, p.ptr_i8, cursor_slot)
+	result_length := p.instr1(.load, block, p.i32_type, length_slot)
+	result_length64 := p.instr1(.zext, block, p.i64_type, result_length)
+	memmove_ref := p.m.add_value(.func_ref, p.ptr_i8, 'memmove', p.fn_ids['memmove'])
+	p.m.add_instr(.call, block, p.ptr_i8, [memmove_ref, buffer, result_cursor, result_length64])
+	terminator := p.instr2(.add, block, p.ptr_i8, buffer, result_length64)
+	zero8 := p.m.get_or_add_const(p.u8_type, '0')
+	p.instr2(.store, block, p.void_type, zero8, terminator)
+	result_slot := p.instr0(.alloca, block, p.m.type_store.get_ptr(p.str_type))
+	p.instr2(.store, block, p.void_type, buffer, p.string_field_ptr(block, result_slot, 0))
+	p.instr2(.store, block, p.void_type, result_length, p.string_field_ptr(block, result_slot, 1))
+	zero32 := p.m.get_or_add_const(p.i32_type, '0')
+	p.instr2(.store, block, p.void_type, zero32, p.string_field_ptr(block, result_slot, 2))
+	return p.instr1(.load, block, p.str_type, result_slot)
 }
 
 fn (mut p FastArm64Program) register_bool_string_runtime() {
