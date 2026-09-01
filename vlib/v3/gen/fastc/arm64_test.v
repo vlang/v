@@ -89,12 +89,20 @@ fn fast_arm64_spawned_value() int {
 
 struct FastArm64CustomError {}
 
+struct C.fd_set {}
+
+fn C.FD_ZERO(fdset &C.fd_set)
+
+fn C.FD_SET(fd int, fdset &C.fd_set)
+
+fn C.FD_ISSET(fd int, fdset &C.fd_set) int
+
 fn (err FastArm64CustomError) msg() string {
 	return "custom"
 }
 
 fn (err FastArm64CustomError) code() int {
-	return 0
+	return 42
 }
 
 fn add_after_return(mut value int) {
@@ -122,6 +130,10 @@ fn custom_error_value() !int {
 	return FastArm64CustomError{}
 }
 
+fn coded_error_value() !int {
+	return error_with_code("coded", 17)
+}
+
 fn propagated_result(ok bool) !int {
 	value := result_value(ok)!
 	return value + 1
@@ -137,6 +149,18 @@ fn fixed_array_sum(values [2]int) int {
 }
 
 fn main() {
+	mut fds := C.fd_set{}
+	C.FD_SET(5, &fds)
+	C.FD_SET(65, &fds)
+	if C.FD_ISSET(5, &fds) == 0 || C.FD_ISSET(65, &fds) == 0 || C.FD_ISSET(6, &fds) != 0 {
+		println("wrong fd set")
+		return
+	}
+	C.FD_ZERO(&fds)
+	if C.FD_ISSET(5, &fds) != 0 || C.FD_ISSET(65, &fds) != 0 {
+		println("wrong fd zero")
+		return
+	}
 	values_for_sizeof := [1, 2, 3]
 	if sizeof(values_for_sizeof) != 32 {
 		println("wrong dynamic array sizeof")
@@ -351,7 +375,7 @@ fn main() {
 	elapsed := 1.25
 	max_unsigned := u64(18446744073709551615)
 	long_float := "\${1.0:.200f}"
-	if "\${formatted_value:05d}" != "00042" || "\${-7:04d}" != "-007" || "\${formatted_value:x}" != "2a" || "\${formatted_value:04X}" != "002A" || "\${formatted_value:b}" != "101010" || "\${formatted_value:o}" != "52" || "\${max_unsigned:020d}" != "18446744073709551615" || "\${elapsed}" != "1.25" || "\${elapsed:.2f}" != "1.25" || "\${elapsed:7.2f}" != "   1.25" || long_float.len != 202 || long_float[0] != `1` || long_float[1] != `.` || long_float[201] != `0` {
+	if "\${formatted_value:05d}" != "00042" || "\${-7:04d}" != "-007" || "\${formatted_value:x}" != "2a" || "\${formatted_value:04X}" != "002A" || "\${formatted_value:b}" != "101010" || "\${formatted_value:o}" != "52" || "\${max_unsigned:020d}" != "18446744073709551615" || "\${u8(65):c}" != "A" || "\${u8(65):3c}" != "  A" || "\${rune(0x20ac):c}" != "€" || "\${elapsed}" != "1.25" || "\${elapsed:.2f}" != "1.25" || "\${elapsed:7.2f}" != "   1.25" || long_float.len != 202 || long_float[0] != `1` || long_float[1] != `.` || long_float[201] != `0` {
 		println("wrong interpolation format")
 		return
 	}
@@ -368,17 +392,24 @@ fn main() {
 	}
 	result_success := result_value(true) or { 99 }
 	mut custom_error_seen := false
+	mut custom_error_details_ok := false
 	custom_error_fallback := custom_error_value() or {
 		if err is FastArm64CustomError {
 			custom_error_seen = true
 		}
+		custom_error_details_ok = err.code() == 42 && err.msg() == "custom" && err.str() == "custom; code: 42"
 		46
+	}
+	mut coded_error_details_ok := false
+	coded_error_fallback := coded_error_value() or {
+		coded_error_details_ok = err.code() == 17 && err.msg() == "coded" && err.str() == "coded; code: 17"
+		47
 	}
 	propagated_result_fallback := propagated_result(false) or { 44 }
 	propagated_result_success := propagated_result(true) or { 99 }
 	propagated_option_fallback := propagated_option(false) or { 45 }
 	propagated_option_success := propagated_option(true) or { 99 }
-	if !option_handler_ran || !error_message_ok || !custom_error_seen || option_fallback != 42 || option_success != 7 || result_fallback != 43 || result_success != 9 || custom_error_fallback != 46 || propagated_result_fallback != 44 || propagated_result_success != 10 || propagated_option_fallback != 45 || propagated_option_success != 9 {
+	if !option_handler_ran || !error_message_ok || !custom_error_seen || !custom_error_details_ok || !coded_error_details_ok || option_fallback != 42 || option_success != 7 || result_fallback != 43 || result_success != 9 || custom_error_fallback != 46 || coded_error_fallback != 47 || propagated_result_fallback != 44 || propagated_result_success != 10 || propagated_option_fallback != 45 || propagated_option_success != 9 {
 		println("wrong option result handling")
 		return
 	}
