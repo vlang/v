@@ -360,6 +360,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 				// from metadata that is not represented by the physical call children.
 				estimate += deferred_map_expansion_threshold + 1
 			}
+			if t.compiler_owned_array_map_call_expands(node) {
+				// Ownership-aware map() recursively clones borrowed aggregate results from
+				// metadata that is not represented by the physical call children.
+				estimate += deferred_map_expansion_threshold + 1
+			}
 			if t.compiler_collection_str_call_expands(node) {
 				// Compiler-provided collection stringification synthesizes loops and
 				// recursively formats elements that are absent from physical children.
@@ -594,6 +599,28 @@ fn (t &Transformer) compiler_owned_array_filter_call_expands(node flat.Node) boo
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
 		&& t.compiler_default_clone_type_needs_work(elem_type)
 		&& t.tc.ownership_default_clone_missing_method(t.tc.parse_type(elem_type)) == none
+}
+
+fn (t &Transformer) compiler_owned_array_map_call_expands(node flat.Node) bool {
+	if node.children_count < 2 || isnil(t.tc) {
+		return false
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'map' || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	clean_base := transform_unshared_receiver_type(t.normalize_type_alias(base_type)).trim_left('&')
+	clean_result := transform_unshared_receiver_type(t.normalize_type_alias(node.typ)).trim_left('&')
+	if !clean_base.starts_with('[]') || !clean_result.starts_with('[]') {
+		return false
+	}
+	result_elem_type := clean_result[2..]
+	return result_elem_type.len > 0 && t.tc.ownership_type_requires_destruction(t.tc.parse_type(result_elem_type)) && t.compiler_default_clone_type_needs_work(result_elem_type) && t.tc.ownership_default_clone_missing_method(t.tc.parse_type(result_elem_type)) == none
 }
 
 fn (t &Transformer) compiler_collection_str_call_expands(node flat.Node) bool {

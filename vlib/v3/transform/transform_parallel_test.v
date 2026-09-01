@@ -2629,6 +2629,72 @@ fn test_external_map_expansion_estimate_defers_owned_array_filter_calls() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_defers_owned_array_map_calls() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	make_items := a.add_node(flat.Node{
+		kind: .ident
+		value: 'make_items'
+	})
+	make_start := a.children.len
+	a.children << make_items
+	receiver := a.add_node(flat.Node{
+		kind: .call
+		typ: '[]Wide'
+		children_start: make_start
+		children_count: 1
+	})
+	selector_start := a.children.len
+	a.children << receiver
+	selector := a.add_node(flat.Node{
+		kind: .selector
+		value: 'map'
+		typ: 'fn (fn (Wide) Wide) []Wide'
+		children_start: selector_start
+		children_count: 1
+	})
+	mapper := a.add_node(flat.Node{
+		kind: .ident
+		value: 'it'
+		typ: 'Wide'
+	})
+	call_start := a.children.len
+	a.children << selector
+	a.children << mapper
+	map_call := a.add_node(flat.Node{
+		kind: .call
+		typ: '[]Wide'
+		children_start: call_start
+		children_count: 2
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'items'
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << map_call
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: 'map[string][]Wide'
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	tc.struct_implements['Wide'] = ['IClone']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.compiler_owned_array_map_call_expands(a.nodes[int(map_call)])
+	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_defers_compiler_collection_str_calls() {
 	for collection_type in ['[]Wide', '[4]Wide', 'map[string]Wide'] {
 		mut a := flat.FlatAst.new()
