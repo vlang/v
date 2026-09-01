@@ -3085,17 +3085,35 @@ fn array_map_local_pointer_path(path string, root string, locals map[string]bool
 // `locals[path]` records whether a mapper-local pointer projection currently aliases
 // storage rooted outside the mapper. A bare assignment to that pointer slot itself stays
 // local; deeper selector/index writes and mutating calls follow the alias.
-fn (t &Transformer) array_map_side_effect_target_is_external(id flat.NodeId, elem_name string, locals map[string]bool, follow_local_pointer bool) bool {
-	for path in t.array_map_lvalue_local_paths(id, locals) {
-		root := array_map_local_path_root(path)
-		if root == elem_name {
-			continue
-		}
-		if root !in locals {
+fn array_map_local_target_path_is_external(path string, elem_name string, locals map[string]bool, follow_local_pointer bool, mut seen map[string]bool) bool {
+	root := array_map_local_path_root(path)
+	if root == elem_name {
+		return false
+	}
+	if root !in locals {
+		return true
+	}
+	pointer_path := array_map_local_pointer_path(path, root, locals)
+	if locals[pointer_path] && (follow_local_pointer || path != pointer_path) {
+		return true
+	}
+	if !follow_local_pointer || pointer_path in seen {
+		return false
+	}
+	seen[pointer_path] = true
+	for target in array_map_local_pointer_pointee_targets(pointer_path, locals) {
+		mut target_seen := seen.clone()
+		if array_map_local_target_path_is_external(target, elem_name, locals, true, mut target_seen) {
 			return true
 		}
-		pointer_path := array_map_local_pointer_path(path, root, locals)
-		if locals[pointer_path] && (follow_local_pointer || path != pointer_path) {
+	}
+	return false
+}
+
+fn (t &Transformer) array_map_side_effect_target_is_external(id flat.NodeId, elem_name string, locals map[string]bool, follow_local_pointer bool) bool {
+	for path in t.array_map_lvalue_local_paths(id, locals) {
+		mut seen := map[string]bool{}
+		if array_map_local_target_path_is_external(path, elem_name, locals, follow_local_pointer, mut seen) {
 			return true
 		}
 	}
@@ -4029,21 +4047,33 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 			}
 		}
 	}
+	// Mut lvalues are captured after each preceding physical argument has been
+	// evaluated. Preserve that origin state so an earlier rebind is visible when
+	// classifying a later target.
+	mut argument_origins := map[int]map[string]bool{}
+	mut evaluation_locals := locals.clone()
+	for i in 0 .. node.children_count {
+		t.array_map_update_local_pointer_origins(t.a.child(&node, i), elem_name, mut evaluation_locals)
+		argument_origins[i] = evaluation_locals.clone()
+	}
 	mut target_param_idxs := []int{}
 	mut target_ids := []flat.NodeId{}
+	mut target_origins := []map[string]bool{}
 	if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 && t.tc.mut_receiver_methods[call_name] {
 		target_param_idxs << 0
 		target_ids << t.a.child(callee, 0)
+		target_origins << (argument_origins[0] or { locals }).clone()
 	}
 	for i in 1 .. node.children_count {
 		arg_id := t.a.child(&node, i)
 		if t.a.nodes[int(arg_id)].is_mut {
 			target_param_idxs << i - 1 + param_offset
 			target_ids << arg_id
+			target_origins << (argument_origins[i] or { locals }).clone()
 		}
 	}
 	for target_i, target_param_idx in target_param_idxs {
-		if !t.array_map_side_effect_target_is_external(target_ids[target_i], elem_name, locals, true) {
+		if !t.array_map_side_effect_target_is_external(target_ids[target_i], elem_name, target_origins[target_i], true) {
 			continue
 		}
 		for source_param_idx in t.tc.call_param_storage_source_params(id, target_param_idx) {

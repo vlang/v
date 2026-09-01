@@ -7800,6 +7800,65 @@ fn main() {
 	assert callback_out == '0\nsource'
 }
 
+fn test_array_map_classifies_mut_targets_after_earlier_argument_effects() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn rebind_and_return(mut target &PointerBox, replacement &PointerBox, value &Item) &Item {
+	target = replacement
+	return value
+}
+
+fn store(value &Item, mut target &PointerBox) {
+	target.value = value
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	result := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			store(rebind_and_return(mut alias, &saved, unsafe { &it }), mut alias)
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(result[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_earlier_argument_target_effect_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_earlier_argument_target_effect', '-ownership', source)
+	assert out == '0\nsource'
+}
+
 fn test_array_map_updates_pointer_origins_through_declaration_initializer_call() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
