@@ -921,6 +921,21 @@ fn (t &Transformer) sum_default_may_expand(typ string) bool {
 	return resolved.len > 0 && (resolved in t.sum_types || (!isnil(t.tc) && resolved in t.tc.sum_types))
 }
 
+fn (t &Transformer) zero_value_expansion_estimate(id flat.NodeId, type_name string) int {
+	clean_type := t.normalize_type_alias(type_name)
+	if t.sum_default_may_expand(clean_type) {
+		return deferred_map_expansion_threshold + 1
+	}
+	fixed_type := t.resolved_fixed_array_canonical_type(clean_type)
+	if !t.is_fixed_array_type(fixed_type) {
+		return 0
+	}
+	return t.fixed_array_init_expansion_estimate(id, flat.Node{
+		kind: .array_init
+		typ: fixed_type
+	})
+}
+
 fn (t &Transformer) map_index_zero_value_expansion_estimate(node flat.Node) int {
 	if node.kind != .index || node.children_count == 0 {
 		return 0
@@ -931,18 +946,7 @@ fn (t &Transformer) map_index_zero_value_expansion_estimate(node flat.Node) int 
 		return 0
 	}
 	_, value_type := t.map_type_parts(map_type)
-	clean_value_type := t.normalize_type_alias(value_type)
-	if t.sum_default_may_expand(clean_value_type) {
-		return deferred_map_expansion_threshold + 1
-	}
-	fixed_type := t.resolved_fixed_array_canonical_type(clean_value_type)
-	if !t.is_fixed_array_type(fixed_type) {
-		return 0
-	}
-	return t.fixed_array_init_expansion_estimate(base_id, flat.Node{
-		kind: .array_init
-		typ: fixed_type
-	})
+	return t.zero_value_expansion_estimate(base_id, value_type)
 }
 
 fn (t &Transformer) owned_array_index_zero_value_expansion_estimate(node flat.Node, moves_value bool) int {
@@ -954,18 +958,25 @@ fn (t &Transformer) owned_array_index_zero_value_expansion_estimate(node flat.No
 	if !base_type.starts_with('[]') && !t.is_fixed_array_type(base_type) {
 		return 0
 	}
-	value_type := t.normalize_type_alias(node.typ)
-	if t.sum_default_may_expand(value_type) {
-		return deferred_map_expansion_threshold + 1
-	}
-	fixed_type := t.resolved_fixed_array_canonical_type(value_type)
-	if !t.is_fixed_array_type(fixed_type) {
+	return t.zero_value_expansion_estimate(base_id, node.typ)
+}
+
+fn (mut t Transformer) if_expr_zero_value_expansion_estimate(id flat.NodeId, node flat.Node) int {
+	if node.kind != .if_expr || node.children_count < 3 {
 		return 0
 	}
-	return t.fixed_array_init_expansion_estimate(base_id, flat.Node{
-		kind: .array_init
-		typ: fixed_type
-	})
+	mut result_type := t.if_expr_result_type(id, node)
+	if guard_result_type := t.if_expr_guard_result_type(node) {
+		result_type = guard_result_type
+	}
+	if result_type.len == 0 || result_type == 'void' {
+		return 0
+	}
+	branch_type := t.if_expr_branch_result_type(node)
+	if t.if_expr_branch_overrides_sum_target(branch_type, result_type) {
+		result_type = branch_type
+	}
+	return t.zero_value_expansion_estimate(id, result_type)
 }
 
 fn (mut t Transformer) ownership_array_append_expands(node flat.Node) bool {
@@ -1054,6 +1065,9 @@ fn (mut t Transformer) fn_span_map_expansion_estimate(lo int, hi int) int {
 		}
 		if node.kind in [.struct_init, .assoc] {
 			estimate += deferred_map_expansion_threshold + 1
+		}
+		if node.kind == .if_expr {
+			estimate += t.if_expr_zero_value_expansion_estimate(flat.NodeId(idx), node)
 		}
 		if node.kind == .map_init {
 			estimate += t.map_init_expansion_estimate(flat.NodeId(idx), node)

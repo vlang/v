@@ -613,6 +613,54 @@ fn test_owned_array_index_zero_value_expansion_is_reserved() {
 	assert t.owned_array_index_zero_value_expansion_estimate(a.nodes[int(root)], false) == 0
 }
 
+fn test_if_expr_zero_value_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	condition := a.add_node(flat.Node{
+		kind: .bool_literal
+		value: 'true'
+		typ: 'bool'
+	})
+	then_value := a.add_node(flat.Node{
+		kind: .call
+		value: 'first'
+		typ: '[4096][]int'
+	})
+	then_start := a.children.len
+	a.children << then_value
+	then_block := a.add_node(flat.Node{
+		kind: .block
+		children_start: then_start
+		children_count: 1
+	})
+	else_value := a.add_node(flat.Node{
+		kind: .call
+		value: 'second'
+		typ: '[4096][]int'
+	})
+	else_start := a.children.len
+	a.children << else_value
+	else_block := a.add_node(flat.Node{
+		kind: .block
+		children_start: else_start
+		children_count: 1
+	})
+	if_start := a.children.len
+	a.children << condition
+	a.children << then_block
+	a.children << else_block
+	root := a.add_node(flat.Node{
+		kind: .if_expr
+		typ: '[4096][]int'
+		children_start: if_start
+		children_count: 3
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) >
+		deferred_map_expansion_threshold
+}
+
 fn test_fn_span_map_expansion_estimate_defers_sum_type_map_index_zero_value() {
 	mut a := flat.FlatAst.new()
 	base := a.add_node(flat.Node{
