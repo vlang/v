@@ -2407,6 +2407,70 @@ fn test_external_map_expansion_estimate_defers_ownership_array_reverse_calls() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
+fn test_external_map_expansion_estimate_defers_ownership_array_sorted_calls() {
+	$if !ownership? {
+		return
+	}
+	for method in ['sorted', 'sorted_with_compare'] {
+		mut a := flat.FlatAst.new()
+		receiver := a.add_node(flat.Node{
+			kind: .ident
+			value: 'items'
+			typ: '[]Wide'
+		})
+		selector_start := a.children.len
+		a.children << receiver
+		selector := a.add_node(flat.Node{
+			kind: .selector
+			value: method
+			typ: if method == 'sorted' { 'fn () []Wide' } else { 'fn (fn (Wide, Wide) int) []Wide' }
+			children_start: selector_start
+			children_count: 1
+		})
+		call_start := a.children.len
+		a.children << selector
+		mut call_children := 1
+		if method == 'sorted_with_compare' {
+			a.children << a.add_node(flat.Node{
+				kind: .ident
+				value: 'compare'
+				typ: 'fn (Wide, Wide) int'
+			})
+			call_children++
+		}
+		sorted_call := a.add_node(flat.Node{
+			kind: .call
+			typ: '[]Wide'
+			children_start: call_start
+			children_count: u16(call_children)
+		})
+		key := a.add_node(flat.Node{
+			kind: .string_literal
+			value: method
+		})
+		map_start := a.children.len
+		a.children << key
+		a.children << sorted_call
+		root := a.add_node(flat.Node{
+			kind: .map_init
+			typ: 'map[string][]Wide'
+			children_start: map_start
+			children_count: 2
+		})
+		mut tc := types.TypeChecker.new(&a)
+		tc.collect(&a)
+		tc.structs['Wide'] = [types.StructField{
+			name: 'text'
+			typ: tc.parse_type('string')
+		}]
+		tc.struct_implements['Wide'] = ['IClone']
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+		assert t.compiler_collection_clone_call_expands(a.nodes[int(sorted_call)]), method
+		assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold, method
+	}
+}
+
 fn test_external_map_expansion_estimate_defers_owned_map_item_calls() {
 	$if !ownership? {
 		return
@@ -2511,8 +2575,66 @@ fn test_external_map_expansion_estimate_defers_array_equality_calls() {
 		name: 'Wide'
 	}
 
-	assert t.compiler_array_equality_call_expands(a.nodes[int(equals_call)])
+	assert t.compiler_array_search_call_expands(a.nodes[int(equals_call)])
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
+}
+
+fn external_map_array_search_expansion_estimate(method string) int {
+	mut a := flat.FlatAst.new()
+	receiver := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: '[]Wide'
+	})
+	selector_start := a.children.len
+	a.children << receiver
+	selector := a.add_node(flat.Node{
+		kind: .selector
+		value: method
+		typ: 'fn (Wide) int'
+		children_start: selector_start
+		children_count: 1
+	})
+	needle := a.add_node(flat.Node{
+		kind: .ident
+		value: 'needle'
+		typ: 'Wide'
+	})
+	call_start := a.children.len
+	a.children << selector
+	a.children << needle
+	search_call := a.add_node(flat.Node{
+		kind: .call
+		typ: if method == 'contains' { 'bool' } else { 'int' }
+		children_start: call_start
+		children_count: 2
+	})
+	key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: method
+	})
+	map_start := a.children.len
+	a.children << key
+	a.children << search_call
+	root := a.add_node(flat.Node{
+		kind: .map_init
+		typ: if method == 'contains' { 'map[string]bool' } else { 'map[string]int' }
+		children_start: map_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Wide'] = StructInfo{
+		name: 'Wide'
+	}
+	assert t.compiler_array_search_call_expands(a.nodes[int(search_call)]), method
+	return t.external_map_tree_expansion_estimate(root, 0, 0)
+}
+
+fn test_external_map_expansion_estimate_defers_array_search_calls() {
+	for method in ['contains', 'index', 'last_index'] {
+		assert external_map_array_search_expansion_estimate(method) > deferred_map_expansion_threshold, method
+	}
 }
 
 fn test_external_map_expansion_estimate_defers_owned_array_accessor_calls() {

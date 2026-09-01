@@ -345,8 +345,8 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 				// size is derived from item metadata, not source children.
 				estimate += deferred_map_expansion_threshold + 1
 			}
-			if t.compiler_array_equality_call_expands(node) {
-				// Builtin array equals() can synthesize an element loop and recursively
+			if t.compiler_array_search_call_expands(node) {
+				// Builtin array equality/search calls can synthesize an element loop and recursively
 				// expand aggregate equality from metadata absent from source children.
 				estimate += deferred_map_expansion_threshold + 1
 			}
@@ -456,7 +456,8 @@ fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool 
 		return false
 	}
 	fn_node := t.a.child_node(&node, 0)
-	if fn_node.kind != .selector || fn_node.value !in ['clone', 'reverse'] || fn_node.children_count == 0 {
+	if fn_node.kind != .selector || fn_node.value !in ['clone', 'reverse', 'sorted',
+		'sorted_with_compare'] || fn_node.children_count == 0 {
 		return false
 	}
 	base_id := t.a.child(fn_node, 0)
@@ -469,7 +470,7 @@ fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool 
 		clean = clean[7..].trim_space()
 	}
 	clean = clean.trim_left('&')
-	if fn_node.value == 'reverse' {
+	if fn_node.value in ['reverse', 'sorted', 'sorted_with_compare'] {
 		if !clean.starts_with('[]') || isnil(t.tc) {
 			return false
 		}
@@ -524,12 +525,12 @@ fn (t &Transformer) compiler_owned_map_items_call_expands(node flat.Node) bool {
 	return fn_node.value == 'values' || t.normalize_type_alias(elem_type).trim_space() != 'string'
 }
 
-fn (t &Transformer) compiler_array_equality_call_expands(node flat.Node) bool {
+fn (t &Transformer) compiler_array_search_call_expands(node flat.Node) bool {
 	if node.children_count < 2 {
 		return false
 	}
 	fn_node := t.a.child_node(&node, 0)
-	if fn_node.kind != .selector || fn_node.value != 'equals' || fn_node.children_count == 0 {
+	if fn_node.kind != .selector || fn_node.value !in ['equals', 'contains', 'index', 'last_index'] || fn_node.children_count == 0 {
 		return false
 	}
 	base_id := t.a.child(fn_node, 0)
