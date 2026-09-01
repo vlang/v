@@ -1,0 +1,164 @@
+
+    imported_dir = fixture_dir / "imported_const"
+    imported_dir.mkdir(exist_ok=True)
+    (imported_dir / "v.mod.txt").write_text("Module { name: 'owned_const_shadow' }\n")
+    (imported_dir / "cachemod.v.txt").write_text(
+        """module cachemod
+
+pub struct Payload implements IClone {
+pub mut:
+\tvalues []string
+}
+
+pub fn (value &Payload) clone() Payload {
+\tprintln('clone')
+\treturn Payload{
+\t\tvalues: value.values.clone()
+\t}
+}
+
+pub const cache = Payload{
+\tvalues: ['constant']
+}
+"""
+    )
+    (imported_dir / "main.v.txt").write_text(
+        """module main
+
+import cachemod
+
+fn drop_imported_const_projection() {
+\tvalues := cachemod.cache.values
+\tassert values[0] == 'constant'
+}
+
+fn main() {
+\tcache := cachemod.Payload{
+\t\tvalues: ['local']
+\t}
+\tdst := cache
+\tassert dst.values[0] == 'local'
+
+\tmut imported := cachemod.cache
+\timported.values[0] = 'selector copy'
+\tassert cachemod.cache.values[0] == 'constant'
+
+\tdrop_imported_const_projection()
+\tassert cachemod.cache.values[0] == 'constant'
+}
+"""
+    )
+
+    harness = """import os
+
+const borrowed_projection_vexe = @VEXE
+const borrowed_projection_tests_dir = os.dir(@FILE)
+const borrowed_projection_v3_dir = os.dir(borrowed_projection_tests_dir)
+const borrowed_projection_vlib_dir = os.dir(borrowed_projection_v3_dir)
+const borrowed_projection_v3_src = os.join_path(borrowed_projection_v3_dir, 'v3.v')
+const borrowed_projection_fixture_dir = os.join_path(borrowed_projection_tests_dir, 'testdata',
+\t'ownership_borrowed_projection')
+
+struct BorrowedProjectionCase {
+\tname            string
+\texpected_clones int
+}
+
+fn build_borrowed_projection_v3() string {
+\tv3_bin := os.join_path(os.temp_dir(), 'v3_borrowed_projection_${os.getpid()}')
+\tos.rm(v3_bin) or {}
+\tbuild := os.execute('${borrowed_projection_vexe} -nocache -gc none -d ownership -path "${borrowed_projection_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${borrowed_projection_v3_src}')
+\tassert build.exit_code == 0, build.output
+\treturn v3_bin
+}
+
+fn run_borrowed_projection_source(v3_bin string, name string, source_text string, expected_clones int) {
+\tsource := os.join_path(os.temp_dir(), 'v3_borrowed_projection_${name}_${os.getpid()}.v')
+\tdefer {
+\t\tos.rm(source) or {}
+\t}
+\tos.write_file(source, source_text) or { panic(err) }
+\tfor mode in ['-no-parallel', ''] {
+\t\tout := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
+\t\tassert out.exit_code == 0, '${name} (${mode}): ${out.output}'
+\t\tif expected_clones >= 0 {
+\t\t\tactual := out.output.split_into_lines().filter(it == 'clone').len
+\t\t\tassert actual == expected_clones,
+\t\t\t\t'${name} (${mode}): expected ${expected_clones} clones, got ${actual}\\n${out.output}'
+\t\t}
+\t}
+}
+
+fn test_borrowed_projection_regressions_by_context() {
+\tv3_bin := build_borrowed_projection_v3()
+\tdefer {
+\t\tos.rm(v3_bin) or {}
+\t}
+\tcommon := os.read_file(os.join_path(borrowed_projection_fixture_dir, 'common.v.txt')) or {
+\t\tpanic(err)
+\t}
+\tcases := [
+__EXPECTED_COUNTS__
+\t]
+\tfor case in cases {
+\t\tfragment := os.read_file(os.join_path(borrowed_projection_fixture_dir,
+\t\t\t'${case.name}.v.txt')) or { panic(err) }
+\t\trun_borrowed_projection_source(v3_bin, case.name, common + '\\n' + fragment,
+\t\t\tcase.expected_clones)
+\t}
+
+\ttoml_source := os.read_file(os.join_path(borrowed_projection_fixture_dir,
+\t\t'toml_decode.v.txt')) or { panic(err) }
+\trun_borrowed_projection_source(v3_bin, 'toml_decode', toml_source, -1)
+\trun_uncloneable_borrowed_projection_is_rejected(v3_bin)
+\trun_imported_const_projection_is_cloned(v3_bin)
+}
+
+fn run_uncloneable_borrowed_projection_is_rejected(v3_bin string) {
+\tfixture := os.join_path(borrowed_projection_fixture_dir, 'uncloneable_borrow.v.txt')
+\tsource := os.join_path(os.temp_dir(), 'v3_uncloneable_borrow_${os.getpid()}.v')
+\tdefer {
+\t\tos.rm(source) or {}
+\t}
+\tos.cp(fixture, source) or { panic(err) }
+\tfor mode in ['-no-parallel', ''] {
+\t\tout := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${source}')
+\t\tassert out.exit_code != 0, 'uncloneable borrow unexpectedly compiled (${mode})'
+\t\tassert out.output.contains('cannot copy borrowed'), out.output
+\t\tassert out.output.contains('requires ownership destruction'), out.output
+\t\tassert out.output.contains('implement `IClone` or use a pointer'), out.output
+\t}
+}
+
+fn run_imported_const_projection_is_cloned(v3_bin string) {
+\tproject := os.join_path(os.temp_dir(), 'v3_owned_const_shadow_${os.getpid()}')
+\tos.rmdir_all(project) or {}
+\tos.mkdir_all(os.join_path(project, 'cachemod')) or { panic(err) }
+\tdefer {
+\t\tos.rmdir_all(project) or {}
+\t}
+\tfixtures := os.join_path(borrowed_projection_fixture_dir, 'imported_const')
+\tos.cp(os.join_path(fixtures, 'v.mod.txt'), os.join_path(project, 'v.mod')) or { panic(err) }
+\tos.cp(os.join_path(fixtures, 'cachemod.v.txt'), os.join_path(project, 'cachemod',
+\t\t'cachemod.v')) or { panic(err) }
+\tos.cp(os.join_path(fixtures, 'main.v.txt'), os.join_path(project, 'main.v')) or { panic(err) }
+\tfor mode in ['-no-parallel', ''] {
+\t\tout := os.execute('${v3_bin} -nocache -ownership -d ownership ${mode} run ${os.join_path(project,
+\t\t\t'main.v')}')
+\t\tassert out.exit_code == 0, out.output
+\t\tassert out.output.count('clone') == 1, out.output
+\t}
+}
+"""
+    old_path.write_text(harness)
+
+
+def main() -> None:
+    patch_checker()
+    patch_transformer()
+    patch_nonownership_stub()
+    split_review_test()
+
+
+if __name__ == "__main__":
+    main()
