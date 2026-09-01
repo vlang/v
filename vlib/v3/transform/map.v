@@ -414,14 +414,32 @@ fn (t &Transformer) external_equality_expands_from_type_metadata(node flat.Node)
 	for i in 0 .. 2 {
 		operand_id := t.a.child(&node, i)
 		operand_type := t.node_type(operand_id)
-		if t.resolve_interface_type_name(operand_type).len > 0 {
-			return true
-		}
-		if !t.infix_operand_is_pointer(operand_id) && t.struct_lookup_name(operand_type).len > 0 {
+		if !t.infix_operand_is_pointer(operand_id) && t.equality_type_expands_from_metadata(operand_type, 0) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) equality_type_expands_from_metadata(typ string, depth int) bool {
+	if depth >= 8 {
+		return true
+	}
+	clean := t.normalize_type_alias(typ).trim_space()
+	if clean.starts_with('&') {
+		return false
+	}
+	if clean.starts_with('[]') {
+		return t.equality_type_expands_from_metadata(clean[2..], depth + 1)
+	}
+	if t.is_fixed_array_type(clean) {
+		return t.equality_type_expands_from_metadata(fixed_array_elem_type(clean), depth + 1)
+	}
+	if clean.starts_with('map[') {
+		_, value_type := t.map_type_parts(clean)
+		return value_type.len > 0 && t.equality_type_expands_from_metadata(value_type, depth + 1)
+	}
+	return t.resolve_interface_type_name(clean).len > 0 || t.struct_lookup_name(clean).len > 0
 }
 
 fn (t &Transformer) external_selector_expands_from_type_metadata(node flat.Node) bool {

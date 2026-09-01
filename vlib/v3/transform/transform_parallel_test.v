@@ -921,7 +921,7 @@ fn test_external_map_expansion_estimate_defers_enum_from_string_calls() {
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
 
-fn external_map_equality_expansion_estimate(operand_type string, is_interface bool) int {
+fn external_map_equality_expansion_estimate(operand_type string, metadata_type string, is_interface bool) int {
 	mut a := flat.FlatAst.new()
 	mut operands := []flat.NodeId{}
 	for name in ['left', 'right'] {
@@ -963,20 +963,22 @@ fn external_map_equality_expansion_estimate(operand_type string, is_interface bo
 	})
 	mut tc := types.TypeChecker.new(&a)
 	if is_interface {
-		tc.interface_names[operand_type] = true
+		tc.interface_names[metadata_type] = true
 	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	if !is_interface {
-		t.structs[operand_type] = StructInfo{
-			name: operand_type
+		t.structs[metadata_type] = StructInfo{
+			name: metadata_type
 		}
 	}
 	return t.external_map_tree_expansion_estimate(root, 0, 0)
 }
 
 fn test_external_map_expansion_estimate_defers_metadata_driven_equality() {
-	assert external_map_equality_expansion_estimate('WideRecord', false) > deferred_map_expansion_threshold
-	assert external_map_equality_expansion_estimate('Value', true) > deferred_map_expansion_threshold
+	assert external_map_equality_expansion_estimate('WideRecord', 'WideRecord', false) > deferred_map_expansion_threshold
+	assert external_map_equality_expansion_estimate('Value', 'Value', true) > deferred_map_expansion_threshold
+	assert external_map_equality_expansion_estimate('[]WideRecord', 'WideRecord', false) > deferred_map_expansion_threshold
+	assert external_map_equality_expansion_estimate('map[string]WideRecord', 'WideRecord', false) > deferred_map_expansion_threshold
 }
 
 fn test_external_map_expansion_estimate_includes_index_reconstruction() {
