@@ -1,0 +1,147 @@
+name: Resolve PR 28240 conflicts
+
+on:
+  push:
+    branches:
+      - automation/resolve-pr-28240
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the temporary resolution branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: automation/resolve-pr-28240
+
+      - name: Merge master, resolve the three conflicts, and validate
+        env:
+          ORIGINAL_HEAD: 22bfa670d843352a12d3c665bad75e2c95d8f4a2
+          RESOLUTION_BRANCH: automation/resolve-pr-28240
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin master
+          master_sha="$(git rev-parse origin/master)"
+
+          merge_status=0
+          git merge --no-commit --no-ff "$master_sha" || merge_status=$?
+          if (( merge_status > 1 )); then
+            echo "git merge failed with status ${merge_status}" >&2
+            exit "$merge_status"
+          fi
+
+          actual_conflicts="$(git diff --name-only --diff-filter=U | sort)"
+          expected_conflicts="$(printf '%s\n' \
+            vlib/v3/gen/c/cleanc.v \
+            vlib/v3/gen/c/types.v \
+            vlib/v3/gen/c/types_test.v | sort)"
+          if [[ "$actual_conflicts" != "$expected_conflicts" ]]; then
+            echo "Unexpected conflict set." >&2
+            echo "Expected:" >&2
+            printf '%s\n' "$expected_conflicts" >&2
+            echo "Actual:" >&2
+            printf '%s\n' "$actual_conflicts" >&2
+            exit 1
+          fi
+
+          git checkout "$master_sha" -- \
+            vlib/v3/gen/c/cleanc.v \
+            vlib/v3/gen/c/types.v \
+            vlib/v3/gen/c/types_test.v
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          types_path = Path('vlib/v3/gen/c/types.v')
+          source = types_path.read_text()
+          needle = """\tmut ct := g.tc.c_type(clean_type)
+          \tif ct.starts_with('fn_ptr:') {
+          \t\tct = g.resolve_fn_ptr_type(ct)
+          \t}
+          \tfor candidate in [ct, 'main.${ct}'] {
+          """
+          replacement = """\tmut ct := g.tc.c_type(clean_type)
+          \tif ct.starts_with('fn_ptr:') {
+          \t\tct = g.resolve_fn_ptr_type(ct)
+          \t}
+          \tmut bare_ct := ct
+          \tmut pointer_suffix := ''
+          \tfor bare_ct.ends_with('*') {
+          \t\tbare_ct = bare_ct[..bare_ct.len - 1]
+          \t\tpointer_suffix += '*'
+          \t}
+          \t// Specialized generic bodies can retain a stale bare concrete type spelling.
+          \tif optional_payload_is_bare_struct(clean_type) {
+          \t\tif qualified := g.unique_qualified_struct_c_type(bare_ct) {
+          \t\t\treturn qualified + pointer_suffix
+          \t\t}
+          \t}
+          \tfor candidate in [ct, 'main.${ct}'] {
+          """
+          if source.count(needle) != 1:
+              raise SystemExit(f'expected one value_c_type insertion point, found {source.count(needle)}')
+          types_path.write_text(source.replace(needle, replacement, 1))
+
+          test_path = Path('vlib/v3/gen/c/value_c_type_test.v')
+          test_path.write_text("""module c
+
+          import v3.flat
+          import v3.types
+
+          fn test_value_type_qualifies_concrete_generic_struct() {
+          \tmut ast := &flat.FlatAst{}
+          \tmut tc := types.TypeChecker.new(ast)
+          \ttc.structs['orm.QueryBuilder_User'] = []types.StructField{}
+          \tmut g := FlatGen.new()
+          \tg.a = ast
+          \tg.tc = &tc
+
+          \tvalue_type := types.Type(types.Struct{
+          \t\tname: 'QueryBuilder_User'
+          \t})
+          \tpointer_type := types.Type(types.Pointer{
+          \t\tbase_type: value_type
+          \t})
+          \tassert g.value_c_type(value_type) == 'orm__QueryBuilder_User'
+          \tassert g.value_c_type(pointer_type) == 'orm__QueryBuilder_User*'
+          }
+          """)
+          PY
+
+          git add \
+            vlib/v3/gen/c/cleanc.v \
+            vlib/v3/gen/c/types.v \
+            vlib/v3/gen/c/types_test.v \
+            vlib/v3/gen/c/value_c_type_test.v
+          git rm .github/workflows/resolve-pr-28240.yml
+
+          if git ls-files -u | grep -q .; then
+            echo "Unmerged index entries remain." >&2
+            git ls-files -u >&2
+            exit 1
+          fi
+          git diff --cached --check
+
+          make -j2
+          ./v -silent test vlib/v3/gen/c/types_test.v
+          ./v -silent test vlib/v3/gen/c/value_c_type_test.v
+
+          tree_sha="$(git write-tree)"
+          resolved_commit="$(printf '%s\n\n%s\n' \
+            'Merge master and resolve PR 28240 conflicts' \
+            'Keep current master conflict-side changes while retaining the ORM C-type regression fix.' \
+            | git commit-tree "$tree_sha" -p "$ORIGINAL_HEAD" -p "$master_sha")"
+
+          git push origin "$resolved_commit:refs/heads/$RESOLUTION_BRANCH" \
+            --force-with-lease="refs/heads/$RESOLUTION_BRANCH:$GITHUB_SHA"
+          echo "Resolved commit: $resolved_commit" >> "$GITHUB_STEP_SUMMARY"
