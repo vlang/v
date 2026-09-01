@@ -10206,19 +10206,79 @@ fn (tc &TypeChecker) callback_binding_call_sources(id flat.NodeId, name string) 
 	return result
 }
 
+fn (tc &TypeChecker) collect_visible_binding_scopes(id flat.NodeId, target_id flat.NodeId, name string, parent_scope int, mut scope_parents map[int]int, mut decl_offsets map[int]int, mut use_scope []int) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.node(id)
+	mut current_scope := parent_scope
+	if node.kind == .block {
+		current_scope = int(id)
+		if current_scope !in scope_parents {
+			scope_parents[current_scope] = parent_scope
+		}
+	}
+	if id == target_id {
+		use_scope[0] = current_scope
+	}
+	if node.kind == .decl_assign {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			lhs := tc.a.child_node(node, i)
+			if lhs.kind == .ident && lhs.value == name {
+				if current_scope !in decl_offsets || lhs.pos.offset < decl_offsets[current_scope] {
+					decl_offsets[current_scope] = lhs.pos.offset
+				}
+			}
+		}
+	}
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_visible_binding_scopes(tc.a.child(node, i), target_id, name, current_scope, mut scope_parents, mut decl_offsets, mut use_scope)
+	}
+}
+
+fn visible_binding_scope_at_offset(scope int, offset int, root_scope int, scope_parents map[int]int, decl_offsets map[int]int) int {
+	mut current := scope
+	for current >= 0 {
+		if decl_offset := decl_offsets[current] {
+			if decl_offset < offset {
+				return current
+			}
+		}
+		if current == root_scope {
+			break
+		}
+		current = scope_parents[current] or { root_scope }
+	}
+	return root_scope
+}
+
 fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnDecl, name string, use_id flat.NodeId) []flat.NodeId {
 	if name.len == 0 || !tc.valid_node_id(use_id) || decl.idx < 0 || decl.idx >= tc.a.nodes.len {
 		return []
 	}
 	use_pos := tc.a.node(use_id).pos
 	fn_node := tc.a.nodes[decl.idx]
+	root_scope := decl.idx
+	mut scope_parents := map[int]int{}
+	scope_parents[root_scope] = -1
+	mut decl_offsets := map[int]int{}
+	mut use_scope := [root_scope]
+	for i in 0 .. fn_node.children_count {
+		tc.collect_visible_binding_scopes(tc.a.child(&fn_node, i), use_id, name, root_scope, mut scope_parents, mut decl_offsets, mut use_scope)
+	}
+	target_scope := visible_binding_scope_at_offset(use_scope[0], use_pos.offset, root_scope, scope_parents, decl_offsets)
 	mut stack := []flat.NodeId{}
 	mut stack_conditional := []bool{}
+	mut stack_scopes := []int{}
 	for i in 0 .. fn_node.children_count {
 		child_id := tc.a.child(&fn_node, i)
 		if tc.a.node(child_id).kind != .param {
 			stack << child_id
 			stack_conditional << false
+			stack_scopes << root_scope
 		}
 	}
 	mut seen := map[int]bool{}
@@ -10229,15 +10289,22 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 	for stack.len > 0 {
 		current_id := stack.pop()
 		current_conditional := stack_conditional.pop()
+		parent_scope := stack_scopes.pop()
 		if seen[int(current_id)] || !tc.valid_node_id(current_id) {
 			continue
 		}
 		seen[int(current_id)] = true
 		current_node := tc.a.node(current_id)
+		current_scope := if current_node.kind == .block { int(current_id) } else { parent_scope }
 		if current_node.kind in [.decl_assign, .assign] {
 			for i := 0; i + 1 < int(current_node.children_count); i += 2 {
 				lhs := tc.a.child_node(current_node, i)
-				if lhs.kind == .ident && lhs.value == name && lhs.pos.id == use_pos.id && lhs.pos.offset < use_pos.offset {
+				binding_scope := if current_node.kind == .decl_assign {
+					current_scope
+				} else {
+					visible_binding_scope_at_offset(current_scope, lhs.pos.offset, root_scope, scope_parents, decl_offsets)
+				}
+				if lhs.kind == .ident && lhs.value == name && binding_scope == target_scope && lhs.pos.id == use_pos.id && lhs.pos.offset < use_pos.offset {
 					rhs_id := tc.a.child(current_node, i + 1)
 					if current_conditional {
 						conditional_ids << rhs_id
@@ -10249,7 +10316,8 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 				}
 			}
 		}
-		if current_node.kind == .call && current_node.pos.id == use_pos.id && current_node.pos.offset < use_pos.offset {
+		call_binding_scope := visible_binding_scope_at_offset(current_scope, current_node.pos.offset, root_scope, scope_parents, decl_offsets)
+		if current_node.kind == .call && call_binding_scope == target_scope && current_node.pos.id == use_pos.id && current_node.pos.offset < use_pos.offset {
 			call_sources := tc.callback_binding_call_sources(current_id, name)
 			if call_sources.len > 0 {
 				if current_conditional {
@@ -10272,6 +10340,7 @@ fn (tc &TypeChecker) visible_fn_local_binding_rhs_before(decl VisibleMutationFnD
 		for i in 0 .. current_node.children_count {
 			stack << tc.a.child(current_node, i)
 			stack_conditional << child_conditional
+			stack_scopes << current_scope
 		}
 	}
 	mut result := []flat.NodeId{}

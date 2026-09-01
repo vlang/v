@@ -3086,16 +3086,20 @@ fn array_map_local_pointer_path(path string, root string, locals map[string]bool
 // storage rooted outside the mapper. A bare assignment to that pointer slot itself stays
 // local; deeper selector/index writes and mutating calls follow the alias.
 fn (t &Transformer) array_map_side_effect_target_is_external(id flat.NodeId, elem_name string, locals map[string]bool, follow_local_pointer bool) bool {
-	root := t.array_map_lvalue_root_ident(id) or { return false }
-	if root == elem_name {
-		return false
+	for path in t.array_map_lvalue_local_paths(id, locals) {
+		root := array_map_local_path_root(path)
+		if root == elem_name {
+			continue
+		}
+		if root !in locals {
+			return true
+		}
+		pointer_path := array_map_local_pointer_path(path, root, locals)
+		if locals[pointer_path] && (follow_local_pointer || path != pointer_path) {
+			return true
+		}
 	}
-	if root !in locals {
-		return true
-	}
-	path := t.array_map_lvalue_local_path(id) or { return false }
-	pointer_path := array_map_local_pointer_path(path, root, locals)
-	return locals[pointer_path] && (follow_local_pointer || path != pointer_path)
+	return false
 }
 
 fn (mut t Transformer) array_map_pointer_alias_origin_is_external(id flat.NodeId, elem_name string, locals map[string]bool) bool {
@@ -3836,10 +3840,14 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 	if stmt.kind == .call && stmt.children_count > 0 {
 		// Evaluate the callee and physical arguments first. Nested calls can rebind a
 		// pointer that the outer call or a later statement observes.
+		mut argument_origins := map[int]map[string]bool{}
 		for i in 0 .. stmt.children_count {
 			if !t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut locals, mut loop_exits, mut return_exits, loop_label, active_defer_count) {
 				return false
 			}
+			// Argument values and mut lvalues are captured left-to-right. Keep their
+			// origins before a later argument can rebind the same local pointer.
+			argument_origins[i] = locals.clone()
 		}
 		call_name := t.call_name_for_node(stmt_id, stmt)
 		params := t.call_param_types_for_node(call_name, stmt)
@@ -3851,37 +3859,50 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 			if !target.is_mut || types.unalias_type(t.tc.resolve_type(target_id)) !is types.Pointer {
 				continue
 			}
-			target_path := t.array_map_lvalue_local_path(target_id) or { continue }
-			target_root := t.array_map_lvalue_root_ident(target_id) or { continue }
-			if target_root !in locals {
-				continue
-			}
 			target_param_idx := i - 1 + param_offset
 			source_param_idxs := t.tc.call_param_storage_source_params(stmt_id, target_param_idx)
 			if source_param_idxs.len == 0 {
 				continue
 			}
-			origins := locals.clone()
-			overlapping := array_map_clear_local_pointer_origins(target_path, mut locals)
-			mut replacement_origins := map[string]bool{}
-			for source_param_idx in source_param_idxs {
-				mut source_id := flat.empty_node
-				if param_offset == 1 && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
-					source_id = t.a.child(callee, 0)
-				} else {
-					child_idx := source_param_idx - param_offset + 1
-					if child_idx >= 1 && child_idx < stmt.children_count {
-						source_id = t.a.child(&stmt, child_idx)
+			target_snapshot := if i in argument_origins {
+				argument_origins[i].clone()
+			} else {
+				locals.clone()
+			}
+			for target_path in t.array_map_lvalue_local_paths(target_id, target_snapshot) {
+				target_root := array_map_local_path_root(target_path)
+				if target_root !in locals {
+					continue
+				}
+				overlapping := array_map_clear_local_pointer_origins(target_path, mut locals)
+				mut replacement_origins := map[string]bool{}
+				for source_param_idx in source_param_idxs {
+					mut source_id := flat.empty_node
+					mut source_child_idx := -1
+					if param_offset == 1 && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
+						source_id = t.a.child(callee, 0)
+						source_child_idx = 0
+					} else {
+						child_idx := source_param_idx - param_offset + 1
+						if child_idx >= 1 && child_idx < stmt.children_count {
+							source_id = t.a.child(&stmt, child_idx)
+							source_child_idx = child_idx
+						}
+					}
+					if int(source_id) >= 0 {
+						source_origins := if source_child_idx in argument_origins {
+							argument_origins[source_child_idx].clone()
+						} else {
+							locals.clone()
+						}
+						t.array_map_record_local_pointer_origins(target_path, source_id, elem_name, source_origins, mut replacement_origins)
 					}
 				}
-				if int(source_id) >= 0 {
-					t.array_map_record_local_pointer_origins(target_path, source_id, elem_name, origins, mut replacement_origins)
+				for path, external in replacement_origins {
+					locals[path] = locals[path] || external
 				}
+				array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
 			}
-			for path, external in replacement_origins {
-				locals[path] = locals[path] || external
-			}
-			array_map_merge_overlapping_pointer_origins(overlapping, mut locals)
 		}
 		return true
 	}

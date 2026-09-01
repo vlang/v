@@ -7643,9 +7643,24 @@ fn main() {
 			0
 		}
 	})
+	mut direct_saved := unsafe { &external }
+	direct := make_items().map(match true {
+		true {
+			mut slot := &direct_saved
+			unsafe {
+				*slot = &it
+			}
+			0
+		}
+		else {
+			0
+		}
+	})
 	println(nested[0])
 	println(nested_saved.value.text)
 	println(dereferenced[0])
+	println(direct[0])
+	println(direct_saved.text)
 }
 '
 	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_nested_call_and_dereference_pointer_origin_c', '-ownership', source)
@@ -7653,7 +7668,136 @@ fn main() {
 	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
 	assert !compact_main.contains('array__free(&(__map_source_'), main_body
 	out := run_good_with_flags(v3_bin, 'array_map_nested_call_and_dereference_pointer_origin', '-ownership', source)
-	assert out == '0\nsource\n0'
+	assert out == '0\nsource\n0\n0\nsource'
+}
+
+fn test_array_map_snapshots_call_arguments_and_respects_callback_alias_scopes() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn reset(mut target &PointerBox, replacement &PointerBox) bool {
+	target = replacement
+	return true
+}
+
+fn assign(mut target &PointerBox, source &PointerBox, changed bool) {
+	if changed {
+		target = source
+	}
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &saved
+			mut target := &local
+			assign(mut target, alias, reset(mut alias, &local))
+			target.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_call_argument_snapshot_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_call_argument_snapshot', '-ownership', source)
+	assert out == '0\nsource'
+
+	files := {
+		'v.mod':        "Module { name: 'array_map_callback_alias_scope' }\n"
+		'api/store.v':  '@[has_globals]
+module api
+
+pub struct Item {
+pub:
+	text string
+}
+
+__global retained &Item
+
+pub fn save(value &Item) {
+	retained = value
+}
+
+pub fn retained_text() string {
+	return retained.text
+}
+'
+		'api/invoke.v': 'module api
+
+pub fn invoke(callback fn (&Item), value &Item) {
+	alias := value
+	unsafe {
+		local := Item{
+			text: "local"
+		}
+		alias := &local
+		_ = alias
+	}
+	callback(alias)
+}
+'
+		'main.v':       'module main
+
+import api
+
+fn make_items() []api.Item {
+	return [api.Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	selected := make_items().map(match true {
+		true {
+			api.invoke(api.save, unsafe { &it })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(api.retained_text())
+}
+'
+	}
+	callback_c_source := gen_c_from_project_with_flags(v3_bin, 'array_map_callback_alias_scope_c', '-ownership', files, 'main.v')
+	callback_main_body := c_fn_body(callback_c_source, 'int main(int argc, char** argv) {')
+	compact_callback_main := callback_main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_callback_main.contains('array__free(&(__map_source_'), callback_main_body
+	callback_out := run_good_project_with_flags(v3_bin, 'array_map_callback_alias_scope', '-ownership', files, 'main.v')
+	assert callback_out == '0\nsource'
 }
 
 fn test_array_map_updates_pointer_origins_through_declaration_initializer_call() {
