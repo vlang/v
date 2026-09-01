@@ -15,11 +15,20 @@ concurrency:
 jobs:
   publish:
     if: contains(github.event.head_commit.message, '[publish-pr-28244]')
-    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04-arm
+          - macos-15
+          - macos-15-intel
+          - macos-26
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
       ORIGINAL_BASE: cbf4e8509630da710d04cc9fd0f777761ebe55a7
       ORIGINAL_HEAD: 2a6677b34d621f7b44e48c73ad773180aa9d8ea8
+      PR_BRANCH: v3-ownership-toml-value-copy
     steps:
       - name: Check out repair inputs
         uses: actions/checkout@v4
@@ -41,7 +50,7 @@ jobs:
             .github/pr28244-repair/99.py.part \
             > /tmp/repair_pr_28244.py
           python3 -m py_compile /tmp/repair_pr_28244.py
-          git fetch --no-tags origin master "$ORIGINAL_BASE" "$ORIGINAL_HEAD"
+          git fetch --no-tags origin master
           git diff --binary "$ORIGINAL_BASE" "$ORIGINAL_HEAD" > /tmp/pr-28244.patch
           git checkout -B repaired origin/master
           git apply --3way --index --whitespace=nowarn /tmp/pr-28244.patch
@@ -53,7 +62,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          VFLAGS="-cc cc" make -j2
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            VFLAGS="-cc clang" make -j2
+          else
+            VFLAGS="-cc cc" make -j2
+          fi
           files=(
             vlib/v3/tests/ownership_borrowed_projection_error_test.v
             vlib/v3/tests/ownership_borrowed_projection_review_test.v
@@ -128,4 +141,10 @@ jobs:
 
           test -z "$(git status --porcelain)"
           git log --oneline --decorate -4
-          git push --force origin HEAD:refs/heads/pr-28244-repair-staging
+          current=$(git ls-remote origin "refs/heads/${PR_BRANCH}" | awk '{print $1}')
+          if [[ "$current" != "$GITHUB_SHA" ]]; then
+            echo "PR branch moved from $GITHUB_SHA to $current; not publishing stale repair" >&2
+            exit 1
+          fi
+          staging_branch="pr-28244-repair-staging-${{ matrix.os }}"
+          git push --force origin "HEAD:refs/heads/${staging_branch}"
