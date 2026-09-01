@@ -2514,8 +2514,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	// The implicit `it` binding denotes the source slot when its address is taken.
 	// Binding a copied value here would return pointers to a loop-local temporary.
-	mapper_takes_elem_address := lambda_param.len == 0
-		&& t.array_map_expr_takes_address_of_ident(mapped_source, elem_name)
+	mapper_takes_elem_address := lambda_param.len == 0 && (t.array_map_expr_takes_address_of_ident(mapped_source, elem_name) || t.array_map_expr_implicit_reference_can_escape(map_source_id, 'it'))
 	elem_var_type := if mapper_takes_elem_address { '&${elem_type}' } else { elem_type }
 	old_elem := t.var_type(elem_name)
 	t.set_var_type(elem_name, elem_var_type)
@@ -2788,6 +2787,57 @@ fn (t &Transformer) array_map_expr_takes_address_of_ident(id flat.NodeId, name s
 	return false
 }
 
+fn (mut t Transformer) array_map_call_implicitly_borrows_ident(id flat.NodeId, node flat.Node, name string) bool {
+	if node.kind != .call || node.children_count == 0 || name.len == 0 || isnil(t.tc) {
+		return false
+	}
+	call_name := t.call_name_for_node(id, node)
+	params := t.call_param_types_for_node(call_name, node)
+	param_offset := t.call_param_offset_for_node(call_name, node, params)
+	callee := t.a.child_node(&node, 0)
+	if param_offset == 1 && params.len > 0 && types.unalias_type(params[0]) is types.Pointer
+		&& callee.kind == .selector && callee.children_count > 0
+		&& t.array_map_lvalue_is_rooted_at_ident(t.a.child(callee, 0), name) {
+		return true
+	}
+	for i in 1 .. node.children_count {
+		param_idx := i - 1 + param_offset
+		if param_idx < params.len && types.unalias_type(params[param_idx]) is types.Pointer && t.array_map_lvalue_is_rooted_at_ident(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) array_map_expr_implicit_reference_can_escape(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len || name.len == 0 || isnil(t.tc) {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	if node.kind == .call && t.array_map_call_implicitly_borrows_ident(id, node, name) {
+		result_type := t.checker_expr_type_name(id) or { t.node_type(id) }
+		if t.array_map_result_can_retain_element_address(result_type) || t.tc.resolved_call_may_store_globally(id) {
+			return true
+		}
+		if resolved_name := t.tc.resolved_call_name(id) {
+			if resolved_name.starts_with('C.') {
+				return true
+			}
+		} else {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.array_map_expr_implicit_reference_can_escape(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (t &Transformer) array_map_lvalue_is_rooted_at_ident(id flat.NodeId, name string) bool {
 	if int(id) < 0 {
 		return false
@@ -2868,6 +2918,9 @@ fn (mut t Transformer) array_map_expr_result_retains_element_address(id flat.Nod
 			call_type := t.checker_expr_type_name(id) or { t.node_type(id) }
 			if !t.array_map_result_can_retain_element_address(call_type) {
 				return false
+			}
+			if t.array_map_call_implicitly_borrows_ident(id, node, name) {
+				return true
 			}
 			for source_arg in t.tc.ownership_call_result_source_args(id) {
 				if t.array_map_expr_result_retains_element_address(source_arg, name) {
@@ -3999,7 +4052,11 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 	params := t.call_param_types_for_node(call_name, node)
 	param_offset := t.call_param_offset_for_node(call_name, node, params)
 	callee := t.a.child_node(&node, 0)
+	implicitly_borrows_elem := t.array_map_call_implicitly_borrows_ident(id, node, elem_name)
 	if t.tc.resolved_call_may_store_globally(id) {
+		if implicitly_borrows_elem {
+			return true
+		}
 		if param_offset == 1 && callee.kind == .selector && callee.children_count > 0 && t.array_map_side_effect_source_retains_element_address(t.a.child(callee, 0), elem_name, block, before_idx) {
 			return true
 		}
@@ -4017,6 +4074,9 @@ fn (mut t Transformer) array_map_call_side_effect_retains_element_address(id fla
 		// A function value or external C function has no visible body or attributes
 		// at this call site. Any pointer-bearing argument or captured callee state may
 		// therefore escape even when it is not `mut`.
+		if implicitly_borrows_elem {
+			return true
+		}
 		for i in 0 .. node.children_count {
 			if t.array_map_side_effect_source_retains_element_address(t.a.child(&node, i), elem_name, block, before_idx) {
 				return true

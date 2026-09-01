@@ -5705,6 +5705,38 @@ fn main() {
 	assert out == '[4]'
 }
 
+fn test_array_map_binds_implicit_reference_receiver_to_source_slot() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	value int
+}
+
+fn (item &Item) self() &Item {
+	return item
+}
+
+fn make_items() []Item {
+	return [Item{
+		value: 1
+	}, Item{
+		value: 2
+	}]
+}
+
+fn main() {
+	items := make_items().map(it.self())
+	println(items[0].value)
+	println(items[1].value)
+	println(items[0] == items[1])
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_implicit_reference_receiver_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert !main_body.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_implicit_reference_receiver', '-ownership', source)
+	assert out == '1\n2\nfalse'
+}
+
 fn test_array_map_keeps_temporary_source_for_generic_pointer_result() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
