@@ -704,6 +704,14 @@ struct FastcHoistedCSource {
 	body             string
 }
 
+struct FastcPartitionedCSource {
+	source             string
+	directive_ranges   []int
+	conditional_ranges []int
+	body_ranges        []int
+	final_kind         int
+}
+
 // GenerationResult contains generated C and the complete resolved V source graph.
 pub struct GenerationResult {
 pub:
@@ -1136,7 +1144,9 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut globals := map[string]string{}
 	mut public_globals := map[string]bool{}
 	mut type_source_paths := map[string]bool{}
-	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut constants, mut public_constants, mut globals, mut public_globals)!
+	mut type_sources := map[string]string{}
+	mut constant_sources := map[string]string{}
+	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
@@ -1167,14 +1177,14 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
-	type_output := fastc_generate_type_declarations(sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
+	type_output := fastc_generate_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
 	declared_composite_types := composite_types.clone()
 	type_declarations := type_output.declarations
 	enum_field_types := type_output.enum_field_types.clone()
 	mut constant_types := map[string]string{}
 	mut global_types := map[string]string{}
 	fastc_render_struct_field_defaults(prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, mut struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)!
-	constant_output := fastc_generate_constant_declarations(sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	constant_output := fastc_generate_constant_declarations(sources, constant_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
 	}
@@ -1314,11 +1324,17 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	interface_dispatches := fastc_wait_interface_dispatches(mut pending_interface_dispatches)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
-	hoisted_body := fastc_hoist_c_directives(body.str())
+	hoisted_body := fastc_partition_c_directives(body.str())
 	mut result := strings.new_builder(preamble.len + c_integer_comparison_helpers.len + type_declarations.len + type_output.enum_string_helpers.len + constant_output.macros.len + constant_output.declarations.len + global_output.declarations.len + prototypes.len + body.len + startup_initializers.len + 96)
 	result.write_string(preamble)
 	result.write_string(c_integer_comparison_helpers)
-	result.write_string(hoisted_body.directives)
+	fastc_write_c_source_ranges(mut result, hoisted_body.source, hoisted_body.directive_ranges)
+	if hoisted_body.final_kind == 1 {
+		result.write_u8(`\n`)
+	}
+	if hoisted_body.directive_ranges.len > 0 {
+		result.writeln('')
+	}
 	if prefs.building_v {
 		result.write_string(c_selfhost_post_directives)
 	}
@@ -1376,8 +1392,17 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		result.writeln('')
 	}
 	result.write_string(synthesized_main)
-	result.write_string(hoisted_body.conditional_code)
-	result.write_string(hoisted_body.body)
+	fastc_write_c_source_ranges(mut result, hoisted_body.source, hoisted_body.conditional_ranges)
+	if hoisted_body.final_kind == 2 {
+		result.write_u8(`\n`)
+	}
+	if hoisted_body.conditional_ranges.len > 0 {
+		result.writeln('')
+	}
+	fastc_write_c_source_ranges(mut result, hoisted_body.source, hoisted_body.body_ranges)
+	if hoisted_body.final_kind == 0 {
+		result.write_u8(`\n`)
+	}
 	return result.str(), spawn_typedefs.len > 0, c_flags
 }
 
@@ -1554,9 +1579,39 @@ fn fastc_generate_interface_dispatches(declared_kinds map[string]FastcDeclaredTy
 }
 
 fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
+	partitioned := fastc_partition_c_directives(source)
 	mut directives := strings.new_builder(256)
+	fastc_write_c_source_ranges(mut directives, partitioned.source, partitioned.directive_ranges)
+	if partitioned.final_kind == 1 {
+		directives.write_u8(`\n`)
+	}
+	if partitioned.directive_ranges.len > 0 {
+		directives.writeln('')
+	}
 	mut conditional_code := strings.new_builder(256)
+	fastc_write_c_source_ranges(mut conditional_code, partitioned.source, partitioned.conditional_ranges)
+	if partitioned.final_kind == 2 {
+		conditional_code.write_u8(`\n`)
+	}
+	if partitioned.conditional_ranges.len > 0 {
+		conditional_code.writeln('')
+	}
 	mut body := strings.new_builder(source.len)
+	fastc_write_c_source_ranges(mut body, partitioned.source, partitioned.body_ranges)
+	if partitioned.final_kind == 0 {
+		body.write_u8(`\n`)
+	}
+	return FastcHoistedCSource{
+		directives: directives.str()
+		conditional_code: conditional_code.str()
+		body: body.str()
+	}
+}
+
+fn fastc_partition_c_directives(source string) FastcPartitionedCSource {
+	mut directive_ranges := []int{}
+	mut conditional_ranges := []int{}
+	mut body_ranges := []int{}
 	mut conditional_depth := 0
 	mut line_start := 0
 	mut run_start := 0
@@ -1583,12 +1638,7 @@ fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 		if run_kind == -1 {
 			run_kind = line_kind
 		} else if line_kind != run_kind {
-			segment := source[run_start..line_start]
-			match run_kind {
-				1 { directives.write_string(segment) }
-				2 { conditional_code.write_string(segment) }
-				else { body.write_string(segment) }
-			}
+			fastc_append_c_source_range(run_start, line_start, run_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
 			run_start = line_start
 			run_kind = line_kind
 		}
@@ -1597,31 +1647,37 @@ fn fastc_hoist_c_directives(source string) FastcHoistedCSource {
 		}
 		line_start = line_end + 1
 	}
-	segment := source[run_start..]
-	match run_kind {
+	fastc_append_c_source_range(run_start, source.len, run_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+	return FastcPartitionedCSource{
+		source: source
+		directive_ranges: directive_ranges
+		conditional_ranges: conditional_ranges
+		body_ranges: body_ranges
+		final_kind: run_kind
+	}
+}
+
+fn fastc_append_c_source_range(start int, end int, kind int, mut directive_ranges []int, mut conditional_ranges []int, mut body_ranges []int) {
+	match kind {
 		1 {
-			directives.write_string(segment)
-			directives.write_u8(`\n`)
+			directive_ranges << start
+			directive_ranges << end
 		}
 		2 {
-			conditional_code.write_string(segment)
-			conditional_code.write_u8(`\n`)
+			conditional_ranges << start
+			conditional_ranges << end
 		}
 		else {
-			body.write_string(segment)
-			body.write_u8(`\n`)
+			body_ranges << start
+			body_ranges << end
 		}
 	}
-	if directives.len > 0 {
-		directives.writeln('')
-	}
-	if conditional_code.len > 0 {
-		conditional_code.writeln('')
-	}
-	return FastcHoistedCSource{
-		directives: directives.str()
-		conditional_code: conditional_code.str()
-		body: body.str()
+}
+
+@[direct_array_access]
+fn fastc_write_c_source_ranges(mut out strings.Builder, source string, ranges []int) {
+	for i := 0; i < ranges.len; i += 2 {
+		out.write_string(source[ranges[i]..ranges[i + 1]])
 	}
 }
 
