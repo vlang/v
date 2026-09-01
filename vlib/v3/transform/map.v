@@ -288,6 +288,11 @@ fn (mut t Transformer) external_map_tree_expansion_estimate(root flat.NodeId, lo
 				// whose size is derived from type metadata, not source children.
 				estimate += deferred_map_expansion_threshold + 1
 			}
+			if t.compiler_collection_str_call_expands(node) {
+				// Compiler-provided collection stringification synthesizes loops and
+				// recursively formats elements that are absent from physical children.
+				estimate += deferred_map_expansion_threshold + 1
+			}
 			if t.ownership_array_repeat_call_expands(node) {
 				// Ownership-aware repeats synthesize a clone loop from element metadata.
 				estimate += deferred_map_expansion_threshold + 1
@@ -403,6 +408,39 @@ fn (t &Transformer) compiler_collection_clone_call_expands(node flat.Node) bool 
 		if t.compiler_default_clone_type_needs_work(typ) {
 			return true
 		}
+	}
+	return false
+}
+
+fn (t &Transformer) compiler_collection_str_call_expands(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value != 'str' || fn_node.children_count == 0 {
+		return false
+	}
+	base_id := t.a.child(fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	if _ := t.resolve_receiver_method_for_type(base_type, 'str') {
+		return false
+	}
+	mut clean := t.normalize_type_alias(base_type).trim_space()
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	clean = clean.trim_left('&')
+	if clean.starts_with('[]') || t.is_fixed_array_type(clean) {
+		return true
+	}
+	if clean.starts_with('map[') {
+		key_type, raw_value_type := t.map_type_parts(clean)
+		fixed_value_type := t.fixed_array_map_value_type_text(raw_value_type)
+		value_type := if fixed_value_type.len > 0 { fixed_value_type } else { raw_value_type }
+		return t.map_str_types_need_typed_lowering(key_type, value_type)
 	}
 	return false
 }
