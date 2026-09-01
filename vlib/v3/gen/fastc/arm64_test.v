@@ -201,6 +201,11 @@ fn main() {
 		println("wrong indexed map assignment conversion")
 		return
 	}
+	assigned_numbers.delete(1)
+	if assigned_numbers.len != 0 {
+		println("wrong map delete key conversion")
+		return
+	}
 	return_left, return_right := fast_arm64_return_pair()
 	receiver := FastArm64FloatReceiver{}
 	if fast_arm64_return_f64() != 1.0 || return_left != 2.0 || return_right != u64(3)
@@ -448,7 +453,7 @@ fn main() {
 	elapsed := 1.25
 	max_unsigned := u64(18446744073709551615)
 	long_float := "\${1.0:.200f}"
-	if "\${formatted_value:05d}" != "00042" || "\${-7:04d}" != "-007" || "\${formatted_value:x}" != "2a" || "\${formatted_value:04X}" != "002A" || "\${formatted_value:b}" != "101010" || "\${formatted_value:o}" != "52" || "\${max_unsigned:020d}" != "18446744073709551615" || "\${u8(65):c}" != "A" || "\${u8(65):3c}" != "  A" || "\${rune(8364):c}" != "€" || "\${elapsed}" != "1.25" || "\${elapsed:.2f}" != "1.25" || "\${elapsed:7.2f}" != "   1.25" || long_float.len != 202 || long_float[0] != `1` || long_float[1] != `.` || long_float[201] != `0` {
+	if "\${formatted_value:05d}" != "00042" || "\${-7:04d}" != "-007" || "\${formatted_value:x}" != "2a" || "\${formatted_value:04X}" != "002A" || "\${formatted_value:b}" != "101010" || "\${formatted_value:o}" != "52" || "\${max_unsigned:020d}" != "18446744073709551615" || "\${max_unsigned}" != "18446744073709551615" || "\${true}" != "true" || "\${false}" != "false" || "\${u8(65):c}" != "A" || "\${u8(65):3c}" != "  A" || "\${rune(8364):c}" != "€" || "\${elapsed}" != "1.25" || "\${elapsed:.2f}" != "1.25" || "\${elapsed:7.2f}" != "   1.25" || long_float.len != 202 || long_float[0] != `1` || long_float[1] != `.` || long_float[201] != `0` {
 		println("wrong interpolation format")
 		return
 	}
@@ -457,12 +462,15 @@ fn main() {
 		option_handler_ran = true
 		42
 	}
+	delayed_option := maybe_value(false)
 	option_success := maybe_value(true) or { 99 }
+	delayed_option_fallback := delayed_option or { 48 }
 	mut error_message_ok := false
 	result_fallback := result_value(false) or {
 		error_message_ok = err.msg() == "failed"
 		43
 	}
+	delayed_result := coded_error_value()
 	result_success := result_value(true) or { 99 }
 	mut custom_error_seen := false
 	mut custom_error_details_ok := false
@@ -473,6 +481,11 @@ fn main() {
 		custom_error_details_ok = err.code() == 42 && err.msg() == "custom" && err.str() == "custom; code: 42"
 		46
 	}
+	mut delayed_error_ok := false
+	delayed_result_fallback := delayed_result or {
+		delayed_error_ok = err.msg() == "coded" && err.code() == 73
+		49
+	}
 	mut coded_error_ok := false
 	coded_error_fallback := coded_error_value() or {
 		coded_error_ok = err.msg() == "coded" && err.code() == 73 && err.str() == "coded; code: 73"
@@ -482,7 +495,13 @@ fn main() {
 	propagated_result_success := propagated_result(true) or { 99 }
 	propagated_option_fallback := propagated_option(false) or { 45 }
 	propagated_option_success := propagated_option(true) or { 99 }
-	if !option_handler_ran || !error_message_ok || !custom_error_seen || !coded_error_ok || option_fallback != 42 || option_success != 7 || result_fallback != 43 || result_success != 9 || custom_error_fallback != 46 || coded_error_fallback != 47 || propagated_result_fallback != 44 || propagated_result_success != 10 || propagated_option_fallback != 45 || propagated_option_success != 9 {
+	if !option_handler_ran || !error_message_ok || !custom_error_seen || !coded_error_ok
+		|| !delayed_error_ok || option_fallback != 42 || option_success != 7
+		|| delayed_option_fallback != 48 || result_fallback != 43 || result_success != 9
+		|| custom_error_fallback != 46 || delayed_result_fallback != 49
+		|| coded_error_fallback != 47 || propagated_result_fallback != 44
+		|| propagated_result_success != 10 || propagated_option_fallback != 45
+		|| propagated_option_success != 9 {
 		println("wrong option result handling")
 		return
 	}
@@ -516,6 +535,17 @@ fn main() {
 	explicit := FastArm64Defaults{retries: 7}
 	if defaults.retries != 3 || !defaults.enabled || defaults.mode != .warm || explicit.retries != 7 || !explicit.enabled || explicit.mode != .warm {
 		println("wrong struct defaults")
+		return
+	}
+	mut fixed_map_defaults := [1]FastArm64MapDefaults{}
+	mut fixed_map_item := fixed_map_defaults[0]
+	fixed_map_item.values["fixed"] = 1
+	mut fixed_nested_maps := [1]FastArm64CloneOuter{}
+	mut fixed_nested_item := fixed_nested_maps[0]
+	fixed_nested_item.inner.values["nested"] = 2
+	if fixed_map_defaults[0].values["fixed"] != 1
+		|| fixed_nested_maps[0].inner.values["nested"] != 2 {
+		println("wrong fixed array map initialization")
 		return
 	}
 	mut indexed := {"b": 2, "a": 1}
@@ -628,7 +658,7 @@ fn main() {
 	}
 }
 
-fn test_fastc_arm64_rejects_synchronous_spawn_for_general_programs() {
+fn test_fastc_arm64_spawn_for_general_programs() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_spawn_${os.getpid()}')
 		os.rmdir_all(test_dir) or {}
@@ -638,17 +668,16 @@ fn test_fastc_arm64_rejects_synchronous_spawn_for_general_programs() {
 		}
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
-		os.write_file(source_path, 'fn worker() int { return 1 }\nfn main() { handle := spawn worker(); println(handle.wait()) }\n') or {
+		os.write_file(source_path, 'fn worker() int { return 1 }\nfn main() { handle := spawn worker(); if handle.wait() == 1 { println("spawned") } }\n') or {
 			panic(err)
 		}
 		mut prefs := pref.new_preferences()
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
-		generate_arm64_files([source_path], prefs, output_path) or {
-			assert err.msg().contains('spawn outside the compiler bootstrap'), err.msg()
-			return
-		}
-		assert false, 'general ARM64 input compiled a synchronous spawn'
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'spawned\n'
 	}
 }
 

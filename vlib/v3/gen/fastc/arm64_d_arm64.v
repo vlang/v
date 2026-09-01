@@ -1115,6 +1115,7 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_map_runtime()
 	p.register_integer_string_runtime()
 	p.register_integer_format_runtime()
+	p.register_bool_string_runtime()
 	p.register_character_string_runtime()
 	p.register_string_padding_runtime()
 	p.register_string_zero_extension_runtime()
@@ -2418,6 +2419,19 @@ fn (mut p FastArm64Program) register_integer_format_runtime() {
 	p.instr1(.ret, done, p.void_type, result)
 }
 
+fn (mut p FastArm64Program) register_bool_string_runtime() {
+	id := p.register_function('fast_bool_to_string', 'fast_bool_to_string', p.str_type, false)
+	entry := p.m.add_block(id, 'bool_string_entry')
+	true_block := p.m.add_block(id, 'bool_string_true')
+	false_block := p.m.add_block(id, 'bool_string_false')
+	value := p.add_arg(id, p.i1_type, 'value')
+	p.instr3(.br, entry, p.void_type, value, ssa.ValueID(true_block), ssa.ValueID(false_block))
+	true_value := p.m.add_value(.string_literal, p.str_type, 'true', 0)
+	false_value := p.m.add_value(.string_literal, p.str_type, 'false', 0)
+	p.instr1(.ret, true_block, p.void_type, true_value)
+	p.instr1(.ret, false_block, p.void_type, false_value)
+}
+
 fn (mut p FastArm64Program) register_character_string_runtime() {
 	id := p.register_function('fast_character_to_string', 'fast_character_to_string', p.str_type, false)
 	entry := p.m.add_block(id, 'character_string_entry')
@@ -3596,6 +3610,28 @@ fn (mut p FastArm64Parser) parse_statement() ! {
 	}
 }
 
+fn (p &FastArm64Parser) simple_index_assignment_follows() bool {
+	mut look := p.s
+	if look.scan() != .lsbr {
+		return false
+	}
+	mut depth := 1
+	for depth > 0 {
+		tok := look.scan()
+		if tok == .eof {
+			return false
+		}
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+		}
+	}
+	return look.scan() in [.assign, .plus_assign, .minus_assign, .mul_assign, .div_assign,
+		.mod_assign, .left_shift, .left_shift_assign, .right_shift_assign,
+		.right_shift_unsigned_assign, .and_assign, .or_assign, .xor_assign]
+}
+
 fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 	name := p.lit
 	mut look := p.s
@@ -3664,7 +3700,7 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 		}
 		return
 	}
-	if next_token == .lsbr && name in p.locals {
+	if next_token == .lsbr && name in p.locals && p.simple_index_assignment_follows() {
 		local := p.locals[name]
 		p.next()
 		p.next()
@@ -4215,6 +4251,7 @@ fn (mut p FastArm64Parser) parse_if() ! {
 				addr: address
 				typ: value.typ
 				typ_name: value.typ_name
+				option_failed: value.option_failed
 				option_error_type: value.option_error_type
 				option_error_message: value.option_error_message
 				option_error_code: value.option_error_code
@@ -6067,26 +6104,14 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 		return value
 	}
 	if value.typ == p.program.i1_type {
-		result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.str_type))
-		true_block := p.program.m.add_block(p.func_id, 'bool_string_true')
-		false_block := p.program.m.add_block(p.func_id, 'bool_string_false')
-		done := p.program.m.add_block(p.func_id, 'bool_string_done')
-		p.program.instr3(.br, p.cur_block, p.program.void_type, value.id, ssa.ValueID(true_block), ssa.ValueID(false_block))
-		p.mark_terminated(p.cur_block)
-		true_value := p.program.m.add_value(.string_literal, p.program.str_type, 'true', 0)
-		p.program.instr2(.store, true_block, p.program.void_type, true_value, result_slot)
-		p.program.instr1(.jmp, true_block, p.program.void_type, ssa.ValueID(done))
-		p.mark_terminated(true_block)
-		false_value := p.program.m.add_value(.string_literal, p.program.str_type, 'false', 0)
-		p.program.instr2(.store, false_block, p.program.void_type, false_value, result_slot)
-		p.program.instr1(.jmp, false_block, p.program.void_type, ssa.ValueID(done))
-		p.mark_terminated(false_block)
-		p.cur_block = done
+		convert_ref := p.program.m.add_value(.func_ref, p.program.str_type, 'fast_bool_to_string', p.program.fn_ids['fast_bool_to_string'])
 		return FastArm64Value{
-			id: p.program.instr1(.load, done, p.program.str_type, result_slot)
+			id: p.program.m.add_instr(.call, p.cur_block, p.program.str_type, [
+				convert_ref,
+				value.id,
+			])
 			typ: p.program.str_type
 			typ_name: 'string'
-			address: result_slot
 		}
 	}
 	if value.typ in [p.program.f32_type, p.program.f64_type] {
@@ -6111,22 +6136,18 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 			typ_name: 'string'
 		}
 	}
-	if p.program.m.type_store.types[value.typ].kind == .int_t {
+	value_layout := p.program.m.type_store.types[value.typ]
+	if value_layout.kind == .int_t && value_layout.is_unsigned {
 		base := p.program.m.get_or_add_const(p.program.i64_type, '10')
-		uppercase := p.program.m.get_or_add_const(p.program.i1_type, '0')
-		is_signed := p.program.m.get_or_add_const(p.program.i1_type, if p.program.m.type_store.types[value.typ].is_unsigned {
-			'0'
-		} else {
-			'1'
-		})
+		flag := p.program.m.get_or_add_const(p.program.i1_type, '0')
 		convert_ref := p.program.m.add_value(.func_ref, p.program.str_type, 'fast_integer_to_string', p.program.fn_ids['fast_integer_to_string'])
 		return FastArm64Value{
 			id: p.program.m.add_instr(.call, p.cur_block, p.program.str_type, [
 				convert_ref,
 				p.integer_to_i64(value),
 				base,
-				uppercase,
-				is_signed,
+				flag,
+				flag,
 			])
 			typ: p.program.str_type
 			typ_name: 'string'
@@ -7819,11 +7840,6 @@ fn (mut p FastArm64Parser) parse_method_call(value FastArm64Value, method string
 	} else {
 		ssa.ValueID(0)
 	}
-	option_error_code := if signature.return_type == 'Option' {
-		p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.option_error_code_global)
-	} else {
-		ssa.ValueID(0)
-	}
 	return FastArm64Value{
 		id: result
 		typ: ret
@@ -8157,7 +8173,6 @@ fn (mut p FastArm64Parser) parse_map_literal() !FastArm64Value {
 	map_type_name := fastc_map_c_type(key_type_name, value_type_name)
 	mut result := p.new_empty_map_value(map_type_name)!
 	key_type := p.program.type_id(key_type_name)
-	value_type := p.program.type_id(value_type_name)
 	p.expect(.lcbr)!
 	for p.tok != .rcbr {
 		if p.tok == .semicolon {
@@ -8351,66 +8366,6 @@ fn (mut p FastArm64Parser) resolve_call_key(key string, display_name string) ?st
 	return none
 }
 
-fn (mut p FastArm64Parser) parse_fd_set_macro(display_name string) !FastArm64Value {
-	p.expect(.lpar)!
-	mut fd := FastArm64Value{}
-	set_value := if display_name == 'C.FD_ZERO' {
-		p.parse_expression(0)!
-	} else {
-		fd = p.parse_expression(0)!
-		p.expect(.comma)!
-		p.parse_expression(0)!
-	}
-	p.expect(.rpar)!
-	mut set_pointer := set_value.id
-	if p.program.m.type_store.types[set_value.typ].kind != .ptr_t {
-		if set_value.address == ssa.ValueID(0) {
-			return p.unsupported('`${display_name}` with a non-addressable fd_set')
-		}
-		set_pointer = set_value.address
-	}
-	base := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, set_pointer)
-	if display_name == 'C.FD_ZERO' {
-		memset_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memset', p.program.fn_ids['memset'])
-		zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
-		size := p.program.m.get_or_add_const(p.program.i64_type, '128')
-		p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [memset_ref, base, zero, size])
-		return FastArm64Value{
-			typ: p.program.void_type
-			typ_name: 'void'
-		}
-	}
-	fd64 := p.integer_to_i64(fd)
-	six := p.program.m.get_or_add_const(p.program.i64_type, '6')
-	word_index := p.program.instr2(.lshr, p.cur_block, p.program.i64_type, fd64, six)
-	eight := p.program.m.get_or_add_const(p.program.i64_type, '8')
-	word_offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, word_index, eight)
-	word_bytes := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, base, word_offset)
-	word_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(p.program.u64_type), word_bytes)
-	word := p.program.instr1(.load, p.cur_block, p.program.u64_type, word_pointer)
-	sixty_three := p.program.m.get_or_add_const(p.program.i64_type, '63')
-	bit_index := p.program.instr2(.and_, p.cur_block, p.program.i64_type, fd64, sixty_three)
-	bit_index_unsigned := p.program.instr1(.bitcast, p.cur_block, p.program.u64_type, bit_index)
-	one := p.program.m.get_or_add_const(p.program.u64_type, '1')
-	bit := p.program.instr2(.shl, p.cur_block, p.program.u64_type, one, bit_index_unsigned)
-	if display_name == 'C.FD_SET' {
-		updated := p.program.instr2(.or_, p.cur_block, p.program.u64_type, word, bit)
-		p.program.instr2(.store, p.cur_block, p.program.void_type, updated, word_pointer)
-		return FastArm64Value{
-			typ: p.program.void_type
-			typ_name: 'void'
-		}
-	}
-	masked := p.program.instr2(.and_, p.cur_block, p.program.u64_type, word, bit)
-	zero64 := p.program.m.get_or_add_const(p.program.u64_type, '0')
-	is_set := p.program.instr2(.ne, p.cur_block, p.program.i1_type, masked, zero64)
-	return FastArm64Value{
-		id: p.program.instr1(.zext, p.cur_block, p.program.i32_type, is_set)
-		typ: p.program.i32_type
-		typ_name: 'int'
-	}
-}
-
 fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm64Value {
 	is_spawn_call := p.parsing_spawn
 	p.parsing_spawn = false
@@ -8551,11 +8506,6 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 	}
 	option_error_message := if signature.return_type == 'Option' {
 		p.load_option_error_message()
-	} else {
-		ssa.ValueID(0)
-	}
-	option_error_code := if signature.return_type == 'Option' {
-		p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.option_error_code_global)
 	} else {
 		ssa.ValueID(0)
 	}
