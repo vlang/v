@@ -21,8 +21,14 @@ struct FastArm64Value {
 	option_error_code    ssa.ValueID
 	is_temporary         bool
 	is_spawned           bool
+	spawn_handle         ssa.ValueID
+	spawn_context        ssa.ValueID
+	spawn_context_type   ssa.TypeID
+	spawn_result_type    ssa.TypeID
+	spawn_result_name    string
 	map_found            ssa.ValueID
 	map_id               ssa.ValueID
+	map_address          ssa.ValueID
 	map_type             string
 	map_key_id           ssa.ValueID
 	map_key_type         ssa.TypeID
@@ -38,6 +44,11 @@ struct FastArm64Local {
 	option_error_message ssa.ValueID
 	option_error_code    ssa.ValueID
 	is_spawned           bool
+	spawn_handle         ssa.ValueID
+	spawn_context        ssa.ValueID
+	spawn_context_type   ssa.TypeID
+	spawn_result_type    ssa.TypeID
+	spawn_result_name    string
 }
 
 struct FastArm64FieldDecl {
@@ -110,6 +121,8 @@ mut:
 	option_error_message_is_lit_global ssa.ValueID
 	map_empty_zero_global              ssa.ValueID
 	map_empty_zero_size_global         ssa.ValueID
+	spawn_context_types                map[string]ssa.TypeID
+	spawn_wrapper_ids                  map[string]int
 }
 
 struct FastArm64Parser {
@@ -143,6 +156,7 @@ mut:
 	current_function         string
 	current_receiver         string
 	current_method_is_static bool
+	parsing_spawn            bool
 }
 
 struct FastArm64Generation {
@@ -896,6 +910,8 @@ fn FastArm64Program.new(prefs &pref.Preferences, declared_types map[string]bool,
 		type_ids: map[string]ssa.TypeID{}
 		type_aliases: map[string]string{}
 		native_used_function_names: map[string]bool{}
+		spawn_context_types: map[string]ssa.TypeID{}
+		spawn_wrapper_ids: map[string]int{}
 	}
 	program.void_type = ssa.TypeID(0)
 	program.i1_type = m.type_store.get_int(1)
@@ -1074,6 +1090,8 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_function('memmove', 'memmove', p.ptr_i8, true)
 	p.register_function('system', 'system', p.i32_type, true)
 	p.register_function('atexit', 'atexit', p.i32_type, true)
+	p.register_function('pthread_create', 'pthread_create', p.i32_type, true)
+	p.register_function('pthread_join', 'pthread_join', p.i32_type, true)
 	p.register_function('getcwd', 'getcwd', p.ptr_i8, true)
 	p.register_function('gcvt', 'gcvt', p.ptr_i8, true)
 	p.register_function('__error', '__error', p.m.type_store.get_ptr(p.i32_type), true)
@@ -1536,6 +1554,58 @@ fn (mut p FastArm64Program) add_arg(func_id int, typ ssa.TypeID, name string) ss
 	value := p.m.add_value(.argument, typ, name, 0)
 	p.m.func_add_param(func_id, value)
 	return value
+}
+
+fn (mut p FastArm64Program) register_spawn_wrapper(function_key string, target_id int, target_symbol string, return_type ssa.TypeID, parameter_types []ssa.TypeID) (ssa.TypeID, int) {
+	if context_type := p.spawn_context_types[function_key] {
+		return context_type, p.spawn_wrapper_ids[function_key]
+	}
+	mut fields := []ssa.TypeID{}
+	mut field_names := []string{}
+	if return_type != p.void_type {
+		fields << return_type
+		field_names << 'result'
+	}
+	for i, parameter_type in parameter_types {
+		fields << parameter_type
+		field_names << 'arg_${i}'
+	}
+	if fields.len == 0 {
+		fields << p.u8_type
+		field_names << 'unused'
+	}
+	context_type := p.m.type_store.register(ssa.Type{
+		kind: .struct_t
+		fields: fields
+		field_names: field_names
+	})
+	name_key := fastc_name_key(function_key)
+	wrapper_key := '__v_fastc_arm64_spawn_wrapper_${name_key}'
+	wrapper_id := p.register_function(wrapper_key, wrapper_key, p.ptr_i8, false)
+	entry := p.m.add_block(wrapper_id, 'spawn_wrapper_entry')
+	raw_context := p.add_arg(wrapper_id, p.ptr_i8, 'context')
+	context := p.instr1(.bitcast, entry, p.m.type_store.get_ptr(context_type), raw_context)
+	target_ref := p.m.add_value(.func_ref, return_type, target_symbol, target_id)
+	mut operands := []ssa.ValueID{cap: parameter_types.len + 1}
+	operands << target_ref
+	argument_start := if return_type == p.void_type { 0 } else { 1 }
+	for i, parameter_type in parameter_types {
+		argument_address := p.struct_field_ptr(entry, context, context_type, argument_start + i)
+		operands << p.instr1(.load, entry, parameter_type, argument_address)
+	}
+	result := p.m.add_instr(.call, entry, return_type, operands)
+	if return_type != p.void_type {
+		p.instr2(.store, entry, p.void_type, result, p.struct_field_ptr(entry, context, context_type, 0))
+	}
+	null_pointer := p.m.get_or_add_const(p.ptr_i8, '0')
+	p.instr1(.ret, entry, p.void_type, null_pointer)
+	mut function := p.m.funcs[wrapper_id]
+	function.is_prototype = false
+	function.is_c_extern = false
+	p.m.funcs[wrapper_id] = function
+	p.spawn_context_types[function_key] = context_type
+	p.spawn_wrapper_ids[function_key] = wrapper_id
+	return context_type, wrapper_id
 }
 
 fn (mut p FastArm64Program) instr0(op ssa.OpCode, block ssa.BlockID, typ ssa.TypeID) ssa.ValueID {
@@ -3310,7 +3380,11 @@ fn (mut p FastArm64Parser) parse_function() ! {
 	}
 	p.func_id = func_id
 	p.current_function = name
-	p.current_receiver = if static_owner != '' { static_owner } else { receiver_type.trim_right('*') }
+	p.current_receiver = if static_owner != '' {
+		static_owner
+	} else {
+		receiver_type.trim_right('*')
+	}
 	p.current_method_is_static = static_owner != ''
 	p.return_typ = p.program.fn_returns[key]
 	p.return_name = if signature.return_type == 'Option' {
@@ -3745,24 +3819,12 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 			id: p.program.instr1(.load, p.cur_block, local.typ, local.addr)
 			typ: local.typ
 			typ_name: local.typ_name
+			address: local.addr
 		}
 		if op != .assign {
 			return p.unsupported('map indexed compound assignment')
 		}
-		key_type_name, value_type_name := fastc_map_key_value_types(local.typ_name) or {
-			return p.unsupported('map type `${local.typ_name}`')
-		}
-		key_type := p.program.type_id(key_type_name)
-		value_type := p.program.type_id(value_type_name)
-		mut converted_key := key
-		mut converted_value := value
-		if converted_key.typ != key_type {
-			converted_key = p.convert_value(converted_key, key_type, key_type_name)
-		}
-		if converted_value.typ != value_type {
-			converted_value = p.convert_value(converted_value, value_type, value_type_name)
-		}
-		p.emit_map_set(map_value, converted_key, converted_value)
+		p.emit_map_set(map_value, key, value)!
 		return
 	}
 	if next_token in [.inc, .dec] {
@@ -3795,6 +3857,11 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 			option_error_message: value.option_error_message
 			option_error_code: value.option_error_code
 			is_spawned: value.is_spawned
+			spawn_handle: value.spawn_handle
+			spawn_context: value.spawn_context
+			spawn_context_type: value.spawn_context_type
+			spawn_result_type: value.spawn_result_type
+			spawn_result_name: value.spawn_result_name
 		})
 		return
 	}
@@ -3840,6 +3907,11 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 				option_error_message: value.option_error_message
 				option_error_code: value.option_error_code
 				is_spawned: value.is_spawned
+				spawn_handle: value.spawn_handle
+				spawn_context: value.spawn_context
+				spawn_context_type: value.spawn_context_type
+				spawn_result_type: value.spawn_result_type
+				spawn_result_name: value.spawn_result_name
 			}
 		}
 		return
@@ -3872,11 +3944,12 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 				id: left.map_id
 				typ: p.program.map_type
 				typ_name: left.map_type
+				address: left.map_address
 			}, FastArm64Value{
 				id: left.map_key_id
 				typ: left.map_key_type
 				typ_name: left.map_key_name
-			}, right)
+			}, right)!
 			return
 		}
 		mut result := right.id
@@ -4176,6 +4249,11 @@ fn (mut p FastArm64Parser) parse_if() ! {
 				typ: value.typ
 				typ_name: value.typ_name
 				is_spawned: value.is_spawned
+				spawn_handle: value.spawn_handle
+				spawn_context: value.spawn_context
+				spawn_context_type: value.spawn_context_type
+				spawn_result_type: value.spawn_result_type
+				spawn_result_name: value.spawn_result_name
 			})
 			condition = if p.last_map_found != ssa.ValueID(0) {
 				FastArm64Value{
@@ -4595,7 +4673,8 @@ fn (mut p FastArm64Parser) parse_map_collection_for(key_name string, value_name 
 	increment_block := p.program.m.add_block(p.func_id, 'map_collection_increment')
 	done_block := p.program.m.add_block(p.func_id, 'map_collection_done')
 	state_bytes := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, state)
-	has_state := p.program.instr2(.ne, p.cur_block, p.program.i1_type, state_bytes, p.program.m.get_or_add_const(p.program.ptr_i8, '0'))
+	null_pointer := p.program.m.get_or_add_const(p.program.ptr_i8, '0')
+	has_state := p.program.instr2(.ne, p.cur_block, p.program.i1_type, state_bytes, null_pointer)
 	p.program.instr3(.br, p.cur_block, p.program.void_type, has_state, ssa.ValueID(condition_block), ssa.ValueID(done_block))
 	p.mark_terminated(p.cur_block)
 	length := p.program.instr1(.load, condition_block, p.program.i64_type, p.program.struct_field_ptr(condition_block, state, p.program.map_state_type, 3))
@@ -5488,13 +5567,25 @@ fn (mut p FastArm64Parser) parse_atom() !FastArm64Value {
 			return value
 		}
 		.key_spawn {
-			// The native bootstrap runs FastC phases serially. Preserve the value
-			// returned by a spawned call so a following `.wait()` is an identity.
-			if !p.program.prefs.building_v {
-				return p.unsupported('spawn outside the compiler bootstrap')
-			}
 			p.next()
-			value := p.parse_atom()!
+			if p.program.prefs.building_v {
+				// Keep the native bootstrap's compiler phases serial: its worker
+				// pools are deliberately disabled while bootstrapping.
+				value := p.parse_atom()!
+				return FastArm64Value{
+					...value
+					is_spawned: true
+				}
+			}
+			p.parsing_spawn = true
+			value := p.parse_atom() or {
+				p.parsing_spawn = false
+				return err
+			}
+			if p.parsing_spawn {
+				p.parsing_spawn = false
+				return p.unsupported('spawn expression without a function call')
+			}
 			return FastArm64Value{
 				...value
 				is_spawned: true
@@ -6271,6 +6362,11 @@ fn (mut p FastArm64Parser) parse_name_expression() !FastArm64Value {
 			option_error_message: local.option_error_message
 			option_error_code: local.option_error_code
 			is_spawned: local.is_spawned
+			spawn_handle: local.spawn_handle
+			spawn_context: local.spawn_context
+			spawn_context_type: local.spawn_context_type
+			spawn_result_type: local.spawn_result_type
+			spawn_result_name: local.spawn_result_name
 		}
 	}
 	if first_name == 'g_v_os_execute_mutex_storage' {
@@ -6927,6 +7023,9 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 		if member == 'wait' && value.is_spawned {
 			p.expect(.lpar)!
 			p.expect(.rpar)!
+			if value.spawn_context != ssa.ValueID(0) {
+				return p.emit_spawn_wait(value)
+			}
 			return value
 		}
 		value_layout := p.program.m.type_store.types[value.typ]
@@ -7800,6 +7899,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 			address: typed_pointer
 			map_found: found
 			map_id: value.id
+			map_address: value.address
 			map_type: value.typ_name
 			map_key_id: key.id
 			map_key_type: key.typ
@@ -7877,8 +7977,7 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 			}
 		}
 		p.next()
-		original_len := p.program.instr1(.load, p.cur_block, p.program.i32_type,
-			p.program.string_field_ptr(p.cur_block, value_slot, 1))
+		original_len := p.program.instr1(.load, p.cur_block, p.program.i32_type, p.program.string_field_ptr(p.cur_block, value_slot, 1))
 		end := if p.tok == .rsbr {
 			FastArm64Value{
 				id: original_len
@@ -8078,11 +8177,8 @@ fn (mut p FastArm64Parser) parse_map_literal() !FastArm64Value {
 			key = p.convert_value(key, key_type, key_type_name)
 		}
 		p.expect(.colon)!
-		mut item := p.parse_expression(0)!
-		if item.typ != value_type {
-			item = p.convert_value(item, value_type, value_type_name)
-		}
-		p.emit_map_set(result, key, item)
+		item := p.parse_expression(0)!
+		p.emit_map_set(result, key, item)!
 		if p.tok in [.comma, .semicolon] {
 			p.next()
 		} else if p.tok != .rcbr {
@@ -8106,8 +8202,7 @@ fn (mut p FastArm64Parser) new_empty_map_value(map_type_name string) !FastArm64V
 	} else {
 		'0'
 	})
-	new_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_new',
-		p.program.fn_ids['fast_map_new'])
+	new_ref := p.program.m.add_value(.func_ref, p.program.map_type, 'fast_map_new', p.program.fn_ids['fast_map_new'])
 	return FastArm64Value{
 		id: p.program.m.add_instr(.call, p.cur_block, p.program.map_type, [new_ref, key_size,
 			value_size, string_key])
@@ -8157,12 +8252,40 @@ fn (mut p FastArm64Parser) parse_inferred_map_literal() !FastArm64Value {
 		typ_name: fastc_map_c_type(key_type_name, value_type_name)
 	}
 	for i, key in keys {
-		p.emit_map_set(result, key, values[i])
+		p.emit_map_set(result, key, values[i])!
 	}
 	return result
 }
 
-fn (mut p FastArm64Parser) emit_map_set(map_value FastArm64Value, key FastArm64Value, value FastArm64Value) {
+fn (mut p FastArm64Parser) emit_map_set(map_value FastArm64Value, key FastArm64Value, value FastArm64Value) ! {
+	mut initialized_map := map_value
+	if map_value.address != ssa.ValueID(0) {
+		map_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.map_type))
+		p.program.instr2(.store, p.cur_block, p.program.void_type, map_value.id, map_slot)
+		state_type := p.program.m.type_store.get_ptr(p.program.map_state_type)
+		state := p.program.instr1(.load, p.cur_block, state_type, p.program.struct_field_ptr(p.cur_block, map_slot, p.program.map_type, 0))
+		has_state := p.program.instr2(.ne, p.cur_block, p.program.i1_type, state, p.program.m.get_or_add_const(state_type, '0'))
+		existing := p.program.m.add_block(p.func_id, 'map_set_existing_state')
+		initialize := p.program.m.add_block(p.func_id, 'map_set_initialize')
+		ready := p.program.m.add_block(p.func_id, 'map_set_ready')
+		result_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.map_type))
+		p.program.instr3(.br, p.cur_block, p.program.void_type, has_state, ssa.ValueID(existing), ssa.ValueID(initialize))
+		p.mark_terminated(p.cur_block)
+		p.program.instr2(.store, existing, p.program.void_type, map_value.id, result_slot)
+		p.program.instr1(.jmp, existing, p.program.void_type, ssa.ValueID(ready))
+		p.mark_terminated(existing)
+		p.cur_block = initialize
+		initialized_value := p.new_empty_map_value(map_value.typ_name)!
+		p.program.instr2(.store, p.cur_block, p.program.void_type, initialized_value.id, map_value.address)
+		p.program.instr2(.store, p.cur_block, p.program.void_type, initialized_value.id, result_slot)
+		p.program.instr1(.jmp, p.cur_block, p.program.void_type, ssa.ValueID(ready))
+		p.mark_terminated(p.cur_block)
+		p.cur_block = ready
+		initialized_map = FastArm64Value{
+			...map_value
+			id: p.program.instr1(.load, ready, p.program.map_type, result_slot)
+		}
+	}
 	key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(key.typ))
 	value_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value.typ))
 	p.program.instr2(.store, p.cur_block, p.program.void_type, key.id, key_slot)
@@ -8170,7 +8293,7 @@ fn (mut p FastArm64Parser) emit_map_set(map_value FastArm64Value, key FastArm64V
 	key_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, key_slot)
 	value_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, value_slot)
 	set_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'fast_map_set', p.program.fn_ids['fast_map_set'])
-	p.program.m.add_instr(.call, p.cur_block, p.program.void_type, [set_ref, map_value.id,
+	p.program.m.add_instr(.call, p.cur_block, p.program.void_type, [set_ref, initialized_map.id,
 		key_pointer, value_pointer])
 }
 
@@ -8284,7 +8407,12 @@ fn (mut p FastArm64Parser) parse_fd_set_macro(display_name string) !FastArm64Val
 }
 
 fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm64Value {
+	is_spawn_call := p.parsing_spawn
+	p.parsing_spawn = false
 	if display_name == 'panic' {
+		if is_spawn_call {
+			return p.unsupported('spawn of `${display_name}`')
+		}
 		p.expect(.lpar)!
 		message := p.parse_expression(0)!
 		p.expect(.rpar)!
@@ -8344,6 +8472,9 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 	}
 	p.next()
 	if signature.is_variadic && !resolved.starts_with('C.') {
+		if is_spawn_call {
+			return p.unsupported('spawn of variadic function `${display_name}`')
+		}
 		fixed_count := signature.parameter_types.len - 1
 		mut packed := []FastArm64Value{cap: signature.parameter_types.len}
 		for i in 0 .. fixed_count {
@@ -8388,6 +8519,12 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 			operands << argument.id
 		}
 	}
+	if is_spawn_call {
+		if signature.return_type == 'Option' || signature.return_types.len > 0 {
+			return p.unsupported('spawn of optional or multi-return function `${display_name}`')
+		}
+		return p.emit_spawn_call(resolved, symbol, func_id, ret, signature.return_type, signature.parameter_types, operands[1..])
+	}
 	if signature.return_type == 'Option' {
 		p.store_option_success()
 	}
@@ -8423,6 +8560,80 @@ fn (mut p FastArm64Parser) parse_call(key string, display_name string) !FastArm6
 			signature.option_type} else {
 			signature.return_type}
 		tuple_types: signature.return_types
+	}
+}
+
+fn (mut p FastArm64Parser) emit_spawn_call(function_key string, symbol string, function_id int, return_type ssa.TypeID, return_type_name string, parameter_type_names []string, arguments []ssa.ValueID) !FastArm64Value {
+	mut parameter_types := []ssa.TypeID{cap: parameter_type_names.len}
+	for parameter_type_name in parameter_type_names {
+		parameter_types << p.program.type_id(parameter_type_name)
+	}
+	context_type, wrapper_id := p.program.register_spawn_wrapper(function_key, function_id, symbol, return_type, parameter_types)
+	context_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(context_type).str())
+	malloc_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'malloc', p.program.fn_ids['malloc'])
+	raw_context := p.program.m.add_instr(.call, p.cur_block, p.program.ptr_i8, [
+		malloc_ref,
+		context_size,
+	])
+	context := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(context_type), raw_context)
+	argument_start := if return_type == p.program.void_type { 0 } else { 1 }
+	for i, argument in arguments {
+		p.program.instr2(.store, p.cur_block, p.program.void_type, argument, p.program.struct_field_ptr(p.cur_block, context, context_type, argument_start + i))
+	}
+	handle_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.u64_type))
+	null_pointer := p.program.m.get_or_add_const(p.program.ptr_i8, '0')
+	wrapper_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, p.program.m.funcs[wrapper_id].name, wrapper_id)
+	create_ref := p.program.m.add_value(.func_ref, p.program.i32_type, 'pthread_create', p.program.fn_ids['pthread_create'])
+	status := p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [
+		create_ref,
+		handle_slot,
+		null_pointer,
+		wrapper_ref,
+		raw_context,
+	])
+	zero := p.program.m.get_or_add_const(p.program.i32_type, '0')
+	created := p.program.instr2(.eq, p.cur_block, p.program.i1_type, status, zero)
+	ready := p.program.m.add_block(p.func_id, 'spawn_ready')
+	failed := p.program.m.add_block(p.func_id, 'spawn_failed')
+	p.program.instr3(.br, p.cur_block, p.program.void_type, created, ssa.ValueID(ready), ssa.ValueID(failed))
+	p.mark_terminated(p.cur_block)
+	exit_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'exit', p.program.fn_ids['exit'])
+	one := p.program.m.get_or_add_const(p.program.i32_type, '1')
+	p.program.m.add_instr(.call, failed, p.program.void_type, [exit_ref, one])
+	p.program.instr0(.unreachable, failed, p.program.void_type)
+	p.mark_terminated(failed)
+	p.cur_block = ready
+	handle := p.program.instr1(.load, ready, p.program.u64_type, handle_slot)
+	return FastArm64Value{
+		id: handle
+		typ: p.program.u64_type
+		typ_name: 'thread ${return_type_name}'
+		is_spawned: true
+		spawn_handle: handle
+		spawn_context: raw_context
+		spawn_context_type: context_type
+		spawn_result_type: return_type
+		spawn_result_name: return_type_name
+	}
+}
+
+fn (mut p FastArm64Parser) emit_spawn_wait(value FastArm64Value) FastArm64Value {
+	null_pointer := p.program.m.get_or_add_const(p.program.ptr_i8, '0')
+	join_ref := p.program.m.add_value(.func_ref, p.program.i32_type, 'pthread_join', p.program.fn_ids['pthread_join'])
+	p.program.m.add_instr(.call, p.cur_block, p.program.i32_type, [join_ref, value.spawn_handle,
+		null_pointer])
+	mut result_id := ssa.ValueID(0)
+	if value.spawn_result_type != p.program.void_type {
+		context := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(value.spawn_context_type), value.spawn_context)
+		result_address := p.program.struct_field_ptr(p.cur_block, context, value.spawn_context_type, 0)
+		result_id = p.program.instr1(.load, p.cur_block, value.spawn_result_type, result_address)
+	}
+	free_ref := p.program.m.add_value(.func_ref, p.program.void_type, 'free', p.program.fn_ids['free'])
+	p.program.m.add_instr(.call, p.cur_block, p.program.void_type, [free_ref, value.spawn_context])
+	return FastArm64Value{
+		id: result_id
+		typ: value.spawn_result_type
+		typ_name: value.spawn_result_name
 	}
 }
 

@@ -79,12 +79,16 @@ struct FastArm64Waiter {
 	value int
 }
 
+fn C.usleep(microseconds u32) int
+
 fn (waiter FastArm64Waiter) wait() int {
 	return waiter.value + 1
 }
 
-fn fast_arm64_spawned_value() int {
-	return 11
+fn fast_arm64_spawned_value(base int) int {
+	C.usleep(100000)
+	println("spawned")
+	return base + 1
 }
 
 struct FastArm64CustomError {}
@@ -189,7 +193,10 @@ fn main() {
 		println("wrong aggregate equality")
 		return
 	}
-	if struct_same !in [struct_left] || struct_different in [struct_left] || fixed_same !in [fixed] || fixed_different in [fixed] || array_same !in [array_left] || array_different in [array_left] {
+	struct_items := [struct_same]
+	fixed_items := [fixed_same]
+	array_items := [array_same]
+	if struct_left !in struct_items || struct_different in struct_items || fixed !in fixed_items || fixed_different in fixed_items || array_left !in array_items || array_different in array_items {
 		println("wrong aggregate membership")
 		return
 	}
@@ -207,6 +214,12 @@ fn main() {
 	waiter := FastArm64Waiter{value: 6}
 	if waiter.wait() != 7 {
 		println("wrong ordinary wait")
+		return
+	}
+	spawned := spawn fast_arm64_spawned_value(10)
+	println("before wait")
+	if spawned.wait() != 11 {
+		println("wrong spawned wait")
 		return
 	}
 	mut shadow := 1
@@ -344,8 +357,15 @@ fn main() {
 		println("wrong zero map items")
 		return
 	}
+	mut nested_map := FastArm64CloneOuter{}
+	nested_map.inner.values["present"] = 8
+	if nested_map.inner.values["present"] != 8 {
+		println("wrong nested map insertion")
+		return
+	}
+	zero_outers := [1]FastArm64CloneOuter{}
 	mut zero_map_iterations := 0
-	for _, _ in FastArm64CloneOuter{}.inner.values {
+	for _, _ in zero_outers[0].inner.values {
 		zero_map_iterations++
 	}
 	if zero_map_iterations != 0 {
@@ -455,7 +475,7 @@ fn main() {
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
 		result := os.execute(output_path)
 		assert result.exit_code == 0
-		assert result.output == 'native\n'
+		assert result.output == 'before wait\nspawned\nnative\n'
 	}
 }
 
