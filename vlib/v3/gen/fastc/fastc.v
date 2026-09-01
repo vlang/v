@@ -680,9 +680,10 @@ struct FastcSourceHeader {
 }
 
 struct FastcSourceFile {
-	path   string
-	source string
-	header FastcSourceHeader
+	path          string
+	source        string
+	source_offset int
+	header        FastcSourceHeader
 }
 
 struct FastcQueuedSource {
@@ -811,7 +812,8 @@ struct Parser {
 	declared_types map[string]bool
 	// Generated C spelling -> declared type key, precomputed once per program
 	// (see fastc_declared_type_c_names); semantic_type_key resolves through it.
-	declared_type_c_names map[string]string
+	declared_type_c_names     map[string]string
+	declared_type_key_by_name map[string]string
 	// `__v_fastc_`-prefixed generated C names, the only possible collisions for
 	// temporary_namespace candidates (see fastc_reserved_temporary_c_names).
 	fastc_prefixed_c_names []string
@@ -839,6 +841,7 @@ struct Parser {
 	has_cleanup_hooks   bool
 mut:
 	path                     string
+	source_offset            int
 	module_name              string
 	imports                  map[string]string
 	s                        scanner.Scanner
@@ -991,36 +994,37 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 // code-generation Parser starts from. Workers share it across threads and
 // return their per-file registration deltas to the stitch pass.
 struct FastcFileGenContext {
-	prefs                  &pref.Preferences = unsafe { nil }
-	declared_types         map[string]bool
-	declared_type_c_names  map[string]string
-	fastc_prefixed_c_names []string
-	has_c_functions        bool
-	declared_kinds         map[string]FastcDeclaredTypeKind
-	enum_flags             map[string]bool
-	enum_field_types       map[string]string
-	alias_base_types       map[string]string
-	sum_types              map[string]bool
-	sum_type_variants      map[string]bool
-	struct_fields          map[string]map[string]string
-	struct_field_info      map[string][]FastcStructField
-	struct_field_lookup    map[string]map[string]FastcStructField
-	interface_fields       map[string]FastcInterfaceField
-	constants              map[string]string
-	constant_values        map[string]string
-	public_constants       map[string]bool
-	globals                map[string]string
-	public_globals         map[string]bool
-	used_function_names    map[string]bool
-	has_startup_inits      bool
-	has_cleanup_hooks      bool
-	functions              map[string]FastcFunctionSignature
-	constant_types         map[string]string
-	global_types           map[string]string
-	fixed_array_types      map[string]string
-	composite_types        map[string]bool
-	generic_method_sources map[string]FastcGenericMethodSource
-	module_aliases         map[string]string
+	prefs                     &pref.Preferences = unsafe { nil }
+	declared_types            map[string]bool
+	declared_type_c_names     map[string]string
+	declared_type_key_by_name map[string]string
+	fastc_prefixed_c_names    []string
+	has_c_functions           bool
+	declared_kinds            map[string]FastcDeclaredTypeKind
+	enum_flags                map[string]bool
+	enum_field_types          map[string]string
+	alias_base_types          map[string]string
+	sum_types                 map[string]bool
+	sum_type_variants         map[string]bool
+	struct_fields             map[string]map[string]string
+	struct_field_info         map[string][]FastcStructField
+	struct_field_lookup       map[string]map[string]FastcStructField
+	interface_fields          map[string]FastcInterfaceField
+	constants                 map[string]string
+	constant_values           map[string]string
+	public_constants          map[string]bool
+	globals                   map[string]string
+	public_globals            map[string]bool
+	used_function_names       map[string]bool
+	has_startup_inits         bool
+	has_cleanup_hooks         bool
+	functions                 map[string]FastcFunctionSignature
+	constant_types            map[string]string
+	global_types              map[string]string
+	fixed_array_types         map[string]string
+	composite_types           map[string]bool
+	generic_method_sources    map[string]FastcGenericMethodSource
+	module_aliases            map[string]string
 }
 
 // FastcFileGenOutput is one source file's generation result. The sequential
@@ -1049,10 +1053,12 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	mut gen := Parser{
 		prefs: unsafe { prefs }
 		path: source_file.path
+		source_offset: source_file.source_offset
 		module_name: source_file.header.module_name
 		imports: source_file.header.imports
 		declared_types: ctx.declared_types
 		declared_type_c_names: ctx.declared_type_c_names
+		declared_type_key_by_name: ctx.declared_type_key_by_name
 		fastc_prefixed_c_names: ctx.fastc_prefixed_c_names
 		has_c_functions: ctx.has_c_functions
 		comparison_memo: map[i64]FastcRenderedExpression{}
@@ -1112,7 +1118,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		diagnostic := gen.s.diagnostics[0]
 		return FastcFileGenOutput{
 			failed: true
-			error_message: 'fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}'
+			error_message: 'fastc scanner error at byte ${diagnostic.offset + source_file.source_offset} in ${source_file.path}: ${diagnostic.message}'
 		}
 	}
 	return FastcFileGenOutput{
@@ -1148,6 +1154,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut constant_sources := map[string]string{}
 	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
+	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut functions := map[string]FastcFunctionSignature{}
 	mut interface_methods := map[string]bool{}
 	mut interface_fields := map[string]FastcInterfaceField{}
@@ -1227,6 +1234,7 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 		prefs: unsafe { prefs }
 		declared_types: declared_types
 		declared_type_c_names: declared_type_c_names
+		declared_type_key_by_name: declared_type_key_by_name
 		fastc_prefixed_c_names: fastc_prefixed_c_names
 		has_c_functions: has_c_functions
 		declared_kinds: declared_kinds

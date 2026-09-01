@@ -504,6 +504,7 @@ fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared
 }
 
 fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
+	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
 	mut composite_types := map[string]bool{}
@@ -525,6 +526,7 @@ fn fastc_generate_global_declarations(sources []FastcSourceFile, prefs &pref.Pre
 			imports:                      source_file.header.imports
 			declared_types:               declared_types
 			declared_type_c_names:        declared_type_c_names
+			declared_type_key_by_name:    declared_type_key_by_name
 			fastc_prefixed_c_names:       fastc_prefixed_c_names
 			declaration_initializer_mode: true
 			has_c_functions:              helper_has_c_functions
@@ -717,6 +719,7 @@ fn fastc_map_field_default(typ string, pointer_bits int) string {
 }
 
 fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) ! {
+	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	helper_has_c_functions := fastc_functions_declare_c(functions)
 	mut type_names := struct_field_info.keys()
 	type_names.sort()
@@ -763,6 +766,7 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 				imports:                      field.imports
 				declared_types:               declared_types
 				declared_type_c_names:        declared_type_c_names
+				declared_type_key_by_name:    declared_type_key_by_name
 				fastc_prefixed_c_names:       fastc_prefixed_c_names
 				declaration_initializer_mode: true
 				has_c_functions:              helper_has_c_functions
@@ -820,6 +824,7 @@ fn fastc_render_struct_field_defaults(prefs &pref.Preferences, declared_types ma
 }
 
 fn fastc_generate_constant_declarations(sources []FastcSourceFile, constant_sources map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
+	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut values := []FastcConstantValue{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := map[string]string{}
@@ -837,6 +842,7 @@ fn fastc_generate_constant_declarations(sources []FastcSourceFile, constant_sour
 			imports:                      source_file.header.imports
 			declared_types:               declared_types
 			declared_type_c_names:        declared_type_c_names
+			declared_type_key_by_name:    declared_type_key_by_name
 			fastc_prefixed_c_names:       fastc_prefixed_c_names
 			declaration_initializer_mode: true
 			has_c_functions:              helper_has_c_functions
@@ -1854,7 +1860,37 @@ fn fastc_resolve_declared_type_key(module_name string, raw_type string, imports 
 }
 
 fn (g &Parser) resolve_declared_type_key(raw_type string) ?string {
-	return fastc_resolve_declared_type_key(g.module_name, raw_type, g.imports, g.declared_types)
+	if g.declared_type_key_by_name.len == 0 {
+		return fastc_resolve_declared_type_key(g.module_name, raw_type, g.imports, g.declared_types)
+	}
+	key := g.declared_type_key_by_name[raw_type] or {
+		if raw_type.contains('__') {
+			return g.declared_type_c_names[raw_type] or { return none }
+		}
+		return none
+	}
+	if key == '' {
+		return fastc_resolve_declared_type_key(g.module_name, raw_type, g.imports, g.declared_types)
+	}
+	if fastc_type_key_matches_module(key, g.module_name, raw_type) {
+		return key
+	}
+	if imported_module := g.imports[fastc_selective_import_key(raw_type)] {
+		if fastc_type_key_matches_module(key, imported_module, raw_type) {
+			return key
+		}
+	}
+	if key == raw_type {
+		return key
+	}
+	return none
+}
+
+fn fastc_type_key_matches_module(key string, module_name string, name string) bool {
+	if module_name in ['', 'main', 'builtin'] {
+		return key == name
+	}
+	return key.len == module_name.len + name.len + 1 && key.starts_with(module_name) && key[module_name.len] == `.`
 }
 
 fn fastc_semantic_declared_type_key(c_type string, declared_type_c_names map[string]string) string {

@@ -497,7 +497,7 @@ fn (mut g Parser) skip_semicolons() {
 }
 
 fn (g &Parser) unsupported(feature string) IError {
-	return error('fastc parser does not support ${feature} at byte ${g.s.pos} in ${g.path}')
+	return error('fastc parser does not support ${feature} at byte ${g.s.pos + g.source_offset} in ${g.path}')
 }
 
 fn (mut g Parser) expect(expected token.Token) ! {
@@ -558,6 +558,7 @@ fn (mut g Parser) skip_import() ! {
 
 fn (mut g Parser) parse_function(enabled bool) ! {
 	g.locals = map[string]FastcLocal{}
+	g.temp_id = 0
 	g.next()
 	mut receiver_type := ''
 	mut receiver_key := ''
