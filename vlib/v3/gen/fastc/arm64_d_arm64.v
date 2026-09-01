@@ -1069,6 +1069,7 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_function('system', 'system', p.i32_type, true)
 	p.register_function('atexit', 'atexit', p.i32_type, true)
 	p.register_function('getcwd', 'getcwd', p.ptr_i8, true)
+	p.register_function('gcvt', 'gcvt', p.ptr_i8, true)
 	p.register_function('__error', '__error', p.m.type_store.get_ptr(p.i32_type), true)
 	p.main_argc_global = p.m.add_global('g_main_argc', p.i64_type)
 	p.main_argv_global = p.m.add_global('g_main_argv', p.m.type_store.get_ptr(p.ptr_i8))
@@ -1095,6 +1096,7 @@ fn (mut p FastArm64Program) register_functions() {
 	p.register_string_padding_runtime()
 	p.register_string_zero_extension_runtime()
 	p.register_fixed_float_string_runtime()
+	p.register_float_string_runtime()
 	p.register_integer_str_wrappers()
 	p.register_string_sort_runtime()
 }
@@ -2095,44 +2097,50 @@ fn (mut p FastArm64Program) register_map_delete_runtime() {
 fn (mut p FastArm64Program) register_map_clone_runtime() {
 	id := p.register_function('fast_map_clone', 'fast_map_clone', p.map_type, false)
 	entry := p.m.add_block(id, 'map_clone_entry')
+	copy_map := p.m.add_block(id, 'map_clone_copy')
+	empty := p.m.add_block(id, 'map_clone_empty')
 	map_value := p.add_arg(id, p.map_type, 'map_value')
 	map_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.map_type))
 	p.instr2(.store, entry, p.void_type, map_value, map_slot)
 	state_ptr_type := p.m.type_store.get_ptr(p.map_state_type)
 	state := p.instr1(.load, entry, state_ptr_type, p.struct_field_ptr(entry, map_slot, p.map_type, 0))
-	capacity := p.instr1(.load, entry, p.i64_type, p.struct_field_ptr(entry, state, p.map_state_type, 2))
-	length := p.instr1(.load, entry, p.i64_type, p.struct_field_ptr(entry, state, p.map_state_type, 3))
-	key_size := p.instr1(.load, entry, p.i64_type, p.struct_field_ptr(entry, state, p.map_state_type, 4))
-	value_size := p.instr1(.load, entry, p.i64_type, p.struct_field_ptr(entry, state, p.map_state_type, 5))
-	string_key := p.instr1(.load, entry, p.i64_type, p.struct_field_ptr(entry, state, p.map_state_type, 6))
+	zero_state := p.m.get_or_add_const(state_ptr_type, '0')
+	has_state := p.instr2(.ne, entry, p.i1_type, state, zero_state)
+	p.instr3(.br, entry, p.void_type, has_state, ssa.ValueID(copy_map), ssa.ValueID(empty))
+	capacity := p.instr1(.load, copy_map, p.i64_type, p.struct_field_ptr(copy_map, state, p.map_state_type, 2))
+	length := p.instr1(.load, copy_map, p.i64_type, p.struct_field_ptr(copy_map, state, p.map_state_type, 3))
+	key_size := p.instr1(.load, copy_map, p.i64_type, p.struct_field_ptr(copy_map, state, p.map_state_type, 4))
+	value_size := p.instr1(.load, copy_map, p.i64_type, p.struct_field_ptr(copy_map, state, p.map_state_type, 5))
+	string_key := p.instr1(.load, copy_map, p.i64_type, p.struct_field_ptr(copy_map, state, p.map_state_type, 6))
 	new_ref := p.m.add_value(.func_ref, p.map_type, 'fast_map_new', p.fn_ids['fast_map_new'])
-	result := p.m.add_instr(.call, entry, p.map_type, [new_ref, key_size, value_size, string_key])
-	result_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.map_type))
-	p.instr2(.store, entry, p.void_type, result, result_slot)
-	result_state := p.instr1(.load, entry, state_ptr_type, p.struct_field_ptr(entry, result_slot, p.map_type, 0))
-	keys := p.instr1(.load, entry, p.ptr_i8, p.struct_field_ptr(entry, state, p.map_state_type, 0))
-	values := p.instr1(.load, entry, p.ptr_i8, p.struct_field_ptr(entry, state, p.map_state_type, 1))
-	initial_result_keys := p.instr1(.load, entry, p.ptr_i8, p.struct_field_ptr(entry, result_state, p.map_state_type, 0))
-	initial_result_values := p.instr1(.load, entry, p.ptr_i8, p.struct_field_ptr(entry, result_state, p.map_state_type, 1))
-	key_capacity_bytes := p.instr2(.mul, entry, p.i64_type, capacity, key_size)
-	value_capacity_bytes := p.instr2(.mul, entry, p.i64_type, capacity, value_size)
+	result := p.m.add_instr(.call, copy_map, p.map_type, [new_ref, key_size, value_size, string_key])
+	result_slot := p.instr0(.alloca, copy_map, p.m.type_store.get_ptr(p.map_type))
+	p.instr2(.store, copy_map, p.void_type, result, result_slot)
+	result_state := p.instr1(.load, copy_map, state_ptr_type, p.struct_field_ptr(copy_map, result_slot, p.map_type, 0))
+	keys := p.instr1(.load, copy_map, p.ptr_i8, p.struct_field_ptr(copy_map, state, p.map_state_type, 0))
+	values := p.instr1(.load, copy_map, p.ptr_i8, p.struct_field_ptr(copy_map, state, p.map_state_type, 1))
+	initial_result_keys := p.instr1(.load, copy_map, p.ptr_i8, p.struct_field_ptr(copy_map, result_state, p.map_state_type, 0))
+	initial_result_values := p.instr1(.load, copy_map, p.ptr_i8, p.struct_field_ptr(copy_map, result_state, p.map_state_type, 1))
+	key_capacity_bytes := p.instr2(.mul, copy_map, p.i64_type, capacity, key_size)
+	value_capacity_bytes := p.instr2(.mul, copy_map, p.i64_type, capacity, value_size)
 	realloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'realloc', p.fn_ids['realloc'])
-	result_keys := p.m.add_instr(.call, entry, p.ptr_i8, [realloc_ref, initial_result_keys,
+	result_keys := p.m.add_instr(.call, copy_map, p.ptr_i8, [realloc_ref, initial_result_keys,
 		key_capacity_bytes])
-	result_values := p.m.add_instr(.call, entry, p.ptr_i8, [realloc_ref, initial_result_values,
+	result_values := p.m.add_instr(.call, copy_map, p.ptr_i8, [realloc_ref, initial_result_values,
 		value_capacity_bytes])
-	p.instr2(.store, entry, p.void_type, result_keys, p.struct_field_ptr(entry, result_state, p.map_state_type, 0))
-	p.instr2(.store, entry, p.void_type, result_values, p.struct_field_ptr(entry, result_state, p.map_state_type, 1))
-	p.instr2(.store, entry, p.void_type, capacity, p.struct_field_ptr(entry, result_state, p.map_state_type, 2))
-	key_bytes := p.instr2(.mul, entry, p.i64_type, length, key_size)
-	value_bytes := p.instr2(.mul, entry, p.i64_type, length, value_size)
+	p.instr2(.store, copy_map, p.void_type, result_keys, p.struct_field_ptr(copy_map, result_state, p.map_state_type, 0))
+	p.instr2(.store, copy_map, p.void_type, result_values, p.struct_field_ptr(copy_map, result_state, p.map_state_type, 1))
+	p.instr2(.store, copy_map, p.void_type, capacity, p.struct_field_ptr(copy_map, result_state, p.map_state_type, 2))
+	key_bytes := p.instr2(.mul, copy_map, p.i64_type, length, key_size)
+	value_bytes := p.instr2(.mul, copy_map, p.i64_type, length, value_size)
 	memcpy_ref := p.m.add_value(.func_ref, p.ptr_i8, 'memcpy', p.fn_ids['memcpy'])
-	p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, result_keys, keys, key_bytes])
-	p.m.add_instr(.call, entry, p.ptr_i8, [memcpy_ref, result_values, values, value_bytes])
-	p.instr2(.store, entry, p.void_type, length, p.struct_field_ptr(entry, result_state, p.map_state_type, 3))
+	p.m.add_instr(.call, copy_map, p.ptr_i8, [memcpy_ref, result_keys, keys, key_bytes])
+	p.m.add_instr(.call, copy_map, p.ptr_i8, [memcpy_ref, result_values, values, value_bytes])
+	p.instr2(.store, copy_map, p.void_type, length, p.struct_field_ptr(copy_map, result_state, p.map_state_type, 3))
 	rehash_ref := p.m.add_value(.func_ref, p.void_type, 'fast_map_rehash', p.fn_ids['fast_map_rehash'])
-	p.m.add_instr(.call, entry, p.void_type, [rehash_ref, result_state])
-	p.instr1(.ret, entry, p.void_type, result)
+	p.m.add_instr(.call, copy_map, p.void_type, [rehash_ref, result_state])
+	p.instr1(.ret, copy_map, p.void_type, result)
+	p.instr1(.ret, empty, p.void_type, map_value)
 }
 
 fn (mut p FastArm64Program) register_print_runtime() {
@@ -2521,6 +2529,77 @@ fn (mut p FastArm64Program) register_fixed_float_string_runtime() {
 	p.instr2(.store, done, p.void_type, zero32, p.string_field_ptr(done, result_slot, 2))
 	result := p.instr1(.load, done, p.str_type, result_slot)
 	p.instr1(.ret, done, p.void_type, result)
+}
+
+fn (mut p FastArm64Program) register_float_string_runtime() {
+	id := p.register_function('fast_float_to_string', 'fast_float_to_string', p.str_type, false)
+	entry := p.m.add_block(id, 'float_string_entry')
+	condition := p.m.add_block(id, 'float_string_condition')
+	body := p.m.add_block(id, 'float_string_body')
+	done := p.m.add_block(id, 'float_string_done')
+	append_dot := p.m.add_block(id, 'float_string_append_dot')
+	finish := p.m.add_block(id, 'float_string_finish')
+	value := p.add_arg(id, p.f64_type, 'value')
+	digits := p.add_arg(id, p.i32_type, 'digits')
+	buffer_size := p.m.get_or_add_const(p.i64_type, '64')
+	malloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'malloc', p.fn_ids['malloc'])
+	buffer := p.m.add_instr(.call, entry, p.ptr_i8, [malloc_ref, buffer_size])
+	gcvt_ref := p.m.add_value(.func_ref, p.ptr_i8, 'gcvt', p.fn_ids['gcvt'])
+	p.m.add_instr(.call, entry, p.ptr_i8, [gcvt_ref, value, digits, buffer])
+	strlen_ref := p.m.add_value(.func_ref, p.i64_type, 'strlen', p.fn_ids['strlen'])
+	length64 := p.m.add_instr(.call, entry, p.i64_type, [strlen_ref, buffer])
+	length := p.instr1(.trunc, entry, p.i32_type, length64)
+	length_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.i32_type))
+	p.instr2(.store, entry, p.void_type, length, length_slot)
+	index_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.i64_type))
+	zero64 := p.m.get_or_add_const(p.i64_type, '0')
+	p.instr2(.store, entry, p.void_type, zero64, index_slot)
+	plain_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.i1_type))
+	true_value := p.m.get_or_add_const(p.i1_type, '1')
+	p.instr2(.store, entry, p.void_type, true_value, plain_slot)
+	p.instr1(.jmp, entry, p.void_type, ssa.ValueID(condition))
+	index := p.instr1(.load, condition, p.i64_type, index_slot)
+	more := p.instr2(.lt, condition, p.i1_type, index, length64)
+	p.instr3(.br, condition, p.void_type, more, ssa.ValueID(body), ssa.ValueID(done))
+	character_ptr := p.instr2(.add, body, p.ptr_i8, buffer, index)
+	character := p.instr1(.load, body, p.u8_type, character_ptr)
+	ascii_zero := p.m.get_or_add_const(p.u8_type, '48')
+	ascii_nine := p.m.get_or_add_const(p.u8_type, '57')
+	minus := p.m.get_or_add_const(p.u8_type, '45')
+	at_least_zero := p.instr2(.ge, body, p.i1_type, character, ascii_zero)
+	at_most_nine := p.instr2(.le, body, p.i1_type, character, ascii_nine)
+	is_digit := p.instr2(.and_, body, p.i1_type, at_least_zero, at_most_nine)
+	is_minus := p.instr2(.eq, body, p.i1_type, character, minus)
+	is_plain_character := p.instr2(.or_, body, p.i1_type, is_digit, is_minus)
+	was_plain := p.instr1(.load, body, p.i1_type, plain_slot)
+	still_plain := p.instr2(.and_, body, p.i1_type, was_plain, is_plain_character)
+	p.instr2(.store, body, p.void_type, still_plain, plain_slot)
+	one64 := p.m.get_or_add_const(p.i64_type, '1')
+	next := p.instr2(.add, body, p.i64_type, index, one64)
+	p.instr2(.store, body, p.void_type, next, index_slot)
+	p.instr1(.jmp, body, p.void_type, ssa.ValueID(condition))
+	plain_integer := p.instr1(.load, done, p.i1_type, plain_slot)
+	p.instr3(.br, done, p.void_type, plain_integer, ssa.ValueID(append_dot), ssa.ValueID(finish))
+	dot_ptr := p.instr2(.add, append_dot, p.ptr_i8, buffer, length64)
+	dot := p.m.get_or_add_const(p.u8_type, '46')
+	p.instr2(.store, append_dot, p.void_type, dot, dot_ptr)
+	zero_ptr := p.instr2(.add, append_dot, p.ptr_i8, dot_ptr, one64)
+	p.instr2(.store, append_dot, p.void_type, ascii_zero, zero_ptr)
+	terminator_ptr := p.instr2(.add, append_dot, p.ptr_i8, zero_ptr, one64)
+	zero8 := p.m.get_or_add_const(p.u8_type, '0')
+	p.instr2(.store, append_dot, p.void_type, zero8, terminator_ptr)
+	two32 := p.m.get_or_add_const(p.i32_type, '2')
+	extended_length := p.instr2(.add, append_dot, p.i32_type, length, two32)
+	p.instr2(.store, append_dot, p.void_type, extended_length, length_slot)
+	p.instr1(.jmp, append_dot, p.void_type, ssa.ValueID(finish))
+	result_slot := p.instr0(.alloca, finish, p.m.type_store.get_ptr(p.str_type))
+	p.instr2(.store, finish, p.void_type, buffer, p.string_field_ptr(finish, result_slot, 0))
+	result_length := p.instr1(.load, finish, p.i32_type, length_slot)
+	p.instr2(.store, finish, p.void_type, result_length, p.string_field_ptr(finish, result_slot, 1))
+	zero32 := p.m.get_or_add_const(p.i32_type, '0')
+	p.instr2(.store, finish, p.void_type, zero32, p.string_field_ptr(finish, result_slot, 2))
+	result := p.instr1(.load, finish, p.str_type, result_slot)
+	p.instr1(.ret, finish, p.void_type, result)
 }
 
 fn (mut p FastArm64Program) register_integer_str_wrappers() {
@@ -3440,6 +3519,32 @@ fn (mut p FastArm64Parser) parse_name_statement(after_mut bool) ! {
 				}
 			}
 			p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, address)
+			return
+		}
+		if p.program.m.type_store.types[local.typ].kind == .array_t {
+			layout := p.program.m.type_store.types[local.typ]
+			element_type := layout.elem_type
+			element_type_name := fastc_fixed_array_element_type(local.typ_name) or { 'u8' }
+			length := p.program.m.get_or_add_const(p.program.i32_type, layout.len.str())
+			index64 := p.checked_array_index(key, length, 'fixed_array_assignment_index')
+			base := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, local.addr)
+			element_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(element_type).str())
+			offset := p.program.instr2(.mul, p.cur_block, p.program.i64_type, index64, element_size)
+			address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, base, offset)
+			typed_address := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), address)
+			mut assigned := value
+			if assigned.typ != element_type {
+				assigned = p.convert_value(assigned, element_type, element_type_name)
+			}
+			if op != .assign {
+				current := p.program.instr1(.load, p.cur_block, element_type, typed_address)
+				assigned = FastArm64Value{
+					id: p.program.instr2(fast_arm64_compound_opcode(op, p.program.m.type_store.types[element_type].is_unsigned), p.cur_block, element_type, current, assigned.id)
+					typ: element_type
+					typ_name: element_type_name
+				}
+			}
+			p.program.instr2(.store, p.cur_block, p.program.void_type, assigned.id, typed_address)
 			return
 		}
 		if local.typ == p.program.array_type {
@@ -5346,7 +5451,7 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 
 fn (mut p FastArm64Parser) zero_value(typ ssa.TypeID, type_name string) FastArm64Value {
 	layout := p.program.m.type_store.types[typ]
-	if layout.kind == .struct_t {
+	if layout.kind in [.struct_t, .array_t] {
 		slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(typ))
 		byte_slot := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, slot)
 		memset_ref := p.program.m.add_value(.func_ref, p.program.ptr_i8, 'memset', p.program.fn_ids['memset'])
@@ -5576,10 +5681,30 @@ fn (mut p FastArm64Parser) stringify(value FastArm64Value) !FastArm64Value {
 	if value.typ == p.program.str_type {
 		return value
 	}
-	mut integer := value.id
 	if value.typ in [p.program.f32_type, p.program.f64_type] {
-		integer = p.program.instr1(.fptosi, p.cur_block, p.program.i64_type, value.id)
-	} else if value.typ == p.program.ptr_i8 || value.typ == p.program.m.type_store.get_ptr(p.program.ptr_i8) {
+		float_value := if value.typ == p.program.f64_type {
+			value
+		} else {
+			p.convert_value(value, p.program.f64_type, 'f64')
+		}
+		digits := p.program.m.get_or_add_const(p.program.i32_type, if value.typ == p.program.f32_type {
+			'8'
+		} else {
+			'17'
+		})
+		convert_ref := p.program.m.add_value(.func_ref, p.program.str_type, 'fast_float_to_string', p.program.fn_ids['fast_float_to_string'])
+		return FastArm64Value{
+			id: p.program.m.add_instr(.call, p.cur_block, p.program.str_type, [
+				convert_ref,
+				float_value.id,
+				digits,
+			])
+			typ: p.program.str_type
+			typ_name: 'string'
+		}
+	}
+	mut integer := value.id
+	if value.typ == p.program.ptr_i8 || value.typ == p.program.m.type_store.get_ptr(p.program.ptr_i8) {
 		integer = p.program.instr1(.bitcast, p.cur_block, p.program.i64_type, value.id)
 	} else if p.program.m.type_size(value.typ) < 8 {
 		if value.typ in [p.program.u8_type, p.program.u16_type, p.program.u32_type,
@@ -6161,6 +6286,30 @@ fn (mut p FastArm64Parser) parse_constant_expression(source string) !FastArm64Va
 	return value
 }
 
+fn (p &FastArm64Parser) fixed_array_type_follows(mut look scanner.Scanner) bool {
+	first_type_token := look.scan()
+	if first_type_token == .eof {
+		return false
+	}
+	_, next_token := fastc_scan_type(mut look, first_type_token, p.source_file.path, p.source_file.header.module_name, p.source_file.header.imports, p.program.declared_types, p.program.prefs.building_v) or { return false }
+	return next_token == .lcbr
+}
+
+fn (p &FastArm64Parser) fixed_array_length(value FastArm64Value) ?int {
+	if value.id <= ssa.ValueID(0) || int(value.id) >= p.program.m.values.len {
+		return none
+	}
+	constant := p.program.m.values[value.id]
+	if constant.kind != .constant {
+		return none
+	}
+	length := fastc_decimal_integer_value(constant.name)?
+	if length < 0 {
+		return none
+	}
+	return length
+}
+
 fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 	p.expect(.lsbr)!
 	if p.tok != .rsbr {
@@ -6183,17 +6332,24 @@ fn (mut p FastArm64Parser) parse_array_literal() !FastArm64Value {
 			}
 			look_token = look.scan()
 		}
-		if could_be_fixed && look_token == .rsbr && look.scan() == .name && look.scan() == .lcbr {
+		if could_be_fixed && look_token == .rsbr && p.fixed_array_type_follows(mut look) {
 			length := p.parse_expression(0)!
 			p.expect(.rsbr)!
-			element_type_name := p.lit
-			p.next()
+			element_type_name, next_token := fastc_scan_type(mut p.s, p.tok, p.source_file.path, p.source_file.header.module_name, p.source_file.header.imports, p.program.declared_types, p.program.prefs.building_v) or {
+				return p.unsupported('fixed array element type')
+			}
+			p.tok = next_token
+			p.lit = p.s.lit
 			p.expect(.lcbr)!
 			if p.tok != .rcbr {
 				return p.unsupported('initialized fixed array literal')
 			}
 			p.next()
-			return p.make_array(element_type_name, []FastArm64Value{}, length, length)
+			fixed_length := p.fixed_array_length(length) or {
+				return p.unsupported('fixed array length')
+			}
+			fixed_type_name := fastc_fixed_array_type(fixed_length.str(), element_type_name)
+			return p.zero_value(p.program.type_id(fixed_type_name), fixed_type_name)
 		}
 	}
 	if p.tok != .rsbr {

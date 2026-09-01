@@ -61,6 +61,14 @@ struct FastArm64MapDefaults {
 	values map[string]int
 }
 
+struct FastArm64CloneInner {
+	values map[string]int
+}
+
+struct FastArm64CloneOuter {
+	inner FastArm64CloneInner
+}
+
 struct FastArm64Waiter {
 	value int
 }
@@ -118,10 +126,21 @@ fn propagated_option(ok bool) ?int {
 	return value + 2
 }
 
+fn fixed_array_sum(values [2]int) int {
+	return values[0] + values[1]
+}
+
 fn main() {
 	values_for_sizeof := [1, 2, 3]
 	if sizeof(values_for_sizeof) != 32 {
 		println("wrong dynamic array sizeof")
+		return
+	}
+	mut fixed := [2]int{}
+	fixed[0] += 2
+	fixed[1] = 3
+	if sizeof(fixed) != 8 || fixed_array_sum(fixed) != 5 || fixed_array_sum([2]int{}) != 0 {
+		println("wrong fixed array literal")
 		return
 	}
 	mut features := FastArm64Features.read
@@ -263,6 +282,11 @@ fn main() {
 		println("wrong zero map")
 		return
 	}
+	cloned_empty := FastArm64CloneOuter{}.inner.values.clone()
+	if cloned_empty.len != 0 {
+		println("wrong zero map clone")
+		return
+	}
 	mut shifted := u64(1) << 63
 	shifted >>= 1
 	mut divided := u64(1) << 63
@@ -277,7 +301,7 @@ fn main() {
 	elapsed := 1.25
 	max_unsigned := u64(18446744073709551615)
 	long_float := "\${1.0:.200f}"
-	if "\${formatted_value:05d}" != "00042" || "\${-7:04d}" != "-007" || "\${formatted_value:x}" != "2a" || "\${formatted_value:04X}" != "002A" || "\${formatted_value:b}" != "101010" || "\${formatted_value:o}" != "52" || "\${max_unsigned:020d}" != "18446744073709551615" || "\${elapsed:.2f}" != "1.25" || "\${elapsed:7.2f}" != "   1.25" || long_float.len != 202 || long_float[0] != `1` || long_float[1] != `.` || long_float[201] != `0` {
+	if "\${formatted_value:05d}" != "00042" || "\${-7:04d}" != "-007" || "\${formatted_value:x}" != "2a" || "\${formatted_value:04X}" != "002A" || "\${formatted_value:b}" != "101010" || "\${formatted_value:o}" != "52" || "\${max_unsigned:020d}" != "18446744073709551615" || "\${elapsed}" != "1.25" || "\${elapsed:.2f}" != "1.25" || "\${elapsed:7.2f}" != "   1.25" || long_float.len != 202 || long_float[0] != `1` || long_float[1] != `.` || long_float[201] != `0` {
 		println("wrong interpolation format")
 		return
 	}

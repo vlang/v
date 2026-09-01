@@ -79,7 +79,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_memmove', '_memset', '_memcmp', '___stdoutp', '___stderrp', '_puts', '_printf', '_write',
 	'_read', '_open', '_close', '_fwrite', '_fflush', '_fopen', '_fclose', '_putchar', '_sprintf',
 	'_snprintf', '_fprintf', '_sscanf', '_mmap', '_munmap', '_getcwd', '_access', '_readlink',
-	'_getenv', '_strlen',
+	'_getenv', '_strlen', '_gcvt',
 	// Filesystem/directory operations
 	'_opendir', '_readdir', '_closedir', '_mkdir', '_rmdir',
 	'_unlink', '_rename', '_remove', '_stat', '_lstat', '_fstat', '_chmod', '_chdir', '_realpath',
