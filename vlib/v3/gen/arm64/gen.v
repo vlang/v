@@ -1203,7 +1203,11 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 		fn_name = fn_ref.name
 	}
 	is_c_extern := !is_indirect && fn_ref.kind == .func_ref && fn_ref.index >= 0 && fn_ref.index < g.m.funcs.len && g.m.funcs[fn_ref.index].is_c_extern
-	ret_indirect := g.is_large_struct_type(instr.typ)
+	mut c_return_hfa := Arm64HfaLayout{}
+	if is_c_extern {
+		c_return_hfa = g.c_homogeneous_float_aggregate(instr.typ) or { Arm64HfaLayout{} }
+	}
+	ret_indirect := c_return_hfa.elements.len == 0 && g.is_large_struct_type(instr.typ)
 
 	out_stack_size := g.call_stack_arg_size(instr)
 	if out_stack_size > 0 {
@@ -1432,6 +1436,10 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 		g.emit_add_sp(out_stack_size)
 	}
 
+	if c_return_hfa.elements.len > 0 {
+		g.store_homogeneous_float_aggregate_result(val_id, c_return_hfa)
+		return
+	}
 	if ret_indirect {
 		return
 	}
@@ -1481,6 +1489,19 @@ fn (mut g Gen) emit_homogeneous_float_aggregate(arg_id int, layout Arm64HfaLayou
 		} else {
 			g.emit32(asm_fmov_d_x(first_reg + i, Reg(9)))
 		}
+	}
+}
+
+fn (mut g Gen) store_homogeneous_float_aggregate_result(val_id int, layout Arm64HfaLayout) {
+	offset := g.stack_slot(val_id) or { return }
+	for i, element in layout.elements {
+		if g.is_f32_type(element.typ) {
+			g.emit32(asm_fmov_w_s(Reg(8), i))
+		} else {
+			g.emit32(asm_fmov_x_d(Reg(8), i))
+		}
+		g.emit_lea_fp(9, offset + element.offset)
+		g.emit_store_typed(8, 9, element.typ)
 	}
 }
 
