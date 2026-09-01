@@ -1060,6 +1060,66 @@ fn test_fn_span_map_expansion_estimate_defers_borrowed_owned_map_key_clone() {
 	assert t.fn_span_map_expansion_estimate(0, int(assignment) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_defers_nested_map_lvalue_key_clone() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	items := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: 'map[Wide]Entry'
+	})
+	key := a.add_node(flat.Node{
+		kind: .ident
+		value: 'key'
+		typ: 'Wide'
+	})
+	index_start := a.children.len
+	a.children << items
+	a.children << key
+	index := a.add_node(flat.Node{
+		kind: .index
+		typ: 'Entry'
+		children_start: index_start
+		children_count: 2
+	})
+	selector_start := a.children.len
+	a.children << index
+	field := a.add_node(flat.Node{
+		kind: .selector
+		value: 'value'
+		typ: 'int'
+		children_start: selector_start
+		children_count: 1
+	})
+	rhs := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+		typ: 'int'
+	})
+	assignment_start := a.children.len
+	a.children << field
+	a.children << rhs
+	assignment := a.add_node(flat.Node{
+		kind: .selector_assign
+		op: .assign
+		children_start: assignment_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	tc.struct_implements['Wide'] = ['IClone']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.ownership_map_assignment_clone_expands(a.nodes[int(assignment)])
+	assert t.fn_span_map_expansion_estimate(0, int(assignment) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_fn_span_map_expansion_estimate_defers_owned_method_value_receiver_clone() {
 	$if !ownership? {
 		return

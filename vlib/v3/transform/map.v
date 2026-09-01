@@ -790,11 +790,11 @@ fn (mut t Transformer) ownership_for_in_map_snapshot_clone_expands(node flat.Nod
 }
 
 fn (mut t Transformer) ownership_map_assignment_clone_expands(node flat.Node) bool {
-	if node.kind !in [.assign, .index_assign] || node.children_count < 2 || isnil(t.tc) {
+	if node.kind !in [.assign, .selector_assign, .index_assign] || node.children_count < 2 || isnil(t.tc) {
 		return false
 	}
 	lhs_id := t.a.child(&node, 0)
-	info := t.map_index_info(lhs_id) or { return false }
+	info := t.map_assignment_underlying_index_info(lhs_id) or { return false }
 	key_type := t.tc.parse_type(info.key_type)
 	if t.normalize_type_alias(info.key_type).trim_space() != 'string' && !t.map_key_expr_creates_owned_value(info.key_id, info.key_type) && t.tc.ownership_type_requires_destruction(key_type) && t.tc.ownership_default_clone_missing_method(key_type) == none && t.compiler_default_clone_type_needs_work(info.key_type) {
 		return true
@@ -808,6 +808,24 @@ fn (mut t Transformer) ownership_map_assignment_clone_expands(node flat.Node) bo
 	}
 	value_type := t.tc.parse_type(info.value_type)
 	return t.tc.ownership_type_requires_destruction(value_type) && t.tc.ownership_default_clone_missing_method(value_type) == none && t.compiler_default_clone_type_needs_work(info.value_type)
+}
+
+fn (mut t Transformer) map_assignment_underlying_index_info(id flat.NodeId) ?MapIndexInfo {
+	mut current := id
+	for _ in 0 .. 32 {
+		if info := t.map_index_info(current) {
+			return info
+		}
+		if int(current) < 0 || int(current) >= t.a.nodes.len {
+			return none
+		}
+		node := t.a.nodes[int(current)]
+		if node.kind !in [.selector, .index, .paren] || node.children_count == 0 {
+			return none
+		}
+		current = t.a.child(&node, 0)
+	}
+	return none
 }
 
 fn (mut t Transformer) ownership_method_value_clone_expands(id flat.NodeId, node flat.Node) bool {
