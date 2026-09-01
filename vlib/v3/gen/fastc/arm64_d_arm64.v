@@ -4815,7 +4815,7 @@ fn (mut p FastArm64Parser) parse_match_statement() ! {
 			case_value := if p.tok == .dot {
 				p.parse_enum_shorthand(value.typ_name)!
 			} else {
-				p.parse_expression(0)!
+				p.parse_contextual_value(value.typ_name)!
 			}
 			case_condition := p.emit_binary(.eq, value, case_value)!
 			if has_condition {
@@ -6106,7 +6106,7 @@ fn (mut p FastArm64Parser) parse_match_expression() !FastArm64Value {
 				case_value := if p.tok == .dot {
 					p.parse_enum_shorthand(value.typ_name)!
 				} else {
-					p.parse_expression(0)!
+					p.parse_contextual_value(value.typ_name)!
 				}
 				case_condition := p.emit_binary(.eq, value, case_value)!
 				if has_condition {

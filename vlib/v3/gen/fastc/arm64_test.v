@@ -792,6 +792,16 @@ fn main() {
 		true { []f64{1.0} }
 		else { [2, 3] }
 	}
+	case_values := []f64{1.0, 2.0}
+	mut statement_case_matched := false
+	match case_values {
+		[1, 2] { statement_case_matched = true }
+		else {}
+	}
+	expression_case_matched := match case_values {
+		[1, 2] { true }
+		else { false }
+	}
 	float_values := FloatValues{values: [1, 2]}
 	map_values := MapValues{values: {1: 2}}
 	mut mutable_values := [MutableValue{value: 1}, MutableValue{value: 2}]
@@ -841,7 +851,8 @@ fn main() {
 		&& success_b.wait()
 	scalar_text := "\${true}:\${u64(9223372036854775808)}"
 	if aggregate_fallback != [1.0, 2.0] || conditional_floats != [2.0, 3.0]
-		|| matched_floats != [2.0, 3.0] || propagated_map["value"][0] != 9 {
+		|| matched_floats != [2.0, 3.0] || !statement_case_matched || !expression_case_matched
+		|| propagated_map["value"][0] != 9 {
 		println("wrong aggregate context or propagation cleanup")
 		return
 	}
