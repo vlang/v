@@ -8118,6 +8118,62 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_applies_all_rhs_effects_before_multi_assignment_targets() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+@[heap]
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn rebind(mut target &PointerBox, replacement &PointerBox) int {
+	target = replacement
+	return 0
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			mut local := PointerBox{
+				value: unsafe { &external }
+			}
+			mut alias := &local
+			mut ignored := 0
+			ignored, alias.value = rebind(mut alias, &saved), unsafe { &it }
+			ignored
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_multi_assign_rhs_effects_c', '-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_multi_assign_rhs_effects', '-ownership', source)
+	assert out == '0\nsource'
+}
+
 fn test_array_map_applies_condition_pointer_alias_updates_before_branches() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {

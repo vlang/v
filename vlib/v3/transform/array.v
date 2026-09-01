@@ -4322,6 +4322,44 @@ fn (mut t Transformer) array_map_expr_side_effect_retains_element_address_in_sco
 			return true
 		}
 	}
+	if node.kind == .assign && node.op == .assign && node.children_count >= 4 {
+		lhs_count := t.multi_assign_lhs_count(node)
+		rhs_count := t.multi_assign_rhs_count(node)
+		if lhs_count == rhs_count && rhs_count > 1 {
+			// Plain multi-assignment stages every RHS before applying any LHS. Snapshot
+			// those effects first so a rebind in an early RHS is visible to every target.
+			mut assignment_locals := locals.clone()
+			mut rhs_origins := []map[string]bool{cap: rhs_count}
+			for i in 0 .. rhs_count {
+				rhs_id := t.multi_assign_rhs_id(node, i)
+				if t.array_map_expr_side_effect_retains_element_address_in_scope(rhs_id, elem_name, assignment_locals, block, before_idx) {
+					return true
+				}
+				t.array_map_update_local_pointer_origins(rhs_id, elem_name, mut assignment_locals)
+				rhs_origins << assignment_locals.clone()
+			}
+			for i in 0 .. lhs_count {
+				lhs_id := t.multi_assign_lhs_id(node, i)
+				rhs_id := t.multi_assign_rhs_id(node, i)
+				if t.array_map_expr_side_effect_retains_element_address_in_scope(lhs_id, elem_name, assignment_locals, block, before_idx) {
+					return true
+				}
+				t.array_map_update_local_pointer_origins(lhs_id, elem_name, mut assignment_locals)
+				if t.array_map_side_effect_target_is_external(lhs_id, elem_name, assignment_locals, false) && t.array_map_side_effect_source_retains_element_address(rhs_id, elem_name, block, before_idx) {
+					return true
+				}
+				for path in t.array_map_lvalue_local_paths(lhs_id, assignment_locals) {
+					root := array_map_local_path_root(path)
+					if root in assignment_locals {
+						overlapping := array_map_clear_local_pointer_origins(path, mut assignment_locals)
+						t.array_map_record_local_pointer_origins(path, rhs_id, elem_name, rhs_origins[i], mut assignment_locals)
+						array_map_merge_overlapping_pointer_origins(overlapping, mut assignment_locals)
+					}
+				}
+			}
+			return false
+		}
+	}
 	if node.kind in [.assign, .selector_assign, .index_assign] {
 		for i := 0; i + 1 < int(node.children_count); i += 2 {
 			lhs_id := t.a.child(&node, i)
