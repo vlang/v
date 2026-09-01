@@ -1,0 +1,31 @@
+name: Finalize PR 28242 review fixes
+
+on:
+  push:
+    branches:
+      - fix-master-ci-batch-7-array-runtime
+    paths:
+      - '.github/pr28242_finalize.py'
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-master-ci-batch-7-array-runtime
+          fetch-depth: 0
+      - name: Apply review fixes
+        run: python3 .github/pr28242_finalize.py
+      - name: Commit and push
+        run: |
+          rm -f .github/pr28242* .github/workflows/pr28242*
+          git diff --check
+          git config user.name openai-codex
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "v3: preserve array-map storage flow across joins"
+          git push origin HEAD:fix-master-ci-batch-7-array-runtime
