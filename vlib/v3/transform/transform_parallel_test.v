@@ -976,6 +976,92 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_map_index_append_clone()
 	assert t.fn_span_map_expansion_estimate(0, int(append) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_expansion_defers_builtin_auto_stringification() {
+	mut a := flat.FlatAst.new()
+	callee := a.add_node(flat.Node{
+		kind: .ident
+		value: 'println'
+	})
+	wide := a.add_node(flat.Node{
+		kind: .ident
+		value: 'wide'
+		typ: 'Wide'
+	})
+	call_start := a.children.len
+	a.children << callee
+	a.children << wide
+	call := a.add_node(flat.Node{
+		kind: .call
+		children_start: call_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Wide'] = StructInfo{
+		name: 'Wide'
+		fields: [FieldInfo{
+			name: 'value'
+			typ: 'int'
+		}]
+	}
+
+	assert t.builtin_call_auto_stringify_expands(call, a.nodes[int(call)])
+	assert t.fn_span_map_expansion_estimate(0, int(call) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_fn_span_expansion_defers_dump_auto_stringification() {
+	mut a := flat.FlatAst.new()
+	wide := a.add_node(flat.Node{
+		kind: .ident
+		value: 'wide'
+		typ: 'Wide'
+	})
+	dump_start := a.children.len
+	a.children << wide
+	dump_expr := a.add_node(flat.Node{
+		kind: .dump_expr
+		value: 'wide'
+		typ: 'Wide'
+		children_start: dump_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(0, int(dump_expr) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_fn_span_expansion_defers_direct_aggregate_membership() {
+	mut a := flat.FlatAst.new()
+	needle := a.add_node(flat.Node{
+		kind: .ident
+		value: 'needle'
+		typ: 'Wide'
+	})
+	items := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: '[]Wide'
+	})
+	membership_start := a.children.len
+	a.children << needle
+	a.children << items
+	membership := a.add_node(flat.Node{
+		kind: .in_expr
+		typ: 'bool'
+		children_start: membership_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.structs['Wide'] = StructInfo{
+		name: 'Wide'
+	}
+
+	assert t.array_membership_equality_expands(a.nodes[int(membership)])
+	assert t.fn_span_map_expansion_estimate(0, int(membership) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
 	mut a := flat.FlatAst.new()
 	length := a.add_node(flat.Node{
