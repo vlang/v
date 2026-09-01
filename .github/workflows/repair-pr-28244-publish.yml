@@ -1,0 +1,179 @@
+name: Publish repaired PR 28244
+
+on:
+  push:
+    branches:
+      - v3-ownership-toml-value-copy
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-pr-28244
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: contains(github.event.head_commit.message, '[publish-pr-28244]')
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    env:
+      ORIGINAL_BASE: cbf4e8509630da710d04cc9fd0f777761ebe55a7
+      ORIGINAL_HEAD: 2a6677b34d621f7b44e48c73ad773180aa9d8ea8
+    steps:
+      - name: Check out repair inputs
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Rebuild on current master
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat .github/pr28244-repair/*.py.part > /tmp/repair_pr_28244.py
+          python3 -m py_compile /tmp/repair_pr_28244.py
+          git fetch --no-tags origin master "$ORIGINAL_BASE" "$ORIGINAL_HEAD"
+          git diff --binary "$ORIGINAL_BASE" "$ORIGINAL_HEAD" > /tmp/pr-28244.patch
+          git checkout -B repaired origin/master
+          git apply --3way --index --whitespace=nowarn /tmp/pr-28244.patch
+          git reset
+          REPO_ROOT="$GITHUB_WORKSPACE" python3 /tmp/repair_pr_28244.py
+          git diff --check
+
+      - name: Bootstrap and format
+        shell: bash
+        run: |
+          set -euxo pipefail
+          make -j2
+          files=(
+            vlib/v3/tests/ownership_borrowed_projection_error_test.v
+            vlib/v3/tests/ownership_borrowed_projection_review_test.v
+            vlib/v3/tests/ownership_toml_decode_test.v
+            vlib/v3/transform/array.v
+            vlib/v3/transform/fn.v
+            vlib/v3/transform/fn_test.v
+            vlib/v3/transform/if.v
+            vlib/v3/transform/interface.v
+            vlib/v3/transform/map.v
+            vlib/v3/transform/or.v
+            vlib/v3/transform/return.v
+            vlib/v3/transform/struct.v
+            vlib/v3/transform/transform.v
+            vlib/v3/transform/transform_parallel_test.v
+            vlib/v3/types/checker_ownership_alias_test.v
+            vlib/v3/types/checker_ownership_d_ownership.v
+            vlib/v3/types/checker_ownership_notd_ownership.v
+          )
+          for file in "${files[@]}"; do
+            ./v fmt -w "$file"
+          done
+          git diff --check
+
+      - name: Compile V3 and run smoke regressions
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./v -nocache -gc none -d ownership \
+            -path "$PWD/vlib|@vlib|@vmodules" \
+            -o /tmp/v3-pr-28244 vlib/v3/v3.v
+
+          cat >/tmp/borrowed-field-error.v <<'V'
+          interface Drop {
+          mut:
+            drop()
+          }
+          struct Resource implements Drop {
+          mut:
+            values []string
+          }
+          fn (mut value Resource) drop() { value.values = [] }
+          struct Holder { value Resource }
+          fn main() {
+            holder := &Holder{value: Resource{values: ['owned']}}
+            copied := holder.value
+            _ = copied
+          }
+          V
+
+          cat >/tmp/receiver-alias-error.v <<'V'
+          interface Drop {
+          mut:
+            drop()
+          }
+          struct Resource implements Drop {
+          mut:
+            values []string
+          }
+          fn (mut value Resource) drop() { value.values = [] }
+          struct Holder { value Resource }
+          fn (holder &Holder) take(value Resource) { _ = holder; _ = value }
+          fn main() {
+            holder := Holder{value: Resource{values: ['owned']}}
+            holder.take(holder.value)
+          }
+          V
+
+          for source in /tmp/borrowed-field-error.v /tmp/receiver-alias-error.v; do
+            for mode in -no-parallel parallel; do
+              args=()
+              if [[ "$mode" == -no-parallel ]]; then args+=("-no-parallel"); fi
+              set +e
+              output=$(/tmp/v3-pr-28244 -nocache -ownership -d ownership "${args[@]}" run "$source" 2>&1)
+              code=$?
+              set -e
+              [[ $code -ne 0 ]]
+              grep -Fq 'requires ownership destruction but has no compatible `clone()` method' <<<"$output"
+              grep -Fq 'implement `IClone` or use a pointer' <<<"$output"
+            done
+          done
+
+          cat >/tmp/ownership-toml.v <<'V'
+          module main
+          import toml
+          struct CommonStruct { field string }
+          fn main() {
+            doc := toml.parse_text('field = "some"')!
+            decoded := doc.decode[CommonStruct]()!
+            assert decoded.field == 'some'
+          }
+          V
+          /tmp/v3-pr-28244 -nocache -ownership -d ownership -no-parallel run /tmp/ownership-toml.v
+          /tmp/v3-pr-28244 -nocache -ownership -d ownership run /tmp/ownership-toml.v
+
+          ./v -nocache -gc none -path "$PWD/vlib|@vlib|@vmodules" \
+            -o /tmp/v3-pr-28244-no-ownership vlib/v3/v3.v
+
+      - name: Create clean semantic commits
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "OpenAI Codex"
+          git config user.email "codex@openai.com"
+          git reset
+
+          git add \
+            vlib/v3/transform/array.v \
+            vlib/v3/transform/fn.v \
+            vlib/v3/transform/if.v \
+            vlib/v3/transform/interface.v \
+            vlib/v3/transform/map.v \
+            vlib/v3/transform/or.v \
+            vlib/v3/transform/return.v \
+            vlib/v3/transform/struct.v \
+            vlib/v3/transform/transform.v \
+            vlib/v3/types/checker_ownership_d_ownership.v \
+            vlib/v3/types/checker_ownership_notd_ownership.v
+          git commit -m "v3: model borrowed owned-value copies explicitly"
+
+          git add \
+            vlib/v3/tests/ownership_borrowed_projection_error_test.v \
+            vlib/v3/tests/ownership_borrowed_projection_review_test.v \
+            vlib/v3/tests/ownership_toml_decode_test.v \
+            vlib/v3/transform/fn_test.v \
+            vlib/v3/transform/transform_parallel_test.v \
+            vlib/v3/types/checker_ownership_alias_test.v
+          git commit -m "v3: organize borrowed ownership regressions by context"
+
+          test -z "$(git status --porcelain)"
+          git log --oneline --decorate -4
+          git push --force origin HEAD:refs/heads/pr-28244-repair-staging
