@@ -476,6 +476,23 @@ fn test_fastc_generation_fragments_keep_top_level_comptime_chain_together() {
 	assert fragments[1].source.trim_space().starts_with('fn fastc_fragment_after_chain')
 }
 
+fn test_fastc_generation_fragments_keep_top_level_initializer_together() {
+	large_comment := '// ' + 'x'.repeat(fastc_generation_fragment_size + 1024)
+	source := 'module fastc\nstruct FastcFragmentValue {}\n@[inline]\nfn (v FastcFragmentValue) value() int {\n\treturn 1\n}\n${large_comment}\nconst fastc_fragment_result = FastcFragmentValue{}.value()\nfn fastc_fragment_after_initializer() {}\n'
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	fragments := fastc_source_generation_fragments(FastcSourceFile{
+		path: 'large_top_level_initializer.v'
+		source: source
+		header: FastcSourceHeader{
+			module_name: 'v3.gen.fastc'
+		}
+	}, prefs)
+	assert fragments.len == 2
+	assert fragments[0].source.contains('FastcFragmentValue{}.value()')
+	assert fragments[1].source.trim_space().starts_with('fn fastc_fragment_after_initializer')
+}
+
 fn test_fastc_overlap_workers_honor_serial_preferences() {
 	mut prefs := pref.new_preferences()
 	prefs.no_parallel = true

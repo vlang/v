@@ -247,18 +247,47 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source_file.source)
 	mut cuts := [0]
-	mut depth := 0
+	mut brace_depth := 0
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	mut pending_cut := false
 	mut next_target := source_file.source.len / part_count
 	mut tok := scan.scan()
 	for tok != .eof && cuts.len < part_count {
-		if tok == .lcbr {
-			depth++
-		} else if tok == .rcbr {
-			depth--
-			if depth == 0 && scan.offset >= next_target && !fastc_generation_fragment_is_followed_by_comptime_else(scan) {
-				cuts << scan.offset
-				next_target = source_file.source.len * cuts.len / part_count
+		match tok {
+			.lcbr {
+				brace_depth++
 			}
+			.rcbr {
+				brace_depth--
+				if brace_depth == 0 && paren_depth == 0 && bracket_depth == 0 && scan.offset >= next_target {
+					pending_cut = true
+				}
+			}
+			.lpar {
+				paren_depth++
+			}
+			.rpar {
+				paren_depth--
+			}
+			.attribute {
+				// The scanner consumes `@[` as one token.
+				bracket_depth++
+			}
+			.lsbr {
+				bracket_depth++
+			}
+			.rsbr {
+				bracket_depth--
+			}
+			.semicolon {
+				if pending_cut && brace_depth == 0 && paren_depth == 0 && bracket_depth == 0 && !fastc_generation_fragment_is_followed_by_comptime_else(scan) {
+					cuts << scan.offset
+					next_target = source_file.source.len * cuts.len / part_count
+					pending_cut = false
+				}
+			}
+			else {}
 		}
 		tok = scan.scan()
 	}
