@@ -10280,6 +10280,12 @@ fn (mut p FastArm64Parser) pack_v_variadic_arguments(signature FastcFunctionSign
 }
 
 fn (p &FastArm64Parser) validate_call_argument_count(display_name string, resolved string, signature FastcFunctionSignature, arguments []FastArm64Value, parameter_offset int) ! {
+	if resolved !in p.program.functions {
+		// Builtins such as `print`/`println` are registered without a FastcFunctionSignature
+		// (see register_print_runtime) and are validated by their own special-cased handling,
+		// so the empty default signature here carries no real arity to check against.
+		return
+	}
 	expected_count := signature.parameter_types.len - parameter_offset
 	if expected_count < 0 {
 		return p.unsupported('function `${display_name}` parameter count')
