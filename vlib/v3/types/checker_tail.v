@@ -9401,6 +9401,22 @@ fn (tc &TypeChecker) storage_node_contains_return(id flat.NodeId) bool {
 	return false
 }
 
+fn (tc &TypeChecker) storage_write_can_be_bypassed_by_goto(pos token.Pos, gotos []flat.NodeId, labels map[string][]flat.NodeId) bool {
+	for goto_id in gotos {
+		jump := tc.a.node(goto_id)
+		if jump.pos.id != pos.id || jump.pos.offset >= pos.offset {
+			continue
+		}
+		for label_id in labels[jump.value] {
+			label := tc.a.node(label_id)
+			if label.pos.id == pos.id && label.pos.offset > pos.offset {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Direct writes reached before any possible return replace the caller's prior source for the
 // same exact path. Conditional and delegated writes remain conservative unions.
 fn (tc &TypeChecker) param_storage_direct_definite_write_paths_for_decl(decl VisibleMutationFnDecl, target_param_idx int) []string {
@@ -9423,6 +9439,11 @@ fn (tc &TypeChecker) param_storage_direct_definite_write_paths_for_decl(decl Vis
 	if target_param_idx >= param_names.len {
 		return []string{}
 	}
+	mut gotos := []flat.NodeId{}
+	mut labels := map[string][]flat.NodeId{}
+	for i in body_start .. fn_node.children_count {
+		tc.collect_visible_binding_gotos_and_labels(tc.a.child(&fn_node, i), mut gotos, mut labels)
+	}
 	mut aliases := map[string][]int{}
 	for i, name in param_names {
 		aliases[name] = [i]
@@ -9437,11 +9458,15 @@ fn (tc &TypeChecker) param_storage_direct_definite_write_paths_for_decl(decl Vis
 				if tc.storage_node_contains_return(rhs_id) {
 					return paths
 				}
-				if path := tc.storage_lvalue_path_from_param(tc.a.child(&child, j),
-					target_param.value, aliases, target_param_idx)
-				{
-					if path !in paths {
-						paths << path
+				lhs_id := tc.a.child(&child, j)
+				if !tc.storage_write_can_be_bypassed_by_goto(tc.a.node(lhs_id).pos, gotos,
+					labels) {
+					if path := tc.storage_lvalue_path_from_param(lhs_id, target_param.value, aliases,
+						target_param_idx)
+					{
+						if path !in paths {
+							paths << path
+						}
 					}
 				}
 			}

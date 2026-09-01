@@ -12915,3 +12915,77 @@ fn main() {
 	out := run_good_with_flags(v3_bin, 'array_map_c_for_continue_post_pointer_origin', '-ownership', source)
 	assert out == '0'
 }
+
+fn test_array_map_tracks_aggregate_pointer_origins_from_or_and_comptime_results() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+struct Holder {
+	box &PointerBox
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn fallback_holder() !Holder {
+	return error("fallback")
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut or_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	mut comptime_saved := PointerBox{
+		value: unsafe { &external }
+	}
+	_ := make_items().map(match true {
+		true {
+			or_holder := fallback_holder() or {
+				Holder{
+					box: &or_saved
+				}
+			}
+			comptime_holder := $if true {
+				Holder{
+					box: &comptime_saved
+				}
+			} $else {
+				Holder{
+					box: &or_saved
+				}
+			}
+			or_holder.box.value = unsafe { &it }
+			comptime_holder.box.value = unsafe { &it }
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(or_saved.value.text)
+	println(comptime_saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_aggregate_join_origins_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_aggregate_join_origins', '-ownership',
+		source)
+	assert out == 'source\
+source'
+}

@@ -3429,9 +3429,21 @@ fn (mut t Transformer) array_map_record_local_pointer_origins(path string, id fl
 		t.array_map_record_local_pointer_origins(path, t.a.child(&node, node.children_count - 1), elem_name, origins, mut locals)
 		return
 	}
-	if node.kind in [.if_expr, .match_stmt] {
+	if node.kind == .comptime_if {
+		if take_then := t.comptime_type_condition_value(node.value) {
+			branch_idx := if take_then { 0 } else { 1 }
+			if branch_idx < node.children_count {
+				t.array_map_record_local_pointer_origins(path, t.a.child(&node, branch_idx), elem_name, origins, mut locals)
+			} else {
+				locals[path] = false
+			}
+			return
+		}
+	}
+	if node.kind in [.if_expr, .match_stmt, .or_expr, .comptime_if] {
 		locals[path] = false
-		for i in 1 .. node.children_count {
+		branch_start := if node.kind in [.if_expr, .match_stmt] { 1 } else { 0 }
+		for i in branch_start .. node.children_count {
 			mut branch_origins := map[string]bool{}
 			t.array_map_record_local_pointer_origins(path, t.a.child(&node, i), elem_name, origins, mut branch_origins)
 			for branch_path, external in branch_origins {
@@ -3528,8 +3540,18 @@ fn (mut t Transformer) array_map_record_local_pointer_pointees(path string, id f
 		t.array_map_record_local_pointer_pointees(path, t.a.child(&node, node.children_count - 1), origins, mut locals)
 		return
 	}
-	if node.kind in [.if_expr, .match_stmt] {
-		for i in 1 .. node.children_count {
+	if node.kind == .comptime_if {
+		if take_then := t.comptime_type_condition_value(node.value) {
+			branch_idx := if take_then { 0 } else { 1 }
+			if branch_idx < node.children_count {
+				t.array_map_record_local_pointer_pointees(path, t.a.child(&node, branch_idx), origins, mut locals)
+			}
+			return
+		}
+	}
+	if node.kind in [.if_expr, .match_stmt, .or_expr, .comptime_if] {
+		branch_start := if node.kind in [.if_expr, .match_stmt] { 1 } else { 0 }
+		for i in branch_start .. node.children_count {
 			t.array_map_record_local_pointer_pointees(path, t.a.child(&node, i), origins, mut locals)
 		}
 		return

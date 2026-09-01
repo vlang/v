@@ -386,3 +386,60 @@ fn main() {
 	sources := tc.call_param_storage_source_params(call_id, 0)
 	assert 1 in sources, sources.str()
 }
+
+fn test_param_storage_sources_do_not_treat_goto_bypassed_write_as_definite() {
+	path := os.join_path(os.vtmp_dir(), 'v3_storage_source_goto_definite_${os.getpid()}.v')
+	os.write_file(path, 'struct Value {}
+
+struct Box {
+mut:
+	value &Value
+}
+
+fn maybe_replace(mut target &Box, replacement &Value, skip bool) {
+	if skip {
+		unsafe { goto done }
+	}
+	target.value = replacement
+done:
+}
+
+fn wrapper(mut target &Box, first &Value, replacement &Value, skip bool) {
+	target.value = first
+	maybe_replace(mut target, replacement, skip)
+}
+
+fn main() {
+	mut first := Value{}
+	mut replacement := Value{}
+	mut target := &Box{
+		value: &first
+	}
+	wrapper(mut target, &first, &replacement, true)
+}
+') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	_ = tc.check_semantics_opt(false)
+	assert tc.errors.len == 0, tc.errors.str()
+
+	mut wrapper_call := flat.empty_node
+	for i, node in a.nodes {
+		if node.kind != .call {
+			continue
+		}
+		name := tc.resolved_call_name(flat.NodeId(i)) or { continue }
+		if name.ends_with('wrapper') {
+			wrapper_call = flat.NodeId(i)
+		}
+	}
+	assert int(wrapper_call) >= 0
+	assert tc.call_param_storage_source_params(wrapper_call, 0) == [1, 2]
+}
