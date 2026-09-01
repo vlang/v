@@ -166,10 +166,25 @@ fn main() {
 		println("wrong reassignment conversion")
 		return
 	}
+	context_float := f64(1.5)
+	if context_float + 1 != 2.5 || 1 + context_float != 2.5 {
+		println("wrong binary conversion")
+		return
+	}
 	mut typed_numbers := map[u64]f64{1: 2}
 	typed_numbers[3] = 4
-	if typed_numbers[u64(1)] != 2.0 || typed_numbers[u64(3)] != 4.0 {
+	if typed_numbers[1] != 2.0 || typed_numbers[3] != 4.0 {
 		println("wrong typed map conversion")
+		return
+	}
+	typed_floats := []f64{1, 2}
+	if typed_floats[0] != 1.0 || typed_floats[1] != 2.0 {
+		println("wrong typed array conversion")
+		return
+	}
+	normalized_capacity := []int{len: 3, cap: 1}
+	if normalized_capacity.len != 3 || normalized_capacity.cap != 3 || normalized_capacity[2] != 0 {
+		println("wrong array capacity normalization")
 		return
 	}
 	values_for_sizeof := [1, 2, 3]
@@ -634,6 +649,8 @@ fn test_fastc_arm64_array_index_bounds() {
 		sources << 'fn main() {\n\tvalues := []int{}\n\tselected := values.last()\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tmut values := []int{}\n\tselected := values.pop()\n\tif selected == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		sources << 'fn main() {\n\tmut values := []int{}\n\tvalues.delete_last()\n\tprintln("unused")\n}\n'
+		sources << 'fn main() {\n\tlength := -1\n\tvalues := []int{len: length}\n\tif values.len == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
+		sources << 'fn main() {\n\tcapacity := -1\n\tvalues := []int{cap: capacity}\n\tif values.cap == 0 {\n\t\tprintln("unused")\n\t}\n}\n'
 		for index, source in sources {
 			source_path := os.join_path_single(test_dir, 'bounds_${index}.v')
 			output_path := os.join_path_single(test_dir, 'bounds_${index}')

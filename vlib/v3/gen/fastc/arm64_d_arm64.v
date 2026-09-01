@@ -1727,50 +1727,41 @@ fn (mut p FastArm64Program) register_arguments_runtime() {
 fn (mut p FastArm64Program) register_array_new_runtime() {
 	id := p.register_function('fast_array_new', 'fast_array_new', p.array_type, false)
 	entry := p.m.add_block(id, 'array_new_entry')
+	invalid := p.m.add_block(id, 'array_new_invalid')
+	ready := p.m.add_block(id, 'array_new_ready')
 	element_size := p.add_arg(id, p.i64_type, 'element_size')
 	length := p.add_arg(id, p.i64_type, 'length')
 	capacity := p.add_arg(id, p.i64_type, 'capacity')
 	zero64 := p.m.get_or_add_const(p.i64_type, '0')
-	length_negative := p.instr2(.lt, entry, p.i1_type, length, zero64)
-	capacity_negative := p.instr2(.lt, entry, p.i1_type, capacity, zero64)
-	invalid_dimensions := p.instr2(.or_, entry, p.i1_type, length_negative, capacity_negative)
-	invalid := p.m.add_block(id, 'array_new_invalid')
-	valid := p.m.add_block(id, 'array_new_valid')
-	normalize_capacity := p.m.add_block(id, 'array_new_normalize_capacity')
-	keep_capacity := p.m.add_block(id, 'array_new_keep_capacity')
-	allocate := p.m.add_block(id, 'array_new_allocate')
-	capacity_slot := p.instr0(.alloca, entry, p.m.type_store.get_ptr(p.i64_type))
-	p.instr3(.br, entry, p.void_type, invalid_dimensions, ssa.ValueID(invalid), ssa.ValueID(valid))
+	negative_length := p.instr2(.lt, entry, p.i1_type, length, zero64)
+	negative_capacity := p.instr2(.lt, entry, p.i1_type, capacity, zero64)
+	has_negative_size := p.instr2(.or_, entry, p.i1_type, negative_length, negative_capacity)
+	p.instr3(.br, entry, p.void_type, has_negative_size, ssa.ValueID(invalid), ssa.ValueID(ready))
 	exit_ref := p.m.add_value(.func_ref, p.void_type, 'exit', p.fn_ids['exit'])
 	exit_code := p.m.get_or_add_const(p.i32_type, '1')
 	p.m.add_instr(.call, invalid, p.void_type, [exit_ref, exit_code])
 	p.instr0(.unreachable, invalid, p.void_type)
-	capacity_too_small := p.instr2(.lt, valid, p.i1_type, capacity, length)
-	p.instr3(.br, valid, p.void_type, capacity_too_small, ssa.ValueID(normalize_capacity), ssa.ValueID(keep_capacity))
-	p.instr2(.store, normalize_capacity, p.void_type, length, capacity_slot)
-	p.instr1(.jmp, normalize_capacity, p.void_type, ssa.ValueID(allocate))
-	p.instr2(.store, keep_capacity, p.void_type, capacity, capacity_slot)
-	p.instr1(.jmp, keep_capacity, p.void_type, ssa.ValueID(allocate))
-	effective_capacity := p.instr1(.load, allocate, p.i64_type, capacity_slot)
+	capacity_is_short := p.instr2(.lt, ready, p.i1_type, capacity, length)
+	normalized_capacity := p.integer_select(ready, capacity_is_short, length, capacity, p.i64_type)
 	calloc_ref := p.m.add_value(.func_ref, p.ptr_i8, 'calloc', p.fn_ids['calloc'])
-	data := p.m.add_instr(.call, allocate, p.ptr_i8, [calloc_ref, effective_capacity, element_size])
-	slot := p.instr0(.alloca, allocate, p.m.type_store.get_ptr(p.array_type))
-	p.instr2(.store, allocate, p.void_type, data, p.struct_field_ptr(allocate, slot, p.array_type, 0))
+	data := p.m.add_instr(.call, ready, p.ptr_i8, [calloc_ref, normalized_capacity, element_size])
+	slot := p.instr0(.alloca, ready, p.m.type_store.get_ptr(p.array_type))
+	p.instr2(.store, ready, p.void_type, data, p.struct_field_ptr(ready, slot, p.array_type, 0))
 	zero32 := p.m.get_or_add_const(p.i32_type, '0')
-	p.instr2(.store, allocate, p.void_type, zero32, p.struct_field_ptr(allocate, slot, p.array_type, 1))
-	length32 := p.instr1(.trunc, allocate, p.i32_type, length)
-	capacity32 := p.instr1(.trunc, allocate, p.i32_type, effective_capacity)
-	element_size32 := p.instr1(.trunc, allocate, p.i32_type, element_size)
+	p.instr2(.store, ready, p.void_type, zero32, p.struct_field_ptr(ready, slot, p.array_type, 1))
+	length32 := p.instr1(.trunc, ready, p.i32_type, length)
+	capacity32 := p.instr1(.trunc, ready, p.i32_type, normalized_capacity)
+	element_size32 := p.instr1(.trunc, ready, p.i32_type, element_size)
 	for field, value in {
 		2: length32
 		3: capacity32
 		4: zero32
 		5: element_size32
 	} {
-		p.instr2(.store, allocate, p.void_type, value, p.struct_field_ptr(allocate, slot, p.array_type, field))
+		p.instr2(.store, ready, p.void_type, value, p.struct_field_ptr(ready, slot, p.array_type, field))
 	}
-	result := p.instr1(.load, allocate, p.array_type, slot)
-	p.instr1(.ret, allocate, p.void_type, result)
+	result := p.instr1(.load, ready, p.array_type, slot)
+	p.instr1(.ret, ready, p.void_type, result)
 }
 
 fn (mut p FastArm64Program) register_map_runtime() {
@@ -6956,14 +6947,14 @@ fn (mut p FastArm64Parser) make_array(element_type_name string, initial []FastAr
 		p.program.instr2(.store, p.cur_block, p.program.void_type, result.id, slot)
 		data := p.program.instr1(.load, p.cur_block, p.program.ptr_i8, p.program.struct_field_ptr(p.cur_block, slot, p.program.array_type, 0))
 		for i, item in initial {
+			mut stored_item := item
+			if stored_item.typ != element_type {
+				stored_item = p.convert_value(stored_item, element_type, element_type_name)
+			}
 			offset := p.program.m.get_or_add_const(p.program.i64_type, (i * p.program.m.type_size(element_type)).str())
 			address := p.program.instr2(.add, p.cur_block, p.program.ptr_i8, data, offset)
 			typed_address := p.program.instr1(.bitcast, p.cur_block, p.program.m.type_store.get_ptr(element_type), address)
-			mut stored := item
-			if stored.typ != element_type {
-				stored = p.convert_value(stored, element_type, element_type_name)
-			}
-			p.program.instr2(.store, p.cur_block, p.program.void_type, stored.id, typed_address)
+			p.program.instr2(.store, p.cur_block, p.program.void_type, stored_item.id, typed_address)
 		}
 	}
 	return result
@@ -7866,12 +7857,11 @@ fn (mut p FastArm64Parser) parse_array_index_or_slice(value FastArm64Value) !Fas
 			return p.unsupported('map type `${value.typ_name}`')
 		}
 		key_type := p.program.type_id(key_type_name)
+		value_type := p.program.type_id(value_type_name)
 		if key.typ != key_type {
 			key = p.convert_value(key, key_type, key_type_name)
 		}
-		value_type := p.program.type_id(value_type_name)
-		value_size := p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value_type).str())
-		key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(key.typ))
+		key_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(key_type))
 		p.program.instr2(.store, p.cur_block, p.program.void_type, key.id, key_slot)
 		key_pointer := p.program.instr1(.bitcast, p.cur_block, p.program.ptr_i8, key_slot)
 		empty_slot := p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(value_type))
@@ -9113,22 +9103,29 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 			}
 		}
 	}
+	mut converted_left := left
 	mut converted_right := right
-	left_kind := p.program.m.type_store.types[left.typ].kind
-	right_kind := p.program.m.type_store.types[right.typ].kind
-	if left.typ != right.typ && left_kind in [.int_t, .float_t] && right_kind in [
+	left_layout := p.program.m.type_store.types[left.typ]
+	right_layout := p.program.m.type_store.types[right.typ]
+	if left.typ != right.typ && left_layout.kind in [.int_t, .float_t] && right_layout.kind in [
 		.int_t,
 		.float_t,
 	] {
-		converted_right = p.convert_value(right, left.typ, left.typ_name)
+		left_is_constant := left.id > ssa.ValueID(0) && int(left.id) < p.program.m.values.len && p.program.m.values[left.id].kind == .constant
+		right_is_constant := right.id > ssa.ValueID(0) && int(right.id) < p.program.m.values.len && p.program.m.values[right.id].kind == .constant
+		if left_is_constant && !right_is_constant && op !in [.left_shift, .right_shift,
+			.right_shift_unsigned] {
+			converted_left = p.convert_value(left, right.typ, right.typ_name)
+		} else {
+			converted_right = p.convert_value(right, left.typ, left.typ_name)
+		}
 	}
 	result_type := if op in [.eq, .ne, .lt, .le, .gt, .ge, .and, .logical_or] {
 		p.program.i1_type
 	} else {
-		left.typ
+		converted_left.typ
 	}
-	is_unsigned := left.typ in [p.program.u8_type, p.program.u16_type, p.program.u32_type,
-		p.program.u64_type]
+	is_unsigned := p.program.m.type_store.types[converted_left.typ].is_unsigned
 	opcode := match op {
 		.plus { ssa.OpCode.add }
 		.minus { ssa.OpCode.sub }
@@ -9166,9 +9163,9 @@ fn (mut p FastArm64Parser) emit_binary(op token.Token, left FastArm64Value, righ
 		}
 	}
 	return FastArm64Value{
-		id: p.program.instr2(opcode, p.cur_block, result_type, left.id, converted_right.id)
+		id: p.program.instr2(opcode, p.cur_block, result_type, converted_left.id, converted_right.id)
 		typ: result_type
-		typ_name: if result_type == p.program.i1_type { 'bool' } else { left.typ_name }
+		typ_name: if result_type == p.program.i1_type { 'bool' } else { converted_left.typ_name }
 	}
 }
 
