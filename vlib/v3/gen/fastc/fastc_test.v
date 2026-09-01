@@ -1,6 +1,7 @@
 module fastc
 
 import os
+import strings
 import v3.cmdexec
 import v3.pref
 import v3.scanner
@@ -10357,6 +10358,52 @@ fn main() {}
 	assert c_source.contains('voidptr main__sum(Array_voidptr values)'), c_source
 	assert c_source.contains('return (voidptr){0};'), c_source
 	assert !c_source.contains('result+='), c_source
+}
+
+fn test_failed_generic_placeholder_block_unwinds_local_scope() {
+	mut prefs := pref.new_preferences()
+	prefs.building_v = true
+	source := 'mut local := result\nlocal += result\n}'
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('failed_generic_scope.v', source.len)
+	file.index_lines_without_digest(source)
+	mut g := Parser{
+		prefs: &prefs
+		selfhost: true
+		in_generic_placeholder: true
+		locals: {
+			'result': FastcLocal{
+				is_mut: true
+				typ: 'voidptr'
+			}
+		}
+		s: scanner.new_scanner(prefs, .normal)
+		out: strings.new_builder(64)
+		statement_reachable: true
+	}
+	for _ in 0 .. 3 {
+		out_checkpoint := g.out.len
+		g.s.init(file, source)
+		g.next()
+		mut body_end := g.s
+		mut body_depth := 1
+		for body_depth > 0 {
+			body_tok := body_end.scan()
+			if body_tok == .eof {
+				break
+			}
+			if body_tok == .lcbr {
+				body_depth++
+			} else if body_tok == .rcbr {
+				body_depth--
+			}
+		}
+		assert g.parse_generic_body_or_stub('voidptr', out_checkpoint, 0, body_end, false)
+		assert g.local_scope_depth == 0
+		assert g.local_scope_changes.len == 0
+		assert 'local' !in g.locals
+		assert g.locals['result'].typ == 'voidptr'
+	}
 }
 
 fn test_selfhost_erased_generic_type_reflection_uses_stub() {
