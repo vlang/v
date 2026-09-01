@@ -6379,6 +6379,65 @@ fn main() {
 	assert out == '0\nsource'
 }
 
+fn test_array_map_keeps_source_for_helper_forward_goto_alias() {
+	v3_bin := build_v3_review_transform_ownership()
+	source := 'struct Item {
+	text string
+}
+
+struct PointerBox {
+mut:
+	value &Item
+}
+
+fn store_after_goto(mut box PointerBox, value &Item, replacement &Item) {
+	mut local := PointerBox{
+		value: unsafe { replacement }
+	}
+	mut alias := &box
+	unsafe {
+		goto store
+	}
+	alias = &local
+	store:
+	alias.value = unsafe { value }
+}
+
+fn make_items() []Item {
+	return [Item{
+		text: "source"
+	}]
+}
+
+fn main() {
+	external := Item{
+		text: "external"
+	}
+	mut saved := PointerBox{
+		value: unsafe { &external }
+	}
+	selected := make_items().map(match true {
+		true {
+			store_after_goto(mut saved, unsafe { &it }, unsafe { &external })
+			0
+		}
+		else {
+			0
+		}
+	})
+	println(selected[0])
+	println(saved.value.text)
+}
+'
+	c_source := gen_c_from_source_with_flags(v3_bin, 'array_map_helper_goto_origin_c',
+		'-ownership', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	compact_main := main_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert !compact_main.contains('array__free(&(__map_source_'), main_body
+	out := run_good_with_flags(v3_bin, 'array_map_helper_goto_origin', '-ownership', source)
+	assert out == '0\nsource'
+}
+
 fn test_array_map_keeps_temporary_source_through_nested_local_selector_chain() {
 	v3_bin := build_v3_review_transform_ownership()
 	source := 'struct Item {
@@ -8111,8 +8170,9 @@ pub fn retained_text() string {
 		'api/invoke.v': 'module api
 
 pub fn invoke(callback fn (&Item), value &Item) {
-	alias := value
-	callback(alias)
+	callback_alias := callback
+	value_alias := value
+	callback_alias(value_alias)
 }
 '
 		'main.v':       'module main
