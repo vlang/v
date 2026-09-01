@@ -926,6 +926,85 @@ fn test_match_expr_zero_value_expansion_is_reserved() {
 	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_nested_optional_leaf_zero_value_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	optional := a.add_node(flat.Node{
+		kind: .call
+		value: 'maybe_big'
+		typ: '?[4096][]int'
+	})
+	expected := a.add_node(flat.Node{
+		kind: .ident
+		value: 'big'
+		typ: '[4096][]int'
+	})
+	comparison_start := a.children.len
+	a.children << optional
+	a.children << expected
+	comparison := a.add_node(flat.Node{
+		kind: .infix
+		op: .eq
+		typ: 'bool'
+		children_start: comparison_start
+		children_count: 2
+	})
+	fallback := a.add_node(flat.Node{
+		kind: .bool_literal
+		value: 'false'
+		typ: 'bool'
+	})
+	fallback_start := a.children.len
+	a.children << fallback
+	fallback_block := a.add_node(flat.Node{
+		kind: .block
+		children_start: fallback_start
+		children_count: 1
+	})
+	or_start := a.children.len
+	a.children << comparison
+	a.children << fallback_block
+	root := a.add_node(flat.Node{
+		kind: .or_expr
+		typ: 'bool'
+		children_start: or_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(optional), int(root) + 1) > deferred_map_expansion_threshold
+}
+
+fn test_forwarded_fixed_array_return_expansion_is_reserved() {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{
+		kind: .ident
+		value: 'values'
+		typ: '[4096]int'
+	})
+	return_start := a.children.len
+	a.children << value
+	return_stmt := a.add_node(flat.Node{
+		kind: .return_stmt
+		typ: '[4096]i64'
+		children_start: return_start
+		children_count: 1
+	})
+	fn_start := a.children.len
+	a.children << return_stmt
+	fn_decl := a.add_node(flat.Node{
+		kind: .fn_decl
+		value: 'forward'
+		typ: '[4096]i64'
+		children_start: fn_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.fn_span_map_expansion_estimate(int(value), int(fn_decl)) > deferred_map_expansion_threshold
+}
+
 fn test_or_expr_zero_value_expansion_is_reserved() {
 	mut a := flat.FlatAst.new()
 	optional_value := a.add_node(flat.Node{
