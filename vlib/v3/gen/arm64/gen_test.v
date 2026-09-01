@@ -134,6 +134,42 @@ fn test_c_homogeneous_float_aggregate_uses_simd_argument_registers() {
 	assert asm_fmov_d_x(1, Reg(9)) in words
 }
 
+fn test_c_homogeneous_float_aggregate_overflow_uses_the_stack() {
+	mut m := ssa.Module.new()
+	f64_type := m.type_store.get_float(64)
+	pair_type := m.type_store.register(ssa.Type{
+		kind: .struct_t
+		fields: [f64_type, f64_type]
+		is_c_struct: true
+	})
+	external_id := m.new_function('consume_pair', ssa.TypeID(0))
+	mut external := m.funcs[external_id]
+	external.is_c_extern = true
+	m.funcs[external_id] = external
+	consume := m.add_value(.func_ref, ssa.TypeID(0), 'consume_pair', external_id)
+	caller_id := m.new_function('caller', ssa.TypeID(0))
+	block_id := m.add_block(caller_id, 'entry')
+	mut operands := [consume]
+	for i in 1 .. 8 {
+		operands << m.add_value(.constant, f64_type, i.str(), 0)
+	}
+	pair := m.add_instr(.struct_init, block_id, pair_type, [])
+	operands << pair
+	call := m.add_instr(.call, block_id, ssa.TypeID(0), operands)
+	mut g := Gen.new(m)
+	g.reset_value_slots(&m.funcs[caller_id])
+	g.set_stack_slot(pair, -16)
+	g.gen_call(int(call), m.instrs[m.values[call].index])
+	mut words := []u32{}
+	for i := 0; i < g.macho.text_data.len; i += 4 {
+		words << read_u32_le(g.macho.text_data, i)
+	}
+	assert asm_str_imm(Reg(8), sp, 0) in words
+	assert asm_str_imm(Reg(8), sp, 1) in words
+	assert asm_ldur(Reg(0), fp, -16) !in words
+	assert asm_ldur(Reg(1), fp, -8) !in words
+}
+
 fn test_c_homogeneous_float_aggregate_return_uses_simd_registers() {
 	mut m := ssa.Module.new()
 	f64_type := m.type_store.get_float(64)
