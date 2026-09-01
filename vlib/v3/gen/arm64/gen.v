@@ -32,6 +32,15 @@ struct PendingJmp {
 	block_id int
 }
 
+struct Arm64HfaElement {
+	typ    ssa.TypeID
+	offset int
+}
+
+struct Arm64HfaLayout {
+	elements []Arm64HfaElement
+}
+
 // new creates a Gen value for arm64.
 pub fn Gen.new(m &ssa.Module) &Gen {
 	return &Gen{
@@ -486,6 +495,57 @@ fn (g &Gen) is_value_aggregate_type(typ_id ssa.TypeID) bool {
 	}
 	typ := g.m.type_store.types[typ_id]
 	return typ.kind in [.struct_t, .array_t]
+}
+
+fn (g &Gen) c_homogeneous_float_aggregate(typ_id ssa.TypeID) ?Arm64HfaLayout {
+	if !g.is_value_aggregate_type(typ_id) {
+		return none
+	}
+	mut elements := []Arm64HfaElement{cap: 4}
+	if !g.collect_homogeneous_float_elements(typ_id, 0, 0, mut elements) || elements.len == 0 || elements.len > 4 {
+		return none
+	}
+	element_type := elements[0].typ
+	for element in elements[1..] {
+		if element.typ != element_type {
+			return none
+		}
+	}
+	return Arm64HfaLayout{
+		elements: elements
+	}
+}
+
+fn (g &Gen) collect_homogeneous_float_elements(typ_id ssa.TypeID, base_offset int, depth int, mut elements []Arm64HfaElement) bool {
+	if typ_id <= 0 || typ_id >= g.m.type_store.types.len || depth > 8 || elements.len > 4 {
+		return false
+	}
+	typ := g.m.type_store.types[typ_id]
+	if typ.kind == .float_t {
+		elements << Arm64HfaElement{
+			typ: typ_id
+			offset: base_offset
+		}
+		return elements.len <= 4
+	}
+	if typ.kind == .array_t {
+		stride := g.m.type_size(typ.elem_type)
+		for i in 0 .. typ.len {
+			if !g.collect_homogeneous_float_elements(typ.elem_type, base_offset + i * stride, depth + 1, mut elements) {
+				return false
+			}
+		}
+		return true
+	}
+	if typ.kind != .struct_t || typ.is_union || typ.fields.len == 0 {
+		return false
+	}
+	for i, field_type in typ.fields {
+		if !g.collect_homogeneous_float_elements(field_type, base_offset + g.m.struct_field_offset(typ_id, i), depth + 1, mut elements) {
+			return false
+		}
+	}
+	return true
 }
 
 // is_zero_const reports whether is zero const applies in arm64.
@@ -1142,6 +1202,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	if !is_indirect {
 		fn_name = fn_ref.name
 	}
+	is_c_extern := !is_indirect && fn_ref.kind == .func_ref && fn_ref.index >= 0 && fn_ref.index < g.m.funcs.len && g.m.funcs[fn_ref.index].is_c_extern
 	ret_indirect := g.is_large_struct_type(instr.typ)
 
 	out_stack_size := g.call_stack_arg_size(instr)
@@ -1191,6 +1252,30 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 				stack_off += n_words * 8
 			}
 			continue
+		}
+		if is_c_extern {
+			if hfa := g.c_homogeneous_float_aggregate(arg_val.typ) {
+				if float_reg + hfa.elements.len <= 8 {
+					g.emit_homogeneous_float_aggregate(arg_id, hfa, float_reg)
+					float_reg += hfa.elements.len
+				} else {
+					n_words := (g.m.type_size(arg_val.typ) + 7) / 8
+					if off := g.stack_slot(arg_id) {
+						for wi in 0 .. n_words {
+							g.emit_load_fp(8, off + wi * 8)
+							g.emit_store_sp(8, stack_off + wi * 8)
+						}
+					} else if g.emit_value_address(arg_id, 9) {
+						for wi in 0 .. n_words {
+							g.emit_load_reg_offset(Reg(8), Reg(9), wi * 8)
+							g.emit_store_sp(8, stack_off + wi * 8)
+						}
+					}
+					stack_off += n_words * 8
+					float_reg = 8
+				}
+				continue
+			}
 		}
 
 		if arg_val.kind == .string_literal {
@@ -1330,8 +1415,6 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 		}
 	}
 
-	is_c_extern := fn_ref.kind == .func_ref && fn_ref.index >= 0 && fn_ref.index < g.m.funcs.len
-		&& g.m.funcs[fn_ref.index].is_c_extern
 	if is_indirect {
 		target_reg := g.load_val(fn_ref_id, 16)
 		g.emit32(asm_blr(Reg(target_reg)))
@@ -1381,6 +1464,26 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	}
 }
 
+fn (mut g Gen) emit_homogeneous_float_aggregate(arg_id int, layout Arm64HfaLayout, first_reg int) {
+	if !g.emit_value_address(arg_id, 8) {
+		return
+	}
+	for i, element in layout.elements {
+		mut address_reg := 8
+		if element.offset > 0 {
+			g.emit_mov_imm(10, i64(element.offset))
+			g.emit32(asm_add_reg(Reg(10), Reg(8), Reg(10)))
+			address_reg = 10
+		}
+		g.emit_load_typed(9, address_reg, element.typ)
+		if g.is_f32_type(element.typ) {
+			g.emit32(asm_fmov_s_w(first_reg + i, Reg(9)))
+		} else {
+			g.emit32(asm_fmov_d_x(first_reg + i, Reg(9)))
+		}
+	}
+}
+
 // call_returns_float updates call returns float state for Gen.
 fn (g &Gen) call_returns_float(fn_ref ssa.Value) bool {
 	if fn_ref.kind == .func_ref && fn_ref.index >= 0 && fn_ref.index < g.m.funcs.len {
@@ -1416,6 +1519,9 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 	mut arg_reg := 0
 	mut float_reg := 0
 	mut stack_words := 0
+	fn_ref_id := instr.operands[0]
+	fn_ref := g.m.values[fn_ref_id]
+	is_c_extern := fn_ref.kind == .func_ref && fn_ref.index >= 0 && fn_ref.index < g.m.funcs.len && g.m.funcs[fn_ref.index].is_c_extern
 	c_variadic_start := g.c_variadic_start(instr) or { -1 }
 	for ai in 1 .. instr.operands.len {
 		arg_id := instr.operands[ai]
@@ -1426,6 +1532,17 @@ fn (g &Gen) call_stack_arg_size(instr ssa.Instruction) int {
 		if c_variadic_start >= 0 && ai - 1 >= c_variadic_start {
 			stack_words += g.call_arg_word_count(arg_val)
 			continue
+		}
+		if is_c_extern {
+			if hfa := g.c_homogeneous_float_aggregate(arg_val.typ) {
+				if float_reg + hfa.elements.len <= 8 {
+					float_reg += hfa.elements.len
+				} else {
+					stack_words += (g.m.type_size(arg_val.typ) + 7) / 8
+					float_reg = 8
+				}
+				continue
+			}
 		}
 		if g.is_float_type(arg_val.typ) {
 			if float_reg < 8 {

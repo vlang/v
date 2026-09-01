@@ -1682,7 +1682,7 @@ fn main() {
 		println("wrong")
 		return
 	}
-	println("native")
+println("native")
 }
 '
 		os.write_file(source_path, source) or { panic(err) }
@@ -1693,6 +1693,40 @@ fn main() {
 		result := os.execute(output_path)
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
+	}
+}
+
+fn test_fastc_arm64_join_path_trim_keeps_owned_base_pointer() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_join_owned_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		os.write_file(source_path, 'import os
+
+fn C.free(value voidptr)
+
+fn main() {
+	path := os.join_path_single("", "file")
+	if path != "file" {
+		println("wrong")
+		return
+	}
+	unsafe { C.free(path.str) }
+	println("native")
+}
+') or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n', result.output
 	}
 }
 
