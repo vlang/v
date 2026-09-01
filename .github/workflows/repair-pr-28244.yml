@@ -10,12 +10,12 @@ permissions:
 
 concurrency:
   group: repair-pr-28244
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   repair:
     if: contains(github.event.head_commit.message, '[repair-pr-28244]')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, gitly-ci]
     timeout-minutes: 180
     env:
       ORIGINAL_BASE: cbf4e8509630da710d04cc9fd0f777761ebe55a7
@@ -189,7 +189,7 @@ jobs:
           # The connected GitHub client advances the PR branch so the resulting push is made
           # by a normal repository credential and triggers the repository's standard PR CI.
           # Keep this job alive long enough to remove the staging ref after that handoff.
-          for _ in $(seq 1 360); do
+          for ((i = 0; i < 360; i++)); do
             current=$(git ls-remote origin "refs/heads/${PR_BRANCH}" | awk '{print $1}')
             if [[ "$current" == "$final_sha" ]]; then
               git push origin --delete "$staging_branch"
