@@ -1045,6 +1045,53 @@ fn test_fastc_arm64_array_index_bounds() {
 	}
 }
 
+fn test_fastc_arm64_sizeof_is_unevaluated_and_array_shrinks_detach() {
+	$if arm64? {
+		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_sizeof_shrink_${os.getpid()}')
+		os.rmdir_all(test_dir) or {}
+		os.mkdir_all(test_dir) or { panic(err) }
+		defer {
+			os.rmdir_all(test_dir) or {}
+		}
+		source_path := os.join_path_single(test_dir, 'main.v')
+		output_path := os.join_path_single(test_dir, 'app')
+		source := '
+fn side_effect() int {
+	println("wrong")
+	return 1
+}
+
+fn main() {
+	mut clear_base := [1, 2]
+	clear_view := clear_base[..]
+	clear_base.clear()
+	clear_base << 9
+	mut trim_base := [3, 4, 5]
+	trim_view := trim_base[..]
+	trim_base.trim(1)
+	trim_base << 8
+	empty := []int{}
+	element_size := sizeof(empty[0])
+	call_size := sizeof(side_effect())
+	if clear_base != [9] || clear_view != [1, 2] || trim_base != [3, 8]
+		|| trim_view != [3, 4, 5] || element_size != sizeof(int) || call_size != sizeof(int) {
+		println("wrong")
+		return
+	}
+	println("native")
+}
+'
+		os.write_file(source_path, source) or { panic(err) }
+		mut prefs := pref.new_preferences()
+		prefs.backend = 'fastc'
+		prefs.user_defines = ['arm64']
+		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
+		result := os.execute(output_path)
+		assert result.exit_code == 0
+		assert result.output == 'native\n'
+	}
+}
+
 fn test_fastc_arm64_source_location_pseudo_values() {
 	$if arm64? {
 		test_dir := os.join_path(os.temp_dir(), 'fastc_arm64_location_${os.getpid()}')

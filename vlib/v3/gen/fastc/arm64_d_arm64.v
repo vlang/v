@@ -172,6 +172,17 @@ mut:
 	parsing_spawn            bool
 }
 
+struct FastArm64EmissionCheckpoint {
+	value_count           int
+	instruction_count     int
+	block_count           int
+	cur_block             ssa.BlockID
+	terminated            map[int]bool
+	native_used_functions map[string]bool
+	last_map_found        ssa.ValueID
+	parsing_spawn         bool
+}
+
 struct FastArm64Generation {
 	source_paths []string
 }
@@ -6395,13 +6406,40 @@ fn (mut p FastArm64Parser) parse_sizeof_expression() !FastArm64Value {
 			}
 		}
 	}
-	value := p.parse_expression(0)!
+	checkpoint := p.emission_checkpoint()
+	value := p.parse_expression(0) or {
+		p.discard_emission(checkpoint)
+		return err
+	}
+	p.discard_emission(checkpoint)
 	p.expect(.rpar)!
 	return FastArm64Value{
 		id: p.program.m.get_or_add_const(p.program.i64_type, p.program.m.type_size(value.typ).str())
 		typ: p.program.i64_type
 		typ_name: 'usize'
 	}
+}
+
+fn (p &FastArm64Parser) emission_checkpoint() FastArm64EmissionCheckpoint {
+	return FastArm64EmissionCheckpoint{
+		value_count: p.program.m.values.len
+		instruction_count: p.program.m.instrs.len
+		block_count: p.program.m.blocks.len
+		cur_block: p.cur_block
+		terminated: p.terminated.clone()
+		native_used_functions: p.program.native_used_function_names.clone()
+		last_map_found: p.last_map_found
+		parsing_spawn: p.parsing_spawn
+	}
+}
+
+fn (mut p FastArm64Parser) discard_emission(checkpoint FastArm64EmissionCheckpoint) {
+	p.program.m.discard_emission_since(checkpoint.value_count, checkpoint.instruction_count, checkpoint.block_count)
+	p.cur_block = checkpoint.cur_block
+	p.terminated = checkpoint.terminated
+	p.program.native_used_function_names = checkpoint.native_used_functions
+	p.last_map_found = checkpoint.last_map_found
+	p.parsing_spawn = checkpoint.parsing_spawn
 }
 
 fn (mut p FastArm64Parser) zero_value(typ ssa.TypeID, type_name string) FastArm64Value {
@@ -7876,6 +7914,7 @@ fn (mut p FastArm64Parser) parse_selector(value FastArm64Value) !FastArm64Value 
 				array_slot = p.program.instr0(.alloca, p.cur_block, p.program.m.type_store.get_ptr(p.program.array_type))
 				p.program.instr2(.store, p.cur_block, p.program.void_type, value.id, array_slot)
 			}
+			p.emit_array_detach_if_slice(array_slot, 'array_${member}')
 			length_ptr := p.program.struct_field_ptr(p.cur_block, array_slot, p.program.array_type, 2)
 			mut new_length := length.id
 			if member == 'trim' {

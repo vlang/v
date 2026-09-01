@@ -630,6 +630,50 @@ pub fn (mut m Module) detach_instruction_uses(value_id ValueID) {
 	}
 }
 
+// discard_emission_since removes transient SSA emitted after the supplied
+// module sizes while retaining type registrations performed during parsing.
+pub fn (mut m Module) discard_emission_since(value_count int, instruction_count int, block_count int) {
+	for value_index in value_count .. m.values.len {
+		if m.values[value_index].kind == .instruction {
+			m.detach_instruction_uses(ValueID(value_index))
+		}
+	}
+	old_block_count := if block_count < m.blocks.len { block_count } else { m.blocks.len }
+	for block_index in 0 .. old_block_count {
+		mut block := m.blocks[block_index]
+		for block.instrs.len > 0 && int(block.instrs[block.instrs.len - 1]) >= value_count {
+			block.instrs.delete_last()
+		}
+		m.blocks[block_index] = block
+	}
+	if block_count < m.blocks.len {
+		m.blocks.trim(block_count)
+	}
+	for function_index in 0 .. m.funcs.len {
+		mut function := m.funcs[function_index]
+		for function.blocks.len > 0
+			&& int(function.blocks[function.blocks.len - 1]) >= block_count {
+			function.blocks.delete_last()
+		}
+		m.funcs[function_index] = function
+	}
+	mut stale_constants := []string{}
+	for key, value_id in m.const_cache {
+		if int(value_id) >= value_count {
+			stale_constants << key
+		}
+	}
+	for key in stale_constants {
+		m.const_cache.delete(key)
+	}
+	if instruction_count < m.instrs.len {
+		m.instrs.trim(instruction_count)
+	}
+	if value_count < m.values.len {
+		m.values.trim(value_count)
+	}
+}
+
 // add_block updates add block state for Module.
 pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 	id := BlockID(m.blocks.len)
