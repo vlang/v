@@ -1178,6 +1178,72 @@ fn test_fn_span_map_expansion_estimate_defers_nested_map_lvalue_key_clone() {
 	assert t.fn_span_map_expansion_estimate(0, int(assignment) + 1) > deferred_map_expansion_threshold
 }
 
+fn test_fn_span_map_expansion_estimate_defers_outer_nested_map_assignment_key_clone() {
+	$if !ownership? {
+		return
+	}
+	mut a := flat.FlatAst.new()
+	items := a.add_node(flat.Node{
+		kind: .ident
+		value: 'items'
+		typ: 'map[Wide]map[string]int'
+	})
+	outer_key := a.add_node(flat.Node{
+		kind: .ident
+		value: 'outer_key'
+		typ: 'Wide'
+	})
+	outer_start := a.children.len
+	a.children << items
+	a.children << outer_key
+	outer_index := a.add_node(flat.Node{
+		kind: .index
+		typ: 'map[string]int'
+		children_start: outer_start
+		children_count: 2
+	})
+	inner_key := a.add_node(flat.Node{
+		kind: .string_literal
+		value: 'inner'
+		typ: 'string'
+	})
+	inner_start := a.children.len
+	a.children << outer_index
+	a.children << inner_key
+	inner_index := a.add_node(flat.Node{
+		kind: .index
+		typ: 'int'
+		children_start: inner_start
+		children_count: 2
+	})
+	rhs := a.add_node(flat.Node{
+		kind: .int_literal
+		value: '1'
+		typ: 'int'
+	})
+	assignment_start := a.children.len
+	a.children << inner_index
+	a.children << rhs
+	assignment := a.add_node(flat.Node{
+		kind: .index_assign
+		op: .assign
+		children_start: assignment_start
+		children_count: 2
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.collect(&a)
+	tc.structs['Wide'] = [types.StructField{
+		name: 'text'
+		typ: tc.parse_type('string')
+	}]
+	tc.struct_implements['Wide'] = ['IClone']
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+
+	assert t.map_assignment_lvalue_key_clone_expands(inner_index)
+	assert t.ownership_map_assignment_clone_expands(a.nodes[int(assignment)])
+	assert t.fn_span_map_expansion_estimate(0, int(assignment) + 1) > deferred_map_expansion_threshold
+}
+
 fn test_fn_span_map_expansion_estimate_defers_owned_method_value_receiver_clone() {
 	$if !ownership? {
 		return

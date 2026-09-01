@@ -822,10 +822,10 @@ fn (mut t Transformer) ownership_map_assignment_clone_expands(node flat.Node) bo
 		return false
 	}
 	lhs_id := t.a.child(&node, 0)
-	info := t.map_assignment_underlying_index_info(lhs_id) or { return false }
-	if t.ownership_borrowed_map_key_clone_expands(info.key_id, info.key_type) {
+	if t.map_assignment_lvalue_key_clone_expands(lhs_id) {
 		return true
 	}
+	info := t.map_assignment_underlying_index_info(lhs_id) or { return false }
 	if node.op != .assign {
 		return false
 	}
@@ -853,6 +853,26 @@ fn (mut t Transformer) map_assignment_underlying_index_info(id flat.NodeId) ?Map
 		current = t.a.child(&node, 0)
 	}
 	return none
+}
+
+fn (mut t Transformer) map_assignment_lvalue_key_clone_expands(id flat.NodeId) bool {
+	mut current := id
+	for _ in 0 .. 32 {
+		if info := t.map_index_info(current) {
+			if t.ownership_borrowed_map_key_clone_expands(info.key_id, info.key_type) {
+				return true
+			}
+		}
+		if int(current) < 0 || int(current) >= t.a.nodes.len {
+			return false
+		}
+		node := t.a.nodes[int(current)]
+		if node.kind !in [.selector, .index, .paren] || node.children_count == 0 {
+			return false
+		}
+		current = t.a.child(&node, 0)
+	}
+	return false
 }
 
 fn (mut t Transformer) ownership_method_value_clone_expands(id flat.NodeId, node flat.Node) bool {
