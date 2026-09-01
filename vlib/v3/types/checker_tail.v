@@ -6368,7 +6368,14 @@ fn (tc &TypeChecker) array_accessor_membership_has_overloaded_equality(consumer 
 
 fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op flat.Op, mut seen map[string]bool) bool {
 	raw := unwrap_pointer(typ)
-	semantic_op := if op == .ne { flat.Op.eq } else { op }
+	// `>`, `>=`, `<=` all lower to the type's `<` method (reversed/negated), and `!=`
+	// lowers to `==`; normalize to the underlying operator so the overload is detected
+	// however the comparison is spelled.
+	semantic_op := match op {
+		.ne { flat.Op.eq }
+		.gt, .ge, .le { flat.Op.lt }
+		else { op }
+	}
 	key := raw.name()
 	if seen[key] {
 		return false
