@@ -3769,6 +3769,26 @@ fn (mut t Transformer) array_map_update_local_pointer_origins_flow(stmt_id flat.
 			}
 			return true
 		}
+		// An unresolved comptime condition compiles exactly one branch, but which one is
+		// unknown here. Conservatively union both branches so a pointer rebind to external
+		// storage in either branch is preserved instead of dropped.
+		before := locals.clone()
+		mut merged := map[string]bool{}
+		mut continues := stmt.children_count <= 1
+		for name, origin in before {
+			merged[name] = if stmt.children_count > 1 { false } else { origin }
+		}
+		for i in 0 .. stmt.children_count {
+			mut branch := before.clone()
+			if t.array_map_update_local_pointer_origins_flow(t.a.child(&stmt, i), elem_name, mut branch, mut loop_exits, mut return_exits, '', active_defer_count) {
+				continues = true
+				array_map_merge_local_pointer_origins(mut merged, branch, before)
+			}
+		}
+		if continues {
+			locals = merged.move()
+		}
+		return continues
 	}
 	if stmt.kind == .or_expr {
 		if stmt.children_count == 0 {
