@@ -9329,6 +9329,20 @@ fn (tc &TypeChecker) storage_lvalue_is_rooted_at_param_alias(id flat.NodeId, nam
 	return true
 }
 
+fn (tc &TypeChecker) storage_local_pointer_alias_name(id flat.NodeId) ?string {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .ident {
+		return if unalias_type(tc.resolve_type(id)) is Pointer { node.value } else { none }
+	}
+	if node.kind in [.paren, .cast_expr, .as_expr] && node.children_count > 0 {
+		return tc.storage_local_pointer_alias_name(tc.a.child(&node, 0))
+	}
+	return none
+}
+
 fn (tc &TypeChecker) collect_storage_source_params(id flat.NodeId, aliases map[string][]int, target_param_idx int, mut sources []int) {
 	if !tc.valid_node_id(id) {
 		return
@@ -9813,6 +9827,8 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 				param_offset := if is_method { 1 } else { 0 }
 				mut nested_target_idxs := []int{}
 				mut nested_target_ids := []flat.NodeId{}
+				mut rebound_alias_names := []string{}
+				mut rebound_target_idxs := []int{}
 				callee := tc.a.child_node(&node, 0)
 				if is_method && receiver_is_mut && callee.kind == .selector
 					&& callee.children_count > 0
@@ -9823,14 +9839,47 @@ fn (tc &TypeChecker) collect_param_storage_sources(id flat.NodeId, target_name s
 				for i in 1 .. node.children_count {
 					arg_id := tc.a.child(&node, i)
 					arg := tc.a.nodes[int(arg_id)]
-					if arg.is_mut
-						&& tc.storage_lvalue_is_rooted_at_param_alias(arg_id, target_name, aliases, target_param_idx) {
-						nested_target_idx := i - 1 + param_offset
+					if !arg.is_mut {
+						continue
+					}
+					nested_target_idx := i - 1 + param_offset
+					if tc.storage_lvalue_is_rooted_at_param_alias(arg_id, target_name, aliases, target_param_idx) {
 						if nested_target_idx !in nested_target_idxs {
 							nested_target_idxs << nested_target_idx
 							nested_target_ids << arg_id
 						}
+					} else if alias_name := tc.storage_local_pointer_alias_name(tc.call_arg_value(arg_id)) {
+						if alias_name != target_name && alias_name !in rebound_alias_names {
+							rebound_alias_names << alias_name
+							rebound_target_idxs << nested_target_idx
+						}
 					}
+				}
+				for alias_i, nested_target_idx in rebound_target_idxs {
+					nested_writes := tc.param_storage_writes_for_decl(decl, nested_target_idx, mut visiting)
+					source_param_idxs := nested_writes[''] or { continue }
+					definite_paths := tc.param_storage_direct_definite_write_paths_for_decl(decl, nested_target_idx)
+					alias_name := rebound_alias_names[alias_i]
+					mut call_sources := if '' in definite_paths && nested_target_idx !in source_param_idxs {
+						[]int{}
+					} else {
+						aliases[alias_name].clone()
+					}
+					for source_param_idx in source_param_idxs {
+						mut source_id := flat.empty_node
+						if is_method && source_param_idx == 0 && callee.kind == .selector && callee.children_count > 0 {
+							source_id = tc.a.child(callee, 0)
+						} else {
+							child_idx := source_param_idx - param_offset + 1
+							if child_idx >= 1 && child_idx < node.children_count {
+								source_id = tc.a.child(&node, child_idx)
+							}
+						}
+						if tc.valid_node_id(source_id) {
+							tc.collect_storage_source_params(source_id, aliases, target_param_idx, mut call_sources)
+						}
+					}
+					aliases[alias_name] = call_sources
 				}
 				for nested_target_i, nested_target_idx in nested_target_idxs {
 					target_path := tc.storage_lvalue_path_from_param(nested_target_ids[nested_target_i],
