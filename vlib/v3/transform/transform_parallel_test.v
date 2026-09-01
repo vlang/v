@@ -1035,6 +1035,64 @@ fn test_forwarded_wrapped_fixed_array_return_expansion_is_reserved() {
 	assert t.fn_span_map_expansion_estimate(int(value), int(fn_decl)) > deferred_map_expansion_threshold
 }
 
+fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
+	mut array_ast := flat.FlatAst.new()
+	array_value := array_ast.add_node(flat.Node{
+		kind: .ident
+		value: 'values'
+		typ: '[][4096]int'
+	})
+	array_return_start := array_ast.children.len
+	array_ast.children << array_value
+	array_return := array_ast.add_node(flat.Node{
+		kind: .return_stmt
+		typ: '[][4096]i64'
+		children_start: array_return_start
+		children_count: 1
+	})
+	array_fn_start := array_ast.children.len
+	array_ast.children << array_return
+	array_fn := array_ast.add_node(flat.Node{
+		kind: .fn_decl
+		value: 'promote_array'
+		typ: '[][4096]i64'
+		children_start: array_fn_start
+		children_count: 1
+	})
+	mut array_tc := types.TypeChecker.new(&array_ast)
+	mut array_transformer := new_transformer(mut array_ast, &array_tc, map[string]bool{})
+	assert array_transformer.fn_span_map_expansion_estimate(int(array_value), int(array_fn)) >
+		deferred_map_expansion_threshold
+
+	mut map_ast := flat.FlatAst.new()
+	map_value := map_ast.add_node(flat.Node{
+		kind: .ident
+		value: 'values'
+		typ: 'map[string][4096]int'
+	})
+	map_return_start := map_ast.children.len
+	map_ast.children << map_value
+	map_return := map_ast.add_node(flat.Node{
+		kind: .return_stmt
+		typ: 'map[string][4096]i64'
+		children_start: map_return_start
+		children_count: 1
+	})
+	map_fn_start := map_ast.children.len
+	map_ast.children << map_return
+	map_fn := map_ast.add_node(flat.Node{
+		kind: .fn_decl
+		value: 'promote_map'
+		typ: 'map[string][4096]i64'
+		children_start: map_fn_start
+		children_count: 1
+	})
+	mut map_tc := types.TypeChecker.new(&map_ast)
+	mut map_transformer := new_transformer(mut map_ast, &map_tc, map[string]bool{})
+	assert map_transformer.fn_span_map_expansion_estimate(int(map_value), int(map_fn)) >
+		deferred_map_expansion_threshold
+}
+
 fn test_disabled_call_zero_value_expansion_is_reserved() {
 	mut a := flat.FlatAst.new()
 	callee := a.add_node(flat.Node{
