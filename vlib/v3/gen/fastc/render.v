@@ -886,6 +886,34 @@ fn (g &Parser) render_overloaded_binary_expression(tokens []FastcExpressionToken
 	}
 }
 
+// fastc_contains_method_marker reports whether `rendered` contains a call of
+// `name` on a receiver, i.e. `.name(` or `->name(`, without building the
+// marker strings.
+@[direct_array_access]
+fn fastc_contains_method_marker(rendered string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut from := 0
+	for from + name.len < rendered.len {
+		index := rendered.index_after_(name, from)
+		if index < 0 {
+			return false
+		}
+		// An occurrence at the start has no receiver before it; keep scanning
+		// past it (and past any other non-call occurrence).
+		end := index + name.len
+		if index > 0 && end < rendered.len && rendered[end] == `(` {
+			previous := rendered[index - 1]
+			if previous == `.` || (previous == `>` && index > 1 && rendered[index - 2] == `-`) {
+				return true
+			}
+		}
+		from = index + 1
+	}
+	return false
+}
+
 fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionToken, rendered_expression string) ?FastcRenderedExpression {
 	if tokens.len < 3 {
 		return none
@@ -898,9 +926,7 @@ fn (g &Parser) render_pointer_member_access_expression(tokens []FastcExpressionT
 		// still needs promotion here. A real method call is rendered later with
 		// its receiver and arguments, so preserve the old early exit for it.
 		is_qualified_call := tokens[i - 1].tok == .name && (tokens[i - 1].lit in g.imports || tokens[i - 1].lit == 'C') && (i < 2 || tokens[i - 2].tok != .dot)
-		method_marker := '.${tokens[i + 1].lit}('
-		pointer_method_marker := '->${tokens[i + 1].lit}('
-		if !is_qualified_call && (rendered_expression.contains(method_marker) || rendered_expression.contains(pointer_method_marker)) {
+		if !is_qualified_call && fastc_contains_method_marker(rendered_expression, tokens[i + 1].lit) {
 			return none
 		}
 	}

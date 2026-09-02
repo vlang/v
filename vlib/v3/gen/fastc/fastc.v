@@ -824,6 +824,8 @@ struct FastcLoadedSource {
 	header        FastcSourceHeader
 	failed        bool
 	error_message string
+	// stamp is the file version the memo preload observed (zero when unknown).
+	stamp FastcFileStamp
 }
 
 struct FastcHoistedCSource {
@@ -945,6 +947,9 @@ struct FastcEnumInfo {
 }
 
 struct FastcTypeDeclarations {
+	// declarations_head precedes the composite typedefs (type ids and forward
+	// typedefs) and declarations follows them (the type bodies).
+	declarations_head   string
 	declarations        string
 	enum_string_helpers string
 	alias_base_types    map[string]string
@@ -977,6 +982,10 @@ struct Parser {
 	// Generic methods (own type param) not resolved by the source-level pass, kept so a
 	// `recv.m(arg)` call can be monomorphized on demand at parse time (see anonfn/drain).
 	generic_method_sources map[string]FastcGenericMethodSource
+	// generic_method_names holds the bare names of the generic methods and
+	// functions, so an expression can skip the monomorphization scan unless
+	// its last name could be one.
+	generic_method_names map[string]bool
 	// A module imported under a second name that re-exports another (e.g. `json2` aliased
 	// at `x.json2`): resolves `<alias>.<sym>` to the loaded `<target>.<sym>`.
 	module_aliases map[string]string
@@ -1237,12 +1246,41 @@ struct FastcFileGenContext {
 	fixed_array_types         map[string]string
 	composite_types           map[string]bool
 	generic_method_sources    map[string]FastcGenericMethodSource
+	generic_method_names      map[string]bool
 	module_aliases            map[string]string
 }
 
 // FastcFileGenOutput is one source file's generation result. The sequential
 // stitch loop consumes them in file order, so parallel workers never touch
 // the shared output builders or the merged registration maps.
+// FastcFileGenResult is every file's generation output in file order with the
+// union of the composite and fixed-array types they registered.
+struct FastcFileGenResult {
+	outputs           []FastcFileGenOutput
+	composite_types   map[string]bool
+	fixed_array_types map[string]string
+}
+
+// fastc_file_gen_result wraps serially generated outputs with their type
+// registrations.
+fn fastc_file_gen_result(outputs []FastcFileGenOutput) FastcFileGenResult {
+	mut composite_types := map[string]bool{}
+	mut fixed_array_types := map[string]string{}
+	for output in outputs {
+		for name, _ in output.composite_types {
+			composite_types[name] = true
+		}
+		for name, array_type in output.fixed_array_types {
+			fixed_array_types[name] = array_type
+		}
+	}
+	return FastcFileGenResult{
+		outputs: outputs
+		composite_types: composite_types
+		fixed_array_types: fixed_array_types
+	}
+}
+
 struct FastcFileGenOutput {
 mut:
 	prototypes        string
@@ -1293,6 +1331,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		struct_field_info: ctx.struct_field_info
 		struct_field_lookup: ctx.struct_field_lookup
 		generic_method_sources: ctx.generic_method_sources
+		generic_method_names: ctx.generic_method_names
 		module_aliases: ctx.module_aliases
 		generated_mono: map[string]bool{}
 		mono_functions: map[string]FastcFunctionSignature{}
@@ -1324,6 +1363,14 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		loop_has_breaks: []bool{}
 		statement_reachable: true
 	}
+	// The per-file lookup memos fill up quickly; size them once instead of
+	// rehashing through the small capacities.
+	gen.unqualified_key_memo.reserve(128)
+	gen.c_function_name_memo.reserve(128)
+	gen.nonlocal_name_type_memo.reserve(128)
+	gen.resolved_name_memo.reserve(128)
+	gen.declared_type_key_memo.reserve(128)
+	gen.comparison_memo.reserve(64)
 	gen.s.init(file, source_file.source)
 	generated := gen.run() or {
 		return FastcFileGenOutput{
@@ -1372,8 +1419,6 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
 	mut enum_flags := map[string]bool{}
 	mut params_structs := map[string]bool{}
-	mut struct_fields := map[string]map[string]string{}
-	mut struct_field_info := map[string][]FastcStructField{}
 	mut constants := map[string]string{}
 	mut public_constants := map[string]bool{}
 	mut globals := map[string]string{}
@@ -1381,8 +1426,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut type_source_paths := map[string]bool{}
 	mut type_sources := map[string]string{}
 	mut constant_sources := map[string]string{}
-	generic_method_sources := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
+	mut constant_spans := map[string][]int{}
+	mut global_sources := map[string]string{}
+	generic_method_sources := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
 	timer.mark('declaration_indexes')
+	// The type declarations depend only on the declaration index, so they are
+	// rendered on a worker while the signatures are collected below; the
+	// composite typedefs that precede them need both and are rendered after.
+	mut pending_types := fastc_start_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants)
 	// The sources are final now; split the oversized ones for parallel
 	// generation while the declaration phases run.
 	mut pending_fragments := fastc_start_generation_fragments(sources, prefs)
@@ -1422,7 +1473,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			fastc_register_composite_type(parameter_type, mut composite_types)
 		}
 	}
-	type_output := fastc_generate_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut struct_fields, mut struct_field_info, mut composite_types)!
+	mut type_result := fastc_wait_type_declarations(mut pending_types)!
+	for name, _ in type_result.composite_types {
+		composite_types[name] = true
+	}
+	composite_typedefs := fastc_composite_typedefs(composite_types)
+	type_output := type_result.output
+	struct_fields := type_result.struct_fields.move()
+	mut struct_field_info := type_result.struct_field_info.move()
 	timer.mark('type_declarations')
 	declared_composite_types := composite_types.clone()
 	type_declarations := type_output.declarations
@@ -1438,12 +1496,12 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// The field lists are final; index them by name for generation while the
 	// constant and global phases run.
 	mut pending_field_lookup := fastc_start_struct_field_lookup(struct_field_info, prefs)
-	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
+	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, constant_spans, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
 		composite_types[name] = true
 	}
-	global_output := fastc_generate_global_declarations(ordered_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
+	global_output := fastc_generate_global_declarations(ordered_sources, global_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, constant_output.compile_time_values, public_constants, constant_types, globals, public_globals, mut global_types)!
 	timer.mark('global_declarations')
 	for name, _ in global_output.composite_types {
 		composite_types[name] = true
@@ -1496,6 +1554,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		struct_field_info: struct_field_info
 		struct_field_lookup: struct_field_lookup
 		generic_method_sources: generic_method_sources
+		generic_method_names: fastc_generic_method_names(generic_method_sources)
 		module_aliases: module_aliases
 		interface_fields: interface_fields
 		constants: constants
@@ -1518,7 +1577,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut c_flags := []string{}
 	generation_sources := fastc_wait_generation_fragments(mut pending_fragments)
 	timer.mark('wait_fragments')
-	outputs := fastc_generate_file_outputs(&ctx, generation_sources)
+	generation := fastc_generate_file_outputs(&ctx, generation_sources)
+	outputs := generation.outputs
 	timer.mark('file_outputs')
 	// Size the stitch buffers up front: the per-file bodies add up to several
 	// megabytes, and growing the builders by doubling would copy that text
@@ -1528,6 +1588,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		prototypes_size += output.prototypes.len
 	}
 	prototypes.ensure_cap(prototypes_size + 1024)
+	timer.mark('stitch.size')
 	for output in outputs {
 		if output.failed {
 			return error(output.error_message)
@@ -1543,21 +1604,17 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 				kind: line.kind
 			}
 		}
-		mut mono_names := output.mono_definitions.keys()
-		mono_names.sort()
-		for mono_name in mono_names {
-			if mono_name !in mono_definitions {
-				mono_definitions[mono_name] = output.mono_definitions[mono_name]
+		if output.mono_definitions.len > 0 {
+			mut mono_names := output.mono_definitions.keys()
+			mono_names.sort()
+			for mono_name in mono_names {
+				if mono_name !in mono_definitions {
+					mono_definitions[mono_name] = output.mono_definitions[mono_name]
+				}
 			}
 		}
 		if output.has_main_entry {
 			entry_has_main = true
-		}
-		for name, array_type in output.fixed_array_types {
-			fixed_array_types[name] = array_type
-		}
-		for name, _ in output.composite_types {
-			composite_types[name] = true
 		}
 		for name, text in output.spawn_typedefs {
 			spawn_typedefs[name] = text
@@ -1567,6 +1624,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		c_flags << output.c_flags
 	}
+	for name, array_type in generation.fixed_array_types {
+		fixed_array_types[name] = array_type
+	}
+	for name, _ in generation.composite_types {
+		composite_types[name] = true
+	}
+	timer.mark('stitch.outputs')
 	mut mono_names := mono_definitions.keys()
 	mono_names.sort()
 	timer.mark('stitch')
@@ -1626,6 +1690,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << '\n'
 	}
 	pieces << constant_output.macros
+	pieces << type_output.declarations_head
+	pieces << composite_typedefs
 	pieces << type_declarations
 	pieces << late_composite_declarations.str()
 	pieces << fixed_array_declarations
@@ -1699,6 +1765,16 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	timer.mark('assemble')
 	return pieces, spawn_typedefs.len > 0, c_flags
+}
+
+// fastc_generic_method_names collects the bare method and function names of
+// the generic sources, the last dotted component of their keys.
+fn fastc_generic_method_names(generic_method_sources map[string]FastcGenericMethodSource) map[string]bool {
+	mut names := map[string]bool{}
+	for key, _ in generic_method_sources {
+		names[key.all_after_last('.')] = true
+	}
+	return names
 }
 
 // fastc_build_struct_field_lookup indexes every struct's fields by name.

@@ -1910,12 +1910,11 @@ fn fastc_replace_c_call_identifier(source string, identifier string, replacement
 	mut out := strings.new_builder(source.len + replacement.len)
 	mut start := 0
 	for start < source.len {
-		remaining := source[start..]
-		relative := remaining.index(identifier) or {
-			out.write_string(remaining)
+		index := source.index_after_(identifier, start)
+		if index < 0 {
+			unsafe { out.write_ptr(source.str + start, source.len - start) }
 			break
 		}
-		index := start + relative
 		end := index + identifier.len
 		before_is_name_or_member := index > 0 && (source[index - 1].is_alnum() || source[index - 1] in [
 			`_`,
@@ -1925,7 +1924,7 @@ fn fastc_replace_c_call_identifier(source string, identifier string, replacement
 		for after < source.len && source[after] in [` `, `\t`, `\r`, `\n`] {
 			after++
 		}
-		out.write_string(source[start..index])
+		unsafe { out.write_ptr(source.str + start, index - start) }
 		if before_is_name_or_member || after >= source.len || source[after] != `(` {
 			out.write_string(identifier)
 		} else {
@@ -1943,17 +1942,16 @@ fn fastc_replace_c_root_identifier(source string, identifier string, replacement
 	mut out := strings.new_builder(source.len + replacement.len)
 	mut start := 0
 	for start < source.len {
-		remaining := source[start..]
-		relative := remaining.index(identifier) or {
-			out.write_string(remaining)
+		index := source.index_after_(identifier, start)
+		if index < 0 {
+			unsafe { out.write_ptr(source.str + start, source.len - start) }
 			break
 		}
-		index := start + relative
 		end := index + identifier.len
 		before_is_name := index > 0 && (source[index - 1].is_alnum() || source[index - 1] == `_`)
 		before_is_member := index > 0 && source[index - 1] in [`.`, `>`]
 		after_is_name := end < source.len && (source[end].is_alnum() || source[end] == `_`)
-		out.write_string(source[start..index])
+		unsafe { out.write_ptr(source.str + start, index - start) }
 		if before_is_name || before_is_member || after_is_name {
 			out.write_string(identifier)
 		} else {
@@ -1971,16 +1969,15 @@ fn fastc_replace_c_identifier(source string, identifier string, replacement stri
 	mut out := strings.new_builder(source.len + replacement.len)
 	mut start := 0
 	for start < source.len {
-		remaining := source[start..]
-		relative := remaining.index(identifier) or {
-			out.write_string(remaining)
+		index := source.index_after_(identifier, start)
+		if index < 0 {
+			unsafe { out.write_ptr(source.str + start, source.len - start) }
 			break
 		}
-		index := start + relative
 		end := index + identifier.len
 		before_is_name := index > 0 && (source[index - 1].is_alnum() || source[index - 1] == `_`)
 		after_is_name := end < source.len && (source[end].is_alnum() || source[end] == `_`)
-		out.write_string(source[start..index])
+		unsafe { out.write_ptr(source.str + start, index - start) }
 		if before_is_name || after_is_name {
 			out.write_string(identifier)
 		} else {

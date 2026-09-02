@@ -230,6 +230,11 @@ fn (mut g Parser) queue_expression_monomorphization(tokens []FastcExpressionToke
 	if !g.selfhost || g.in_generic_placeholder || g.generic_method_sources.len == 0 {
 		return none
 	}
+	// Every recognizer below keys the generic source by the expression's last
+	// name, so an expression ending in any other name cannot queue anything.
+	if tokens.len == 0 || tokens.last().tok != .name || tokens.last().lit !in g.generic_method_names {
+		return none
+	}
 	if mono := g.queue_explicit_mono_method(tokens) {
 		return mono
 	}

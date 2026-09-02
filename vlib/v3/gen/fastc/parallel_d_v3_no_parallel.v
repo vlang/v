@@ -30,6 +30,26 @@ fn fastc_wait_interface_dispatches(mut pending FastcPendingInterfaceDispatches) 
 	return pending.dispatches
 }
 
+fn fastc_preload_memo(memo_path string, memo FastcResolveMemo, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
+	probe_tasks := fastc_memo_probe_tasks(memo)
+	mut probe_results := []FastcMemoResult{len: probe_tasks.len}
+	for index, task in probe_tasks {
+		probe_results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
+	}
+	mut loaded := fastc_apply_memo_results(probe_tasks, probe_results, prefs, mut module_path_cache, mut module_dir_files)
+	blob := fastc_read_memo_blob(memo_path, memo)
+	current_stamps := fastc_memo_current_stamps(probe_tasks, probe_results, memo.files.len)
+	read_tasks := fastc_memo_read_tasks(memo, current_stamps, blob)
+	mut read_results := []FastcMemoResult{len: read_tasks.len}
+	for index, task in read_tasks {
+		read_results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
+	}
+	for path, source in fastc_apply_memo_results(read_tasks, read_results, prefs, mut module_path_cache, mut module_dir_files) {
+		loaded[path] = source
+	}
+	return loaded
+}
+
 // fastc_preload_sources is a no-op without threads: the ordering walk loads
 // each file itself.
 fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string, mut real_path_cache map[string]string) map[string]FastcLoadedSource {
@@ -45,10 +65,28 @@ fn fastc_collect_generic_method_sources(mut sources []FastcSourceFile, prefs &pr
 	return partial.sources
 }
 
-fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) !map[string]FastcGenericMethodSource {
+fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut constant_spans map[string][]int, mut global_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) !map[string]FastcGenericMethodSource {
 	generic_method_sources := fastc_collect_generic_method_sources(mut sources, prefs)
-	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
+	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
 	return generic_method_sources
+}
+
+struct FastcPendingTypeDeclarations {
+mut:
+	result FastcTypeDeclarationResult
+}
+
+fn fastc_start_type_declarations(sources []FastcSourceFile, type_sources map[string]string, prefs &pref.Preferences, type_source_paths map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool) FastcPendingTypeDeclarations {
+	return FastcPendingTypeDeclarations{
+		result: fastc_run_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants)
+	}
+}
+
+fn fastc_wait_type_declarations(mut pending FastcPendingTypeDeclarations) !FastcTypeDeclarationResult {
+	if pending.result.failed {
+		return error(pending.result.error_message)
+	}
+	return pending.result
 }
 
 struct FastcPendingFieldLookup {
@@ -81,12 +119,12 @@ fn fastc_wait_generation_fragments(mut pending FastcPendingFragments) []FastcSou
 	return pending.fragments
 }
 
-fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) []FastcFileGenOutput {
+fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) FastcFileGenResult {
 	mut outputs := []FastcFileGenOutput{cap: sources.len}
 	for source_file in sources {
 		outputs << fastc_generate_single_file(ctx, source_file)
 	}
-	return outputs
+	return fastc_file_gen_result(outputs)
 }
 
 fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]map[string]bool, mut top_level_references map[string]bool) {
@@ -95,9 +133,9 @@ fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Prefe
 	}
 }
 
-fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) ! {
+fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut constant_spans map[string][]int, mut global_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	partial := fastc_collect_declaration_chunk(sources, prefs, 0, sources.len)
-	fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
+	fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut constant_spans, mut global_sources, mut globals, mut public_globals)!
 }
 
 fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {

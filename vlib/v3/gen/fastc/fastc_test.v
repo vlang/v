@@ -7,6 +7,23 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+fn test_contains_method_marker() {
+	// A leading occurrence of the name is not a call; the scan must go on to
+	// a later `.name(` or `->name(`.
+	assert fastc_contains_method_marker('foo + ptr.foo(1)', 'foo')
+	assert fastc_contains_method_marker('foo + ptr->foo(1)', 'foo')
+	assert fastc_contains_method_marker('foo(1) + x.foo(2)', 'foo')
+	assert fastc_contains_method_marker('bar.foo()', 'foo')
+	assert fastc_contains_method_marker('a->foo()', 'foo')
+	assert !fastc_contains_method_marker('foo(1)', 'foo')
+	assert !fastc_contains_method_marker('foo + foo', 'foo')
+	assert !fastc_contains_method_marker('x.foobar(1)', 'foo')
+	assert !fastc_contains_method_marker('x.foo', 'foo')
+	assert !fastc_contains_method_marker('xfoo(1)', 'foo')
+	assert !fastc_contains_method_marker('', 'foo')
+	assert !fastc_contains_method_marker('x.foo(1)', '')
+}
+
 fn test_selfhost_shared_keyword_local_is_preserved() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
