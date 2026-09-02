@@ -16437,6 +16437,45 @@ fn (tc &TypeChecker) resolve_index_base_value_type(base_type Type) Type {
 }
 
 // c_type supports c type handling for TypeChecker.
+// c_extern_abi_type spells `t` the way a C extern declaration lowers it for ABI
+// comparison: V's platform `int` stays C `int` (via prim_c_type) instead of
+// widening to its value spelling (`i64` on 64-bit). This mirrors the codegen
+// rule that C extern declarations keep C `int`, so two decls of the same C
+// function that mix `int` and `i32` remain ABI-compatible (both are 32-bit C
+// int), while a genuine `int` vs `i64` mismatch is still rejected. It recurses
+// through pointers, aliases, and function types so `int` is treated as C `int`
+// anywhere inside a C ABI signature. For every non-int shape it produces exactly
+// what c_type would, so it never widens the set of "compatible" signatures.
+fn (tc &TypeChecker) c_extern_abi_type(t Type) string {
+	if t is Primitive {
+		return prim_c_type(t)
+	}
+	if t is Pointer {
+		return tc.c_extern_abi_type(t.base_type) + '*'
+	}
+	if t is Alias {
+		return tc.c_extern_abi_type(t.base_type)
+	}
+	if t is FnType {
+		ret := tc.c_extern_abi_type(t.return_type)
+		if t.params.len == 0 {
+			return 'fn_ptr:${ret}|void'
+		}
+		mut params := []string{}
+		for i in 0 .. t.params.len {
+			mut param_type := fn_param_type(t, i)
+			if fn_param_is_mut(t, i) && param_type !is Pointer {
+				param_type = Type(Pointer{
+					base_type: param_type
+				})
+			}
+			params << tc.c_extern_abi_type(param_type)
+		}
+		return 'fn_ptr:${ret}|${params.join(', ')}'
+	}
+	return tc.c_type(t)
+}
+
 pub fn (tc &TypeChecker) c_type(t Type) string {
 	if tc.type_cache == unsafe { nil } || isnil(tc.type_interner) {
 		return tc.c_type_uncached(t)

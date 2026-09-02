@@ -7330,6 +7330,18 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							g.known_expr_type_id = int(arg_id)
 							g.known_expr_type = arg_type
 							g.gen_expr_with_expected_type(arg_id, param_types[arg_idx])
+						} else if is_c_call && !needs_addr {
+							// Lower the argument to the C ABI: platform `int` stays C `int`
+							// (value and callback-pointer args), matching the extern signature.
+							if cabi := g.c_call_arg_cabi_cast(arg_idx, typed_param_count,
+								param_types, arg_id, is_native_variadic_fn)
+							{
+								g.write('(${cabi})(')
+								g.gen_expr(arg_id)
+								g.write(')')
+							} else {
+								g.gen_expr(arg_id)
+							}
 						} else {
 							g.gen_expr(arg_id)
 						}
@@ -14913,6 +14925,15 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				&& g.voidptr_value_arg_needs_address(arg_id, arg_node, g.usable_expr_type(arg_id), param_types[arg_idx], true) {
 				g.write('&')
 				g.gen_expr(arg_id)
+			} else if cabi := g.c_call_arg_cabi_cast(arg_idx, typed_param_count, param_types,
+				arg_id, is_native_variadic_fn)
+			{
+				// Lower the argument to the C ABI: platform `int` stays C `int` (value
+				// and callback-pointer args, plus `%d`-style value varargs), matching the
+				// extern signature.
+				g.write('(${cabi})(')
+				g.gen_expr(arg_id)
+				g.write(')')
 			} else {
 				g.gen_expr(arg_id)
 			}
@@ -16649,7 +16670,12 @@ fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_with_filter(referenced map[stri
 			continue
 		}
 		ret_type := g.parse_node_type(&node)
-		g.preseed_fn_ptr_type(ret_type)
+		// Register the C-ABI fn-pointer variants (int kept as C int) that the extern
+		// declaration will reference, so parallel workers see the same typedefs; fall
+		// back to the ordinary preseed for non-interop types.
+		if _ := g.c_extern_interop_type_name(ret_type) {} else {
+			g.preseed_fn_ptr_type(ret_type)
+		}
 		for j in 0 .. node.children_count {
 			param_id := g.a.child(&node, j)
 			p := g.a.node(param_id)
@@ -16660,7 +16686,10 @@ fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_with_filter(referenced map[stri
 			if raw_typ.len == 0 || raw_typ.starts_with('...') {
 				continue
 			}
-			g.preseed_fn_ptr_type(g.tc.parse_type(raw_typ))
+			pt := g.tc.parse_type(raw_typ)
+			if _ := g.c_extern_interop_type_name(pt) {} else {
+				g.preseed_fn_ptr_type(pt)
+			}
 		}
 	}
 }
@@ -17198,9 +17227,13 @@ const c_static_helper_symbols = {
 // declaration's parameter/return type, or none when the default naming applies.
 // V's platform `int` lowers to `i64` for V code, but a `C.` prototype must match
 // the real C ABI (which uses `int`), so the platform `int` stays C `int` here;
-// V inserts the i64<->int conversion at the call boundary. Pointers to `int`
-// follow. Explicit `i64` is unaffected (it is a differently-sized Primitive).
-fn (g &FlatGen) c_extern_interop_type_name(t types.Type) ?string {
+// V inserts the i64<->int conversion at the call boundary. Explicit `i64` is
+// unaffected (it is a differently-sized Primitive). The lowering recurses so
+// `int` stays C `int` anywhere inside a C ABI signature: through pointers,
+// aliases, and function-pointer parameters/returns (e.g. a C callback
+// `fn (voidptr, int, int)` keeps its `int` arguments, since C invokes it with
+// 32-bit ints).
+fn (mut g FlatGen) c_extern_interop_type_name(t types.Type) ?string {
 	if t is types.Primitive {
 		if t.size == 0 && t.props.has(.integer) && !t.props.has(.unsigned) {
 			return 'int'
@@ -17210,6 +17243,74 @@ fn (g &FlatGen) c_extern_interop_type_name(t types.Type) ?string {
 	if t is types.Pointer {
 		base := g.c_extern_interop_type_name(t.base_type)?
 		return base + '*'
+	}
+	if t is types.Alias {
+		// A `type Cb = fn (int)` alias over a function type must still keep C `int`
+		// inside the C ABI; alias-over-`int` likewise. Non-interop bases return none.
+		return g.c_extern_interop_type_name(t.base_type)
+	}
+	if t is types.FnType {
+		return g.c_extern_fn_ptr_type_name(t)
+	}
+	return none
+}
+
+// c_extern_fn_ptr_type_name registers and returns the typedef name for a
+// function-pointer type appearing in a C ABI signature, with the platform `int`
+// kept as C `int` throughout its return and parameter types. It mirrors
+// fn_ptr_type_key's encoding so the C-ABI variant is a distinct typedef from the
+// ordinary (i64) one.
+fn (mut g FlatGen) c_extern_fn_ptr_type_name(t types.FnType) string {
+	ret := if t.return_type is types.Void {
+		'void'
+	} else {
+		g.c_extern_interop_type_name(t.return_type) or { g.tc.c_type(t.return_type) }
+	}
+	if t.params.len == 0 {
+		return g.resolve_fn_ptr_type('fn_ptr:${ret}|void')
+	}
+	mut params := []string{}
+	for i in 0 .. t.params.len {
+		pt := fn_type_effective_param(t, i)
+		params << (g.c_extern_interop_type_name(pt) or { g.tc.c_type(pt) })
+	}
+	return g.resolve_fn_ptr_type('fn_ptr:${ret}|${params.join(', ')}')
+}
+
+// c_call_arg_cabi_cast returns the C spelling to cast a C-call argument to so it
+// matches the C ABI, or none when no cast is needed. For a fixed parameter it is
+// the parameter's C-ABI type (platform `int` -> C `int`, callback fn-pointers kept
+// C-`int`); this both keeps value `int`s ABI-correct and lets an `int`-typed V
+// function value pass to a C-`int` callback pointer. For a variadic-tail argument
+// it casts only a plain platform-`int` *value* to C `int` (so it occupies an
+// `int` slot for `%d`); `&int` out-arguments still need a temporary/copy-back and
+// are left untouched here.
+fn (mut g FlatGen) c_call_arg_cabi_cast(arg_idx int, typed_param_count int, param_types []types.Type, arg_id flat.NodeId, is_variadic bool) ?string {
+	if arg_idx >= 0 && arg_idx < typed_param_count {
+		ct := g.c_extern_interop_type_name(param_types[arg_idx])?
+		// A scalar `int` parameter needs no cast: C converts the i64 argument to the
+		// declared `int` automatically. Pointer and callback (fn-pointer) parameters
+		// do need the explicit cast to avoid an incompatible-pointer/-function-pointer
+		// error, since C does not implicitly convert those.
+		if ct == 'int' {
+			return none
+		}
+		return ct
+	}
+	if is_variadic {
+		// A variadic argument has no declared type, so an i64 value would occupy a
+		// `long long` slot while `%d` reads an `int`; cast platform-`int` *values* to
+		// C `int`. Literals are already `int`, and `&int` out-arguments need a
+		// temporary/copy-back (not a cast), so both are left untouched.
+		arg_node := g.a.nodes[int(arg_id)]
+		if arg_node.kind == .int_literal {
+			return none
+		}
+		at := cgen_unalias_type(g.tc.resolve_type(arg_id))
+		if at is types.Primitive && at.size == 0 && at.props.has(.integer)
+			&& !at.props.has(.unsigned) {
+			return 'int'
+		}
 	}
 	return none
 }

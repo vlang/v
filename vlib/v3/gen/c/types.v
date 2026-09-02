@@ -968,10 +968,31 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		g.emitted_optional_types[opt_name] = true
 		return false
 	}
+	// A `?fn (...)` payload names a `_fn_ptr_<hash>` typedef. That typedef may only
+	// have been registered (name reserved) without being emitted — e.g. discovered
+	// via an unused declaration whose param resolves to a different C spelling than a
+	// resolved use (`fn (int)` keyed as `fn_ptr:void|int` vs the emitted
+	// `fn_ptr:void|i64` once `int` widens to i64). Emit the referenced fn-ptr typedef
+	// now so this wrapper never references an undefined type.
+	if bare_val_type.starts_with('_fn_ptr_') {
+		g.ensure_fn_ptr_typedef_by_name(bare_val_type)
+	}
 	err_field := if g.has_ierror_interface() { 'IError err; ' } else { '' }
 	g.writeln('typedef struct ${opt_name} { bool ok; ${err_field}${val_type} value; } ${opt_name};')
 	g.emitted_optional_types[opt_name] = true
 	return true
+}
+
+// ensure_fn_ptr_typedef_by_name emits the `_fn_ptr_<hash>` typedef registered under
+// `name` when it has not been emitted yet. Used when an emitted type references a
+// fn-ptr typedef that was only registered (name reserved) but never resolved/used.
+fn (mut g FlatGen) ensure_fn_ptr_typedef_by_name(name string) {
+	for encoded, registered_name in g.fn_ptr_types {
+		if registered_name == name {
+			g.emit_fn_ptr_typedef(encoded, name, mut g.emitted_fn_ptr_typedefs)
+			return
+		}
+	}
 }
 
 // enum_decls supports enum decls handling for FlatGen.

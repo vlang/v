@@ -321,7 +321,10 @@ fn main() {
 ')
 	primitive_param_compile := callback_compile(v3_bin, wrong_primitive_param,
 		'wrong_primitive_param')
-	assert primitive_param_compile.exit_code != 0, primitive_param_compile.output
+	// With the platform `int` lowered to `i64`, `fn (int)` and `fn (i64)` share the
+	// same width and C spelling, so assigning a `fn (int)` value to a `fn (i64)`
+	// field is accepted rather than rejected.
+	assert primitive_param_compile.exit_code == 0, primitive_param_compile.output
 
 	homonym_root := os.join_path(os.temp_dir(), 'v3_callback_userdata_homonym_${os.getpid()}')
 	os.rmdir_all(homonym_root) or {}
