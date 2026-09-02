@@ -749,7 +749,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			for wrapper_parens < expression_tokens.len && expression_tokens[wrapper_parens].tok == .lpar {
 				wrapper_parens++
 			}
-			raw_option_buffer := result.str()
+			raw_option_buffer := fastc_take_string(mut result)
 			mut option_expression := raw_option_buffer.trim_space()
 			mut value_type := g.expected_expression_type
 			mut option_tokens := expression_tokens.clone()
@@ -1083,7 +1083,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 					continue
 				}
 				g.expected_expression_type = saved_expected_expression_type
-				return result.str().trim_space()
+				return fastc_take_trimmed(mut result)
 			}
 			previous_err := g.locals['err'] or { FastcLocal{} }
 			had_err := 'err' in g.locals
@@ -1724,7 +1724,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		g.validate_expression_field_visibility(expression_tokens)!
 		g.validate_expression_calls(expression_tokens)!
 	}
-	mut rendered_expression := result.str().trim_space()
+	mut rendered_expression := fastc_take_trimmed(mut result)
 	rendered_expression = g.render_enum_alias_member_references(expression_tokens, rendered_expression)
 	rendered_expression = g.render_constant_references(expression_tokens, rendered_expression)
 	if special := g.render_special_expression(expression_tokens, rendered_expression) {

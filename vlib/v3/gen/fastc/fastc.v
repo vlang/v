@@ -887,6 +887,27 @@ pub fn write_c_pieces(path string, pieces []string) ! {
 	file.close()
 }
 
+// fastc_take_string turns a builder's contents into a string without copying
+// them: the builder's buffer becomes the string and the builder is left
+// empty, exactly as `str()` leaves it.
+fn fastc_take_string(mut b strings.Builder) string {
+	b << u8(0)
+	taken := unsafe { (&u8(b.data)).vstring_with_len(b.len - 1) }
+	b = strings.new_builder(0)
+	return taken
+}
+
+// fastc_take_trimmed is fastc_take_string followed by trim_space, copying
+// only when there is whitespace to trim.
+fn fastc_take_trimmed(mut b strings.Builder) string {
+	taken := fastc_take_string(mut b)
+	left, right := taken.trim_indexes(' \n\t\v\f\r')
+	if left == 0 && right == taken.len {
+		return taken
+	}
+	return taken.substr(left, right)
+}
+
 fn fastc_join_c_pieces(pieces []string) string {
 	mut size := 0
 	for piece in pieces {
@@ -1416,7 +1437,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		}
 	}
 	return FastcFileGenOutput{
-		prototypes: gen.protos.str()
+		prototypes: fastc_take_string(mut gen.protos)
 		body: generated
 		directive_lines: fastc_scan_c_directive_lines(generated)
 		has_main_entry: source_file.header.module_name in ['', 'main'] && gen.has_main

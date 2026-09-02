@@ -10,7 +10,7 @@ import v3.scanner
 fn (mut g Parser) run() !string {
 	g.next()
 	g.parse_top_level_items(false)!
-	generated := g.out.str()
+	generated := fastc_take_string(mut g.out)
 	g.drain_pending_mono()!
 	return generated
 }
