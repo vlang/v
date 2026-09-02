@@ -190,7 +190,10 @@ scan and the declaration index share one pass, the split of oversized files into
 fragments and the by-name struct field index are built on workers while the declaration phases
 run, and the generated C is returned as ordered pieces (whole per-file bodies are shared rather
 than copied into one buffer; only bodies cut around C directive lines are copied) that the drivers
-write directly.
+write directly. The declaration index records the text spans of each file's constant and global
+declarations: a large file's constants are parsed as separate parallel candidates (merged in
+source order), and the global phase parses only the recorded global declarations instead of
+whole files.
 
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed

@@ -316,21 +316,38 @@ fn fastc_register_constant(module_name string, name string, is_public bool, path
 	}
 }
 
-fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool, mut global_paths map[string]string) ! {
+// collect_global_names registers a file's globals and appends the text of
+// their declarations (and of the comptime blocks that select them) to
+// `global_source`, so the global phase parses only that text.
+fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool, mut global_paths map[string]string, mut global_source strings.Builder) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut depth := 0
 	mut previous_tok := token.Token.unknown
+	mut previous_pos := 0
+	mut emitted_end := 0
+	// A single `__global name = value` declaration runs to the next top-level
+	// statement end; its span is closed there.
+	mut pending_start := -1
 	mut tok := scan.scan()
 	for tok != .eof {
 		if depth == 0 && tok == .dollar {
+			comptime_start := scan.pos
 			mut lookahead := scan
 			if lookahead.scan() == .key_if {
+				globals_before := globals.len
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
+				comptime_end := if selected.tok == .eof { scan.offset } else { scan.pos }
 				if selected.source != '' {
+					mut selected_source := strings.new_builder(64)
 					collect_global_names(selected.source, path, header, prefs, mut globals, mut
-						public_globals, mut global_paths)!
+						public_globals, mut global_paths, mut selected_source)!
+				}
+				if globals.len > globals_before {
+					fastc_append_filtered_source_span(source, emitted_end, comptime_start,
+						comptime_end, mut global_source)
+					emitted_end = comptime_end
 				}
 				tok = selected.tok
 				previous_tok = .unknown
@@ -339,6 +356,7 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 		}
 		if depth == 0 && tok == .key_global {
 			is_public := previous_tok == .key_pub
+			declaration_start := if is_public { previous_pos } else { scan.pos }
 			tok = scan.scan()
 			if tok == .lpar {
 				tok = scan.scan()
@@ -355,13 +373,24 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 					}
 					tok = scan.scan()
 				}
+				declaration_end := if tok == .rpar { scan.offset } else { scan.pos }
+				fastc_append_filtered_source_span(source, emitted_end, declaration_start,
+					declaration_end, mut global_source)
+				emitted_end = declaration_end
 				continue
 			}
 			if tok == .name && scan.lit != 'C' {
 				fastc_register_global(header, scan.lit, is_public, path, prefs, mut globals, mut
 					public_globals, mut global_paths)!
 			}
+			pending_start = declaration_start
 			continue
+		}
+		if pending_start >= 0 && depth == 0 && tok == .semicolon {
+			fastc_append_filtered_source_span(source, emitted_end, pending_start, scan.pos, mut
+				global_source)
+			emitted_end = scan.pos
+			pending_start = -1
 		}
 		if tok == .lcbr {
 			depth++
@@ -369,7 +398,12 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 			depth--
 		}
 		previous_tok = tok
+		previous_pos = scan.pos
 		tok = scan.scan()
+	}
+	if pending_start >= 0 {
+		fastc_append_filtered_source_span(source, emitted_end, pending_start, source.len, mut
+			global_source)
 	}
 }
 
@@ -404,6 +438,7 @@ mut:
 	constant_paths      map[string]string
 	constant_sources    map[string]string
 	constant_spans      map[string][]int
+	global_sources      map[string]string
 	globals             map[string]string
 	public_globals      map[string]bool
 	global_paths        map[string]string
@@ -464,18 +499,23 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 			}
 		}
 		if source_file.header.has_global_declarations {
+			mut global_source := strings.new_builder(256)
 			collect_global_names(source_file.source, source_file.path, source_file.header, prefs, mut
-				partial.globals, mut partial.public_globals, mut partial.global_paths) or {
+				partial.globals, mut partial.public_globals, mut partial.global_paths, mut
+				global_source) or {
 				partial.failed = true
 				partial.error_message = err.msg()
 				return partial
+			}
+			if global_source.len > 0 {
+				partial.global_sources[source_file.path] = global_source.str()
 			}
 		}
 	}
 	return partial
 }
 
-fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut constant_spans map[string][]int, mut globals map[string]string, mut public_globals map[string]bool) ! {
+fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut constant_spans map[string][]int, mut global_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	if partial.failed {
 		return error(partial.error_message)
 	}
@@ -515,6 +555,9 @@ fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared
 	for path, spans in partial.constant_spans {
 		constant_spans[path] = spans
 	}
+	for path, source in partial.global_sources {
+		global_sources[path] = source
+	}
 	for key, c_name in partial.globals {
 		if key in globals {
 			return error('fastc parser does not support duplicate global `${key.all_after_last('.')}` in ${partial.global_paths[key]}')
@@ -526,7 +569,7 @@ fn fastc_merge_declaration_partial(partial FastcDeclarationPartial, mut declared
 	}
 }
 
-fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
+fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_sources map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, constant_values map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, mut global_types map[string]string) !FastcGlobalDeclarations {
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
@@ -534,11 +577,9 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, prefs &
 	mut fixed_array_types := map[string]string{}
 	helper_has_c_functions := fastc_functions_declare_c(functions)
 	for source_file in ordered_sources {
-		if !source_file.header.has_global_declarations {
-			continue
-		}
+		global_source := global_sources[source_file.path] or { continue }
 		mut initializers := strings.new_builder(256)
-		file := token.File.unindexed(source_file.path, source_file.source.len)
+		file := token.File.unindexed(source_file.path, global_source.len)
 		mut gen := Parser{
 			prefs:                        unsafe { prefs }
 			unqualified_key_memo: map[string]string{}
@@ -580,7 +621,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, prefs &
 			composite_types:              map[string]bool{}
 			fixed_array_types:            map[string]string{}
 		}
-		gen.s.init(file, source_file.source)
+		gen.s.init(file, global_source)
 		gen.next()
 		gen.parse_selected_global_declarations(mut out, mut initializers, false)!
 		global_types = gen.global_types.move()
