@@ -2157,7 +2157,7 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, source
 				{
 					out.writeln('\t${declaration};')
 				} else {
-					out.writeln('\t${emitted_field_type} ${c_field_name};')
+					out.writeln('\t${fastc_output_c_type(emitted_field_type)} ${c_field_name};')
 				}
 			}
 			fields_by_name[field_name] = emitted_field_type

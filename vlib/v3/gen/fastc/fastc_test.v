@@ -163,8 +163,8 @@ fn main() {
 }
 ', 'shared_keyword_local.v', prefs) or { panic(err) }
 	assert c_source.contains('shared.value=1;'), c_source
-	assert c_source.contains('int id(int shared);'), c_source
-	assert c_source.contains('int id(int shared) {'), c_source
+	assert c_source.contains('i64 id(i64 shared);'), c_source
+	assert c_source.contains('i64 id(i64 shared) {'), c_source
 	assert c_source.contains('println(shared.value)'), c_source
 	assert c_source.contains('consume(&(shared));'), c_source
 	assert c_source.contains('consume(&((shared)));'), c_source
@@ -174,7 +174,7 @@ fn main() {
 	assert c_source.contains('consume(&(type));'), c_source
 	assert c_source.contains('__typeof__(((Box){})) shared = ((Box){});'), c_source
 	assert c_source.contains('return shared;'), c_source
-	assert c_source.contains('int pair(int shared, int other)'), c_source
+	assert c_source.contains('i64 pair(i64 shared, i64 other)'), c_source
 	assert c_source.contains('return shared+other;'), c_source
 	assert c_source.contains('return shared^2;'), c_source
 	assert !c_source.contains('return &shared'), c_source
@@ -366,7 +366,7 @@ fn main() {
 	println(shared)
 }
 ', 'selfhost_static_shared_local.v', prefs) or { panic(err) }
-	assert c_source.contains('__typeof__((1)) shared = (1);'), c_source
+	assert c_source.contains('i64 shared = (1);'), c_source
 	assert c_source.contains('println(shared)'), c_source
 }
 
@@ -831,11 +831,11 @@ fn twice(value int) int {
 '
 	prefs := pref.new_preferences()
 	c_source := generate(source, 'fastc_test.v', prefs) or { panic(err) }
-	assert c_source.contains('__typeof__((0)) total = (0);')
+	assert c_source.contains('i64 total = (0);')
 	assert c_source.contains('string label = ("total=");')
 	assert c_source.contains('__v_fastc_range_start_0 = (0);')
 	assert c_source.contains('__v_fastc_range_end_1 = (3);')
-	assert c_source.contains('int twice(int value);')
+	assert c_source.contains('i64 twice(i64 value);')
 	assert c_source.contains('setvbuf(stdout, NULL, _IONBF, 0);')
 	assert !c_source.contains('v3.flat')
 
@@ -1049,7 +1049,7 @@ fn main() {
 ', 'conditional_scope.c.v', prefs) or { panic(err) }
 	type_index := c_source.index('struct Holder {') or { -1 }
 	if_index := c_source.index('#if 1') or { -1 }
-	definition_index := c_source.index('int optional(Holder value) {') or { -1 }
+	definition_index := c_source.index('i64 optional(Holder value) {') or { -1 }
 	endif_index := c_source.index_after('#endif', definition_index) or { -1 }
 	assert type_index >= 0
 	assert if_index > type_index
@@ -1532,7 +1532,7 @@ fn test_generate_files_resolves_modules_without_an_ast() {
 	mut prefs := pref.new_preferences()
 	prefs.module_search_paths = [root]
 	c_source := generate_files([main_file], prefs) or { panic(err) }
-	assert c_source.contains('int mathutil__twice(int value);')
+	assert c_source.contains('i64 mathutil__twice(i64 value);')
 	assert c_source.contains('println(mathutil__twice(21));'), c_source
 
 	c_file := os.join_path(root, 'program.c')
@@ -1830,7 +1830,7 @@ fn main() {
 	_ := Worker.shared()
 }
 ', 'selfhost_static_method_shared.v', prefs) or { panic(err) }
-	assert c_source.contains('int Worker_shared(void)'), c_source
+	assert c_source.contains('i64 Worker_shared(void)'), c_source
 	assert c_source.contains('Worker_shared()'), c_source
 }
 

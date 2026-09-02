@@ -2070,7 +2070,7 @@ fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressio
 		inner := g.render_selfhost_simple_array_literal_item(tokens[2..3], cast_type) or {
 			return none
 		}
-		return '((${cast_type})(${inner}))'
+		return '((${fastc_output_c_type(cast_type)})(${inner}))'
 	}
 	if tokens.len != 1 || tokens[0].source != '' {
 		return none

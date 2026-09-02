@@ -1682,7 +1682,7 @@ fn (mut g FlatGen) interface_method_forward_decls() {
 				continue
 			}
 			if cn == 'IError' {
-				ret_ct := if method == 'code' { 'int' } else { 'string' }
+				ret_ct := if method == 'code' { g.int_ct } else { 'string' }
 				g.writeln('${ret_ct} ${cn}__${method}(${cn}* i);')
 				if g.cache_split {
 					g.ierror_dispatch_target_forward_decls(iface_name, method, ret_ct)
@@ -1799,7 +1799,7 @@ fn (g &FlatGen) open_interface_dispatch_needs_specialization(iface_name string, 
 
 fn (mut g FlatGen) interface_dispatch_signature(iface_name string, cn string, method string) string {
 	if cn == 'IError' {
-		ret_ct := if method == 'code' { 'int' } else { 'string' }
+		ret_ct := if method == 'code' { g.int_ct } else { 'string' }
 		return '${ret_ct} ${cn}__${method}(${cn}* i)'
 	}
 	mname := '${iface_name}.${method}'
@@ -1873,7 +1873,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	decl_key := g.interface_method_signature_key(iface_name, method) or { mname }
 	impls := g.iface_impls[iface_name] or { []string{} }
 	if cn == 'IError' {
-		ret_ct := if method == 'code' { 'int' } else { 'string' }
+		ret_ct := if method == 'code' { g.int_ct } else { 'string' }
 		g.writeln('${ret_ct} ${cn}__${method}(${cn}* i) {')
 		for concrete in impls {
 			id := g.iface_type_id(iface_name, concrete)

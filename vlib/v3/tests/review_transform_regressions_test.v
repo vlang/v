@@ -12560,7 +12560,7 @@ fn main() {
 		assert body.contains('int* local ='), body
 	}
 	builtin_body := c_fn_body(c_source, 'int* make_builtin_memdup(void) {')
-	assert builtin_body.contains('int local = 44;'), builtin_body
+	assert builtin_body.contains('i64 local = 44;'), builtin_body
 	assert builtin_body.contains('memdup(&local, sizeof(int))'), builtin_body
 }
 
