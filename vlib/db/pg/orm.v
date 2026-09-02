@@ -351,10 +351,17 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []i32, mut formats 
 			formats << 1
 		}
 		int {
-			types << u32(Oid.t_int4)
-			num := conv.hton32(u32(data))
-			vals << &char(&num)
-			lens << i32(sizeof(int))
+			$if new_int ? && x64 {
+				types << u32(Oid.t_int8)
+				num := conv.hton64(u64(data))
+				vals << &char(&num)
+				lens << i32(sizeof(i64))
+			} $else {
+				types << u32(Oid.t_int4)
+				num := conv.hton32(u32(data))
+				vals << &char(&num)
+				lens << i32(sizeof(i32))
+			}
 			formats << 1
 		}
 		i64 {
@@ -461,7 +468,14 @@ fn pg_type_from_v(typ int) !string {
 		orm.type_idx['bool'] {
 			'BOOLEAN'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'] {
+		orm.type_idx['int'] {
+			$if new_int ? && x64 {
+				'BIGINT'
+			} $else {
+				'INT'
+			}
+		}
+		orm.type_idx['u32'] {
 			'INT'
 		}
 		orm.time_ {
