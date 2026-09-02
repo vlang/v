@@ -1,0 +1,50 @@
+import v.embed_file
+
+fn maybe_file() ?embed_file.EmbedFileData {
+	return none
+}
+
+fn yes() bool {
+	return true
+}
+
+fn zero() int {
+	return 0
+}
+
+fn main() {
+	fallback := $embed_file(@FILE)
+	embedded_if := if yes() {
+		unsafe { $embed_file(@FILE) }
+	} else {
+		fallback
+	}
+	embedded_match := match zero() {
+		0 { unsafe { $embed_file(@FILE) } }
+		else { fallback }
+	}
+
+	embedded_or := maybe_file() or { unsafe { $embed_file(@FILE) } }
+	embedded_nested_if := unsafe {
+		if yes() {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	}
+	embedded_nested_match := unsafe {
+		match zero() {
+			0 { $embed_file(@FILE) }
+			else { fallback }
+		}
+	}
+	embedded_nested_or := unsafe {
+		maybe_file() or { $embed_file(@FILE) }
+	}
+	assert embedded_if.len > 0
+	assert embedded_match.len > 0
+	assert embedded_or.len > 0
+	assert embedded_nested_if.len > 0
+	assert embedded_nested_match.len > 0
+	assert embedded_nested_or.len > 0
+}

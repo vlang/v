@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_as_or_block_result_with_selector_propagation.vv:28:9: error: undefined ident: `missing_symbol`
+   26 |     assert data.path.len > 0
+   27 |     assert sink == 0
+   28 |     sink = missing_symbol
+      |            ~~~~~~~~~~~~~~
+   29 | }

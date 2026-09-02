@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_non_result_if_with_sql_condition.vv:12:4: error: expression evaluated but not used
+   10 |             select from User
+   11 |         }).len > 0 {
+   12 |             $embed_file(@FILE)
+      |             ~~~~~~~~~~~~~~~~~~
+   13 |         } else {
+   14 |             fallback
