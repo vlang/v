@@ -597,6 +597,8 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			declaration_initializer_mode: true
 			has_c_functions:              helper_has_c_functions
 			comparison_memo:              map[i64]FastcRenderedExpression{}
+			type_memo:              map[i64]string{}
+			method_key_memo:              map[string]map[string]string{}
 			spawn_typedefs:               map[string]string{}
 			spawn_helpers:                map[string]string{}
 			thread_value_types:           map[string]string{}
@@ -883,6 +885,8 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				declaration_initializer_mode: true
 				has_c_functions:              helper_has_c_functions
 				comparison_memo:              map[i64]FastcRenderedExpression{}
+				type_memo:              map[i64]string{}
+				method_key_memo:              map[string]map[string]string{}
 				spawn_typedefs:               map[string]string{}
 				spawn_helpers:                map[string]string{}
 				thread_value_types:           map[string]string{}
@@ -997,6 +1001,8 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 		declaration_initializer_mode: true
 		has_c_functions:              ctx.has_c_functions
 		comparison_memo:              map[i64]FastcRenderedExpression{}
+		type_memo:              map[i64]string{}
+		method_key_memo:              map[string]map[string]string{}
 		spawn_typedefs:               map[string]string{}
 		spawn_helpers:                map[string]string{}
 		thread_value_types:           map[string]string{}

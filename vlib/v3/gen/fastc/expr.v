@@ -175,11 +175,16 @@ fn (mut g Parser) read_expression_with_prefix_mode(prefix string, stops []token.
 		g.last_option_value_type = ''
 	}
 	g.expression_depth++
-	if g.expression_depth == 1 && g.comparison_memo.len > 0 {
-		// Memoized comparison renders are only valid while the expression's
-		// token buffers and locals are live and unchanged; a new top-level
-		// expression starts a fresh generation.
-		g.comparison_memo.clear()
+	if g.expression_depth == 1 {
+		// Memoized comparison renders and inferred types are only valid while
+		// the expression's token buffers and locals are live and unchanged; a
+		// new top-level expression starts a fresh generation.
+		if g.comparison_memo.len > 0 {
+			g.comparison_memo.clear()
+		}
+		if g.type_memo.len > 0 {
+			g.type_memo.clear()
+		}
 	}
 	defer {
 		g.expression_depth--
@@ -355,12 +360,14 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 						g.next() // `(`
 						had_it := 'it' in g.locals
 						saved_it := g.locals['it'] or { FastcLocal{} }
+						g.type_memo.clear()
 						g.locals['it'] = FastcLocal{
 							typ: element_type
 						}
 						closure := g.read_expression([token.Token.rpar])!
 						closure_type := g.last_expression_type
 						if had_it {
+							g.type_memo.clear()
 							g.locals['it'] = saved_it
 						} else {
 							g.locals.delete('it')
@@ -440,19 +447,23 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 						saved_a := g.locals['a'] or { FastcLocal{} }
 						had_b := 'b' in g.locals
 						saved_b := g.locals['b'] or { FastcLocal{} }
+						g.type_memo.clear()
 						g.locals['a'] = FastcLocal{
 							typ: element_type
 						}
+						g.type_memo.clear()
 						g.locals['b'] = FastcLocal{
 							typ: element_type
 						}
 						condition := g.read_expression([token.Token.rpar])!
 						if had_a {
+							g.type_memo.clear()
 							g.locals['a'] = saved_a
 						} else {
 							g.locals.delete('a')
 						}
 						if had_b {
+							g.type_memo.clear()
 							g.locals['b'] = saved_b
 						} else {
 							g.locals.delete('b')
@@ -924,6 +935,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				previous_lines := g.captured_defer_lines.clone()
 				previous_err := g.locals['err'] or { FastcLocal{} }
 				had_err := 'err' in g.locals
+				g.type_memo.clear()
 				g.locals['err'] = FastcLocal{
 					typ: 'IError'
 				}
@@ -947,6 +959,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				g.capturing_defer = previous_capture
 				g.captured_defer_lines = previous_lines.clone()
 				if had_err {
+					g.type_memo.clear()
 					g.locals['err'] = previous_err
 				} else {
 					g.locals.delete('err')
@@ -1074,6 +1087,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			previous_err := g.locals['err'] or { FastcLocal{} }
 			had_err := 'err' in g.locals
+			g.type_memo.clear()
 			g.locals['err'] = FastcLocal{
 				typ: 'IError'
 			}
@@ -1092,6 +1106,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				fallback = '(builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(map_value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 			}
 			if had_err {
+				g.type_memo.clear()
 				g.locals['err'] = previous_err
 			} else {
 				g.locals.delete('err')

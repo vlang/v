@@ -430,6 +430,7 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 			g.parse_statement()!
 			g.skip_semicolons()
 		}
+		g.type_memo.clear()
 		g.locals = outer_locals.clone()
 		g.indent--
 		g.write_line('}')

@@ -1102,6 +1102,12 @@ mut:
 	// operator scans in those handlers re-recurse over shared subranges;
 	// without the memo that search re-renders the same ranges combinatorially.
 	comparison_memo map[i64]FastcRenderedExpression
+	// Inferred types memoized per token subrange the same way, and cleared
+	// whenever the locals or the registered functions change mid-expression.
+	type_memo map[i64]string
+	// Method keys memoized per receiver type and method name; the key only
+	// depends on the file-level tables, so it is reset with the other memos.
+	method_key_memo map[string]map[string]string
 	has_c_functions bool
 	// Spawn lowering registrations (see spawn.v): thread struct typedefs,
 	// creator/run/waiter helper definitions, and thread type -> value type.
@@ -1317,6 +1323,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		fastc_prefixed_c_names: ctx.fastc_prefixed_c_names
 		has_c_functions: ctx.has_c_functions
 		comparison_memo: map[i64]FastcRenderedExpression{}
+		type_memo: map[i64]string{}
+		method_key_memo: map[string]map[string]string{}
 		member_smartcasts: map[string]FastcMemberSmartcast{}
 		spawn_typedefs: map[string]string{}
 		spawn_helpers: map[string]string{}
