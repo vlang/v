@@ -227,7 +227,7 @@ fn fastc_finish_memo_preload(memo FastcResolveMemo, probe_tasks []FastcMemoTask,
 	}
 }
 
-// FastcPendingMemoStore is the resolve memo being written on a worker.
+// FastcPendingMemoStore keeps the memo-store wait API shared with the serial build.
 struct FastcPendingMemoStore {
 mut:
 	workers []thread bool
@@ -235,15 +235,12 @@ mut:
 }
 
 fn fastc_start_memo_store(memo_path string, previous_text string, sources []FastcSourceFile, builtin_dir string, lookup_modules []string, lookup_sources []string, prefs &pref.Preferences, module_path_cache map[string]string, module_dir_files map[string][]string, entry_paths []string, real_path_cache map[string]string, entry_files map[string][]string, preloaded map[string]FastcLoadedSource) FastcPendingMemoStore {
-	if fastc_parallel_worker_limit(prefs) <= 1 {
-		fastc_store_resolve_memo(memo_path, previous_text, sources, builtin_dir, lookup_modules, lookup_sources, prefs, module_path_cache, module_dir_files, entry_paths, real_path_cache, entry_files, preloaded)
-		return FastcPendingMemoStore{}
-	}
-	return FastcPendingMemoStore{
-		workers: [
-			spawn fastc_store_resolve_memo_job(memo_path, previous_text, sources, builtin_dir, lookup_modules, lookup_sources, prefs, module_path_cache, module_dir_files, entry_paths, real_path_cache, entry_files, preloaded),
-		]
-	}
+	// The source strings were loaded before generation. Deferring the store can pair
+	// those bytes with a newer stat if a source changes while generation runs, and a
+	// generation error returns before the worker is joined. Keep persistence
+	// synchronous until the async store can snapshot the source versions it writes.
+	fastc_store_resolve_memo(memo_path, previous_text, sources, builtin_dir, lookup_modules, lookup_sources, prefs, module_path_cache, module_dir_files, entry_paths, real_path_cache, entry_files, preloaded)
+	return FastcPendingMemoStore{}
 }
 
 fn fastc_wait_memo_store(mut pending FastcPendingMemoStore) {
