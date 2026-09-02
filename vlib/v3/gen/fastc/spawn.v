@@ -324,6 +324,7 @@ fn (g &Parser) generated_name_is_claimed(candidate string) bool {
 // first packed field, so the per-type waiter reads it without knowing which
 // call site produced the thread.
 fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string, value_type string, parameter_types []string, start_name string, target_c_name string) {
+	g.type_memo.clear()
 	g.thread_value_types[thread_type] = value_type
 	if thread_type !in g.spawn_typedefs {
 		g.spawn_typedefs[thread_type] = 'typedef struct { pthread_t handle; void *packed; } ${thread_type};'

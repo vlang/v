@@ -357,7 +357,28 @@ fn (g &Parser) infer_expression_type(tokens []FastcExpressionToken) !string {
 	return g.infer_expression_type_range(tokens, 0, tokens.len)
 }
 
+// infer_expression_type_range memoizes the inferred type of a multi-token
+// subrange for the duration of the current top-level expression: the
+// lowerings ask about the same operands and receivers repeatedly.
 fn (g &Parser) infer_expression_type_range(tokens []FastcExpressionToken, expression_start int, expression_end int) !string {
+	if expression_end - expression_start < 2 {
+		return g.infer_expression_type_range_impl(tokens, expression_start, expression_end)!
+	}
+	memo_key := fastc_comparison_memo_key(tokens[expression_start..expression_end], 2)
+	if memo_key != 0 {
+		if cached := g.type_memo[memo_key] {
+			return cached
+		}
+	}
+	inferred := g.infer_expression_type_range_impl(tokens, expression_start, expression_end)!
+	if memo_key != 0 {
+		mut w := unsafe { &Parser(g) }
+		w.type_memo[memo_key] = inferred
+	}
+	return inferred
+}
+
+fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, expression_start int, expression_end int) !string {
 	if expression_start >= expression_end {
 		return ''
 	}

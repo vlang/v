@@ -70,14 +70,14 @@ fn (mut g Parser) parse_for() !bool {
 				g.read_expression([token.Token.dotdot, token.Token.lcbr])!
 			}
 			start_expression_type := g.last_expression_type
-			start_expression := g.last_expression.clone()
+			start_expression := g.last_expression
 			if g.tok == .dotdot {
 				if item_is_mut || value_name != '' {
 					return g.unsupported('mutable or two-value range loop')
 				}
 				g.next()
 				end := g.read_expression([token.Token.lcbr])!
-				end_expression := g.last_expression.clone()
+				end_expression := g.last_expression
 				if start_value := fastc_integer_literal_value(start_expression) {
 					if end_value := fastc_integer_literal_value(end_expression) {
 						if start_value >= end_value {

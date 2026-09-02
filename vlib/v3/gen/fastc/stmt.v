@@ -192,7 +192,7 @@ fn (mut g Parser) parse_select_statement() !bool {
 }
 
 fn (g &Parser) open_block_contains_select_statement() bool {
-	if g.tok != .lcbr {
+	if g.tok != .lcbr || !g.source_has_select {
 		return false
 	}
 	mut lookahead := scanner.new_scanner(g.prefs, .normal)

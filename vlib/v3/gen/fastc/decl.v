@@ -7,7 +7,10 @@ import v3.pref
 import v3.scanner
 import v3.token
 
-fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string, mut type_source strings.Builder) !bool {
+fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string, mut type_source strings.Builder, mut body_spans []int) !bool {
+	mut scratch_body_spans := []int{}
+	mut pending_fn := false
+	mut fn_body_start := -1
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -34,7 +37,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 					mut selected_types := strings.new_builder(256)
 					selected_has_types := collect_declared_types(selected.source, path, module_name,
 						prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs,
-						mut declaration_paths, mut declaration_modules, mut selected_types)!
+						mut declaration_paths, mut declaration_modules, mut selected_types, mut scratch_body_spans)!
 					has_type_declarations = has_type_declarations || selected_has_types
 					if selected_types.len > 0 {
 						start := if pending_start >= 0 { pending_start } else { comptime_start }
@@ -65,6 +68,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			pending_start = scan.pos
 		}
 		if brace_depth == 0 && tok in [.key_fn, .key_const, .key_global] {
+			pending_fn = tok == .key_fn
 			next_c_struct_is_typedef = false
 			next_enum_is_flag = false
 			next_struct_is_params = false
@@ -124,12 +128,21 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			continue
 		}
 		if tok == .lcbr {
+			if brace_depth == 0 && pending_fn && fn_body_start < 0 {
+				fn_body_start = scan.pos
+			}
 			brace_depth++
 			if declaration_start >= 0 {
 				declaration_has_block = true
 			}
 		} else if tok == .rcbr && brace_depth > 0 {
 			brace_depth--
+			if brace_depth == 0 && fn_body_start >= 0 {
+				body_spans << fn_body_start
+				body_spans << scan.offset
+				fn_body_start = -1
+				pending_fn = false
+			}
 			if declaration_start >= 0 && declaration_has_block && brace_depth == 0 {
 				fastc_append_filtered_source_span(source, emitted_end, declaration_start,
 					scan.offset, mut type_source)
@@ -145,6 +158,9 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			emitted_end = declaration_end
 			declaration_start = -1
 		}
+		if tok == .semicolon && brace_depth == 0 {
+			pending_fn = false
+		}
 		previous_tok = tok
 		tok = scan.scan()
 	}
@@ -155,13 +171,14 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	return has_type_declarations
 }
 
-fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, mut constants map[string]string, mut public_constants map[string]bool, mut constant_paths map[string]string, mut constant_source strings.Builder, mut constant_spans []int) ! {
+fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, skips []int, mut constants map[string]string, mut public_constants map[string]bool, mut constant_paths map[string]string, mut constant_source strings.Builder, mut constant_spans []int) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
 	mut previous_tok := token.Token.unknown
 	mut emitted_end := 0
+	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && tok == .dollar {
@@ -173,7 +190,7 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 				if selected.source != '' {
 					mut selected_constants := strings.new_builder(256)
 					mut selected_spans := []int{}
-					collect_constant_names(selected.source, path, module_name, prefs, mut
+					collect_constant_names(selected.source, path, module_name, prefs, []int{}, mut
 						constants, mut public_constants, mut constant_paths, mut selected_constants, mut selected_spans)!
 					if selected_constants.len > 0 {
 						constant_spans << constant_source.len
@@ -279,6 +296,15 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 			previous_tok = .unknown
 			continue
 		}
+		if tok == .lcbr && brace_depth == 0 {
+			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
+			skip_index = next_skip
+			if skipped {
+				previous_tok = .rcbr
+				tok = scan.scan()
+				continue
+			}
+		}
 		if tok == .lcbr {
 			brace_depth++
 		} else if tok == .rcbr && brace_depth > 0 {
@@ -319,7 +345,7 @@ fn fastc_register_constant(module_name string, name string, is_public bool, path
 // collect_global_names registers a file's globals and appends the text of
 // their declarations (and of the comptime blocks that select them) to
 // `global_source`, so the global phase parses only that text.
-fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool, mut global_paths map[string]string, mut global_source strings.Builder) ! {
+fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, mut globals map[string]string, mut public_globals map[string]bool, mut global_paths map[string]string, mut global_source strings.Builder) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -330,6 +356,7 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 	// A single `__global name = value` declaration runs to the next top-level
 	// statement end; its span is closed there.
 	mut pending_start := -1
+	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
 		if depth == 0 && tok == .dollar {
@@ -341,7 +368,7 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 				comptime_end := if selected.tok == .eof { scan.offset } else { scan.pos }
 				if selected.source != '' {
 					mut selected_source := strings.new_builder(64)
-					collect_global_names(selected.source, path, header, prefs, mut globals, mut
+					collect_global_names(selected.source, path, header, prefs, []int{}, mut globals, mut
 						public_globals, mut global_paths, mut selected_source)!
 				}
 				if globals.len > globals_before {
@@ -392,6 +419,16 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 			emitted_end = scan.pos
 			pending_start = -1
 		}
+		if tok == .lcbr && depth == 0 {
+			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
+			skip_index = next_skip
+			if skipped {
+				previous_tok = .rcbr
+				previous_pos = scan.pos
+				tok = scan.scan()
+				continue
+			}
+		}
 		if tok == .lcbr {
 			depth++
 		} else if tok == .rcbr && depth > 0 {
@@ -439,6 +476,7 @@ mut:
 	constant_sources    map[string]string
 	constant_spans      map[string][]int
 	global_sources      map[string]string
+	body_spans          map[string][]int
 	globals             map[string]string
 	public_globals      map[string]bool
 	global_paths        map[string]string
@@ -468,11 +506,13 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 		source_file := sources[idx]
 		mut type_source := strings.new_builder(256)
 		mut has_type_declarations := false
+		mut body_spans := []int{}
 		if source_file.header.has_type_keywords {
 			has_type_declarations = collect_declared_types(source_file.source, source_file.path,
 				source_file.header.module_name, prefs, mut partial.declared_types, mut
 				partial.declared_kinds, mut partial.enum_flags, mut partial.params_structs, mut
-				partial.declaration_paths, mut partial.declaration_modules, mut type_source) or {
+				partial.declaration_paths, mut partial.declaration_modules, mut type_source, mut
+				body_spans) or {
 				partial.failed = true
 				partial.error_message = err.msg()
 				return partial
@@ -486,7 +526,7 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 			mut constant_source := strings.new_builder(256)
 			mut constant_spans := []int{}
 			collect_constant_names(source_file.source, source_file.path,
-				source_file.header.module_name, prefs, mut partial.constants, mut
+				source_file.header.module_name, prefs, body_spans, mut partial.constants, mut
 				partial.public_constants, mut partial.constant_paths, mut constant_source, mut
 				constant_spans) or {
 				partial.failed = true
@@ -500,9 +540,9 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 		}
 		if source_file.header.has_global_declarations {
 			mut global_source := strings.new_builder(256)
-			collect_global_names(source_file.source, source_file.path, source_file.header, prefs, mut
-				partial.globals, mut partial.public_globals, mut partial.global_paths, mut
-				global_source) or {
+			collect_global_names(source_file.source, source_file.path, source_file.header, prefs,
+				body_spans, mut partial.globals, mut partial.public_globals, mut
+				partial.global_paths, mut global_source) or {
 				partial.failed = true
 				partial.error_message = err.msg()
 				return partial
@@ -510,6 +550,9 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 			if global_source.len > 0 {
 				partial.global_sources[source_file.path] = global_source.str()
 			}
+		}
+		if body_spans.len > 0 {
+			partial.body_spans[source_file.path] = body_spans
 		}
 	}
 	return partial
@@ -597,6 +640,9 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			declaration_initializer_mode: true
 			has_c_functions:              helper_has_c_functions
 			comparison_memo:              map[i64]FastcRenderedExpression{}
+			type_memo:              map[i64]string{}
+			method_key_memo:              map[string]map[string]string{}
+			field_memo:              map[string]map[string]FastcStructField{}
 			spawn_typedefs:               map[string]string{}
 			spawn_helpers:                map[string]string{}
 			thread_value_types:           map[string]string{}
@@ -827,6 +873,31 @@ fn fastc_map_field_default(typ string, pointer_bits int) string {
 	return '(builtin__new_map(sizeof(${fastc_runtime_c_type(key_type)}), sizeof(${fastc_runtime_c_type(value_type)}), &${hash_fn}, &${eq_fn}, &${clone_fn}, &${free_fn}))'
 }
 
+// FastcFieldDefaultsResult is the struct field table with its defaults
+// rendered and its by-name index, or the first error rendering them.
+struct FastcFieldDefaultsResult {
+	struct_field_info map[string][]FastcStructField
+	lookup            map[string]map[string]FastcStructField
+	failed            bool
+	error_message     string
+}
+
+// fastc_run_field_defaults renders the field defaults into a copy of the
+// field table (the renderer replaces each type's entry) and indexes it.
+fn fastc_run_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) FastcFieldDefaultsResult {
+	mut rendered := struct_field_info.clone()
+	fastc_render_struct_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, alias_base_types, struct_fields, mut rendered, functions, constants, public_constants, constant_types, globals, public_globals, global_types, sum_types) or {
+		return FastcFieldDefaultsResult{
+			failed:        true
+			error_message: err.msg()
+		}
+	}
+	return FastcFieldDefaultsResult{
+		struct_field_info: rendered
+		lookup:            fastc_build_struct_field_lookup(rendered)
+	}
+}
+
 fn fastc_render_struct_field_defaults(source_imports map[string]map[string]string, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, constant_types map[string]string, globals map[string]string, public_globals map[string]bool, global_types map[string]string, sum_types map[string]bool) ! {
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	helper_has_c_functions := fastc_functions_declare_c(functions)
@@ -883,6 +954,9 @@ fn fastc_render_struct_field_defaults(source_imports map[string]map[string]strin
 				declaration_initializer_mode: true
 				has_c_functions:              helper_has_c_functions
 				comparison_memo:              map[i64]FastcRenderedExpression{}
+				type_memo:              map[i64]string{}
+				method_key_memo:              map[string]map[string]string{}
+				field_memo:              map[string]map[string]FastcStructField{}
 				spawn_typedefs:               map[string]string{}
 				spawn_helpers:                map[string]string{}
 				thread_value_types:           map[string]string{}
@@ -960,7 +1034,10 @@ struct FastcConstantGenContext {
 // FastcConstantFileResult is one file's parsed constant initializers.
 struct FastcConstantFileResult {
 mut:
-	values            []FastcConstantValue
+	// used_field_defaults: the parse consulted rendered struct field defaults,
+	// which the parallel pre-pass does not have yet.
+	used_field_defaults bool
+	values              []FastcConstantValue
 	constant_types    map[string]string
 	composite_types   map[string]bool
 	fixed_array_types map[string]string
@@ -997,6 +1074,9 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 		declaration_initializer_mode: true
 		has_c_functions:              ctx.has_c_functions
 		comparison_memo:              map[i64]FastcRenderedExpression{}
+		type_memo:              map[i64]string{}
+		method_key_memo:              map[string]map[string]string{}
+		field_memo:              map[string]map[string]FastcStructField{}
 		spawn_typedefs:               map[string]string{}
 		spawn_helpers:                map[string]string{}
 		thread_value_types:           map[string]string{}
@@ -1036,66 +1116,12 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 		}
 	}
 	return FastcConstantFileResult{
-		values:            values
-		constant_types:    gen.constant_types.move()
-		composite_types:   gen.composite_types
-		fixed_array_types: gen.fixed_array_types
+		used_field_defaults: gen.used_field_defaults
+		values:              values
+		constant_types:      gen.constant_types.move()
+		composite_types:     gen.composite_types
+		fixed_array_types:   gen.fixed_array_types
 	}
-}
-
-// fastc_parse_constant_file_worker parses candidate files until the shared
-// counter runs past the end of `order` (largest files first).
-fn fastc_parse_constant_file_worker(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed map[string]string, order []int, queue &FastcGenQueue) []FastcIndexedConstantFileResult {
-	mut results := []FastcIndexedConstantFileResult{}
-	bench_files := os.getenv('FASTC_BENCH_FILES') != ''
-	for {
-		slot := fastc_atomic_fetch_add_u32(&queue.next, 1)
-		if slot >= u32(order.len) {
-			break
-		}
-		index := order[slot]
-		file_sw := time.new_stopwatch()
-		results << FastcIndexedConstantFileResult{
-			index:  index
-			result: fastc_parse_constant_file(ctx, candidates[index], seed.clone())
-		}
-		if bench_files {
-			eprintln('fastc-constants-file ${file_sw.elapsed().microseconds()}us ${candidates[index].source.len} bytes ${candidates[index].path}')
-		}
-	}
-	return results
-}
-
-// fastc_parse_constant_files_parallel parses every candidate file's constants
-// on parallel workers, each starting from the phase's initial constant types.
-// It returns an empty list when the phase runs serially.
-fn fastc_parse_constant_files_parallel(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed map[string]string) []FastcConstantFileResult {
-	jobs := fastc_parallel_job_count(candidates.len, ctx.prefs)
-	if jobs <= 1 {
-		return []FastcConstantFileResult{}
-	}
-	order := fastc_file_generation_order(candidates)
-	mut queue := &FastcGenQueue{
-		next: 0
-	}
-	second_thread := spawn fastc_parse_constant_file_worker(ctx, candidates, seed, order, queue)
-	mut chunk_threads := [second_thread]
-	for _ in 2 .. jobs {
-		chunk_thread := spawn fastc_parse_constant_file_worker(ctx, candidates, seed, order, queue)
-		chunk_threads << chunk_thread
-	}
-	mut results := []FastcConstantFileResult{len: candidates.len}
-	first_results := fastc_parse_constant_file_worker(ctx, candidates, seed, order, queue)
-	for indexed in first_results {
-		results[indexed.index] = indexed.result
-	}
-	for chunk_thread in chunk_threads {
-		chunk_results := chunk_thread.wait()
-		for indexed in chunk_results {
-			results[indexed.index] = indexed.result
-		}
-	}
-	return results
 }
 
 // fastc_constant_file_is_independent reports whether every constant that the
@@ -1122,7 +1148,7 @@ fn fastc_constant_file_is_independent(result FastcConstantFileResult) bool {
 // declarations are parsed as separate parallel candidates.
 const fastc_constant_split_size = 16 * 1024
 
-fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, constant_sources map[string]string, constant_spans map[string][]int, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
+fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, constant_sources map[string]string, constant_spans map[string][]int, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, fastc_prefixed_c_names []string, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, enum_field_types map[string]string, alias_base_types map[string]string, struct_fields map[string]map[string]string, struct_field_info map[string][]FastcStructField, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, mut constant_types map[string]string) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := map[string]string{}
@@ -1174,11 +1200,33 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 	sw := time.new_stopwatch()
 	parallel_results := fastc_parse_constant_files_parallel(&ctx, candidates, constant_types)
 	parallel_us := sw.elapsed().microseconds()
+	// The rendered defaults are needed from here on: for the in-order parse of
+	// the files that consulted them, and by the phases after this one.
+	defaults := fastc_wait_field_defaults(mut pending_defaults)!
+	merge_ctx := FastcConstantGenContext{
+		prefs:                     unsafe { prefs }
+		declared_types:            declared_types
+		declared_type_c_names:     declared_type_c_names
+		declared_type_key_by_name: ctx.declared_type_key_by_name
+		fastc_prefixed_c_names:    fastc_prefixed_c_names
+		has_c_functions:           ctx.has_c_functions
+		declared_kinds:            declared_kinds
+		enum_flags:                enum_flags
+		enum_field_types:          enum_field_types
+		alias_base_types:          alias_base_types
+		struct_fields:             struct_fields
+		struct_field_info:         defaults.struct_field_info
+		functions:                 functions
+		constants:                 constants
+		public_constants:          public_constants
+		globals:                   globals
+		public_globals:            public_globals
+	}
 	mut serial_count := 0
 	for index, candidate in candidates {
 		if index < parallel_results.len {
 			result := parallel_results[index]
-			if !result.failed && fastc_constant_file_is_independent(result) {
+			if !result.failed && !result.used_field_defaults && fastc_constant_file_is_independent(result) {
 				for value in result.values {
 					constant_types[value.key] = value.typ
 				}
@@ -1193,7 +1241,7 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 			}
 		}
 		serial_count++
-		mut serial := fastc_parse_constant_file(&ctx, candidate, constant_types)
+		mut serial := fastc_parse_constant_file(&merge_ctx, candidate, constant_types)
 		if serial.failed {
 			return error(serial.error_message)
 		}
@@ -1275,6 +1323,8 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 		compile_time_values: compile_time_values
 		composite_types:     composite_types
 		fixed_array_types:   fixed_array_types
+		struct_field_info:   defaults.struct_field_info
+		struct_field_lookup: defaults.lookup
 	}
 }
 
