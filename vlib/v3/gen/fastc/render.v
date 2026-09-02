@@ -897,11 +897,13 @@ fn fastc_contains_method_marker(rendered string, name string) bool {
 	mut from := 0
 	for from + name.len < rendered.len {
 		index := rendered.index_after_(name, from)
-		if index < 1 {
+		if index < 0 {
 			return false
 		}
+		// An occurrence at the start has no receiver before it; keep scanning
+		// past it (and past any other non-call occurrence).
 		end := index + name.len
-		if end < rendered.len && rendered[end] == `(` {
+		if index > 0 && end < rendered.len && rendered[end] == `(` {
 			previous := rendered[index - 1]
 			if previous == `.` || (previous == `>` && index > 1 && rendered[index - 2] == `-`) {
 				return true
