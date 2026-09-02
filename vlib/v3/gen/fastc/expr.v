@@ -216,7 +216,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		}
 	}
 	mut result := strings.new_builder(64)
-	mut expression_tokens := []FastcExpressionToken{}
+	// Most expressions are a handful of tokens; start with room for them so
+	// the token buffer is not regrown several times per expression.
+	mut expression_tokens := []FastcExpressionToken{cap: 16}
 	if prefix.len > 0 {
 		result.write_string(g.resolved_expression_name(prefix, .unknown))
 		expression_tokens << FastcExpressionToken{

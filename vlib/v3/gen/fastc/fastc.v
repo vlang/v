@@ -846,7 +846,10 @@ struct FastcCDirectiveLine {
 	kind  int
 }
 
-// GenerationResult contains generated C and the complete resolved V source graph.
+// GenerationResult contains generated C and the complete resolved V source
+// graph. `c_pieces` is the generated C in output order; every piece is an
+// ordinary owned string, and writing them in sequence (write_c_pieces) or
+// joining them (c_source) yields the program.
 pub struct GenerationResult {
 pub:
 	c_pieces     []string
@@ -2026,7 +2029,11 @@ fn fastc_partition_c_directive_ranges(total_len int, lines []FastcCDirectiveLine
 }
 
 // fastc_collect_c_piece_ranges appends the ascending [start, end) `ranges` of
-// the virtual concatenation of `pieces` to `out` as views into the pieces.
+// the virtual concatenation of `pieces` to `out`. A range that covers a whole
+// piece shares that string; a range that cuts a piece is copied out, so every
+// output piece is an ordinary owned, NUL-terminated string. Only bodies that
+// contain C directive lines are cut, so the copies are a small part of the
+// output.
 fn fastc_collect_c_piece_ranges(mut out []string, pieces []string, ranges []int) {
 	mut piece_index := 0
 	mut piece_start := 0
@@ -2049,7 +2056,11 @@ fn fastc_collect_c_piece_ranges(mut out []string, pieces []string, ranges []int)
 			if local_end > piece.len {
 				local_end = piece.len
 			}
-			out << unsafe { tos(piece.str + local_start, local_end - local_start) }
+			if local_start == 0 && local_end == piece.len {
+				out << piece
+			} else {
+				out << piece.substr(local_start, local_end)
+			}
 			start = piece_start + local_end
 		}
 	}

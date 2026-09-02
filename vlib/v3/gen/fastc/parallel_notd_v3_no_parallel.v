@@ -56,7 +56,10 @@ fn fastc_wait_interface_dispatches(mut pending FastcPendingInterfaceDispatches) 
 	return pending.workers[0].wait()
 }
 
-fn fastc_parallel_job_count(item_count int, prefs &pref.Preferences) int {
+// fastc_parallel_worker_limit is the number of worker threads a parallel
+// phase may run at once: the CPU count, overridden by VJOBS, and 1 when
+// parallelism is disabled.
+fn fastc_parallel_worker_limit(prefs &pref.Preferences) int {
 	if prefs.no_parallel {
 		return 1
 	}
@@ -68,6 +71,11 @@ fn fastc_parallel_job_count(item_count int, prefs &pref.Preferences) int {
 	if os.getenv('V3_FASTC_NO_PARALLEL') != '' {
 		jobs = 1
 	}
+	return jobs
+}
+
+fn fastc_parallel_job_count(item_count int, prefs &pref.Preferences) int {
+	mut jobs := fastc_parallel_worker_limit(prefs)
 	if jobs > item_count {
 		jobs = item_count
 	}
@@ -93,64 +101,51 @@ fn fastc_load_source_chunk(paths []string, prefs &pref.Preferences, start int, e
 	return loaded
 }
 
-// FastcModuleListing is one module directory listed on a worker thread, with
-// the reads of its files already started in chunks of
-// fastc_source_load_chunk_size: chunk i covers files[i*chunk .. (i+1)*chunk].
+// FastcModuleListing is one module directory listed on a worker thread.
 struct FastcModuleListing {
-	dir    string
-	files  []string
-	chunks []thread []FastcLoadedSource
+	dir   string
+	files []string
 }
 
-// fastc_start_module_load lists `dir` (or takes `listed` when `dir` is empty)
-// and starts a reader thread per chunk of its files, so the listing thread
-// returns as soon as the reads are under way.
-fn fastc_start_module_load(dir string, listed []string, prefs &pref.Preferences) FastcModuleListing {
+// fastc_list_module_load lists `dir`, or takes `listed` when `dir` is empty.
+fn fastc_list_module_load(dir string, listed []string, prefs &pref.Preferences) FastcModuleListing {
 	files := if dir == '' { listed } else { fastc_list_module_sources(dir, prefs) }
-	if files.len == 0 {
-		return FastcModuleListing{
-			dir: dir
-			files: files
-		}
+	return FastcModuleListing{
+		dir: dir
+		files: files
 	}
-	mut first_end := fastc_source_load_chunk_size
-	if first_end > files.len {
-		first_end = files.len
-	}
-	mut chunks := [
-		spawn fastc_load_source_chunk(files, prefs, 0, first_end),
-	]
-	mut start := first_end
+}
+
+// fastc_queue_source_chunks appends `files` to `pending` in read chunks of
+// fastc_source_load_chunk_size paths.
+fn fastc_queue_source_chunks(files []string, mut pending [][]string) {
+	mut start := 0
 	for start < files.len {
 		mut end := start + fastc_source_load_chunk_size
 		if end > files.len {
 			end = files.len
 		}
-		chunks << spawn fastc_load_source_chunk(files, prefs, start, end)
+		pending << files[start..end]
 		start = end
-	}
-	return FastcModuleListing{
-		dir: dir
-		files: files
-		chunks: chunks
 	}
 }
 
 // fastc_preload_sources reads and header-scans every file reachable from the
-// initial queue on worker threads. Each imported module directory is listed on
-// a thread that starts the reads of its files in chunks; the main thread joins
-// listings first (they finish quickly and unlock more reads) and then the read
-// chunks in start order, resolving the imports of each chunk as it lands, so
-// the reads of one module overlap with the discovery of the next. The entry
-// files go first because their import chain is the deepest. The result is
-// keyed by path, so the ordering walk that follows can use any traversal
-// order; failures are kept so the walk reports them at the same point it
-// would have. The listings are recorded in `module_dir_files` for that walk.
+// initial queue on worker threads. Each imported module directory is listed
+// on a thread and its files are read in chunks on further threads; the main
+// thread schedules that work, keeping at most the phase's worker limit of
+// threads running, and joins listings first (they unlock more reads) and
+// then the read chunks in start order, resolving the imports of each chunk
+// as it lands, so the reads of one module overlap with the discovery of the
+// next. The entry files go first because their import chain is the deepest.
+// The result is keyed by path, so the ordering walk that follows can use any
+// traversal order; failures are kept so the walk reports them at the same
+// point it would have. The listings are recorded in `module_dir_files` for
+// that walk.
 fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string, mut real_path_cache map[string]string) map[string]FastcLoadedSource {
 	mut loaded := map[string]FastcLoadedSource{}
-	// The queue starts with a few entry files; the count that matters for the
-	// parallel decision is the chunk size the loads are split into.
-	if fastc_parallel_job_count(fastc_source_load_chunk_size, prefs) <= 1 {
+	jobs := fastc_parallel_worker_limit(prefs)
+	if jobs <= 1 {
 		return loaded
 	}
 	mut scheduled := map[string]bool{}
@@ -185,31 +180,56 @@ fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, can
 	if initial_paths.len == 0 {
 		return loaded
 	}
-	mut listings := [
-		spawn fastc_start_module_load('', initial_paths, prefs),
-	]
 	wait_sw := time.new_stopwatch()
 	mut wait_us := i64(0)
+	// The entry files form the first listing; its first chunk starts the
+	// reader queue. (Both thread arrays start from a spawn: the self-hosted
+	// generator has no empty thread-array literal.)
+	mut listings := [
+		spawn fastc_list_module_load('', initial_paths, prefs),
+	]
+	mut listing_count := 1
+	mut next_listing := 1
 	entry_listing := listings[0].wait()
 	wait_us += wait_sw.elapsed().microseconds()
-	mut chunk_threads := entry_listing.chunks.clone()
-	mut chunk_paths := [][]string{}
-	fastc_record_listing_chunks(entry_listing, mut chunk_paths)
-	mut next_listing := 1
+	mut pending_chunks := [][]string{}
+	fastc_queue_source_chunks(entry_listing.files, mut pending_chunks)
+	first_chunk := pending_chunks[0]
+	mut chunk_threads := [
+		spawn fastc_load_source_chunk(first_chunk, prefs, 0, first_chunk.len),
+	]
+	mut chunk_paths := [first_chunk]
+	mut next_pending_chunk := 1
 	mut next_chunk := 0
-	for next_listing < listings.len || next_chunk < chunk_threads.len {
-		if next_listing < listings.len {
+	mut pending_dirs := []string{}
+	mut next_pending_dir := 0
+	mut in_flight := 1
+	for next_listing < listing_count || next_chunk < chunk_threads.len || next_pending_dir < pending_dirs.len || next_pending_chunk < pending_chunks.len {
+		// Start queued work up to the worker limit, listings first.
+		for in_flight < jobs && next_pending_dir < pending_dirs.len {
+			listings << spawn fastc_list_module_load(pending_dirs[next_pending_dir], []string{}, prefs)
+			listing_count++
+			next_pending_dir++
+			in_flight++
+		}
+		for in_flight < jobs && next_pending_chunk < pending_chunks.len {
+			chunk := pending_chunks[next_pending_chunk]
+			chunk_threads << spawn fastc_load_source_chunk(chunk, prefs, 0, chunk.len)
+			chunk_paths << chunk
+			next_pending_chunk++
+			in_flight++
+		}
+		if next_listing < listing_count {
 			listing_start := wait_sw.elapsed().microseconds()
 			listing := listings[next_listing].wait()
 			wait_us += wait_sw.elapsed().microseconds() - listing_start
 			next_listing++
-			if listing.dir != '' {
-				module_dir_files[listing.dir] = listing.files
-			}
-			for chunk in listing.chunks {
-				chunk_threads << chunk
-			}
-			fastc_record_listing_chunks(listing, mut chunk_paths)
+			in_flight--
+			module_dir_files[listing.dir] = listing.files
+			fastc_queue_source_chunks(listing.files, mut pending_chunks)
+			continue
+		}
+		if next_chunk >= chunk_threads.len {
 			continue
 		}
 		chunk_start := wait_sw.elapsed().microseconds()
@@ -217,6 +237,7 @@ fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, can
 		wait_us += wait_sw.elapsed().microseconds() - chunk_start
 		paths := chunk_paths[next_chunk]
 		next_chunk++
+		in_flight--
 		for i, loaded_source in chunk {
 			mut path := paths[i]
 			if !prefs.building_v {
@@ -242,28 +263,14 @@ fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, can
 					continue
 				}
 				scheduled_dirs[module_dir] = true
-				listings << spawn fastc_start_module_load(module_dir, []string{}, prefs)
+				pending_dirs << module_dir
 			}
 		}
 	}
 	if os.getenv('FASTC_BENCH_PHASES') != '' {
-		eprintln('fastc-phase resolve.preload.detail listings=${listings.len} chunks=${chunk_threads.len} wait_us=${wait_us}')
+		eprintln('fastc-phase resolve.preload.detail jobs=${jobs} listings=${listing_count} chunks=${chunk_threads.len} wait_us=${wait_us}')
 	}
 	return loaded
-}
-
-// fastc_record_listing_chunks appends the path slice of each read chunk of
-// `listing`, in chunk order, to `chunk_paths`.
-fn fastc_record_listing_chunks(listing FastcModuleListing, mut chunk_paths [][]string) {
-	mut start := 0
-	for _ in listing.chunks {
-		mut end := start + fastc_source_load_chunk_size
-		if end > listing.files.len {
-			end = listing.files.len
-		}
-		chunk_paths << listing.files[start..end]
-		start = end
-	}
 }
 
 // fastc_chunk_bounds splits the file list into contiguous chunks balanced by
