@@ -8629,8 +8629,6 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 				// expression statement; gen_node cannot render a bare `.call`.
 				g.gen_node(expr_id)
 			} else if g.is_noreturn_call(expr_id) || g.tc.resolve_type(expr_id) is types.Void {
-				// A diverging/void or-body tail (e.g. `panic(..)`/`exit(..)`) yields no
-				// value; emit it as a bare statement instead of assigning void.
 				g.gen_expr(expr_id)
 				g.write(';')
 			} else {
