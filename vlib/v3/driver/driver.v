@@ -7367,13 +7367,15 @@ struct V3FastCCompileResult {
 	output  string
 }
 
-fn publish_v3_fastc_c_source(source string, output_file string, c_to_stdout bool) ! {
+fn publish_v3_fastc_c_source(pieces []string, output_file string, c_to_stdout bool) ! {
 	if c_to_stdout {
-		print(source)
+		for piece in pieces {
+			print(piece)
+		}
 		return
 	}
 	staged_output := '${output_file}.stage.${tempname.unique_token()}'
-	os.write_file(staged_output, source) or {
+	fastc.write_c_pieces(staged_output, pieces) or {
 		return error('error writing fastc output ${output_file}: ${err.msg()}')
 	}
 	os.mv(staged_output, output_file) or {
@@ -7394,7 +7396,7 @@ fn canonical_v3_fastc_output_path(path string) string {
 	return os.join_path_single(canonical_parent, os.file_name(absolute_path))
 }
 
-fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool, uses_threads bool) V3FastCCompileResult {
+fn compile_v3_fastc_source(pieces []string, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, environment_ld_flags []string, is_debug bool, uses_threads bool) V3FastCCompileResult {
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 	if !os.is_executable(tcc_path) {
@@ -7408,7 +7410,7 @@ fn compile_v3_fastc_source(source string, bin_file string, prefs &pref.Preferenc
 	}
 	source_file := os.join_path_single(build_dir, 'src.c')
 	staged_binary := os.join_path_single(build_dir, 'out')
-	os.write_file(source_file, source) or { return V3FastCCompileResult{} }
+	fastc.write_c_pieces(source_file, pieces) or { return V3FastCCompileResult{} }
 	tcc_resources := v3_tcc_resource_flags(prefs.vroot)
 	mut cc_args := environment_c_flags.clone()
 	cc_args << ['-std=gnu11', tcc_resources.base_arg, tcc_resources.include_arg, tcc_resources.library_arg]
@@ -8539,11 +8541,12 @@ pub fn run(args []string) {
 					exit(1)
 				}
 			}
-			fastc_source := fastc_generation.c_source
+			fastc_pieces := fastc_generation.c_pieces
+			fastc_source_size := fastc_generation.c_size()
 			b.step('fastc parse+gen')
 			if c_only && fastc_cross_target {
-				b.metric('generated C size', fastc_source.len, 'bytes')
-				publish_v3_fastc_c_source(fastc_source, output_file, c_to_stdout) or {
+				b.metric('generated C size', fastc_source_size, 'bytes')
+				publish_v3_fastc_c_source(fastc_pieces, output_file, c_to_stdout) or {
 					eprintln(err.msg())
 					exit(1)
 				}
@@ -8559,7 +8562,7 @@ pub fn run(args []string) {
 			} else {
 				bin_file
 			}
-			fastc_result := compile_v3_fastc_source(fastc_source, fastc_bin_file, prefs,
+			fastc_result := compile_v3_fastc_source(fastc_pieces, fastc_bin_file, prefs,
 				environment_c_flags, fastc_generation.c_flags, user_c_flags, environment_ld_flags,
 				is_debug, fastc_generation.uses_threads)
 			if (!silent || show_cc) && fastc_result.command.len > 0 {
@@ -8593,9 +8596,9 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			b.step('tcc')
-			b.metric('generated C size', fastc_source.len, 'bytes')
+			b.metric('generated C size', fastc_source_size, 'bytes')
 			if c_only {
-				publish_v3_fastc_c_source(fastc_source, output_file, c_to_stdout) or {
+				publish_v3_fastc_c_source(fastc_pieces, output_file, c_to_stdout) or {
 					eprintln(err.msg())
 					exit(1)
 				}
@@ -8604,14 +8607,14 @@ pub fn run(args []string) {
 				return
 			}
 			if backend_explicit {
-				os.write_file(bin_file + '.c', fastc_source) or {
+				fastc.write_c_pieces(bin_file + '.c', fastc_pieces) or {
 					eprintln('failed to retain generated fastc output ${bin_file}.c: ${err.msg()}')
 					exit(1)
 				}
 			}
 			if keep_c {
 				keep_c_file := keep_c_output_file(bin_file)
-				os.write_file(keep_c_file, fastc_source) or {
+				fastc.write_c_pieces(keep_c_file, fastc_pieces) or {
 					eprintln('failed to retain generated fastc output ${keep_c_file}: ${err.msg()}')
 					exit(1)
 				}

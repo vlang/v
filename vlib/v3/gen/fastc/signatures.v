@@ -857,21 +857,31 @@ fn fastc_collect_signature_chunk(sources []FastcSourceFile, prefs &pref.Preferen
 	return partial
 }
 
+// fastc_signature_partial_count sums the function signatures of `partials`.
+fn fastc_signature_partial_count(partials []FastcSignaturePartial) int {
+	mut count := 0
+	for partial in partials {
+		count += partial.functions.len
+	}
+	return count
+}
+
 fn fastc_merge_signature_partial(partial FastcSignaturePartial, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {
 	if partial.failed {
 		return error(partial.error_message)
 	}
 	for key, signature in partial.functions {
-		if key !in partial.interface_methods {
-			if previous := functions[key] {
-				if !key.starts_with('C.') {
-					is_c_override := previous.path.ends_with('.c.v') || signature.path.ends_with('.c.v')
-					if previous.path == signature.path || !is_c_override || !fastc_string_types_equal(previous.parameter_types, signature.parameter_types) || !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability) || previous.last_parameter_is_params != signature.last_parameter_is_params || previous.return_type != signature.return_type {
-						return error('fastc parser does not support duplicate function `${key.all_after_last('.')}` in ${signature.path}')
-					}
-					if previous.path.ends_with('.c.v') {
-						continue
-					}
+		// Duplicates are rare, so test membership first and only then copy
+		// the previous signature out for the override checks.
+		if key !in partial.interface_methods && key in functions {
+			previous := functions[key]
+			if !key.starts_with('C.') {
+				is_c_override := previous.path.ends_with('.c.v') || signature.path.ends_with('.c.v')
+				if previous.path == signature.path || !is_c_override || !fastc_string_types_equal(previous.parameter_types, signature.parameter_types) || !fastc_bool_types_equal(previous.parameter_mutability, signature.parameter_mutability) || previous.last_parameter_is_params != signature.last_parameter_is_params || previous.return_type != signature.return_type {
+					return error('fastc parser does not support duplicate function `${key.all_after_last('.')}` in ${signature.path}')
+				}
+				if previous.path.ends_with('.c.v') {
+					continue
 				}
 			}
 		}

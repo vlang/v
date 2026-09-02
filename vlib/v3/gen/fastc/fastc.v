@@ -759,7 +759,6 @@ struct FastcStructField {
 	is_optional_function bool
 	module_name          string
 	path                 string
-	imports              map[string]string
 	default_source       string
 mut:
 	default_value string
@@ -820,6 +819,7 @@ struct FastcQueuedSource {
 }
 
 struct FastcLoadedSource {
+	path          string
 	source        string
 	header        FastcSourceHeader
 	failed        bool
@@ -849,10 +849,45 @@ struct FastcCDirectiveLine {
 // GenerationResult contains generated C and the complete resolved V source graph.
 pub struct GenerationResult {
 pub:
-	c_source     string
+	c_pieces     []string
 	source_paths []string
 	uses_threads bool
 	c_flags      []string
+}
+
+// c_source joins the generated C pieces into one string.
+pub fn (g &GenerationResult) c_source() string {
+	return fastc_join_c_pieces(g.c_pieces)
+}
+
+// c_size returns the size of the generated C in bytes.
+pub fn (g &GenerationResult) c_size() int {
+	mut size := 0
+	for piece in g.c_pieces {
+		size += piece.len
+	}
+	return size
+}
+
+// write_c_pieces writes generated C pieces to `path` without joining them.
+pub fn write_c_pieces(path string, pieces []string) ! {
+	mut file := os.create(path)!
+	for piece in pieces {
+		file.write_string(piece)!
+	}
+	file.close()
+}
+
+fn fastc_join_c_pieces(pieces []string) string {
+	mut size := 0
+	for piece in pieces {
+		size += piece.len
+	}
+	mut out := strings.new_builder(size + 1)
+	for piece in pieces {
+		out.write_string(piece)
+	}
+	return out.str()
 }
 
 struct FastcGlobalDeclarations {
@@ -995,6 +1030,7 @@ mut:
 	// tables (module, imports, functions, constants, globals, declared types)
 	// and are asked again for the same short name many times per file.
 	unqualified_key_memo     map[string]string
+	c_function_name_memo     map[string]string
 	nonlocal_name_type_memo  map[string]string
 	resolved_name_memo       map[string]string
 	declared_type_key_memo   map[string]FastcMemoEntry
@@ -1117,7 +1153,7 @@ pub fn generate(source string, path string, prefs &pref.Preferences) !string {
 // the complete source graph. Discovery and generation use scanner tokens only.
 pub fn generate_files(paths []string, prefs &pref.Preferences) !string {
 	generation := generate_files_with_source_paths(paths, prefs)!
-	return generation.c_source
+	return generation.c_source()
 }
 
 // generate_files_with_source_paths emits C and reports every source read during import discovery.
@@ -1154,10 +1190,10 @@ pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences)
 	for source_file in sources {
 		source_paths << source_file.path
 	}
-	c_source, uses_threads, c_flags := generate_source_files(sources, module_aliases, prefs)!
+	c_pieces, uses_threads, c_flags := generate_source_pieces(sources, module_aliases, prefs)!
 	timer.mark('generate_total')
 	return GenerationResult{
-		c_source: c_source
+		c_pieces: c_pieces
 		source_paths: source_paths
 		uses_threads: uses_threads
 		c_flags: c_flags
@@ -1226,6 +1262,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	mut gen := Parser{
 		prefs: unsafe { prefs }
 		unqualified_key_memo: map[string]string{}
+		c_function_name_memo: map[string]string{}
 		nonlocal_name_type_memo: map[string]string{}
 		resolved_name_memo: map[string]string{}
 		declared_type_key_memo: map[string]FastcMemoEntry{}
@@ -1312,14 +1349,22 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 	}
 }
 
+// generate_source_files emits the program as one C string; tests and the
+// single-source API use it. The driver takes the pieces directly.
 fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences) !(string, bool, []string) {
+	pieces, uses_threads, c_flags := generate_source_pieces(input_sources, module_aliases, prefs)!
+	return fastc_join_c_pieces(pieces), uses_threads, c_flags
+}
+
+// generate_source_pieces emits the program as C pieces in output order; the
+// per-file bodies are referenced, not copied, so the multi-megabyte output is
+// never assembled into one buffer here.
+fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[string]string, prefs &pref.Preferences) !([]string, bool, []string) {
 	// Source-level generic monomorphization runs first; it is a no-op when the
 	// program has no generic function definitions (so the self-host is untouched).
 	mut timer := fastc_new_phase_timer()
 	mut sources := fastc_monomorphize_sources(input_sources, prefs)!
 	timer.mark('monomorphize')
-	generic_method_sources := fastc_collect_generic_method_sources(mut sources, prefs)
-	timer.mark('generic_method_sources')
 	mut declared_types := map[string]bool{}
 	mut declared_kinds := map[string]FastcDeclaredTypeKind{}
 	mut enum_flags := map[string]bool{}
@@ -1333,8 +1378,11 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut type_source_paths := map[string]bool{}
 	mut type_sources := map[string]string{}
 	mut constant_sources := map[string]string{}
-	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
+	generic_method_sources := fastc_collect_generic_and_declaration_indexes(mut sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
 	timer.mark('declaration_indexes')
+	// The sources are final now; split the oversized ones for parallel
+	// generation while the declaration phases run.
+	mut pending_fragments := fastc_start_generation_fragments(sources, prefs)
 	declared_type_c_names := fastc_declared_type_c_names(declared_types)
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut functions := map[string]FastcFunctionSignature{}
@@ -1378,8 +1426,15 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	enum_field_types := type_output.enum_field_types.clone()
 	mut constant_types := map[string]string{}
 	mut global_types := map[string]string{}
-	fastc_render_struct_field_defaults(prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, mut struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)!
+	mut source_imports := map[string]map[string]string{}
+	for source_file in sources {
+		source_imports[source_file.path] = source_file.header.imports.clone()
+	}
+	fastc_render_struct_field_defaults(source_imports, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, mut struct_field_info, functions, constants, public_constants, constant_types, globals, public_globals, global_types, type_output.sum_types)!
 	timer.mark('field_defaults')
+	// The field lists are final; index them by name for generation while the
+	// constant and global phases run.
+	mut pending_field_lookup := fastc_start_struct_field_lookup(struct_field_info, prefs)
 	constant_output := fastc_generate_constant_declarations(ordered_sources, constant_sources, prefs, declared_types, declared_type_c_names, fastc_prefixed_c_names, declared_kinds, enum_flags, enum_field_types, type_output.alias_base_types, struct_fields, struct_field_info, functions, constants, public_constants, globals, public_globals, mut constant_types)!
 	timer.mark('constant_declarations')
 	for name, _ in constant_output.composite_types {
@@ -1401,16 +1456,13 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	used_function_names := fastc_wait_referenced_function_names(mut pending_references)
 	timer.mark('wait_references')
 	mut pending_interface_dispatches := fastc_start_interface_dispatches(declared_kinds, functions, interface_methods, used_function_names, prefs.building_v, prefs)
-	mut struct_field_lookup := map[string]map[string]FastcStructField{}
-	for layout_type, fields in struct_field_info {
-		mut fields_by_name := map[string]FastcStructField{}
-		for field in fields {
-			fields_by_name[field.name] = field
-		}
-		struct_field_lookup[layout_type] = fields_by_name.move()
-	}
+	struct_field_lookup := fastc_wait_struct_field_lookup(mut pending_field_lookup)
 	mut prototypes := strings.new_builder(1024)
-	mut body := strings.new_builder(4096)
+	// The per-file bodies are stitched by reference: the directive partition
+	// works on their virtual concatenation and the final assembly copies each
+	// range straight from the pieces, so the multi-megabyte body is copied once.
+	mut body_pieces := []string{cap: sources.len + 16}
+	mut body_len := 0
 	mut body_directive_lines := []FastcCDirectiveLine{}
 	mut fixed_array_types := constant_output.fixed_array_types.clone()
 	for name, array_type in global_output.fixed_array_types {
@@ -1461,26 +1513,26 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mut spawn_helpers := map[string]string{}
 	mut mono_definitions := map[string]string{}
 	mut c_flags := []string{}
-	outputs := fastc_generate_file_outputs(&ctx, sources)
+	generation_sources := fastc_wait_generation_fragments(mut pending_fragments)
+	timer.mark('wait_fragments')
+	outputs := fastc_generate_file_outputs(&ctx, generation_sources)
 	timer.mark('file_outputs')
 	// Size the stitch buffers up front: the per-file bodies add up to several
 	// megabytes, and growing the builders by doubling would copy that text
 	// several times over.
 	mut prototypes_size := 0
-	mut body_size := 0
 	for output in outputs {
 		prototypes_size += output.prototypes.len
-		body_size += output.body.len
 	}
 	prototypes.ensure_cap(prototypes_size + 1024)
-	body.ensure_cap(body_size + 4096)
 	for output in outputs {
 		if output.failed {
 			return error(output.error_message)
 		}
 		prototypes.write_string(output.prototypes)
-		body_offset := body.len
-		body.write_string(output.body)
+		body_offset := body_len
+		body_pieces << output.body
+		body_len += output.body.len
 		for line in output.directive_lines {
 			body_directive_lines << FastcCDirectiveLine{
 				start: body_offset + line.start
@@ -1516,7 +1568,9 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	mono_names.sort()
 	timer.mark('stitch')
 	for mono_name in mono_names {
-		body.write_string(mono_definitions[mono_name])
+		mono_definition := mono_definitions[mono_name]
+		body_pieces << mono_definition
+		body_len += mono_definition.len
 	}
 	synthesized_main := if has_entry_module && !entry_has_main {
 		fastc_synthesized_main(prefs.building_v, startup_initializers.len > 0, module_cleanup_calls.len > 0)
@@ -1548,88 +1602,113 @@ fn generate_source_files(input_sources []FastcSourceFile, module_aliases map[str
 	timer.mark('wait_interface_dispatches')
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(fixed_array_types)
 	preamble := if prefs.building_v { c_selfhost_preamble } else { c_preamble }
-	hoisted_body := fastc_partition_c_directive_lines(body.str(), body_directive_lines)
+	hoisted_body := fastc_partition_c_directive_ranges(body_len, body_directive_lines)
 	timer.mark('partition_directives')
-	mut result := strings.new_builder(preamble.len + c_integer_comparison_helpers.len + type_declarations.len + type_output.enum_string_helpers.len + constant_output.macros.len + constant_output.declarations.len + global_output.declarations.len + prototypes.len + body.len + startup_initializers.len + 96)
-	result.write_string(preamble)
-	result.write_string(c_integer_comparison_helpers)
-	fastc_write_c_source_ranges(mut result, hoisted_body.source, hoisted_body.directive_ranges)
+	mut pieces := []string{cap: 64 + body_pieces.len * 3}
+	pieces << preamble
+	pieces << c_integer_comparison_helpers
+	fastc_collect_c_piece_ranges(mut pieces, body_pieces, hoisted_body.directive_ranges)
+	timer.mark('assemble.directives')
 	if hoisted_body.final_kind == 1 {
-		result.write_u8(`\n`)
+		pieces << '\n'
 	}
 	if hoisted_body.directive_ranges.len > 0 {
-		result.writeln('')
+		pieces << '\n'
 	}
 	if prefs.building_v {
-		result.write_string(c_selfhost_post_directives)
+		pieces << c_selfhost_post_directives
 	}
 	if spawn_typedefs.len > 0 {
-		result.write_string(c_spawn_runtime)
-		result.writeln('')
+		pieces << c_spawn_runtime
+		pieces << '\n'
 	}
-	result.write_string(constant_output.macros)
-	result.write_string(type_declarations)
-	result.write_string(late_composite_declarations.str())
-	result.write_string(fixed_array_declarations)
+	pieces << constant_output.macros
+	pieces << type_declarations
+	pieces << late_composite_declarations.str()
+	pieces << fixed_array_declarations
 	if spawn_typedefs.len > 0 {
 		mut thread_type_names := spawn_typedefs.keys()
 		thread_type_names.sort()
 		for thread_type_name in thread_type_names {
-			result.writeln(spawn_typedefs[thread_type_name])
+			pieces << spawn_typedefs[thread_type_name]
+			pieces << '\n'
 		}
-		result.writeln('')
+		pieces << '\n'
 	}
-	result.write_string(constant_output.declarations)
-	result.write_string(global_output.declarations)
-	result.write_string(prototypes.str())
+	pieces << constant_output.declarations
+	pieces << global_output.declarations
+	pieces << prototypes.str()
 	if startup_initializers.len > 0 {
-		result.writeln('static void v_fastc_init_globals(void);')
+		pieces << 'static void v_fastc_init_globals(void);'
+		pieces << '\n'
 	}
 	if module_cleanup_calls.len > 0 {
-		result.writeln('static void v_fastc_cleanup_modules(void);')
+		pieces << 'static void v_fastc_cleanup_modules(void);'
+		pieces << '\n'
 	}
-	result.writeln('')
+	pieces << '\n'
 	if prefs.building_v {
-		result.write_string(c_selfhost_runtime)
+		pieces << c_selfhost_runtime
 	}
-	result.write_string(type_output.enum_string_helpers)
+	pieces << type_output.enum_string_helpers
 	if spawn_helpers.len > 0 {
 		mut spawn_helper_names := spawn_helpers.keys()
 		spawn_helper_names.sort()
 		for spawn_helper_name in spawn_helper_names {
-			result.writeln(spawn_helpers[spawn_helper_name])
-			result.writeln('')
+			pieces << spawn_helpers[spawn_helper_name]
+			pieces << '\n'
+			pieces << '\n'
 		}
 	}
-	result.write_string(interface_dispatches)
+	pieces << interface_dispatches
 	if startup_initializers.len > 0 {
-		result.writeln('static void v_fastc_init_globals(void) {')
-		result.write_string(startup_initializers)
-		result.writeln('}')
-		result.writeln('')
+		pieces << 'static void v_fastc_init_globals(void) {'
+		pieces << '\n'
+		pieces << startup_initializers
+		pieces << '}'
+		pieces << '\n'
+		pieces << '\n'
 	}
 	if module_cleanup_calls.len > 0 {
-		result.writeln('static void v_fastc_cleanup_modules(void) {')
+		pieces << 'static void v_fastc_cleanup_modules(void) {'
+		pieces << '\n'
 		for cleanup_call in module_cleanup_calls {
-			result.writeln('\t${cleanup_call}();')
+			pieces << '\t${cleanup_call}();'
+			pieces << '\n'
 		}
-		result.writeln('}')
-		result.writeln('')
+		pieces << '}'
+		pieces << '\n'
+		pieces << '\n'
 	}
-	result.write_string(synthesized_main)
-	fastc_write_c_source_ranges(mut result, hoisted_body.source, hoisted_body.conditional_ranges)
+	pieces << synthesized_main
+	timer.mark('assemble.head')
+	fastc_collect_c_piece_ranges(mut pieces, body_pieces, hoisted_body.conditional_ranges)
+	timer.mark('assemble.conditional')
 	if hoisted_body.final_kind == 2 {
-		result.write_u8(`\n`)
+		pieces << '\n'
 	}
 	if hoisted_body.conditional_ranges.len > 0 {
-		result.writeln('')
+		pieces << '\n'
 	}
-	fastc_write_c_source_ranges(mut result, hoisted_body.source, hoisted_body.body_ranges)
+	fastc_collect_c_piece_ranges(mut pieces, body_pieces, hoisted_body.body_ranges)
 	if hoisted_body.final_kind == 0 {
-		result.write_u8(`\n`)
+		pieces << '\n'
 	}
 	timer.mark('assemble')
-	return result.str(), spawn_typedefs.len > 0, c_flags
+	return pieces, spawn_typedefs.len > 0, c_flags
+}
+
+// fastc_build_struct_field_lookup indexes every struct's fields by name.
+fn fastc_build_struct_field_lookup(struct_field_info map[string][]FastcStructField) map[string]map[string]FastcStructField {
+	mut struct_field_lookup := map[string]map[string]FastcStructField{}
+	for layout_type, fields in struct_field_info {
+		mut fields_by_name := map[string]FastcStructField{}
+		for field in fields {
+			fields_by_name[field.name] = field
+		}
+		struct_field_lookup[layout_type] = fields_by_name.move()
+	}
+	return struct_field_lookup
 }
 
 fn fastc_synthesized_main(selfhost bool, has_startup_inits bool, has_cleanup_hooks bool) string {
@@ -1901,6 +1980,79 @@ fn fastc_scan_c_directive_lines(source string) []FastcCDirectiveLine {
 		line_start = line_end + 1
 	}
 	return lines
+}
+
+// fastc_partition_c_directive_ranges partitions a body of `total_len` bytes,
+// known only through its directive lines, into directive, conditional and
+// plain ranges (see fastc_partition_c_directive_lines).
+fn fastc_partition_c_directive_ranges(total_len int, lines []FastcCDirectiveLine) FastcPartitionedCSource {
+	mut directive_ranges := []int{cap: lines.len * 2}
+	mut conditional_ranges := []int{cap: lines.len * 2}
+	mut body_ranges := []int{cap: lines.len * 2 + 2}
+	mut conditional_depth := 0
+	mut cursor := 0
+	mut final_kind := 0
+	for line in lines {
+		if cursor < line.start {
+			final_kind = if conditional_depth > 0 { 2 } else { 0 }
+			fastc_append_c_source_range(cursor, line.start, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+		}
+		if conditional_depth > 0 {
+			final_kind = 2
+			if line.kind == 2 {
+				conditional_depth++
+			} else if line.kind == 3 {
+				conditional_depth--
+			}
+		} else if line.kind == 2 {
+			final_kind = 2
+			conditional_depth = 1
+		} else {
+			final_kind = 1
+		}
+		fastc_append_c_source_range(line.start, line.end, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+		cursor = line.end
+	}
+	if cursor < total_len {
+		final_kind = if conditional_depth > 0 { 2 } else { 0 }
+		fastc_append_c_source_range(cursor, total_len, final_kind, mut directive_ranges, mut conditional_ranges, mut body_ranges)
+	}
+	return FastcPartitionedCSource{
+		directive_ranges: directive_ranges
+		conditional_ranges: conditional_ranges
+		body_ranges: body_ranges
+		final_kind: final_kind
+	}
+}
+
+// fastc_collect_c_piece_ranges appends the ascending [start, end) `ranges` of
+// the virtual concatenation of `pieces` to `out` as views into the pieces.
+fn fastc_collect_c_piece_ranges(mut out []string, pieces []string, ranges []int) {
+	mut piece_index := 0
+	mut piece_start := 0
+	mut range_index := 0
+	for range_index + 1 < ranges.len {
+		mut start := ranges[range_index]
+		end := ranges[range_index + 1]
+		range_index += 2
+		for start < end {
+			for piece_index < pieces.len && piece_start + pieces[piece_index].len <= start {
+				piece_start += pieces[piece_index].len
+				piece_index++
+			}
+			if piece_index >= pieces.len {
+				return
+			}
+			piece := pieces[piece_index]
+			local_start := start - piece_start
+			mut local_end := end - piece_start
+			if local_end > piece.len {
+				local_end = piece.len
+			}
+			out << unsafe { tos(piece.str + local_start, local_end - local_start) }
+			start = piece_start + local_end
+		}
+	}
 }
 
 fn fastc_partition_c_directive_lines(source string, lines []FastcCDirectiveLine) FastcPartitionedCSource {

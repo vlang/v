@@ -394,7 +394,7 @@ fn (g &Parser) render_struct_literal_field_names(tokens []FastcExpressionToken, 
 				}
 				function_key := fastc_function_key(module_name, field_name)
 				if function_key in g.functions || function_key in g.mono_functions {
-					resolved_names << fastc_c_function_name_for_key(function_key)
+					resolved_names << g.c_function_name_for_key(function_key)
 				}
 				for resolved_name in resolved_names {
 					needle := '.${resolved_name}='
@@ -2096,7 +2096,7 @@ fn (g &Parser) render_function_value_expression(tokens []FastcExpressionToken) ?
 	if function_key !in g.functions && function_key !in g.mono_functions {
 		return none
 	}
-	return '&${fastc_c_function_name_for_key(function_key)}'
+	return '&${g.c_function_name_for_key(function_key)}'
 }
 
 fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?string {
