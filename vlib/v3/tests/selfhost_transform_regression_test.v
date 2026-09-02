@@ -43,7 +43,38 @@ fn selfhost_regression_run(name string, source string) string {
 // `transform_expr`, which rebuilds the branch unchanged in shape. The re-dispatch used to see a
 // changed-but-still-a-branch operand and recurse forever, overflowing the stack.
 fn test_untyped_enum_branch_argument_in_generic_clone_terminates() {
-	out := selfhost_regression_run('untyped_enum_branch_arg', '\nenum Op {\n\tdot\n\tarrow\n}\n\nstruct Sel {\nmut:\n\tn int\n}\n\nfn (mut s Sel) make_selector_op(base int, field string, typ string, op Op) string {\n\ts.n++\n\treturn "${base}-${field}-${typ}-${op}"\n}\n\nfn (mut s Sel) wrap[U](v U, expr_type string) string {\n\tbase := s.n + 1\n\tfield := "${v}"\n\tfield_typ := "x${field}"\n\treturn s.make_selector_op(base, field, field_typ, if expr_type.starts_with("&") {\n\t\t.arrow\n\t} else {\n\t\t.dot\n\t})\n}\n\nfn main() {\n\tmut s := Sel{}\n\tprintln(s.wrap(1, "&int"))\n\tprintln(s.wrap("s", "int"))\n}\n')
+	out := selfhost_regression_run('untyped_enum_branch_arg', 'enum Op {
+	dot
+	arrow
+}
+
+struct Sel {
+mut:
+	n int
+}
+
+fn (mut s Sel) make_selector_op(base int, field string, typ string, op Op) string {
+	s.n++
+	return "\${base}-\${field}-\${typ}-\${op}"
+}
+
+fn (mut s Sel) wrap[U](v U, expr_type string) string {
+	base := s.n + 1
+	field := "\${v}"
+	field_typ := "x\${field}"
+	return s.make_selector_op(base, field, field_typ, if expr_type.starts_with("&") {
+		.arrow
+	} else {
+		.dot
+	})
+}
+
+fn main() {
+	mut s := Sel{}
+	println(s.wrap(1, "&int"))
+	println(s.wrap("s", "int"))
+}
+')
 	assert out.split_into_lines() == ['1-1-x1-arrow', '2-s-xs-dot']
 }
 
@@ -51,8 +82,7 @@ fn test_untyped_enum_branch_argument_in_generic_clone_terminates() {
 // value. When a later argument hoists a value branch, the source-order guards used to snapshot
 // that base into a temp, emitting `unknown __order_snapshot_0 = os;`.
 fn test_module_qualified_call_with_branch_argument() {
-	out := selfhost_regression_run('module_qualified_branch_arg', '
-import os
+	out := selfhost_regression_run('module_qualified_branch_arg', 'import os
 
 fn pick(name string) !string {
 	if name.len == 0 {
@@ -83,8 +113,7 @@ fn main() {
 // reference (`m &map[string]bool`) still binds a plain value copy, so the binding must not be
 // typed `&V` — that made every use of it emit a dereference of a non-pointer local.
 fn test_for_in_over_map_reference_binds_value() {
-	out := selfhost_regression_run('for_in_map_reference', '
-fn count_used(used &map[string]bool) int {
+	out := selfhost_regression_run('for_in_map_reference', 'fn count_used(used &map[string]bool) int {
 	mut n := 0
 	for name, is_used in used {
 		if !is_used || name.len == 0 {
@@ -118,4 +147,70 @@ fn main() {
 }
 ')
 	assert out.split_into_lines() == ['2', '2', '4']
+}
+
+// `mod.Type.make(...)` is a static associated call: its callee base is the *selector* `mod.Type`,
+// which names a type, not a value. `static_assoc_fn_name` recognizes that selector shape, so the
+// namespace guard must consult it for selector bases too — otherwise the call is classified as a
+// method and a value-branch argument makes the ordering guards snapshot the type name as a
+// receiver (`void __order_snapshot_0 = shapes__Box;`).
+fn test_module_qualified_static_assoc_call_with_branch_argument() {
+	v3_bin := selfhost_regression_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_selfhost_regression_static_assoc_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'shapes')) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'selfhost_regression_static_assoc' }\n") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'shapes/shapes.v'), 'module shapes
+
+pub struct Box {
+pub:
+	w int
+	h int
+}
+
+pub fn Box.make(w int) Box {
+	return Box{
+		w: w
+		h: w * 2
+	}
+}
+') or { panic(err) }
+	main_path := os.join_path(root, 'main.v')
+	os.write_file(main_path, 'module main
+
+import shapes
+
+fn pick(n int) !int {
+	if n < 0 {
+		return error("neg")
+	}
+	return n
+}
+
+fn build(n int) shapes.Box {
+	return shapes.Box.make(pick(n) or {
+		if n == -1 {
+			7
+		} else {
+			9
+		}
+	})
+}
+
+fn main() {
+	b := build(3)
+	println("\${b.w}-\${b.h}")
+	c := build(-1)
+	println("\${c.w}-\${c.h}")
+}
+') or { panic(err) }
+	bin := os.join_path(os.temp_dir(), 'v3_selfhost_regression_static_assoc_bin_${os.getpid()}')
+	compile := os.execute('${v3_bin} -nocache -b c -o ${bin} ${main_path}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().split_into_lines() == ['3-6', '7-14']
 }
