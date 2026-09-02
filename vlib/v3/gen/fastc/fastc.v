@@ -1108,6 +1108,9 @@ mut:
 	// Method keys memoized per receiver type and method name; the key only
 	// depends on the file-level tables, so it is reset with the other memos.
 	method_key_memo map[string]map[string]string
+	// Struct field lookups memoized per receiver type and field name (a field
+	// with an empty name records a miss); reset with the other memos.
+	field_memo      map[string]map[string]FastcStructField
 	has_c_functions bool
 	// Spawn lowering registrations (see spawn.v): thread struct typedefs,
 	// creator/run/waiter helper definitions, and thread type -> value type.
@@ -1325,6 +1328,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		comparison_memo: map[i64]FastcRenderedExpression{}
 		type_memo: map[i64]string{}
 		method_key_memo: map[string]map[string]string{}
+		field_memo: map[string]map[string]FastcStructField{}
 		member_smartcasts: map[string]FastcMemberSmartcast{}
 		spawn_typedefs: map[string]string{}
 		spawn_helpers: map[string]string{}
@@ -1597,14 +1601,21 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	prototypes.ensure_cap(prototypes_size + 1024)
 	timer.mark('stitch.size')
+	stitch_sw := time.new_stopwatch()
+	mut stitch_proto_us := i64(0)
+	mut stitch_lines_us := i64(0)
+	mut stitch_maps_us := i64(0)
 	for output in outputs {
 		if output.failed {
 			return error(output.error_message)
 		}
+		part_start := stitch_sw.elapsed().microseconds()
 		prototypes.write_string(output.prototypes)
 		body_offset := body_len
 		body_pieces << output.body
 		body_len += output.body.len
+		proto_done := stitch_sw.elapsed().microseconds()
+		stitch_proto_us += proto_done - part_start
 		for line in output.directive_lines {
 			body_directive_lines << FastcCDirectiveLine{
 				start: body_offset + line.start
@@ -1612,6 +1623,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 				kind: line.kind
 			}
 		}
+		lines_done := stitch_sw.elapsed().microseconds()
+		stitch_lines_us += lines_done - proto_done
 		if output.mono_definitions.len > 0 {
 			mut mono_names := output.mono_definitions.keys()
 			mono_names.sort()
@@ -1631,12 +1644,16 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			spawn_helpers[name] = text
 		}
 		c_flags << output.c_flags
+		stitch_maps_us += stitch_sw.elapsed().microseconds() - lines_done
 	}
 	for name, array_type in generation.fixed_array_types {
 		fixed_array_types[name] = array_type
 	}
 	for name, _ in generation.composite_types {
 		composite_types[name] = true
+	}
+	if os.getenv('FASTC_BENCH_PHASES') != '' {
+		eprintln('fastc-phase stitch.detail proto_us=${stitch_proto_us} lines_us=${stitch_lines_us} maps_us=${stitch_maps_us}')
 	}
 	timer.mark('stitch.outputs')
 	mut mono_names := mono_definitions.keys()

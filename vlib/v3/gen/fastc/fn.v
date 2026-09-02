@@ -69,6 +69,7 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.declared_type_key_memo = map[string]FastcMemoEntry{}
 	g.type_memo = map[i64]string{}
 	g.method_key_memo = map[string]map[string]string{}
+	g.field_memo = map[string]map[string]FastcStructField{}
 }
 
 // parse_mono_instance re-parses one concrete instance in its defining module, so its body
