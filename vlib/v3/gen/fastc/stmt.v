@@ -1876,17 +1876,24 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool) ! {
 	// GNU typeof is unevaluated and is supported by bundled TinyCC. It lets the
 	// direct path preserve V's `:=` without running any inference or type checker.
 	c_name := fastc_c_identifier(name)
+	normalized_type := fastc_normalize_inferred_type(g.last_expression_type)
 	if expression.starts_with('"') {
 		// C's typeof preserves a literal's array type instead of applying the usual
 		// pointer decay. The spelling alone is enough to lower this case.
 		g.write_line('string ${c_name} = (${expression});')
+	} else if normalized_type == 'int' {
+		// V's platform `int` is i64 (on 64-bit targets); `__typeof__` of an integer
+		// literal or C-`int` expression would give C `int` (32-bit), silently
+		// truncating `int` arithmetic. Spell the platform int type explicitly so the
+		// local matches the width used for `int` params, fields, and the C backend.
+		g.write_line('${fastc_platform_int_c_type} ${c_name} = (${expression});')
 	} else {
 		g.write_line('__typeof__((${expression})) ${c_name} = (${expression});')
 	}
 	local_type := if g.selfhost && g.last_expression_type == '' {
 		'int'
 	} else {
-		fastc_normalize_inferred_type(g.last_expression_type)
+		normalized_type
 	}
 	function_alias := g.functions[local_type] or { FastcFunctionSignature{} }
 	g.set_scoped_local(name, FastcLocal{

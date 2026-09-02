@@ -5795,23 +5795,14 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 		addr_tmp := '_cabi_out_addr_${n}'
 		val_tmp := '_cabi_out_val_${n}'
 		ptr_ct := g.value_c_type(g.usable_expr_type(arg_id))
-		arg_node := g.a.nodes[int(arg_id)]
-		// The address of a variable (`&x`) is provably non-null, so no guard is
-		// needed. A forwarded pointer value (e.g. a `mut x int` param passed on to C)
-		// may be null; keep the null through to the callee and skip the copy-back so
-		// its semantics are unchanged.
-		non_null := arg_node.kind == .prefix && arg_node.op == .amp
+		// Only `&<scalar lvalue>` reaches here (see c_call_is_int_out_arg), so the
+		// address is a single, non-null `int` slot: copy it into a C `int`, pass its
+		// address, and copy the sign-extended result back.
 		g.write('${ptr_ct} ${addr_tmp} = ')
 		g.gen_expr(arg_id)
-		if non_null {
-			g.write('; int ${val_tmp} = (int)(*${addr_tmp}); ')
-			g.cabi_int_out_args[arg_id] = '&${val_tmp}'
-			copybacks << '*${addr_tmp} = ${val_tmp};'
-		} else {
-			g.write('; int ${val_tmp} = ${addr_tmp} ? (int)(*${addr_tmp}) : 0; ')
-			g.cabi_int_out_args[arg_id] = '(${addr_tmp} ? &${val_tmp} : (int*)0)'
-			copybacks << 'if (${addr_tmp}) { *${addr_tmp} = ${val_tmp}; }'
-		}
+		g.write('; int ${val_tmp} = (int)(*${addr_tmp}); ')
+		g.cabi_int_out_args[arg_id] = '&${val_tmp}'
+		copybacks << '*${addr_tmp} = ${val_tmp};'
 	}
 	if ret_type is types.Void {
 		g.gen_call(id, node)
@@ -5838,12 +5829,20 @@ fn (mut g FlatGen) gen_c_call_int_out_wrap(id flat.NodeId, node flat.Node) bool 
 	return true
 }
 
-// c_call_is_int_out_arg reports whether the `&int`-typed argument `arg_id` targets a
-// C `int` out-parameter: a fixed `&int` parameter, or (for a C-variadic function) a
-// variadic-tail `&int` address such as scanf's `&a`. It matches both `&x` and a
-// forwarded pointer value (e.g. a `mut x int` parameter passed on to C); the wrap
-// guards possibly-null pointer values.
+// c_call_is_int_out_arg reports whether argument `arg_id` is the address of a single
+// scalar `int` lvalue targeting a C `int` out-parameter (a fixed `&int` parameter, or
+// a C-variadic-tail address such as scanf's `&a`). Only `&x` / `&s.field` qualify:
+// `&arr[i]`, an `[]int`.data pointer, or a forwarded pointer value may point into a
+// multi-element C `int` buffer that a single temporary cannot represent — those must
+// use ABI-correct `i32`/`u32` storage (a V `[N]int` no longer matches C `int[N]`).
 fn (mut g FlatGen) c_call_is_int_out_arg(arg_id flat.NodeId, arg_idx int, param_types []types.Type, typed_param_count int, is_native_variadic bool) bool {
+	arg_node := g.a.nodes[int(arg_id)]
+	if arg_node.kind != .prefix || arg_node.op != .amp || arg_node.children_count == 0 {
+		return false
+	}
+	if g.a.child_node(&arg_node, 0).kind == .index {
+		return false
+	}
 	if !c_type_is_pointer_to_platform_int(cgen_unalias_type(g.usable_expr_type(arg_id))) {
 		return false
 	}

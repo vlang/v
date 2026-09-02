@@ -3912,6 +3912,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		tc.check_call_deprecation(id, node, info)
 		tc.check_call_arg_types(id, node, info)
+		tc.check_c_callback_abi_args(id, node, info)
 		tc.invalidate_smartcasts_after_call(node, info)
 		tc.check_os_file_raw_io_call(id, node, info)
 		tc.check_instantiated_generic_as_casts(node, info)
@@ -10509,6 +10510,53 @@ fn (tc &TypeChecker) subtree_can_rebind_mut_parameter(id flat.NodeId, name strin
 	}
 	for i in 0 .. node.children_count {
 		if tc.subtree_can_rebind_mut_parameter(tc.a.child(node, i), name, typ) {
+			return true
+		}
+	}
+	return false
+}
+
+// check_c_callback_abi_args rejects passing a forwarded/dynamic function value to a
+// C callback parameter whose signature contains platform `int`. A named function is
+// adapted with a generated ABI thunk in the C backend (C `int` <-> V i64), but a
+// dynamic function-pointer value cannot be adapted — a function-pointer cast does not
+// convert the arguments the C library passes — so it would silently miscompile. The
+// caller must pass a named function, or declare the callback with `i32`.
+fn (mut tc TypeChecker) check_c_callback_abi_args(id flat.NodeId, node flat.Node, info CallInfo) {
+	if !info.params_known || !info.name.starts_with('C.') {
+		return
+	}
+	for i in 1 .. node.children_count {
+		param_idx := i - 1
+		if param_idx >= info.params.len {
+			break
+		}
+		param_fn := fn_type_from_type(info.params[param_idx]) or { continue }
+		if !fn_type_has_platform_int(param_fn) {
+			continue
+		}
+		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		if fn_type_from_type(tc.resolve_type(arg_id)) == none {
+			continue
+		}
+		if tc.fn_value_key(tc.a.node(arg_id)) != none {
+			// A resolvable named function is adapted by a generated thunk.
+			continue
+		}
+		if tc.should_diagnose(id) {
+			tc.record_error(.call_arg_mismatch,
+				'cannot pass a forwarded function value with an `int` parameter/return to the C callback of `${info.name}`: a C callback receives a 32-bit `int` but the V function expects 64-bit, and a function-pointer cast cannot adapt that; pass a named function directly, or declare the callback with `i32`',
+				arg_id)
+		}
+	}
+}
+
+fn fn_type_has_platform_int(t FnType) bool {
+	if fn_param_is_platform_int(t.return_type) {
+		return true
+	}
+	for i in 0 .. t.params.len {
+		if fn_param_is_platform_int(fn_compatible_param_type(t, i)) {
 			return true
 		}
 	}

@@ -567,7 +567,7 @@ fn C.write(fd i32, buf voidptr, count usize) i32
 fn C.close(fd i32) i32
 
 // pipes
-fn C.pipe(pipefds &int) i32
+fn C.pipe(pipefds &i32) i32
 
 fn C.dup2(oldfd i32, newfd i32) i32
 

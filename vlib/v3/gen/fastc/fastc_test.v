@@ -349,7 +349,7 @@ fn main() {
 	println(shared)
 }
 ', 'selfhost_static_shared_local.v', prefs) or { panic(err) }
-	assert c_source.contains('__typeof__((1)) shared = (1);'), c_source
+	assert c_source.contains('i64 shared = (1);'), c_source
 	assert c_source.contains('println(shared)'), c_source
 }
 
@@ -776,7 +776,7 @@ fn twice(value int) int {
 '
 	prefs := pref.new_preferences()
 	c_source := generate(source, 'fastc_test.v', prefs) or { panic(err) }
-	assert c_source.contains('__typeof__((0)) total = (0);')
+	assert c_source.contains('i64 total = (0);')
 	assert c_source.contains('string label = ("total=");')
 	assert c_source.contains('__v_fastc_range_start_0 = (0);')
 	assert c_source.contains('__v_fastc_range_end_1 = (3);')

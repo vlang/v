@@ -259,7 +259,10 @@ fn main() {
 	assert !valid_compile.output.contains(' transform'), valid_compile.output
 	assert !valid_compile.output.contains('markused'), valid_compile.output
 	retained_c := os.read_file(valid_binary + '.c') or { panic(err) }
-	assert retained_c.contains('__typeof__((twice(21))) value = (twice(21));')
+	// A `:=` local whose inferred type is platform `int` is spelled with the explicit
+	// (i64) type rather than `__typeof__`, so `int` locals match the width used for
+	// params/fields and never truncate through C's own `int` inference.
+	assert retained_c.contains('i64 value = (twice(21));')
 	assert retained_c.contains('println(017);')
 	assert retained_c.contains('strlen(__v_fastc_collection_')
 	assert retained_c.contains('((const unsigned char *)__v_fastc_collection_')
