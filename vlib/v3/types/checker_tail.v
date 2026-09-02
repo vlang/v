@@ -6149,18 +6149,26 @@ fn (tc &TypeChecker) known_sum_constructor_name(name string) ?string {
 }
 
 // array_accessor_result_is_borrowed reports whether a `first()`/`last()` call result is
-// consumed as a borrow — the base of a field selector (`arr.last().field`) — rather than
-// escaping as an independent value. A borrowed field read keeps the element owned by the
-// array, so it needs no `clone()` even when the element type has no clone method; the
-// transformer lowers such a base to an in-place `arr[..]` access. A bound method value
-// (`arr.last().method`) is excluded: it is not a field read, and closure generation
-// shallow-copies the receiver, so it must keep the copying accessor semantics.
-fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool {
+// consumed as a borrow — read through a chain of field selectors whose final value either
+// does not own heap data (`arr.last().size`, `arr.last().name.len`) or is consumed by a
+// comparison/index operation that produces a scalar (`arr.last().name == 'x'`,
+// `arr.last().name[0]`) or an allocating string consumer (`'<${arr.last().name}>'`) — rather
+// than escaping as an independent value. Such a read keeps the element owned by the array, so
+// the accessor needs no `clone()` and the transformer can lower it to an in-place `arr[..]`
+// access. Allocating/comparison consumers also require sibling expressions that cannot mutate
+// the source before consumption. Two shapes are excluded so copying semantics are kept instead:
+//   * a bound method value (`arr.last().method`) — closure generation shallow-copies the
+//     receiver, so a borrowed element would share heap fields with the array;
+//   * a chain whose final value itself owns heap data (`arr.last().name`, where `name` is a
+//     string) — a borrowed alias of that field could outlive the array element's storage.
+// The transformer calls this too, so the two stay in lock-step.
+pub fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool {
 	mut current := id
+	mut final_field := flat.empty_node
 	for {
 		parent_id := tc.direct_parent_id(current)
 		if parent_id == flat.empty_node || int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len {
-			return false
+			break
 		}
 		parent := tc.a.node(parent_id)
 		// See through transparent parens: `(arr.last()).field`.
@@ -6168,8 +6176,611 @@ fn (tc &TypeChecker) array_accessor_result_is_borrowed(id flat.NodeId) bool {
 			current = parent_id
 			continue
 		}
-		return parent.kind == .selector && parent.children_count > 0
-			&& tc.a.child(parent, 0) == current && !tc.expr_is_method_value(parent_id)
+		// A field read of `current`; a bound method value is not a field read.
+		if parent.kind == .selector && parent.children_count > 0
+			&& tc.a.child(parent, 0) == current && !tc.expr_is_method_value(parent_id) {
+			current_type := tc.resolve_type(current)
+			call_id := tc.direct_parent_id(parent_id)
+			if parent.value == 'clone' && unalias_type(current_type) is String && (current_type !is Alias || !tc.ownership_type_has_clone_method(current_type)) && call_id != flat.empty_node && int(call_id) >= 0 && int(call_id) < tc.a.nodes.len {
+				call := tc.a.node(call_id)
+				if call.kind == .call && call.children_count > 0 && tc.a.child(call, 0) == parent_id {
+					return tc.array_accessor_consumer_siblings_are_stable(call, parent_id) && tc.array_accessor_enclosing_consumers_are_stable(call_id)
+				}
+			}
+			final_field = parent_id
+			current = parent_id
+			continue
+		}
+		break
+	}
+	if final_field == flat.empty_node {
+		return false
+	}
+	raw_final_type := tc.resolve_type(final_field)
+	final_type := unalias_type(raw_final_type)
+	if !tc.ownership_type_requires_destruction(final_type) && !tc.array_accessor_type_contains_pointer(final_type) {
+		return tc.array_accessor_enclosing_consumers_are_stable(current)
+	}
+	// An owned or pointer field remains borrowed when a comparison or scalar index consumes it
+	// immediately. Calls, assignments, and owned/pointer index results stay on the copying path
+	// because they can retain storage from the array element.
+	mut consumed_id := current
+	mut formatted_interp := false
+	mut consumer_id := tc.direct_parent_id(current)
+	for consumer_id != flat.empty_node && int(consumer_id) >= 0 && int(consumer_id) < tc.a.nodes.len {
+		parent := tc.a.node(consumer_id)
+		if parent.kind == .paren {
+			consumed_id = consumer_id
+			consumer_id = tc.direct_parent_id(consumer_id)
+			continue
+		}
+		if parent.kind == .directive && parent.value == 'string_interp_format' && parent.children_count > 0 && tc.a.child(parent, 0) == consumed_id {
+			formatted_interp = true
+			consumed_id = consumer_id
+			consumer_id = tc.direct_parent_id(consumer_id)
+			continue
+		}
+		break
+	}
+	if consumer_id == flat.empty_node || int(consumer_id) < 0 || int(consumer_id) >= tc.a.nodes.len {
+		return false
+	}
+	consumer := tc.a.node(consumer_id)
+	if consumer.kind == .infix && consumer.op in [.eq, .ne, .lt, .gt, .le, .ge]
+		&& !tc.array_accessor_consumer_has_overloaded_operator(consumer) {
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+	}
+	if consumer.kind == .infix && consumer.op == .plus && final_type is String && (raw_final_type !is Alias || !tc.type_has_infix_operator_method(raw_final_type, .plus)) {
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+	}
+	if consumer.kind == .string_interp && (consumer.children_count > 1 || formatted_interp)
+		&& final_type is String
+		&& !tc.array_accessor_string_interp_part_can_run_user_code(consumed_id) {
+		// The consumed part's own type dispatches through `wrap_string_conversion`: a string
+		// alias with a custom `str()` could mutate the source array while reading the borrowed
+		// shallow receiver, so reject it here just like an unstable sibling.
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+	}
+	if consumer.kind == .in_expr && consumer.children_count > 1
+		&& tc.a.child(consumer, 0) == consumed_id
+		&& !tc.array_accessor_membership_has_overloaded_equality(consumer) {
+		return tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+	}
+	if consumer.kind != .index || consumer.children_count == 0 || tc.a.child(consumer, 0) != consumed_id {
+		return false
+	}
+	if _ := tc.index_overload_call_info(tc.resolve_type(tc.a.child(consumer, 0)), false) {
+		return false
+	}
+	index_type := unalias_type(tc.resolve_type(consumer_id))
+	return !tc.ownership_type_requires_destruction(index_type) && !tc.array_accessor_type_contains_pointer(index_type) && tc.array_accessor_consumer_siblings_are_stable(consumer, consumed_id) && tc.array_accessor_enclosing_consumers_are_stable(consumer_id)
+}
+
+fn (tc &TypeChecker) array_accessor_enclosing_consumers_are_stable(id flat.NodeId) bool {
+	mut current := id
+	for {
+		parent_id := tc.direct_parent_id(current)
+		if parent_id == flat.empty_node || int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len {
+			return true
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .paren || (parent.kind == .directive && parent.value == 'string_interp_format') {
+			current = parent_id
+			continue
+		}
+		if parent.kind == .expr_stmt && parent.children_count > 0 && tc.a.child(parent, 0) == current {
+			current = parent_id
+			continue
+		}
+		if parent.kind in [.block, .match_branch] && parent.children_count > 0 && tc.a.child(parent, parent.children_count - 1) == current {
+			if parent.kind == .match_branch {
+				// The branch conditions (children before the body) run before the borrowed tail,
+				// so a condition like `delete_last(mut arr)` could empty the array first; reject
+				// the borrow when any condition can mutate the source.
+				n_conditions := if parent.value == 'else' { 0 } else { parent.value.int() }
+				for i in 0 .. n_conditions {
+					if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(parent, i)) {
+						return false
+					}
+				}
+			}
+			current = parent_id
+			continue
+		}
+		if parent.kind in [.if_expr, .match_stmt, .or_expr] {
+			if parent.children_count > 0 {
+				prerequisite_id := tc.a.child(parent, 0)
+				if prerequisite_id != current && !tc.array_accessor_borrow_sibling_is_stable(prerequisite_id) {
+					return false
+				}
+			}
+			current = parent_id
+			continue
+		}
+		if parent.kind in [.field_init, .struct_init, .assoc, .array_literal, .array_init, .map_init] {
+			if !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+				return false
+			}
+			current = parent_id
+			continue
+		}
+		if parent.kind == .call {
+			if !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+				return false
+			}
+			current = parent_id
+			continue
+		}
+		if parent.kind == .return_stmt {
+			return parent.children_count <= 1 || tc.array_accessor_consumer_siblings_are_stable(parent, current)
+		}
+		if parent.kind in [.prefix, .cast_expr, .is_expr] {
+			wrapper_type := unalias_type(tc.resolve_type(parent_id))
+			if tc.ownership_type_requires_destruction(wrapper_type) || tc.array_accessor_type_contains_pointer(wrapper_type) || !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+				return false
+			}
+			current = parent_id
+			continue
+		}
+		is_string_plus := parent.kind == .infix && parent.op == .plus && unalias_type(tc.resolve_type(parent_id)) is String
+		if parent.kind == .infix && !is_string_plus {
+			wrapper_type := unalias_type(tc.resolve_type(parent_id))
+			if tc.ownership_type_requires_destruction(wrapper_type) || tc.array_accessor_type_contains_pointer(wrapper_type) || tc.array_accessor_consumer_has_overloaded_operator(parent) || !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+				return false
+			}
+			current = parent_id
+			continue
+		}
+		if !is_string_plus && parent.kind != .string_interp {
+			return true
+		}
+		if !tc.array_accessor_consumer_siblings_are_stable(parent, current) {
+			return false
+		}
+		current = parent_id
+	}
+	return true
+}
+
+fn (tc &TypeChecker) array_accessor_consumer_has_overloaded_operator(consumer &flat.Node) bool {
+	for i in 0 .. consumer.children_count {
+		mut seen := map[string]bool{}
+		if tc.array_accessor_type_has_overloaded_operator(tc.resolve_type(tc.a.child(consumer, i)), consumer.op, mut seen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) array_accessor_membership_has_overloaded_equality(consumer &flat.Node) bool {
+	if consumer.kind != .in_expr || consumer.children_count < 2 {
+		return true
+	}
+	container_type := unalias_type(tc.resolve_type(tc.a.child(consumer, 1)))
+	elem_type := match container_type {
+		Array { container_type.elem_type }
+		ArrayFixed { container_type.elem_type }
+		else { unknown_type('non-array membership') }
+	}
+	mut seen := map[string]bool{}
+	return tc.array_accessor_type_has_overloaded_operator(elem_type, .eq, mut seen)
+}
+
+fn (tc &TypeChecker) array_accessor_type_has_overloaded_operator(typ Type, op flat.Op, mut seen map[string]bool) bool {
+	raw := unwrap_pointer(typ)
+	// `>`, `>=`, `<=` all lower to the type's `<` method (reversed/negated), and `!=`
+	// lowers to `==`; normalize to the underlying operator so the overload is detected
+	// however the comparison is spelled.
+	semantic_op := match op {
+		.ne { flat.Op.eq }
+		.gt, .ge, .le { flat.Op.lt }
+		else { op }
+	}
+	key := raw.name()
+	if seen[key] {
+		return false
+	}
+	seen[key] = true
+	defer {
+		seen.delete(key)
+	}
+	if (raw is Struct || raw is Alias) && tc.type_has_infix_operator_method(raw, semantic_op) {
+		return true
+	}
+	if semantic_op != .eq {
+		return false
+	}
+	match raw {
+		Alias {
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut seen)
+		}
+		Array {
+			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, semantic_op, mut seen)
+		}
+		ArrayFixed {
+			return tc.array_accessor_type_has_overloaded_operator(raw.elem_type, semantic_op, mut seen)
+		}
+		Map {
+			return tc.array_accessor_type_has_overloaded_operator(raw.key_type, semantic_op, mut seen) || tc.array_accessor_type_has_overloaded_operator(raw.value_type, semantic_op, mut seen)
+		}
+		OptionType {
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut seen)
+		}
+		ResultType {
+			return tc.array_accessor_type_has_overloaded_operator(raw.base_type, semantic_op, mut seen)
+		}
+		Struct {
+			for field in tc.struct_fields_for_type(raw.name) {
+				if tc.array_accessor_type_has_overloaded_operator(field.typ, semantic_op, mut seen) {
+					return true
+				}
+			}
+		}
+		Interface {
+			for impl_name in tc.interface_impl_names(raw.name) {
+				if tc.array_accessor_type_has_overloaded_operator(tc.parse_type(impl_name), semantic_op, mut seen) {
+					return true
+				}
+			}
+		}
+		SumType {
+			base := tc.sum_base_name(raw.name)
+			for variant in tc.sum_types[base] or { []string{} } {
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(raw.name, variant))
+				if tc.array_accessor_type_has_overloaded_operator(variant_type, semantic_op, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) array_accessor_consumer_siblings_are_stable(consumer &flat.Node, consumed_id flat.NodeId) bool {
+	for i in 0 .. consumer.children_count {
+		child_id := tc.a.child(consumer, i)
+		if child_id != consumed_id {
+			if consumer.kind == .string_interp && tc.array_accessor_string_interp_part_can_run_user_code(child_id) {
+				return false
+			}
+			if !tc.array_accessor_borrow_sibling_is_stable(child_id) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn (tc &TypeChecker) array_accessor_string_interp_part_can_run_user_code(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return true
+	}
+	mut expr_id := id
+	node := tc.a.node(id)
+	if node.kind == .directive && node.value == 'string_interp_format' {
+		if node.children_count == 0 {
+			return true
+		}
+		expr_id = tc.a.child(node, 0)
+	}
+	mut seen := map[string]bool{}
+	return tc.array_accessor_stringifier_can_run_user_code(tc.resolve_type(expr_id), mut seen)
+}
+
+fn (tc &TypeChecker) array_accessor_stringifier_can_run_user_code(typ Type, mut seen map[string]bool) bool {
+	clean := unwrap_pointer(typ)
+	key := clean.name()
+	if seen[key] {
+		return false
+	}
+	seen[key] = true
+	match clean {
+		Alias, Array, ArrayFixed, Map, Struct, Interface, SumType, Enum {
+			if tc.array_accessor_type_has_custom_str_method(clean) {
+				return true
+			}
+		}
+		else {}
+	}
+	match clean {
+		Unknown {
+			return true
+		}
+		Alias, OptionType {
+			return tc.array_accessor_stringifier_can_run_user_code(clean.base_type, mut seen)
+		}
+		ResultType {
+			// A result can dispatch through the concrete IError payload's str method.
+			return true
+		}
+		Array, ArrayFixed {
+			return tc.array_accessor_stringifier_can_run_user_code(clean.elem_type, mut seen)
+		}
+		Map {
+			return tc.array_accessor_stringifier_can_run_user_code(clean.key_type, mut seen) || tc.array_accessor_stringifier_can_run_user_code(clean.value_type, mut seen)
+		}
+		Struct {
+			for field in tc.struct_fields_for_type(clean.name) {
+				if tc.array_accessor_stringifier_can_run_user_code(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+		Interface {
+			for impl_name in tc.interface_impl_names(clean.name) {
+				if tc.array_accessor_stringifier_can_run_user_code(tc.parse_type(impl_name), mut seen) {
+					return true
+				}
+			}
+		}
+		SumType {
+			base := tc.sum_base_name(clean.name)
+			for variant in tc.sum_types[base] or { return true } {
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(clean.name, variant))
+				if tc.array_accessor_stringifier_can_run_user_code(variant_type, mut seen) {
+					return true
+				}
+			}
+		}
+		MultiReturn {
+			for item in clean.types {
+				if tc.array_accessor_stringifier_can_run_user_code(item, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) array_accessor_type_has_custom_str_method(typ Type) bool {
+	name := resolve_type_name_for_method(typ)
+	if name.len == 0 {
+		return false
+	}
+	method_name := tc.concrete_method_signature_key(name, 'str') or { return false }
+	method_module := tc.fn_type_modules[method_name] or { return true }
+	return method_module != 'builtin'
+}
+
+fn (tc &TypeChecker) array_accessor_borrow_sibling_is_stable(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .directive && node.value == 'string_interp_format' {
+		for i in 0 .. node.children_count {
+			if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
+				return false
+			}
+		}
+		return true
+	}
+	if node.kind == .field_init {
+		return node.children_count == 1 && tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, 0))
+	}
+	if node.kind == .struct_init && !tc.array_accessor_struct_init_defaults_are_stable(id, node) {
+		return false
+	}
+	if node.kind in [.struct_init, .assoc, .array_literal, .array_init, .map_init] {
+		for i in 0 .. node.children_count {
+			if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
+				return false
+			}
+		}
+		return true
+	}
+	if node.kind == .prefix && node.value == '...' && node.children_count > 0 {
+		spread_type := unalias_type(tc.resolve_type(tc.a.child(node, 0)))
+		mut clone_types := []Type{}
+		match spread_type {
+			Array { clone_types << spread_type.elem_type }
+			ArrayFixed { clone_types << spread_type.elem_type }
+			Map {
+				clone_types << spread_type.key_type
+				clone_types << spread_type.value_type
+			}
+			else {}
+		}
+		for clone_type in clone_types {
+			mut seen := map[string]bool{}
+			if tc.array_accessor_clone_can_run_user_code(clone_type, mut seen) {
+				return false
+			}
+		}
+	}
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.ident, .enum_val, .nil_literal, .none_expr, .sizeof_expr, .typeof_expr, .offsetof_expr] {
+		return true
+	}
+	if node.kind == .selector && tc.array_accessor_method_value_clone_can_run_user_code(id) {
+		return false
+	}
+	if node.kind !in [.paren, .selector, .index, .prefix, .cast_expr, .as_expr, .is_expr, .in_expr,
+		.infix, .range] {
+		return false
+	}
+	if node.kind == .index && node.children_count > 0 {
+		if _ := tc.index_overload_call_info(tc.resolve_type(tc.a.child(node, 0)), false) {
+			return false
+		}
+	}
+	if node.kind == .in_expr && node.children_count > 1 {
+		if tc.array_accessor_membership_has_overloaded_equality(node) {
+			return false
+		}
+	}
+	if node.kind == .infix && tc.array_accessor_consumer_has_overloaded_operator(node) {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (tc &TypeChecker) array_accessor_struct_init_defaults_are_stable(id flat.NodeId, node &flat.Node) bool {
+	init_struct := struct_type_from_type(unalias_type(tc.resolve_type(id))) or { return true }
+	init_name := tc.struct_init_field_lookup_name(node.value, init_struct.name)
+	fields := tc.struct_fields_for_init(init_name)
+	mut supplied := map[string]bool{}
+	for i in 0 .. node.children_count {
+		field := tc.a.child_node(node, i)
+		if field.kind != .field_init {
+			continue
+		}
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < fields.len {
+			fields[i].name
+		} else {
+			''
+		}
+		if field_name.len > 0 {
+			supplied[field_name] = true
+		}
+	}
+	decl := tc.source_struct_decl_for_name(init_name) or { return true }
+	for i in 0 .. decl.children_count {
+		field := tc.a.child_node(decl, i)
+		if field.kind != .field_decl || field.children_count == 0 || field.value in supplied {
+			continue
+		}
+		if !tc.array_accessor_borrow_sibling_is_stable(tc.a.child(field, 0)) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (tc &TypeChecker) array_accessor_method_value_clone_can_run_user_code(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind != .selector || node.children_count == 0 || !tc.expr_is_method_value(id) {
+		return false
+	}
+	receiver_id := tc.a.child(node, 0)
+	receiver_type := tc.resolve_type(receiver_id)
+	mut receiver_is_by_value := false
+	for method_name in receiver_method_name_candidates(unwrap_pointer(receiver_type), node.value, tc.cur_module) {
+		if method_name !in tc.fn_param_types || !tc.method_can_be_called_on_receiver(receiver_type, node.value, method_name) {
+			continue
+		}
+		params := tc.fn_param_types[method_name]
+		receiver_is_by_value = params.len > 0 && params[0] !is Pointer
+		break
+	}
+	if !receiver_is_by_value {
+		if receiver_struct := struct_type_from_type(unwrap_pointer(receiver_type)) {
+			if info := tc.resolve_generic_struct_method(receiver_struct.name, node.value) {
+				receiver_is_by_value = info.params.len > 0 && info.params[0] !is Pointer
+			}
+		}
+	}
+	if !receiver_is_by_value || !tc.ownership_type_requires_destruction(receiver_type) || tc.ownership_default_clone_missing_method(receiver_type) != none {
+		return false
+	}
+	mut seen := map[string]bool{}
+	return tc.array_accessor_clone_can_run_user_code(receiver_type, mut seen)
+}
+
+fn (tc &TypeChecker) array_accessor_clone_can_run_user_code(typ Type, mut seen map[string]bool) bool {
+	match typ {
+		Alias {
+			if tc.ownership_type_has_clone_method(typ) {
+				return true
+			}
+			return tc.array_accessor_clone_can_run_user_code(typ.base_type, mut seen)
+		}
+		OptionType {
+			return tc.array_accessor_clone_can_run_user_code(typ.base_type, mut seen)
+		}
+		ResultType, Interface {
+			// Result error payloads and interface payloads use dynamic clone dispatch.
+			return true
+		}
+		Array, ArrayFixed {
+			return tc.array_accessor_clone_can_run_user_code(typ.elem_type, mut seen)
+		}
+		Map {
+			return tc.array_accessor_clone_can_run_user_code(typ.key_type, mut seen) || tc.array_accessor_clone_can_run_user_code(typ.value_type, mut seen)
+		}
+		Struct {
+			if tc.ownership_type_has_clone_method(typ) {
+				return true
+			}
+			if seen[typ.name] {
+				return false
+			}
+			seen[typ.name] = true
+			for field in tc.struct_fields_for_type(typ.name) {
+				if tc.array_accessor_clone_can_run_user_code(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+		SumType {
+			if tc.ownership_type_has_clone_method(typ) {
+				return true
+			}
+			if seen[typ.name] {
+				return false
+			}
+			seen[typ.name] = true
+			base := tc.sum_base_name(typ.name)
+			for variant in tc.sum_types[base] or { return true } {
+				variant_type := tc.parse_type(tc.concrete_sum_variant_name(typ.name, variant))
+				if tc.array_accessor_clone_can_run_user_code(variant_type, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) array_accessor_type_contains_pointer(typ Type) bool {
+	mut seen := map[string]bool{}
+	return tc.array_accessor_type_contains_pointer_inner(typ, mut seen)
+}
+
+fn (tc &TypeChecker) array_accessor_type_contains_pointer_inner(typ Type, mut seen map[string]bool) bool {
+	match typ {
+		Pointer {
+			return true
+		}
+		Alias, OptionType, ResultType {
+			return tc.array_accessor_type_contains_pointer_inner(typ.base_type, mut seen)
+		}
+		ArrayFixed {
+			return tc.array_accessor_type_contains_pointer_inner(typ.elem_type, mut seen)
+		}
+		MultiReturn {
+			for item in typ.types {
+				if tc.array_accessor_type_contains_pointer_inner(item, mut seen) {
+					return true
+				}
+			}
+		}
+		Struct {
+			if seen[typ.name] {
+				return false
+			}
+			seen[typ.name] = true
+			for field in tc.struct_fields_for_type(typ.name) {
+				if tc.array_accessor_type_contains_pointer_inner(field.typ, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
 	}
 	return false
 }
