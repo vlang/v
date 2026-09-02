@@ -1253,6 +1253,34 @@ struct FastcFileGenContext {
 // FastcFileGenOutput is one source file's generation result. The sequential
 // stitch loop consumes them in file order, so parallel workers never touch
 // the shared output builders or the merged registration maps.
+// FastcFileGenResult is every file's generation output in file order with the
+// union of the composite and fixed-array types they registered.
+struct FastcFileGenResult {
+	outputs           []FastcFileGenOutput
+	composite_types   map[string]bool
+	fixed_array_types map[string]string
+}
+
+// fastc_file_gen_result wraps serially generated outputs with their type
+// registrations.
+fn fastc_file_gen_result(outputs []FastcFileGenOutput) FastcFileGenResult {
+	mut composite_types := map[string]bool{}
+	mut fixed_array_types := map[string]string{}
+	for output in outputs {
+		for name, _ in output.composite_types {
+			composite_types[name] = true
+		}
+		for name, array_type in output.fixed_array_types {
+			fixed_array_types[name] = array_type
+		}
+	}
+	return FastcFileGenResult{
+		outputs: outputs
+		composite_types: composite_types
+		fixed_array_types: fixed_array_types
+	}
+}
+
 struct FastcFileGenOutput {
 mut:
 	prototypes        string
@@ -1548,7 +1576,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut c_flags := []string{}
 	generation_sources := fastc_wait_generation_fragments(mut pending_fragments)
 	timer.mark('wait_fragments')
-	outputs := fastc_generate_file_outputs(&ctx, generation_sources)
+	generation := fastc_generate_file_outputs(&ctx, generation_sources)
+	outputs := generation.outputs
 	timer.mark('file_outputs')
 	// Size the stitch buffers up front: the per-file bodies add up to several
 	// megabytes, and growing the builders by doubling would copy that text
@@ -1558,6 +1587,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		prototypes_size += output.prototypes.len
 	}
 	prototypes.ensure_cap(prototypes_size + 1024)
+	timer.mark('stitch.size')
 	for output in outputs {
 		if output.failed {
 			return error(output.error_message)
@@ -1573,21 +1603,17 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 				kind: line.kind
 			}
 		}
-		mut mono_names := output.mono_definitions.keys()
-		mono_names.sort()
-		for mono_name in mono_names {
-			if mono_name !in mono_definitions {
-				mono_definitions[mono_name] = output.mono_definitions[mono_name]
+		if output.mono_definitions.len > 0 {
+			mut mono_names := output.mono_definitions.keys()
+			mono_names.sort()
+			for mono_name in mono_names {
+				if mono_name !in mono_definitions {
+					mono_definitions[mono_name] = output.mono_definitions[mono_name]
+				}
 			}
 		}
 		if output.has_main_entry {
 			entry_has_main = true
-		}
-		for name, array_type in output.fixed_array_types {
-			fixed_array_types[name] = array_type
-		}
-		for name, _ in output.composite_types {
-			composite_types[name] = true
 		}
 		for name, text in output.spawn_typedefs {
 			spawn_typedefs[name] = text
@@ -1597,6 +1623,13 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		c_flags << output.c_flags
 	}
+	for name, array_type in generation.fixed_array_types {
+		fixed_array_types[name] = array_type
+	}
+	for name, _ in generation.composite_types {
+		composite_types[name] = true
+	}
+	timer.mark('stitch.outputs')
 	mut mono_names := mono_definitions.keys()
 	mono_names.sort()
 	timer.mark('stitch')

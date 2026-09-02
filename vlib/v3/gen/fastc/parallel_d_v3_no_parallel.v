@@ -119,12 +119,12 @@ fn fastc_wait_generation_fragments(mut pending FastcPendingFragments) []FastcSou
 	return pending.fragments
 }
 
-fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) []FastcFileGenOutput {
+fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) FastcFileGenResult {
 	mut outputs := []FastcFileGenOutput{cap: sources.len}
 	for source_file in sources {
 		outputs << fastc_generate_single_file(ctx, source_file)
 	}
-	return outputs
+	return fastc_file_gen_result(outputs)
 }
 
 fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]map[string]bool, mut top_level_references map[string]bool) {

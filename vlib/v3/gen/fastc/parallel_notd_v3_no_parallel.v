@@ -541,6 +541,15 @@ struct FastcIndexedFileGenOutput {
 	output FastcFileGenOutput
 }
 
+// FastcFileGenWorkerResult is one worker's outputs together with the union
+// of their composite and fixed-array type registrations, so the stitch pass
+// merges one set per worker instead of one per file.
+struct FastcFileGenWorkerResult {
+	outputs           []FastcIndexedFileGenOutput
+	composite_types   map[string]bool
+	fixed_array_types map[string]string
+}
+
 // FastcGenQueue is a shared work-stealing counter for per-file generation. On a
 // heterogeneous CPU (Apple Silicon's performance + efficiency cores) a static
 // byte-weighted chunk per worker leaves the slowest efficiency core setting the
@@ -577,8 +586,10 @@ fn fastc_file_generation_order(sources []FastcSourceFile) []int {
 // claims the next order slot until the queue empties. The backing source data is
 // shared and read-only. It runs as a value-returning spawn: under -prealloc, V
 // frees a void thread's arena on exit, so outputs travel through the return value.
-fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile, order []int, queue &FastcGenQueue) []FastcIndexedFileGenOutput {
+fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile, order []int, queue &FastcGenQueue) FastcFileGenWorkerResult {
 	mut outputs := []FastcIndexedFileGenOutput{}
+	mut composite_types := map[string]bool{}
+	mut fixed_array_types := map[string]string{}
 	limit := u32(order.len)
 	bench_files := os.getenv('FASTC_BENCH_FILES') != ''
 	mut sw := time.new_stopwatch()
@@ -593,15 +604,26 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 		}
 		file_index := order[claimed]
 		start_us := sw.elapsed().microseconds()
+		output := fastc_generate_single_file(ctx, sources[file_index])
+		for name, _ in output.composite_types {
+			composite_types[name] = true
+		}
+		for name, array_type in output.fixed_array_types {
+			fixed_array_types[name] = array_type
+		}
 		outputs << FastcIndexedFileGenOutput{
 			index: file_index
-			output: fastc_generate_single_file(ctx, sources[file_index])
+			output: output
 		}
 		if bench_files {
 			eprintln('fastc-file ${sw.elapsed().microseconds() - start_us} ${sources[file_index].source.len} ${sources[file_index].path}')
 		}
 	}
-	return outputs
+	return FastcFileGenWorkerResult{
+		outputs: outputs
+		composite_types: composite_types
+		fixed_array_types: fixed_array_types
+	}
 }
 
 const fastc_generation_fragment_size = 28 * 1024
@@ -859,14 +881,14 @@ fn fastc_wait_generation_fragments(mut pending FastcPendingFragments) []FastcSou
 // more than one job is available. `sources` are the generation fragments from
 // fastc_wait_generation_fragments. Results are restored to file order, so the
 // emitted C is identical to a serial run.
-fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) []FastcFileGenOutput {
+fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) FastcFileGenResult {
 	jobs := fastc_parallel_jobs(sources, ctx.prefs)
 	if jobs <= 1 {
 		mut outputs := []FastcFileGenOutput{cap: sources.len}
 		for source_file in sources {
 			outputs << fastc_generate_single_file(ctx, source_file)
 		}
-		return outputs
+		return fastc_file_gen_result(outputs)
 	}
 	mut timer := fastc_new_phase_timer()
 	generation_sources := sources
@@ -881,19 +903,36 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 		worker_threads << spawn fastc_generate_file_steal(ctx, generation_sources, order, queue)
 	}
 	mut outputs := []FastcFileGenOutput{len: generation_sources.len}
-	first_outputs := fastc_generate_file_steal(ctx, generation_sources, order, queue)
-	for indexed_output in first_outputs {
+	mut composite_types := map[string]bool{}
+	mut fixed_array_types := map[string]string{}
+	first := fastc_generate_file_steal(ctx, generation_sources, order, queue)
+	for indexed_output in first.outputs {
 		outputs[indexed_output.index] = indexed_output.output
 	}
+	fastc_merge_worker_types(first, mut composite_types, mut fixed_array_types)
 	timer.mark('file_outputs.first_chunk')
 	for worker_thread in worker_threads {
-		worker_outputs := worker_thread.wait()
-		for indexed_output in worker_outputs {
+		worker := worker_thread.wait()
+		for indexed_output in worker.outputs {
 			outputs[indexed_output.index] = indexed_output.output
 		}
+		fastc_merge_worker_types(worker, mut composite_types, mut fixed_array_types)
 	}
 	timer.mark('file_outputs.wait_chunks')
-	return outputs
+	return FastcFileGenResult{
+		outputs: outputs
+		composite_types: composite_types
+		fixed_array_types: fixed_array_types
+	}
+}
+
+fn fastc_merge_worker_types(worker FastcFileGenWorkerResult, mut composite_types map[string]bool, mut fixed_array_types map[string]string) {
+	for name, _ in worker.composite_types {
+		composite_types[name] = true
+	}
+	for name, array_type in worker.fixed_array_types {
+		fixed_array_types[name] = array_type
+	}
 }
 
 // FastcReferencePartial carries one chunk's function-reference scan across
