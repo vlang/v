@@ -639,6 +639,20 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 	all_files := os.ls(dir) or { return []string{} }
 	mut sorted_files := all_files.clone()
 	sorted_files.sort()
+	// The target-dependent parts of the per-file checks are computed once per
+	// directory: the architectures a file suffix may name that are not the
+	// target's, and the OS-specific suffixes of the target OS.
+	mut incompatible_archs := []string{}
+	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
+		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'wasm32'] {
+		if normalized_arch(arch) != target.arch {
+			incompatible_archs << arch
+		}
+	}
+	os_suffixes := os_specific_suffixes(target.os)
+	// Each file is classified once; both emission groups below reuse the result.
+	mut candidates := []VFileCandidate{cap: sorted_files.len}
 	mut has_os_specific := map[string]bool{}
 	for file in sorted_files {
 		if !file.ends_with('.v') || file.ends_with('.js.v')
@@ -646,27 +660,34 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 			&& !file_name_has_marker(file, '_notd_test.')) {
 			continue
 		}
-		if file_has_incompatible_target_suffix(file, target) {
+		if file_has_incompatible_os_only_suffix(file, target.os) {
 			continue
 		}
-		if base := os_specific_base(file, target.os) {
+		mut incompatible := false
+		for arch in incompatible_archs {
+			if file_name_has_arch_marker(file, arch) {
+				incompatible = true
+				break
+			}
+		}
+		if incompatible {
+			continue
+		}
+		if base := os_specific_base_for(file, os_suffixes) {
 			has_os_specific[base] = true
+		}
+		candidates << VFileCandidate{
+			file: file
+			is_c: file.ends_with('.c.v')
 		}
 	}
 	mut v_files := []string{}
 	for backend_specific in [false, true] {
-		for file in sorted_files {
-			if file.ends_with('.c.v') != backend_specific {
+		for candidate in candidates {
+			if candidate.is_c != backend_specific {
 				continue
 			}
-			if !file.ends_with('.v') || file.ends_with('.js.v')
-				|| (file_name_has_marker(file, '_test.') && !file_name_has_marker(file, '_d_test.')
-				&& !file_name_has_marker(file, '_notd_test.')) {
-				continue
-			}
-			if file_has_incompatible_target_suffix(file, target) {
-				continue
-			}
+			file := candidate.file
 			if base := default_file_base(file) {
 				if has_os_specific[base] {
 					continue
@@ -687,6 +708,13 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 		}
 	}
 	return v_files
+}
+
+// VFileCandidate is a source file of a directory that passed the
+// target-independent and target-suffix filters, with its backend group.
+struct VFileCandidate {
+	file string
+	is_c bool
 }
 
 // get_test_v_files_from_dir returns backend/target/define-compatible test files in dir.
@@ -809,9 +837,12 @@ fn default_file_base(file string) ?string {
 
 // os_specific_base supports os specific base handling for pref.
 fn os_specific_base(file string, target_os string) ?string {
-	if _ := default_file_base(file) {
-		return none
-	}
+	return os_specific_base_for(file, os_specific_suffixes(target_os))
+}
+
+// os_specific_suffixes lists the file name suffixes (`_nix`, `_macos`, ...)
+// that mark a file as specific to `target_os`.
+fn os_specific_suffixes(target_os string) []string {
 	mut suffixes := []string{}
 	os_name := normalized_os(target_os)
 	if os_name != 'windows' {
@@ -867,6 +898,15 @@ fn os_specific_base(file string, target_os string) ?string {
 		else {}
 	}
 
+	return suffixes
+}
+
+// os_specific_base_for returns the base name of an OS-specific file whose
+// suffix is one of `suffixes` (see os_specific_suffixes).
+fn os_specific_base_for(file string, suffixes []string) ?string {
+	if _ := default_file_base(file) {
+		return none
+	}
 	for suffix in suffixes {
 		for ext in ['.c.v', '.v'] {
 			marker := suffix + ext

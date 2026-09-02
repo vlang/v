@@ -8339,6 +8339,7 @@ pub fn run(args []string) {
 	}
 
 	mut b := bench.new()
+	driver_sw := time.new_stopwatch()
 	if silent || c_to_stdout {
 		b.set_quiet()
 	}
@@ -8528,10 +8529,16 @@ pub fn run(args []string) {
 					return
 				}
 			}
+			if os.getenv('FASTC_BENCH_PHASES') != '' {
+				eprintln('fastc-phase driver.setup ${driver_sw.elapsed().microseconds()}us')
+			}
 			fastc_generation := fastc.generate_files_with_source_paths([input_file], prefs) or {
 				eprintln(err.msg())
 				exit(1)
 				return
+			}
+			if os.getenv('FASTC_BENCH_PHASES') != '' {
+				eprintln('fastc-phase driver.generated ${driver_sw.elapsed().microseconds()}us')
 			}
 			fastc_artifact_path := canonical_v3_fastc_output_path(fastc_artifact_file)
 			for source_path in fastc_generation.source_paths {

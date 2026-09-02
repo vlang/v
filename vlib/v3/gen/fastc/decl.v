@@ -1,6 +1,8 @@
 module fastc
 
+import os
 import strings
+import time
 import v3.pref
 import v3.scanner
 import v3.token
@@ -980,15 +982,20 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 // counter runs past the end of `order` (largest files first).
 fn fastc_parse_constant_file_worker(ctx &FastcConstantGenContext, candidates []FastcSourceFile, seed map[string]string, order []int, queue &FastcGenQueue) []FastcIndexedConstantFileResult {
 	mut results := []FastcIndexedConstantFileResult{}
+	bench_files := os.getenv('FASTC_BENCH_FILES') != ''
 	for {
 		slot := fastc_atomic_fetch_add_u32(&queue.next, 1)
 		if slot >= u32(order.len) {
 			break
 		}
 		index := order[slot]
+		file_sw := time.new_stopwatch()
 		results << FastcIndexedConstantFileResult{
 			index:  index
 			result: fastc_parse_constant_file(ctx, candidates[index], seed.clone())
+		}
+		if bench_files {
+			eprintln('fastc-constants-file ${file_sw.elapsed().microseconds()}us ${candidates[index].source.len} bytes ${candidates[index].path}')
 		}
 	}
 	return results
@@ -1081,7 +1088,10 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 			header: source_file.header
 		}
 	}
+	sw := time.new_stopwatch()
 	parallel_results := fastc_parse_constant_files_parallel(&ctx, candidates, constant_types)
+	parallel_us := sw.elapsed().microseconds()
+	mut serial_count := 0
 	for index, candidate in candidates {
 		if index < parallel_results.len {
 			result := parallel_results[index]
@@ -1099,6 +1109,7 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 				continue
 			}
 		}
+		serial_count++
 		mut serial := fastc_parse_constant_file(&ctx, candidate, constant_types)
 		if serial.failed {
 			return error(serial.error_message)
@@ -1111,6 +1122,9 @@ fn fastc_generate_constant_declarations(ordered_sources []FastcSourceFile, const
 		for name, array_type in serial.fixed_array_types {
 			fixed_array_types[name] = array_type
 		}
+	}
+	if os.getenv('FASTC_BENCH_PHASES') != '' {
+		eprintln('fastc-phase constants.detail candidates=${candidates.len} parallel_us=${parallel_us} serial=${serial_count} merge_us=${sw.elapsed().microseconds() - parallel_us}')
 	}
 	mut runtime_constants := map[string]bool{}
 	for value in values {
@@ -1390,6 +1404,49 @@ fn (g &Parser) constant_expression_requires_runtime_storage(tokens []FastcExpres
 	return false
 }
 
+// fastc_composite_typedefs renders the typedefs of the composite (`Array_x`,
+// `Map_k_v`) types named by signatures and struct fields. It precedes the
+// type declarations in the output; it is rendered after the type phase and
+// the signature phase have both contributed their names.
+fn fastc_composite_typedefs(composite_types map[string]bool) string {
+	mut out := strings.new_builder(1024)
+	mut composite_names := composite_types.keys()
+	composite_names.sort()
+	for composite_name in composite_names {
+		base := if composite_name.starts_with('Array_') { 'array' } else { 'map' }
+		out.writeln('typedef ${base} ${composite_name};')
+	}
+	out.writeln('')
+	return out.str()
+}
+
+// FastcTypeDeclarationResult is the type phase's output with the tables it
+// fills, so the phase can run on a worker and hand them back.
+struct FastcTypeDeclarationResult {
+mut:
+	output            FastcTypeDeclarations
+	struct_fields     map[string]map[string]string
+	struct_field_info map[string][]FastcStructField
+	composite_types   map[string]bool
+	failed            bool
+	error_message     string
+}
+
+// fastc_run_type_declarations runs the type phase into fresh tables.
+fn fastc_run_type_declarations(sources []FastcSourceFile, type_sources map[string]string, prefs &pref.Preferences, type_source_paths map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool) FastcTypeDeclarationResult {
+	mut result := FastcTypeDeclarationResult{
+		struct_fields:     map[string]map[string]string{}
+		struct_field_info: map[string][]FastcStructField{}
+		composite_types:   map[string]bool{}
+	}
+	result.output = fastc_generate_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants, mut result.struct_fields, mut result.struct_field_info, mut result.composite_types) or {
+		result.failed = true
+		result.error_message = err.msg()
+		return result
+	}
+	return result
+}
+
 fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[string]string, prefs &pref.Preferences, type_source_paths map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool, mut struct_fields map[string]map[string]string, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool) !FastcTypeDeclarations {
 	mut out := strings.new_builder(4096)
 	mut bodies := strings.new_builder(4096)
@@ -1435,13 +1492,9 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 			enum_infos, mut bodies)!
 	}
 	timer.mark('type_declarations.emit')
-	mut composite_names := composite_types.keys()
-	composite_names.sort()
-	for composite_name in composite_names {
-		base := if composite_name.starts_with('Array_') { 'array' } else { 'map' }
-		out.writeln('typedef ${base} ${composite_name};')
-	}
-	out.writeln('')
+	// The composite typedefs go here in the output; they are rendered by the
+	// caller once the signature phase has contributed its names too.
+	declarations_head := out.str()
 	mut type_bodies := fastc_hoist_c_type_aliases(bodies.str())
 	timer.mark('type_declarations.hoist')
 	if prefs.building_v {
@@ -1474,6 +1527,7 @@ fn fastc_generate_type_declarations(sources []FastcSourceFile, type_sources map[
 	enum_string_helpers := fastc_generate_enum_string_helpers(enum_infos)
 	timer.mark('type_declarations.enum_helpers')
 	return FastcTypeDeclarations{
+		declarations_head:   declarations_head
 		declarations:        out.str()
 		enum_string_helpers: enum_string_helpers
 		alias_base_types:    alias_base_types

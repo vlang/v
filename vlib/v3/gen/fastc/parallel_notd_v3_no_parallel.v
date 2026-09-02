@@ -101,6 +101,64 @@ fn fastc_load_source_chunk(paths []string, prefs &pref.Preferences, start int, e
 	return loaded
 }
 
+// fastc_memo_reader_limit caps the memo preload workers: file reads are the
+// bulk of the batch and they do not scale past a few concurrent readers.
+const fastc_memo_reader_limit = 6
+
+// fastc_memo_worker runs memo preload tasks from the shared counter.
+fn fastc_memo_worker(tasks []FastcMemoTask, prefs &pref.Preferences, canonical_vlib string, queue &FastcGenQueue) []FastcMemoResult {
+	mut results := []FastcMemoResult{}
+	for {
+		slot := fastc_atomic_fetch_add_u32(&queue.next, 1)
+		if slot >= u32(tasks.len) {
+			break
+		}
+		index := int(slot)
+		results << fastc_run_memo_task(tasks[index], index, prefs, canonical_vlib)
+	}
+	return results
+}
+
+// fastc_preload_memo lists, reads and looks up everything a resolve memo
+// names in one parallel batch bounded by the worker limit.
+fn fastc_preload_memo(memo FastcResolveMemo, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
+	tasks := fastc_memo_tasks(memo)
+	mut jobs := fastc_parallel_job_count(tasks.len, prefs)
+	// Small-file reads and stats stop scaling after a few concurrent callers
+	// (the kernel serializes them), and extra workers only land on slower
+	// cores.
+	if jobs > fastc_memo_reader_limit {
+		jobs = fastc_memo_reader_limit
+	}
+	mut results := []FastcMemoResult{len: tasks.len}
+	if jobs <= 1 {
+		for index, task in tasks {
+			results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
+		}
+		return fastc_apply_memo_results(tasks, results, prefs, mut module_path_cache, mut module_dir_files)
+	}
+	mut queue := &FastcGenQueue{
+		next: 0
+	}
+	mut workers := [
+		spawn fastc_memo_worker(tasks, prefs, canonical_vlib, queue),
+	]
+	for _ in 2 .. jobs {
+		workers << spawn fastc_memo_worker(tasks, prefs, canonical_vlib, queue)
+	}
+	first := fastc_memo_worker(tasks, prefs, canonical_vlib, queue)
+	for result in first {
+		results[result.index] = result
+	}
+	for worker in workers {
+		worker_results := worker.wait()
+		for result in worker_results {
+			results[result.index] = result
+		}
+	}
+	return fastc_apply_memo_results(tasks, results, prefs, mut module_path_cache, mut module_dir_files)
+}
+
 // FastcModuleListing is one module directory listed on a worker thread.
 struct FastcModuleListing {
 	dir   string
@@ -182,6 +240,7 @@ fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, can
 	}
 	wait_sw := time.new_stopwatch()
 	mut wait_us := i64(0)
+	trace := os.getenv('FASTC_BENCH_PRELOAD') != ''
 	// The entry files form the first listing; its first chunk starts the
 	// reader queue. (Both thread arrays start from a spawn: the self-hosted
 	// generator has no empty thread-array literal.)
@@ -223,6 +282,9 @@ fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, can
 			listing_start := wait_sw.elapsed().microseconds()
 			listing := listings[next_listing].wait()
 			wait_us += wait_sw.elapsed().microseconds() - listing_start
+			if trace {
+				eprintln('preload listing join ${wait_sw.elapsed().microseconds()} waited ${wait_sw.elapsed().microseconds() - listing_start} ${listing.dir.all_after_last('/')} files=${listing.files.len}')
+			}
 			next_listing++
 			in_flight--
 			module_dir_files[listing.dir] = listing.files
@@ -235,6 +297,9 @@ fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, can
 		chunk_start := wait_sw.elapsed().microseconds()
 		chunk := chunk_threads[next_chunk].wait()
 		wait_us += wait_sw.elapsed().microseconds() - chunk_start
+		if trace {
+			eprintln('preload chunk join ${wait_sw.elapsed().microseconds()} waited ${wait_sw.elapsed().microseconds() - chunk_start}')
+		}
 		paths := chunk_paths[next_chunk]
 		next_chunk++
 		in_flight--
@@ -655,6 +720,38 @@ fn fastc_generation_fragments(sources []FastcSourceFile, prefs &pref.Preferences
 		}
 	}
 	return fragments
+}
+
+// FastcPendingTypeDeclarations is the type phase running on a worker while
+// the signatures are collected; the two only share read-only tables.
+struct FastcPendingTypeDeclarations {
+mut:
+	workers []thread FastcTypeDeclarationResult
+	result  FastcTypeDeclarationResult
+}
+
+fn fastc_start_type_declarations(sources []FastcSourceFile, type_sources map[string]string, prefs &pref.Preferences, type_source_paths map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool) FastcPendingTypeDeclarations {
+	if fastc_parallel_worker_limit(prefs) <= 1 {
+		return FastcPendingTypeDeclarations{
+			result: fastc_run_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants)
+		}
+	}
+	return FastcPendingTypeDeclarations{
+		workers: [
+			spawn fastc_run_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants),
+		]
+	}
+}
+
+fn fastc_wait_type_declarations(mut pending FastcPendingTypeDeclarations) !FastcTypeDeclarationResult {
+	mut result := pending.result
+	if pending.workers.len > 0 {
+		result = pending.workers[0].wait()
+	}
+	if result.failed {
+		return error(result.error_message)
+	}
+	return result
 }
 
 // FastcPendingFieldLookup is the by-name index of struct fields, built on a

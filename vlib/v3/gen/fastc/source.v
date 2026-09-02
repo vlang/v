@@ -2,6 +2,7 @@ module fastc
 
 import os
 import strings
+import time
 import v3.pref
 import v3.scanner
 import v3.token
@@ -84,17 +85,41 @@ fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 
 fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]FastcSourceFile, map[string]string) {
 	mut timer := fastc_new_phase_timer()
+	memo_path := fastc_resolve_memo_path(paths, prefs)
+	memo_text := if memo_path != '' { os.read_file(memo_path) or { '' } } else { '' }
+	mut memo := fastc_parse_resolve_memo(memo_text)
+	if memo.files.len > 0 {
+		memo.blob = fastc_read_memo_blob(memo_path, memo)
+	}
+	builtin_dir := if prefs.building_v {
+		os.real_path(prefs.get_vlib_module_path('builtin'))
+	} else {
+		''
+	}
+	// vroot is canonical, so a module directory found below its vlib is too and
+	// needs no realpath call of its own.
+	canonical_vlib := if prefs.building_v { os.dir(builtin_dir) } else { '' }
+	// Modules are re-discovered once per importing file; canonicalization and
+	// directory enumeration are syscalls, so both are memoized for the walk and
+	// shared with the preload below.
+	mut real_path_cache := map[string]string{}
+	mut module_dir_files := map[string][]string{}
+	mut module_path_cache := map[string]string{}
+	mut preloaded := map[string]FastcLoadedSource{}
+	if memo.files.len > 0 {
+		// A memo from an earlier run names everything this entry touched, so
+		// all of it is listed, read and looked up in one parallel batch.
+		preloaded = fastc_preload_memo(memo, prefs, canonical_vlib, mut module_path_cache, mut module_dir_files)
+		timer.mark('resolve.memo_preload')
+	}
 	mut queue := []FastcQueuedSource{}
 	if prefs.building_v {
-		builtin_dir := os.real_path(prefs.get_vlib_module_path('builtin'))
-		for builtin_file in pref.get_v_files_from_dir_for_target(builtin_dir, prefs.user_defines, prefs.target) {
-			if fastc_source_file_matches_backend(builtin_file) {
-				queue << FastcQueuedSource{
-					path: builtin_file
-					module_name: 'builtin'
-					is_canonical: true
-					listed: true
-				}
+		for builtin_file in fastc_module_source_files(builtin_dir, prefs, mut module_dir_files) {
+			queue << FastcQueuedSource{
+				path: builtin_file
+				module_name: 'builtin'
+				is_canonical: true
+				listed: true
 			}
 		}
 	}
@@ -123,25 +148,16 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 		}
 	}
 	timer.mark('resolve.queue_init')
-	// vroot is canonical, so a module directory found below its vlib is too and
-	// needs no realpath call of its own.
-	canonical_vlib := if prefs.building_v {
-		os.dir(os.real_path(prefs.get_vlib_module_path('builtin')))
-	} else {
-		''
+	if memo.files.len == 0 {
+		// Every reachable file is read and header-scanned up front on worker
+		// threads, following imports as soon as they are known. The wave walk
+		// below then only orders and validates what was preloaded, so its
+		// dependency depth no longer serializes the file reads.
+		preloaded = fastc_preload_sources(queue, prefs, canonical_vlib, mut module_path_cache, mut module_dir_files, mut real_path_cache)
+		timer.mark('resolve.preload')
 	}
-	// Modules are re-discovered once per importing file; canonicalization and
-	// directory enumeration are syscalls, so both are memoized for the walk and
-	// shared with the preload below.
-	mut real_path_cache := map[string]string{}
-	mut module_dir_files := map[string][]string{}
-	mut module_path_cache := map[string]string{}
-	// Every reachable file is read and header-scanned up front on worker
-	// threads, following imports as soon as they are known. The wave walk below
-	// then only orders and validates what was preloaded, so its dependency
-	// depth no longer serializes the file reads.
-	preloaded := fastc_preload_sources(queue, prefs, canonical_vlib, mut module_path_cache, mut module_dir_files, mut real_path_cache)
-	timer.mark('resolve.preload')
+	mut memo_lookup_modules := []string{}
+	mut memo_lookup_sources := []string{}
 	mut seen := map[string]bool{}
 	mut sources := []FastcSourceFile{}
 	// path -> the module_name a file was first loaded under, and the resulting alias map:
@@ -247,6 +263,8 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 				discovered_imports[imported_module] = true
 				module_cache_key := fastc_module_cache_key(prefs, source_file.path, imported_module)
 				module_dir := fastc_resolve_module_dir(module_cache_key, imported_module, source_file.path, prefs, canonical_vlib, mut module_path_cache)
+				memo_lookup_modules << imported_module
+				memo_lookup_sources << source_file.path
 				if module_dir == '' {
 					return error('fastc cannot resolve imported module `${imported_module}` from `${source_file.path}`')
 				}
@@ -280,7 +298,392 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 		}
 	}
 	timer.mark('resolve.imports')
+	if memo_path != '' {
+		fastc_store_resolve_memo(memo_path, memo_text, sources, builtin_dir, memo_lookup_modules, memo_lookup_sources, prefs, module_path_cache, preloaded)
+		timer.mark('resolve.memo_store')
+	}
 	return sources, module_aliases
+}
+
+// FastcResolveMemo records what an earlier resolution of the same entry
+// touched: the module directories it listed, the files it loaded and the
+// module lookups it made. Only the names are reused: the directories are
+// listed and the files read again and the lookups are recomputed, all in one
+// parallel batch instead of level by level along the import chain, and the
+// ordering walk then replays over that data exactly as it would have without
+// the memo (anything it needs that the memo missed is loaded on demand).
+struct FastcResolveMemo {
+mut:
+	dirs           []string
+	files          []string
+	stamps         []FastcFileStamp
+	offsets        []int
+	lookup_modules []string
+	lookup_sources []string
+	// written is the memo's own write time (unix seconds); cached contents
+	// are trusted only for files modified at least two seconds before it.
+	written i64
+	blob_token string
+	// blob holds every memoized file's content, each followed by a NUL, when
+	// the companion blob file matched the memo; empty otherwise.
+	blob string
+}
+
+// FastcFileStamp identifies a file version: a cached content is reused only
+// when the file's current stamp equals the memoized one.
+struct FastcFileStamp {
+	size  i64
+	mtime i64
+	ctime i64
+	inode u64
+}
+
+fn fastc_same_stamp(a FastcFileStamp, b FastcFileStamp) bool {
+	return a.size == b.size && a.mtime == b.mtime && a.ctime == b.ctime && a.inode == b.inode
+}
+
+fn fastc_file_stamp(path string) ?FastcFileStamp {
+	st := os.stat(path) or { return none }
+	return FastcFileStamp{
+		size:  i64(st.size)
+		mtime: st.mtime
+		ctime: st.ctime
+		inode: st.inode
+	}
+}
+
+// fastc_memo_token_width is the fixed width of the token line that starts a
+// memo blob, so the file offsets recorded in the memo are absolute and stable.
+const fastc_memo_token_width = 40
+
+// fastc_memo_blob_path names the content file that accompanies a memo.
+fn fastc_memo_blob_path(memo_path string) string {
+	return memo_path + '.src'
+}
+
+// fastc_read_memo_blob reads the memo's content blob and returns it when it
+// belongs to this memo (same token) and has the expected size.
+fn fastc_read_memo_blob(memo_path string, memo FastcResolveMemo) string {
+	if memo.blob_token == '' || memo.stamps.len != memo.files.len || memo.offsets.len != memo.files.len {
+		return ''
+	}
+	blob := os.read_file(fastc_memo_blob_path(memo_path)) or { return '' }
+	mut expected := fastc_memo_token_width + 1
+	for stamp in memo.stamps {
+		expected += int(stamp.size) + 1
+	}
+	if blob.len != expected || !blob.starts_with(memo.blob_token) || blob[fastc_memo_token_width] != `\n` {
+		return ''
+	}
+	return blob
+}
+
+// FastcMemoTask is one unit of the memo preload: a module lookup, a directory
+// listing or a chunk of file reads.
+struct FastcMemoTask {
+	kind        int
+	module_name string
+	source      string
+	dir         string
+	files       []string
+	// For read tasks: the memoized stamps and blob offsets of `files`, and
+	// the memo they came from (its blob and trust window).
+	stamps  []FastcFileStamp
+	offsets []int
+	blob    string
+	trusted_before i64
+}
+
+struct FastcMemoResult {
+	index   int
+	dir     string
+	files   []string
+	sources []FastcLoadedSource
+	stamps  []FastcFileStamp
+}
+
+fn fastc_fnv_hash(seed u64, text string) u64 {
+	mut hash := seed
+	for i in 0 .. text.len {
+		hash ^= u64(text[i])
+		hash *= u64(1099511628211)
+	}
+	hash ^= u64(0xff)
+	hash *= u64(1099511628211)
+	return hash
+}
+
+// fastc_resolve_memo_path names the memo file of an entry set and build
+// configuration; it is empty when the memo is disabled.
+fn fastc_resolve_memo_path(paths []string, prefs &pref.Preferences) string {
+	if os.getenv('V3_FASTC_NO_RESOLVE_MEMO') != '' {
+		return ''
+	}
+	mut hash := u64(14695981039346656037)
+	// The format version keeps compilers that write different memo layouts
+	// from overwriting each other's memo.
+	hash = fastc_fnv_hash(hash, 'fastc-resolve-memo-2')
+	hash = fastc_fnv_hash(hash, prefs.vroot)
+	hash = fastc_fnv_hash(hash, prefs.target.os)
+	hash = fastc_fnv_hash(hash, prefs.target.arch)
+	hash = fastc_fnv_hash(hash, if prefs.building_v { 'v' } else { '' })
+	for define in prefs.user_defines {
+		hash = fastc_fnv_hash(hash, define)
+	}
+	for path in paths {
+		hash = fastc_fnv_hash(hash, os.real_path(path))
+	}
+	return os.join_path_single(os.vtmp_dir(), 'fastc_resolve_${hash.hex()}.memo')
+}
+
+fn fastc_parse_resolve_memo(text string) FastcResolveMemo {
+	mut memo := FastcResolveMemo{}
+	for line in text.split_into_lines() {
+		if line.len < 3 {
+			continue
+		}
+		fields := line[2..].split('\t')
+		kind := line[0]
+		if kind == `D` {
+			memo.dirs << fields[0]
+		} else if kind == `F` {
+			memo.files << fields[0]
+			if fields.len == 6 {
+				memo.stamps << FastcFileStamp{
+					size:  fields[1].i64()
+					mtime: fields[2].i64()
+					ctime: fields[3].i64()
+					inode: fields[4].u64()
+				}
+				memo.offsets << fields[5].int()
+			}
+		} else if kind == `M` && fields.len == 2 {
+			memo.lookup_modules << fields[0]
+			memo.lookup_sources << fields[1]
+		} else if kind == `T` {
+			memo.written = fields[0].i64()
+		} else if kind == `B` {
+			memo.blob_token = fields[0]
+		}
+	}
+	return memo
+}
+
+// fastc_memo_tasks turns a memo into preload tasks: lookups and listings
+// first, then the file reads in chunks.
+fn fastc_memo_tasks(memo FastcResolveMemo) []FastcMemoTask {
+	mut tasks := []FastcMemoTask{cap: memo.dirs.len + memo.lookup_modules.len + memo.files.len / fastc_source_load_chunk_size + 1}
+	for i, module_name in memo.lookup_modules {
+		tasks << FastcMemoTask{
+			kind:   0
+			module_name: module_name
+			source: memo.lookup_sources[i]
+		}
+	}
+	for dir in memo.dirs {
+		tasks << FastcMemoTask{
+			kind: 1
+			dir:  dir
+		}
+	}
+	with_blob := memo.blob.len > 0
+	// Files whose content is in the blob only need a stat each, so those
+	// chunks are larger.
+	chunk := if with_blob { fastc_source_load_chunk_size * 2 } else { fastc_source_load_chunk_size }
+	mut start := 0
+	for start < memo.files.len {
+		mut end := start + chunk
+		if end > memo.files.len {
+			end = memo.files.len
+		}
+		mut task := FastcMemoTask{
+			kind:  2
+			files: memo.files[start..end]
+		}
+		if with_blob {
+			task = FastcMemoTask{
+				kind:           2
+				files:          memo.files[start..end]
+				stamps:         memo.stamps[start..end]
+				offsets:        memo.offsets[start..end]
+				blob:           memo.blob
+				trusted_before: memo.written - 1
+			}
+		}
+		tasks << task
+		start = end
+	}
+	return tasks
+}
+
+// fastc_run_memo_task performs one memo preload task with the same helpers
+// the ordering walk uses, so the results are what the walk would compute.
+fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, canonical_vlib string) FastcMemoResult {
+	if task.kind == 0 {
+		mut local_cache := map[string]string{}
+		key := fastc_module_cache_key(prefs, task.source, task.module_name)
+		return FastcMemoResult{
+			index: index
+			dir:   fastc_resolve_module_dir(key, task.module_name, task.source, prefs, canonical_vlib, mut local_cache)
+		}
+	}
+	if task.kind == 1 {
+		return FastcMemoResult{
+			index: index
+			dir:   task.dir
+			files: fastc_list_module_sources(task.dir, prefs)
+		}
+	}
+	mut sources := []FastcLoadedSource{cap: task.files.len}
+	mut stamps := []FastcFileStamp{cap: task.files.len}
+	for i, path in task.files {
+		stamp := fastc_file_stamp(path) or {
+			sources << fastc_load_source(path, prefs)
+			stamps << FastcFileStamp{}
+			continue
+		}
+		stamps << stamp
+		if task.blob.len > 0 && fastc_same_stamp(stamp, task.stamps[i]) && stamp.mtime < task.trusted_before {
+			// The file is the memoized version: its content is in the blob.
+			offset := task.offsets[i]
+			text := unsafe { tos(task.blob.str + offset, int(stamp.size)) }.clone()
+			sources << fastc_load_source_text(path, text, prefs)
+			continue
+		}
+		sources << fastc_load_source(path, prefs)
+	}
+	return FastcMemoResult{
+		index:   index
+		files:   task.files
+		sources: sources
+		stamps:  stamps
+	}
+}
+
+// fastc_load_source_text header-scans already read source text.
+fn fastc_load_source_text(path string, source string, prefs &pref.Preferences) FastcLoadedSource {
+	header := fastc_scan_source_header(source, path, prefs) or {
+		return FastcLoadedSource{
+			path:          path
+			failed:        true
+			error_message: err.msg()
+		}
+	}
+	return FastcLoadedSource{
+		path:   path
+		source: source
+		header: header
+	}
+}
+
+// fastc_apply_memo_results stores the preload results in the walk's caches
+// and returns the loaded files keyed by path.
+fn fastc_apply_memo_results(tasks []FastcMemoTask, results []FastcMemoResult, prefs &pref.Preferences, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
+	mut loaded := map[string]FastcLoadedSource{}
+	for index, task in tasks {
+		result := results[index]
+		if task.kind == 0 {
+			module_path_cache[fastc_module_cache_key(prefs, task.source, task.module_name)] = result.dir
+		} else if task.kind == 1 {
+			module_dir_files[task.dir] = result.files
+		} else {
+			for i, source in result.sources {
+				stamp := if i < result.stamps.len { result.stamps[i] } else { FastcFileStamp{} }
+				loaded[task.files[i]] = FastcLoadedSource{
+					path:          source.path
+					source:        source.source
+					header:        source.header
+					failed:        source.failed
+					error_message: source.error_message
+					stamp:         stamp
+				}
+			}
+		}
+	}
+	return loaded
+}
+
+// fastc_store_resolve_memo writes the memo of this resolution when it differs
+// from the one read at the start, atomically, so a concurrent compiler sees
+// either version.
+fn fastc_store_resolve_memo(memo_path string, previous_text string, sources []FastcSourceFile, builtin_dir string, lookup_modules []string, lookup_sources []string, prefs &pref.Preferences, module_path_cache map[string]string, preloaded map[string]FastcLoadedSource) {
+	mut out := strings.new_builder(4096)
+	mut seen_dirs := map[string]bool{}
+	if builtin_dir != '' {
+		seen_dirs[builtin_dir] = true
+		out.writeln('D\t' + builtin_dir)
+	}
+	for i, module_name in lookup_modules {
+		dir := module_path_cache[fastc_module_cache_key(prefs, lookup_sources[i], module_name)] or { '' }
+		if dir == '' || seen_dirs[dir] {
+			continue
+		}
+		seen_dirs[dir] = true
+		out.writeln('D\t' + dir)
+	}
+	// The stamps and the blob layout: the previous memo's token and time are
+	// not part of the comparison, so an unchanged program rewrites nothing.
+	mut stamp_lines := strings.new_builder(8192)
+	mut blob_size := fastc_memo_token_width + 1
+	mut stamps := []FastcFileStamp{cap: sources.len}
+	for source_file in sources {
+		mut stamp := FastcFileStamp{}
+		if loaded := preloaded[source_file.path] {
+			stamp = loaded.stamp
+		}
+		if stamp.size == 0 && stamp.mtime == 0 {
+			stamp = fastc_file_stamp(source_file.path) or { FastcFileStamp{} }
+		}
+		stamps << stamp
+		stamp_lines.writeln('F\t' + source_file.path + '\t${stamp.size}\t${stamp.mtime}\t${stamp.ctime}\t${stamp.inode}\t${blob_size}')
+		blob_size += source_file.source.len + 1
+	}
+	out.write_string(stamp_lines.str())
+	for i, module_name in lookup_modules {
+		out.writeln('M\t' + module_name + '\t' + lookup_sources[i])
+	}
+	body := out.str()
+	if body == fastc_memo_body(previous_text) {
+		return
+	}
+	mut blob_token := '${os.getpid()}.${time.now().unix_nano()}'
+	for blob_token.len < fastc_memo_token_width {
+		blob_token += '.'
+	}
+	blob_token = blob_token[..fastc_memo_token_width]
+	mut blob := strings.new_builder(blob_size)
+	blob.writeln(blob_token)
+	for source_file in sources {
+		blob.write_string(source_file.source)
+		blob.write_u8(0)
+	}
+	blob_path := fastc_memo_blob_path(memo_path)
+	staged_blob := '${blob_path}.${os.getpid()}.tmp'
+	os.write_file(staged_blob, blob.str()) or { return }
+	os.mv(staged_blob, blob_path) or {
+		os.rm(staged_blob) or {}
+		return
+	}
+	text := body + 'T\t${time.now().unix()}\nB\t' + blob_token + '\n'
+	staged := '${memo_path}.${os.getpid()}.tmp'
+	os.write_file(staged, text) or { return }
+	os.mv(staged, memo_path) or {
+		os.rm(staged) or {}
+		return
+	}
+}
+
+// fastc_memo_body strips the write time and token lines from a memo text, so
+// two memos of the same program compare equal.
+fn fastc_memo_body(text string) string {
+	mut out := strings.new_builder(text.len)
+	for line in text.split_into_lines() {
+		if line.len >= 2 && (line[0] == `T` || line[0] == `B`) && line[1] == `\t` {
+			continue
+		}
+		out.writeln(line)
+	}
+	return out.str()
 }
 
 // fastc_source_load_chunk_size is the number of files one loader thread reads;

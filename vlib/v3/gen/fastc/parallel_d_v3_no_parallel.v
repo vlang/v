@@ -30,6 +30,15 @@ fn fastc_wait_interface_dispatches(mut pending FastcPendingInterfaceDispatches) 
 	return pending.dispatches
 }
 
+fn fastc_preload_memo(memo FastcResolveMemo, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string) map[string]FastcLoadedSource {
+	tasks := fastc_memo_tasks(memo)
+	mut results := []FastcMemoResult{len: tasks.len}
+	for index, task in tasks {
+		results[index] = fastc_run_memo_task(task, index, prefs, canonical_vlib)
+	}
+	return fastc_apply_memo_results(tasks, results, prefs, mut module_path_cache, mut module_dir_files)
+}
+
 // fastc_preload_sources is a no-op without threads: the ordering walk loads
 // each file itself.
 fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string, mut real_path_cache map[string]string) map[string]FastcLoadedSource {
@@ -49,6 +58,24 @@ fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, 
 	generic_method_sources := fastc_collect_generic_method_sources(mut sources, prefs)
 	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
 	return generic_method_sources
+}
+
+struct FastcPendingTypeDeclarations {
+mut:
+	result FastcTypeDeclarationResult
+}
+
+fn fastc_start_type_declarations(sources []FastcSourceFile, type_sources map[string]string, prefs &pref.Preferences, type_source_paths map[string]bool, declared_types map[string]bool, declared_kinds map[string]FastcDeclaredTypeKind, enum_flags map[string]bool, constants map[string]string, public_constants map[string]bool) FastcPendingTypeDeclarations {
+	return FastcPendingTypeDeclarations{
+		result: fastc_run_type_declarations(sources, type_sources, prefs, type_source_paths, declared_types, declared_kinds, enum_flags, constants, public_constants)
+	}
+}
+
+fn fastc_wait_type_declarations(mut pending FastcPendingTypeDeclarations) !FastcTypeDeclarationResult {
+	if pending.result.failed {
+		return error(pending.result.error_message)
+	}
+	return pending.result
 }
 
 struct FastcPendingFieldLookup {
