@@ -11758,7 +11758,7 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 				return none
 			}
 			inner := t.stabilize_original_lvalue_receiver(t.a.child(&node, 0))?
-			return t.rebuild_transformed_lvalue(node, arr1(inner))
+			return t.rebuild_transformed_lvalue(node, [inner])
 		}
 		.prefix {
 			if node.op != .mul || node.children_count == 0 {
@@ -11770,7 +11770,7 @@ fn (mut t Transformer) stabilize_original_lvalue_receiver(id flat.NodeId) ?flat.
 			} else {
 				t.spill_original_lvalue_component(child_id, 'recv_deref')
 			}
-			return t.rebuild_transformed_lvalue(node, arr1(new_child))
+			return t.rebuild_transformed_lvalue(node, [new_child])
 		}
 		.selector {
 			if node.children_count == 0 {
