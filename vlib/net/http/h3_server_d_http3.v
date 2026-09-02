@@ -9,6 +9,23 @@ import crypto.ecdsa
 import crypto.rand
 import sync
 
+// This file is gated behind `-d http3`, same as h3_client_d_http3.v/
+// h3_mux_conn_d_http3.v/h3_udp_dial_d_http3.v -- mirroring the merge of
+// #28286 ("net.http: make HTTP/3 opt-in behind `-d http3` to avoid
+// requiring OpenSSL") into this branch. Unlike those client-side files
+// (which transport.v's own always-compiled dispatch logic references, and
+// so need a real transport_h3_notd_http3.v stub to keep type-checking with
+// the flag off), nothing else in `module http` calls into H3Server/
+// H3ServerParams/new_h3_server -- confirmed via a full-module grep before
+// this rename. So no stub file exists for the flag-off case: without
+// `-d http3`, `http.new_h3_server` simply does not exist, the same as any
+// other undeclared symbol. A caller wanting a softer "compiles either way,
+// fails at runtime with a clear message" surface (matching H3MuxConn's own
+// stub) would need one written deliberately, including a decision on what
+// H3ServerParams' cert/key fields (typed via quic.CertificateEntry/
+// ecdsa.PrivateKey) should look like without net.quic available -- left
+// as an open, undecided follow-up rather than assumed here.
+//
 // h3_server.v: Phase 13e -- a minimal HTTP/3 server driver bridging one UDP
 // socket to quic.QuicListener/quic.H3Conn's caller-driven poll()/
 // process_timeouts() surface, mirroring h2_server.v's Handler-based

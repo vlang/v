@@ -288,7 +288,8 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	server_der := conn_test_pem_to_der(conn_test_cert_pem)
 	cert_framed := conn_test_build_fake_certificate(server_der)!
 	cert_msg, _ := parse_handshake_message(cert_framed)!
-	c.client_handshake().process_certificate_or_request(cert_msg, cert_framed) or {}
+	mut c_hs := c.client_handshake()
+	c_hs.process_certificate_or_request(cert_msg, cert_framed) or {}
 	real_chain := mbedtls.build_certificate_chain([server_der])!
 	unsafe {
 		c.client_handshake().verified_chain = &VerifiedCertificateChain{
@@ -303,7 +304,7 @@ fn drive_to_established(own_params QuicTransportParameters, peer_params QuicTran
 	sig := conn_test_sign_certificate_verify(signed_content)!
 	cv_framed := conn_test_build_fake_certificate_verify(sig_scheme_rsa_pss_rsae_sha256, sig)!
 	cv_msg, _ := parse_handshake_message(cv_framed)!
-	c.client_handshake().process_certificate_verify(cv_msg, cv_framed)!
+	c_hs.process_certificate_verify(cv_msg, cv_framed)!
 	assert c.client_handshake().state() == .wait_finished
 
 	finished_verify_data := compute_finished_verify_data(server_handshake_secrets.server_secret,
@@ -385,7 +386,8 @@ fn read_keys(mut c QuicConn) QuicPacketProtectionKeys {
 fn test_h3_conn_established_opens_own_control_and_qpack_streams() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	assert h.established()
 	result := h.poll(none, now)!
@@ -395,7 +397,8 @@ fn test_h3_conn_established_opens_own_control_and_qpack_streams() {
 fn test_h3_conn_peer_control_stream_requires_settings_first() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	mut header := encode_h3_control_stream_header()!
 	header << encode_goaway_frame(0)!
@@ -409,7 +412,8 @@ fn test_h3_conn_peer_control_stream_requires_settings_first() {
 fn test_h3_conn_peer_control_stream_settings_then_second_settings_rejected() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	mut buf := encode_h3_control_stream_header()!
 	buf << encode_settings_frame([]H3Setting{})!
@@ -424,7 +428,8 @@ fn test_h3_conn_peer_control_stream_settings_then_second_settings_rejected() {
 fn test_h3_conn_peer_control_stream_settings_accepted_and_settings_received_event() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	mut buf := encode_h3_control_stream_header()!
 	buf << encode_settings_frame([]H3Setting{})!
@@ -437,7 +442,8 @@ fn test_h3_conn_peer_control_stream_settings_accepted_and_settings_received_even
 fn test_h3_conn_rejects_push_promise_on_control_stream() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	mut buf := encode_h3_control_stream_header()!
 	buf << encode_settings_frame([]H3Setting{})!
@@ -452,7 +458,8 @@ fn test_h3_conn_rejects_push_promise_on_control_stream() {
 fn test_h3_conn_ignores_unknown_unidirectional_stream_type() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	mut buf := encode_varint(u64(0x40))!
 	buf << [u8(1), 2, 3, 4]
@@ -465,7 +472,8 @@ fn test_h3_conn_ignores_unknown_unidirectional_stream_type() {
 fn test_h3_conn_qpack_glue_loop_end_to_end_with_section_ack() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	mut peer_encoder := new_qpack_encoder()
 	set_cap_instr := peer_encoder.set_capacity(4096, 4096)!
@@ -517,7 +525,8 @@ fn test_h3_conn_qpack_glue_loop_end_to_end_with_section_ack() {
 fn test_h3_conn_1xx_interim_response_is_discarded_not_misdelivered_as_final_or_trailers() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	mut peer_encoder := new_qpack_encoder()
 
@@ -562,7 +571,8 @@ fn test_h3_conn_1xx_interim_response_is_discarded_not_misdelivered_as_final_or_t
 fn test_h3_conn_prunes_request_stream_state_once_finalized() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	mut peer_encoder := new_qpack_encoder()
 
@@ -593,7 +603,8 @@ fn test_h3_conn_prunes_request_stream_state_once_finalized() {
 fn test_h3_conn_prunes_request_stream_state_on_failure_too() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	stream_id := h.open_request_stream()!
 	h.poll(none, now)!
@@ -629,7 +640,8 @@ fn test_h3_conn_prunes_request_stream_state_on_failure_too() {
 fn test_h3_conn_prunes_dead_request_stream_once_peer_side_fully_terminal() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	stream_id := h.open_request_stream()!
 	h.poll(none, now)!
@@ -666,7 +678,8 @@ fn test_h3_conn_prunes_dead_request_stream_once_peer_side_fully_terminal() {
 fn test_h3_conn_blocked_headers_retry_after_delayed_encoder_instruction() {
 	mut c, mut h, _, now := h3_test_conn()!
 	defer {
-		c.client_handshake().free()
+		mut c_hs := c.client_handshake()
+		c_hs.free()
 	}
 	mut peer_encoder := new_qpack_encoder()
 	set_cap_instr := peer_encoder.set_capacity(4096, 4096)!

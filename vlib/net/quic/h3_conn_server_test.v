@@ -224,7 +224,8 @@ fn pump_h3_pair_until_quiet(mut a H3Conn, mut b H3Conn, start_now u64) !([]H3Eve
 fn test_h3_conn_server_role_receives_request_and_sends_response() {
 	mut client, mut client_h3, mut server, mut server_h3, now0 := h3_server_test_pair()!
 	defer {
-		client.client_handshake().free()
+		mut client_hs := client.client_handshake()
+		client_hs.free()
 		if mut sh := server.server_handshake {
 			sh.free()
 		}
@@ -326,7 +327,8 @@ fn test_h3_conn_server_role_receives_request_and_sends_response() {
 fn test_h3_conn_open_request_stream_rejected_on_server_role() {
 	mut client, _, mut server, mut server_h3, _ := h3_server_test_pair()!
 	defer {
-		client.client_handshake().free()
+		mut client_hs := client.client_handshake()
+		client_hs.free()
 		if mut sh := server.server_handshake {
 			sh.free()
 		}
