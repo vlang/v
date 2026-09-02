@@ -132,7 +132,7 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 	}
 	function_key := g.unqualified_function_key(name)
 	if function_key in g.functions {
-		return fastc_c_function_name_for_key(function_key)
+		return g.c_function_name_for_key(function_key)
 	}
 	if type_key := g.resolve_declared_type_key(name) {
 		return fastc_c_declared_type_name(type_key)

@@ -173,6 +173,17 @@ workers on faster cores take more files; the serial merge and output order is re
 keywords (`interface`, `$if`, type keywords, generic `fn` syntax) each file mentions, and the later
 collection passes skip files that cannot contain what they scan for.
 
+Source resolution reads the program on worker threads before the ordering walk runs: each
+imported module directory is listed on a thread and its files are read in chunks on further
+threads, never more than the worker limit (CPU count or `VJOBS`) at once. The main thread joins
+listings first and then the chunks in start order, resolving the imports of each chunk as it
+lands, so reading one module overlaps with discovering the next. The generic-method scan and the
+declaration index share one pass, the split of oversized files into generation fragments and the
+by-name struct field index are built on workers while the declaration phases run, and the
+generated C is returned as ordered pieces (whole per-file bodies are shared rather than copied
+into one buffer; only bodies cut around C directive lines are copied) that the drivers write
+directly.
+
 The standalone compiler supports `self` directly and defaults that command to FastC. For example,
 `./v self x5` replaces the compiler through five descendant FastC generations, with each installed
 generation compiling the next one. `-b fastc`, `-gc none`, `-cc tinyc|tcc`, `-keepc`, `-silent`,

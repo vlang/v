@@ -63,17 +63,20 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 fn fastc_load_source(path string, prefs &pref.Preferences) FastcLoadedSource {
 	source := os.read_file(path) or {
 		return FastcLoadedSource{
+			path: path
 			failed: true
 			error_message: err.msg()
 		}
 	}
 	header := fastc_scan_source_header(source, path, prefs) or {
 		return FastcLoadedSource{
+			path: path
 			failed: true
 			error_message: err.msg()
 		}
 	}
 	return FastcLoadedSource{
+		path: path
 		source: source
 		header: header
 	}
@@ -120,6 +123,25 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 		}
 	}
 	timer.mark('resolve.queue_init')
+	// vroot is canonical, so a module directory found below its vlib is too and
+	// needs no realpath call of its own.
+	canonical_vlib := if prefs.building_v {
+		os.dir(os.real_path(prefs.get_vlib_module_path('builtin')))
+	} else {
+		''
+	}
+	// Modules are re-discovered once per importing file; canonicalization and
+	// directory enumeration are syscalls, so both are memoized for the walk and
+	// shared with the preload below.
+	mut real_path_cache := map[string]string{}
+	mut module_dir_files := map[string][]string{}
+	mut module_path_cache := map[string]string{}
+	// Every reachable file is read and header-scanned up front on worker
+	// threads, following imports as soon as they are known. The wave walk below
+	// then only orders and validates what was preloaded, so its dependency
+	// depth no longer serializes the file reads.
+	preloaded := fastc_preload_sources(queue, prefs, canonical_vlib, mut module_path_cache, mut module_dir_files, mut real_path_cache)
+	timer.mark('resolve.preload')
 	mut seen := map[string]bool{}
 	mut sources := []FastcSourceFile{}
 	// path -> the module_name a file was first loaded under, and the resulting alias map:
@@ -128,11 +150,6 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	// an alias of the first, so `<second>.<sym>` references resolve to the loaded `<first>`.
 	mut path_module := map[string]string{}
 	mut module_aliases := map[string]string{}
-	// Modules are re-discovered once per importing file; canonicalization and
-	// directory enumeration are syscalls, so both are memoized for the walk.
-	mut real_path_cache := map[string]string{}
-	mut module_dir_files := map[string][]string{}
-	mut module_path_cache := map[string]string{}
 	mut scheduled_path_modules := map[string]string{}
 	mut queue_index := 0
 	for queue_index < queue.len {
@@ -178,7 +195,7 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 			wave_modules << queued.module_name
 		}
 		timer.mark('resolve.wave_scan')
-		loaded_sources := fastc_load_source_headers(wave_paths, prefs)
+		loaded_sources := fastc_preloaded_source_headers(wave_paths, prefs, preloaded)
 		timer.mark('resolve.wave_load(${wave_paths.len})')
 		wave_source_start := sources.len
 		for i, loaded_source in loaded_sources {
@@ -228,45 +245,12 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 					continue
 				}
 				discovered_imports[imported_module] = true
-				module_cache_key := if prefs.building_v {
-					imported_module
-				} else {
-					os.dir(source_file.path) + '\x00' + imported_module
-				}
-				mut module_dir := ''
-				if module_cache_key in module_path_cache {
-					module_dir = module_path_cache[module_cache_key]
-				} else {
-					if prefs.building_v {
-						vlib_module_dir := prefs.get_vlib_module_path(imported_module)
-						// Alias modules need the generic resolver to follow `alias.v`.
-						if os.is_dir(vlib_module_dir) && !os.is_file(os.join_path_single(vlib_module_dir, 'alias.v')) {
-							module_dir = vlib_module_dir
-						} else {
-							module_dir = prefs.get_module_path(imported_module, source_file.path)
-						}
-					} else {
-						module_dir = prefs.get_module_path(imported_module, source_file.path)
-					}
-					if prefs.building_v {
-						module_dir = os.real_path(module_dir)
-					}
-					module_path_cache[module_cache_key] = module_dir
-				}
+				module_cache_key := fastc_module_cache_key(prefs, source_file.path, imported_module)
+				module_dir := fastc_resolve_module_dir(module_cache_key, imported_module, source_file.path, prefs, canonical_vlib, mut module_path_cache)
 				if module_dir == '' {
 					return error('fastc cannot resolve imported module `${imported_module}` from `${source_file.path}`')
 				}
-				mut module_files := []string{}
-				if cached := module_dir_files[module_dir] {
-					module_files = cached.clone()
-				} else {
-					for module_file in pref.get_v_files_from_dir_for_target(module_dir, prefs.user_defines, prefs.target) {
-						if fastc_source_file_matches_backend(module_file) {
-							module_files << module_file
-						}
-					}
-					module_dir_files[module_dir] = module_files
-				}
+				module_files := fastc_module_source_files(module_dir, prefs, mut module_dir_files)
 				for module_file in module_files {
 					mut module_file_real := module_file
 					if !prefs.building_v {
@@ -297,6 +281,84 @@ fn fastc_resolve_source_files(paths []string, prefs &pref.Preferences) !([]Fastc
 	}
 	timer.mark('resolve.imports')
 	return sources, module_aliases
+}
+
+// fastc_source_load_chunk_size is the number of files one loader thread reads;
+// reads are short syscalls, so a few per spawn amortize the thread start.
+const fastc_source_load_chunk_size = 4
+
+// fastc_resolve_module_dir resolves and memoizes the directory of an imported
+// module. A directory below the canonical vlib root is canonical already.
+// fastc_module_cache_key keys the module directory cache by importing
+// directory and module name; when building V the vlib lookup is global.
+// (vfmt rewrites '\x00' as '\0', which the FastC parser rejects, so this
+// helper stays in a file vfmt does not verify.)
+fn fastc_module_cache_key(prefs &pref.Preferences, source_path string, imported_module string) string {
+	if prefs.building_v {
+		return imported_module
+	}
+	return os.dir(source_path) + '\x00' + imported_module
+}
+
+fn fastc_resolve_module_dir(module_cache_key string, imported_module string, source_path string, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string) string {
+	if cached := module_path_cache[module_cache_key] {
+		return cached
+	}
+	mut module_dir := ''
+	mut canonical := false
+	if prefs.building_v {
+		vlib_module_dir := prefs.get_vlib_module_path(imported_module)
+		// Alias modules need the generic resolver to follow `alias.v`.
+		if os.is_dir(vlib_module_dir) && !os.is_file(os.join_path_single(vlib_module_dir, 'alias.v')) {
+			module_dir = vlib_module_dir
+			canonical = canonical_vlib != '' && module_dir.starts_with(canonical_vlib + '/')
+		} else {
+			module_dir = prefs.get_module_path(imported_module, source_path)
+		}
+	} else {
+		module_dir = prefs.get_module_path(imported_module, source_path)
+	}
+	if prefs.building_v && !canonical {
+		module_dir = os.real_path(module_dir)
+	}
+	module_path_cache[module_cache_key] = module_dir
+	return module_dir
+}
+
+// fastc_module_source_files lists and memoizes the backend-compatible source
+// files of a module directory.
+fn fastc_module_source_files(module_dir string, prefs &pref.Preferences, mut module_dir_files map[string][]string) []string {
+	if cached := module_dir_files[module_dir] {
+		return cached.clone()
+	}
+	module_files := fastc_list_module_sources(module_dir, prefs)
+	module_dir_files[module_dir] = module_files
+	return module_files
+}
+
+// fastc_list_module_sources lists the backend-relevant .v files of `dir`.
+fn fastc_list_module_sources(dir string, prefs &pref.Preferences) []string {
+	mut module_files := []string{}
+	for module_file in pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target) {
+		if fastc_source_file_matches_backend(module_file) {
+			module_files << module_file
+		}
+	}
+	return module_files
+}
+
+// fastc_preloaded_source_headers returns the preloaded sources for `paths`,
+// reading any that the preload did not reach synchronously.
+fn fastc_preloaded_source_headers(paths []string, prefs &pref.Preferences, preloaded map[string]FastcLoadedSource) []FastcLoadedSource {
+	mut result := []FastcLoadedSource{cap: paths.len}
+	for path in paths {
+		if source := preloaded[path] {
+			result << source
+		} else {
+			result << fastc_load_source(path, prefs)
+		}
+	}
+	return result
 }
 
 // fastc_entry_module_files returns the other source files of the entry file's
@@ -590,6 +652,20 @@ fn fastc_scan_source_header(source string, path string, prefs &pref.Preferences)
 
 // fastc_header_with_scan_flags copies a header with the declaration keyword
 // flags of its source filled in.
+// fastc_apply_scan_flags stores per-file scan flags into the source headers
+// starting at `start`.
+fn fastc_apply_scan_flags(mut sources []FastcSourceFile, flags []FastcSourceScanFlags, start int) {
+	for i, file_flags in flags {
+		source_file := sources[start + i]
+		sources[start + i] = FastcSourceFile{
+			path: source_file.path
+			source: source_file.source
+			source_offset: source_file.source_offset
+			header: fastc_header_with_scan_flags(source_file.header, file_flags)
+		}
+	}
+}
+
 fn fastc_header_with_scan_flags(header FastcSourceHeader, flags FastcSourceScanFlags) FastcSourceHeader {
 	return FastcSourceHeader{
 		module_name: header.module_name
@@ -722,51 +798,69 @@ fn fastc_source_scan_flags(source string) FastcSourceScanFlags {
 	mut flags := FastcSourceScanFlags{}
 	for i := 0; i < source.len; i++ {
 		c := source[i]
-		// Only a word start can begin a keyword; most bytes are rejected here.
-		if i > 0 && fastc_identifier_byte(source[i - 1]) {
+		// Only a word start can begin a keyword, so after checking one, skip
+		// the rest of the identifier; the byte that ends it cannot start a
+		// keyword either, since its previous byte is part of the word.
+		if fastc_identifier_byte(c) {
+			mut end := i + 1
+			for end < source.len && fastc_identifier_byte(source[end]) {
+				end++
+			}
+			if !flags.has_constants || !flags.has_type_keywords || !flags.has_global_declarations
+				|| !flags.has_interfaces || !flags.has_generic_fn_syntax {
+				fastc_source_scan_word_flags(source, i, c, mut flags)
+			}
+			i = end
 			continue
 		}
-		if c == `c` {
-			if !flags.has_constants && fastc_source_word_at(source, i, 'const') {
-				flags.has_constants = true
-			}
-		} else if c == `_` {
-			if !flags.has_global_declarations && fastc_source_word_at(source, i, '__global') {
-				flags.has_global_declarations = true
-			}
-		} else if c == `i` {
-			if !flags.has_interfaces && fastc_source_word_at(source, i, 'interface') {
-				flags.has_interfaces = true
-				flags.has_type_keywords = true
-			}
-		} else if c == `$` {
+		if c == `$` {
 			if !flags.has_comptime_if && fastc_source_comptime_if_at(source, i) {
 				flags.has_comptime_if = true
-			}
-		} else if c == `s` {
-			if !flags.has_type_keywords && fastc_source_word_at(source, i, 'struct') {
-				flags.has_type_keywords = true
-			}
-		} else if c == `e` {
-			if !flags.has_type_keywords && fastc_source_word_at(source, i, 'enum') {
-				flags.has_type_keywords = true
-			}
-		} else if c == `t` {
-			if !flags.has_type_keywords && fastc_source_word_at(source, i, 'type') {
-				flags.has_type_keywords = true
-			}
-		} else if c == `u` {
-			if !flags.has_type_keywords && fastc_source_word_at(source, i, 'union') {
-				flags.has_type_keywords = true
-			}
-		} else if c == `f` {
-			if !flags.has_generic_fn_syntax && fastc_source_word_at(source, i, 'fn')
-				&& fastc_source_generic_fn_at(source, i + 2) {
-				flags.has_generic_fn_syntax = true
 			}
 		}
 	}
 	return flags
+}
+
+// fastc_source_scan_word_flags checks the identifier starting at `i` (whose
+// first byte is `c`) for the declaration keywords the flags track.
+@[direct_array_access]
+fn fastc_source_scan_word_flags(source string, i int, c u8, mut flags FastcSourceScanFlags) {
+	if c == `c` {
+		if !flags.has_constants && fastc_source_word_at(source, i, 'const') {
+			flags.has_constants = true
+		}
+	} else if c == `_` {
+		if !flags.has_global_declarations && fastc_source_word_at(source, i, '__global') {
+			flags.has_global_declarations = true
+		}
+	} else if c == `i` {
+		if !flags.has_interfaces && fastc_source_word_at(source, i, 'interface') {
+			flags.has_interfaces = true
+			flags.has_type_keywords = true
+		}
+	} else if c == `s` {
+		if !flags.has_type_keywords && fastc_source_word_at(source, i, 'struct') {
+			flags.has_type_keywords = true
+		}
+	} else if c == `e` {
+		if !flags.has_type_keywords && fastc_source_word_at(source, i, 'enum') {
+			flags.has_type_keywords = true
+		}
+	} else if c == `t` {
+		if !flags.has_type_keywords && fastc_source_word_at(source, i, 'type') {
+			flags.has_type_keywords = true
+		}
+	} else if c == `u` {
+		if !flags.has_type_keywords && fastc_source_word_at(source, i, 'union') {
+			flags.has_type_keywords = true
+		}
+	} else if c == `f` {
+		if !flags.has_generic_fn_syntax && fastc_source_word_at(source, i, 'fn')
+			&& fastc_source_generic_fn_at(source, i + 2) {
+			flags.has_generic_fn_syntax = true
+		}
+	}
 }
 
 fn fastc_identifier_byte(value u8) bool {

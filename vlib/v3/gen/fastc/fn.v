@@ -41,7 +41,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 		if definition != '' {
 			mono_name := fastc_monomorphized_name(src.name, req.concrete)
 			c_name := if src.receiver_type == '' {
-				fastc_c_function_name_for_key(fastc_function_key(src.module_name, mono_name))
+				g.c_function_name_for_key(fastc_function_key(src.module_name, mono_name))
 			} else {
 				fastc_method_c_name(src.module_name, src.receiver_type, mono_name)
 			}

@@ -30,19 +30,55 @@ fn fastc_wait_interface_dispatches(mut pending FastcPendingInterfaceDispatches) 
 	return pending.dispatches
 }
 
-fn fastc_load_source_headers(paths []string, prefs &pref.Preferences) []FastcLoadedSource {
-	mut loaded := []FastcLoadedSource{cap: paths.len}
-	for path in paths {
-		loaded << fastc_load_source(path, prefs)
-	}
-	return loaded
+// fastc_preload_sources is a no-op without threads: the ordering walk loads
+// each file itself.
+fn fastc_preload_sources(queue []FastcQueuedSource, prefs &pref.Preferences, canonical_vlib string, mut module_path_cache map[string]string, mut module_dir_files map[string][]string, mut real_path_cache map[string]string) map[string]FastcLoadedSource {
+	return map[string]FastcLoadedSource{}
 }
 
 // A `-no-parallel` (v3_no_parallel) FastC build omits threaded generation
 // entirely, mirroring the AST pipeline's _d_v3_no_parallel variants: both
 // phases run serially and no spawn helpers are referenced.
-fn fastc_collect_generic_method_sources(sources []FastcSourceFile, prefs &pref.Preferences) map[string]FastcGenericMethodSource {
-	return fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
+fn fastc_collect_generic_method_sources(mut sources []FastcSourceFile, prefs &pref.Preferences) map[string]FastcGenericMethodSource {
+	partial := fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
+	fastc_apply_scan_flags(mut sources, partial.flags, 0)
+	return partial.sources
+}
+
+fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) !map[string]FastcGenericMethodSource {
+	generic_method_sources := fastc_collect_generic_method_sources(mut sources, prefs)
+	fastc_collect_declaration_indexes(sources, prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
+	return generic_method_sources
+}
+
+struct FastcPendingFieldLookup {
+mut:
+	lookup map[string]map[string]FastcStructField
+}
+
+fn fastc_start_struct_field_lookup(struct_field_info map[string][]FastcStructField, prefs &pref.Preferences) FastcPendingFieldLookup {
+	return FastcPendingFieldLookup{
+		lookup: fastc_build_struct_field_lookup(struct_field_info)
+	}
+}
+
+fn fastc_wait_struct_field_lookup(mut pending FastcPendingFieldLookup) map[string]map[string]FastcStructField {
+	return pending.lookup
+}
+
+struct FastcPendingFragments {
+mut:
+	fragments []FastcSourceFile
+}
+
+fn fastc_start_generation_fragments(sources []FastcSourceFile, prefs &pref.Preferences) FastcPendingFragments {
+	return FastcPendingFragments{
+		fragments: sources
+	}
+}
+
+fn fastc_wait_generation_fragments(mut pending FastcPendingFragments) []FastcSourceFile {
+	return pending.fragments
 }
 
 fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFile) []FastcFileGenOutput {

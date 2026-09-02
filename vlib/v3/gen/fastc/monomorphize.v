@@ -64,35 +64,41 @@ fn fastc_collect_generic_method_source_chunk(sources []FastcSourceFile, prefs &p
 		if !file_flags.has_generic_fn_syntax {
 			continue
 		}
-		module_name := source_file.header.module_name
-		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, i) {
-			receiver_type := if generic.receiver_type != '' {
-				fastc_c_declared_type_name(fastc_type_key(module_name, generic.receiver_type))
-			} else {
-				''
-			}
-			key := if receiver_type != '' {
-				'${receiver_type}.${generic.name}'
-			} else {
-				fastc_function_key(module_name, generic.name)
-			}
-			result[key] = FastcGenericMethodSource{
-				name: generic.name
-				type_param: generic.type_param
-				receiver_type: receiver_type
-				module_name: module_name
-				path: source_file.path
-				imports: source_file.header.imports
-				return_type_source: generic.return_type_source
-				first_param_is_type_param: generic.first_param_is_type_param
-				type_param_parameter_index: generic.type_param_parameter_index
-				source: source_file.source[generic.fn_start..generic.def_end]
-			}
-		}
+		fastc_collect_generic_methods_in_file(source_file, prefs, i, mut result)
 	}
 	return FastcGenericScanPartial{
 		sources: result
 		flags: flags
+	}
+}
+
+// fastc_collect_generic_methods_in_file indexes the generic methods and free
+// functions of one file whose scan flags reported generic syntax.
+fn fastc_collect_generic_methods_in_file(source_file FastcSourceFile, prefs &pref.Preferences, i int, mut result map[string]FastcGenericMethodSource) {
+	module_name := source_file.header.module_name
+	for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, i) {
+		receiver_type := if generic.receiver_type != '' {
+			fastc_c_declared_type_name(fastc_type_key(module_name, generic.receiver_type))
+		} else {
+			''
+		}
+		key := if receiver_type != '' {
+			'${receiver_type}.${generic.name}'
+		} else {
+			fastc_function_key(module_name, generic.name)
+		}
+		result[key] = FastcGenericMethodSource{
+			name: generic.name
+			type_param: generic.type_param
+			receiver_type: receiver_type
+			module_name: module_name
+			path: source_file.path
+			imports: source_file.header.imports
+			return_type_source: generic.return_type_source
+			first_param_is_type_param: generic.first_param_is_type_param
+			type_param_parameter_index: generic.type_param_parameter_index
+			source: source_file.source[generic.fn_start..generic.def_end]
+		}
 	}
 }
 

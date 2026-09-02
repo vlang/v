@@ -464,11 +464,10 @@ pub fn run(args []string) {
 		eprintln('fastc-bench: files=${generation.source_paths.len} lines=${total_lines} gen=${gen_ms:.2f}ms loc/s=${loc_per_s:.0f}')
 	}
 	validate_output_source_paths(output, real_input, generation.source_paths) or { fail(err.msg()) }
-	c_source := generation.c_source
 	build_prefix := '${output}.fastc-build-${os.getpid()}'
 	c_path := build_prefix + '.c'
 	staged_output := build_prefix + '.out'
-	os.write_file(c_path, c_source) or { fail(err.msg()) }
+	fastc.write_c_pieces(c_path, generation.c_pieces) or { fail(err.msg()) }
 	tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
 	tcc := os.join_path_single(tcc_dir, 'tcc.exe')
 	tcc_lib := os.join_path_single(tcc_dir, 'lib')

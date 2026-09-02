@@ -54,7 +54,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		named_initializer := g.render_named_struct_initializer(parameter_type, call_args[named_start..]) or { return none }
 		rendered_arguments << named_initializer
 		return FastcRenderedExpression{
-			source: '${fastc_c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
+			source: '${g.c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
 			typ: signature.return_type
 		}
 	}
@@ -73,7 +73,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 			named_initializer := g.render_named_struct_initializer(element_type, call_args[named_start..]) or { return none }
 			c_arguments << '((${variadic_type})builtin__new_array_from_c_array(1, 1, sizeof(${element_type}), (${element_type}[]){${named_initializer}}))'
 			return FastcRenderedExpression{
-				source: '${fastc_c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
+				source: '${g.c_function_name_for_key(function_key)}(${c_arguments.join(',')})'
 				typ: signature.return_type
 			}
 		}
@@ -102,7 +102,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 		rendered_arguments.trim(fixed_arguments)
 		rendered_arguments << packed
 		return FastcRenderedExpression{
-			source: '${fastc_c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
+			source: '${g.c_function_name_for_key(function_key)}(${rendered_arguments.join(',')})'
 			typ: signature.return_type
 		}
 	}
@@ -130,7 +130,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	call_name := if function_key.starts_with('C.') {
 		function_key.all_after_last('.')
 	} else {
-		fastc_c_function_name_for_key(function_key)
+		g.c_function_name_for_key(function_key)
 	}
 	return FastcRenderedExpression{
 		source: '${call_name}(${rendered_arguments.join(',')})'
