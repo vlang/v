@@ -286,8 +286,8 @@ fn test_mut_parameter_power_assign_uses_scalar_result_type() {
 		children_count: 2
 	})
 	compact := g.sb.str().replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('*arg=((int)__v_pow_i64('), compact
-	assert !compact.contains('(int*)__v_pow_i64('), compact
+	assert compact.contains('*arg=((i64)__v_pow_i64('), compact
+	assert !compact.contains('(i64*)__v_pow_i64('), compact
 	tc.pop_scope()
 }
 
@@ -545,7 +545,7 @@ fn test_heap_local_address_expr_copies_pointer_local_slot() {
 		assert false, 'expected the address of a pointer local to escape through a heap copy'
 		return
 	}
-	assert heap_expr == '(int**)memdup(&p, sizeof(int*))'
+	assert heap_expr == '(i64**)memdup(&p, sizeof(i64*))'
 	tc.pop_scope()
 }
 
@@ -580,7 +580,7 @@ fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
 		assert false, 'expected a selected field in stack-aliased storage to escape through a heap copy'
 		return
 	}
-	assert heap_expr == '(int*)memdup(&p->x, sizeof(int))'
+	assert heap_expr == '(i64*)memdup(&p->x, sizeof(i64))'
 	g.declare_local_pointer_alias_source_kind(p_owner, 'arg', true)
 	mut_param_expr := g.heap_local_address_expr(amp_selector_id, int_ptr) or {
 		assert false, 'expected a selected field backed by a mut parameter to keep its address'

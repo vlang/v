@@ -5381,6 +5381,19 @@ fn (tc &TypeChecker) implicit_int_literal_overflows(id flat.NodeId) bool {
 	if magnitude.len == 0 {
 		return false
 	}
+	if platform_int_bits() >= 64 {
+		value, parse_error := strconv.common_parse_uint2(magnitude, 0, 64)
+		if parse_error == -3 {
+			return true
+		}
+		if parse_error != 0 {
+			return false
+		}
+		if is_negative {
+			return value > u64(9_223_372_036_854_775_808)
+		}
+		return value > u64(9_223_372_036_854_775_807)
+	}
 	value, parse_error := strconv.common_parse_uint2(magnitude, 0, 32)
 	if parse_error == -3 {
 		return true
@@ -5407,7 +5420,7 @@ fn integer_type_range(typ Type) ?IntegerTypeRange {
 			return none
 		}
 		return IntegerTypeRange{
-			bits:        if clean.size == 0 { 32 } else { int(clean.size) }
+			bits:        if clean.size == 0 { platform_int_bits() } else { int(clean.size) }
 			is_unsigned: clean.props.has(.unsigned)
 			name:        typ.name()
 		}

@@ -1434,7 +1434,7 @@ fn test_reachable_main_fn_literal_is_emitted_after_used_filter_transform() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('int __anon_fn_')
+	assert c_code.contains('i64 __anon_fn_')
 	assert c_code.contains('callback_value(__anon_fn_')
 }
 
@@ -1761,7 +1761,7 @@ fn main() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
+	assert c_code.contains('new_map(sizeof(string), sizeof(i64)')
 }
 
 // test_optional_map_or_lowers_to_new_map_after_used_filter_transform
@@ -1785,7 +1785,7 @@ fn main() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('new_map(sizeof(string), sizeof(int)')
+	assert c_code.contains('new_map(sizeof(string), sizeof(i64)')
 }
 
 // test_string_membership_lowers_to_contains_after_used_filter_transform

@@ -17194,10 +17194,30 @@ const c_static_helper_symbols = {
 	'_vinit':                              true
 }
 
+// c_extern_interop_type_name returns the C spelling to use for a `C.` extern
+// declaration's parameter/return type, or none when the default naming applies.
+// V's platform `int` lowers to `i64` for V code, but a `C.` prototype must match
+// the real C ABI (which uses `int`), so the platform `int` stays C `int` here;
+// V inserts the i64<->int conversion at the call boundary. Pointers to `int`
+// follow. Explicit `i64` is unaffected (it is a differently-sized Primitive).
+fn (g &FlatGen) c_extern_interop_type_name(t types.Type) ?string {
+	if t is types.Primitive {
+		if t.size == 0 && t.props.has(.integer) && !t.props.has(.unsigned) {
+			return 'int'
+		}
+		return none
+	}
+	if t is types.Pointer {
+		base := g.c_extern_interop_type_name(t.base_type)?
+		return base + '*'
+	}
+	return none
+}
+
 fn (mut g FlatGen) c_extern_decl_line(node flat.Node, cfn string) string {
 	mut sb := strings.new_builder(96)
 	ret_type := g.parse_node_type(&node)
-	sb.write_string(g.fn_return_type_name(ret_type))
+	sb.write_string(g.c_extern_interop_type_name(ret_type) or { g.fn_return_type_name(ret_type) })
 	sb.write_string(' ')
 	call_conv := c_extern_calling_convention(cfn)
 	if call_conv.len > 0 {
@@ -17402,7 +17422,7 @@ fn (mut g FlatGen) c_extern_decl_params(node flat.Node) string {
 			continue
 		}
 		pt := g.tc.parse_type(raw_typ)
-		mut ct := g.c_extern_param_c_type(pt)
+		mut ct := g.c_extern_interop_type_name(pt) or { g.c_extern_param_c_type(pt) }
 		if ct.starts_with('fn_ptr:') {
 			ct = g.resolve_fn_ptr_type(ct)
 		}

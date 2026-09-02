@@ -80,7 +80,7 @@ fn main() {
 	assert generated.contains('take_void((void*)(&ptr))'), generated
 	assert generated.contains('take_multi(pptr)'), generated
 	assert generated.contains('take_mixed(ptr, (void*)(ptr), 3, pptr)'), generated
-	fn_ptr_idx := generated.index('typedef int (*_fn_ptr_') or { -1 }
+	fn_ptr_idx := generated.index('typedef i64 (*_fn_ptr_') or { -1 }
 	take_fn_proto_idx := generated.index('int take_fn(_fn_ptr_') or { -1 }
 	assert fn_ptr_idx >= 0, generated
 	assert take_fn_proto_idx >= 0, generated

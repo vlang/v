@@ -205,7 +205,7 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 	}
 	inner := g.render_call_argument_expression(inner_tokens, c_type) or { return none }
 	return FastcRenderedExpression{
-		source: '((${c_type})(${inner}))'
+		source: '((${fastc_output_c_type(c_type)})(${inner}))'
 		typ: c_type
 	}
 }

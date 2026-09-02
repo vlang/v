@@ -116,7 +116,7 @@ fn main() {
 	assert run.output.trim_space() == '2', run.output
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('int __vararg_storage_'), generated
+	assert generated.contains('i64 __vararg_storage_'), generated
 	assert generated.contains('double __vararg_storage_'), generated
 	assert !generated.contains('Small __vararg_storage_'), generated
 	assert !generated.contains('Floaty __vararg_storage_'), generated

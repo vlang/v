@@ -340,7 +340,7 @@ fn (g &Parser) render_membership_candidate(tokens []FastcExpressionToken, expect
 			close := fastc_matching_rpar(tokens, 1) or { return none }
 			if close == tokens.len - 1 {
 				inner := g.render_membership_candidate(tokens[2..close], '') or { return none }
-				return '((${cast_type})(${inner}))'
+				return '((${fastc_output_c_type(cast_type)})(${inner}))'
 			}
 		}
 	}

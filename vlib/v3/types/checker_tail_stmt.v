@@ -16504,6 +16504,14 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'size_t'
 	}
 	if t is Primitive {
+		// V's platform `int` (a signed integer of unset size) lowers to the
+		// target-width C spelling: `i64` on 64-bit targets, `i32` on 32-bit.
+		// Only the emitted C type changes; `int` stays named `int` for
+		// diagnostics and keeps distinct methods from `i64` (prim_c_type is
+		// still `int`, so method-name mangling never collapses the two).
+		if t.size == 0 && t.props.has(.integer) && !t.props.has(.unsigned) {
+			return platform_int_c_type
+		}
 		return prim_c_type(t)
 	}
 	if t is Array {
