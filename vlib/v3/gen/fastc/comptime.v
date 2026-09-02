@@ -199,7 +199,7 @@ fn fastc_collect_selected_comptime_function_signatures(source string, path strin
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
 					collect_function_signatures(selected.source, path, header, prefs,
-						declared_types, declared_type_c_names, params_structs, mut functions)!
+						[]int{}, declared_types, declared_type_c_names, params_structs, mut functions)!
 				}
 				tok = selected.tok
 				continue

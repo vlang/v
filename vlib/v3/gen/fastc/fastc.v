@@ -800,6 +800,10 @@ struct FastcSourceHeader {
 	has_comptime_if       bool
 	has_type_keywords     bool
 	has_generic_fn_syntax bool
+	// body_spans lists the top-level function bodies as [start of `{`, offset
+	// after `}`) pairs, recorded by the declaration pass, so the later token
+	// passes skip them instead of lexing them again.
+	body_spans []int
 }
 
 struct FastcSourceFile {

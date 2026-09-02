@@ -1123,7 +1123,43 @@ fn fastc_header_with_scan_flags(header FastcSourceHeader, flags FastcSourceScanF
 		has_comptime_if: flags.has_comptime_if
 		has_type_keywords: flags.has_type_keywords
 		has_generic_fn_syntax: flags.has_generic_fn_syntax
+		body_spans: header.body_spans
 	}
+}
+
+// fastc_header_with_body_spans returns `header` with the recorded function
+// body spans.
+fn fastc_header_with_body_spans(header FastcSourceHeader, body_spans []int) FastcSourceHeader {
+	return FastcSourceHeader{
+		module_name: header.module_name
+		imports: header.imports
+		import_order: header.import_order
+		blank_imports: header.blank_imports
+		has_globals: header.has_globals
+		has_constants: header.has_constants
+		has_global_declarations: header.has_global_declarations
+		has_interfaces: header.has_interfaces
+		has_comptime_if: header.has_comptime_if
+		has_type_keywords: header.has_type_keywords
+		has_generic_fn_syntax: header.has_generic_fn_syntax
+		body_spans: body_spans
+	}
+}
+
+// fastc_skip_recorded_body jumps the scanner over a recorded top-level
+// function body when one starts at the current `{`. It returns whether it
+// did and the position in `skips` (source-ordered [start, end) pairs) to
+// continue from.
+fn fastc_skip_recorded_body(mut scan scanner.Scanner, skips []int, skip_index int) (bool, int) {
+	mut index := skip_index
+	for index + 1 < skips.len && skips[index] < scan.pos {
+		index += 2
+	}
+	if index + 1 < skips.len && skips[index] == scan.pos {
+		scan.skip_block_to(skips[index + 1])
+		return true, index + 2
+	}
+	return false, index
 }
 
 // FastcSourceScanFlags records which declaration keywords a source mentions

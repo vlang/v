@@ -7,7 +7,10 @@ import v3.pref
 import v3.scanner
 import v3.token
 
-fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string, mut type_source strings.Builder) !bool {
+fn collect_declared_types(source string, path string, module_name string, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut declaration_paths map[string]string, mut declaration_modules map[string]string, mut type_source strings.Builder, mut body_spans []int) !bool {
+	mut scratch_body_spans := []int{}
+	mut pending_fn := false
+	mut fn_body_start := -1
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -34,7 +37,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 					mut selected_types := strings.new_builder(256)
 					selected_has_types := collect_declared_types(selected.source, path, module_name,
 						prefs, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs,
-						mut declaration_paths, mut declaration_modules, mut selected_types)!
+						mut declaration_paths, mut declaration_modules, mut selected_types, mut scratch_body_spans)!
 					has_type_declarations = has_type_declarations || selected_has_types
 					if selected_types.len > 0 {
 						start := if pending_start >= 0 { pending_start } else { comptime_start }
@@ -65,6 +68,7 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			pending_start = scan.pos
 		}
 		if brace_depth == 0 && tok in [.key_fn, .key_const, .key_global] {
+			pending_fn = tok == .key_fn
 			next_c_struct_is_typedef = false
 			next_enum_is_flag = false
 			next_struct_is_params = false
@@ -124,12 +128,21 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			continue
 		}
 		if tok == .lcbr {
+			if brace_depth == 0 && pending_fn && fn_body_start < 0 {
+				fn_body_start = scan.pos
+			}
 			brace_depth++
 			if declaration_start >= 0 {
 				declaration_has_block = true
 			}
 		} else if tok == .rcbr && brace_depth > 0 {
 			brace_depth--
+			if brace_depth == 0 && fn_body_start >= 0 {
+				body_spans << fn_body_start
+				body_spans << scan.offset
+				fn_body_start = -1
+				pending_fn = false
+			}
 			if declaration_start >= 0 && declaration_has_block && brace_depth == 0 {
 				fastc_append_filtered_source_span(source, emitted_end, declaration_start,
 					scan.offset, mut type_source)
@@ -145,6 +158,9 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 			emitted_end = declaration_end
 			declaration_start = -1
 		}
+		if tok == .semicolon && brace_depth == 0 {
+			pending_fn = false
+		}
 		previous_tok = tok
 		tok = scan.scan()
 	}
@@ -155,13 +171,14 @@ fn collect_declared_types(source string, path string, module_name string, prefs 
 	return has_type_declarations
 }
 
-fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, mut constants map[string]string, mut public_constants map[string]bool, mut constant_paths map[string]string, mut constant_source strings.Builder, mut constant_spans []int) ! {
+fn collect_constant_names(source string, path string, module_name string, prefs &pref.Preferences, skips []int, mut constants map[string]string, mut public_constants map[string]bool, mut constant_paths map[string]string, mut constant_source strings.Builder, mut constant_spans []int) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
 	mut previous_tok := token.Token.unknown
 	mut emitted_end := 0
+	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && tok == .dollar {
@@ -173,7 +190,7 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 				if selected.source != '' {
 					mut selected_constants := strings.new_builder(256)
 					mut selected_spans := []int{}
-					collect_constant_names(selected.source, path, module_name, prefs, mut
+					collect_constant_names(selected.source, path, module_name, prefs, []int{}, mut
 						constants, mut public_constants, mut constant_paths, mut selected_constants, mut selected_spans)!
 					if selected_constants.len > 0 {
 						constant_spans << constant_source.len
@@ -279,6 +296,15 @@ fn collect_constant_names(source string, path string, module_name string, prefs 
 			previous_tok = .unknown
 			continue
 		}
+		if tok == .lcbr && brace_depth == 0 {
+			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
+			skip_index = next_skip
+			if skipped {
+				previous_tok = .rcbr
+				tok = scan.scan()
+				continue
+			}
+		}
 		if tok == .lcbr {
 			brace_depth++
 		} else if tok == .rcbr && brace_depth > 0 {
@@ -319,7 +345,7 @@ fn fastc_register_constant(module_name string, name string, is_public bool, path
 // collect_global_names registers a file's globals and appends the text of
 // their declarations (and of the comptime blocks that select them) to
 // `global_source`, so the global phase parses only that text.
-fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, mut globals map[string]string, mut public_globals map[string]bool, mut global_paths map[string]string, mut global_source strings.Builder) ! {
+fn collect_global_names(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, mut globals map[string]string, mut public_globals map[string]bool, mut global_paths map[string]string, mut global_source strings.Builder) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -330,6 +356,7 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 	// A single `__global name = value` declaration runs to the next top-level
 	// statement end; its span is closed there.
 	mut pending_start := -1
+	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
 		if depth == 0 && tok == .dollar {
@@ -341,7 +368,7 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 				comptime_end := if selected.tok == .eof { scan.offset } else { scan.pos }
 				if selected.source != '' {
 					mut selected_source := strings.new_builder(64)
-					collect_global_names(selected.source, path, header, prefs, mut globals, mut
+					collect_global_names(selected.source, path, header, prefs, []int{}, mut globals, mut
 						public_globals, mut global_paths, mut selected_source)!
 				}
 				if globals.len > globals_before {
@@ -392,6 +419,16 @@ fn collect_global_names(source string, path string, header FastcSourceHeader, pr
 			emitted_end = scan.pos
 			pending_start = -1
 		}
+		if tok == .lcbr && depth == 0 {
+			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
+			skip_index = next_skip
+			if skipped {
+				previous_tok = .rcbr
+				previous_pos = scan.pos
+				tok = scan.scan()
+				continue
+			}
+		}
 		if tok == .lcbr {
 			depth++
 		} else if tok == .rcbr && depth > 0 {
@@ -439,6 +476,7 @@ mut:
 	constant_sources    map[string]string
 	constant_spans      map[string][]int
 	global_sources      map[string]string
+	body_spans          map[string][]int
 	globals             map[string]string
 	public_globals      map[string]bool
 	global_paths        map[string]string
@@ -468,11 +506,13 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 		source_file := sources[idx]
 		mut type_source := strings.new_builder(256)
 		mut has_type_declarations := false
+		mut body_spans := []int{}
 		if source_file.header.has_type_keywords {
 			has_type_declarations = collect_declared_types(source_file.source, source_file.path,
 				source_file.header.module_name, prefs, mut partial.declared_types, mut
 				partial.declared_kinds, mut partial.enum_flags, mut partial.params_structs, mut
-				partial.declaration_paths, mut partial.declaration_modules, mut type_source) or {
+				partial.declaration_paths, mut partial.declaration_modules, mut type_source, mut
+				body_spans) or {
 				partial.failed = true
 				partial.error_message = err.msg()
 				return partial
@@ -486,7 +526,7 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 			mut constant_source := strings.new_builder(256)
 			mut constant_spans := []int{}
 			collect_constant_names(source_file.source, source_file.path,
-				source_file.header.module_name, prefs, mut partial.constants, mut
+				source_file.header.module_name, prefs, body_spans, mut partial.constants, mut
 				partial.public_constants, mut partial.constant_paths, mut constant_source, mut
 				constant_spans) or {
 				partial.failed = true
@@ -500,9 +540,9 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 		}
 		if source_file.header.has_global_declarations {
 			mut global_source := strings.new_builder(256)
-			collect_global_names(source_file.source, source_file.path, source_file.header, prefs, mut
-				partial.globals, mut partial.public_globals, mut partial.global_paths, mut
-				global_source) or {
+			collect_global_names(source_file.source, source_file.path, source_file.header, prefs,
+				body_spans, mut partial.globals, mut partial.public_globals, mut
+				partial.global_paths, mut global_source) or {
 				partial.failed = true
 				partial.error_message = err.msg()
 				return partial
@@ -510,6 +550,9 @@ fn fastc_collect_declaration_chunk(sources []FastcSourceFile, prefs &pref.Prefer
 			if global_source.len > 0 {
 				partial.global_sources[source_file.path] = global_source.str()
 			}
+		}
+		if body_spans.len > 0 {
+			partial.body_spans[source_file.path] = body_spans
 		}
 	}
 	return partial

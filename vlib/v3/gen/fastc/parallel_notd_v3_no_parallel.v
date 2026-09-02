@@ -446,10 +446,11 @@ fn fastc_collect_generic_method_sources(mut sources []FastcSourceFile, prefs &pr
 // FastcIndexedIndexPartial is one file's scan flags, generic method index and
 // declaration index, produced together by a worker of the combined pass.
 struct FastcIndexedIndexPartial {
-	index    int
-	flags    FastcSourceScanFlags
-	generics map[string]FastcGenericMethodSource
-	partial  FastcDeclarationPartial
+	index      int
+	flags      FastcSourceScanFlags
+	generics   map[string]FastcGenericMethodSource
+	partial    FastcDeclarationPartial
+	body_spans []int
 }
 
 // fastc_collect_index_worker scans one file at a time from the shared counter
@@ -477,11 +478,13 @@ fn fastc_collect_index_worker(sources []FastcSourceFile, prefs &pref.Preferences
 				header: fastc_header_with_scan_flags(source_file.header, file_flags)
 			},
 		]
+		partial := fastc_collect_declaration_chunk(flagged, prefs, 0, 1)
 		partials << FastcIndexedIndexPartial{
 			index: index
 			flags: file_flags
 			generics: generics
-			partial: fastc_collect_declaration_chunk(flagged, prefs, 0, 1)
+			partial: partial
+			body_spans: partial.body_spans[source_file.path] or { []int{} }
 		}
 	}
 	return partials
@@ -526,7 +529,7 @@ fn fastc_collect_generic_and_declaration_indexes(mut sources []FastcSourceFile, 
 			path: source_file.path
 			source: source_file.source
 			source_offset: source_file.source_offset
-			header: fastc_header_with_scan_flags(source_file.header, indexed.flags)
+			header: fastc_header_with_body_spans(fastc_header_with_scan_flags(source_file.header, indexed.flags), indexed.body_spans)
 		}
 		for key, generic in indexed.generics {
 			generic_method_sources[key] = generic

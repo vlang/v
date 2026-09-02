@@ -121,13 +121,14 @@ fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[st
 	return params_structs[parameter_type.trim_right('*')]
 }
 
-fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
 	mut next_declaration_is_enabled := true
 	mut previous_tok := token.Token.unknown
+	mut skip_index := 0
 	mut tok := scan.scan()
 	for tok != .eof {
 		if brace_depth == 0 && tok == .attribute {
@@ -399,6 +400,15 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 			.key_const, .key_global] {
 			next_declaration_is_enabled = true
 		}
+		if tok == .lcbr && brace_depth == 0 {
+			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
+			skip_index = next_skip
+			if skipped {
+				previous_tok = .rcbr
+				tok = scan.scan()
+				continue
+			}
+		}
 		if tok == .lcbr {
 			brace_depth++
 		} else if tok == .rcbr && brace_depth > 0 {
@@ -605,12 +615,13 @@ fn fastc_collect_type_default_references(mut scan scanner.Scanner, first token.T
 	return tok
 }
 
-fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut interface_field_paths map[string]string, mut embed_embedders []string, mut embed_embeddeds []string) ! {
+fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut interface_field_paths map[string]string, mut embed_embedders []string, mut embed_embeddeds []string) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut tok := scan.scan()
 	mut depth := 0
+	mut skip_index := 0
 	mut next_declaration_is_enabled := true
 	for tok != .eof {
 		if depth == 0 && tok == .dollar {
@@ -618,7 +629,7 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 			if lookahead.scan() == .key_if {
 				selected := fastc_scan_selected_comptime_branch(mut scan, scan.scan(), path, prefs)!
 				if selected.source != '' {
-					collect_interface_method_signatures(selected.source, path, header, prefs, declared_types, mut functions, mut interface_methods, mut interface_fields, mut interface_field_paths, mut embed_embedders, mut embed_embeddeds)!
+					collect_interface_method_signatures(selected.source, path, header, prefs, []int{}, declared_types, mut functions, mut interface_methods, mut interface_fields, mut interface_field_paths, mut embed_embedders, mut embed_embeddeds)!
 				}
 				tok = selected.tok
 				continue
@@ -639,6 +650,14 @@ fn collect_interface_method_signatures(source string, path string, header FastcS
 			if depth == 0 && tok in [.key_fn, .key_struct, .key_enum, .key_type, .key_union,
 				.key_const, .key_global] {
 				next_declaration_is_enabled = true
+			}
+			if tok == .lcbr && depth == 0 {
+				skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
+				skip_index = next_skip
+				if skipped {
+					tok = scan.scan()
+					continue
+				}
 			}
 			if tok == .lcbr {
 				depth++
@@ -840,7 +859,7 @@ fn fastc_collect_signature_chunk(sources []FastcSourceFile, prefs &pref.Preferen
 	}
 	for idx in start .. end {
 		source_file := sources[idx]
-		collect_function_signatures(source_file.source, source_file.path, source_file.header, prefs, declared_types, declared_type_c_names, params_structs, mut partial.functions) or {
+		collect_function_signatures(source_file.source, source_file.path, source_file.header, prefs, source_file.header.body_spans, declared_types, declared_type_c_names, params_structs, mut partial.functions) or {
 			partial.failed = true
 			partial.error_message = err.msg()
 			return partial
@@ -848,7 +867,7 @@ fn fastc_collect_signature_chunk(sources []FastcSourceFile, prefs &pref.Preferen
 		if !source_file.header.has_interfaces {
 			continue
 		}
-		collect_interface_method_signatures(source_file.source, source_file.path, source_file.header, prefs, declared_types, mut partial.functions, mut partial.interface_methods, mut partial.interface_fields, mut partial.interface_field_paths, mut partial.embed_embedders, mut partial.embed_embeddeds) or {
+		collect_interface_method_signatures(source_file.source, source_file.path, source_file.header, prefs, source_file.header.body_spans, declared_types, mut partial.functions, mut partial.interface_methods, mut partial.interface_fields, mut partial.interface_field_paths, mut partial.embed_embedders, mut partial.embed_embeddeds) or {
 			partial.failed = true
 			partial.error_message = err.msg()
 			return partial
