@@ -864,7 +864,15 @@ fn (mut s Scanner) consume_digits(base int) int {
 	mut previous_underscore := false
 	for s.offset < s.src.len {
 		c := s.src[s.offset]
-		if digit_value(c) < base {
+		// Decimal digits are by far the most common case, so test them inline
+		// instead of paying a digit_value call per byte.
+		mut is_digit := false
+		if c >= `0` && c <= `9` {
+			is_digit = int(c - `0`) < base
+		} else if base == 16 {
+			is_digit = (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
+		}
+		if is_digit {
 			digits++
 			previous_underscore = false
 			s.offset++

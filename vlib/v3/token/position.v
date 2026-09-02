@@ -139,6 +139,18 @@ pub fn (mut fs FileSet) add_file(filename string, size int) &File {
 	return file
 }
 
+// File.unindexed creates a file record for scanners whose diagnostics report
+// raw byte offsets and never resolve line positions (FastC). It allocates only
+// the record itself and leaves the line table empty, so such a file must not
+// be used for position lookups.
+pub fn File.unindexed(name string, size int) &File {
+	return &File{
+		name:         name
+		size:         size
+		line_offsets: []int{}
+	}
+}
+
 // add_line updates add line state for File.
 @[inline]
 pub fn (mut f File) add_line(offset int) {

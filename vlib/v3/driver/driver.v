@@ -8517,6 +8517,15 @@ pub fn run(args []string) {
 				add_v3_tcc_compat_defines(mut prefs.user_defines, target.os, target.arch, false,
 					true)
 			}
+			// FASTC_BENCH_LOOP=N repeats generation in-process so an external
+			// sampler can profile it (see the FastC section of the v3 README).
+			for _ in 0 .. os.getenv('FASTC_BENCH_LOOP').int() {
+				fastc.generate_files_with_source_paths([input_file], prefs) or {
+					eprintln(err.msg())
+					exit(1)
+					return
+				}
+			}
 			fastc_generation := fastc.generate_files_with_source_paths([input_file], prefs) or {
 				eprintln(err.msg())
 				exit(1)

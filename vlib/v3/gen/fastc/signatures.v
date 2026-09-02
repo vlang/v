@@ -122,9 +122,7 @@ fn fastc_parameter_is_params_struct(parameter_type string, params_structs map[st
 }
 
 fn collect_function_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut brace_depth := 0
@@ -409,7 +407,9 @@ fn collect_function_signatures(source string, path string, header FastcSourceHea
 		previous_tok = tok
 		tok = scan.scan()
 	}
-	fastc_collect_selected_comptime_function_signatures(source, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
+	if header.has_comptime_if {
+		fastc_collect_selected_comptime_function_signatures(source, path, header, prefs, declared_types, declared_type_c_names, params_structs, mut functions)!
+	}
 }
 
 // fastc_scan_function_alias_signature scans the signature after `type Name = fn`
@@ -606,9 +606,7 @@ fn fastc_collect_type_default_references(mut scan scanner.Scanner, first token.T
 }
 
 fn collect_interface_method_signatures(source string, path string, header FastcSourceHeader, prefs &pref.Preferences, declared_types map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut interface_field_paths map[string]string, mut embed_embedders []string, mut embed_embeddeds []string) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut tok := scan.scan()
@@ -846,6 +844,9 @@ fn fastc_collect_signature_chunk(sources []FastcSourceFile, prefs &pref.Preferen
 			partial.failed = true
 			partial.error_message = err.msg()
 			return partial
+		}
+		if !source_file.header.has_interfaces {
+			continue
 		}
 		collect_interface_method_signatures(source_file.source, source_file.path, source_file.header, prefs, declared_types, mut partial.functions, mut partial.interface_methods, mut partial.interface_fields, mut partial.interface_field_paths, mut partial.embed_embedders, mut partial.embed_embeddeds) or {
 			partial.failed = true
@@ -1419,9 +1420,7 @@ fn fastc_register_composite_type(typ string, mut composite_types map[string]bool
 }
 
 fn fastc_collect_generated_template_references(source string, path string, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]bool) {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
 	mut tok := scan.scan()
@@ -1484,9 +1483,7 @@ fn fastc_collect_veb_template_references(source_file FastcSourceFile, function_n
 // fastc_collect_file_references scans one source file's function bodies,
 // generated veb templates, and top-level initializers for collected function names.
 fn fastc_collect_file_references(source_file FastcSourceFile, prefs &pref.Preferences, available_names map[string]bool, mut references map[string]map[string]bool, mut top_level_references map[string]bool) {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source_file.path, source_file.source.len)
-	file.index_lines_without_digest(source_file.source)
+	file := token.File.unindexed(source_file.path, source_file.source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source_file.source)
 	mut previous := token.Token.unknown

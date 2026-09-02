@@ -726,7 +726,7 @@ fn (mut g Parser) parse_return() !bool {
 			for value in evaluated_values {
 				packed_values << 'V_FASTC_MULTI_VALUE((${value}))'
 			}
-			'(MultiReturn){.values={${packed_values.join(', ')}}}'
+			'${fastc_multi_return_literal(packed_values)}'
 		}
 		if g.return_type == 'Option' {
 			g.write_line('return (Option){.data=v_fastc_interface_box(&${multi_value}, sizeof(MultiReturn)), .state=0};')
@@ -1250,14 +1250,14 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			component_type := if i < component_types.len { component_types[i] } else { 'usize' }
 			c_name := fastc_c_identifier(name)
 			g.write_line('${component_type} ${c_name} = (${component_type}){0};')
-			g.write_line('memcpy(&${c_name}, ${temporary}.values[${i}].data, sizeof(${c_name}));')
+			g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
 			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
 				typ: component_type
 			})
 		} else {
 			c_name := assignment_targets[i].source
-			g.write_line('memcpy(&${c_name}, ${temporary}.values[${i}].data, sizeof(${c_name}));')
+			g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
 		}
 	}
 }
@@ -1416,7 +1416,7 @@ fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool,
 		} else {
 			assignment_targets[i].source
 		}
-		g.write_line('memcpy(&${target}, ${multi_return}.values[${i}].data, sizeof(${target}));')
+		g.write_line('memcpy(&${target}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${target})), sizeof(${target}));')
 	}
 	g.indent--
 	g.write_line('}')
@@ -1507,7 +1507,7 @@ fn (mut g Parser) parse_parallel_expression_assignment(first_source string, firs
 		if target.source == '' {
 			continue
 		}
-		g.write_line('memcpy(&${target.source}, ${temporary}.values[${i}].data, sizeof(${target.source}));')
+		g.write_line('memcpy(&${target.source}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${target.source})), sizeof(${target.source}));')
 	}
 }
 
@@ -1956,9 +1956,7 @@ fn (mut g Parser) parse_orm_sql_statement() ! {
 	saved_tok := g.tok
 	saved_lit := g.lit
 	saved_s := g.s
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_sql', lowering.len)
-	file.index_lines_without_digest(lowering)
+	file := token.File.unindexed('orm_sql', lowering.len)
 	g.s = scanner.new_scanner(g.prefs, .normal)
 	g.s.init(file, lowering)
 	g.next()
@@ -2029,9 +2027,7 @@ fn (mut g Parser) capture_orm_sql_block() !(string, string, string) {
 // build_orm_lowering parses one ORM query block and returns the V source it lowers
 // to. Only `insert` is handled so far; other operations report as unsupported.
 fn (g &Parser) build_orm_lowering(db_source string, block_source string, trailing string) !string {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_query', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_query', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2097,9 +2093,7 @@ fn fastc_orm_where_op(tok token.Token) string {
 // (Primitive value + OperationKind + is_and joiners), then it calls the connection's
 // `update`. Values are captured as source spans and boxed via `orm.Primitive(<expr>)`.
 fn (g &Parser) build_orm_update(db_source string, block_source string, trailing string) !string {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_update', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_update', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2290,9 +2284,7 @@ fn (g &Parser) build_orm_where_lines(mut s scanner.Scanner, block_source string,
 // builds the where QueryData (shared with `update`) and calls the connection's
 // `delete`.
 fn (g &Parser) build_orm_delete(db_source string, block_source string, trailing string) !string {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_delete', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_delete', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2358,9 +2350,7 @@ fn (g &Parser) build_orm_insert(db_source string, value_source string, table_nam
 // fastc_orm_parse_table_op scans `<op> table <Table>` and returns the row type name.
 // Shared by `create` and `drop`.
 fn (g &Parser) fastc_orm_parse_table_op(block_source string, op string) !string {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_${op}', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_${op}', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2479,9 +2469,7 @@ fn (g &Parser) build_orm_select_lowering(db_source string, block_source string, 
 	if trailing != '!' && or_source == '' {
 		return g.unsupported('ORM `sql`: `select` must be unwrapped with `!` or `or { ... }`')
 	}
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_select', block_source.len)
-	file.index_lines_without_digest(block_source)
+	file := token.File.unindexed('orm_select', block_source.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
 	s.init(file, block_source)
 	mut tok := s.scan()
@@ -2702,9 +2690,7 @@ fn (g &Parser) build_orm_select_lowering(db_source string, block_source string, 
 }
 
 fn fastc_orm_or_source_starts_with_exit(source string, prefs &pref.Preferences) bool {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_or', source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed('orm_or', source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
 	return s.scan() in [.key_return, .key_break, .key_continue]
@@ -2753,9 +2739,7 @@ fn (mut g Parser) emit_orm_lowering_statements(lowering string) ! {
 	saved_lit := g.lit
 	saved_s := g.s
 	outer_locals := g.locals.clone()
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('orm_lowering', lowering.len)
-	file.index_lines_without_digest(lowering)
+	file := token.File.unindexed('orm_lowering', lowering.len)
 	g.s = scanner.new_scanner(g.prefs, .normal)
 	g.s.init(file, lowering)
 	g.next()

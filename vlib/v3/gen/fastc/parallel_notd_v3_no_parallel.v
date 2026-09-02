@@ -1,6 +1,7 @@
 module fastc
 
 import os
+import time
 import v3.pref
 import v3.scanner
 import v3.token
@@ -145,10 +146,14 @@ fn fastc_chunk_bounds(sources []FastcSourceFile, jobs int) []int {
 // fastc_collect_generic_method_sources indexes every generic method and free
 // function remaining after source monomorphization. Scanning is independent per
 // file, and chunk maps are merged in source order for deterministic duplicates.
-fn fastc_collect_generic_method_sources(sources []FastcSourceFile, prefs &pref.Preferences) map[string]FastcGenericMethodSource {
+// It also computes every file's declaration keyword flags, since this is the
+// first pass over the sources, and stores them in the returned headers.
+fn fastc_collect_generic_method_sources(mut sources []FastcSourceFile, prefs &pref.Preferences) map[string]FastcGenericMethodSource {
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
-		return fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
+		partial := fastc_collect_generic_method_source_chunk(sources, prefs, 0, sources.len)
+		fastc_apply_scan_flags(mut sources, partial.flags, 0)
+		return partial.sources
 	}
 	bounds := fastc_chunk_bounds(sources, jobs)
 	second_thread := spawn fastc_collect_generic_method_source_chunk(sources, prefs, bounds[2], bounds[3])
@@ -157,14 +162,29 @@ fn fastc_collect_generic_method_sources(sources []FastcSourceFile, prefs &pref.P
 		chunk_thread := spawn fastc_collect_generic_method_source_chunk(sources, prefs, bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
 		chunk_threads << chunk_thread
 	}
-	mut result := fastc_collect_generic_method_source_chunk(sources, prefs, bounds[0], bounds[1])
-	for chunk_thread in chunk_threads {
+	mut first := fastc_collect_generic_method_source_chunk(sources, prefs, bounds[0], bounds[1])
+	mut result := first.sources.move()
+	fastc_apply_scan_flags(mut sources, first.flags, bounds[0])
+	for chunk_idx, chunk_thread in chunk_threads {
 		chunk := chunk_thread.wait()
-		for key, generic in chunk {
+		for key, generic in chunk.sources {
 			result[key] = generic
 		}
+		fastc_apply_scan_flags(mut sources, chunk.flags, bounds[(chunk_idx + 1) * 2])
 	}
 	return result
+}
+
+fn fastc_apply_scan_flags(mut sources []FastcSourceFile, flags []FastcSourceScanFlags, start int) {
+	for i, file_flags in flags {
+		source_file := sources[start + i]
+		sources[start + i] = FastcSourceFile{
+			path: source_file.path
+			source: source_file.source
+			source_offset: source_file.source_offset
+			header: fastc_header_with_scan_flags(source_file.header, file_flags)
+		}
+	}
 }
 
 struct FastcIndexedFileGenOutput {
@@ -211,6 +231,8 @@ fn fastc_file_generation_order(sources []FastcSourceFile) []int {
 fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile, order []int, queue &FastcGenQueue) []FastcIndexedFileGenOutput {
 	mut outputs := []FastcIndexedFileGenOutput{}
 	limit := u32(order.len)
+	bench_files := os.getenv('FASTC_BENCH_FILES') != ''
+	mut sw := time.new_stopwatch()
 	for {
 		// Relaxed ordering is enough: the counter only hands out unique indices,
 		// and `order`/`sources` are fully initialized and read-only before the
@@ -221,15 +243,19 @@ fn fastc_generate_file_steal(ctx &FastcFileGenContext, sources []FastcSourceFile
 			break
 		}
 		file_index := order[claimed]
+		start_us := sw.elapsed().microseconds()
 		outputs << FastcIndexedFileGenOutput{
 			index: file_index
 			output: fastc_generate_single_file(ctx, sources[file_index])
+		}
+		if bench_files {
+			eprintln('fastc-file ${sw.elapsed().microseconds() - start_us} ${sources[file_index].source.len} ${sources[file_index].path}')
 		}
 	}
 	return outputs
 }
 
-const fastc_generation_fragment_size = 56 * 1024
+const fastc_generation_fragment_size = 28 * 1024
 
 fn fastc_generation_fragment_is_followed_by_comptime_else(scan scanner.Scanner) bool {
 	mut lookahead := scan
@@ -244,13 +270,11 @@ fn fastc_generation_fragment_is_followed_by_comptime_else(scan scanner.Scanner) 
 }
 
 fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Preferences) []FastcSourceFile {
-	if !prefs.building_v || !source_file.header.module_name.ends_with('fastc') || source_file.source.len <= fastc_generation_fragment_size {
+	if !fastc_source_needs_fragmentation(source_file, prefs) {
 		return [source_file]
 	}
 	part_count := (source_file.source.len + fastc_generation_fragment_size - 1) / fastc_generation_fragment_size
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source_file.path, source_file.source.len)
-	file.index_lines_without_digest(source_file.source)
+	file := token.File.unindexed(source_file.path, source_file.source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source_file.source)
 	mut cuts := [0]
@@ -328,10 +352,69 @@ fn fastc_source_generation_fragments(source_file FastcSourceFile, prefs &pref.Pr
 	return fragments
 }
 
+fn fastc_source_needs_fragmentation(source_file FastcSourceFile, prefs &pref.Preferences) bool {
+	return prefs.building_v && source_file.header.module_name.ends_with('fastc') && source_file.source.len > fastc_generation_fragment_size
+}
+
+struct FastcFragmentedSource {
+	index     int
+	fragments []FastcSourceFile
+}
+
+fn fastc_generation_fragment_chunk(candidates []FastcSourceFile, candidate_indices []int, prefs &pref.Preferences, start int, end int) []FastcFragmentedSource {
+	mut result := []FastcFragmentedSource{cap: end - start}
+	for i in start .. end {
+		result << FastcFragmentedSource{
+			index: candidate_indices[i]
+			fragments: fastc_source_generation_fragments(candidates[i], prefs)
+		}
+	}
+	return result
+}
+
+// fastc_generation_fragments splits oversized self-host sources into
+// top-level fragments. Finding the cut points scans each candidate with the
+// scanner, so candidates are scanned on parallel workers; the fragments are
+// then spliced back in source order.
 fn fastc_generation_fragments(sources []FastcSourceFile, prefs &pref.Preferences) []FastcSourceFile {
-	mut fragments := []FastcSourceFile{cap: sources.len + 8}
-	for source_file in sources {
-		fragments << fastc_source_generation_fragments(source_file, prefs)
+	mut candidates := []FastcSourceFile{}
+	mut candidate_indices := []int{}
+	for index, source_file in sources {
+		if fastc_source_needs_fragmentation(source_file, prefs) {
+			candidates << source_file
+			candidate_indices << index
+		}
+	}
+	mut fragments := []FastcSourceFile{cap: sources.len + candidates.len * 4}
+	if candidates.len == 0 {
+		fragments << sources
+		return fragments
+	}
+	jobs := fastc_parallel_job_count(candidates.len, prefs)
+	mut fragmented := []FastcFragmentedSource{cap: candidates.len}
+	if jobs <= 1 {
+		fragmented = fastc_generation_fragment_chunk(candidates, candidate_indices, prefs, 0, candidates.len)
+	} else {
+		bounds := fastc_chunk_bounds(candidates, jobs)
+		second_thread := spawn fastc_generation_fragment_chunk(candidates, candidate_indices, prefs, bounds[2], bounds[3])
+		mut chunk_threads := [second_thread]
+		for chunk_idx in 2 .. bounds.len / 2 {
+			chunk_thread := spawn fastc_generation_fragment_chunk(candidates, candidate_indices, prefs, bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
+			chunk_threads << chunk_thread
+		}
+		fragmented << fastc_generation_fragment_chunk(candidates, candidate_indices, prefs, bounds[0], bounds[1])
+		for chunk_thread in chunk_threads {
+			fragmented << chunk_thread.wait()
+		}
+	}
+	mut next_fragmented := 0
+	for index, source_file in sources {
+		if next_fragmented < fragmented.len && fragmented[next_fragmented].index == index {
+			fragments << fragmented[next_fragmented].fragments
+			next_fragmented++
+		} else {
+			fragments << source_file
+		}
 	}
 	return fragments
 }
@@ -348,11 +431,14 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 		}
 		return outputs
 	}
+	mut timer := fastc_new_phase_timer()
 	generation_sources := fastc_generation_fragments(sources, ctx.prefs)
+	timer.mark('file_outputs.fragments')
 	order := fastc_file_generation_order(generation_sources)
 	mut queue := &FastcGenQueue{
 		next: 0
 	}
+	timer.mark('file_outputs.order')
 	second_thread := spawn fastc_generate_file_steal(ctx, generation_sources, order, queue)
 	mut worker_threads := [second_thread]
 	for _ in 2 .. jobs {
@@ -363,12 +449,14 @@ fn fastc_generate_file_outputs(ctx &FastcFileGenContext, sources []FastcSourceFi
 	for indexed_output in first_outputs {
 		outputs[indexed_output.index] = indexed_output.output
 	}
+	timer.mark('file_outputs.first_chunk')
 	for worker_thread in worker_threads {
 		worker_outputs := worker_thread.wait()
 		for indexed_output in worker_outputs {
 			outputs[indexed_output.index] = indexed_output.output
 		}
 	}
+	timer.mark('file_outputs.wait_chunks')
 	return outputs
 }
 
@@ -434,6 +522,30 @@ fn fastc_collect_reference_partials(sources []FastcSourceFile, prefs &pref.Prefe
 	}
 }
 
+struct FastcIndexedDeclarationPartial {
+	index   int
+	partial FastcDeclarationPartial
+}
+
+// fastc_collect_declaration_worker collects one file at a time from the shared
+// counter (largest files first); the caller merges the partials in file order,
+// so the result matches a serial pass exactly.
+fn fastc_collect_declaration_worker(sources []FastcSourceFile, prefs &pref.Preferences, order []int, queue &FastcGenQueue) []FastcIndexedDeclarationPartial {
+	mut partials := []FastcIndexedDeclarationPartial{}
+	for {
+		slot := fastc_atomic_fetch_add_u32(&queue.next, 1)
+		if slot >= u32(order.len) {
+			break
+		}
+		index := order[slot]
+		partials << FastcIndexedDeclarationPartial{
+			index: index
+			partial: fastc_collect_declaration_chunk(sources, prefs, index, index + 1)
+		}
+	}
+	return partials
+}
+
 fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Preferences, mut declared_types map[string]bool, mut declared_kinds map[string]FastcDeclaredTypeKind, mut enum_flags map[string]bool, mut params_structs map[string]bool, mut type_source_paths map[string]bool, mut type_sources map[string]string, mut constants map[string]string, mut public_constants map[string]bool, mut constant_sources map[string]string, mut globals map[string]string, mut public_globals map[string]bool) ! {
 	jobs := fastc_parallel_jobs(sources, prefs)
 	if jobs <= 1 {
@@ -441,19 +553,53 @@ fn fastc_collect_declaration_indexes(sources []FastcSourceFile, prefs &pref.Pref
 		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
 		return
 	}
-	bounds := fastc_chunk_bounds(sources, jobs)
-	second_thread := spawn fastc_collect_declaration_chunk(sources, prefs, bounds[2], bounds[3])
+	order := fastc_file_generation_order(sources)
+	mut queue := &FastcGenQueue{
+		next: 0
+	}
+	second_thread := spawn fastc_collect_declaration_worker(sources, prefs, order, queue)
 	mut chunk_threads := [second_thread]
-	for chunk_idx in 2 .. bounds.len / 2 {
-		chunk_thread := spawn fastc_collect_declaration_chunk(sources, prefs, bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
+	for _ in 2 .. jobs {
+		chunk_thread := spawn fastc_collect_declaration_worker(sources, prefs, order, queue)
 		chunk_threads << chunk_thread
 	}
-	first := fastc_collect_declaration_chunk(sources, prefs, bounds[0], bounds[1])
-	fastc_merge_declaration_partial(first, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
+	mut partials := []FastcDeclarationPartial{len: sources.len}
+	first := fastc_collect_declaration_worker(sources, prefs, order, queue)
+	for indexed in first {
+		partials[indexed.index] = indexed.partial
+	}
 	for chunk_thread in chunk_threads {
-		partial := chunk_thread.wait()
+		worker_partials := chunk_thread.wait()
+		for indexed in worker_partials {
+			partials[indexed.index] = indexed.partial
+		}
+	}
+	for partial in partials {
 		fastc_merge_declaration_partial(partial, mut declared_types, mut declared_kinds, mut enum_flags, mut params_structs, mut type_source_paths, mut type_sources, mut constants, mut public_constants, mut constant_sources, mut globals, mut public_globals)!
 	}
+}
+
+struct FastcIndexedSignaturePartial {
+	index   int
+	partial FastcSignaturePartial
+}
+
+// fastc_collect_signature_worker collects one file at a time from the shared
+// counter (largest files first); the caller merges the partials in file order.
+fn fastc_collect_signature_worker(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, order []int, queue &FastcGenQueue) []FastcIndexedSignaturePartial {
+	mut partials := []FastcIndexedSignaturePartial{}
+	for {
+		slot := fastc_atomic_fetch_add_u32(&queue.next, 1)
+		if slot >= u32(order.len) {
+			break
+		}
+		index := order[slot]
+		partials << FastcIndexedSignaturePartial{
+			index: index
+			partial: fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, index, index + 1)
+		}
+	}
+	return partials
 }
 
 fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, declared_type_c_names map[string]string, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature, mut interface_methods map[string]bool, mut interface_fields map[string]FastcInterfaceField, mut embed_embedders []string, mut embed_embeddeds []string) ! {
@@ -463,17 +609,28 @@ fn fastc_collect_signatures(sources []FastcSourceFile, prefs &pref.Preferences, 
 		fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
 		return
 	}
-	bounds := fastc_chunk_bounds(sources, jobs)
-	second_thread := spawn fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, bounds[2], bounds[3])
+	order := fastc_file_generation_order(sources)
+	mut queue := &FastcGenQueue{
+		next: 0
+	}
+	second_thread := spawn fastc_collect_signature_worker(sources, prefs, declared_types, declared_type_c_names, params_structs, order, queue)
 	mut chunk_threads := [second_thread]
-	for chunk_idx in 2 .. bounds.len / 2 {
-		chunk_thread := spawn fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, bounds[chunk_idx * 2], bounds[chunk_idx * 2 + 1])
+	for _ in 2 .. jobs {
+		chunk_thread := spawn fastc_collect_signature_worker(sources, prefs, declared_types, declared_type_c_names, params_structs, order, queue)
 		chunk_threads << chunk_thread
 	}
-	first := fastc_collect_signature_chunk(sources, prefs, declared_types, declared_type_c_names, params_structs, bounds[0], bounds[1])
-	fastc_merge_signature_partial(first, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
+	mut partials := []FastcSignaturePartial{len: sources.len}
+	first := fastc_collect_signature_worker(sources, prefs, declared_types, declared_type_c_names, params_structs, order, queue)
+	for indexed in first {
+		partials[indexed.index] = indexed.partial
+	}
 	for chunk_thread in chunk_threads {
-		partial := chunk_thread.wait()
+		worker_partials := chunk_thread.wait()
+		for indexed in worker_partials {
+			partials[indexed.index] = indexed.partial
+		}
+	}
+	for partial in partials {
 		fastc_merge_signature_partial(partial, mut functions, mut interface_methods, mut interface_fields, mut embed_embedders, mut embed_embeddeds)!
 	}
 }

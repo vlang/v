@@ -298,9 +298,7 @@ fn fast_arm64_validate_unsupported_calls(sources []FastcSourceFile, prefs &pref.
 		if source_file.header.module_name == 'os' {
 			continue
 		}
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines_without_digest(source_file.source)
+		file := token.File.unindexed(source_file.path, source_file.source.len)
 		mut scan := scanner.new_scanner(prefs, .normal)
 		scan.init(file, source_file.source)
 		mut previous_3 := token.Token.unknown
@@ -526,9 +524,7 @@ fn fast_arm64_collect_constant_sources(sources []FastcSourceFile, prefs &pref.Pr
 		if !source_file.header.has_constants {
 			continue
 		}
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines_without_digest(source_file.source)
+		file := token.File.unindexed(source_file.path, source_file.source.len)
 		mut scan := scanner.new_scanner(prefs, .normal)
 		scan.init(file, source_file.source)
 		mut tok := scan.scan()
@@ -555,9 +551,7 @@ fn fast_arm64_collect_enum_values(sources []FastcSourceFile, prefs &pref.Prefere
 		if source_file.path !in type_source_paths {
 			continue
 		}
-		mut file_set := token.FileSet.new()
-		mut file := file_set.add_file(source_file.path, source_file.source.len)
-		file.index_lines_without_digest(source_file.source)
+		file := token.File.unindexed(source_file.path, source_file.source.len)
 		mut scan := scanner.new_scanner(prefs, .normal)
 		scan.init(file, source_file.source)
 		mut tok := scan.scan()
@@ -770,9 +764,7 @@ fn fast_arm64_scan_layout_attribute(mut scan scanner.Scanner, path string, prefs
 }
 
 fn fast_arm64_collect_source_declarations(source_file FastcSourceFile, prefs &pref.Preferences, declared_types map[string]bool, enum_flags map[string]bool, mut declarations map[string]FastArm64TypeDecl, mut constants map[string]FastArm64ConstantDecl, mut enum_values map[string]FastArm64ConstantDecl) ! {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source_file.path, source_file.source.len)
-	file.index_lines_without_digest(source_file.source)
+	file := token.File.unindexed(source_file.path, source_file.source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source_file.source)
 	mut tok := scan.scan()
@@ -3779,9 +3771,7 @@ fn (mut p FastArm64Program) register_string_sort_runtime() {
 }
 
 fn FastArm64Parser.new(mut program FastArm64Program, source_file FastcSourceFile) &FastArm64Parser {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(source_file.path, source_file.source.len)
-	file.index_lines_without_digest(source_file.source)
+	file := token.File.unindexed(source_file.path, source_file.source.len)
 	mut scan := scanner.new_scanner(program.prefs, .normal)
 	scan.init(file, source_file.source)
 	return &FastArm64Parser{
@@ -3907,9 +3897,7 @@ fn (mut p FastArm64Parser) skip_value_declaration() {
 }
 
 fn (mut p FastArm64Parser) enter_source(source string) {
-	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(p.source_file.path, source.len)
-	file.index_lines_without_digest(source)
+	file := token.File.unindexed(p.source_file.path, source.len)
 	mut scan := scanner.new_scanner(p.program.prefs, .normal)
 	scan.init(file, source)
 	p.s = scan

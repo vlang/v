@@ -409,7 +409,7 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 		component_type := fastc_normalize_inferred_type(component_types[i])
 		c_name := fastc_c_identifier(name)
 		g.write_line('${component_type} ${c_name} = (${component_type}){0};')
-		g.write_line('memcpy(&${c_name}, ${multi_return}.values[${i}].data, sizeof(${c_name}));')
+		g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
 		g.locals[name] = FastcLocal{
 			typ: component_type
 		}
@@ -706,7 +706,7 @@ fn (mut g Parser) read_return_expression_branch() !string {
 		g.consume_statement_end()
 		g.last_expression_type = ''
 		g.last_expression = []FastcExpressionToken{}
-		return '({ return (MultiReturn){.values={${values.join(', ')}}}; 0; })'
+		return '({ return ${fastc_multi_return_literal(values)}; 0; })'
 	}
 	value := g.read_expression([token.Token.semicolon, token.Token.rcbr])!
 	g.consume_statement_end()
