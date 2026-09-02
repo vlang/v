@@ -2095,33 +2095,80 @@ fn (mut g Gen) sql_expr(id flat.NodeId) {
 	g.write('}')
 }
 
-// interp_has_multiline_text reports whether any literal segment of an
-// interpolated string spans physical lines. A line break inside `${...}` is only
-// wrapping of the embedded expression and does not count.
-fn (g &Gen) interp_has_multiline_text(children []flat.NodeId) bool {
-	for cid in children {
-		c := g.a.node(cid)
-		if c.kind == .string_literal && (c.value.contains('\n') || c.value.contains('\r')) {
-			return true
+// interp_text_spans_lines reports whether the literal text of the interpolated
+// string written as `source` contains a physical line break. Segment values are
+// stored decoded, so this has to work on the source: a `\n` escape is not a
+// physical break. Everything inside `${...}` is skipped too, since a break there
+// only wraps the embedded expression.
+fn interp_text_spans_lines(source string) bool {
+	mut i := 0
+	mut depth := 0
+	for i < source.len {
+		c := source[i]
+		if c == `\\` {
+			i += 2
+			continue
 		}
+		if depth == 0 {
+			if c == `\n` || c == `\r` {
+				return true
+			}
+			if c == `$` && i + 1 < source.len && source[i + 1] == `{` {
+				depth = 1
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		// inside `${...}`: step over nested literals so that a brace of their
+		// own does not throw off the depth count
+		if c in [`'`, `"`, `\``] {
+			i = interp_skip_nested_literal(source, i)
+			continue
+		}
+		if c == `{` {
+			depth++
+		} else if c == `}` {
+			depth--
+		}
+		i++
 	}
 	return false
 }
 
+// interp_skip_nested_literal returns the offset just past the string or rune
+// literal opening at `start` inside an interpolated expression.
+fn interp_skip_nested_literal(source string, start int) int {
+	quote := source[start]
+	mut i := start + 1
+	for i < source.len {
+		if source[i] == `\\` {
+			i += 2
+			continue
+		}
+		if source[i] == quote {
+			return i + 1
+		}
+		i++
+	}
+	return source.len
+}
+
 fn (mut g Gen) string_interp(id flat.NodeId) {
 	n := g.a.node(id)
-	children := g.a.children_of(n)
-	if g.interp_has_multiline_text(children) {
-		if source := g.source_span(n.pos.offset, n.pos.end) {
-			// Physical newlines are part of a multiline literal's value and
-			// layout, so keep such a literal exactly as written instead of
-			// re-escaping them to `\n`.
-			if source.contains('\n') || source.contains('\r') {
-				g.write(source)
-				return
-			}
+	if source := g.source_span(n.pos.offset, n.pos.end) {
+		// Physical newlines are part of a multiline literal's value and layout,
+		// so keep such a literal exactly as written instead of re-escaping them
+		// to `\n`. The comments of any embedded expression are copied along with
+		// it, so they must not be emitted a second time later on.
+		if interp_text_spans_lines(source) {
+			g.write(source)
+			g.skip_comments_before(n.pos.end)
+			return
 		}
 	}
+	children := g.a.children_of(n)
 	// prefer single quotes unless a literal segment contains `'` but no `"`
 	mut has_single := false
 	mut has_double := false

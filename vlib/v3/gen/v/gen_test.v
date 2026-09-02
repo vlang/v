@@ -1509,3 +1509,44 @@ fn test_formatter_keeps_assignment_value_on_its_own_line() {
 	assert out == source, out
 	assert vfmt('assignment_value_on_own_line_twice', out) == out
 }
+
+fn test_formatter_keeps_comments_inside_multiline_interpolation_once() {
+	source := "fn describe(a int, b int) string {
+	x := 'line1
+line2 \${a + /* keep */ b}
+line3'
+	return x
+}
+"
+	out := vfmt('comments_inside_multiline_interpolation', source)
+	assert out == source, out
+	assert out.count('/* keep */') == 1, out
+	assert vfmt('comments_inside_multiline_interpolation_twice', out) == out
+}
+
+fn test_formatter_keeps_comment_after_multiline_interpolation() {
+	source := "fn describe(table string) string {
+	q := '
+		SELECT *
+		FROM \${table}
+	' // trailing comment
+	return q
+}
+"
+	out := vfmt('comment_after_multiline_interpolation', source)
+	assert out == source, out
+}
+
+fn test_formatter_reflows_interpolation_wrap_when_text_only_has_escaped_newline() {
+	source := "fn describe(a int, b int) string {
+	return 'a\\nb \${add(a,
+		b)}'
+}
+"
+	expected := "fn describe(a int, b int) string {
+	return 'a\\nb \${add(a, b)}'
+}
+"
+	out := vfmt('escaped_newline_interpolation_wrap', source)
+	assert out == expected, out
+}
