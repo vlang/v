@@ -1550,3 +1550,35 @@ fn test_formatter_reflows_interpolation_wrap_when_text_only_has_escaped_newline(
 	out := vfmt('escaped_newline_interpolation_wrap', source)
 	assert out == expected, out
 }
+
+fn test_formatter_keeps_expanded_array_after_a_single_line_sibling() {
+	source := 'fn build() []Outer {
+	return [
+		Outer{
+			list: [Elem{
+				a: 1
+			}]
+		},
+		Outer{
+			list: [
+				Elem{
+					a: 2
+				},
+			]
+		},
+	]
+}
+'
+	out := vfmt('expanded_array_after_single_line_sibling', source)
+	assert out == source, out
+	assert vfmt('expanded_array_after_single_line_sibling_twice', out) == out
+}
+
+fn test_formatter_keeps_rows_of_small_nested_arrays_on_one_line() {
+	source := 'fn rows() [][]int {
+	return [[1, 2], [3, 4], [5, 6]]
+}
+'
+	out := vfmt('rows_of_small_nested_arrays', source)
+	assert out == source, out
+}

@@ -1213,13 +1213,19 @@ fn (mut g Gen) array_literal(id flat.NodeId) {
 		return
 	}
 	g.array_depth++
+	first := g.a.node(children[0])
+	// An array whose source starts on the line below `[` keeps that layout even
+	// when an earlier array at this nesting depth was written on one line.
+	source_break := g.source_line(first.pos.offset) > g.source_line(n.pos.offset)
 	if g.array_depth > g.array_breaks.len {
-		first := g.a.node(children[0])
+		// The width heuristic is decided once per nesting depth, so a row of
+		// small nested arrays stays uniform instead of breaking at whichever
+		// element happens to cross the limit.
 		first_width := g.array_expr_width(children[0])
-		g.array_breaks << g.source_line(first.pos.offset) > g.source_line(n.pos.offset)
+		g.array_breaks << source_break
 			|| (first_width > 0 && g.output_line_len() + first_width > formatter_array_first_break)
 	}
-	line_break := g.array_breaks[g.array_depth - 1]
+	line_break := source_break || g.array_breaks[g.array_depth - 1]
 	mut indented := false
 	for i, child in children {
 		if i == 0 {
